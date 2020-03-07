@@ -1,0 +1,91 @@
+project Cubit is
+    
+    for Languages use ("Ada", "yasm");
+    
+    for Object_Dir use "build";
+    
+    for Source_Dirs use ("src", "src/filesystem");
+    
+    for Main use ("kmain.adb");
+
+    for Runtime ("Ada") use "runtime";
+
+    for Library_Dir use "";
+
+    for Excluded_Source_Files use ("init.asm");
+
+    -- So gprbuild finds our .asm files
+    package Naming is
+        for Body_Suffix ("yasm") use ".asm";
+    end Naming;
+
+    -- For gprbuild
+    package Builder is
+
+        for Default_Switches ("Ada") use 
+        (
+            "-g",                   -- debug info
+            "-gnatp",               -- suppress all checks
+            "-gnatwa",              -- print all warnings...
+            "-gnatw.X",             -- disable warnings for No_Exception_Propagation
+            "-gnatd.v",             -- SPARK elaboration model
+            --"-fstack-check",        -- For debug builds only.
+            "-s",                   -- recompile on compiler switch changes
+            "-v",                   -- verbose
+            "-z",                   -- no main subprogram
+            "-nostdlib"
+        );
+    end Builder;
+
+    -- For compiler & assembler
+    package Compiler is
+        -- Ada info
+        for Default_Switches ("Ada") use 
+        (
+            "-fstack-usage",        -- Output .su file with stack info
+            --"-fomit-frame-pointer", -- A little faster
+            "-mno-red-zone",
+            "-fno-pic",
+            "-mcmodel=kernel",      -- all kernel code in top 2GiB of memory
+            "-mno-sse",             -- not supported
+            "-mno-sse2",
+            "-I-"                   -- don't look for source files in the same folder
+        );
+
+        -- Assembler info
+        for Driver ("yasm") use "yasm";
+        for Object_File_Suffix ("yasm") use ".o";
+        for Object_File_Switches ("yasm") use ("-o", "");
+        for Required_Switches ("yasm") use ("");
+        --for Dependency_Switches ("yasm") use ("");
+
+        for Default_Switches ("yasm") use 
+        (
+            "--arch=x86",
+            "-felf64",
+            "--dformat=dwarf2"
+        );
+
+    end Compiler;
+
+    -- For binder
+    package Binder is
+        for Default_Switches ("Ada") use
+        (
+            "-n"                -- No main subprogram
+        );
+    end Binder;
+
+    -- For linker
+    -- package Linker is
+    --     for Required_Switches use 
+    --     (
+    --         "-nostdlib",
+    --         "-static",
+    --         "-n",
+    --         "-v",
+    --         "-T../src/linker.ld"
+    --     );
+    -- end Linker;
+
+end Cubit;

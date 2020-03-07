@@ -1,0 +1,35 @@
+library project cubit_runtime is
+    for Source_Dirs use ("runtime/gnat");
+
+    for Object_Dir use "build";
+
+    for Runtime ("Ada") use "runtime";
+
+    package Builder is
+        for Default_Switches ("Ada") use
+        (
+            "-g",
+            "-gnatpgn",
+            "-gnatwa",
+            "-gnatw.X",     -- disable warnings for No_Exception_Propagation rule
+            "-nostdlib",
+            "-v",
+            "-x"
+        );
+    end Builder;
+
+    package Compiler is
+        for Default_Switches ("Ada") use
+        (
+            "-mno-red-zone",
+            "-mcmodel=kernel",
+            "-fno-pic",
+            "-mno-sse",
+            "-I-"
+        );
+    end Compiler;
+
+    for Library_Kind use "static";
+    for Library_Name use "gnat-cubit";
+    for Library_Dir use "runtime/adalib";
+end cubit_runtime;

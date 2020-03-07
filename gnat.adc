@@ -1,0 +1,30 @@
+-- Compiler Restrictions
+-- Prevent code from being generated that our OS can't handle!
+-- We suppress all runtime checks. We use SPARK to prove at compile-time that
+-- our code is free of these types of errors.
+--pragma Discard_Names;
+pragma Normalize_Scalars;
+
+-- Necessary for SPARK task proofs
+--pragma Profile (Ravenscar);
+
+pragma Suppress (Index_Check);
+pragma Suppress (Range_Check);
+pragma Suppress (Overflow_Check);
+
+--pragma Restrictions (No_Allocators);
+pragma Restrictions (No_Dispatch);
+pragma Restrictions (No_Enumeration_Maps);
+pragma Restrictions (No_Exception_Handlers);
+pragma Restrictions (No_Exception_Registration);
+pragma Restrictions (No_Exception_Propagation);
+pragma Restrictions (No_Finalization);
+pragma Restrictions (No_Floating_Point);
+pragma Restrictions (No_Implicit_Dynamic_Code);
+pragma Restrictions (No_Implicit_Heap_Allocations);
+pragma Restrictions (No_IO);
+pragma Restrictions (No_Protected_Types);
+pragma Restrictions (No_Standard_Storage_Pools);
+pragma Restrictions (No_Tasking);
+
+pragma Default_Storage_Pool (null);
