@@ -503,7 +503,7 @@ is
                 drive       : in out ata.Device;
                 lba         : in Filesystem.vfs.LBA48;
                 numSectors  : in Unsigned_32;
-                addr        : in System.Address;
+                buf         : in System.Address;
                 direction   : in ATADirection;
                 status      : out ATAResult)
     with
@@ -514,7 +514,7 @@ is
 
         waitResult  : Boolean;
         selection   : Unsigned_8 := SELECT_LBA;
-        baseAddr    : constant Integer_Address := To_Integer(addr);
+        baseAddr    : constant Integer_Address := To_Integer(buf);
         --ataCmd      : Unsigned_8 := getATACmd(drive, direction);
         use x86;
     begin
@@ -580,7 +580,7 @@ is
                 -- make sure drive didn't have an error, read an entire sector
                 --  one dword at a time.
                 x86.ins16(drive.channel.ioBase + OFFSET_DATA, 
-                        addr + Storage_Offset(i * SECTOR_SIZE_BYTES),
+                        buf + Storage_Offset(i * SECTOR_SIZE_BYTES),
                         SECTOR_SIZE_WORDS);
 
                 -- print(" reading sector "); print(Unsigned_32(lba) + i - 1);
@@ -590,7 +590,7 @@ is
         else
             for i in 0..numSectors-1 loop
                 x86.outs16(drive.channel.ioBase + OFFSET_DATA,
-                        addr + Storage_Offset(i * SECTOR_SIZE_BYTES),
+                        buf + Storage_Offset(i * SECTOR_SIZE_BYTES),
                         SECTOR_SIZE_WORDS);
             end loop;
 
@@ -611,6 +611,6 @@ is
         status := SUCCESS;
 
         spinlock.exitCriticalSection(drive.lock);
-    end accessSector;
+    end syncBuffer;
 
 end ata;

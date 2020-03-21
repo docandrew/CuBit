@@ -964,7 +964,7 @@ is
     --  are NOT supported.
     ---------------------------------------------------------------------------
     procedure syncBuffer(
-                drive       : in out Device;
+                drive       : in out ata.Device;
                 lba         : in Filesystem.vfs.LBA48;
                 numSectors  : in Unsigned_32;
                 buf         : in System.Address;

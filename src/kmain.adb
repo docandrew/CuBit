@@ -462,8 +462,6 @@ begin
         end testAta;
     end initATA;
 
-    x86.panic;
-
     -- initSMP: declare
     --     package myLapic is new lapic(To_Address(virtmem.P2V(apicBase)));
     --     cpu : Natural := 1;
