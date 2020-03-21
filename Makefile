@@ -5,6 +5,8 @@ all: cubit_kernel iso
 # Runtime library used by the CuBit Kernel itself (not the runtime used by
 # software running on it!)
 build/libcubit.a:
+	mkdir -p runtime/adalib
+	mkdir -p build
 	gprbuild -Pcubit_runtime.gpr
 
 # init usermode binary embedded in the kernel ELF object
