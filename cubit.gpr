@@ -29,7 +29,7 @@ project Cubit is
             "-gnatwa",              -- print all warnings...
             "-gnatw.X",             -- disable warnings for No_Exception_Propagation
             "-gnatd.v",             -- SPARK elaboration model
-            --"-fstack-check",        -- For debug builds only.
+            --"-fstack-check",        -- For debug builds only, can break things.
             "-s",                   -- recompile on compiler switch changes
             "-v",                   -- verbose
             "-z",                   -- no main subprogram
@@ -75,6 +75,11 @@ project Cubit is
             "-n"                -- No main subprogram
         );
     end Binder;
+
+    -- gnattest
+    package Gnattest is
+        for Harness_Dir use "unittests";
+    end Gnattest;
 
     -- For linker
     -- package Linker is
