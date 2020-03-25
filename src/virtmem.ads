@@ -80,7 +80,7 @@ is
     MAX_PHYS_ADDRESS : constant := 2**48 - 1;
     --MAX_PHYS_ADDRESS : constant := 16#0000_FFFF_FFFF_FFFF#;
 
-    subtype PhysAddress is Integer_Address range 0 .. MAX_PHYS_ADDRESS;
+    subtype PhysAddress is Integer_Address; -- range 0 .. MAX_PHYS_ADDRESS;
 
     -- Max physical address that we have on _our_ system. May not be
     -- all usable RAM, but ACPI tables or something else.

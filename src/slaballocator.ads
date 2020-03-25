@@ -52,7 +52,7 @@
 --  SlabAllocator.setup(objSlab, myObject'Size, alignment => 64);
 -- 
 -- CAUTION: The alignment for all objects allocated by this allocator must be
---  specified in the setup procedure. Do not specify the Alignment attribute
+--  specified in the setup procedure. Do not specify the 'Alignment attribute
 --  for objects or types that use this allocator. It will be ignored.
 --
 -- CAUTION: Make sure you call setup before using new or
@@ -147,8 +147,12 @@ is
     -- setup - allocate underlying physical memory, initialize the free lists
     -- with the desired object size and alignment.
     --
+    -- @param pool - Slab (Ada Storage Pool) to setup.
     -- @param objSize - the size _in bits_ of the object (so Obj'Size can be
     --  used)
+    -- @param blockOrder - size of underlying physical memory to allocate, in
+    --  terms of FRAME_SIZE * 2^(blockOrder)
+    -- @param alignment - alignment for stored objects within the slab.
     --
     -- @exception OutOfMemoryException raised when the underlying physical
     --  memory allocator cannot allocate a block large enough for this slab.

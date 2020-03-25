@@ -11,11 +11,15 @@ package body LinkedList is
     ---------------------------------------------------------------------------
     -- setup
     ---------------------------------------------------------------------------
-    procedure setup(myList : in DList) with
+    procedure setup(myList : in DList; numObjects : in Natural) with
         SPARK_Mode => Off
     is
+        sizeNeeded : Integer = numObjects * Node'Size/8;
     begin
         SlabAllocator.setup(myList.nodeSlab, 
+                            Node'Size,
+                            Node'Size/8 
+
     end setup;
 
     ---------------------------------------------------------------------------

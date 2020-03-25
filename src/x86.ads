@@ -633,4 +633,5 @@ is
     ---------------------------------------------------------------------------
     function rdtscp(chip : out Unsigned_32; core : out Unsigned_32)
         return Unsigned_64 with Inline;
+
 end x86;

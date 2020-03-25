@@ -252,7 +252,7 @@ is
     begin
         Asm("mov %%cr3, %0",
             Outputs => Integer_Address'Asm_Output("=r", ret),
-            Volatile => False);
+            Volatile => True);
 
         return ret;
     end getCR3;
@@ -293,8 +293,9 @@ is
     -- atomically try to set the "var" param to "newval" and return the old
     -- value of "var".
     ---------------------------------------------------------------------------
-    procedure xchg(var : in out Unsigned_32; newval : in Unsigned_32;
-        oldval : out Unsigned_32)
+    procedure xchg( var     : in out Unsigned_32;
+                    newval  : in Unsigned_32;
+                    oldval  : out Unsigned_32)
         with SPARK_Mode => Off      --inline ASM
     is
     begin
@@ -309,8 +310,9 @@ is
     ---------------------------------------------------------------------------
     -- Version of XCHG strictly for LockBool, to allow SPARK proving
     ---------------------------------------------------------------------------
-    procedure lock_xchg(var : in out locks.LockBool; newval : in locks.LockBool;
-        oldval : out locks.LockBool)
+    procedure lock_xchg(var     : in out locks.LockBool; 
+                        newval  : in locks.LockBool;
+                        oldval  : out locks.LockBool)
         with SPARK_Mode => Off      --inline ASM
     is
     begin
@@ -413,4 +415,5 @@ is
             
         return (Shift_Left(Unsigned_64(high), 32) or Unsigned_64(low));
     end rdtscp;
+
 end x86;

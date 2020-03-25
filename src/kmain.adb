@@ -449,8 +449,8 @@ begin
 
                     Ext2.print(sblock);
 
-                    --print(" volume name: "); println(sblock.volumeName);
-                    --print(" inodes: "); println(sblock.inodeCount);
+                    -- print(" volume name: "); println(sblock.volumeName);
+                    -- print(" inodes: "); println(sblock.inodeCount);
                     --Debug.dumpMem(sblock'Address, 2048);
 
                     -- get root inode
