@@ -377,7 +377,7 @@ TODO: Kernel Features
 [-] More formal proofs of kernel correctness
     [ ] Preventing race conditions - may not be feasible outside of
         Ravenscar profile, which doesn't really apply to us.
-[-] Implement more of the Ada standard library, especially for Tasks.
+[-] Implement more of the Ada standard library
 
 TODO: Usermode/Shell
 --------------------
