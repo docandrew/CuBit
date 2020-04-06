@@ -391,7 +391,7 @@ TODO: Usermode/Shell
 TODO: engineering
 -----------------
 [ ] Make all package names Uppercase
-[ ] Rename all setupXYZ to just setup, since package name is already there.
+[-] Rename all setupXYZ to just setup, since package name is already there.
 [X] New Makefile
 [-] Use gnatdoc format in comments
     [ ] Edit gnatdoc format so NOTE, CAUTION, WARNING shows up as different
