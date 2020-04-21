@@ -1,89 +1,7 @@
 Introduction
 ------------
-CuBitOS is a multi-processor, 64-bit, formally-verified, 
+CuBitOS is a multi-processor, 64-bit, (partially) formally-verified, 
 general-purpose operating system, currently for the x86-64 architecture.
-
-Rationale
----------
-The arms race today between developers, sysadmins and bad guys is at a fever
-pitch. Most of the infrastructure we depend on is written in C. I know
-there are a lot of talented C developers out there, but let's face it, it's
-unsafe, and it's challenging even for the most experienced devs to write safe C
-code. The language specification makes it difficult to statically check,
-though there are some system subsets like MISRA-C or FRAMA-C that are more
-amenable to static analysis and formal verification, respectively.
-
-Advanced, persistent threats (APTs) are constantly finding vulnerabilities and
-developing exploits. It's going to piss a lot of people off, but let's be
-honest - C is a dead end for secure programs. It's had a good run, we've got lots of
-good memories, but I wouldn't bet my life (or livelihood) on anything written
-in C. Lots of people feel differently, and that's OK.
-
-Personally, I think formal verification is the only way the good guys have any
-chance, frankly. We can mathematically prove that a program satisfies its
-specifications and is free from bad behavior. Today.
-
-So, what tools exist to write formally-verified, bare-metal, production 
-software today? The landscape is limited. Frama-C adds the ACSL (specification
-language) that allows contracts in specially-formatted C comments.
-
-The only other one I could find was SPARK / Ada.
-
-Yes, *that* Ada.
-
-It's not that bad! I was shocked how nice it was, once I started porting CuBitOS
-over to it.
-
-Why not Rust? I'm bullish on Rust, personally. Memory-safety issues are the number
-one cause of CVEs, and Rust presents a great way to avoid these. However, Rust does
-not (yet) have any way of mechanically proving functional correctness. I'm looking
-forward to what the Rust Formal Methods working group comes up with though. From
-what I can tell, it's not a priority yet. Ada's rigid, rich type system, combined
-with SPARK, really gives the developer a lot of power for guaranteeing correctness.
-Rust can do a lot of checks at runtime when software is built in Debug mode, so
-with thorough testing, the developer can feel pretty good about functional
-correctness.
-
-SPARK lets us formally prove the absence of these types of bugs at
-compile-time.
-
-Why not ``<insert language here>?``
-
-The original version of CuBitOS (called Fortress) was written in D, 
-which is still near and dear to me. For application development, it's great,
-and it has a lot of features inspired by Ada, such as contracts. Without formal
-verification and compile-time checking of contracts, I had to look elsewhere.
-
-Type-dependent languages like Coq, Idris will also have a part to play, 
-but are still largely academic in nature. All the ones I've seen are purely 
-functional and depend on a runtime, which makes them ill-suited to operating 
-system development outside of an academic environment, in my opinion. 
-It might be possible to extract bare-metal
-code from Coq, but honestly, writing code in it is not the most fun thing in
-the world. It should be noted that the SPARK prover can use Coq proofs in the
-event that the automatic prover is unable to prove something.
-
-I think most, if not all, of the functionality provided by dependent types can 
-already be satisfied by Ada contracts, formally-proven at compile-time by
-SPARK. Having said that, I think this is an exciting area of research and there
-is a lot of promise for these languages going forward. I'd like to see more of
-a pragmatic emphasis on using these languages for assured systems development.
-From what I can tell, it's still fairly theoretical and high-level.
-
-So, does this mean CuBitOS is a perfect system with no bugs?
-
-HECK NO! It's still a product of human hands, with an incomplete and possibly
-incorrect interpretation of the underlying hardware, which itself may have
-bugs. Not everything in CuBitOS is formally-proven, either. The SPARK
-subset of Ada doesn't allow certain things that an operating system just has
-to do sometimes, so while the interface is checked for these functions and
-procedures, the functionality isn't. Additionally, the contracts that are in 
-place now don't constitute a complete specification of CuBitOS' desired 
-functionality, either.
-
-Contracts and formal verification are not and probably never will be a 
-substitute for a thorough test suite, but where a test suite shows the
-*presence* of bugs, formal verification can show the *absence* of them.
 
 Contributor Notes
 -----------------
@@ -282,13 +200,20 @@ Borrowing a page from aircraft operator manuals:
 * WARNING - Denotes information that, if not considered, may result in loss
   of user data or damage to the underlying hardware.
 
-Data Sizes:
-===========
-Nibble                                          - 4 bits
-Byte                                            - 8 bits
-Word                                            - 16 bits
-Dword (double-word)                             - 32 bits
-Qword (quad-word)                               - 64 bits
+Data Sizes/Types:
+=================
+
+|   Term used         |    Size   |
+|---------------------|-----------|
+|Nibble               |   4 bits  |
+|Byte                 |   8 bits  |
+|Word                 |   16 bits |
+|Dword (double-word)  |   32 bits |
+|Qword (quad-word)    |   64 bits |
+
+This is included here to avoid the confusion used when describing interfaces
+or hardware components where "Word" may mean something other than 16 bits. We
+always mean 16-bits in the CuBit code when using "word" in comments, etc.
 
 Generally speaking, we'll explicitly state the length of a data type using
 the Ada Interfaces package, i.e. Unsigned_8, Unsigned_32, etc. The terms above
@@ -369,6 +294,7 @@ TODOs.
 
 TODO: Kernel Features
 ---------------------
+```
 [ ] There are a lot of potential circular dependencies for just "proof stuff",
     i.e. preconditions where we don't want to call a blockingSleep until 
     interrupts are enabled -> don't want to enable interrupts until the
@@ -458,18 +384,20 @@ TODO: Kernel Features
     [ ] Preventing race conditions - may not be feasible outside of
         Ravenscar profile, which doesn't really apply to us.
 [-] Implement more of the Ada standard library, especially for Tasks.
-
+```
 TODO: Usermode/Shell
 --------------------
+```
 [-] Init model - should this look like UNIX? Something else?
 [ ] Security Model
     [-] Codify it
     [ ] Prove it
     [ ] Implement it
 [ ] IMGUI framework
-
+```
 TODO: engineering
 -----------------
+```
 [ ] Make all package names Uppercase
 [ ] Rename all setupXYZ to just setup, since package name is already there.
 [X] New Makefile
@@ -487,7 +415,7 @@ TODO: engineering
 [ ] Write unit tests
 [ ] Fuzzing
 [ ] Integration tests that run in the OS.
-
+```
 Architecture Ideas
 ------------------
 * Use system RTC/HPET timers for real-time tasks, perhaps dedicate a CPU
@@ -506,7 +434,7 @@ Registers: `rg64`
 Stack trace: `k`
 
 To use QEMU:
-qemu-system-x86_64 -s -S -m 4G -cdrom path\to\cubit_kernel.iso -serial stdio
+`qemu-system-x86_64 -s -S -m 4G -cdrom path\to\cubit_kernel.iso -serial stdio`
 
 QEMU will start in a paused state while it waits for the debugger. 
 
@@ -530,8 +458,9 @@ things like COM1.init(), or COM1.send() instead of init(COM1), for instance.
 
 2. Compile-time format strings.
 
-Installing rflx
----------------
+Installing rflx (WIP)
+---------------------
+```
 git clone https://github.com/Componolit/RecordFlux
 install >= Python 3.6
 install pip
@@ -540,4 +469,4 @@ source bin/activate
 python setup.py build
 python setup.py install
 Now the rflx script at bin/rflx should work.
-
+```
