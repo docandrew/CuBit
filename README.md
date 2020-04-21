@@ -1,10 +1,10 @@
 Introduction
-------------
+============
 CuBitOS is a multi-processor, 64-bit, (partially) formally-verified, 
 general-purpose operating system, currently for the x86-64 architecture.
 
 Contributor Notes
------------------
+=================
 Ada is case-insensitive (which is kind of nice,
 honestly), but it makes all exported symbols lower-case, so anything in .asm
 files that references that symbol needs to use the lower-cased version, OR
@@ -29,10 +29,10 @@ the fields and end up with junk data. The same is true even for non-variant
 records that use discriminants.
 
 Some things that might be confusing:
-------------------------------------
+====================================
 
 The MAX_PHYS_ constants
-=======================
+-----------------------
 * MAX_PHYS_ALLOC - set in config.ads, this is the max physical memory that CuBit
   supports. There only limit here is practical, since the boot mem allocator is
   set up to create bitmaps for all of this memory (128 GiB), which takes up a fair
@@ -56,11 +56,11 @@ The MAX_PHYS_ constants
   limit, but a physical allocator would be expected to handle addresses up to
   this point.
 
-"Bootstrap" vs "Kernel"
-=======================
+"Bootstrap" vs "Boot" vs "Kernel"
+---------------------------------
 Some of the structures used, like the GDT and Page Tables, have to be set up in
 `boot.asm` before switching to long mode. These are referred to as the
-"bootstrap" GDT and Page Tables, respectively. There's also the "bootstrap"
+"bootstrap" GDT and Page Tables, respectively. There's also the "boot"
 physical memory allocator (currently the only allocator). Later on, we re-map
 the entirety of physical memory into the higher-half of the kernel along with
 a new GDT in `segment.adb`. These are called the "kernel page tables" and
@@ -79,13 +79,13 @@ the linear-mapped address at 0xFFFF_8000_0000_0000. We linear-map all physical
 memory in 0xFFFF_8000_0000_0000 to 0xFFFF_8FFF_FFFF_FFFF.
 
 Cubit Memory Map
-================
+----------------
 Note that due to the x86-64 ABI, the kernel must be linked in the top 2GiB of
 memory when using mcmodel=kernel. Therefore, our page tables also
 need a mapping for 0xFFFF_FFFF_8XXX_XXXX -> 0x0000_0000_0XXX_XXXX.
 
 Can I Help?
------------
+===========
 Yes! I've tried to make the code very friendly to those unfamiliar with
 CuBitOS, Ada or SPARK. Please try it out on a VM and let me know what you
 think. Negative feedback and constructive criticism are useful too.
@@ -93,7 +93,7 @@ think. Negative feedback and constructive criticism are useful too.
 It's heavily-documented, and contributors are welcome!
 
 Things that I could really use help with:
-=========================================
+-----------------------------------------
 * Adding more contracts and SPARK verification conditions
 * A sensible Windowing/Graphics framework.
 * Porting apps or writing new ones
@@ -104,7 +104,7 @@ Things that I could really use help with:
 * Articles, documentation.
 
 Other avenues for exploration
-=============================
+-----------------------------
 CuBitOS may be a good starting point for academic research. SPARK has an
 escape hatch to perform proofs in Coq, so for the more mathematically-minded
 contributors that want a good challenge, see what you can prove about CuBitOS!
@@ -113,20 +113,23 @@ SPARK uses the Why3 framework and Z3 SMT solver. Good, fast SMT solvers
 are always an area of interest, and CuBitOS might be a good way to benchmark
 them for other real-world uses.
 
-Ideas:
-======
+Ancillary Ideas / Research Interest:
+------------------------------------
 * GPU-accelerated SMT solving
 * FPGA-accelerated SMT solver
 * SMT proofs as part of a CI/CD pipeline
 
 Coding Conventions
-------------------
-Ada keywords (type, for, loop, etc.)            - all lowercase
-Types (MultibootStruct, PageTableEntry, etc.)   - Capitalized CamelCase
-Package names                                   - Capitalized CamelCase
-Variables, functions (kmain, toHexString, etc.) - uncapitalized camelCase
-Constants (LT_GRAY, KERN_BASE, etc.)            - ALL CAPS
-Filenames                                       - all lower or snake_case
+==================
+
+| Code element                                   | Convention               |
+|------------------------------------------------|--------------------------|
+|Ada keywords (type, for, loop, etc.)            | all lowercase            |
+|Types (MultibootStruct, PageTableEntry, etc.)   | Capitalized CamelCase    |
+|Package names                                   | Capitalized CamelCase    |
+|Variables, functions (kmain, toHexString, etc.) | uncapitalized camelCase  |
+|Constants (LT_GRAY, KERN_BASE, etc.)            | ALL CAPS                 |
+|Filenames                                       | all lower or snake_case  |
 
 NOTE: if interfacing to an external component, say Multiboot, then
 variable names should use the same convention as that component's API.
@@ -143,7 +146,9 @@ memory can be confused with "virtual machine", so prefer "virtmem" or just
 spell it out completely. Acronyms should only be used if they are widely
 used or a convention of the underlying hardware, like ACPI, 
 
-Please convert tabs to four spaces.
+Please convert tabs to _four_ spaces.
+
+Commits should be LF line endings.
 
 Avoid "use" clauses unless otherwise necessary for operators, and then,
 limit their use to specific subprograms where needed or use the "use type"
@@ -189,7 +194,7 @@ we see one.
 So... uh... just update the comments!
 
 Notes, Cautions, Warnings
-=========================
+-------------------------
 Borrowing a page from aircraft operator manuals:
 
 * NOTE - Denotes information that is considered important to emphasize
@@ -201,7 +206,7 @@ Borrowing a page from aircraft operator manuals:
   of user data or damage to the underlying hardware.
 
 Data Sizes/Types:
-=================
+-----------------
 
 |   Term used         |    Size   |
 |---------------------|-----------|
@@ -220,17 +225,17 @@ the Ada Interfaces package, i.e. Unsigned_8, Unsigned_32, etc. The terms above
 may be used in comments rather than spelling out "32-bit value", for instance.
 
 SPARK-isms
-==========
+----------
 SPARK functions are not allowed to have any side-effects, so many times,
 a procedure is used instead, and an out parameter for the result is required,
 rather than just returning the result. It's a bit painful to assign temporaries
 for all the procedure results.
 
 Potential Pitfalls for Contributors
------------------------------------
+===================================
 
 Duplicated constants
-====================
+--------------------
 Definitions of constants can't be (easily) shared between the Ada code and
 assembly files, so some of them are duplicated. I've tried to get all the
 constants used by the assembly files in cubit.inc, along with a note of where
@@ -240,13 +245,13 @@ constant that's shared between assembly and Ada code - make sure they USE THE
 SAME NAME!
 
 Stack & Secondary Stack Implementation
-======================================
+--------------------------------------
 CuBit divides the static stack area into per-CPU chunks, each of which
 is split into the primary and secondary stacks for that CPU. The primary
 stack grows down, the secondary stack grows up. The primary stack pointer is
 set for the main CPU in boot.asm, and set for each additional CPU when they
 boot up in boot_ap.asm.
-
+```
        STACK_TOP    +-----------------------+
                     |                       |
                     | CPU 0 Primary Stack   |
@@ -270,24 +275,26 @@ boot up in boot_ap.asm.
                     +-----------------------+
                     | CPU N Secondary Stack |
     STACK_BOTTOM    +-----------------------+
-
+```
 The secondary stack SS_Init call is made during each CPU boot-up. Secondary
 stack overflows should be detected at runtime, however use caution. During
 syscalls and interrupts, the process' kernel stack may be in use, which does
 NOT have a secondary stack.
 
 Limitations
------------
+===========
 * Only a single ATA/IDE disk controller is supported
+* Many, many others...
 
 Known or Suspected Bugs
------------------------------
+=======================
 * Timer calibration and the busy time.sleep procedure are off a bit on 
   VirtualBox and QEMU, about 1s fast every 20s or so. On Bochs they are _way_
   off.
+* Likely many, many others...
 
 TODOs.
-------
+======
 * X means finished
 * - means in progress
 
@@ -422,8 +429,31 @@ Architecture Ideas
   scheduler (or more than one) to exclusively run real-time events when
   they are desired?
 
+Building
+========
+Dependencies: You'll need the GNAT 2019 Compiler, and if you want to build
+the live-CD, you'll need the *xorriso* and *grub-mkrescue* tools, which are
+probably provided in your distro's package manager. This can be built in Linux
+and on Windows using WSL.
+
+```
+git clone https://docandrew/CuBit.git
+make
+```
+This will build CuBit and create a Live-CD .iso file. The ISO can be mounted
+and run in VirtualBox, Bochs, or qemu.
+
+Documentation (work in progress):
+---------------------------------
+
+|  Task                                |   Command   |
+|--------------------------------------|-------------|
+| Create documentation (in build/docs) | `make docs` |
+| Run provers                          | `make prove`|
+| Build html documentation             | `make html` |
+
 Testing & Debugging Tips
-------------------------
+========================
 VirtualBox is a good tool for testing, however QEMU is nice when you need to
 use GDB to track down certain issues.
 
@@ -447,19 +477,8 @@ Use `(gdb) c` to continue.
 
 From here, normal gdb commands work, like `break`, `x`, etc.
 
-Ada Wish-List
--------------
-Note: I'm not an Ada expert, so some of this stuff may already be in the
-language/compiler but called by a weird Ada-ish name. Please correct me
-if this is the case!
-
-1. UFCS - Uniform Function Call Syntax. It would be great to be able to do
-things like COM1.init(), or COM1.send() instead of init(COM1), for instance.
-
-2. Compile-time format strings.
-
-Installing rflx (WIP)
----------------------
+Installing rflx (WIP - not used yet but in planning phase)
+----------------------------------------------------------
 ```
 git clone https://github.com/Componolit/RecordFlux
 install >= Python 3.6
