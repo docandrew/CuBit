@@ -1,5 +1,5 @@
 -------------------------------------------------------------------------------
--- CubitOS
+-- CuBitOS
 -- Copyright (C) 2019 Jon Andrew
 --
 -- Keyboard handling routine

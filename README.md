@@ -3,6 +3,46 @@ Introduction
 CuBitOS is a multi-processor, 64-bit, (partially) formally-verified, 
 general-purpose operating system, currently for the x86-64 architecture.
 
+CuBit is written in the SPARK dialect of Ada.
+
+CuBit is very much a WORK-IN-PROGRESS! Having said that, please give it a spin.
+Contributors welcome!
+
+Build Instructions
+==================
+
+Requirements
+------------
+* yasm assembler
+* GNAT CE 2019 with `gprbuild`, `gnat`, etc. in your `$PATH`
+* gcc/ld/GNU make/GNU binutils
+
+To create bootable .ISO, you'll also need:
+* grub-mkrescue
+* xorriso
+
+Building
+========
+Dependencies: You'll need the GNAT 2019 Compiler, and if you want to build
+the live-CD, you'll need the *xorriso* and *grub-mkrescue* tools, which are
+probably provided in your distro's package manager. This can be built in Linux
+and on Windows using WSL.
+
+    git clone https://github.com/docandrew/CuBit.git
+    make
+
+This will build CuBit and create a Live-CD .iso file. The ISO can be mounted
+and run in VirtualBox, Bochs, or QEMU.
+
+Documentation (work in progress):
+---------------------------------
+
+|  Task                                |   Command   |
+|--------------------------------------|-------------|
+| Create documentation (in build/docs) | `make docs` |
+| Run provers                          | `make prove`|
+| Build html documentation             | `make html` |
+
 Contributor Notes
 =================
 Ada is case-insensitive (which is kind of nice,
@@ -78,7 +118,8 @@ physical addresses. Instead, a specific physical address must be accessed using
 the linear-mapped address at 0xFFFF_8000_0000_0000. We linear-map all physical
 memory in 0xFFFF_8000_0000_0000 to 0xFFFF_8FFF_FFFF_FFFF.
 
-Cubit Memory Map
+
+CuBit Memory Map
 ----------------
 Note that due to the x86-64 ABI, the kernel must be linked in the top 2GiB of
 memory when using mcmodel=kernel. Therefore, our page tables also
@@ -94,14 +135,17 @@ It's heavily-documented, and contributors are welcome!
 
 Things that I could really use help with:
 -----------------------------------------
-* Adding more contracts and SPARK verification conditions
-* A sensible Windowing/Graphics framework.
-* Porting apps or writing new ones
+
 * Drivers
+* Drivers
+* Adding more contracts and SPARK verification conditions
+* Porting apps or writing new ones
 * Testing, especially developing an automated test framework
-* A proper CI/CD pipeline. As the time to prove CubitOS grows, being able to have
+* Drivers
+* A proper CI/CD pipeline. As the time to prove CuBitOS grows, being able to have
   this done automatically or overnight would be great.
 * Articles, documentation.
+* Did I mention Drivers?
 
 Other avenues for exploration
 -----------------------------
@@ -234,7 +278,7 @@ for all the procedure results.
 Potential Pitfalls for Contributors
 ===================================
 
-Duplicated constants
+Duplicated Constants
 --------------------
 Definitions of constants can't be (easily) shared between the Ada code and
 assembly files, so some of them are duplicated. I've tried to get all the
@@ -295,9 +339,8 @@ Known or Suspected Bugs
 
 TODOs.
 ======
-* X means finished
-* - means in progress
-
+* `X` means finished
+* `-` means in progress
 
 TODO: Kernel Features
 ---------------------
@@ -321,7 +364,7 @@ TODO: Kernel Features
     [X] Exceptions (Last chance handler)
     [ ] Broadcast panic to other CPUs
 [ ] Figure out a keyboard scancode -> key array scheme with a future eye towards 
-    internationalization. Maybe just use SDL's keyboard handling and let them sort it out.
+    internationalization. Maybe just use SDL's keyboard handling scheme and let them sort it out.
 [X] Physical memory allocator
     [X] Boot-mem allocator using bitmaps
     [X] Boot phys memory allocator
@@ -330,7 +373,7 @@ TODO: Kernel Features
 [X] Virtual memory mapper
     [X] Mark 0 page as not present
     [X] Re-map kernel pages with appropriate NXE bits, etc. depending on region.
-[ ] Virtual memory allocator
+[-] Virtual memory allocator
     [-] Demand paging.
 [-] Processes / Threads
     [ ] Kernel Tasks
@@ -380,7 +423,7 @@ TODO: Kernel Features
     [-] KPTI
         [ ] Disable KPTI if ARCH_CAPABILITIES MSR indicates not susceptible to RDCL
     [ ] Sensible Kernel-Mode-Setting / Framebuffer / Compositor arrangement
-[ ] Wow factor
+[ ] Wow Factor / Eye Candy
     [ ] Sweet GRUB splash screen w/ logo
 [-] Syscalls
     [X] SYSCALL/SYSRET working
@@ -392,6 +435,7 @@ TODO: Kernel Features
         Ravenscar profile, which doesn't really apply to us.
 [-] Implement more of the Ada standard library, especially for Tasks.
 ```
+
 TODO: Usermode/Shell
 --------------------
 ```
@@ -400,13 +444,14 @@ TODO: Usermode/Shell
     [-] Codify it
     [ ] Prove it
     [ ] Implement it
-[ ] IMGUI framework
+[-] IMGUI framework
 ```
-TODO: engineering
+
+TODO: Engineering
 -----------------
 ```
 [ ] Make all package names Uppercase
-[ ] Rename all setupXYZ to just setup, since package name is already there.
+[-] Rename all setupXYZ to just setup, since package name is already there.
 [X] New Makefile
 [-] Use gnatdoc format in comments
     [ ] Edit gnatdoc format so NOTE, CAUTION, WARNING shows up as different
@@ -428,20 +473,6 @@ Architecture Ideas
 * Use system RTC/HPET timers for real-time tasks, perhaps dedicate a CPU
   scheduler (or more than one) to exclusively run real-time events when
   they are desired?
-
-Building
-========
-Dependencies: You'll need the GNAT 2019 Compiler, and if you want to build
-the live-CD, you'll need the *xorriso* and *grub-mkrescue* tools, which are
-probably provided in your distro's package manager. This can be built in Linux
-and on Windows using WSL.
-
-```
-git clone https://docandrew/CuBit.git
-make
-```
-This will build CuBit and create a Live-CD .iso file. The ISO can be mounted
-and run in VirtualBox, Bochs, or qemu.
 
 Documentation (work in progress):
 ---------------------------------

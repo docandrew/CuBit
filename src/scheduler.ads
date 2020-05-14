@@ -1,5 +1,5 @@
 -------------------------------------------------------------------------------
--- CubitOS
+-- CuBitOS
 -- Copyright (C) 2019 Jon Andrew
 --
 -- System Scheduler - the scheduler runs on each CPU, trying to fetch 

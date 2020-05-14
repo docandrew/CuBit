@@ -1,5 +1,5 @@
 -------------------------------------------------------------------------------
--- CubitOS
+-- CuBitOS
 -- Copyright (C) 2019 Jon Andrew
 --
 -- x86-64 interrupt vector numbers
@@ -50,7 +50,7 @@ is
     IDE1                        : constant x86Interrupt := 46;  -- technically "ATA1"
     IDE2                        : constant x86Interrupt := 47;
 
-    -- CubitOS defined
+    -- CuBitOS defined
     KERNEL_PANIC                : constant x86Interrupt := 127;
 
     -- User interrupt. Use same number as Linux for ease of porting sw

@@ -183,4 +183,9 @@ is
         Export => True,
         Convention => C,
         External_Name => "memcpy";
+
+    ---------------------------------------------------------------------------
+    -- nextPow2 - return the next highest power of 2
+    ---------------------------------------------------------------------------
+    function nextPow2(n : in Unsigned_64) return Unsigned_64;
 end util;

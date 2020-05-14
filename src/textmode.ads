@@ -1,5 +1,5 @@
 -------------------------------------------------------------------------------
--- CubitOS
+-- CuBitOS
 -- Copyright (C) 2019 Jon Andrew
 --
 -- EGA Textmode Console Routines
@@ -219,7 +219,7 @@ is
 
     ---------------------------------------------------------------------------
     -- Print a null-terminated C string. This shouldn't normally be used by
-    -- Cubit code, but some compiler-inserted strings (i.e. exception
+    -- CuBit code, but some compiler-inserted strings (i.e. exception
     -- locations) are null-terminated and should be printed with this function.
     ---------------------------------------------------------------------------
     procedure printz(addr : System.Address);

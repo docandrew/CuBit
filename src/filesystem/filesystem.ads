@@ -1,5 +1,5 @@
 -------------------------------------------------------------------------------
--- CubitOS
+-- CuBitOS
 -- Copyright (C) 2020 Jon Andrew
 --
 -- Filesystem root package

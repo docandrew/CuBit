@@ -1,5 +1,5 @@
 -------------------------------------------------------------------------------
--- Cubit OS
+-- CuBit OS
 -- Copyright (C) 2019 Jon Andrew
 --
 -- x86-64 instruction wrappers
@@ -633,4 +633,5 @@ is
     ---------------------------------------------------------------------------
     function rdtscp(chip : out Unsigned_32; core : out Unsigned_32)
         return Unsigned_64 with Inline;
+
 end x86;

@@ -1,5 +1,5 @@
 -------------------------------------------------------------------------------
--- CubitOS
+-- CuBitOS
 -- Copyright (C) 2019 Jon Andrew
 --
 -- @summary
@@ -249,7 +249,7 @@ private
     isr46   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
     isr47   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
 
-    -- Cubit-specific
+    -- CuBit-specific
     -- Kernel Panic interrupt
     isr127  : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
 

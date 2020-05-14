@@ -1,5 +1,5 @@
 -------------------------------------------------------------------------------
--- Cubit OS
+-- CuBit OS
 -- Copyright (C) 2019 Jon Andrew
 --
 -- @summary Virtual Memory Manager

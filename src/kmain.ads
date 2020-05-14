@@ -1,8 +1,8 @@
 -------------------------------------------------------------------------------
--- CubitOS
+-- CuBitOS
 -- Copyright (C) 2019 Jon Andrew
 --
--- CubitOS Entry Point / Main routine
+-- CuBitOS Entry Point / Main routine
 -------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with Multiboot; use Multiboot;

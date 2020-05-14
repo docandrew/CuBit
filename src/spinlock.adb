@@ -1,8 +1,8 @@
 -------------------------------------------------------------------------------
--- CubitOS
+-- CuBitOS
 -- Copyright (C) 2019 Jon Andrew
 --
--- CubitOS Locking & Synchronization Primitives
+-- CuBitOS Locking & Synchronization Primitives
 -------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 

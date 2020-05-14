@@ -1,5 +1,5 @@
 -------------------------------------------------------------------------------
--- Fortress OS
+-- CuBitOS
 -- Copyright (C) 2019 Jon Andrew
 --
 -- x86-64 CPUID functionality
@@ -254,7 +254,7 @@ is
     --  entries
     -- @field Associativity - the set associativity for this cache. 0 indicates
     --  fully associative if the cache is present.
-    -- NOTE: For now, if a TLB can be set up with multiple page sizes, Cubit
+    -- NOTE: For now, if a TLB can be set up with multiple page sizes, CuBit
     --  considers either the smallest page size for this CacheDescriptor, OR,
     --  if only one is valid for Long Mode, then this record reflects the setup
     --  that's valid for Long Mode. i.e., if the TLB can hold either 4k pages

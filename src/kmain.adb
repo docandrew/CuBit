@@ -87,7 +87,7 @@ begin
 
     initHello: declare
     begin
-        println("CubitOS v0.0.1 ", LT_BLUE, BLACK);
+        println("CuBitOS v0.0.1 ", LT_BLUE, BLACK);
         println("");
 
         print("Virtual Kernel Area:    "); 
@@ -449,8 +449,8 @@ begin
 
                     Ext2.print(sblock);
 
-                    --print(" volume name: "); println(sblock.volumeName);
-                    --print(" inodes: "); println(sblock.inodeCount);
+                    -- print(" volume name: "); println(sblock.volumeName);
+                    -- print(" inodes: "); println(sblock.inodeCount);
                     --Debug.dumpMem(sblock'Address, 2048);
 
                     -- get root inode

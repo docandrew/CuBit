@@ -256,4 +256,22 @@ is
 
         return dest;
     end memcpy;
+
+    -- next power of 2
+    -- Find the rightmost 1 bit using lzcnt. First, subtract 1 to account
+    -- for n that's already a power of 2. Shift 1 by 63 - number of leading
+    -- zeroes to get the next power of 2.
+    function nextPow2(n : in Unsigned_64) return Unsigned_64 with
+        SPARK_Mode => Off
+    is
+        leadingZeroes : Unsigned_64;
+        m : Unsigned_64 := n - 1;
+    begin
+        Asm("lzcntq %1, %0",
+            Outputs => Unsigned_64'Asm_Output("=r", leadingZeroes),
+            Inputs => Unsigned_64'Asm_Input("rm", m),
+            Clobber => "cc");
+        
+        return Shift_Left(Unsigned_64(1), Natural(64 - leadingZeroes));
+    end nextPow2;
 end util;

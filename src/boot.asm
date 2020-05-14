@@ -57,9 +57,9 @@ CHECKSUM    equ -(MAGIC + FLAGS)        ; checksum of above, to prove we are mul
 section .text
 align 4
 MultiBootHeader:
-	dd MAGIC
-	dd FLAGS
-	dd CHECKSUM
+    dd MAGIC
+    dd FLAGS
+    dd CHECKSUM
 
 ; Memory Load Locations (Physical)
     ; dd stext_phys               ; mboot header address (start of .text)
@@ -85,12 +85,12 @@ global start
 BITS 32
 start:
     cli
-	; Set up the physical address of our stack
-	mov esp, (bootstrap_stack_top - KERNEL_BASE)
+    ; Set up the physical address of our stack
+    mov esp, (bootstrap_stack_top - KERNEL_BASE)
 
-	; Before we start running checks, store multiboot header and magic # that was passed from GRUB
-	mov edi, eax 		                    ; argument 1 (magic #) to kmain2 in boot64.asm (64-bit calling convention)
-	mov esi, ebx 		                    ; arg 2 (multiboot header struct address)
+    ; Before we start running checks, store multiboot header and magic # that was passed from GRUB
+    mov edi, eax 		                    ; argument 1 (magic #) to kmain2 in boot64.asm (64-bit calling convention)
+    mov esi, ebx 		                    ; arg 2 (multiboot header struct address)
 
     ; Zero out ebx for the initial processor. AP cores will come in with a
     ; non-zero ebx for their CPU number.
@@ -98,41 +98,41 @@ start:
 
 ; Where APs will enter.
 boot_ap_entry:
-	mov eax, (p4_table - KERNEL_BASE)		; load page table
-	mov cr3, eax
+    mov eax, (p4_table - KERNEL_BASE)		; load page table
+    mov cr3, eax
 
 enable_pae:
-	; enable PAE, set CR4.PAE (bit 5) = 1
-	mov eax, cr4
+    ; enable PAE, set CR4.PAE (bit 5) = 1
+    mov eax, cr4
     ;or eax, 1 << 2     ; disable RDTSC calls from Ring 3 - this is touted
                         ;  as a Spectre mitigation, but other methods exist to
                         ;  get precise timing data in app code
-	or eax, 1 << 5      ; enable PAE
+    or eax, 1 << 5      ; enable PAE
     or eax, 1 << 16     ; enable FSGSBASE instructions
-	mov cr4, eax
+    mov cr4, eax
 
 enable_long_mode:
-	; set bits in EFER (extended feature) register
-	mov ecx, 0xC0000080
-	rdmsr
+    ; set bits in EFER (extended feature) register
+    mov ecx, 0xC0000080
+    rdmsr
     or eax, 1 << 0      ; set SYSCALL active
-	or eax, 1 << 8      ; set long mode bit
-	or eax, 1 << 11     ; set NXE bit
-	wrmsr
+    or eax, 1 << 8      ; set long mode bit
+    or eax, 1 << 11     ; set NXE bit
+    wrmsr
 
 enable_paging:
-	; enable paging in CR0 register
-	mov eax, cr0
-	or eax, 1 << 31
-	mov cr0, eax
+    ; enable paging in CR0 register
+    mov eax, cr0
+    or eax, 1 << 31
+    mov cr0, eax
 
 ;    mov ecx, (gdt64_pointer - KERNEL_BASE)
-	lgdt [dword (gdt64_pointer - KERNEL_BASE)]
+    lgdt [dword (gdt64_pointer - KERNEL_BASE)]
 
-	; jump to long mode
-	; trampoline to 64-bit
+    ; jump to long mode
+    ; trampoline to 64-bit
 
-	jmp gdt64_code:(trampoline - KERNEL_BASE)
+    jmp gdt64_code:(trampoline - KERNEL_BASE)
 
 ; error handler
 ;  error:
@@ -151,20 +151,20 @@ enable_paging:
 align 16
 gdt64:
 gdt64_nulldesc: equ $ - gdt64					; null descriptor
-	dq 0
+    dq 0
 gdt64_code: equ $ - gdt64
-	dq (1<<43) | (1<<44) | (1<<47) | (1<<53)	; code segment, (43=1, 44=1, 47=present, 53=long mode)
+    dq (1<<43) | (1<<44) | (1<<47) | (1<<53)	; code segment, (43=1, 44=1, 47=present, 53=long mode)
 gdt64_data: equ $ - gdt64
-	dq (1<<44) | (1<<47)						; data segment, (44=1, 47=present)
+    dq (1<<44) | (1<<47)						; data segment, (44=1, 47=present)
 
 gdt64_pointer:
-	dw $ - gdt64 - 1                            ; size of the GDT (minus 1)
-	dq (gdt64 - KERNEL_BASE)                    ; need physical address
+    dw $ - gdt64 - 1                            ; size of the GDT (minus 1)
+    dq (gdt64 - KERNEL_BASE)                    ; need physical address
 
 ; location of our early bootstrap stack
 align 16
 bootstrap_stack_bottom:
-	times STACKSIZE db 0
+    times STACKSIZE db 0
 bootstrap_stack_top:
 ;p5_table					; future Intel spec (56-bit virtual addresses)
 
@@ -188,26 +188,26 @@ bootstrap_stack_top:
 ;
 align 4096
 p4_table:				        ; PML4E
-	dq ((boot_p3_table - KERNEL_BASE) + 0x3)	; p4[0] = p3[0], present | writable
-	times 255 dq 0			 
-	dq ((boot_p3_table - KERNEL_BASE) + 0x3)	; p4[256] = p3[0], present | writable
-	times 254 dq 0
+    dq ((boot_p3_table - KERNEL_BASE) + 0x3)	; p4[0] = p3[0], present | writable
+    times 255 dq 0			 
+    dq ((boot_p3_table - KERNEL_BASE) + 0x3)	; p4[256] = p3[0], present | writable
+    times 254 dq 0
     dq ((boot_p3_table - KERNEL_BASE) + 0x3)    ; p4[511] = p3[0], present | writable
 
 align 4096
 boot_p3_table:				    ; PDPE
-	dq ((boot_p2_table - KERNEL_BASE) + 0x3)	; p3[0] = p2[0], present | writable
-	times 509 dq 0			                    ; non-present entries
+    dq ((boot_p2_table - KERNEL_BASE) + 0x3)	; p3[0] = p2[0], present | writable
+    times 509 dq 0			                    ; non-present entries
     dq ((boot_p2_table - KERNEL_BASE) + 0x3)    ; p3[510] = p2[0], present | writable
     dq 0                                        ; p3[511] = non-present.
 
 align 4096
 boot_p2_table:                  ; PDE, set PDE.PS (bit 7) = 1 for 2MB pages
-	%assign i 0
-	%rep 512
-	dq (i + 0x83)               ; huge, present, writable
-	%assign i (i + 0x200000)
-	%endrep
+    %assign i 0
+    %rep 512
+    dq (i + 0x83)               ; huge, present, writable
+    %assign i (i + 0x200000)
+    %endrep
 ;align 4096
 ;boot_p1_table:				; PD. 512 2MB tables here, identity-mapped first 1GB
 ;	%rep 512*25
@@ -224,10 +224,10 @@ trampoline:
 ;section .text
 higher_half_start:
     ; add null descriptors, long mode doesn't care about these.
-	xor ax, ax
-	mov ss, ax
-	mov ds, ax
-	mov es, ax
+    xor ax, ax
+    mov ss, ax
+    mov ds, ax
+    mov es, ax
     mov fs, ax
     mov gs, ax
 
@@ -236,8 +236,8 @@ higher_half_start:
     jnz setup_ap
 
 setup_bsp:
-	; Setup our kernel stack.
-	mov rsp, qword (STACK_TOP)
+    ; Setup our kernel stack.
+    mov rsp, qword (STACK_TOP)
 
     ; Add a stack canary to bottom of primary stack for CPU #0
     mov rax, qword (STACK_TOP - PER_CPU_STACK_SIZE + SEC_STACK_SIZE)
@@ -256,9 +256,9 @@ setup_bsp:
     pop rsi
     pop rdi
 
-	; call into Ada code
-	mov rax, qword kmain
-	call rax
+    ; call into Ada code
+    mov rax, qword kmain
+    call rax
 
 setup_ap:
     ; see exactly what CPU was just booted
@@ -282,5 +282,5 @@ setup_ap:
     call apEnter
 
 hang:
-	hlt
-	jmp hang
+    hlt
+    jmp hang
