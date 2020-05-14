@@ -100,7 +100,7 @@ The MAX_PHYS_ constants
 ---------------------------------
 Some of the structures used, like the GDT and Page Tables, have to be set up in
 `boot.asm` before switching to long mode. These are referred to as the
-"bootstrap" GDT and Page Tables, respectively. There's also the "bootstrap"
+"bootstrap" GDT and Page Tables, respectively. There's also the "boot"
 physical memory allocator (currently the only allocator). Later on, we re-map
 the entirety of physical memory into the higher-half of the kernel along with
 a new GDT in `segment.adb`. These are called the "kernel page tables" and
@@ -118,6 +118,7 @@ physical addresses. Instead, a specific physical address must be accessed using
 the linear-mapped address at 0xFFFF_8000_0000_0000. We linear-map all physical
 memory in 0xFFFF_8000_0000_0000 to 0xFFFF_8FFF_FFFF_FFFF.
 
+
 CuBit Memory Map
 ----------------
 Note that due to the x86-64 ABI, the kernel must be linked in the top 2GiB of
@@ -134,6 +135,7 @@ It's heavily-documented, and contributors are welcome!
 
 Things that I could really use help with:
 -----------------------------------------
+
 * Drivers
 * Drivers
 * Adding more contracts and SPARK verification conditions
@@ -293,7 +295,7 @@ is split into the primary and secondary stacks for that CPU. The primary
 stack grows down, the secondary stack grows up. The primary stack pointer is
 set for the main CPU in boot.asm, and set for each additional CPU when they
 boot up in boot_ap.asm.
-
+```
        STACK_TOP    +-----------------------+
                     |                       |
                     | CPU 0 Primary Stack   |
@@ -317,7 +319,7 @@ boot up in boot_ap.asm.
                     +-----------------------+
                     | CPU N Secondary Stack |
     STACK_BOTTOM    +-----------------------+
-
+```
 The secondary stack SS_Init call is made during each CPU boot-up. Secondary
 stack overflows should be detected at runtime, however use caution. During
 syscalls and interrupts, the process' kernel stack may be in use, which does
@@ -340,9 +342,9 @@ TODOs.
 * `X` means finished
 * `-` means in progress
 
-
 TODO: Kernel Features
 ---------------------
+```
 [ ] There are a lot of potential circular dependencies for just "proof stuff",
     i.e. preconditions where we don't want to call a blockingSleep until 
     interrupts are enabled -> don't want to enable interrupts until the
@@ -431,19 +433,23 @@ TODO: Kernel Features
 [-] More formal proofs of kernel correctness
     [ ] Preventing race conditions - may not be feasible outside of
         Ravenscar profile, which doesn't really apply to us.
-[-] Implement more of the Ada standard library
+[-] Implement more of the Ada standard library, especially for Tasks.
+```
 
 TODO: Usermode/Shell
 --------------------
+```
 [-] Init model - should this look like UNIX? Something else?
 [ ] Security Model
     [-] Codify it
     [ ] Prove it
     [ ] Implement it
 [-] IMGUI framework
+```
 
 TODO: Engineering
 -----------------
+```
 [ ] Make all package names Uppercase
 [-] Rename all setupXYZ to just setup, since package name is already there.
 [X] New Makefile
@@ -461,15 +467,24 @@ TODO: Engineering
 [ ] Write unit tests
 [ ] Fuzzing
 [ ] Integration tests that run in the OS.
-
+```
 Architecture Ideas
 ------------------
 * Use system RTC/HPET timers for real-time tasks, perhaps dedicate a CPU
   scheduler (or more than one) to exclusively run real-time events when
   they are desired?
 
+Documentation (work in progress):
+---------------------------------
+
+|  Task                                |   Command   |
+|--------------------------------------|-------------|
+| Create documentation (in build/docs) | `make docs` |
+| Run provers                          | `make prove`|
+| Build html documentation             | `make html` |
+
 Testing & Debugging Tips
-------------------------
+========================
 VirtualBox is a good tool for testing, however QEMU is nice when you need to
 use GDB to track down certain issues.
 
@@ -480,7 +495,7 @@ Registers: `rg64`
 Stack trace: `k`
 
 To use QEMU:
-qemu-system-x86_64 -s -S -m 4G -cdrom path\to\cubit_kernel.iso -serial stdio
+`qemu-system-x86_64 -s -S -m 4G -cdrom path\to\cubit_kernel.iso -serial stdio`
 
 QEMU will start in a paused state while it waits for the debugger. 
 
