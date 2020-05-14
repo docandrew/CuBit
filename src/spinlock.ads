@@ -1,9 +1,9 @@
 -------------------------------------------------------------------------------
--- CubitOS
+-- CuBitOS
 -- Copyright (C) 2019 Jon Andrew
 --
 -- @summary
--- CubitOS Spinlocks
+-- CuBitOS Spinlocks
 -------------------------------------------------------------------------------
 with locks; use locks;
 with x86;

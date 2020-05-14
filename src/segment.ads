@@ -1,5 +1,5 @@
 -------------------------------------------------------------------------------
--- CubitOS
+-- CuBitOS
 -- Copyright (C) 2019 Jon Andrew
 --
 -- @summary 
@@ -21,7 +21,7 @@ is
     -- GDT_SEGMENT_TSS_1           : constant := 6;
     -- GDT_SEGMENT_UNUSED          : constant := 7;
 
-    -- Indexes into our GDT for various segment types used in Cubit
+    -- Indexes into our GDT for various segment types used in CuBit
     -- Note that USER_DATA comes before USER_CODE here. This is because of a
     -- quirk in the way that SYSRET loads segments based on the value in the
     -- STAR MSR. (see: 6.1.1 in AMD System Programming Manual)

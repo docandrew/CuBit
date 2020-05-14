@@ -43,7 +43,7 @@ pragma Restrictions (No_Exception_Registration);
 --  in this run time.
 
 pragma Restrictions (No_Exception_Handlers);
---  Added for Cubit since Last_Chance_Handler is being used
+--  Added for CuBit since Last_Chance_Handler is being used
 
 pragma Restrictions (No_Implicit_Dynamic_Code);
 --  Pointers to nested subprograms are not allowed in this run time, in order

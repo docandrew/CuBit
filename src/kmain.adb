@@ -87,7 +87,7 @@ begin
 
     initHello: declare
     begin
-        println("CubitOS v0.0.1 ", LT_BLUE, BLACK);
+        println("CuBitOS v0.0.1 ", LT_BLUE, BLACK);
         println("");
 
         print("Virtual Kernel Area:    "); 

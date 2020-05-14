@@ -1,5 +1,5 @@
 -------------------------------------------------------------------------------
--- CubitOS
+-- CuBitOS
 -- Copyright (C) 2019 Jon Andrew
 --
 -- ACPI - Advanced Configuration and Power Interface
@@ -190,7 +190,7 @@ is
     -- RSDT Record Header
     -- @field header - See SDTRecordHeader
     -- @field entries - This is just the _first_ entry in an array whose length
-    --  is given in the record header. These are 32-bit addresses, so if Cubit
+    --  is given in the record header. These are 32-bit addresses, so if CuBit
     --  is being run on a 64-bit system that uses an RSDT, they will need to
     --  be converted to 64-bit addresses.
     ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 -------------------------------------------------------------------------------
--- CubitOS
+-- CuBitOS
 -- Copyright (C) 2019 Jon Andrew
 --
 -- Local APIC - Advanced Programmable Interrupt Controller
@@ -127,7 +127,7 @@ is
     ---------------------------------------------------------------------------
     -- Spurious vector: setting bit 8 enables the APIC,
     -- Low byte is the spurious vector number, lowest nibble is all 1s on
-    -- earlier processors. (Cubit uses 0xFF for the spurious vector)
+    -- earlier processors. (CuBit uses 0xFF for the spurious vector)
     ---------------------------------------------------------------------------
     SVR_ENABLE          : constant Unsigned_32 := 16#0000_0100#;
 

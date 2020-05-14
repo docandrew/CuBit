@@ -1,5 +1,5 @@
 -------------------------------------------------------------------------------
--- Fortress OS
+-- CuBitOS
 -- Copyright (C) 2019 Jon Andrew
 --
 -- x86-64 CPUID functionality

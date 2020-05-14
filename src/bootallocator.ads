@@ -1,11 +1,11 @@
 -------------------------------------------------------------------------------
--- CubitOS
+-- CuBitOS
 -- Copyright (C) 2019 Jon Andrew
 --
 -- Early Boot Physical Memory Allocator
 --
 -- Note that MAX_PHYS_MEMORY and PhysPFN type defined here refer to the max
--- physical memory supported by Fortress - NOT the max addressable physical
+-- physical memory supported by CuBit - NOT the max addressable physical
 -- memory, as used in the virtmem package. The values here are limited by the
 -- amount of physical memory we can track with this boot physical allocator.
 --

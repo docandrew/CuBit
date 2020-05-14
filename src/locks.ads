@@ -1,5 +1,5 @@
 -------------------------------------------------------------------------------
--- Fortress OS
+-- CuBitOS
 -- Copyright (C) 2019 Jon Andrew
 --
 -- Generic lock primitives to be used in other lock types.

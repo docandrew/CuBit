@@ -1,4 +1,4 @@
-# CubitOS Makefile
+# CuBitOS Makefile
 
 all: cubit_kernel iso
 

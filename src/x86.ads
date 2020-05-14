@@ -1,5 +1,5 @@
 -------------------------------------------------------------------------------
--- Cubit OS
+-- CuBit OS
 -- Copyright (C) 2019 Jon Andrew
 --
 -- x86-64 instruction wrappers

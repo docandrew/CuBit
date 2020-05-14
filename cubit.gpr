@@ -1,4 +1,4 @@
-project Cubit is
+project CuBit is
     
     for Languages use ("Ada", "yasm");
     
@@ -93,4 +93,4 @@ project Cubit is
     --     );
     -- end Linker;
 
-end Cubit;
+end CuBit;

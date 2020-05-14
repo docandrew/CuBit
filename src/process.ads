@@ -1,8 +1,8 @@
 -------------------------------------------------------------------------------
--- CubitOS
+-- CuBitOS
 -- Copyright (C) 2019 Jon Andrew
 --
--- CubitOS Processes
+-- CuBitOS Processes
 -------------------------------------------------------------------------------
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;

@@ -1,5 +1,5 @@
 -------------------------------------------------------------------------------
--- Cubit OS
+-- CuBit OS
 -- Copyright (C) 2020 Jon Andrew
 --
 -- Ext2 Filesystem
@@ -45,8 +45,8 @@ OS_FREEBSD                  : constant CreatedByOS := 3;
 OS_LITES                    : constant CreatedByOS := 4;
 
 -------------------------------------------------------------------------------
--- If an Ext2 filesystem has these features, it can still be used by Cubit for
--- read/write even if Cubit doesn't implement those features.
+-- If an Ext2 filesystem has these features, it can still be used by CuBit for
+-- read/write even if CuBit doesn't implement those features.
 -------------------------------------------------------------------------------
 type CompatibleFeaturesRecord is
 record
@@ -71,8 +71,8 @@ record
 end record;
 
 -------------------------------------------------------------------------------
--- If an Ext2 filesystem has these features, it must not be mounted by Cubit
--- unless Cubit implements those features.
+-- If an Ext2 filesystem has these features, it must not be mounted by CuBit
+-- unless CuBit implements those features.
 -------------------------------------------------------------------------------
 type IncompatibleFeaturesRecord is
 record
@@ -93,7 +93,7 @@ record
 end record;
 
 -------------------------------------------------------------------------------
--- If an Ext2 filesystem has these features, it may be mounted by Cubit, but
+-- If an Ext2 filesystem has these features, it may be mounted by CuBit, but
 -- read-only.
 -------------------------------------------------------------------------------
 type ReadOnlyFeaturesRecord is
@@ -145,7 +145,7 @@ type Ext2Filler is array (Natural range 0..787) of Unsigned_8
 -- @param lastMountTime - POSIX time
 -- @param lastWriteTime - POSIX time
 -- @param signature - should be 16#EF53#
--- @param optionalFeatures - Cubit can still modify a filesystem using these
+-- @param optionalFeatures - CuBit can still modify a filesystem using these
 --  features even if it doesn't support them.
 -- @param readOnlyFeatures - If not supported, this filesystem must be mounted
 --  read-only.
