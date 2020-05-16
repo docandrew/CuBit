@@ -2,5 +2,4 @@ build
 cubit_kernel
 cubit_kernel.iso
 cubit_kernel.map
-isodir
 runtime/adalib
