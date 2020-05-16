@@ -20,11 +20,14 @@ Requirements
 To create bootable .ISO, you'll also need:
 * grub-mkrescue
 * xorriso
+* grub-pc-bin
 
 Building
 ========
 Dependencies: You'll need the GNAT 2019 Compiler, and if you want to build
-the live-CD, you'll need the *xorriso* and *grub-mkrescue* tools, which are
+the live-CD, you'll need the *xorriso* and *grub-mkrescue* tools, and possibly
+*grub-pc-bin* depending on which emulator/virtualization environment you
+are using. These are
 probably provided in your distro's package manager. This can be built in Linux
 and on Windows using WSL.
 
@@ -485,17 +488,27 @@ Documentation (work in progress):
 
 Testing & Debugging Tips
 ========================
-VirtualBox is a good tool for testing, however QEMU is nice when you need to
-use GDB to track down certain issues.
+Using VirtualBox, you'll probably want to use the ICH9 chipset, but the
+default 64-bit hardware appears to work fine too. Please experiment with
+different amounts of RAM, number of CPUs, etc.
 
-Using VirtualBox, you'll probably want to use the ICH9 chipset.
+VirtualBox is a good tool for testing, however QEMU is nice when you need to
+use GDB to track down certain issues. Note that CuBit makes use of some
+fairly recent CPU features, so you'll want to tell QEMU to use a newer
+chipset and CPU. The `-machine q35` and `-cpu Broadwell` options seem to
+work well.
+
+QEMU command w/o debugger:
+    qemu-system-x86_64 -machine q35 -cpu Broadwell -m 64M -cdrom path/to/cubit_kernel.iso
+
+GDB Tips:
 
 Register add'l info: `rt`
 Registers: `rg64`
 Stack trace: `k`
 
-To use QEMU:
-`qemu-system-x86_64 -s -S -m 4G -cdrom path\to\cubit_kernel.iso -serial stdio`
+To use QEMU to debug:
+    qemu-system-x86_64 -machine q35 -cpu Broadwell -s -S -m 4G -cdrom path\to\cubit_kernel.iso -serial stdio
 
 QEMU will start in a paused state while it waits for the debugger. 
 
