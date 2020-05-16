@@ -499,6 +499,7 @@ chipset and CPU. The `-machine q35` and `-cpu Broadwell` options seem to
 work well.
 
 QEMU command w/o debugger:
+
     qemu-system-x86_64 -machine q35 -cpu Broadwell -m 64M -cdrom path/to/cubit_kernel.iso
 
 GDB Tips:
@@ -508,6 +509,7 @@ Registers: `rg64`
 Stack trace: `k`
 
 To use QEMU to debug:
+
     qemu-system-x86_64 -machine q35 -cpu Broadwell -s -S -m 4G -cdrom path\to\cubit_kernel.iso -serial stdio
 
 QEMU will start in a paused state while it waits for the debugger. 
