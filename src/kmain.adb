@@ -54,7 +54,7 @@ pragma Unreferenced(Syscall);
 package body kmain is
 
 -- For testing only. Can remove later.
-package U64List is new LinkedList(Unsigned_64, Textmode.printd);
+-- package U64List is new LinkedList(Unsigned_64, Textmode.printd);
 
 -- CPU-local data for our BSP
 cpu0Data        : PerCPUData.PerCPUData;
@@ -434,9 +434,9 @@ begin
             sblock : Ext2.SuperBlock;
             ataResult : ata.ATAResult;
         begin
-            --println("Attempting to read disk");
+            println("Attempting to read disk");
             -- Try and read the ext2 superblock
-            ata.syncBuffer( ata.drives(ata.PRIMARY_SLAVE),
+            ata.syncBuffer( ata.drives(ata.PRIMARY_MASTER),
                             Ext2.SUPERBLOCK_LBA, 
                             2,
                             sblock'Address,
@@ -445,15 +445,15 @@ begin
 
             if ataResult = ata.SUCCESS then
                 if sblock.signature = Ext2.EXT2_SUPER_MAGIC then
-                    --print(" signature: "); println(Unsigned_32(sblock.signature));
+                    print(" signature: "); println(Unsigned_32(sblock.signature));
                     println(" Found Ext2 filesystem", 
                             textmode.LT_GREEN,
                             textmode.BLACK);
 
                     Ext2.print(sblock);
 
-                    -- print(" volume name: "); println(sblock.volumeName);
-                    -- print(" inodes: "); println(sblock.inodeCount);
+                    print(" volume name: "); println(sblock.volumeName);
+                    print(" inodes: "); println(sblock.inodeCount);
                     --Debug.dumpMem(sblock'Address, 2048);
 
                     -- get root inode

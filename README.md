@@ -488,9 +488,33 @@ Documentation (work in progress):
 
 Testing & Debugging Tips
 ========================
-Using VirtualBox, you'll probably want to use the ICH9 chipset, but the
-default 64-bit hardware appears to work fine too. Please experiment with
-different amounts of RAM, number of CPUs, etc.
+
+You can create an Ext2 disk image and read it in CuBit with these commands,
+shown here for a 128MB disk:
+
+    dd if=/dev/zero of=vhd.img bs=1M count=128
+    mkfs -t ext2 vhd.img
+    mkdir vhd
+    mount -t auto -o loop vhd.img vhd
+
+Now you have an empty filesystem in `vhd/` that you can add files to, mess
+around with permissions, etc. When you're done, unmount the image.
+
+    umount vhd
+
+Now you have a disk image that you can convert to the VirtualBox format with:
+
+    VBoxManage convertfromraw --format VDI vhd.img vhd.vdi
+
+You can add the new disk under Storage -> IDE controller in your VM settings.
+You'll probably want to use the ICH6 chipset. CuBit currently uses the
+ancient PIO method for ATA I/O. If you create a disk image and add it to the
+IDE controller with a different chipset, reads will probably fail.
+
+Note that CuBit just reads the Ext2 superblock currently, but progress is
+being made with basic filesystem support.
+
+Please experiment with different amounts of RAM, number of CPUs, etc.
 
 VirtualBox is a good tool for testing, however QEMU is nice when you need to
 use GDB to track down certain issues. Note that CuBit makes use of some

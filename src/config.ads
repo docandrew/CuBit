@@ -42,5 +42,5 @@ is
         := System.Parameters.Runtime_Default_Sec_Stack_Size;
 
     -- Number of device blocks to cache in memory
-    NUM_CACHE_BLOCKS : constant := 16;
+    NUM_BLOCK_BUFFERS : constant := 16;
 end config;
