@@ -52,9 +52,8 @@ package body Syscall is
         print("  "); println(arg5);
 
         Virtmem.setActiveP4(oldCR3);
-        Serial.send(Serial.COM1, 'A');
+        -- Serial.send(Serial.COM1, 'A');
         -- return from the syscall
-        --syscallReturn(16#C4FFE17E#);
         return 16#C4FFE17E#;
     end syscallHandler;
 

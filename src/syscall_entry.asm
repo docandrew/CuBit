@@ -56,17 +56,17 @@ syscallEntry:
 ; syscallReturn
 ;
 ; Return back to user code after restoring state. Per SysV syscall ABI, the
-; syscall return value is passed back to the process via rax
+; syscall return value is passed back to the process via rax, which was set
+; as the return value from syscallHandler.
 ;
 ; TODO: Lots of special cases here, i.e. exit() call, etc. that we'll need to
 ;  sort out.
 ;------------------------------------------------------------------------------
 syscallReturn:
-    mov r14, 0xAA
+    ;mov r14, 0xAA
 
     add rsp, 8      ; discard pushed value of rax, it's getting overwritten
-    ;mov rax, rdi    ; syscall return value goes in rax
-    
+
     pop rcx         ; restore process' return address
     pop r11         ; restore process' RFLAGS
 

@@ -27,7 +27,7 @@ with Filesystem.vfs;
 with Ioapic;
 with Interrupt;
 with Lapic;
-
+with LinkedList;
 with Mem_mgr;
 with MemoryAreas;
 --with Pagetable;
@@ -52,6 +52,9 @@ with Syscall;
 pragma Unreferenced(Syscall);
 
 package body kmain is
+
+-- For testing only. Can remove later.
+package U64List is new LinkedList(Unsigned_64, Textmode.printd);
 
 -- CPU-local data for our BSP
 cpu0Data        : PerCPUData.PerCPUData;
@@ -520,7 +523,7 @@ begin
     -- print("CPU local data:       "); println(cpuData'Address);
     -- print(" as by getPerCPUData: "); println(PerCPUData.getPerCPUDataAddr);
     
-    interrupt.loadIDT;
+    Interrupt.loadIDT;
 
     -- switch to the kernel's primary page tables.
     Mem_mgr.switchAddressSpace;
@@ -528,7 +531,7 @@ begin
     -- now that we're up, we can signal the startup loop to continue
     startingCPU := 0;
 
-    scheduler.schedule(cpuData);
+    Scheduler.schedule(cpuData);
     x86.halt;
 
     -- will never get here
@@ -711,6 +714,72 @@ end apEnter;
     --     SlabAllocator.teardown(objSlab);
     --     println("Done.");
     -- end testSlab;
+
+    -- testLinkedLists: declare
+
+    --     dummy: Unsigned_64;
+    --     u64s : U64List.List;
+    -- begin
+    --     U64List.setup(U64s, 100);
+        
+    --     print("List: "); U64List.print(u64s);
+    --     print("Length: "); println(u64s.length);
+    --     print("Capacity: "); println(u64s.capacity);
+
+    --     println("Inserting 0 in new linked list");
+    --     U64List.insertFront(u64s, 0);
+    --     print("List: "); U64List.print(u64s);
+
+    --     println("Removing 0");
+    --     U64List.popFront(u64s);
+    --     print("List: "); U64List.print(u64s);
+
+    --     println("Inserting 1 in linked list");
+    --     U64List.insertBack(u64s, 1);
+    --     print("List: "); U64List.print(u64s);
+
+    --     println("Removing 1");
+    --     U64List.popFront(u64s);
+    --     print("List: "); U64List.print(u64s);
+
+    --     println("Inserting 15 U64s in new linked list");
+
+    --     for i in 1..15 loop
+    --         U64List.insertBack(u64s, Unsigned_64(i));   
+    --     end loop;
+
+    --     print("List:"); U64List.print(u64s);
+    --     print("Front: "); printdln(U64List.front(u64s));
+    --     print("Back: "); printdln(U64List.back(u64s));
+
+    --     print("Adding 36 to the front of the list");
+    --     U64List.insertFront(u64s, Unsigned_64(36));
+    --     print("List: "); U64List.print(u64s);
+    --     print("Front: "); printdln(U64List.front(u64s));
+    --     print("Back: "); printdln(U64List.back(u64s));
+    --     print("Length: "); println(u64s.length);
+
+    --     print("Removing from front of list");
+    --     U64List.popFront(u64s);
+    --     print("List: "); U64List.print(u64s);
+    --     print("Front: "); printdln(U64List.front(u64s));
+    --     print("Back: "); printdln(U64List.back(u64s));
+    --     print("Length: "); println(u64s.length);
+
+    --     print("Removing from back of list twice");
+    --     U64List.popBack(u64s);
+    --     U64List.popBack(u64s);
+    --     print("List: "); U64List.print(u64s);
+    --     print("Front: "); printdln(U64List.front(u64s));
+    --     print("Back: "); printdln(U64List.back(u64s));
+    --     print("Length: "); println(u64s.length);
+        
+    --     print("Clearing list");
+    --     U64List.clear(u64s);
+    --     print("List: "); U64List.print(u64s);
+    --     print("Length: "); println(u64s.length);
+    -- end testLinkedLists;
+
     --end Tests;
 
 end kmain; -- end package
