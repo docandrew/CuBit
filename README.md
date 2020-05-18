@@ -104,7 +104,7 @@ The MAX_PHYS_ constants
 Some of the structures used, like the GDT and Page Tables, have to be set up in
 `boot.asm` before switching to long mode. These are referred to as the
 "bootstrap" GDT and Page Tables, respectively. There's also the "boot"
-physical memory allocator (currently the only allocator). Later on, we re-map
+physical memory allocator. Later on, we re-map
 the entirety of physical memory into the higher-half of the kernel along with
 a new GDT in `segment.adb`. These are called the "kernel page tables" and
 "kernel GDT."
