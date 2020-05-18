@@ -51,8 +51,8 @@ is
     procedure schedule(cpuData : in out PerCPUData.PerCPUData) with
         SPARK_Mode => On
     is
-        use spinlock;
-        use process;
+        use Spinlock;
+        use Process;
         pidIndex : ProcessID := 1;
     begin
         -- a bit inefficient, but for now we just linearly search
@@ -60,10 +60,11 @@ is
         startSearch : loop
             x86.sti;
 
-            textmode.println("Checking for processes to run.");
+            Textmode.print("CPU "); Textmode.print(cpuData.cpuNum);
+            Textmode.println(": Checking for processes to run.");
             -- reached end of proctab without finding any READY
             -- processes, so just idle until the next tick
-            if pidIndex = process.proctab'Last then
+            if pidIndex = Process.proctab'Last then
                 idle;           -- when we return from idle...
                 pidIndex := 1;    -- ... we'll go back to the beginning and check.
             end if;
@@ -83,7 +84,6 @@ is
                 if Process.proctab(i).state = READY then
                     Textmode.print("scheduler: found READY process ");
                     Textmode.println(i);
-                    -- TODO: switch to appropriate address space for user mode
                     
                     Textmode.print("scheduler: switching to pid ");
                     Textmode.print(i);
