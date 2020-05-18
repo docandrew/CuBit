@@ -39,8 +39,12 @@ is
     -- TODO: rethink how we want to identify kernel tasks vs processes.
 
     subtype ProcessPriority is Integer range -1..100;
-    type ProcessState is (INVALID, READY, RUNNING, SLEEPING, WAIT_LOCK,
-                            WAIT_IO, SUSPENDED, RECEIVING);
+    type ProcessState is (INVALID, READY, RUNNING, SLEEPING, WAITING, SUSPENDED);
+
+    -- Wait channels are just a pointer to some resource that a process is
+    -- waiting on.
+    --@TODO add a wait message a la BSD
+    type WaitChannel is new Unsigned_64;
 
     --type ProcessMode is (KERNEL, USER);
 
@@ -203,23 +207,34 @@ is
                     procStack   : in Virtmem.VirtAddress) return Process;
 
     ---------------------------------------------------------------------------
+    -- yield
     -- Yield this process' execution back to the scheduler.
     -- Called by the running process itself after an interrupt.
     ---------------------------------------------------------------------------
     procedure yield;
 
+
     ---------------------------------------------------------------------------
-    -- start:
+    -- wait
+    -- Pause execution of this process while waiting for some resource. We'll
+    -- associate the resource with a spinlock to provide a mutex. This will
+    -- ExitCriticalSection and begin waiting for the scheduler to wake us back
+    -- up, and EnterCriticalSection back when we're done waiting.
+    ---------------------------------------------------------------------------    
+    procedure wait(channel : in WaitChannel; resourceLock : in out Spinlock.spinlock);
+
+    ---------------------------------------------------------------------------
+    -- start
     -- This procedure is set as the return address for new processes. A new 
     --  process first scheduling will context switch here.
-    -- This procedure releases the lock previously set by 
+    -- This procedure releases the lock previously set by Scheduler.schedule
     ---------------------------------------------------------------------------
     procedure start with
         Pre => spinlock.isLocked(lock),
         Post => not spinlock.isLocked(lock);
 
     ---------------------------------------------------------------------------
-    -- switchTo:
+    -- switch:
     -- Changes the current process context. When the interrupt handler returns,
     --  the new process will be running.
     --

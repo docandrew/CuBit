@@ -148,11 +148,12 @@ is
 
     end setupPerCPUData;
 
+
     -- Other OSes use gs as a segment to get specific values, here we just want
     -- the address from GS that we can use to instantiate the PerCPUData struct
     -- in our SPARK code.
     function getPerCPUDataAddr return System.Address with
-        SPARK_Mode => On
+        SPARK_Mode => Off --inline ASM
     is
         ret : System.Address;
     begin
@@ -164,6 +165,21 @@ is
         return ret;
 
     end getPerCPUDataAddr;
+
+
+    function getCurrentPID return Process.ProcessID with
+        SPARK_Mode => On
+    is
+        perCPUAddr : constant System.Address := getPerCPUDataAddr;
+    begin
+        getCPUContext: declare
+            cpuData : PerCPUData with
+                Import, Address => perCPUAddr;
+        begin
+            return cpuData.currentPID;
+        end getCPUContext;
+    end getCurrentPID;
+
 
     -- We statically allocate per-CPU stacks in boot.asm, and can use simple
     -- arithmetic to determine the secondary stack address given the CPU num.

@@ -11,6 +11,7 @@ with Ada.Unchecked_Conversion;
 with BuddyAllocator;
 with Config;
 with Mem_mgr;
+with PerCPUData;
 with Scheduler;
 with Segment;
 with Serial;
@@ -338,6 +339,22 @@ is
         Spinlock.exitCriticalSection(lock);
     end yield;
 
+    ---------------------------------------------------------------------------
+    -- 
+    ---------------------------------------------------------------------------
+    procedure wait(channel : in WaitChannel;
+                   resourceLock : in out Spinlock.spinlock) with
+        SPARK_Mode => On
+    is
+    begin
+        -- Need to get process lock, otherwise we may be woken up by another
+        -- thread during their call to schedule once we release our resource
+        -- lock.
+        Spinlock.enterCriticalSection(lock);
+        Spinlock.exitCriticalSection(resourceLock);
+
+        --PerCPUData.
+    end wait;
 
     ---------------------------------------------------------------------------
     -- This is where the scheduler will initially switch() 

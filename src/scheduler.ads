@@ -10,7 +10,7 @@ with Process;
 with Spinlock;
 
 package Scheduler with
-    Abstract_State => (SchedulerState),
+    --Abstract_State => (SchedulerState),
     SPARK_Mode => On
 is
     ---------------------------------------------------------------------------
@@ -38,7 +38,7 @@ is
     ---------------------------------------------------------------------------
     -- Get the currently running process ID, if any. If none, return 0.
     ---------------------------------------------------------------------------
-    function getCurrentPID return Process.ProcessID;
+    --function getCurrentPID return Process.ProcessID;
 
 private
     --context : process.SavedState with Part_Of => SchedulerState;

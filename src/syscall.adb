@@ -42,7 +42,7 @@ package body Syscall is
         Mem_mgr.switchAddressSpace;
         
         print("Syscall: "); printd(syscallNum);
-        print(" from PID: "); println(percpu.runningPID);
+        print(" from PID: "); println(percpu.currentPID);
         println(" with args: ");
         print("  "); println(arg0);
         print("  "); println(arg1);

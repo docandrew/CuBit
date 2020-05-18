@@ -122,12 +122,11 @@ is
     procedure interruptHandler(frame : not null access constant stackframe.InterruptStackFrame)
     with 
         Global => (Proof_In => validIDT,
-                   In_Out => (textmode.ScreenState,
-                              textmode.cursor,
-                              keyboard.caps,
-                              keyboard.shifted,
-                              process.lock,
-                              scheduler.SchedulerState)),
+                   In_Out => (Textmode.ScreenState,
+                              Textmode.cursor,
+                              Keyboard.caps,
+                              Keyboard.shifted,
+                              Process.lock)),
         Pre => validIDT,
         Export => True, 
         --Convention => C, 
