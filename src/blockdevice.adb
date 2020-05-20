@@ -19,9 +19,13 @@ is
     procedure getBuffer(dev : in DeviceID; blockNum : in Unsigned_64) with
         SPARK_Mode => On
     is
-
     begin
-        null;
+        enterCriticalSection(cache.lock);
+
+        -- If the block is already in the cache   
+         
     end getBuffer;
+
+    procedure readBuffer()
 
 end BlockDevice;

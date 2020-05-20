@@ -3,6 +3,9 @@
 -- Copyright (C) 2019 Jon Andrew
 --
 -- CuBitOS Processes
+--
+--@TODO There are a lot of interwoven locks here that would be nice to model in
+-- SPARK Mode to get some guarantees of correctness.
 -------------------------------------------------------------------------------
 with System.Address_to_Access_Conversions;
 with System.Machine_Code; use System.Machine_Code;
@@ -340,12 +343,13 @@ is
     end yield;
 
     ---------------------------------------------------------------------------
-    -- 
+    -- Release our hold on a resource and go into WAITING state.
     ---------------------------------------------------------------------------
     procedure wait(channel : in WaitChannel;
                    resourceLock : in out Spinlock.spinlock) with
         SPARK_Mode => On
     is
+        pid : constant ProcessID := PerCPUData.getCurrentPID;
     begin
         -- Need to get process lock, otherwise we may be woken up by another
         -- thread during their call to schedule once we release our resource
@@ -353,18 +357,54 @@ is
         Spinlock.enterCriticalSection(lock);
         Spinlock.exitCriticalSection(resourceLock);
 
-        --PerCPUData.
+        -- Begin waiting and reschedule.
+        proctab(pid).state := WAITING;
+        proctab(pid).channel := channel;
+        Scheduler.enter;
+
+        -- Resume here when woken.
+        proctab(pid).channel := NO_CHANNEL;
+
+        -- Should only be woken when we can acquire the resource lock.
+        Spinlock.exitCriticalSection(lock);
+        Spinlock.enterCriticalSection(resourceLock);
     end wait;
 
     ---------------------------------------------------------------------------
-    -- This is where the scheduler will initially switch() 
+    -- goAheadBody
+    ---------------------------------------------------------------------------
+    procedure goAheadBody(channel : in WaitChannel) with
+        SPARK_Mode => On
+    is
+    begin
+        for p of proctab loop
+            if p.state = WAITING and p.channel = channel then
+                p.state := READY;
+            end if;
+        end loop;
+    end goAheadBody;
+
+    ---------------------------------------------------------------------------
+    -- goAhead - public interface for internal goAheadBody, to ensure locks are
+    -- held.
+    ---------------------------------------------------------------------------
+    procedure goAhead(channel : in WaitChannel) with
+        SPARK_Mode => On
+    is
+    begin
+        Spinlock.enterCriticalSection(lock);
+        goAheadBody(channel);
+        Spinlock.exitCriticalSection(lock);
+    end goAhead;
+
+    ---------------------------------------------------------------------------
+    -- This is where the scheduler will initially switch()  to.
     ---------------------------------------------------------------------------
     procedure start with
         SPARK_Mode => On
     is
     begin
         --textmode.println("starting");
-
         Spinlock.exitCriticalSection(lock);
         --serial.send(config.serialMirrorPort, 'A');
         -- Return to interruptReturn.

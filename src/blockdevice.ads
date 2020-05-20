@@ -17,13 +17,13 @@ generic with
 package BlockDevice with
     SPARK_Mode => On
 is
-    package BufferList is new LinkedList(BlockBuffer, BlockDevice.print);
-
     -- type DeviceID is new Unsigned_32;
 
     type BlockFlags is (VALID, DIRTY, BUSY);
 
+    --@TODO allocate a bunch of space for the blocks.
     type BlockData is array (0 .. BlockSize - 1) of Unsigned_8;
+    type BlockPtr is access BlockData;
 
     ---------------------------------------------------------------------------
     -- In-memory cache for disk blocks. Note that this is a file system block,
@@ -35,8 +35,10 @@ is
         blockNumber : Unsigned_64;
         lock        : spinlock.Spinlock;
         refCount    : Natural;
-        data        : BlockData;
+        data        : BlockPtr;
     end record;
+
+    package BufferList is new LinkedList(BlockBuffer, BlockDevice.print);
 
     -- Each block device gets one of these. This is a linked list of BlockBuffers
     -- that will be synchronized to/from disk.

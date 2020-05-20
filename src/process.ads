@@ -3,6 +3,10 @@
 -- Copyright (C) 2019 Jon Andrew
 --
 -- CuBitOS Processes
+--
+-- We use slightly different terminology here from other OSes. A process that
+-- is "sleeping" is waiting purely for a time-based wakeup. "Waiting" means a
+-- resource the process needs is busy.
 -------------------------------------------------------------------------------
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -45,6 +49,7 @@ is
     -- waiting on.
     --@TODO add a wait message a la BSD
     type WaitChannel is new Unsigned_64;
+    NO_CHANNEL : constant WaitChannel := 0;
 
     --type ProcessMode is (KERNEL, USER);
 
@@ -171,6 +176,8 @@ is
         
         brk                 : System.Address;   -- limit of allowable heap
         startBrk            : System.Address;
+
+        channel             : WaitChannel;
     end record;
 
     -- Lock for protecting the proctab
@@ -213,15 +220,21 @@ is
     ---------------------------------------------------------------------------
     procedure yield;
 
-
     ---------------------------------------------------------------------------
     -- wait
     -- Pause execution of this process while waiting for some resource. We'll
     -- associate the resource with a spinlock to provide a mutex. This will
     -- ExitCriticalSection and begin waiting for the scheduler to wake us back
-    -- up, and EnterCriticalSection back when we're done waiting.
+    -- up when someone or something else calls goAhead on the channel.
     ---------------------------------------------------------------------------    
     procedure wait(channel : in WaitChannel; resourceLock : in out Spinlock.spinlock);
+
+    ---------------------------------------------------------------------------
+    -- goAhead
+    -- Set any processes waiting on the specified channel to READY.
+    -- The opposite of "wait".
+    ---------------------------------------------------------------------------
+    procedure goAhead(channel : in WaitChannel);
 
     ---------------------------------------------------------------------------
     -- start
