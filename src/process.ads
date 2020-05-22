@@ -48,7 +48,7 @@ is
     -- Wait channels are just a pointer to some resource that a process is
     -- waiting on.
     --@TODO add a wait message a la BSD
-    type WaitChannel is new Unsigned_64;
+    subtype WaitChannel is System.Address;
     NO_CHANNEL : constant WaitChannel := 0;
 
     --type ProcessMode is (KERNEL, USER);

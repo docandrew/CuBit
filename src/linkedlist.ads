@@ -3,6 +3,8 @@
 -- Copyright (C) 2020 Jon Andrew
 --
 -- @summary Linked List implementation
+-- @TODO probably want some way in here to just get access to the underlying
+-- objects vs potentially returning a copy of a large object.
 -------------------------------------------------------------------------------
 with Ada.Unchecked_Deallocation;
 

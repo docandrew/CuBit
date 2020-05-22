@@ -22,7 +22,7 @@ is
     is
         use BuddyAllocator; -- '=' operator
 
-        sizeNeeded : Unsigned_64 := Unsigned_64(capacity * Node'Size / 8);
+        sizeNeeded : constant Unsigned_64 := Unsigned_64(capacity * Node'Size / 8);
         ord : BuddyAllocator.Order;
     begin
         -- See what size order or physical memory we need for this capacity
@@ -65,10 +65,10 @@ is
     procedure insertFront(myList : in out List; element : in T) with
         SPARK_Mode => Off
     is
-        prevHead : NodePtr  := myList.head;
-        newNode  : NodePtr  := new Node'(element    => element,
-                                         next       => null,
-                                         prev       => null);
+        prevHead : constant NodePtr := myList.head;
+        newNode  : constant NodePtr := new Node'(element    => element,
+                                                 next       => null,
+                                                 prev       => null);
     begin
         if myList.length = 0 then
             newNode.prev    := newNode;
@@ -91,10 +91,10 @@ is
     procedure insertBack(myList : in out List; element : in T) with
         SPARK_Mode => Off
     is
-        prevTail : NodePtr := myList.tail;
-        newNode  : NodePtr := new Node'(element => element,
-                                        next    => null,
-                                        prev    => null);
+        prevTail : constant NodePtr := myList.tail;
+        newNode  : constant NodePtr := new Node'(element => element,
+                                                 next    => null,
+                                                 prev    => null);
     begin
         if myList.length = 0 then
             newNode.prev    := newNode;

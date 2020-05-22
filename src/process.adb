@@ -345,7 +345,7 @@ is
     ---------------------------------------------------------------------------
     -- Release our hold on a resource and go into WAITING state.
     ---------------------------------------------------------------------------
-    procedure wait(channel : in WaitChannel;
+    procedure wait(channel      : in WaitChannel;
                    resourceLock : in out Spinlock.spinlock) with
         SPARK_Mode => On
     is
