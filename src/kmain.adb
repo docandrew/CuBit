@@ -51,6 +51,9 @@ pragma Unreferenced(Last_Chance_Handler);
 with Syscall;
 pragma Unreferenced(Syscall);
 
+with BufferCache;
+pragma Unreferenced(BufferCache);
+
 package body kmain is
 
 -- For testing only. Can remove later.

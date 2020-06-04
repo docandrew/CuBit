@@ -358,11 +358,11 @@ is
     procedure setupATA with
         SPARK_Mode => On
     is
-        numIDE : Natural := 0;
-        bus : pci.PCIBusNum;
-        slot : pci.PCISlotNum;
-        func : pci.PCIFunctionNum;
-        config : pci.PCIDeviceHeader;
+        numIDE  : Natural := 0;
+        bus     : pci.PCIBusNum;
+        slot    : pci.PCISlotNum;
+        func    : pci.PCIFunctionNum;
+        config  : pci.PCIDeviceHeader;
 
         --primaryChannelDrives : DrivesPresent;
         --secondaryChannelDrives : DrivesPresent;
@@ -385,6 +385,9 @@ is
             print(" slot: "); print(slot);
             print(" func: "); print(func);
             println;
+
+            println("Registering ATA Block Driver");
+            BlockDevice.registerBlockDriver(Device.IDE, syncBuffer);
 
             config := pci.getDeviceConfiguration(bus, slot, func);
 
@@ -496,9 +499,36 @@ is
     end setupATA;
 
 
-    ---------------------------------------------------------------------------
-    -- syncBuffer
-    ---------------------------------------------------------------------------
+    -- If buffer is dirty, write it to disk, set valid once complete. 
+    -- Otherwise, if it's not valid, then read it.
+    procedure syncBuffer(buf : in out BufferCache.BufferPtr) with SPARK_Mode => On
+    is
+        --@TODO: when we get more than one IDE controller and support
+        -- partitions, we'll need to identify those via minor number as well.
+        -- For now, just assume minor = drive
+        drive   : ATADriveNumber := ATADriveNumber(buf.device.minor);
+        lba     : vfs.LBA48 := vfs.LBA48(buf.blockNum);
+        dir     : ATADirection;
+        res     : ATAResult;
+    begin
+        --enterCriticalSection(drives(drive).lock);
+        --@TODO: error checking for valid, dirty blocks, etc.
+        if buf.dirty then
+            syncBuffer(drive, lba, 1, buf.data'Address, WRITE, res);
+            buf.dirty := False;
+            buf.valid := True;
+        else if not buf.valid then
+            syncBuffer(drive, lba, 1, buf.data'Address, READ, res);
+            buf.valid := True;
+        end if;
+
+        --Once async I/O is supported:
+        --Process.wait(buf.all'Address, drives(drive).lock);
+        
+        --exitCriticalSection(drives(drive).lock);
+    end syncBuffer;
+
+
     procedure syncBuffer(
                 drive       : in out ata.Device;
                 lba         : in Filesystem.vfs.LBA48;

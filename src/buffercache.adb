@@ -6,11 +6,13 @@
 -------------------------------------------------------------------------------
 with System.Address_To_Access_Conversions;
 
+with BlockDevice;
+with Process;
+
 package body BufferCache with
     SPARK_Mode => Off
 is
-
-    package ToAddr is new System.Address_To_Access_Conversions(Buffer);
+    --package ToAddr is new System.Address_To_Access_Conversions(Buffer);
 
     procedure setup with
         SPARK_Mode => Off -- use of access
@@ -20,11 +22,11 @@ is
         cache.head.prev := cache.head'Access;
         cache.head.next := cache.head'Access;
         
-        for b of cache.buffers loop
-            b.next                  := cache.head.next;
-            b.prev                  := cache.head'Access;
-            cache.head.next.prev    := b'Access;
-            cache.next              := b'Access;
+        for b in cache.buffers'Range loop
+            cache.buffers(b).next   := cache.head.next;
+            cache.buffers(b).prev   := cache.head'Access;
+            cache.head.next.prev    := cache.buffers(b)'Access;
+            cache.head.next         := cache.buffers(b)'Access;
         end loop;
     end setup;
 
@@ -36,7 +38,7 @@ is
     is
         buf : BufferPtr;
     begin
-        enterCriticalSection(cache.lock);
+        Spinlock.enterCriticalSection(cache.lock);
 
         -- This is sort of confusing, since we have "overlapping" loops.
         -- First, see if block is already cached
@@ -45,12 +47,13 @@ is
             
             -- Iterate through blocks.
             Search: loop
-                if buf.device = dev and buf.blockNum = blockNum then
+                if buf.device = device and buf.blockNum = blockNum then
                     -- block we want is cached.
                     if not buf.busy then
                         -- sweet. block is cached and nobody owns it
                         retBuffer := buf;
-                        exitCriticalSection(cache.lock);
+                        Spinlock.exitCriticalSection(cache.lock);
+                        
                         return;
                     else
                         -- block is cached, but somebody owns it.
@@ -58,13 +61,13 @@ is
                         -- through the search again.
                         Process.wait(Process.WaitChannel(buf.all'Address),
                                      cache.lock);
-                        exit loop Search;   -- goto TryAgain, effectively.
+                        exit Search;   -- goto TryAgain, effectively.
                     end if;
                 end if;
 
                 buf := buf.next;
                 -- Block we want isn't cached, try and get it below.
-                exit loop TryAgain when buf = cache.head;
+                exit TryAgain when buf = cache.head'Access;
             end loop Search;
 
         end loop TryAgain;
@@ -79,15 +82,15 @@ is
                 buf.dirty       := False;
                 buf.valid       := False;
                 retBuffer       := buf;
-                exitCriticalSection(cache.lock);
+                Spinlock.exitCriticalSection(cache.lock);
                 return;
             end if;
 
             buf := buf.next;
-            exit loop CacheIt when buf = cache.head;
+            exit CacheIt when buf = cache.head'Access;
         end loop CacheIt;
 
-        raise NoBufferException with "getBlock: No free buffers";
+        raise NoBuffersException with "getBlock: No free buffers";
     end getBuffer;
 
 
@@ -114,12 +117,12 @@ is
         SPARK_Mode => Off
     is
     begin
-        if not buf.busy
+        if not buf.busy then
             raise WriteBlockNotOwnedException with "writeBuffer: Writing non-busy buffer";
         end if;
 
         buf.dirty := True;
-        syncBuffer(buf); 
+        BlockDevice.syncBuffer(buf); 
     end writeBuffer;
 
 
@@ -128,25 +131,26 @@ is
         SPARK_Mode => Off
     is
     begin
-        if not buf.busy
+        if not buf.busy then
             raise ReleaseNotOwnedException with "releaseBuffer: Releasing non-busy buffer";
         end if;
 
-        enterCriticalSection(cache.lock);
+        Spinlock.enterCriticalSection(cache.lock);
 
         buf.next.prev := buf.prev;
         buf.prev.next := buf.next;
-        buf.next := buf.head.next;  -- most recently used
-        buf.prev := buf.head'Access;
-        buf.head.next.prev := buf;
-        buf.head.next := buf;
+        buf.next := cache.head.next;  -- most recently used
+        buf.prev := cache.head'Access;
+        
+        cache.head.next.prev := buf;
+        cache.head.next := buf;
 
         buf.busy := False;
 
         -- Wake up any processes waiting on this buffer.
         Process.goAhead(buf.all'Address);
 
-        exitCriticalSection(cache.lock);
+        Spinlock.exitCriticalSection(cache.lock);
     end releaseBuffer;
 
-end BlockDevice;
+end BufferCache;

@@ -2,28 +2,41 @@
 -- CuBit OS
 -- Copyright (C) 2020 Jon Andrew
 --
--- @summary Buffer Cache
--- @description This package implements the traditional UNIX model of buffer
---  caches. Buffered blocks can either be BUSY (reserved by a process),
---  VALID (holding up-to-date data from disk), or DIRTY (modified by a process,
---  needs to be written to disk).
+-- @summary
+-- Buffer Cache
+--
+-- @description
+-- This package implements the traditional UNIX model of buffer
+-- caches. Buffered blocks can either be BUSY (reserved by a process),
+-- VALID (holding up-to-date data from disk), or DIRTY (modified by a process,
+-- needs to be written to disk).
 -------------------------------------------------------------------------------
-with LinkedList;
+with Interfaces; use Interfaces;
+
+with Config;
+with Device;
 with Spinlock;
-with x86;
 
 Pragma Elaborate_All (Spinlock);
 
-generic with
-    BlockSize   : Positive;
+generic
+    BlockSize : Positive;
 package BufferCache with
     SPARK_Mode => On
 is
+    -- When a process attempts to get a block and none are available
     NoBuffersException : exception;
+
+    -- When a process attempts to write a block not in the BUSY state
+    WriteBlockNotOwnedException : exception;
+
+    -- When a process attempts to release a block not in the BUSY state
+    ReleaseNotOwnedException : exception;
 
     type Block is array (0 .. BlockSize - 1) of Unsigned_8;
 
-    type BufferPtr;
+    type Buffer;
+    type BufferPtr is access all Buffer;
   
     ---------------------------------------------------------------------------
     -- In-memory record for a disk block. Note that if this is a file system
@@ -37,8 +50,10 @@ is
         valid       : Boolean;
         dirty       : Boolean;
 
-        device      : Unsigned_32 := -1;
-        blockNumber : Unsigned_64;
+        device      : Device.DeviceID := (Major => Device.NO_MAJOR,
+                                          Minor => Device.NO_MINOR);
+        
+        blockNum    : Unsigned_64;
         lock        : spinlock.Spinlock;
         refCount    : Natural;
         
@@ -49,9 +64,7 @@ is
         syncNext    : BufferPtr;
     end record;
 
-    type BufferPtr is access Buffer;
-
-    type BufferArray is array (0 .. NUM_BLOCK_BUFFERS) of Buffer;
+    type BufferArray is array (0 .. Config.NUM_BLOCK_BUFFERS) of aliased Buffer;
     
     -- Each block device gets one of these. Maintain the static array,
     -- LRU list of pointers to the blocks and a mutex.
@@ -60,7 +73,7 @@ is
         buffers     : BufferArray;
 
         -- last used is head.next
-        head        : Buffer;
+        head        : aliased Buffer;
     end record;
 
     ---------------------------------------------------------------------------
@@ -74,7 +87,7 @@ is
     -- @param retBuffer - buffer with the contents of the block device, set as
     --  a busy buffer.
     ---------------------------------------------------------------------------
-    procedure readBuffer(device     : in Unsigned_32;
+    procedure readBuffer(device     : in Device.DeviceID;
                          blockNum   : in Unsigned_64;
                          retBuffer  : out BufferPtr) with
         Post => retBuffer.busy;

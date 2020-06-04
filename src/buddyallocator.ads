@@ -76,7 +76,7 @@ package BuddyAllocator with
     SPARK_Mode => On
 is
 
-    NO_BLOCK_AVAILABLE  : constant Virtmem.PhysAddress := Integer_Address'Last;
+    NO_BLOCK_AVAILABLE  : constant Virtmem.PhysAddress := Virtmem.PhysAddress'Last;
     
     -- Track whether setup has been called on this package
     initialized         : Boolean := False with Ghost;

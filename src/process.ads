@@ -49,7 +49,7 @@ is
     -- waiting on.
     --@TODO add a wait message a la BSD
     subtype WaitChannel is System.Address;
-    NO_CHANNEL : constant WaitChannel := 0;
+    NO_CHANNEL : constant WaitChannel := Null_Address;
 
     --type ProcessMode is (KERNEL, USER);
 

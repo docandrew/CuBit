@@ -8,6 +8,8 @@ with Ada.Unchecked_Conversion;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
+with BlockDevice;
+with BufferCache;
 with Filesystem.vfs;
 with Spinlock;
 with x86;
@@ -945,6 +947,12 @@ is
     --type ATATransferMode is (PIO, DMA);
 
     -- DMA I/O operations
+
+    ---------------------------------------------------------------------------
+    -- syncBuffer
+    -- Read/Write a buffer to disk.
+    ---------------------------------------------------------------------------
+    procedure syncBuffer(buf : in BufferCache.BufferPtr);
 
     ---------------------------------------------------------------------------
     -- Access a sector on this device, synchronizing the on-disk sectors with
