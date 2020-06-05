@@ -153,7 +153,7 @@ is
         state               : ProcessState;
 
         priority            : ProcessPriority;
-        dynPriority         : ProcessPriority;                  
+        dynPriority         : ProcessPriority;
         
         pgTable             : Virtmem.P4;       -- top-level page table for this process
         
