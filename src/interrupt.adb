@@ -136,7 +136,7 @@ is
                     eoi(TIMER);
                     --pic.finishIRQ(TIMER);
 
-                    if(scheduler.getCurrentPID /= 0 and scheduler.getCurrentPID /= 1) then
+                    if(PerCPUData.getCurrentPID /= Process.NO_PROCESS) then
                         Process.yield;
                     end if;
                 else

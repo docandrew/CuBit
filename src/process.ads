@@ -3,6 +3,10 @@
 -- Copyright (C) 2019 Jon Andrew
 --
 -- CuBitOS Processes
+--
+-- We use slightly different terminology here from other OSes. A process that
+-- is "sleeping" is waiting purely for a time-based wakeup. "Waiting" means a
+-- resource the process needs is busy.
 -------------------------------------------------------------------------------
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -39,8 +43,13 @@ is
     -- TODO: rethink how we want to identify kernel tasks vs processes.
 
     subtype ProcessPriority is Integer range -1..100;
-    type ProcessState is (INVALID, READY, RUNNING, SLEEPING, WAIT_LOCK,
-                            WAIT_IO, SUSPENDED, RECEIVING);
+    type ProcessState is (INVALID, READY, RUNNING, SLEEPING, WAITING, SUSPENDED);
+
+    -- Wait channels are just a pointer to some resource that a process is
+    -- waiting on.
+    --@TODO add a wait message a la BSD
+    subtype WaitChannel is System.Address;
+    NO_CHANNEL : constant WaitChannel := Null_Address;
 
     --type ProcessMode is (KERNEL, USER);
 
@@ -167,6 +176,8 @@ is
         
         brk                 : System.Address;   -- limit of allowable heap
         startBrk            : System.Address;
+
+        channel             : WaitChannel;
     end record;
 
     -- Lock for protecting the proctab
@@ -203,23 +214,40 @@ is
                     procStack   : in Virtmem.VirtAddress) return Process;
 
     ---------------------------------------------------------------------------
+    -- yield
     -- Yield this process' execution back to the scheduler.
     -- Called by the running process itself after an interrupt.
     ---------------------------------------------------------------------------
     procedure yield;
 
     ---------------------------------------------------------------------------
-    -- start:
+    -- wait
+    -- Pause execution of this process while waiting for some resource. We'll
+    -- associate the resource with a spinlock to provide a mutex. This will
+    -- ExitCriticalSection and begin waiting for the scheduler to wake us back
+    -- up when someone or something else calls goAhead on the channel.
+    ---------------------------------------------------------------------------    
+    procedure wait(channel : in WaitChannel; resourceLock : in out Spinlock.spinlock);
+
+    ---------------------------------------------------------------------------
+    -- goAhead
+    -- Set any processes waiting on the specified channel to READY.
+    -- The opposite of "wait".
+    ---------------------------------------------------------------------------
+    procedure goAhead(channel : in WaitChannel);
+
+    ---------------------------------------------------------------------------
+    -- start
     -- This procedure is set as the return address for new processes. A new 
     --  process first scheduling will context switch here.
-    -- This procedure releases the lock previously set by 
+    -- This procedure releases the lock previously set by Scheduler.schedule
     ---------------------------------------------------------------------------
     procedure start with
         Pre => spinlock.isLocked(lock),
         Post => not spinlock.isLocked(lock);
 
     ---------------------------------------------------------------------------
-    -- switchTo:
+    -- switch:
     -- Changes the current process context. When the interrupt handler returns,
     --  the new process will be running.
     --

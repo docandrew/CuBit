@@ -4,23 +4,60 @@
 --
 -- @summary Linked List implementation
 -------------------------------------------------------------------------------
+with Interfaces; use Interfaces;
+
+with BuddyAllocator;
+with Config;
 with Textmode; use Textmode;
 
-package body LinkedList is
+package body LinkedList
+    with SPARK_Mode => On
+is
 
     ---------------------------------------------------------------------------
     -- setup
     ---------------------------------------------------------------------------
-    procedure setup(myList : in DList; numObjects : in Natural) with
+    procedure setup(myList : in out List; capacity : in Natural) with
         SPARK_Mode => Off
     is
-        sizeNeeded : Integer = numObjects * Node'Size/8;
-    begin
-        SlabAllocator.setup(myList.nodeSlab, 
-                            Node'Size,
-                            Node'Size/8 
+        use BuddyAllocator; -- '=' operator
 
+        sizeNeeded : constant Unsigned_64 := Unsigned_64(capacity * Node'Size / 8);
+        ord : BuddyAllocator.Order;
+    begin
+        -- See what size order or physical memory we need for this capacity
+        findBlockOrder: for i in BuddyAllocator.Order'range loop
+            if BuddyAllocator.blockSize(i) >= sizeNeeded then
+                ord := i;
+                exit findBlockOrder;
+            end if;
+
+            -- If we got here, then the 
+            if i = Config.MAX_BUDDY_ORDER then
+                raise ListTooBigException with "List Capacity Too Big";
+            end if;
+        end loop findBlockOrder;
+
+        SlabAllocator.setup(pool        => nodeSlab, 
+                            objSize     => Node'Size,
+                            blockOrder  => ord);
+        
+        myList.head := null;
+        myList.tail := null;
+        myList.capacity := capacity;
     end setup;
+
+
+    procedure teardown(myList : in out List) with
+        SPARK_Mode => On
+    is
+    begin
+        myList.head := null;
+        myList.tail := null;
+        myList.length := 0;
+        myList.capacity := 0;
+        SlabAllocator.teardown(nodeSlab);
+    end teardown;
 
     ---------------------------------------------------------------------------
     -- insertFront
@@ -28,8 +65,22 @@ package body LinkedList is
     procedure insertFront(myList : in out List; element : in T) with
         SPARK_Mode => Off
     is
+        prevHead : constant NodePtr := myList.head;
+        newNode  : constant NodePtr := new Node'(element    => element,
+                                                 next       => null,
+                                                 prev       => null);
     begin
-        myList.head := new Node'(element, myList.head);
+        if myList.length = 0 then
+            newNode.prev    := newNode;
+            newNode.next    := newNode;
+            myList.head     := newNode;
+            myList.tail     := newNode;
+        else
+            newNode.prev    := myList.head;
+            newNode.next    := prevHead;
+            prevHead.prev   := newNode;
+            myList.head     := newNode;
+        end if;
 
         myList.length := myList.length + 1;
     end insertFront;
@@ -40,57 +91,119 @@ package body LinkedList is
     procedure insertBack(myList : in out List; element : in T) with
         SPARK_Mode => Off
     is
-        lastNode : NodePtr;
+        prevTail : constant NodePtr := myList.tail;
+        newNode  : constant NodePtr := new Node'(element => element,
+                                                 next    => null,
+                                                 prev    => null);
     begin
-        -- empty list
-        if myList.head = null then
-            myList.head := new Node'(element, myList.head);
-            myList.tail := myList.head;
+        if myList.length = 0 then
+            newNode.prev    := newNode;
+            newNode.next    := newNode;
+            myList.head     := newNode;
+            myList.tail     := newNode;
         else
-            lastNode := myList.tail;
-            lastNode.next := new Node'(element, null);
-            myList.tail := lastNode.next;
+            newNode.prev    := myList.tail;
+            newNode.next    := myList.head;
+            prevTail.next   := newNode;
+            myList.tail     := newNode;
         end if;
+
         myList.length := myList.length + 1;
     end insertBack;
 
-
-    procedure remove(myList : in out List; value : in T) with
+    ---------------------------------------------------------------------------
+    -- popFront
+    ---------------------------------------------------------------------------
+    procedure popFront(myList : in out List) with
         SPARK_Mode => Off
     is
-        curNode    : NodePtr := myList.head;
-        prevNode   : NodePtr := curNode;
+        oldHead : NodePtr;
+        newHead : NodePtr;
     begin
-        if curNode /= null and then curNode.element = value then
-            -- is this the first element?
-            myList.head := curNode.next;
-            free(curNode);
-            myList.length := myList.length - 1;
-
-            -- update tail if there was just one element
-            if myList.head = null then
-                myList.tail := null;
-            end if;
-        else
-            iterate : while curNode /= null
-            loop    
-                if curNode.element = value then
-                    prevNode.next := curNode.next;
-                    free(curNode);
-                    myList.length := myList.length - 1;
-
-                    -- update tail if this was the last element
-                    if prevNode.next = null then
-                        myList.tail := prevNode;
-                    end if;
-                    return;
-                end if;
-
-                prevNode := curNode;
-                curNode := curNode.next;
-            end loop iterate;
+        if myList.length = 0 then
+            raise ListEmptyException with "Cannot popFront on empty list";
         end if;
-    end remove;
+
+        oldHead         := myList.head;
+        newHead         := myList.head.next;
+        newHead.prev    := myList.head;
+        myList.head     := newHead;
+
+        free(oldHead);
+        myList.length := myList.length - 1;
+    end popFront;
+
+    ---------------------------------------------------------------------------
+    -- front
+    ---------------------------------------------------------------------------
+    function front(myList : in List) return T with
+        SPARK_Mode => Off
+    is
+    begin
+        if myList.length = 0 then
+            raise ListEmptyException with "Cannot get front of empty list";
+        end if;
+
+        return myList.head.element;
+    end front;
+
+    ---------------------------------------------------------------------------
+    -- popBack
+    ---------------------------------------------------------------------------
+    procedure popBack(myList : in out List) with
+        SPARK_Mode => Off
+    is
+        oldTail : NodePtr;
+        newTail : NodePtr;
+    begin
+        if myList.length = 0 then
+            raise ListEmptyException with "Cannot popBack of empty list";
+        end if;
+
+        oldTail         := myList.tail;
+        newTail         := myList.tail.prev;
+        newTail.next    := myList.head;
+        myList.tail     := newTail;
+
+        free(oldTail);
+        myList.length := myList.length - 1;
+    end popBack;
+
+    ---------------------------------------------------------------------------
+    -- back
+    ---------------------------------------------------------------------------
+    function back(myList : in List) return T with
+        SPARK_Mode => Off
+    is
+    begin
+        if myList.length = 0 then
+            raise ListEmptyException with "Cannot get back of empty list";
+        end if;
+
+        return myList.tail.element;
+    end back;
+
+    -- procedure remove(myList : in out List; value : in T) with
+    --     SPARK_Mode => Off
+    -- is
+    --     curNode    : NodePtr := myList.head;
+    --     prevNode   : NodePtr := curNode;
+    -- begin
+    --     if myList.length = 0 then
+    --         raise ListEmptyException with "Cannot remove element from empty list";
+    --     end if;
+
+    -- end remove;
+
+    procedure clear(myList : in out List) with
+        SPARK_Mode => On
+    is
+    begin
+        DeleteLoop: loop
+            exit DeleteLoop when myList.length = 0;
+            popFront(myList);
+        end loop DeleteLoop;
+    end clear;
 
 
     procedure print(myList : in List) with
@@ -98,16 +211,17 @@ package body LinkedList is
     is
         curNode : NodePtr := myList.head;
     begin
-        if curNode = null then
+        if myList.length = 0 then
             println("empty");
             return;
         end if;
 
-        while curNode /= null loop
+        PrintLoop: loop
             printElem(curNode.element);
-            print(" ->");
+            exit PrintLoop when curNode = myList.tail;
+            print(" -> ");
             curNode := curNode.next;
-        end loop;
+        end loop PrintLoop;
 
         println;
     end print;

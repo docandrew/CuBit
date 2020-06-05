@@ -16,19 +16,15 @@ with x86;
 --with spinlock;
 
 package body Scheduler with
-    Refined_State => (
-        SchedulerState => (
-            oldContext, currentContext, 
-            schedulerContext, currentPID)),
+    -- Refined_State => (
+    --     SchedulerState => ()),
     SPARK_Mode => On
 is
-    -- TODO: add per-CPU context for the scheduler.
     -- These are just stack locations for where we left off.
-    oldContext : System.Address;
-    currentContext : System.Address;
-    schedulerContext : System.Address;
-
-    currentPID : process.ProcessID := 0;
+    -- oldContext       : System.Address;
+    -- currentContext   : System.Address;
+    -- schedulerContext : System.Address;
+    -- currentPID       : process.ProcessID := 0;
 
     -- Enter the scheduler from a process. Suspect this is where 
     -- we'll need to add
@@ -37,9 +33,15 @@ is
     procedure enter with
         SPARK_Mode => On
     is
+        perCPUAddr : constant System.Address := PerCPUData.getPerCPUDataAddr;
     begin
-        --textmode.println("Entering scheduler");
-        process.switch(oldContext'Address, schedulerContext);
+        getCPUContext: declare
+            cpuData : PerCPUData.PerCPUData with
+                Import, Address => perCPUAddr;
+        begin
+            --textmode.println("Entering scheduler");
+            process.switch(cpuData.oldContext'Address, cpuData.schedulerContext);
+        end getCPUContext;
     end enter;
 
     -- Note: this process is only _called_ once, at bootup (per-CPU).
@@ -49,8 +51,8 @@ is
     procedure schedule(cpuData : in out PerCPUData.PerCPUData) with
         SPARK_Mode => On
     is
-        use spinlock;
-        use process;
+        use Spinlock;
+        use Process;
         pidIndex : ProcessID := 1;
     begin
         -- a bit inefficient, but for now we just linearly search
@@ -58,10 +60,11 @@ is
         startSearch : loop
             x86.sti;
 
-            textmode.println("Checking for processes to run.");
+            Textmode.print("CPU "); Textmode.print(cpuData.cpuNum);
+            Textmode.println(": Checking for processes to run.");
             -- reached end of proctab without finding any READY
             -- processes, so just idle until the next tick
-            if pidIndex = process.proctab'Last then
+            if pidIndex = Process.proctab'Last then
                 idle;           -- when we return from idle...
                 pidIndex := 1;    -- ... we'll go back to the beginning and check.
             end if;
@@ -77,43 +80,44 @@ is
             --  exitCriticalSection call in this function (if no processes were READY and
             --  we left the for loop).
             enterCriticalSection(process.lock);
-            for i in pidIndex..process.proctab'Last loop
+            for i in pidIndex .. process.proctab'Last loop
                 if Process.proctab(i).state = READY then
-                    textmode.print("scheduler: found READY process ");
-                    textmode.println(i);
-                    -- TODO: switch to appropriate address space for user mode
+                    Textmode.print("scheduler: found READY process ");
+                    Textmode.println(i);
                     
-                    textmode.print("scheduler: switching to pid ");
-                    textmode.print(i);
-                    textmode.print(" context: ");
-                    textmode.println(process.proctab(i).context);
+                    Textmode.print("scheduler: switching to pid ");
+                    Textmode.print(i);
+                    Textmode.print(" context: ");
+                    Textmode.println(process.proctab(i).context);
                     
-                    Process.proctab(i).state := RUNNING;
-                    currentPID := i;
-                    currentContext := process.proctab(i).context; -- save this address so we can switch back
+                    Process.proctab(i).state    := RUNNING;
+                    cpuData.currentPID          := i;
+                    cpuData.currentContext      := process.proctab(i).context; -- save this address so we can switch back
 
                     -- switch address spaces
-                    cpuData.tss.rsp0 := Unsigned_64(proctab(i).kernelStackTop);
-                    cpuData.runningPID := i;
-                    cpuData.savedKernelRSP := To_Address(proctab(i).kernelStackTop);
+                    cpuData.tss.rsp0        := Unsigned_64(proctab(i).kernelStackTop);
+                    cpuData.currentPID      := i;
+                    cpuData.savedKernelRSP  := To_Address(proctab(i).kernelStackTop);
                     Process.switchAddressSpace(proctab(i).pgTable'Address);
 
                     -- Start executing new process
-                    Process.switch(schedulerContext'Address, currentContext);
+                    Process.switch(cpuData.schedulerContext'Address, cpuData.currentContext);
                     
                     -- switch back to kernel page tables
                     Mem_mgr.switchAddressSpace;
 
                     -- when process pauses its run, we return here
                     -- update the process' context pointer. currentContext was set in enter;
-                    textmode.print("scheduler: saving context for pid ");
-                    textmode.print(i); textmode.print(": "); textmode.println(oldContext);
-                    currentPID := 0;
-                    process.proctab(i).context := oldContext;
-                    process.proctab(i).state := READY;
+                    Textmode.print("scheduler: saving context for pid ");
+                    Textmode.print(i); Textmode.print(": "); 
+                    Textmode.println(cpuData.oldContext);
+                    
+                    cpuData.currentPID          := Process.NO_PROCESS;
+                    Process.proctab(i).context  := cpuData.oldContext;
+                    Process.proctab(i).state    := READY;
                 end if;
             end loop;
-            exitCriticalSection(process.lock);
+            exitCriticalSection(Process.lock);
 
         end loop startSearch;
     end schedule;
@@ -127,11 +131,11 @@ is
         x86.halt;
     end idle;
 
-    function getCurrentPID return process.ProcessID with
-        SPARK_Mode => On
-    is
-    begin
-        return currentPID;
-    end getCurrentPID;
+    -- function getCurrentPID return process.ProcessID with
+    --     SPARK_Mode => On
+    -- is
+    -- begin
+    --     return currentPID;
+    -- end getCurrentPID;
 
 end Scheduler;

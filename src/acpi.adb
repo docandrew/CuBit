@@ -242,6 +242,7 @@ is
 
     -- parse ACPI tables, get information we need out of them.
     function setup return Boolean
+        with SPARK_Mode => On
     is
         use System;
         rsdpAddr    : constant System.Address := findRSDP;

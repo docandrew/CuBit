@@ -22,6 +22,7 @@ subtype InodeAddr is Unsigned_32;   -- 0 = not used
 SUPERBLOCK_LBA              : constant vfs.LBA48 := 2;
 ROOT_INODE_NUM              : constant InodeAddr := 2;
 EXT2_SUPER_MAGIC            : constant Unsigned_16 := 16#EF53#;
+EXT2_NAME_LENGTH            : constant := 255;
 
 -- Defined filesystemState values
 -- On mount, the state is set to ERROR. On unmount, it's set to VALID.
@@ -477,25 +478,24 @@ FILETYPE_FIFO               : DirectoryEntryType := 5;
 FILETYPE_SOCKET             : DirectoryEntryType := 6;
 FILETYPE_SYMLINK            : DirectoryEntryType := 7;
 
+type Filename is array (0 .. EXT2_NAME_LENGTH) of Character with
+    Convention => C;
+
 -------------------------------------------------------------------------------
 -- @param inode - 32bit inode number of the file entry. If 0, not used.
 -- @param length - displacement from start of this entry to the next entry.
 --  entries must be 4-byte aligned and cannot span blocks.
 -- @param nameLength - how long the name is.
 -- @param entryType - see DirectoryEntryType
---
--- Note that the Directory Entries also contain a name and possibly extra
---  padding at the end. We'll read these separately, since they can be
---  different sizes.
+-- @param name - actual length will not necessarily be EXT2_NAME_LENGTH.
 -------------------------------------------------------------------------------
 type DirectoryEntry is
 record
     inode                           : InodeAddr;
     length                          : Unsigned_16;
     nameLength                      : Unsigned_8;
-    entryType                       : DirectoryEntryType;
-    --name
-    --padding
+    fileType                        : DirectoryEntryType;
+    name                            : Filename;
 end record;
 
 -------------------------------------------------------------------------------
@@ -507,16 +507,16 @@ function blockSize(sb : in Superblock) return Unsigned_32;
 -- getBlockGroup - given an inode address and the number of inodes per block
 --  group, this function returns the block group containing that inode.
 -------------------------------------------------------------------------------
-function getBlockGroup(inode : in InodeAddr; 
-                       inodesPerBlockGroup : in Unsigned_32)
+function getBlockGroup(inode                : in InodeAddr; 
+                       inodesPerBlockGroup  : in Unsigned_32)
                        return Unsigned_32;
 
 -------------------------------------------------------------------------------
 -- getInodeIndex - given an inode address and block size, this function
 --  returns the index into the block group's inode table.
 -------------------------------------------------------------------------------
-function getInodeIndex(inode : in InodeAddr;
-                       blockSize : in Unsigned_32)
+function getInodeIndex(inode        : in InodeAddr;
+                       blockSize    : in Unsigned_32)
                        return Unsigned_32;
 
 -------------------------------------------------------------------------------
@@ -524,9 +524,9 @@ function getInodeIndex(inode : in InodeAddr;
 --  size of an inode and the size of a block, this function returns the block
 --  containing that inode.
 -------------------------------------------------------------------------------
-function getContainingBlock(index : in Unsigned_32;
-                            inodeSize : in Unsigned_32;
-                            blockSize : in Unsigned_32)
+function getContainingBlock(index       : in Unsigned_32;
+                            inodeSize   : in Unsigned_32;
+                            blockSize   : in Unsigned_32)
                             return BlockAddr;
 
 

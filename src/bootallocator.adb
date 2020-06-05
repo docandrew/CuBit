@@ -5,9 +5,9 @@
 -- Boot Physical Memory Allocator
 -------------------------------------------------------------------------------
 
-with Textmode; use Textmode;
+--with Textmode; use Textmode;
 with Util; use Util;
-with x86;
+--with x86;
 
 package body BootAllocator with
     Refined_State => (BitmapState => (bitmap, freePhysicalFrames)),
@@ -44,7 +44,7 @@ is
         --     Virtmem.KERNEL_BASE);
         
         freeThisRegion      : Unsigned_64;
-        testCounter         : Natural := 0;
+        --testCounter         : Natural := 0;
     begin
         -- mark everything as used to begin with.
         freePhysicalFrames := 0;
@@ -163,7 +163,7 @@ is
 
 
     -- allocate a number of contigous frames
-    procedure allocFrames(num : Positive; addr : out Virtmem.PhysAddress) with
+    procedure allocFrames(num : in AllocSize; addr : out Virtmem.PhysAddress) with
         SPARK_Mode => On
     is
         basePFN                 : Virtmem.PFN;
@@ -172,7 +172,7 @@ is
         Spinlock.enterCriticalSection(mutex);
 
         basePFN := findFreeFrames(num);
-        
+
         if basePFN = 0 then
             raise OutOfMemoryException with "Out of Memory";
         end if;
@@ -184,7 +184,7 @@ is
             highestPFNAllocated := endPFN;
         end if;
 
-        for frame in basePFN .. (basePFN + Virtmem.PFN(num - 1)) loop
+        for frame in basePFN .. endPFN loop
             markUsed(frame);
         end loop;
 
@@ -236,7 +236,7 @@ is
 
 
     -- Find a number of contiguous free frames
-    function findFreeFrames(num : in Positive) return Virtmem.PFN with
+    function findFreeFrames(num : in AllocSize) return Virtmem.PFN with
         SPARK_Mode => On
     is
         startPFN        : Virtmem.PFN := 1;

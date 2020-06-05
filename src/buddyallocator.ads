@@ -76,7 +76,7 @@ package BuddyAllocator with
     SPARK_Mode => On
 is
 
-    NO_BLOCK_AVAILABLE  : constant Virtmem.PhysAddress := Integer_Address'Last;
+    NO_BLOCK_AVAILABLE  : constant Virtmem.PhysAddress := Virtmem.PhysAddress'Last;
     
     -- Track whether setup has been called on this package
     initialized         : Boolean := False with Ghost;
@@ -85,7 +85,7 @@ is
     -- Order is the number of frames per buddy block
     -- i.e. block size = FRAME_SIZE * (2^ORDER)
     ---------------------------------------------------------------------------
-    type Order is new Natural range 0..Config.MAX_BUDDY_ORDER;
+    type Order is new Natural range 0 .. Config.MAX_BUDDY_ORDER;
 
     ---------------------------------------------------------------------------
     -- FreeBlock - this record is created _inside_ the free memory block,

@@ -38,31 +38,39 @@ is
     ---------------------------------------------------------------------------
     type PerCPUData is
     record
-        cpuNum          : Natural range 0..Config.MAX_CPUS - 1 := 0;
-        runningPID      : Process.ProcessID := Process.NO_PROCESS;
-        savedProcessRSP : System.Address;
-        savedKernelRSP  : System.Address;
+        cpuNum              : Natural range 0..Config.MAX_CPUS - 1 := 0;
+        currentPID          : Process.ProcessID := 0;
+        savedProcessRSP     : System.Address;
+        savedKernelRSP      : System.Address;
 
         -- The per-CPU GDT
-        gdt             : Segment.GDT;
-        gdtPointer      : Segment.GDTPointer;
+        gdt                 : Segment.GDT;
+        gdtPointer          : Segment.GDTPointer;
 
         -- These contain the per-CPU stack pointers
         -- for both user and kernel modes.
-        tss             : Segment.TaskSwitchSegment;
+        tss                 : Segment.TaskSwitchSegment;
+
+        -- Saved context pointers (stack locations for where we left off)
+        oldContext          : System.Address;
+        currentContext      : System.Address;
+        schedulerContext    : System.Address;
     end record;
 
     -- Alignment of fields needs to be precisely specified because we're going
     -- to access some of these from assembly.
     for PerCPUData use
     record
-        cpuNum          at 0    range 0..31;
-        runningPID      at 4    range 0..31;
-        savedProcessRSP at 8    range 0..63;
-        savedKernelRSP  at 16   range 0..63;
-        gdt             at 24   range 0..511;
-        gdtPointer      at 88   range 0..79;
-        tss             at 98   range 0..831;
+        cpuNum              at 0    range 0..31;
+        currentPID          at 4    range 0..31;
+        savedProcessRSP     at 8    range 0..63;
+        savedKernelRSP      at 16   range 0..63;
+        gdt                 at 24   range 0..511;
+        gdtPointer          at 88   range 0..79;
+        tss                 at 98   range 0..831;
+        oldContext          at 202  range 0..63;
+        currentContext      at 210  range 0..63;
+        schedulerContext    at 218  range 0..63;
     end record;
 
     -- If the secondary stack is used before per-CPU data is set up, this
@@ -80,7 +88,7 @@ is
     --
     -- @TODO: consider adding a ghost initialized flag here, though this may be
     --  infeasible because we would need one per-CPU, to make sure that this
-    --  function is called before
+    --  function is called before use.
     ---------------------------------------------------------------------------
     procedure setupPerCPUData(  cpuNum          : in Natural;
                                 cpuData         : in out PerCPUData;
@@ -101,6 +109,13 @@ is
     --  this.
     ---------------------------------------------------------------------------
     function getPerCPUDataAddr return System.Address;
+
+    ---------------------------------------------------------------------------
+    -- getCurrentPID
+    -- Convenience function for getting the currently-running Process ID on
+    -- this CPU.
+    ---------------------------------------------------------------------------
+    function getCurrentPID return Process.ProcessID;
 
     ---------------------------------------------------------------------------
     -- Used to get pointers to the per-CPU secondary stacks.

@@ -44,6 +44,8 @@ is
     --  bitmap block.
     MAX_BOOT_PFN : constant := MAX_BITMAP_BLOCKS * 64;
 
+    subtype AllocSize is Positive range 1 .. MAX_BOOT_PFN;
+
     -- Page Frame Number (addr / 4096) for physical memory.
     -- Works like a regular PFN but restricted to the physical memory limit
     --  we define above.
@@ -110,16 +112,18 @@ is
     -- @param num - number of frames to allocate
     -- @param addr - base address of the allocated memory
     ---------------------------------------------------------------------------
-    procedure allocFrames(num : in Positive; addr : out Virtmem.PhysAddress) with
+    procedure allocFrames(num : in AllocSize; addr : out Virtmem.PhysAddress) with
         Global  => (
             In_Out      => (BitmapState,
                             mutex,
                             x86.interruptsEnabled),
             Proof_In    => (BootAllocator.initialized)),
 
-        Pre     => BootAllocator.initialized and not Spinlock.isLocked(mutex),
+        Pre     => num <= MAX_BOOT_PFN and 
+                   BootAllocator.initialized and 
+                   not Spinlock.isLocked(mutex),
         Post    => addr <= (MAX_BOOT_PFN * Virtmem.FRAME_SIZE) and
-                    not Spinlock.isLocked(mutex);
+                   not Spinlock.isLocked(mutex);
 
     ---------------------------------------------------------------------------
     -- allocSmall - perform a persistent (non-freeable), small memory
@@ -163,17 +167,20 @@ private
     function findFreeFrame return Virtmem.PFN with
         Global  => (Input       => BitmapState, 
                     Proof_In    => BootAllocator.initialized),
-        Pre     => BootAllocator.initialized;
+        Pre     => BootAllocator.initialized,
+        Post    => findFreeFrame'Result < MAX_BOOT_PFN;
 
     ---------------------------------------------------------------------------
     -- findFreeFrames - finds group of contigous pages of free physical memory.
     --
     -- Return: PFN of the first free frame in the block
     ---------------------------------------------------------------------------
-    function findFreeFrames(num : in Positive) return Virtmem.PFN with
+    function findFreeFrames(num : in AllocSize) return Virtmem.PFN with
         Global  => (Input       => BitmapState, 
                     Proof_In    => BootAllocator.initialized),
-        Pre     => BootAllocator.initialized;
+        Pre     => BootAllocator.initialized and then
+                   num <= MAX_BOOT_PFN,
+        Post    => findFreeFrames'Result <= Virtmem.PFN(MAX_BOOT_PFN - num);
 
     ---------------------------------------------------------------------------
     -- markUsed - set a page's bit to 1
