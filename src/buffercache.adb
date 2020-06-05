@@ -4,7 +4,6 @@
 --
 -- @summary Block device buffer cache
 -------------------------------------------------------------------------------
-with System.Address_To_Access_Conversions;
 
 with BlockDevice;
 with Process;
@@ -12,7 +11,6 @@ with Process;
 package body BufferCache with
     SPARK_Mode => Off
 is
-    --package ToAddr is new System.Address_To_Access_Conversions(Buffer);
 
     procedure setup with
         SPARK_Mode => Off -- use of access
@@ -31,11 +29,13 @@ is
     end setup;
 
 
-    procedure getBuffer(device      : in Unsigned_32; 
+    procedure getBuffer(device      : in Devices.DeviceID;
                         blockNum    : in Unsigned_64;
                         retBuffer   : out BufferPtr) with
         SPARK_Mode => Off
     is
+        use Devices; -- "=" operator
+
         buf : BufferPtr;
     begin
         Spinlock.enterCriticalSection(cache.lock);
@@ -95,9 +95,9 @@ is
 
 
     -- Return a busy buffer with disk
-    procedure readBuffer(device     : in Unsigned_32;
+    procedure readBuffer(device     : in Devices.DeviceID;
                          blockNum   : in Unsigned_64;
-                         retBuffer  : out BufferPtr) with 
+                         retBuffer  : in out BufferPtr) with 
         SPARK_Mode => Off
     is
     begin
@@ -107,7 +107,7 @@ is
             --@TODO: find a place to determine, based on the device ID,
             -- which underlying syncBuffer function (ata, atapi, etc.) to
             -- call. We'll want a device registration package or something.
-            syncBuffer(buf);
+            BlockDevice.syncBuffer(retBuffer);
         end if;
     end readBuffer;
 

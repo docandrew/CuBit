@@ -55,7 +55,7 @@ is
     -- popFromFreeList
     ---------------------------------------------------------------------------
     procedure popFromFreeList(ord : in Order;
-                                addr : out Virtmem.PhysAddress) with
+                              addr : out Virtmem.PhysAddress) with
         SPARK_Mode => On,
         Pre     => freeLists(ord).numFreeBlocks > 0,
         Post    => freeLists(ord).numFreeBlocks =

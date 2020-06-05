@@ -439,12 +439,12 @@ begin
         begin
             println("Attempting to read disk");
             -- Try and read the ext2 superblock
-            ata.syncBuffer( ata.drives(ata.PRIMARY_MASTER),
-                            Ext2.SUPERBLOCK_LBA, 
-                            2,
-                            sblock'Address,
-                            ata.READ,
-                            ataResult);
+            ata.syncBufferHelper(ata.drives(ata.PRIMARY_MASTER),
+                                 Ext2.SUPERBLOCK_LBA, 
+                                 2,
+                                 sblock'Address,
+                                 ata.READ,
+                                 ataResult);
 
             if ataResult = ata.SUCCESS then
                 if sblock.signature = Ext2.EXT2_SUPER_MAGIC then

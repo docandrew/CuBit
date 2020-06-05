@@ -11,13 +11,13 @@
 -------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 
-package Device with
+package Devices with
     SPARK_Mode => On
 is
     pragma Pure;
 
     type MajorNumber is (
-        NONE,
+        NO_MAJOR,
         IDE
     );
 
@@ -38,4 +38,4 @@ is
         reserved    at 0 range 16..31;
     end record;
 
-end Device;
+end Devices;

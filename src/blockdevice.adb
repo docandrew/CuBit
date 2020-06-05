@@ -2,10 +2,10 @@
 package body BlockDevice
     with SPARK_Mode => On
 is
-    blockDrivers : BlockDeviceList;
+    blockDrivers : BlockDriverList;
 
-    procedure registerBlockDriver(major : in Device.MajorNumber;
-                                  bufSyncFunc : access procedure(buf : in out BufferCache.BufferPtr)) with
+    procedure registerBlockDriver(major : in Devices.MajorNumber;
+                                  bufSyncFunc : BufferSyncFunction) with
         SPARK_Mode => On
     is
     begin

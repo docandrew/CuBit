@@ -14,13 +14,12 @@
 with Interfaces; use Interfaces;
 
 with Config;
-with Device;
+with Devices;
 with Spinlock;
+with Virtmem;
 
 Pragma Elaborate_All (Spinlock);
 
-generic
-    BlockSize : Positive;
 package BufferCache with
     SPARK_Mode => On
 is
@@ -33,7 +32,8 @@ is
     -- When a process attempts to release a block not in the BUSY state
     ReleaseNotOwnedException : exception;
 
-    type Block is array (0 .. BlockSize - 1) of Unsigned_8;
+    --@TODO May need to use a generic or discriminant here, 
+    type Block is array (1 .. Virtmem.PAGE_SIZE) of Unsigned_8;
 
     type Buffer;
     type BufferPtr is access all Buffer;
@@ -50,8 +50,9 @@ is
         valid       : Boolean;
         dirty       : Boolean;
 
-        device      : Device.DeviceID := (Major => Device.NO_MAJOR,
-                                          Minor => Device.NO_MINOR);
+        device      : Devices.DeviceID := (major    => Devices.NO_MAJOR,
+                                           minor    => Devices.NO_MINOR,
+                                           reserved => 0);
         
         blockNum    : Unsigned_64;
         lock        : spinlock.Spinlock;
@@ -64,7 +65,11 @@ is
         syncNext    : BufferPtr;
     end record;
 
-    type BufferArray is array (0 .. Config.NUM_BLOCK_BUFFERS) of aliased Buffer;
+    type BufferArray is array (1 .. Config.NUM_BLOCK_BUFFERS) of aliased Buffer;
+
+    -- type BufferArray(BlockSize : Positive) is record
+    --     arr : array (1 .. Config.NUM_BLOCK_BUFFERS) of aliased Buffer(BlockSize);
+    -- end record;
     
     -- Each block device gets one of these. Maintain the static array,
     -- LRU list of pointers to the blocks and a mutex.
@@ -87,23 +92,23 @@ is
     -- @param retBuffer - buffer with the contents of the block device, set as
     --  a busy buffer.
     ---------------------------------------------------------------------------
-    procedure readBuffer(device     : in Device.DeviceID;
+    procedure readBuffer(device     : in Devices.DeviceID;
                          blockNum   : in Unsigned_64;
-                         retBuffer  : out BufferPtr) with
+                         retBuffer  : in out BufferPtr) with
         Post => retBuffer.busy;
 
     ---------------------------------------------------------------------------
     -- writeBuffer
     -- Writes the buffer contents to the underlying block device.
     ---------------------------------------------------------------------------
-    procedure writeBuffer(buf : in out BufferPtr) with
+    procedure writeBuffer(buf       : in out BufferPtr) with
         Pre => buf.busy;
 
     ---------------------------------------------------------------------------
     -- releaseBuffer
     -- Release a busy buffer and make it the most recently used
     ---------------------------------------------------------------------------
-    procedure releaseBuffer(buf : in out BufferPtr) with
+    procedure releaseBuffer(buf     : in out BufferPtr) with
         Pre => buf.busy;
 
     ---------------------------------------------------------------------------

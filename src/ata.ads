@@ -8,7 +8,6 @@ with Ada.Unchecked_Conversion;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
-with BlockDevice;
 with BufferCache;
 with Filesystem.vfs;
 with Spinlock;
@@ -16,7 +15,7 @@ with x86;
 
 Pragma Elaborate_All (Spinlock);
 
-package ata with
+package ATA with
     SPARK_Mode => On
 is
 
@@ -952,7 +951,7 @@ is
     -- syncBuffer
     -- Read/Write a buffer to disk.
     ---------------------------------------------------------------------------
-    procedure syncBuffer(buf : in BufferCache.BufferPtr);
+    procedure syncBuffer(buf : in out BufferCache.BufferPtr);
 
     ---------------------------------------------------------------------------
     -- Access a sector on this device, synchronizing the on-disk sectors with
@@ -971,7 +970,7 @@ is
     -- Limitations - only supports LBA addressing for now, disks using CHS
     --  are NOT supported.
     ---------------------------------------------------------------------------
-    procedure syncBuffer(
+    procedure syncBufferHelper(
                 drive       : in out ata.Device;
                 lba         : in Filesystem.vfs.LBA48;
                 numSectors  : in Unsigned_32;
@@ -979,4 +978,4 @@ is
                 direction   : in ATADirection;
                 status      : out ATAResult);
 
-end ata;
+end ATA;

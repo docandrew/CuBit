@@ -4,17 +4,14 @@
 --
 -- ATA/IDE Disk Controller Driver
 -------------------------------------------------------------------------------
---with Ada.Unchecked_Conversion;
---with System.Storage_Elements;
+with BlockDevice;
+with Devices;
+with PCI;
+with Textmode; use Textmode;
+with Time;
+with Util;
 
---with Interfaces; use Interfaces;
-
-with pci;
-with textmode; use textmode;
-with time;
-with util;
-
-package body ata with
+package body ATA with
     SPARK_Mode => On
 is
     -- Error register bits
@@ -359,17 +356,17 @@ is
         SPARK_Mode => On
     is
         numIDE  : Natural := 0;
-        bus     : pci.PCIBusNum;
-        slot    : pci.PCISlotNum;
-        func    : pci.PCIFunctionNum;
-        config  : pci.PCIDeviceHeader;
+        bus     : PCI.PCIBusNum;
+        slot    : PCI.PCISlotNum;
+        func    : PCI.PCIFunctionNum;
+        config  : PCI.PCIDeviceHeader;
 
         --primaryChannelDrives : DrivesPresent;
         --secondaryChannelDrives : DrivesPresent;
         primaryChannel : ATAChannel;
         secondaryChannel : ATAChannel;
     begin
-        numIDE := pci.getNumDevices(pci.CLASS_STORAGE_IDE);
+        numIDE := PCI.getNumDevices(pci.CLASS_STORAGE_IDE);
         if numIDE = 0 then
             println("No IDE controller present.");
             
@@ -379,7 +376,7 @@ is
 
             return;
         else
-            pci.findDevice(pci.CLASS_STORAGE_IDE, bus, slot, func);
+            PCI.findDevice(PCI.CLASS_STORAGE_IDE, bus, slot, func);
             print("IDE controller at ");
             print("bus: "); print(bus);
             print(" slot: "); print(slot);
@@ -387,7 +384,7 @@ is
             println;
 
             println("Registering ATA Block Driver");
-            BlockDevice.registerBlockDriver(Device.IDE, syncBuffer);
+            BlockDevice.registerBlockDriver(Devices.IDE, ATA.syncBuffer'Access);
 
             config := pci.getDeviceConfiguration(bus, slot, func);
 
@@ -503,25 +500,27 @@ is
     -- Otherwise, if it's not valid, then read it.
     procedure syncBuffer(buf : in out BufferCache.BufferPtr) with SPARK_Mode => On
     is
+        package VFS renames Filesystem.VFS;
         --@TODO: when we get more than one IDE controller and support
         -- partitions, we'll need to identify those via minor number as well.
         -- For now, just assume minor = drive
         drive   : ATADriveNumber := ATADriveNumber(buf.device.minor);
-        lba     : vfs.LBA48 := vfs.LBA48(buf.blockNum);
+        lba     : VFS.LBA48 := VFS.LBA48(buf.blockNum);
         dir     : ATADirection;
         res     : ATAResult;
     begin
         --enterCriticalSection(drives(drive).lock);
         --@TODO: error checking for valid, dirty blocks, etc.
         if buf.dirty then
-            syncBuffer(drive, lba, 1, buf.data'Address, WRITE, res);
+            syncBufferHelper(drives(drive), lba, 1, buf.data'Address, WRITE, res);
             buf.dirty := False;
             buf.valid := True;
-        else if not buf.valid then
-            syncBuffer(drive, lba, 1, buf.data'Address, READ, res);
+        elsif not buf.valid then
+            syncBufferHelper(drives(drive), lba, 1, buf.data'Address, READ, res);
             buf.valid := True;
         end if;
 
+        --@TODO check err and signal process
         --Once async I/O is supported:
         --Process.wait(buf.all'Address, drives(drive).lock);
         
@@ -529,9 +528,9 @@ is
     end syncBuffer;
 
 
-    procedure syncBuffer(
-                drive       : in out ata.Device;
-                lba         : in Filesystem.vfs.LBA48;
+    procedure syncBufferHelper(
+                drive       : in out ATA.Device;
+                lba         : in Filesystem.VFS.LBA48;
                 numSectors  : in Unsigned_32;
                 buf         : in System.Address;
                 direction   : in ATADirection;
@@ -549,7 +548,7 @@ is
         use x86;
     begin
 
-        spinlock.enterCriticalSection(drive.lock);
+        Spinlock.enterCriticalSection(drive.lock);
 
         -- wait for drive to become un-busy
         waitResult := waitReady(drive);
@@ -640,7 +639,7 @@ is
 
         status := SUCCESS;
 
-        spinlock.exitCriticalSection(drive.lock);
-    end syncBuffer;
+        Spinlock.exitCriticalSection(drive.lock);
+    end syncBufferHelper;
 
-end ata;
+end ATA;
