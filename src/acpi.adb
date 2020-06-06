@@ -7,11 +7,7 @@
 with System.Address_To_Access_Conversions;
 with System.Storage_Elements; use System.Storage_Elements;
 
-with BootAllocator;
-with lapic;
---with pagetable;
-with textmode; use textmode;
-with virtmem;
+with Textmode; use Textmode;
 
 package body acpi
     with SPARK_Mode => On
@@ -67,7 +63,7 @@ is
     -- @return True if successful, False if address does not point to an RSDP
     ---------------------------------------------------------------------------
     function getRSDP(rsdpAddr : in System.Address; rsdp : in out RSDPRecord)
-        return Boolean with SPARK_Mode => On
+        return Boolean with SPARK_Mode => Off
     is    
         retRSDP : RSDPRecord with Import, Address => rsdpAddr;
     begin
@@ -83,7 +79,7 @@ is
     -- getXSDT - convenience function for getting a XSDTRecord
     ---------------------------------------------------------------------------
     function getXSDT(sdtAddr : in System.Address; xsdt : in out XSDTRecord) 
-        return Boolean with SPARK_Mode => On
+        return Boolean with SPARK_Mode => Off
     is
         retXSDT : XSDTRecord with Import, Address => sdtAddr;
     begin
@@ -99,7 +95,7 @@ is
     -- getRSDT - convenience function for getting a RSDTRecord
     ---------------------------------------------------------------------------
     function getRSDT(sdtAddr : in System.Address; rsdt : in out RSDTRecord) 
-        return Boolean with SPARK_Mode => On
+        return Boolean with SPARK_Mode => Off
     is
         retRSDT : RSDTRecord with Import, Address => sdtAddr;
     begin
@@ -115,7 +111,7 @@ is
     -- getLAPIC - given an APIC table entry describing a local APIC, get it.
     ---------------------------------------------------------------------------
     function getLAPIC(lapicAddr : in System.Address; lapic : in out LAPICRecord)
-        return Boolean with SPARK_Mode => On
+        return Boolean with SPARK_Mode => Off
     is
         retLAPIC : LAPICRecord with Import, Address => lapicAddr;
     begin
@@ -131,7 +127,7 @@ is
     -- getIOAPIC - given an APIC table entry describing an I/O APIC, get it.
     ---------------------------------------------------------------------------
     function getIOAPIC(ioapicAddr : in System.Address; ioapic : in out IOAPICRecord)
-        return Boolean with SPARK_Mode => On
+        return Boolean with SPARK_Mode => Off
     is
         retIOAPIC : IOAPICRecord with Import, Address => ioapicAddr;
     begin
@@ -147,7 +143,7 @@ is
     -- parseMADT - get information from the Multiple APIC Description Table
     ---------------------------------------------------------------------------
     procedure parseMADT(madtAddr : in System.Address)
-        with SPARK_Mode => On
+        with SPARK_Mode => Off
     is
         madt : MADTRecord
             with Import, Address => madtAddr;
@@ -242,7 +238,7 @@ is
 
     -- parse ACPI tables, get information we need out of them.
     function setup return Boolean
-        with SPARK_Mode => On
+        with SPARK_Mode => Off
     is
         use System;
         rsdpAddr    : constant System.Address := findRSDP;
@@ -401,7 +397,7 @@ is
         return True;
     end setup;
 
-    function findRSDP return System.Address
+    function findRSDP return System.Address with SPARK_Mode => Off
     is
         --use System.Storage_Elements;
         package ToRSDP is new System.Address_To_Access_Conversions(RSDPRecord);

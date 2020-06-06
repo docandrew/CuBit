@@ -496,7 +496,7 @@ is
     end setupATA;
 
 
-    -- If buffer is dirty, write it to disk, set valid once complete. 
+    -- If buffer is dirty, write it to disk, set valid once complete.
     -- Otherwise, if it's not valid, then read it.
     procedure syncBuffer(buf : in out BufferCache.BufferPtr) with SPARK_Mode => On
     is
