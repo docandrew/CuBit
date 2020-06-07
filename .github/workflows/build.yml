@@ -1,4 +1,4 @@
-name: CuBit CI
+name: Build
 
 on: 
     push:
