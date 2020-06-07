@@ -1,3 +1,5 @@
+![CuBit CI](https://github.com/docandrew/CuBit/workflows/CuBit%20CI/badge.svg)
+
 Introduction
 ============
 CuBitOS is a multi-processor, 64-bit, (partially) formally-verified, 
