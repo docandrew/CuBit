@@ -24,7 +24,7 @@ jobs:
               uses: actions/upload-artifact@v2
               with:
                 name: cubit_iso
-                path: "cubit_kernel_${{ GITHUB_SHA }}_${{ steps.build_id.outputs.time }}.iso"
+                path: "cubit_kernel_${{ env.GITHUB_SHA }}_${{ steps.build_id.outputs.time }}.iso"
 
             - name: Build Documents
               run: make docs
