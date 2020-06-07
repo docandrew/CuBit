@@ -44,36 +44,6 @@ jobs:
                 name: gnathtml
                 path: build/gnathtml
 
-    deploy:
-        name: Deploy Documentation to gh-pages branch
-        runs-on: ubuntu-latest
-        needs: build
-        steps:
-            - name: Re-checkout for pages deployment
-              uses: actions/checkout@v2
-              with:
-                persist-credentials: false
-
-            - name: Get gnatdoc artifacts
-              uses: actions/download-artifact@v2
-              with:
-                name: gnatdoc
-
-            - name: Get gnathtml artifacts
-              uses: actions/download-artifact@v2
-              with:
-                name: gnathtml
-
-            - name: Deploy GNATdoc Pages
-              uses: JamesIves/github-pages-deploy-action@releases/v3
-              with:
-                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-                BRANCH: gh-pages # deploy to this branch
-                FOLDER: gnatdoc
-
-            - name: Deploy HTML Source
-              uses: JamesIves/github-pages-deploy-action@releases/v3
-              with:
-                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-                BRANCH: gh-pages
-                FOLDER: gnathtml
+# TODO: Static-Site Generator w/ custom index.md containing links to the
+# gnatdoc and gnathtml pages as well as the README, figure out a gh-pages
+# deploy action that works for us.
