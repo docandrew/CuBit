@@ -28,6 +28,7 @@ jobs:
     deploy:
         name: Deploy Documentation
         runs-on: ubuntu-latest
+        needs: build
         steps:
 
             - name: Deploy GNATdoc Pages
