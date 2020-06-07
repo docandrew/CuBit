@@ -1,0 +1,46 @@
+name: CuBit CI
+
+on: [push]
+
+jobs:
+
+    build:
+        name: Build
+        runs-on: jonfandrew/cubit-gnat:latest
+        steps:
+
+            - name: Check out repo
+              uses: actions/checkout@v2
+
+            - name: Build CuBit
+              run: make cubit_kernel
+
+            - name: Build CuBit ISO
+              run: make iso
+            
+            - name: Build Documents
+              run: make docs
+
+            - name: Build Cross-Referenced Code HTML
+              run: make html
+
+    deploy:
+        name: Deploy Documentation
+        runs-on: ubuntu-latest
+        steps:
+
+            - name: Deploy GNATdoc Pages
+              uses: JamesIves/github-pages-deploy-action@releases/v3
+              with:
+                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                BRANCH: gh-pages # deploy to this branch
+                FOLDER: build/gnatdoc
+                TARGET_FOLDER: gnatdoc
+
+            - name: Deploy HTML Source
+              uses: JamesIves/github-pages-deploy-action@releases/v3
+              with:
+                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                BRANCH: gh-pages
+                FOLDER: build/gnathtml
+                TARGET_FOLDER: gnathtml
