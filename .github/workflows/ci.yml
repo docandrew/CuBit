@@ -6,7 +6,8 @@ jobs:
 
     build:
         name: Build
-        runs-on: jonfandrew/cubit-gnat:latest
+        runs-on: ubuntu-latest
+        container: jonfandrew/cubit-gnat:latest
         steps:
 
             - name: Check out repo
