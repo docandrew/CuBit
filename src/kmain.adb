@@ -420,8 +420,15 @@ begin
     initPCI: declare
     begin
         println("Searching for PCI devices", textmode.LT_BLUE, textmode.BLACK);
-        pci.enumerateDevices;
+        PCI.enumerateDevices;
     end initPCI;
+
+
+    initFileCache: declare
+    begin
+        println("Initializing File Cache", textmode.LT_BLUE, textmode.BLACK);
+        FileCache.setup;
+    end initFileCache;
 
 
     initATA: declare
