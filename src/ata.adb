@@ -515,11 +515,11 @@ is
         --enterCriticalSection(drives(drive).lock);
         --@TODO: error checking for valid, dirty blocks, etc.
         if buf.dirty then
-            syncBufferHelper(drives(drive), lba, sectors, Virtmem.V2P(buf.data), WRITE, res);
+            syncBufferHelper(drives(drive), lba, sectors, buf.data, WRITE, res);
             buf.dirty := False;
             buf.valid := True;
         elsif not buf.valid then
-            syncBufferHelper(drives(drive), lba, sectors, Virtmem.V2P(buf.data), READ, res);
+            syncBufferHelper(drives(drive), lba, sectors, buf.data, READ, res);
             buf.valid := True;
         end if;
 
