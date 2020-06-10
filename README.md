@@ -1,4 +1,4 @@
-![CuBit CI](https://github.com/docandrew/CuBit/workflows/CuBit%20CI/badge.svg)
+![Build](https://github.com/docandrew/CuBit/workflows/CuBit%20CI/badge.svg)
 
 Introduction
 ============
@@ -455,20 +455,20 @@ TODO: Usermode/Shell
 TODO: Engineering
 -----------------
 ```
-[ ] Make all package names Uppercase
+[-] Make all package names Uppercase
 [-] Rename all setupXYZ to just setup, since package name is already there.
 [X] New Makefile
 [-] Use gnatdoc format in comments
     [ ] Edit gnatdoc format so NOTE, CAUTION, WARNING shows up as different
         colors.
     [ ] Edit gnatdoc format to ignore the leading and trailing horizontal rules
-[ ] Work out a CI/CD pipeline
+[-] Work out a CI/CD pipeline
     [ ] Proof Step
     [ ] Unit Testing
-    [ ] Build
+    [X] Build
     [ ] Integration/Functional Testing
-    [ ] Generate Documentation
-    [ ] Build installers, isos, etc.
+    [X] Generate Documentation
+    [-] Build installers, isos, etc.
 [ ] Write unit tests
 [ ] Fuzzing
 [ ] Integration tests that run in the OS.
@@ -548,6 +548,9 @@ To connect to QEMU: `target remote localhost:1234`
 Use `(gdb) c` to continue.
 
 From here, normal gdb commands work, like `break`, `x`, etc.
+
+Note that Hyper-V does not appear to boot the .ISO presently. Other
+virtualization or emulation platforms are recommended.
 
 Installing rflx (WIP - not used yet but in planning phase)
 ----------------------------------------------------------

@@ -8,9 +8,11 @@ with Ada.Unchecked_Conversion;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
-with BufferCache;
+with Devices;
+with FileCache;
 with Filesystem.vfs;
 with Spinlock;
+with Virtmem;
 with x86;
 
 Pragma Elaborate_All (Spinlock);
@@ -870,7 +872,7 @@ is
     --  read-modify-write on AF (Advanced Format) disks. How many of these are
     --  in the wild?
     ---------------------------------------------------------------------------
-    type Device is
+    type ATADrive is
     record
         present             : Boolean;
         config              : ATAConfiguration;
@@ -885,9 +887,10 @@ is
         writeCommand        : Unsigned_8;
     end record;
 
-    subtype ATADriveNumber is Natural range 0..3;
+    --@TODO: consider expanding this as we can handle multiple controllers
+    subtype ATADriveNumber is Devices.MinorNumber range 0..3;
 
-    type ATADevices is array (ATADriveNumber) of Device;
+    type ATADrives is array (ATADriveNumber) of ATADrive;
 
     ---------------------------------------------------------------------------
     -- Array of 4 possible ATA Devices on the default controller. If additional
@@ -895,7 +898,7 @@ is
     --  object to describe its drives. (@TODO - make a separate "Host 
     --  Controller" type and place an ATADevices array as one of it's members)
     ---------------------------------------------------------------------------
-    drives : ATADevices;
+    drives : ATADrives;
 
     -- Indices into the drives array
     PRIMARY_MASTER      : constant ATADriveNumber := 0;
@@ -949,14 +952,15 @@ is
 
     ---------------------------------------------------------------------------
     -- syncBuffer
-    -- Read/Write a buffer to disk.
+    -- Read/Write a buffer to disk. Since our File Cache uses 4k blocks, this
+    -- may cause multiple disk sectors to be read/written.
     ---------------------------------------------------------------------------
-    procedure syncBuffer(buf : in out BufferCache.BufferPtr);
+    procedure syncBuffer(buf : in out FileCache.BufferPtr);
 
     ---------------------------------------------------------------------------
     -- Access a sector on this device, synchronizing the on-disk sectors with
     --  the buffer at address buf
-    -- @param drive - see ATADriveNumber
+    -- @param drive - see ATADrive
     -- @param lba - LBA address to start reading sectors from.
     -- @param numSectors - number of sectors to read.
     -- @param buf - buffer to synchronize with disk
@@ -971,10 +975,10 @@ is
     --  are NOT supported.
     ---------------------------------------------------------------------------
     procedure syncBufferHelper(
-                drive       : in out ata.Device;
-                lba         : in Filesystem.vfs.LBA48;
+                drive       : in out ATADrive;
+                lba         : in Filesystem.VFS.LBA48;
                 numSectors  : in Unsigned_32;
-                buf         : in System.Address;
+                buf         : in Virtmem.PhysAddress;
                 direction   : in ATADirection;
                 status      : out ATAResult);
 

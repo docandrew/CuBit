@@ -4,7 +4,11 @@
 --
 -- Ext2 Filesystem
 -------------------------------------------------------------------------------
+with System.Storage_Elements; use System.Storage_Elements;
+
+with FileCache;
 with Textmode; use Textmode;
+with Util;
 
 package body Filesystem.Ext2 is
 
@@ -56,6 +60,27 @@ package body Filesystem.Ext2 is
     begin
         return BlockAddr((index * inodeSize) / blockSize);
     end getContainingBlock;
+
+    ---------------------------------------------------------------------------
+    --
+    ---------------------------------------------------------------------------
+    procedure readSuperBlock(device : in Devices.DeviceID;
+                             sb     : in out Superblock) with
+        SPARK_Mode => On
+    is
+        buf : FileCache.BufferPtr;
+    begin
+        -- Ext2 superblock is always at byte 1024, so if we read the first
+        -- "block" (first 4 sectors on 512-byte sector disks) of the disk,
+        -- we'll snag it.
+        FileCache.readBuffer(device, 0, buf);
+
+        Util.memCopy(dest    => sb'Address,
+                     src     => To_Address(buf.data),
+                     len     => sb'Size / 8);
+
+        FileCache.releaseBuffer(buf);
+    end readSuperBlock;
 
 
     ---------------------------------------------------------------------------

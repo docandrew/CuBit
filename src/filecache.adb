@@ -6,21 +6,27 @@
 -------------------------------------------------------------------------------
 
 with BlockDevice;
+with BuddyAllocator;
 with Process;
 
-package body BufferCache with
+package body FileCache with
     SPARK_Mode => Off
 is
 
     procedure setup with
-        SPARK_Mode => Off -- use of access
+        SPARK_Mode => Off -- use of Access
     is
+        bufDataAddr : Virtmem.PhysAddress;
     begin
         -- link the buffers together.
         cache.head.prev := cache.head'Access;
         cache.head.next := cache.head'Access;
         
         for b in cache.buffers'Range loop
+            -- Allocate aligned frame for each buffer.
+            BuddyAllocator.alloc(BuddyAllocator.Order(0), bufDataAddr);
+            cache.buffers(b).data   := Virtmem.P2V(bufDataAddr);
+
             cache.buffers(b).next   := cache.head.next;
             cache.buffers(b).prev   := cache.head'Access;
             cache.head.next.prev    := cache.buffers(b)'Access;
@@ -153,4 +159,4 @@ is
         Spinlock.exitCriticalSection(cache.lock);
     end releaseBuffer;
 
-end BufferCache;
+end FileCache;

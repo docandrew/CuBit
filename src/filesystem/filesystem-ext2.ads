@@ -7,19 +7,19 @@
 -------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 
-with time;
-with Filesystem.vfs;
+with Devices;
+with Time;
+with Filesystem.VFS;
 
 package Filesystem.Ext2 with
     SPARK_Mode => On
 is
 
-package vfs renames Filesystem.vfs;
+package VFS renames Filesystem.VFS;
 
 subtype BlockAddr is Unsigned_32;
 subtype InodeAddr is Unsigned_32;   -- 0 = not used
 
-SUPERBLOCK_LBA              : constant vfs.LBA48 := 2;
 ROOT_INODE_NUM              : constant InodeAddr := 2;
 EXT2_SUPER_MAGIC            : constant Unsigned_16 := 16#EF53#;
 EXT2_NAME_LENGTH            : constant := 255;
@@ -529,6 +529,11 @@ function getContainingBlock(index       : in Unsigned_32;
                             blockSize   : in Unsigned_32)
                             return BlockAddr;
 
+-------------------------------------------------------------------------------
+-- Read an Ext2 Superblock from disk
+-------------------------------------------------------------------------------
+procedure readSuperBlock(device : in Devices.DeviceID;
+                         sb     : in out Superblock);
 
 -------------------------------------------------------------------------------
 -- print - Output the superblock details

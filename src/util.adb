@@ -192,10 +192,9 @@ is
 
 
     -- Set all elements of memory to a particular value.
-    procedure memset(
-            addr : System.Address; 
-            val : System.Storage_Elements.Storage_Element;
-            len : Natural) 
+    procedure memset(addr   : System.Address; 
+                     val    : System.Storage_Elements.Storage_Element;
+                     len    : Natural)
         with SPARK_Mode => Off 
     is
         mem : Storage_Array(1..Storage_Offset(len))
@@ -206,11 +205,11 @@ is
         end loop;
     end memset;
 
+
     -- See if all elements are the same between two arrays
-    function memcmp(
-            s1 : System.Address;
-            s2 : System.Address;
-            len : Natural) return Integer
+    function memcmp(s1  : System.Address;
+                    s2  : System.Address;
+                    len : Natural) return Integer
         with SPARK_Mode => Off
     is
         mem1 : Storage_Array(1..Storage_Offset(len))
@@ -236,11 +235,10 @@ is
         return 0;
     end memcmp;
 
-    -- copy all bytes from s2 to s1
-    function memcpy(
-            dest : System.Address;
-            src : System.Address;
-            len : Natural) return System.Address
+
+    function memcpy(dest    : System.Address;
+                    src     : System.Address;
+                    len     : Natural) return System.Address
         with SPARK_Mode => Off
     is
         memd : Storage_Array(1..Storage_Offset(len))
@@ -256,6 +254,16 @@ is
 
         return dest;
     end memcpy;
+
+
+    procedure memCopy(dest  : in System.Address;
+                      src   : in System.Address;
+                      len   : in Natural) with SPARK_Mode => Off
+    is
+        dummy : System.Address;
+    begin
+        dummy := memcpy(dest, src, len);
+    end memCopy;
 
     -- next power of 2
     -- Find the rightmost 1 bit using lzcnt. First, subtract 1 to account

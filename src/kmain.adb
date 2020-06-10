@@ -13,16 +13,17 @@ pragma Warnings (On);
 
 with System.Storage_Elements; use System.Storage_Elements;
 
-with Acpi;
-with Ata;
+with ACPI;
+with ATA;
 with BootAllocator;
 with BuddyAllocator;
 with Config;
 with Cpuid;
+with Devices;
 --with Debug;
 
 with Filesystem.Ext2;
-with Filesystem.vfs;
+with Filesystem.VFS;
 
 with Ioapic;
 with Interrupt;
@@ -51,8 +52,8 @@ pragma Unreferenced(Last_Chance_Handler);
 with Syscall;
 pragma Unreferenced(Syscall);
 
-with BufferCache;
-pragma Unreferenced(BufferCache);
+with FileCache;
+pragma Unreferenced(FileCache);
 
 package body kmain is
 
@@ -426,46 +427,46 @@ begin
     initATA: declare
     begin
         println("Checking ATA disk controller", textmode.LT_BLUE, textmode.BLACK);
-        ata.setupATA;
+        ATA.setupATA;
 
         println("Checking main filesystem", textmode.LT_BLUE, textmode.BLACK);
-        testAta: declare
+        testATA: declare
             package Ext2 renames Filesystem.Ext2;
             use ata;
             
             --sblock : Storage_Array(1..2048); 
-            sblock : Ext2.SuperBlock;
-            ataResult : ata.ATAResult;
+            sblock      : Ext2.SuperBlock;
+            ataResult   : ATA.ATAResult;
+            driveID     : Devices.DeviceID;
         begin
-            println("Attempting to read disk");
-            -- Try and read the ext2 superblock
-            ata.syncBufferHelper(ata.drives(ata.PRIMARY_MASTER),
-                                 Ext2.SUPERBLOCK_LBA, 
-                                 2,
-                                 sblock'Address,
-                                 ata.READ,
-                                 ataResult);
+            println("Attempting to locate main disk");
 
-            if ataResult = ata.SUCCESS then
-                if sblock.signature = Ext2.EXT2_SUPER_MAGIC then
-                    print(" signature: "); println(Unsigned_32(sblock.signature));
-                    println(" Found Ext2 filesystem", 
-                            textmode.LT_GREEN,
-                            textmode.BLACK);
+            driveID.major := Devices.ATA;
+            driveID.reserved := 0;
 
-                    Ext2.print(sblock);
+            -- Try and find a ext2 superblock on each ATA drive present
+            for minor in ATA.drives'Range loop
 
-                    print(" volume name: "); println(sblock.volumeName);
-                    print(" inodes: "); println(sblock.inodeCount);
-                    --Debug.dumpMem(sblock'Address, 2048);
+                if ATA.drives(minor).present and ATA.drives(minor).kind = ATA.PATA then
+                    driveID.minor := minor;
+                    Ext2.readSuperBlock(device  => driveID,
+                                        sb      => sblock);
 
-                    -- get root inode
-                    
+                    if sblock.signature = Ext2.EXT2_SUPER_MAGIC then
+                        print(" signature: ");
+                        println(Unsigned_32(sblock.signature));
+                        println(" Found Ext2 filesystem", 
+                                textmode.LT_GREEN,
+                                textmode.BLACK);
+
+                        Ext2.print(sblock);
+
+                        print(" volume name: "); println(sblock.volumeName);
+                        print(" inodes: "); println(sblock.inodeCount);
+                    end if;
                 end if;
-            else
-                print(" Failed to read: "); println(ataResult'Img);
-            end if;
-        end testAta;
+            end loop;
+        end testATA;
     end initATA;
 
     initSMP: declare

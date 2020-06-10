@@ -6,6 +6,8 @@
 -------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 
+with Devices;
+
 package Filesystem.vfs with
     SPARK_Mode => On
 is

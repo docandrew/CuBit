@@ -3,13 +3,13 @@
 -- Copyright (C) 2020 Jon Andrew
 --
 -- @summary
--- Buffer Cache
+-- File Cache
 --
 -- @description
 -- This package implements the traditional UNIX model of buffer
 -- caches. Buffered blocks can either be BUSY (reserved by a process),
 -- VALID (holding up-to-date data from disk), or DIRTY (modified by a process,
--- needs to be written to disk).
+-- needs to be written to disk). We use a unified buffer cache.
 -------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 
@@ -20,7 +20,7 @@ with Virtmem;
 
 Pragma Elaborate_All (Spinlock);
 
-package BufferCache with
+package FileCache with
     SPARK_Mode => On
 is
     -- When a process attempts to get a block and none are available
@@ -32,15 +32,16 @@ is
     -- When a process attempts to release a block not in the BUSY state
     ReleaseNotOwnedException : exception;
 
-    --@TODO May need to use a generic or discriminant here, 
-    type Block is array (1 .. Virtmem.PAGE_SIZE) of Unsigned_8;
+    -- A block here is just a page-aligned chunk of memory that we'll sync
+    -- with an underlying file.
+    --type Block is array (1 .. Virtmem.PAGE_SIZE) of Unsigned_8;
+    --type Block is new Storage_Array(1 .. Storage_Offset(Virtmem.PAGE_SIZE));
 
     type Buffer;
     type BufferPtr is access all Buffer;
   
     ---------------------------------------------------------------------------
-    -- In-memory record for a disk block. Note that if this is a file system
-    -- block, data should be an integer multiple of the disk sector size.
+    -- In-memory record for a disk/file block.
     --
     -- @field syncNext points to the next buffer that should be synced to/from
     --  the underlying block device.
@@ -57,8 +58,10 @@ is
         blockNum    : Unsigned_64;
         lock        : spinlock.Spinlock;
         refCount    : Natural;
-        
-        data        : Block;
+
+        -- Address of the block in linear memory. Necessary since we'll want to
+        -- pass the physical address to disk drivers for DMA ops.
+        data        : Virtmem.VirtAddress;
         
         prev        : BufferPtr;
         next        : BufferPtr;
@@ -73,7 +76,7 @@ is
     
     -- Each block device gets one of these. Maintain the static array,
     -- LRU list of pointers to the blocks and a mutex.
-    type BufferCache is record
+    type FileCache is record
         lock        : Spinlock.spinlock;
         buffers     : BufferArray;
 
@@ -120,6 +123,6 @@ private
     -- Keep a static array of BlockBuffer for now.
     --@TODO allocate these at runtime from Slab Allocator, maybe keep one per
     -- block device.
-    cache : BufferCache;
+    cache : FileCache;
 
-end BufferCache;
+end FileCache;

@@ -13,7 +13,7 @@ is
     end registerBlockDriver;
 
 
-    procedure syncBuffer(buf : in out BufferCache.BufferPtr) with
+    procedure syncBuffer(buf : in out FileCache.BufferPtr) with
         SPARK_Mode => On
     is
     begin

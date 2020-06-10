@@ -11,7 +11,7 @@ package body BuddyAllocator
 is
 
     function getBuddy(ord : in Order;
-                      addr : Virtmem.PhysAddress) 
+                      addr : Virtmem.PhysAddress)
         return Virtmem.PhysAddress with
         SPARK_Mode => On
     is

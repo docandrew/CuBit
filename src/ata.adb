@@ -5,7 +5,6 @@
 -- ATA/IDE Disk Controller Driver
 -------------------------------------------------------------------------------
 with BlockDevice;
-with Devices;
 with PCI;
 with Textmode; use Textmode;
 with Time;
@@ -113,7 +112,7 @@ is
     -- @TODO - maybe put this and checksumACPI in util since they do the same
     --  thing.
     --------------------------------------------------------------------------
-    function checksumATAID(drive : in out ata.Device)
+    function checksumATAID(drive : in out ATADrive)
         return Boolean with SPARK_Mode => Off  -- Storage_Array
     is
         tableBytes : Storage_Array(1..Storage_Offset(512))
@@ -128,7 +127,7 @@ is
     end checksumATAID;
 
     -- Read 128 dwords (512 bytes for full drive identification)
-    procedure readID(basePort : in x86.IOPort; drive : in out device) with
+    procedure readID(basePort : in x86.IOPort; drive : in out ATADrive) with
         SPARK_Mode => Off   -- 'Address
     is
         use x86;
@@ -140,7 +139,7 @@ is
     -- waitReady waits for a drive to be ready for reads/writes
     -- @return True if drive is OK, False if an error occured.
     ---------------------------------------------------------------------------
-    function waitReady(drive : in ata.Device) return Boolean with
+    function waitReady(drive : in ATADrive) return Boolean with
         SPARK_Mode => On
     is
         basePort : constant x86.IOPort := drive.channel.ioBase;
@@ -170,7 +169,7 @@ is
     -- waitForCommandToFinish is used to poll for the results of a drive
     --  operation.
     ---------------------------------------------------------------------------
-    function waitForCommandToFinish(drive : in ata.Device) return Boolean with
+    function waitForCommandToFinish(drive : in ATADrive) return Boolean with
         SPARK_Mode => On
     is
         ctrlBase : constant x86.IOPort := drive.channel.ctrlBase;
@@ -187,7 +186,8 @@ is
         return waitReady(drive);
     end waitForCommandToFinish;
 
-    procedure identify(drive : in out Device) with
+
+    procedure identify(drive : in out ATADrive) with
         SPARK_Mode => On
     is
         
@@ -295,7 +295,7 @@ is
     --  This determines sector size and drive capacity, and prints out
     --  information about the drive.
     ---------------------------------------------------------------------------
-    procedure finishDriveIdentification(drive : in out ata.Device) with
+    procedure finishDriveIdentification(drive : in out ATADrive) with
         SPARK_Mode => On
     is
         physicalSectorSizeMultiplier : Unsigned_16 := 1;
@@ -384,7 +384,7 @@ is
             println;
 
             println("Registering ATA Block Driver");
-            BlockDevice.registerBlockDriver(Devices.IDE, ATA.syncBuffer'Access);
+            BlockDevice.registerBlockDriver(Devices.ATA, ATA.syncBuffer'Access);
 
             config := pci.getDeviceConfiguration(bus, slot, func);
 
@@ -498,25 +498,28 @@ is
 
     -- If buffer is dirty, write it to disk, set valid once complete.
     -- Otherwise, if it's not valid, then read it.
-    procedure syncBuffer(buf : in out BufferCache.BufferPtr) with SPARK_Mode => On
+    procedure syncBuffer(buf : in out FileCache.BufferPtr) with SPARK_Mode => On
     is
         package VFS renames Filesystem.VFS;
         --@TODO: when we get more than one IDE controller and support
         -- partitions, we'll need to identify those via minor number as well.
         -- For now, just assume minor = drive
-        drive   : ATADriveNumber := ATADriveNumber(buf.device.minor);
-        lba     : VFS.LBA48 := VFS.LBA48(buf.blockNum);
-        dir     : ATADirection;
+        drive   : constant ATADriveNumber := ATADriveNumber(buf.device.minor);
+        lba     : constant VFS.LBA48 := VFS.LBA48(buf.blockNum);
+        --dir     : constant ATADirection;
         res     : ATAResult;
+
+        -- We'll read in a page-sized chunk at a time.
+        sectors : constant Unsigned_32 := Virtmem.PAGE_SIZE / drives(drive).physicalSectorSize;
     begin
         --enterCriticalSection(drives(drive).lock);
         --@TODO: error checking for valid, dirty blocks, etc.
         if buf.dirty then
-            syncBufferHelper(drives(drive), lba, 1, buf.data'Address, WRITE, res);
+            syncBufferHelper(drives(drive), lba, sectors, Virtmem.V2P(buf.data), WRITE, res);
             buf.dirty := False;
             buf.valid := True;
         elsif not buf.valid then
-            syncBufferHelper(drives(drive), lba, 1, buf.data'Address, READ, res);
+            syncBufferHelper(drives(drive), lba, sectors, Virtmem.V2P(buf.data), READ, res);
             buf.valid := True;
         end if;
 
@@ -529,21 +532,21 @@ is
 
 
     procedure syncBufferHelper(
-                drive       : in out ATA.Device;
+                drive       : in out ATADrive;
                 lba         : in Filesystem.VFS.LBA48;
                 numSectors  : in Unsigned_32;
-                buf         : in System.Address;
+                buf         : in Virtmem.PhysAddress;
                 direction   : in ATADirection;
                 status      : out ATAResult)
     with
         SPARK_Mode => On
     is
-        SECTOR_SIZE_WORDS : constant Unsigned_32 := 256;
-        SECTOR_SIZE_BYTES : constant Unsigned_32 := 512;
+        -- SECTOR_SIZE_WORDS : constant Unsigned_32 := 256;
+        -- SECTOR_SIZE_BYTES : constant Unsigned_32 := 512;
 
         waitResult  : Boolean;
         selection   : Unsigned_8 := SELECT_LBA;
-        baseAddr    : constant Integer_Address := To_Integer(buf);
+        baseAddr    : constant Integer_Address := buf;
         --ataCmd      : Unsigned_8 := getATACmd(drive, direction);
         use x86;
     begin
@@ -605,22 +608,22 @@ is
         end if;
 
         if direction = READ then
-            for i in 0..numSectors-1 loop
+            for i in 0 .. numSectors - 1 loop
                 -- make sure drive didn't have an error, read an entire sector
                 --  one dword at a time.
-                x86.ins16(drive.channel.ioBase + OFFSET_DATA, 
-                        buf + Storage_Offset(i * SECTOR_SIZE_BYTES),
-                        SECTOR_SIZE_WORDS);
+                x86.ins16(port  => drive.channel.ioBase + OFFSET_DATA, 
+                          addr  => To_Address(buf + Integer_Address(i * drive.physicalSectorSize)),
+                          count => drive.physicalSectorSize / 2);
 
                 -- print(" reading sector "); print(Unsigned_32(lba) + i - 1);
                 -- print(" to ");
                 --println(addr + Storage_Offset(i * SECTOR_SIZE_BYTES));
             end loop;
         else
-            for i in 0..numSectors-1 loop
-                x86.outs16(drive.channel.ioBase + OFFSET_DATA,
-                        buf + Storage_Offset(i * SECTOR_SIZE_BYTES),
-                        SECTOR_SIZE_WORDS);
+            for i in 0 .. numSectors - 1 loop
+                x86.outs16(port     => drive.channel.ioBase + OFFSET_DATA,
+                           addr     => To_Address(buf + Integer_Address(i * drive.physicalSectorSize)),
+                           count    => drive.physicalSectorSize / 2);
             end loop;
 
             x86.out8(drive.channel.ioBase + OFFSET_CMD, CMD_FLUSH_CACHE_EXT);

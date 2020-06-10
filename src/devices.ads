@@ -18,7 +18,7 @@ is
 
     type MajorNumber is (
         NO_MAJOR,
-        IDE
+        ATA
     );
 
     type MinorNumber is new Unsigned_8;
