@@ -16,7 +16,7 @@ Build Instructions
 Requirements
 ------------
 * yasm assembler
-* GNAT CE 2019 with `gprbuild`, `gnat`, etc. in your `$PATH`
+* GNAT CE 2020 with `gprbuild`, `gnat`, etc. in your `$PATH`
 * gcc/ld/GNU make/GNU binutils
 
 To create bootable .ISO, you'll also need:
@@ -26,7 +26,7 @@ To create bootable .ISO, you'll also need:
 
 Building
 ========
-Dependencies: You'll need the GNAT 2019 Compiler, and if you want to build
+Dependencies: You'll need the GNAT 2020 Compiler, and if you want to build
 the live-CD, you'll need the *xorriso* and *grub-mkrescue* tools, and possibly
 *grub-pc-bin* depending on which emulator/virtualization environment you
 are using. These are
