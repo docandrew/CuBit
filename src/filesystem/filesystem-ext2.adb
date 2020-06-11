@@ -6,6 +6,7 @@
 -------------------------------------------------------------------------------
 with System.Storage_Elements; use System.Storage_Elements;
 
+with Debug;
 with FileCache;
 with Textmode; use Textmode;
 with Util;
@@ -74,9 +75,12 @@ package body Filesystem.Ext2 is
         -- "block" (first 4 sectors on 512-byte sector disks) of the disk,
         -- we'll snag it.
         FileCache.readBuffer(device, 0, buf);
+        
+        -- println("Read buffer: ");
+        -- Debug.dumpMem(To_Address(buf.data), 4096);
 
         Util.memCopy(dest    => sb'Address,
-                     src     => To_Address(buf.data),
+                     src     => To_Address(buf.data + 1024),
                      len     => sb'Size / 8);
 
         FileCache.releaseBuffer(buf);

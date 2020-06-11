@@ -8,6 +8,7 @@
 with BlockDevice;
 with BuddyAllocator;
 with Process;
+with Textmode; use Textmode;
 
 package body FileCache with
     SPARK_Mode => Off
@@ -110,9 +111,6 @@ is
         getBuffer(device, blockNum, retBuffer);
         
         if not retBuffer.valid then
-            --@TODO: find a place to determine, based on the device ID,
-            -- which underlying syncBuffer function (ata, atapi, etc.) to
-            -- call. We'll want a device registration package or something.
             BlockDevice.syncBuffer(retBuffer);
         end if;
     end readBuffer;

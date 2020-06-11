@@ -514,6 +514,10 @@ is
     begin
         --enterCriticalSection(drives(drive).lock);
         --@TODO: error checking for valid, dirty blocks, etc.
+        -- println("syncBuffer: ");
+        -- print("lba: "); println(lba);
+        -- print("num sectors: "); println(sectors);
+
         if buf.dirty then
             syncBufferHelper(drives(drive), lba, sectors, buf.data, WRITE, res);
             buf.dirty := False;
@@ -589,7 +593,7 @@ is
         x86.out8(drive.channel.ioBase + OFFSET_LBA_MID, util.getByte(lba, 1));
         x86.out8(drive.channel.ioBase + OFFSET_LBA_HI, util.getByte(lba, 2));
 
-        -- Send the command
+        -- Send the command for the type of drive transfer to perform
         if direction = READ then
             x86.out8(drive.channel.ioBase + OFFSET_CMD, drive.readCommand);
             --print(" sending command: "); println(drive.readCommand);
@@ -599,28 +603,34 @@ is
         end if;
 
 
-        -- PIO read/write
-        waitResult := waitForCommandToFinish(drive);
-
-        if not waitResult then
-            status := DISK_ERROR;
-            return;
-        end if;
-
         if direction = READ then
             for i in 0 .. numSectors - 1 loop
+                waitResult := waitForCommandToFinish(drive);
+
+                if not waitResult then
+                    status := DISK_ERROR;
+                    return;
+                end if;
+
                 -- make sure drive didn't have an error, read an entire sector
                 --  one dword at a time.
                 x86.ins16(port  => drive.channel.ioBase + OFFSET_DATA, 
                           addr  => To_Address(buf + Integer_Address(i * drive.physicalSectorSize)),
                           count => drive.physicalSectorSize / 2);
 
-                -- print(" reading sector "); print(Unsigned_32(lba) + i - 1);
+                -- print(" reading sector "); print(Unsigned_32(lba) + i);
                 -- print(" to ");
-                --println(addr + Storage_Offset(i * SECTOR_SIZE_BYTES));
+                -- println(To_Address(buf + Integer_Address(i * drive.physicalSectorSize)));
             end loop;
         else
             for i in 0 .. numSectors - 1 loop
+                waitResult := waitForCommandToFinish(drive);
+
+                if not waitResult then
+                    status := DISK_ERROR;
+                    return;
+                end if;
+
                 x86.outs16(port     => drive.channel.ioBase + OFFSET_DATA,
                            addr     => To_Address(buf + Integer_Address(i * drive.physicalSectorSize)),
                            count    => drive.physicalSectorSize / 2);
@@ -629,7 +639,6 @@ is
             x86.out8(drive.channel.ioBase + OFFSET_CMD, CMD_FLUSH_CACHE_EXT);
             waitResult := waitForCommandToFinish(drive);
         end if;
-
 
         if not waitResult then
             status := DISK_ERROR;

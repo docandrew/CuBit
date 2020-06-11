@@ -439,7 +439,7 @@ begin
         println("Checking main filesystem", textmode.LT_BLUE, textmode.BLACK);
         testATA: declare
             package Ext2 renames Filesystem.Ext2;
-            use ata;
+            use ATA;
             
             --sblock : Storage_Array(1..2048); 
             sblock      : Ext2.SuperBlock;
@@ -455,9 +455,17 @@ begin
             for minor in ATA.drives'Range loop
 
                 if ATA.drives(minor).present and ATA.drives(minor).kind = ATA.PATA then
+                    print("Checking PATA disk "); printdln(Unsigned_32(minor));
+
                     driveID.minor := minor;
                     Ext2.readSuperBlock(device  => driveID,
                                         sb      => sblock);
+                    -- ATA.syncBufferHelper( ATA.drives(minor),
+                    --                       2,
+                    --                       2,
+                    --                       To_Integer(sblock'Address),
+                    --                       ATA.READ,
+                    --                       ataResult);
 
                     if sblock.signature = Ext2.EXT2_SUPER_MAGIC then
                         print(" signature: ");
