@@ -495,7 +495,7 @@ You can create an Ext2 disk image and read it in CuBit with these commands,
 shown here for a 128MB disk:
 
     dd if=/dev/zero of=vhd.img bs=1M count=128
-    mkfs -t ext2 vhd.img
+    mkfs -t ext2 -b 4096 vhd.img
     mkdir vhd
     mount -t auto -o loop vhd.img vhd
 
