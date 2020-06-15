@@ -500,7 +500,8 @@ shown here for a 128MB disk:
     mount -t auto -o loop vhd.img vhd
 
 Now you have an empty filesystem in `vhd/` that you can add files to, mess
-around with permissions, etc. When you're done, unmount the image.
+around with permissions, etc. When you're done, unmount the image. Note that
+CuBit's Ext2 implementation currently supports only 4K block sizes.
 
     umount vhd
 
