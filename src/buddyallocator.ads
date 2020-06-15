@@ -128,6 +128,9 @@ is
         Depends => (blockSize'Result => ord),
         Post    => blockSize'Result > Virtmem.FRAME_SIZE;
 
+    function getOrder(allocSize : in Unsigned_64) return Order with
+        Depends => (getOrder'Result => allocSize);
+
     ---------------------------------------------------------------------------
     -- isValidBlock - given an address and an order, return True if this
     --  address represents a potentially valid block starting address, False

@@ -282,4 +282,24 @@ is
         
         return Shift_Left(Unsigned_64(1), Natural(64 - leadingZeroes));
     end nextPow2;
-end util;
+
+
+    function roundToNearest(num : T; multiple : T) return T with
+        SPARK_Mode => On
+    is
+        remainder : T;
+    begin
+        if multiple = 0 then
+            return num;
+        end if;
+
+        remainder := num rem multiple;
+
+        if remainder = 0 then
+            return num;
+        end if;
+
+        return num + multiple - remainder;
+    end roundToNearest;
+
+end Util;

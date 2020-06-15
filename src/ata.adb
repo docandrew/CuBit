@@ -504,13 +504,15 @@ is
         --@TODO: when we get more than one IDE controller and support
         -- partitions, we'll need to identify those via minor number as well.
         -- For now, just assume minor = drive
+        
         drive   : constant ATADriveNumber := ATADriveNumber(buf.device.minor);
-        lba     : constant VFS.LBA48 := VFS.LBA48(buf.blockNum);
+
+        --@TODO: generalize this. Assume disk block = page size for now.
+        -- We'll read in a page-sized chunk at a time.
+        sectorsPerBlock : constant Unsigned_32 := Virtmem.PAGE_SIZE / drives(drive).physicalSectorSize;
+        lba     : constant VFS.LBA48 := VFS.LBA48(buf.blockNum * Unsigned_64(sectorsPerBlock));
         --dir     : constant ATADirection;
         res     : ATAResult;
-
-        -- We'll read in a page-sized chunk at a time.
-        sectors : constant Unsigned_32 := Virtmem.PAGE_SIZE / drives(drive).physicalSectorSize;
     begin
         --enterCriticalSection(drives(drive).lock);
         --@TODO: error checking for valid, dirty blocks, etc.
@@ -519,11 +521,11 @@ is
         -- print("num sectors: "); println(sectors);
 
         if buf.dirty then
-            syncBufferHelper(drives(drive), lba, sectors, buf.data, WRITE, res);
+            syncBufferHelper(drives(drive), lba, sectorsPerBlock, buf.data, WRITE, res);
             buf.dirty := False;
             buf.valid := True;
         elsif not buf.valid then
-            syncBufferHelper(drives(drive), lba, sectors, buf.data, READ, res);
+            syncBufferHelper(drives(drive), lba, sectorsPerBlock, buf.data, READ, res);
             buf.valid := True;
         end if;
 
@@ -618,9 +620,9 @@ is
                           addr  => To_Address(buf + Integer_Address(i * drive.physicalSectorSize)),
                           count => drive.physicalSectorSize / 2);
 
-                -- print(" reading sector "); print(Unsigned_32(lba) + i);
-                -- print(" to ");
-                -- println(To_Address(buf + Integer_Address(i * drive.physicalSectorSize)));
+                --print(" reading sector "); print(Unsigned_32(lba) + i);
+                --print(" to ");
+                --println(To_Address(buf + Integer_Address(i * drive.physicalSectorSize)));
             end loop;
         else
             for i in 0 .. numSectors - 1 loop

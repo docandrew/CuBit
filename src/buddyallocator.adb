@@ -5,6 +5,7 @@
 -- @summary Physical Memory Allocator
 -------------------------------------------------------------------------------
 with Textmode; use Textmode;
+with Util;
 
 package body BuddyAllocator
     with SPARK_Mode => On
@@ -41,6 +42,7 @@ is
         return addr and roundDownMask;
 
     end blockStart;
+
 
     function blockEnd(ord : in Order; addr : in Virtmem.PhysAddress)
         return Integer_Address
@@ -205,6 +207,18 @@ is
         return Shift_Left(Unsigned_64(1), Natural(Virtmem.FRAME_SHIFT + ord));
     end blockSize;
 
+
+    function getOrder(allocSize : in Unsigned_64) return Order with
+        SPARK_Mode => On
+    is
+        rounded : constant Unsigned_64 := Util.nextPow2(allocSize);
+    begin
+        if rounded <= 4096 then
+            return 0;
+        else
+            return Order(Shift_Right(rounded, Natural(Virtmem.FRAME_SHIFT)) - 1);
+        end if;
+    end getOrder;
 
     ---------------------------------------------------------------------------
     -- isValidBlock

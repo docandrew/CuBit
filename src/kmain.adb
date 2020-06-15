@@ -441,10 +441,13 @@ begin
             package Ext2 renames Filesystem.Ext2;
             use ATA;
             
-            --sblock : Storage_Array(1..2048); 
             sblock      : Ext2.SuperBlock;
             ataResult   : ATA.ATAResult;
             driveID     : Devices.DeviceID;
+            bgdtAddr    : System.Address;
+            bgdtOrder   : BuddyAllocator.Order;
+            bgdtLength  : Natural;
+            rootInode   : Ext2.Inode;
         begin
             println("Attempting to locate main disk");
 
@@ -460,12 +463,6 @@ begin
                     driveID.minor := minor;
                     Ext2.readSuperBlock(device  => driveID,
                                         sb      => sblock);
-                    -- ATA.syncBufferHelper( ATA.drives(minor),
-                    --                       2,
-                    --                       2,
-                    --                       To_Integer(sblock'Address),
-                    --                       ATA.READ,
-                    --                       ataResult);
 
                     if sblock.signature = Ext2.EXT2_SUPER_MAGIC then
                         print(" signature: ");
@@ -474,10 +471,32 @@ begin
                                 textmode.LT_GREEN,
                                 textmode.BLACK);
 
+                        --@TODO Sanity-checking to make sure CuBit supports this
+                        -- filesystem's settings. We're picky for now about the
+                        -- Ext2 parameters used.
                         Ext2.print(sblock);
 
-                        print(" volume name: "); println(sblock.volumeName);
-                        print(" inodes: "); println(sblock.inodeCount);
+                        -- Read the block group descriptors.
+                        Ext2.readBlockGroupDescriptors(device       => driveID,
+                                                       sb           => sblock,
+                                                       bgdt         => bgdtAddr,
+                                                       bgdtOrder    => bgdtOrder,
+                                                       bgdtLength   => bgdtLength);
+
+                        checkBGDT: declare
+                            bgdt : Ext2.BlockGroupDescriptorTable(0..bgdtLength) with
+                                Import, Address => bgdtAddr;
+                        begin
+                            print("Free blocks: "); println(bgdt(0).numFreeBlocks);
+                            print("Free inodes: "); println(bgdt(0).numFreeInodes);
+                            print("Num folders: "); println(bgdt(0).numDirectories);
+                        end checkBGDT;
+
+                        -- Read /
+                        -- Ext2.readInode(device   => driveID,
+                        --                sb       => sblock,
+                        --                inodeNum => 2,
+                        --                outInode => rootInode);
                     end if;
                 end if;
             end loop;

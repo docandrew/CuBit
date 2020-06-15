@@ -193,4 +193,11 @@ is
     ---------------------------------------------------------------------------
     function nextPow2(n : in Unsigned_64) return Unsigned_64;
 
+    ---------------------------------------------------------------------------
+    -- roundToNearest - round to the nearest multiple 
+    ---------------------------------------------------------------------------
+    generic
+       type T is mod <>;
+    function roundToNearest(num : T; multiple : T) return T;
+
 end Util;
