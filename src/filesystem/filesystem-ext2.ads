@@ -272,8 +272,8 @@ type BlockGroupDescriptorFiller is array (Natural range 0..13) of Unsigned_8
 -------------------------------------------------------------------------------
 type BlockGroupDescriptor is
 record
-    blockUsageBitmapAddr            : BlockAddr;
-    inodeUsageBitmapAddr            : BlockAddr;
+    blockBitmapAddr                 : BlockAddr;
+    inodeBitmapAddr                 : BlockAddr;
     inodeTableAddr                  : BlockAddr;
     numFreeBlocks                   : Unsigned_16;
     numFreeInodes                   : Unsigned_16;
@@ -283,8 +283,8 @@ end record with Size => 256;
 
 for BlockGroupDescriptor use
 record
-    blockUsageBitmapAddr            at 0  range 0..31;
-    inodeUsageBitmapAddr            at 4  range 0..31;
+    blockBitmapAddr                 at 0  range 0..31;
+    inodeBitmapAddr                 at 4  range 0..31;
     inodeTableAddr                  at 8  range 0..31;
     numFreeBlocks                   at 12 range 0..15;
     numFreeInodes                   at 14 range 0..15;
@@ -292,7 +292,7 @@ record
     unused18                        at 18 range 0..111;
 end record;
 
-type BlockGroupDescriptorTable is array (Natural range <>) of BlockGroupDescriptor;
+type BlockGroupDescriptorTable is array (BlockGroupNumber range <>) of BlockGroupDescriptor;
 
 -------------------------------------------------------------------------------
 -- Inode data structures and definitions
@@ -519,15 +519,15 @@ end record;
 function blockSize(sb : in Superblock) return Unsigned_32;
 
 -------------------------------------------------------------------------------
--- getBlockGroup - given an inode address and the number of inodes per block
---  group, this function returns the block group containing that inode.
+-- getBlockGroup - given an inode address and superblock, return the block
+--  group containing that inode.
 -------------------------------------------------------------------------------
 function getBlockGroup(inodeNum : in InodeAddr;
                        sb       : in Superblock) return BlockGroupNumber;
 
 -------------------------------------------------------------------------------
--- getInodeIndex - given an inode address and block size, this function
---  returns the index into the block group's inode table.
+-- getInodeIndex - given an inode address and superblock, return the index into
+--  the block group's inode table.
 -------------------------------------------------------------------------------
 function getInodeIndex(inodeNum : in InodeAddr;
                        sb       : in Superblock) return Unsigned_32;
@@ -562,13 +562,14 @@ procedure readBlockGroupDescriptors(device      : in Devices.DeviceID;
                                     sb          : in SuperBlock;
                                     bgdt        : out System.Address;
                                     bgdtOrder   : out BuddyAllocator.Order;
-                                    bgdtLength  : out Natural);
+                                    bgdtLength  : out BlockGroupNumber);
 
 -------------------------------------------------------------------------------
 -- readInode
 -------------------------------------------------------------------------------
 procedure readInode(device      : in Devices.DeviceID;
                     sb          : in Superblock;
+                    bgdt        : in out BlockGroupDescriptorTable;
                     inodeNum    : in InodeAddr;
                     outInode    : in out Inode);
 
@@ -576,6 +577,5 @@ procedure readInode(device      : in Devices.DeviceID;
 -- print - Output the superblock details
 -------------------------------------------------------------------------------
 procedure print(sb : in Superblock);
-
 
 end Filesystem.Ext2;

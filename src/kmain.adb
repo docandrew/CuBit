@@ -446,7 +446,7 @@ begin
             driveID     : Devices.DeviceID;
             bgdtAddr    : System.Address;
             bgdtOrder   : BuddyAllocator.Order;
-            bgdtLength  : Natural;
+            bgdtLength  : Ext2.BlockGroupNumber;
             rootInode   : Ext2.Inode;
         begin
             println("Attempting to locate main disk");
@@ -487,9 +487,12 @@ begin
                             bgdt : Ext2.BlockGroupDescriptorTable(0..bgdtLength) with
                                 Import, Address => bgdtAddr;
                         begin
-                            print("Free blocks: "); println(bgdt(0).numFreeBlocks);
-                            print("Free inodes: "); println(bgdt(0).numFreeInodes);
-                            print("Num folders: "); println(bgdt(0).numDirectories);
+                            Ext2.readInode(device    => driveID,
+                                           sb        => sblock,
+                                           bgdt      => bgdt,
+                                           inodeNum  => 2,
+                                           outInode  => rootInode);
+
                         end checkBGDT;
 
                         -- Read /

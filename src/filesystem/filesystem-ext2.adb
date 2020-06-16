@@ -62,6 +62,21 @@ package body Filesystem.Ext2 is
         return BlockAddr((index * Unsigned_32(sb.inodeSize)) / blockSize(sb));
     end getContainingBlock;
 
+    ---------------------------------------------------------------------------
+    -- getInodeOffset - given an inode number and a superblock, where inside the
+    --  block (containing the inode table for that block group) can we find the
+    --  inode itself?
+    ---------------------------------------------------------------------------
+    function getInodeOffset(inodeNum    : in InodeAddr;
+                            sb          : in Superblock) return Unsigned_32
+    with
+        SPARK_Mode => On
+    is
+        inodesPerBlock : constant Unsigned_32 := blockSize(sb) / (Inode'Size / 8);
+    begin
+        return ((inodeNum - 1) mod inodesPerBlock) * (Inode'Size / 8);
+    end getInodeOffset;
+
 
     procedure readSuperBlock(device : in Devices.DeviceID;
                              sb     : in out Superblock) with
@@ -91,14 +106,14 @@ package body Filesystem.Ext2 is
                                         sb          : in SuperBlock;
                                         bgdt        : out System.Address;
                                         bgdtOrder   : out BuddyAllocator.Order;
-                                        bgdtLength  : out Natural) with
+                                        bgdtLength  : out BlockGroupNumber) with
         SPARK_Mode => On
     is
         bgdtSize        : Unsigned_64;
         bgdtPhys        : Virtmem.PhysAddress;
 
         -- Start and end disk blocks holding the BGDT
-        startDiskBlock  : Unsigned_64 := Unsigned_64(sb.superblockNumber + 1);
+        startDiskBlock  : constant Unsigned_64 := Unsigned_64(sb.superblockNumber + 1);
         numDiskBlocks   : Unsigned_64;
         endDiskBlock    : Unsigned_64;
 
@@ -111,7 +126,7 @@ package body Filesystem.Ext2 is
         -- Block Group descriptors can occupy more than one block's worth of
         -- space on disk. We'll dynamically allocate the memory required for
         -- them here.
-        bgdtLength := Natural(sb.blockCount / sb.blocksPerBlockGroup);
+        bgdtLength := sb.blockCount / sb.blocksPerBlockGroup;
         --print("Number of Block Groups: "); println(bgdtLength);
 
         bgdtSize := Unsigned_64(bgdtLength * (BlockGroupDescriptor'Size / 8));
@@ -121,7 +136,7 @@ package body Filesystem.Ext2 is
         print("Num disk blocks holding BGDT: "); println(numDiskBlocks);
 
         -- Each 4K page can hold 128 block group descriptors. This is wasteful
-        -- but must suffice until we get a more general allocator
+        -- but must suffice until we get a more general allocator.
         bgdtOrder := BuddyAllocator.getOrder(bgdtSize);
         --print("Order of allocation: "); println(Unsigned_32(bgdtOrder));
 
@@ -157,51 +172,90 @@ package body Filesystem.Ext2 is
 
     end readBlockGroupDescriptors;
 
+    ----------------------------------------------------------------------------
+    -- testRoot - given numbers a, b, return True if a is a power of b, false
+    --  otherwise.
+    ----------------------------------------------------------------------------
+    function testRoot(a : Unsigned_32; b : Unsigned_32) return Boolean with
+        SPARK_Mode => On
+    is
+        num : Unsigned_32 := b;
+    begin
+        while a > num loop
+            num := num * b;
+        end loop;
+
+        return (num = a);
+    end testRoot;
+
+    ----------------------------------------------------------------------------
+    -- hasSuperblock - given a block group number, and assuming sparse
+    --  superblocks are in use, returns True if this block group will contain
+    --  the superblock or a superblock copy as the first block in the group.
+    --  When sparse superblocks are turned on, shadow copies of the superblock
+    --  are kept in block groups 0, 1 and powers of 3, 5 and 7.
+    ----------------------------------------------------------------------------
+    function hasSparseSuperblock(blockGroup : in BlockGroupNumber)
+        return Boolean with SPARK_Mode => On
+    is
+    begin
+        if blockGroup <= 1 then
+            return True;
+        end if;
+        
+        return (testRoot(blockGroup, 3) or
+                testRoot(blockGroup, 5) or
+                testRoot(blockGroup, 7));
+        
+    end hasSparseSuperblock;
+
 
     procedure readInode(device      : in Devices.DeviceID;
                         sb          : in Superblock;
+                        bgdt        : in out BlockGroupDescriptorTable;
                         inodeNum    : in InodeAddr;
                         outInode    : in out Inode)
     is
-        numBlockGroups      : Unsigned_32;
-        BGDTTableSize       : Unsigned_32;
-        inodeBlockGroup     : BlockGroupNumber;
-        
-        -- Block containing BGDT
-        BGDTBlock           : BlockAddr;
-        -- Index within that block.
-        BGDTOffset          : Unsigned_16;
+        -- block group the inode is in
+        bg      : constant BlockGroupNumber     := getBlockGroup(inodeNum, sb);
+
+        -- what index within the inode table for that block group?
+        index   : constant Unsigned_32          := getInodeIndex(inodeNum, sb);
+
+        -- starting block of the inode table?
+        table   : constant Unsigned_32          := bgdt(bg).inodeTableAddr;
+
+        -- what FS block holds the index?
+        block   : constant BlockAddr            := getContainingBlock(index, sb);
+
+        -- within that block, where is the inode itself?
+        offset  : constant Unsigned_32          := getInodeOffset(inodeNum, sb);
+
+        buf : FileCache.BufferPtr;
     begin
+                            
+        print("Reading inode #    "); printdln(inodeNum);
+        print("Inode Block Group: "); printdln(bg);
+        print("Inode Table Index: "); printdln(index);
+        print("Inode table:  "); println(table);
+        print("Block w/ Inode:    "); println(block);
+        print("Offset w/in Block: "); println(offset);
 
-        print("Reading inode #"); printdln(inodeNum);
+        print("Free blocks:  "); println(bgdt(bg).numFreeBlocks);
+        print("Free inodes:  "); println(bgdt(bg).numFreeInodes);
+        print("Num folders:  "); println(bgdt(bg).numDirectories);
+        print("Block Bitmap: "); println(bgdt(bg).blockBitmapAddr);
 
-        numBlockGroups := sb.blockCount / sb.blocksPerBlockGroup;
-        print("Number of Block Groups: "); printdln(numBlockGroups);
+        -- Read the block with our inode, copy only the data we need.
+        FileCache.readBuffer(device, Unsigned_64(table + block), buf);
+        
+        Util.memCopy(dest   => outInode'Address,
+                     src    => To_Address(buf.data + Integer_Address(offset)),
+                     len    => Inode'Size / 8);
 
-        -- The BlockGroupDescriptors can occupy several blocks, so we need to
-        -- see which one we want to read here.
-        BGDTTableSize := numBlockGroups * (BlockGroupDescriptor'Size / 8);
-        print("BGDT Table Size: "); printdln(BGDTTableSize);
+        FileCache.releaseBuffer(buf);
 
-        inodeBlockGroup := getBlockGroup(inodeNum, sb);
-        print("Inode Block Group: "); printdln(inodeBlockGroup);
-
-        if sb.readOnlyFeatures.sparseSuperblock then
-            -- If the block group is 0, 1 or power of 3,5,7 then it will contain
-            -- a backup of the superblock and block group descriptor table.
-            println("Sparse Superblocks in use");
-        else
-            -- Every block group contains the superblock and block group
-            -- descriptor table.
-            null;
-        end if;
-
-        --FileCache.readBuffer(device, , buf);
-
-        -- and the block group descriptor table
-        -- Util.memCopy(dest   => bgdt'Address,
-        --              src    => To_Address(buf.data + 1024 + SuperBlock'Size / 8),
-        --              len    => bgdt'Size / 8);
+        Debug.dumpMem(outInode'Address, 128);
     end readInode;
 
 
