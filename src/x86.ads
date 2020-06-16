@@ -632,6 +632,6 @@ is
     -- Can be used to get the chip & core a process is running on.
     ---------------------------------------------------------------------------
     function rdtscp(chip : out Unsigned_32; core : out Unsigned_32)
-        return Unsigned_64 with Inline;
+        return Unsigned_64 with Inline, SPARK_Mode => Off;
 
 end x86;

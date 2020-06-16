@@ -1,27 +1,23 @@
--------------------------------------------------------------------------------
--- CuBit OS
--- Copyright (C) 2020 Jon Andrew
---
--- @summary Block Device buffer cache
--------------------------------------------------------------------------------
-package body BlockDevice with
-    SPARK_Mode => On
+
+package body BlockDevice
+    with SPARK_Mode => On
 is
+    blockDrivers : BlockDriverList;
 
-    procedure setup with
+    procedure registerBlockDriver(major : in Devices.MajorNumber;
+                                  bufSyncFunc : BufferSyncFunction) with
         SPARK_Mode => On
     is
     begin
-        BufferList.setup(cache.buffers, Config.NUM_BLOCK_BUFFERS);
-    end setup;
+        blockDrivers(major) := bufSyncFunc;
+    end registerBlockDriver;
 
 
-    procedure getBuffer(dev : in DeviceID; blockNum : in Unsigned_64) with
+    procedure syncBuffer(buf : in out FileCache.BufferPtr) with
         SPARK_Mode => On
     is
-
     begin
-        null;
-    end getBuffer;
+        blockDrivers(buf.all.device.major).all(buf);
+    end syncBuffer;
 
 end BlockDevice;

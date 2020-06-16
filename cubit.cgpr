@@ -104,7 +104,7 @@ configuration project Default is
           ("gnatbind_prefix=");
       for Objects_Path_File     ("Ada") use "ADA_PRJ_OBJECTS_FILE";
       for Driver         ("Ada") use
-          "/home/doc/gnat/2019/libexec/gprbuild/gprbind";
+          "/home/doc/gnat/2020/libexec/gprbuild/gprbind";
       for Required_Switches ("Ada") use
         Binder'Required_Switches ("Ada") & ("--RTS=../runtime");
    end Binder;

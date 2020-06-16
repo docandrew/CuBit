@@ -1,0 +1,52 @@
+name: Build
+
+on: 
+    push:
+        branches:
+            - master
+
+jobs:
+
+    build:
+        name: Build
+        runs-on: ubuntu-latest
+        container: jonfandrew/cubit-gnat:latest
+        steps:
+
+            - name: Check out repo
+              uses: actions/checkout@v2
+
+            - name: Build CuBit
+              id: build_id
+              run: make cubit_kernel
+
+            - name: Build CuBit ISO
+              run: make iso
+           
+            - name: Upload iso
+              uses: actions/upload-artifact@v2
+              with:
+                name: cubit_iso
+                path: cubit_kernel.iso
+
+            - name: Build Documents
+              run: make docs
+
+            - name: Upload gnatdoc
+              uses: actions/upload-artifact@v2
+              with:
+                name: gnatdoc
+                path: build/gnatdoc
+
+            - name: Build Cross-Referenced Code HTML
+              run: make html
+
+            - name: Upload html
+              uses: actions/upload-artifact@v2
+              with:
+                name: gnathtml
+                path: build/gnathtml
+
+# TODO: Static-Site Generator w/ custom index.md containing links to the
+# gnatdoc and gnathtml pages as well as the README, figure out a gh-pages
+# deploy action that works for us.

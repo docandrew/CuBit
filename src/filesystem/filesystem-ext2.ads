@@ -2,24 +2,33 @@
 -- CuBit OS
 -- Copyright (C) 2020 Jon Andrew
 --
--- Ext2 Filesystem
+-- @summary Ext2 Filesystem
+--
+-- @description
+-- Currently we just support Ext2 disks with 4k block size, as this maps neatly
+-- to the pages in the FileCache with no need for splitting or alignment
+-- concerns. This should improve overall performance and simplicity of the
+-- implementation.
 --
 -------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 
-with time;
-with Filesystem.vfs;
+with BuddyAllocator;
+with Devices;
+with System;
+with Time;
+with Filesystem.VFS;
 
 package Filesystem.Ext2 with
     SPARK_Mode => On
 is
 
-package vfs renames Filesystem.vfs;
+package VFS renames Filesystem.VFS;
 
 subtype BlockAddr is Unsigned_32;
-subtype InodeAddr is Unsigned_32;   -- 0 = not used
+subtype InodeAddr is Unsigned_32 range 1 .. Unsigned_32'Last;   -- 0 = not used
+subtype BlockGroupNumber is Unsigned_32;
 
-SUPERBLOCK_LBA              : constant vfs.LBA48 := 2;
 ROOT_INODE_NUM              : constant InodeAddr := 2;
 EXT2_SUPER_MAGIC            : constant Unsigned_16 := 16#EF53#;
 EXT2_NAME_LENGTH            : constant := 255;
@@ -94,8 +103,8 @@ record
 end record;
 
 -------------------------------------------------------------------------------
--- If an Ext2 filesystem has these features, it may be mounted by CuBit, but
--- read-only.
+-- If an Ext2 filesystem has these features, it may be mounted only if those
+-- features are supported by the OS.
 -------------------------------------------------------------------------------
 type ReadOnlyFeaturesRecord is
 record
@@ -139,7 +148,8 @@ type Ext2Filler is array (Natural range 0..787) of Unsigned_8
 -------------------------------------------------------------------------------
 -- The Superblock is always at byte offset 1024. On 1KiB formatted disks, this
 -- puts it at the start of the block 1. On 2KiB or larger disks, this puts
--- it within block 0.
+-- it within block 0. This record matches the on-disk representation of the
+-- superblock.
 --
 -- @param blockShift - left shift 1024 by this number to get block size
 -- @param fragmentShift - left shift 1024 by this number to get fragment size
@@ -151,6 +161,9 @@ type Ext2Filler is array (Natural range 0..787) of Unsigned_8
 -- @param readOnlyFeatures - If not supported, this filesystem must be mounted
 --  read-only.
 -- @param volumeName - null-terminated string with only ISO-Latin-1 chars
+--
+-- @NOTE: Superblock is stored in little-endian on disk, this record assumes
+--  little-endian memory representation as well.
 -------------------------------------------------------------------------------
 type Superblock is
 record
@@ -259,8 +272,8 @@ type BlockGroupDescriptorFiller is array (Natural range 0..13) of Unsigned_8
 -------------------------------------------------------------------------------
 type BlockGroupDescriptor is
 record
-    blockUsageBitmapAddr            : BlockAddr;
-    inodeUsageBitmapAddr            : BlockAddr;
+    blockBitmapAddr                 : BlockAddr;
+    inodeBitmapAddr                 : BlockAddr;
     inodeTableAddr                  : BlockAddr;
     numFreeBlocks                   : Unsigned_16;
     numFreeInodes                   : Unsigned_16;
@@ -270,8 +283,8 @@ end record with Size => 256;
 
 for BlockGroupDescriptor use
 record
-    blockUsageBitmapAddr            at 0  range 0..31;
-    inodeUsageBitmapAddr            at 4  range 0..31;
+    blockBitmapAddr                 at 0  range 0..31;
+    inodeBitmapAddr                 at 4  range 0..31;
     inodeTableAddr                  at 8  range 0..31;
     numFreeBlocks                   at 12 range 0..15;
     numFreeInodes                   at 14 range 0..15;
@@ -279,10 +292,12 @@ record
     unused18                        at 18 range 0..111;
 end record;
 
+type BlockGroupDescriptorTable is array (BlockGroupNumber range <>) of BlockGroupDescriptor;
+
 -------------------------------------------------------------------------------
 -- Inode data structures and definitions
 -------------------------------------------------------------------------------
-type InodeTypeNibble is new Natural range 0..15 with Size => 4;
+type InodeTypeNibble is new Natural range 0 .. 15 with Size => 4;
 
 INODE_FIFO                : constant InodeTypeNibble := 16#1#;
 INODE_CHARACTER_DEVICE    : constant InodeTypeNibble := 16#2#;
@@ -504,36 +519,63 @@ end record;
 function blockSize(sb : in Superblock) return Unsigned_32;
 
 -------------------------------------------------------------------------------
--- getBlockGroup - given an inode address and the number of inodes per block
---  group, this function returns the block group containing that inode.
+-- getBlockGroup - given an inode address and superblock, return the block
+--  group containing that inode.
 -------------------------------------------------------------------------------
-function getBlockGroup(inode                : in InodeAddr; 
-                       inodesPerBlockGroup  : in Unsigned_32)
-                       return Unsigned_32;
+function getBlockGroup(inodeNum : in InodeAddr;
+                       sb       : in Superblock) return BlockGroupNumber;
 
 -------------------------------------------------------------------------------
--- getInodeIndex - given an inode address and block size, this function
---  returns the index into the block group's inode table.
+-- getInodeIndex - given an inode address and superblock, return the index into
+--  the block group's inode table.
 -------------------------------------------------------------------------------
-function getInodeIndex(inode        : in InodeAddr;
-                       blockSize    : in Unsigned_32)
-                       return Unsigned_32;
+function getInodeIndex(inodeNum : in InodeAddr;
+                       sb       : in Superblock) return Unsigned_32;
 
 -------------------------------------------------------------------------------
 -- getContainingBlock - given an index into a block group's inode table, the
 --  size of an inode and the size of a block, this function returns the block
 --  containing that inode.
 -------------------------------------------------------------------------------
-function getContainingBlock(index       : in Unsigned_32;
-                            inodeSize   : in Unsigned_32;
-                            blockSize   : in Unsigned_32)
-                            return BlockAddr;
+function getContainingBlock(index   : in Unsigned_32;
+                            sb      : in Superblock) return BlockAddr;
 
+-------------------------------------------------------------------------------
+-- readSuperBlock - Read the Ext2 Superblock and first BlockGroupDescriptor.
+-------------------------------------------------------------------------------
+procedure readSuperBlock(device : in Devices.DeviceID;
+                         sb     : in out Superblock);
+
+-------------------------------------------------------------------------------
+-- readBlockGroupDescriptors - allocate memory needed to hold this fs' 
+-- block group descriptor tables and read them from disk.
+-- @param device
+-- @param sb - filled-in Superblock record from readSuperBlock
+-- @param bgdt - address with the filled-in list of block group
+--  descriptors. Null_Address here indicates not enough memory could be
+--  allocated to store the table, and fs should not be used.
+-- @param bgdtOrder - Order of the allocation used for the table (for freeing
+--  later)
+-- @param bgdtLength - Number of block group descriptors stored in memory.
+-------------------------------------------------------------------------------
+procedure readBlockGroupDescriptors(device      : in Devices.DeviceID;
+                                    sb          : in SuperBlock;
+                                    bgdt        : out System.Address;
+                                    bgdtOrder   : out BuddyAllocator.Order;
+                                    bgdtLength  : out BlockGroupNumber);
+
+-------------------------------------------------------------------------------
+-- readInode
+-------------------------------------------------------------------------------
+procedure readInode(device      : in Devices.DeviceID;
+                    sb          : in Superblock;
+                    bgdt        : in out BlockGroupDescriptorTable;
+                    inodeNum    : in InodeAddr;
+                    outInode    : in out Inode);
 
 -------------------------------------------------------------------------------
 -- print - Output the superblock details
 -------------------------------------------------------------------------------
 procedure print(sb : in Superblock);
-
 
 end Filesystem.Ext2;

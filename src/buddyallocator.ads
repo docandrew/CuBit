@@ -76,7 +76,7 @@ package BuddyAllocator with
     SPARK_Mode => On
 is
 
-    NO_BLOCK_AVAILABLE  : constant Virtmem.PhysAddress := Integer_Address'Last;
+    NO_BLOCK_AVAILABLE  : constant Virtmem.PhysAddress := Virtmem.PhysAddress'Last;
     
     -- Track whether setup has been called on this package
     initialized         : Boolean := False with Ghost;
@@ -127,6 +127,9 @@ is
     function blockSize(ord : in Order) return Unsigned_64 with
         Depends => (blockSize'Result => ord),
         Post    => blockSize'Result > Virtmem.FRAME_SIZE;
+
+    function getOrder(allocSize : in Unsigned_64) return Order with
+        Depends => (getOrder'Result => allocSize);
 
     ---------------------------------------------------------------------------
     -- isValidBlock - given an address and an order, return True if this

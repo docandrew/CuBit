@@ -1,71 +1,50 @@
 -------------------------------------------------------------------------------
--- CuBit OS
+-- CuBitOS
 -- Copyright (C) 2020 Jon Andrew
 --
--- @summary Block Device buffer cache
+-- CuBitOS 
+--
+-- @summary
+-- Block Devices
+--
+-- @description
+-- This package abstracts underlying block devices and the function used to
+-- synchronize their cached file data to/from disk or other device. Each driver
+-- will register their BufferSyncFunction with this package. When a
+-- block for that driver/device is dirty and needs to be written, this package
+-- will call the registered function and synchronize it to disk.
+--
+-- Later on, we should expect work on an I/O scheduler to begin here as well.
 -------------------------------------------------------------------------------
-with LinkedList;
-with Spinlock;
-with x86;
 
-Pragma Elaborate_All (Spinlock);
+with FileCache;
+with Devices;
 
-generic with
-    BlockSize   : Positive,
-    DeviceID    : Unsigned_32;
-
-package BlockDevice with
-    SPARK_Mode => On
+package BlockDevice
+    with SPARK_Mode => On
 is
-    package BufferList is new LinkedList(BlockBuffer, BlockDevice.print);
-
-    -- type DeviceID is new Unsigned_32;
-
-    type BlockFlags is (VALID, DIRTY, BUSY);
-
-    type BlockData is array (0 .. BlockSize - 1) of Unsigned_8;
+    type BufferSyncFunction is access procedure(buf : in out FileCache.BufferPtr);
 
     ---------------------------------------------------------------------------
-    -- In-memory cache for disk blocks. Note that this is a file system block,
-    -- which should be an integer multiple of the disk sector size.
+    -- Block Driver list is just an array of subprogram pointers to call the
+    -- appropriate block synchronization method for the device type 
+    -- (major number) being accessed.
     ---------------------------------------------------------------------------
-    type BlockBuffer is record
-        flags       : BlockFlags
-        device      : DeviceID;
-        blockNumber : Unsigned_64;
-        lock        : spinlock.Spinlock;
-        refCount    : Natural;
-        data        : BlockData;
-    end record;
-
-    -- Each block device gets one of these. This is a linked list of BlockBuffers
-    -- that will be synchronized to/from disk.
-    type BufferCache is record
-        lock        : spinlock.Spinlock;
-        buffers     : BufferList.List; 
-    end record;
+    type BlockDriverList is array (Devices.MajorNumber'Range) of BufferSyncFunction;
 
     ---------------------------------------------------------------------------
-    -- Setup
+    -- registerBlockDriver
+    -- Specify the driver to use for a particular category (major number) of
+    -- block device. This should be performed as part of the driver's setup
+    -- subprogram.
     ---------------------------------------------------------------------------
-    procedure setup;
+    procedure registerBlockDriver(major : Devices.MajorNumber;
+                                  bufSyncFunc : BufferSyncFunction);
 
     ---------------------------------------------------------------------------
-    -- getBuffer
-    -- Either return the cached buffer for a particular device/block, or
-    -- allocate a new one from the list of buffers.
+    -- syncBuffer
+    -- Dispatches the buffer to the appropriate device driver.
     ---------------------------------------------------------------------------
-    procedure getBuffer(dev : in DeviceID; blockNum : in Unsigned_64);
-
-    ---------------------------------------------------------------------------
-    -- Print block buffer for debugging. Necessary for LinkedList
-    -- instantiation.
-    ---------------------------------------------------------------------------
-    procedure print(buf : in BlockBuffer);
-
-private
-    -- We'll instantiate this package for each block device and keep its
-    -- BufferCache object here
-    cache : BufferCache;
+    procedure syncBuffer(buf : in out FileCache.BufferPtr);
 
 end BlockDevice;
