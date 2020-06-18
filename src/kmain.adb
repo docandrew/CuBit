@@ -464,10 +464,11 @@ begin
                     Ext2.readSuperBlock(device  => driveID,
                                         sb      => sblock);
 
-                    if sblock.signature = Ext2.EXT2_SUPER_MAGIC then
-                        print(" signature: ");
-                        println(Unsigned_32(sblock.signature));
-                        println(" Found Ext2 filesystem", 
+                    if sblock.signature = Ext2.EXT2_SUPER_MAGIC and 
+                       Ext2.blockSize(sblock) = 4096 then
+                        -- print(" signature: ");
+                        -- println(Unsigned_32(sblock.signature));
+                        println(" Found compatible Ext2 filesystem",
                                 textmode.LT_GREEN,
                                 textmode.BLACK);
 
@@ -493,13 +494,10 @@ begin
                                            inodeNum  => 2,
                                            outInode  => rootInode);
 
-                        end checkBGDT;
+                            println("Root inode: ");
+                            Ext2.print(rootInode);
 
-                        -- Read /
-                        -- Ext2.readInode(device   => driveID,
-                        --                sb       => sblock,
-                        --                inodeNum => 2,
-                        --                outInode => rootInode);
+                        end checkBGDT;
                     end if;
                 end if;
             end loop;

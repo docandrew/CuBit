@@ -255,7 +255,7 @@ package body Filesystem.Ext2 is
 
         FileCache.releaseBuffer(buf);
 
-        Debug.dumpMem(outInode'Address, 128);
+        --Debug.dumpMem(outInode'Address, 128);
     end readInode;
 
 
@@ -309,4 +309,59 @@ package body Filesystem.Ext2 is
         --print("orphanInodeHead ");    println(sb.orphanInodeHead);
         
     end print;
+
+    procedure print(myInode : in Inode) with SPARK_Mode => On is
+        fileTypeChar : character;
+        GID : Unsigned_32;
+        UID : Unsigned_32;
+    begin
+        println("typeAndPermissions: ");
+
+        print("userIDLo: "); println(myInode.userIDLo);
+        print("sizeLo: "); println(myInode.sizeLo);
+        print("accessed: "); println(myInode.accessed);
+        print("created: "); println(myInode.created);
+        print("modified: "); println(myInode.modified);
+        print("deleted: "); println(myInode.deleted);
+        print("groupIDLo: "); println(myInode.groupIDLo);
+        print("numHardLinksHere: "); println(myInode.numHardLinksHere);
+        print("numDiskSectorsUsed: "); println(myInode.numDiskSectorsUsed);
+        
+        println("flags: ");
+        print(" secureDeletion: "); println(myInode.flags.secureDeletion);
+        print(" keepAfterDelete: "); println(myInode.flags.keepAfterDelete);
+        print(" compressed: "); println(myInode.flags.compressed);
+        print(" writeNewDataImmediately: "); println(myInode.flags.writeNewDataImmediately);
+        print(" immutable: "); println(myInode.flags.immutable);
+        print(" appendOnly: "); println(myInode.flags.appendOnly);
+        print(" dontDump: "); println(myInode.flags.dontDump);
+        print(" dontUpdateAccessedTime: "); println(myInode.flags.dontUpdateAccessedTime);
+        print(" hashIndexedDirectory: "); println(myInode.flags.hashIndexedDirectory);
+        print(" afsDirectory: "); println(myInode.flags.afsDirectory);
+        print(" journalFileData: "); println(myInode.flags.journalFileData);
+
+        --print("osSpecific1: ");
+        print("directBlock0: ");            println(myInode.directBlock0);
+        print("directBlock1: ");            println(myInode.directBlock1);
+        print("directBlock2: ");            println(myInode.directBlock2);
+        print("directBlock3: ");            println(myInode.directBlock3);
+        print("directBlock4: ");            println(myInode.directBlock4);
+        print("directBlock5: ");            println(myInode.directBlock5);
+        print("directBlock6: ");            println(myInode.directBlock6);
+        print("directBlock7: ");            println(myInode.directBlock7);
+        print("directBlock8: ");            println(myInode.directBlock8);
+        print("directBlock9: ");            println(myInode.directBlock9);
+        print("directBlock10: ");           println(myInode.directBlock10);
+        print("directBlock11: ");           println(myInode.directBlock11);
+        print("singleIndirectBlock: ");     println(myInode.singleIndirectBlock);
+        print("doubleIndirectBlock: ");     println(myInode.doubleIndirectBlock);
+        print("tripleIndirectBlock: ");     println(myInode.tripleIndirectBlock);
+
+        print("generation: ");              println(myInode.generation);
+        print("extendedAttributesBlock: "); println(myInode.extendedAttributesBlock);
+        print("sizeHi_DirACL: ");           println(myInode.sizeHi_DirACL);
+        --print("fragmentAddr: ");            
+        --print("osSpecific2: ");
+    end print;
+
 end Filesystem.Ext2;

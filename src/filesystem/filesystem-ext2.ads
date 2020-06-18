@@ -442,7 +442,7 @@ record
     tripleIndirectBlock             : BlockAddr;
     generation                      : Unsigned_32;
     extendedAttributesBlock         : BlockAddr;
-    sizeHiDirACL                    : Unsigned_32;
+    sizeHi_DirACL                   : Unsigned_32;
     fragmentAddr                    : BlockAddr;
     osSpecific2                     : OSSpecificFields;
 end record with Size => 1024;
@@ -478,7 +478,7 @@ record
     tripleIndirectBlock             at 96  range 0..31;
     generation                      at 100 range 0..31;
     extendedAttributesBlock         at 104 range 0..31;
-    sizeHiDirACL                    at 108 range 0..31;
+    sizeHi_DirACL                   at 108 range 0..31;
     fragmentAddr                    at 112 range 0..31;
     osSpecific2                     at 116 range 0..95;
 end record;
@@ -574,8 +574,15 @@ procedure readInode(device      : in Devices.DeviceID;
                     outInode    : in out Inode);
 
 -------------------------------------------------------------------------------
--- print - Output the superblock details
+-- print - Output the superblock details for development/debugging purposes
 -------------------------------------------------------------------------------
 procedure print(sb : in Superblock);
+
+-------------------------------------------------------------------------------
+-- print - Output inode details for development/debugging purposes.
+--  CuBit may not care about many of the flags and fields output by this
+--  subprogram.
+-------------------------------------------------------------------------------
+procedure print(myInode : in Inode);
 
 end Filesystem.Ext2;
