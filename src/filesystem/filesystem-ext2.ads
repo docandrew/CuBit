@@ -484,14 +484,14 @@ record
 end record;
 
 subtype DirectoryEntryType is Unsigned_8;
-FILETYPE_UNKNOWN            : DirectoryEntryType := 0;  -- used for padding
-FILETYPE_REGULAR_FILE       : DirectoryEntryType := 1;
-FILETYPE_DIRECTORY          : DirectoryEntryType := 2;
-FILETYPE_CHARACTER_DEVICE   : DirectoryEntryType := 3;
-FILETYPE_BLOCK_DEVICE       : DirectoryEntryType := 4;
-FILETYPE_FIFO               : DirectoryEntryType := 5;
-FILETYPE_SOCKET             : DirectoryEntryType := 6;
-FILETYPE_SYMLINK            : DirectoryEntryType := 7;
+FILETYPE_UNKNOWN            : constant DirectoryEntryType := 0;  -- used for padding
+FILETYPE_REGULAR_FILE       : constant DirectoryEntryType := 1;
+FILETYPE_DIRECTORY          : constant DirectoryEntryType := 2;
+FILETYPE_CHARACTER_DEVICE   : constant DirectoryEntryType := 3;
+FILETYPE_BLOCK_DEVICE       : constant DirectoryEntryType := 4;
+FILETYPE_FIFO               : constant DirectoryEntryType := 5;
+FILETYPE_SOCKET             : constant DirectoryEntryType := 6;
+FILETYPE_SYMLINK            : constant DirectoryEntryType := 7;
 
 type Filename is array (0 .. EXT2_NAME_LENGTH) of Character with
     Convention => C;
@@ -565,13 +565,21 @@ procedure readBlockGroupDescriptors(device      : in Devices.DeviceID;
                                     bgdtLength  : out BlockGroupNumber);
 
 -------------------------------------------------------------------------------
--- readInode
+-- readInode - read an inode from disk into the outInode record.
 -------------------------------------------------------------------------------
 procedure readInode(device      : in Devices.DeviceID;
                     sb          : in Superblock;
-                    bgdt        : in out BlockGroupDescriptorTable;
+                    bgdt        : in BlockGroupDescriptorTable;
                     inodeNum    : in InodeAddr;
                     outInode    : in out Inode);
+
+-------------------------------------------------------------------------------
+-- dumpDirs -For debugging purposes, output the directory entries contained
+--  within a block on disk.
+-------------------------------------------------------------------------------
+procedure dumpDirs(device   : in Devices.DeviceID;
+                   block    : in BlockAddr;
+                   size     : in Unsigned_32);
 
 -------------------------------------------------------------------------------
 -- print - Output the superblock details for development/debugging purposes

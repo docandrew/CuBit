@@ -475,7 +475,7 @@ begin
                         --@TODO Sanity-checking to make sure CuBit supports this
                         -- filesystem's settings. We're picky for now about the
                         -- Ext2 parameters used.
-                        Ext2.print(sblock);
+                        --Ext2.print(sblock);
 
                         -- Read the block group descriptors.
                         Ext2.readBlockGroupDescriptors(device       => driveID,
@@ -494,8 +494,10 @@ begin
                                            inodeNum  => 2,
                                            outInode  => rootInode);
 
-                            println("Root inode: ");
-                            Ext2.print(rootInode);
+                            -- println("Root inode: ");
+                            -- Ext2.print(rootInode);
+                            println("Contents of /");
+                            Ext2.dumpDirs(driveID, rootInode.directBlock0, rootInode.sizeLo);
 
                         end checkBGDT;
                     end if;

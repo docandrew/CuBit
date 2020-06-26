@@ -212,7 +212,7 @@ package body Filesystem.Ext2 is
 
     procedure readInode(device      : in Devices.DeviceID;
                         sb          : in Superblock;
-                        bgdt        : in out BlockGroupDescriptorTable;
+                        bgdt        : in BlockGroupDescriptorTable;
                         inodeNum    : in InodeAddr;
                         outInode    : in out Inode)
     is
@@ -257,6 +257,51 @@ package body Filesystem.Ext2 is
 
         --Debug.dumpMem(outInode'Address, 128);
     end readInode;
+
+
+    procedure dumpDirs(device   : in Devices.DeviceID;
+                       block    : in BlockAddr;
+                       size     : in Unsigned_32)
+    is
+        buf : FileCache.BufferPtr;
+        offset : Integer_Address := 0;
+    begin
+        -- Read the block
+        FileCache.readBuffer(device, Unsigned_64(block), buf);
+
+        PrintDirs : loop
+            PrintDir : declare
+                dir : DirectoryEntry with Import, Address => To_Address(buf.data + offset);
+            begin
+                PrintFile : declare
+                    filename : String(1..Integer(dir.nameLength)) with
+                        Import, Address => dir.name'Address;
+                begin
+                    print(" Inode: ");
+                    print(dir.inode);
+                    print(" Name: ");
+                    print(filename);
+
+                    case dir.fileType is
+                        when FILETYPE_UNKNOWN =>
+                            println(" Unknown");
+                        when FILETYPE_REGULAR_FILE =>
+                            println(" File");
+                        when FILETYPE_DIRECTORY =>
+                            println("/");
+                        when others =>
+                            println;
+                    end case;
+                end PrintFile;
+
+                offset := offset + Integer_Address(dir.length);
+
+                exit PrintDirs when offset >= Integer_Address(size);
+            end PrintDir;
+        end loop PrintDirs;
+
+        FileCache.releaseBuffer(buf);
+    end dumpDirs;
 
 
     procedure print(sb : in Superblock) with

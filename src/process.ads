@@ -12,6 +12,7 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 with Interfaces; use Interfaces;
 
+with Descriptors;
 with Spinlock;
 with Stackframe;
 with Util;
@@ -122,36 +123,10 @@ is
     end record with Size => virtmem.FRAME_SIZE * 8;
 
     ---------------------------------------------------------------------------
-    -- MemoryDescriptor : contains virtual address boundaries of each of the
-    --  sections in a process' address space.
-    --
-    -- Lightweight Processes under a given Heavyweight Process will have all 
-    --  fields the same except the stackTop and stackBottom.
-    ---------------------------------------------------------------------------
-    -- type MemoryDescriptor is
-    -- record
-    --     owner : ProcessID;
-    --     pgTable : System.Address;    -- ptr to top-level page table
-
-    --     -- Stack used by this process while in kernel mode.
-    --     -- (during context switches, interrupts, syscalls)
-    --     kernelStack : System.Address; -- the kernel stack base
-
-    --     stackTop    : System.Address; -- top of stack
-    --     stackBottom : System.Address; -- limit of allowable stack
-    --     brk         : System.Address; -- top of the heap
-    --     startBrk    : System.Address; -- bottom of the heap
-    --     --endBSS      : System.Address; -- end of BSS segment
-    --     --startBSS    : System.Address; -- start of BSS segment
-    --     --endData     : System.Address; -- end of data segment
-    --     --startData   : System.Address; -- start of data segment
-    --     endText     : System.Address; -- end of text segment
-    --     startText   : System.Address; -- start of text segment
-    -- end record;
-
-    ---------------------------------------------------------------------------
     -- Entry in the process table.
-    -- TODO: unify the address type used here
+    -- TODO: unify the address type used here 
+    -- TODO: consider making the pgTable entry an access type, may improve
+    -- performance and take up less space in the proctab for unused slots.
     ---------------------------------------------------------------------------
     type Process is
     record
@@ -168,7 +143,7 @@ is
         
         context             : System.Address;   -- Pointer to the saved state
 
-        kernelStackBottom   : Integer_Address;   -- Pointer to process' kernel stack
+        kernelStackBottom   : Integer_Address;  -- Pointer to process' kernel stack
         kernelStackTop      : Integer_Address;
 
         stackTop            : Integer_Address;
@@ -178,6 +153,8 @@ is
         startBrk            : System.Address;
 
         channel             : WaitChannel;
+
+        openDescriptors     : Descriptors.DescriptorArray;
     end record;
 
     -- Lock for protecting the proctab

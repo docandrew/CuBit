@@ -43,4 +43,7 @@ is
 
     -- Number of device blocks to cache in memory
     NUM_BLOCK_BUFFERS : constant := 16;
+
+    -- File/device descriptors per process
+    PER_PROCESS_DESCRIPTORS : constant := 256;
 end config;
