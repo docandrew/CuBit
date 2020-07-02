@@ -506,20 +506,20 @@ begin
         end testATA;
     end initATA;
 
-    initSMP: declare
-        package myLapic is new lapic(To_Address(virtmem.P2V(apicBase)));
-        cpu : Natural := 1;
-    begin
-        println("Starting SMP CPUs", textmode.LT_BLUE, textmode.BLACK);
-        for cpu in 1..(acpi.numCPUs - 1) loop
-            startingCPU := Unsigned_32(cpu);
-            myLapic.bootAP(Unsigned_8(cpu), 16#7000#);
-            while startingCPU /= 0 loop
-                time.sleep(1 * time.Milliseconds);
-            end loop;
-        end loop;
+    -- initSMP: declare
+    --     package myLapic is new lapic(To_Address(virtmem.P2V(apicBase)));
+    --     cpu : Natural := 1;
+    -- begin
+    --     println("Starting SMP CPUs", textmode.LT_BLUE, textmode.BLACK);
+    --     for cpu in 1..(acpi.numCPUs - 1) loop
+    --         startingCPU := Unsigned_32(cpu);
+    --         myLapic.bootAP(Unsigned_8(cpu), 16#7000#);
+    --         while startingCPU /= 0 loop
+    --             time.sleep(1 * time.Milliseconds);
+    --         end loop;
+    --     end loop;
 
-    end initSMP;
+    -- end initSMP;
 
     Process.createFirstProcess;
 

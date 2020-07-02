@@ -25,16 +25,23 @@ is
     --  descriptor number returned by a call like open() is just an index into
     --  the process' descriptor array.
     -- @field dev - Device referred to by this descriptor
-    -- @field addr - For use by the device driver, perhaps an Inode address or
-    --  other reference.
+    -- @field resourceAddr - For use by the device driver, perhaps an Inode
+    --  address or other reference.
+    -- @field resourceOffset - For use by the device driver, perhaps a file
+    --  offset or other differentiator.
     -- @field refCount - Number of processes holding a descriptor to the same
     --  resource.
     ---------------------------------------------------------------------------
     type Descriptor is record
-        dev         : Devices.DeviceID;
-        addr        : Unsigned_64;
-        refCount    : Natural;
+        dev             : Devices.DeviceID;
+        resourceAddr    : Unsigned_64;
+        resourceOffset  : Unsigned_64;
+        refCount        : Natural;
     end record;
+
+    STDIN   : constant DescriptorNum := 0;
+    STDOUT  : constant DescriptorNum := 1;
+    STDERR  : constant DescriptorNum := 2;
 
     type DescriptorArray is array (DescriptorNum) of Descriptor;
 

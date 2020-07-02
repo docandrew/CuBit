@@ -9,13 +9,10 @@
 BITS 64
 
 startInit:
-mov rdi, 0xA770
-mov rsi, 0xA771
-mov rdx, 0xA772
-mov r10, 0xA773
-mov r8, 0xA774
-mov r9, 0xA775
-mov rax, SYSCALL_EXECVE
+mov rdi, 1              ; fd - STDOUT
+mov rsi, hello          ; buf
+mov rdx, helloLen       ; count
+mov rax, SYSCALL_WRITE
 syscall
 
 mov r13, 0xAC
@@ -24,3 +21,6 @@ exit:
     mov rax, SYSCALL_EXIT
     syscall
     jmp exit
+
+hello: db 'Hello from Userland!',10
+helloLen: equ $-hello

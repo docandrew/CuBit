@@ -47,3 +47,4 @@ SYSCALL_TIMES           equ 9
 SYSCALL_UNLINK          equ 10
 SYSCALL_WAIT            equ 11
 SYSCALL_WRITE           equ 12
+SYSCALL_OPEN            equ 13

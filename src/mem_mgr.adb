@@ -308,7 +308,7 @@ is
 
 
     ---------------------------------------------------------------------------
-    -- switchAddressSpace
+    -- switchAddressSpace - make the kernel's page table the active one.
     ---------------------------------------------------------------------------
     procedure switchAddressSpace with
         SPARK_Mode => On
@@ -322,6 +322,32 @@ is
         end if;
     end switchAddressSpace;
 
+
+    procedure mapKernelMemIntoProcess(procP4 : in out Virtmem.P4) with
+        SPARK_Mode => On
+    is
+        use Virtmem; -- for PageTableIndex
+    begin
+        -- Just copy the upper 256 page entries into the process' space.
+        for i in PageTableIndex(256) .. PageTableIndex(511) loop
+            procP4(i) := kernelP4(i);
+        end loop;
+
+        Virtmem.flushTLB;
+    end mapKernelMemIntoProcess;
+
+
+    procedure unmapKernelMemFromProcess(procP4 : in out Virtmem.P4) with
+        SPARK_Mode => On
+    is
+        use Virtmem; -- for PageTableIndex
+    begin
+        for i in PageTableIndex(0) .. PageTableIndex(255) loop
+            procP4(i) := u64ToPTE(0);
+        end loop;
+
+        Virtmem.flushTLB;
+    end unmapKernelMemFromProcess;
 
     ---------------------------------------------------------------------------
     -- Map a single frame of memory-mapped IO region into the higher-half

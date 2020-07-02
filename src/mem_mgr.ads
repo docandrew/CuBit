@@ -116,6 +116,29 @@ is
     ---------------------------------------------------------------------------
     procedure switchAddressSpace;
 
+    ---------------------------------------------------------------------------
+    -- mapKernelMemIntoProcess - during syscalls, this copies the kernel's
+    -- higher-half P4 mappings into a process' page tables. Reloads the 
+    -- CR3 register to flush TLB. 
+    --
+    -- NOTE: This isn't useful yet, as for KPTI to be feasible we need to
+    -- get this function (and whatever it needs to call) linked in a separate
+    -- page table that can always be in the process' address space.
+    --
+    -- @param procP4 - The active process' P4 table.
+    --
+    -- @TODO - determine how to use PCID to avoid the TLB flush here.
+    ---------------------------------------------------------------------------
+    procedure mapKernelMemIntoProcess(procP4 : in out Virtmem.P4);
+
+    ---------------------------------------------------------------------------
+    -- unmapKernelMemFromProcess - on exit from syscall, zeroize a process'
+    -- upper-half of memory to unmap kernel memory/implement KPTI.
+    --
+    -- @param procP4 - The active process' P4 table.
+    ---------------------------------------------------------------------------
+    procedure unmapKernelMemFromProcess(procP4 : in out Virtmem.P4);
+
 private
     ---------------------------------------------------------------------------
     -- determineFlagsAndMapFrame

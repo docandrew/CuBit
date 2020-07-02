@@ -183,19 +183,19 @@ is
             -- kernel's page tables, but we re-allocate new ones here so later
             -- it's easier for us to free the whole table and its associated
             -- memory in one fell-swoop using Virtmem.deleteP4
-            -- println(" Linear-mapping first MiB in process' address space");
-            -- for pg in Virtmem.addrToPFN(0)..Virtmem.addrToPFN(16#100000#) loop
-            --     mapPage(Virtmem.pfnToAddr(pg),
-            --             Virtmem.P2V(Virtmem.pfnToAddr(pg)),
-            --             Virtmem.PG_KERNELDATA,
-            --             newProc.pgTable,
-            --             ok);
+            println(" Linear-mapping first MiB in process' address space");
+            for pg in Virtmem.addrToPFN(0)..Virtmem.addrToPFN(16#100000#) loop
+                mapPage(Virtmem.pfnToAddr(pg),
+                        Virtmem.P2V(Virtmem.pfnToAddr(pg)),
+                        Virtmem.PG_KERNELDATA,
+                        newProc.pgTable,
+                        ok);
 
-            --     if not ok then
-            --         raise MapException with 
-            --             "Process.create - can't map kernel's .text";
-            --     end if;
-            -- end loop;
+                if not ok then
+                    raise MapException with 
+                        "Process.create - can't map first 1MiB";
+                end if;
+            end loop;
 
             println(" Mapping kernel in process' address space");
             -- map kernel pages in the process' address space.
