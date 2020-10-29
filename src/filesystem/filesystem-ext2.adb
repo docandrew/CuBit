@@ -209,7 +209,11 @@ package body Filesystem.Ext2 is
         
     end hasSparseSuperblock;
 
-
+    ---------------------------------------------------------------------------
+    -- readInode - given a device identifier, an ext2 superblock and block group
+    --  descriptor table, read the contents of a given inode address inodeNum 
+    --  into the outInode parameter.
+    ---------------------------------------------------------------------------
     procedure readInode(device      : in Devices.DeviceID;
                         sb          : in Superblock;
                         bgdt        : in BlockGroupDescriptorTable;

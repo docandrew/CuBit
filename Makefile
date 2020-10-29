@@ -1,4 +1,9 @@
 # CuBitOS Makefile
+GIT_HASH := $(shell git rev-parse HEAD)
+BUILD_DATE := $(shell date)
+
+# Generate a hash list of all the source files and then a root hash from that
+SRC_HASH := $(shell find src/ -type f -print0 | xargs -0 sha256sum | sha256sum)
 
 all: cubit_kernel iso
 
@@ -7,6 +12,14 @@ all: cubit_kernel iso
 build/libcubit.a:
 	mkdir -p runtime/adalib
 	mkdir -p build
+
+# Text-substitute string literals used in build.ads
+	-rm src/build.ads
+
+	sed -e 's/SED_GIT_HASH/$(GIT_HASH)/' \
+		-e 's/SED_BUILD_DATE/$(BUILD_DATE)/' \
+		-e 's/SED_SRC_HASH/$(SRC_HASH)/' src/build.pre > src/build.ads
+
 	gprbuild -Pcubit_runtime.gpr
 
 # init usermode binary embedded in the kernel ELF object

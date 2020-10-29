@@ -70,11 +70,14 @@ package body Syscall is
     end syscallHandler;
 
 
-    function open(filename  : in System.Address; 
+    function open(filename  : in System.Address;
                   flags     : in Unsigned_64;
                   mode      : in Unsigned_64) return Long_Integer with SPARK_Mode => On
     is
     begin
+        print("Open file: ");
+        printz(filename);
+        print(" mode: "); printdln(mode);
         return 0;
     end open;
 

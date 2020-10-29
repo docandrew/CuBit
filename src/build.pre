@@ -1,0 +1,19 @@
+-------------------------------------------------------------------------------
+-- CuBitOS
+-- Copyright (C) 2020 Jon Andrew
+--
+-- Build-time constants for keeping track of Git commit and build date. Note
+-- that this file will be pre-processed by a tool like sed to produce the
+-- actual build.ads file used during compilation.
+-------------------------------------------------------------------------------
+package Build with SPARK_MODE => On 
+is
+    -- Git Commit
+    COMMIT : constant String := "SED_GIT_HASH";
+
+    -- Date of Build
+    DATE : constant String := "SED_BUILD_DATE";
+
+    -- SHA-256 hash of all the files in src/
+    HASH : constant String := "SED_SRC_HASH";
+end Build;

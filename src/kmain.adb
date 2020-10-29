@@ -17,6 +17,7 @@ with ACPI;
 with ATA;
 with BootAllocator;
 with BuddyAllocator;
+with Build;
 with Config;
 with Cpuid;
 with Devices;
@@ -95,7 +96,10 @@ begin
     initHello: declare
     begin
         println("CuBitOS v0.0.1 ", LT_BLUE, BLACK);
-        println("");
+        print("Build Date:  "); println(Build.DATE);
+        print("Git Commit:  "); println(Build.COMMIT);
+        print("Source Hash: "); println(Build.HASH);
+        println;
 
         print("Virtual Kernel Area:    "); 
         print(KERNEL_START_VIRT'Address);

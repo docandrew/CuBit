@@ -14,6 +14,12 @@ package body FileCache with
     SPARK_Mode => Off
 is
 
+    ---------------------------------------------------------------------------
+    -- setup - initialize the file cache before use
+    --
+    -- @TODO - keep track of initialization with SPARK ghost variable for
+    --  proofs
+    ---------------------------------------------------------------------------
     procedure setup with
         SPARK_Mode => Off -- use of Access
     is
@@ -35,7 +41,10 @@ is
         end loop;
     end setup;
 
-
+    ---------------------------------------------------------------------------
+    -- getBuffer - given a block device and block address, return a pointer to
+    --  the buffer in memory.
+    ---------------------------------------------------------------------------
     procedure getBuffer(device      : in Devices.DeviceID;
                         blockNum    : in Unsigned_64;
                         retBuffer   : out BufferPtr) with
@@ -101,7 +110,7 @@ is
     end getBuffer;
 
 
-    -- Return a busy buffer with disk
+    -- Return a busy buffer with disk contents
     procedure readBuffer(device     : in Devices.DeviceID;
                          blockNum   : in Unsigned_64;
                          retBuffer  : in out BufferPtr) with 
