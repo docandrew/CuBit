@@ -3,3 +3,4 @@ cubit_kernel
 cubit_kernel.iso
 cubit_kernel.map
 runtime/adalib
+src/build.ads
