@@ -57,7 +57,7 @@ is
         
         blockNum    : Unsigned_64;
         lock        : spinlock.Spinlock;
-        refCount    : Natural;
+        -- refCount    : Natural;
 
         -- Address of the block in linear memory. Necessary since we'll want to
         -- pass the physical address to disk drivers for DMA ops.

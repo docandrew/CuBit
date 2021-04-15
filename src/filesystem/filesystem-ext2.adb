@@ -237,11 +237,11 @@ package body Filesystem.Ext2 is
 
         buf : FileCache.BufferPtr;
     begin
-                            
+
         print("Reading inode #    "); printdln(inodeNum);
         print("Inode Block Group: "); printdln(bg);
         print("Inode Table Index: "); printdln(index);
-        print("Inode table:  "); println(table);
+        print("Inode Table Block  "); println(table);
         print("Block w/ Inode:    "); println(block);
         print("Offset w/in Block: "); println(offset);
 
@@ -249,6 +249,7 @@ package body Filesystem.Ext2 is
         print("Free inodes:  "); println(bgdt(bg).numFreeInodes);
         print("Num folders:  "); println(bgdt(bg).numDirectories);
         print("Block Bitmap: "); println(bgdt(bg).blockBitmapAddr);
+        print("Inode Bitmap: "); println(bgdt(bg).inodeBitmapAddr);
 
         -- Read the block with our inode, copy only the data we need.
         FileCache.readBuffer(device, Unsigned_64(table + block), buf);

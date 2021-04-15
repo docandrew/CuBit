@@ -3,6 +3,10 @@
 -- Copyright (C) 2020 Jon Andrew
 --
 -- Virtual Filesystem Layer
+--
+-- This is a work-in-progress. We'll need to add dispatching routines here for
+-- each of the necessary disk routines. (get superblock, get inode, get block,
+-- etc.)
 -------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 

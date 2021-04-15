@@ -76,10 +76,13 @@ is
     mbInfo      : constant MultibootInfo := mbInfo_orig;
     ssPtr       : System.Secondary_Stack.SS_Stack_Ptr;
 
+    -- drives : Devices.DriveArray 
+
     NoMultibootException    : exception;
     NoMemoryMapException    : exception;
     NoACPIException         : exception;
     NoAPICException         : exception;
+
 begin
     clear (BLACK);
 
@@ -365,7 +368,7 @@ begin
             pic.disable;
             x86.sti;
         else
-            -- TODO: not a big deal to fall-back to the PIC, but we need to
+            -- @TODO not a big deal to fall-back to the PIC, but we need to
             -- handle it.
             raise NoAPICException with "APIC not available.";
         end if;
@@ -452,6 +455,8 @@ begin
             bgdtOrder   : BuddyAllocator.Order;
             bgdtLength  : Ext2.BlockGroupNumber;
             rootInode   : Ext2.Inode;
+
+            currentDrive : Devices.DriveLetter := Devices.A;
         begin
             println("Attempting to locate main disk");
 
@@ -472,9 +477,23 @@ begin
                        Ext2.blockSize(sblock) = 4096 then
                         -- print(" signature: ");
                         -- println(Unsigned_32(sblock.signature));
-                        println(" Found compatible Ext2 filesystem",
+
+                        -- @TODO - use info from GRUB to decide where to mount
+                        -- this.
+                        print(" Found compatible Ext2 filesystem, mounting at ",
                                 textmode.LT_GREEN,
                                 textmode.BLACK);
+                        print(Character'Val(Devices.DriveLetter'Pos(currentDrive) + 65),
+                                textmode.LT_BLUE,
+                                textmode.BLACK);
+                        println(":");
+
+                        Devices.drives(currentDrive) := (
+                            major    => driveID.major,
+                            minor    => driveID.minor,
+                            reserved => 0);
+                        
+                        currentDrive := Devices.DriveLetter'succ(currentDrive);
 
                         --@TODO Sanity-checking to make sure CuBit supports this
                         -- filesystem's settings. We're picky for now about the

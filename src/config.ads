@@ -46,4 +46,12 @@ is
 
     -- File/device descriptors per process
     PER_PROCESS_DESCRIPTORS : constant := 256;
+
+    -- Number of files open on the system at once
+    MAX_OPEN_FILES : constant := 256;
+
+    -- Maximum number of chars in a file name and full path.
+    -- @TODO consider moving this to a limits.ads file later on
+    FILENAME_MAX_LENGTH : constant := 256;
+    FILEPATH_MAX_LENGTH : constant := 4096;
 end config;

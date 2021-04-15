@@ -62,9 +62,10 @@ private
     -- @param mode
     -- @return a descriptor for the resource requested.
     ---------------------------------------------------------------------------
-    function open(filename  : in System.Address; 
-                  flags     : in Unsigned_64;
-                  mode      : in Unsigned_64) return Long_Integer;
+    function open(filenameLen : in Unsigned_64;
+                  filename    : in System.Address;
+                  flags       : in Unsigned_64;
+                  mode        : in Unsigned_64) return Long_Integer;
 
     ---------------------------------------------------------------------------
     -- write syscall implementation

@@ -25,6 +25,9 @@ package body Process
     with SPARK_Mode => On
 is
 
+    ---------------------------------------------------------------------------
+    -- create
+    ---------------------------------------------------------------------------
     function create(imageStart  : in Virtmem.PhysAddress;
                     imageSize   : in Unsigned_64;
                     procStart   : in Virtmem.VirtAddress;
@@ -315,6 +318,9 @@ is
     end create;
 
 
+    ---------------------------------------------------------------------------
+    -- addToProctab
+    ---------------------------------------------------------------------------
     procedure addToProctab(proc : in Process) with
         SPARK_Mode => On
     is
@@ -484,9 +490,8 @@ is
 
     ---------------------------------------------------------------------------
     -- kill
-    -- End this process
     ---------------------------------------------------------------------------
-    procedure kill(pid : in ProcessID) with
+    procedure kill (pid : in ProcessID) with
         SPARK_Mode => On
     is
         -- recursively unmaps/deallocates process' full paging hierarchy
@@ -497,8 +502,12 @@ is
         proctab(pid).state := INVALID;
         deleteP4(proctab(pid).pgTable);
 
-        -- free memory allocated for the stacks.
-        -- TODO: we'll need to keep a list of physical pages used by this
+        -- @TODO re-work this.
+        -- Free memory allocated for the stacks. Note, this isn't appropriate
+        -- to do in the syscall handler, since we're in the kernel stack during
+        -- that portion. One option is to mark these as ready to free and then
+        -- unmap once we're back in the scheduler loop.
+        -- @TODO we'll need to keep a list of physical pages used by this
         -- process once we start allocating more memory for it.
         BuddyAllocator.free(2, Virtmem.V2P(proctab(pid).kernelStackBottom));
         BuddyAllocator.free(0, Virtmem.V2P(To_Integer(proctab(pid).stackBottom)));

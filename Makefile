@@ -13,9 +13,9 @@ build/libcubit.a:
 
 # Text-substitute string literals used in build.ads
 	-rm src/build.ads
-	
-	# Generate a hash list of all the source files and then a root hash from that
-	SRC_HASH := $(shell find src/ -type f -print0 | xargs -0 sha256sum | sha256sum)
+
+# Generate a hash list of all the source files and then a root hash from that
+	$(eval SRC_HASH = $(shell find src/ -type f -print0 | xargs -0 sha256sum | sha256sum))
 
 	sed -e 's/SED_GIT_HASH/$(GIT_HASH)/' \
 		-e 's/SED_BUILD_DATE/$(BUILD_DATE)/' \

@@ -155,6 +155,10 @@ is
         channel             : WaitChannel;
 
         openDescriptors     : Descriptors.DescriptorArray;
+
+        --@TODO need to store current working directory, consider drive letter
+        -- and inode # of folder, or some such.
+        --currentDirectory    : Files.Path := "/";
     end record;
 
     -- Lock for protecting the proctab
@@ -248,6 +252,12 @@ is
     ---------------------------------------------------------------------------
     procedure switchAddressSpace(processP4 : in System.Address);
 
+    ---------------------------------------------------------------------------
+    -- kill
+    -- End this process
+    -- @TODO ensure freeing all resources.
+    ---------------------------------------------------------------------------
+    procedure kill (pid : in ProcessID);
 private
     ---------------------------------------------------------------------------
     -- Ring 3 entry point in interrupt.asm. Processes will initially set
