@@ -11,11 +11,11 @@ with System.Storage_Elements; use System.Storage_Elements;
 with Devices;
 with FileCache;
 with Filesystem.vfs;
-with Spinlock;
+with Spinlocks;
 with Virtmem;
 with x86;
 
-Pragma Elaborate_All (Spinlock);
+Pragma Elaborate_All (Spinlocks);
 
 package ATA with
     SPARK_Mode => On
@@ -852,6 +852,8 @@ is
 
     type ATAType is (PATA, ATAPI, SATA, UNKNOWN);
 
+    driveLockName : aliased String := "ATA Lock";
+
     ---------------------------------------------------------------------------
     -- ata.Device describes an ATA device. Each controller has up to 4 of
     --  these, a master and slave per primary and secondary channel.
@@ -880,7 +882,7 @@ is
         kind                : ATAType;
         --buffer              : ATABuffer;
         id                  : DriveIdentification;
-        lock                : spinlock.SpinLock;
+        lock                : Spinlocks.SpinLock := (name => driveLockName'Access, others => <>);
         physicalSectorSize  : Unsigned_32;
         logicalSectorSize   : Unsigned_32;
         readCommand         : Unsigned_8;

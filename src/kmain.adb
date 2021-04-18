@@ -39,12 +39,17 @@ with Pic;
 with Process;
 with Scheduler;
 with Serial;
+with Services.Idle;
+with Services.Keyboard;
 with SlabAllocator;
+with Spinlocks;
 with Textmode; use Textmode;
 with Time;
 with Timer_pit;
 with Virtmem; use Virtmem;
 with x86;
+
+pragma Elaborate_All (Spinlocks);
 
 -- Not explicitly called, need to be with'd here for compilation
 with Last_Chance_Handler;
@@ -68,8 +73,27 @@ apicBase        : virtmem.PhysAddress := 0;
 ioapicBase      : virtmem.PhysAddress := 0;
 ioapicVirtBase  : virtmem.VirtAddress := 0;
 
-procedure kmain(magic : Unsigned_32; 
-                mbInfo_orig : in MultibootInfo)
+procedure testKThread1 is
+begin
+    loop
+        println("1111111111111111");
+    end loop;
+end testKThread1;
+
+procedure testKThread2 is
+begin
+    loop
+        println("2222222222222222");
+    end loop;
+end testKThread2;
+
+-------------------------------------------------------------------------------
+-- kmain
+--
+-- Entry point for the kernel.
+-------------------------------------------------------------------------------
+procedure kmain (magic       : Unsigned_32; 
+                 mbInfo_orig : in MultibootInfo)
     with SPARK_Mode => Off
 is
     mbOK        : constant Boolean := (magic = 16#2BADB002#);
@@ -89,7 +113,7 @@ begin
     initSerial: declare
     begin
         if (config.serialMirror) then
-            serial.init(serial.COM1);
+            Serial.init (serial.COM1);
             --println("Setting up serial port", textmode.LT_BLUE,
             --    textmode.BLACK);
         end if;
@@ -98,23 +122,23 @@ begin
 
     initHello: declare
     begin
-        println("CuBitOS v0.0.1 ", LT_BLUE, BLACK);
-        print("Build Date:  "); println(Build.DATE);
-        print("Git Commit:  "); println(Build.COMMIT);
-        print("Source Hash: "); println(Build.HASH);
+        println ("CuBitOS v0.0.1 ", LT_BLUE, BLACK);
+        print ("Build Date:  "); println (Build.DATE);
+        print ("Git Commit:  "); println (Build.COMMIT);
+        print ("Source Hash: "); println (Build.HASH);
         println;
 
-        print("Virtual Kernel Area:    "); 
-        print(KERNEL_START_VIRT'Address);
-        print(" - "); println(KERNEL_END_VIRT'Address);
+        print ("Virtual Kernel Area:    "); 
+        print (KERNEL_START_VIRT'Address);
+        print (" - "); println(KERNEL_END_VIRT'Address);
 
-        print("Bootstrap Stack Area:   ");
-        print(STACK_BOTTOM);
-        print(" - "); println(STACK_TOP);
+        print ("Bootstrap Stack Area:   ");
+        print (STACK_BOTTOM);
+        print (" - "); println (STACK_TOP);
 
-        print("DMA Area:               ");
-        print(DMA_REGION_START);
-        print(" - "); println(DMA_REGION_END);
+        print ("DMA Area:               ");
+        print (DMA_REGION_START);
+        print (" - "); println (DMA_REGION_END);
     end initHello;
 
     -- Do this early, so any attempt to use the secondary stack will raise an
@@ -131,53 +155,53 @@ begin
 
     initCPUID: declare
     begin
-        println("Checking CPU Capabilities...", textmode.LT_BLUE, textmode.BLACK);
-        print(" Standard CPUID level: "); println(cpuid.getMaxStandardFunction);
-        print(" Extended CPUID level: "); println(cpuid.getMaxExtendedFunction);
+        println ("Checking CPU Capabilities...", textmode.LT_BLUE, textmode.BLACK);
+        print (" Standard CPUID level: "); println (cpuid.getMaxStandardFunction);
+        print (" Extended CPUID level: "); println (cpuid.getMaxExtendedFunction);
         cpuid.setupCPUID;
 
-        print("CPU Vendor: "); println(cpuid.cpuVendor, GREEN, BLACK);
-        print("CPU Model:  "); println(cpuid.cpuBrand);
+        print ("CPU Vendor: "); println (cpuid.cpuVendor, GREEN, BLACK);
+        print ("CPU Model:  "); println (cpuid.cpuBrand);
         cpuid.printCacheInfo;
     end initCPUID;
 
 
     initSections: declare
     begin
-        println("Kernel sections:", textmode.LT_BLUE, textmode.BLACK);
-        print("text:     "); print(stext'Address);
-            print("-"); println(etext'Address);
-        print("rodata:   "); print(srodata'Address); 
-            print("-"); println(erodata'Address);
-        print("data:     "); print(sdata'Address); 
-            print("-"); println(edata'Address);
-        print("bss:      "); print(sbss'Address); 
-            print("-"); println(ebss'Address);
+        println ("Kernel sections:", textmode.LT_BLUE, textmode.BLACK);
+        print ("text:     "); print (stext'Address);
+            print("-"); println (etext'Address);
+        print("rodata:   "); print (srodata'Address); 
+            print("-"); println (erodata'Address);
+        print("data:     "); print (sdata'Address); 
+            print("-"); println (edata'Address);
+        print("bss:      "); print (sbss'Address); 
+            print("-"); println (ebss'Address);
     end initSections;
 
 
     initOtherMBInfo: declare
     begin
         if mbInfo.flags.hasBootDevice then
-            print("Boot device: "); println(mbInfo.boot_device);
+            print ("Boot device: "); println (mbInfo.boot_device);
         end if;
 
         if mbInfo.flags.hasELFSectionHeader then
-        println("ELF Sections available");
+        println ("ELF Sections available");
         end if;
 
         if mbInfo.flags.hasVideoInfo then
-            println("VESA available");
+            println ("VESA available");
         end if;
     end initOtherMBInfo;
 
 
     initPerCPU: declare
     begin
-        println("Initializing per-CPU data for CPU #0", Textmode.LT_BLUE,
+        println ("Initializing per-CPU data for CPU #0", Textmode.LT_BLUE,
             Textmode.BLACK);
 
-        PerCPUData.setupPerCPUData( 0, 
+        PerCPUData.setupPerCPUData (0,
                                     cpu0Data, 
                                     cpu0Data'Address,
                                     cpu0Data.gdt'Address, 
@@ -188,11 +212,11 @@ begin
 
     initSS: declare
     begin
-        println("Initializing Secondary Stack for CPU #0", Textmode.LT_BLUE,
+        println ("Initializing Secondary Stack for CPU #0", Textmode.LT_BLUE,
             Textmode.BLACK);
 
         ssPtr := PerCPUData.getSecondaryStack;
-        System.Secondary_Stack.SS_Init(ssPtr);
+        System.Secondary_Stack.SS_Init (ssPtr);
     end initSS;
 
 
@@ -200,7 +224,7 @@ begin
     begin
         -- This doesn't have to be done so early, but it's nice to avoid
         -- double-faults early in the boot process for debugging GPFs, etc.
-        println("Installing Interrupt Vector Table", textmode.LT_BLUE, 
+        println ("Installing Interrupt Vector Table", textmode.LT_BLUE, 
             textmode.BLACK);
         Interrupt.setupIDT;
         Interrupt.loadIDT;
@@ -211,7 +235,8 @@ begin
         -- add extra area for the framebuffer
         memAreas : MemoryAreas.MemoryAreaArray(1..Multiboot.numAreas(mbInfo) + 1);
     begin
-        println("Detecting memory", Textmode.LT_BLUE, Textmode.BLACK);
+        println ("Detecting memory", Textmode.LT_BLUE, Textmode.BLACK);
+
         if mbInfo.flags.hasMemoryMap then
             memAreas := Multiboot.getMemoryAreas(mbInfo);
         else
@@ -228,18 +253,18 @@ begin
             --                     mbInfo.framebuffer_height * 
             --                     Unsigned_32(mbInfo.framebuffer_bpp / 8) - 1);
 
-            print("Framebuffer at "); print(mbInfo.framebuffer_addr);
-            print(", size: ");  printd(mbInfo.framebuffer_width);
-            print("x");         printd(mbInfo.framebuffer_height);
-            print(", ");        print(Integer(mbInfo.framebuffer_bpp));
-            print(" bpp");
+            print ("Framebuffer at "); print (mbInfo.framebuffer_addr);
+            print (", size: ");  printd (mbInfo.framebuffer_width);
+            print ("x");         printd (mbInfo.framebuffer_height);
+            print (", ");        print (Integer(mbInfo.framebuffer_bpp));
+            print (" bpp");
         end if;
 
         println;
-        println("-----------------------------------------------------");
-        println("                     Memory Areas                    ");
-        println("-----------------------------------------------------");
-        println("      Start                 End            Type");
+        println ("-----------------------------------------------------");
+        println ("                     Memory Areas                    ");
+        println ("-----------------------------------------------------");
+        println ("      Start                 End            Type");
         for area of memAreas loop
             print(area.startAddr); print(" - "); print(area.endAddr); 
             print("   ");
@@ -363,10 +388,9 @@ begin
                 myLapic.setupLAPIC_BSP;
             end setupLAPIC;
 
-            interrupt.setInterruptController(interrupt.APIC);
-            interrupt.setLAPICBaseAddress(apicBase);
+            interrupt.setInterruptController (interrupt.APIC);
+            interrupt.setLAPICBaseAddress (apicBase);
             pic.disable;
-            x86.sti;
         else
             -- @TODO not a big deal to fall-back to the PIC, but we need to
             -- handle it.
@@ -376,20 +400,23 @@ begin
 
     initTimerCalibration: declare
     begin
+        x86.sti;
         -- At this point, interrupts are enabled (using either PIC or APIC),
         -- and we can calibrate the TSC ticks.
-        time.calibrateTSC;
-        print(" TSC timer calibration: ");
-        printd(time.tscPerDuration);
-        println(" ticks/ms");
+        Time.calibrateTSC;
+        print (" TSC timer calibration: ");
+        printd (time.tscPerDuration);
+        println (" ticks/ms");
 
         if not cpuid.hasInvariantTSC then
-            println(" CAUTION: Time-Stamp Counter is not invariant and may vary with CPU speed.",
+            println (" CAUTION: Time-Stamp Counter is not invariant and may vary with CPU speed.",
                 Textmode.YELLOW, Textmode.BLACK);
         else
-            println(" TSC is invariant.");
+            println (" TSC is invariant.");
         end if;
 
+        -- experiment
+        x86.cli;
     end initTimerCalibration;
 
     initIOAPIC: declare
@@ -398,26 +425,29 @@ begin
 
         -- TODO: break this out into a subprogram and put it in ioapic.
         if ioapicBase = 0 then
-            println(" WARNING: No I/O APIC found in the ACPI tables. ");
-            println(" Defaulting to legacy PIC controller.");
+            println (" WARNING: No I/O APIC found in the ACPI tables. ");
+            println (" Defaulting to legacy PIC controller.");
         else
             -- disable caching on the mmap-ed I/O APIC registers,
             -- re-map it into the higher-half.
             ioapicVirtBase := Virtmem.P2V(ioapicBase);
             
-            print("Setting up I/O APIC at address: ", textmode.LT_BLUE, textmode.BLACK);
-            println(ioapicVirtBase);
+            print ("Setting up I/O APIC at address: ", textmode.LT_BLUE, textmode.BLACK);
+            println (ioapicVirtBase);
 
             setupIOAPIC: declare
                 package io_apic is new ioapic(To_Address(ioapicVirtBase));
                 function mapIOFrame is new Mem_mgr.mapIOFrame(BuddyAllocator.allocFrame);
                 IORemapException : exception;
             begin    
-                if not mapIOFrame(ioapicBase) then
+                if not mapIOFrame (ioapicBase) then
                     raise IORemapException with "Unable to remap I/O APIC registers.";
                 else
-                    io_apic.setupIOAPIC(acpi.ioapicID);
-                    --io_apic.enableIRQ(33, 0);         -- to test keyboard interrupts
+                    io_apic.setupIOAPIC (acpi.ioapicID);
+                    
+                    -- Enable Keyboard Interrupts
+                    println ("Enabling keyboard");
+                    io_apic.enableIRQ (33, 0);
                 end if;
             end setupIOAPIC;
         end if;
@@ -529,20 +559,46 @@ begin
         end testATA;
     end initATA;
 
-    -- initSMP: declare
-    --     package myLapic is new lapic(To_Address(virtmem.P2V(apicBase)));
-    --     cpu : Natural := 1;
-    -- begin
-    --     println("Starting SMP CPUs", textmode.LT_BLUE, textmode.BLACK);
-    --     for cpu in 1..(acpi.numCPUs - 1) loop
-    --         startingCPU := Unsigned_32(cpu);
-    --         myLapic.bootAP(Unsigned_8(cpu), 16#7000#);
-    --         while startingCPU /= 0 loop
-    --             time.sleep(1 * time.Milliseconds);
-    --         end loop;
-    --     end loop;
+    -- if acpi.numCPUs > 1 then
+    --     initSMP: declare
+    --         package myLapic is new lapic(To_Address(virtmem.P2V(apicBase)));
+    --         cpu : Natural := 1;
+    --     begin
+    --         println("Starting SMP CPUs", textmode.LT_BLUE, textmode.BLACK);
 
-    -- end initSMP;
+    --         for cpu in 1..(acpi.numCPUs - 1) loop
+                
+    --             startingCPU := Unsigned_32(cpu);
+                
+    --             myLapic.bootAP(Unsigned_8(cpu), 16#7000#);
+
+    --             while startingCPU /= 0 loop
+    --                 Time.sleep(1 * time.Milliseconds);
+    --             end loop;
+    --         end loop;
+    --     end initSMP;
+    -- end if;
+
+    print ("Starting idle service: ");
+    -- @TODO may need to start one of these per-CPU
+    Process.startKernelThread (procStart => Services.Idle.start'Address,
+                               name      => "Idle            ",
+                               pid       => Config.SERVICE_IDLE_PID,
+                               priority  => -1);
+
+    print ("Starting keyboard service: ");
+    Process.startKernelThread (procStart => Services.Keyboard.start'Address,
+                               name      => "Keyboard        ",
+                               pid       => Config.SERVICE_KEYBOARD_PID,
+                               priority  => 1);
+
+    -- println (testKThread1'Address);
+    -- Process.startKernelThread (testKThread1'Address, "kthread1        ", 1);
+    -- print ("Creating kernel thread 2, procedure address: ");
+    -- println (testKThread2'Address);
+    -- Process.startKernelThread (testKThread2'Address, "kthread2        ", 2);
+    
+    println ("Creating User Process");
 
     Process.createFirstProcess;
 
@@ -551,6 +607,7 @@ begin
         println("Starting scheduler on CPU 0");
         Scheduler.schedule(cpu0Data);
     end initScheduler;
+
 end kmain;
 
 

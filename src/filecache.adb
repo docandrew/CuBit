@@ -54,7 +54,7 @@ is
 
         buf : BufferPtr;
     begin
-        Spinlock.enterCriticalSection(cache.lock);
+        Spinlocks.enterCriticalSection(cache.lock);
 
         -- This is sort of confusing, since we have "overlapping" loops.
         -- First, see if block is already cached
@@ -68,7 +68,7 @@ is
                     if not buf.busy then
                         -- sweet. block is cached and nobody owns it
                         retBuffer := buf;
-                        Spinlock.exitCriticalSection(cache.lock);
+                        Spinlocks.exitCriticalSection(cache.lock);
                         
                         return;
                     else
@@ -98,7 +98,7 @@ is
                 buf.dirty       := False;
                 buf.valid       := False;
                 retBuffer       := buf;
-                Spinlock.exitCriticalSection(cache.lock);
+                Spinlocks.exitCriticalSection(cache.lock);
                 return;
             end if;
 
@@ -148,7 +148,7 @@ is
             raise ReleaseNotOwnedException with "releaseBuffer: Releasing non-busy buffer";
         end if;
 
-        Spinlock.enterCriticalSection(cache.lock);
+        Spinlocks.enterCriticalSection(cache.lock);
 
         buf.next.prev := buf.prev;
         buf.prev.next := buf.next;
@@ -163,7 +163,7 @@ is
         -- Wake up any processes waiting on this buffer.
         Process.goAhead(buf.all'Address);
 
-        Spinlock.exitCriticalSection(cache.lock);
+        Spinlocks.exitCriticalSection(cache.lock);
     end releaseBuffer;
 
 end FileCache;

@@ -13,6 +13,7 @@ with Mem_mgr;
 with Pic;
 with PerCpuData;
 with Process;
+with Services.Keyboard;
 --with util;
 with Time;
 --with x86;
@@ -35,31 +36,35 @@ is
     -- Pointer structure for our IDT
     idtp : IDTPointer;
 
-    procedure printRegs(frame : not null access constant stackframe.InterruptStackFrame) is
+    ---------------------------------------------------------------------------
+    -- printRegs
+    ---------------------------------------------------------------------------
+    procedure printRegs(frame : not null access constant Stackframe.InterruptStackFrame) is
     begin
         println;
         --print("Exception:  "); println(Integer(frame.interruptNumber));
-        print("error code: "); println(frame.errorCode);
-        print("rip:    "); println(frame.rip);
-        print("rflags: "); println(frame.rflags);
-        print("rsp:    "); println(frame.rsp);
-        print("cs:     "); println(frame.cs);
-        print("ss:     "); println(frame.ss);
+        print ("error code: "); println (frame.errorCode);
+        print ("rip:    "); println (frame.rip);
+        print ("rflags: "); println (frame.rflags);
+        print ("rsp:    "); println (frame.rsp);
+        print ("rbp:    "); println (frame.rbp);
+        print ("cs:     "); println (frame.cs);
+        print ("ss:     "); println (frame.ss);
         
-        print("rax:    "); println(frame.rax);
-        print("rbx:    "); println(frame.rbx);
-        print("rcx:    "); println(frame.rcx);
-        print("rdx:    "); println(frame.rdx);
-        print("rsi:    "); println(frame.rsi);
-        print("rdi:    "); println(frame.rdi);
-        print("r8:     "); println(frame.r8);
-        print("r9:     "); println(frame.r9);
-        print("r10:    "); println(frame.r10);
-        print("r11:    "); println(frame.r11);
-        print("r12:    "); println(frame.r12);
-        print("r13:    "); println(frame.r13);
-        print("r14:    "); println(frame.r14);
-        print("r15:    "); println(frame.r15);
+        print ("rax:    "); println (frame.rax);
+        print ("rbx:    "); println (frame.rbx);
+        print ("rcx:    "); println (frame.rcx);
+        print ("rdx:    "); println (frame.rdx);
+        print ("rsi:    "); println (frame.rsi);
+        print ("rdi:    "); println (frame.rdi);
+        print ("r8:     "); println (frame.r8);
+        print ("r9:     "); println (frame.r9);
+        print ("r10:    "); println (frame.r10);
+        print ("r11:    "); println (frame.r11);
+        print ("r12:    "); println (frame.r12);
+        print ("r13:    "); println (frame.r13);
+        print ("r14:    "); println (frame.r14);
+        print ("r15:    "); println (frame.r15);
     end printRegs;
 
     ---------------------------------------------------------------------------
@@ -67,7 +72,7 @@ is
     --  the interrupt controller has not been set up yet, this should not be
     --  called, and will cause a kernel panic if it is.
     ---------------------------------------------------------------------------
-    procedure eoi(num : x86Interrupt) with
+    procedure eoi (num : x86Interrupt) with
         SPARK_Mode => On
     is
         NoInterruptController : Exception;
@@ -77,10 +82,10 @@ is
             when LEGACY_PIC =>
                 -- for PIC, no action necessary except for hardware IRQs
                 if num in TIMER..IDE2 then
-                    pic.finishIRQ(num);
+                    pic.finishIRQ (num);
                 end if;
             when APIC =>
-                --print("APIC EOI"); println(Unsigned_32(num));
+                -- print ("APIC EOI"); println (Unsigned_32(num));
                 myLapic.finishIRQ;
             when X2APIC =>
                 null;
@@ -95,9 +100,9 @@ is
     --  function needs to know what (PIC, APIC, x2APIC) is generating these
     --  interrupts.
     ---------------------------------------------------------------------------
-    procedure interruptHandler(frame : not null access constant stackframe.InterruptStackFrame)
+    procedure interruptHandler (frame : not null access constant Stackframe.InterruptStackFrame)
         with SPARK_Mode => On
-    is      
+    is
         interruptNumber : constant x86Interrupt := x86Interrupt(frame.interruptNumber);
         oldCR3 : Integer_Address;
     begin
@@ -117,62 +122,64 @@ is
                 -- we'll need to change CR0 appropriately and make
                 -- sure that FXSAVE, FXRESTORE are used during context
                 -- switches for FP processes.
-                println("Floating point co-processor used, not enabled");
+                println ("Floating point co-processor used, not enabled");
             when PAGE_FAULT =>
-                print("Page Fault at ");
-                println(frame.rip);
-                handlePageFault(frame.errorCode);
+                print ("Page Fault at ");
+                println (frame.rip);
+                handlePageFault (frame.errorCode);
                 --eoi(PAGE_FAULT);
                 x86.halt;
             when TIMER =>
                 -- possible overflow in geologic time scales.
-                time.msTicks := time.msTicks + 1;
+                Time.msTicks := Time.msTicks + 1;
 
-                if time.msTicks mod config.TIME_SLICE = 0 then
+                if Time.msTicks mod Config.TIME_SLICE = 0 then
                     -- must finish IRQ first since the yield
                     -- will eventually return to interruptReturn in
                     -- interrupt.asm, not here.
-                    --print(".");
-                    eoi(TIMER);
+                    --print (".");
+                    eoi (TIMER);
                     --pic.finishIRQ(TIMER);
 
-                    if(PerCPUData.getCurrentPID /= Process.NO_PROCESS) then
+                    if PerCPUData.getCurrentPID /= Process.NO_PROCESS then
                         Process.yield;
                     end if;
                 else
-                    eoi(TIMER);
-                    --pic.finishIRQ(TIMER);
+                    eoi (TIMER);
                 end if;
+
             when PS2KEYBOARD =>
-                keyboard.readKey;
-                eoi(PS2KEYBOARD);
-                --pic.finishIRQ(interruptNumber);
+                -- println ("PS2 Interrupt");
+                eoi (PS2KEYBOARD);
+                Process.send (Config.SERVICE_KEYBOARD_PID, 1);
             when INVALID .. IDE2 =>
-                print("IRQ: "); 
-                println(Integer(interruptNumber));
-                eoi(interruptNumber);
-                --finishIRQ(interruptNumber);
+                print ("IRQ: "); 
+                println (Integer(interruptNumber));
+                eoi (interruptNumber);
             when SPURIOUS =>
-                println("Spurious Interrupt");
+                println ("Spurious Interrupt");
             when KERNEL_PANIC =>
-                println("KERNEL PANIC!");
-                printRegs(frame);
+                println ("KERNEL PANIC!");
+                printRegs (frame);
                 x86.halt;
             when SYSCALL =>
-                print("SYSCALL");
+                print ("SYSCALL");
             when others =>
-                print("EXCEPTION: "); 
-                println(Integer(interruptNumber));
-                printRegs(frame);
+                print ("EXCEPTION: "); 
+                println (Integer(interruptNumber));
+                printRegs (frame);
                 x86.halt;   -- never iretq, so interrupts should still be disabled.
         end case;
 
         -- if we return from this interrupt, put page tables back the way they were.
-        -- TODO: check cs to see if we were in user code
-        Virtmem.setActiveP4(oldCR3);
+        -- TODO: check cs to see if we were in user code?
+        Virtmem.setActiveP4 (oldCR3);
     end interruptHandler;
 
-    procedure handlePageFault(err : in Unsigned_64) with
+    ---------------------------------------------------------------------------
+    -- handlePageFault
+    ---------------------------------------------------------------------------
+    procedure handlePageFault (err : in Unsigned_64) with
         SPARK_Mode => On
     is
         faultAddr : constant Unsigned_64 := x86.getCR2;
@@ -182,11 +189,11 @@ is
         --check process memory limits
         
         -- what caused the page fault
-        present         : constant Boolean := util.isBitSet(err, 0);
-        write           : constant Boolean := util.isBitSet(err, 1);
-        userMode        : constant Boolean := util.isBitSet(err, 2);
-        reservedWrite   : constant Boolean := util.isBitSet(err, 3);
-        nxeViolation    : constant Boolean := util.isBitSet(err, 4);
+        present         : constant Boolean := Util.isBitSet (err, 0);
+        write           : constant Boolean := Util.isBitSet (err, 1);
+        userMode        : constant Boolean := Util.isBitSet (err, 2);
+        reservedWrite   : constant Boolean := Util.isBitSet (err, 3);
+        nxeViolation    : constant Boolean := Util.isBitSet (err, 4);
     begin
         -- handle NXE violations separately.
         if nxeViolation then
@@ -208,23 +215,23 @@ is
                         case userMode is
                             when True =>
                                 -- user page-protection wr violation. kill it.
-                                print("User page-protection write violation: ");
-                                println(faultAddr);
+                                print ("User page-protection write violation: ");
+                                println (faultAddr);
                             when False =>
                                 -- kernel page-protection wr violation. we goofed.
-                                print("Kernel page-protection write violation: ");
-                                println(faultAddr);
+                                print ("Kernel page-protection write violation: ");
+                                println (faultAddr);
                         end case;
                     when False =>
                         case userMode is
                             when True =>
                                 -- user page-protection rd violation. kill it.
-                                print("User page-protection read violation: ");
-                                println(faultAddr);
+                                print ("User page-protection read violation: ");
+                                println (faultAddr);
                             when False =>
                                 -- kernel page-protection rd violation. we goofed.
-                                print("Kernel page-protection read violation: ");
-                                println(faultAddr);
+                                print ("Kernel page-protection read violation: ");
+                                println (faultAddr);
                         end case;
                 end case;
             when False =>
@@ -235,13 +242,13 @@ is
                                 -- user wrote non-present page. see if it's in their
                                 -- allocated range and page in if it is. If it's not,
                                 -- then may be a stack overflow or OoM.
-                                print("User non-present page write: ");
-                                println(faultAddr);
+                                print ("User non-present page write: ");
+                                println (faultAddr);
                             when False =>
                                 -- kernel wrote non-present page. see if it's something
                                 -- that we should have, page it in if it is.
-                                print("Kernel non-present page write: ");
-                                println(faultAddr);
+                                print ("Kernel non-present page write: ");
+                                println (faultAddr);
                         end case;
                     when False =>
                         case userMode is
@@ -249,14 +256,14 @@ is
                                 -- user read non-present page. see if it's in their
                                 -- allocated range and page in if it is. If it's not,
                                 -- may be a stack overflow or OoM.
-                                print("User non-present page read: ");
-                                println(faultAddr);
+                                print ("User non-present page read: ");
+                                println (faultAddr);
                             when False =>
                                 -- kernel read non-present page. see if it's something
                                 -- that we should have. see if it's something that we should
                                 -- have, page it in if it is.
-                                print("Kernel non-present page read: ");
-                                println(faultAddr);
+                                print ("Kernel non-present page read: ");
+                                println (faultAddr);
                         end case;                    
                 end case;
         end case;
@@ -271,7 +278,7 @@ is
     is
     begin
         createIDT;
-        idtp := calculateIDTP(idt'Address);
+        idtp := calculateIDTP (idt'Address);
         validIDT := True;
     end setupIDT;
 
@@ -282,13 +289,13 @@ is
         SPARK_Mode => Off   -- due to 'Address
     is
     begin
-        x86.lidt(idtp'Address);
+        x86.lidt (idtp'Address);
     end loadIDT;
 
     ---------------------------------------------------------------------------
     -- Set interrupt controller used
     ---------------------------------------------------------------------------
-    procedure setInterruptController(cont : in InterruptController) with
+    procedure setInterruptController (cont : in InterruptController) with
         SPARK_Mode => On
     is
     begin
@@ -298,26 +305,26 @@ is
     ---------------------------------------------------------------------------
     -- Set LAPIC base address
     ---------------------------------------------------------------------------        
-    procedure setLAPICBaseAddress(lapicBase : in virtmem.PhysAddress) with
+    procedure setLAPICBaseAddress (lapicBase : in virtmem.PhysAddress) with
         SPARK_Mode => On
     is
         use System.Storage_Elements;
     begin
-        lapicAddr := To_Address(virtmem.P2V(lapicBase));
+        lapicAddr := To_Address (virtmem.P2V(lapicBase));
     end setLAPICBaseAddress;
 
     ---------------------------------------------------------------------------
     -- Compose the IDTPointer containing our IDTEntry size and the address to
     -- the IDT itself.
     ---------------------------------------------------------------------------
-    function calculateIDTP(idtPtr : in System.Address) return IDTPointer 
+    function calculateIDTP (idtPtr : in System.Address) return IDTPointer 
         with SPARK_Mode => On
     is
         myidtp : IDTPointer;
     begin
         -- 'Size gives bits, so divide by 8 for bytes of entire IDT structure
         myidtp.size := Unsigned_16((IDTEntry'Size * 256 / 8) - 1);
-        myidtp.base := util.addrToNum(idtPtr);
+        myidtp.base := Util.addrToNum (idtPtr);
         return myidtp;
     end calculateIDTP;
 
@@ -328,24 +335,24 @@ is
     --  gdtSelector: GDT selector for our kernel
     --  dpl: descriptor privilege level (Ring 0-3) for interrupt
     ---------------------------------------------------------------------------
-    function createIDTEntry(handler : in Unsigned_64;
-                            isTrap : in Boolean;
-                            gdtSelector : in segment.GDTOffset;
-                            dpl : in x86.PrivilegeLevel) return IDTEntry
+    function createIDTEntry (handler     : in Unsigned_64;
+                             isTrap      : in Boolean;
+                             gdtSelector : in segment.GDTOffset;
+                             dpl         : in x86.PrivilegeLevel) return IDTEntry
         with SPARK_Mode => On
     is
         newidt : IDTEntry;
     begin
-        newidt.offset1 := Unsigned_16(handler and 16#FFFF#);
+        newidt.offset1  := Unsigned_16(handler and 16#FFFF#);
         newidt.selector := gdtSelector;
         newidt.istIndex := 0;
 
-        newidt.istrap := isTrap;
-        newidt.dpl := dpl;
-        newidt.present := True;
+        newidt.istrap   := isTrap;
+        newidt.dpl      := dpl;
+        newidt.present  := True;
 
-        newidt.offset2 := Unsigned_16(Shift_Right(handler, 16) and 16#FFFF#);
-        newidt.offset3 := Unsigned_32(Shift_Right(handler, 32) and 16#FFFF_FFFF#);
+        newidt.offset2  := Unsigned_16(Shift_Right(handler, 16) and 16#FFFF#);
+        newidt.offset3  := Unsigned_32(Shift_Right(handler, 32) and 16#FFFF_FFFF#);
 
         return newidt;
     end createIDTEntry;
@@ -405,11 +412,11 @@ is
         -- Kernel Panic - don't want interrupts to happen here, because we're crashed.
         idt(127) := createIDTEntry(addrToNum(isr127'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
 
-        -- Syscall
+        -- Syscall (old school, we use the actual syscall/sysret instructions in CuBit)
         idt(128) := createIDTEntry(addrToNum(isr128'Address), True, GDT_OFFSET_KERNEL_CODE, DPL_USER);
 
         -- Spurious Vector
         idt(255) := createIDTEntry(addrToNum(isr255'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
     end createIDT;
 
-end interrupt;
+end Interrupt;

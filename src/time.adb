@@ -13,7 +13,7 @@ is
     ---------------------------------------------------------------------------
     -- bootCalibrationSleep - busy wait until tick difference matches up
     ---------------------------------------------------------------------------
-    procedure bootCalibrationSleep(ms : in Unsigned_64)
+    procedure bootCalibrationSleep (ms : in Unsigned_64)
         with SPARK_Mode => On
     is
         startTicks : Unsigned_64 := msTicks;
@@ -70,7 +70,7 @@ is
     --     end loop;
     -- end sleep;
 
-    procedure sleep(d : in Duration) is
+    procedure sleep (d : in Duration) is
         startTicks  : TSCTicks := x86.rdtsc;
         endTicks    : TSCTicks := startTicks + (tscPerDuration * d);
     begin

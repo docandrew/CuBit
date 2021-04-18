@@ -21,7 +21,7 @@ is
     MAX_CPUS : constant := 128;
 
     -- ms before context switch takes place.
-    TIME_SLICE : constant := 15;
+    TIME_SLICE : constant := 100;
 
     -- Debug flags that can be set at runtime
     debugFlag : Boolean := False;
@@ -54,4 +54,8 @@ is
     -- @TODO consider moving this to a limits.ads file later on
     FILENAME_MAX_LENGTH : constant := 256;
     FILEPATH_MAX_LENGTH : constant := 4096;
+
+    -- Process IDs for CuBit services
+    SERVICE_IDLE_PID     : constant := 1;
+    SERVICE_KEYBOARD_PID : constant := 2;
 end config;

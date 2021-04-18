@@ -15,10 +15,10 @@ with Interfaces; use Interfaces;
 
 with Config;
 with Devices;
-with Spinlock;
+with Spinlocks;
 with Virtmem;
 
-Pragma Elaborate_All (Spinlock);
+Pragma Elaborate_All (Spinlocks);
 
 package FileCache with
     SPARK_Mode => On
@@ -40,6 +40,8 @@ is
     type Buffer;
     type BufferPtr is access all Buffer;
   
+    bufferLockName : aliased String := "Buffer Lock";
+
     ---------------------------------------------------------------------------
     -- In-memory record for a disk/file block.
     --
@@ -56,7 +58,7 @@ is
                                            reserved => 0);
         
         blockNum    : Unsigned_64;
-        lock        : spinlock.Spinlock;
+        lock        : Spinlocks.Spinlock := (name => bufferLockName'Access, others => <>);
         -- refCount    : Natural;
 
         -- Address of the block in linear memory. Necessary since we'll want to
@@ -74,10 +76,12 @@ is
     --     arr : array (1 .. Config.NUM_BLOCK_BUFFERS) of aliased Buffer(BlockSize);
     -- end record;
     
+    cacheLockName : aliased String := "File Cache Lock";
+
     -- Each block device gets one of these. Maintain the static array,
     -- LRU list of pointers to the blocks and a mutex.
     type FileCache is record
-        lock        : Spinlock.spinlock;
+        lock        : Spinlocks.spinlock := (name => cacheLockName'Access, others => <>);
         buffers     : BufferArray;
 
         -- last used is head.next

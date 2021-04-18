@@ -8,11 +8,11 @@
 -------------------------------------------------------------------------------
 with Ada.Characters.Latin_1; use Ada.Characters.Latin_1;
 
-with config;
-with serial;
-with strings; use strings;
+with Config;
+with Serial;
+with Strings; use Strings;
 
-package body textmode with 
+package body Textmode with
     Refined_State => (ScreenState => screen),
     SPARK_Mode => On
 is
@@ -450,4 +450,4 @@ is
         setCursor(0, Row'last);
     end scrollUp;
 
-end textmode;
+end Textmode;

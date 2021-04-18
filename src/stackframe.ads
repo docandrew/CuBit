@@ -5,6 +5,8 @@
 -- Interrupt Stack Frame
 -------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
+with System;
+with System.Storage_Elements; use System.Storage_Elements;
 
 package StackFrame is
     ---------------------------------------------------------------------------
@@ -38,10 +40,10 @@ package StackFrame is
         errorCode : Unsigned_64;
 
         -- stuff placed on stack by the CPU
-        rip     : Unsigned_64;
+        rip     : System.Address;
         cs      : Unsigned_64;
         rflags  : Unsigned_64;
-        rsp     : Unsigned_64;
+        rsp     : Integer_Address;
         ss      : Unsigned_64;
     end record with Size => 64 * 22;
 end StackFrame;

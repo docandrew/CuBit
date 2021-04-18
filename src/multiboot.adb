@@ -1,6 +1,12 @@
+-------------------------------------------------------------------------------
+-- CuBitOS
+-- Copyright (C) 2019 Jon Andrew
+--
+-- Multiboot
+-------------------------------------------------------------------------------
 with System;
 
-package body multiboot
+package body Multiboot
     with SPARK_Mode => On
 is
 
@@ -60,4 +66,4 @@ is
         return retAreas;
     end getMemoryAreas;
             
-end multiboot;
+end Multiboot;

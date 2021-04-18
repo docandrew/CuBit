@@ -75,7 +75,7 @@ is
     --
     -- @param expectedID - I/O APIC ID from ACPI or MP tables.
     ---------------------------------------------------------------------------
-    procedure setupIOAPIC(expectedID : in Unsigned_32);
+    procedure setupIOAPIC (expectedID : in Unsigned_32);
 
     ---------------------------------------------------------------------------
     -- enableIRQ
@@ -84,7 +84,7 @@ is
     --  interrupt_numbers.ads, i.e. the timer interrupt would be 32, NOT 0.
     -- @param cpu - The value used here is the CPU's LAPIC ID.
     ---------------------------------------------------------------------------
-    procedure enableIRQ(irq : in InterruptNumbers.x86interrupt;
-                        cpu : in Unsigned_32);
+    procedure enableIRQ (irq : in InterruptNumbers.x86interrupt;
+                         cpu : in Unsigned_32);
 end ioapic;
     

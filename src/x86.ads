@@ -185,6 +185,12 @@ is
     function getCR3 return Integer_Address;
 
     ---------------------------------------------------------------------------
+    -- Get base pointer. In debug mode, calling convention stores the caller
+    -- in this register, so we can use this to get a stack trace.
+    ---------------------------------------------------------------------------
+    function getRBP return Unsigned_64;
+
+    ---------------------------------------------------------------------------
     -- swapgs instruction
     ---------------------------------------------------------------------------
     procedure swapgs;

@@ -38,7 +38,7 @@ is
     -- block device. This should be performed as part of the driver's setup
     -- subprogram.
     ---------------------------------------------------------------------------
-    procedure registerBlockDriver(major : Devices.MajorNumber;
+    procedure registerBlockDriver(major       : Devices.MajorNumber;
                                   bufSyncFunc : BufferSyncFunction);
 
     ---------------------------------------------------------------------------

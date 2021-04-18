@@ -48,6 +48,10 @@ SYSCALL_UNLINK          equ 10
 SYSCALL_WAIT            equ 11
 SYSCALL_WRITE           equ 12
 SYSCALL_OPEN            equ 13
+SYSCALL_CONTROLACCESS   equ 100
+SYSCALL_GETTICKET       equ 101
+SYSCALL_GRANT           equ 102
+SYSCALL_REVOKE          equ 103
 
 ; Useful constants for init.asm
 STDIN                   equ 0

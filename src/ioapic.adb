@@ -4,12 +4,14 @@
 --
 -- I/O APIC
 -------------------------------------------------------------------------------
-with textmode; use textmode;
+with Textmode; use Textmode;
 
 package body ioapic
     with SPARK_Mode => On
 is
+    ---------------------------------------------------------------------------
     -- specify register, read the value
+    ---------------------------------------------------------------------------
     function read(index : in IOAPICAddress) return Unsigned_32 with
         SPARK_Mode => On
     is
@@ -18,7 +20,9 @@ is
         return ioapic.IOWIN;
     end read;
 
+    ---------------------------------------------------------------------------
     -- specify register, write the value
+    ---------------------------------------------------------------------------
     procedure write(index : in IOAPICAddress; val : in Unsigned_32) with
         SPARK_Mode => On
     is
@@ -27,11 +31,13 @@ is
         ioapic.IOWIN := val;
     end write;
 
+    ---------------------------------------------------------------------------
     -- Get the maximum number of entries in the I/O redirection table
     -- bits 16:23 of IOAPICVER are the max redirection entry
     -- bits 0:7 of IOAPICVER is the APIC version, should be 0x11
     -- bits 24:27 of IOAPICID is 
-    procedure setupIOAPIC(expectedID : in Unsigned_32) with
+    ---------------------------------------------------------------------------
+    procedure setupIOAPIC (expectedID : in Unsigned_32) with
         SPARK_Mode => On
     is
         version         : Unsigned_32;
@@ -59,12 +65,15 @@ is
         end loop;
     end setupIOAPIC;
 
-    procedure enableIRQ(irq : in InterruptNumbers.x86Interrupt; cpu : in Unsigned_32) with
+    ---------------------------------------------------------------------------
+    -- enableIRQ
+    ---------------------------------------------------------------------------
+    procedure enableIRQ (irq : in InterruptNumbers.x86Interrupt; cpu : in Unsigned_32) with
         SPARK_Mode => On
     is
         tableEntry : Unsigned_32 := Unsigned_32(2 * (irq - 32));
     begin
-        write(IOREDTBL_BASE + tableEntry, Unsigned_32(irq));
+        write(IOREDTBL_BASE + tableEntry,   Unsigned_32(irq));
         write(IOREDTBL_BASE + tableEntry+1, Shift_Left(cpu, 24));
     end enableIRQ;
 

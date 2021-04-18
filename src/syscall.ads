@@ -18,20 +18,26 @@ is
     -- The basic set of syscalls will be those required for Newlib support
     ---------------------------------------------------------------------------
     subtype SyscallNumber is Unsigned_64;
-    SYSCALL_EXIT    : constant SyscallNumber := 0;
-    SYSCALL_READ    : constant SyscallNumber := 1;
-    SYSCALL_CLOSE   : constant SyscallNumber := 2;
-    SYSCALL_EXECVE  : constant SyscallNumber := 3;
-    SYSCALL_FORK    : constant SyscallNumber := 4;
-    SYSCALL_FSTAT   : constant SyscallNumber := 5;
-    SYSCALL_GETPID  : constant SyscallNumber := 6;
-    SYSCALL_KILL    : constant SyscallNumber := 7;
-    SYSCALL_SBRK    : constant SyscallNumber := 8;
-    SYSCALL_TIMES   : constant SyscallNumber := 9;
-    SYSCALL_UNLINK  : constant SyscallNumber := 10;
-    SYSCALL_WAIT    : constant SyscallNumber := 11;
-    SYSCALL_WRITE   : constant SyscallNumber := 12;
-    SYSCALL_OPEN    : constant SyscallNumber := 13;
+    SYSCALL_EXIT          : constant SyscallNumber := 0;
+    SYSCALL_READ          : constant SyscallNumber := 1;
+    SYSCALL_CLOSE         : constant SyscallNumber := 2;
+    SYSCALL_EXECVE        : constant SyscallNumber := 3;
+    SYSCALL_FORK          : constant SyscallNumber := 4;
+    SYSCALL_FSTAT         : constant SyscallNumber := 5;
+    SYSCALL_GETPID        : constant SyscallNumber := 6;
+    SYSCALL_KILL          : constant SyscallNumber := 7;
+    SYSCALL_SBRK          : constant SyscallNumber := 8;
+    SYSCALL_TIMES         : constant SyscallNumber := 9;
+    SYSCALL_UNLINK        : constant SyscallNumber := 10;
+    SYSCALL_WAIT          : constant SyscallNumber := 11;
+    SYSCALL_WRITE         : constant SyscallNumber := 12;
+    SYSCALL_OPEN          : constant SyscallNumber := 13;
+    
+    -- Access Controller Syscalls
+    SYSCALL_CONTROLACCESS : constant SyscallNumber := 100;
+    SYSCALL_GETTICKET     : constant SyscallNumber := 101;
+    SYSCALL_GRANT         : constant SyscallNumber := 102;
+    SYSCALL_REVOKE        : constant SyscallNumber := 103;
 
     ---------------------------------------------------------------------------
     -- syscallHandler

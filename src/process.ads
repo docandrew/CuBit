@@ -13,17 +13,19 @@ with System.Storage_Elements; use System.Storage_Elements;
 with Interfaces; use Interfaces;
 
 with Descriptors;
-with Spinlock;
+with Spinlocks;
 with Stackframe;
 with Util;
 with Virtmem;
 
-Pragma Elaborate_All (Spinlock);
+-- Pragma Elaborate_All (Spinlocks);
 Pragma Elaborate_All (Virtmem);
 
 package Process with
     SPARK_Mode => On
 is
+    ProcessException : exception;
+
     subtype ProcessName is String (1..16);
 
     -- Process ID is just an index into the process table
@@ -31,7 +33,7 @@ is
     
     NO_PROCESS : constant ProcessID := 0;
 
-    -- Limit a process to 256GiB of memory space. Later we'll add
+    -- Limit a user-mode process to 256GiB of memory space. Later we'll add
     --  ASLR, and make the process' stack top some random negative offset
     --  from here.
     PROCESS_STACK_TOP_VIRT : constant Integer_Address := 
@@ -39,12 +41,8 @@ is
 
     PROCESS_INITIAL_STACK_SIZE: constant Unsigned_64 := Virtmem.PAGE_SIZE;
     
-    --subtype ThreadID is Unsigned_64 range 0..MAX_TID;
-
-    -- TODO: rethink how we want to identify kernel tasks vs processes.
-
     subtype ProcessPriority is Integer range -1..100;
-    type ProcessState is (INVALID, READY, RUNNING, SLEEPING, WAITING, SUSPENDED);
+    type ProcessState is (INVALID, READY, RUNNING, SLEEPING, WAITING, RECEIVING, SUSPENDED);
 
     -- Wait channels are just a pointer to some resource that a process is
     -- waiting on.
@@ -52,9 +50,18 @@ is
     subtype WaitChannel is System.Address;
     NO_CHANNEL : constant WaitChannel := Null_Address;
 
-    --type ProcessMode is (KERNEL, USER);
+    type ProcessMode is (KERNEL, USER);
 
     type ExitCode is new Natural;
+
+    ---------------------------------------------------------------------------
+    -- Process mailbox for low-level IPC
+    ---------------------------------------------------------------------------
+    type Mailbox is record
+        hasMsg  : Boolean     := False;
+        message : Unsigned_64 := Unsigned_64'Last;
+        sender  : ProcessID   := NO_PROCESS;        -- necessary?
+    end record;
 
     ---------------------------------------------------------------------------
     -- Saved state of the process (registers) during context switch
@@ -70,7 +77,7 @@ is
         r11 : Unsigned_64 := 0;
         rbx : Unsigned_64 := 0;
         rbp : Unsigned_64 := 0;
-        rip : Unsigned_64 := 0;
+        rip : System.Address := To_Address(0);
         -- rflags : Unsigned_64; ?
         -- TODO: Add space for XSAVE state (when FP is used), or just
         -- use a separate memory area for FP state.
@@ -119,7 +126,7 @@ is
         context         : SavedState;       -- used in switch
         returnAddress   : System.Address;   -- when switch returns the first 
                                             -- time, it returns here
-        interruptFrame  : stackframe.InterruptStackFrame;
+        interruptFrame  : Stackframe.InterruptStackFrame;
     end record with Size => virtmem.FRAME_SIZE * 8;
 
     ---------------------------------------------------------------------------
@@ -135,6 +142,7 @@ is
                                                 --  the spawning process
         name                : ProcessName;
         state               : ProcessState;
+        mode                : ProcessMode;
 
         priority            : ProcessPriority;
         dynPriority         : ProcessPriority;
@@ -147,10 +155,14 @@ is
         kernelStackTop      : Integer_Address;
 
         stackTop            : Integer_Address;
-        stackBottom         : System.Address;   -- limit of allowable stack
+        stackBottom         : Integer_Address;  -- limit of allowable stack
+        stackBottomPhys     : Integer_Address;
         
         brk                 : System.Address;   -- limit of allowable heap
         startBrk            : System.Address;
+
+        -- For low-level IPC
+        mail                : Mailbox;
 
         channel             : WaitChannel;
 
@@ -159,13 +171,27 @@ is
         --@TODO need to store current working directory, consider drive letter
         -- and inode # of folder, or some such.
         --currentDirectory    : Files.Path := "/";
+        -- currentDrive        : Devices.DeviceID;
     end record;
 
     -- Lock for protecting the proctab
-    lock : Spinlock.spinlock;
+    lockname : aliased String := "Proctab";
+    lock : Spinlocks.spinlock := (name => lockname'Access, others => <>);
 
     type ProctabType is array (1..ProcessID'Last) of Process;
     proctab : ProctabType;
+
+    ---------------------------------------------------------------------------
+    -- startKernelThread
+    --
+    -- Starts a CuBit procedure in its own thread. Note, the PID must be
+    -- explicitly specified here for kernel tasks, so this can clobber other
+    -- processes if you're not careful.
+    ---------------------------------------------------------------------------
+    procedure startKernelThread (procStart  : in System.Address;
+                                 name       : in ProcessName;
+                                 pid        : in ProcessID;
+                                 priority   : in ProcessPriority);
 
     ---------------------------------------------------------------------------
     -- create:
@@ -180,19 +206,21 @@ is
     --  start.
     -- @param ppid - parent PID
     -- @param name - process name
+    -- @param procStack - the virutal process address for the top of its
+    --  stack (i.e. what the user code sees)
     -- @return : new process with a unique PID. If the PID of the returned
     --  process is 0, the process is invalid, perhaps due to PID exhaustion or
     --  a failure to allocate memory for page tables.
     --
     -- @TODO: add an error code so it's apparent why process creation failed.
     ---------------------------------------------------------------------------
-    function create(imageStart  : in Virtmem.PhysAddress;
-                    imageSize   : in Unsigned_64;
-                    procStart   : in Virtmem.VirtAddress;
-                    ppid        : in ProcessID;
-                    name        : in ProcessName;
-                    priority    : in ProcessPriority;
-                    procStack   : in Virtmem.VirtAddress) return Process;
+    function create (imageStart  : in Virtmem.PhysAddress;
+                     imageSize   : in Unsigned_64;
+                     procStart   : in System.Address;
+                     ppid        : in ProcessID;
+                     name        : in ProcessName;
+                     priority    : in ProcessPriority;
+                     procStack   : in Virtmem.VirtAddress) return Process;
 
     ---------------------------------------------------------------------------
     -- yield
@@ -208,14 +236,14 @@ is
     -- ExitCriticalSection and begin waiting for the scheduler to wake us back
     -- up when someone or something else calls goAhead on the channel.
     ---------------------------------------------------------------------------    
-    procedure wait(channel : in WaitChannel; resourceLock : in out Spinlock.spinlock);
+    procedure wait (channel : in WaitChannel; resourceLock : in out Spinlocks.spinlock);
 
     ---------------------------------------------------------------------------
     -- goAhead
     -- Set any processes waiting on the specified channel to READY.
     -- The opposite of "wait".
     ---------------------------------------------------------------------------
-    procedure goAhead(channel : in WaitChannel);
+    procedure goAhead (channel : in WaitChannel);
 
     ---------------------------------------------------------------------------
     -- start
@@ -224,8 +252,8 @@ is
     -- This procedure releases the lock previously set by Scheduler.schedule
     ---------------------------------------------------------------------------
     procedure start with
-        Pre => spinlock.isLocked(lock),
-        Post => not spinlock.isLocked(lock);
+        Pre => Spinlocks.isLocked(lock),
+        Post => not Spinlocks.isLocked(lock);
 
     ---------------------------------------------------------------------------
     -- switch:
@@ -234,7 +262,7 @@ is
     --
     -- TODO: make separate type for a context address
     ---------------------------------------------------------------------------
-    procedure switch(oldProc : in System.Address; newProc : in System.Address)
+    procedure switch (oldProc : in System.Address; newProc : in System.Address)
         with Import => True, Convention => C, External_Name => "asm_switch_to";
 
     ---------------------------------------------------------------------------
@@ -250,7 +278,7 @@ is
     -- Given the address of a process' P4 table, make that one the currently
     -- active table, changing the virtual memory address space in use.
     ---------------------------------------------------------------------------
-    procedure switchAddressSpace(processP4 : in System.Address);
+    procedure switchAddressSpace (processP4 : in System.Address);
 
     ---------------------------------------------------------------------------
     -- kill
@@ -258,6 +286,26 @@ is
     -- @TODO ensure freeing all resources.
     ---------------------------------------------------------------------------
     procedure kill (pid : in ProcessID);
+
+    ---------------------------------------------------------------------------
+    -- send
+    -- Put a message in a process' mailbox.
+    ---------------------------------------------------------------------------
+    procedure send (dest : ProcessID; msg : Unsigned_64);
+
+    ---------------------------------------------------------------------------
+    -- receive
+    -- Receive a message from one's mailbox. Block if no message available.
+    ---------------------------------------------------------------------------
+    function receive return Unsigned_64;
+
+    ---------------------------------------------------------------------------
+    -- receiveNB
+    -- Receive a message from one's mailbox, return Unsigned_64'Last if no
+    -- message available.
+    ---------------------------------------------------------------------------
+    function receiveNB return Unsigned_64;
+
 private
     ---------------------------------------------------------------------------
     -- Ring 3 entry point in interrupt.asm. Processes will initially set
@@ -281,17 +329,28 @@ private
         --  out param pid - new PID, 0 if none free.
         -- Protected with pidLock
         -----------------------------------------------------------------------
-        procedure allocPID(pid : out ProcessID) with
+        procedure allocPID (pid : out ProcessID) with
+            Global => (In_Out => PIDTrackerState);
+
+        -----------------------------------------------------------------------
+        -- allocSpecificPID: mark a specific PID as in use
+        --  @param in pid - new PID
+        -- Will throw exception if given PID already in use.
+        -- Protected with pidLock
+        -----------------------------------------------------------------------
+        procedure allocSpecificPID (pid : in ProcessID) with
             Global => (In_Out => PIDTrackerState);
 
         -----------------------------------------------------------------------
         -- freePID: mark PID as free in bitmap. Not locked.
         -----------------------------------------------------------------------
-        procedure freePID(pid : in ProcessID) with
+        procedure freePID (pid : in ProcessID) with
             Global => (In_Out => PIDTrackerState);
 
     private
 
+        trackerLockName : aliased String := "PID Tracker Lock"
+            with Part_Of => PIDTrackerState;
         --subtype PIDBlock is Natural range 0..(MAX_PID / 64);
         --subtype PIDOffset is Natural range 0..63;
 
@@ -301,16 +360,16 @@ private
         pidMap : PIDBitmapType := (0 => False, others => True)
             with Part_Of => PIDTrackerState;
         
-        pidLock : spinlock.Spinlock
+        pidLock : Spinlocks.Spinlock := (name => trackerLockName'Access, others => <>)
             with Part_Of => PIDTrackerState;
 
         function findFreePID return ProcessID with
             Global => (Input => PIDTrackerState);
 
-        procedure markUsed(pid : in ProcessID) with
+        procedure markUsed (pid : in ProcessID) with
             Global => (In_Out => PIDTrackerState);
 
-        procedure markFree(pid : in ProcessID) with
+        procedure markFree (pid : in ProcessID) with
             Global => (In_Out => PIDTrackerState),
             Pre => pid /= 0;
 

@@ -351,6 +351,10 @@ is
         drive.writeCommand := CMD_WRITE_PIO_EXT;
     end finishDriveIdentification;
 
+    ---------------------------------------------------------------------------
+    -- setupATA
+    ---------------------------------------------------------------------------
+    lockname : String := "ATA";
 
     procedure setupATA with
         SPARK_Mode => On
@@ -557,7 +561,7 @@ is
         use x86;
     begin
 
-        Spinlock.enterCriticalSection(drive.lock);
+        Spinlocks.enterCriticalSection (drive.lock);
 
         -- wait for drive to become un-busy
         waitResult := waitReady(drive);
@@ -653,7 +657,7 @@ is
 
         status := SUCCESS;
 
-        Spinlock.exitCriticalSection(drive.lock);
+        Spinlocks.exitCriticalSection (drive.lock);
     end syncBufferHelper;
 
 end ATA;

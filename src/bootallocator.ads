@@ -20,12 +20,12 @@ with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with Config;
-with Spinlock;
+with Spinlocks;
 with MemoryAreas;
 with Virtmem; use Virtmem;
 with x86;
 
-Pragma Elaborate_All (Spinlock);
+-- Pragma Elaborate_All (Spinlocks);
 
 package BootAllocator with
     Abstract_State  => BitmapState,
@@ -57,7 +57,8 @@ is
     -- Keep track of highest PFN we allocated.
     highestPFNAllocated : Virtmem.PFN;
     
-    mutex : aliased Spinlock.Spinlock;
+    lockName : aliased String := "BootAllocator lock";
+    mutex : aliased Spinlocks.Spinlock := (name => lockName'Access, others => <>);
    
     OutOfMemoryException : exception;
     OutOfBoundsException : exception;
@@ -101,9 +102,9 @@ is
                             x86.interruptsEnabled),
             Proof_In    => (BootAllocator.initialized)),
         
-        Pre     => BootAllocator.initialized and not Spinlock.isLocked(mutex),
+        Pre     => BootAllocator.initialized and not Spinlocks.isLocked(mutex),
         Post    => addr <= (MAX_BOOT_PFN * Virtmem.FRAME_SIZE) and
-                    not Spinlock.isLocked(mutex);
+                    not Spinlocks.isLocked(mutex);
 
     ---------------------------------------------------------------------------
     -- allocFrames - find a contiguous number of frames in physical memory,
@@ -121,9 +122,9 @@ is
 
         Pre     => num <= MAX_BOOT_PFN and 
                    BootAllocator.initialized and 
-                   not Spinlock.isLocked(mutex),
+                   not Spinlocks.isLocked(mutex),
         Post    => addr <= (MAX_BOOT_PFN * Virtmem.FRAME_SIZE) and
-                   not Spinlock.isLocked(mutex);
+                   not Spinlocks.isLocked(mutex);
 
     ---------------------------------------------------------------------------
     -- allocSmall - perform a persistent (non-freeable), small memory

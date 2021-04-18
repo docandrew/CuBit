@@ -111,7 +111,7 @@ is
             raise NotInitializedException with "Slab not initialized with call to setup";
         end if;
 
-        Spinlock.enterCriticalSection(pool.mutex);
+        Spinlocks.enterCriticalSection(pool.mutex);
 
         if pool.numFree = 0 then
             raise OutOfMemoryException with "Slab is empty";
@@ -133,7 +133,7 @@ is
 
         pool.numFree := pool.numFree - 1;
 
-        Spinlock.exitCriticalSection(pool.mutex);
+        Spinlocks.exitCriticalSection(pool.mutex);
     end Allocate;
 
 
@@ -159,7 +159,7 @@ is
             raise NotInitializedException with "Slab not initialized with call to setup";
         end if;
 
-        Spinlock.enterCriticalSection(pool.mutex);
+        Spinlocks.enterCriticalSection(pool.mutex);
 
         -- point us back to list head and fwd to next block in line
         newNode.prev := nextNode.prev;
@@ -174,7 +174,7 @@ is
         -- increase free count
         pool.numFree := pool.numFree + 1;
 
-        Spinlock.exitCriticalSection(pool.mutex);
+        Spinlocks.exitCriticalSection(pool.mutex);
     end Deallocate;
 
 

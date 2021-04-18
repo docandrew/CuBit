@@ -67,7 +67,7 @@ with System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with BuddyAllocator;
-with Spinlock;
+with Spinlocks;
 with Virtmem;
 
 package SlabAllocator with
@@ -127,7 +127,7 @@ is
         blockOrder  : BuddyAllocator.Order;
         blockAddr   : Virtmem.PhysAddress;
         
-        mutex       : aliased Spinlock.Spinlock;
+        mutex       : aliased Spinlocks.Spinlock;
         
         alignment   : System.Storage_Elements.Storage_Count;
         paddedSize  : System.Storage_Elements.Storage_Count;

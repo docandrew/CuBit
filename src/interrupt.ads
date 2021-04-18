@@ -19,17 +19,16 @@
 with Interfaces; use Interfaces;
 with System;
 
-with keyboard;
-with process;
-with scheduler;
-with segment;
-with stackframe;
-with textmode; use textmode;
-with util; use util;
-with virtmem;
+with Process;
+-- with Scheduler;
+with Segment;
+with Stackframe;
+with Textmode; use Textmode;
+with Util; use Util;
+with Virtmem;
 with x86;
 
-package interrupt with
+package Interrupt with
     SPARK_Mode => On,
     Abstract_State => (InterruptServiceRoutines, SetupState, IDTState)
 is
@@ -124,8 +123,8 @@ is
         Global => (Proof_In => validIDT,
                    In_Out => (Textmode.ScreenState,
                               Textmode.cursor,
-                              Keyboard.caps,
-                              Keyboard.shifted,
+                            --   Keyboard.caps,
+                            --   Keyboard.shifted,
                               Process.lock)),
         Pre => validIDT,
         Export => True, 

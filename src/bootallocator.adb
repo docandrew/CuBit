@@ -140,7 +140,7 @@ is
     is
         frame       : Virtmem.PFN;
     begin
-        Spinlock.enterCriticalSection(mutex);
+        Spinlocks.enterCriticalSection(mutex);
 
         frame := findFreeFrame;
         
@@ -157,7 +157,7 @@ is
 
         addr := Virtmem.PFNToAddr(frame);       --virtmem.FRAME_SIZE * virtmem.PhysAddress(frame);
 
-        Spinlock.exitCriticalSection(mutex);
+        Spinlocks.exitCriticalSection(mutex);
         --print("Alloc: "); println(addr);
     end allocFrame;
 
@@ -169,7 +169,7 @@ is
         basePFN                 : Virtmem.PFN;
         endPFN                  : Virtmem.PFN;
     begin
-        Spinlock.enterCriticalSection(mutex);
+        Spinlocks.enterCriticalSection(mutex);
 
         basePFN := findFreeFrames(num);
 
@@ -190,7 +190,7 @@ is
 
         addr := Virtmem.PFNToAddr(basePFN);
         
-        Spinlock.exitCriticalSection(mutex);
+        Spinlocks.exitCriticalSection(mutex);
     end allocFrames;
 
     -- allocate a sub-page quantity of memory

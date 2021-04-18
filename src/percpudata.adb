@@ -20,6 +20,9 @@ is
     function toSegmentDescriptor is 
         new Ada.Unchecked_Conversion (Unsigned_64, Segment.Descriptor);
     
+    ---------------------------------------------------------------------------
+    -- setupPerCPUData
+    ---------------------------------------------------------------------------
     procedure setupPerCPUData(cpuNum            : in Natural;
                               cpuData           : in out PerCPUData;
                               cpuDataAddr       : in System.Address;
@@ -148,10 +151,11 @@ is
 
     end setupPerCPUData;
 
-
+    ---------------------------------------------------------------------------
     -- Other OSes use gs as a segment to get specific values, here we just want
     -- the address from GS that we can use to instantiate the PerCPUData struct
     -- in our SPARK code.
+    ---------------------------------------------------------------------------
     function getPerCPUDataAddr return System.Address with
         SPARK_Mode => Off --inline ASM
     is
@@ -166,7 +170,25 @@ is
 
     end getPerCPUDataAddr;
 
+    ---------------------------------------------------------------------------
+    -- getCPUNumber
+    ---------------------------------------------------------------------------
+    function getCPUNumber return Natural with
+        SPARK_Mode => On
+    is
+        perCPUAddr : constant System.Address := getPerCPUDataAddr;
+    begin
+        getCPUContext: declare
+            cpuData : PerCPUData with
+                Import, Address => perCPUAddr;
+        begin
+            return cpuData.cpuNum;
+        end getCPUContext;
+    end getCPUNumber;
 
+    ---------------------------------------------------------------------------
+    -- getCurrentPID
+    ---------------------------------------------------------------------------
     function getCurrentPID return Process.ProcessID with
         SPARK_Mode => On
     is
@@ -180,9 +202,93 @@ is
         end getCPUContext;
     end getCurrentPID;
 
+    ---------------------------------------------------------------------------
+    -- intsEnabled
+    ---------------------------------------------------------------------------
+    function intsEnabled return Boolean with
+        SPARK_Mode => On
+    is
+        perCPUAddr : constant System.Address := getPerCPUDataAddr;
+    begin
+        getCPUContext : declare
+            cpuData : PerCPUData with
+                Import, Address => perCPUAddr;
+        begin
+            return cpuData.intsEnabled;
+        end getCPUContext;
+    end intsEnabled;
+    
+    ---------------------------------------------------------------------------
+    -- numCLI
+    ---------------------------------------------------------------------------
+    function numCLI return Integer with
+        SPARK_Mode => On
+    is
+        perCPUAddr : constant System.Address := getPerCPUDataAddr;
+    begin
+        getCPUContext : declare
+            cpuData : PerCPUData with
+                Import, Address => perCPUAddr;
+        begin
+            return cpuData.numCLI;
+        end getCPUContext;
+    end numCLI;
 
+    ---------------------------------------------------------------------------
+    -- pushCLI
+    ---------------------------------------------------------------------------
+    procedure pushCLI is
+        priorFlags : x86.RFlags;
+        perCPUAddr : constant System.Address := getPerCPUDataAddr;
+    begin
+        declare
+            cpuData : PerCPUData with
+                Import, Address => perCPUAddr;
+        begin
+            priorFlags := x86.getFlags;
+            x86.cli;
+
+            cpuData.numCLI := cpuData.numCLI + 1;
+
+            if cpuData.numCLI = 0 then
+                cpuData.intsEnabled := priorFlags.interrupt;
+            end if;
+        end;        
+    end pushCLI;
+
+    ---------------------------------------------------------------------------
+    -- popCLI
+    ---------------------------------------------------------------------------
+    procedure popCLI is
+        priorFlags : x86.RFlags;
+        perCPUAddr : constant System.Address := getPerCPUDataAddr;
+    begin
+        declare
+            cpuData : PerCPUData with
+                Import, Address => perCPUAddr;
+        begin
+            priorFlags := x86.getFlags;
+
+            if priorFlags.interrupt then
+                raise InterruptException with "Called popCLI with interrupts enabled";
+            end if;
+
+            cpuData.numCLI := cpuData.numCLI - 1;
+
+            if cpuData.numCLI < 0 then
+                raise InterruptException with "Called popCLI without calling pushCLI first.";
+            end if;
+
+            if cpuData.numCli = 0 and cpuData.intsEnabled then
+                x86.sti;
+            end if;
+        end;
+    end popCLI;
+
+    ---------------------------------------------------------------------------
     -- We statically allocate per-CPU stacks in boot.asm, and can use simple
     -- arithmetic to determine the secondary stack address given the CPU num.
+    ---------------------------------------------------------------------------
     function getSecondaryStack return SS_Stack_Ptr with
         SPARK_Mode => Off   -- Unchecked_Conversion
     is

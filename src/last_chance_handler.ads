@@ -21,7 +21,7 @@ is
     --
     -- TODO: Make this halt all the other processors.
     ---------------------------------------------------------------------------
-    procedure Last_Chance_Handler(msg : System.Address; line : Integer)
+    procedure Last_Chance_Handler (msg : System.Address; line : Integer)
     with
         Export => True,
         Convention => C,

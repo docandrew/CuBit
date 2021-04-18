@@ -1,12 +1,16 @@
---with Ada.Iterator_Interfaces;
+-------------------------------------------------------------------------------
+-- CuBitOS
+-- Copyright (C) 2019 Jon Andrew
+--
+-- Multiboot
+-------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
---with Interfaces.C.Pointers;
 
 with elf; use elf;
 with MemoryAreas;
 
-package multiboot with
+package Multiboot with
     SPARK_Mode => On
 is
     
@@ -199,4 +203,4 @@ is
         return Natural with
         Pre => mbinfo.flags.hasMemoryMap;
 
-end multiboot;
+end Multiboot;

@@ -33,7 +33,17 @@ is
     -- @field gdtPointer - a GDT Pointer structure containing the size and
     --  address of the gdt here
     --
-    -- WARNING: Make sure these match the offsets in cubit.inc, this record is
+    -- @field tss - Task Switch Segment for this CPU
+    --
+    -- @field oldContext - saved stack location of previously running thread
+    -- @field currentContext - currently running stack on this CPU
+    -- @field schedulerContext - stack for the scheduling thread on this CPU
+    --
+    -- @field intsEnabled - Whether interrupts are enabled or not on THIS CPU.
+    -- @field numCLI - number of cli instructions we've executed. Used by locks
+    --  to enable nesting.
+    -- 
+    -- @WARNING Make sure these match the offsets in cubit.inc, this record is
     --  accessed from assembly code!
     ---------------------------------------------------------------------------
     type PerCPUData is
@@ -55,6 +65,9 @@ is
         oldContext          : System.Address;
         currentContext      : System.Address;
         schedulerContext    : System.Address;
+
+        intsEnabled         : Boolean;
+        numCLI              : Integer;
     end record;
 
     -- Alignment of fields needs to be precisely specified because we're going
@@ -71,6 +84,8 @@ is
         oldContext          at 202  range 0..63;
         currentContext      at 210  range 0..63;
         schedulerContext    at 218  range 0..63;
+        intsEnabled         at 226  range 0..31;
+        numCLI              at 230  range 0..31;
     end record;
 
     -- If the secondary stack is used before per-CPU data is set up, this
@@ -90,12 +105,12 @@ is
     --  infeasible because we would need one per-CPU, to make sure that this
     --  function is called before use.
     ---------------------------------------------------------------------------
-    procedure setupPerCPUData(  cpuNum          : in Natural;
-                                cpuData         : in out PerCPUData;
-                                cpuDataAddr     : in System.Address;
-                                gdtAddr         : in System.Address;
-                                gdtPointerAddr  : in System.Address;
-                                tssAddr         : in System.Address) with
+    procedure setupPerCPUData (cpuNum          : in Natural;
+                               cpuData         : in out PerCPUData;
+                               cpuDataAddr     : in System.Address;
+                               gdtAddr         : in System.Address;
+                               gdtPointerAddr  : in System.Address;
+                               tssAddr         : in System.Address) with
         Pre => (cpuNum < Config.MAX_CPUS and
                 cpuDataAddr /= System.Null_Address and
                 gdtAddr /= System.Null_Address and 
@@ -111,11 +126,51 @@ is
     function getPerCPUDataAddr return System.Address;
 
     ---------------------------------------------------------------------------
+    -- getCPUNumber
+    -- @return the number of the CPU the caller is running on.
+    ---------------------------------------------------------------------------
+    function getCPUNumber return Natural;
+
+    ---------------------------------------------------------------------------
     -- getCurrentPID
     -- Convenience function for getting the currently-running Process ID on
     -- this CPU.
     ---------------------------------------------------------------------------
     function getCurrentPID return Process.ProcessID;
+
+    InterruptException : exception;
+
+    ---------------------------------------------------------------------------
+    -- intsEnabled
+    -- Returns True if interrupts are enabled on this CPU
+    ---------------------------------------------------------------------------
+    function intsEnabled return Boolean;
+
+    ---------------------------------------------------------------------------
+    -- numCLI
+    -- @return depth of CLI (interrupt disable) instructions for nested locks.
+    ---------------------------------------------------------------------------
+    function numCLI return Integer;
+
+    ---------------------------------------------------------------------------
+    -- pushCLI
+    -- Disable interrupts on this CPU and increase the CLI depth by one.
+    --
+    -- Heavily inspired by Xv6 and Linux' enable_irq / disable_irq
+    ---------------------------------------------------------------------------
+    procedure pushCLI;
+
+    ---------------------------------------------------------------------------
+    -- popCLI
+    -- Undoes the effect of one call to pushCLI, decreases the CLI depth by one.
+    -- If the CLI depth reaches 0 (i.e. all pushCLIs have been matched), then
+    -- interrupts are enabled for this CPU.
+    -- @raise InterruptException if interrupts not previously disabled prior to
+    --  this call.
+    -- @raise InterruptException if this is called without a previous matching
+    --  call to pushCLI
+    ---------------------------------------------------------------------------
+    procedure popCLI;
 
     ---------------------------------------------------------------------------
     -- Used to get pointers to the per-CPU secondary stacks.

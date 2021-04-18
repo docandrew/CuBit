@@ -5,13 +5,39 @@
 -- @summary
 -- CuBitOS Spinlocks
 -------------------------------------------------------------------------------
-with locks; use locks;
+with Interfaces; use Interfaces;
+
+with Locks; use Locks;
 with x86;
 
-package Spinlock with
+package Spinlocks with
     SPARK_Mode => On
 is
-    type SpinLock is private;
+    -- type SpinLock is private;
+
+    SpinLockException : exception;
+    
+    ---------------------------------------------------------------------------
+    -- Structure for basic spinlocks.
+    -- @field state - whether this spinlock is currently locked or not.
+    --  This is used for formal verification.
+    -- @field priorFlags - store the state of the RFLAGS register prior to
+    --  entering a critical section using this lock. This is so that if
+    --  interrupts were disabled prior to entering the critical section, we
+    --  don't blindly re-enable them.
+    --
+    -- For debugging:
+    -- @field cpu - the CPU number who is holding this lock.
+    -- @field name - Name of this lock.
+    ---------------------------------------------------------------------------
+    type Spinlock is
+    record
+        state      : LockBool := UNLOCKED;
+        priorFlags : x86.RFlags;
+        cpu        : Integer := -1;
+        -- callStack  : CallStackT := (others => 0);
+        name       : access String;
+    end record;
 
     ---------------------------------------------------------------------------
     -- Getter function for lock state. Necessary for SPARK verification,
@@ -23,14 +49,14 @@ is
     ---------------------------------------------------------------------------
     -- enterCriticalSection tries to acquire a spinlock before returning. 
     -- Disables interrupts, so these need to be set up before attempting to
-    -- use a spinlock.
+    -- use a Spinlocks.
     ---------------------------------------------------------------------------
     procedure enterCriticalSection(s : in out Spinlock) with
         Global => (In_Out => x86.interruptsEnabled),
         Post => isLocked(s);
 
     ---------------------------------------------------------------------------
-    -- exitCriticalSection releases a spinlock. 
+    -- exitCriticalSection releases a Spinlocks. 
     --
     -- Re-enables interrupts if they were enabled prior to a call to
     --  enterCriticalSection. If they weren't, it won't.
@@ -48,20 +74,4 @@ is
         Pre => isLocked(s),
         Post => not isLocked(s);
 
-private
-    ---------------------------------------------------------------------------
-    -- Structure for basic spinlocks.
-    -- @field state - whether this spinlock is currently locked or not.
-    --  This is used for formal verification.
-    -- @field priorFlags - store the state of the RFLAGS register prior to
-    --  entering a critical section using this lock. This is so that if
-    --  interrupts were disabled prior to entering the critical section, we
-    --  don't blindly re-enable them.
-    ---------------------------------------------------------------------------
-    type Spinlock is
-    record
-        state : LockBool := UNLOCKED;
-        priorFlags : x86.RFlags;
-        -- TODO: add info about who is holding this, maybe nesting depth.
-    end record;
-end spinlock;
+end Spinlocks;

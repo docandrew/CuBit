@@ -199,7 +199,7 @@ is
     -- @param reg - a writable LAPICRegister pointer
     -- @param val - value to write to the register
     ---------------------------------------------------------------------------
-    procedure write(reg : in out LAPICRegister; val : in Unsigned_32);
+    -- procedure write(reg : in out LAPICRegister; val : in Unsigned_32);
 
     procedure write(reg : in out LAPICRegister; val : in Unsigned_32)
         with SPARK_Mode => On
@@ -308,8 +308,8 @@ is
     is
         APICTicksIn10ms : Unsigned_32;
     begin
-        write(timerDivideConf, DIVIDE_BY_16);
-        write(timerInitialCount, 16#FFFF_FFFF#);
+        write (timerDivideConf,   DIVIDE_BY_16);
+        write (timerInitialCount, 16#FFFF_FFFF#);
 
         -- sleep for 10ms using the PIT
         Time.bootCalibrationSleep(10);

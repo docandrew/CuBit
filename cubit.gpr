@@ -4,7 +4,7 @@ project CuBit is
     
     for Object_Dir use "build";
     
-    for Source_Dirs use ("src", "src/filesystem");
+    for Source_Dirs use ("src", "src/filesystem", "src/services");
     
     for Main use ("kmain.adb");
 
@@ -72,7 +72,8 @@ project CuBit is
     package Binder is
         for Default_Switches ("Ada") use
         (
-            "-n"                -- No main subprogram
+            "-n",                -- No main subprogram
+            "-d_C"               -- diagnose circularity errors
         );
     end Binder;
 

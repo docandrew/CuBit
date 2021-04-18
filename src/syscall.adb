@@ -74,10 +74,14 @@ package body Syscall is
                    flags       : in Unsigned_64;
                    mode        : in Unsigned_64) return Long_Integer with SPARK_Mode => On
     is
-        drive : Devices.DriveLetter := Devices.NODRIVE;
-        path  : String(1..Natural(filenameLen)) with Address => filename;
-        idx     : Natural := 1;
-        nextPos : Natural := 1;
+        type PathType is (ABSOLUTE, RELATIVE);
+
+        drive    : Devices.DriveLetter := Devices.NODRIVE;
+        device   : Devices.DeviceID;
+        path     : String(1..Natural(filenameLen)) with Address => filename;
+        kind     : PathType;
+        idx      : Natural := 1;
+        nextPos  : Natural := 1;
     begin
         print ("Open file: ");
         printz (filename);
@@ -95,8 +99,10 @@ package body Syscall is
         -- Are we referencing a drive?
         if path(2) = ':' then
             if path(1) in 'A'..'Z' then
-                drive := Devices.DriveLetter'Val (Character'Pos(path(1)));
-                print (" drive: "); println (Integer(Devices.DriveLetter'Pos(drive)));
+                drive := Devices.DriveLetter'Val (Character'Pos (path(1)) - Character'Pos ('A'));
+                print (" drive: "); println (Integer(Devices.DriveLetter'Pos (drive)));
+                print (" device ID: "); 
+                kind := ABSOLUTE;
             else
                 return -1;
             end if;
@@ -128,7 +134,7 @@ package body Syscall is
     begin
         -- for testing
         if fd = Descriptors.STDOUT then
-            for i in 0 .. count loop
+            for i in 1 .. count loop
                 nextByte: declare
                     c : Character with Import, Address => buf + idx;
                 begin

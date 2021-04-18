@@ -7,19 +7,21 @@
 -------------------------------------------------------------------------------
 with PerCPUData;
 with Process;
-with Spinlock;
+with Spinlocks;
 
 package Scheduler with
     --Abstract_State => (SchedulerState),
     SPARK_Mode => On
 is
+    SchedulerException : exception;
+    
     ---------------------------------------------------------------------------
     -- enter:
     --
     -- Procedure to enter the scheduler from user mode.
     ---------------------------------------------------------------------------
     procedure enter with
-        Pre => Spinlock.isLocked(process.lock);
+        Pre => Spinlocks.isLocked(process.lock);
 
     ---------------------------------------------------------------------------
     -- schedule
@@ -47,5 +49,5 @@ private
     -- Idle task. If no processes are READY, this function
     --  will be called until the next quantum.
     ---------------------------------------------------------------------------
-    procedure idle;
+    -- procedure idle;
 end Scheduler;

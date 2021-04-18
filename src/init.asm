@@ -28,7 +28,7 @@ exit:
     syscall
     jmp exit
 
-hello: db 'Hello from Userland!',0
+hello: db 'Hello from Userland!',10,0
 helloLen: equ $-hello
 
 initflag: equ 0xBEEFCACE

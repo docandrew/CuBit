@@ -142,7 +142,7 @@ is
     ---------------------------------------------------------------------------
     -- parseMADT - get information from the Multiple APIC Description Table
     ---------------------------------------------------------------------------
-    procedure parseMADT(madtAddr : in System.Address)
+    procedure parseMADT (madtAddr : in System.Address)
         with SPARK_Mode => Off
     is
         madt : MADTRecord
@@ -235,8 +235,24 @@ is
         println(numIOAPICs);
     end parseMADT;
 
+    ---------------------------------------------------------------------------
+    -- parseDSDT
+    ---------------------------------------------------------------------------
+    procedure parseDSDT (dsdtAddr : System.Address) is
+        dsdt : DSDTRecord with Import, Address => dsdtAddr;
+    begin
+        if dsdt.header.signature /= "DSDT" then
+            println ("ACPI: Error parsing DSDT, bad address or corrupted table.");
+            return;
+        end if;
 
+        -- @TODO AML bytecode...
+    end parseDSDT;
+
+    ---------------------------------------------------------------------------
+    -- setup
     -- parse ACPI tables, get information we need out of them.
+    ---------------------------------------------------------------------------
     function setup return Boolean
         with SPARK_Mode => Off
     is
@@ -364,8 +380,13 @@ is
                     fadt : FADTRecord
                         with Import, Address => descHdr'Address;
                     begin
-                        print(" DSDT Address:          "); println(fadt.dsdt);
-                        print(" DSDT extended Address: "); println(fadt.exDsdt);
+                        print (" DSDT Address:          "); println (fadt.dsdt);
+                        print (" DSDT extended Address: "); println (fadt.exDsdt);
+
+                        -- @TODO this will be how we can shutdown/sleep the machine
+                        print (" PM1A Control Block:    "); println (fadt.PM1AEventBlock);
+
+                        parseDSDT (To_Address(virtmem.P2V(Integer_Address(fadt.exDsdt))));
                     end parseFADT;
                 elsif descHdr.signature = "APIC" then
                     parseMADT(descHdr'Address);
@@ -397,6 +418,9 @@ is
         return True;
     end setup;
 
+    ---------------------------------------------------------------------------
+    -- findRSDP
+    ---------------------------------------------------------------------------
     function findRSDP return System.Address with SPARK_Mode => Off
     is
         --use System.Storage_Elements;
