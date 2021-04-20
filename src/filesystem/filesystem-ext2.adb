@@ -8,7 +8,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with Debug;
 with FileCache;
-with Textmode; use Textmode;
+with TextIO; use TextIO;
 with Util;
 with Virtmem;
 

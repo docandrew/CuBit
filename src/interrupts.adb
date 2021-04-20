@@ -18,16 +18,15 @@ with Services.Keyboard;
 with Time;
 --with x86;
 
-package body Interrupt with
-    SPARK_Mode => On,
-    Refined_State => (InterruptServiceRoutines => (
-            isr0, isr1, isr2, isr3, isr4, isr5, isr6, isr7, isr8, isr9, 
-            isr10, isr11, isr12, isr13, isr14, isr16, isr17, isr18, isr19, 
-            isr32, isr33, isr34, isr35, isr36, isr37, isr38, isr39, isr40,
-            isr41, isr42, isr43, isr44, isr45, isr46, isr47,
-            isr127, isr128, isr255),
-            SetupState => (intController, lapicAddr),
-            IDTState => (idt, idtp))
+package body Interrupts with
+    SPARK_Mode => On
+    -- Refined_State => (InterruptServiceRoutines => (
+    --         isr0, isr1, isr2, isr3, isr4, isr5, isr6, isr7, isr8, isr9, 
+    --         isr10, isr11, isr12, isr13, isr14, isr16, isr17, isr18, isr19, 
+    --         isr32, isr33, isr34, isr35, isr36, isr37, isr38, isr39, isr40,
+    --         isr41, isr42, isr43, isr44, isr45, isr46, isr47,
+    --         isr127, isr128, isr255),
+    --         IDTState => (idt, idtp))
 is
 
     -- The IDT itself, shared by all CPUs
@@ -44,27 +43,27 @@ is
         println;
         --print("Exception:  "); println(Integer(frame.interruptNumber));
         print ("error code: "); println (frame.errorCode);
-        print ("rip:    "); println (frame.rip);
-        print ("rflags: "); println (frame.rflags);
-        print ("rsp:    "); println (frame.rsp);
-        print ("rbp:    "); println (frame.rbp);
-        print ("cs:     "); println (frame.cs);
-        print ("ss:     "); println (frame.ss);
+        print ("rip:    ");     println (frame.rip);
+        print ("rflags: ");     println (frame.rflags);
+        print ("rsp:    ");     println (frame.rsp);
+        print ("rbp:    ");     println (frame.rbp);
+        print ("cs:     ");     println (frame.cs);
+        print ("ss:     ");     println (frame.ss);
         
-        print ("rax:    "); println (frame.rax);
-        print ("rbx:    "); println (frame.rbx);
-        print ("rcx:    "); println (frame.rcx);
-        print ("rdx:    "); println (frame.rdx);
-        print ("rsi:    "); println (frame.rsi);
-        print ("rdi:    "); println (frame.rdi);
-        print ("r8:     "); println (frame.r8);
-        print ("r9:     "); println (frame.r9);
-        print ("r10:    "); println (frame.r10);
-        print ("r11:    "); println (frame.r11);
-        print ("r12:    "); println (frame.r12);
-        print ("r13:    "); println (frame.r13);
-        print ("r14:    "); println (frame.r14);
-        print ("r15:    "); println (frame.r15);
+        print ("rax:    ");     println (frame.rax);
+        print ("rbx:    ");     println (frame.rbx);
+        print ("rcx:    ");     println (frame.rcx);
+        print ("rdx:    ");     println (frame.rdx);
+        print ("rsi:    ");     println (frame.rsi);
+        print ("rdi:    ");     println (frame.rdi);
+        print ("r8:     ");     println (frame.r8);
+        print ("r9:     ");     println (frame.r9);
+        print ("r10:    ");     println (frame.r10);
+        print ("r11:    ");     println (frame.r11);
+        print ("r12:    ");     println (frame.r12);
+        print ("r13:    ");     println (frame.r13);
+        print ("r14:    ");     println (frame.r14);
+        print ("r15:    ");     println (frame.r15);
     end printRegs;
 
     ---------------------------------------------------------------------------
@@ -271,6 +270,15 @@ is
     end handlePageFault;
 
     ---------------------------------------------------------------------------
+    -- 
+    ---------------------------------------------------------------------------
+    procedure setup is
+    begin
+        setupIDT;
+        loadIDT;
+    end setup;
+
+    ---------------------------------------------------------------------------
     -- Install ISRs, load the IDT holding them all.
     ---------------------------------------------------------------------------
     procedure setupIDT with
@@ -308,7 +316,6 @@ is
     procedure setLAPICBaseAddress (lapicBase : in virtmem.PhysAddress) with
         SPARK_Mode => On
     is
-        use System.Storage_Elements;
     begin
         lapicAddr := To_Address (virtmem.P2V(lapicBase));
     end setLAPICBaseAddress;
@@ -419,4 +426,4 @@ is
         idt(255) := createIDTEntry(addrToNum(isr255'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
     end createIDT;
 
-end Interrupt;
+end Interrupts;

@@ -7,7 +7,7 @@
 with System.Address_To_Access_Conversions;
 with System.Storage_Elements; use System.Storage_Elements;
 
-with Textmode; use Textmode;
+with TextIO; use TextIO;
 
 package body acpi
     with SPARK_Mode => On

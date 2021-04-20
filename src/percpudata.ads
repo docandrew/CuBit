@@ -93,7 +93,7 @@ is
     SecondaryStackNotAvailable : exception;
 
     ---------------------------------------------------------------------------
-    -- setupPerCPUData
+    -- setup
     -- On boot, we're using the bootstrap GDT set up in boot.asm. This function
     -- creates a new GDT with Kernel Code+Data segments and User Code+Data
     -- Segments. It will also install a pointer to this per-CPU data into the
@@ -101,16 +101,16 @@ is
     --
     -- This function must be called once by each CPU during boot.
     --
-    -- @TODO: consider adding a ghost initialized flag here, though this may be
+    -- @TODO consider adding a ghost initialized flag here, though this may be
     --  infeasible because we would need one per-CPU, to make sure that this
     --  function is called before use.
     ---------------------------------------------------------------------------
-    procedure setupPerCPUData (cpuNum          : in Natural;
-                               cpuData         : in out PerCPUData;
-                               cpuDataAddr     : in System.Address;
-                               gdtAddr         : in System.Address;
-                               gdtPointerAddr  : in System.Address;
-                               tssAddr         : in System.Address) with
+    procedure setup (cpuNum          : in Natural;
+                     cpuData         : in out PerCPUData;
+                     cpuDataAddr     : in System.Address;
+                     gdtAddr         : in System.Address;
+                     gdtPointerAddr  : in System.Address;
+                     tssAddr         : in System.Address) with
         Pre => (cpuNum < Config.MAX_CPUS and
                 cpuDataAddr /= System.Null_Address and
                 gdtAddr /= System.Null_Address and 

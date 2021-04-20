@@ -10,7 +10,7 @@
 with Ada.Unchecked_Conversion;
 with System.Machine_Code; use System.Machine_Code;
 
---with textmode;
+--with TextIO;
 
 package body x86 with
     SPARK_Mode => off           -- disabled for Asm()

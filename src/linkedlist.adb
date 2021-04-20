@@ -8,7 +8,7 @@ with Interfaces; use Interfaces;
 
 with BuddyAllocator;
 with Config;
-with Textmode; use Textmode;
+with TextIO; use TextIO;
 
 package body LinkedList
     with SPARK_Mode => On

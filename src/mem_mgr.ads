@@ -65,7 +65,10 @@ is
             -- Virtmem.STACK_TOP - Virtmem.LINEAR_BASE;
 
     ---------------------------------------------------------------------------
-    -- setupLinearMapping
+    -- setup
+    --
+    -- @summary Setup linear mapping of system memory
+    --
     -- @description In boot.asm we have both identity-mapped and linear-mapped
     -- the first 1GiB of physical memory. Here, we unmap the identity-mapping
     -- and linear-map all addressable physical memory (even if it refers to
@@ -93,7 +96,7 @@ is
     -- (or at all).
     --
     ---------------------------------------------------------------------------
-    procedure setupLinearMapping(areas : in MemoryAreas.MemoryAreaArray);
+    procedure setup (areas : in MemoryAreas.MemoryAreaArray);
 
     ---------------------------------------------------------------------------
     -- mapIOFrame
@@ -107,8 +110,8 @@ is
     --  a single physical frame at a time.
     ---------------------------------------------------------------------------
     generic
-        with procedure allocate(newFrame : out Virtmem.PhysAddress);
-    function mapIOFrame(addr : in Virtmem.PhysAddress) return Boolean;
+        with procedure allocate (newFrame : out Virtmem.PhysAddress);
+    function mapIOFrame (addr : in Virtmem.PhysAddress) return Boolean;
 
     ---------------------------------------------------------------------------
     -- switchAddressSpace
@@ -129,7 +132,7 @@ is
     --
     -- @TODO - determine how to use PCID to avoid the TLB flush here.
     ---------------------------------------------------------------------------
-    procedure mapKernelMemIntoProcess(procP4 : in out Virtmem.P4);
+    procedure mapKernelMemIntoProcess (procP4 : in out Virtmem.P4);
 
     ---------------------------------------------------------------------------
     -- unmapKernelMemFromProcess - on exit from syscall, zeroize a process'
@@ -137,7 +140,7 @@ is
     --
     -- @param procP4 - The active process' P4 table.
     ---------------------------------------------------------------------------
-    procedure unmapKernelMemFromProcess(procP4 : in out Virtmem.P4);
+    procedure unmapKernelMemFromProcess (procP4 : in out Virtmem.P4);
 
 private
     ---------------------------------------------------------------------------
@@ -145,22 +148,22 @@ private
     -- Given a physical address, 
     ---------------------------------------------------------------------------
     generic
-        with procedure allocate(newFrame : out Virtmem.PhysAddress);
-    procedure determineFlagsAndMapFrame(frame : in Virtmem.PFN);
+        with procedure allocate (newFrame : out Virtmem.PhysAddress);
+    procedure determineFlagsAndMapFrame (frame : in Virtmem.PFN);
     
     generic
-        with procedure allocate(newFrame : out Virtmem.PhysAddress);
-    procedure mapBigFrame(bigFrame : in Virtmem.BigPFN);
+        with procedure allocate (newFrame : out Virtmem.PhysAddress);
+    procedure mapBigFrame (bigFrame : in Virtmem.BigPFN);
 
     generic
-        with procedure allocate(newFrame : out Virtmem.PhysAddress);
-    procedure mapBigFrameAsSmallFrames(bigFrame : in Virtmem.BigPFN);
+        with procedure allocate (newFrame : out Virtmem.PhysAddress);
+    procedure mapBigFrameAsSmallFrames (bigFrame : in Virtmem.BigPFN);
 
     generic
-        with procedure allocate(newFrame : out Virtmem.PhysAddress);
-    procedure mapIOArea(area : in MemoryAreas.MemoryArea);
+        with procedure allocate (newFrame : out Virtmem.PhysAddress);
+    procedure mapIOArea (area : in MemoryAreas.MemoryArea);
 
     generic
-        with procedure allocate(newFrame : out Virtmem.PhysAddress);
-    procedure mapArea(area : in MemoryAreas.MemoryArea);
+        with procedure allocate (newFrame : out Virtmem.PhysAddress);
+    procedure mapArea (area : in MemoryAreas.MemoryArea);
 end Mem_mgr;

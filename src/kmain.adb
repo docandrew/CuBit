@@ -27,7 +27,7 @@ with Filesystem.Ext2;
 with Filesystem.VFS;
 
 with Ioapic;
-with Interrupt;
+with Interrupts;
 with Lapic;
 with LinkedList;
 with Mem_mgr;
@@ -43,9 +43,11 @@ with Services.Idle;
 with Services.Keyboard;
 with SlabAllocator;
 with Spinlocks;
-with Textmode; use Textmode;
+with TextIO; use TextIO;
 with Time;
 with Timer_pit;
+with Video;
+with Video.VGA;
 with Virtmem; use Virtmem;
 with x86;
 
@@ -87,250 +89,164 @@ begin
     end loop;
 end testKThread2;
 
+NoMultibootException : exception;
+NoMemoryMapException : exception;
+NoACPIException      : exception;
+NoAPICException      : exception;
+
 -------------------------------------------------------------------------------
 -- kmain
 --
 -- Entry point for the kernel.
 -------------------------------------------------------------------------------
 procedure kmain (magic       : Unsigned_32; 
-                 mbInfo_orig : in MultibootInfo)
-    with SPARK_Mode => Off
+                 mbInfo_orig : in MultibootInfo) with SPARK_Mode => Off
 is
-    mbOK        : constant Boolean := (magic = 16#2BADB002#);
-    mbInfo      : constant MultibootInfo := mbInfo_orig;
-    ssPtr       : System.Secondary_Stack.SS_Stack_Ptr;
-
-    -- drives : Devices.DriveArray 
-
-    NoMultibootException    : exception;
-    NoMemoryMapException    : exception;
-    NoACPIException         : exception;
-    NoAPICException         : exception;
-
+    mbOK     : constant Boolean := (magic = 16#2BADB002#);
+    mbInfo   : constant MultibootInfo := mbInfo_orig;
+    ssPtr    : System.Secondary_Stack.SS_Stack_Ptr;
+    memAreas : MemoryAreas.MemoryAreaArray(1..Multiboot.numAreas(mbInfo) + 1);
 begin
-    clear (BLACK);
 
-    initSerial: declare
-    begin
-        if (config.serialMirror) then
-            Serial.init (serial.COM1);
-            --println("Setting up serial port", textmode.LT_BLUE,
-            --    textmode.BLACK);
-        end if;
-    end initSerial;
+    if (config.serialMirror) then
+        Serial.init (serial.COM1);
+        TextIO.enableSerial;
+        print ("CuBit v0.0.1");
+    end if;
 
-
-    initHello: declare
-    begin
-        println ("CuBitOS v0.0.1 ", LT_BLUE, BLACK);
-        print ("Build Date:  "); println (Build.DATE);
-        print ("Git Commit:  "); println (Build.COMMIT);
-        print ("Source Hash: "); println (Build.HASH);
-        println;
-
-        print ("Virtual Kernel Area:    "); 
-        print (KERNEL_START_VIRT'Address);
-        print (" - "); println(KERNEL_END_VIRT'Address);
-
-        print ("Bootstrap Stack Area:   ");
-        print (STACK_BOTTOM);
-        print (" - "); println (STACK_TOP);
-
-        print ("DMA Area:               ");
-        print (DMA_REGION_START);
-        print (" - "); println (DMA_REGION_END);
-    end initHello;
-
-    -- Do this early, so any attempt to use the secondary stack will raise an
-    -- exception (see PerCPUData)
-    -- (not sure if it's necessary - unless SS_Init is called, it shouldn't 
-    --  work.)
-    -- x86.wrmsr(x86.MSRs.KERNEL_GS_BASE, 0);
-
-    -- make sure we were loaded by a multiboot-compliant loader
     if not mbOK then
         raise NoMultibootException with "Not loaded by multiboot-compliant loader.";
     end if;
 
+    if not mbInfo.flags.hasMemoryMap then
+        raise NoMemoryMapException with "No memory map available from bootloader";
+    end if;
 
-    initCPUID: declare
-    begin
-        println ("Checking CPU Capabilities...", textmode.LT_BLUE, textmode.BLACK);
-        print (" Standard CPUID level: "); println (cpuid.getMaxStandardFunction);
-        print (" Extended CPUID level: "); println (cpuid.getMaxExtendedFunction);
-        cpuid.setupCPUID;
+    cpuid.setupCPUID;
 
-        print ("CPU Vendor: "); println (cpuid.cpuVendor, GREEN, BLACK);
-        print ("CPU Model:  "); println (cpuid.cpuBrand);
-        cpuid.printCacheInfo;
-    end initCPUID;
+    PerCPUData.setup (0,
+                      cpu0Data, 
+                      cpu0Data'Address,
+                      cpu0Data.gdt'Address, 
+                      cpu0Data.gdtPointer'Address, 
+                      cpu0Data.tss'Address);
 
+    ssPtr := PerCPUData.getSecondaryStack;
 
-    initSections: declare
-    begin
-        println ("Kernel sections:", textmode.LT_BLUE, textmode.BLACK);
-        print ("text:     "); print (stext'Address);
-            print("-"); println (etext'Address);
-        print("rodata:   "); print (srodata'Address); 
-            print("-"); println (erodata'Address);
-        print("data:     "); print (sdata'Address); 
-            print("-"); println (edata'Address);
-        print("bss:      "); print (sbss'Address); 
-            print("-"); println (ebss'Address);
-    end initSections;
+    System.Secondary_Stack.SS_Init (ssPtr);
 
+    Interrupts.setup;
 
-    initOtherMBInfo: declare
-    begin
-        if mbInfo.flags.hasBootDevice then
-            print ("Boot device: "); println (mbInfo.boot_device);
-        end if;
+    memAreas := Multiboot.getMemoryAreas (mbInfo);
 
-        if mbInfo.flags.hasELFSectionHeader then
-        println ("ELF Sections available");
-        end if;
+    BootAllocator.setup (memAreas);
+    Mem_mgr.setup (memAreas);
+    BuddyAllocator.setup (memAreas);
 
-        if mbInfo.flags.hasVideoInfo then
-            println ("VESA available");
-        end if;
-    end initOtherMBInfo;
-
-
-    initPerCPU: declare
-    begin
-        println ("Initializing per-CPU data for CPU #0", Textmode.LT_BLUE,
-            Textmode.BLACK);
-
-        PerCPUData.setupPerCPUData (0,
-                                    cpu0Data, 
-                                    cpu0Data'Address,
-                                    cpu0Data.gdt'Address, 
-                                    cpu0Data.gdtPointer'Address, 
-                                    cpu0Data.tss'Address);
-    end initPerCPU;
-
-
-    initSS: declare
-    begin
-        println ("Initializing Secondary Stack for CPU #0", Textmode.LT_BLUE,
-            Textmode.BLACK);
-
-        ssPtr := PerCPUData.getSecondaryStack;
-        System.Secondary_Stack.SS_Init (ssPtr);
-    end initSS;
-
-
-    initInterruptVectors: declare
-    begin
-        -- This doesn't have to be done so early, but it's nice to avoid
-        -- double-faults early in the boot process for debugging GPFs, etc.
-        println ("Installing Interrupt Vector Table", textmode.LT_BLUE, 
-            textmode.BLACK);
-        Interrupt.setupIDT;
-        Interrupt.loadIDT;
-    end initInterruptVectors;
-
-
-    initEarlyMemory : declare
-        -- add extra area for the framebuffer
-        memAreas : MemoryAreas.MemoryAreaArray(1..Multiboot.numAreas(mbInfo) + 1);
-    begin
-        println ("Detecting memory", Textmode.LT_BLUE, Textmode.BLACK);
-
-        if mbInfo.flags.hasMemoryMap then
-            memAreas := Multiboot.getMemoryAreas(mbInfo);
-        else
-            raise NoMemoryMapException with "No memory map available.";
-        end if;
-        -- add framebuffer info if appropriate.
-        if mbInfo.flags.hasFramebuffer then
-            memAreas(memAreas'Last).kind        := MemoryAreas.VIDEO;
-            memAreas(memAreas'Last).startAddr   := mbInfo.framebuffer_addr;
-            memAreas(memAreas'Last).startAddr   := 16#B8000#;
-            memAreas(memAreas'Last).endAddr     := 16#BFFFF#;
-            -- memAreas(memAreas'Last).endAddr     := mbInfo.framebuffer_addr + 
-            --                     Integer_Address(mbInfo.framebuffer_width * 
-            --                     mbInfo.framebuffer_height * 
-            --                     Unsigned_32(mbInfo.framebuffer_bpp / 8) - 1);
-
-            print ("Framebuffer at "); print (mbInfo.framebuffer_addr);
-            print (", size: ");  printd (mbInfo.framebuffer_width);
-            print ("x");         printd (mbInfo.framebuffer_height);
-            print (", ");        print (Integer(mbInfo.framebuffer_bpp));
-            print (" bpp");
-        end if;
-
-        println;
-        println ("-----------------------------------------------------");
-        println ("                     Memory Areas                    ");
-        println ("-----------------------------------------------------");
-        println ("      Start                 End            Type");
-        for area of memAreas loop
-            print(area.startAddr); print(" - "); print(area.endAddr); 
-            print("   ");
-            case area.kind is
-                when MemoryAreas.USABLE     => 
-                    println("Usable", LT_GREEN, BLACK);
-
-                when MemoryAreas.RESERVED   => 
-                    println("Reserved", YELLOW, BLACK);
-
-                when MemoryAreas.ACPI       => 
-                    println("ACPI", MAGENTA, BLACK);
-
-                when MemoryAreas.HIBERNATE  => 
-                    println("Hibernate", BROWN, BLACK);
-
-                when MemoryAreas.BAD        => 
-                    println("Bad", RED, BLACK);
-
-                when MemoryAreas.VIDEO      => 
-                    println("Framebuffer", CYAN, BLACK);
-            end case;
-        end loop;
-        println;
-
-        initBootAllocator: declare
-            freeMem : Unsigned_64;
-        begin
-            println("Setting up boot frame allocator...", Textmode.LT_BLUE,
-                Textmode.BLACK);
-
-            BootAllocator.setup(memAreas, freeMem);
-
-            printd(freeMem / 16#100000#); println(" MiB free in boot allocator");
-            print(" Max addressable : "); println(Virtmem.MAX_PHYS_ADDRESSABLE);
-            print(" Max usable      : "); println(Virtmem.MAX_PHYS_USABLE);
-        end initBootAllocator;
-
-
-        initLinearMapping: declare
-        begin
-            println("Creating kernel page tables",
-                    Textmode.LT_BLUE,
-                    Textmode.BLACK);
-
-            Mem_mgr.setupLinearMapping(memAreas);
-        end initLinearMapping;
-
-
-        initBuddyAllocator: declare
-        begin
-            println("Setting up Buddy Allocator...",
-                    Textmode.LT_BLUE,
-                    Textmode.BLACK);
-
-            BuddyAllocator.setup(memAreas);
-            BuddyAllocator.print;
-        end initBuddyAllocator;
-
-        --printd(BuddyAllocator.getFreeBytes / 16#100000#); println(" MiB free");
-    end initEarlyMemory;
+    -- @TODO pick EGA driver if that's all that's available. Use VGA for now
+    Video.VGA.setup (mbInfo);
     
+    TextIO.setVideo (Video.VGA.getTextInterface);
+    TextIO.clear (BLACK);
+
+    println ("-----------------------------------------------------");
+    println ("                  CuBitOS v0.0.1                     ", LT_BLUE, BLACK);
+    println ("-----------------------------------------------------");
+    print ("Build Date:  "); println (Build.DATE);
+    print ("Git Commit:  "); println (Build.COMMIT);
+    print ("Source Hash: "); println (Build.HASH);
+    println;
+
+    println ("-----------------------------------------------------");
+    println ("                  Virtual Memory                     ", LT_BLUE, BLACK);
+    println ("-----------------------------------------------------");
+    print ("Virtual Kernel Area:    ");
+    print (KERNEL_START_VIRT'Address);
+    print (" - "); println(KERNEL_END_VIRT'Address);
+
+    print ("Bootstrap Stack Area:   ");
+    print (STACK_BOTTOM);
+    print (" - "); println (STACK_TOP);
+
+    print ("DMA Area:               ");
+    print (DMA_REGION_START);
+    print (" - "); println (DMA_REGION_END);
+    println;
+
+    println ("-----------------------------------------------------");
+    println ("                    Processor                        ", LT_BLUE, BLACK);
+    println ("-----------------------------------------------------");
+    print ("Standard CPUID level: "); println (cpuid.getMaxStandardFunction);
+    print ("Extended CPUID level: "); println (cpuid.getMaxExtendedFunction);
+    print ("CPU Vendor: "); println (cpuid.cpuVendor, GREEN, BLACK);
+    print ("CPU Model:  "); println (cpuid.cpuBrand);
+    println;
+
+    println ("-----------------------------------------------------");
+    println ("                   Kernel Sections                   ", LT_BLUE, BLACK);
+    println ("-----------------------------------------------------");
+    print ("text:     "); print (stext'Address);
+        print("-"); println (etext'Address);
+    print("rodata:   "); print (srodata'Address); 
+        print("-"); println (erodata'Address);
+    print("data:     "); print (sdata'Address); 
+        print("-"); println (edata'Address);
+    print("bss:      "); print (sbss'Address); 
+        print("-"); println (ebss'Address);
+
+    println;
+    println ("-----------------------------------------------------");
+    println ("                     Memory Areas                    ", LT_BLUE, BLACK);
+    println ("-----------------------------------------------------");
+    println ("      Start                 End            Type");
+    for area of memAreas loop
+        print (area.startAddr); print (" - "); print (area.endAddr); 
+        print ("   ");
+        case area.kind is
+            when MemoryAreas.USABLE     => 
+                println ("Usable", LT_GREEN, BLACK);
+
+            when MemoryAreas.RESERVED   => 
+                println ("Reserved", YELLOW, BLACK);
+
+            when MemoryAreas.ACPI       => 
+                println ("ACPI", MAGENTA, BLACK);
+
+            when MemoryAreas.HIBERNATE  => 
+                println ("Hibernate", BROWN, BLACK);
+
+            when MemoryAreas.BAD        => 
+                println ("Bad", RED, BLACK);
+
+            when MemoryAreas.VIDEO      => 
+                println ("Framebuffer", CYAN, BLACK);
+        end case;
+    end loop;
+    println;
+
+    println ("-----------------------------------------------------");
+    println ("                     Framebuffer                     ", LT_BLUE, BLACK);
+    println ("-----------------------------------------------------");
+    print ("Location: "); print (mbInfo.framebuffer_addr);
+    print (", size: ");   printd (mbInfo.framebuffer_width);
+    print ("x");          printd (mbInfo.framebuffer_height);
+    print (", ");         print (Integer(mbInfo.framebuffer_bpp));
+    println (" bpp");
+    print ("Type:        "); println (Integer(mbInfo.framebuffer_type));
+    print ("Pitch:       "); println (Integer(mbInfo.framebuffer_pitch));
+    print ("Red field:   "); println (Integer(mbInfo.framebuffer_red_field_position));
+    print ("Red size:    "); println (Integer(mbInfo.framebuffer_red_mask_size));
+    print ("Blue field:  "); println (Integer(mbInfo.framebuffer_blue_field_position));
+    print ("Blue size:   "); println (Integer(mbInfo.framebuffer_blue_mask_size));
+    print ("Green field: "); println (Integer(mbInfo.framebuffer_green_field_position));
+    print ("Green size:  "); println (Integer(mbInfo.framebuffer_green_mask_size));
+    println;
+
+    BuddyAllocator.print;
     
     initACPI: declare
     begin
-        println("Setting up ACPI", textmode.LT_BLUE, textmode.BLACK);
+        println("Setting up ACPI", LT_BLUE, BLACK);
         if not acpi.setup then
             raise NoACPIException with "ACPI Setup Failed, MP tables for SMP data not implemented.";
         end if;
@@ -340,17 +256,16 @@ begin
     initPIC: declare
     begin
         -- PIC needs to be set up for proper interrupt re-mapping/masking
-        println("Setting up 8259 PIC", textmode.LT_BLUE, textmode.BLACK);
+        println("Setting up 8259 PIC", LT_BLUE, BLACK);
         pic.setupPIC;
-        interrupt.setInterruptController(interrupt.LEGACY_PIC);
+        Interrupts.setInterruptController (Interrupts.LEGACY_PIC);
     end initPIC;
 
 
     initPIT: declare
     begin
         -- Enable PIT for now just so we have a clock to calibrate the APIC with.
-        println("Setting up PIT and enabling timer interrupts", textmode.LT_BLUE, 
-            textmode.BLACK);
+        println("Setting up PIT and enabling timer interrupts", LT_BLUE, BLACK);
         timer_pit.setupPIT;
         timer_pit.enable;
         x86.sti;
@@ -366,7 +281,7 @@ begin
         -- TODO: make this the same if statement when x2APIC is done.
 
         if cpuid.leaf1edx.hasAPIC then
-            println("Setting up Local APIC", textmode.LT_BLUE, textmode.BLACK);
+            println("Setting up Local APIC", LT_BLUE, BLACK);
             apicBase := PhysAddress(x86.rdmsr(x86.MSRs.APIC_BASE) and x86.MSRs.APIC_BASE_MASK);
             --print("APIC enabled? "); println(x86.rdmsr(x86.MSRs.APIC_BASE));
             -- If ACPI didn't have a good address, we'll try the MSR APIC_BASE.
@@ -388,8 +303,8 @@ begin
                 myLapic.setupLAPIC_BSP;
             end setupLAPIC;
 
-            interrupt.setInterruptController (interrupt.APIC);
-            interrupt.setLAPICBaseAddress (apicBase);
+            Interrupts.setInterruptController (Interrupts.APIC);
+            Interrupts.setLAPICBaseAddress (apicBase);
             pic.disable;
         else
             -- @TODO not a big deal to fall-back to the PIC, but we need to
@@ -410,7 +325,7 @@ begin
 
         if not cpuid.hasInvariantTSC then
             println (" CAUTION: Time-Stamp Counter is not invariant and may vary with CPU speed.",
-                Textmode.YELLOW, Textmode.BLACK);
+                YELLOW, BLACK);
         else
             println (" TSC is invariant.");
         end if;
@@ -432,7 +347,7 @@ begin
             -- re-map it into the higher-half.
             ioapicVirtBase := Virtmem.P2V(ioapicBase);
             
-            print ("Setting up I/O APIC at address: ", textmode.LT_BLUE, textmode.BLACK);
+            print ("Setting up I/O APIC at address: ", LT_BLUE, BLACK);
             println (ioapicVirtBase);
 
             setupIOAPIC: declare
@@ -456,24 +371,24 @@ begin
 
     initPCI: declare
     begin
-        println("Searching for PCI devices", textmode.LT_BLUE, textmode.BLACK);
+        println("Searching for PCI devices", LT_BLUE, BLACK);
         PCI.enumerateDevices;
     end initPCI;
 
 
     initFileCache: declare
     begin
-        println("Initializing File Cache", textmode.LT_BLUE, textmode.BLACK);
+        println("Initializing File Cache", LT_BLUE, BLACK);
         FileCache.setup;
     end initFileCache;
 
 
     initATA: declare
     begin
-        println("Checking ATA disk controller", textmode.LT_BLUE, textmode.BLACK);
+        println ("Checking ATA disk controller", LT_BLUE, BLACK);
         ATA.setupATA;
 
-        println("Checking main filesystem", textmode.LT_BLUE, textmode.BLACK);
+        println ("Checking main filesystem", LT_BLUE, BLACK);
         testATA: declare
             package Ext2 renames Filesystem.Ext2;
             use ATA;
@@ -488,7 +403,7 @@ begin
 
             currentDrive : Devices.DriveLetter := Devices.A;
         begin
-            println("Attempting to locate main disk");
+            println ("Attempting to locate main disk");
 
             driveID.major := Devices.ATA;
             driveID.reserved := 0;
@@ -497,7 +412,7 @@ begin
             for minor in ATA.drives'Range loop
 
                 if ATA.drives(minor).present and ATA.drives(minor).kind = ATA.PATA then
-                    print("Checking PATA disk "); printdln(Unsigned_32(minor));
+                    print ("Checking PATA disk "); printdln (Unsigned_32(minor));
 
                     driveID.minor := minor;
                     Ext2.readSuperBlock(device  => driveID,
@@ -510,13 +425,9 @@ begin
 
                         -- @TODO - use info from GRUB to decide where to mount
                         -- this.
-                        print(" Found compatible Ext2 filesystem, mounting at ",
-                                textmode.LT_GREEN,
-                                textmode.BLACK);
-                        print(Character'Val(Devices.DriveLetter'Pos(currentDrive) + 65),
-                                textmode.LT_BLUE,
-                                textmode.BLACK);
-                        println(":");
+                        print (" Found compatible Ext2 filesystem, mounting at ", LT_GREEN, BLACK);
+                        print (Character'Val(Devices.DriveLetter'Pos(currentDrive) + 65), LT_BLUE, BLACK);
+                        println (":");
 
                         Devices.drives(currentDrive) := (
                             major    => driveID.major,
@@ -621,30 +532,30 @@ end kmain;
 -- setupPerCPUData). Since this procedure never exits, the stack is a safe
 -- place to keep it.
 -------------------------------------------------------------------------------
-procedure apEnter(cpuNum : in Unsigned_32) is
+procedure apEnter (cpuNum : in Unsigned_32) is
     cpuData         : aliased PerCpuData.PerCPUData;
     ssPtr           : System.Secondary_Stack.SS_Stack_Ptr;
     DummyException  : exception;
 begin
-    print("CPU started: ", textmode.GREEN, textmode.BLACK); printdln(cpuNum);
+    print ("CPU started: ", GREEN, BLACK); printdln (cpuNum);
     
-    PerCPUData.setupPerCPUData( Integer(cpuNum),
-                                cpuData,
-                                cpuData'Address,
-                                cpuData.gdt'Address,
-                                cpuData.gdtPointer'Address,
-                                cpuData.tss'Address);
+    PerCPUData.setup (Integer(cpuNum),
+                      cpuData,
+                      cpuData'Address,
+                      cpuData.gdt'Address,
+                      cpuData.gdtPointer'Address,
+                      cpuData.tss'Address);
 
     -- set up secondary stack for this CPU
     ssPtr := PerCPUData.getSecondaryStack;
-    System.Secondary_Stack.SS_Init(ssPtr);
+    System.Secondary_Stack.SS_Init (ssPtr);
 
     -- print("# zeroes = "); printd(cpuNum); print(" "); println(allZeroes(Integer(cpuNum)));
 
     -- print("CPU local data:       "); println(cpuData'Address);
     -- print(" as by getPerCPUData: "); println(PerCPUData.getPerCPUDataAddr);
     
-    Interrupt.loadIDT;
+    Interrupts.loadIDT;
 
     -- switch to the kernel's primary page tables.
     Mem_mgr.switchAddressSpace;
@@ -652,7 +563,7 @@ begin
     -- now that we're up, we can signal the startup loop to continue
     startingCPU := 0;
 
-    Scheduler.schedule(cpuData);
+    Scheduler.schedule (cpuData);
     x86.halt;
 
     -- will never get here

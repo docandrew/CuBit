@@ -7,7 +7,7 @@
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
-with Textmode; use Textmode;
+with TextIO; use TextIO;
 
 package body Debug is
 

@@ -4,15 +4,15 @@
 --
 -- @summary Physical Memory Allocator
 -------------------------------------------------------------------------------
-with Textmode; use Textmode;
+with TextIO; use TextIO;
 with Util;
 
 package body BuddyAllocator
     with SPARK_Mode => On
 is
 
-    function getBuddy(ord : in Order;
-                      addr : Virtmem.PhysAddress)
+    function getBuddy (ord : in Order;
+                       addr : Virtmem.PhysAddress)
         return Virtmem.PhysAddress with
         SPARK_Mode => On
     is
@@ -29,7 +29,7 @@ is
     -- aligned block of MAX_BUDDY_ORDER size. This ensures all blocks within
     -- the buddy structure are going to stay block size-aligned.
     ---------------------------------------------------------------------------
-    function blockStart(ord : in Order; addr : in Virtmem.PhysAddress)
+    function blockStart (ord : in Order; addr : in Virtmem.PhysAddress)
         return Integer_Address
         with SPARK_Mode => On,
         Post => blockStart'Result < addr
@@ -56,8 +56,8 @@ is
     ---------------------------------------------------------------------------
     -- popFromFreeList
     ---------------------------------------------------------------------------
-    procedure popFromFreeList(ord : in Order;
-                              addr : out Virtmem.PhysAddress) with
+    procedure popFromFreeList (ord : in Order;
+                               addr : out Virtmem.PhysAddress) with
         SPARK_Mode => On,
         Pre     => freeLists(ord).numFreeBlocks > 0,
         Post    => freeLists(ord).numFreeBlocks =
@@ -96,8 +96,8 @@ is
     -- addToFreeList - perform an insertion at the front of the free list for
     -- order ord
     ---------------------------------------------------------------------------
-    procedure addToFreeList(ord : Order;
-                            newBlockAddr : in Virtmem.PhysAddress) with
+    procedure addToFreeList (ord : Order;
+                             newBlockAddr : in Virtmem.PhysAddress) with
         SPARK_Mode => On
     is
         newBlock  : aliased FreeBlock with
@@ -128,7 +128,7 @@ is
     -- Adds unused half (the upper half) of a block with address addr and order
     -- ord to freeLists(N-1).
     ---------------------------------------------------------------------------
-    procedure splitBlock(ord : in Order; addr : in Virtmem.PhysAddress) with
+    procedure splitBlock (ord : in Order; addr : in Virtmem.PhysAddress) with
         SPARK_Mode => On,
         Pre     => ord > 0,
         Post    => freeLists(ord - 1).numFreeBlocks =
@@ -144,7 +144,7 @@ is
     -- isBuddyFree - given an order and a block address, determine whether that
     -- block's buddy is free.
     ---------------------------------------------------------------------------
-    function isBuddyFree(ord : in Order; addr : in Virtmem.PhysAddress) return Boolean
+    function isBuddyFree (ord : in Order; addr : in Virtmem.PhysAddress) return Boolean
     with
         SPARK_Mode => On
     is
@@ -166,7 +166,7 @@ is
     -- @param ord - order of the block to remove from free list
     -- @param addr - address of the block to remove from the free list
     ---------------------------------------------------------------------------
-    procedure unlink(ord : in Order; addr : in Virtmem.PhysAddress) with
+    procedure unlink (ord : in Order; addr : in Virtmem.PhysAddress) with
         SPARK_Mode => On,
         Pre  => freeLists(ord).numFreeBlocks > 0,
         Post => freeLists(ord).numFreeBlocks =
@@ -200,15 +200,17 @@ is
     ---------------------------------------------------------------------------
     -- blockSize
     ---------------------------------------------------------------------------
-    function blockSize(ord : in Order) return Unsigned_64 with
+    function blockSize (ord : in Order) return Unsigned_64 with
         SPARK_Mode => On
     is
     begin
         return Shift_Left(Unsigned_64(1), Natural(Virtmem.FRAME_SHIFT + ord));
     end blockSize;
 
-
-    function getOrder(allocSize : in Unsigned_64) return Order with
+    ---------------------------------------------------------------------------
+    -- getOrder
+    ---------------------------------------------------------------------------
+    function getOrder (allocSize : in Unsigned_64) return Order with
         SPARK_Mode => On
     is
         rounded : constant Unsigned_64 := Util.nextPow2(allocSize);
@@ -223,7 +225,7 @@ is
     ---------------------------------------------------------------------------
     -- isValidBlock
     ---------------------------------------------------------------------------
-    function isValidBlock(ord : in Order; addr : in Virtmem.PhysAddress)
+    function isValidBlock (ord : in Order; addr : in Virtmem.PhysAddress)
         return Boolean with
         SPARK_Mode => On
     is
@@ -235,7 +237,7 @@ is
     ---------------------------------------------------------------------------
     -- getListAddress
     ---------------------------------------------------------------------------
-    function getListAddress(ord : in Order) return System.Address with
+    function getListAddress (ord : in Order) return System.Address with
         SPARK_Mode => Off
     is
     begin
@@ -246,7 +248,7 @@ is
     ---------------------------------------------------------------------------
     -- setup
     ---------------------------------------------------------------------------
-    procedure setup(areas : in MemoryAreas.MemoryAreaArray) with
+    procedure setup (areas : in MemoryAreas.MemoryAreaArray) with
         SPARK_Mode => On
     is
         use type MemoryAreas.MemoryAreaType;
@@ -363,7 +365,7 @@ is
     ---------------------------------------------------------------------------
     -- alloc
     ---------------------------------------------------------------------------
-    procedure alloc(ord : in Order; addr : out Virtmem.PhysAddress) with
+    procedure alloc (ord : in Order; addr : out Virtmem.PhysAddress) with
         SPARK_Mode => On
     is
         use System;
@@ -411,7 +413,7 @@ is
     ---------------------------------------------------------------------------
     -- allocFrame
     ---------------------------------------------------------------------------
-    procedure allocFrame(addr : out Virtmem.PhysAddress) with
+    procedure allocFrame (addr : out Virtmem.PhysAddress) with
         SPARK_Mode => On
     is
     begin
@@ -422,7 +424,7 @@ is
     ---------------------------------------------------------------------------
     -- free
     ---------------------------------------------------------------------------
-    procedure free(ord : in Order; addr : in Virtmem.PhysAddress) with
+    procedure free (ord : in Order; addr : in Virtmem.PhysAddress) with
         SPARK_Mode => On
     is
         freeAddr : Integer_Address := Virtmem.P2V(addr);
@@ -467,7 +469,7 @@ is
     ---------------------------------------------------------------------------
     -- freeFrame
     ---------------------------------------------------------------------------
-    procedure freeFrame(addr : in Virtmem.PhysAddress) with
+    procedure freeFrame (addr : in Virtmem.PhysAddress) with
         SPARK_Mode => On
     is
     begin
@@ -516,7 +518,7 @@ is
     is
     begin
         println("-----------------------------------------------------");
-        println("                  Buddy Allocator                    ");
+        println("                  Buddy Allocator                    ", LT_BLUE, BLACK);
         println("-----------------------------------------------------");
         for ord in Order'Range loop
             print("Order: "); print(Integer(ord));

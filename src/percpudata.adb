@@ -9,7 +9,7 @@ with Interfaces; use Interfaces;
 with System.Machine_Code; use System.Machine_Code;
 with System.Storage_Elements; use System.Storage_Elements;
 
-with Textmode; use Textmode;
+with TextIO; use TextIO;
 with Util;
 with Virtmem;
 with x86;
@@ -21,18 +21,18 @@ is
         new Ada.Unchecked_Conversion (Unsigned_64, Segment.Descriptor);
     
     ---------------------------------------------------------------------------
-    -- setupPerCPUData
+    -- setup
     ---------------------------------------------------------------------------
-    procedure setupPerCPUData(cpuNum            : in Natural;
-                              cpuData           : in out PerCPUData;
-                              cpuDataAddr       : in System.Address;
-                              gdtAddr           : in System.Address;
-                              gdtPointerAddr    : in System.Address;
-                              tssAddr           : in System.Address)
+    procedure setup (cpuNum         : in Natural;
+                     cpuData        : in out PerCPUData;
+                     cpuDataAddr    : in System.Address;
+                     gdtAddr        : in System.Address;
+                     gdtPointerAddr : in System.Address;
+                     tssAddr        : in System.Address)
     with
         SPARK_Mode => On
     is
-        use segment;
+        use Segment;
 
         -- On syscall entry, CPU will clear RFLAGS for each bit set here:
         -- TF, DF, IF, IOPL, AC and NT
@@ -79,8 +79,8 @@ is
         -- Descriptors in the GDT, we have to divide the 128-bit TSS into
         -- 2 pseudo-descriptors and bit-wrangle them in.
         setupTSS : declare
-            tssAddrNum : constant Unsigned_64 := Util.addrToNum(tssAddr);
-            highBits   : constant Unsigned_64 := Shift_Right(tssAddrNum, 32);
+            tssAddrNum : constant Unsigned_64 := Util.addrToNum (tssAddr);
+            highBits   : constant Unsigned_64 := Shift_Right (tssAddrNum, 32);
             lowBits    : Segment.Descriptor;
         begin
             -- not sure if this is true for 64-bit TSS, but in 32-bit TSS,
@@ -105,7 +105,7 @@ is
             lowBits.present     := True;
             
             cpuData.gdt(GDT_SEGMENT_TSS_0)  := lowBits;
-            cpuData.gdt(GDT_SEGMENT_TSS_1)  := toSegmentDescriptor(highBits);
+            cpuData.gdt(GDT_SEGMENT_TSS_1)  := toSegmentDescriptor (highBits);
         end setupTSS;
 
         cpuData.gdt(GDT_SEGMENT_UNUSED) := toSegmentDescriptor(0);
@@ -114,16 +114,16 @@ is
         cpuData.gdtPointer.limit    := (cpuData'Size / 8) - 1;
 
         -- Set this GDT active for this CPU
-        x86.lgdt(gdtPointerAddr);
+        x86.lgdt (gdtPointerAddr);
 
         -- Install the KERNEL_GS_BASE and GS_BASE MSRs. These will get swapgs'd
         -- when the first process to run on this CPU is started. See
         -- interruptReturn in interrupt_handlers.asm
-        x86.wrmsr(x86.MSRs.GS_BASE, Util.addrToNum(cpuDataAddr));
-        x86.wrmsr(x86.MSRs.KERNEL_GS_BASE, 16#1337d00d#);
+        x86.wrmsr (x86.MSRs.GS_BASE, Util.addrToNum(cpuDataAddr));
+        x86.wrmsr (x86.MSRs.KERNEL_GS_BASE, 16#1337d00d#);
 
         -- Install the TSS
-        x86.ltr(GDTOffset'Enum_Rep(GDT_OFFSET_TSS));
+        x86.ltr (GDTOffset'Enum_Rep(GDT_OFFSET_TSS));
 
         -- Install the user & kernel segments for syscalls
         makeStar : declare
@@ -134,22 +134,22 @@ is
             -- we use the GDT_OFFSET_KERNEL_DATA selector for the SYSRET
             -- CS and SS portion of the STAR MSR
             starVal : constant Unsigned_64 :=
-                Shift_Left(GDTOffset'Enum_Rep(GDT_OFFSET_KERNEL_DATA) or 3, 48) 
+                Shift_Left (GDTOffset'Enum_Rep(GDT_OFFSET_KERNEL_DATA) or 3, 48) 
                 or
-                Shift_Left(GDTOffset'Enum_Rep(GDT_OFFSET_KERNEL_CODE), 32);
+                Shift_Left (GDTOffset'Enum_Rep(GDT_OFFSET_KERNEL_CODE), 32);
         begin            
             --print("loading STAR with"); println(starVal);
-            x86.wrmsr(x86.MSRs.STAR, starVal);
+            x86.wrmsr (x86.MSRs.STAR, starVal);
         end makeStar;
 
-        x86.wrmsr(x86.MSRs.LSTAR, Util.addrToNum(syscallEntryPoint'Address));
+        x86.wrmsr (x86.MSRs.LSTAR, Util.addrToNum(syscallEntryPoint'Address));
 
         -- Compatibility-mode not supported (CSTAR), but we'll load it anyway
-        x86.wrmsr(x86.MSRs.CSTAR, Util.addrToNum(syscallEntryPoint'Address));
+        x86.wrmsr (x86.MSRs.CSTAR, Util.addrToNum(syscallEntryPoint'Address));
 
-        x86.wrmsr(x86.MSRs.FMASK, SYSCALL_FLAG_MASK);
+        x86.wrmsr (x86.MSRs.FMASK, SYSCALL_FLAG_MASK);
 
-    end setupPerCPUData;
+    end setup;
 
     ---------------------------------------------------------------------------
     -- Other OSes use gs as a segment to get specific values, here we just want

@@ -12,7 +12,7 @@ with BootAllocator;
 with BuddyAllocator;
 with cmos;
 with Mem_mgr;
-with Textmode;
+with TextIO; use TextIO;
 with Time;
 with x86;
 
@@ -342,12 +342,10 @@ is
         remappedOK  : Boolean;
 
         function mapIOFrame is new Mem_mgr.mapIOFrame(BuddyAllocator.allocFrame);
-        --function mapIOFrame is new Mem_mgr.mapIOFrame(BootAllocator.allocFrame);
     begin
         -- re-map as an I/O page.
-        Textmode.print("Re-mapping LAPIC registers to ");
-        Textmode.println(remapped);
-        remappedOK := mapIOFrame(remapped);
+        print ("Re-mapping LAPIC registers to "); println (remapped);
+        remappedOK := mapIOFrame (remapped);
 
         if not remappedOK then
             raise RemapFail with "Unable to re-map LAPIC registers.";
@@ -359,17 +357,16 @@ is
         -- Sanity-check the LAPIC registers using the known startup values.
         -- This is necessary if we ever default to the spec value 0xFEE0_0000#.
         if not goodPowerOnState then
-            Textmode.println("WARNING: LAPIC Power-On State does not match what's expected.",
-                Textmode.YELLOW, Textmode.BLACK);
+            println ("WARNING: LAPIC Power-On State does not match what's expected.", YELLOW, BLACK);
         end if;
 
         -- Enable local APIC by setting spurious interrupt vector
         write(svr, SVR_ENABLE or Unsigned_32(InterruptNumbers.SPURIOUS));
 
         timerInterval := calibrateAPICTimer;
-        Textmode.print(" APIC timer calibration: ");
-        Textmode.printd(timerInterval);
-        Textmode.println(" ticks/ms");
+        print (" APIC timer calibration: ");
+        printd (timerInterval);
+        println (" ticks/ms");
 
         -- Once finished calibrating, we can disable interrupts so we aren't
         -- getting PIC and APIC interrupts at the same time. Re-enable after

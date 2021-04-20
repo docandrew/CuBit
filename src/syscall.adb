@@ -9,7 +9,7 @@ with Devices;
 with Mem_mgr;
 with PerCpuData;
 with Process;
-with Textmode; use Textmode;
+with TextIO; use TextIO;
 with Util;
 with Virtmem;
 

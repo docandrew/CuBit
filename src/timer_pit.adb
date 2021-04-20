@@ -7,7 +7,7 @@
 -- For multiprocessor systems, this has been superceded by the APIC high-
 --  precision timer.
 -------------------------------------------------------------------------------
---with textmode; use textmode;
+--with TextIO; use TextIO;
 with InterruptNumbers;
 with pic;
 

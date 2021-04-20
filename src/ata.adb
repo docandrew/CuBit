@@ -6,7 +6,7 @@
 -------------------------------------------------------------------------------
 with BlockDevice;
 with PCI;
-with Textmode; use Textmode;
+with TextIO; use TextIO;
 with Time;
 with Util;
 
@@ -247,29 +247,29 @@ is
                     exit statusLoop;
                 end if;
 
-                x86.in8(basePort + OFFSET_STATUS, driveStatus);
+                x86.in8 (basePort + OFFSET_STATUS, driveStatus);
                 --println("Drive status 2: "); println(driveStatus);
             end loop statusLoop;
 
             if not isATA then
-                x86.in8(basePort + OFFSET_LBA_MID, lbaMid);
-                x86.in8(basePort + OFFSET_LBA_HI, lbaHi);
+                x86.in8 (basePort + OFFSET_LBA_MID, lbaMid);
+                x86.in8 (basePort + OFFSET_LBA_HI, lbaHi);
 
                 if lbaMid = 0 and lbaHi = 0 then
-                    println("WARNING: Unrecognized Parallel ATA Drive");
+                    println ("WARNING: Unrecognized Parallel ATA Drive");
                     drive.kind := UNKNOWN;
                 elsif lbaMid = 16#14# and lbaHi = 16#EB# then
-                    println("Found Parallel ATAPI drive");
+                    println ("Found Parallel ATAPI drive");
                     drive.kind := ATAPI;
-                    x86.out8(basePort + OFFSET_CMD, CMD_IDENTIFY_ATAPI);
+                    x86.out8 (basePort + OFFSET_CMD, CMD_IDENTIFY_ATAPI);
                     -- TODO: set up CDROM or whatever
                 elsif lbaMid = 16#69# and lbaHi = 16#96# then
-                    println("Found Serial ATAPI drive");
+                    println ("Found Serial ATAPI drive");
                     drive.kind := ATAPI;
-                    x86.out8(basePort + OFFSET_CMD, CMD_IDENTIFY_ATAPI);
+                    x86.out8 (basePort + OFFSET_CMD, CMD_IDENTIFY_ATAPI);
                     -- TODO: write SATAPI driver
                 elsif lbaMid = 16#3C# and lbaHi = 16#C3# then
-                    println("Found Serial ATA drive");
+                    println ("Found Serial ATA drive");
                     drive.kind := SATA;
                     -- TODO: write SATA driver
                 else
@@ -278,15 +278,15 @@ is
                     drive.present := False;
                 end if;
             else
-                println("Found PATA Drive");
+                println ("Found PATA Drive");
                 drive.kind := PATA;
             end if;
 
             --println("Reading drive identification");
-            time.sleep(1 * time.Milliseconds);
+            Time.sleep (1 * time.Milliseconds);
             
             -- Read the drive's identification space, 512 bytes
-            readID(basePort, drive);
+            readID (basePort, drive);
         end if;
     end identify;
 
@@ -295,19 +295,18 @@ is
     --  This determines sector size and drive capacity, and prints out
     --  information about the drive.
     ---------------------------------------------------------------------------
-    procedure finishDriveIdentification(drive : in out ATADrive) with
+    procedure finishDriveIdentification (drive : in out ATADrive) with
         SPARK_Mode => On
     is
         physicalSectorSizeMultiplier : Unsigned_16 := 1;
     begin
-        if not checksumATAID(drive) then
-            println(" WARNING: Bad drive identification checksum.",
-                textmode.YELLOW, textmode.BLACK);
+        if not checksumATAID (drive) then
+            println (" WARNING: Bad drive identification checksum.", YELLOW, BLACK);
         end if;
 
-        print(" Model:    "); printSwizzled(drive.id.model);
+        print (" Model:    "); printSwizzled (drive.id.model);
         println;
-        print(" Serial #: "); printSwizzled(drive.id.serialNumber);
+        print (" Serial #: "); printSwizzled (drive.id.serialNumber);
         println;
 
         -- Newer drives can use advanced format with larger
@@ -334,14 +333,14 @@ is
         --print(" Physical Sector Size: ");
         --    println(drive.physicalSectorSize);
         
-        print(" Capacity: ");
+        print (" Capacity: ");
 
         if drive.id.commandSupported.has48BitAddress then
             printd(drive.id.maxLBA * Unsigned_64(drive.logicalSectorSize) / 
-                16#100_000#); println(" MiB");
+                16#100_000#); println (" MiB");
         else
             printd(drive.id.lbaSectors * drive.logicalSectorSize /
-                16#100_000#); println(" MiB");
+                16#100_000#); println (" MiB");
         end if;
 
         -- Set the read & write commands to be used for this drive
@@ -370,9 +369,9 @@ is
         primaryChannel : ATAChannel;
         secondaryChannel : ATAChannel;
     begin
-        numIDE := PCI.getNumDevices(pci.CLASS_STORAGE_IDE);
+        numIDE := PCI.getNumDevices (pci.CLASS_STORAGE_IDE);
         if numIDE = 0 then
-            println("No IDE controller present.");
+            println ("No IDE controller present.");
             
             for drive of drives loop
                 drive.present := False;
@@ -380,42 +379,42 @@ is
 
             return;
         else
-            PCI.findDevice(PCI.CLASS_STORAGE_IDE, bus, slot, func);
-            print("IDE controller at ");
-            print("bus: "); print(bus);
-            print(" slot: "); print(slot);
-            print(" func: "); print(func);
+            PCI.findDevice (PCI.CLASS_STORAGE_IDE, bus, slot, func);
+            print ("IDE controller at ");
+            print ("bus: ");   print (bus);
+            print (" slot: "); print (slot);
+            print (" func: "); print (func);
             println;
 
-            println("Registering ATA Block Driver");
+            println ("Registering ATA Block Driver");
             BlockDevice.registerBlockDriver(Devices.ATA, ATA.syncBuffer'Access);
 
-            config := pci.getDeviceConfiguration(bus, slot, func);
+            config := PCI.getDeviceConfiguration(bus, slot, func);
 
             -- whether or not default I/O ports are being used depends on the
             -- PCI programming/interface byte.
-            if util.isBitSet(config.progInterface, 0) then
-                println(" Primary ATA channel is in native-PCI mode.");
+            if Util.isBitSet (config.progInterface, 0) then
+                println (" Primary ATA channel is in native-PCI mode.");
             else
-                println(" Primary ATA channel in compatibility mode.");
+                println (" Primary ATA channel in compatibility mode.");
             end if;
 
-            if util.isBitSet(config.progInterface, 1) then
-                println(" Primary ATA channel does not support other modes.");
+            if util.isBitSet (config.progInterface, 1) then
+                println (" Primary ATA channel does not support other modes.");
             else
-                println(" Primary ATA channel supports other modes.");
+                println (" Primary ATA channel supports other modes.");
             end if;
 
-            if util.isBitSet(config.progInterface, 2) then
-                println(" Secondary ATA channel is in native-PCI mode.");
+            if Util.isBitSet (config.progInterface, 2) then
+                println (" Secondary ATA channel is in native-PCI mode.");
             else
-                println(" Secondary ATA channel in compatibility mode.");
+                println (" Secondary ATA channel in compatibility mode.");
             end if;
 
-            if util.isBitSet(config.progInterface, 3) then
-                println(" Secondary ATA channel does not support other modes.");
+            if Util.isBitSet (config.progInterface, 3) then
+                println (" Secondary ATA channel does not support other modes.");
             else
-                println(" Secondary ATA channel supports other modes.");
+                println (" Secondary ATA channel supports other modes.");
             end if;
 
             -- Base address registers 0-3 should have bit 0 hard-wired to 1 to 
@@ -477,13 +476,13 @@ is
                 println;
                 case i is
                     when PRIMARY_MASTER =>
-                        println("ATA Primary Master:");
+                        println ("ATA Primary Master:");
                     when PRIMARY_SLAVE =>
-                        println("ATA Primary Slave:");
+                        println ("ATA Primary Slave:");
                     when SECONDARY_MASTER =>
-                        println("ATA Secondary Master:");
+                        println ("ATA Secondary Master:");
                     when SECONDARY_SLAVE =>
-                        println("ATA Secondary Slave:");
+                        println ("ATA Secondary Slave:");
                 end case;
 
                 identify(drives(i));
@@ -491,7 +490,7 @@ is
                 if(drives(i).present) then
                     finishDriveIdentification(drives(i));
                 else
-                    println("No ATA drive connected.");
+                    println ("No ATA drive connected.");
                 end if;
             end loop;
 
@@ -499,10 +498,13 @@ is
         end if;
     end setupATA;
 
-
+    ---------------------------------------------------------------------------
+    -- syncBuffer
+    --
     -- If buffer is dirty, write it to disk, set valid once complete.
     -- Otherwise, if it's not valid, then read it.
-    procedure syncBuffer(buf : in out FileCache.BufferPtr) with SPARK_Mode => On
+    ---------------------------------------------------------------------------
+    procedure syncBuffer (buf : in out FileCache.BufferPtr) with SPARK_Mode => On
     is
         package VFS renames Filesystem.VFS;
         --@TODO: when we get more than one IDE controller and support
@@ -525,11 +527,11 @@ is
         -- print("num sectors: "); println(sectors);
 
         if buf.dirty then
-            syncBufferHelper(drives(drive), lba, sectorsPerBlock, buf.data, WRITE, res);
+            syncBufferHelper (drives(drive), lba, sectorsPerBlock, buf.data, WRITE, res);
             buf.dirty := False;
             buf.valid := True;
         elsif not buf.valid then
-            syncBufferHelper(drives(drive), lba, sectorsPerBlock, buf.data, READ, res);
+            syncBufferHelper (drives(drive), lba, sectorsPerBlock, buf.data, READ, res);
             buf.valid := True;
         end if;
 
@@ -541,7 +543,7 @@ is
     end syncBuffer;
 
 
-    procedure syncBufferHelper(
+    procedure syncBufferHelper (
                 drive       : in out ATADrive;
                 lba         : in Filesystem.VFS.LBA48;
                 numSectors  : in Unsigned_32;
@@ -564,7 +566,7 @@ is
         Spinlocks.enterCriticalSection (drive.lock);
 
         -- wait for drive to become un-busy
-        waitResult := waitReady(drive);
+        waitResult := waitReady (drive);
 
         if not waitResult then
             status := DISK_ERROR;
@@ -580,38 +582,38 @@ is
             --println(" selecting slave");
         end if;
 
-        x86.out8(drive.channel.ioBase + OFFSET_DRIVE_SELECT, selection);
+        x86.out8 (drive.channel.ioBase + OFFSET_DRIVE_SELECT, selection);
 
         -- Set the sector count and starting LBA number        
-        x86.out8(drive.channel.ioBase + OFFSET_SECTOR_CT, 
-            util.getByte(numSectors, 1));   -- sector ct high byte
+        x86.out8 (drive.channel.ioBase + OFFSET_SECTOR_CT, 
+            Util.getByte (numSectors, 1));   -- sector ct high byte
         --print(" num sector hi byte: "); println(util.getByte(numSectors, 1));
         
-        x86.out8(drive.channel.ioBase + OFFSET_LBA_LOW, util.getByte(lba, 3));
-        x86.out8(drive.channel.ioBase + OFFSET_LBA_MID, util.getByte(lba, 4));
-        x86.out8(drive.channel.ioBase + OFFSET_LBA_HI, util.getByte(lba, 5));
+        x86.out8 (drive.channel.ioBase + OFFSET_LBA_LOW, Util.getByte (lba, 3));
+        x86.out8 (drive.channel.ioBase + OFFSET_LBA_MID, Util.getByte (lba, 4));
+        x86.out8 (drive.channel.ioBase + OFFSET_LBA_HI,  Util.getByte (lba, 5));
 
-        x86.out8(drive.channel.ioBase + OFFSET_SECTOR_CT,
-            util.getByte(numSectors, 0));   -- sector ct low byte
+        x86.out8 (drive.channel.ioBase + OFFSET_SECTOR_CT,
+            Util.getByte (numSectors, 0));   -- sector ct low byte
         --print(" num sector low byte: "); println(util.getByte(numSectors, 0));
         
-        x86.out8(drive.channel.ioBase + OFFSET_LBA_LOW, util.getByte(lba, 0));
-        x86.out8(drive.channel.ioBase + OFFSET_LBA_MID, util.getByte(lba, 1));
-        x86.out8(drive.channel.ioBase + OFFSET_LBA_HI, util.getByte(lba, 2));
+        x86.out8 (drive.channel.ioBase + OFFSET_LBA_LOW, Util.getByte (lba, 0));
+        x86.out8 (drive.channel.ioBase + OFFSET_LBA_MID, Util.getByte (lba, 1));
+        x86.out8 (drive.channel.ioBase + OFFSET_LBA_HI,  Util.getByte (lba, 2));
 
         -- Send the command for the type of drive transfer to perform
         if direction = READ then
-            x86.out8(drive.channel.ioBase + OFFSET_CMD, drive.readCommand);
+            x86.out8 (drive.channel.ioBase + OFFSET_CMD, drive.readCommand);
             --print(" sending command: "); println(drive.readCommand);
         else
-            x86.out8(drive.channel.ioBase + OFFSET_CMD, drive.writeCommand);
+            x86.out8 (drive.channel.ioBase + OFFSET_CMD, drive.writeCommand);
             --print(" sending command: "); println(drive.writeCommand);
         end if;
 
 
         if direction = READ then
             for i in 0 .. numSectors - 1 loop
-                waitResult := waitForCommandToFinish(drive);
+                waitResult := waitForCommandToFinish (drive);
 
                 if not waitResult then
                     status := DISK_ERROR;
@@ -621,7 +623,7 @@ is
                 -- make sure drive didn't have an error, read an entire sector
                 --  one dword at a time.
                 x86.ins16(port  => drive.channel.ioBase + OFFSET_DATA, 
-                          addr  => To_Address(buf + Integer_Address(i * drive.physicalSectorSize)),
+                          addr  => To_Address (buf + Integer_Address(i * drive.physicalSectorSize)),
                           count => drive.physicalSectorSize / 2);
 
                 --print(" reading sector "); print(Unsigned_32(lba) + i);
@@ -637,13 +639,13 @@ is
                     return;
                 end if;
 
-                x86.outs16(port     => drive.channel.ioBase + OFFSET_DATA,
-                           addr     => To_Address(buf + Integer_Address(i * drive.physicalSectorSize)),
-                           count    => drive.physicalSectorSize / 2);
+                x86.outs16 (port     => drive.channel.ioBase + OFFSET_DATA,
+                            addr     => To_Address(buf + Integer_Address(i * drive.physicalSectorSize)),
+                            count    => drive.physicalSectorSize / 2);
             end loop;
 
-            x86.out8(drive.channel.ioBase + OFFSET_CMD, CMD_FLUSH_CACHE_EXT);
-            waitResult := waitForCommandToFinish(drive);
+            x86.out8 (drive.channel.ioBase + OFFSET_CMD, CMD_FLUSH_CACHE_EXT);
+            waitResult := waitForCommandToFinish (drive);
         end if;
 
         if not waitResult then

@@ -8,7 +8,7 @@
 with BlockDevice;
 with BuddyAllocator;
 with Process;
-with Textmode; use Textmode;
+with TextIO; use TextIO;
 
 package body FileCache with
     SPARK_Mode => Off

@@ -42,13 +42,14 @@ extern startingCPU
 ; the entry address specified by our linker script.
 MBALIGN     equ  0x1                    ; align loaded modules on page boundaries
 MEMINFO     equ  0x2                    ; provide memory map
-VIDEOMODE   equ  0x4                    ; tell GRUB to set video mode (not used yet)
+VIDEOMODE   equ  0x4                    ; tell GRUB to set video mode
 MEMLOC      equ  0x10000                ; tell GRUB to load our kernel at a specific location
 
 ; Uncomment this line to tell GRUB to use the video mode set in the header
-;FLAGS       equ  MBALIGN | MEMINFO | VIDEOMODE     ; this is the Multiboot 'flag' field
+; Multiboot 'flag' field
+FLAGS       equ  MBALIGN | MEMINFO | VIDEOMODE
 ;FLAGS       equ MBALIGN | MEMINFO | MEMLOC
-FLAGS       equ MBALIGN | MEMINFO
+;FLAGS       equ MBALIGN | MEMINFO
 
 MAGIC       equ  0x1BADB002             ; 'magic number' lets bootloader find the header
 CHECKSUM    equ -(MAGIC + FLAGS)        ; checksum of above, to prove we are multiboot
@@ -62,17 +63,17 @@ MultiBootHeader:
     dd CHECKSUM
 
 ; Memory Load Locations (Physical)
-    ; dd stext_phys               ; mboot header address (start of .text)
-    ; dd stext_phys               ; beginning of text segment
-    ; dd edata_phys               ; end of the data segment
-    ; dd ebss_phys                ; end of the BSS segment
-    ; dd start_phys               ; entry address
+    dd stext_phys               ; mboot header address (start of .text)
+    dd stext_phys               ; beginning of text segment
+    dd edata_phys               ; end of the data segment
+    dd ebss_phys                ; end of the BSS segment
+    dd start_phys               ; entry address
  
 ; For setting video mode
-;    dd 0x0          ; mode type (0-linear, 1-text)
-;    dd 1024         ; width
-;    dd 768          ; height
-;    dd 16           ; bpp depth
+    dd 0x0          ; mode type (0-linear, 1-text)
+    dd 1024         ; width
+    dd 768          ; height
+    dd 32           ; bpp depth
 
 ; Stack setup (see end for location)
 STACKSIZE equ 0x1000

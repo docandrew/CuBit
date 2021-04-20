@@ -4,7 +4,7 @@
 --
 -- PCI Bus
 -------------------------------------------------------------------------------
-with textmode; use textmode;
+with TextIO; use TextIO;
 with util;
 
 package body pci with

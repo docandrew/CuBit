@@ -103,7 +103,6 @@ is
             framebuffer_type    : Unsigned_8;           --109 if 0, indexed color is used. if 1, direct RGB color.
             
             -- If direct RGB color is used, then the next fields will be set:
-            -- I guess this is to describe something like RGB565 for 16-bit color
             framebuffer_red_field_position      : Unsigned_8;   -- 110
             framebuffer_red_mask_size           : Unsigned_8;   -- 111
             framebuffer_green_field_position    : Unsigned_8;   -- 112
@@ -147,7 +146,6 @@ is
             framebuffer_type    at 109  range 0 .. 7;
             
             -- If direct RGB color is used, then the next fields will be set:
-            -- I guess this is to describe something like RGB565 for 16-bit color
             framebuffer_red_field_position      at 110  range 0 .. 7;
             framebuffer_red_mask_size           at 111  range 0 .. 7;
             framebuffer_green_field_position    at 112  range 0 .. 7;

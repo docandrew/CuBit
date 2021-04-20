@@ -8,7 +8,7 @@
 --with Ada.Characters.Latin_1; use Ada.Characters.Latin_1;
 with Interfaces; use Interfaces;
 with Process;
-with Textmode; use Textmode;
+with TextIO; use TextIO;
 with Strings; use Strings;
 with x86; use x86;
 

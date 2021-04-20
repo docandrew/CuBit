@@ -7,12 +7,8 @@
 
 with Interfaces; use Interfaces;
 with BootAllocator;
---with config;
---with Pagetable;
 with MemoryAreas; use MemoryAreas;
-with Textmode; use Textmode;
---with Util;
---with Virtmem;
+with TextIO; use TextIO;
 with x86;
 
 package body Mem_mgr
@@ -24,14 +20,12 @@ is
     -- Switch from bootstrap page table to the primary kernel page table.
     kernelP4 : aliased Virtmem.P4 with alignment => Virtmem.PAGE_SIZE;
 
-
-
     ---------------------------------------------------------------------------
     -- determineFlagsAndMapPage - given a frame number, map it with the 
     -- appropriate page flags, depending on if it is part of the kernel,
     -- etc.
     ---------------------------------------------------------------------------
-    procedure determineFlagsAndMapFrame(frame : in Virtmem.PFN) is
+    procedure determineFlagsAndMapFrame (frame : in Virtmem.PFN) is
 
         procedure mapPage is new Virtmem.mapPage(allocate);
         
@@ -52,70 +46,64 @@ is
         -- (as code or r/w data).
 
         if frame in kernelTextPages then
-            mapPage(fromPhys, 
-                    toVirtLinear,
-                    Virtmem.PG_KERNELDATARO,
-                    kernelP4,
-                    ok);
+            mapPage (fromPhys, 
+                     toVirtLinear,
+                     Virtmem.PG_KERNELDATARO,
+                     kernelP4,
+                     ok);
 
-            if not ok then raise RemapException; end if;
+            if not ok then raise RemapException with "Unable to map text page to linear or kernel region"; end if;
 
-            mapPage(fromPhys,
-                    toVirtKernel,
-                    Virtmem.PG_KERNELCODE,
-                    kernelP4,
-                    ok);
-
-            --print(" Mapped kernel .text at ");
-            --print(toVirtLinear); print(" and "); println(toVirtKernel);
+            mapPage (fromPhys,
+                     toVirtKernel,
+                     Virtmem.PG_KERNELCODE,
+                     kernelP4,
+                     ok);
 
         elsif frame in kernelROPages then
 
-            mapPage(fromPhys,
-                    toVirtLinear,
-                    Virtmem.PG_KERNELDATARO,
-                    kernelP4,
-                    ok);
+            mapPage (fromPhys,
+                     toVirtLinear,
+                     Virtmem.PG_KERNELDATARO,
+                     kernelP4,
+                     ok);
 
-            if not ok then raise RemapException; end if;
+            if not ok then raise RemapException with "Unable to map R/O page to linear or kernel region"; end if;
 
-            mapPage(fromPhys,
-                    toVirtKernel,
-                    Virtmem.PG_KERNELDATARO,
-                    kernelP4,
-                    ok);
+            mapPage (fromPhys,
+                     toVirtKernel,
+                     Virtmem.PG_KERNELDATARO,
+                     kernelP4,
+                     ok);
 
         elsif frame in kernelRWPages then
 
-            mapPage(fromPhys,
-                    toVirtLinear,
-                    Virtmem.PG_KERNELDATARO,
-                    kernelP4,
-                    ok);
+            mapPage (fromPhys,
+                     toVirtLinear,
+                     Virtmem.PG_KERNELDATARO,
+                     kernelP4,
+                     ok);
 
-            if not ok then raise RemapException; end if;
+            if not ok then raise RemapException with "Unable to map R/W page to linear or kernel region"; end if;
             
-            mapPage(fromPhys,
-                    toVirtKernel,
-                    Virtmem.PG_KERNELDATA,
-                    kernelP4,
-                    ok);
+            mapPage (fromPhys,
+                     toVirtKernel,
+                     Virtmem.PG_KERNELDATA,
+                     kernelP4,
+                     ok);
 
         else
             -- everything else gets mapped to the linear area
-            mapPage(fromPhys,
-                    toVirtLinear,
-                    Virtmem.PG_KERNELDATA,
-                    kernelP4,
-                    ok);
+            mapPage (fromPhys,
+                     toVirtLinear,
+                     Virtmem.PG_KERNELDATA,
+                     kernelP4,
+                     ok);
 
         end if;
 
         if not ok then
-            print("ERROR: unable to map page from ");
-            print(fromPhys);
-            print(" to linear or kernel region.");
-            raise RemapException;
+            raise RemapException with "Unable to map page to linear or kernel region";
         end if;
     end determineFlagsAndMapFrame;
 
@@ -123,15 +111,15 @@ is
     ---------------------------------------------------------------------------
     -- mapBigFrameAsSmallFrames
     ---------------------------------------------------------------------------
-    procedure mapBigFrameAsSmallFrames(bigFrame : in Virtmem.BigPFN) is
+    procedure mapBigFrameAsSmallFrames (bigFrame : in Virtmem.BigPFN) is
 
         procedure determineFlagsAndMapFrame is new
-            Mem_mgr.determineFlagsAndMapFrame(allocate);
+            Mem_mgr.determineFlagsAndMapFrame (allocate);
     
         use type Virtmem.PFN;
 
         -- each big PFN contains 512 small frames
-        startFrame : constant Virtmem.PFN := Virtmem.bigPFNToPFN(bigFrame);
+        startFrame : constant Virtmem.PFN := Virtmem.bigPFNToPFN (bigFrame);
         endFrame   : constant Virtmem.PFN := startFrame + 511;       
     begin
     
@@ -144,7 +132,7 @@ is
     ---------------------------------------------------------------------------
     -- mapBigFrame 
     ---------------------------------------------------------------------------
-    procedure mapBigFrame(bigFrame : in Virtmem.BigPFN) is
+    procedure mapBigFrame (bigFrame : in Virtmem.BigPFN) is
 
         fromPhys        : constant Virtmem.PhysAddress :=
             Virtmem.BigPFNToAddr(bigFrame);
@@ -154,11 +142,8 @@ is
         
         ok : Boolean;
 
-        procedure mapBigPage is new
-            Virtmem.mapBigPage(allocate);
+        procedure mapBigPage is new Virtmem.mapBigPage (allocate);
     begin
-        -- print(" Mapping bigFrame: "); println(Unsigned_32(bigFrame));
-        -- print(" Mapping fromPhys: "); println(fromPhys);
         mapBigPage( fromPhys,
                     toVirtLinear,
                     Virtmem.PG_KERNELDATA,
@@ -166,15 +151,14 @@ is
                     ok);
 
         if not ok then
-            print("ERROR: unable to map big page from ");
-            print(fromPhys);
-            print(" to linear region.");
-            raise RemapException;
+            raise RemapException with "Unable to map big page to linear region.";
         end if;
     end mapBigFrame;
 
-
-    function isBigFrameAligned(addr : in Virtmem.PhysAddress) 
+    ---------------------------------------------------------------------------
+    -- isBigFrameAligned
+    ---------------------------------------------------------------------------
+    function isBigFrameAligned (addr : in Virtmem.PhysAddress) 
         return Boolean
     is
     begin
@@ -186,7 +170,7 @@ is
     -- mapArea - map a memory area
     -- We assume that memory areas from Multiboot do not overlap.
     ---------------------------------------------------------------------------
-    procedure mapArea(area : in MemoryAreas.MemoryArea) is
+    procedure mapArea (area : in MemoryAreas.MemoryArea) is
 
         use type Virtmem.PFN;
         use type Virtmem.BigPFN;
@@ -210,13 +194,11 @@ is
         smallPagesMapped : Natural := 0;
         bigPagesMapped : Natural := 0;
     begin
-        --print("Mapping area "); print(area.startAddr); print(" to "); println(area.endAddr);
-
         -- iterate by small frames, trying to map big pages if we can.
         curFrame := Virtmem.addrToPFN(area.startAddr);
 
-        mapFramesInArea:
-        loop
+        mapFramesInArea: loop
+
             curAddr := Virtmem.pfnToAddr(curFrame);
 
             -- If this frame is big-frame aligned, past the kernel, and
@@ -224,43 +206,40 @@ is
             -- page, do so.
             if  isBigFrameAligned(curAddr) and
                 area.endAddr - curAddr >= (Virtmem.BIG_FRAME_SIZE - 1) and
-                curAddr >= Virtmem.V2P(Virtmem.STACK_TOP)
+                curAddr >= Virtmem.V2P (Virtmem.STACK_TOP)
             then
-                mapBigFrame(Virtmem.pfnToBigPFN(curFrame));
+                mapBigFrame (Virtmem.pfnToBigPFN (curFrame));
                 curFrame := curFrame + 512;
                 bigPagesMapped := bigPagesMapped + 1;
             else
-                determineFlagsAndMapFrame(curFrame);
+                determineFlagsAndMapFrame (curFrame);
                 curFrame := curFrame + 1;
                 smallPagesMapped := smallPagesMapped + 1;
             end if;
 
             exit mapFramesInArea when
-                curFrame > Virtmem.addrToPFN(area.endAddr);
+                curFrame > Virtmem.addrToPFN (area.endAddr);
 
         end loop mapFramesInArea;
 
-        --print(" Mapped "); print(smallPagesMapped); print(" small pages, and ");
-        --print(bigPagesMapped); println(" big pages.");
     end mapArea;
 
 
     ---------------------------------------------------------------------------
     -- mapIOArea - map a memory area with PG_IO flags
     ---------------------------------------------------------------------------
-    procedure mapIOArea(area : in MemoryAreas.MemoryArea) is
+    procedure mapIOArea (area : in MemoryAreas.MemoryArea) is
 
         function mapIOFrame is new Mem_mgr.mapIOFrame(allocate);
     
         ok : Boolean;
-    
+        startPFN : Virtmem.PFN := Virtmem.addrToPFN (area.startAddr);
+        endPFN   : Virtmem.PFN := Virtmem.addrToPFN (area.endAddr);
     begin
-        --print(" mapping IO area "); print(area.startAddr); print(" to "); println(area.endAddr);
-        for frame in 
-            Virtmem.addrToPFN(area.startAddr) .. 
-            Virtmem.addrToPFN(area.endAddr) loop
 
-            ok := mapIOFrame(Virtmem.PFNToAddr(frame));
+        for frame in startPFN..endPFN loop
+
+            ok := mapIOFrame (Virtmem.PFNToAddr(frame));
 
             if not ok then
                 raise RemapException with "Unable to map IO area";
@@ -271,9 +250,10 @@ is
 
 
     ---------------------------------------------------------------------------
+    -- setup
     -- map all physical memory into our p4 table.
     ---------------------------------------------------------------------------
-    procedure setupLinearMapping(areas : in MemoryAreas.MemoryAreaArray) with
+    procedure setup (areas : in MemoryAreas.MemoryAreaArray) with
         SPARK_Mode => Off
     is
         procedure mapIOArea is new Mem_mgr.mapIOArea(BootAllocator.allocFrame);
@@ -304,7 +284,7 @@ is
         -- Make these new page tables the active ones.
         switchAddressSpace;
 
-    end setupLinearMapping;
+    end setup;
 
 
     ---------------------------------------------------------------------------
@@ -316,14 +296,14 @@ is
     begin
         -- only switch if its necessary to avoid the TLB flush
         if x86.getCR3 /= Virtmem.K2P(To_Integer(kernelP4'Address)) then
-            --textmode.print("Switching to Primary Kernel Page Tables at ");
-            --textmode.println(Virtmem.K2P(To_Integer(kernelP4'Address)));
             Virtmem.setActiveP4(Virtmem.K2P(To_Integer(kernelP4'Address)));
         end if;
     end switchAddressSpace;
 
-
-    procedure mapKernelMemIntoProcess(procP4 : in out Virtmem.P4) with
+    ---------------------------------------------------------------------------
+    -- mapKernelMemIntoProcess
+    ---------------------------------------------------------------------------
+    procedure mapKernelMemIntoProcess (procP4 : in out Virtmem.P4) with
         SPARK_Mode => On
     is
         use Virtmem; -- for PageTableIndex
@@ -336,8 +316,10 @@ is
         Virtmem.flushTLB;
     end mapKernelMemIntoProcess;
 
-
-    procedure unmapKernelMemFromProcess(procP4 : in out Virtmem.P4) with
+    ---------------------------------------------------------------------------
+    -- unmapKernelMemFromProcess
+    ---------------------------------------------------------------------------
+    procedure unmapKernelMemFromProcess (procP4 : in out Virtmem.P4) with
         SPARK_Mode => On
     is
         use Virtmem; -- for PageTableIndex
@@ -353,7 +335,7 @@ is
     -- Map a single frame of memory-mapped IO region into the higher-half
     -- w/ generic procedure "allocate"
     ---------------------------------------------------------------------------
-    function mapIOFrame(addr : in Virtmem.PhysAddress) return Boolean
+    function mapIOFrame (addr : in Virtmem.PhysAddress) return Boolean
         with SPARK_Mode => On
     is
         procedure mapPage is new Virtmem.mapPage(allocate);
@@ -371,7 +353,7 @@ is
 
     end mapIOFrame;
 
-end mem_mgr;
+end Mem_mgr;
 
 -- textmode.print(" Mapping ");
 -- textmode.println(" pages");

@@ -10,7 +10,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with Mem_mgr;
 with PerCPUData;
-with Textmode; use Textmode;
+with TextIO; use TextIO;
 with Util;
 with x86;
 --with Spinlocks;

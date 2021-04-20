@@ -18,7 +18,7 @@ with PerCPUData;
 with Scheduler;
 with Segment;
 with Serial;
-with Textmode; use Textmode;
+with TextIO; use TextIO;
 with x86;
 
 package body Process

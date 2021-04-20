@@ -4,7 +4,7 @@
 --
 -- I/O APIC
 -------------------------------------------------------------------------------
-with Textmode; use Textmode;
+with TextIO; use TextIO;
 
 package body ioapic
     with SPARK_Mode => On

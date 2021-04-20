@@ -7,7 +7,7 @@
 with Ada.Unchecked_Conversion;
 
 --with Config;
---with Textmode;
+--with TextIO;
 --with Util; use Util;
 
 package body pic with

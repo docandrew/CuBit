@@ -4,7 +4,7 @@
 --
 -- Keyboard handling service
 -------------------------------------------------------------------------------
-with Textmode;
+with TextIO;
 
 package Services.Keyboard with 
     SPARK_Mode => On
@@ -37,6 +37,6 @@ is
     -- to be called after interrupt is received.
     ---------------------------------------------------------------------------
     procedure readKey with
-        Global => (In_Out => (caps, shifted, Textmode.ScreenState, Textmode.cursor));
+        Global => (In_Out => (caps, shifted));
 
 end Services.Keyboard;

@@ -9,7 +9,7 @@
 -- memory, as used in the virtmem package. The values here are limited by the
 -- amount of physical memory we can track with this boot physical allocator.
 --
--- Not fully thread-safe, but should only be used from the boot thread once we
+-- Not thread-safe, but should only be used from the boot thread once we
 -- get the buddy allocator complete.
 --
 -- TODO: Give this allocator it's own limit, smaller than the max memory CuBit
@@ -20,7 +20,7 @@ with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with Config;
-with Spinlocks;
+-- with Spinlocks;
 with MemoryAreas;
 with Virtmem; use Virtmem;
 with x86;
@@ -46,20 +46,12 @@ is
 
     subtype AllocSize is Positive range 1 .. MAX_BOOT_PFN;
 
-    -- Page Frame Number (addr / 4096) for physical memory.
-    -- Works like a regular PFN but restricted to the physical memory limit
-    --  we define above.
-    --subtype PhysPFN is Virtmem.PFN range 0 .. MAX_PHYS_PFN;
-
     -- For static analysis, ensure this allocator is initialized before use.
     initialized : Boolean := False with Ghost;
 
     -- Keep track of highest PFN we allocated.
     highestPFNAllocated : Virtmem.PFN;
     
-    lockName : aliased String := "BootAllocator lock";
-    mutex : aliased Spinlocks.Spinlock := (name => lockName'Access, others => <>);
-   
     OutOfMemoryException : exception;
     OutOfBoundsException : exception;
 
@@ -69,10 +61,8 @@ is
     -- bootstrap memory allocator. This creates the bitmap describing all
     -- memory available in the system.
     -- @param areas - array of memory areas
-    -- @param freeBytes - output, amount of free memory in the system.
     ---------------------------------------------------------------------------
-    procedure setup(areas : in MemoryAreas.MemoryAreaArray;
-                    freeBytes : out Unsigned_64) with
+    procedure setup (areas : in MemoryAreas.MemoryAreaArray) with
         Global  => (Output => ( BitmapState, 
                                 BootAllocator.initialized,
                                 Virtmem.MAX_PHYS_ADDRESSABLE,
@@ -80,12 +70,10 @@ is
         Post    => BootAllocator.initialized;
 
     ---------------------------------------------------------------------------
-    -- isFree - return True if this frame is free (0), False otherwise.
-    --
-    -- TODO: always return True if the frame is outside of the boot allocator's
-    -- memory limit.
+    -- isFree
+    -- @return True if this frame is free, False otherwise.
     ---------------------------------------------------------------------------
-    function isFree(frame : in Virtmem.PFN) return Boolean with
+    function isFree (frame : in Virtmem.PFN) return Boolean with
         Global  => (Input       => BitmapState, 
                     Proof_In    => BootAllocator.initialized),
         Pre     => (BootAllocator.initialized and then frame <= MAX_BOOT_PFN);
@@ -93,18 +81,16 @@ is
     ---------------------------------------------------------------------------
     -- allocFrame - finds a free frame and marks it as in use
     --
-    -- @param: out addr : base address of the allocated frame.
+    -- @param out addr : base address of the allocated frame, will be 0 if no
+    --  frame is available.
     ---------------------------------------------------------------------------
     procedure allocFrame(addr : out Virtmem.PhysAddress) with
         Global  => (
-            In_Out      => (BitmapState,
-                            mutex,
-                            x86.interruptsEnabled),
+            In_Out      => (BitmapState, x86.interruptsEnabled),
             Proof_In    => (BootAllocator.initialized)),
         
-        Pre     => BootAllocator.initialized and not Spinlocks.isLocked(mutex),
-        Post    => addr <= (MAX_BOOT_PFN * Virtmem.FRAME_SIZE) and
-                    not Spinlocks.isLocked(mutex);
+        Pre     => BootAllocator.initialized,
+        Post    => addr <= (MAX_BOOT_PFN * Virtmem.FRAME_SIZE);
 
     ---------------------------------------------------------------------------
     -- allocFrames - find a contiguous number of frames in physical memory,
@@ -115,26 +101,15 @@ is
     ---------------------------------------------------------------------------
     procedure allocFrames(num : in AllocSize; addr : out Virtmem.PhysAddress) with
         Global  => (
-            In_Out      => (BitmapState,
-                            mutex,
-                            x86.interruptsEnabled),
+            In_Out      => (BitmapState, x86.interruptsEnabled),
             Proof_In    => (BootAllocator.initialized)),
 
         Pre     => num <= MAX_BOOT_PFN and 
-                   BootAllocator.initialized and 
-                   not Spinlocks.isLocked(mutex),
-        Post    => addr <= (MAX_BOOT_PFN * Virtmem.FRAME_SIZE) and
-                   not Spinlocks.isLocked(mutex);
+                   BootAllocator.initialized,
+        Post    => addr <= (MAX_BOOT_PFN * Virtmem.FRAME_SIZE);
 
     ---------------------------------------------------------------------------
-    -- allocSmall - perform a persistent (non-freeable), small memory
-    --  allocation. Use for boot-time allocation of small data structures.
-    --
-    -- @exception - throws out of memory exception if allocation fails.
-    ---------------------------------------------------------------------------
-    --procedure allocSmall(addr : out Virtmem.PhysAddress)
-
-    ---------------------------------------------------------------------------
+    -- free
     -- Free a physical frame allocation at a certain address
     ---------------------------------------------------------------------------
     procedure free(addr : in Virtmem.PhysAddress) with
@@ -146,9 +121,10 @@ is
                     addr <= (MAX_BOOT_PFN * Virtmem.FRAME_SIZE));
 
     ---------------------------------------------------------------------------
-    -- getFreeFrameCount - return number of free physical frames in the system.
+    -- numFreeFrames
+    -- @return number of free physical frames available in the boot allocator
     ---------------------------------------------------------------------------
-    function getFreeFrameCount return Unsigned_64 with
+    function numFreeFrames return Unsigned_64 with
         Global  => (Input => BitmapState);
 
 private
@@ -163,7 +139,7 @@ private
     ---------------------------------------------------------------------------
     -- findFreeFrame - finds a single page of free physical memory.
     --
-    -- Return: PFN of the free frame
+    -- @return PFN of the free frame
     ---------------------------------------------------------------------------
     function findFreeFrame return Virtmem.PFN with
         Global  => (Input       => BitmapState, 
@@ -174,7 +150,7 @@ private
     ---------------------------------------------------------------------------
     -- findFreeFrames - finds group of contigous pages of free physical memory.
     --
-    -- Return: PFN of the first free frame in the block
+    -- @return PFN of the first free frame in the block
     ---------------------------------------------------------------------------
     function findFreeFrames(num : in AllocSize) return Virtmem.PFN with
         Global  => (Input       => BitmapState, 
@@ -184,7 +160,8 @@ private
         Post    => findFreeFrames'Result <= Virtmem.PFN(MAX_BOOT_PFN - num);
 
     ---------------------------------------------------------------------------
-    -- markUsed - set a page's bit to 1
+    -- markUsed
+    -- set a page's bit to 1
     ---------------------------------------------------------------------------
     procedure markUsed(frame : in Virtmem.PFN) with
         Global  => (In_Out      => BitmapState, 
@@ -192,7 +169,8 @@ private
         Pre     => (BootAllocator.initialized and then frame <= MAX_BOOT_PFN);
 
     ---------------------------------------------------------------------------
-    -- markFree - set a page's bit to 0
+    -- markFree
+    -- set a page's bit to 0
     ---------------------------------------------------------------------------
     procedure markFree(frame : in Virtmem.PFN) with
         Global  => (In_Out => BitmapState, 
@@ -200,100 +178,20 @@ private
         Pre     => (BootAllocator.initialized and then frame <= MAX_BOOT_PFN);
 
     ---------------------------------------------------------------------------
-    -- getBlock - return the index into bitmap array in which the frame
-    --  resides.
+    -- getBlock
+    -- @return the index into bitmap array in which the frame resides.
     ---------------------------------------------------------------------------
     function getBlock(frame : in Virtmem.PFN) return Natural with
         Pre     => frame <= MAX_BOOT_PFN,
         Post    => getBlock'Result < MAX_BITMAP_BLOCKS;
 
     ---------------------------------------------------------------------------
-    -- getOffset - return the bit within a Unsigned_64 block that 
+    -- getOffset
+    -- @return the bit within a Unsigned_64 block that 
     --  represents this single frame.
     ---------------------------------------------------------------------------
     function getOffset(frame : in Virtmem.PFN) return Natural with
         Pre     => frame <= MAX_BOOT_PFN,
         Post    => getOffset'Result < 64;
-
-
-    ---------------------------------------------------------------------------
-    -- For allocations smaller than a page, the boot allocator sees if there is
-    -- enough space left in the current page, and if not, it will ask for a new
-    -- one. Note that the boot allocator can only free entire pages, so we
-    -- maintain a list of the used pages to be freed later, when the storage
-    -- pool goes out of scope.
-    ---------------------------------------------------------------------------
-    --subtype BootAllocSize is Natural range 1..Virtmem.FRAME_SIZE;
-
-    --procedure alloc(size : in BootAllocSize; obj : out System.Address);
-
-    ---------------------------------------------------------------------------
-    -- Boot allocator storage pool. Does not allow deallocation of individual
-    -- objects.
-    ---------------------------------------------------------------------------
-    -- package StoragePool is
-    --     type BootAllocPool is new Root_Storage_Pool with private;
-        
-    --     AllocationSizeExceeded : exception;
-
-    -- private
-    --     type BootAllocPool is new Root_Storage_Pool with null record;
-
-    --     overriding procedure Allocate
-    --        (Self        : in out BootAllocPool;
-    --         Addr        : out System.Address;
-    --         Size        : in Storage_Count;
-    --         Alignment   : in Storage_Count);
-        
-    --     overriding procedure Deallocate
-    --        (Self        : in out BootAllocPool;
-    --         Addr        : in System.Address;
-    --         Size        : in Storage_Count;
-    --         Alignment   : in Storage_Count);
-
-    --     overriding function Storage_Size(Self : in BootAllocPool)
-    --         return Storage_Count is (Storage_Count'Last)
-    --             with Inline => True;
-    -- end StoragePool;
-
-
-    -- package body StoragePool
-    -- is
-    --     type StorageElementAccess is access Storage_Element;
-
-    --     -- The space we've used up in the current allocated page. If the
-    --     -- next allocation will exceed the max level, go get a new page
-    --     -- and put the allocation there.
-    --     maxLevel : Virtmem.PAGE_SIZE;
-    --     curLevel : Natural range 0..(Virtmem.PAGE_SIZE - 1);
-
-    --     -- Base address of the current page we're storing in.
-    --     curPage  : System.Address;
-
-    --     function Convert is new
-    --         Ada.Unchecked_Conversion(System.Address, StorageElementAccess);
-
-    --     -----------------------------------------------------------------------
-    --     -- Allocate
-    --     -----------------------------------------------------------------------
-
-        
-    --     -----------------------------------------------------------------------
-    --     -- Deallocate - no-op.
-    --     -----------------------------------------------------------------------
-    --     overriding procedure Deallocate
-    --        (Self        : in out BootAllocPool;
-    --         Addr        : in System.Address;
-    --         Size        : in Storage_Count;
-    --         Alignment   : in Storage_Count)
-    --     is
-    --         pragma Unreferenced (Self);
-    --         pragma Unreferenced (Addr);
-    --         pragma Unreferenced (Size);
-    --         pragma Unreferenced (Alignment);
-    --     begin
-    --         null;
-    --     end Deallocate;    
-    -- end StoragePool;
 
 end BootAllocator;

@@ -7,7 +7,7 @@
 --with System.Address_To_Access_Conversions;
 with System.Machine_Code; use System.Machine_Code;
 
-with Textmode; use Textmode;
+with TextIO; use TextIO;
 
 package body Virtmem
     with SPARK_Mode => On

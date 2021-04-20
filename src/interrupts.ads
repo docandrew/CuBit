@@ -23,14 +23,13 @@ with Process;
 -- with Scheduler;
 with Segment;
 with Stackframe;
-with Textmode; use Textmode;
+with TextIO; use TextIO;
 with Util; use Util;
 with Virtmem;
 with x86;
 
-package Interrupt with
-    SPARK_Mode => On,
-    Abstract_State => (InterruptServiceRoutines, SetupState, IDTState)
+package Interrupts with
+    SPARK_Mode => On
 is
 
     ---------------------------------------------------------------------------
@@ -64,7 +63,7 @@ is
     type IDTEntry is
     record
         offset1     : Unsigned_16           := 0;
-        selector    : segment.GDTOffset     := segment.GDT_OFFSET_NULL;
+        selector    : Segment.GDTOffset     := segment.GDT_OFFSET_NULL;
         istIndex    : Integer range 0..7    := 0;
         res1        : Integer range 0..31   := 0;
         isTrap      : Boolean               := False;
@@ -79,18 +78,18 @@ is
     
     for IDTEntry use
     record
-        offset1     at 0 range 0 .. 15;
-        selector    at 2 range 0 .. 15;
-        istIndex    at 4 range 0 .. 2;
-        res1        at 4 range 3 .. 7;
-        isTrap      at 5 range 0 .. 0;
-        res2        at 5 range 1 .. 3;
-        res3        at 5 range 4 .. 4;
-        dpl         at 5 range 5 .. 6;
-        present     at 5 range 7 .. 7; 
+        offset1     at 0 range  0 .. 15;
+        selector    at 2 range  0 .. 15;
+        istIndex    at 4 range  0 .. 2;
+        res1        at 4 range  3 .. 7;
+        isTrap      at 5 range  0 .. 0;
+        res2        at 5 range  1 .. 3;
+        res3        at 5 range  4 .. 4;
+        dpl         at 5 range  5 .. 6;
+        present     at 5 range  7 .. 7;
         -- more offsets
-        offset2     at 6 range 0 .. 15;
-        offset3     at 8 range 0 .. 31;
+        offset2     at 6 range  0 .. 15;
+        offset3     at 8 range  0 .. 31;
         zero        at 12 range 0 .. 31;
     end record;
 
@@ -118,35 +117,23 @@ is
     ---------------------------------------------------------------------------
     -- Interrupt handler. Called from interrupt.asm.
     ---------------------------------------------------------------------------
-    procedure interruptHandler(frame : not null access constant stackframe.InterruptStackFrame)
+    procedure interruptHandler (frame : not null access constant stackframe.InterruptStackFrame)
     with 
         Global => (Proof_In => validIDT,
-                   In_Out => (Textmode.ScreenState,
-                              Textmode.cursor,
-                            --   Keyboard.caps,
-                            --   Keyboard.shifted,
-                              Process.lock)),
+                   In_Out   => Process.lock),
         Pre => validIDT,
         Export => True, 
         --Convention => C, 
         External_Name => "interruptHandler";
 
     ---------------------------------------------------------------------------
-    -- setupIDT
-    --
-    -- Install ISRs for all processors
+    -- setup
+    -- Create and load the IDT for the bootstrap processor (CPU 0)
+    -- This will not load the IDT for subsequent processors, so loadIDT must be
+    -- called each time a new processor is started.
     ---------------------------------------------------------------------------
-    procedure setupIDT with
-        Global => (Output => IDTState),
-        Post => validIDT;
-
-    ---------------------------------------------------------------------------
-    -- loadIDT
-    -- Installs the IDT for _this_ processor only. Must be called by each CPU
-    -- on the system.
-    ---------------------------------------------------------------------------
-    procedure loadIDT with
-        Pre => validIDT;
+    procedure setup with
+        Post   => validIDT;
 
     ---------------------------------------------------------------------------
     -- setInterruptController
@@ -155,7 +142,7 @@ is
     --  hardware.
     -- @param cont - see type InterruptController
     ---------------------------------------------------------------------------
-    procedure setInterruptController(cont : in InterruptController) with
+    procedure setInterruptController (cont : in InterruptController) with
         Pre => validIDT,
         Post => initialized;
 
@@ -166,13 +153,28 @@ is
     --  the LAPIC base address for generic lapic package instantiation.
     -- @param lapicBase - physical base address of the LAPIC
     ---------------------------------------------------------------------------
-    procedure setLAPICBaseAddress(lapicBase : in virtmem.PhysAddress) with
-        Global => (Output => SetupState);
+    procedure setLAPICBaseAddress(lapicBase : in virtmem.PhysAddress);
 
-private
+    ---------------------------------------------------------------------------
+    -- loadIDT
+    -- Installs the IDT for _this_ processor only. Must be called by each CPU
+    -- on the system.
+    ---------------------------------------------------------------------------
+    procedure loadIDT with
+        Pre => validIDT;
+        
     -- Interrupt Controller
-    intController : InterruptController := NONE with Part_Of => SetupState;
-    lapicAddr : System.Address := System.Null_Address with Part_Of => SetupState;
+    intController : InterruptController := NONE;
+    lapicAddr     : System.Address := System.Null_Address;
+private
+
+    ---------------------------------------------------------------------------
+    -- setupIDT
+    --
+    -- Install ISRs for all processors
+    ---------------------------------------------------------------------------
+    procedure setupIDT with
+        Post => validIDT;
     
     -- Clock ticks moved to time.ads
     --ticks : Unsigned_64 := 0 with Part_Of => TimerState;
@@ -208,53 +210,53 @@ private
     ---------------------------------------------------------------------------
     -- Interrupt service routines found in interrupt_handlers.asm
     ---------------------------------------------------------------------------
-    isr0    : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr1    : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr2    : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr3    : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr4    : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr5    : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr6    : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr7    : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr8    : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr9    : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr10   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr11   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr12   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr13   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr14   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
+    isr0    : Symbol with Import, Convention => C;
+    isr1    : Symbol with Import, Convention => C;
+    isr2    : Symbol with Import, Convention => C;
+    isr3    : Symbol with Import, Convention => C;
+    isr4    : Symbol with Import, Convention => C;
+    isr5    : Symbol with Import, Convention => C;
+    isr6    : Symbol with Import, Convention => C;
+    isr7    : Symbol with Import, Convention => C;
+    isr8    : Symbol with Import, Convention => C;
+    isr9    : Symbol with Import, Convention => C;
+    isr10   : Symbol with Import, Convention => C;
+    isr11   : Symbol with Import, Convention => C;
+    isr12   : Symbol with Import, Convention => C;
+    isr13   : Symbol with Import, Convention => C;
+    isr14   : Symbol with Import, Convention => C;
 
-    isr16   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr17   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr18   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr19   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
+    isr16   : Symbol with Import, Convention => C;
+    isr17   : Symbol with Import, Convention => C;
+    isr18   : Symbol with Import, Convention => C;
+    isr19   : Symbol with Import, Convention => C;
 
     -- Hardware IRQs
-    isr32   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr33   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr34   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr35   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr36   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr37   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr38   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr39   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr40   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr41   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr42   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr43   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr44   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr45   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr46   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
-    isr47   : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
+    isr32   : Symbol with Import, Convention => C;
+    isr33   : Symbol with Import, Convention => C;
+    isr34   : Symbol with Import, Convention => C;
+    isr35   : Symbol with Import, Convention => C;
+    isr36   : Symbol with Import, Convention => C;
+    isr37   : Symbol with Import, Convention => C;
+    isr38   : Symbol with Import, Convention => C;
+    isr39   : Symbol with Import, Convention => C;
+    isr40   : Symbol with Import, Convention => C;
+    isr41   : Symbol with Import, Convention => C;
+    isr42   : Symbol with Import, Convention => C;
+    isr43   : Symbol with Import, Convention => C;
+    isr44   : Symbol with Import, Convention => C;
+    isr45   : Symbol with Import, Convention => C;
+    isr46   : Symbol with Import, Convention => C;
+    isr47   : Symbol with Import, Convention => C;
 
     -- CuBit-specific
     -- Kernel Panic interrupt
-    isr127  : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
+    isr127  : Symbol with Import, Convention => C;
 
     -- Syscall software interrupt
-    isr128  : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
+    isr128  : Symbol with Import, Convention => C;
 
     -- Spurious Vector
-    isr255  : Symbol with Import, Convention => C, Part_Of => InterruptServiceRoutines;
+    isr255  : Symbol with Import, Convention => C;
 
-end interrupt;
+end Interrupts;

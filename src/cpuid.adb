@@ -6,7 +6,7 @@
 -------------------------------------------------------------------------------
 with System.Machine_Code; use System.Machine_Code;
 
-with textmode; use textmode;
+with TextIO; use TextIO;
 with util;
 with x86;
 
