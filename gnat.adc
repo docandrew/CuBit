@@ -7,7 +7,6 @@ pragma Normalize_Scalars;
 
 -- Necessary for SPARK task proofs
 --pragma Profile (Ravenscar);
-
 pragma Suppress (Index_Check);
 pragma Suppress (Range_Check);
 pragma Suppress (Overflow_Check);

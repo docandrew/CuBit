@@ -58,7 +58,7 @@ is
     ---------------------------------------------------------------------------
 
     -- Put a single character to the string at a particular row & column.
-    type PutCharProc is access procedure (row,col : Natural;
+    type PutCharProc is access procedure (col,row : Natural;
                                           fg, bg  : TextIO.Color;
                                           c       : Character);
 

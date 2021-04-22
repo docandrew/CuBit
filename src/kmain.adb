@@ -4,6 +4,7 @@
 --
 -- CuBitOS Entry Point / Main routine
 -------------------------------------------------------------------------------
+-- with Ada.Assertions; use Ada.Assertions;
 with Ada.Unchecked_Deallocation;
 with System.Address_To_Access_Conversions;
 
@@ -46,7 +47,9 @@ with Spinlocks;
 with TextIO; use TextIO;
 with Time;
 with Timer_pit;
+with Util;
 with Video;
+with Video.EGA;
 with Video.VGA;
 with Virtmem; use Virtmem;
 with x86;
@@ -144,9 +147,16 @@ begin
     BuddyAllocator.setup (memAreas);
 
     -- @TODO pick EGA driver if that's all that's available. Use VGA for now
-    Video.VGA.setup (mbInfo);
-    
-    TextIO.setVideo (Video.VGA.getTextInterface);
+    if mbInfo.framebuffer_width = 80 then
+        TextIO.setVideo (Video.EGA.getTextInterface);
+        TextIO.clear (BLUE);
+        println ("Using EGA driver");
+    else
+        Video.VGA.setup (mbInfo);
+        TextIO.setVideo (Video.VGA.getTextInterface);
+        println ("Using VGA driver");
+    end if;
+
     TextIO.clear (BLACK);
 
     println ("-----------------------------------------------------");

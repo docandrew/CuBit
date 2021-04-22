@@ -67,6 +67,7 @@ with System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with BuddyAllocator;
+with Config;
 with Spinlocks;
 with Virtmem;
 
@@ -89,6 +90,8 @@ is
         prev at 8 range 0..63;
     end record;
 
+    type BlockList is array (Natural range 1..Config.MAX_SLAB_EXPAND_TIMES) of Virtmem.PhysAddress;
+
     ---------------------------------------------------------------------------
     -- Slab is the "storage pool" type. We don't have finalization or some of
     --  the other Ada features needed for the official storage pools, but GNAT
@@ -96,15 +99,22 @@ is
     --
     -- @field freeList - node for the head of the linked free list
     --
-    -- @field numFree - number of free objects in this slab
+    -- @field numFree - number of free objects left in this slab. When this
+    --  reaches 0, we can add more storage to the slab up to Config.MAX_SLAB_EXPAND_TIMES.
     --
-    -- @field capacity - number of objects this slab can hold before any
-    --  allocations take place
+    -- @NOTE numFree should not be used to determine whether or not an allocation
+    --  will succeed, since this number will increase when additional blocks
+    --  are added. Use the hasFree function for this purpose.
     --
-    -- @field blockOrder - order of underlying memory block 
+    --  @TODO develop an arrangement whereby we can continue adding storage to
+    --  a slab indefinitely.
+    --
+    -- @field blockOrder - order of underlying memory blocks used
     --  (See BuddyAllocator)
     --
-    -- @field blockAddr - _physical_ base address of underlying memory block
+    -- @field blocks - array of blocks that we've allocated for this slab.
+    --
+    -- @field blockAddr - _physical_ base address of first underlying memory block
     --
     -- @field mutex - spinlock to ensure synchronized (de)allocations
     --
@@ -113,24 +123,26 @@ is
     --  than (T'Size/8) or (FreeNode'Size/8), whichever is smaller.
     --
     -- @field paddedSize - number of _bytes_ each object takes up in this slab
-    --  once alignment and minimum size of a FreeNode is taken into account.
+    --  once alignment is taken into account.
     --
     -- @field initialized - True if setup; has been called on this slab, False
     --  otherwise.
+    --
     ---------------------------------------------------------------------------
     type Slab is limited record
         freeList    : FreeNode;
 
         numFree     : Integer := 0;
-        capacity    : Integer := 0;
-
-        blockOrder  : BuddyAllocator.Order;
-        blockAddr   : Virtmem.PhysAddress;
         
+        blockOrder  : BuddyAllocator.Order;
+        blocks      : BlockList;
+        numBlocks   : Natural := 0;
+       
         mutex       : aliased Spinlocks.Spinlock;
         
-        alignment   : System.Storage_Elements.Storage_Count;
-        paddedSize  : System.Storage_Elements.Storage_Count;
+        objSize     : Natural;
+        alignment   : Natural;
+        paddedSize  : Natural;
         
         initialized : Boolean := False;
     end record;
@@ -138,9 +150,9 @@ is
     -- GNAT-specific pragma
     pragma Simple_Storage_Pool_Type(Slab);
 
-    OutOfMemoryException : exception;
+    OutOfMemoryException    : exception;
     BadFreeAddressException : exception;
-    BadAlignmentException : exception;
+    BadAlignmentException   : exception;
     NotInitializedException : exception;
 
     ---------------------------------------------------------------------------
@@ -150,8 +162,8 @@ is
     -- @param pool - Slab (Ada Storage Pool) to setup.
     -- @param objSize - the size _in bits_ of the object (so Obj'Size can be
     --  used)
-    -- @param blockOrder - size of underlying physical memory to allocate, in
-    --  terms of FRAME_SIZE * 2^(blockOrder)
+    -- @param capacity - the _initial_ number of objects this slab should hold
+    --  before expansion is necessary.
     -- @param alignment - alignment for stored objects within the slab.
     --
     -- @exception OutOfMemoryException raised when the underlying physical
@@ -159,16 +171,22 @@ is
     -- @exception BadAlignmentException raised when alignment is less than
     --  the object size (T'Size/8) or (FreeNode'Size/8), whichever is smaller.
     ---------------------------------------------------------------------------
-    procedure setup
-        (pool           : in out Slab;
-         objSize        : in Natural;
-         blockOrder     : in BuddyAllocator.Order := 0;
-         alignment      : in System.Storage_Elements.Storage_Count := 8);
+    procedure setup(pool      : in out Slab;
+                    objSize   : in Natural;
+                    capacity  : in Natural;
+                    alignment : in Natural := 8);
 
     ---------------------------------------------------------------------------
     -- teardown - free underlying memory used by this allocator
     ---------------------------------------------------------------------------
-    procedure teardown(pool : in out Slab);
+    procedure teardown (pool : in out Slab);
+
+    ---------------------------------------------------------------------------
+    -- hasFree
+    -- @return True if an Allocate call (or call to "new") will succeed on this
+    --  storage pool, False otherwise.
+    ---------------------------------------------------------------------------
+    function hasFree (pool : in out Slab) return Boolean;
 
     ---------------------------------------------------------------------------
     -- Allocate - called automagically by "new". The first time this is called,
@@ -180,14 +198,14 @@ is
     -- @param ignore_2 - (Normally alignment for storage pools) Ignored.
     --
     -- @exception OutOfMemoryException raised when slab has no more free
-    --  objects
+    --  objects and the "expand" field was set to False during call to setup().
     -- @exception NotInitializedException if setup has not been called on pool
     ---------------------------------------------------------------------------
     procedure Allocate
-        (pool       : in out Slab;
-         addr       : out System.Address;
-         ignore_1   : in System.Storage_Elements.Storage_Count;
-         ignore_2   : in System.Storage_Elements.Storage_Count);
+        (pool     : in out Slab;
+         addr     : out System.Address;
+         ignore_1 : in System.Storage_Elements.Storage_Count;
+         ignore_2 : in System.Storage_Elements.Storage_Count);
 
     ---------------------------------------------------------------------------
     -- Deallocate - called automagically by "Ada.Unchecked_Deallocate"
@@ -199,10 +217,10 @@ is
     -- @exception NotInitializedException if setup has not been called on pool
     ---------------------------------------------------------------------------
     procedure Deallocate
-        (pool       : in out Slab;
-         addr       : in System.Address;
-         ignore_1   : in System.Storage_Elements.Storage_Count;
-         ignore_2   : in System.Storage_Elements.Storage_Count);
+        (pool     : in out Slab;
+         addr     : in System.Address;
+         ignore_1 : in System.Storage_Elements.Storage_Count;
+         ignore_2 : in System.Storage_Elements.Storage_Count);
 
     ---------------------------------------------------------------------------
     -- Storage_Size

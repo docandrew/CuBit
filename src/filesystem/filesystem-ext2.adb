@@ -137,10 +137,10 @@ package body Filesystem.Ext2 is
 
         -- Each 4K page can hold 128 block group descriptors. This is wasteful
         -- but must suffice until we get a more general allocator.
-        bgdtOrder := BuddyAllocator.getOrder(bgdtSize);
+        bgdtOrder := BuddyAllocator.getOrder (bgdtSize);
         --print("Order of allocation: "); println(Unsigned_32(bgdtOrder));
 
-        BuddyAllocator.alloc(bgdtOrder, bgdtPhys);
+        BuddyAllocator.alloc (bgdtOrder, bgdtPhys);
         --print("Allocated: "); println(bgdtPhys);
 
         if bgdtPhys = BuddyAllocator.NO_BLOCK_AVAILABLE then

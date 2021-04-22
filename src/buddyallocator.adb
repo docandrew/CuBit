@@ -4,16 +4,18 @@
 --
 -- @summary Physical Memory Allocator
 -------------------------------------------------------------------------------
+with Ada.Unchecked_Conversion;
 with TextIO; use TextIO;
-with Util;
 
 package body BuddyAllocator
     with SPARK_Mode => On
 is
 
-    function getBuddy (ord : in Order;
-                       addr : Virtmem.PhysAddress)
-        return Virtmem.PhysAddress with
+    ---------------------------------------------------------------------------
+    -- getBuddy
+    ---------------------------------------------------------------------------
+    function getBuddy (ord  : in Order;
+                       addr : Virtmem.PhysAddress) return Virtmem.PhysAddress with
         SPARK_Mode => On
     is
         mask : constant Unsigned_64 := blockSize(ord);
@@ -29,8 +31,7 @@ is
     -- aligned block of MAX_BUDDY_ORDER size. This ensures all blocks within
     -- the buddy structure are going to stay block size-aligned.
     ---------------------------------------------------------------------------
-    function blockStart (ord : in Order; addr : in Virtmem.PhysAddress)
-        return Integer_Address
+    function blockStart (ord : in Order; addr : in Virtmem.PhysAddress) return Integer_Address
         with SPARK_Mode => On,
         Post => blockStart'Result < addr
     is
@@ -43,8 +44,10 @@ is
 
     end blockStart;
 
-
-    function blockEnd(ord : in Order; addr : in Virtmem.PhysAddress)
+    ---------------------------------------------------------------------------
+    -- blockEnd
+    ---------------------------------------------------------------------------
+    function blockEnd (ord : in Order; addr : in Virtmem.PhysAddress)
         return Integer_Address
         with SPARK_Mode => On
     is
@@ -56,7 +59,7 @@ is
     ---------------------------------------------------------------------------
     -- popFromFreeList
     ---------------------------------------------------------------------------
-    procedure popFromFreeList (ord : in Order;
+    procedure popFromFreeList (ord  : in Order;
                                addr : out Virtmem.PhysAddress) with
         SPARK_Mode => On,
         Pre     => freeLists(ord).numFreeBlocks > 0,
@@ -68,6 +71,7 @@ is
     begin
         -- set output
         addr := To_Integer(freeLists(ord).nextBlock);
+        -- print("popFromFreeList addr:"); println(addr);
 
         linkNext:
         declare
@@ -213,12 +217,18 @@ is
     function getOrder (allocSize : in Unsigned_64) return Order with
         SPARK_Mode => On
     is
-        rounded : constant Unsigned_64 := Util.nextPow2(allocSize);
+        -- rounded : constant Unsigned_64 := Util.nextPow2 (allocSize);
     begin
-        if rounded <= 4096 then
-            return 0;
+        if allocSize = 0 then
+            raise AllocatorException with "getOrder with argument 0";
         else
-            return Order(Shift_Right(rounded, Natural(Virtmem.FRAME_SHIFT)) - 1);
+            for ord in Order'Range loop
+                if blockSize (ord) >= allocSize then
+                    return ord;
+                end if;
+            end loop;
+
+            raise AllocatorException with "getOrder - allocation size exceeds BuddyAllocator maximum block size";
         end if;
     end getOrder;
 
@@ -268,8 +278,8 @@ is
     begin
         -- make freeLists self-referential and empty to start
         for ord in Order'Range loop
-            freeLists(ord).prevBlock := getListAddress(ord);
-            freeLists(ord).nextBlock := getListAddress(ord);
+            freeLists(ord).prevBlock := getListAddress (ord);
+            freeLists(ord).nextBlock := getListAddress (ord);
             freeLists(ord).buddy     := System.Null_Address;
         end loop;
 
@@ -327,8 +337,8 @@ is
                         if BootAllocator.highestPFNAllocated >
                             Virtmem.addrToPFN(topLevelBlockStart) then
 
-                            --print("Freeing frames in region ");
-                            --print(topLevelBlockStart); print(" to "); println(topLevelBlockEnd);
+                            -- print("Freeing frames in region ");
+                            -- print(topLevelBlockStart); print(" to "); println(topLevelBlockEnd);
                             -- go page by page in this block
                             eachPFN:
                             for pfn in 
@@ -336,15 +346,15 @@ is
                                 Virtmem.addrToPFN(topLevelBlockEnd)
                             loop
                                 if BootAllocator.isFree(pfn) then
-                                    free(Order'First, Virtmem.pfnToAddr(pfn));
-                                    --print(" free pfn at addr: "); println(Virtmem.P2V(Virtmem.pfnToAddr(pfn)));
+                                    free (Order'First, Virtmem.pfnToAddr(pfn));
+                                    -- print(" free pfn at addr: "); println(Virtmem.P2V(Virtmem.pfnToAddr(pfn)));
                                 end if;
                             end loop eachPFN;
                             println;
                         else
-                            --print("Freeing top-level block at ");
-                            --println(topLevelBlockStart);
-                            free(Order'Last, topLevelBlockStart);
+                            -- print("Freeing top-level block at ");
+                            -- println(topLevelBlockStart);
+                            free (Order'Last, topLevelBlockStart);
 
                         end if;
                     end loop;
@@ -375,14 +385,17 @@ is
     begin
         -- find a list order big enough to satisfy our request
         findLoop: loop
-        --while curOrd <= Order'Last loop
-
-            if freeLists(curOrd).nextBlock /= getListAddress(curOrd) then
+            -- println ("Alloc:");
+            -- print ("Checking order "); println (Integer(curOrd));
+            -- print ("freeLists(curOrd).nextBlock: "); println (freeLists(curOrd).nextBlock);
+            -- print ("getListAddress (curOrd): "); println (getListAddress (curOrd));
+            
+            if freeLists(curOrd).nextBlock /= getListAddress (curOrd) then
                 -- found free space in order i
-
                 -- remove the block from the list
-                popFromFreeList(curOrd, retBlock);
 
+                popFromFreeList(curOrd, retBlock);
+                -- print ("Returning block: "); println (retBlock);
                 -- assign output
                 addr := Virtmem.V2P(retBlock);
 
@@ -420,6 +433,12 @@ is
         alloc(0, addr);
     end allocFrame;
 
+    function getOrderNum (ord : in Order) return Natural
+    is
+        function toNat is new Ada.Unchecked_Conversion(Source => Order, Target => Natural);
+    begin
+        return toNat (ord);
+    end getOrderNum;
 
     ---------------------------------------------------------------------------
     -- free
@@ -438,7 +457,7 @@ is
                 -- buddy indicates free (see CAUTION), coalesce
                 
                 -- remove buddy from its current free list
-                unlink(curOrd, getBuddy(curOrd, freeAddr));
+                unlink (curOrd, getBuddy(curOrd, freeAddr));
 
                 -- combined us+buddy address, whether we were left or right
                 freeAddr := freeAddr and 
@@ -462,7 +481,8 @@ is
         end loop coalesce;
 
         -- add us to top free list
-        addToFreeList(curOrd, freeAddr);
+        --print ("Adding "); print (freeAddr); print (" to free list "); println (getOrderNum (curOrd));
+        addToFreeList (curOrd, freeAddr);
     end free;
 
 
@@ -509,7 +529,6 @@ is
         return ret;
     end getFreeFrames;
 
-
     ---------------------------------------------------------------------------
     -- print
     ---------------------------------------------------------------------------
@@ -521,9 +540,9 @@ is
         println("                  Buddy Allocator                    ", LT_BLUE, BLACK);
         println("-----------------------------------------------------");
         for ord in Order'Range loop
-            print("Order: "); print(Integer(ord));
-            print(" Block Size: "); printd(blockSize(ord));
-            print(" Free Blocks: "); printdln(freeLists(ord).numFreeBlocks);
+            print ("Order: ");        print (Integer(ord));
+            print (" Block Size: ");  printd (blockSize(ord));
+            print (" Free Blocks: "); printdln (freeLists(ord).numFreeBlocks);
         end loop;
         print("Total free: "); printd(getFreeBytes / 16#100000#);
         println(" MiB");

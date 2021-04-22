@@ -187,6 +187,9 @@ is
         --    PerCPUData.getPerCPUDataAddr... etc.
         --check process memory limits
         
+        PageFaultException : exception;
+        NXEException       : exception;
+
         -- what caused the page fault
         present         : constant Boolean := Util.isBitSet (err, 0);
         write           : constant Boolean := Util.isBitSet (err, 1);
@@ -202,7 +205,7 @@ is
             else
                 -- if it was the kernel, we goofed up.
                 println("NXE violation in kernel!");
-                x86.panic;
+                raise NXEException with "NXE violated in the kernel.";
             end if;
         end if;
 
@@ -220,6 +223,7 @@ is
                                 -- kernel page-protection wr violation. we goofed.
                                 print ("Kernel page-protection write violation: ");
                                 println (faultAddr);
+                                raise PageFaultException with "Kernel tried to write non-writable page";
                         end case;
                     when False =>
                         case userMode is
@@ -231,6 +235,7 @@ is
                                 -- kernel page-protection rd violation. we goofed.
                                 print ("Kernel page-protection read violation: ");
                                 println (faultAddr);
+                                raise PageFaultException with "Kernel tried to read non-readable page";
                         end case;
                 end case;
             when False =>
@@ -248,6 +253,7 @@ is
                                 -- that we should have, page it in if it is.
                                 print ("Kernel non-present page write: ");
                                 println (faultAddr);
+                                raise PageFaultException;
                         end case;
                     when False =>
                         case userMode is
@@ -263,6 +269,7 @@ is
                                 -- have, page it in if it is.
                                 print ("Kernel non-present page read: ");
                                 println (faultAddr);
+                                raise PageFaultException with "Paging not enabled yet.";
                         end case;                    
                 end case;
         end case;

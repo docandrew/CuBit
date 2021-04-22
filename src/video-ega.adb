@@ -3,19 +3,26 @@
 -- Copyright (C) 2019 Jon Andrew
 --
 -- EGA Textmode Console Routines
---
--- TODO: use generics to reduce some of the redundancy here
 -------------------------------------------------------------------------------
 with Ada.Characters.Latin_1; use Ada.Characters.Latin_1;
 
 with Config;
 with Strings; use Strings;
-with Video;
 
 package body Video.EGA with
-    Refined_State => (ScreenState => screen),
     SPARK_Mode => On
 is
+
+    function "*" (Left : Row; Right : Integer) return CursorType is
+    begin
+        return CursorType(left) * CursorType(right);
+    end "*";
+
+    function "+" (Left : CursorType; Right : Col) return CursorType is
+    begin
+        return Left + CursorType(Right);
+    end "+";
+
     ---------------------------------------------------------------------------
     -- getEGAColor
     -- Convert generic color type to an EGA color type.
@@ -23,22 +30,22 @@ is
     function getEGAColor (color : in TextIO.Color) return EGAColor is
     begin
         case color is
-            when Color.BLACK      => return EGAColor.BLACK;
-            when Color.BLUE       => return EGAColor.BLUE;
-            when Color.GREEN      => return EGAColor.GREEN;
-            when Color.CYAN       => return EGAColor.CYAN;
-            when Color.RED        => return EGAColor.RED;
-            when Color.MAGENTA    => return EGAColor.MAGENTA;
-            when Color.BROWN      => return EGAColor.BROWN;
-            when Color.LT_GRAY    => return EGAColor.LT_GRAY;
-            when Color.DK_GRAY    => return EGAColor.DK_GRAY;
-            when Color.LT_BLUE    => return EGAColor.LT_BLUE;
-            when Color.LT_GREEN   => return EGAColor.LT_GREEN;
-            when Color.LT_CYAN    => return EGAColor.LT_CYAN;
-            when Color.LT_RED     => return EGAColor.LT_RED;
-            when Color.LT_MAGENTA => return EGAColor.LT_MAGENTA;
-            when Color.YELLOW     => return EGAColor.YELLOW;
-            when Color.WHITE      => return EGAColor.WHITE;
+            when TextIO.BLACK      => return BLACK;
+            when TextIO.BLUE       => return BLUE;
+            when TextIO.GREEN      => return GREEN;
+            when TextIO.CYAN       => return CYAN;
+            when TextIO.RED        => return RED;
+            when TextIO.MAGENTA    => return MAGENTA;
+            when TextIO.BROWN      => return BROWN;
+            when TextIO.LT_GRAY    => return LT_GRAY;
+            when TextIO.DK_GRAY    => return DK_GRAY;
+            when TextIO.LT_BLUE    => return LT_BLUE;
+            when TextIO.LT_GREEN   => return LT_GREEN;
+            when TextIO.LT_CYAN    => return LT_CYAN;
+            when TextIO.LT_RED     => return LT_RED;
+            when TextIO.LT_MAGENTA => return LT_MAGENTA;
+            when TextIO.YELLOW     => return YELLOW;
+            when TextIO.WHITE      => return WHITE;
         end case;
     end getEGAColor;
 
@@ -71,53 +78,41 @@ is
     ---------------------------------------------------------------------------
     -- print character to EGA buffer
     ---------------------------------------------------------------------------
-    procedure put (x : in Col; y : in Row; fg,bg : in TextIO.Color; ch : in Character) with
-        Refined_Global => (Output => screen)
+    procedure put (c, r : Natural; fg,bg : in TextIO.Color; ch : in Character)
     is
-        pragma Annotate (GNATProve, Intentional, "might not be written", 
-                         "SPARK does not recognize writes to individual elements as affecting the whole.");
-    
-        egaFG : EGAColor := getEGAColor (fg);
-        egaBG : EGAColor := getEGAColor (bg);
+        egaFG : constant EGAColor := getEGAColor (fg);
+        egaBG : constant EGAColor := getEGAColor (bg);
     begin
-        screen (CursorType(y) * COLS + CursorType(x)) := (ch, egaFG, egaBG);
+        screen(Row(r) * COLS + Col(c)) := (ch, egaFG, egaBG);
     end put;
 
     ---------------------------------------------------------------------------
     -- clear EGA text buffer
     ---------------------------------------------------------------------------
-    procedure clear (bg : TextIO.Color) with
-        Refined_Global => (Output => (screen, cursor))
-    is
-        egaBG : EGAColor := getEGAColor (bg);
+    procedure clear (bg : TextIO.Color) is
     begin
-        for x in Col'range loop
-            for y in Row'range loop
-                put (x, y, egaBG, egaBG, ' ');
+        for c in Col'range loop
+            for r in Row'range loop
+                put (Natural(c), Natural(r), bg, bg, ' ');
             end loop;
         end loop;
-
-        setCursor(0,0);
     end clear;
 
-    -- Scroll all text up one line. Set cursor to bottom left.
-    procedure scrollUp 
-    is
+    ---------------------------------------------------------------------------
+    -- Scroll all text up one line.
+    ---------------------------------------------------------------------------
+    procedure scrollUp is
     begin
-        for y in 0 .. (Row'last - 1) loop
-            for x in Col'range loop
-                screen (CursorType(y) * COLS + CursorType(x)) := 
-                    screen(CursorType(y + Row(1)) * COLS + CursorType(x));
+        for c in Col'range loop
+            for r in 0 .. (Row'last - 1) loop
+                screen(r * COLS + c) := screen((r + 1) * COLS + c);
             end loop;
         end loop;
 
         -- clear line at end
-        for x in Col'range loop
-            put (x, Row'last, BLACK, BLACK, ' ');
+        for c in Col'range loop
+            screen (Row'Last * COLS + c) := (' ', BLACK, BLACK);
         end loop;
-        
-        -- move cursor to bottom left of screen done in TextIO now.
-        -- setCursor(0, Row'last);
     end scrollUp;
 
 end Video.EGA;

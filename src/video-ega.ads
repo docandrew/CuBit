@@ -8,14 +8,13 @@ with System;
 with System.Storage_Elements; use System.Storage_Elements;
 with Interfaces; use Interfaces;
 
+with TextIO;
 with Video;
 with Virtmem; use Virtmem;
 with x86;
 
 package Video.EGA with
-    SPARK_Mode => On,
-    Abstract_State => (ScreenState with External => (Async_Readers => True,
-                                                     Effective_Writes => True))
+    SPARK_Mode => On
 is
     type EGAColor is (
         BLACK, 
@@ -85,7 +84,16 @@ is
     type Col is new Natural range 0 .. COLS - 1;
     type Row is new Natural range 0 .. ROWS - 1;
 
-    -- TODO: define a much larger buffer here that we can use for scrolling later on.
+    function "*" (Left : Row; Right : Integer) return CursorType;
+    pragma Convention (Intrinsic, "*");
+    pragma Inline_Always ("*");
+    pragma Pure_Function ("*");
+
+    function "+" (Left : CursorType; Right : Col) return CursorType;
+    pragma Convention (Intrinsic, "+");
+    pragma Inline_Always ("+");
+    pragma Pure_Function ("+");
+
     type TextBuffer is array (CursorType) of TextBufferChar with Volatile_Components;
 
     ---------------------------------------------------------------------------
@@ -98,41 +106,26 @@ is
     ---------------------------------------------------------------------------
     -- Print a single character at a specific location and color
     ---------------------------------------------------------------------------
-    procedure put (x : in Col; y : in Row; fg,bg : in TextIO.Color; ch : in Character) with
-        Global => (Output => ScreenState);
+    procedure put (c, r : Natural; fg,bg : in TextIO.Color; ch : in Character);
 
     ---------------------------------------------------------------------------
     -- Clear screen
     ---------------------------------------------------------------------------
-    procedure clear (bg : in Color) with
-        Global => (Output => (ScreenState, cursor));
+    procedure clear (bg : in TextIO.Color);
 
-    ---------------------------------------------------------------------------
-    -- Set cursor to a specific x,y coordinate
-    ---------------------------------------------------------------------------
-    procedure setCursor (x : Col; y : Row) with
-        Global => (Output => cursor);
+    -- ---------------------------------------------------------------------------
+    -- -- Get the row of our cursor
+    -- ---------------------------------------------------------------------------
+    -- function getRow return Row;
 
-    ---------------------------------------------------------------------------
-    -- Get the row of our cursor
-    ---------------------------------------------------------------------------
-    function getRow return Row with
-        Global => (Input => cursor),
-        Depends => (getRow'Result => cursor),
-        Post => (if cursor = CursorType'last then getRow'Result = Row'last);
-
-    ---------------------------------------------------------------------------
-    -- Get column of our cursor
-    ---------------------------------------------------------------------------
-    function getCol return Col with
-        Global => (Input => cursor),
-        Depends => (getCol'Result => cursor),
-        Post => (if cursor = CursorType'last then getCol'Result = Col'last);
+    -- ---------------------------------------------------------------------------
+    -- -- Get column of our cursor
+    -- ---------------------------------------------------------------------------
+    -- function getCol return Col;
 
     ---------------------------------------------------------------------------
     -- Scroll all text up one line
     ---------------------------------------------------------------------------
-    procedure scrollUp with
-        Global => (In_Out => ScreenState, Output => cursor);
+    procedure scrollUp;
 
 end Video.EGA;

@@ -17,38 +17,25 @@ is
     ---------------------------------------------------------------------------
     -- setup
     ---------------------------------------------------------------------------
-    procedure setup(myList : in out List; capacity : in Natural) with
+    procedure setup (myList : in out List; capacity : in Natural) with
         SPARK_Mode => Off
     is
         use BuddyAllocator; -- '=' operator
-
-        sizeNeeded : constant Unsigned_64 := Unsigned_64(capacity * Node'Size / 8);
-        ord : BuddyAllocator.Order;
     begin
-        -- See what size order or physical memory we need for this capacity
-        findBlockOrder: for i in BuddyAllocator.Order'range loop
-            if BuddyAllocator.blockSize(i) >= sizeNeeded then
-                ord := i;
-                exit findBlockOrder;
-            end if;
 
-            -- If we got here, then the 
-            if i = Config.MAX_BUDDY_ORDER then
-                raise ListTooBigException with "List Capacity Too Big";
-            end if;
-        end loop findBlockOrder;
-
-        SlabAllocator.setup(pool        => nodeSlab, 
-                            objSize     => Node'Size,
-                            blockOrder  => ord);
+        SlabAllocator.setup (pool     => nodeSlab, 
+                             objSize  => Node'Size,
+                             capacity => capacity);
         
         myList.head := null;
         myList.tail := null;
         myList.capacity := capacity;
     end setup;
 
-
-    procedure teardown(myList : in out List) with
+    ---------------------------------------------------------------------------
+    -- teardown
+    ---------------------------------------------------------------------------
+    procedure teardown (myList : in out List) with
         SPARK_Mode => On
     is
     begin
@@ -56,19 +43,19 @@ is
         myList.tail := null;
         myList.length := 0;
         myList.capacity := 0;
-        SlabAllocator.teardown(nodeSlab);
+        SlabAllocator.teardown (nodeSlab);
     end teardown;
 
     ---------------------------------------------------------------------------
     -- insertFront
     ---------------------------------------------------------------------------
-    procedure insertFront(myList : in out List; element : in T) with
+    procedure insertFront (myList : in out List; element : in T) with
         SPARK_Mode => Off
     is
         prevHead : constant NodePtr := myList.head;
-        newNode  : constant NodePtr := new Node'(element    => element,
-                                                 next       => null,
-                                                 prev       => null);
+        newNode  : constant NodePtr := new Node'(element => element,
+                                                 next    => null,
+                                                 prev    => null);
     begin
         if myList.length = 0 then
             newNode.prev    := newNode;

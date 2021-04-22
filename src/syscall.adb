@@ -22,7 +22,6 @@ package body Syscall is
     is
     begin
         Process.kill (currentPID);
-        --@TODO how do we return the scheduler once we do this?
     end exitp;
 
     ---------------------------------------------------------------------------
@@ -169,8 +168,6 @@ package body Syscall is
     begin
         --oldCR3 := x86.getCR3;
 
-        --Mem_mgr.mapKernelMemIntoProcess(Process.proctab(percpu.currentPID).pgTable);
-
         -- Dispatch the syscall
         case syscallNum is
             when SYSCALL_EXIT =>
@@ -206,8 +203,6 @@ package body Syscall is
                 print ("  "); println (arg4);
                 print ("  "); println (arg5);
         end case;
-
-        --Mem_mgr.unmapKernelMemFromProcess(Process.proctab(percpu.currentPID).pgTable);
 
         return retval;
     end syscallHandler;

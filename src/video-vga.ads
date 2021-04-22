@@ -84,7 +84,7 @@ package Video.VGA is
     -- put
     -- Procedure for Text I/O
     ---------------------------------------------------------------------------
-    procedure put (row, col : Natural; fg, bg : TextIO.Color; ch : Character);
+    procedure put (col, row : Natural; fg, bg : TextIO.Color; ch : Character);
 
     ---------------------------------------------------------------------------
     -- scrollUp

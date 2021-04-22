@@ -621,12 +621,12 @@ is
     ---------------------------------------------------------------------------
     -- Read from a model-specific register (MSR)
     ---------------------------------------------------------------------------
-    function rdmsr(msraddr : in MSR) return Unsigned_64;
+    function rdmsr (msraddr : in MSR) return Unsigned_64;
 
     ---------------------------------------------------------------------------
     -- Write to a model-specific register (MSR)
     ---------------------------------------------------------------------------
-    procedure wrmsr(msraddr : in MSR; val : in Unsigned_64);
+    procedure wrmsr (msraddr : in MSR; val : in Unsigned_64);
 
     ---------------------------------------------------------------------------
     -- Read Time-Stamp Counter
@@ -637,7 +637,14 @@ is
     -- Read Time-Stamp Counter & Processor ID (stronger serialization).
     -- Can be used to get the chip & core a process is running on.
     ---------------------------------------------------------------------------
-    function rdtscp(chip : out Unsigned_32; core : out Unsigned_32)
+    function rdtscp (chip : out Unsigned_32; core : out Unsigned_32)
         return Unsigned_64 with Inline, SPARK_Mode => Off;
 
+    ---------------------------------------------------------------------------
+    -- rep_movsb
+    -- (memcpy alternative)
+    ---------------------------------------------------------------------------
+    procedure rep_movsb (dst : in System.Address;
+                         src : in System.Address;
+                         len : in System.Storage_Elements.Storage_Count);
 end x86;

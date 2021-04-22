@@ -90,6 +90,7 @@ package body TextIO is
     ---------------------------------------------------------------------------
     procedure clear (bg : TextIO.Color) is
     begin
+        cursor := 0;
         clearScreen (bg);
     end clear;
 

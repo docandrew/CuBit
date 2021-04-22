@@ -63,9 +63,10 @@ is
     -- setup
     -- Initialize a Linked List with underlying SlabAllocator and physical
     -- memory.
-    -- @field capacity - max number of objects this list can store.
+    -- @field capacity - initial number of objects this list should be set up
+    --  to store. The list can be expanded beyond this - see SlabAllocator
     ---------------------------------------------------------------------------
-    procedure setup(myList : in out List; capacity : in Natural) with
+    procedure setup (myList : in out List; capacity : in Natural) with
         SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
@@ -78,49 +79,49 @@ is
     -- NOTE: The List object is reset, and can be re-used if setup() is called
     -- again on it.
     ---------------------------------------------------------------------------
-    procedure teardown(myList : in out List) with
+    procedure teardown (myList : in out List) with
         SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- insertFront
     -- Insert an element at the front of this linked list
     ---------------------------------------------------------------------------
-    procedure insertFront(myList : in out List; element : in T) with
+    procedure insertFront (myList : in out List; element : in T) with
         SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- insertBack
     -- Insert an element at the back of this linked list.
     ---------------------------------------------------------------------------
-    procedure insertBack(myList : in out List; element : in T) with
+    procedure insertBack (myList : in out List; element : in T) with
         SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- popFront
     -- remove the first element in this list
     ---------------------------------------------------------------------------
-    procedure popFront(myList : in out List) with
+    procedure popFront (myList : in out List) with
         SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- front
     -- return the first element in this list
     ---------------------------------------------------------------------------
-    function front(myList : in List) return T with
+    function front (myList : in List) return T with
         SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- popBack
     -- remove the last element in this list
     ---------------------------------------------------------------------------
-    procedure popBack(myList : in out List) with
+    procedure popBack (myList : in out List) with
         SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- back
     -- return the last element in this list
     ---------------------------------------------------------------------------
-    function back(myList : in List) return T with
+    function back (myList : in List) return T with
         SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
@@ -134,13 +135,13 @@ is
     -- clear
     -- Remove all elements from this list
     ---------------------------------------------------------------------------
-    procedure clear(myList : in out List) with SPARK_Mode => On;
+    procedure clear (myList : in out List) with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- isEmpty
     -- Return True if this list contains no elements, False otherwise.
     ---------------------------------------------------------------------------
-    function isEmpty(myList : in List) return Boolean is (myList.length = 0)
+    function isEmpty (myList : in List) return Boolean is (myList.length = 0)
         with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
@@ -148,7 +149,7 @@ is
     -- Print all elements in this list by calling the generic parameter
     -- printElem on each.
     ---------------------------------------------------------------------------
-    procedure print(myList : in List) with SPARK_Mode => On;
+    procedure print (myList : in List) with SPARK_Mode => On;
 
 private
  

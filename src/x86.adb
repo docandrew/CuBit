@@ -429,4 +429,29 @@ is
         return (Shift_Left(Unsigned_64(high), 32) or Unsigned_64(low));
     end rdtscp;
 
+    ---------------------------------------------------------------------------
+    -- rep movsb
+    ---------------------------------------------------------------------------
+    procedure rep_movsb (dst : in System.Address;
+                         src : in System.Address;
+                         len : in System.Storage_Elements.Storage_Count) is
+        use System.Storage_Elements;
+        dstl : System.Address := dst;
+        srcl : System.Address := src;
+        lenl : Storage_Count  := len;
+    begin
+        Asm("rep movsb",
+            Outputs => (
+                System.Address'Asm_Output("=D", dstl),
+                System.Address'Asm_Output("=S", srcl),
+                Storage_Count'Asm_Output("=c", lenl)
+            ),
+            Inputs => (
+                System.Address'Asm_Input("0", dstl),
+                System.Address'Asm_Input("1", srcl),
+                Storage_Count'Asm_Input("2", lenl)
+            ),
+            Clobber  => "memory",
+            Volatile => True);
+    end rep_movsb;
 end x86;

@@ -5,6 +5,7 @@ project CuBit is
     for Object_Dir use "build";
     
     for Source_Dirs use ("src", "src/filesystem", "src/services");
+    -- @TODO add src/test for "test" builds
     
     for Main use ("kmain.adb");
 
@@ -47,6 +48,7 @@ project CuBit is
             "-mno-red-zone",
             "-fno-pic",
             "-mcmodel=kernel",      -- all kernel code in top 2GiB of memory
+            --"-O2",
             "-mno-sse",             -- not supported
             "-mno-sse2",
             "-I-"                   -- don't look for source files in the same folder

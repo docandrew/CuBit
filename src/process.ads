@@ -181,6 +181,11 @@ is
     type ProctabType is array (1..ProcessID'Last) of Process;
     proctab : ProctabType;
 
+    -- WIP: proctab replacement
+    -- type ProcPtr is access Process;
+    -- package ProcList is new LinkedList (ProcPtr, Process.print);
+    -- allProcs : ProcList.List;
+
     ---------------------------------------------------------------------------
     -- startKernelThread
     --

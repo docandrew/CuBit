@@ -5,6 +5,7 @@
 -- @summary CuBitOS utility functions
 -------------------------------------------------------------------------------
 with System.Machine_Code; use System.Machine_Code;
+with x86;
 
 package body Util with
     SPARK_Mode => On
@@ -235,41 +236,78 @@ is
         return 0;
     end memcmp;
 
-
+    ---------------------------------------------------------------------------
+    -- memcpy
+    -- @TODO we can optimize this, check for dest, src alignment and
+    -- len alignment and copy by words.
+    ---------------------------------------------------------------------------
     function memcpy(dest    : System.Address;
                     src     : System.Address;
                     len     : Natural) return System.Address
         with SPARK_Mode => Off
     is
+        -- memd : Storage_Array(1..Storage_Offset(len))
+        --     with Import, Address => dest;
+        -- mems : Storage_Array(1..Storage_Offset(len))
+        --     with Import, Address => src;
+    begin
+        -- if len > 0 then
+            -- for i in 1..len loop
+            --     memd(Storage_Offset(i)) := mems(Storage_Offset(i));
+            -- end loop;
+        -- end if;
+        x86.rep_movsb (dest, src, Storage_Count(len));
+
+        return dest;
+    end memcpy;
+
+    ---------------------------------------------------------------------------
+    -- memmove
+    ---------------------------------------------------------------------------
+    function memmove (dest : System.Address;
+                      src  : System.Address;
+                      len  : Natural) return System.Address
+        with SPARK_Mode => Off
+    is
         memd : Storage_Array(1..Storage_Offset(len))
             with Import, Address => dest;
+        
         mems : Storage_Array(1..Storage_Offset(len))
             with Import, Address => src;
     begin
-        if len > 0 then
-            for i in 1..len loop
+        -- These ranges might overlap, so if destination is above the source,
+        -- copy back to front. Otherwise, copy front-to-back.
+
+        if To_Integer (dest) < To_Integer (src) then
+            return memcpy (dest, src, len);
+        else
+            for i in reverse 1..len loop
                 memd(Storage_Offset(i)) := mems(Storage_Offset(i));
             end loop;
         end if;
 
         return dest;
-    end memcpy;
+    end memmove;
 
-
-    procedure memCopy(dest  : in System.Address;
-                      src   : in System.Address;
-                      len   : in Natural) with SPARK_Mode => Off
+    ---------------------------------------------------------------------------
+    -- memCopy
+    ---------------------------------------------------------------------------
+    procedure memCopy (dest  : in System.Address;
+                       src   : in System.Address;
+                       len   : in Natural) with SPARK_Mode => Off
     is
         dummy : System.Address;
     begin
         dummy := memcpy(dest, src, len);
     end memCopy;
 
+    ---------------------------------------------------------------------------
     -- next power of 2
     -- Find the rightmost 1 bit using lzcnt. First, subtract 1 to account
     -- for n that's already a power of 2. Shift 1 by 63 - number of leading
     -- zeroes to get the next power of 2.
-    function nextPow2(n : in Unsigned_64) return Unsigned_64 with
+    ---------------------------------------------------------------------------
+    function nextPow2 (n : in Unsigned_64) return Unsigned_64 with
         SPARK_Mode => Off
     is
         leadingZeroes : Unsigned_64;
@@ -283,8 +321,10 @@ is
         return Shift_Left(Unsigned_64(1), Natural(64 - leadingZeroes));
     end nextPow2;
 
-
-    function roundToNearest(num : T; multiple : T) return T with
+    ---------------------------------------------------------------------------
+    -- roundToNearest
+    ---------------------------------------------------------------------------
+    function roundToNearest (num : T; multiple : T) return T with
         SPARK_Mode => On
     is
         remainder : T;

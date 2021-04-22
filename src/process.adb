@@ -24,6 +24,15 @@ with x86;
 package body Process
     with SPARK_Mode => On
 is
+    
+    ---------------------------------------------------------------------------
+    -- setup
+    ---------------------------------------------------------------------------
+    -- procedure setup is
+    -- begin
+    --     ProcList.setup (allProcs, Config.MAX_PROCESSES);
+    -- end setup;
+
     ---------------------------------------------------------------------------
     -- addToProctab
     ---------------------------------------------------------------------------
@@ -32,11 +41,11 @@ is
     is
     begin
         -- add our new entry to the proctab.
-        println ("Process.addToProcTab grabbing Process lock");
+        -- println ("Process.addToProcTab grabbing Process lock");
         Spinlocks.enterCriticalSection (lock);
         proctab(proc.pid) := proc;
         Spinlocks.exitCriticalSection (lock);
-        println ("Process.addToProcTab released Process lock");
+        -- println ("Process.addToProcTab released Process lock");
     end addToProctab;
 
     ---------------------------------------------------------------------------
@@ -52,7 +61,7 @@ is
         kStackPhys : Virtmem.PhysAddress;
         kStackAddr : Virtmem.VirtAddress;
     begin
-        println ("Process: createKernelThread");
+        -- println ("Process: createKernelThread");
         PIDTracker.allocSpecificPID (pid);
         -- PIDTracker.allocPID (proc.pid);
 
@@ -61,8 +70,8 @@ is
         --     return proc;
         -- end if;
 
-        proc.pid       := pid;
-        print ("Process: New kernel thread PID: "); println (proc.pid);
+        proc.pid      := pid;
+        -- print ("Process: New kernel thread PID: "); println (proc.pid);
 
         proc.ppid     := 0;
         proc.name     := name;
@@ -79,7 +88,7 @@ is
 
         kStackAddr := Virtmem.P2V(kStackPhys + 3 * Virtmem.PAGE_SIZE);
 
-        print ("Process: New kernel thread stack: "); println (kStackAddr);
+        -- print ("Process: New kernel thread stack: "); println (kStackAddr);
 
         setupKernelStack : declare
             kernStack : ProcessKernelStack with Import, Address => To_Address(kStackAddr);
@@ -153,7 +162,7 @@ is
             return newProc;
         end if;
 
-        print ("New process PID: "); println (newProc.pid);
+        -- print ("New process PID: "); println (newProc.pid);
 
         newProc.ppid        := ppid;
         newProc.name        := name;
@@ -203,8 +212,8 @@ is
                 Import, Address => To_Address(kStackAddr);
         begin
 
-            println (" Kernel Stack Layout: ");
-            print ("  kStackAddr:     "); println(kStackAddr);
+            -- println (" Kernel Stack Layout: ");
+            -- print ("  kStackAddr:     "); println(kStackAddr);
             --print("  filler:         "); println(newKernelStack.filler'Address);
             --print("  filler size:    "); println(Unsigned_64(PKStackFiller'Object_Size / 8));
             --print("  context:        "); println(newKernelStack.context'Address);
@@ -236,18 +245,18 @@ is
             newKernelStack.context := (rip => start'Address, others => 0);
 
             --newKernelStack.context.rbp := Util.addrToNum(newKernelStack.context'Address);
-            print (" nks.context.rip: "); println (newKernelStack.context.rip);
-            print (" nks.context.rbp: "); println (newKernelStack.context.rbp);
+            -- print (" nks.context.rip: "); println (newKernelStack.context.rip);
+            -- print (" nks.context.rbp: "); println (newKernelStack.context.rbp);
 
             -- Set the process' kernel stack
             newProc.kernelStackBottom := Virtmem.P2V (kStackPhys);
             newProc.kernelStackTop    := kStackAddr + (Virtmem.FRAME_SIZE);
 
-            print (" newProc.kernelStackBottom: "); println (newProc.kernelStackBottom);
-            print (" newProc.kernelStackTop: ");    println (newProc.kernelStackTop);
+            -- print (" newProc.kernelStackBottom: "); println (newProc.kernelStackBottom);
+            -- print (" newProc.kernelStackTop: ");    println (newProc.kernelStackTop);
 
             newProc.context := newKernelStack.context'Address;
-            print (" newProc.context: "); println (newProc.context);
+            -- print (" newProc.context: "); println (newProc.context);
         end setupKernelStack;
 
         -- Map the kernel into the process' address space. We don't give the
@@ -261,19 +270,19 @@ is
         --     newProc.pid := 0;
         --     return newProc;
         -- end if;
-        println("Setting up process page tables");
+        -- println("Setting up process page tables");
         setupPageTables : declare
             -- processP4 : Virtmem.P4 with
             --     Import, Address => To_Address(Virtmem.P2V(pageTableAddr));
 
-            procedure mapPage is new Virtmem.mapPage(BuddyAllocator.allocFrame);
-            procedure zeroize is new Virtmem.zeroize(Virtmem.P4);
+            procedure mapPage is new Virtmem.mapPage (BuddyAllocator.allocFrame);
+            procedure zeroize is new Virtmem.zeroize (Virtmem.P4);
 
             ok : Boolean;
             MapException : exception;
         begin
-            println(" Zeroizing process P4 page table");
-            zeroize(newProc.pgTable);
+            -- println (" Zeroizing process P4 page table");
+            zeroize (newProc.pgTable);
 
             -- The process needs at least some part of the kernel mapped
             -- during operations, so that when interrupts and syscalls happen,
@@ -281,76 +290,81 @@ is
             -- kernel's page tables, but we re-allocate new ones here so later
             -- it's easier for us to free the whole table and its associated
             -- memory in one fell-swoop using Virtmem.deleteP4
-            println(" Linear-mapping first MiB in process' address space");
-            for pg in Virtmem.addrToPFN(0)..Virtmem.addrToPFN(16#100000#) loop
-                mapPage(Virtmem.pfnToAddr(pg),
-                        Virtmem.P2V(Virtmem.pfnToAddr(pg)),
-                        Virtmem.PG_KERNELDATA,
-                        newProc.pgTable,
-                        ok);
+            -- println ("Mapping higher-half into process' space");
+            Mem_mgr.mapKernelMemIntoProcess (newProc.pgTable);
+            -- println("Linear-mapping first MiB in process' address space");
+            -- for pg in Virtmem.addrToPFN(0)..Virtmem.addrToPFN(16#100000#) loop
+            --     mapPage (Virtmem.pfnToAddr(pg),
+            --              Virtmem.P2V(Virtmem.pfnToAddr(pg)),
+            --              Virtmem.PG_KERNELDATA,
+            --              newProc.pgTable,
+            --              ok);
 
-                if not ok then
-                    raise MapException with 
-                        "Process.create - can't map first 1MiB";
-                end if;
-            end loop;
+            --     if not ok then
+            --         raise MapException with 
+            --             "Process.create - can't map first 1MiB";
+            --     end if;
+            -- end loop;
 
-            println(" Mapping kernel in process' address space");
-            -- map kernel pages in the process' address space.
-            for pg in Mem_mgr.kernelTextPages'Range loop
-                mapPage(Virtmem.pfnToAddr(pg),
-                        Virtmem.pfnToAddr(pg) + Virtmem.KERNEL_BASE,
-                        Virtmem.PG_KERNELCODE,
-                        newProc.pgTable,
-                        ok);
+            -- println ("Mapping kernel .text in process' address space");
+            -- -- map kernel pages in the process' address space.
+            -- for pg in Mem_mgr.kernelTextPages'Range loop
+            --     mapPage(Virtmem.pfnToAddr(pg),
+            --             Virtmem.pfnToAddr(pg) + Virtmem.KERNEL_BASE,
+            --             Virtmem.PG_KERNELCODE,
+            --             newProc.pgTable,
+            --             ok);
 
-                if not ok then
-                    raise MapException with 
-                        "Process.create - can't map kernel's .text";
-                end if;
-            end loop;
+            --     if not ok then
+            --         raise MapException with 
+            --             "Process.create - can't map kernel's .text";
+            --     end if;
+            -- end loop;
 
-            for pg in Mem_mgr.kernelROPages loop
-                mapPage(Virtmem.pfnToAddr(pg),
-                        Virtmem.pfnToAddr(pg) + Virtmem.KERNEL_BASE,
-                        Virtmem.PG_KERNELDATARO,
-                        newProc.pgTable,
-                        ok);
-                if not ok then
-                    raise MapException with
-                        "Process.create - can't map kernel's RO data";
-                end if;
-            end loop;
+            -- println ("Mapping kernel .rodata in process' address space");
+            -- for pg in Mem_mgr.kernelROPages loop
+            --     mapPage(Virtmem.pfnToAddr(pg),
+            --             Virtmem.pfnToAddr(pg) + Virtmem.KERNEL_BASE,
+            --             Virtmem.PG_KERNELDATARO,
+            --             newProc.pgTable,
+            --             ok);
+            --     if not ok then
+            --         raise MapException with
+            --             "Process.create - can't map kernel's RO data";
+            --     end if;
+            -- end loop;
 
-            for pg in Mem_mgr.kernelRWPages loop
-                mapPage(Virtmem.pfnToAddr(pg),
-                        Virtmem.pfnToAddr(pg) + Virtmem.KERNEL_BASE,
-                        Virtmem.PG_KERNELDATA,
-                        newProc.pgTable,
-                        ok);
-                if not ok then
-                    raise MapException with
-                        "Process.create - can't map kernel's RW data";
-                end if;
-            end loop;
+            -- println ("Mapping kernel .data in process' address space");
+            -- for pg in Mem_mgr.kernelRWPages loop
+            --     mapPage(Virtmem.pfnToAddr(pg),
+            --             Virtmem.pfnToAddr(pg) + Virtmem.KERNEL_BASE,
+            --             Virtmem.PG_KERNELDATA,
+            --             newProc.pgTable,
+            --             ok);
+            --     if not ok then
+            --         raise MapException with
+            --             "Process.create - can't map kernel's RW data";
+            --     end if;
+            -- end loop;
             
-            for pg in Mem_mgr.kernelStackPages loop
-                mapPage(Virtmem.pfnToAddr(pg),
-                        Virtmem.P2V(Virtmem.pfnToAddr(pg)),
-                        Virtmem.PG_KERNELDATA,
-                        newProc.pgTable,
-                        ok);
-                if not ok then
-                    raise MapException with
-                        "Process.create - can't map kernel's RW data";
-                end if;
-            end loop;
+            -- println ("Mapping kernel stack in process' address space");
+            -- for pg in Mem_mgr.kernelStackPages loop
+            --     mapPage(Virtmem.pfnToAddr(pg),
+            --             Virtmem.P2V(Virtmem.pfnToAddr(pg)),
+            --             Virtmem.PG_KERNELDATA,
+            --             newProc.pgTable,
+            --             ok);
+            --     if not ok then
+            --         raise MapException with
+            --             "Process.create - can't map kernel's RW data";
+            --     end if;
+            -- end loop;
 
             -- map the process' image
             -- TODO: load it from an ELF image.
             -- for pg in processStackPages loop, etc...
-            print("Mapping process image from "); print(imageStart);
-            println(" to virtual address 0");
+            -- print("Mapping process image from "); print(imageStart);
+            -- println(" to virtual address 0");
             mapPage(imageStart,
                     0,
                     Virtmem.PG_USERCODE,
@@ -363,8 +377,8 @@ is
             end if;
 
             -- map the process' user stack
-            print ("Mapping process stack from "); print (uStackPhys);
-            print (" to virtual address "); println (uStackAddr);
+            -- print ("Mapping process stack from "); print (uStackPhys);
+            -- print (" to virtual address "); println (uStackAddr);
             mapPage (uStackPhys,
                      uStackAddr,
                      Virtmem.PG_USERDATA,
@@ -376,35 +390,35 @@ is
                 "Process.create - can't map process' stack";
             end if;
 
-            -- map all of the process' kernel stack pages
-            print ("Mapping process kernel stack from "); print (kStackPhys);
-            print (" to virtual address "); println (Virtmem.P2V(kStackPhys));
+            -- -- map all of the process' kernel stack pages
+            -- print ("Mapping process kernel stack from "); print (kStackPhys);
+            -- print (" to virtual address "); println (Virtmem.P2V(kStackPhys));
             
-            mapPage (kStackPhys,
-                     Virtmem.P2V(kStackPhys),
-                     Virtmem.PG_KERNELDATA,
-                     newProc.pgTable,
-                     ok);
-            mapPage (kStackPhys + Virtmem.PAGE_SIZE,
-                     Virtmem.P2V(kStackPhys + Virtmem.PAGE_SIZE),
-                     Virtmem.PG_KERNELDATA,
-                     newProc.pgTable,
-                     ok);
-            mapPage (kStackPhys + 2 * Virtmem.PAGE_SIZE,
-                     Virtmem.P2V(kStackPhys + 2 * Virtmem.PAGE_SIZE),
-                     Virtmem.PG_KERNELDATA,
-                     newProc.pgTable,
-                     ok);
-            mapPage (kStackPhys + 3 * Virtmem.PAGE_SIZE,
-                     Virtmem.P2V(kStackPhys + 3 * Virtmem.PAGE_SIZE),
-                     Virtmem.PG_KERNELDATA,
-                     newProc.pgTable,
-                     ok);
+            -- mapPage (kStackPhys,
+            --          Virtmem.P2V(kStackPhys),
+            --          Virtmem.PG_KERNELDATA,
+            --          newProc.pgTable,
+            --          ok);
+            -- mapPage (kStackPhys + Virtmem.PAGE_SIZE,
+            --          Virtmem.P2V(kStackPhys + Virtmem.PAGE_SIZE),
+            --          Virtmem.PG_KERNELDATA,
+            --          newProc.pgTable,
+            --          ok);
+            -- mapPage (kStackPhys + 2 * Virtmem.PAGE_SIZE,
+            --          Virtmem.P2V(kStackPhys + 2 * Virtmem.PAGE_SIZE),
+            --          Virtmem.PG_KERNELDATA,
+            --          newProc.pgTable,
+            --          ok);
+            -- mapPage (kStackPhys + 3 * Virtmem.PAGE_SIZE,
+            --          Virtmem.P2V(kStackPhys + 3 * Virtmem.PAGE_SIZE),
+            --          Virtmem.PG_KERNELDATA,
+            --          newProc.pgTable,
+            --          ok);
 
-            if not ok then
-                raise MapException with
-                "Process.create - can't map process' kernel stack";
-            end if;
+            -- if not ok then
+            --     raise MapException with
+            --     "Process.create - can't map process' kernel stack";
+            -- end if;
             
             -- TODO: get stack size from the ELF image
             -- TODO: keep a list of process pages so we can delete them later.
@@ -424,13 +438,13 @@ is
         SPARK_Mode => On
     is
     begin
-        println ("Process.yield grabbing Process lock");
+        -- println ("Process.yield grabbing Process lock");
         Spinlocks.enterCriticalSection (lock);
         --textmode.println("Yielding.");
         Scheduler.enter;
         -- continue execution here after context switch back to this process.
         Spinlocks.exitCriticalSection (lock);
-        println ("Process.yield released Process lock");
+        -- println ("Process.yield released Process lock");
     end yield;
 
     ---------------------------------------------------------------------------
@@ -441,7 +455,7 @@ is
         pid     : constant ProcessID := PerCPUData.getCurrentPID;
         message : Unsigned_64;
     begin
-        println ("Process.receive grabbing Process lock");
+        -- println ("Process.receive grabbing Process lock");
         Spinlocks.enterCriticalSection (lock);
 
         message := proctab(pid).mail.message;
@@ -454,7 +468,7 @@ is
         proctab(pid).mail.hasMsg := False;
         
         Spinlocks.exitCriticalSection (lock);
-        println ("Process.receive released Process lock");
+        -- println ("Process.receive released Process lock");
         return message;
     end receive;
 
@@ -465,7 +479,7 @@ is
         pid     : constant ProcessID := PerCPUData.getCurrentPID;
         message : Unsigned_64;
     begin
-        println ("Process.receiveNB grabbing Process lock");
+        -- println ("Process.receiveNB grabbing Process lock");
         Spinlocks.enterCriticalSection (lock);
 
         if proctab(pid).mail.hasMsg then
@@ -476,7 +490,7 @@ is
         end if;
 
         Spinlocks.exitCriticalSection (lock);
-        println ("Process.receiveNB releasing Process lock");
+        -- println ("Process.receiveNB releasing Process lock");
 
         return message;
     end receiveNB;
@@ -488,7 +502,7 @@ is
     ---------------------------------------------------------------------------
     procedure send (dest : ProcessID; msg : Unsigned_64) with SPARK_Mode => On is
     begin
-        println ("Process.send grabbing Process lock");
+        -- println ("Process.send grabbing Process lock");
         Spinlocks.enterCriticalSection (lock);
 
         proctab(dest).mail.hasMsg  := True;
@@ -499,7 +513,7 @@ is
         end if;
 
         Spinlocks.exitCriticalSection (lock);
-        println ("Process.send released Process lock");
+        -- println ("Process.send released Process lock");
     end send;
 
     ---------------------------------------------------------------------------
@@ -564,9 +578,7 @@ is
         SPARK_Mode => On
     is
     begin
-        --textmode.println("starting");
         Spinlocks.exitCriticalSection (lock);
-        println (" Process.start released Process lock");
         --serial.send(config.serialMirrorPort, 'A');
         -- Return to interruptReturn.
     end start;
@@ -613,8 +625,8 @@ is
                                initBinaryStart'Address,
                                Integer(initSize));
 
-        print ("Creating init process, image at: "); print (alignedStart);
-        print (", size: "); printdln (initSize);
+        -- print ("Creating init process, image at: "); print (alignedStart);
+        -- print (", size: "); printdln (initSize);
 
         initProcess := create (imageStart  => alignedStart,
                                imageSize   => initSize,
@@ -624,9 +636,9 @@ is
                                priority    => 3,
                                procStack   => Integer_Address(2 * Virtmem.PAGE_SIZE));
 
-        println ("Adding to proctab");
+        -- println ("Adding to proctab");
         addToProctab (initProcess);
-        println ("Done creating process.");
+        -- println ("Done creating process.");
     end createFirstProcess;
 
     ---------------------------------------------------------------------------
@@ -636,7 +648,7 @@ is
         SPARK_Mode => On
     is
     begin
-        print("Setting p4 to "); println(Virtmem.K2P(To_Integer(processP4)));
+        -- print("Setting p4 to "); println(Virtmem.K2P(To_Integer(processP4)));
         Virtmem.setActiveP4(Virtmem.K2P(To_Integer(processP4)));
     end switchAddressSpace;
 
@@ -657,7 +669,7 @@ is
         -- Back to kernel addressing.
         Mem_mgr.switchAddressSpace;
 
-        println ("Process.kill grabbing Process lock");
+        -- println ("Process.kill grabbing Process lock");
         Spinlocks.enterCriticalSection (lock);
 
         proctab(pid).state := INVALID;
@@ -665,16 +677,19 @@ is
         if proctab(pid).mode = USER then
             uStackPhys := proctab(pid).stackBottomPhys;
 
+            -- Need to unmap Kernel mem here so when we delete page tables we
+            -- only delete the process' page tables.
+            Mem_mgr.unmapKernelMemFromProcess (proctab(pid).pgTable);
             deleteP4 (proctab(pid).pgTable);
 
             -- @TODO we'll need to keep a list of physical pages used by this
             -- process once we start allocating more memory for it.
         
-            print (" Freeing user stack at   "); println (uStackPhys);
+            -- print (" Freeing user stack at   "); println (uStackPhys);
             BuddyAllocator.free (0, uStackPhys);
         end if;
         
-        print (" Freeing kernel stack at "); println (kStackPhys);
+        -- print (" Freeing kernel stack at "); println (kStackPhys);
         BuddyAllocator.free (2, kStackPhys);
         
         -- Nothing to return to, go back to scheduler.
@@ -684,6 +699,15 @@ is
         raise ProcessException with "Somehow returned from scheduler in Process.kill";
         Spinlocks.exitCriticalSection(lock);
     end kill;
+
+    ---------------------------------------------------------------------------
+    -- print
+    ---------------------------------------------------------------------------
+    -- procedure print (p : ProcessPtr) is
+    -- begin
+    --     -- @TODO
+    --     null;
+    -- end print;
 
     ---------------------------------------------------------------------------
     -- Track which PIDs are in use, allocate new ones.

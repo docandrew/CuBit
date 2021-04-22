@@ -7,11 +7,13 @@
 with Ada.Unchecked_Conversion;
 with System.Storage_Elements;
 
+with BuddyAllocator;
 with Multiboot;
 with TextIO; use TextIO;
 with Util;
 with Video;
 with Virtmem;
+with x86;
 
 package body Video.VGA is
 
@@ -189,10 +191,60 @@ package body Video.VGA is
     backbufferAddr : System.Address;
 
     ---------------------------------------------------------------------------
+    -- waitForVSync
+    -- wait for start of next retrace
+    ---------------------------------------------------------------------------
+    procedure waitForVSync is
+        -- Register 1, bit 3 is vsync. 1 = retrace in progress.
+        VGA_INPUT_STATUS : constant x86.IOPort := 16#03DA#;
+        VGA_VSYNC_MASK   : Unsigned_8 := 8;
+        val : Unsigned_8;
+    begin
+        loop
+            x86.in8 (VGA_INPUT_STATUS, val);
+            -- VGA is in retrace
+            -- print ("VGA in retrace? "); println (val);
+            exit when (val and VGA_VSYNC_MASK) /= 0;
+        end loop;
+
+        loop
+            x86.in8 (VGA_INPUT_STATUS, val);
+            -- wait for start of retrace
+            -- print ("VGA start retrace? "); println (val);
+            exit when (val and VGA_VSYNC_MASK) = 0;
+        end loop;
+    end waitForVSync;
+
+    ---------------------------------------------------------------------------
+    -- swapBuffers
+    -- Copy everything in the backbuffer to video memory.
+    ---------------------------------------------------------------------------
+    procedure swapBuffers is
+        -- pragma Suppress (All_Checks);
+        
+        use System.Storage_Elements;
+        
+        -- type Buffer is array (Storage_Offset range <>) of Unsigned_64;
+
+        -- fb : Storage_Array(0..framebufferSize-1)
+        --     with Import, Address => framebufferAddr;
+        
+        -- bb : Storage_Array(0..framebufferSize-1)
+        --     with Import, Address => backbufferAddr;
+        -- fb : Buffer(0..framebufferSize / 8 - 1) with Import, Address => framebufferAddr;
+        -- bb : Buffer(0..framebufferSize / 8 - 1) with Import, Address => backbufferAddr;
+    begin
+        -- waitForVSync;
+        --fb(0..framebufferSize/8-1) := bb(0..framebufferSize/8-1);
+        x86.rep_movsb (framebufferAddr, backbufferAddr, framebufferSize);
+    end swapBuffers;
+
+    ---------------------------------------------------------------------------
     -- setup
     ---------------------------------------------------------------------------
     procedure setup (mbInfo : Multiboot.MultibootInfo) is
         use System.Storage_Elements;
+        backbufferPhys : Virtmem.PhysAddress;
     begin
         w                := Natural(mbInfo.framebuffer_width);
         h                := Natural(mbInfo.framebuffer_height);
@@ -218,7 +270,15 @@ package body Video.VGA is
         rows := Natural(h / (FONT_HEIGHT + VDIST)) - 1;
         cols := Natural(w / (FONT_WIDTH + HDIST));
 
-        -- @TODO Allocate and use backbuffer, double-buffering.
+        -- Allocate memory for a back-buffer so we can do double-buffering.
+        -- Issue here - when switching to process it can't write to this
+        -- buffer since it isn't mapped in the process space.
+        -- If we switch to kernel address space in syscall handler, then the
+        -- process memory isn't clearly mapped.
+        BuddyAllocator.alloc (ord  => BuddyAllocator.getOrder (Unsigned_64(framebufferSize)),
+                              addr => backbufferPhys);
+
+        backbufferAddr := To_Address(Virtmem.P2V (backbufferPhys));
     end setup;
 
     ---------------------------------------------------------------------------
@@ -293,7 +353,7 @@ package body Video.VGA is
 
     ---------------------------------------------------------------------------
     -- putPixel
-    -- @TODO - this is _really_ slow.
+    -- @TODO these routines need some work when color format isn't 32-bits.
     ---------------------------------------------------------------------------
     procedure putPixel (pix : Video.RGBA8; x, y : Natural) is
         use System.Storage_Elements;
@@ -301,15 +361,15 @@ package body Video.VGA is
         -- bpp : Storage_Offset := bytesPerPixel (format);
         -- bytesPerRow : Storage_Offset := bpp * Storage_Offset(w);
 
-        fb : Storage_Array(0..framebufferSize-1)
-            with Import, Address => framebufferAddr;
+        bb : Storage_Array(0..framebufferSize-1)
+            with Import, Address => backbufferAddr;
 
         i  : Storage_Offset := getOffset (x, y);
     begin
         -- downgrade color
         case format is
             when Video.Format_RGB332 =>
-                fb(i) := Storage_Element(to8bpp (pix));
+                bb(i) := Storage_Element(to8bpp (pix));
 
             when Video.Format_RGB565 =>
                 declare
@@ -317,20 +377,20 @@ package body Video.VGA is
                     loByte : Unsigned_8 := Util.getByte (color, 0);
                     hiByte : Unsigned_8 := Util.getByte (color, 1);
                 begin
-                    fb(i)   := Storage_Element(loByte);
-                    fb(i+1) := Storage_Element(hiByte);
+                    bb(i)   := Storage_Element(loByte);
+                    bb(i+1) := Storage_Element(hiByte);
                 end;
 
             when Video.Format_RGB8 =>
-                fb(i)   := Storage_Element(pix.b);
-                fb(i+1) := Storage_Element(pix.g);
-                fb(i+2) := Storage_Element(pix.r);
+                bb(i)   := Storage_Element(pix.b);
+                bb(i+1) := Storage_Element(pix.g);
+                bb(i+2) := Storage_Element(pix.r);
 
             when Video.Format_RGBA8 =>
-                fb(i)   := Storage_Element(pix.b);
-                fb(i+1) := Storage_Element(pix.g);
-                fb(i+2) := Storage_Element(pix.r);
-                fb(i+3) := Storage_Element(pix.a);
+                bb(i)   := Storage_Element(pix.b);
+                bb(i+1) := Storage_Element(pix.g);
+                bb(i+2) := Storage_Element(pix.r);
+                bb(i+3) := Storage_Element(pix.a);
         end case;
     end putPixel;
 
@@ -349,18 +409,21 @@ package body Video.VGA is
     procedure clear (color : Video.RGBA8) is
         use System.Storage_Elements;
 
-        fb : Storage_Array(0..framebufferSize-1)
-            with Import, Address => framebufferAddr;
+        bb : Storage_Array(0..framebufferSize-1)
+            with Import, Address => backbufferAddr;
+
         idx : Storage_Offset := 0;
     begin
         loop
-            fb(idx..idx+3) := (Storage_Element(color.b), 
+            bb(idx..idx+3) := (Storage_Element(color.b), 
                                Storage_Element(color.g), 
                                Storage_Element(color.r),
                                Storage_Element(color.a));
             idx := idx + 4;
             exit when idx >= frameBufferSize;
         end loop;
+
+        swapBuffers;
     end clear;
 
     procedure clear (color : TextIO.Color) is
@@ -424,41 +487,34 @@ package body Video.VGA is
     ---------------------------------------------------------------------------
     -- put
     ---------------------------------------------------------------------------
-    procedure put (row, col : Natural; fg, bg : TextIO.Color; ch : Character) is
-        x : Natural := row * (FONT_WIDTH + HDIST);
-        y : Natural := col * (FONT_HEIGHT + VDIST);
+    procedure put (col, row : Natural; fg, bg : TextIO.Color; ch : Character) is
+        x : Natural := col * (FONT_WIDTH + HDIST);
+        y : Natural := row * (FONT_HEIGHT + VDIST);
     begin
         drawChar (ch, x, y, getVGAColor(fg), getVGAColor(bg));
     end put;
 
     ---------------------------------------------------------------------------
     -- scrollUp
-    -- Scroll up by just copying bytes from below (src) to above (dst).
+    -- Scroll up by just shifting bytes to the left in our backbuffer.
     ---------------------------------------------------------------------------
     procedure scrollUp is
+        pragma Suppress (All_Checks);
+
         use System.Storage_Elements;
         
-        fb : Storage_Array(0..framebufferSize-1)
-            with Import, Address => framebufferAddr;
+        -- bb : Storage_Array (0..framebufferSize - 1)
+        --         with Import, Address => backbufferAddr;
 
-        dst : Storage_Offset := 0;
-        src : Storage_Offset;
+        shift : Storage_Offset := framebufferPitch * (FONT_HEIGHT + VDIST);
+        len   : Storage_Offset := framebufferSize - shift;
+
+        dst   : System.Address := backbufferAddr;
+        src   : System.Address := backbufferAddr + shift;
     begin
-        -- TextIO.disableVideo;
-        -- Copy all but the last (FONT_HEIGHT + VDIST) rows of pixels.
-        loop
-            src := dst + (framebufferPitch * (FONT_HEIGHT + VDIST));
-            exit when src >= (framebufferSize - 1);
-            fb(dst) := fb(src);
+        x86.rep_movsb (dst, src, len);
 
-            dst := dst + 1;
-        end loop;
-
-        -- clear last line
-        -- for x in 0..cols-1 loop
-        --     put (x, rows-1, TextIO.BLACK, TextIO.BLACK, ' ');
-        -- end loop;
-
+        swapBuffers;
     end scrollUp;
 
 end Video.VGA;

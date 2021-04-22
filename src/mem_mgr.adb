@@ -324,7 +324,7 @@ is
     is
         use Virtmem; -- for PageTableIndex
     begin
-        for i in PageTableIndex(0) .. PageTableIndex(255) loop
+        for i in PageTableIndex(256) .. PageTableIndex(511) loop
             procP4(i) := u64ToPTE(0);
         end loop;
 

@@ -75,6 +75,7 @@ with Virtmem;
 package BuddyAllocator with
     SPARK_Mode => On
 is
+    AllocatorException  : exception;
 
     NO_BLOCK_AVAILABLE  : constant Virtmem.PhysAddress := Virtmem.PhysAddress'Last;
     
@@ -122,13 +123,18 @@ is
     freeLists : FreeListArray;
 
     ---------------------------------------------------------------------------
-    -- blockSize - Return the size (in bytes) of a given block order
+    -- blockSize
+    -- @return the size (in bytes) of a given block order
     ---------------------------------------------------------------------------
-    function blockSize(ord : in Order) return Unsigned_64 with
+    function blockSize (ord : in Order) return Unsigned_64 with
         Depends => (blockSize'Result => ord),
         Post    => blockSize'Result > Virtmem.FRAME_SIZE;
 
-    function getOrder(allocSize : in Unsigned_64) return Order with
+    ---------------------------------------------------------------------------
+    -- getOrder
+    -- @return the order size for a given allocation request (in bytes)
+    ---------------------------------------------------------------------------
+    function getOrder (allocSize : in Unsigned_64) return Order with
         Depends => (getOrder'Result => allocSize);
 
     ---------------------------------------------------------------------------
@@ -136,7 +142,7 @@ is
     --  address represents a potentially valid block starting address, False
     --  otherwise.
     ---------------------------------------------------------------------------
-    function isValidBlock(ord : in Order; addr : in Virtmem.PhysAddress)
+    function isValidBlock (ord : in Order; addr : in Virtmem.PhysAddress)
         return Boolean with
         Post => isValidBlock'Result = 
             ((addr mod Integer_Address(blockSize(ord))) = 0);
@@ -152,7 +158,7 @@ is
     --  etc., but sneaking around SPARK mode with tricks like this function
     --  seems like it could get down a bad road.
     ---------------------------------------------------------------------------
-    function getListAddress(ord : in Order) return System.Address with
+    function getListAddress (ord : in Order) return System.Address with
         Global  => (Input => freeLists),
         Depends => (getListAddress'Result => (ord, freeLists));
 
@@ -166,7 +172,7 @@ is
     -- Regardless of Config.MAX_BUDDY_ORDER, this procedure will not attempt to
     -- use any memory < Config.MIN_PHYS_ALLOC.
     ---------------------------------------------------------------------------
-    procedure setup(areas : in MemoryAreas.MemoryAreaArray) with
+    procedure setup (areas : in MemoryAreas.MemoryAreaArray) with
         Global  => (In_Out      => (freeLists, BuddyAllocator.initialized),
                     Input       => (BootAllocator.BitmapState,
                                     Virtmem.MAX_PHYS_USABLE),
@@ -186,12 +192,12 @@ is
     -- @param addr - output address of the block if successful, or
     --  NO_BLOCK_AVAILABLE if no blocks of suitable size were found.
     ---------------------------------------------------------------------------
-    procedure alloc(ord : in Order; addr : out Virtmem.PhysAddress) with
+    procedure alloc (ord : in Order; addr : out Virtmem.PhysAddress) with
         Global  => (In_Out      => freeLists,
                     Proof_In    => BuddyAllocator.initialized),
         Depends => (addr        => (ord, freeLists),
                     freeLists   => (ord, freeLists)),
-        Pre     => BuddyAllocator.initialized,
+        Pre     => BuddyAllocator.initialized and ord < Order'Last,
         Post    => isValidBlock(ord, addr);
 
     ---------------------------------------------------------------------------
@@ -201,7 +207,7 @@ is
     -- @param addr - output address returned by this function, 0 if
     --  unsuccessful.
     ---------------------------------------------------------------------------
-    procedure allocFrame(addr : out Virtmem.PhysAddress) with
+    procedure allocFrame (addr : out Virtmem.PhysAddress) with
         Global  => (In_Out      => freeLists,
                     Proof_In    => BuddyAllocator.initialized),
         Depends => (addr        => (freeLists),
@@ -215,11 +221,12 @@ is
     -- @param ord - order of the _original allocation_
     -- @param addr - address of the _original allocation_
     ---------------------------------------------------------------------------
-    procedure free(ord : in Order; addr : in Virtmem.PhysAddress) with
+    procedure free (ord : in Order; addr : in Virtmem.PhysAddress) with
         Global  => (In_Out      => freeLists,
                     Proof_In    => BuddyAllocator.initialized),
         Depends => (freeLists   => (ord, addr, freeLists)),
-        Pre     => isValidBlock(ord, addr) and BuddyAllocator.initialized;
+        Pre     => isValidBlock(ord, addr) and BuddyAllocator.initialized and
+                   ord < Order'Last;
 
     ---------------------------------------------------------------------------
     -- freeFrame
@@ -227,7 +234,7 @@ is
     --  free(0, addr)
     -- @param addr - address of the _original allocation_
     ---------------------------------------------------------------------------
-    procedure freeFrame(addr : in Virtmem.PhysAddress) with
+    procedure freeFrame (addr : in Virtmem.PhysAddress) with
         Global  => (In_Out      => freeLists,
                     Proof_In    => BuddyAllocator.initialized),
         Depends => (freeLists   => (addr, freeLists)),

@@ -13,7 +13,7 @@ with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
 
-package util with
+package Util with
     SPARK_Mode => On
 is
 
@@ -30,22 +30,22 @@ is
     -----------------------------------------------------------------------
     -- setBit - set a single bit in the argument var
     -----------------------------------------------------------------------
-    procedure setBit(var : in out Unsigned_8; bit : in Natural) 
+    procedure setBit (var : in out Unsigned_8; bit : in Natural) 
     with
         SPARK_Mode => On,
         Pre => bit < var'Size;
 
-    procedure setBit(var : in out Unsigned_16; bit : in Natural) 
+    procedure setBit (var : in out Unsigned_16; bit : in Natural) 
     with
         SPARK_Mode => On,
         Pre => bit < var'Size;
 
-    procedure setBit(var : in out Unsigned_32; bit : in Natural) 
+    procedure setBit (var : in out Unsigned_32; bit : in Natural) 
     with
         SPARK_Mode => On,
         Pre => bit < var'Size;
 
-    procedure setBit(var : in out Unsigned_64; bit : in Natural) 
+    procedure setBit (var : in out Unsigned_64; bit : in Natural) 
     with
         SPARK_Mode => On,
         Pre => bit < var'Size;
@@ -53,22 +53,22 @@ is
     -----------------------------------------------------------------------
     -- clearBit - clear a single bit in the argument var
     -----------------------------------------------------------------------
-    procedure clearBit(var : in out Unsigned_8; bit : in Natural) 
+    procedure clearBit (var : in out Unsigned_8; bit : in Natural) 
     with
         SPARK_Mode => On,
         Pre => bit < var'Size;
 
-    procedure clearBit(var : in out Unsigned_16; bit : in Natural) 
+    procedure clearBit (var : in out Unsigned_16; bit : in Natural) 
     with
         SPARK_Mode => On,
         Pre => bit < var'Size;
 
-    procedure clearBit(var : in out Unsigned_32; bit : in Natural) 
+    procedure clearBit (var : in out Unsigned_32; bit : in Natural) 
     with
         SPARK_Mode => On,
         Pre => bit < var'Size;
 
-    procedure clearBit(var : in out Unsigned_64; bit : in Natural) 
+    procedure clearBit (var : in out Unsigned_64; bit : in Natural) 
     with
         SPARK_Mode => On,
         Pre => bit < var'Size;
@@ -78,22 +78,22 @@ is
     -- TODO: can probably speed this up a bit with pre-built masks and 
     --  use of the TEST instruction.
     -----------------------------------------------------------------------
-    function isBitSet(var : in Unsigned_8; bit : in Natural) return Boolean 
+    function isBitSet (var : in Unsigned_8; bit : in Natural) return Boolean 
     with
         SPARK_Mode => On,
         Pre => bit < var'Size;
 
-    function isBitSet(var : in Unsigned_16; bit : in Natural) return Boolean 
+    function isBitSet (var : in Unsigned_16; bit : in Natural) return Boolean 
     with
         SPARK_Mode => On,
         Pre => bit < var'Size;
     
-    function isBitSet(var : in Unsigned_32; bit : in Natural) return Boolean 
+    function isBitSet (var : in Unsigned_32; bit : in Natural) return Boolean 
     with
         SPARK_Mode => On,
         Pre => bit < var'Size;
     
-    function isBitSet(var : in Unsigned_64; bit : in Natural) return Boolean 
+    function isBitSet (var : in Unsigned_64; bit : in Natural) return Boolean 
     with
         SPARK_Mode => On,
         Pre => bit < var'Size;
@@ -101,17 +101,17 @@ is
     -----------------------------------------------------------------------
     -- getByte - return a byte at position N, zero-indexed.
     -----------------------------------------------------------------------
-    function getByte(var : in Unsigned_16; n : in Natural) return Unsigned_8
+    function getByte (var : in Unsigned_16; n : in Natural) return Unsigned_8
     with
         SPARK_Mode => On,
         Pre => n < (var'Size / 8);
 
-    function getByte(var : in Unsigned_32; n : in Natural) return Unsigned_8
+    function getByte (var : in Unsigned_32; n : in Natural) return Unsigned_8
     with
         SPARK_Mode => On,
         Pre => n < (var'Size / 8);
 
-    function getByte(var : in Unsigned_64; n : in Natural) return Unsigned_8
+    function getByte (var : in Unsigned_64; n : in Natural) return Unsigned_8
     with
         SPARK_Mode => On,
         Pre => n < (var'Size / 8);
@@ -119,7 +119,7 @@ is
     ---------------------------------------------------------------------------
     -- getFirstSetBit - return the lowest set bit
     ---------------------------------------------------------------------------
-    function getFirstSetBit(var : in Unsigned_64) return Natural
+    function getFirstSetBit (var : in Unsigned_64) return Natural
     with
         Pre => var /= 0,
         Post => getFirstSetBit'Result < 63,
@@ -149,9 +149,9 @@ is
     -- from comp.lang.ada h/t Shark8
     -- https://groups.google.com/forum/#!topic/comp.lang.ada/v7HUbFJqKYI
     ---------------------------------------------------------------------------
-    procedure memset(addr   : System.Address; 
-                     val    : System.Storage_Elements.Storage_Element;
-                     len    : Natural) with
+    procedure memset (addr   : System.Address; 
+                      val    : System.Storage_Elements.Storage_Element;
+                      len    : Natural) with
         SPARK_Mode => Off,
         Export => True, 
         Convention => C, 
@@ -161,9 +161,9 @@ is
     -- memcmp - replacement for C's memcmp as required by GNAT (for variant
     -- records, probably other operations as well)
     ---------------------------------------------------------------------------
-    function memcmp(s1  : System.Address;
-                    s2  : System.Address;
-                    len : Natural) return Integer with
+    function memcmp (s1  : System.Address;
+                     s2  : System.Address;
+                     len : Natural) return Integer with
         SPARK_Mode => Off,
         Export => True,
         Convention => C,
@@ -173,31 +173,45 @@ is
     -- memcpy - replacement for C's memcpy as required by GNAT (for exceptions)
     -- Copy len bytes from src to dest
     ---------------------------------------------------------------------------
-    function memcpy(dest    : System.Address;
-                    src     : System.Address;
-                    len     : Natural) return System.Address with
+    function memcpy (dest    : System.Address;
+                     src     : System.Address;
+                     len     : Natural) return System.Address with
         SPARK_Mode => Off,
         Export => True,
         Convention => C,
         External_Name => "memcpy";
 
     ---------------------------------------------------------------------------
+    -- memmove - replacement for C's memmove as required by GNAT for some
+    -- array slice assignments
+    -- Copy len bytes from src to dest, taking care to ensure that if the
+    -- array ranges overlap, the dest will not be overwritten by itself.
+    ---------------------------------------------------------------------------
+    function memmove (dest : System.Address;
+                      src  : System.Address;
+                      len  : Natural) return System.Address with
+        SPARK_Mode => Off,
+        Export     => True,
+        Convention => C,
+        External_Name => "memmove";
+
+    ---------------------------------------------------------------------------
     -- memCopy - non-returning version of memcpy for use in SPARK mode.
     ---------------------------------------------------------------------------
-    procedure memCopy(dest  : in System.Address;
-                      src   : in System.Address;
-                      len   : in Natural) with Inline => True;
+    procedure memCopy (dest  : in System.Address;
+                       src   : in System.Address;
+                       len   : in Natural) with Inline => True;
 
     ---------------------------------------------------------------------------
     -- nextPow2 - return the next highest power of 2
     ---------------------------------------------------------------------------
-    function nextPow2(n : in Unsigned_64) return Unsigned_64;
+    function nextPow2 (n : in Unsigned_64) return Unsigned_64;
 
     ---------------------------------------------------------------------------
     -- roundToNearest - round to the nearest multiple 
     ---------------------------------------------------------------------------
     generic
        type T is mod <>;
-    function roundToNearest(num : T; multiple : T) return T;
+    function roundToNearest (num : T; multiple : T) return T;
 
 end Util;

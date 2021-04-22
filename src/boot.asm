@@ -49,7 +49,7 @@ MEMLOC      equ  0x10000                ; tell GRUB to load our kernel at a spec
 ; Multiboot 'flag' field
 FLAGS       equ  MBALIGN | MEMINFO | VIDEOMODE
 ;FLAGS       equ MBALIGN | MEMINFO | MEMLOC
-;FLAGS       equ MBALIGN | MEMINFO
+; FLAGS       equ MBALIGN | MEMINFO
 
 MAGIC       equ  0x1BADB002             ; 'magic number' lets bootloader find the header
 CHECKSUM    equ -(MAGIC + FLAGS)        ; checksum of above, to prove we are multiboot
@@ -71,8 +71,8 @@ MultiBootHeader:
  
 ; For setting video mode
     dd 0x0          ; mode type (0-linear, 1-text)
-    dd 1024         ; width
-    dd 768          ; height
+    dd 1280         ; width
+    dd 1024         ; height
     dd 32           ; bpp depth
 
 ; Stack setup (see end for location)

@@ -5,73 +5,79 @@
 -- Slab Allocator for fast allocation of fixed-size objects
 -------------------------------------------------------------------------------
 --with System.Address_To_Access_Conversions;
-
-with Util;
+with Interfaces; use Interfaces;
+with TextIO; use TextIO;
 
 package body SlabAllocator 
     with SPARK_Mode => On
 is
+
+    ---------------------------------------------------------------------------
+    -- addStorage
+    -- Take an underlying block of physical memory, add it to our list of
+    -- blocks and create free nodes throughout that block, expanding our
+    -- available storage.
+    ---------------------------------------------------------------------------
+    procedure addStorage (pool : in out Slab) is
+        blockAddr    : Virtmem.PhysAddress;
+        objsPerBlock : constant Natural := Natural(BuddyAllocator.blockSize(pool.blockOrder)) / pool.paddedSize;
+    begin
+        -- Allocate a new block
+        BuddyAllocator.alloc (pool.blockOrder, blockAddr);
+
+        if blockAddr = 0 then
+            raise OutOfMemoryException with "Slab could not allocate additional physical memory";
+        end if;
+
+        pool.blocks(pool.numBlocks) := blockAddr;
+        pool.numBlocks := pool.numBlocks + 1;
+
+        -- Create freeNodes at each spot we'd like to allocate an object from
+        for index in 0..objsPerBlock-1
+        loop
+            Deallocate (pool,
+                        To_Address( Virtmem.P2V(blockAddr + 
+                                    Integer_Address(index * pool.paddedSize))),
+                        0, 0);
+        end loop;
+    end addStorage;
+
     ---------------------------------------------------------------------------
     -- setup
     ---------------------------------------------------------------------------
-    procedure setup 
-        (pool           : in out Slab;
-         objSize        : in Natural;
-         blockOrder     : in BuddyAllocator.Order := 0;
-         alignment      : in System.Storage_Elements.Storage_Count := 8)
+    procedure setup
+        (pool      : in out Slab;
+         objSize   : in Natural;
+         capacity  : in Natural;
+         alignment : in Natural := 8)
     with
         SPARK_Mode => Off
     is
-        package SSE renames System.Storage_Elements;
-
-        function max is new Util.max(Integer);
-
-        minSize : SSE.Storage_Count;
-
-        blockSize : constant SSE.Storage_Count :=
-            SSE.Storage_Count(BuddyAllocator.blockSize(blockOrder));
-
     begin
 
-        pool.blockOrder := blockOrder;
-        pool.alignment := alignment;
-
-        -- The object size needs to be at least as big as the node
-        minSize := SSE.Storage_Count(max(FreeNode'Size, objSize));
-
-        if minSize < alignment and alignment /= 0 then
-            raise BadAlignmentException with "Slab alignment must be bigger than object size";
-        end if;
-
-        if alignment = 0 then
-            pool.paddedSize := (minSize / 8);
+        if objSize < FreeNode'Size then
+            pool.alignment := (FreeNode'Size / 8);
         else
-            pool.paddedSize := (minSize / 8) + ((minSize / 8) mod alignment);
+            pool.alignment := alignment;
         end if;
 
-        -- Allocate a new block
-        BuddyAllocator.alloc(pool.blockOrder, pool.blockAddr);
-
-        if pool.blockAddr = 0 then
-            raise OutOfMemoryException with "Slab could not allocate enough physical memory";
+        if pool.alignment = 0 then
+            pool.paddedSize := (objSize / 8);
+        else
+            pool.paddedSize := (objSize / 8) + ((objSize / 8) mod pool.alignment);
         end if;
+        
+        pool.objSize    := objSize;
+        pool.blockOrder := BuddyAllocator.getOrder (Unsigned_64(pool.paddedSize * capacity));
+        print ("SlabAllocator.setup: using block order "); println (Integer(pool.blockOrder));
 
         -- Link the list head to itself to start
         pool.freeList.prev := pool.freeList'Address;
         pool.freeList.next := pool.freeList'Address;
-        
-        pool.capacity := Integer(blockSize / pool.paddedSize);
+
+        addStorage (pool);
 
         pool.initialized := True;
-
-        -- Create freeNodes at each spot we'd like to allocate an object from
-        for index in SSE.Storage_Offset(0)..SSE.Storage_Offset(pool.capacity-1)
-        loop
-            Deallocate( pool, 
-                        To_Address( Virtmem.P2V(pool.blockAddr + 
-                                    Integer_Address(index * pool.paddedSize))),
-                        0, 0);
-        end loop;
 
     end setup;
 
@@ -79,23 +85,40 @@ is
     ---------------------------------------------------------------------------
     -- Teardown
     ---------------------------------------------------------------------------
-    procedure teardown(pool : in out Slab) with
+    procedure teardown (pool : in out Slab) with
         SPARK_Mode => On
     is
     begin
-        BuddyAllocator.free(pool.blockOrder, pool.blockAddr);
-        pool.capacity := 0;
-        pool.blockAddr := Virtmem.PhysAddress(0);
+        for b in 1..pool.numBlocks loop
+            BuddyAllocator.free (pool.blockOrder, pool.blocks(b));
+            pool.blocks(b) := 0;
+        end loop;
+
+        pool.initialized := False;
+        pool.numFree     := 0;
+        pool.numBlocks   := 0;
     end teardown;
+
+    ---------------------------------------------------------------------------
+    -- hasFree
+    ---------------------------------------------------------------------------
+    function hasFree (pool : in out Slab) return Boolean is
+    begin
+        if pool.numFree = 0 and pool.numBlocks = Config.MAX_SLAB_EXPAND_TIMES then
+            return False;
+        end if;
+
+        return True;
+    end hasFree;
 
     ---------------------------------------------------------------------------
     -- Allocate
     ---------------------------------------------------------------------------
     procedure Allocate
-        (pool       : in out Slab;
-         addr       : out System.Address;
-         ignore_1   : in System.Storage_Elements.Storage_Count;
-         ignore_2   : in System.Storage_Elements.Storage_Count)
+        (pool     : in out Slab;
+         addr     : out System.Address;
+         ignore_1 : in System.Storage_Elements.Storage_Count;
+         ignore_2 : in System.Storage_Elements.Storage_Count)
     with
         SPARK_Mode => On
     is
@@ -111,10 +134,12 @@ is
             raise NotInitializedException with "Slab not initialized with call to setup";
         end if;
 
-        Spinlocks.enterCriticalSection(pool.mutex);
+        Spinlocks.enterCriticalSection (pool.mutex);
 
-        if pool.numFree = 0 then
+        if not hasFree (pool) then
             raise OutOfMemoryException with "Slab is empty";
+        elsif pool.numFree = 0 then
+            addStorage (pool);
         end if;
 
         -- out param - first free node in the list
@@ -133,12 +158,12 @@ is
 
         pool.numFree := pool.numFree - 1;
 
-        Spinlocks.exitCriticalSection(pool.mutex);
+        Spinlocks.exitCriticalSection (pool.mutex);
     end Allocate;
 
 
     ---------------------------------------------------------------------------
-    -- free - inserts object at front of free list
+    -- Deallocate - inserts object at front of free list
     ---------------------------------------------------------------------------
     procedure Deallocate
         (pool       : in out Slab;
@@ -159,7 +184,7 @@ is
             raise NotInitializedException with "Slab not initialized with call to setup";
         end if;
 
-        Spinlocks.enterCriticalSection(pool.mutex);
+        Spinlocks.enterCriticalSection (pool.mutex);
 
         -- point us back to list head and fwd to next block in line
         newNode.prev := nextNode.prev;
@@ -174,12 +199,13 @@ is
         -- increase free count
         pool.numFree := pool.numFree + 1;
 
-        Spinlocks.exitCriticalSection(pool.mutex);
+        Spinlocks.exitCriticalSection (pool.mutex);
     end Deallocate;
 
 
     ---------------------------------------------------------------------------
-    -- Storage_Size
+    -- Storage_Size - used to return the 'Storage_Size attribute of an access
+    --  type stored in this pool.
     ---------------------------------------------------------------------------
     function Storage_Size (pool : in Slab)
         return System.Storage_Elements.Storage_Count with
@@ -191,7 +217,7 @@ is
             raise NotInitializedException with "Slab not initialized with call to setup";
         end if;
         
-        return SSE.Storage_Count(pool.capacity) * pool.paddedSize;
+        return SSE.Storage_Count(pool.objSize);
     end Storage_Size;
 
 end SlabAllocator;
