@@ -23,6 +23,8 @@ package Filesystem.Ext2 with
     SPARK_Mode => On
 is
 
+Ext2Exception : exception;
+
 package VFS renames Filesystem.VFS;
 
 subtype BlockAddr is Unsigned_32;
@@ -513,84 +515,95 @@ record
     name                            : Filename;
 end record;
 
+-- Fat pointer to unbounded array
+type BGDTPtr is access all BlockGroupDescriptorTable;
+
+---------------------------------------------------------------------------
+-- Cache the superblock and block group descriptors
+---------------------------------------------------------------------------
+type Ext2Filesystem is
+record
+    initialized : Boolean := False;
+    device      : Devices.DeviceID;
+    sblock      : Filesystem.Ext2.Superblock;
+    bgdt        : BGDTPtr := null;
+end record;
+
+-------------------------------------------------------------------------------
+-- setup
+-- Attempt to find an Ext2Filesystem on this device. If none is present, then
+-- the 'initialized' field in return value will be False.
+-------------------------------------------------------------------------------
+function setup (device : Devices.DeviceID) return Ext2Filesystem;
+
 -------------------------------------------------------------------------------
 -- blockSize - given a Superblock, return the size of its filesystem data block
 -------------------------------------------------------------------------------
-function blockSize(sb : in Superblock) return Unsigned_32;
+function blockSize (sb : in Superblock) return Unsigned_32;
 
 -------------------------------------------------------------------------------
 -- getBlockGroup - given an inode address and superblock, return the block
 --  group containing that inode.
 -------------------------------------------------------------------------------
-function getBlockGroup(inodeNum : in InodeAddr;
-                       sb       : in Superblock) return BlockGroupNumber;
+function getBlockGroup (inodeNum : in InodeAddr;
+                        sb       : in Superblock) return BlockGroupNumber;
 
 -------------------------------------------------------------------------------
 -- getInodeIndex - given an inode address and superblock, return the index into
 --  the block group's inode table.
 -------------------------------------------------------------------------------
-function getInodeIndex(inodeNum : in InodeAddr;
-                       sb       : in Superblock) return Unsigned_32;
+function getInodeIndex (inodeNum : in InodeAddr;
+                        sb       : in Superblock) return Unsigned_32;
 
 -------------------------------------------------------------------------------
 -- getContainingBlock - given an index into a block group's inode table, the
 --  size of an inode and the size of a block, this function returns the block
 --  containing that inode.
 -------------------------------------------------------------------------------
-function getContainingBlock(index   : in Unsigned_32;
-                            sb      : in Superblock) return BlockAddr;
+function getContainingBlock (index : in Unsigned_32;
+                             sb    : in Superblock) return BlockAddr;
 
 -------------------------------------------------------------------------------
 -- readSuperBlock - Read the Ext2 Superblock and first BlockGroupDescriptor.
 -------------------------------------------------------------------------------
-procedure readSuperBlock(device : in Devices.DeviceID;
-                         sb     : in out Superblock);
+procedure readSuperBlock (device : in Devices.DeviceID;
+                          sb     : in out Superblock);
 
 -------------------------------------------------------------------------------
 -- readBlockGroupDescriptors - allocate memory needed to hold this fs' 
 -- block group descriptor tables and read them from disk.
--- @param device
--- @param sb - filled-in Superblock record from readSuperBlock
--- @param bgdt - address with the filled-in list of block group
---  descriptors. Null_Address here indicates not enough memory could be
---  allocated to store the table, and fs should not be used.
--- @param bgdtOrder - Order of the allocation used for the table (for freeing
---  later)
--- @param bgdtLength - Number of block group descriptors stored in memory.
+-- @param device - Device containing an Ext2 filesystem
+-- @param sb - Ext2 superblock
+-- @return pointer to allocated Block Group Descriptor Table
 -------------------------------------------------------------------------------
-procedure readBlockGroupDescriptors(device      : in Devices.DeviceID;
-                                    sb          : in SuperBlock;
-                                    bgdt        : out System.Address;
-                                    bgdtOrder   : out BuddyAllocator.Order;
-                                    bgdtLength  : out BlockGroupNumber);
+function readBlockGroupDescriptors (device : in Devices.DeviceID;
+                                    sb     : in SuperBlock) return BGDTPtr;
 
 -------------------------------------------------------------------------------
--- readInode - read an inode from disk into the outInode record.
+-- readInode - read an inode from disk.
 -------------------------------------------------------------------------------
-procedure readInode(device      : in Devices.DeviceID;
-                    sb          : in Superblock;
-                    bgdt        : in BlockGroupDescriptorTable;
-                    inodeNum    : in InodeAddr;
-                    outInode    : in out Inode);
+function readInode (fs       : in Ext2Filesystem;
+                    inodeNum : in InodeAddr) return Inode;
 
 -------------------------------------------------------------------------------
 -- dumpDirs -For debugging purposes, output the directory entries contained
 --  within a block on disk.
 -------------------------------------------------------------------------------
-procedure dumpDirs(device   : in Devices.DeviceID;
-                   block    : in BlockAddr;
-                   size     : in Unsigned_32);
+procedure dumpDirs (fs    : in Ext2Filesystem;
+                    block : in BlockAddr;
+                    size  : in Unsigned_32);
 
 -------------------------------------------------------------------------------
 -- print - Output the superblock details for development/debugging purposes
 -------------------------------------------------------------------------------
-procedure print(sb : in Superblock);
+procedure print (sb : in Superblock);
 
 -------------------------------------------------------------------------------
 -- print - Output inode details for development/debugging purposes.
 --  CuBit may not care about many of the flags and fields output by this
 --  subprogram.
 -------------------------------------------------------------------------------
-procedure print(myInode : in Inode);
+procedure print (myInode : in Inode);
+
 
 end Filesystem.Ext2;

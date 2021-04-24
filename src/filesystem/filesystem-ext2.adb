@@ -5,6 +5,7 @@
 -- Ext2 Filesystem
 -------------------------------------------------------------------------------
 with System.Storage_Elements; use System.Storage_Elements;
+with System.Address_To_Access_Conversions;
 
 with Debug;
 with FileCache;
@@ -13,6 +14,54 @@ with Util;
 with Virtmem;
 
 package body Filesystem.Ext2 is
+
+    ---------------------------------------------------------------------------
+    -- setup
+    ---------------------------------------------------------------------------
+    function setup (device : Devices.DeviceID) return Ext2Filesystem
+    is
+        fs             : Ext2Filesystem;
+        -- numBlockGroups : BlockGroupNumber;
+    begin
+    
+        Ext2.readSuperBlock (device  => device,
+                             sb      => fs.sblock);
+
+        if fs.sblock.signature = Ext2.EXT2_SUPER_MAGIC and Ext2.blockSize(fs.sblock) = 4096 then
+            fs.device := device;
+            
+            -- How many Block Groups?
+            -- numBlockGroups := fs.sblock.blockCount / fs.sblock.blocksPerBlockGroup;
+            -- print ("Number of Block Groups: "); println (numBlockGroups);
+
+            -- Will allocate memory for the bgdt and read it in from disk
+            fs.bgdt := readBlockGroupDescriptors (fs.device, fs.sblock);
+
+            if fs.bgdt = null then
+                fs.initialized := False;
+                return fs;
+            end if;
+
+            fs.initialized := True;
+            return fs;
+        else
+            fs.initialized := False;
+            return fs;
+        end if;
+    end setup;
+
+    ---------------------------------------------------------------------------
+    -- teardown
+    ---------------------------------------------------------------------------
+    procedure teardown (fs : in out Ext2Filesystem) is
+    begin
+        BuddyAllocator.free (ord  => BuddyAllocator.getOrder(fs.bgdt'Size / 8),
+                             addr => Virtmem.V2P(To_Integer(fs.bgdt.all'Address)));
+
+        fs.device      := (major => Devices.NO_MAJOR, minor => Devices.NO_MINOR, reserved => 0);
+        fs.initialized := False;
+        fs.bgdt        := null;
+    end teardown;
 
     ---------------------------------------------------------------------------
     -- blockSize
@@ -77,12 +126,14 @@ package body Filesystem.Ext2 is
         return ((inodeNum - 1) mod inodesPerBlock) * (Inode'Size / 8);
     end getInodeOffset;
 
-
+    ---------------------------------------------------------------------------
+    -- readSuperBlock
+    ---------------------------------------------------------------------------
     procedure readSuperBlock(device : in Devices.DeviceID;
                              sb     : in out Superblock) with
         SPARK_Mode => On
     is
-        buf             : FileCache.BufferPtr;
+        buf : FileCache.BufferPtr;
     begin
         -- Ext2 superblock is always at byte 1024, so if we read the first
         -- "page" (first 8 sectors on 512-byte sector disks) of the disk,
@@ -101,16 +152,32 @@ package body Filesystem.Ext2 is
 
     end readSuperBlock;
 
+    ---------------------------------------------------------------------------
+    -- getBlockGroupDescriptor - read the descriptor for a particular block group
+    ---------------------------------------------------------------------------
+    function getBlockGroupDescriptor (fs  : in Ext2Filesystem;
+                                      grp : in BlockGroupNumber) return BlockGroupDescriptor
+    is
+    begin
+        if fs.initialized then
+            return fs.bgdt(grp);
+        else
+            raise Ext2Exception with "Attempted to get Block Group Descriptor of uninitialized filesystem";
+        end if;
+    end getBlockGroupDescriptor;
 
-    procedure readBlockGroupDescriptors(device      : in Devices.DeviceID;
-                                        sb          : in SuperBlock;
-                                        bgdt        : out System.Address;
-                                        bgdtOrder   : out BuddyAllocator.Order;
-                                        bgdtLength  : out BlockGroupNumber) with
+    ---------------------------------------------------------------------------
+    -- readBlockGroupDescriptors
+    ---------------------------------------------------------------------------
+    function readBlockGroupDescriptors (device     : in Devices.DeviceID;
+                                        sb         : in SuperBlock) return BGDTPtr
+    with
         SPARK_Mode => On
     is
+        bgdtLength      : constant Unsigned_32 := sb.blockCount / sb.blocksPerBlockGroup;
         bgdtSize        : Unsigned_64;
         bgdtPhys        : Virtmem.PhysAddress;
+        bgdtAddr        : System.Address;
 
         -- Start and end disk blocks holding the BGDT
         startDiskBlock  : constant Unsigned_64 := Unsigned_64(sb.superblockNumber + 1);
@@ -121,39 +188,30 @@ package body Filesystem.Ext2 is
         writePtr        : System.Address;
 
         function roundToNearest is new Util.roundToNearest(Unsigned_64);
+
+        -- package ATAC is new System.Address_To_Access_Conversions (BlockGroupDescriptorTable(1..bgdtLength));
+        -- use ATAC;
     begin
 
         -- Block Group descriptors can occupy more than one block's worth of
         -- space on disk. We'll dynamically allocate the memory required for
         -- them here.
-        bgdtLength := sb.blockCount / sb.blocksPerBlockGroup;
-        --print("Number of Block Groups: "); println(bgdtLength);
+        bgdtSize      := Unsigned_64(bgdtLength * (BlockGroupDescriptor'Size / 8));
+        numDiskBlocks := roundToNearest (bgdtSize, 4096) / 4096;
+        endDiskBlock  := startDiskBlock + numDiskBlocks - 1;
 
-        bgdtSize := Unsigned_64(bgdtLength * (BlockGroupDescriptor'Size / 8));
-        numDiskBlocks := roundToNearest(bgdtSize, 4096) / 4096;
-        endDiskBlock := startDiskBlock + numDiskBlocks - 1;
-        --print("Size of table: "); println(bgdtSize);
-        print("Num disk blocks holding BGDT: "); println(numDiskBlocks);
-
-        -- Each 4K page can hold 128 block group descriptors. This is wasteful
-        -- but must suffice until we get a more general allocator.
-        bgdtOrder := BuddyAllocator.getOrder (bgdtSize);
-        --print("Order of allocation: "); println(Unsigned_32(bgdtOrder));
-
-        BuddyAllocator.alloc (bgdtOrder, bgdtPhys);
+        BuddyAllocator.alloc (BuddyAllocator.getOrder(bgdtSize), bgdtPhys);
         --print("Allocated: "); println(bgdtPhys);
 
         if bgdtPhys = BuddyAllocator.NO_BLOCK_AVAILABLE then
-            bgdt := System.Null_Address;
-            bgdtLength := 0;
-            return;
+            return null;
         end if;
 
-        bgdt := To_Address(Virtmem.P2V(bgdtPhys));
+        bgdtAddr := To_Address(Virtmem.P2V(bgdtPhys));
 
         -- Read the disk blocks holding the BGDT. Copy them into the BGDT,
         -- One page at a time.
-        writePtr := bgdt;
+        writePtr := bgdtAddr;
 
         for block in startDiskBlock .. endDiskBlock loop
             --print("Reading disk block "); println(block);
@@ -169,6 +227,17 @@ package body Filesystem.Ext2 is
 
             writePtr := writePtr + 4096;
         end loop;
+
+        declare
+            bgdt : aliased BlockGroupDescriptorTable(0..bgdtLength - 1) with
+                Import, Address => bgdtAddr;
+        begin
+            return bgdt'Unrestricted_Access;
+        end;
+
+        -- return BGDTPtr(ATAC.To_Pointer (bgdtAddr));
+        --return BlockGroupDescriptorTable(1..bgdtLength)'Deref (bgdtAddr);
+        -- return BGDTPtr(ATAC.To_Pointer (bgdtAddr));
 
     end readBlockGroupDescriptors;
 
@@ -214,65 +283,65 @@ package body Filesystem.Ext2 is
     --  descriptor table, read the contents of a given inode address inodeNum 
     --  into the outInode parameter.
     ---------------------------------------------------------------------------
-    procedure readInode(device      : in Devices.DeviceID;
-                        sb          : in Superblock;
-                        bgdt        : in BlockGroupDescriptorTable;
-                        inodeNum    : in InodeAddr;
-                        outInode    : in out Inode)
+    function readInode (fs       : in Ext2Filesystem;
+                        inodeNum : in InodeAddr) return Inode
     is
         -- block group the inode is in
-        bg      : constant BlockGroupNumber     := getBlockGroup(inodeNum, sb);
+        bg      : constant BlockGroupNumber := getBlockGroup (inodeNum, fs.sblock);
 
         -- what index within the inode table for that block group?
-        index   : constant Unsigned_32          := getInodeIndex(inodeNum, sb);
+        index   : constant Unsigned_32      := getInodeIndex (inodeNum, fs.sblock);
 
         -- starting block of the inode table?
-        table   : constant Unsigned_32          := bgdt(bg).inodeTableAddr;
+        table   : constant Unsigned_32      := fs.bgdt(bg).inodeTableAddr;
 
         -- what FS block holds the index?
-        block   : constant BlockAddr            := getContainingBlock(index, sb);
+        block   : constant BlockAddr        := getContainingBlock (index, fs.sblock);
 
         -- within that block, where is the inode itself?
-        offset  : constant Unsigned_32          := getInodeOffset(inodeNum, sb);
+        offset  : constant Unsigned_32      := getInodeOffset (inodeNum, fs.sblock);
 
-        buf : FileCache.BufferPtr;
+        buf      : FileCache.BufferPtr;
+        outInode : Inode;
     begin
+        -- print ("Reading inode #    "); printdln (inodeNum);
+        -- print ("Inode Block Group: "); printdln (bg);
+        -- print ("Inode Table Index: "); printdln (index);
+        -- print ("Inode Table Block  "); println (table);
+        -- print ("Block w/ Inode:    "); println (block);
+        -- print ("Offset w/in Block: "); println (offset);
 
-        print("Reading inode #    "); printdln(inodeNum);
-        print("Inode Block Group: "); printdln(bg);
-        print("Inode Table Index: "); printdln(index);
-        print("Inode Table Block  "); println(table);
-        print("Block w/ Inode:    "); println(block);
-        print("Offset w/in Block: "); println(offset);
-
-        print("Free blocks:  "); println(bgdt(bg).numFreeBlocks);
-        print("Free inodes:  "); println(bgdt(bg).numFreeInodes);
-        print("Num folders:  "); println(bgdt(bg).numDirectories);
-        print("Block Bitmap: "); println(bgdt(bg).blockBitmapAddr);
-        print("Inode Bitmap: "); println(bgdt(bg).inodeBitmapAddr);
+        -- print ("Free blocks:  "); println (fs.bgdt(bg).numFreeBlocks);
+        -- print ("Free inodes:  "); println (fs.bgdt(bg).numFreeInodes);
+        -- print ("Num folders:  "); println (fs.bgdt(bg).numDirectories);
+        -- print ("Block Bitmap: "); println (fs.bgdt(bg).blockBitmapAddr);
+        -- print ("Inode Bitmap: "); println (fs.bgdt(bg).inodeBitmapAddr);
 
         -- Read the block with our inode, copy only the data we need.
-        FileCache.readBuffer(device, Unsigned_64(table + block), buf);
+        FileCache.readBuffer(fs.device, Unsigned_64(table + block), buf);
         
-        Util.memCopy(dest   => outInode'Address,
-                     src    => To_Address(buf.data + Integer_Address(offset)),
-                     len    => Inode'Size / 8);
+        Util.memCopy (dest => outInode'Address,
+                      src  => To_Address (buf.data + Integer_Address(offset)),
+                      len  => Inode'Size / 8);
 
         FileCache.releaseBuffer(buf);
 
-        --Debug.dumpMem(outInode'Address, 128);
+        -- Debug.dumpMem(outInode'Address, 128);
+        return outInode;
     end readInode;
 
-
-    procedure dumpDirs(device   : in Devices.DeviceID;
-                       block    : in BlockAddr;
-                       size     : in Unsigned_32)
+    ---------------------------------------------------------------------------
+    -- dumpDirs
+    ---------------------------------------------------------------------------
+    procedure dumpDirs (fs    : in Ext2Filesystem;
+                        block : in BlockAddr;
+                        size  : in Unsigned_32)
     is
-        buf : FileCache.BufferPtr;
+        buf    : FileCache.BufferPtr;
         offset : Integer_Address := 0;
     begin
         -- Read the block
-        FileCache.readBuffer(device, Unsigned_64(block), buf);
+        FileCache.readBuffer (fs.device, Unsigned_64(block), buf);
 
         PrintDirs : loop
             PrintDir : declare
@@ -282,10 +351,10 @@ package body Filesystem.Ext2 is
                     filename : String(1..Integer(dir.nameLength)) with
                         Import, Address => dir.name'Address;
                 begin
-                    print(" Inode: ");
-                    print(dir.inode);
-                    print(" Name: ");
-                    print(filename);
+                    print (" Inode: ");
+                    print (dir.inode);
+                    print (" Name: ");
+                    print (filename);
 
                     case dir.fileType is
                         when FILETYPE_UNKNOWN =>
@@ -305,11 +374,13 @@ package body Filesystem.Ext2 is
             end PrintDir;
         end loop PrintDirs;
 
-        FileCache.releaseBuffer(buf);
+        FileCache.releaseBuffer (buf);
     end dumpDirs;
 
-
-    procedure print(sb : in Superblock) with
+    ---------------------------------------------------------------------------
+    -- print
+    ---------------------------------------------------------------------------
+    procedure print (sb : in Superblock) with
         SPARK_Mode => On
     is
     begin
@@ -360,7 +431,10 @@ package body Filesystem.Ext2 is
         
     end print;
 
-    procedure print(myInode : in Inode) with SPARK_Mode => On is
+    ---------------------------------------------------------------------------
+    -- print
+    ---------------------------------------------------------------------------
+    procedure print (myInode : in Inode) with SPARK_Mode => On is
         fileTypeChar : character;
         GID : Unsigned_32;
         UID : Unsigned_32;

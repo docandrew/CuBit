@@ -13,6 +13,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with Interfaces; use Interfaces;
 
 with Descriptors;
+with Devices;
 with Spinlocks;
 with Stackframe;
 with Util;
@@ -20,6 +21,8 @@ with Virtmem;
 
 -- Pragma Elaborate_All (Spinlocks);
 Pragma Elaborate_All (Virtmem);
+Pragma Elaborate_All (Descriptors);
+Pragma Elaborate_All (Devices);
 
 package Process with
     SPARK_Mode => On
@@ -168,21 +171,19 @@ is
 
         openDescriptors     : Descriptors.DescriptorArray;
 
-        --@TODO need to store current working directory, consider drive letter
-        -- and inode # of folder, or some such.
-        --currentDirectory    : Files.Path := "/";
-        -- currentDrive        : Devices.DeviceID;
+        workingDirectory    : Unsigned_64;
+        workingDevice       : Devices.DeviceID;
     end record;
 
     -- Lock for protecting the proctab
     lockname : aliased String := "Proctab";
     lock : Spinlocks.spinlock := (name => lockname'Access, others => <>);
 
-    type ProctabType is array (1..ProcessID'Last) of Process;
+    type ProctabType is array (1..ProcessID'Last) of aliased Process;
     proctab : ProctabType;
 
     -- WIP: proctab replacement
-    -- type ProcPtr is access Process;
+    type ProcPtr is access all Process;
     -- package ProcList is new LinkedList (ProcPtr, Process.print);
     -- allProcs : ProcList.List;
 
@@ -310,6 +311,11 @@ is
     -- message available.
     ---------------------------------------------------------------------------
     function receiveNB return Unsigned_64;
+
+    ---------------------------------------------------------------------------
+    -- getRunningProcess
+    ---------------------------------------------------------------------------
+    function getRunningProcess return ProcPtr;
 
 private
     ---------------------------------------------------------------------------

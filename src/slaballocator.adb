@@ -8,7 +8,7 @@
 with Interfaces; use Interfaces;
 with TextIO; use TextIO;
 
-package body SlabAllocator 
+package body SlabAllocator
     with SPARK_Mode => On
 is
 

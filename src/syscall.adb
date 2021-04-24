@@ -6,6 +6,7 @@ with System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with Devices;
+with Filesystem.VFS.Paths;
 with Mem_mgr;
 with PerCpuData;
 with Process;
@@ -73,50 +74,8 @@ package body Syscall is
                    flags       : in Unsigned_64;
                    mode        : in Unsigned_64) return Long_Integer with SPARK_Mode => On
     is
-        type PathType is (ABSOLUTE, RELATIVE);
-
-        drive    : Devices.DriveLetter := Devices.NODRIVE;
-        device   : Devices.DeviceID;
-        path     : String(1..Natural(filenameLen)) with Address => filename;
-        kind     : PathType;
-        idx      : Natural := 1;
-        nextPos  : Natural := 1;
     begin
-        print ("Open file: ");
-        printz (filename);
-        print (" mode: "); printdln (mode);
-
-        if filenameLen = 0 then
-            return -1;
-        end if;
-
-        if filenameLen = 1 then
-            -- has to be a single-char filename. get it.
-            return -1;
-        end if;
-
-        -- Are we referencing a drive?
-        if path(2) = ':' then
-            if path(1) in 'A'..'Z' then
-                drive := Devices.DriveLetter'Val (Character'Pos (path(1)) - Character'Pos ('A'));
-                print (" drive: "); println (Integer(Devices.DriveLetter'Pos (drive)));
-                print (" device ID: "); 
-                kind := ABSOLUTE;
-            else
-                return -1;
-            end if;
-        end if;
-
-        -- find first '/' if it exists
-      
-        -- parse file path
-        -- see if we're using a drive letter:full path or a relative path.
-
-        -- Walk the directory tree and find the requested file
-        -- @TODO cache the directory info to avoid future walks
-
-        -- @TODO
-        
+        --return Filesystem.VFS.Paths.open (filenameLen, filename, flags, mode);
         return -1;
     end open;
 

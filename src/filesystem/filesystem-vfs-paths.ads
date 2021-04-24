@@ -5,12 +5,10 @@
 -- @summary
 -- File Table
 --
--- @description
--- Table of open files on the system and routines for dealing with files.
 -------------------------------------------------------------------------------
 with Config;
 
-package Files with SPARK_Mode => On is
+package Filesystem.VFS.Paths with SPARK_Mode => On is
 
     subtype Filename is String(1..Config.FILENAME_MAX_LENGTH);
     subtype Path     is String(1..Config.FILEPATH_MAX_LENGTH);
@@ -23,4 +21,11 @@ package Files with SPARK_Mode => On is
 
     type FileTable is array (Natural range 1..Config.MAX_OPEN_FILES) of FileTableEntry;
 
-end Files;
+    ---------------------------------------------------------------------------
+    -- lookupInode
+    -- Given a file path to an extant file or directory, return the
+    -- corresponding VFS Inode. If file does not exist, returns null.
+    ---------------------------------------------------------------------------
+    function lookupInode (path : in String) return access VFS.Inode;
+
+end Filesystem.VFS.Paths;

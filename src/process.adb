@@ -547,7 +547,7 @@ is
     ---------------------------------------------------------------------------
     -- goAheadBody
     ---------------------------------------------------------------------------
-    procedure goAheadBody(channel : in WaitChannel) with
+    procedure goAheadBody (channel : in WaitChannel) with
         SPARK_Mode => On
     is
     begin
@@ -562,7 +562,7 @@ is
     -- goAhead - public interface for internal goAheadBody, to ensure locks are
     -- held.
     ---------------------------------------------------------------------------
-    procedure goAhead(channel : in WaitChannel) with
+    procedure goAhead (channel : in WaitChannel) with
         SPARK_Mode => On
     is
     begin
@@ -699,6 +699,15 @@ is
         raise ProcessException with "Somehow returned from scheduler in Process.kill";
         Spinlocks.exitCriticalSection(lock);
     end kill;
+
+    ---------------------------------------------------------------------------
+    -- getRunningProcess
+    ---------------------------------------------------------------------------
+    function getRunningProcess return ProcPtr
+    is
+    begin
+        return Proctab(PerCPUData.getCurrentPID)'Access;
+    end getRunningProcess;
 
     ---------------------------------------------------------------------------
     -- print

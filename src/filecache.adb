@@ -45,16 +45,16 @@ is
     -- getBuffer - given a block device and block address, return a pointer to
     --  the buffer in memory.
     ---------------------------------------------------------------------------
-    procedure getBuffer(device      : in Devices.DeviceID;
-                        blockNum    : in Unsigned_64;
-                        retBuffer   : out BufferPtr) with
+    procedure getBuffer (device      : in Devices.DeviceID;
+                         blockNum    : in Unsigned_64;
+                         retBuffer   : out BufferPtr) with
         SPARK_Mode => Off
     is
         use Devices; -- "=" operator
 
         buf : BufferPtr;
     begin
-        Spinlocks.enterCriticalSection(cache.lock);
+        Spinlocks.enterCriticalSection (cache.lock);
 
         -- This is sort of confusing, since we have "overlapping" loops.
         -- First, see if block is already cached
@@ -68,15 +68,15 @@ is
                     if not buf.busy then
                         -- sweet. block is cached and nobody owns it
                         retBuffer := buf;
-                        Spinlocks.exitCriticalSection(cache.lock);
+                        Spinlocks.exitCriticalSection (cache.lock);
                         
                         return;
                     else
                         -- block is cached, but somebody owns it.
                         -- we'll wait here, then wake up and go
                         -- through the search again.
-                        Process.wait(Process.WaitChannel(buf.all'Address),
-                                     cache.lock);
+                        Process.wait (Process.WaitChannel(buf.all'Address),
+                                      cache.lock);
                         exit Search;   -- goto TryAgain, effectively.
                     end if;
                 end if;
@@ -98,7 +98,7 @@ is
                 buf.dirty       := False;
                 buf.valid       := False;
                 retBuffer       := buf;
-                Spinlocks.exitCriticalSection(cache.lock);
+                Spinlocks.exitCriticalSection (cache.lock);
                 return;
             end if;
 
@@ -111,22 +111,22 @@ is
 
 
     -- Return a busy buffer with disk contents
-    procedure readBuffer(device     : in Devices.DeviceID;
-                         blockNum   : in Unsigned_64;
-                         retBuffer  : in out BufferPtr) with 
+    procedure readBuffer (device     : in Devices.DeviceID;
+                          blockNum   : in Unsigned_64;
+                          retBuffer  : in out BufferPtr) with
         SPARK_Mode => Off
     is
     begin
-        getBuffer(device, blockNum, retBuffer);
+        getBuffer (device, blockNum, retBuffer);
         
         if not retBuffer.valid then
-            BlockDevice.syncBuffer(retBuffer);
+            BlockDevice.syncBuffer (retBuffer);
         end if;
     end readBuffer;
 
 
     -- Write a buffer's contents to disk
-    procedure writeBuffer(buf : in out BufferPtr) with
+    procedure writeBuffer (buf : in out BufferPtr) with
         SPARK_Mode => Off
     is
     begin
@@ -135,12 +135,12 @@ is
         end if;
 
         buf.dirty := True;
-        BlockDevice.syncBuffer(buf); 
+        BlockDevice.syncBuffer (buf); 
     end writeBuffer;
 
 
     -- Release a busy buffer
-    procedure releaseBuffer(buf : in out BufferPtr) with
+    procedure releaseBuffer (buf : in out BufferPtr) with
         SPARK_Mode => Off
     is
     begin
@@ -148,7 +148,7 @@ is
             raise ReleaseNotOwnedException with "releaseBuffer: Releasing non-busy buffer";
         end if;
 
-        Spinlocks.enterCriticalSection(cache.lock);
+        Spinlocks.enterCriticalSection (cache.lock);
 
         buf.next.prev := buf.prev;
         buf.prev.next := buf.next;
@@ -161,9 +161,9 @@ is
         buf.busy := False;
 
         -- Wake up any processes waiting on this buffer.
-        Process.goAhead(buf.all'Address);
+        Process.goAhead (buf.all'Address);
 
-        Spinlocks.exitCriticalSection(cache.lock);
+        Spinlocks.exitCriticalSection (cache.lock);
     end releaseBuffer;
 
 end FileCache;

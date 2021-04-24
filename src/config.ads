@@ -21,7 +21,7 @@ is
     MAX_CPUS : constant := 128;
 
     -- ms before context switch takes place.
-    TIME_SLICE : constant := 100;
+    TIME_SLICE : constant := 20;
 
     -- Debug flags that can be set at runtime
     debugFlag : Boolean := False;

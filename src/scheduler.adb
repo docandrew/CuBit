@@ -108,23 +108,13 @@ is
                         Process.switchAddressSpace (Process.proctab(i).pgTable'Address);
                     end if;
 
-                    -- Release lock before executing user code so other CPUs
-                    -- can schedule.
-                    -- println ("Scheduler: releasing Process lock");
-                    -- exitCriticalSection (Process.lock);
-
                     -- Start executing new process
                     Process.switch (cpuData.schedulerContext'Address, cpuData.currentContext);
 
                     -- when process pauses its run, we return here
 
-                    -- not running a user process.
                     cpuData.currentPID := Process.NO_PROCESS;
 
-                    -- Get lock back now that we're here messing with proctab.
-                    -- println ("Scheduler: grabbing Process lock (2)");
-                    -- enterCriticalSection (Process.lock);
-                    
                     -- switch back to kernel page tables if we weren't just running a kernel thread
                     if Process.proctab(i).mode = Process.USER then
                         Mem_mgr.switchAddressSpace;
