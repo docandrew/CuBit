@@ -84,7 +84,7 @@ is
     -- @param out addr : base address of the allocated frame, will be 0 if no
     --  frame is available.
     ---------------------------------------------------------------------------
-    procedure allocFrame(addr : out Virtmem.PhysAddress) with
+    procedure allocFrame (addr : out Virtmem.PhysAddress) with
         Global  => (
             In_Out      => (BitmapState, x86.interruptsEnabled),
             Proof_In    => (BootAllocator.initialized)),
@@ -99,7 +99,7 @@ is
     -- @param num - number of frames to allocate
     -- @param addr - base address of the allocated memory
     ---------------------------------------------------------------------------
-    procedure allocFrames(num : in AllocSize; addr : out Virtmem.PhysAddress) with
+    procedure allocFrames (num : in AllocSize; addr : out Virtmem.PhysAddress) with
         Global  => (
             In_Out      => (BitmapState, x86.interruptsEnabled),
             Proof_In    => (BootAllocator.initialized)),
@@ -112,7 +112,7 @@ is
     -- free
     -- Free a physical frame allocation at a certain address
     ---------------------------------------------------------------------------
-    procedure free(addr : in Virtmem.PhysAddress) with
+    procedure free (addr : in Virtmem.PhysAddress) with
         Global  => (
             In_Out      => BitmapState, 
             Proof_In    => BootAllocator.initialized),

@@ -244,7 +244,7 @@ package body Video.VGA is
     ---------------------------------------------------------------------------
     procedure setup (mbInfo : Multiboot.MultibootInfo) is
         use System.Storage_Elements;
-        backbufferPhys : Virtmem.PhysAddress;
+        -- backbufferPhys : Virtmem.PhysAddress;
     begin
         w                := Natural(mbInfo.framebuffer_width);
         h                := Natural(mbInfo.framebuffer_height);
@@ -276,9 +276,9 @@ package body Video.VGA is
         -- If we switch to kernel address space in syscall handler, then the
         -- process memory isn't clearly mapped.
         BuddyAllocator.alloc (ord  => BuddyAllocator.getOrder (Unsigned_64(framebufferSize)),
-                              addr => backbufferPhys);
+                              addr => backbufferAddr);
 
-        backbufferAddr := To_Address(Virtmem.P2V (backbufferPhys));
+        -- backbufferAddr := To_Address(Virtmem.P2V (backbufferPhys));
     end setup;
 
     ---------------------------------------------------------------------------

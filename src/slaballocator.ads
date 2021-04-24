@@ -90,7 +90,8 @@ is
         prev at 8 range 0..63;
     end record;
 
-    type BlockList is array (Natural range 1..Config.MAX_SLAB_EXPAND_TIMES) of Virtmem.PhysAddress;
+    -- List of storage blocks (From BuddyAllocator) used to hold this slab.
+    type BlockList is array (Natural range 1..Config.MAX_SLAB_EXPAND_TIMES) of System.Address;
 
     ---------------------------------------------------------------------------
     -- Slab is the "storage pool" type. We don't have finalization or some of
@@ -171,10 +172,10 @@ is
     -- @exception BadAlignmentException raised when alignment is less than
     --  the object size (T'Size/8) or (FreeNode'Size/8), whichever is smaller.
     ---------------------------------------------------------------------------
-    procedure setup(pool      : in out Slab;
-                    objSize   : in Natural;
-                    capacity  : in Natural;
-                    alignment : in Natural := 8);
+    procedure setup (pool      : in out Slab;
+                     objSize   : in Natural;
+                     capacity  : in Natural;
+                     alignment : in Natural := 8);
 
     ---------------------------------------------------------------------------
     -- teardown - free underlying memory used by this allocator

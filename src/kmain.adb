@@ -4,10 +4,6 @@
 --
 -- CuBitOS Entry Point / Main routine
 -------------------------------------------------------------------------------
--- with Ada.Assertions; use Ada.Assertions;
-with Ada.Unchecked_Deallocation;
-with System.Address_To_Access_Conversions;
-
 pragma Warnings (Off);
 with System.Secondary_Stack;
 pragma Warnings (On);
@@ -22,7 +18,6 @@ with Build;
 with Config;
 with Cpuid;
 with Devices;
---with Debug;
 
 with Filesystem.Ext2;
 with Filesystem.VFS;
@@ -30,10 +25,8 @@ with Filesystem.VFS;
 with Ioapic;
 with Interrupts;
 with Lapic;
-with LinkedList;
 with Mem_mgr;
 with MemoryAreas;
---with Pagetable;
 with Pci;
 with PerCpuData;
 with Pic;
@@ -42,19 +35,15 @@ with Scheduler;
 with Serial;
 with Services.Idle;
 with Services.Keyboard;
-with SlabAllocator;
-with Spinlocks;
+with StoragePools;
 with TextIO; use TextIO;
 with Time;
 with Timer_pit;
-with Util;
 with Video;
 with Video.EGA;
 with Video.VGA;
 with Virtmem; use Virtmem;
 with x86;
-
-pragma Elaborate_All (Spinlocks);
 
 -- Not explicitly called, need to be with'd here for compilation
 with Last_Chance_Handler;
@@ -77,20 +66,6 @@ cpu0Data        : PerCPUData.PerCPUData;
 apicBase        : virtmem.PhysAddress := 0;
 ioapicBase      : virtmem.PhysAddress := 0;
 ioapicVirtBase  : virtmem.VirtAddress := 0;
-
-procedure testKThread1 is
-begin
-    loop
-        println("1111111111111111");
-    end loop;
-end testKThread1;
-
-procedure testKThread2 is
-begin
-    loop
-        println("2222222222222222");
-    end loop;
-end testKThread2;
 
 NoMultibootException : exception;
 NoMemoryMapException : exception;
@@ -145,6 +120,7 @@ begin
     BootAllocator.setup (memAreas);
     Mem_mgr.setup (memAreas);
     BuddyAllocator.setup (memAreas);
+    StoragePools.setup;
 
     -- @TODO pick EGA driver if that's all that's available. Use VGA for now
     if mbInfo.framebuffer_width = 80 then

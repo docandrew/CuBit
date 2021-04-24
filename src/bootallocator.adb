@@ -15,7 +15,7 @@ is
     ---------------------------------------------------------------------------
     -- setup
     ---------------------------------------------------------------------------
-    procedure setup (areas     : in MemoryAreas.MemoryAreaArray) with
+    procedure setup (areas : in MemoryAreas.MemoryAreaArray) with
         SPARK_Mode => Off  -- use of 'Address
     is
         use MemoryAreas;    -- for = operator
@@ -25,8 +25,7 @@ is
         endPFN      : Virtmem.PFN;
 
         -- note this depends on linear physical -> higher-half mapping
-        stackEnd    : constant Virtmem.PFN := 
-            Virtmem.addrToPFN(Virtmem.V2P(Virtmem.STACK_TOP));
+        stackEnd : constant Virtmem.PFN := Virtmem.vaddrToPFN (Virtmem.STACK_TOP);
     begin
         -- mark everything as used to begin with.
         freePhysicalFrames := 0;
@@ -84,12 +83,12 @@ is
     ---------------------------------------------------------------------------
     -- Determines whether a page in this bitmap is free (0) or not (1)
     ---------------------------------------------------------------------------
-    function isFree(frame : in Virtmem.PFN) return Boolean with
+    function isFree (frame : in Virtmem.PFN) return Boolean with
         SPARK_Mode => On
     is
-        block   : constant Natural      := getBlock(frame);
-        offset  : constant Natural      := getOffset(frame);
-        mask    : constant Unsigned_64  := Shift_Left(1, offset);
+        block   : constant Natural      := getBlock (frame);
+        offset  : constant Natural      := getOffset (frame);
+        mask    : constant Unsigned_64  := Shift_Left (1, offset);
         result  : constant Boolean      := (mask and bitmap(block)) = 0;
         OutOfBounds : exception;
     begin
@@ -104,7 +103,7 @@ is
     -- find a free frame, mark it as used, and return the base address
     -- TODO: Add contracts for out-of-memory situation
     ---------------------------------------------------------------------------
-    procedure allocFrame(addr : out virtmem.PhysAddress) with
+    procedure allocFrame (addr : out virtmem.PhysAddress) with
         SPARK_Mode => On
     is
         frame : Virtmem.PFN;
@@ -120,7 +119,7 @@ is
             highestPFNAllocated := frame;
         end if;
 
-        markUsed(frame);
+        markUsed (frame);
 
         addr := Virtmem.PFNToAddr(frame);
     end allocFrame;
@@ -128,7 +127,7 @@ is
     ---------------------------------------------------------------------------
     -- allocate a number of contiguous frames
     ---------------------------------------------------------------------------
-    procedure allocFrames(num : in AllocSize; addr : out Virtmem.PhysAddress) with
+    procedure allocFrames (num : in AllocSize; addr : out Virtmem.PhysAddress) with
         SPARK_Mode => On
     is
         basePFN : Virtmem.PFN;
@@ -174,7 +173,7 @@ is
     ---------------------------------------------------------------------------
     -- Find a number of contiguous free frames
     ---------------------------------------------------------------------------
-    function findFreeFrames(num : in AllocSize) return Virtmem.PFN with
+    function findFreeFrames (num : in AllocSize) return Virtmem.PFN with
         SPARK_Mode => On
     is
         startPFN        : Virtmem.PFN := 1;
@@ -201,7 +200,7 @@ is
     ---------------------------------------------------------------------------
     -- Mark a particular frame in memory as used, update the count
     ---------------------------------------------------------------------------
-    procedure markUsed(frame : in Virtmem.PFN) with
+    procedure markUsed (frame : in Virtmem.PFN) with
         SPARK_Mode => On
     is
         block  : constant Natural := getBlock(frame);
@@ -214,7 +213,7 @@ is
     ---------------------------------------------------------------------------
     -- Free a physical frame allocation at a certain address
     ---------------------------------------------------------------------------
-    procedure free(addr : in virtmem.PhysAddress) with
+    procedure free (addr : in virtmem.PhysAddress) with
         SPARK_Mode => On
     is
         frame : constant Virtmem.PFN := Virtmem.addrToPFN(addr);
@@ -245,24 +244,24 @@ is
     ---------------------------------------------------------------------------
     -- Mark a particular frame in memory as free, update the count
     ---------------------------------------------------------------------------
-    procedure markFree(frame : in Virtmem.PFN) with
+    procedure markFree (frame : in Virtmem.PFN) with
         SPARK_Mode => On
     is
-        block  : constant Natural := getBlock(frame);
-        offset : constant Natural := getOffset(frame);
+        block  : constant Natural := getBlock (frame);
+        offset : constant Natural := getOffset (frame);
     begin
         if frame > MAX_BOOT_PFN then
             raise OutOfBoundsException with "Freed PFN not owned by Boot Allocator";
         end if;
 
-        clearBit(bitmap(block), offset);
+        clearBit (bitmap(block), offset);
         freePhysicalFrames := freePhysicalFrames + 1;
     end markFree;
 
     ---------------------------------------------------------------------------
     -- Return the index into bitmap array in which this frame resides.
     ---------------------------------------------------------------------------
-    function getBlock(frame : in Virtmem.PFN) return Natural with
+    function getBlock (frame : in Virtmem.PFN) return Natural with
         SPARK_Mode => On is
     begin
         return Natural(frame / 64);
@@ -271,7 +270,7 @@ is
     ---------------------------------------------------------------------------
     -- Return the bit within a Unsigned_64 representing this single frame.
     ---------------------------------------------------------------------------
-    function getOffset(frame : in Virtmem.PFN) return Natural with
+    function getOffset (frame : in Virtmem.PFN) return Natural with
         SPARK_Mode => On is
     begin
         return Natural(frame mod 64);

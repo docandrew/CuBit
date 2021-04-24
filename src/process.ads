@@ -14,8 +14,10 @@ with Interfaces; use Interfaces;
 
 with Descriptors;
 with Devices;
+with LinkedList;
 with Spinlocks;
 with Stackframe;
+with StoragePools;
 with Util;
 with Virtmem;
 
@@ -39,10 +41,10 @@ is
     -- Limit a user-mode process to 256GiB of memory space. Later we'll add
     --  ASLR, and make the process' stack top some random negative offset
     --  from here.
-    PROCESS_STACK_TOP_VIRT : constant Integer_Address := 
-        16#0000_7FFF_FFFF_FFFF#;
-
-    PROCESS_INITIAL_STACK_SIZE: constant Unsigned_64 := Virtmem.PAGE_SIZE;
+    -- @TODO I think since RSP is decremented first when pushing, this needs to be 8000_0000_0000.
+    PROCESS_STACK_TOP_VIRT     : constant Integer_Address := 16#0000_7FFF_FFFF_FFFF#;
+    -- PROCESS_INITIAL_STACK_SIZE : constant Unsigned_64 := Virtmem.PAGE_SIZE;
+    MAX_STACK_FRAMES           : constant := 256;   -- 1 MiB stack.
     
     subtype ProcessPriority is Integer range -1..100;
     type ProcessState is (INVALID, READY, RUNNING, SLEEPING, WAITING, RECEIVING, SUSPENDED);
@@ -99,7 +101,7 @@ is
     end record;
 
     ---------------------------------------------------------------------------
-    -- The ProcessKernelStack is a single frame of memory in the Kernel's
+    -- The ProcessKernelStack is a page of memory in the Kernel's
     --  address space. Our process will use the kernel stack during system 
     --  calls, and when it is being scheduled. This structure represents the
     --  _initial_ state of the kernel stack. We have to set up the fields here
@@ -111,7 +113,7 @@ is
     -- use filler at the "bottom." The alternative is blitting bytes and work
     -- backwards from the top of the stack, but Ada doesn't make that easy.
     --
-    -- CAUTION:
+    -- @CAUTION
     -- Pay attention to GNAT error messages about unused bytes here if the size
     -- of any of the structures in the initial kernel stack are changed.
     -- If there are unused bytes, adjust the size of PKStackFiller accordingly.
@@ -132,11 +134,40 @@ is
         interruptFrame  : Stackframe.InterruptStackFrame;
     end record with Size => virtmem.FRAME_SIZE * 8;
 
+    type ProcessKernelStackPtr is access ProcessKernelStack;
+    for ProcessKernelStackPtr'Simple_Storage_Pool use StoragePools.pool;
+
+    -- Keep a list of the pages used by this process.
+    package ProcessPageList is new LinkedList (System.Address);
+    
+    -- type UserStackPtr is access UserStack;
+    -- for UserStackPtr'Simple_Storage_Pool use StoragePools.pool;
+
     ---------------------------------------------------------------------------
     -- Entry in the process table.
-    -- TODO: unify the address type used here 
-    -- TODO: consider making the pgTable entry an access type, may improve
+    -- @TODO unify the address type used here 
+    -- @TODO consider making the pgTable entry an access type, may improve
     -- performance and take up less space in the proctab for unused slots.
+    --
+    -- @field pid             - Process ID of this process
+    -- @field ppid            - Parent Process ID
+    -- @field name            - short name of this process
+    -- @field state           - state of the process
+    -- @field mode            - KERNEL or USER mode
+    -- @field priority        - user specified priority for this 
+    -- @field dynPriority     - dynamic priority used to adjust time-slices
+    -- @field pgTable         - top-level page table for this process' address space.
+    -- @field context         - pointer to process' saved state
+    -- @field kernelStack     - pointer to the process' kernel-mode stack
+    -- @field frames          - list of physical frames this process has allocated
+    -- @field numStackFrames  - number of stack frames this process is using.
+    -- @field stackTop        - top of process' stack (lower-half address)
+    -- @field brk             - top of gap/heap space
+    -- @field numHeapFrames   - number of frames used for process' heap
+    -- @field mail            - Process' IPC mailbox
+    -- @field channel         - resource process may be waiting on
+    -- @field openDescriptors - list of descriptors for kernel resources
+    -- @field workingDirectory - what pwd would tell you
     ---------------------------------------------------------------------------
     type Process is
     record
@@ -154,15 +185,24 @@ is
         
         context             : System.Address;   -- Pointer to the saved state
 
-        kernelStackBottom   : Integer_Address;  -- Pointer to process' kernel stack
-        kernelStackTop      : Integer_Address;
+        kernelStack         : ProcessKernelStackPtr;
+        -- kernelStackSize     : Storage_Count := ProcessKernelStack'Size / 8;
 
-        stackTop            : Integer_Address;
-        stackBottom         : Integer_Address;  -- limit of allowable stack
-        stackBottomPhys     : Integer_Address;
+        -- kernelStackBottom   : Integer_Address;  -- Pointer to process' kernel stack
+        -- kernelStackTop      : Integer_Address;
+        frames              : ProcessPageList.List;
+        numStackFrames      : Natural := 0;
+
+        -- The top of the process' stack address (lower-half)
+        stackTop            : System.Address;
+
+        -- The top of the process' kernel stack (higher-half)
+        kernelStackTop      : System.Address;
+        -- stackBottom         : Integer_Address;  -- limit of allowable stack
+        -- stackBottomPhys     : Integer_Address;
         
         brk                 : System.Address;   -- limit of allowable heap
-        startBrk            : System.Address;
+        numHeapFrames       : Natural := 0;
 
         -- For low-level IPC
         mail                : Mailbox;
@@ -171,8 +211,8 @@ is
 
         openDescriptors     : Descriptors.DescriptorArray;
 
-        workingDirectory    : Unsigned_64;
-        workingDevice       : Devices.DeviceID;
+        workingDirectory    : Unsigned_64;          --@TODO make this VFS Inode
+        -- workingDevice       : Devices.DeviceID;     --@TODO make this drive letter
     end record;
 
     -- Lock for protecting the proctab
@@ -184,6 +224,7 @@ is
 
     -- WIP: proctab replacement
     type ProcPtr is access all Process;
+    for ProcPtr'Simple_Storage_Pool use StoragePools.pool;
     -- package ProcList is new LinkedList (ProcPtr, Process.print);
     -- allProcs : ProcList.List;
 

@@ -12,6 +12,11 @@ package body SlabAllocator
     with SPARK_Mode => On
 is
 
+    function "+" (Left : System.Address; Right : Natural) return System.Address;
+    pragma Convention (Intrinsic, "+");
+    pragma Inline_Always ("+");
+    pragma Pure_Function ("+");
+
     ---------------------------------------------------------------------------
     -- addStorage
     -- Take an underlying block of physical memory, add it to our list of
@@ -19,13 +24,13 @@ is
     -- available storage.
     ---------------------------------------------------------------------------
     procedure addStorage (pool : in out Slab) is
-        blockAddr    : Virtmem.PhysAddress;
+        blockAddr    : System.Address;
         objsPerBlock : constant Natural := Natural(BuddyAllocator.blockSize(pool.blockOrder)) / pool.paddedSize;
     begin
         -- Allocate a new block
         BuddyAllocator.alloc (pool.blockOrder, blockAddr);
 
-        if blockAddr = 0 then
+        if blockAddr = System.Null_Address then
             raise OutOfMemoryException with "Slab could not allocate additional physical memory";
         end if;
 
@@ -35,21 +40,20 @@ is
         -- Create freeNodes at each spot we'd like to allocate an object from
         for index in 0..objsPerBlock-1
         loop
-            Deallocate (pool,
-                        To_Address( Virtmem.P2V(blockAddr + 
-                                    Integer_Address(index * pool.paddedSize))),
-                        0, 0);
+            Deallocate (pool     => pool,
+                        addr     => blockAddr + (index * pool.paddedSize),
+                        ignore_1 => 0, 
+                        ignore_2 => 0);
         end loop;
     end addStorage;
 
     ---------------------------------------------------------------------------
     -- setup
     ---------------------------------------------------------------------------
-    procedure setup
-        (pool      : in out Slab;
-         objSize   : in Natural;
-         capacity  : in Natural;
-         alignment : in Natural := 8)
+    procedure setup (pool      : in out Slab;
+                     objSize   : in Natural;
+                     capacity  : in Natural;
+                     alignment : in Natural := 8)
     with
         SPARK_Mode => Off
     is
@@ -68,7 +72,7 @@ is
         end if;
         
         pool.objSize    := objSize;
-        pool.blockOrder := BuddyAllocator.getOrder (Unsigned_64(pool.paddedSize * capacity));
+        pool.blockOrder := BuddyAllocator.getOrder (pool.paddedSize * capacity);
         print ("SlabAllocator.setup: using block order "); println (Integer(pool.blockOrder));
 
         -- Link the list head to itself to start
@@ -114,11 +118,10 @@ is
     ---------------------------------------------------------------------------
     -- Allocate
     ---------------------------------------------------------------------------
-    procedure Allocate
-        (pool     : in out Slab;
-         addr     : out System.Address;
-         ignore_1 : in System.Storage_Elements.Storage_Count;
-         ignore_2 : in System.Storage_Elements.Storage_Count)
+    procedure Allocate (pool     : in out Slab;
+                        addr     : out System.Address;
+                        ignore_1 : in System.Storage_Elements.Storage_Count;
+                        ignore_2 : in System.Storage_Elements.Storage_Count)
     with
         SPARK_Mode => On
     is

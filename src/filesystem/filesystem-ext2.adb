@@ -318,13 +318,13 @@ package body Filesystem.Ext2 is
         -- print ("Inode Bitmap: "); println (fs.bgdt(bg).inodeBitmapAddr);
 
         -- Read the block with our inode, copy only the data we need.
-        FileCache.readBuffer(fs.device, Unsigned_64(table + block), buf);
+        FileCache.readBuffer (fs.device, Unsigned_64(table + block), buf);
         
         Util.memCopy (dest => outInode'Address,
                       src  => To_Address (buf.data + Integer_Address(offset)),
                       len  => Inode'Size / 8);
 
-        FileCache.releaseBuffer(buf);
+        FileCache.releaseBuffer (buf);
 
         -- Debug.dumpMem(outInode'Address, 128);
         return outInode;

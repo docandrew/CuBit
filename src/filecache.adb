@@ -31,7 +31,7 @@ is
         
         for b in cache.buffers'Range loop
             -- Allocate aligned frame for each buffer.
-            BuddyAllocator.alloc(BuddyAllocator.Order(0), bufDataAddr);
+            BuddyAllocator.allocFrame (bufDataAddr);
             cache.buffers(b).data   := Virtmem.P2V(bufDataAddr);
 
             cache.buffers(b).next   := cache.head.next;

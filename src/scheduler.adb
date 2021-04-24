@@ -38,6 +38,11 @@ is
         end getCPUContext;
     end enter;
 
+    function getKernelStackTop (proc : in Process) return Unsigned_64 is
+    begin
+        return proc.processKernelStack.all'Address + Process.ProcessKernelStack'Size / 8;
+    end getKernelStackTop;
+
     ---------------------------------------------------------------------------
     -- Note: this process is only _called_ once, at bootup (per-CPU).
     -- Future entries back into this function are through the enter
@@ -98,8 +103,8 @@ is
                     cpuData.currentContext      := Process.proctab(i).context; -- save this address so we can switch back
 
                     -- switch address spaces if appropriate
-                    cpuData.tss.rsp0            := Unsigned_64(Process.proctab(i).kernelStackTop);
-                    cpuData.savedKernelRSP      := To_Address(Process.proctab(i).kernelStackTop);
+                    cpuData.tss.rsp0            := Process.proctab(i).kernelStackTop;
+                    cpuData.savedKernelRSP      := Process.proctab(i).kernelStackTop;
                     
                     cpuData.currentPID          := i;
                     

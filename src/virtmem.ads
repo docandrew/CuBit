@@ -21,20 +21,20 @@ package Virtmem
     with SPARK_Mode => On
 is
     -- 4K page translations
-    FRAME_SHIFT         : constant := 12;
-    PAGE_SHIFT          : constant := FRAME_SHIFT;
-    FRAME_SIZE          : constant := 2**FRAME_SHIFT;
-    PAGE_SIZE           : constant := FRAME_SIZE;
+    FRAME_SHIFT      : constant := 12;
+    PAGE_SHIFT       : constant := FRAME_SHIFT;
+    FRAME_SIZE       : constant := 2**FRAME_SHIFT;
+    PAGE_SIZE        : constant := FRAME_SIZE;
 
     -- 2-MByte page translations
-    BIG_FRAME_SHIFT     : constant := 21;
-    BIG_FRAME_SIZE      : constant := 2**BIG_FRAME_SHIFT;
-    BIG_PAGE_SIZE       : constant := BIG_FRAME_SIZE;
+    BIG_FRAME_SHIFT  : constant := 21;
+    BIG_FRAME_SIZE   : constant := 2**BIG_FRAME_SHIFT;
+    BIG_PAGE_SIZE    : constant := BIG_FRAME_SIZE;
 
     -- 1-GByte page translations (not used currently)
-    HUGE_FRAME_SHIFT    : constant := 30;
-    HUGE_FRAME_SIZE     : constant := 2**HUGE_FRAME_SHIFT;
-    HUGE_PAGE_SIZE      : constant := HUGE_FRAME_SIZE;
+    HUGE_FRAME_SHIFT : constant := 30;
+    HUGE_FRAME_SIZE  : constant := 2**HUGE_FRAME_SHIFT;
+    HUGE_PAGE_SIZE   : constant := HUGE_FRAME_SIZE;
 
     -- Number of entries in a page table. 512 * 64bits/entry = 4096
     NUM_PAGE_TABLE_ENTRIES : constant := 512;
@@ -85,21 +85,21 @@ is
     -- Max physical address that we have on _our_ system. May not be
     -- all usable RAM, but ACPI tables or something else.
     -- initialized in BootAllocator
-    MAX_PHYS_ADDRESSABLE    : PhysAddress := 0;
+    MAX_PHYS_ADDRESSABLE : PhysAddress := 0;
 
     -- Max physical RAM address on our system.
     -- initialized in BootAllocator.
-    MAX_PHYS_USABLE         : PhysAddress := 0;
+    MAX_PHYS_USABLE : PhysAddress := 0;
 
     subtype VirtAddress is Integer_Address;
 
     -- Page Frame Number is a sign-extended 52-bit address / PAGE_SIZE.
     -- Note: if Intel brings out a 56-bit phys addressable CPU,
     -- we'll need to make this selectable.
-    type PFN        is new Unsigned_64 
+    type PFN is new Unsigned_64 
         range 0 .. Unsigned_64(PhysAddress'Last) / PAGE_SIZE; --16#FF_FFFF_FFFF#;
 
-    type BigPFN  is new PFN
+    type BigPFN is new PFN
         range 0 .. PFN(PhysAddress'Last / BIG_PAGE_SIZE) with Size => 64;
 
     type HugePFN is new PFN
@@ -174,21 +174,21 @@ is
     -- Returns the index into the N-level page table specified by this
     --  virtual address. Used for walking page tables.
     ---------------------------------------------------------------------------
-    function getP4Index(virtAddr : in VirtAddress) return PageTableIndex;
-    function getP3Index(virtAddr : in VirtAddress) return PageTableIndex;
-    function getP2Index(virtAddr : in VirtAddress) return PageTableIndex;
-    function getP1Index(virtAddr : in VirtAddress) return PageTableIndex;
+    function getP4Index (virtAddr : in VirtAddress) return PageTableIndex;
+    function getP3Index (virtAddr : in VirtAddress) return PageTableIndex;
+    function getP2Index (virtAddr : in VirtAddress) return PageTableIndex;
+    function getP1Index (virtAddr : in VirtAddress) return PageTableIndex;
 
     ---------------------------------------------------------------------------
     -- getOffset - Get the index into the page specified by this address
     ---------------------------------------------------------------------------
-    function getOffset(virtAddr : in VirtAddress) return PageOffset;
+    function getOffset (virtAddr : in VirtAddress) return PageOffset;
 
     ---------------------------------------------------------------------------
     -- isCanonical - Determine if a virtual address is canonical or not
     -- based on the sign-extended virtual address bits in x86-64.
     ---------------------------------------------------------------------------
-    function isCanonical(virtAddr : in VirtAddress) return Boolean;
+    function isCanonical (virtAddr : in VirtAddress) return Boolean;
 
     ---------------------------------------------------------------------------
     -- getP4Table - Returns the address of the currently-used P4 table as
@@ -201,7 +201,7 @@ is
     -- the CR3 register, causing a new virtual address space to be used.
     -- @param p4addr - physical address of the new top-level page table.
     ---------------------------------------------------------------------------
-    procedure setActiveP4(p4addr : in PhysAddress);
+    procedure setActiveP4 (p4addr : in PhysAddress);
 
     ---------------------------------------------------------------------------
     -- flushTLB - reload CR3 and cause TLB to be flushed.
@@ -214,7 +214,7 @@ is
     -- @param page - page frame number
     -- @return the base address (PAGE_SIZE-aligned) of the page.
     ---------------------------------------------------------------------------
-    function PFNToAddr(page : in PFN) return PhysAddress;
+    function PFNToAddr (page : in PFN) return PhysAddress;
 
     ---------------------------------------------------------------------------
     -- bigPFNToAddr - Return the address of a given Page Frame Number (PFN) for
@@ -223,7 +223,7 @@ is
     -- @param page - big page frame number
     -- @return the base address (BIG_PAGE_SIZE-aligned) of the page.
     ---------------------------------------------------------------------------
-    function BigPFNToAddr(page : in BigPFN) return PhysAddress;
+    function BigPFNToAddr (page : in BigPFN) return PhysAddress;
 
     ---------------------------------------------------------------------------
     -- addrToPFN - Return the Page Frame Number (PFN) for a given address.
@@ -231,7 +231,16 @@ is
     -- @param addr - physical address
     -- @return PFN containing the physical address
     ---------------------------------------------------------------------------
-    function addrToPFN(addr : in PhysAddress) return PFN;
+    function addrToPFN (addr : in PhysAddress) return PFN;
+
+    ---------------------------------------------------------------------------
+    -- addrToPFN - Return the Page Frame Number (PFN) for a given _virtual_ 
+    --  address that's mapped in the linear space.
+    --
+    -- @param addr - virtual address
+    -- @return PFN containing the corresponding physical address
+    ---------------------------------------------------------------------------
+    function vaddrToPFN (addr : in System.Address) return PFN;
 
     ---------------------------------------------------------------------------
     -- addrToBigPFN - Return the Big Page Frame Number (PFN) for a given
@@ -241,14 +250,14 @@ is
     --  aligned, but if it isn't, you're probably doing something weird.
     -- @return Big PFN containing the physical address
     ---------------------------------------------------------------------------
-    function addrToBigPFN(addr : in PhysAddress) return BigPFN;
+    function addrToBigPFN (addr : in PhysAddress) return BigPFN;
 
     ---------------------------------------------------------------------------
     -- bigPFNToPFN - Convert the given Big PFN to a PFN starting at the
     --  same physical address if big pages were used. i.e. address 0x1000000
     --  would be the start of PFN 0x1000, or Big PFN 0x8.
     ---------------------------------------------------------------------------
-    function bigPFNToPFN(bigPage : in BigPFN) return PFN;
+    function bigPFNToPFN (bigPage : in BigPFN) return PFN;
 
     ---------------------------------------------------------------------------
     -- PFNToBigPFN - Convert the given PFN to a big PFN containing the given 
@@ -259,7 +268,7 @@ is
     -- @return - The result will be BIG_FRAME_SIZE-aligned, so many different
     --  PFNs will map to the same Big PFN returned from this function.
     ---------------------------------------------------------------------------
-    function PFNToBigPFN(page : in PFN) return BigPFN;
+    function PFNToBigPFN (page : in PFN) return BigPFN;
 
     ---------------------------------------------------------------------------
     -- zeroize - set all entries of a given page table to all zeroes. Note that
@@ -268,7 +277,7 @@ is
     ---------------------------------------------------------------------------
     generic
         type PN is array (PageTableIndex) of PageTableEntry;
-    procedure zeroize(table : in out PN);
+    procedure zeroize (table : in out PN);
 
     ---------------------------------------------------------------------------
     -- getNextTable - Given a table of level N and index, Returns the 
@@ -280,7 +289,7 @@ is
     ---------------------------------------------------------------------------
     generic
         type PN is array (PageTableIndex) of PageTableEntry;
-    function getNextTable(table : in PN; index : PageTableIndex)
+    function getNextTable (table : in PN; index : PageTableIndex)
         return PhysAddress;
 
     ---------------------------------------------------------------------------
@@ -307,11 +316,11 @@ is
     ---------------------------------------------------------------------------
     generic
         type PN is array (PageTableIndex) of PageTableEntry;
-        with procedure allocate(newframe : out PhysAddress);
+        with procedure allocate (newframe : out PhysAddress);
         flags : Unsigned_64;
-    procedure createNextTable(table     : in out PN; 
-                             index      : in PageTableIndex;
-                             tableAddr  : out PhysAddress);
+    procedure createNextTable (table     : in out PN; 
+                               index      : in PageTableIndex;
+                               tableAddr  : out PhysAddress);
 
     ---------------------------------------------------------------------------
     -- mapPage - map a frame of physical memory into the virtual address space
@@ -325,12 +334,12 @@ is
     -- TODO: add alignment-checking precondition here.
     ---------------------------------------------------------------------------
     generic
-        with procedure allocate(newframe : out PhysAddress);
-    procedure mapPage(  phys    : in PhysAddress; 
-                        virt    : in VirtAddress;
-                        flags   : in Unsigned_64; 
-                        myP4    : in out P4;
-                        success : out Boolean);
+        with procedure allocate (newframe : out PhysAddress);
+    procedure mapPage (phys    : in PhysAddress; 
+                       virt    : in VirtAddress;
+                       flags   : in Unsigned_64; 
+                       myP4    : in out P4;
+                       success : out Boolean);
 
     ---------------------------------------------------------------------------
     -- mapBigPage - map a big frame of physical memory into the virtual address
@@ -346,12 +355,12 @@ is
     -- TODO: add alignment-checking precondition here.
     ---------------------------------------------------------------------------
     generic
-        with procedure allocate(newframe : out PhysAddress);
-    procedure mapBigPage(   phys    : in PhysAddress;
-                            virt    : in VirtAddress;
-                            flags   : in Unsigned_64;
-                            myP4    : in out P4;
-                            success : out Boolean);
+        with procedure allocate (newframe : out PhysAddress);
+    procedure mapBigPage (phys    : in PhysAddress;
+                          virt    : in VirtAddress;
+                          flags   : in Unsigned_64;
+                          myP4    : in out P4;
+                          success : out Boolean);
 
     ---------------------------------------------------------------------------
     -- unmapPage - mark the page containing the virtual address given as not
@@ -364,9 +373,9 @@ is
     -- CAUTION: If the virtual address points to the middle of a big page, the
     -- entire big page will be marked as non-present.
     ---------------------------------------------------------------------------
-    procedure unmapPage(virt    : in VirtAddress;
-                        myP4    : in P4;
-                        success : out Boolean);
+    procedure unmapPage (virt    : in VirtAddress;
+                         myP4    : in P4;
+                         success : out Boolean);
 
     ---------------------------------------------------------------------------
     -- tableWalk
@@ -381,7 +390,7 @@ is
     -- @return - physical address that the virtual address maps to or 0 if not
     --  mapped.
     ---------------------------------------------------------------------------
-    function tableWalk(virt : in VirtAddress; myP4 : in P4)
+    function tableWalk (virt : in VirtAddress; myP4 : in P4)
         return PhysAddress;
 
     ---------------------------------------------------------------------------
@@ -392,15 +401,15 @@ is
     -- memory for their sub-tables.
     ---------------------------------------------------------------------------
     generic
-        with procedure free(frame : in PhysAddress);
+        with procedure free (frame : in PhysAddress);
     procedure deleteP4(myP4 : in out P4);
 
     generic
-        with procedure free(frame : in PhysAddress);
+        with procedure free (frame : in PhysAddress);
     procedure deleteP3(myP3 : in out P3);
 
     generic
-        with procedure free(frame : in PhysAddress);
+        with procedure free (frame : in PhysAddress);
     procedure deleteP2(myP2 : in out P2);
 
     ---------------------------------------------------------------------------
@@ -419,8 +428,8 @@ is
     -- makePTE - convenience function for setting the PFN and each of the bool 
     --  flags in a PageTableEntry.
     ---------------------------------------------------------------------------
-    function makePTE(frame : in PFN;
-                     flags : in Unsigned_64) return PageTableEntry;
+    function makePTE (frame : in PFN;
+                      flags : in Unsigned_64) return PageTableEntry;
     
     ---------------------------------------------------------------------------
     -- makeBigPTE - convenience function for setting a Big PFN and each of the
@@ -428,9 +437,15 @@ is
     --  the "size" flag (for big or huge pages). Should be used to get a PTE
     --  for insertion into a P2 table.
     ---------------------------------------------------------------------------
-    function makeBigPTE(bigFrame : in BigPFN;
-                     flags : in Unsigned_64) return PageTableEntry;
+    function makeBigPTE (bigFrame : in BigPFN;
+                         flags    : in Unsigned_64) return PageTableEntry;
     
+
+    ---------------------------------------------------------------------------
+    -- VirtualMemoryException
+    -- Thrown if V2P is attempted on a non-linear range virtual address.
+    ---------------------------------------------------------------------------
+    VirtualMemoryException : exception;
 
     ---------------------------------------------------------------------------
     -- V2P - Virtual to Physical conversion for physical mem linearly mapped to
@@ -443,9 +458,13 @@ is
     --
     -- @param virtAddr : A virtual address in the linear-mapped region.
     ---------------------------------------------------------------------------
-    function V2P(virtAddr : in VirtAddress) return PhysAddress with
+    function V2P (virtAddr : in VirtAddress) return PhysAddress with
         Inline,
         Pre => virtAddr >= LINEAR_BASE;
+
+    function V2P (virtAddr : in System.Address) return PhysAddress with
+        Inline,
+        Pre => To_Integer(virtAddr) >= LINEAR_BASE;
 
     ---------------------------------------------------------------------------
     -- P2V - Physical to Virtual address conversion for physical mem linearly
@@ -455,7 +474,7 @@ is
     -- @return the virtual address in the linear-mapped region 
     --  0xFFFF_8000_0000_0000 to 0xFFFF_????_????_???? (TBD)
     ---------------------------------------------------------------------------
-    function P2V(physAddr : in PhysAddress) return VirtAddress with
+    function P2V (physAddr : in PhysAddress) return VirtAddress with
         Inline,
         Post => P2V'Result >= LINEAR_BASE;
 
@@ -465,9 +484,13 @@ is
     --
     -- @param kernAddr : A virtual address in the kernel-mapped region.
     ---------------------------------------------------------------------------
-    function K2P(kernAddr : in VirtAddress) return PhysAddress with
+    function K2P (kernAddr : in VirtAddress) return PhysAddress with
         Inline,
         Pre => kernAddr >= KERNEL_BASE;
+
+    function K2P (kernAddr : in System.Address) return PhysAddress with
+        Inline,
+        Pre => To_Integer(kernAddr) >= KERNEL_BASE;
 
     ---------------------------------------------------------------------------
     -- Virtual mem constants and addresses

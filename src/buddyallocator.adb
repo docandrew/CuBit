@@ -15,12 +15,12 @@ is
     -- getBuddy
     ---------------------------------------------------------------------------
     function getBuddy (ord  : in Order;
-                       addr : Virtmem.PhysAddress) return Virtmem.PhysAddress with
+                       addr : in System.Address) return System.Address with
         SPARK_Mode => On
     is
-        mask : constant Unsigned_64 := blockSize(ord);
+        mask : constant Integer_Address := Integer_Address(blockSize (ord));
     begin
-        return Virtmem.PhysAddress(Unsigned_64(addr) xor mask);
+        return To_Integer(addr) xor mask;
     end getBuddy;
 
 
@@ -31,16 +31,16 @@ is
     -- aligned block of MAX_BUDDY_ORDER size. This ensures all blocks within
     -- the buddy structure are going to stay block size-aligned.
     ---------------------------------------------------------------------------
-    function blockStart (ord : in Order; addr : in Virtmem.PhysAddress) return Integer_Address
+    function blockStart (ord : in Order; addr : in System.Address) return Integer_Address
         with SPARK_Mode => On,
         Post => blockStart'Result < addr
     is
-        roundDownMask   : constant Integer_Address := 
+        roundDownMask : constant Integer_Address := 
             Integer_Address(not (blockSize(ord) - 1));
     begin
         -- discard the lowest (FRAME_SHIFT + MAX_BUDDY_ORDER) bits
         --pragma Assert(addr and roundDownMask < addr);
-        return addr and roundDownMask;
+        return To_Integer(addr) and roundDownMask;
 
     end blockStart;
 
@@ -52,7 +52,7 @@ is
         with SPARK_Mode => On
     is
     begin
-        return blockStart(ord, addr) + Virtmem.PhysAddress(blockSize(ord)) - 1;
+        return blockStart (ord, addr) + Integer_Address(blockSize (ord)) - 1;
     end blockEnd;
 
 
@@ -60,7 +60,7 @@ is
     -- popFromFreeList
     ---------------------------------------------------------------------------
     procedure popFromFreeList (ord  : in Order;
-                               addr : out Virtmem.PhysAddress) with
+                               addr : out System.Address) with
         SPARK_Mode => On,
         Pre     => freeLists(ord).numFreeBlocks > 0,
         Post    => freeLists(ord).numFreeBlocks =
@@ -101,7 +101,7 @@ is
     -- order ord
     ---------------------------------------------------------------------------
     procedure addToFreeList (ord : Order;
-                             newBlockAddr : in Virtmem.PhysAddress) with
+                             newBlockAddr : in System.Address) with
         SPARK_Mode => On
     is
         newBlock  : aliased FreeBlock with
@@ -132,15 +132,15 @@ is
     -- Adds unused half (the upper half) of a block with address addr and order
     -- ord to freeLists(N-1).
     ---------------------------------------------------------------------------
-    procedure splitBlock (ord : in Order; addr : in Virtmem.PhysAddress) with
+    procedure splitBlock (ord : in Order; addr : in System.Address) with
         SPARK_Mode => On,
         Pre     => ord > 0,
         Post    => freeLists(ord - 1).numFreeBlocks =
                    freeLists(ord - 1).numFreeBlocks'Old + 1
     is
-        rightHalfAddr : constant Integer_Address := getBuddy((ord - 1), addr);
+        rightHalfAddr : constant System.Address := getBuddy((ord - 1), addr);
     begin
-        addToFreeList(ord - 1, rightHalfAddr);
+        addToFreeList (ord - 1, rightHalfAddr);
     end splitBlock;
 
 
@@ -148,7 +148,7 @@ is
     -- isBuddyFree - given an order and a block address, determine whether that
     -- block's buddy is free.
     ---------------------------------------------------------------------------
-    function isBuddyFree (ord : in Order; addr : in Virtmem.PhysAddress) return Boolean
+    function isBuddyFree (ord : in Order; addr : in System.Address) return Boolean
     with
         SPARK_Mode => On
     is
@@ -170,7 +170,7 @@ is
     -- @param ord - order of the block to remove from free list
     -- @param addr - address of the block to remove from the free list
     ---------------------------------------------------------------------------
-    procedure unlink (ord : in Order; addr : in Virtmem.PhysAddress) with
+    procedure unlink (ord : in Order; addr : in System.Address) with
         SPARK_Mode => On,
         Pre  => freeLists(ord).numFreeBlocks > 0,
         Post => freeLists(ord).numFreeBlocks =
@@ -196,25 +196,24 @@ is
         end linkNeighbors;
 
         -- decrement the free list count when we unlink somebody
-        freeLists(ord).numFreeBlocks :=
-            freeLists(ord).numFreeBlocks - 1;
+        freeLists(ord).numFreeBlocks := freeLists(ord).numFreeBlocks - 1;
     end unlink;
 
 
     ---------------------------------------------------------------------------
     -- blockSize
     ---------------------------------------------------------------------------
-    function blockSize (ord : in Order) return Unsigned_64 with
+    function blockSize (ord : in Order) return Natural with
         SPARK_Mode => On
     is
     begin
-        return Shift_Left(Unsigned_64(1), Natural(Virtmem.FRAME_SHIFT + ord));
+        return Shift_Left(Natural(1), Natural(Virtmem.FRAME_SHIFT + ord));
     end blockSize;
 
     ---------------------------------------------------------------------------
     -- getOrder
     ---------------------------------------------------------------------------
-    function getOrder (allocSize : in Unsigned_64) return Order with
+    function getOrder (allocSize : in Natural) return Order with
         SPARK_Mode => On
     is
         -- rounded : constant Unsigned_64 := Util.nextPow2 (allocSize);
@@ -235,12 +234,12 @@ is
     ---------------------------------------------------------------------------
     -- isValidBlock
     ---------------------------------------------------------------------------
-    function isValidBlock (ord : in Order; addr : in Virtmem.PhysAddress)
+    function isValidBlock (ord : in Order; addr : in System.Address)
         return Boolean with
         SPARK_Mode => On
     is
     begin
-        return (addr mod Virtmem.PhysAddress(blockSize(ord))) = 0;
+        return (To_Integer(addr) mod blockSize(ord))) = 0;
     end isValidBlock;
 
 
@@ -254,6 +253,38 @@ is
         return freeLists(ord)'Address;
     end getListAddress;
 
+    ---------------------------------------------------------------------------
+    -- getAlignedStart
+    -- Given the start of a physical memory region, round up to the nearest max 
+    -- block-aligned _virtual_ (linear-mapped) address.
+    ---------------------------------------------------------------------------
+    function getAlignedStart (startPhys : Virtmem.PhysAddress) return System.Address
+    is
+    begin
+        return blockStart (Order'Last, Virtmem.P2V(startPhys))
+             + blockSize (Order'Last);
+    end getAlignedStart;
+
+    ---------------------------------------------------------------------------
+    -- getAlignedEnd
+    -- Given the end of a physical memory region, round down to the nearest max
+    -- block-aligned _virtual_ (linear-mapped) address.
+    ---------------------------------------------------------------------------
+    function getAlignedEnd (endPhys : Virtmem.PhysAddress) return System.Address
+    is
+    begin
+        return blockStart (Order'last, endPhys) - 1;
+    end getAlignedEnd;
+
+    ---------------------------------------------------------------------------
+    -- getBootAllocatorEnd
+    -- Return the last address owned by the boot allocator.
+    ---------------------------------------------------------------------------
+    function getBootAllocatorEnd return System.Address
+    is
+    begin
+        return Virtmem.P2V (Virtmem.PFNToAddr (BootAllocator.highestPFNAllocated));
+    end getBootAllocatorEnd;
 
     ---------------------------------------------------------------------------
     -- setup
@@ -264,17 +295,19 @@ is
         use type MemoryAreas.MemoryAreaType;
         use type Virtmem.PFN;
 
-        alignedStart                : Virtmem.PhysAddress;
-        alignedEnd                  : Virtmem.PhysAddress;
+        alignedStart          : System.Address;
+        alignedEnd            : System.Address;
 
         -- For performance, we always want to free the largest block we can.
         -- If inside the area controlled by the boot allocator, if we're below
         -- the boot allocated high-water mark, then we have to go page-by-page.
         -- Past the next max order-aligned frame, we can free max order-sized
         -- blocks.
-        topLevelBlockStart          : Virtmem.PhysAddress;
-        topLevelBlockEnd            : Virtmem.PhysAddress;
-        numTopLevelBlocksHere       : Unsigned_64;
+        topLevelBlockStart    : System.Address;
+        topLevelBlockEnd      : System.Address;
+        startPFN              : Virtmem.PFN;
+        endPFN                : Virtmem.PFN;
+        numTopLevelBlocksHere : Natural;
     begin
         -- make freeLists self-referential and empty to start
         for ord in Order'Range loop
@@ -285,21 +318,15 @@ is
 
         eachArea:
         for area of areas loop
-            if  area.kind /= MemoryAreas.USABLE or
-                area.endAddr < Config.MIN_PHYS_ALLOC then
-
+            if area.kind /= MemoryAreas.USABLE or 
+               area.endAddr < Config.MIN_PHYS_ALLOC then
                 null;
             else           
-                -- Round up to next max order block
-                alignedStart := blockStart(Order'Last, area.startAddr) +
-                                Integer_Address(blockSize(Order'Last));
+                -- Determine max-block aligned memory boundaries.
+                alignedStart := getAlignedStart (area.startAddr);
+                alignedEnd   := getAlignedEnd (area.endAddr);
 
-                numTopLevelBlocksHere := Unsigned_64(
-                    (blockStart(Order'Last, area.endAddr) - alignedStart) / 
-                    Integer_Address(blockSize(Order'Last)));
-
-                -- Round down to end previous max order block.
-                alignedEnd := blockStart(Order'Last, area.endAddr) - 1;
+                numTopLevelBlocksHere := (alignedEnd - alignedStart) / blockSize (Order'Last);
 
                 -- print("Memory area start: "); print(area.startAddr);
                 -- print(" aligned: "); println(alignedStart);
@@ -325,25 +352,24 @@ is
                     -- if this top level block is beyond the area owned by the
                     -- boot allocator, we can free the entire top-level block.
                     -- Otherwise, we go page-by-page based on what's
-                    -- owned by the boot allocator.
+                    -- not owned by the boot allocator.
                     for i in 0..numTopLevelBlocksHere - 1 loop
 
                         topLevelBlockStart := alignedStart + 
-                            Integer_Address(i * blockSize(Order'Last));
+                            Integer_Address(i * blockSize (Order'Last));
 
                         topLevelBlockEnd := topLevelBlockStart +
-                            Integer_Address(blockSize(Order'Last) - 1);
+                            Integer_Address(blockSize (Order'Last) - 1);
 
-                        if BootAllocator.highestPFNAllocated >
-                            Virtmem.addrToPFN(topLevelBlockStart) then
+                        startPFN := Virtmem.vaddrToPFN (topLevelBlockStart);
+                        endPFN   := Virtmem.vaddrToPFN (topLevelBlockEnd);
 
+                        if BootAllocator.highestPFNAllocated > startPFN then
                             -- print("Freeing frames in region ");
                             -- print(topLevelBlockStart); print(" to "); println(topLevelBlockEnd);
                             -- go page by page in this block
                             eachPFN:
-                            for pfn in 
-                                Virtmem.addrToPFN(topLevelBlockStart)..
-                                Virtmem.addrToPFN(topLevelBlockEnd)
+                            for pfn in startPFN..endPFN
                             loop
                                 if BootAllocator.isFree(pfn) then
                                     free (Order'First, Virtmem.pfnToAddr(pfn));
@@ -362,7 +388,7 @@ is
             end if;
         end loop eachArea;
 
-        -- TODO: free memory used by the boot allocator. This will probably
+        -- @TODO free memory used by the boot allocator. This will probably
         -- take a little effort, since it's buried in the midst of the kernel's
         -- .bss, and we consider everything under ebss to be off-limits. We can
         -- play some games with the linker script to put the bitmaps in their
@@ -375,13 +401,13 @@ is
     ---------------------------------------------------------------------------
     -- alloc
     ---------------------------------------------------------------------------
-    procedure alloc (ord : in Order; addr : out Virtmem.PhysAddress) with
+    procedure alloc (ord : in Order; addr : out System.Address) with
         SPARK_Mode => On
     is
         use System;
 
-        retBlock    : Integer_Address;
-        curOrd      : Order := ord;
+        retBlock : System.Address;
+        curOrd   : Order := ord;
     begin
         -- find a list order big enough to satisfy our request
         findLoop: loop
@@ -394,26 +420,24 @@ is
                 -- found free space in order i
                 -- remove the block from the list
 
-                popFromFreeList(curOrd, retBlock);
+                popFromFreeList (curOrd, retBlock);
                 -- print ("Returning block: "); println (retBlock);
                 -- assign output
-                addr := Virtmem.V2P(retBlock);
+                addr := retBlock;
 
                 -- if we got a block that was too big for our request, continue
                 -- to split it until it is the size we need.
                 while curOrd > ord loop
-                    
                     -- prove no splits of order 0
                     pragma Assert (curOrd > 0);
 
-                    splitBlock(curOrd, retBlock);
+                    splitBlock (curOrd, retBlock);
                     curOrd := curOrd - 1;
                 end loop;
 
                 return;
             end if;
 
-            -- necessary to avoid exceeding Order constraints in the next line
             exit findLoop when curOrd = Order'Last;
             curOrd := curOrd + 1;
         end loop findLoop;
@@ -422,17 +446,21 @@ is
         addr := NO_BLOCK_AVAILABLE;
     end alloc;
 
-
     ---------------------------------------------------------------------------
     -- allocFrame
     ---------------------------------------------------------------------------
     procedure allocFrame (addr : out Virtmem.PhysAddress) with
         SPARK_Mode => On
     is
+        physAddr : Virtmem.PhysAddress;
     begin
-        alloc(0, addr);
+        alloc (0, physAddr);
+        addr := Virtmem.V2P (physAddr);
     end allocFrame;
 
+    ---------------------------------------------------------------------------
+    -- getOrderNum
+    ---------------------------------------------------------------------------
     function getOrderNum (ord : in Order) return Natural
     is
         function toNat is new Ada.Unchecked_Conversion(Source => Order, Target => Natural);
@@ -443,25 +471,24 @@ is
     ---------------------------------------------------------------------------
     -- free
     ---------------------------------------------------------------------------
-    procedure free (ord : in Order; addr : in Virtmem.PhysAddress) with
+    procedure free (ord : in Order; addr : in System.Address) with
         SPARK_Mode => On
     is
-        freeAddr : Integer_Address := Virtmem.P2V(addr);
+        --freeAddr : Integer_Address := Virtmem.P2V(addr);
 
         curOrd : Order := ord;
     begin
         -- "bubble up" free blocks as long as each order's buddy is free
         -- and we aren't at max order
         coalesce: while curOrd < Order'Last loop
-            if isBuddyFree(curOrd, freeAddr) then
+            if isBuddyFree (curOrd, addr) then
                 -- buddy indicates free (see CAUTION), coalesce
                 
                 -- remove buddy from its current free list
-                unlink (curOrd, getBuddy(curOrd, freeAddr));
+                unlink (curOrd, getBuddy (curOrd, addr));
 
                 -- combined us+buddy address, whether we were left or right
-                freeAddr := freeAddr and 
-                    Integer_Address(not blockSize(curOrd));
+                addr := addr and Integer_Address(not blockSize (curOrd));
                 
                 -- see if our coalesced block can be combined with the next level up
                 curOrd := curOrd + 1;
@@ -471,9 +498,9 @@ is
                 markBuddy:
                 declare
                     block: aliased FreeBlock with
-                        Import, Address => To_Address(freeAddr);
+                        Import, Address => addr;
                 begin
-                    block.buddy := To_Address(getBuddy(curOrd, freeAddr));
+                    block.buddy := getBuddy (curOrd, addr);
                 end markBuddy;
 
                 exit coalesce;
@@ -482,7 +509,7 @@ is
 
         -- add us to top free list
         --print ("Adding "); print (freeAddr); print (" to free list "); println (getOrderNum (curOrd));
-        addToFreeList (curOrd, freeAddr);
+        addToFreeList (curOrd, addr);
     end free;
 
 

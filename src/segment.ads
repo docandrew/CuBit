@@ -6,10 +6,11 @@
 -- Setup of GDT and TSS segments on x86-64
 -------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
+with System;
 
 with x86;
 
-package segment with
+package Segment with
     SPARK_Mode => On
 is
     -- GDT_SEGMENT_NULL            : constant := 0;
@@ -157,9 +158,9 @@ is
     type TaskSwitchSegment is
     record
         reserved1       : Unsigned_32 := 0;
-        rsp0            : Unsigned_64 := 0;
-        rsp1            : Unsigned_64 := 0;
-        rsp2            : Unsigned_64 := 0;
+        rsp0            : System.Address := System.Null_Address;
+        rsp1            : System.Address := System.Null_Address;
+        rsp2            : System.Address := System.Null_Address;
         reserved2       : Unsigned_64 := 0;
         ist1            : Unsigned_64 := 0;
         ist2            : Unsigned_64 := 0;
@@ -219,4 +220,4 @@ is
         base            at 2 range 0..63;
     end record;
 
-end segment;
+end Segment;
