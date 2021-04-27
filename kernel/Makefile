@@ -70,7 +70,7 @@ run-raw:
 run-qemu:
 # add -S to pause simulation at startup to allow debugger connection
 # add -d int,cpu_reset,guest_errors for exception debugging
-	qemu-system-x86_64 -machine q35 -cpu Broadwell -s -S -m 4G -cdrom cubit_kernel.iso -serial stdio
+	qemu-system-x86_64 -machine q35 -cpu Broadwell -s -S -m 128M -cdrom cubit_kernel.iso -serial stdio
 
 iso: cubit_kernel
 	cp cubit_kernel isodir/boot/

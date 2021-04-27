@@ -5,6 +5,9 @@
 -- Multiboot
 -------------------------------------------------------------------------------
 with System;
+with System.Storage_Elements; use System.Storage_Elements;
+with TextIO; use TextIO;
+with Virtmem;
 
 package body Multiboot
     with SPARK_Mode => On
@@ -89,5 +92,48 @@ is
 
         return retAreas;
     end getMemoryAreas;
+
+    ---------------------------------------------------------------------------
+    -- printModuleInfo
+    ---------------------------------------------------------------------------
+    procedure printModule (m : in MBModule) with
+        SPARK_Mode => On
+    is
+        strAddr  : System.Address := Virtmem.P2Va (Integer_Address(m.mod_string));
+        modStart : System.Address := Virtmem.P2Va (Integer_Address(m.mod_start));
+        modEnd   : System.Address := Virtmem.P2Va (Integer_Address(m.mod_end));
+        size     : Storage_Count  := modEnd - modStart;
+        contents : String(1..Natural(size)) with Import, Address => modStart;
+    begin
+        print ("Module name:  "); printz (strAddr);
+        println;
+        print ("Module start: "); println (modStart);
+        print ("Module end:   "); println (modEnd);
+        print (" contents :   "); println (contents);
+    end printModule;
+
+    ---------------------------------------------------------------------------
+    -- setupModules
+    ---------------------------------------------------------------------------
+    procedure setupModules (mbinfo : in MultibootInfo) with
+        SPARK_Mode => On
+    is
+    begin
+        if mbinfo.flags.hasModules then
+            declare
+                type ModuleList is array (Unsigned_32 range 1..mbinfo.mods_count) of MBModule
+                    with Convention => C;
+                
+                mods : ModuleList
+                    with Import, Address => Virtmem.P2Va (Integer_Address(mbinfo.mods_addr));
+            begin
+                for m of mods loop
+                    printModule (m);
+                end loop;
+            end;
+        else
+            println ("Multiboot: No boot drivers or services found.");
+        end if;
+    end setupModules;
             
 end Multiboot;
