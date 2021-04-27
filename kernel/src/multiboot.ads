@@ -153,6 +153,22 @@ is
             framebuffer_blue_field_position     at 114  range 0 .. 7;
             framebuffer_blue_mask_size          at 115  range 0 .. 7;
         end record;
+
+    type MBModule is
+    record
+        mod_start  : Unsigned_32;
+        mod_end    : Unsigned_32;
+        mod_string : Unsigned_32;
+        reserved   : Unsigned_8;
+    end record;
+
+    for MBModule use
+    record
+        mod_start  at 0 range 0..31;
+        mod_end    at 4 range 0..31;
+        mod_string at 8 range 0..31;
+        reserved   at 12 range 0..7;
+    end record;
     
     MEMORY_USABLE       : constant := 1;
     MEMORY_RESERVED     : constant := 2;
@@ -200,5 +216,12 @@ is
     function numAreas(mbinfo : in MultibootInfo) 
         return Natural with
         Pre => mbinfo.flags.hasMemoryMap;
+
+    ---------------------------------------------------------------------------
+    -- setupModules
+    -- See if GRUB has loaded any modules, and if so, print any information
+    -- about them.
+    ---------------------------------------------------------------------------
+    procedure setupModules (mbinfo : in MultibootInfo);
 
 end Multiboot;

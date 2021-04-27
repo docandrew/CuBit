@@ -406,6 +406,9 @@ begin
         end loop;
     end initFS;
 
+    println ("Checking Multiboot Modules", LT_BLUE, BLACK);
+    Multiboot.setupModules (mbInfo);
+
     -- if acpi.numCPUs > 1 then
     --     initSMP: declare
     --         package myLapic is new lapic(To_Address(virtmem.P2V(apicBase)));
