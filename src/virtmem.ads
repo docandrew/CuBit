@@ -241,6 +241,7 @@ is
     -- @return PFN containing the corresponding physical address
     ---------------------------------------------------------------------------
     function vaddrToPFN (addr : in System.Address) return PFN;
+    function vaddrToPFN (addr : in VirtAddress) return PFN;
 
     ---------------------------------------------------------------------------
     -- addrToBigPFN - Return the Big Page Frame Number (PFN) for a given
@@ -477,6 +478,10 @@ is
     function P2V (physAddr : in PhysAddress) return VirtAddress with
         Inline,
         Post => P2V'Result >= LINEAR_BASE;
+
+    function P2Va (physAddr : in PhysAddress) return System.Address with
+        Inline,
+        Post => To_Integer(P2Va'Result) >= LINEAR_BASE;
 
     ---------------------------------------------------------------------------
     -- K2P - Kernel to Virtual address conversion for physical mem mapped into

@@ -4,6 +4,7 @@
 --
 -- CMOS & Real-Time Clock (RTC)
 -------------------------------------------------------------------------------
+with x86;
 
 package body cmos with
     SPARK_Mode => On
@@ -20,12 +21,12 @@ is
     ---------------------------------------------------------------------------
     -- write CMOS
     ---------------------------------------------------------------------------
-    procedure write(reg : in CMOSRegister; val : in Unsigned_8)
+    procedure write (reg : in CMOSRegister; val : in Unsigned_8)
     with
         SPARK_Mode => On
     is
         -- we'll restore this interrupt status
-        priorFlags : x86.RFlags := x86.getFlags;
+        priorFlags : constant x86.RFlags := x86.getFlags;
         
         -- cmosNMIStatus : constant Boolean := 
         --     (if disableNMI then CMOS_NMI_DISABLED else CMOS_NMI_ENABLED);
@@ -44,12 +45,12 @@ is
     ---------------------------------------------------------------------------
     -- read CMOS
     ---------------------------------------------------------------------------
-    procedure read(reg : in CMOSRegister; ret : out Unsigned_8)
+    procedure read (reg : in CMOSRegister; ret : out Unsigned_8)
     with
         SPARK_Mode => On
     is
         -- we'll restore this interrupt status
-        priorFlags : x86.RFlags := x86.getFlags;
+        priorFlags : constant x86.RFlags := x86.getFlags;
 
     begin
         x86.cli;

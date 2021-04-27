@@ -4,7 +4,10 @@
 --
 -- General-purpose Allocation Package
 -------------------------------------------------------------------------------
+with System.Storage_Elements; use System.Storage_Elements;
+
 with BuddyAllocator;
+with TextIO; use TextIO;
 
 package body StoragePools is
 
@@ -14,8 +17,8 @@ package body StoragePools is
     procedure setup is
     begin
         for i in slabs'Range loop
-            SlabAllocator.setup (pool     => slabs(i);
-                                 objSize  => slabSizes(i);
+            SlabAllocator.setup (pool     => slabs(i),
+                                 objSize  => slabSizes(i) * 8,
                                  capacity => capacities(i));
         end loop;
     end setup;
@@ -24,14 +27,13 @@ package body StoragePools is
     -- allocSmall
     ---------------------------------------------------------------------------
     procedure allocSmall (addr   : out System.Address;
-                          bytes  : in System.Storage_Elements.Storage_Count;
-                          ignore : in System.Storage_Elements.Storage_Count) is
+                          bytes  : in System.Storage_Elements.Storage_Count) is
     begin
         -- What slab does this belong in?
         for i in slabSizes'Range loop
             if bytes <= slabSizes(i) then
-                -- @NOTE size and alignment are ignored
-                SlabAllocator.Allocate (slabs(i), addr, bytes, alignment);
+                -- @NOTE size is ignored by the SlabAllocator, and we ignore alignment.
+                SlabAllocator.Allocate (slabs(i), addr);
                 return;
             end if;
         end loop;
@@ -42,13 +44,13 @@ package body StoragePools is
     ---------------------------------------------------------------------------
     -- freeSmall
     ---------------------------------------------------------------------------
-    procedure freeSmall (addr   : out System.Address;
-                         bytes  : in System.Storage_Elements.Storage_Count;
-                         ignore : in System.Storage_Elements.Storage_Count) is
+    procedure freeSmall (addr   : in System.Address;
+                         bytes  : in System.Storage_Elements.Storage_Count) is
     begin
         for i in slabSizes'Range loop
             if bytes <= slabSizes(i) then
-                SlabAllocator.Deallocate (slabs(i), addr, bytes, alignment) ;
+                -- @NOTE size is ignored by the SlabAllocator, and we ignore alignment.
+                SlabAllocator.Deallocate (slabs(i), addr);
             end if;
         end loop;
 
@@ -59,8 +61,7 @@ package body StoragePools is
     -- allocBig
     ---------------------------------------------------------------------------
     procedure allocBig (addr   : out System.Address;
-                        bytes  : in System.Storage_Elements.Storage_Count;
-                        ignore : in System.Storage_Elements.Storage_Count) is
+                        bytes  : in System.Storage_Elements.Storage_Count) is
     begin
         BuddyAllocator.alloc (BuddyAllocator.getOrder(bytes), addr);
     end allocBig;
@@ -68,9 +69,8 @@ package body StoragePools is
     ---------------------------------------------------------------------------
     -- freeBig
     ---------------------------------------------------------------------------
-    procedure freeBig (addr   : out System.Address;
-                       bytes  : in System.Storage_Elements.Storage_Count;
-                       ignore : in System.Storage_Elements.Storage_Count) is
+    procedure freeBig (addr   : in System.Address;
+                       bytes  : in System.Storage_Elements.Storage_Count) is
     begin
         BuddyAllocator.free (BuddyAllocator.getOrder(bytes), addr);
     end freeBig;
@@ -83,12 +83,10 @@ package body StoragePools is
                         size   : in System.Storage_Elements.Storage_Count;
                         ignore : in System.Storage_Elements.Storage_Count) is
     begin
-        -- @NOTE that we're passed the size in bits. We'll pass bytes to the
-        -- other functions.
-        if (size / 8) < slabSizes(slabSizes'Last) then
-            allocSmall (addr, size / 8, alignment);
+        if size < slabSizes(slabSizes'Last) then
+            allocSmall (addr, size);
         else
-            allocBig (addr, size / 8, alignment);
+            allocBig (addr, size);
         end if;
     end Allocate;
 
@@ -100,30 +98,31 @@ package body StoragePools is
                           size   : in System.Storage_Elements.Storage_Count;
                           ignore : in System.Storage_Elements.Storage_Count) is
     begin
-        if (size / 8) < slabSizes(slabSizes'Last) then
-            freeSmall (addr, size / 8, ignore);
+        if size < slabSizes(slabSizes'Last) then
+            freeSmall (addr, size);
         else
-            freeBig (addr, size / 8, ignore);
+            freeBig (addr, size);
         end if;
     end Deallocate;
 
     ---------------------------------------------------------------------------
     -- Storage_Size
     ---------------------------------------------------------------------------
-    -- function Storage_Size (pool : in StoragePool)
-    --     return System.Storage_Elements.Storage_Count with
-    --     SPARK_Mode => On
-    -- is
-    --     package SSE renames System.Storage_Elements;
-    -- begin
-    --     if not pool.initialized then
-    --         raise NotInitializedException with "Slab not initialized with call to setup";
-    --     end if;
+    function Storage_Size (pool : in StoragePool)
+        return System.Storage_Elements.Storage_Count
+    is
+        -- package SSE renames System.Storage_Elements;
+    begin
+        -- if not pool.initialized then
+        --     raise NotInitializedException with "Slab not initialized with call to setup";
+        -- end if;
         
-    --     -- Need to do some more work here - for small objects need to determine
-    --     -- the difference between the object size and the largest object size
-    --     -- in the slab. For larger objects, can just do BuddyAllocator.getBlockSize (getOrder (objSize))
-    --     return 0;
-    -- end Storage_Size;
+        -- Need to do some more work here - for small objects need to determine
+        -- the difference between the object size and the largest object size
+        -- in the slab. For larger objects, can just do BuddyAllocator.getBlockSize (getOrder (objSize))
+        -- However, since we share the pool across object sizes, it's not clear
+        -- what object is being referred to when this object is called.
+        return 0;
+    end Storage_Size;
 
 end StoragePools;

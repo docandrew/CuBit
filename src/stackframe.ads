@@ -12,9 +12,6 @@ package StackFrame is
     ---------------------------------------------------------------------------
     -- InterruptStackFrame is a combination of saved registers as well
     -- as information pushed there automatically by the CPU
-    --
-    -- @TODO: maybe rename this to something more general, or create a similar
-    --  object to be used strictly for syscalls
     ---------------------------------------------------------------------------
     type InterruptStackFrame is
     record
@@ -43,7 +40,7 @@ package StackFrame is
         rip     : System.Address;
         cs      : Unsigned_64;
         rflags  : Unsigned_64;
-        rsp     : Integer_Address;
+        rsp     : System.Address;
         ss      : Unsigned_64;
     end record with Size => 64 * 22;
 end StackFrame;

@@ -4,14 +4,13 @@
 --
 -- Ext2 Filesystem
 -------------------------------------------------------------------------------
+with Ada.Unchecked_Deallocation;
+with System;
 with System.Storage_Elements; use System.Storage_Elements;
-with System.Address_To_Access_Conversions;
 
-with Debug;
 with FileCache;
 with TextIO; use TextIO;
 with Util;
-with Virtmem;
 
 package body Filesystem.Ext2 is
 
@@ -54,10 +53,13 @@ package body Filesystem.Ext2 is
     -- teardown
     ---------------------------------------------------------------------------
     procedure teardown (fs : in out Ext2Filesystem) is
+        procedure free is new Ada.Unchecked_Deallocation (Object => BlockGroupDescriptorTable,
+                                                          Name   => BGDTPtr);
     begin
-        BuddyAllocator.free (ord  => BuddyAllocator.getOrder(fs.bgdt'Size / 8),
-                             addr => Virtmem.V2P(To_Integer(fs.bgdt.all'Address)));
+        -- BuddyAllocator.free (ord  => BuddyAllocator.getOrder(fs.bgdt'Size / 8),
+        --                      addr => Virtmem.V2P(To_Integer(fs.bgdt.all'Address)));
 
+        free (fs.bgdt);
         fs.device      := (major => Devices.NO_MAJOR, minor => Devices.NO_MINOR, reserved => 0);
         fs.initialized := False;
         fs.bgdt        := null;
@@ -176,8 +178,8 @@ package body Filesystem.Ext2 is
     is
         bgdtLength      : constant Unsigned_32 := sb.blockCount / sb.blocksPerBlockGroup;
         bgdtSize        : Unsigned_64;
-        bgdtPhys        : Virtmem.PhysAddress;
         bgdtAddr        : System.Address;
+        bgdt            : BGDTPtr;
 
         -- Start and end disk blocks holding the BGDT
         startDiskBlock  : constant Unsigned_64 := Unsigned_64(sb.superblockNumber + 1);
@@ -200,14 +202,16 @@ package body Filesystem.Ext2 is
         numDiskBlocks := roundToNearest (bgdtSize, 4096) / 4096;
         endDiskBlock  := startDiskBlock + numDiskBlocks - 1;
 
-        BuddyAllocator.alloc (BuddyAllocator.getOrder(bgdtSize), bgdtPhys);
+        bgdt := new BlockGroupDescriptorTable(0..bgdtLength-1);
+        
+        --BuddyAllocator.alloc (BuddyAllocator.getOrder(bgdtSize), bgdtPhys);
         --print("Allocated: "); println(bgdtPhys);
 
-        if bgdtPhys = BuddyAllocator.NO_BLOCK_AVAILABLE then
-            return null;
-        end if;
+        -- if bgdtPhys = BuddyAllocator.NO_BLOCK_AVAILABLE then
+        --     return null;
+        -- end if;
 
-        bgdtAddr := To_Address(Virtmem.P2V(bgdtPhys));
+        bgdtAddr := bgdt.all'Address;
 
         -- Read the disk blocks holding the BGDT. Copy them into the BGDT,
         -- One page at a time.
@@ -228,17 +232,7 @@ package body Filesystem.Ext2 is
             writePtr := writePtr + 4096;
         end loop;
 
-        declare
-            bgdt : aliased BlockGroupDescriptorTable(0..bgdtLength - 1) with
-                Import, Address => bgdtAddr;
-        begin
-            return bgdt'Unrestricted_Access;
-        end;
-
-        -- return BGDTPtr(ATAC.To_Pointer (bgdtAddr));
-        --return BlockGroupDescriptorTable(1..bgdtLength)'Deref (bgdtAddr);
-        -- return BGDTPtr(ATAC.To_Pointer (bgdtAddr));
-
+        return bgdt;
     end readBlockGroupDescriptors;
 
     ----------------------------------------------------------------------------

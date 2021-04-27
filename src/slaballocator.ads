@@ -133,7 +133,7 @@ is
     type Slab is limited record
         freeList    : FreeNode;
 
-        numFree     : Integer := 0;
+        numFree     : Natural := 0;
         
         blockOrder  : BuddyAllocator.Order;
         blocks      : BlockList;
@@ -141,9 +141,9 @@ is
        
         mutex       : aliased Spinlocks.Spinlock;
         
-        objSize     : Natural;
-        alignment   : Natural;
-        paddedSize  : Natural;
+        objSize     : Storage_Count;
+        alignment   : Storage_Offset;
+        paddedSize  : Storage_Count;
         
         initialized : Boolean := False;
     end record;
@@ -165,7 +165,9 @@ is
     --  used)
     -- @param capacity - the _initial_ number of objects this slab should hold
     --  before expansion is necessary.
-    -- @param alignment - alignment for stored objects within the slab.
+    -- @param alignment - alignment for stored objects within the slab. Default
+    --  is packed, though objects smaller than the FreeNode size will have
+    --  unused space.
     --
     -- @exception OutOfMemoryException raised when the underlying physical
     --  memory allocator cannot allocate a block large enough for this slab.
@@ -173,9 +175,9 @@ is
     --  the object size (T'Size/8) or (FreeNode'Size/8), whichever is smaller.
     ---------------------------------------------------------------------------
     procedure setup (pool      : in out Slab;
-                     objSize   : in Natural;
+                     objSize   : in System.Storage_Elements.Storage_Count;
                      capacity  : in Natural;
-                     alignment : in Natural := 8);
+                     alignment : in System.Storage_Elements.Storage_Offset := 0);
 
     ---------------------------------------------------------------------------
     -- teardown - free underlying memory used by this allocator
@@ -205,8 +207,8 @@ is
     procedure Allocate
         (pool     : in out Slab;
          addr     : out System.Address;
-         ignore_1 : in System.Storage_Elements.Storage_Count;
-         ignore_2 : in System.Storage_Elements.Storage_Count);
+         ignore_1 : in System.Storage_Elements.Storage_Count := 0;
+         ignore_2 : in System.Storage_Elements.Storage_Count := 0);
 
     ---------------------------------------------------------------------------
     -- Deallocate - called automagically by "Ada.Unchecked_Deallocate"
@@ -220,8 +222,8 @@ is
     procedure Deallocate
         (pool     : in out Slab;
          addr     : in System.Address;
-         ignore_1 : in System.Storage_Elements.Storage_Count;
-         ignore_2 : in System.Storage_Elements.Storage_Count);
+         ignore_1 : in System.Storage_Elements.Storage_Count := 0;
+         ignore_2 : in System.Storage_Elements.Storage_Count := 0);
 
     ---------------------------------------------------------------------------
     -- Storage_Size

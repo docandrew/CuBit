@@ -7,9 +7,11 @@
 --@TODO There are a lot of interwoven locks here that would be nice to model in
 -- SPARK Mode to get some guarantees of correctness.
 -------------------------------------------------------------------------------
+with Ada.Unchecked_Conversion;
+with Ada.Unchecked_Deallocation;
 with System.Address_to_Access_Conversions;
 with System.Machine_Code; use System.Machine_Code;
-with Ada.Unchecked_Conversion;
+with System.Storage_Elements; use System.Storage_Elements;
 
 with BuddyAllocator;
 with Config;
@@ -24,7 +26,6 @@ with x86;
 package body Process
     with SPARK_Mode => On
 is
-    
     ---------------------------------------------------------------------------
     -- setup
     ---------------------------------------------------------------------------
@@ -40,12 +41,11 @@ is
         SPARK_Mode => On
     is
     begin
-        -- add our new entry to the proctab.
-        -- println ("Process.addToProcTab grabbing Process lock");
         Spinlocks.enterCriticalSection (lock);
+
         proctab(proc.pid) := proc;
+
         Spinlocks.exitCriticalSection (lock);
-        -- println ("Process.addToProcTab released Process lock");
     end addToProctab;
 
     ---------------------------------------------------------------------------
@@ -57,48 +57,27 @@ is
                                  priority   : in ProcessPriority) return Process
     is
         proc : Process;
-        -- kStackPhys : Virtmem.PhysAddress;
-        -- kStackAddr : Virtmem.VirtAddress;
     begin
-        -- println ("Process: createKernelThread");
         PIDTracker.allocSpecificPID (pid);
-        -- PIDTracker.allocPID (proc.pid);
 
-        -- if proc.pid = 0 then
-        --     println ("Process: Unable to create new kernel thread. No free PIDs");
-        --     return proc;
-        -- end if;
-
-        proc.pid         := pid;
-        proc.ppid        := 0;
-        proc.name        := name;
-        proc.mode        := KERNEL;
-        proc.state       := READY;
-        proc.priority    := priority;
+        proc.pid      := pid;
+        proc.ppid     := 0;
+        proc.name     := name;
+        proc.mode     := KERNEL;
+        proc.state    := READY;
+        proc.priority := priority;
 
         -- Depending on how crazy these threads get, we may consider making this
         -- a different type with more room.
-        proc.kernelStack := new ProcessKernelStack;
-        
-        -- print ("Process: New kernel thread PID: "); println (proc.pid);
-        -- Allocate thread's stack
-        -- BuddyAllocator.alloc (2, kStackPhys);
-        -- if kStackPhys = 0 then
-        --     proc.pid := 0;
-        --     return proc;
-        -- end if;
+        proc.kernelStack    := new ProcessKernelStack;
         proc.kernelStackTop := proc.kernelStack.all'Address + ProcessKernelStack'Size / 8;
-        -- print ("Process: New kernel thread stack: "); println (kStackAddr);
 
-        -- setupKernelStack : declare
-        --     kernStack : ProcessKernelStack with Import, Address => To_Address(kStackAddr);
-        -- begin
         proc.kernelStack.filler := (others => 0);
 
         proc.kernelStack.interruptFrame := (
                 interruptNumber => 0,    
                 rip             => procStart,
-                rsp             => kStackAddr,
+                rsp             => proc.kernelStackTop,
                 rflags          => x86.FLAGS_INTERRUPT,
                 cs              => Segment.GDTOffset'Enum_Rep(Segment.GDT_OFFSET_KERNEL_CODE) or 0,
                 ss              => Segment.GDTOffset'Enum_Rep(Segment.GDT_OFFSET_KERNEL_DATA) or 0,
@@ -108,10 +87,7 @@ is
         proc.kernelStack.returnAddress := interruptReturn'Address;
         proc.kernelStack.context       := (rip => start'Address, others => 0);
 
-        --proc.kernelStackBottom  := Virtmem.P2V (kStackPhys);
-        --    proc.kernelStackTop     := kStackAddr;
         proc.context := proc.kernelStack.context'Address;
-        -- end setupKernelStack;
 
         return proc;
     end createKernelThread;
@@ -139,22 +115,23 @@ is
     ---------------------------------------------------------------------------
     procedure addStackPage (proc : in out Process) is
         newFrame : Virtmem.PhysAddress;
+        ok : Boolean;
+        MapException : exception;
+
         procedure mapPage is new Virtmem.mapPage (BuddyAllocator.allocFrame);
     begin
-        -- Allocate the new frame
         BuddyAllocator.allocFrame (newFrame);
 
-        -- @TODO this shouldn't be a fatal error but works for now to detect
-        -- errors.
+        -- @TODO this shouldn't be a fatal error for kernel but works for now to detect errors.
         if newFrame = 0 then
             raise ProcessException with "Unable to allocate memory for Process' stack expansion.";
         end if;
         
-        ProcessPageList.insertFront (newFrame);
+        FrameList.insertFront (proc.frames, newFrame);
 
         -- Map the frame just below the current stack.
         mapPage (newFrame,
-                 proc.stackTop - ((proc.numStackFrames + 1) * Virtmem.PAGE_SIZE),
+                 To_Integer(proc.stackTop - Storage_Count((proc.numStackFrames + 1) * Virtmem.PAGE_SIZE)),
                  Virtmem.PG_USERDATA,
                  proc.pgTable,
                  ok);
@@ -170,40 +147,28 @@ is
     ---------------------------------------------------------------------------
     -- create
     ---------------------------------------------------------------------------
-    function create (imageStart  : in Virtmem.PhysAddress;
-                     imageSize   : in Unsigned_64;
+    function create (imageStart  : in System.Address;
+                     imageSize   : in Storage_Count;
                      procStart   : in System.Address;
                      ppid        : in ProcessID;
                      name        : in ProcessName;
                      priority    : in ProcessPriority;
-                     procStack   : in Virtmem.VirtAddress) return Process
+                     procStack   : in System.Address) return Process
         with SPARK_Mode => Off
     is
         proc            : Process;
-
         pgTablePhys     : Virtmem.PhysAddress;
-        -- textPhys        : Virtmem.PhysAddress;
 
         -- Address of our allocated stack (initial)
         userStack       : System.Address;
-
-        -- 
         userStackPhys   : Virtmem.PhysAddress;
-        userRSP         : Virtmem.VirtAddress := procStack - Virtmem.PAGE_SIZE;
-
-        -- kStackPhys      : Virtmem.PhysAddress;
-        -- kStackAddr      : Virtmem.VirtAddress;
     begin
         PIDTracker.allocPID (proc.pid);
 
         -- sanity checks
         if proc.pid = 0 then
             raise ProcessException with "Unable to create new process. No free PIDs";
-            -- println ("ERR: Unable to create new process. No free PIDs");
-            -- return proc;
         end if;
-
-        -- print ("New process PID: "); println (newProc.pid);
 
         proc.ppid        := ppid;
         proc.name        := name;
@@ -213,58 +178,13 @@ is
         proc.stackTop    := procStack;
         proc.kernelStack := new ProcessKernelStack;
 
-        ProcessPageList.setup(proc.pages);
+        FrameList.setup (proc.frames, MAX_STACK_FRAMES + MAX_HEAP_FRAMES);
 
         proc.kernelStackTop := proc.kernelStack.all'Address + ProcessKernelStack'Size / 8;
 
-        -- Allocate memory for the process' top-level page table
-        -- BuddyAllocator.allocFrame(To_Integer(newProc.pgTable));
-        -- if newProc.pgTable = 0 then
-        --     newProc.pid := 0;
-        --     return newProc;
-        -- end if;
-
-        -- Allocate the process' kernel-space stack.
-        -- BuddyAllocator.alloc (2, kStackPhys);
-        -- if kStackPhys = 0 then
-        --     newProc.pid := 0;
-        --     return newProc;
-        -- end if;
-
-        -- Allocate one page for the process' user-space stack to start.
-        
-
-        -- newProc.stackBottomPhys := uStackPhys;      -- physical frames(s) for stack
-        -- newProc.stackBottom     := uStackAddr;      -- virtual page addr of stack
-
-        -- Allocate memory for the process' image
-        -- BuddyAllocator.allocFrame(procPhys);
-        -- if procPhys = 0 then
-        --     newProc.pid := 0;
-        --     return newProc;
-        -- end if;
-
-        -- put the process' kernel stack in the 4th page we allocated.
-        -- kStackAddr := Virtmem.P2V(kStackPhys + 3 * Virtmem.PAGE_SIZE);
-
         -- Build the initial kernel stack.
         setupKernelStack : declare
-
-            -- newKernelStack : ProcessKernelStack with 
-            --     Import, Address => To_Address(kStackAddr);
         begin
-
-            -- println (" Kernel Stack Layout: ");
-            -- print ("  kStackAddr:     "); println(kStackAddr);
-            --print("  filler:         "); println(newKernelStack.filler'Address);
-            --print("  filler size:    "); println(Unsigned_64(PKStackFiller'Object_Size / 8));
-            --print("  context:        "); println(newKernelStack.context'Address);
-            --print("  contextSize:    "); println(Unsigned_64(SavedState'Object_Size / 8));
-            --print("  return Address: "); println(newKernelStack.returnAddress'Address);
-            --print("  returnSize:     "); println(Unsigned_64(System.Address'Object_Size / 8));
-            --print("  interruptFrame: "); println(newKernelStack.interruptFrame'Address);
-            --print("  intFrameSize:   "); println(Unsigned_64(interrupt.ExceptionStackFrame'Object_Size / 8));
-
             proc.kernelStack.filler := (others => 0);
 
             -- Since we use iretq to enter usermode, we need an "interrupt frame"
@@ -286,36 +206,11 @@ is
             -- ... but before that, we need "switch" to return to the start; procedure
             proc.kernelStack.context := (rip => start'Address, others => 0);
 
-            --newKernelStack.context.rbp := Util.addrToNum(newKernelStack.context'Address);
-            -- print (" nks.context.rip: "); println (newKernelStack.context.rip);
-            -- print (" nks.context.rbp: "); println (newKernelStack.context.rbp);
-
-            -- Set the process' kernel stack
-            -- newProc.kernelStackBottom := Virtmem.P2V (kStackPhys);
-            -- newProc.kernelStackTop    := kStackAddr + (Virtmem.FRAME_SIZE);
-
-            -- print (" newProc.kernelStackBottom: "); println (newProc.kernelStackBottom);
-            -- print (" newProc.kernelStackTop: ");    println (newProc.kernelStackTop);
-
-            newProc.context := proc.kernelStack.context'Address;
-            -- print (" newProc.context: "); println (newProc.context);
+            proc.context := proc.kernelStack.context'Address;
         end setupKernelStack;
 
-        -- Map the kernel into the process' address space. We don't give the
-        -- user the full set of kernel page tables, only the .text, .bss and
-        -- .data for use during interrupts.
-        --
-        -- This gives us a limited form of KPTI, but we can further restrict
-        -- what gets mapped into user space (TODO).
-        -- BuddyAllocator.allocFrame(pageTableAddr);
-        -- if pageTableAddr = 0 then
-        --     newProc.pid := 0;
-        --     return newProc;
-        -- end if;
-        -- println("Setting up process page tables");
+        -- Map the necessary text, stack into the user process' page tables.
         setupPageTables : declare
-            -- processP4 : Virtmem.P4 with
-            --     Import, Address => To_Address(Virtmem.P2V(pageTableAddr));
 
             procedure mapPage is new Virtmem.mapPage (BuddyAllocator.allocFrame);
             procedure zeroize is new Virtmem.zeroize (Virtmem.P4);
@@ -323,94 +218,19 @@ is
             ok : Boolean;
             MapException : exception;
         begin
-            -- println (" Zeroizing process P4 page table");
-            zeroize (newProc.pgTable);
+            zeroize (proc.pgTable);
 
-            -- The process needs at least some part of the kernel mapped
-            -- during operations, so that when interrupts and syscalls happen,
-            -- the kernel code can execute. We could copy entries from the
-            -- kernel's page tables, but we re-allocate new ones here so later
-            -- it's easier for us to free the whole table and its associated
-            -- memory in one fell-swoop using Virtmem.deleteP4
-            -- println ("Mapping higher-half into process' space");
-            Mem_mgr.mapKernelMemIntoProcess (newProc.pgTable);
-            -- println("Linear-mapping first MiB in process' address space");
-            -- for pg in Virtmem.addrToPFN(0)..Virtmem.addrToPFN(16#100000#) loop
-            --     mapPage (Virtmem.pfnToAddr(pg),
-            --              Virtmem.P2V(Virtmem.pfnToAddr(pg)),
-            --              Virtmem.PG_KERNELDATA,
-            --              newProc.pgTable,
-            --              ok);
-
-            --     if not ok then
-            --         raise MapException with 
-            --             "Process.create - can't map first 1MiB";
-            --     end if;
-            -- end loop;
-
-            -- println ("Mapping kernel .text in process' address space");
-            -- -- map kernel pages in the process' address space.
-            -- for pg in Mem_mgr.kernelTextPages'Range loop
-            --     mapPage(Virtmem.pfnToAddr(pg),
-            --             Virtmem.pfnToAddr(pg) + Virtmem.KERNEL_BASE,
-            --             Virtmem.PG_KERNELCODE,
-            --             newProc.pgTable,
-            --             ok);
-
-            --     if not ok then
-            --         raise MapException with 
-            --             "Process.create - can't map kernel's .text";
-            --     end if;
-            -- end loop;
-
-            -- println ("Mapping kernel .rodata in process' address space");
-            -- for pg in Mem_mgr.kernelROPages loop
-            --     mapPage(Virtmem.pfnToAddr(pg),
-            --             Virtmem.pfnToAddr(pg) + Virtmem.KERNEL_BASE,
-            --             Virtmem.PG_KERNELDATARO,
-            --             newProc.pgTable,
-            --             ok);
-            --     if not ok then
-            --         raise MapException with
-            --             "Process.create - can't map kernel's RO data";
-            --     end if;
-            -- end loop;
-
-            -- println ("Mapping kernel .data in process' address space");
-            -- for pg in Mem_mgr.kernelRWPages loop
-            --     mapPage(Virtmem.pfnToAddr(pg),
-            --             Virtmem.pfnToAddr(pg) + Virtmem.KERNEL_BASE,
-            --             Virtmem.PG_KERNELDATA,
-            --             newProc.pgTable,
-            --             ok);
-            --     if not ok then
-            --         raise MapException with
-            --             "Process.create - can't map kernel's RW data";
-            --     end if;
-            -- end loop;
-            
-            -- println ("Mapping kernel stack in process' address space");
-            -- for pg in Mem_mgr.kernelStackPages loop
-            --     mapPage(Virtmem.pfnToAddr(pg),
-            --             Virtmem.P2V(Virtmem.pfnToAddr(pg)),
-            --             Virtmem.PG_KERNELDATA,
-            --             newProc.pgTable,
-            --             ok);
-            --     if not ok then
-            --         raise MapException with
-            --             "Process.create - can't map kernel's RW data";
-            --     end if;
-            -- end loop;
+            Mem_mgr.mapKernelMemIntoProcess (proc.pgTable);
 
             -- map the process' image
             -- TODO: load it from an ELF image.
             -- for pg in processStackPages loop, etc...
-            -- print("Mapping process image from "); print(imageStart);
+            -- print ("Mapping process image from "); print (imageStart);
             -- println(" to virtual address 0");
-            mapPage (imageStart,
+            mapPage (Virtmem.V2P (imageStart),
                      0,
                      Virtmem.PG_USERCODE,
-                     newProc.pgTable,
+                     proc.pgTable,
                      ok);
 
             if not ok then
@@ -418,56 +238,10 @@ is
                 "Process.create - can't map process' image";
             end if;
 
-            -- map the process' user stack
-            -- print ("Mapping process stack from "); print (uStackPhys);
-            -- print (" to virtual address "); println (uStackAddr);
-            -- mapPage (uStackPhys,
-            --          uStackAddr,
-            --          Virtmem.PG_USERDATA,
-            --          newProc.pgTable,
-            --          ok);
-            addStackPage (newProc);
-
-            -- if not ok then
-            --     raise MapException with
-            --     "Process.create - can't map process' stack";
-            -- end if;
-
-            -- -- map all of the process' kernel stack pages
-            -- print ("Mapping process kernel stack from "); print (kStackPhys);
-            -- print (" to virtual address "); println (Virtmem.P2V(kStackPhys));
-            
-            -- mapPage (kStackPhys,
-            --          Virtmem.P2V(kStackPhys),
-            --          Virtmem.PG_KERNELDATA,
-            --          newProc.pgTable,
-            --          ok);
-            -- mapPage (kStackPhys + Virtmem.PAGE_SIZE,
-            --          Virtmem.P2V(kStackPhys + Virtmem.PAGE_SIZE),
-            --          Virtmem.PG_KERNELDATA,
-            --          newProc.pgTable,
-            --          ok);
-            -- mapPage (kStackPhys + 2 * Virtmem.PAGE_SIZE,
-            --          Virtmem.P2V(kStackPhys + 2 * Virtmem.PAGE_SIZE),
-            --          Virtmem.PG_KERNELDATA,
-            --          newProc.pgTable,
-            --          ok);
-            -- mapPage (kStackPhys + 3 * Virtmem.PAGE_SIZE,
-            --          Virtmem.P2V(kStackPhys + 3 * Virtmem.PAGE_SIZE),
-            --          Virtmem.PG_KERNELDATA,
-            --          newProc.pgTable,
-            --          ok);
-
-            -- if not ok then
-            --     raise MapException with
-            --     "Process.create - can't map process' kernel stack";
-            -- end if;
-            
-            -- TODO: get stack size from the ELF image
-            -- TODO: keep a list of process pages so we can delete them later.
+            addStackPage (proc);
         end setupPageTables;
 
-        return newProc;
+        return proc;
     end create;
 
     ---------------------------------------------------------------------------
@@ -481,13 +255,11 @@ is
         SPARK_Mode => On
     is
     begin
-        -- println ("Process.yield grabbing Process lock");
         Spinlocks.enterCriticalSection (lock);
-        --textmode.println("Yielding.");
         Scheduler.enter;
+
         -- continue execution here after context switch back to this process.
         Spinlocks.exitCriticalSection (lock);
-        -- println ("Process.yield released Process lock");
     end yield;
 
     ---------------------------------------------------------------------------
@@ -498,7 +270,6 @@ is
         pid     : constant ProcessID := PerCPUData.getCurrentPID;
         message : Unsigned_64;
     begin
-        -- println ("Process.receive grabbing Process lock");
         Spinlocks.enterCriticalSection (lock);
 
         message := proctab(pid).mail.message;
@@ -511,7 +282,7 @@ is
         proctab(pid).mail.hasMsg := False;
         
         Spinlocks.exitCriticalSection (lock);
-        -- println ("Process.receive released Process lock");
+
         return message;
     end receive;
 
@@ -522,7 +293,6 @@ is
         pid     : constant ProcessID := PerCPUData.getCurrentPID;
         message : Unsigned_64;
     begin
-        -- println ("Process.receiveNB grabbing Process lock");
         Spinlocks.enterCriticalSection (lock);
 
         if proctab(pid).mail.hasMsg then
@@ -533,7 +303,6 @@ is
         end if;
 
         Spinlocks.exitCriticalSection (lock);
-        -- println ("Process.receiveNB releasing Process lock");
 
         return message;
     end receiveNB;
@@ -545,7 +314,6 @@ is
     ---------------------------------------------------------------------------
     procedure send (dest : ProcessID; msg : Unsigned_64) with SPARK_Mode => On is
     begin
-        -- println ("Process.send grabbing Process lock");
         Spinlocks.enterCriticalSection (lock);
 
         proctab(dest).mail.hasMsg  := True;
@@ -556,7 +324,6 @@ is
         end if;
 
         Spinlocks.exitCriticalSection (lock);
-        -- println ("Process.send released Process lock");
     end send;
 
     ---------------------------------------------------------------------------
@@ -622,10 +389,8 @@ is
     is
     begin
         Spinlocks.exitCriticalSection (lock);
-        --serial.send(config.serialMirrorPort, 'A');
         -- Return to interruptReturn.
     end start;
-
 
     ---------------------------------------------------------------------------
     -- symbols needed for createFirstProcess to load the init binary image.
@@ -644,16 +409,15 @@ is
     procedure createFirstProcess with
         SPARK_Mode => Off   -- use of 'Address
     is
-        -- initStart       : Integer_Address := 
-        --     To_Integer(initBinaryStart'Address);
+        -- This is kind of funky. The initBinarySize gets stored as though it were
+        -- an address.
+        initSize : Storage_Count := Storage_Count(Util.addrToNum (initBinarySize'Address));
 
-        initSize        : Unsigned_64 := Util.addrToNum(initBinarySize'Address);
-
-        initProcess     : Process;
+        initProcess : Process;
 
         InitImageTooBigException : exception;
 
-        alignedStart    : Integer_Address;
+        alignedStart    : System.Address;  -- will be start from ELF process
         ignore          : System.Address;
     begin
         if initSize > Virtmem.PAGE_SIZE then
@@ -661,27 +425,24 @@ is
         end if;
 
         -- get a new page for us to copy the image to
-        BuddyAllocator.alloc (0, alignedStart);
+        BuddyAllocator.alloc (BuddyAllocator.getOrder (initSize), alignedStart);
 
         -- copy the init image to a new page, aligned at 0
-        ignore := Util.memcpy (To_Address(Virtmem.P2V(alignedStart)),
+        ignore := Util.memcpy (alignedStart,
                                initBinaryStart'Address,
                                Integer(initSize));
 
-        -- print ("Creating init process, image at: "); print (alignedStart);
-        -- print (", size: "); printdln (initSize);
-
+        -- @TODO put the stack way up on top of lower-half like a real process.
         initProcess := create (imageStart  => alignedStart,
                                imageSize   => initSize,
                                procStart   => To_Address(0),
                                ppid        => 1,
                                name        => "init            ",
                                priority    => 3,
-                               procStack   => Integer_Address(2 * Virtmem.PAGE_SIZE));
+                               procStack   => To_Address(2 * Virtmem.PAGE_SIZE));
 
-        -- println ("Adding to proctab");
         addToProctab (initProcess);
-        -- println ("Done creating process.");
+
     end createFirstProcess;
 
     ---------------------------------------------------------------------------
@@ -691,10 +452,8 @@ is
         SPARK_Mode => On
     is
     begin
-        -- print("Setting p4 to "); println(Virtmem.K2P(To_Integer(processP4)));
-        Virtmem.setActiveP4(Virtmem.K2P(To_Integer(processP4)));
+        Virtmem.setActiveP4 (Virtmem.K2P (To_Integer(processP4)));
     end switchAddressSpace;
-
 
     ---------------------------------------------------------------------------
     -- kill
@@ -705,46 +464,42 @@ is
         -- recursively unmaps/deallocates process' full paging hierarchy
         procedure deleteP4 is new Virtmem.deleteP4 (BuddyAllocator.freeFrame);
         
-        kStackPhys : Virtmem.PhysAddress := Virtmem.V2P(proctab(pid).kernelStackBottom);
-        uStackPhys : Virtmem.PhysAddress;
-
+        procedure free is new Ada.Unchecked_Deallocation (Object => ProcessKernelStack,
+                                                          Name   => ProcessKernelStackPtr);
     begin
         -- Back to kernel addressing.
         Mem_mgr.switchAddressSpace;
 
-        -- println ("Process.kill grabbing Process lock");
         Spinlocks.enterCriticalSection (lock);
 
         proctab(pid).state := INVALID;
-
         if proctab(pid).mode = USER then
-            uStackPhys := proctab(pid).stackBottomPhys;
+
+            --@TODO memory leak here with first process' .text. Not a huge
+            -- deal since eventually once the first process exits we'll shut down.
+            -- Free all memory used by the process.
+            loop
+                BuddyAllocator.freeFrame (FrameList.front(proctab(pid).frames));
+                FrameList.popFront (proctab(pid).frames);
+
+                exit when proctab(pid).frames.length = 0;
+            end loop;
+
+            FrameList.teardown (proctab(pid).frames);
 
             -- Need to unmap Kernel mem here so when we delete page tables we
             -- only delete the process' page tables.
             Mem_mgr.unmapKernelMemFromProcess (proctab(pid).pgTable);
             deleteP4 (proctab(pid).pgTable);
-
-            print (" Freeing user frames");
-            loop
-                BuddyAllocator.freeFrame (ProcessPageList.front(proctab(pid).frames));
-                ProcessPageList.popFront (proctab(pid).frames);
-
-                exit when ProcessPageList.length(proctab(pid).frames) = 0;
-            end loop;
-            ProcessPageList.teardown (proctab(pid).frames);
         end if;
         
-        -- print (" Freeing kernel stack at "); println (kStackPhys);
-        --BuddyAllocator.free (2, kStackPhys);
-        Ada.Unchecked_Deallocation (proctab(pid).kernelStack);
+        free (proctab(pid).kernelStack);
         
         -- Nothing to return to, go back to scheduler.
         Scheduler.enter;
 
         -- Should never actually get here.
         raise ProcessException with "Somehow returned from scheduler in Process.kill";
-        Spinlocks.exitCriticalSection(lock);
     end kill;
 
     ---------------------------------------------------------------------------
@@ -759,7 +514,7 @@ is
     ---------------------------------------------------------------------------
     -- print
     ---------------------------------------------------------------------------
-    procedure print (p : ProcessPtr) is
+    procedure print (p : ProcPtr) is
     begin
         -- @TODO
         null;

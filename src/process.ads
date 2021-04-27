@@ -18,6 +18,7 @@ with LinkedList;
 with Spinlocks;
 with Stackframe;
 with StoragePools;
+with TextIO;
 with Util;
 with Virtmem;
 
@@ -29,6 +30,8 @@ Pragma Elaborate_All (Devices);
 package Process with
     SPARK_Mode => On
 is
+    pool : StoragePools.StoragePool;
+
     ProcessException : exception;
 
     subtype ProcessName is String (1..16);
@@ -42,9 +45,10 @@ is
     --  ASLR, and make the process' stack top some random negative offset
     --  from here.
     -- @TODO I think since RSP is decremented first when pushing, this needs to be 8000_0000_0000.
-    PROCESS_STACK_TOP_VIRT     : constant Integer_Address := 16#0000_7FFF_FFFF_FFFF#;
+    PROCESS_STACK_TOP_VIRT : constant Integer_Address := 16#0000_7FFF_FFFF_FFFF#;
     -- PROCESS_INITIAL_STACK_SIZE : constant Unsigned_64 := Virtmem.PAGE_SIZE;
-    MAX_STACK_FRAMES           : constant := 256;   -- 1 MiB stack.
+    MAX_STACK_FRAMES       : constant := 256;   -- 1 MiB stack.
+    MAX_HEAP_FRAMES        : constant := 256;   -- 1 MiB heap
     
     subtype ProcessPriority is Integer range -1..100;
     type ProcessState is (INVALID, READY, RUNNING, SLEEPING, WAITING, RECEIVING, SUSPENDED);
@@ -135,10 +139,10 @@ is
     end record with Size => virtmem.FRAME_SIZE * 8;
 
     type ProcessKernelStackPtr is access ProcessKernelStack;
-    for ProcessKernelStackPtr'Simple_Storage_Pool use StoragePools.pool;
+    for ProcessKernelStackPtr'Simple_Storage_Pool use pool;
 
-    -- Keep a list of the pages used by this process.
-    package ProcessPageList is new LinkedList (System.Address);
+    -- Keep a list of the frames used by this process.
+    package FrameList is new LinkedList (Virtmem.PhysAddress, TextIO.print);
     
     -- type UserStackPtr is access UserStack;
     -- for UserStackPtr'Simple_Storage_Pool use StoragePools.pool;
@@ -190,7 +194,7 @@ is
 
         -- kernelStackBottom   : Integer_Address;  -- Pointer to process' kernel stack
         -- kernelStackTop      : Integer_Address;
-        frames              : ProcessPageList.List;
+        frames              : FrameList.List;
         numStackFrames      : Natural := 0;
 
         -- The top of the process' stack address (lower-half)
@@ -224,7 +228,7 @@ is
 
     -- WIP: proctab replacement
     type ProcPtr is access all Process;
-    for ProcPtr'Simple_Storage_Pool use StoragePools.pool;
+    for ProcPtr'Simple_Storage_Pool use pool;
     -- package ProcList is new LinkedList (ProcPtr, Process.print);
     -- allProcs : ProcList.List;
 
@@ -238,7 +242,8 @@ is
     procedure startKernelThread (procStart  : in System.Address;
                                  name       : in ProcessName;
                                  pid        : in ProcessID;
-                                 priority   : in ProcessPriority);
+                                 priority   : in ProcessPriority)
+        with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- create:
@@ -246,8 +251,8 @@ is
     -- Creates a new process in the READY state. It does NOT add it to the
     -- proctab.
     --
-    -- @param imageStart - the physical address (should be page-aligned) where
-    --  the process has been loaded into physical memory
+    -- @param imageStart - the virtual address (should be page-aligned) where
+    --  the process has been loaded into kernel memory
     -- @param imageSize - the size of the process' image
     -- @param procStart - the virtual process address where execution should
     --  start.
@@ -259,22 +264,24 @@ is
     --  process is 0, the process is invalid, perhaps due to PID exhaustion or
     --  a failure to allocate memory for page tables.
     --
-    -- @TODO: add an error code so it's apparent why process creation failed.
+    -- @TODO add an error code so it's apparent why process creation failed.
     ---------------------------------------------------------------------------
-    function create (imageStart  : in Virtmem.PhysAddress;
-                     imageSize   : in Unsigned_64;
+    function create (imageStart  : in System.Address;
+                     imageSize   : in Storage_Count;
                      procStart   : in System.Address;
                      ppid        : in ProcessID;
                      name        : in ProcessName;
                      priority    : in ProcessPriority;
-                     procStack   : in Virtmem.VirtAddress) return Process;
+                     procStack   : in System.Address) return Process
+        with SPARK_Mode => On;
+
 
     ---------------------------------------------------------------------------
     -- yield
     -- Yield this process' execution back to the scheduler.
     -- Called by the running process itself after an interrupt.
     ---------------------------------------------------------------------------
-    procedure yield;
+    procedure yield with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- wait
@@ -283,14 +290,15 @@ is
     -- ExitCriticalSection and begin waiting for the scheduler to wake us back
     -- up when someone or something else calls goAhead on the channel.
     ---------------------------------------------------------------------------    
-    procedure wait (channel : in WaitChannel; resourceLock : in out Spinlocks.spinlock);
+    procedure wait (channel : in WaitChannel; resourceLock : in out Spinlocks.spinlock)
+        with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- goAhead
     -- Set any processes waiting on the specified channel to READY.
     -- The opposite of "wait".
     ---------------------------------------------------------------------------
-    procedure goAhead (channel : in WaitChannel);
+    procedure goAhead (channel : in WaitChannel) with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- start
@@ -299,6 +307,7 @@ is
     -- This procedure releases the lock previously set by Scheduler.schedule
     ---------------------------------------------------------------------------
     procedure start with
+        SPARK_Mode => On,
         Pre => Spinlocks.isLocked(lock),
         Post => not Spinlocks.isLocked(lock);
 
@@ -318,45 +327,52 @@ is
     -- for the first user process (init) here and it can perform the syscall to
     -- load the actual init binary and start running it. See init.asm. 
     ---------------------------------------------------------------------------
-    procedure createFirstProcess;
+    procedure createFirstProcess
+        with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- switchAddressSpace
     -- Given the address of a process' P4 table, make that one the currently
     -- active table, changing the virtual memory address space in use.
     ---------------------------------------------------------------------------
-    procedure switchAddressSpace (processP4 : in System.Address);
+    procedure switchAddressSpace (processP4 : in System.Address)
+        with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- kill
     -- End this process
     -- @TODO ensure freeing all resources.
     ---------------------------------------------------------------------------
-    procedure kill (pid : in ProcessID);
+    procedure kill (pid : in ProcessID)
+        with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- send
     -- Put a message in a process' mailbox.
     ---------------------------------------------------------------------------
-    procedure send (dest : ProcessID; msg : Unsigned_64);
+    procedure send (dest : ProcessID; msg : Unsigned_64)
+        with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- receive
     -- Receive a message from one's mailbox. Block if no message available.
     ---------------------------------------------------------------------------
-    function receive return Unsigned_64;
+    function receive return Unsigned_64
+        with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- receiveNB
     -- Receive a message from one's mailbox, return Unsigned_64'Last if no
     -- message available.
     ---------------------------------------------------------------------------
-    function receiveNB return Unsigned_64;
+    function receiveNB return Unsigned_64
+        with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- getRunningProcess
     ---------------------------------------------------------------------------
-    function getRunningProcess return ProcPtr;
+    function getRunningProcess return ProcPtr
+        with SPARK_Mode => On;
 
 private
     ---------------------------------------------------------------------------
@@ -374,6 +390,7 @@ private
     -- In the pidMap, "True" means available, "False" means not available.
     ---------------------------------------------------------------------------
     package PIDTracker with
+        SPARK_Mode => On,
         Abstract_State => PIDTrackerState
     is
         -----------------------------------------------------------------------
@@ -382,6 +399,7 @@ private
         -- Protected with pidLock
         -----------------------------------------------------------------------
         procedure allocPID (pid : out ProcessID) with
+            SPARK_Mode => On,
             Global => (In_Out => PIDTrackerState);
 
         -----------------------------------------------------------------------
@@ -391,12 +409,14 @@ private
         -- Protected with pidLock
         -----------------------------------------------------------------------
         procedure allocSpecificPID (pid : in ProcessID) with
+            SPARK_Mode => On,
             Global => (In_Out => PIDTrackerState);
 
         -----------------------------------------------------------------------
         -- freePID: mark PID as free in bitmap. Not locked.
         -----------------------------------------------------------------------
         procedure freePID (pid : in ProcessID) with
+            SPARK_Mode => On,
             Global => (In_Out => PIDTrackerState);
 
     private
@@ -416,12 +436,15 @@ private
             with Part_Of => PIDTrackerState;
 
         function findFreePID return ProcessID with
+            SPARK_Mode => On,
             Global => (Input => PIDTrackerState);
 
         procedure markUsed (pid : in ProcessID) with
+            SPARK_Mode => On,
             Global => (In_Out => PIDTrackerState);
 
         procedure markFree (pid : in ProcessID) with
+            SPARK_Mode => On,
             Global => (In_Out => PIDTrackerState),
             Pre => pid /= 0;
 

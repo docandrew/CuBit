@@ -275,7 +275,7 @@ package body Video.VGA is
         -- buffer since it isn't mapped in the process space.
         -- If we switch to kernel address space in syscall handler, then the
         -- process memory isn't clearly mapped.
-        BuddyAllocator.alloc (ord  => BuddyAllocator.getOrder (Unsigned_64(framebufferSize)),
+        BuddyAllocator.alloc (ord  => BuddyAllocator.getOrder (framebufferSize),
                               addr => backbufferAddr);
 
         -- backbufferAddr := To_Address(Virtmem.P2V (backbufferPhys));

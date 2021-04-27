@@ -31,7 +31,7 @@
 -- a bunch of Address_to_Access conversions, etc. Using explicit placement
 -- with Import is much more straightforward.
 --
--- CAUTION: Theoretically, a malicious user program could put the address
+-- @CAUTION Theoretically, a malicious user program could put the address
 --  of our buddy in the buddy offset of a page that's mapped, and when the
 --  buddy is freed, it would coalesce with a block that's owned by the
 --  user. It's unlikely that a user would be able to guess the physical
@@ -54,14 +54,16 @@
 --  Another option is to check whether the buddy being freed is mapped to a
 --  process, but this could be expensive. Or, we just add bitmaps.
 --
--- NOTE: This package makes no use of dynamic memory allocation at this time,
+-- @NOTE This package makes no use of dynamic memory allocation at this time,
 --  and could theoretically be used as the boot allocator, however that may
 --  change later if we add bitmaps or other lists representing the state of
 --  physical frames.
 --
--- CAUTION: This allocator builds its free lists in the virtual, linear-mapped
+-- @CAUTION This allocator builds its free lists in the virtual, linear-mapped
 --  memory range. All the internal addresses it uses are going to be
---  higher-half.
+--  higher-half. If you're going to take one of these blocks for user process
+--  memory, you'll want to make sure you're mapping the equivalent physical
+--  address using Virtmem.V2P.
 -------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -121,11 +123,16 @@ is
     ---------------------------------------------------------------------------
     freeLists : FreeListArray;
 
+    function "<" (Left : in System.Address; Right : System.Address) return Boolean;
+    pragma Convention (Intrinsic, "<");
+    pragma Inline_Always ("<");
+    pragma Pure_Function ("<");
+
     ---------------------------------------------------------------------------
     -- blockSize
     -- @return the size (in bytes) of a given block order
     ---------------------------------------------------------------------------
-    function blockSize (ord : in Order) return Natural with
+    function blockSize (ord : in Order) return Storage_Count with
         Depends => (blockSize'Result => ord),
         Post    => blockSize'Result > Virtmem.FRAME_SIZE;
 
@@ -133,18 +140,21 @@ is
     -- getOrder
     -- @return the order size for a given allocation request (in bytes)
     ---------------------------------------------------------------------------
-    function getOrder (allocSize : in Natural) return Order with
+    function getOrder (allocSize : in Storage_Count) return Order with
         Depends => (getOrder'Result => allocSize);
 
     ---------------------------------------------------------------------------
     -- isValidBlock - given an address and an order, return True if this
     --  address represents a potentially valid block starting address, False
     --  otherwise.
+    -- @NOTE a failed allocation (i.e. Null_Address) will still be considered a
+    --  "valid" block per this function, so do NOT use this function to check
+    --  for a successful allocation.
     ---------------------------------------------------------------------------
     function isValidBlock (ord : in Order; addr : in System.Address)
         return Boolean with
         Post => isValidBlock'Result = 
-            ((addr mod Integer_Address(blockSize(ord))) = 0);
+            ((addr mod blockSize(ord)) = 0);
 
     ---------------------------------------------------------------------------
     -- getListAddress
@@ -197,14 +207,13 @@ is
         Depends => (addr        => (ord, freeLists),
                     freeLists   => (ord, freeLists)),
         Pre     => BuddyAllocator.initialized and ord < Order'Last,
-        Post    => isValidBlock(ord, addr);
+        Post    => isValidBlock (ord, addr);
 
     ---------------------------------------------------------------------------
     -- allocFrame
     -- Convenience procedure for getting a single physical frame, shorthand for
     --  alloc(0, V2P(addr))
-    -- @param addr - output address returned by this function, 0 if
-    --  unsuccessful.
+    -- @param addr - output address returned by this function, 0 if unsuccessful.
     ---------------------------------------------------------------------------
     procedure allocFrame (addr : out Virtmem.PhysAddress) with
         Global  => (In_Out      => freeLists,
@@ -212,7 +221,7 @@ is
         Depends => (addr        => (freeLists),
                     freeLists   => (freeLists)),
         Pre     => BuddyAllocator.initialized,
-        Post    => isValidBlock(0, addr);
+        Post    => isValidBlock (0, To_Address(addr));
 
     ---------------------------------------------------------------------------
     -- free
@@ -237,13 +246,13 @@ is
         Global  => (In_Out      => freeLists,
                     Proof_In    => BuddyAllocator.initialized),
         Depends => (freeLists   => (addr, freeLists)),
-        Pre     => isValidBlock(0, addr) and BuddyAllocator.initialized;
+        Pre     => isValidBlock(0, To_Address(addr)) and BuddyAllocator.initialized;
 
     ---------------------------------------------------------------------------
     -- getFreeBytes
     -- Returns the amount of memory available (in bytes) from this allocator
     ---------------------------------------------------------------------------
-    function getFreeBytes return Unsigned_64 with
+    function getFreeBytes return Storage_Count with
         Global  => (Input       => freeLists,
                     Proof_In    => BuddyAllocator.initialized),
         Depends => (getFreeBytes'Result => freeLists),
@@ -253,7 +262,7 @@ is
     -- getFreeFrames
     -- Returns the amount of frames available from this allocator
     ---------------------------------------------------------------------------
-    function getFreeFrames return Unsigned_64 with
+    function getFreeFrames return Natural with
         Global  => (Input       => freeLists,
                     Proof_In    => BuddyAllocator.initialized),
         Depends => (getFreeFrames'Result => freeLists),

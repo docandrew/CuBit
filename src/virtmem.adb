@@ -148,16 +148,6 @@ is
     end addrToPFN;
 
     ---------------------------------------------------------------------------
-    -- addrToPFN
-    ---------------------------------------------------------------------------
-    function addrToPFN (addr : PhysAddress) return PFN with
-        SPARK_Mode => On
-    is
-    begin
-        return PFN(Shift_Right (Unsigned_64(addr), FRAME_SHIFT));
-    end addrToPFN;
-
-    ---------------------------------------------------------------------------
     -- vaddrToPFN
     ---------------------------------------------------------------------------
     function vaddrToPFN (addr : System.Address) return PFN with
@@ -165,7 +155,17 @@ is
     is
     begin
         return addrToPFN (V2P(addr));
-    end addrToPFN;
+    end vaddrToPFN;
+
+    ---------------------------------------------------------------------------
+    -- vaddrToPFN
+    ---------------------------------------------------------------------------
+    function vaddrToPFN (addr : VirtAddress) return PFN with
+        SPARK_Mode => On
+    is
+    begin
+        return addrToPFN (V2P(addr));
+    end vaddrToPFN;
 
     ---------------------------------------------------------------------------
     -- addrToBigPFN
@@ -667,7 +667,7 @@ is
     end makeBigPTE;
     
     ---------------------------------------------------------------------------
-    -- These next two functions rely on the fact that we "identity-map" all
+    -- These next functions rely on the fact that we "identity-map" all
     -- physical memory into the upper-half with a fixed-offset of LINEAR_BASE.
     ---------------------------------------------------------------------------
     -- return physical address 
@@ -691,12 +691,20 @@ is
         return To_Integer(virtAddr) - LINEAR_BASE;
     end V2P;
 
+    ---------------------------------------------------------------------------
     -- return virtual address 
+    ---------------------------------------------------------------------------
     function P2V (physAddr : in PhysAddress) return VirtAddress
         with SPARK_Mode => On is
     begin
         return physAddr + LINEAR_BASE;
     end P2V;
+
+    function P2Va (physAddr : in PhysAddress) return System.Address
+        with SPARK_Mode => On is
+    begin
+        return To_Address(physAddr + LINEAR_BASE);
+    end P2Va;
 
     ---------------------------------------------------------------------------
     -- To be used to get physical address of any variable, procedure, etc. 

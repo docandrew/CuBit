@@ -12,16 +12,18 @@
 --
 -------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
+with System.Pool_Global;
 
-with BuddyAllocator;
 with Devices;
-with System;
+with StoragePools;
 with Time;
 with Filesystem.VFS;
 
 package Filesystem.Ext2 with
     SPARK_Mode => On
 is
+
+pool : StoragePools.StoragePool;
 
 Ext2Exception : exception;
 
@@ -295,6 +297,9 @@ record
 end record;
 
 type BlockGroupDescriptorTable is array (BlockGroupNumber range <>) of BlockGroupDescriptor;
+-- Fat pointer to unbounded array
+type BGDTPtr is access BlockGroupDescriptorTable;
+for BGDTPtr'Simple_Storage_Pool use pool;
 
 -------------------------------------------------------------------------------
 -- Inode data structures and definitions
@@ -515,9 +520,6 @@ record
     name                            : Filename;
 end record;
 
--- Fat pointer to unbounded array
-type BGDTPtr is access all BlockGroupDescriptorTable;
-
 ---------------------------------------------------------------------------
 -- Cache the superblock and block group descriptors
 ---------------------------------------------------------------------------
@@ -539,21 +541,24 @@ function setup (device : Devices.DeviceID) return Ext2Filesystem;
 -------------------------------------------------------------------------------
 -- blockSize - given a Superblock, return the size of its filesystem data block
 -------------------------------------------------------------------------------
-function blockSize (sb : in Superblock) return Unsigned_32;
+function blockSize (sb : in Superblock) return Unsigned_32
+    with SPARK_Mode => On;
 
 -------------------------------------------------------------------------------
 -- getBlockGroup - given an inode address and superblock, return the block
 --  group containing that inode.
 -------------------------------------------------------------------------------
 function getBlockGroup (inodeNum : in InodeAddr;
-                        sb       : in Superblock) return BlockGroupNumber;
+                        sb       : in Superblock) return BlockGroupNumber 
+    with SPARK_Mode => On;
 
 -------------------------------------------------------------------------------
 -- getInodeIndex - given an inode address and superblock, return the index into
 --  the block group's inode table.
 -------------------------------------------------------------------------------
 function getInodeIndex (inodeNum : in InodeAddr;
-                        sb       : in Superblock) return Unsigned_32;
+                        sb       : in Superblock) return Unsigned_32
+    with SPARK_Mode => On;
 
 -------------------------------------------------------------------------------
 -- getContainingBlock - given an index into a block group's inode table, the
@@ -561,13 +566,15 @@ function getInodeIndex (inodeNum : in InodeAddr;
 --  containing that inode.
 -------------------------------------------------------------------------------
 function getContainingBlock (index : in Unsigned_32;
-                             sb    : in Superblock) return BlockAddr;
+                             sb    : in Superblock) return BlockAddr
+    with SPARK_Mode => On;
 
 -------------------------------------------------------------------------------
 -- readSuperBlock - Read the Ext2 Superblock and first BlockGroupDescriptor.
 -------------------------------------------------------------------------------
 procedure readSuperBlock (device : in Devices.DeviceID;
-                          sb     : in out Superblock);
+                          sb     : in out Superblock)
+    with SPARK_Mode => On;
 
 -------------------------------------------------------------------------------
 -- readBlockGroupDescriptors - allocate memory needed to hold this fs' 
@@ -577,7 +584,8 @@ procedure readSuperBlock (device : in Devices.DeviceID;
 -- @return pointer to allocated Block Group Descriptor Table
 -------------------------------------------------------------------------------
 function readBlockGroupDescriptors (device : in Devices.DeviceID;
-                                    sb     : in SuperBlock) return BGDTPtr;
+                                    sb     : in SuperBlock) return BGDTPtr
+    with SPARK_Mode => On;
 
 -------------------------------------------------------------------------------
 -- readInode - read an inode from disk.
@@ -596,14 +604,14 @@ procedure dumpDirs (fs    : in Ext2Filesystem;
 -------------------------------------------------------------------------------
 -- print - Output the superblock details for development/debugging purposes
 -------------------------------------------------------------------------------
-procedure print (sb : in Superblock);
+procedure print (sb : in Superblock) with SPARK_Mode => On;
 
 -------------------------------------------------------------------------------
 -- print - Output inode details for development/debugging purposes.
 --  CuBit may not care about many of the flags and fields output by this
 --  subprogram.
 -------------------------------------------------------------------------------
-procedure print (myInode : in Inode);
+procedure print (myInode : in Inode) with SPARK_Mode => On;
 
 
 end Filesystem.Ext2;

@@ -27,6 +27,7 @@ project CuBit is
         (
             "-g",                   -- debug info
             "-gnatp",               -- suppress all checks
+            --"-gnata",             -- Enable assertions
             "-gnatwa",              -- print all warnings...
             "-gnatw.X",             -- disable warnings for No_Exception_Propagation
             "-gnatd.v",             -- SPARK elaboration model

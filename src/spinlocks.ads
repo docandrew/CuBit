@@ -35,7 +35,6 @@ is
         state      : LockBool := UNLOCKED;
         priorFlags : x86.RFlags;
         cpu        : Integer := -1;
-        -- callStack  : CallStackT := (others => 0);
         name       : access String;
     end record;
 

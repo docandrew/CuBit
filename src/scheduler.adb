@@ -9,11 +9,8 @@ with System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with Mem_mgr;
-with PerCPUData;
 with TextIO; use TextIO;
-with Util;
 with x86;
---with Spinlocks;
 
 package body Scheduler with
     -- Refined_State => (
@@ -33,18 +30,13 @@ is
             cpuData : PerCPUData.PerCPUData with
                 Import, Address => perCPUAddr;
         begin
-            --textmode.println("Entering scheduler");
             Process.switch (cpuData.oldContext'Address, cpuData.schedulerContext);
         end getCPUContext;
     end enter;
 
-    function getKernelStackTop (proc : in Process) return Unsigned_64 is
-    begin
-        return proc.processKernelStack.all'Address + Process.ProcessKernelStack'Size / 8;
-    end getKernelStackTop;
-
     ---------------------------------------------------------------------------
-    -- Note: this process is only _called_ once, at bootup (per-CPU).
+    -- schedule
+    -- @NOTE This process is only _called_ once per CPU, at bootup.
     -- Future entries back into this function are through the enter
     --  procedure which means we'll pick up where we left off,
     --  trying to run the next process in the proctab.
@@ -62,41 +54,22 @@ is
         startSearch : loop
             x86.sti;
 
-            -- print ("CPU "); print (cpuData.cpuNum);
-            -- println (": Checking for processes to run.");
-
-            -- We'll always have an idle process to run
-            -- reached end of proctab without finding any READY
-            -- processes, so just idle until the next tick
-            -- if pidIndex = Process.proctab'Last then
-            --     idle;             -- when we return from idle...
-            --     pidIndex := 1;    -- ... we'll go back to the beginning and check.
-            -- end if;
-
             if x86.panicked then
                 x86.cli;
                 x86.halt;
             end if;
 
-            -- NOTE: this lock is released either by process.start (if this is the process'
+            -- @NOTE This lock is released either by process.start (if this is the process'
             --  first time executing); process.yield (if the process is continuing from the 
             --  call to scheduler.enter from the last time it yielded); or at the symmetric
             --  exitCriticalSection call in this function (if no processes were READY and
             --  we left the for loop).
-            -- println (" Scheduler: grabbing Process lock");
             enterCriticalSection (Process.lock);
 
             for i in pidIndex .. Process.proctab'Last loop
 
                 if Process.proctab(i).state = READY then
-                    -- print ("Scheduler: found READY process ");
-                    -- println (i);
-                    
-                    -- print ("Scheduler: switching to pid ");
-                    -- print (i);
-                    -- print (" context: ");
-                    -- println (Process.proctab(i).context);
-                    
+
                     Process.proctab(i).state    := RUNNING;
 
                     cpuData.currentPID          := i;
@@ -127,7 +100,7 @@ is
 
                     -- Update the process' context pointer.
                     -- (currentContext was set in Scheduler.enter)
-                    -- If the process was RUNNING before and got switched against its will, 
+                    -- If the process was RUNNING before and got switched against its will,
                     -- set it back to READY.
                     case Process.proctab(i).state is
                         
@@ -175,25 +148,8 @@ is
             end loop;
 
             exitCriticalSection (Process.lock);
-            -- println (" Scheduler: released Process lock (2)");
 
         end loop startSearch;
     end schedule;
-
-    -- procedure idle with
-    --     SPARK_Mode => On
-    -- is
-    -- begin
-    --     -- TODO: add some counting of ticks here so we can
-    --     -- keep track of CPU usage.
-    --     x86.halt;
-    -- end idle;
-
-    -- function getCurrentPID return process.ProcessID with
-    --     SPARK_Mode => On
-    -- is
-    -- begin
-    --     return currentPID;
-    -- end getCurrentPID;
 
 end Scheduler;

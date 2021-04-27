@@ -7,8 +7,6 @@
 with Ada.Unchecked_Conversion;
 with Interfaces; use Interfaces;
 
-with x86;
-
 package cmos with
     SPARK_Mode => On
 is

@@ -12,6 +12,22 @@ package body BuddyAllocator
 is
 
     ---------------------------------------------------------------------------
+    -- Address Arithmetic (don't tell!)
+    ---------------------------------------------------------------------------
+    function "<" (Left : in System.Address; Right : System.Address) return Boolean
+    is
+    begin
+        return To_Integer(Left) < To_Integer(Right);
+    end "<";
+
+    function "not" (arg : Storage_Count) return Storage_Count
+    is
+    begin
+        -- Need to convert to modular type for this intrinsic.
+        return Storage_Count(not Unsigned_64(arg));
+    end "not";
+
+    ---------------------------------------------------------------------------
     -- getBuddy
     ---------------------------------------------------------------------------
     function getBuddy (ord  : in Order;
@@ -20,41 +36,40 @@ is
     is
         mask : constant Integer_Address := Integer_Address(blockSize (ord));
     begin
-        return To_Integer(addr) xor mask;
+        return To_Address(To_Integer(addr) xor mask);
     end getBuddy;
 
-
     ---------------------------------------------------------------------------
+    -- blockStart
     -- One of our design decisions is to ensure all the buddies in our
     -- allocator are power-of-2 aligned. When we setup the initial set of free
     -- lists, we want to ensure that we only free frames that are within an
     -- aligned block of MAX_BUDDY_ORDER size. This ensures all blocks within
     -- the buddy structure are going to stay block size-aligned.
     ---------------------------------------------------------------------------
-    function blockStart (ord : in Order; addr : in System.Address) return Integer_Address
+    function blockStart (ord : in Order; addr : in System.Address) return System.Address
         with SPARK_Mode => On,
         Post => blockStart'Result < addr
     is
         roundDownMask : constant Integer_Address := 
-            Integer_Address(not (blockSize(ord) - 1));
+            Integer_Address(not (blockSize (ord) - 1));
     begin
         -- discard the lowest (FRAME_SHIFT + MAX_BUDDY_ORDER) bits
         --pragma Assert(addr and roundDownMask < addr);
-        return To_Integer(addr) and roundDownMask;
+        return To_Address(To_Integer(addr) and roundDownMask);
 
     end blockStart;
 
     ---------------------------------------------------------------------------
     -- blockEnd
     ---------------------------------------------------------------------------
-    function blockEnd (ord : in Order; addr : in Virtmem.PhysAddress)
-        return Integer_Address
+    function blockEnd (ord : in Order; addr : in System.Address)
+        return System.Address
         with SPARK_Mode => On
     is
     begin
-        return blockStart (ord, addr) + Integer_Address(blockSize (ord)) - 1;
+        return blockStart (ord, addr) + blockSize (ord) - 1;
     end blockEnd;
-
 
     ---------------------------------------------------------------------------
     -- popFromFreeList
@@ -70,9 +85,8 @@ is
             with Import, Address => freeLists(ord).nextBlock;
     begin
         -- set output
-        addr := To_Integer(freeLists(ord).nextBlock);
-        -- print("popFromFreeList addr:"); println(addr);
-
+        addr := freeLists(ord).nextBlock;
+        
         linkNext:
         declare
             nextBlock : aliased FreeBlock
@@ -87,14 +101,13 @@ is
 
         -- clear the buddy flag so when our buddy checks to see
         -- if we're free, he knows we aren't.
-        -- TODO: always zero the whole block?
+        -- @TODO probably a good idea to zero the whole block
         retBlock.buddy      := System.Null_Address;
         retBlock.prevBlock  := System.Null_Address;
         retBlock.nextBlock  := System.Null_Address;
 
         freeLists(ord).numFreeBlocks := freeLists(ord).numFreeBlocks - 1;
     end popFromFreeList;
-
 
     ---------------------------------------------------------------------------
     -- addToFreeList - perform an insertion at the front of the free list for
@@ -105,7 +118,7 @@ is
         SPARK_Mode => On
     is
         newBlock  : aliased FreeBlock with
-            Import, Address => To_Address(newBlockAddr);
+            Import, Address => newBlockAddr;
 
         nextBlock : aliased FreeBlock with
             Import, Address => freeLists(ord).nextBlock;
@@ -113,18 +126,17 @@ is
         -- point us to the next block in the line
         newBlock.prevBlock          := nextBlock.prevBlock;
         newBlock.nextBlock          := freeLists(ord).nextBlock;
-        newBlock.buddy              := To_Address(getBuddy(ord, newBlockAddr));
+        newBlock.buddy              := getBuddy (ord, newBlockAddr);
 
         -- point list head fwd to us
-        freeLists(ord).nextBlock    := To_Address(newBlockAddr);
+        freeLists(ord).nextBlock    := newBlockAddr;
 
         -- point next block in line back to us
-        nextBlock.prevBlock         := To_Address(newBlockAddr);
+        nextBlock.prevBlock         := newBlockAddr;
 
         -- increase block count
         freeLists(ord).numFreeBlocks := freeLists(ord).numFreeBlocks + 1;
     end addToFreeList;
-
 
     ---------------------------------------------------------------------------
     -- splitBlock
@@ -143,7 +155,6 @@ is
         addToFreeList (ord - 1, rightHalfAddr);
     end splitBlock;
 
-
     ---------------------------------------------------------------------------
     -- isBuddyFree - given an order and a block address, determine whether that
     -- block's buddy is free.
@@ -155,12 +166,11 @@ is
         use System; -- for "=" operator
 
         buddy : aliased FreeBlock with
-            Import, Address => To_Address(getBuddy(ord, addr));
+            Import, Address => getBuddy (ord, addr);
     begin
         -- Later on, we can replace this function with a bitmap lookup
-        return buddy.buddy = To_Address(addr);
+        return buddy.buddy = addr;
     end isBuddyFree;
-
 
     ---------------------------------------------------------------------------
     -- unlink
@@ -177,7 +187,7 @@ is
                 freeLists(ord).numFreeBlocks'Old - 1
     is
         block : aliased FreeBlock with
-            Import, Address => To_Address(addr);
+            Import, Address => addr;
 
         prevAddr : constant System.Address := block.prevBlock;
         nextAddr : constant System.Address := block.nextBlock;
@@ -199,24 +209,23 @@ is
         freeLists(ord).numFreeBlocks := freeLists(ord).numFreeBlocks - 1;
     end unlink;
 
-
     ---------------------------------------------------------------------------
     -- blockSize
     ---------------------------------------------------------------------------
-    function blockSize (ord : in Order) return Natural with
+    function blockSize (ord : in Order) return Storage_Count with
         SPARK_Mode => On
     is
     begin
-        return Shift_Left(Natural(1), Natural(Virtmem.FRAME_SHIFT + ord));
+        return Storage_Count(Shift_Left (Value  => Unsigned_64(1),
+                                         Amount => Integer(Virtmem.FRAME_SHIFT + ord)));
     end blockSize;
 
     ---------------------------------------------------------------------------
     -- getOrder
     ---------------------------------------------------------------------------
-    function getOrder (allocSize : in Natural) return Order with
+    function getOrder (allocSize : in Storage_Count) return Order with
         SPARK_Mode => On
     is
-        -- rounded : constant Unsigned_64 := Util.nextPow2 (allocSize);
     begin
         if allocSize = 0 then
             raise AllocatorException with "getOrder with argument 0";
@@ -239,9 +248,8 @@ is
         SPARK_Mode => On
     is
     begin
-        return (To_Integer(addr) mod blockSize(ord))) = 0;
+        return (addr mod blockSize(ord)) = 0;
     end isValidBlock;
-
 
     ---------------------------------------------------------------------------
     -- getListAddress
@@ -255,13 +263,13 @@ is
 
     ---------------------------------------------------------------------------
     -- getAlignedStart
-    -- Given the start of a physical memory region, round up to the nearest max 
+    -- Given the start of a _physical_ memory region, round up to the nearest max 
     -- block-aligned _virtual_ (linear-mapped) address.
     ---------------------------------------------------------------------------
     function getAlignedStart (startPhys : Virtmem.PhysAddress) return System.Address
     is
     begin
-        return blockStart (Order'Last, Virtmem.P2V(startPhys))
+        return blockStart (Order'Last, Virtmem.P2Va(startPhys))
              + blockSize (Order'Last);
     end getAlignedStart;
 
@@ -273,18 +281,8 @@ is
     function getAlignedEnd (endPhys : Virtmem.PhysAddress) return System.Address
     is
     begin
-        return blockStart (Order'last, endPhys) - 1;
+        return blockStart (Order'last, Virtmem.P2Va(endPhys)) - 1;
     end getAlignedEnd;
-
-    ---------------------------------------------------------------------------
-    -- getBootAllocatorEnd
-    -- Return the last address owned by the boot allocator.
-    ---------------------------------------------------------------------------
-    function getBootAllocatorEnd return System.Address
-    is
-    begin
-        return Virtmem.P2V (Virtmem.PFNToAddr (BootAllocator.highestPFNAllocated));
-    end getBootAllocatorEnd;
 
     ---------------------------------------------------------------------------
     -- setup
@@ -307,7 +305,7 @@ is
         topLevelBlockEnd      : System.Address;
         startPFN              : Virtmem.PFN;
         endPFN                : Virtmem.PFN;
-        numTopLevelBlocksHere : Natural;
+        numTopLevelBlocksHere : Storage_Count;
     begin
         -- make freeLists self-referential and empty to start
         for ord in Order'Range loop
@@ -328,26 +326,15 @@ is
 
                 numTopLevelBlocksHere := (alignedEnd - alignedStart) / blockSize (Order'Last);
 
-                -- print("Memory area start: "); print(area.startAddr);
-                -- print(" aligned: "); println(alignedStart);
-
-                -- print("Memory area end:   "); print(area.endAddr);
-                -- print(" aligned: "); println(alignedEnd);
-
-                -- print("Top level blocks here: "); printdln(numTopLevelBlocksHere);
-                -- print("Max boot allocator:    "); println(Virtmem.pfnToAddr(BootAllocator.highestPFNAllocated));
                 -- If this memory area was too small to fit a top-level block,
-                -- then the "round up" and "round down" will be flipped
+                -- then the "round up" and "round down" will be flip-flopped.
                 if alignedEnd < alignedStart then
-                    --println("Skipping memory area (too small)");
+                    -- This memory area is too small. Skip it.
                     null;
                 else
-                    pragma Assert(alignedStart mod 
-                            Integer_Address(blockSize(Order'Last)) = 0);
-                    pragma Assert(alignedEnd mod 
-                            Integer_Address(blockSize(Order'Last)) = 0);
-                    pragma Assert((alignedEnd - alignedStart) 
-                            >= Integer_Address(blockSize(Order'Last)));
+                    pragma Assert (alignedStart mod blockSize(Order'Last) = 0);
+                    pragma Assert (alignedEnd mod blockSize(Order'Last) = 0);
+                    pragma Assert (alignedEnd - alignedStart >= blockSize(Order'Last));
 
                     -- if this top level block is beyond the area owned by the
                     -- boot allocator, we can free the entire top-level block.
@@ -355,31 +342,25 @@ is
                     -- not owned by the boot allocator.
                     for i in 0..numTopLevelBlocksHere - 1 loop
 
-                        topLevelBlockStart := alignedStart + 
-                            Integer_Address(i * blockSize (Order'Last));
+                        topLevelBlockStart := alignedStart + (i * blockSize (Order'Last));
 
-                        topLevelBlockEnd := topLevelBlockStart +
-                            Integer_Address(blockSize (Order'Last) - 1);
+                        topLevelBlockEnd := topLevelBlockStart + (blockSize (Order'Last) - 1);
 
                         startPFN := Virtmem.vaddrToPFN (topLevelBlockStart);
                         endPFN   := Virtmem.vaddrToPFN (topLevelBlockEnd);
 
                         if BootAllocator.highestPFNAllocated > startPFN then
-                            -- print("Freeing frames in region ");
-                            -- print(topLevelBlockStart); print(" to "); println(topLevelBlockEnd);
+
                             -- go page by page in this block
-                            eachPFN:
-                            for pfn in startPFN..endPFN
-                            loop
-                                if BootAllocator.isFree(pfn) then
-                                    free (Order'First, Virtmem.pfnToAddr(pfn));
-                                    -- print(" free pfn at addr: "); println(Virtmem.P2V(Virtmem.pfnToAddr(pfn)));
+                            eachPFN: for pfn in startPFN..endPFN loop
+
+                                if BootAllocator.isFree (pfn) then
+                                    free (ord  => Order'First,
+                                          addr => Virtmem.P2Va (Virtmem.pfnToAddr (pfn)));
                                 end if;
+
                             end loop eachPFN;
-                            println;
                         else
-                            -- print("Freeing top-level block at ");
-                            -- println(topLevelBlockStart);
                             free (Order'Last, topLevelBlockStart);
 
                         end if;
@@ -411,17 +392,13 @@ is
     begin
         -- find a list order big enough to satisfy our request
         findLoop: loop
-            -- println ("Alloc:");
-            -- print ("Checking order "); println (Integer(curOrd));
-            -- print ("freeLists(curOrd).nextBlock: "); println (freeLists(curOrd).nextBlock);
-            -- print ("getListAddress (curOrd): "); println (getListAddress (curOrd));
             
             if freeLists(curOrd).nextBlock /= getListAddress (curOrd) then
                 -- found free space in order i
                 -- remove the block from the list
 
                 popFromFreeList (curOrd, retBlock);
-                -- print ("Returning block: "); println (retBlock);
+
                 -- assign output
                 addr := retBlock;
 
@@ -452,10 +429,10 @@ is
     procedure allocFrame (addr : out Virtmem.PhysAddress) with
         SPARK_Mode => On
     is
-        physAddr : Virtmem.PhysAddress;
+        vaddr : System.Address;
     begin
-        alloc (0, physAddr);
-        addr := Virtmem.V2P (physAddr);
+        alloc (0, vaddr);
+        addr := Virtmem.V2P (vaddr);
     end allocFrame;
 
     ---------------------------------------------------------------------------
@@ -474,22 +451,22 @@ is
     procedure free (ord : in Order; addr : in System.Address) with
         SPARK_Mode => On
     is
-        --freeAddr : Integer_Address := Virtmem.P2V(addr);
-
-        curOrd : Order := ord;
+        curOrd   : Order := ord;
+        freeAddr : Integer_Address := To_Integer(addr);
     begin
         -- "bubble up" free blocks as long as each order's buddy is free
         -- and we aren't at max order
         coalesce: while curOrd < Order'Last loop
-            if isBuddyFree (curOrd, addr) then
+
+            if isBuddyFree (curOrd, To_Address(freeAddr)) then
                 -- buddy indicates free (see CAUTION), coalesce
                 
                 -- remove buddy from its current free list
-                unlink (curOrd, getBuddy (curOrd, addr));
+                unlink (curOrd, getBuddy (curOrd, To_Address(freeAddr)));
 
                 -- combined us+buddy address, whether we were left or right
-                addr := addr and Integer_Address(not blockSize (curOrd));
-                
+                freeAddr := freeAddr and Integer_Address(not blockSize (curOrd));
+
                 -- see if our coalesced block can be combined with the next level up
                 curOrd := curOrd + 1;
             else
@@ -498,20 +475,18 @@ is
                 markBuddy:
                 declare
                     block: aliased FreeBlock with
-                        Import, Address => addr;
+                        Import, Address => To_Address(freeAddr);
                 begin
-                    block.buddy := getBuddy (curOrd, addr);
+                    block.buddy := getBuddy (curOrd, To_Address(freeAddr));
                 end markBuddy;
 
                 exit coalesce;
             end if;
         end loop coalesce;
 
-        -- add us to top free list
-        --print ("Adding "); print (freeAddr); print (" to free list "); println (getOrderNum (curOrd));
-        addToFreeList (curOrd, addr);
+        -- add us to front of the respective free list
+        addToFreeList (curOrd, To_Address(freeAddr));
     end free;
-
 
     ---------------------------------------------------------------------------
     -- freeFrame
@@ -520,20 +495,19 @@ is
         SPARK_Mode => On
     is
     begin
-        free(0, addr);
+        free (0, Virtmem.P2Va (addr));
     end freeFrame;
-
 
     ---------------------------------------------------------------------------
     -- getFreeBytes
     ---------------------------------------------------------------------------
-    function getFreeBytes return Unsigned_64 with
+    function getFreeBytes return Storage_Count with
         SPARK_Mode => On
     is
-        ret : Unsigned_64 := 0;
+        ret : Storage_Count := 0;
     begin
         for ord in Order'Range loop
-            ret := ret + (freeLists(ord).numFreeBlocks * blockSize(ord));
+            ret := ret + (Storage_Count(freeLists(ord).numFreeBlocks) * blockSize (ord));
         end loop;
 
         return ret;
@@ -543,17 +517,11 @@ is
     ---------------------------------------------------------------------------
     -- getFreeFrames
     ---------------------------------------------------------------------------
-    function getFreeFrames return Unsigned_64 with
+    function getFreeFrames return Natural with
         SPARK_Mode => On
     is
-        ret : Unsigned_64 := 0;
     begin
-        for ord in Order'Range loop
-            ret := ret + (freeLists(ord).numFreeBlocks * 
-                          Shift_Left(1, Natural(ord)));
-        end loop;
-
-        return ret;
+        return Natural(getFreeBytes / Virtmem.FRAME_SIZE);
     end getFreeFrames;
 
     ---------------------------------------------------------------------------
@@ -563,15 +531,18 @@ is
         SPARK_Mode => On
     is
     begin
-        println("-----------------------------------------------------");
-        println("                  Buddy Allocator                    ", LT_BLUE, BLACK);
-        println("-----------------------------------------------------");
+        println ("-----------------------------------------------------");
+        println ("                  Buddy Allocator                    ", LT_BLUE, BLACK);
+        println ("-----------------------------------------------------");
+        
         for ord in Order'Range loop
             print ("Order: ");        print (Integer(ord));
-            print (" Block Size: ");  printd (blockSize(ord));
-            print (" Free Blocks: "); printdln (freeLists(ord).numFreeBlocks);
+            print (" Block Size: ");  print (Natural(blockSize(ord)));
+            print (" Free Blocks: "); println (freeLists(ord).numFreeBlocks);
         end loop;
-        print("Total free: "); printd(getFreeBytes / 16#100000#);
-        println(" MiB");
+        
+        print ("Total free: "); print (Natural(getFreeBytes / 16#100000#));
+        println (" MiB");
+
     end print;
 end BuddyAllocator;

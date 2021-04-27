@@ -122,15 +122,15 @@ begin
     BuddyAllocator.setup (memAreas);
     StoragePools.setup;
 
-    -- @TODO pick EGA driver if that's all that's available. Use VGA for now
+    -- Use video driver chosen by GRUB
     if mbInfo.framebuffer_width = 80 then
+        println ("Using EGA driver");
         TextIO.setVideo (Video.EGA.getTextInterface);
         TextIO.clear (BLUE);
-        println ("Using EGA driver");
     else
+        println ("Using VGA driver");
         Video.VGA.setup (mbInfo);
         TextIO.setVideo (Video.VGA.getTextInterface);
-        println ("Using VGA driver");
     end if;
 
     TextIO.clear (BLACK);
@@ -393,8 +393,7 @@ begin
 
                 if fs.initialized then
                     print (" Found compatible Ext2 filesystem, mounting at ", LT_GREEN, BLACK);
-                    --print (Character'Val(VFS.DriveLetter'Pos(currentDrive) + 65), LT_BLUE, BLACK);
-                    print (currentDrive'Image, LT_BLUE, BLACK);
+                    print (Character'Val(VFS.DriveLetter'Pos(currentDrive) + 65), LT_BLUE, BLACK);
                     println (":");
                     print ("Number of block groups:"); println(Integer(fs.bgdt'Length));
                     VFS.fstab(currentDrive) := (present => True, kind => VFS.EXT2);
@@ -406,83 +405,6 @@ begin
             end if;
         end loop;
     end initFS;
-
-    --     println ("Checking main filesystem", LT_BLUE, BLACK);
-    --     testATA: declare
-            
-    --         fs          : Ext2.Ext2Filesystem;
-    --         ataResult   : ATA.ATAResult;
-    --         driveID     : Devices.DeviceID;
-    --         -- bgdtAddr    : System.Address;
-    --         -- bgdtOrder   : BuddyAllocator.Order;
-    --         -- bgdtLength  : Ext2.BlockGroupNumber;
-    --         -- rootInode   : Ext2.Inode;
-
-    --         currentDrive : Devices.DriveLetter := Devices.A;
-    --     begin
-    --         println ("Attempting to locate main disk");
-
-    --         driveID.major := Devices.ATA;
-    --         driveID.reserved := 0;
-
-    --         -- Try and find a ext2 superblock on each ATA drive present
-    --         for minor in ATA.drives'Range loop
-
-    --             if ATA.drives(minor).present and ATA.drives(minor).kind = ATA.PATA then
-    --                 print ("Checking PATA disk "); printdln (Unsigned_32(minor));
-
-    --                 driveID.minor := minor;
-    --                 Ext2.readSuperBlock(device  => driveID,
-    --                                     sb      => sblock);
-
-    --                 if sblock.signature = Ext2.EXT2_SUPER_MAGIC and 
-    --                    Ext2.blockSize(sblock) = 4096 then
-    --                     -- print(" signature: ");
-    --                     -- println(Unsigned_32(sblock.signature));
-
-    --                     -- @TODO - use info from GRUB to decide where to mount
-    --                     -- this.
-
-    --                     Devices.drives(currentDrive) := (
-    --                         major    => driveID.major,
-    --                         minor    => driveID.minor,
-    --                         reserved => 0);
-                        
-    --                     currentDrive := Devices.DriveLetter'succ(currentDrive);
-
-    --                     --@TODO Sanity-checking to make sure CuBit supports this
-    --                     -- filesystem's settings. We're picky for now about the
-    --                     -- Ext2 parameters used.
-    --                     --Ext2.print(sblock);
-
-    --                     -- Read the block group descriptors.
-    --                     -- Ext2.readBlockGroupDescriptors(device       => driveID,
-    --                     --                                sb           => sblock,
-    --                     --                                bgdt         => bgdtAddr,
-    --                     --                                bgdtOrder    => bgdtOrder,
-    --                     --                                bgdtLength   => bgdtLength);
-
-    --                     -- checkBGDT: declare
-    --                     --     bgdt : Ext2.BlockGroupDescriptorTable(0..bgdtLength) with
-    --                     --         Import, Address => bgdtAddr;
-    --                     -- begin
-    --                         Ext2.readInode(device    => driveID,
-    --                                        sb        => sblock,
-    --                                        bgdt      => bgdt,
-    --                                        inodeNum  => 2,
-    --                                        outInode  => rootInode);
-
-    --                         -- println("Root inode: ");
-    --                         -- Ext2.print(rootInode);
-    --                         println("Contents of /");
-    --                         Ext2.dumpDirs(driveID, rootInode.directBlock0, rootInode.sizeLo);
-
-    --                     end checkBGDT;
-    --                 end if;
-    --             end if;
-    --         end loop;
-    --     end testATA;
-    -- end initATA;
 
     -- if acpi.numCPUs > 1 then
     --     initSMP: declare

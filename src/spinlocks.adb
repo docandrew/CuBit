@@ -34,17 +34,6 @@ is
 
         -- Can't reacquire the same lock from the same CPU.
         if s.state = LOCKED and s.cpu = PerCPUData.getCPUNumber then
-            -- println ("SpinLock: Fatal error.");
-            -- println (" Call Stack:");
-            -- println (s.callStack(1));
-            -- println (s.callStack(2));
-            -- println (s.callStack(3));
-            -- println (s.callStack(4));
-            -- println (s.callStack(5));
-            -- println (s.callStack(6));
-            -- println (s.callStack(7));
-            -- println (s.callStack(8));
-
             raise SpinLockException with "Attempted reacquisition of lock from same CPU";
         end if;
 
@@ -55,40 +44,9 @@ is
             x86.lock_xchg (s.state, LOCKED, oldval);
         end loop;
 
-        -- save info for debugging.
-        -- @TODO I believe the rbp stack frame chain is only saved in debug mode.
-        --  we probably need to skip this for release builds.
+        -- save info for debugging and ensuring per-CPU mutex
         s.cpu := PerCPUData.getCPUNumber;
         
-        -- getCallStack : declare
-        --     rbp : Unsigned_64 := x86.getRBP;
-        --     i : Integer := 1;
-        -- begin
-        --     loop
-        --         exit when i > 10 or 
-        --                   rbp = 0 or 
-        --                   rbp < Unsigned_64(Virtmem.KERNEL_BASE) or
-        --                   rbp = Unsigned_64'Last;
-
-        --         declare
-        --             rip : Unsigned_64 with
-        --                 Import, Address => Util.addrToNum (rbp + 8);
-        --             nextrbp : Unsigned_64 with
-        --                 Import, Address => Util.addrToNum (rbp);
-        --         begin
-        --             callStack(i) := rip;
-        --             rbp := nextrbp;
-        --         end;
-
-        --         i := i + 1;
-        --     end loop;
-
-        --     if i < 10 then
-        --         for j in i..10 loop
-        --             callStack(i) := 0;
-        --         end loop;
-        --     end if;
-        -- end getCallStack;
     end enterCriticalSection;
 
     ---------------------------------------------------------------------------
