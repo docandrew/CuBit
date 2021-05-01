@@ -1,0 +1,36 @@
+library project user_runtime is
+    for Source_Dirs use ("gnat");
+
+    for Object_Dir use "build";
+
+    for Runtime ("Ada") use ".";
+
+    package Builder is
+        for Default_Switches ("Ada") use
+        (
+            "-g",
+            "-gnatyN",
+            "-gnatpgn",     -- Suppress checks, internal GNAT implementation mode, inlining
+            "-gnatwa",
+            "-gnatw.X",     -- disable warnings for No_Exception_Propagation rule
+            "-nostdlib",
+            "-v",
+            "-x"
+        );
+    end Builder;
+
+    package Compiler is
+        for Default_Switches ("Ada") use
+        (
+            "-mno-red-zone",
+            "-mcmodel=kernel",
+            "-fno-pic",
+            "-mno-sse",
+            "-I-"
+        );
+    end Compiler;
+
+    for Library_Kind use "static";
+    for Library_Name use "gnat-user";
+    for Library_Dir use "adalib";
+end user_runtime;

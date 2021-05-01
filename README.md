@@ -381,10 +381,11 @@ TODO: Kernel Features
 [-] Virtual memory allocator
     [-] Demand paging.
 [-] Processes / Threads
-    [ ] Kernel Tasks
+    [X] Kernel Tasks
     [X] Usermode
     [-] Scheduler
-    [ ] Implement killing processes.
+    [X] Implement killing processes.
+    [-] IPC / Messaging
     [ ] Suspend
     [ ] Sleep / Wakeup
 [-] ACPI tables
@@ -434,7 +435,7 @@ TODO: Kernel Features
     [X] SYSCALL/SYSRET working
 [ ] Microkernel Concepts?
     [ ] User-mode drivers?
-    [ ] IPC?
+    [-] IPC?
 [-] More formal proofs of kernel correctness
     [ ] Preventing race conditions - may not be feasible outside of
         Ravenscar profile, which doesn't really apply to us.
@@ -508,6 +509,10 @@ CuBit's Ext2 implementation currently supports only 4K block sizes.
 Now you have a disk image that you can convert to the VirtualBox format with:
 
     VBoxManage convertfromraw --format VDI vhd.img vhd.vdi
+
+Convert to QEMU format (qcow2) with:
+
+    qemu-img convert -f raw -O qcow2 vhd.img vhd.qcow2
 
 You can add the new disk under Storage -> IDE controller in your VM settings.
 You'll probably want to use the ICH6 chipset. CuBit currently uses the

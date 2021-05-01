@@ -19,8 +19,7 @@ package body Filesystem.Ext2 is
     ---------------------------------------------------------------------------
     function setup (device : Devices.DeviceID) return Ext2Filesystem
     is
-        fs             : Ext2Filesystem;
-        -- numBlockGroups : BlockGroupNumber;
+        fs : Ext2Filesystem;
     begin
     
         Ext2.readSuperBlock (device  => device,

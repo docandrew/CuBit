@@ -5,9 +5,10 @@
 -- @summary Virtual Memory Manager
 --
 -------------------------------------------------------------------------------
+with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
-with MemoryAreas;
+with MemoryAreas; use MemoryAreas;
 with Virtmem;
 
 Pragma Elaborate_All (Virtmem);
@@ -120,6 +121,26 @@ is
     procedure switchAddressSpace;
 
     ---------------------------------------------------------------------------
+    -- mapIOArea
+    -- Given a memory area with type MemoryAreas.IO, map all the frames within
+    -- it into the kernel's page tables.
+    ---------------------------------------------------------------------------
+    generic
+        with procedure allocate (newFrame : out Virtmem.PhysAddress);
+    procedure mapIOArea (area : in MemoryAreas.MemoryArea) with
+        Pre => area.kind = MemoryAreas.IO;
+
+    ---------------------------------------------------------------------------
+    -- mapBigIOArea
+    -- Given a memory area that's big-frame aligned with type MemoryAreas.IO,
+    -- map all the big frames within it into the kernel's page tables.
+    ---------------------------------------------------------------------------
+    generic
+        with procedure allocate (newFrame : out Virtmem.PhysAddress);
+    procedure mapBigIOArea (area : in MemoryAreas.MemoryArea) with
+        Pre => area.kind = MemoryAreas.IO;
+
+    ---------------------------------------------------------------------------
     -- mapKernelMemIntoProcess - during syscalls, this copies the kernel's
     -- higher-half P4 mappings into a process' page tables. Reloads the 
     -- CR3 register to flush TLB. 
@@ -145,24 +166,31 @@ is
 private
     ---------------------------------------------------------------------------
     -- determineFlagsAndMapFrame
-    -- Given a physical address, 
+    -- Given a physical address, see if it falls into one of our kernel ranges
+    -- (.text, .bss, etc.) and map appropriately.
     ---------------------------------------------------------------------------
     generic
         with procedure allocate (newFrame : out Virtmem.PhysAddress);
     procedure determineFlagsAndMapFrame (frame : in Virtmem.PFN);
     
+    ---------------------------------------------------------------------------
+    -- mapBigFrame
+    ---------------------------------------------------------------------------
     generic
         with procedure allocate (newFrame : out Virtmem.PhysAddress);
-    procedure mapBigFrame (bigFrame : in Virtmem.BigPFN);
+    procedure mapBigFrame (bigFrame : in Virtmem.BigPFN;
+                           flags    : in Unsigned_64 := Virtmem.PG_KERNELDATA);
 
+    ---------------------------------------------------------------------------
+    -- mapBigFrameAsSmallFrames
+    ---------------------------------------------------------------------------
     generic
         with procedure allocate (newFrame : out Virtmem.PhysAddress);
     procedure mapBigFrameAsSmallFrames (bigFrame : in Virtmem.BigPFN);
 
-    generic
-        with procedure allocate (newFrame : out Virtmem.PhysAddress);
-    procedure mapIOArea (area : in MemoryAreas.MemoryArea);
-
+    ---------------------------------------------------------------------------
+    -- mapArea
+    ---------------------------------------------------------------------------
     generic
         with procedure allocate (newFrame : out Virtmem.PhysAddress);
     procedure mapArea (area : in MemoryAreas.MemoryArea);

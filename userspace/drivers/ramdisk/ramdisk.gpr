@@ -1,0 +1,60 @@
+project Ramdisk is
+    
+    for Languages use ("Ada");
+    
+    for Object_Dir use "build";
+    
+    for Source_Dirs use (".");
+    
+    for Main use ("main.adb");
+
+    for Runtime ("Ada") use "../../runtime";
+
+    for Library_Dir use "";
+
+    -- For gprbuild
+    package Builder is
+
+        for Executable ("main.adb") use "ramdisk.drv";
+
+        for Default_Switches ("Ada") use 
+        (
+            "-g",                   -- debug info
+            --"-gnatp",             -- suppress all checks
+            --"-gnata",             -- Enable assertions
+            "-gnatwa",              -- print all warnings...
+            "-gnatw.X",             -- disable warnings for No_Exception_Propagation
+            "-gnatd.v",             -- SPARK elaboration model
+            --"-fstack-check",      -- For debug builds only, can break things.
+            "-s",                   -- recompile on compiler switch changes
+            "-v",                   -- verbose
+            --"-z",                 -- no main subprogram
+            "-nostdlib"             -- no C standard library
+        );
+    end Builder;
+
+    -- For compiler & assembler
+    package Compiler is
+        -- Ada info
+        for Default_Switches ("Ada") use 
+        (
+            "-fstack-usage",        -- Output .su file with stack info
+            "-fomit-frame-pointer", -- A little faster
+            "-mno-red-zone",
+            "-fno-pic",
+            --"-mcmodel=kernel",    -- all kernel code in top 2GiB of memory
+            --"-O2",
+            "-mno-sse",             -- not supported (yet)
+            "-mno-sse2"
+        );
+    end Compiler;
+
+    -- For binder
+    package Binder is
+        for Default_Switches ("Ada") use
+        (
+            "-d_C"               -- diagnose circularity errors
+        );
+    end Binder;
+
+end Ramdisk;

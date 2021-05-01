@@ -190,23 +190,26 @@ begin
         print (area.startAddr); print (" - "); print (area.endAddr); 
         print ("   ");
         case area.kind is
-            when MemoryAreas.USABLE     => 
+            when MemoryAreas.USABLE => 
                 println ("Usable", LT_GREEN, BLACK);
 
-            when MemoryAreas.RESERVED   => 
+            when MemoryAreas.RESERVED => 
                 println ("Reserved", YELLOW, BLACK);
 
-            when MemoryAreas.ACPI       => 
+            when MemoryAreas.ACPI => 
                 println ("ACPI", MAGENTA, BLACK);
 
-            when MemoryAreas.HIBERNATE  => 
+            when MemoryAreas.HIBERNATE => 
                 println ("Hibernate", BROWN, BLACK);
 
-            when MemoryAreas.BAD        => 
+            when MemoryAreas.BAD => 
                 println ("Bad", RED, BLACK);
 
-            when MemoryAreas.VIDEO      => 
+            when MemoryAreas.VIDEO => 
                 println ("Framebuffer", CYAN, BLACK);
+
+            when MemoryAreas.IO =>
+                null;       -- Not something Multiboot gives us
         end case;
     end loop;
     println;
@@ -357,10 +360,40 @@ begin
 
 
     initPCI: declare
+        procedure mapBigIOArea is new Mem_mgr.mapBigIOArea(BuddyAllocator.allocFrame);
+
+        -- PCI extended config area should be exactly 256M.
+        startAddr : constant Virtmem.PhysAddress := Integer_Address(acpi.pcieConfig.baseAddr);
+        endAddr   : constant Virtmem.PhysAddress := startAddr + 268_435_456 - 1;
+
+        pciConfigArea : MemoryAreas.MemoryArea := (kind      => MemoryAreas.IO,
+                                                   startAddr => startAddr,
+                                                   endAddr   => endAddr);
     begin
-        println("Searching for PCI devices", LT_BLUE, BLACK);
-        PCI.enumerateDevices;
+        println;
+        println ("-----------------------------------------------------");
+        println ("                       PCI Bus                       ", LT_BLUE, BLACK);
+        println ("-----------------------------------------------------");
+
+        mapBigIOArea (pciConfigArea);
+        PCI.enumerateDevicesPCIe (Virtmem.P2Va (startAddr));
     end initPCI;
+
+
+    -- @TODO not sure if it makes sense to map the entire configuration space here,
+    -- given that it's going to be around 256M. Maybe map as large pages?
+    -- initNVMe: declare
+    --     procedure mapIOArea is new Mem_mgr.mapIOArea(BuddyAllocator.allocFrame);
+
+    --     pciConfigArea : MemoryAreas.MemoryArea := (kind      => MemoryAreas.IO,
+    --                                                startAddr => acpi.pcieConfig.baseAddr,
+    --                                                endAddr   => acpi.pcieConfig.baseAddr + );
+    -- begin
+
+    --     -- Map PCI Configuration Space into our kernel. It should be exactly
+    --         --
+    --     mapBigIOArea (pciConfigArea);
+    -- end initNVMe;
 
 
     initFileCache: declare
@@ -406,8 +439,15 @@ begin
         end loop;
     end initFS;
 
-    println ("Checking Multiboot Modules", LT_BLUE, BLACK);
-    Multiboot.setupModules (mbInfo);
+    initModules: declare
+    begin
+        println;
+        println ("-----------------------------------------------------");
+        println ("                   CuBit Modules                     ", LT_BLUE, BLACK);
+        println ("-----------------------------------------------------");
+
+        Multiboot.setupModules (mbInfo);
+    end initModules;
 
     -- if acpi.numCPUs > 1 then
     --     initSMP: declare
