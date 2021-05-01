@@ -8,6 +8,8 @@
 --  devices.
 -------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
+with System; use System;
+
 with x86;
 
 package pci
@@ -77,6 +79,7 @@ is
     CLASS_STORAGE_ATA           : constant PCIClassCode := 16#0105#;
     CLASS_STORAGE_SATA          : constant PCIClassCode := 16#0106#;
     CLASS_STORAGE_SAS           : constant PCIClassCode := 16#0107#;
+    CLASS_STORAGE_NVME          : constant PCIClassCode := 16#0108#;
     CLASS_STORAGE_UNKNOWN       : constant PCIClassCode := 16#0180#;
 
     CLASS_NETWORK_ETHERNET      : constant PCIClassCode := 16#0200#;
@@ -213,13 +216,53 @@ is
     end record;
 
     ---------------------------------------------------------------------------
+    -- PCIe Configuration Space
+    ---------------------------------------------------------------------------
+    -- type PCIeConfiguration is
+    -- record
+    --     pciConfig : PCIDeviceHeader;
+    --     PM Cap
+    --     NxtCap
+    --     PM Capability
+    --     PMCSR
+    --     MSI Cap
+    --     NxtCap
+    --     MSI Control
+    --     Message Address : 64
+    --     Message Data
+    --     Reserved
+    --     PE Cap
+    --     NxtCap
+    --     PE Capability
+    --     PCIe Device Capabilities
+    --     Device Control
+    --     Device Status
+    --     PCIe Link Capabilities
+    --     Link Control
+    --     Link Status
+    --     Reserved Legacy Config Space
+    --     PCI Express Extended Capability - DSN
+    --     Capability Version
+    --     Next Cap
+    --     PCIe Device Serial Number
+    --     PCIe Device Serial Number
+    --     Reserved Extended Config Space
+    -- end record with Size => 4096 * 8;
+
+    -- for PCIeConfiguration use
+    -- record
+
+    -- end record;
+
+    ---------------------------------------------------------------------------
     -- readConfig32 - read a 32-bit value from the PCI configuration space
     -- of the device at specified bus, slot and function.
     -- @param offset - must be 32-bit aligned (bottom 2 bits = 0)
     ---------------------------------------------------------------------------
-    function readConfig32(bus : in PCIBusNum; slot : in PCISlotNum;
-                            func : in PCIFunctionNum; offset : in Unsigned_8) 
-                            return Unsigned_32 with
+    function readConfig32 (bus    : in PCIBusNum; 
+                           slot   : in PCISlotNum;
+                           func   : in PCIFunctionNum;
+                           offset : in Unsigned_8) return Unsigned_32 with
         Pre => (offset and 3) = 0;
 
     ---------------------------------------------------------------------------
@@ -227,18 +270,20 @@ is
     -- of the device at specified bus, slot and function.
     -- @param offset - must be 16-bit aligned (bottom bit = 0)
     ---------------------------------------------------------------------------
-    function readConfig16(bus : in PCIBusNum; slot : in PCISlotNum;
-                            func : in PCIFunctionNum; offset : in Unsigned_8) 
-                            return Unsigned_16 with
+    function readConfig16 (bus    : in PCIBusNum;
+                           slot   : in PCISlotNum;
+                           func   : in PCIFunctionNum;
+                           offset : in Unsigned_8) return Unsigned_16 with
         Pre => (offset and 1) = 0;
     
     ---------------------------------------------------------------------------
     -- readConfig8 - read a byte from the PCI configuration space of the
     -- device at specified bus, slot and function.
     ---------------------------------------------------------------------------
-    function readConfig8(bus : in PCIBusNum; slot : in PCISlotNum;
-                            func : in PCIFunctionNum; offset : in Unsigned_8) 
-                            return Unsigned_8;
+    function readConfig8 (bus    : in PCIBusNum;
+                          slot   : in PCISlotNum;
+                          func   : in PCIFunctionNum;
+                          offset : in Unsigned_8) return Unsigned_8;
 
     ---------------------------------------------------------------------------
     -- enumerateDevices - dump the configuration space of all PCI devices
@@ -247,25 +292,35 @@ is
     procedure enumerateDevices;
 
     ---------------------------------------------------------------------------
+    -- enumerateDevices
+    -- dump the configuration space of all PCIe devices found on this computer
+    -- using the enhanced (memory-mapped) PCI configuration mechanism.
+    ---------------------------------------------------------------------------
+    procedure enumerateDevicesPCIe (base : System.Address);
+
+    ---------------------------------------------------------------------------
     -- getNumDevices - get the number of devices on this system with a
     -- particular PCI class+subclass
     -- @param class - class code to search for
     -- @return number of devices that match this code.
     ---------------------------------------------------------------------------
-    function getNumDevices(class : in PCIClassCode) return Natural;
+    function getNumDevices (class : in PCIClassCode) return Natural;
 
     ---------------------------------------------------------------------------
     -- findDevice - given a particular PCI class+subclass, return the bus,
     --  slot and function of that device. This returns only the first device it
     --  finds with a particular class code.
     ---------------------------------------------------------------------------
-    procedure findDevice(findClass : in PCIClassCode; foundBus : out PCIBusNum; 
-                foundSlot : out PCISlotNum; foundFunc : out PCIFunctionNum);
+    procedure findDevice (findClass : in PCIClassCode; 
+                          foundBus  : out PCIBusNum; 
+                          foundSlot : out PCISlotNum;
+                          foundFunc : out PCIFunctionNum);
 
     ---------------------------------------------------------------------------
     -- getDeviceConfiguration - given a PCI address, return the configuration
     --  space for that device.
     ---------------------------------------------------------------------------
-    function getDeviceConfiguration(bus : in PCIBusNum; slot : in PCISlotNum;
-                    func : in PCIFunctionNum) return PCIDeviceHeader;
+    function getDeviceConfiguration (bus  : in PCIBusNum;
+                                     slot : in PCISlotNum;
+                                     func : in PCIFunctionNum) return PCIDeviceHeader;
 end pci;

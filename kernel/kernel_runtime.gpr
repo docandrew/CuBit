@@ -1,4 +1,4 @@
-library project cubit_runtime is
+library project kernel_runtime is
     for Source_Dirs use ("runtime/gnat");
 
     for Object_Dir use "build";
@@ -30,6 +30,6 @@ library project cubit_runtime is
     end Compiler;
 
     for Library_Kind use "static";
-    for Library_Name use "gnat-cubit";
+    for Library_Name use "gnat-kernel";
     for Library_Dir use "runtime/adalib";
-end cubit_runtime;
+end kernel_runtime;

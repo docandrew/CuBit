@@ -15,7 +15,7 @@ package MemoryAreas is
     --
     -- VIDEO is one we add ourselves.
     ---------------------------------------------------------------------------
-    type MemoryAreaType is (USABLE, RESERVED, ACPI, HIBERNATE, BAD, VIDEO);
+    type MemoryAreaType is (USABLE, RESERVED, ACPI, HIBERNATE, BAD, VIDEO, IO);
 
     ---------------------------------------------------------------------------
     -- MemoryArea describes a range of memory

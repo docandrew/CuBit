@@ -2,7 +2,6 @@
 GIT_HASH := $(shell git rev-parse HEAD)
 BUILD_DATE := $(shell date)
 
-
 all: cubit_kernel iso
 
 # Runtime library used by the CuBit Kernel itself (not the runtime used by
@@ -21,7 +20,7 @@ build/libcubit.a:
 		-e 's/SED_BUILD_DATE/$(BUILD_DATE)/' \
 		-e 's/SED_SRC_HASH/$(SRC_HASH)/' src/build.pre > src/build.ads
 
-	gprbuild -Pcubit_runtime.gpr
+	gprbuild -Pkernel_runtime.gpr
 
 # init usermode binary embedded in the kernel ELF object
 build/init.bin: src/init.asm
@@ -41,9 +40,9 @@ cubit_kernel: build/libcubit.a build/init.bin
 
 # TODO: make sure kernel is multiboot-compliant with grub-file --is-x86-multiboot cubit_kernel
 
-tests/cubit_tests: tests/cubit_tests.adb
+# tests/cubit_tests: tests/cubit_tests.adb
 # 	-gnatA : ignore gnat.adc (we don't care about pragmas there for testing)
-	gnat make -gnatA -aI. tests/cubit_tests.adb -D tests/build
+#	gnat make -gnatA -aI. tests/cubit_tests.adb -D tests/build
 
 .PHONY : prove
 prove:
@@ -52,7 +51,7 @@ prove:
 .PHONY : clean
 clean:
 	gprclean -Pcubit.gpr
-	gprclean -Pcubit_runtime.gpr
+	gprclean -Pkernel_runtime.gpr
 	-rm build/*.o
 	-rm build/*.ali
 	-rm -rf build/gnatdoc/*
@@ -70,7 +69,15 @@ run-raw:
 run-qemu:
 # add -S to pause simulation at startup to allow debugger connection
 # add -d int,cpu_reset,guest_errors for exception debugging
-	qemu-system-x86_64 -machine q35 -cpu Broadwell -s -S -m 128M -cdrom cubit_kernel.iso -serial stdio
+	qemu-system-x86_64 \
+		-machine q35 \
+		-cpu Broadwell \
+		-s -S \
+		-m 128M \
+		-cdrom cubit_kernel.iso \
+		-serial stdio \
+		-drive file=nvm.qcow2,if=none,id=nvm \
+		-device nvme,serial=MyNVMeDrive,drive=nvm
 
 iso: cubit_kernel
 	cp cubit_kernel isodir/boot/

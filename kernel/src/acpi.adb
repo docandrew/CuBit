@@ -227,12 +227,12 @@ is
             exit APICLoop when entries_i >= endMADT or entryHeader.length = 0;
         end loop APICLoop;
 
-        lapicAddr := virtmem.PhysAddress(madt.lapicAddress);
-        print(" LAPIC Physical Address:   "); println(lapicAddr);
-        print(" Number of CPUs: ");
-        println(numCPUs);
-        print(" Number of I/O APICs: ");
-        println(numIOAPICs);
+        lapicAddr := Virtmem.PhysAddress(madt.lapicAddress);
+        print (" LAPIC Physical Address:   "); println (lapicAddr);
+        print (" Number of CPUs: ");
+        println (numCPUs);
+        print (" Number of I/O APICs: ");
+        println (numIOAPICs);
     end parseMADT;
 
     ---------------------------------------------------------------------------
@@ -248,6 +248,60 @@ is
 
         -- @TODO AML bytecode...
     end parseDSDT;
+
+    ---------------------------------------------------------------------------
+    -- parseMCFG
+    -- Need to get the PCIe configuration addresses here
+    ---------------------------------------------------------------------------
+    procedure parseMCFG (mcfgAddr : System.Address) is
+        
+        mcfg     : MCFGRecord with Import, Address => mcfgAddr;
+        tableLen : Unsigned_32;
+        curTable : System.Address;
+        idx      : Unsigned_32 := 0;
+    begin
+        if mcfg.header.signature /= "MCFG" then
+            println ("ACPI: Error parsing MCFG, bad address or corrupted table.");
+        end if;
+
+        println ("ACPI: PCIe Configuration Space (MCFG)");
+
+        tableLen := 1 + (mcfg.header.length - (mcfg'Size / 8)) / (MMAPConfigurationSpace'Size / 8);
+
+        print (" Length: "); println (mcfg.header.length);
+        print (" Number of Configuration Spaces: "); println (tableLen);
+
+        println;
+        print (" Config space ");
+        print ("  Base Address:  "); println (mcfg.entries.baseAddr);
+        print ("  Segment Group: "); println (mcfg.entries.pciSegGroupNum);
+        print ("  Start Bus:     "); println (mcfg.entries.startBusNum);
+        print ("  End Bus:       "); println (mcfg.entries.endBusNum);
+
+        -- Save this for later when we're enumerating PCI devices.
+        pcieConfig := mcfg.entries;
+
+        -- @TODO this code works if there are multiple configuration spaces, for
+        -- now just use the first one we find.
+        -- if tableLen = 0 then
+        --     return;
+        -- end if;
+        --
+        -- declare
+        --     mmapConfigs : MMAPConfigSpaces(1..tableLen) with
+        --         Import, Address => mcfg.entries'Address;
+        -- begin
+        --     for m of mmapConfigs loop
+        --         println;
+        --         print (" Config space ");    printdln (idx);
+        --         print ("  Base Address:  "); println (m.baseAddr);
+        --         print ("  Segment Group: "); println (m.pciSegGroupNum);
+        --         print ("  Start Bus:     "); println (m.startBusNum);
+        --         print ("  End Bus:       "); println (m.endBusNum);
+        --         idx := idx + 1;
+        --     end loop;
+        -- end;
+    end parseMCFG;
 
     ---------------------------------------------------------------------------
     -- setup
@@ -388,16 +442,15 @@ is
 
                         parseDSDT (To_Address(virtmem.P2V(Integer_Address(fadt.exDsdt))));
                     end parseFADT;
+
                 elsif descHdr.signature = "APIC" then
+                    
                     parseMADT(descHdr'Address);
+
                 elsif descHdr.signature = "MCFG" then
-                    println(" MCFG present, not supported.");
-                    -- parseMCFG : declare
-                    -- mcfg : MCFGRecord
-                    --     with Import, Address => descHdr'Address;
-                    -- begin
-                    --     println(" MCFG Address:          ");
-                    -- end parseMCFG;
+
+                    parseMCFG (descHdr'Address);
+
                 elsif descHdr.signature = "HPET" then
                     println(" HPET present, not supported.");
                     -- parseHPET : declare

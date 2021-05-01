@@ -18,8 +18,8 @@ is
 
     -- Base address of the mmap-ed LAPIC registers we find when parsing the
     -- ACPI tables.
-    lapicAddr   : virtmem.PhysAddress := 0;
-    ioapicAddr  : virtmem.PhysAddress := 0;
+    lapicAddr   : Virtmem.PhysAddress := 0;
+    ioapicAddr  : Virtmem.PhysAddress := 0;
     ioapicID    : Unsigned_32 := 0;
 
     type ACPIVersion is (AcpiVersion1, AcpiVersion2);
@@ -738,6 +738,13 @@ is
         endBusNum           at 11 range 0..7;
         reserved            at 12 range 0..31;
     end record;
+
+    -- Packed array of the above record
+    type MMAPConfigSpaces is array (Unsigned_32 range <>) of MMAPConfigurationSpace
+        with Convention => C;
+
+    -- Base address of (the first, hopefully only) PCIe configuration space
+    pcieConfig : MMAPConfigurationSpace;
 
     ---------------------------------------------------------------------------
     -- MCFG - PCI Express

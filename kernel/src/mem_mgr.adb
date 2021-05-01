@@ -132,21 +132,18 @@ is
     ---------------------------------------------------------------------------
     -- mapBigFrame 
     ---------------------------------------------------------------------------
-    procedure mapBigFrame (bigFrame : in Virtmem.BigPFN) is
+    procedure mapBigFrame (bigFrame : in Virtmem.BigPFN;
+                           flags    : in Unsigned_64 := Virtmem.PG_KERNELDATA) is
 
-        fromPhys        : constant Virtmem.PhysAddress :=
-            Virtmem.BigPFNToAddr(bigFrame);
-
-        toVirtLinear    : constant Virtmem.VirtAddress :=
-            Virtmem.P2V(fromPhys);
-        
+        fromPhys     : constant Virtmem.PhysAddress := Virtmem.BigPFNToAddr (bigFrame);
+        toVirtLinear : constant Virtmem.VirtAddress := Virtmem.P2V (fromPhys);
         ok : Boolean;
 
         procedure mapBigPage is new Virtmem.mapBigPage (allocate);
     begin
-        mapBigPage( fromPhys,
+        mapBigPage (fromPhys,
                     toVirtLinear,
-                    Virtmem.PG_KERNELDATA,
+                    flags,
                     kernelP4,
                     ok);
 
@@ -183,7 +180,7 @@ is
 
         -- big PFN containing the top of the stack.
         kernelEndBigPFN : constant Virtmem.BigPFN :=
-            Virtmem.addrToBigPFN(Virtmem.V2P(Virtmem.STACK_TOP - 1));
+            Virtmem.addrToBigPFN (Virtmem.V2P (Virtmem.STACK_TOP - 1));
 
         -- frame we are considering mapping
         curFrame        : Virtmem.PFN;
@@ -195,18 +192,18 @@ is
         bigPagesMapped : Natural := 0;
     begin
         -- iterate by small frames, trying to map big pages if we can.
-        curFrame := Virtmem.addrToPFN(area.startAddr);
+        curFrame := Virtmem.addrToPFN (area.startAddr);
 
         mapFramesInArea: loop
 
-            curAddr := Virtmem.pfnToAddr(curFrame);
+            curAddr := Virtmem.pfnToAddr (curFrame);
 
             -- If this frame is big-frame aligned, past the kernel, and
             -- there's enough room left in the area to map it as a big
             -- page, do so.
-            if  isBigFrameAligned(curAddr) and
-                area.endAddr - curAddr >= (Virtmem.BIG_FRAME_SIZE - 1) and
-                curAddr >= Virtmem.V2P (Virtmem.STACK_TOP)
+            if isBigFrameAligned (curAddr) and
+               area.endAddr - curAddr >= (Virtmem.BIG_FRAME_SIZE - 1) and
+               curAddr >= Virtmem.V2P (Virtmem.STACK_TOP)
             then
                 mapBigFrame (Virtmem.pfnToBigPFN (curFrame));
                 curFrame := curFrame + 512;
@@ -229,12 +226,11 @@ is
     -- mapIOArea - map a memory area with PG_IO flags
     ---------------------------------------------------------------------------
     procedure mapIOArea (area : in MemoryAreas.MemoryArea) is
-
-        function mapIOFrame is new Mem_mgr.mapIOFrame(allocate);
-    
         ok : Boolean;
         startPFN : Virtmem.PFN := Virtmem.addrToPFN (area.startAddr);
         endPFN   : Virtmem.PFN := Virtmem.addrToPFN (area.endAddr);
+        
+        function mapIOFrame is new Mem_mgr.mapIOFrame(allocate);
     begin
 
         for frame in startPFN..endPFN loop
@@ -242,13 +238,48 @@ is
             ok := mapIOFrame (Virtmem.PFNToAddr(frame));
 
             if not ok then
-                raise RemapException with "Unable to map IO area";
+                raise RemapException with "mapIOArea: Unable to map IO area";
             end if;
 
         end loop;
     end mapIOArea;
 
+    ---------------------------------------------------------------------------
+    -- mapBigIOArea - map a memory area with big pages and PG_IO flags.
+    ---------------------------------------------------------------------------
+    procedure mapBigIOArea (area : in MemoryAreas.MemoryArea) is
+        use type Virtmem.PFN;
+        use type Virtmem.BigPFN;
 
+        curFrame  : Virtmem.PFN;
+        curAddr   : Virtmem.PhysAddress;
+        bigFrames : Natural := 0;
+
+        procedure mapBigFrame is new Mem_mgr.mapBigFrame(allocate);
+    begin
+        curFrame := Virtmem.addrToPFN (area.startAddr);
+
+        mapFramesInArea: loop
+
+            curAddr := Virtmem.pfnToAddr (curFrame);
+
+            -- If this frame is big-frame aligned, past the kernel, and
+            -- there's enough room left in the area to map it as a big
+            -- page, do so.
+            if isBigFrameAligned (curAddr) then
+                mapBigFrame (Virtmem.pfnToBigPFN (curFrame), Virtmem.PG_IO);
+                curFrame := curFrame + 512;
+                bigFrames := bigFrames + 1;
+            else
+                raise RemapException with "mapBigIOArea: part of this area is not aligned with big pages.";
+            end if;
+
+            exit mapFramesInArea when curFrame > Virtmem.addrToPFN (area.endAddr);
+
+        end loop mapFramesInArea;
+
+        -- print ("mapBigIOArea: Mapped "); print (bigFrames); println (" big frames");
+    end mapBigIOArea;
     ---------------------------------------------------------------------------
     -- setup
     -- map all physical memory into our p4 table.
@@ -338,11 +369,11 @@ is
     function mapIOFrame (addr : in Virtmem.PhysAddress) return Boolean
         with SPARK_Mode => On
     is
-        procedure mapPage is new Virtmem.mapPage(allocate);
+        procedure mapPage is new Virtmem.mapPage (allocate);
         ok : Boolean;
 
     begin
-        mapPage(addr, virtmem.P2V(addr), virtmem.PG_IO, kernelP4, ok);
+        mapPage(addr, virtmem.P2V (addr), virtmem.PG_IO, kernelP4, ok);
         
         if ok then
             Virtmem.flushTLB;
