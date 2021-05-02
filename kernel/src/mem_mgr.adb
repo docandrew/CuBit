@@ -225,7 +225,8 @@ is
     ---------------------------------------------------------------------------
     -- mapIOArea - map a memory area with PG_IO flags
     ---------------------------------------------------------------------------
-    procedure mapIOArea (area : in MemoryAreas.MemoryArea) is
+    procedure mapIOArea (area  : in MemoryAreas.MemoryArea;
+                         flags : in Unsigned_64 := Virtmem.PG_IO) is
         ok : Boolean;
         startPFN : Virtmem.PFN := Virtmem.addrToPFN (area.startAddr);
         endPFN   : Virtmem.PFN := Virtmem.addrToPFN (area.endAddr);
@@ -235,7 +236,7 @@ is
 
         for frame in startPFN..endPFN loop
 
-            ok := mapIOFrame (Virtmem.PFNToAddr(frame));
+            ok := mapIOFrame (Virtmem.PFNToAddr(frame), flags);
 
             if not ok then
                 raise RemapException with "mapIOArea: Unable to map IO area";
@@ -247,7 +248,8 @@ is
     ---------------------------------------------------------------------------
     -- mapBigIOArea - map a memory area with big pages and PG_IO flags.
     ---------------------------------------------------------------------------
-    procedure mapBigIOArea (area : in MemoryAreas.MemoryArea) is
+    procedure mapBigIOArea (area  : in MemoryAreas.MemoryArea;
+                            flags : in Unsigned_64 := Virtmem.PG_IO) is
         use type Virtmem.PFN;
         use type Virtmem.BigPFN;
 
@@ -267,7 +269,7 @@ is
             -- there's enough room left in the area to map it as a big
             -- page, do so.
             if isBigFrameAligned (curAddr) then
-                mapBigFrame (Virtmem.pfnToBigPFN (curFrame), Virtmem.PG_IO);
+                mapBigFrame (Virtmem.pfnToBigPFN (curFrame), flags);
                 curFrame := curFrame + 512;
                 bigFrames := bigFrames + 1;
             else
@@ -297,18 +299,18 @@ is
         end loop;
 
         -- Map everything R/W below 0x100000 (except null page) to start.
-        mapArea(MemoryArea'(kind        => MemoryAreas.USABLE,
-                            startAddr   => 1,
-                            endAddr     => 16#FFFFF#));
+        mapArea (MemoryArea'(kind        => MemoryAreas.USABLE,
+                             startAddr   => 1,
+                             endAddr     => 16#FFFFF#));
 
         -- Map the rest of our memory areas.
         for area of areas loop
             if area.kind = MemoryAreas.BAD then
                 null;
             elsif area.kind = MemoryAreas.VIDEO then
-                mapIOArea(area);
+                mapIOArea (area, Virtmem.PG_IO_WC);
             else
-                mapArea(area);
+                mapArea (area);
             end if;
         end loop;
 
@@ -366,14 +368,15 @@ is
     -- Map a single frame of memory-mapped IO region into the higher-half
     -- w/ generic procedure "allocate"
     ---------------------------------------------------------------------------
-    function mapIOFrame (addr : in Virtmem.PhysAddress) return Boolean
+    function mapIOFrame (addr  : in Virtmem.PhysAddress;
+                         flags : in Unsigned_64 := Virtmem.PG_IO) return Boolean
         with SPARK_Mode => On
     is
         procedure mapPage is new Virtmem.mapPage (allocate);
         ok : Boolean;
 
     begin
-        mapPage(addr, virtmem.P2V (addr), virtmem.PG_IO, kernelP4, ok);
+        mapPage (addr, virtmem.P2V (addr), flags, kernelP4, ok);
         
         if ok then
             Virtmem.flushTLB;

@@ -647,4 +647,40 @@ is
     procedure rep_movsb (dst : in System.Address;
                          src : in System.Address;
                          len : in System.Storage_Elements.Storage_Count);
+
+    ---------------------------------------------------------------------------
+    -- PAT (Page Atribute Table)
+    ---------------------------------------------------------------------------
+    type PATFlag is mod 255;
+    
+    UC  : constant PATFlag := 0;    -- Uncacheable, no speculative access
+    WC  : constant PATFlag := 1;    -- Uncacheable, write-combining allowed
+    WT  : constant PATFlag := 4;    -- Reads allocate cache on read miss, write hits update cache
+    WP  : constant PATFlag := 5;    -- Reads allocate cache lines on miss, all writes update cache
+    WB  : constant PATFlag := 6;    -- Reads allocate cache on miss, writes allocate on miss
+    UCm : constant PATFlag := 7;    -- Accesses uncacheable, overridden by MTRR
+
+    type PATRegister is
+    record
+        PA0 : PATFlag := WB;
+        PA1 : PATFlag := WT;
+        PA2 : PATFlag := UCm;
+        PA3 : PATFlag := UC;
+        PA4 : PATFlag := WB;
+        PA5 : PATFlag := WT;
+        PA6 : PATFlag := UCm;
+        PA7 : PATFlag := WC;
+    end record with Size => 64;
+
+    for PATRegister use
+    record
+        PA0 at 0 range 0..7;
+        PA1 at 1 range 0..7;
+        PA2 at 2 range 0..7; 
+        PA3 at 3 range 0..7;
+        PA4 at 4 range 0..7;
+        PA5 at 5 range 0..7;
+        PA6 at 6 range 0..7;
+        PA7 at 7 range 0..7;
+    end record;
 end x86;

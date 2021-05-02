@@ -629,9 +629,9 @@ is
 
     ---------------------------------------------------------------------------
     -- makePTE
-    -- return a Page Table Entry with the PFN and flags set
+    -- return a P1 Page Table Entry with the PFN and flags set
     ---------------------------------------------------------------------------
-    function makePTE(frame : in PFN; flags : in Unsigned_64) 
+    function makePTE (frame : in PFN; flags : in Unsigned_64)
         return PageTableEntry 
         with SPARK_Mode => On
     is
@@ -646,7 +646,7 @@ is
         newPTE.cacheDisabled    := (flags and PG_CACHEDISABLED) /= 0;
         newPTE.accessed         := (flags and PG_ACCESSED) /= 0;
         newPTE.dirty            := (flags and PG_DIRTY) /= 0;
-        newPTE.size             := (flags and PG_SIZE) /= 0;
+        newPTE.size             := (flags and PG_PAT) /= 0;
         newPTE.global           := (flags and PG_GLOBAL) /= 0;
         newPTE.NX               := (flags and PG_NXE) /= 0;
 
@@ -655,15 +655,34 @@ is
 
     ---------------------------------------------------------------------------
     -- makeBigPTE
-    -- return a Big Page Table Entry with the PFN and flags set
+    -- return a P2 Big Page Table Entry with the PFN and flags set
     ---------------------------------------------------------------------------
-    function makeBigPTE(bigFrame : in BigPFN; flags : in Unsigned_64)
+    function makeBigPTE (bigFrame : in BigPFN; flags : in Unsigned_64)
         return PageTableEntry 
         with SPARK_Mode => On
-    is   
+    is  
+        newPTE : PageTableEntry; 
         function toPFN is new Ada.Unchecked_Conversion(BigPFN, PFN);
     begin
-        return makePTE(toPFN(bigFrame), flags or PG_SIZE);
+        if (flags and PG_PAT) /= 0 then
+            -- need to set LSB of pgNum for PAT flag
+            newPTE.pgNum        := toPFN(bigFrame) + 1;
+        else
+            newPTE.pgNum        := toPFN(bigFrame);
+        end if;
+
+        newPTE.present          := (flags and PG_PRESENT) /= 0;
+        newPTE.writable         := (flags and PG_WRITABLE) /= 0;
+        newPTE.user             := (flags and PG_USER) /= 0;
+        newPTE.writeThrough     := (flags and PG_WRITETHROUGH) /= 0;
+        newPTE.cacheDisabled    := (flags and PG_CACHEDISABLED) /= 0;
+        newPTE.accessed         := (flags and PG_ACCESSED) /= 0;
+        newPTE.dirty            := (flags and PG_DIRTY) /= 0;
+        newPTE.size             := True;
+        newPTE.global           := (flags and PG_GLOBAL) /= 0;
+        newPTE.NX               := (flags and PG_NXE) /= 0;
+
+        return newPTE;
     end makeBigPTE;
     
     ---------------------------------------------------------------------------

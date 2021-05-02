@@ -27,6 +27,7 @@ with Interrupts;
 with Lapic;
 with Mem_mgr;
 with MemoryAreas;
+with Modules;
 with Pci;
 with PerCpuData;
 with Pic;
@@ -446,7 +447,7 @@ begin
         println ("                   CuBit Modules                     ", LT_BLUE, BLACK);
         println ("-----------------------------------------------------");
 
-        Multiboot.setupModules (mbInfo);
+        Modules.setup (mbInfo);
     end initModules;
 
     -- if acpi.numCPUs > 1 then

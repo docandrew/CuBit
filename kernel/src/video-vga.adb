@@ -220,22 +220,9 @@ package body Video.VGA is
     -- Copy everything in the backbuffer to video memory.
     ---------------------------------------------------------------------------
     procedure swapBuffers is
-        -- pragma Suppress (All_Checks);
-        
         use System.Storage_Elements;
-        
-        -- type Buffer is array (Storage_Offset range <>) of Unsigned_64;
-
-        -- fb : Storage_Array(0..framebufferSize-1)
-        --     with Import, Address => framebufferAddr;
-        
-        -- bb : Storage_Array(0..framebufferSize-1)
-        --     with Import, Address => backbufferAddr;
-        -- fb : Buffer(0..framebufferSize / 8 - 1) with Import, Address => framebufferAddr;
-        -- bb : Buffer(0..framebufferSize / 8 - 1) with Import, Address => backbufferAddr;
     begin
         -- waitForVSync;
-        --fb(0..framebufferSize/8-1) := bb(0..framebufferSize/8-1);
         x86.rep_movsb (framebufferAddr, backbufferAddr, framebufferSize);
     end swapBuffers;
 
@@ -244,7 +231,6 @@ package body Video.VGA is
     ---------------------------------------------------------------------------
     procedure setup (mbInfo : Multiboot.MultibootInfo) is
         use System.Storage_Elements;
-        -- backbufferPhys : Virtmem.PhysAddress;
     begin
         w                := Natural(mbInfo.framebuffer_width);
         h                := Natural(mbInfo.framebuffer_height);
@@ -271,14 +257,8 @@ package body Video.VGA is
         cols := Natural(w / (FONT_WIDTH + HDIST));
 
         -- Allocate memory for a back-buffer so we can do double-buffering.
-        -- Issue here - when switching to process it can't write to this
-        -- buffer since it isn't mapped in the process space.
-        -- If we switch to kernel address space in syscall handler, then the
-        -- process memory isn't clearly mapped.
         BuddyAllocator.alloc (ord  => BuddyAllocator.getOrder (framebufferSize),
                               addr => backbufferAddr);
-
-        -- backbufferAddr := To_Address(Virtmem.P2V (backbufferPhys));
     end setup;
 
     ---------------------------------------------------------------------------
@@ -503,9 +483,6 @@ package body Video.VGA is
 
         use System.Storage_Elements;
         
-        -- bb : Storage_Array (0..framebufferSize - 1)
-        --         with Import, Address => backbufferAddr;
-
         shift : Storage_Offset := framebufferPitch * (FONT_HEIGHT + VDIST);
         len   : Storage_Offset := framebufferSize - shift;
 
