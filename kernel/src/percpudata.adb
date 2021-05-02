@@ -37,7 +37,13 @@ is
         -- On syscall entry, CPU will clear RFLAGS for each bit set here:
         -- TF, DF, IF, IOPL, AC and NT
         SYSCALL_FLAG_MASK : constant Unsigned_64 := 16#47600#;
+        function PATtoU64 is new Ada.Unchecked_Conversion (x86.PATRegister, Unsigned_64);
+        newPAT : x86.PATRegister;
     begin
+
+        -- Set the PAT register up the way we want it.
+        x86.wrmsr (x86.MSRs.PAT, PATtoU64 (newPAT));
+
         cpuData.cpuNum := cpuNum;
         cpuData.gdt(GDT_SEGMENT_NULL) := toSegmentDescriptor(0);
         

@@ -112,7 +112,8 @@ is
     ---------------------------------------------------------------------------
     generic
         with procedure allocate (newFrame : out Virtmem.PhysAddress);
-    function mapIOFrame (addr : in Virtmem.PhysAddress) return Boolean;
+    function mapIOFrame (addr  : in Virtmem.PhysAddress;
+                         flags : in Unsigned_64 := Virtmem.PG_IO) return Boolean;
 
     ---------------------------------------------------------------------------
     -- switchAddressSpace
@@ -127,7 +128,8 @@ is
     ---------------------------------------------------------------------------
     generic
         with procedure allocate (newFrame : out Virtmem.PhysAddress);
-    procedure mapIOArea (area : in MemoryAreas.MemoryArea) with
+    procedure mapIOArea (area  : in MemoryAreas.MemoryArea;
+                         flags : in Unsigned_64 := Virtmem.PG_IO) with
         Pre => area.kind = MemoryAreas.IO;
 
     ---------------------------------------------------------------------------
@@ -137,7 +139,8 @@ is
     ---------------------------------------------------------------------------
     generic
         with procedure allocate (newFrame : out Virtmem.PhysAddress);
-    procedure mapBigIOArea (area : in MemoryAreas.MemoryArea) with
+    procedure mapBigIOArea (area  : in MemoryAreas.MemoryArea;
+                            flags : in Unsigned_64 := Virtmem.PG_IO) with
         Pre => area.kind = MemoryAreas.IO;
 
     ---------------------------------------------------------------------------

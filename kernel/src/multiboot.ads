@@ -217,11 +217,4 @@ is
         return Natural with
         Pre => mbinfo.flags.hasMemoryMap;
 
-    ---------------------------------------------------------------------------
-    -- setupModules
-    -- See if GRUB has loaded any modules, and if so, print any information
-    -- about them.
-    ---------------------------------------------------------------------------
-    procedure setupModules (mbinfo : in MultibootInfo);
-
 end Multiboot;

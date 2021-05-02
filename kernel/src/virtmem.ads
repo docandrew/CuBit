@@ -47,7 +47,11 @@ is
     type BigPageOffset  is new Integer range 0 .. BIG_PAGE_SIZE - 1;
     type HugePageOffset is new Integer range 0 .. HUGE_PAGE_SIZE - 1;
 
-    -- Flags for page table entries
+    -- Flags for page table entries. These _kind_ of correspond to the actual bits
+    -- in the page table entry, but there are some differences (PAT, depending
+    -- on page size). These flags will be checked individually and individual bits
+    -- set in the PTE record vs just assigning the flags to the PTE. See makePTE and
+    -- makeBigPTE
     PG_EMPTY            : constant := 0;
     PG_UNUSED           : constant := 0;
     PG_PRESENT          : constant := 2**0;
@@ -61,15 +65,35 @@ is
     PG_GLOBAL           : constant := 2**8;
     PG_NXE              : constant := 2**63;
 
-    -- Predefined flags
+    PG_PAT              : constant := 2**12;
+
+    -- Predefined flags (all PAT entry 0 - WB)
     PG_KERNELCODE       : constant := PG_PRESENT;
     PG_KERNELDATA       : constant := PG_PRESENT + PG_WRITABLE + PG_NXE;
     PG_KERNELDATARO     : constant := PG_PRESENT + PG_NXE;
     PG_USERCODE         : constant := PG_PRESENT + PG_USER;
     PG_USERDATA         : constant := PG_PRESENT + PG_WRITABLE + PG_USER + PG_NXE;
     PG_USERDATARO       : constant := PG_PRESENT + PG_USER + PG_NXE;
+
+    -- The PG_WRITETHROUGH, PG_CACHEDISABLED and PG_PAT flags
+    -- together just index into the PAT register. See x86.ads for how the individual
+    -- PAT entries are configured.
+
+    -- PAT entry 3 (UC)
     PG_IO               : constant := PG_PRESENT + PG_WRITABLE + PG_NXE + 
                                         PG_WRITETHROUGH + PG_CACHEDISABLED;
+
+    -- PAT entry 3 (UC)
+    PG_USERIO           : constant := PG_PRESENT + PG_USER + PG_WRITABLE + PG_NXE +
+                                        PG_WRITETHROUGH + PG_CACHEDISABLED;
+
+    -- PAT entry 7 (WC)
+    PG_IO_WC      : constant := PG_PRESENT + PG_WRITABLE + PG_NXE +
+                                        PG_WRITETHROUGH + PG_CACHEDISABLED + PG_PAT;
+
+    -- PAT entry 7 (WC)
+    PG_USERIO_WC  : constant := PG_PRESENT + PG_USER + PG_WRITABLE + PG_NXE +
+                                        PG_WRITETHROUGH + PG_CACHEDISABLED + PG_PAT;
 
     -- The upper 12-bits are sign-extended, so the max physical
     -- address we can have is 52-bits. Our limit is lower though, since
@@ -110,7 +134,8 @@ is
     type UndefinedBType is new Integer range 0..16#7FF#;
 
     -- Structure of an x86-64 Page Table Entry
-    -- @field size - Really means, "this is the last level of page table"
+    -- @field size - Always 1 for 2MiB P2 entries, 0 for 4KiB P2 entries. 
+    --  For 4KiB P1 entries, this is the PAT bit.
     type PageTableEntry is
     record
         present         : Boolean           := False;
