@@ -268,7 +268,7 @@ is
 
     for ELFFileHeader use
     record
-        e_ident     at 0  range 0..16*8-1;
+        e_ident     at 0  range 0..16*8 - 1;
         e_type      at 16 range 0..15;
         e_machine   at 18 range 0..15;
         e_version   at 20 range 0..31;
@@ -411,7 +411,7 @@ is
     PF_MASKOS : constant SegmentFlags := 16#00FF_0000#;
     PF_MASKPROC : constant SegmentFlags := 16#FF00_0000#;
 
-    type ProgramHeaderTable is
+    type ProgramHeader is
     record
         p_type      : SegmentType;      -- Type of segment
         p_flags     : SegmentFlags;     -- Segment attributes
@@ -422,4 +422,6 @@ is
         p_memsz     : Storage_Count;    -- Size of segment in memory
         p_align     : Storage_Offset;   -- Alignment of segment (power of 2)
     end record;
+
+    type ProgramHeaderTable is array (Unsigned_16 range <>) of ProgramHeader;
 end ELF;
