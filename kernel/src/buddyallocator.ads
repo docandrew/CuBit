@@ -65,7 +65,6 @@
 --  memory, you'll want to make sure you're mapping the equivalent physical
 --  address using Virtmem.V2P.
 -------------------------------------------------------------------------------
-with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with BootAllocator;

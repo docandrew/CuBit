@@ -15,6 +15,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with BuddyAllocator;
 with Config;
+with Debug;
 with Mem_mgr;
 with PerCPUData;
 with Scheduler;
@@ -29,10 +30,11 @@ is
     ---------------------------------------------------------------------------
     -- setup
     ---------------------------------------------------------------------------
-    -- procedure setup is
-    -- begin
-    --     ProcList.setup (allProcs, Config.MAX_PROCESSES);
-    -- end setup;
+    procedure setup is
+    begin
+        -- ProcList.setup (allProcs, Config.MAX_PROCESSES);
+        FrameLists.setup (Config.MAX_PROCESSES * Config.PAGES_PER_PROCESS);
+    end setup;
 
     ---------------------------------------------------------------------------
     -- addToProctab
@@ -127,22 +129,59 @@ is
             raise ProcessException with "Unable to allocate memory for Process' stack expansion.";
         end if;
         
-        FrameList.insertFront (proc.frames, newFrame);
+        FrameLists.insertFront (proc.frames, newFrame);
 
         -- Map the frame just below the current stack.
-        mapPage (newFrame,
-                 To_Integer(proc.stackTop - Storage_Count((proc.numStackFrames + 1) * Virtmem.PAGE_SIZE)),
-                 Virtmem.PG_USERDATA,
-                 proc.pgTable,
-                 ok);
+        mapPage (phys    => newFrame,
+                 virt    => To_Integer(proc.stackTop - Storage_Count((proc.numStackFrames + 1) * Virtmem.PAGE_SIZE)),
+                 flags   => Virtmem.PG_USERDATA,
+                 myP4    => proc.pgTable,
+                 success => ok);
+
+        -- print ("Process.addStackPage: Mapping new frame at "); println(To_Integer(proc.stackTop - Storage_Count((proc.numStackFrames + 1) * Virtmem.PAGE_SIZE)));
 
         if not ok then
-            raise MapException with
-            "Process.create - can't map process' stack";
+            raise MapException with "Process.addStackPage - can't map process' stack";
         end if;
 
         proc.numStackFrames := proc.numStackFrames + 1;
     end addStackPage;
+
+    ---------------------------------------------------------------------------
+    -- addPage
+    -- Allocate a page of memory for a process, map at the specified address and
+    -- adds the memory to the process' frame list so it will be freed on exit.
+    ---------------------------------------------------------------------------
+    procedure addPage (proc    : in out Process;
+                       mapTo   : in System.Address;
+                       storage : out System.Address;
+                       flags   : in Unsigned_64 := Virtmem.PG_USERDATA) is
+        newFrame : Virtmem.PhysAddress;
+        ok : Boolean;
+        MapException : exception;
+    
+        procedure mapPage is new Virtmem.mapPage (BuddyAllocator.allocFrame);
+    begin
+        BuddyAllocator.allocFrame (newFrame);
+
+        if newFrame = 0 then
+            raise ProcessException with "Unable to allocate memory for Process";
+        end if;
+
+        storage := Virtmem.P2Va (newFrame);
+
+        FrameLists.insertFront (proc.frames, newFrame);
+
+        mapPage (phys    => newFrame,
+                 virt    => To_Integer(mapTo),
+                 flags   => flags,
+                 myP4    => proc.pgTable,
+                 success => ok);
+
+        if not ok then
+            raise MapException with "Process.addPage - can't map process page";
+        end if;
+    end addPage;
 
     ---------------------------------------------------------------------------
     -- create
@@ -173,12 +212,12 @@ is
         proc.ppid        := ppid;
         proc.name        := name;
         proc.mode        := USER;
-        proc.state       := READY;
+        proc.state       := SUSPENDED;
         proc.priority    := priority;
         proc.stackTop    := procStack;
         proc.kernelStack := new ProcessKernelStack;
 
-        FrameList.setup (proc.frames, MAX_STACK_FRAMES + MAX_HEAP_FRAMES);
+        FrameLists.create (proc.frames, MAX_STACK_FRAMES + MAX_HEAP_FRAMES);
 
         proc.kernelStackTop := proc.kernelStack.all'Address + ProcessKernelStack'Size / 8;
 
@@ -212,7 +251,7 @@ is
         -- Map the necessary text, stack into the user process' page tables.
         setupPageTables : declare
 
-            procedure mapPage is new Virtmem.mapPage (BuddyAllocator.allocFrame);
+            -- procedure mapPage is new Virtmem.mapPage (BuddyAllocator.allocFrame);
             procedure zeroize is new Virtmem.zeroize (Virtmem.P4);
 
             ok : Boolean;
@@ -227,17 +266,17 @@ is
             -- for pg in processStackPages loop, etc...
             -- print ("Mapping process image from "); print (imageStart);
             -- println(" to virtual address 0");
-            mapPage (Virtmem.V2P (imageStart),
-                     0,
-                     Virtmem.PG_USERCODE,
-                     proc.pgTable,
-                     ok);
+            -- mapPage (Virtmem.V2P (imageStart),
+            --          0,
+            --          Virtmem.PG_USERCODE,
+            --          proc.pgTable,
+            --          ok);
+            -- if not ok then
+            --     raise MapException with
+            --     "Process.create - can't map process' image";
+            -- end if;
 
-            if not ok then
-                raise MapException with
-                "Process.create - can't map process' image";
-            end if;
-
+            -- Add a page for the process' stack
             addStackPage (proc);
         end setupPageTables;
 
@@ -376,10 +415,48 @@ is
         SPARK_Mode => On
     is
     begin
-        Spinlocks.enterCriticalSection(lock);
-        goAheadBody(channel);
-        Spinlocks.exitCriticalSection(lock);
+        Spinlocks.enterCriticalSection (lock);
+        goAheadBody (channel);
+        Spinlocks.exitCriticalSection (lock);
     end goAhead;
+
+    ---------------------------------------------------------------------------
+    -- suspend
+    ---------------------------------------------------------------------------
+    procedure suspend with
+        SPARK_Mode => On
+    is
+        pid : constant ProcessID := PerCPUData.getCurrentPID;
+    begin
+        Spinlocks.enterCriticalSection(lock);
+
+        -- Begin suspension and reschedule.
+        proctab(pid).state := SUSPENDED;
+        Scheduler.enter;
+
+        -- Resume here when woken.
+        -- Should only be woken when we can acquire the resource lock.
+
+        Spinlocks.exitCriticalSection(lock);
+    end suspend;
+
+    ---------------------------------------------------------------------------
+    -- resume
+    ---------------------------------------------------------------------------
+    procedure resume (pid : ProcessID) with
+        SPARK_Mode => On
+    is
+    begin
+        Spinlocks.enterCriticalSection (lock);
+
+        if proctab(pid).state /= SUSPENDED then
+            raise ProcessException with "Process.resume: Attempting to resume non-suspended process.";
+        end if;
+
+        proctab(pid).state := READY;
+
+        Spinlocks.exitCriticalSection (lock);
+    end resume;
 
     ---------------------------------------------------------------------------
     -- This is where the scheduler will initially switch() to.
@@ -424,14 +501,6 @@ is
             raise InitImageTooBigException with "Init image is too big to fit in one page.";
         end if;
 
-        -- get a new page for us to copy the image to
-        BuddyAllocator.alloc (BuddyAllocator.getOrder (initSize), alignedStart);
-
-        -- copy the init image to a new page, aligned at 0
-        ignore := Util.memcpy (alignedStart,
-                               initBinaryStart'Address,
-                               Integer(initSize));
-
         -- @TODO put the stack way up on top of lower-half like a real process.
         initProcess := create (imageStart  => alignedStart,
                                imageSize   => initSize,
@@ -439,9 +508,20 @@ is
                                ppid        => 1,
                                name        => "init            ",
                                priority    => 3,
-                               procStack   => To_Address(2 * Virtmem.PAGE_SIZE));
+                               procStack   => To_Address(16#0000_8000_0000_0000#)); --To_Address(2 * Virtmem.PAGE_SIZE));
+
+        -- add page to process, copy the init image to it
+        addPage (proc    => initProcess,
+                 mapTo   => To_Address(0),
+                 storage => alignedStart,
+                 flags   => Virtmem.PG_USERCODE);
+
+        ignore := Util.memcpy (alignedStart,
+                               initBinaryStart'Address,
+                               initSize);
 
         addToProctab (initProcess);
+        resume (initProcess.pid);
 
     end createFirstProcess;
 
@@ -479,13 +559,13 @@ is
             -- deal since eventually once the first process exits we'll shut down.
             -- Free all memory used by the process.
             loop
-                BuddyAllocator.freeFrame (FrameList.front(proctab(pid).frames));
-                FrameList.popFront (proctab(pid).frames);
+                BuddyAllocator.freeFrame (FrameLists.front(proctab(pid).frames));
+                FrameLists.popFront (proctab(pid).frames);
 
                 exit when proctab(pid).frames.length = 0;
             end loop;
 
-            FrameList.teardown (proctab(pid).frames);
+            FrameLists.delete (proctab(pid).frames);
 
             -- Need to unmap Kernel mem here so when we delete page tables we
             -- only delete the process' page tables.
@@ -538,11 +618,11 @@ is
         is
             use Spinlocks;
         begin
-            enterCriticalSection(pidLock);
+            enterCriticalSection (pidLock);
             pid := findFreePID;
             -- if no free PIDs, we'll mark PID 0 as used again, which is true.
-            markUsed(pid);
-            exitCriticalSection(pidLock);
+            markUsed (pid);
+            exitCriticalSection (pidLock);
         end allocPID;
 
         procedure allocSpecificPID (pid : in ProcessID) with
@@ -552,7 +632,7 @@ is
         begin
             enterCriticalSection (pidLock);
             
-            if pidMap(pid) = False then
+            if pidMap (pid) = False then
                 raise ProcessException with "Attempted to use specific PID already in use";
             end if;
             
@@ -578,8 +658,10 @@ is
             --retPID : ProcessID := 0;
         begin
 
-            -- linearly iterate through the list looking for a 0
-            for i in ProcessID loop
+            -- linearly iterate through the list looking for a 0. We reserve
+            -- the first few PIDs for the kernel to use for tasks with specific
+            -- IDs.
+            for i in 16..ProcessID'Last loop
                 if (pidMap(i)) then
                     return i;
                 end if;

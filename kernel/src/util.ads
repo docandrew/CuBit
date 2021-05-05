@@ -151,7 +151,7 @@ is
     ---------------------------------------------------------------------------
     procedure memset (addr   : System.Address; 
                       val    : System.Storage_Elements.Storage_Element;
-                      len    : Natural) with
+                      len    : System.Storage_Elements.Storage_Count) with
         SPARK_Mode => Off,
         Export => True, 
         Convention => C, 
@@ -175,7 +175,7 @@ is
     ---------------------------------------------------------------------------
     function memcpy (dest    : System.Address;
                      src     : System.Address;
-                     len     : Natural) return System.Address with
+                     len     : System.Storage_Elements.Storage_Count) return System.Address with
         SPARK_Mode => Off,
         Export => True,
         Convention => C,
@@ -189,7 +189,7 @@ is
     ---------------------------------------------------------------------------
     function memmove (dest : System.Address;
                       src  : System.Address;
-                      len  : Natural) return System.Address with
+                      len  : System.Storage_Elements.Storage_Count) return System.Address with
         SPARK_Mode => Off,
         Export     => True,
         Convention => C,
@@ -200,7 +200,7 @@ is
     ---------------------------------------------------------------------------
     procedure memCopy (dest  : in System.Address;
                        src   : in System.Address;
-                       len   : in Natural) with Inline => True;
+                       len   : in System.Storage_Elements.Storage_Count) with Inline => True;
 
     ---------------------------------------------------------------------------
     -- nextPow2 - return the next highest power of 2

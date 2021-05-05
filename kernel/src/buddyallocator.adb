@@ -5,7 +5,10 @@
 -- @summary Physical Memory Allocator
 -------------------------------------------------------------------------------
 with Ada.Unchecked_Conversion;
+with Interfaces; use Interfaces;
+
 with TextIO; use TextIO;
+with Util;
 
 package body BuddyAllocator
     with SPARK_Mode => On
@@ -100,11 +103,12 @@ is
         end linkNext;
 
         -- clear the buddy flag so when our buddy checks to see
-        -- if we're free, he knows we aren't.
-        -- @TODO probably a good idea to zero the whole block
-        retBlock.buddy      := System.Null_Address;
-        retBlock.prevBlock  := System.Null_Address;
-        retBlock.nextBlock  := System.Null_Address;
+        -- if we're free, he knows we aren't. Zeroize the whole block for
+        -- safety.
+        Util.memset (addr, 0, blockSize (ord));
+        -- retBlock.buddy      := System.Null_Address;
+        -- retBlock.prevBlock  := System.Null_Address;
+        -- retBlock.nextBlock  := System.Null_Address;
 
         freeLists(ord).numFreeBlocks := freeLists(ord).numFreeBlocks - 1;
     end popFromFreeList;

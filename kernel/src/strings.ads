@@ -1,6 +1,13 @@
+-------------------------------------------------------------------------------
+-- CuBitOS
+-- Copyright (C) 2019 Jon Andrew
+--
+-- @summary Basic string-handling routines
+-------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
+with System;
 
-package strings 
+package Strings 
     with SPARK_Mode => On
 is
     type HexDigitRange is range 0..15;
@@ -23,4 +30,11 @@ is
     function toHexString(r : in Unsigned_32) return HexString32;
     function toHexString(r : in Unsigned_64) return HexString64;
 
-end strings;
+    ---------------------------------------------------------------------------
+    -- toAda
+    -- Given the address of a null-terminated string, return the equivalent Ada
+    -- string.
+    ---------------------------------------------------------------------------
+    procedure toAda (cstr : System.Address; s : in out String);
+
+end Strings;

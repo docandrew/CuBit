@@ -447,7 +447,10 @@ package body TextIO is
         println;
     end println;
 
+    ---------------------------------------------------------------------------
+    -- printz
     -- C-style strings
+    ---------------------------------------------------------------------------
     procedure printz (addr : System.Address) is
         use ASCII;
         use System.Storage_Elements;
@@ -463,7 +466,7 @@ package body TextIO is
                 exit when c = NUL;
                 --println(nextAddr);
                 print (c);
-                nextAddr := To_Address (To_Integer (nextAddr) + 1);
+                nextAddr := nextAddr + Storage_Count(1);
             end getchar;
         end loop;
     end printz;

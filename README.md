@@ -367,7 +367,7 @@ TODO: Kernel Features
 [-] Make type-safe more of the address/number conversions I'm doing.
 [-] Error-handling. Need to formalize the mechanism, could get very messy with MP.
     [X] Exceptions (Last chance handler)
-    [ ] Broadcast panic to other CPUs
+    [-] Broadcast panic to other CPUs
 [ ] Figure out a keyboard scancode -> key array scheme with a future eye towards 
     internationalization. Maybe just use SDL's keyboard handling scheme and let them sort it out.
 [X] Physical memory allocator
@@ -386,14 +386,14 @@ TODO: Kernel Features
     [-] Scheduler
     [X] Implement killing processes.
     [-] IPC / Messaging
-    [ ] Suspend
+    [X] Suspend
     [ ] Sleep / Wakeup
 [-] ACPI tables
     [X] Find RSDT/XSDT
     [X] Sane code for parsing these.
     [-] APIC
     [ ] HPET
-    [ ] MCFG - PCI express
+    [-] MCFG - PCI express
     [ ] SSDT?
 [-] I/O APIC
 [-] Multiprocessing
@@ -409,12 +409,12 @@ TODO: Kernel Features
         [-] Hard Drives
             [-] ATA
             [-] AHCI
-    [ ] PCI express
-        [ ] Enhanced Configuration Access Mechanism (ECAM) via MCFG tables
+    [-] PCI express
+        [X] Enhanced Configuration Access Mechanism (ECAM) via MCFG tables
         [ ] NVMe
     [ ] Sound
-    [ ] Video Drivers
-        [-] VESA Modes
+    [-] Video Drivers
+        [X] VESA Modes
 [-] Filesystem / VFS Layer
     [ ] Develop FS-agnostic set of VFS hooks to syscalls
     [ ] Develop Drive-agnostic set of VFS hooks to hardware
@@ -433,8 +433,8 @@ TODO: Kernel Features
     [ ] Sweet GRUB splash screen w/ logo
 [-] Syscalls
     [X] SYSCALL/SYSRET working
-[ ] Microkernel Concepts?
-    [ ] User-mode drivers?
+[ ] Microkernel Architecture
+    [-] User-mode drivers
     [-] IPC?
 [-] More formal proofs of kernel correctness
     [ ] Preventing race conditions - may not be feasible outside of

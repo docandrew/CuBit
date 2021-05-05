@@ -122,6 +122,7 @@ begin
     Mem_mgr.setup (memAreas);
     BuddyAllocator.setup (memAreas);
     StoragePools.setup;
+    Process.setup;
 
     -- Use video driver chosen by GRUB
     if mbInfo.framebuffer_width = 80 then
@@ -490,7 +491,6 @@ begin
     -- Process.startKernelThread (testKThread2'Address, "kthread2        ", 2);
     
     println ("Creating User Process");
-
     Process.createFirstProcess;
 
     initScheduler: declare

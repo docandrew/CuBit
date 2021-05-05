@@ -51,6 +51,9 @@ is
     -- Max number of processes/threads we can run
     MAX_PROCESSES : constant := 512;
 
+    -- Average number of pages per process
+    PAGES_PER_PROCESS : constant := 256;
+
     -- File/device descriptors per process
     PER_PROCESS_DESCRIPTORS : constant := 256;
 

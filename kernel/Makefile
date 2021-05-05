@@ -72,7 +72,8 @@ run-qemu:
 	qemu-system-x86_64 \
 		-machine q35 \
 		-cpu Broadwell \
-		-s -S \
+		-d cpu_reset \
+		-s \
 		-m 128M \
 		-cdrom cubit_kernel.iso \
 		-serial stdio \

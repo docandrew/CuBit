@@ -295,10 +295,10 @@ is
                        success : out Boolean)
         with SPARK_Mode => On
     is
-        -- We set 
-        procedure createP3 is new createNextTable (P4, allocate, PG_USERCODE);
-        procedure createP2 is new createNextTable (P3, allocate, PG_USERCODE);
-        procedure createP1 is new createNextTable (P2, allocate, PG_USERCODE);
+        -- Make higher-level tables less restrictive
+        procedure createP3 is new createNextTable (P4, allocate, PG_USERCODE + PG_WRITABLE);
+        procedure createP2 is new createNextTable (P3, allocate, PG_USERCODE + PG_WRITABLE);
+        procedure createP1 is new createNextTable (P2, allocate, PG_USERCODE + PG_WRITABLE);
 
         p4Index : constant PageTableIndex := getP4Index (virt);
         p3Index : constant PageTableIndex := getP3Index (virt);
@@ -362,8 +362,8 @@ is
                           success : out Boolean)
         with SPARK_Mode => On
     is
-        procedure createP3 is new createNextTable (P4, allocate, PG_USERCODE);
-        procedure createP2 is new createNextTable (P3, allocate, PG_USERCODE);
+        procedure createP3 is new createNextTable (P4, allocate, PG_USERCODE + PG_WRITABLE);
+        procedure createP2 is new createNextTable (P3, allocate, PG_USERCODE + PG_WRITABLE);
         --procedure createP1 is new createNextTable(P2, allocate);
 
         p4Index : constant PageTableIndex := getP4Index (virt);

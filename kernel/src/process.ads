@@ -14,7 +14,7 @@ with Interfaces; use Interfaces;
 
 with Descriptors;
 with Devices;
-with LinkedList;
+with LinkedLists;
 with Spinlocks;
 with Stackframe;
 with StoragePools;
@@ -34,7 +34,7 @@ is
 
     ProcessException : exception;
 
-    subtype ProcessName is String (1..16);
+    subtype ProcessName is String(1..16);
 
     -- Process ID is just an index into the process table
     subtype ProcessID is Natural range 0..255;
@@ -142,7 +142,7 @@ is
     for ProcessKernelStackPtr'Simple_Storage_Pool use pool;
 
     -- Keep a list of the frames used by this process.
-    package FrameList is new LinkedList (Virtmem.PhysAddress, TextIO.print);
+    package FrameLists is new LinkedLists (Virtmem.PhysAddress, TextIO.print);
     
     -- type UserStackPtr is access UserStack;
     -- for UserStackPtr'Simple_Storage_Pool use StoragePools.pool;
@@ -168,6 +168,9 @@ is
     -- @field stackTop        - top of process' stack (lower-half address)
     -- @field brk             - top of gap/heap space
     -- @field numHeapFrames   - number of frames used for process' heap
+    -- These next two fields need to be set by the process loader.
+    -- @field iend            - end of the process' image (.text, .bss, .data)
+    -- @field istart          - start of the process' image
     -- @field mail            - Process' IPC mailbox
     -- @field channel         - resource process may be waiting on
     -- @field openDescriptors - list of descriptors for kernel resources
@@ -176,8 +179,8 @@ is
     type Process is
     record
         pid                 : ProcessID;        -- Index into the proctab
-        ppid                : ProcessID;        -- If this is a thread, ppid will be
-                                                --  the spawning process
+        ppid                : ProcessID;        -- Parent process ID
+
         name                : ProcessName;
         state               : ProcessState;
         mode                : ProcessMode;
@@ -186,27 +189,29 @@ is
         dynPriority         : ProcessPriority;
         
         pgTable             : Virtmem.P4;       -- top-level page table for this process
+                                                -- @TODO will probably want to make this
+                                                -- an access type so threads can share the
+                                                -- same address space.
         
         context             : System.Address;   -- Pointer to the saved state
 
         kernelStack         : ProcessKernelStackPtr;
-        -- kernelStackSize     : Storage_Count := ProcessKernelStack'Size / 8;
 
-        -- kernelStackBottom   : Integer_Address;  -- Pointer to process' kernel stack
-        -- kernelStackTop      : Integer_Address;
-        frames              : FrameList.List;
+        frames              : FrameLists.List;
         numStackFrames      : Natural := 0;
-
-        -- The top of the process' stack address (lower-half)
-        stackTop            : System.Address;
 
         -- The top of the process' kernel stack (higher-half)
         kernelStackTop      : System.Address;
-        -- stackBottom         : Integer_Address;  -- limit of allowable stack
-        -- stackBottomPhys     : Integer_Address;
+
+        -- The top of the process' stack address (lower-half)
+        stackTop            : System.Address;
         
+        -- Heap
         brk                 : System.Address;   -- limit of allowable heap
-        numHeapFrames       : Natural := 0;
+
+        -- Start and end of process' image (.text, .data, .bss).
+        iend                : System.Address := To_Address (0);
+        istart              : System.Address := To_Address (16#FFFF_FFFF_FFFF_FFFF#);
 
         -- For low-level IPC
         mail                : Mailbox;
@@ -229,8 +234,20 @@ is
     -- WIP: proctab replacement
     type ProcPtr is access all Process;
     for ProcPtr'Simple_Storage_Pool use pool;
-    -- package ProcList is new LinkedList (ProcPtr, Process.print);
-    -- allProcs : ProcList.List;
+    -- package ProcLists is new LinkedLists (ProcPtr, Process.print);
+    -- allProcs : ProcLists.List;
+
+    ---------------------------------------------------------------------------
+    -- setup
+    -- Allocate storage used for the FrameList package
+    ---------------------------------------------------------------------------
+    procedure setup with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- addToProctab
+    -- Given a process object, add it to the process table.
+    ---------------------------------------------------------------------------
+    procedure addToProctab (proc : in Process) with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- startKernelThread
@@ -246,10 +263,30 @@ is
         with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
+    -- addPage
+    -- 
+    -- Map a page into this process' address space at the specified virtual
+    -- address with the given flags. This procedure will allocate memory for
+    -- the page, which can be accessed via the storage param if bytes need to
+    -- be copied into it, zeroed out, etc.
+    --
+    -- @param Process
+    -- @param mapTo - Process virtual address that this page should be mapped to
+    -- @param storage - Linear-mapped address of the underlying storage allocated
+    --  for this page.
+    -- @param flags - Page Table flags for this mapping.
+    ---------------------------------------------------------------------------
+    procedure addPage (proc    : in out Process;
+                       mapTo   : in System.Address;
+                       storage : out System.Address;
+                       flags   : in Unsigned_64 := Virtmem.PG_USERDATA)
+        with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
     -- create:
     --
-    -- Creates a new process in the READY state. It does NOT add it to the
-    -- proctab.
+    -- Creates a new process in the SUSPENDED state. This function does NOT add
+    -- the process to the proctab.
     --
     -- @param imageStart - the virtual address (should be page-aligned) where
     --  the process has been loaded into kernel memory
@@ -258,7 +295,7 @@ is
     --  start.
     -- @param ppid - parent PID
     -- @param name - process name
-    -- @param procStack - the virutal process address for the top of its
+    -- @param procStack - the virtual process address for the top of its
     --  stack (i.e. what the user code sees)
     -- @return : new process with a unique PID. If the PID of the returned
     --  process is 0, the process is invalid, perhaps due to PID exhaustion or
@@ -299,6 +336,18 @@ is
     -- The opposite of "wait".
     ---------------------------------------------------------------------------
     procedure goAhead (channel : in WaitChannel) with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- suspend
+    -- Place the current PID in a SUSPENDED state and reschedule.
+    ---------------------------------------------------------------------------
+    procedure suspend with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- resume
+    -- Move the given PID from SUSPENDED to READY state
+    ---------------------------------------------------------------------------
+    procedure resume (pid : ProcessID) with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- start
@@ -429,6 +478,7 @@ private
         type PIDBitmapType is array (ProcessID) of Boolean
             with Pack;
 
+        -- Keep some PIDs reserved for the kernel to use for tasks with specific PIDs
         pidMap : PIDBitmapType := (0 => False, others => True)
             with Part_Of => PIDTrackerState;
         
