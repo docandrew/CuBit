@@ -1,9 +1,17 @@
---with Interfaces; use Interfaces;
+-------------------------------------------------------------------------------
+-- CuBitOS
+-- Copyright (C) 2019 Jon Andrew
+--
+-- @summary Basic string-handling routines
+-------------------------------------------------------------------------------
+with System.Storage_Elements; use System.Storage_Elements;
 
-package body strings 
+package body Strings 
     with SPARK_Mode => On
 is
+    ---------------------------------------------------------------------------
     -- Convert Unsigned_8 to a hex string
+    ---------------------------------------------------------------------------
     function toHexString(r : in Unsigned_8) return HexString8 is
         ret : HexString8 := "0x77";
     begin
@@ -14,7 +22,9 @@ is
         return ret;
     end toHexString;
 
+    ---------------------------------------------------------------------------
     -- Convert Unsigned_16 integer to a hex string
+    ---------------------------------------------------------------------------
     function toHexString(r : in Unsigned_16) return HexString16 is
         ret : HexString16 := "0xDEAD";
     begin
@@ -27,7 +37,9 @@ is
         return ret;
     end toHexString;
 
+    ---------------------------------------------------------------------------
     -- Convert Unsigned_32 integer to a hex string
+    ---------------------------------------------------------------------------
     function toHexString(r : in Unsigned_32) return HexString32 is
         ret : HexString32 := "0xDEADBEEF";
     begin
@@ -44,7 +56,9 @@ is
         return ret;
     end toHexString;
 
+    ---------------------------------------------------------------------------
     -- Convert Unsigned_64 integer to a hex string
+    ---------------------------------------------------------------------------
     function toHexString(r : in Unsigned_64) return HexString64 is
         ret : HexString64 := "0xDEADBEEFDEADBEEF";
     begin
@@ -68,5 +82,57 @@ is
         ret(18) := hexdigits(HexDigitRange(r and 16#0000_0000_0000_000F#));
         return ret;
     end toHexString;
+
+    ---------------------------------------------------------------------------
+    -- strlen
+    -- Given a null-terminated C string, return its length.
+    ---------------------------------------------------------------------------
+    function strlen (cstr : System.Address) return Natural is
+        use System.Storage_Elements;
+        use ASCII;
+
+        nextAddr : System.Address := cstr;
+        ret      : Natural := 0;
+    begin
+        loop
+            declare
+                c : Character with Import, Address => nextAddr;
+            begin
+                exit when c = NUL;
+                ret := ret + 1;
+                nextAddr := nextAddr + Storage_Count(1);
+            end;
+        end loop;
+
+        return ret;
+    end strlen;
+
+    ---------------------------------------------------------------------------
+    -- toAda
+    ---------------------------------------------------------------------------
+    procedure toAda (cstr : System.Address; s : in out String) is
+        use System.Storage_Elements;
+        use ASCII;
+
+        nextAddr : System.Address := cstr;
+        idx      : Natural := s'First;
+    begin
+        s := (others => NUL);
+
+        loop
+            declare
+                c : Character with Import, Address => nextAddr;
+            begin
+                exit when c = NUL;
+
+                s(idx) := c;
+                idx := idx + 1;
+                
+                exit when idx > s'Last;
+
+                nextAddr := nextAddr + Storage_Count(1);
+            end;
+        end loop;
+    end toAda;
 
 end strings;

@@ -10,41 +10,58 @@ with BuddyAllocator;
 with Config;
 with TextIO; use TextIO;
 
-package body LinkedList
+package body LinkedLists
     with SPARK_Mode => On
 is
 
     ---------------------------------------------------------------------------
     -- setup
     ---------------------------------------------------------------------------
-    procedure setup (myList : in out List; capacity : in Natural) with
+    procedure setup (capacity : in Natural) with
         SPARK_Mode => Off
     is
-        use BuddyAllocator; -- '=' operator
     begin
-
         SlabAllocator.setup (pool     => nodeSlab, 
                              objSize  => Node'Size,
                              capacity => capacity);
-        
-        myList.head := null;
-        myList.tail := null;
-        myList.capacity := capacity;
     end setup;
 
     ---------------------------------------------------------------------------
     -- teardown
     ---------------------------------------------------------------------------
-    procedure teardown (myList : in out List) with
+    procedure teardown with
+        SPARK_Mode => Off
+    is
+    begin
+        SlabAllocator.teardown (nodeSlab);
+    end teardown;
+
+    ---------------------------------------------------------------------------
+    -- create
+    ---------------------------------------------------------------------------
+    procedure create (myList : in out List; capacity : in Natural) with
         SPARK_Mode => On
     is
     begin
         myList.head := null;
         myList.tail := null;
+        myList.capacity := capacity;
+    end create;
+
+    ---------------------------------------------------------------------------
+    -- delete
+    ---------------------------------------------------------------------------
+    procedure delete (myList : in out List) with
+        SPARK_Mode => On
+    is
+    begin
+        clear (myList);
+
+        myList.head := null;
+        myList.tail := null;
         myList.length := 0;
         myList.capacity := 0;
-        SlabAllocator.teardown (nodeSlab);
-    end teardown;
+    end delete;
 
     ---------------------------------------------------------------------------
     -- insertFront
@@ -57,6 +74,10 @@ is
                                                  next    => null,
                                                  prev    => null);
     begin
+        if myList.length = myList.capacity then
+            raise LinkedListException with "Exceeded list capacity";
+        end if;
+
         if myList.length = 0 then
             newNode.prev    := newNode;
             newNode.next    := newNode;
@@ -75,7 +96,7 @@ is
     ---------------------------------------------------------------------------
     -- insertBack
     ---------------------------------------------------------------------------
-    procedure insertBack(myList : in out List; element : in T) with
+    procedure insertBack (myList : in out List; element : in T) with
         SPARK_Mode => Off
     is
         prevTail : constant NodePtr := myList.tail;
@@ -83,6 +104,10 @@ is
                                                  next    => null,
                                                  prev    => null);
     begin
+        if myList.length = myList.capacity then
+            raise LinkedListException with "Exceeded list capacity";
+        end if;
+
         if myList.length = 0 then
             newNode.prev    := newNode;
             newNode.next    := newNode;
@@ -101,7 +126,7 @@ is
     ---------------------------------------------------------------------------
     -- popFront
     ---------------------------------------------------------------------------
-    procedure popFront(myList : in out List) with
+    procedure popFront (myList : in out List) with
         SPARK_Mode => Off
     is
         oldHead : NodePtr;
@@ -116,14 +141,14 @@ is
         newHead.prev    := myList.head;
         myList.head     := newHead;
 
-        free(oldHead);
+        free (oldHead);
         myList.length := myList.length - 1;
     end popFront;
 
     ---------------------------------------------------------------------------
     -- front
     ---------------------------------------------------------------------------
-    function front(myList : in List) return T with
+    function front (myList : in List) return T with
         SPARK_Mode => Off
     is
     begin
@@ -137,7 +162,7 @@ is
     ---------------------------------------------------------------------------
     -- popBack
     ---------------------------------------------------------------------------
-    procedure popBack(myList : in out List) with
+    procedure popBack (myList : in out List) with
         SPARK_Mode => Off
     is
         oldTail : NodePtr;
@@ -159,7 +184,7 @@ is
     ---------------------------------------------------------------------------
     -- back
     ---------------------------------------------------------------------------
-    function back(myList : in List) return T with
+    function back (myList : in List) return T with
         SPARK_Mode => Off
     is
     begin
@@ -182,7 +207,10 @@ is
 
     -- end remove;
 
-    procedure clear(myList : in out List) with
+    ---------------------------------------------------------------------------
+    -- clear
+    ---------------------------------------------------------------------------
+    procedure clear (myList : in out List) with
         SPARK_Mode => On
     is
     begin
@@ -192,8 +220,10 @@ is
         end loop DeleteLoop;
     end clear;
 
-
-    procedure print(myList : in List) with
+    ---------------------------------------------------------------------------
+    -- print
+    ---------------------------------------------------------------------------
+    procedure print (myList : in List) with
         SPARK_Mode => On
     is
         curNode : NodePtr := myList.head;
@@ -204,13 +234,13 @@ is
         end if;
 
         PrintLoop: loop
-            printElem(curNode.element);
+            printElem (curNode.element);
             exit PrintLoop when curNode = myList.tail;
-            print(" -> ");
+            print (" -> ");
             curNode := curNode.next;
         end loop PrintLoop;
 
         println;
     end print;
 
-end LinkedList;
+end LinkedLists;

@@ -195,10 +195,10 @@ is
     -- Set all elements of memory to a particular value.
     procedure memset(addr   : System.Address; 
                      val    : System.Storage_Elements.Storage_Element;
-                     len    : Natural)
+                     len    : System.Storage_Elements.Storage_Count)
         with SPARK_Mode => Off 
     is
-        mem : Storage_Array(1..Storage_Offset(len))
+        mem : Storage_Array(1..len)
             with Import, Address => addr;
     begin
         for element of mem loop
@@ -243,7 +243,7 @@ is
     ---------------------------------------------------------------------------
     function memcpy(dest    : System.Address;
                     src     : System.Address;
-                    len     : Natural) return System.Address
+                    len     : System.Storage_Elements.Storage_Count) return System.Address
         with SPARK_Mode => Off
     is
         -- memd : Storage_Array(1..Storage_Offset(len))
@@ -256,7 +256,7 @@ is
             --     memd(Storage_Offset(i)) := mems(Storage_Offset(i));
             -- end loop;
         -- end if;
-        x86.rep_movsb (dest, src, Storage_Count(len));
+        x86.rep_movsb (dest, src, len);
 
         return dest;
     end memcpy;
@@ -266,23 +266,25 @@ is
     ---------------------------------------------------------------------------
     function memmove (dest : System.Address;
                       src  : System.Address;
-                      len  : Natural) return System.Address
+                      len  : System.Storage_Elements.Storage_Count) return System.Address
         with SPARK_Mode => Off
     is
-        memd : Storage_Array(1..Storage_Offset(len))
+        use type System.Address;
+
+        memd : Storage_Array(1..len)
             with Import, Address => dest;
         
-        mems : Storage_Array(1..Storage_Offset(len))
+        mems : Storage_Array(1..len)
             with Import, Address => src;
     begin
         -- These ranges might overlap, so if destination is above the source,
         -- copy back to front. Otherwise, copy front-to-back.
 
-        if To_Integer (dest) < To_Integer (src) then
+        if dest < src then
             return memcpy (dest, src, len);
         else
             for i in reverse 1..len loop
-                memd(Storage_Offset(i)) := mems(Storage_Offset(i));
+                memd(i) := mems(i);
             end loop;
         end if;
 
@@ -294,7 +296,7 @@ is
     ---------------------------------------------------------------------------
     procedure memCopy (dest  : in System.Address;
                        src   : in System.Address;
-                       len   : in Natural) with SPARK_Mode => Off
+                       len   : in System.Storage_Elements.Storage_Count) with SPARK_Mode => Off
     is
         dummy : System.Address;
     begin

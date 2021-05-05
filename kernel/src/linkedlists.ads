@@ -3,6 +3,15 @@
 -- Copyright (C) 2020 Jon Andrew
 --
 -- @summary Linked List implementation
+--
+-- @description
+-- Each time this package is instantiated, setup must be called with the 
+-- _package-wide_ capacity. Underlying physical storage will be allocated in
+-- setup. Individual lists created using this package will share that memory,
+-- but per-list capacities can be set as well in the call to create.
+-- 
+-- @TODO would like an iterator here.
+--
 -- @TODO probably want some way in here to just get access to the underlying
 -- objects vs potentially returning a copy of a large object.
 -------------------------------------------------------------------------------
@@ -14,9 +23,11 @@ generic
     type T is private;
     with procedure printElem(element : in T);
 
-package LinkedList with
+package LinkedLists with
     SPARK_Mode => On
 is
+
+    LinkedListException : exception;
 
     nodeSlab : SlabAllocator.Slab;
 
@@ -61,25 +72,40 @@ is
 
     ---------------------------------------------------------------------------
     -- setup
-    -- Initialize a Linked List with underlying SlabAllocator and physical
-    -- memory.
-    -- @field capacity - initial number of objects this list should be set up
-    --  to store. The list can be expanded beyond this - see SlabAllocator
+    -- Initialize the storage for a particular LinkedList package instantiation.
+    --
+    -- @field capacity - initial number of objects this _package_ can allocate
+    --  across all the Lists it is used to create.
     ---------------------------------------------------------------------------
-    procedure setup (myList : in out List; capacity : in Natural) with
+    procedure setup (capacity : in Natural) with
         SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- teardown
-    -- Free the underlying slab used to allocate objects for this list. This
-    -- doesn't bother to free individual list nodes back to the slab, since the
-    -- slab's physical memory will be freed directly back to whatever
-    -- physical allocator it came from.
-    --
-    -- NOTE: The List object is reset, and can be re-used if setup() is called
-    -- again on it.
+    -- Free the underlying slab used to allocate list nodes for this
+    -- package. This doesn't bother to free individual list nodes back to the
+    -- slab, since the slab's physical memory will be freed directly back to
+    -- whatever physical allocator it came from.
     ---------------------------------------------------------------------------
-    procedure teardown (myList : in out List) with
+    procedure teardown with
+        SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- create
+    -- Create a new List object with given capacity.
+    -- @CAUTION ensure that the capacity given is less than the capacity given
+    --  to the setup function.
+    ---------------------------------------------------------------------------
+    procedure create (myList : in out List; capacity : in Natural) with
+        SPARK_Mode => On;
+    
+
+    ---------------------------------------------------------------------------
+    -- delete
+    -- Free the memory used by any remaining nodes in the list and reset the
+    -- list. create must be called on the list if it is to be used again.
+    ---------------------------------------------------------------------------
+    procedure delete (myList : in out List) with
         SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
@@ -155,4 +181,4 @@ private
  
     procedure free is new Ada.Unchecked_Deallocation(object => Node,
                                                      name   => NodePtr);
-end LinkedList;
+end LinkedLists;

@@ -11,6 +11,7 @@ with Multiboot;
 package Modules with
     SPARK_Mode => On
 is
+    ModuleException : exception;
 
     ---------------------------------------------------------------------------
     -- setup

@@ -285,7 +285,7 @@ is
     end record;
 
     type SpecialSectionIndex is new Unsigned_32;
-    SHN_UNDEF   :constant SpecialSectionIndex := 0;       
+    SHN_UNDEF   :constant SpecialSectionIndex := 0;
     SHN_LOPROC  :constant SpecialSectionIndex := 16#FF00#;
     SHN_HIPROC  :constant SpecialSectionIndex := 16#FF1F#;
     SHN_LOOS    :constant SpecialSectionIndex := 16#FF20#;

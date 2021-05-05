@@ -68,9 +68,9 @@ is
     PG_PAT              : constant := 2**12;
 
     -- Predefined flags (all PAT entry 0 - WB)
-    PG_KERNELCODE       : constant := PG_PRESENT;
-    PG_KERNELDATA       : constant := PG_PRESENT + PG_WRITABLE + PG_NXE;
-    PG_KERNELDATARO     : constant := PG_PRESENT + PG_NXE;
+    PG_KERNELCODE       : constant := PG_PRESENT + PG_GLOBAL;
+    PG_KERNELDATA       : constant := PG_PRESENT + PG_GLOBAL + PG_WRITABLE + PG_NXE;
+    PG_KERNELDATARO     : constant := PG_PRESENT + PG_GLOBAL + PG_NXE;
     PG_USERCODE         : constant := PG_PRESENT + PG_USER;
     PG_USERDATA         : constant := PG_PRESENT + PG_WRITABLE + PG_USER + PG_NXE;
     PG_USERDATARO       : constant := PG_PRESENT + PG_USER + PG_NXE;
@@ -80,7 +80,7 @@ is
     -- PAT entries are configured.
 
     -- PAT entry 3 (UC)
-    PG_IO               : constant := PG_PRESENT + PG_WRITABLE + PG_NXE + 
+    PG_IO               : constant := PG_PRESENT + PG_GLOBAL + PG_WRITABLE + PG_NXE + 
                                         PG_WRITETHROUGH + PG_CACHEDISABLED;
 
     -- PAT entry 3 (UC)
@@ -88,7 +88,7 @@ is
                                         PG_WRITETHROUGH + PG_CACHEDISABLED;
 
     -- PAT entry 7 (WC)
-    PG_IO_WC      : constant := PG_PRESENT + PG_WRITABLE + PG_NXE +
+    PG_IO_WC      : constant := PG_PRESENT + PG_GLOBAL + PG_WRITABLE + PG_NXE +
                                         PG_WRITETHROUGH + PG_CACHEDISABLED + PG_PAT;
 
     -- PAT entry 7 (WC)
