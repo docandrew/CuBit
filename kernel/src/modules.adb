@@ -2,20 +2,27 @@
 -- CuBitOS
 -- Copyright (C) 2021 Jon Andrew
 --
--- ELF Module Loading
+-- Multiboot Module Loading
 -------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
+with BuddyAllocator;
 with ELF;
 with Process;
+with Process.Loader;
 with Strings;
 with TextIO; use TextIO;
-with Util;
 with Virtmem;
 
 package body Modules is
+
+    -- We need to special-case the Ramdisk driver and initrd image, so as we
+    -- find those during module loading keep track here.
+    ramdiskPID : Process.ProcessID;
+    initrdAddr : Virtmem.PhysAddress;
+    initrdSize : Storage_Count;
 
     ---------------------------------------------------------------------------
     -- printModuleInfo
@@ -33,178 +40,11 @@ package body Modules is
     begin
         Strings.toAda(strAddr, modName);
         println;
-        print ("Module name:  "); print(modName); println;
+        print ("Module name:  "); print (modName); println;
         print ("Module start: "); println (modStart);
         print ("Module end:   "); println (modEnd);
         -- print (" contents :   "); println (contents);
     end printModule;
-
-    ---------------------------------------------------------------------------
-    -- isValidELF
-    ---------------------------------------------------------------------------
-    function isValidELF (hdr : ELF.ELFFileHeader) return Boolean with
-        SPARK_Mode => On
-    is
-        use ELF;
-    begin
-        if  hdr.e_ident.EI_MAG0  /= 16#7F# or
-            hdr.e_ident.EI_MAG1  /= 'E' or
-            hdr.e_ident.EI_MAG2  /= 'L' or
-            hdr.e_ident.EI_MAG3  /= 'F' then
-
-            println ("Modules: Not an ELF object");
-            return False;
-        end if;
-
-        if hdr.e_ident.EI_CLASS /= ELF.ELFCLASS64 then
-            println ("Modules: ELF object is 32-bit, expected 64-bit");
-            return False;
-        end if;
-
-        if hdr.e_ident.EI_DATA /= ELF.ELFDATA2LSB then
-            println ("Modules: ELF object is MSB, expected LSB");
-            return False;
-        end if;
-
-        if hdr.e_ident.EI_OSABI /= ELF.ELFOSABI_SYSV then
-            println ("Modules: ELF object is not SYSV ABI");
-            return False;
-        end if;
-
-        if hdr.e_type /= ELF.ET_EXEC then
-            println ("Modules: ELF object is not executable");
-            return False;
-        end if;
-
-        if hdr.e_machine /= ELF.EM_X86_64 then
-            println ("Modules: ELF object not compiled for X86-64");
-            return False;
-        end if;
-
-        return True;
-    end isValidELF;
-
-    ---------------------------------------------------------------------------
-    -- printSegmentFlags
-    ---------------------------------------------------------------------------
-    procedure printSegmentFlags (f : in ELF.SegmentFlags) with
-        SPARK_Mode => On
-    is
-        use ELF;
-    begin
-
-        if (f and PF_R) /= 0 then
-            print ("R");
-        else
-            print ("-");
-        end if;
-
-        if (f and PF_W) /= 0 then
-            print ("W");
-        else
-            print ("-");
-        end if;
-
-        if (f and PF_X) /= 0 then
-            print ("X");
-        else
-            print ("-");
-        end if;
-
-    end printSegmentFlags;
-
-    ---------------------------------------------------------------------------
-    -- printSegmentType
-    ---------------------------------------------------------------------------
-    procedure printSegmentType (t : in ELF.SegmentType) with
-        SPARK_Mode => On
-    is
-        use ELF;
-    begin
-        case t is
-            when PT_NULL    => print ("NULL");
-            when PT_LOAD    => print ("LOAD");
-            when PT_DYNAMIC => print ("DYNAMIC");
-            when PT_INTERP  => print ("INTERP");
-            when PT_NOTE    => print ("NOTE");
-            when PT_SHLIB   => print ("SHLIB");
-            when PT_PHDR    => print ("PHDR");
-            when others     => print ("Other");
-        end case;
-    end printSegmentType;
-
-    ---------------------------------------------------------------------------
-    -- toPageFlags
-    -- Don't support executable data sections.
-    ---------------------------------------------------------------------------
-    function toPageFlags (f : ELF.SegmentFlags) return Unsigned_64 with
-        SPARK_Mode => On
-    is
-        use type ELF.SegmentFlags;
-    begin
-        -- Executable
-        if (f and ELF.PF_X) /= 0 and 
-           (f and ELF.PF_R) /= 0 and
-           (f and ELF.PF_W) = 0 then
-           return Virtmem.PG_USERCODE;
-        end if;
-
-        -- Read/Write
-        if (f and ELF.PF_X) = 0  and
-           (f and ELF.PF_R) /= 0 and 
-           (f and ELF.PF_W) /= 0 then
-            return Virtmem.PG_USERDATA;
-        end if;
-
-        -- Read-only
-        if (f and ELF.PF_X) = 0 and
-           (f and ELF.PF_R) /= 0 and
-           (f and ELF.PF_W) = 0 then
-            return Virtmem.PG_USERDATARO;
-        end if;
-
-        raise ModuleException with "Modules: Bad module, invalid ELF segment flags. Segments can be only Read/Write, Read-only or Read/Executable";
-    end toPageFlags;
-
-    ---------------------------------------------------------------------------
-    -- addSegmentToProcess
-    ---------------------------------------------------------------------------
-    procedure addSegmentToProcess (elfAddr : in System.Address;
-                                   segment : in ELF.ProgramHeader;
-                                   proc    : in out Process.Process) with
-        SPARK_Mode => On
-    is
-        -- How many pages needed for this segment, and what flags?
-        numPages : Storage_Count := (segment.p_memsz + Virtmem.PAGE_SIZE - 1) / Virtmem.PAGE_SIZE;
-        flags    : Unsigned_64 := toPageFlags (segment.p_flags);
-        storage  : System.Address;
-
-    begin
-        -- update start and end of the process' image.
-        if proc.istart > segment.p_vaddr then
-            proc.istart := segment.p_vaddr;
-        end if;
-
-        if proc.iend < segment.p_vaddr + segment.p_memsz then
-            proc.iend := segment.p_vaddr + segment.p_memsz;
-        end if;
-
-        -- Add these page(s) to the process
-        for i in 0..numPages-1 loop
-            -- Add page
-            print ("Modules: Mapping segment page "); print (Integer(i));
-            print (" at "); println (segment.p_vaddr + (i * Virtmem.PAGE_SIZE));
-            
-            Process.addPage (proc    => proc,
-                             mapTo   => segment.p_vaddr + (i * Virtmem.PAGE_SIZE),
-                             storage => storage,
-                             flags   => flags);
-
-            -- Copy bytes from ELF image to page.
-            Util.memCopy (storage, elfAddr + segment.p_offset, segment.p_filesz);
-
-        end loop;
-    end addSegmentToProcess;
 
     ---------------------------------------------------------------------------
     -- loadModule
@@ -219,60 +59,86 @@ package body Modules is
         modEnd    : System.Address := Virtmem.P2Va (Integer_Address(m.mod_end));
         size      : Storage_Count  := modEnd - modStart;
         elfHeader : ELF.ELFFileHeader with Import, Address => modStart;
+        pid       : Process.ProcessID;
 
-
+        modName   : String(1..16);
     begin
-        if isValidELF (elfHeader) then
-            println ("Modules: Found compatible, executable ELF object, checking program header...");
-            print ("Modules: Program header offset:     "); println (elfHeader.e_phoff'Image);
-            print ("Modules: Program header size:       "); println (elfHeader.e_phentsize);
-            print ("Modules: Number of Program headers: "); println (elfHeader.e_phnum);
-            print ("Modules: Entry point:               "); println (elfHeader.e_entry);
+        Strings.toAda(strAddr, modName);
 
-            declare
-                segments : ELF.ProgramHeaderTable(0..elfHeader.e_phnum) with Import, Address => modStart + elfHeader.e_phoff;
-
-                newProc  : Process.Process;
-                modName  : Process.ProcessName;
-            begin
-                Strings.toAda(strAddr, modName);
-
-                -- Create new Process for this executable.
-                newProc := Process.create (imageStart  => elfHeader.e_entry,
-                                           imageSize   => size,
-                                           procStart   => elfHeader.e_entry,
-                                           ppid        => 0,
-                                           name        => modName,
-                                           priority    => 1,
-                                           procStack   => To_Address(16#0000_8000_0000_0000#));
-
-                for segment of segments loop
-                    -- println;
-                    -- print ("Modules: Segment type:            "); printSegmentType (segment.p_type); println;
-                    -- print ("Modules: Segment flags:           "); printSegmentFlags (segment.p_flags); println;
-                    -- print ("Modules: Segment offset:          "); println (segment.p_offset'Image);
-                    -- print ("Modules: Segment virtual address: "); println (segment.p_vaddr);
-                    -- print ("Modules: Segment file size:       "); println (segment.p_filesz'Image);
-                    -- print ("Modules: Segment memory size:     "); println (segment.p_memsz'Image);
-                    -- print ("Modules: Segment alignment:       "); println (segment.p_align'Image);
-
-                    if segment.p_type = ELF.PT_LOAD and segment.p_memsz > 0 then
-                        addSegmentToProcess (elfAddr => modStart,
-                                             segment => segment,
-                                             proc    => newProc);
-                    end if;
-                end loop;
-
-                print ("Modules: Loaded module "); print (modName); print (" w/ process ID "); println (newProc.pid);
-                -- @TODO this is fine for testing modules but we would rather
-                -- have loadModule take a specific module name, then return the PID
-                Process.addToProctab (newProc);
-                Process.resume (newProc.pid);
-            end;
-        end if;
+        -- If this file is an ELF object, load it and start it up.
+        if Process.Loader.isValidELF (elfHeader) then
+            pid := Process.Loader.load (elfHeader, modStart, size, strAddr);
         
-        println;
+            -- if pid /= Process.NO_PROCESS then
+            --     Process.resume (pid);
+            -- end if;
+        end if;
+
+        -- If this file is the initrd image, save the info so we can
+        -- map it into the ramdisk driver. If it's the ramdisk driver, save its
+        -- pid so we know _who_ to map the initrd image into.
+        if modName(1..8) = "init.img" then
+
+            -- check for duplicate modules with same name.
+            if initrdAddr /= 0 then
+                println ("Modules: Multiple init.img files found, using first one found.");
+                return;
+            end if;
+
+            initrdAddr := Virtmem.PhysAddress(m.mod_start);
+            initrdSize := size;
+
+        elsif modName(1..11) = "ramdisk.drv" then
+
+            if ramdiskPID /= Process.NO_PROCESS then
+                println ("Modules: Multiple ramdisk.drv files found, using first one found.");
+                return;
+            end if;
+
+            ramdiskPID := pid;
+        end if;
+
     end loadModule;
+
+    ---------------------------------------------------------------------------
+    -- mapInitrd
+    -- map the initial ramdisk image into the ramdisk driver.
+    ---------------------------------------------------------------------------
+    procedure mapInitrd (pid  : Process.ProcessID;
+                         addr : Virtmem.PhysAddress;
+                         size : Storage_Count) with
+        SPARK_Mode => On
+    is
+        ok : Boolean;
+        MapException : exception;
+
+        base : constant System.Address := To_Address (16#0000_5000_0000_0000#);
+
+        -- Need at least one big page no matter how big the initrd is.
+        numBigPages : Storage_Count := (size + Virtmem.BIG_PAGE_SIZE - 1) / Virtmem.BIG_PAGE_SIZE;
+
+        procedure mapBigPage is new Virtmem.mapBigPage (BuddyAllocator.allocFrame);
+    begin
+
+        for i in 0..numBigPages-1 loop
+            print ("Modules: Mapping initrd big page "); print(Integer(i));
+            print (" at "); print (base + (i * Virtmem.BIG_PAGE_SIZE));
+            print (" into pid "); println (Integer(pid));
+
+            mapBigPage (phys    => addr,
+                        virt    => To_Integer(base + (i * Virtmem.BIG_PAGE_SIZE)),
+                        flags   => Virtmem.PG_USERDATA,
+                        myP4    => Process.addrtab(pid),
+                        success => ok);
+        end loop;
+
+        if ok then
+            MAGIC_RAMDISK_ADDRESS := base;
+        else
+            print ("Modules: Error mapping initrd into Ramdisk driver,");
+            println (" a successful boot is unlikely.");
+        end if;
+    end mapInitrd;
 
     ---------------------------------------------------------------------------
     -- setup
@@ -281,6 +147,13 @@ package body Modules is
         SPARK_Mode => On
     is
     begin
+        -- Only set if we actually loaded the initrd image
+        MAGIC_RAMDISK_ADDRESS := System.Null_Address;
+
+        initrdAddr := 0;
+        initrdSize := 0;
+        ramdiskPID := Process.NO_PROCESS;
+
         if mbinfo.flags.hasModules then
             declare
                 type ModuleList is array (Unsigned_32 range 1..mbinfo.mods_count) of Multiboot.MBModule
@@ -294,6 +167,18 @@ package body Modules is
                     loadModule (m);
                 end loop;
             end;
+
+            -- If ramdisk driver loaded and initrd image present, map it into the
+            -- ramdisk driver's address space.
+            if ramdiskPID /= Process.NO_PROCESS and
+               initrdAddr /= 0 and
+               initrdSize /= 0 then
+
+               mapInitrd (ramdiskPID, initrdAddr, initrdSize);
+
+               println ("Modules: Starting Ramdisk driver.");
+               Process.resume (ramdiskPID);
+            end if;
         else
             println ("Modules: No boot drivers or services found.");
         end if;

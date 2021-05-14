@@ -2,6 +2,7 @@
 -- CuBitOS
 -- Copyright (C) 2020 Jon Andrew
 -------------------------------------------------------------------------------
+with Ada.Unchecked_Conversion;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
 
@@ -10,6 +11,8 @@ with Filesystem.VFS.Paths;
 with Mem_mgr;
 with PerCpuData;
 with Process;
+with Process.IPC;
+with Sysinfo;
 with TextIO; use TextIO;
 with Util;
 with Virtmem;
@@ -31,7 +34,7 @@ package body Syscall is
     ---------------------------------------------------------------------------
     function read (fd    : in Descriptors.DescriptorNum;
                    buf   : in System.Address;
-                   count : in Unsigned_64) return Long_Integer with SPARK_Mode => On
+                   count : in Unsigned_64) return Unsigned_64 with SPARK_Mode => On
     is
     begin
         return 0;
@@ -41,10 +44,10 @@ package body Syscall is
     -- close
     -- @TODO
     ---------------------------------------------------------------------------
-    function close (fd : in Descriptors.DescriptorNum) return Long_Integer with SPARK_Mode => On
+    function close (fd : in Descriptors.DescriptorNum) return Unsigned_64 with SPARK_Mode => On
     is
     begin
-        return -1;
+        return 0;
     end close;
 
     ---------------------------------------------------------------------------
@@ -53,10 +56,10 @@ package body Syscall is
     ---------------------------------------------------------------------------
     function execve (exename   : in System.Address;
                      args      : in System.Address;
-                     env       : in System.Address) return Long_Integer with SPARK_Mode => On
+                     env       : in System.Address) return Unsigned_64 with SPARK_Mode => On
     is
     begin
-        return -1;
+        return 0;
     end execve;
 
     ---------------------------------------------------------------------------
@@ -72,11 +75,11 @@ package body Syscall is
     function open (filenameLen : in Unsigned_64;
                    filename    : in System.Address;
                    flags       : in Unsigned_64;
-                   mode        : in Unsigned_64) return Long_Integer with SPARK_Mode => On
+                   mode        : in Unsigned_64) return Unsigned_64 with SPARK_Mode => On
     is
     begin
         --return Filesystem.VFS.Paths.open (filenameLen, filename, flags, mode);
-        return -1;
+        return 0;
     end open;
 
     ---------------------------------------------------------------------------
@@ -84,10 +87,10 @@ package body Syscall is
     ---------------------------------------------------------------------------
     function write (fd    : in Descriptors.DescriptorNum;
                     buf   : in System.Address;
-                    count : in Unsigned_64) return Long_Integer with SPARK_Mode => On
+                    count : in Unsigned_64) return Unsigned_64 with SPARK_Mode => On
     is
         use Descriptors;    -- for '=' comparison
-        bytesWritten : Long_Integer := 0;
+        bytesWritten : Unsigned_64 := 0;
         idx : Storage_Offset := 0;
     begin
         -- for testing
@@ -116,17 +119,21 @@ package body Syscall is
                              arg4,   -- r8
                              arg5,   -- r9
                              syscallNum : in Unsigned_64)   -- first on stack
-                             return Long_Integer
+                             return Unsigned_64
     is
         oldCR3 : Integer_Address;
 
         percpu : PerCPUData.PerCPUData with
             Import, Address => PerCPUData.getPerCPUDataAddr;
 
-        retval : Long_Integer := -1;
+        retval  : Unsigned_64 := 0;
+        retval2 : Unsigned_64 := 0;
+
+        function toErr is new Ada.Unchecked_Conversion (Long_Integer, Unsigned_64);
+        reterr : constant Unsigned_64 := toErr(-1);
     begin
         --oldCR3 := x86.getCR3;
-
+        -- print ("SYSCALL: "); print (syscallNum); print (" from pid: "); println (PerCPUData.getCurrentPID);
         -- Dispatch the syscall
         case syscallNum is
             when SYSCALL_EXIT =>
@@ -150,6 +157,50 @@ package body Syscall is
                                 filename    => Util.numToAddr(arg1),
                                 flags       => arg2,
                                 mode        => arg3);
+
+            -- IPC
+            when SYSCALL_RECEIVE =>
+                declare
+                    from : Process.ProcessID with Import, Address => Util.numToAddr(arg1);
+                begin
+                    retval := Process.IPC.receive (from);
+                end;
+
+            when SYSCALL_SEND =>
+                if arg0 > Unsigned_64(Process.ProcessID'Last) then
+                    retval := reterr;
+                else
+                    retval := Process.IPC.send (dest => Process.ProcessID(arg0),
+                                                msg  => arg1);
+                end if;
+
+            when SYSCALL_REPLY =>
+                if arg0 > Unsigned_64(Process.ProcessID'Last) then
+                    retval := reterr;
+                else
+                    retval := Process.IPC.reply (replyTo  => Process.ProcessID(arg0),
+                                                 msg      => arg1);
+                end if;
+
+            when SYSCALL_RECEIVE_EVENT =>
+                retval := Process.IPC.receiveEvent;
+
+            when SYSCALL_SEND_EVENT =>
+                if arg0 > Unsigned_64(Process.ProcessID'Last) then
+                    retval := reterr;
+                else
+                    Process.IPC.sendEvent (dest => Process.ProcessID(arg0),
+                                           msg  => arg1);
+                    retval := 1;
+                end if;
+            
+            when SYSCALL_INFO =>
+                return Sysinfo.getInfo (query  => arg0,
+                                        detail => arg1);
+
+            when SYSCALL_REGISTER_DRIVER =>
+                return Sysinfo.registerDriver (pid    => PerCPUData.getCurrentPID,
+                                               driver => Sysinfo.DriverID(arg0));
 
             when others =>
                 print ("Syscall: "); printd (syscallNum);

@@ -26,6 +26,9 @@ is
     FRAME_SIZE       : constant := 2**FRAME_SHIFT;
     PAGE_SIZE        : constant := FRAME_SIZE;
 
+    -- For rounding an address down to nearest page (for mapping page faults)
+    PAGE_MASK        : constant := 16#FFFF_FFFF_FFFF_F000#;
+
     -- 2-MByte page translations
     BIG_FRAME_SHIFT  : constant := 21;
     BIG_FRAME_SIZE   : constant := 2**BIG_FRAME_SHIFT;

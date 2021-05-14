@@ -23,7 +23,6 @@ with Process;
 -- with Scheduler;
 with Segment;
 with Stackframe;
-with TextIO; use TextIO;
 with Util; use Util;
 with Virtmem;
 with x86;

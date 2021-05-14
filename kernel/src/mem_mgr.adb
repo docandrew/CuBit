@@ -328,8 +328,8 @@ is
     is
     begin
         -- only switch if its necessary to avoid the TLB flush
-        if x86.getCR3 /= Virtmem.K2P(To_Integer(kernelP4'Address)) then
-            Virtmem.setActiveP4(Virtmem.K2P(To_Integer(kernelP4'Address)));
+        if x86.getCR3 /= Virtmem.K2P(kernelP4'Address) then
+            Virtmem.setActiveP4(Virtmem.K2P(kernelP4'Address));
         end if;
     end switchAddressSpace;
 

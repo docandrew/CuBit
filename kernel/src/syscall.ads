@@ -15,7 +15,7 @@ package Syscall with
 is
 
     ---------------------------------------------------------------------------
-    -- The basic set of syscalls will be those required for Newlib support
+    -- System Calls
     ---------------------------------------------------------------------------
     subtype SyscallNumber is Unsigned_64;
     SYSCALL_EXIT          : constant SyscallNumber := 0;
@@ -32,6 +32,13 @@ is
     SYSCALL_WAIT          : constant SyscallNumber := 11;
     SYSCALL_WRITE         : constant SyscallNumber := 12;
     SYSCALL_OPEN          : constant SyscallNumber := 13;
+
+    SYSCALL_INFO          : constant SyscallNumber := 15;
+    SYSCALL_SEND          : constant SyscallNumber := 16;
+    SYSCALL_RECEIVE       : constant SyscallNumber := 17;
+    SYSCALL_REPLY         : constant SyscallNumber := 18;
+    SYSCALL_SEND_EVENT    : constant SyscallNumber := 19;
+    SYSCALL_RECEIVE_EVENT : constant SyscallNumber := 20;
     
     -- Access Controller Syscalls
     SYSCALL_CONTROLACCESS : constant SyscallNumber := 100;
@@ -39,25 +46,28 @@ is
     SYSCALL_GRANT         : constant SyscallNumber := 102;
     SYSCALL_REVOKE        : constant SyscallNumber := 103;
 
+    -- Driver registration
+    SYSCALL_REGISTER_DRIVER : constant SyscallNumber := 2000;
+
     ---------------------------------------------------------------------------
     -- syscallHandler
     --
     -- This is called from syscall_entry.asm after switching to the running
     --  process' kernel stack
     ---------------------------------------------------------------------------
-    function syscallHandler(arg0,
-                            arg1,
-                            arg2,
-                            arg3,
-                            arg4,
-                            arg5,
-                            syscallNum : in Unsigned_64) return Long_Integer
+    function syscallHandler (arg0,
+                             arg1,
+                             arg2,
+                             arg3,
+                             arg4,
+                             arg5,
+                             syscallNum : in Unsigned_64) return Unsigned_64
         with Export => True, Convention => C, External_Name => "syscallHandler";
 
     ---------------------------------------------------------------------------
     -- syscallReturn is in syscall_entry.asm
     ---------------------------------------------------------------------------
-    procedure syscallReturn(retVal : in Unsigned_64)
+    procedure syscallReturn (retVal : in Unsigned_64)
         with Import => True, Convention => C, External_Name => "syscallReturn";
 
 private
@@ -68,10 +78,10 @@ private
     -- @param mode
     -- @return a descriptor for the resource requested.
     ---------------------------------------------------------------------------
-    function open(filenameLen : in Unsigned_64;
-                  filename    : in System.Address;
-                  flags       : in Unsigned_64;
-                  mode        : in Unsigned_64) return Long_Integer;
+    function open (filenameLen : in Unsigned_64;
+                   filename    : in System.Address;
+                   flags       : in Unsigned_64;
+                   mode        : in Unsigned_64) return Unsigned_64;
 
     ---------------------------------------------------------------------------
     -- write syscall implementation
@@ -80,9 +90,9 @@ private
     --  write
     -- @param count - number of bytes to write.
     ---------------------------------------------------------------------------
-    function write(fd       : in Descriptors.DescriptorNum;
-                   buf      : in System.Address;
-                   count    : in Unsigned_64) return Long_Integer;
+    function write (fd       : in Descriptors.DescriptorNum;
+                    buf      : in System.Address;
+                    count    : in Unsigned_64) return Unsigned_64;
 
     ---------------------------------------------------------------------------
     -- read syscall implementation
@@ -90,7 +100,7 @@ private
     -- @param buf - address of the user buffer to place the read bytes
     -- @param count - number of bytes to read
     ---------------------------------------------------------------------------
-    function read(fd        : in Descriptors.DescriptorNum;
-                  buf       : in System.Address;
-                  count     : in Unsigned_64) return Long_Integer;
+    function read (fd        : in Descriptors.DescriptorNum;
+                   buf       : in System.Address;
+                   count     : in Unsigned_64) return Unsigned_64;
 end Syscall;

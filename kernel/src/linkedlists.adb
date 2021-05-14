@@ -45,6 +45,7 @@ is
     begin
         myList.head := null;
         myList.tail := null;
+        myList.length := 0;
         myList.capacity := capacity;
     end create;
 

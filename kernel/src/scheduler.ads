@@ -37,17 +37,4 @@ is
         Global => (In_Out => process.proctab);
     pragma No_Return (schedule);
 
-    ---------------------------------------------------------------------------
-    -- Get the currently running process ID, if any. If none, return 0.
-    ---------------------------------------------------------------------------
-    --function getCurrentPID return Process.ProcessID;
-
-private
-    --context : process.SavedState with Part_Of => SchedulerState;
-    
-    ---------------------------------------------------------------------------
-    -- Idle task. If no processes are READY, this function
-    --  will be called until the next quantum.
-    ---------------------------------------------------------------------------
-    -- procedure idle;
 end Scheduler;

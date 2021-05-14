@@ -489,9 +489,9 @@ begin
     -- print ("Creating kernel thread 2, procedure address: ");
     -- println (testKThread2'Address);
     -- Process.startKernelThread (testKThread2'Address, "kthread2        ", 2);
-    
-    println ("Creating User Process");
-    Process.createFirstProcess;
+   
+    -- println ("Creating User Process");
+    -- Process.createFirstProcess;
 
     initScheduler: declare
     begin

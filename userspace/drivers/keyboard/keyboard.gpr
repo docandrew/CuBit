@@ -1,4 +1,4 @@
-project Ramdisk is
+project Keyboard is
     
     for Languages use ("Ada");
     
@@ -15,7 +15,7 @@ project Ramdisk is
     -- For gprbuild
     package Builder is
 
-        for Executable ("main.adb") use "ramdisk.drv";
+        for Executable ("main.adb") use "keyboard.drv";
 
         for Default_Switches ("Ada") use 
         (
@@ -57,4 +57,4 @@ project Ramdisk is
         );
     end Binder;
 
-end Ramdisk;
+end Keyboard;

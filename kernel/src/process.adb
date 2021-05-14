@@ -9,24 +9,22 @@
 -------------------------------------------------------------------------------
 with Ada.Unchecked_Conversion;
 with Ada.Unchecked_Deallocation;
-with System.Address_to_Access_Conversions;
 with System.Machine_Code; use System.Machine_Code;
-with System.Storage_Elements; use System.Storage_Elements;
 
 with BuddyAllocator;
 with Config;
-with Debug;
 with Mem_mgr;
 with PerCPUData;
+with Process.Queues;
 with Scheduler;
 with Segment;
-with Serial;
 with TextIO; use TextIO;
 with x86;
 
 package body Process
     with SPARK_Mode => On
 is
+
     ---------------------------------------------------------------------------
     -- setup
     ---------------------------------------------------------------------------
@@ -34,6 +32,7 @@ is
     begin
         -- ProcList.setup (allProcs, Config.MAX_PROCESSES);
         FrameLists.setup (Config.MAX_PROCESSES * Config.PAGES_PER_PROCESS);
+        -- MsgQueue.setup (Config.MAX_PROCESSES);
     end setup;
 
     ---------------------------------------------------------------------------
@@ -43,10 +42,12 @@ is
         SPARK_Mode => On
     is
     begin
+        -- println ("Process.addToProctab: acquiring proctab lock");
         Spinlocks.enterCriticalSection (lock);
 
         proctab(proc.pid) := proc;
 
+        -- println ("Process.addToProctab: releasing proctab lock");
         Spinlocks.exitCriticalSection (lock);
     end addToProctab;
 
@@ -63,10 +64,10 @@ is
         PIDTracker.allocSpecificPID (pid);
 
         proc.pid      := pid;
-        proc.ppid     := 0;
+        proc.ppid     := pid;       -- For IPC, we want this to have its own mailbox.
         proc.name     := name;
         proc.mode     := KERNEL;
-        proc.state    := READY;
+        proc.state    := SUSPENDED;
         proc.priority := priority;
 
         -- Depending on how crazy these threads get, we may consider making this
@@ -102,18 +103,21 @@ is
                                  pid        : in ProcessID;
                                  priority   : in ProcessPriority)
     is
-        proc : Process := createKernelThread (procStart, name, pid, priority);
+        proc : constant Process := createKernelThread (procStart, name, pid, priority);
     begin
         if proc.pid /= 0 then
             addToProctab (proc);
+            resume (proc.pid);
+        else
+            raise ProcessException with "Process.startKernelThread: failed createKernelThread";
         end if;
     end startKernelThread;
 
     ---------------------------------------------------------------------------
     -- addStackPage
-    -- Allocate an additional page of memory for this process' stack, map it
-    -- into the process' page tables, and add it to the list of pages used by
-    -- this process.
+    -- Allocate an additional page of memory for this process or thread's stack,
+    -- map it into the process or thread's parent process page tables, and add
+    -- it to the list of pages used by this process or thread's parent process.
     ---------------------------------------------------------------------------
     procedure addStackPage (proc : in out Process) is
         newFrame : Virtmem.PhysAddress;
@@ -129,13 +133,17 @@ is
             raise ProcessException with "Unable to allocate memory for Process' stack expansion.";
         end if;
         
-        FrameLists.insertFront (proc.frames, newFrame);
+        if proc.isThread then
+            FrameLists.insertFront (proctab(proc.ppid).frames, newFrame);
+        else
+            FrameLists.insertFront (proc.frames, newFrame);
+        end if;
 
-        -- Map the frame just below the current stack.
+        -- Map the frame just below the thread's current stack.
         mapPage (phys    => newFrame,
                  virt    => To_Integer(proc.stackTop - Storage_Count((proc.numStackFrames + 1) * Virtmem.PAGE_SIZE)),
                  flags   => Virtmem.PG_USERDATA,
-                 myP4    => proc.pgTable,
+                 myP4    => addrtab(proc.pgTable),
                  success => ok);
 
         -- print ("Process.addStackPage: Mapping new frame at "); println(To_Integer(proc.stackTop - Storage_Count((proc.numStackFrames + 1) * Virtmem.PAGE_SIZE)));
@@ -149,8 +157,9 @@ is
 
     ---------------------------------------------------------------------------
     -- addPage
-    -- Allocate a page of memory for a process, map at the specified address and
-    -- adds the memory to the process' frame list so it will be freed on exit.
+    -- Allocate a page of memory for a process or thread's parent process, map
+    -- at the specified address and adds the memory to the process or thread's
+    -- parent process frame list so it will be freed on exit.
     ---------------------------------------------------------------------------
     procedure addPage (proc    : in out Process;
                        mapTo   : in System.Address;
@@ -162,20 +171,25 @@ is
     
         procedure mapPage is new Virtmem.mapPage (BuddyAllocator.allocFrame);
     begin
+
         BuddyAllocator.allocFrame (newFrame);
 
         if newFrame = 0 then
-            raise ProcessException with "Unable to allocate memory for Process";
+            raise ProcessException with "Process.addPage: Unable to allocate memory for Process";
         end if;
 
         storage := Virtmem.P2Va (newFrame);
 
-        FrameLists.insertFront (proc.frames, newFrame);
+        if proc.isThread then
+            FrameLists.insertFront (proctab(proc.ppid).frames, newFrame);
+        else
+            FrameLists.insertFront (proc.frames, newFrame);
+        end if;
 
         mapPage (phys    => newFrame,
                  virt    => To_Integer(mapTo),
                  flags   => flags,
-                 myP4    => proc.pgTable,
+                 myP4    => addrtab(proc.pgTable),
                  success => ok);
 
         if not ok then
@@ -186,21 +200,17 @@ is
     ---------------------------------------------------------------------------
     -- create
     ---------------------------------------------------------------------------
-    function create (imageStart  : in System.Address;
-                     imageSize   : in Storage_Count;
-                     procStart   : in System.Address;
+    function create (procStart   : in System.Address;
                      ppid        : in ProcessID;
                      name        : in ProcessName;
                      priority    : in ProcessPriority;
-                     procStack   : in System.Address) return Process
+                     procStack   : in System.Address;
+                     thread      : in Boolean := False) return Process
         with SPARK_Mode => Off
     is
         proc            : Process;
-        pgTablePhys     : Virtmem.PhysAddress;
 
-        -- Address of our allocated stack (initial)
-        userStack       : System.Address;
-        userStackPhys   : Virtmem.PhysAddress;
+        procedure zeroize is new Virtmem.zeroize (Virtmem.P4);
     begin
         PIDTracker.allocPID (proc.pid);
 
@@ -215,6 +225,11 @@ is
         proc.state       := SUSPENDED;
         proc.priority    := priority;
         proc.stackTop    := procStack;
+        proc.stackBottom := procStack - STACK_SIZE;
+
+        -- heap can't be calculated until the image segments are added to this
+        -- process, so set to non-canonical address to start
+        proc.heapStart   := BAD_HEAP_ADDRESS;
         proc.kernelStack := new ProcessKernelStack;
 
         FrameLists.create (proc.frames, MAX_STACK_FRAMES + MAX_HEAP_FRAMES);
@@ -222,63 +237,58 @@ is
         proc.kernelStackTop := proc.kernelStack.all'Address + ProcessKernelStack'Size / 8;
 
         -- Build the initial kernel stack.
-        setupKernelStack : declare
-        begin
-            proc.kernelStack.filler := (others => 0);
+        proc.kernelStack.filler := (others => 0);
 
-            -- Since we use iretq to enter usermode, we need an "interrupt frame"
-            -- to set up the proper rip, rsp, flags and segments.
-            -- Set the interrupt stack frame RIP to the process main, so when
-            -- the interrupt returns, we start executing code there...
-            proc.kernelStack.interruptFrame := (
-                    interruptNumber => 0, 
-                    rip             => procStart,
-                    rsp             => proc.stackTop,
-                    rflags          => x86.FLAGS_INTERRUPT,
-                    cs              => Segment.GDTOffset'Enum_Rep(Segment.GDT_OFFSET_USER_CODE) or 3,
-                    ss              => Segment.GDTOffset'Enum_Rep(Segment.GDT_OFFSET_USER_DATA) or 3,
-                    others          => 0);
+        -- Since we use iretq to enter usermode initially, we need an "interrupt
+        -- frame" to set up the proper rip, rsp, flags and segments.
+        -- Set the interrupt stack frame RIP to the process main, so when
+        -- the interrupt returns, we start executing code there...
+        proc.kernelStack.interruptFrame := (
+                interruptNumber => 0, 
+                rip             => procStart,
+                rsp             => proc.stackTop,
+                rflags          => x86.FLAGS_INTERRUPT,
+                cs              => Segment.GDTOffset'Enum_Rep(Segment.GDT_OFFSET_USER_CODE) or 3,
+                ss              => Segment.GDTOffset'Enum_Rep(Segment.GDT_OFFSET_USER_DATA) or 3,
+                others          => 0);
 
-            -- ... but first we need "start" to return to the usermode entry point...
-            proc.kernelStack.returnAddress := interruptReturn'Address;
+        -- ... but first we need "start" to return to the usermode entry point...
+        proc.kernelStack.returnAddress := interruptReturn'Address;
 
-            -- ... but before that, we need "switch" to return to the start; procedure
-            proc.kernelStack.context := (rip => start'Address, others => 0);
+        -- ... but before that, we need "switch" to return to the start; procedure
+        proc.kernelStack.context := (rip => start'Address, others => 0);
 
-            proc.context := proc.kernelStack.context'Address;
-        end setupKernelStack;
+        proc.context := proc.kernelStack.context'Address;
 
-        -- Map the necessary text, stack into the user process' page tables.
-        setupPageTables : declare
+        if not thread then
+            -- For heavyweight processes, set up the send/recv queues and the
+            -- address space it (and any child threads) will be using.
+            proc.pgTable := proc.pid;
 
-            -- procedure mapPage is new Virtmem.mapPage (BuddyAllocator.allocFrame);
-            procedure zeroize is new Virtmem.zeroize (Virtmem.P4);
+            mailtab(proc.pid).recvQueue := (
+                lock => (name => null, others => <>),
+                head => NO_PROCESS,
+                tail => NO_PROCESS
+            );
 
-            ok : Boolean;
-            MapException : exception;
-        begin
-            zeroize (proc.pgTable);
+            mailtab(proc.pid).sendQueue := (
+                lock => (name => null, others => <>),
+                head => NO_PROCESS,
+                tail => NO_PROCESS
+            );
 
-            Mem_mgr.mapKernelMemIntoProcess (proc.pgTable);
+            proc.mail := proc.pid;
 
-            -- map the process' image
-            -- TODO: load it from an ELF image.
-            -- for pg in processStackPages loop, etc...
-            -- print ("Mapping process image from "); print (imageStart);
-            -- println(" to virtual address 0");
-            -- mapPage (Virtmem.V2P (imageStart),
-            --          0,
-            --          Virtmem.PG_USERCODE,
-            --          proc.pgTable,
-            --          ok);
-            -- if not ok then
-            --     raise MapException with
-            --     "Process.create - can't map process' image";
-            -- end if;
+            zeroize (addrtab(proc.pgTable));
+            Mem_mgr.mapKernelMemIntoProcess (addrtab(proc.pgTable));
+        else
+            -- for threads, point to parent's page table and mailbox
+            proc.pgTable := proc.ppid;
+            proc.mail    := proc.ppid;
+        end if;
 
-            -- Add a page for the process' stack
-            addStackPage (proc);
-        end setupPageTables;
+        -- Add a page for the process' stack
+        addStackPage (proc);
 
         return proc;
     end create;
@@ -294,76 +304,32 @@ is
         SPARK_Mode => On
     is
     begin
+        -- println ("Process.yield: acquiring proctab lock");
         Spinlocks.enterCriticalSection (lock);
+        
         Scheduler.enter;
 
         -- continue execution here after context switch back to this process.
+        -- println ("Process.yield: releasing proctab lock");
         Spinlocks.exitCriticalSection (lock);
     end yield;
 
     ---------------------------------------------------------------------------
-    -- receive
-    -- Return the message if it exists, yield otherwise.
+    -- ready
+    -- Move a process into the ready list and change its state to READY
     ---------------------------------------------------------------------------
-    function receive return Unsigned_64 with SPARK_Mode => On is
-        pid     : constant ProcessID := PerCPUData.getCurrentPID;
-        message : Unsigned_64;
+    procedure ready (pid : ProcessID) with
+        SPARK_Mode => On
+    is
+        ret : ProcessID;
     begin
-        Spinlocks.enterCriticalSection (lock);
+        proctab(pid).state := READY;
+        ret := Queues.insert (readyList, pid, proctab(pid).priority);
 
-        message := proctab(pid).mail.message;
-
-        if not proctab(pid).mail.hasMsg then
-            proctab(pid).state := RECEIVING;
-            Scheduler.enter;
+        if ret /= pid then
+            raise ProcessException with "Process.ready: Error adding pid to ready list.";
         end if;
-
-        proctab(pid).mail.hasMsg := False;
-        
-        Spinlocks.exitCriticalSection (lock);
-
-        return message;
-    end receive;
-
-    ---------------------------------------------------------------------------
-    -- receiveNB
-    ---------------------------------------------------------------------------
-    function receiveNB return Unsigned_64 with SPARK_Mode => On is
-        pid     : constant ProcessID := PerCPUData.getCurrentPID;
-        message : Unsigned_64;
-    begin
-        Spinlocks.enterCriticalSection (lock);
-
-        if proctab(pid).mail.hasMsg then
-            message := proctab(pid).mail.message;
-            proctab(pid).mail.hasMsg := False;
-        else
-            message := Unsigned_64'Last;
-        end if;
-
-        Spinlocks.exitCriticalSection (lock);
-
-        return message;
-    end receiveNB;
-
-    ---------------------------------------------------------------------------
-    -- send
-    -- This may be called by an interrupt handler, so not appropriate to 
-    -- re-enter the scheduler. Deadlock will result.
-    ---------------------------------------------------------------------------
-    procedure send (dest : ProcessID; msg : Unsigned_64) with SPARK_Mode => On is
-    begin
-        Spinlocks.enterCriticalSection (lock);
-
-        proctab(dest).mail.hasMsg  := True;
-        proctab(dest).mail.message := msg;
-
-        if proctab(dest).state = RECEIVING then
-            proctab(dest).state := READY;
-        end if;
-
-        Spinlocks.exitCriticalSection (lock);
-    end send;
+    end ready;
 
     ---------------------------------------------------------------------------
     -- Release our hold on a resource and go into WAITING state.
@@ -377,8 +343,9 @@ is
         -- Need to get process lock, otherwise we may be woken up by another
         -- thread during their call to schedule once we release our resource
         -- lock.
-        Spinlocks.enterCriticalSection(lock);
-        Spinlocks.exitCriticalSection(resourceLock);
+        -- println ("Process.wait: acquiring proctab lock");
+        Spinlocks.enterCriticalSection (lock);
+        Spinlocks.exitCriticalSection (resourceLock);
 
         -- Begin waiting and reschedule.
         proctab(pid).state := WAITING;
@@ -389,12 +356,15 @@ is
         proctab(pid).channel := NO_CHANNEL;
 
         -- Should only be woken when we can acquire the resource lock.
-        Spinlocks.exitCriticalSection(lock);
-        Spinlocks.enterCriticalSection(resourceLock);
+        -- println ("Process.wait: releasing proctab lock");
+        Spinlocks.exitCriticalSection (lock);
+        Spinlocks.enterCriticalSection (resourceLock);
     end wait;
 
     ---------------------------------------------------------------------------
     -- goAheadBody
+    -- @TODO this is probably a poor implementation, may cause thrashing when
+    -- all the woken threads attempt to get the same resource.
     ---------------------------------------------------------------------------
     procedure goAheadBody (channel : in WaitChannel) with
         SPARK_Mode => On
@@ -415,8 +385,12 @@ is
         SPARK_Mode => On
     is
     begin
+        -- println ("Process.goAhead: acquiring proctab lock");
         Spinlocks.enterCriticalSection (lock);
+        
         goAheadBody (channel);
+        
+        -- println ("Process.goAhead: releasing proctab lock");
         Spinlocks.exitCriticalSection (lock);
     end goAhead;
 
@@ -428,7 +402,8 @@ is
     is
         pid : constant ProcessID := PerCPUData.getCurrentPID;
     begin
-        Spinlocks.enterCriticalSection(lock);
+        -- println ("Process.suspend: acquiring proctab lock");
+        Spinlocks.enterCriticalSection (lock);
 
         -- Begin suspension and reschedule.
         proctab(pid).state := SUSPENDED;
@@ -436,8 +411,8 @@ is
 
         -- Resume here when woken.
         -- Should only be woken when we can acquire the resource lock.
-
-        Spinlocks.exitCriticalSection(lock);
+        -- println ("Process.suspend: releasing proctab lock");
+        Spinlocks.exitCriticalSection (lock);
     end suspend;
 
     ---------------------------------------------------------------------------
@@ -446,17 +421,60 @@ is
     procedure resume (pid : ProcessID) with
         SPARK_Mode => On
     is
+        ignore : ProcessID;
     begin
+        -- println ("Process.resume: acquiring proctab lock");
         Spinlocks.enterCriticalSection (lock);
 
         if proctab(pid).state /= SUSPENDED then
             raise ProcessException with "Process.resume: Attempting to resume non-suspended process.";
         end if;
 
-        proctab(pid).state := READY;
+        ready (pid);
 
+        -- println ("Process.resume: releasing proctab lock");
         Spinlocks.exitCriticalSection (lock);
     end resume;
+
+    ---------------------------------------------------------------------------
+    -- inform
+    ---------------------------------------------------------------------------
+    procedure inform (pid : ProcessID) with
+        SPARK_Mode => On
+    is
+        ignore : ProcessID;
+    begin
+        Spinlocks.enterCriticalSection (lock);
+
+        if proctab(pid).state /= WAITINGFOREVENT and
+           proctab(pid).state /= WAITINGFORREPLY then
+            raise ProcessException with "Process.inform: Attempting to inform process not waiting for event.";
+        end if;
+
+        ready (pid);
+
+        Spinlocks.exitCriticalSection (lock);
+    end inform;
+
+    ---------------------------------------------------------------------------
+    -- sleep
+    ---------------------------------------------------------------------------
+    procedure sleep (us : Time.Duration) with
+        SPARK_Mode => On
+    is
+        pid    : ProcessID := PerCPUData.getCurrentPID;
+        ignore : ProcessID;
+    begin
+        -- Put on sleep list.
+        -- println ("Going to sleep.");
+        proctab(pid).state := SLEEPING;
+
+        ignore := Queues.insertDelta (q            => sleepList,
+                                      pid          => pid,
+                                      delayFromNow => Integer(us / 1000));
+        yield;
+
+    end sleep;
 
     ---------------------------------------------------------------------------
     -- This is where the scheduler will initially switch() to.
@@ -465,6 +483,7 @@ is
         SPARK_Mode => On
     is
     begin
+        -- println ("Process.start: releasing proctab lock");
         Spinlocks.exitCriticalSection (lock);
         -- Return to interruptReturn.
     end start;
@@ -488,7 +507,7 @@ is
     is
         -- This is kind of funky. The initBinarySize gets stored as though it were
         -- an address.
-        initSize : Storage_Count := Storage_Count(Util.addrToNum (initBinarySize'Address));
+        initSize : constant Storage_Count := Storage_Count(Util.addrToNum (initBinarySize'Address));
 
         initProcess : Process;
 
@@ -502,13 +521,11 @@ is
         end if;
 
         -- @TODO put the stack way up on top of lower-half like a real process.
-        initProcess := create (imageStart  => alignedStart,
-                               imageSize   => initSize,
-                               procStart   => To_Address(0),
+        initProcess := create (procStart   => To_Address(0),
                                ppid        => 1,
                                name        => "init            ",
                                priority    => 3,
-                               procStack   => To_Address(16#0000_8000_0000_0000#)); --To_Address(2 * Virtmem.PAGE_SIZE));
+                               procStack   => PROCESS_STACK_TOP_VIRT);
 
         -- add page to process, copy the init image to it
         addPage (proc    => initProcess,
@@ -526,14 +543,53 @@ is
     end createFirstProcess;
 
     ---------------------------------------------------------------------------
-    -- switchAddressSpace
+    -- getParent
     ---------------------------------------------------------------------------
-    procedure switchAddressSpace (processP4 : in System.Address) with
+    function getParent (pid : in ProcessID) return ProcessID with
         SPARK_Mode => On
     is
     begin
-        Virtmem.setActiveP4 (Virtmem.K2P (To_Integer(processP4)));
+        return proctab(pid).ppid;
+    end getParent;
+
+    ---------------------------------------------------------------------------
+    -- switchAddressSpace
+    ---------------------------------------------------------------------------
+    procedure switchAddressSpace (pid : in ProcessID) with
+        SPARK_Mode => On
+    is
+        p4addr : System.Address;
+    begin
+        if proctab(pid).isThread then
+            p4addr := addrtab(getParent (pid))'Address;
+        else
+            p4addr := addrtab(pid)'Address;
+        end if;
+
+        Virtmem.setActiveP4 (Virtmem.K2P (p4addr));
     end switchAddressSpace;
+
+    ---------------------------------------------------------------------------
+    -- removeFromMailQueue
+    -- If a process is blocked in the SENDING or RECEIVING states, this 
+    -- procedure will identify the appropriate mailbox it is waiting on, and
+    -- remove it from the list.
+    ---------------------------------------------------------------------------
+    procedure removeFromMailQueue (pid : in ProcessID) with
+        SPARK_Mode => On
+    is
+        mailbox : constant ProcessID    := proctab(pid).queueKey;
+        state   : constant ProcessState := proctab(pid).state;
+        ignore  : ProcessID;
+    begin
+        if state = SENDING then
+            ignore := Queues.popItem (mailtab(mailbox).sendQueue, pid);
+        elsif state = RECEIVING then
+            ignore := Queues.popItem (mailtab(mailbox).recvQueue, pid);
+        else
+            raise ProcessException with "Process.removeFromMailQueue called on non-SENDING/RECEIVING process.";
+        end if;
+    end removeFromMailQueue;
 
     ---------------------------------------------------------------------------
     -- kill
@@ -546,18 +602,33 @@ is
         
         procedure free is new Ada.Unchecked_Deallocation (Object => ProcessKernelStack,
                                                           Name   => ProcessKernelStackPtr);
+        ignore : ProcessID;
     begin
         -- Back to kernel addressing.
         Mem_mgr.switchAddressSpace;
 
+        -- println ("Process.kill: acquiring proctab lock");
         Spinlocks.enterCriticalSection (lock);
 
-        proctab(pid).state := INVALID;
-        if proctab(pid).mode = USER then
+        -- Remove this process from whatever list it was on (if any)
+          case proctab(pid).state is
+            when READY =>
+                ignore := Queues.popItem (readyList, pid);
+            
+            when SLEEPING =>
+                ignore := Queues.popItem (sleepList, pid);
+            
+            when SENDING | RECEIVING =>
+                removeFromMailQueue (pid);
 
-            --@TODO memory leak here with first process' .text. Not a huge
-            -- deal since eventually once the first process exits we'll shut down.
-            -- Free all memory used by the process.
+            when others =>
+                null;
+        end case;
+
+        proctab(pid).state := INVALID;
+
+        if proctab(pid).mode = USER and not proctab(pid).isThread then
+
             loop
                 BuddyAllocator.freeFrame (FrameLists.front(proctab(pid).frames));
                 FrameLists.popFront (proctab(pid).frames);
@@ -569,8 +640,9 @@ is
 
             -- Need to unmap Kernel mem here so when we delete page tables we
             -- only delete the process' page tables.
-            Mem_mgr.unmapKernelMemFromProcess (proctab(pid).pgTable);
-            deleteP4 (proctab(pid).pgTable);
+            Mem_mgr.unmapKernelMemFromProcess (addrtab(pid));
+            deleteP4 (addrtab(pid));
+            proctab(pid).pgTable := NO_PROCESS;
         end if;
         
         free (proctab(pid).kernelStack);
@@ -585,11 +657,107 @@ is
     ---------------------------------------------------------------------------
     -- getRunningProcess
     ---------------------------------------------------------------------------
-    function getRunningProcess return ProcPtr
+    -- function getRunningProcess return ProcPtr
+    -- is
+    -- begin
+    --     return Proctab(PerCPUData.getCurrentPID)'Access;
+    -- end getRunningProcess;
+
+    ---------------------------------------------------------------------------
+    -- pageFault
+    ---------------------------------------------------------------------------
+    procedure pageFault (pid : ProcessID; addr : System.Address) with
+        SPARK_Mode => On
+    is
+        ignore : System.Address;
+    begin
+        -- Valid stack or heap address? heapEnd and heapStart should always be
+        -- page aligned, so we can round down to lower page here when mapping.
+        if (addr <= Proctab(pid).stackTop and addr >= Proctab(pid).stackBottom) or
+           (addr <= Proctab(pid).heapEnd  and addr >= Proctab(pid).heapStart) then
+
+            -- print ("Process: Adding page to process "); println (pid);
+            addPage (proc    => Proctab(pid),
+                     mapTo   => To_Address (To_Integer (addr) and Virtmem.PAGE_MASK),   -- round down
+                     storage => ignore);
+            -- print ("Process: Added page at "); println (To_Address (To_Integer (addr) and Virtmem.PAGE_MASK));
+        else
+            -- @TODO use a heuristic here to figure out if this was a stack 
+            -- overflow, or heap over/underflow and signal the process either way.
+            -- (something like distance to stackBottom < distance to heapEnd = stack overflow)
+            print ("Process: Illegal memory access, killing pid "); println (pid);
+            kill (pid);
+        end if;
+    end pageFault;
+
+    ---------------------------------------------------------------------------
+    -- enableFPU
+    -- Turn on FPU state saving/restoring for this process.
+    ---------------------------------------------------------------------------
+    procedure enableFPU with SPARK_Mode => On
+    is
+        pid : constant ProcessID := PerCPUData.getCurrentPID;
+        newCR0 : Unsigned_64 := x86.getCR0;
+        newCR4 : Unsigned_64 := x86.getCR4;
+    begin
+        Util.clearBit (newCR0, 2);  -- clear CR0.EM
+        Util.setBit (newCR0, 1);    -- set CR0.MP
+        Util.setBit (newCR4, 9);    -- set CR4.OSFXSR
+        Util.setBit (newCR4, 10);   -- set CR4.OSXMMEXCPT
+
+        proctab(pid).fpu := proctab(pid).kernelStack.all.fpuarea'Address;
+        
+        x86.setCR0 (newCR0);
+        x86.setCR4 (newCR4);
+    end enableFPU;
+
+    ---------------------------------------------------------------------------
+    -- disableFPU
+    -- Disable FPU across all processes. This will cause an exception when FPU
+    -- is used again.
+    ---------------------------------------------------------------------------
+    procedure disableFPU with SPARK_Mode => On
+    is
+        newCR0 : Unsigned_64 := x86.getCR0;
+        newCR4 : Unsigned_64 := x86.getCR4;
+    begin
+        Util.setBit (newCR0, 2);        -- set CR0.EM
+        Util.clearBit (newCR0, 1);      -- clear CR0.MP
+        Util.clearBit (newCR4, 9);      -- clear CR4.OSFXSR
+        Util.clearBit (newCR4, 10);     -- clear CR4.OSXMMEXCPT
+
+        x86.setCR0 (newCR0);
+        x86.setCR4 (newCR4);
+    end disableFPU;
+
+    ---------------------------------------------------------------------------
+    -- saveFPUState
+    ---------------------------------------------------------------------------
+    procedure saveFPUState (pid : ProcessID) with SPARK_Mode => On
     is
     begin
-        return Proctab(PerCPUData.getCurrentPID)'Access;
-    end getRunningProcess;
+        if proctab(pid).fpu /= System.Null_Address then
+            x86.fxsave (proctab(pid).fpu);
+
+            -- When saving the FPU state, disable the FPU so we can detect use when
+            -- the next process runs, and if used, set up the save area.
+            disableFPU;
+        end if;
+
+    end saveFPUState;
+
+    ---------------------------------------------------------------------------
+    -- restoreFPUState
+    ---------------------------------------------------------------------------
+    procedure restoreFPUState (pid : ProcessID) with SPARK_Mode => On
+    is
+    begin
+        -- If this process uses the FPU, go ahead and enable it.
+        if proctab(pid).fpu /= System.Null_Address then
+            x86.fxrstor (proctab(pid).fpu);
+            enableFPU;
+        end if;
+    end restoreFPUState;
 
     ---------------------------------------------------------------------------
     -- print

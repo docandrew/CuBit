@@ -232,6 +232,29 @@ is
     end getFlags;
 
     ---------------------------------------------------------------------------
+    -- get CR0 register
+    ---------------------------------------------------------------------------
+    function getCR0 return Unsigned_64 is
+        ret : Unsigned_64;
+    begin
+        Asm("mov %%cr0, %0",
+            Outputs => Unsigned_64'Asm_Output("=r", ret),
+            Volatile => True);
+
+        return ret;
+    end getCR0;
+
+    ---------------------------------------------------------------------------
+    -- set CR0 register
+    ---------------------------------------------------------------------------
+    procedure setCR0 (cr0 : Unsigned_64) is
+    begin
+        Asm("mov %0, %%cr0",
+            Inputs => Unsigned_64'Asm_Input("r", cr0),
+            Volatile => True);
+    end setCR0;
+
+    ---------------------------------------------------------------------------
     -- get CR2 register
     ---------------------------------------------------------------------------
     function getCR2 return Unsigned_64 is
@@ -256,6 +279,29 @@ is
 
         return ret;
     end getCR3;
+
+    ---------------------------------------------------------------------------
+    -- get CR4 register
+    ---------------------------------------------------------------------------
+    function getCR4 return Unsigned_64 is
+        ret : Unsigned_64;
+    begin
+        Asm("mov %%cr4, %0",
+            Outputs => Unsigned_64'Asm_Output("=r", ret),
+            Volatile => True);
+
+        return ret;
+    end getCR4;
+
+    ---------------------------------------------------------------------------
+    -- set CR4 register
+    ---------------------------------------------------------------------------
+    procedure setCR4 (cr4 : Unsigned_64) is
+    begin
+        Asm("mov %0, %%cr4",
+            Inputs => Unsigned_64'Asm_Input("r", cr4),
+            Volatile => True);
+    end setCR4;
 
     ---------------------------------------------------------------------------
     -- get base pointer
@@ -435,7 +481,6 @@ is
     procedure rep_movsb (dst : in System.Address;
                          src : in System.Address;
                          len : in System.Storage_Elements.Storage_Count) is
-        use System.Storage_Elements;
         dstl : System.Address := dst;
         srcl : System.Address := src;
         lenl : Storage_Count  := len;
@@ -454,4 +499,24 @@ is
             Clobber  => "memory",
             Volatile => True);
     end rep_movsb;
+
+    ---------------------------------------------------------------------------
+    -- FXSAVE Save floating point state
+    ---------------------------------------------------------------------------
+    procedure fxsave (saveArea : System.Address) is
+    begin
+        Asm("fxsave %0",
+            Inputs => System.Address'Asm_Input("m", saveArea),
+            Volatile => True);
+    end fxsave;
+
+    ---------------------------------------------------------------------------
+    -- FXRSTOR Restore floating point state
+    ---------------------------------------------------------------------------
+    procedure fxrstor (saveArea : System.Address) is
+    begin
+        Asm("fxrstor %0",
+            Inputs => System.Address'Asm_Input("m", saveArea),
+            Volatile => True);
+    end fxrstor;
 end x86;

@@ -6,7 +6,7 @@
 -------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 
-package time with
+package Time with
     SPARK_Mode => On
 is
     subtype POSIXTime is Unsigned_32;
@@ -44,7 +44,7 @@ is
     -- 
     -- @param ms - number of milliseconds to sleep
     ---------------------------------------------------------------------------
-    procedure bootCalibrationSleep(ms : in Unsigned_64);
+    procedure bootCalibrationSleep (ms : in Unsigned_64);
 
     ---------------------------------------------------------------------------
     -- calibrateTSC
@@ -63,7 +63,15 @@ is
     --
     -- @param d - duration to sleep
     ---------------------------------------------------------------------------
-    procedure sleep(d : in Duration) with
+    procedure sleep (d : in Duration) with
         Pre => tscCalibrated;
 
-end time;
+    ---------------------------------------------------------------------------
+    -- clockTick
+    -- At timer interrupt intervals, this procedure will decrement the head of
+    -- the sleep list if it exists, and perform a context switch if the elapsed
+    -- quantum has occurred.
+    ---------------------------------------------------------------------------
+    procedure clockTick with SPARK_Mode => On;
+
+end Time;
