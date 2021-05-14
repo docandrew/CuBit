@@ -54,8 +54,8 @@ is
         --nodeSlab    : SlabAllocator.Slab;
         head        : NodePtr;
         tail        : NodePtr;
-        capacity    : Natural := 0;
-        length      : Natural := 0;
+        capacity    : Natural;
+        length      : Natural;
     end record;
 
     -- Currently the Slab Allocator only supports a single physical memory

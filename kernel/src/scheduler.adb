@@ -9,6 +9,7 @@ with System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with Mem_mgr;
+with Process.Queues;
 with TextIO; use TextIO;
 with x86;
 
@@ -47,10 +48,11 @@ is
         use Spinlocks;
         use Process;
 
-        pidIndex : ProcessID := 1;
+        pid : ProcessID;
+        ign : ProcessID;
+        fxarea : System.Address;
     begin
-        -- a bit inefficient, but for now we just linearly search
-        -- through the proctab, starting where we last left off.
+
         startSearch : loop
             x86.sti;
 
@@ -62,92 +64,93 @@ is
             -- @NOTE This lock is released either by process.start (if this is the process'
             --  first time executing); process.yield (if the process is continuing from the 
             --  call to scheduler.enter from the last time it yielded); or at the symmetric
-            --  exitCriticalSection call in this function (if no processes were READY and
-            --  we left the for loop).
+            --  exitCriticalSection call in this function.
+            --
+            -- The process must release the lock when it executes, and reacquire it before
+            -- coming back here to the scheduler.
+            --
+            -- println ("Scheduler.schedule: acquiring proctab lock");
             enterCriticalSection (Process.lock);
 
-            for i in pidIndex .. Process.proctab'Last loop
+            -- Remove this process from the ready list. This makes it easier to put on a
+            -- different list if it blocks during its run.
+            -- println ("Scheduler - Ready List: ");
+            -- Process.Queues.print (Process.readyList);
 
-                if Process.proctab(i).state = READY then
+            pid := Process.Queues.dequeue (Process.readyList);
 
-                    Process.proctab(i).state    := RUNNING;
+            -- print ("Scheduler: running "); print (Process.proctab(pid).name); print(" pid "); println (Integer(pid));
 
-                    cpuData.currentPID          := i;
-                    cpuData.currentContext      := Process.proctab(i).context; -- save this address so we can switch back
+            if pid = Process.NO_PROCESS then
+                raise SchedulerException with "Scheduler.schedule: No idle process in ready list";
+            end if;
 
-                    -- switch address spaces if appropriate
-                    cpuData.tss.rsp0            := Process.proctab(i).kernelStackTop;
-                    cpuData.savedKernelRSP      := Process.proctab(i).kernelStackTop;
-                    
-                    cpuData.currentPID          := i;
-                    
-                    -- Only change address spaces if we're switching to a user-mode process.
-                    if Process.proctab(i).mode = Process.USER then
-                        Process.switchAddressSpace (Process.proctab(i).pgTable'Address);
-                    end if;
+            Process.proctab(pid).state  := RUNNING;
 
-                    -- Start executing new process
-                    Process.switch (cpuData.schedulerContext'Address, cpuData.currentContext);
+            cpuData.currentPID          := pid;
+            cpuData.currentContext      := Process.proctab(pid).context; -- save this address so we can switch back
 
-                    -- when process pauses its run, we return here
+            -- switch address spaces if appropriate
+            cpuData.savedKernelRSP      := Process.proctab(pid).kernelStackTop;
+            cpuData.tss.rsp0            := Process.proctab(pid).kernelStackTop;
+            
+            -- Only change address spaces if we're switching to a user-mode process.
+            if Process.proctab(pid).mode = Process.USER then
+                Process.switchAddressSpace (pid);
+            end if;
 
-                    cpuData.currentPID := Process.NO_PROCESS;
+            -- print ("Scheduler: Switching to context "); println (cpuData.currentContext);
 
-                    -- switch back to kernel page tables if we weren't just running a kernel thread
-                    if Process.proctab(i).mode = Process.USER then
-                        Mem_mgr.switchAddressSpace;
-                    end if;
+            Process.restoreFPUState (pid);
 
-                    -- Update the process' context pointer.
-                    -- (currentContext was set in Scheduler.enter)
-                    -- If the process was RUNNING before and got switched against its will,
-                    -- set it back to READY.
-                    case Process.proctab(i).state is
-                        
-                        when INVALID =>
-                            -- Don't save the context here
-                            null;
-                            -- print ("Scheduler: process "); print (i);
-                            -- println (" is terminated");
-                        
-                        when RUNNING =>
-                            -- print ("Scheduler: process "); print (i);
-                            -- print (" is interrupted, making READY and saving context: ");
-                            -- println (cpuData.oldContext);
-                            Process.proctab(i).context := cpuData.oldContext;
-                            Process.proctab(i).state   := READY;
-                        
-                        when WAITING =>
-                            -- print ("Scheduler: process "); print (i); 
-                            -- print (" is blocked (waiting), saving context: ");
-                            -- println (cpuData.oldContext);
-                            Process.proctab(i).context := cpuData.oldContext;
+            -- Start executing new process
+            Process.switch (cpuData.schedulerContext'Address, cpuData.currentContext);
 
-                        when RECEIVING =>
-                            -- print ("Scheduler: process "); print (i);
-                            -- print (" is blocked (receiving), saving context: ");
-                            -- println (cpuData.oldContext);
-                            Process.proctab(i).context := cpuData.oldContext;
+            -- when process pauses its run, we return here
+            cpuData.currentPID := Process.NO_PROCESS;
 
-                        when SUSPENDED =>
-                            -- print ("Scheduler: process "); print (i); 
-                            -- print (" was suspended, saving context: ");
-                            -- println (cpuData.oldContext);
-                            Process.proctab(i).context := cpuData.oldContext;
-                        
-                        when SLEEPING =>
-                            -- print ("Scheduler: process "); print (i);
-                            -- print (" is sleeping, saving context: ");
-                            -- println (cpuData.oldContext);
-                            Process.proctab(i).context := cpuData.oldContext;
+            -- switch back to kernel page tables if we weren't just running a kernel thread
+            if Process.proctab(pid).mode = Process.USER then
+                Mem_mgr.switchAddressSpace;
+            end if;
 
-                        when others =>
-                            raise SchedulerException with "Scheduler: Process in unknown state.";
-                    end case;
-                end if;
-            end loop;
+            -- Update the process' context pointer.
+            case Process.proctab(pid).state is
+                
+                when INVALID =>
+                    -- Don't save the context here
+                    null;
+                    -- print ("Scheduler: process "); print (i);
+                    -- println (" is terminated");
+                
+                when RUNNING =>
+                    -- print ("Scheduler: process "); print (i);
+                    -- print (" is interrupted, making READY and saving context: ");
+                    -- println (cpuData.oldContext);
+                    Process.proctab(pid).context := cpuData.oldContext;
+                    Process.proctab(pid).state   := READY;
+                    Process.saveFPUState (pid);
 
-            exitCriticalSection (Process.lock);
+                    -- @TODO adjust priority here if we eat up full time-slice
+                    -- put us back on the ready list.
+                    ign := Process.Queues.insert (q   => Process.readyList,
+                                                  pid => pid,
+                                                  key => Process.proctab(pid).priority);
+                
+                when WAITING | RECEIVING | SENDING | WAITINGFOREVENT | WAITINGFORREPLY |
+                     SUSPENDED | SLEEPING =>
+                    -- print ("Scheduler: process "); print (i); 
+                    -- print (" is blocked (waiting), saving context: ");
+                    -- println (cpuData.oldContext);
+                    Process.proctab(pid).context := cpuData.oldContext;
+                    Process.saveFPUState (pid);
+
+                when others =>
+                    raise SchedulerException with "Scheduler: Process in unknown state.";
+            end case;
+
+        -- println ("Scheduler.schedule: releasing proctab lock");
+        exitCriticalSection (Process.lock);
 
         end loop startSearch;
     end schedule;

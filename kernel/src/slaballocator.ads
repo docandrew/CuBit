@@ -133,11 +133,11 @@ is
     type Slab is limited record
         freeList    : FreeNode;
 
-        numFree     : Natural := 0;
+        numFree     : Natural;
         
         blockOrder  : BuddyAllocator.Order;
         blocks      : BlockList;
-        numBlocks   : Natural := 0;
+        numBlocks   : Natural;
        
         mutex       : aliased Spinlocks.Spinlock;
         
@@ -145,7 +145,7 @@ is
         alignment   : Storage_Offset;
         paddedSize  : Storage_Count;
         
-        initialized : Boolean := False;
+        initialized : Boolean;
     end record;
 
     -- GNAT-specific pragma

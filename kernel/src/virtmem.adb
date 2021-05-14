@@ -91,8 +91,6 @@ is
     procedure setActiveP4 (p4addr : PhysAddress) with
         SPARK_Mode => Off       -- inline asm
     is
-        --cr3val : Unsigned_64 := 0;
-        --LEFT OFF: Need to get CR3 format right when setting to address
     begin
         Asm("movq %0, %%cr3",
             Inputs => PhysAddress'Asm_Input ("r", p4addr),

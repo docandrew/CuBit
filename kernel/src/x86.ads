@@ -175,6 +175,12 @@ is
     function getFlags return RFlags;
 
     ---------------------------------------------------------------------------
+    -- Get/Set the current value of the CR0 register
+    ---------------------------------------------------------------------------
+    function getCR0 return Unsigned_64;
+    procedure setCR0 (cr0 : Unsigned_64);
+
+    ---------------------------------------------------------------------------
     -- Get the current value of the CR2 register (used in page faults)
     ---------------------------------------------------------------------------
     function getCR2 return Unsigned_64;
@@ -183,6 +189,12 @@ is
     -- Get the current value of the CR3 register (top-level page table ptr)
     ---------------------------------------------------------------------------
     function getCR3 return Integer_Address;
+
+    ---------------------------------------------------------------------------
+    -- Get/Set the current value of the CR4 register
+    ---------------------------------------------------------------------------
+    function getCR4 return Unsigned_64;
+    procedure setCR4 (cr4 : Unsigned_64);
 
     ---------------------------------------------------------------------------
     -- Get base pointer. In debug mode, calling convention stores the caller
@@ -647,6 +659,16 @@ is
     procedure rep_movsb (dst : in System.Address;
                          src : in System.Address;
                          len : in System.Storage_Elements.Storage_Count);
+
+    ---------------------------------------------------------------------------
+    -- FXSAVE Save floating point state
+    ---------------------------------------------------------------------------
+    procedure fxsave (saveArea : System.Address);
+
+    ---------------------------------------------------------------------------
+    -- FXRSTOR Restore floating point state
+    ---------------------------------------------------------------------------
+    procedure fxrstor (saveArea : System.Address);
 
     ---------------------------------------------------------------------------
     -- PAT (Page Atribute Table)

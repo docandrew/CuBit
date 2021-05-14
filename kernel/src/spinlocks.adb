@@ -8,6 +8,7 @@ with Interfaces; use Interfaces;
 with System; use System;
 
 with PerCPUData;
+with TextIO; use TextIO;
 
 package body Spinlocks
     with SPARK_Mode => On
@@ -34,6 +35,11 @@ is
 
         -- Can't reacquire the same lock from the same CPU.
         if s.state = LOCKED and s.cpu = PerCPUData.getCPUNumber then
+            if s.name /= null then
+                print (" Lock: "); println (s.name.all);
+            else
+                print (" Lock: (no name)");
+            end if;
             raise SpinLockException with "Attempted reacquisition of lock from same CPU";
         end if;
 
@@ -59,6 +65,11 @@ is
         ignore : LockBool;
     begin
         if s.state /= LOCKED then
+            if s.name /= null then
+                print (" Lock: "); println (s.name.all);
+            else
+                print (" Lock: (no name)");
+            end if;
             raise SpinLockException with "Attempted release of un-held lock.";
         end if;
 

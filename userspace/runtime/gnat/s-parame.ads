@@ -65,7 +65,7 @@ package System.Parameters is
    Unspecified_Size : constant Size_Type := Size_Type'First;
    --  Value used to indicate that no size type is set
 
-   Runtime_Default_Sec_Stack_Size : constant Size_Type := 2048;
+   Runtime_Default_Sec_Stack_Size : constant Size_Type := 32768;
    --  The run-time chosen default size for secondary stacks that may be
    --  overridden by the user with the use of binder -D switch.
 

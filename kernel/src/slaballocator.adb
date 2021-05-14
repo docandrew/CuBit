@@ -63,6 +63,9 @@ is
     is
         minSize : System.Storage_Elements.Storage_Count;
     begin
+        pool.numFree := 0;
+        pool.initialized := False;
+        pool.numBlocks := 0;
 
         pool.objSize := objSize;
 

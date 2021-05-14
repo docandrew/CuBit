@@ -48,8 +48,8 @@ is
     ---------------------------------------------------------------------------
     type PerCPUData is
     record
-        cpuNum              : Natural range 0..Config.MAX_CPUS - 1 := 0;
-        currentPID          : Process.ProcessID := 0;
+        cpuNum              : Natural range 0..Config.MAX_CPUS - 1;
+        currentPID          : Process.ProcessID;
         savedProcessRSP     : System.Address;
         savedKernelRSP      : System.Address;
 

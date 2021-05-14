@@ -43,14 +43,14 @@ is
     --  since contracts can't access the member variable .state of an abstract
     --  state.
     ---------------------------------------------------------------------------
-    function isLocked(s : in Spinlock) return Boolean;
+    function isLocked (s : in Spinlock) return Boolean;
 
     ---------------------------------------------------------------------------
     -- enterCriticalSection tries to acquire a spinlock before returning. 
     -- Disables interrupts, so these need to be set up before attempting to
     -- use a Spinlocks.
     ---------------------------------------------------------------------------
-    procedure enterCriticalSection(s : in out Spinlock) with
+    procedure enterCriticalSection (s : in out Spinlock) with
         Global => (In_Out => x86.interruptsEnabled),
         Post => isLocked(s);
 
@@ -68,7 +68,7 @@ is
     --  lock it without calling enterCriticalSection, which checks for PIC
     --  initialization.)
     ---------------------------------------------------------------------------
-    procedure exitCriticalSection(s : in out Spinlock) with
+    procedure exitCriticalSection (s : in out Spinlock) with
         Global => (In_Out => x86.interruptsEnabled),
         Pre => isLocked(s),
         Post => not isLocked(s);

@@ -12,11 +12,9 @@ with Lapic;
 with Mem_mgr;
 with Pic;
 with PerCpuData;
-with Process;
-with Services.Keyboard;
---with util;
+with Process.IPC;
+with TextIO; use TextIO;
 with Time;
---with x86;
 
 package body Interrupts with
     SPARK_Mode => On
@@ -102,6 +100,8 @@ is
     procedure interruptHandler (frame : not null access constant Stackframe.InterruptStackFrame)
         with SPARK_Mode => On
     is
+        KernelFPUException : Exception;
+
         interruptNumber : constant x86Interrupt := x86Interrupt(frame.interruptNumber);
         oldCR3 : Integer_Address;
     begin
@@ -111,58 +111,53 @@ is
 
         -- Switch page tables to kernel. If this interrupt happened during user-mode, the TSS
         -- should ensure that the process' kernel stack is being used.
+        -- @TODO not sure this is necessary since kernel is mapped in each process.
         Mem_mgr.switchAddressSpace;
         --print("In kernel address space: "); println(x86.getCR3);
 
         case interruptNumber is
             when NO_MATH_COPROCESSOR =>
-                -- will want to set that this process uses FP,
-                -- during context switch if this flag is set, then
-                -- we'll need to change CR0 appropriately and make
-                -- sure that FXSAVE, FXRESTORE are used during context
-                -- switches for FP processes.
-                println ("Floating point co-processor used, not enabled");
+                println ("Floating point co-processor used, enabling");
+                
+                if PerCPUData.getCurrentPID = Process.NO_PROCESS then
+                    raise KernelFPUException with "Floating-point ops enabled in the kernel by mistake!";
+                else
+                    Process.enableFPU;
+                end if;
+
             when PAGE_FAULT =>
                 print ("Page Fault at ");
                 println (frame.rip);
                 handlePageFault (frame.errorCode);
-                --eoi(PAGE_FAULT);
-                x86.halt;
+
             when TIMER =>
-                -- possible overflow in geologic time scales.
-                Time.msTicks := Time.msTicks + 1;
-
-                if Time.msTicks mod Config.TIME_SLICE = 0 then
-                    -- must finish IRQ first since the yield
-                    -- will eventually return to interruptReturn in
-                    -- interrupt.asm, not here.
-                    --print (".");
-                    eoi (TIMER);
-                    --pic.finishIRQ(TIMER);
-
-                    if PerCPUData.getCurrentPID /= Process.NO_PROCESS then
-                        Process.yield;
-                    end if;
-                else
-                    eoi (TIMER);
-                end if;
-
+                -- must finish IRQ first since any yield that happens
+                -- will eventually return to interruptReturn in
+                -- interrupt.asm, not here.
+                eoi (TIMER);
+                Time.clockTick;
+                
             when PS2KEYBOARD =>
                 -- println ("PS2 Interrupt");
                 eoi (PS2KEYBOARD);
-                Process.send (Config.SERVICE_KEYBOARD_PID, 1);
+                Process.IPC.sendEvent (Config.SERVICE_KEYBOARD_PID, 1);
+
             when INVALID .. IDE2 =>
                 print ("IRQ: "); 
                 println (Integer(interruptNumber));
                 eoi (interruptNumber);
+
             when SPURIOUS =>
                 println ("Spurious Interrupt");
+
             when KERNEL_PANIC =>
                 println ("KERNEL PANIC!");
                 printRegs (frame);
                 x86.halt;
+
             when SYSCALL =>
                 print ("SYSCALL");
+
             when others =>
                 print ("EXCEPTION: "); 
                 println (Integer(interruptNumber));
@@ -181,11 +176,9 @@ is
     procedure handlePageFault (err : in Unsigned_64) with
         SPARK_Mode => On
     is
-        faultAddr : constant Unsigned_64 := x86.getCR2;
+        faultAddr : constant System.Address := Util.numToAddr (x86.getCR2);
 
-        --currPID         : constant Process.ProcessID := 
-        --    PerCPUData.getPerCPUDataAddr... etc.
-        --check process memory limits
+        pid : constant Process.ProcessID := PerCPUData.getCurrentPID;
         
         PageFaultException : exception;
         NXEException       : exception;
@@ -219,6 +212,7 @@ is
                                 -- user page-protection wr violation. kill it.
                                 print ("User page-protection write violation: ");
                                 println (faultAddr);
+                                Process.kill (pid);
                             when False =>
                                 -- kernel page-protection wr violation. we goofed.
                                 print ("Kernel page-protection write violation: ");
@@ -231,6 +225,7 @@ is
                                 -- user page-protection rd violation. kill it.
                                 print ("User page-protection read violation: ");
                                 println (faultAddr);
+                                Process.kill (pid);
                             when False =>
                                 -- kernel page-protection rd violation. we goofed.
                                 print ("Kernel page-protection read violation: ");
@@ -248,6 +243,7 @@ is
                                 -- then may be a stack overflow or OoM.
                                 print ("User non-present page write: ");
                                 println (faultAddr);
+                                Process.pageFault (pid, faultAddr);
                             when False =>
                                 -- kernel wrote non-present page. see if it's something
                                 -- that we should have, page it in if it is.
@@ -263,13 +259,14 @@ is
                                 -- may be a stack overflow or OoM.
                                 print ("User non-present page read: ");
                                 println (faultAddr);
+                                Process.pageFault (pid, faultAddr);
                             when False =>
                                 -- kernel read non-present page. see if it's something
                                 -- that we should have. see if it's something that we should
                                 -- have, page it in if it is.
                                 print ("Kernel non-present page read: ");
                                 println (faultAddr);
-                                raise PageFaultException with "Paging not enabled yet.";
+                                raise PageFaultException with "Kernel read non-present page.";
                         end case;                    
                 end case;
         end case;
