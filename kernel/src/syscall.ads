@@ -39,7 +39,29 @@ is
     SYSCALL_REPLY         : constant SyscallNumber := 18;
     SYSCALL_SEND_EVENT    : constant SyscallNumber := 19;
     SYSCALL_RECEIVE_EVENT : constant SyscallNumber := 20;
-    
+    SYSCALL_CALL          : constant SyscallNumber := 21;
+    SYSCALL_RECEIVE_NB    : constant SyscallNumber := 22;
+
+    -- Async I/O Syscalls
+    SYSCALL_SUBMIT          : constant SyscallNumber := 23;
+    SYSCALL_WAIT_COMPLETION : constant SyscallNumber := 24;
+    SYSCALL_POLL_COMPLETION : constant SyscallNumber := 25;
+
+    -- Time syscalls
+    SYSCALL_GETTIME         : constant SyscallNumber := 27;
+    SYSCALL_SLEEP           : constant SyscallNumber := 28;
+
+    -- Framebuffer syscall
+    SYSCALL_MAPFB           : constant SyscallNumber := 29;
+
+    -- Port I/O syscalls (for userspace drivers)
+    SYSCALL_INB             : constant SyscallNumber := 30;
+    SYSCALL_OUTB            : constant SyscallNumber := 31;
+    SYSCALL_INW             : constant SyscallNumber := 32;
+    SYSCALL_OUTW            : constant SyscallNumber := 33;
+    SYSCALL_INS16           : constant SyscallNumber := 34;
+    SYSCALL_OUTS16          : constant SyscallNumber := 35;
+
     -- Access Controller Syscalls
     SYSCALL_CONTROLACCESS : constant SyscallNumber := 100;
     SYSCALL_GETTICKET     : constant SyscallNumber := 101;

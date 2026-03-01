@@ -9,6 +9,7 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with BuddyAllocator;
+with Config;
 with ELF;
 with Process;
 with Process.Loader;
@@ -18,11 +19,12 @@ with Virtmem;
 
 package body Modules is
 
-    -- We need to special-case the Ramdisk driver and initrd image, so as we
-    -- find those during module loading keep track here.
-    ramdiskPID : Process.ProcessID;
-    initrdAddr : Virtmem.PhysAddress;
-    initrdSize : Storage_Count;
+    -- We need to special-case the Ramdisk driver, filesystem server, and
+    -- initrd image, so as we find those during module loading keep track here.
+    ramdiskPID    : Process.ProcessID;
+    filesystemPID : Process.ProcessID;
+    initrdAddr    : Virtmem.PhysAddress;
+    initrdSize    : Storage_Count;
 
     ---------------------------------------------------------------------------
     -- printModuleInfo
@@ -66,12 +68,14 @@ package body Modules is
         Strings.toAda(strAddr, modName);
 
         -- If this file is an ELF object, load it and start it up.
+        -- For the filesystem server, assign the well-known PID.
         if Process.Loader.isValidELF (elfHeader) then
-            pid := Process.Loader.load (elfHeader, modStart, size, strAddr);
-        
-            -- if pid /= Process.NO_PROCESS then
-            --     Process.resume (pid);
-            -- end if;
+            if modName(1..14) = "filesystem.svc" then
+                pid := Process.Loader.load (elfHeader, modStart, size, strAddr,
+                                            requestedPID => Config.SERVICE_FILESYSTEM_PID);
+            else
+                pid := Process.Loader.load (elfHeader, modStart, size, strAddr);
+            end if;
         end if;
 
         -- If this file is the initrd image, save the info so we can
@@ -96,6 +100,22 @@ package body Modules is
             end if;
 
             ramdiskPID := pid;
+
+        elsif modName(1..14) = "filesystem.svc" then
+
+            if filesystemPID /= Process.NO_PROCESS then
+                println ("Modules: Multiple filesystem.svc files found, using first one found.");
+                return;
+            end if;
+
+            filesystemPID := pid;
+
+        else
+            -- Generic ELF module: resume immediately
+            if pid /= Process.NO_PROCESS then
+                print ("Modules: Starting module "); print (modName); println;
+                Process.resume (pid);
+            end if;
         end if;
 
     end loadModule;
@@ -114,30 +134,30 @@ package body Modules is
 
         base : constant System.Address := To_Address (16#0000_5000_0000_0000#);
 
-        -- Need at least one big page no matter how big the initrd is.
-        numBigPages : Storage_Count := (size + Virtmem.BIG_PAGE_SIZE - 1) / Virtmem.BIG_PAGE_SIZE;
+        numPages : constant Storage_Count := (size + Virtmem.PAGE_SIZE - 1) / Virtmem.PAGE_SIZE;
 
-        procedure mapBigPage is new Virtmem.mapBigPage (BuddyAllocator.allocFrame);
+        procedure mapPage is new Virtmem.mapPage (BuddyAllocator.allocFrame);
     begin
 
-        for i in 0..numBigPages-1 loop
-            print ("Modules: Mapping initrd big page "); print(Integer(i));
-            print (" at "); print (base + (i * Virtmem.BIG_PAGE_SIZE));
-            print (" into pid "); println (Integer(pid));
+        print ("Modules: Mapping "); print (Integer(numPages));
+        print (" initrd pages into pid "); println (Integer(pid));
 
-            mapBigPage (phys    => addr,
-                        virt    => To_Integer(base + (i * Virtmem.BIG_PAGE_SIZE)),
-                        flags   => Virtmem.PG_USERDATA,
-                        myP4    => Process.addrtab(pid),
-                        success => ok);
+        for i in 0..numPages-1 loop
+            mapPage (phys    => addr + Virtmem.PhysAddress(i * Virtmem.PAGE_SIZE),
+                     virt    => To_Integer(base + (i * Virtmem.PAGE_SIZE)),
+                     flags   => Virtmem.PG_USERDATARO,
+                     myP4    => Process.addrtab(pid),
+                     success => ok);
+
+            if not ok then
+                print ("Modules: Error mapping initrd page "); print (Integer(i));
+                println (" a successful boot is unlikely.");
+                return;
+            end if;
         end loop;
 
-        if ok then
-            MAGIC_RAMDISK_ADDRESS := base;
-        else
-            print ("Modules: Error mapping initrd into Ramdisk driver,");
-            println (" a successful boot is unlikely.");
-        end if;
+        MAGIC_RAMDISK_ADDRESS := base;
+        println ("Modules: Initrd mapping complete.");
     end mapInitrd;
 
     ---------------------------------------------------------------------------
@@ -150,9 +170,10 @@ package body Modules is
         -- Only set if we actually loaded the initrd image
         MAGIC_RAMDISK_ADDRESS := System.Null_Address;
 
-        initrdAddr := 0;
-        initrdSize := 0;
-        ramdiskPID := Process.NO_PROCESS;
+        initrdAddr    := 0;
+        initrdSize    := 0;
+        ramdiskPID    := Process.NO_PROCESS;
+        filesystemPID := Process.NO_PROCESS;
 
         if mbinfo.flags.hasModules then
             declare
@@ -178,6 +199,23 @@ package body Modules is
 
                println ("Modules: Starting Ramdisk driver.");
                Process.resume (ramdiskPID);
+            end if;
+
+            -- If filesystem server loaded and initrd image present, map
+            -- the initrd into the filesystem server's address space too.
+            if filesystemPID /= Process.NO_PROCESS and
+               initrdAddr /= 0 and
+               initrdSize /= 0 then
+
+               mapInitrd (filesystemPID, initrdAddr, initrdSize);
+
+               println ("Modules: Starting Filesystem server.");
+               Process.resume (filesystemPID);
+
+            elsif filesystemPID /= Process.NO_PROCESS then
+               -- No initrd, start FS server anyway (it will detect no ramdisk)
+               println ("Modules: Starting Filesystem server (no initrd).");
+               Process.resume (filesystemPID);
             end if;
         else
             println ("Modules: No boot drivers or services found.");

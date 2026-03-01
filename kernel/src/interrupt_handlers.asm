@@ -67,11 +67,24 @@ global isr255   ; Spurious
 ; level (CPL). CS is the 2nd-to-last pushed value on the stack during
 ; interrupt.
 
+; For exceptions WITHOUT an error code, the CPU pushes:
+;   [rsp+0] = RIP, [rsp+8] = CS, ...
+; so CS is at rsp+8.
 %macro swapGSIfFromProcess 0
     test qword [rsp+8], 3             ; are bottom 2 bits of CS set?
-    je .fromKernel
+    je %%fromKernel
     swapgs
-.fromKernel
+%%fromKernel:
+%endmacro
+
+; For exceptions WITH an error code pushed by the CPU, the stack is:
+;   [rsp+0] = error code, [rsp+8] = RIP, [rsp+16] = CS, ...
+; so CS is at rsp+16, NOT rsp+8.
+%macro swapGSIfFromProcessErr 0
+    test qword [rsp+16], 3            ; are bottom 2 bits of CS set?
+    je %%fromKernel
+    swapgs
+%%fromKernel:
 %endmacro
 
 ;------------------------------------------------------------------------------
@@ -134,9 +147,9 @@ isr7:
 	push long 7
 	jmp isrCommon
 
-; double fault
+; double fault (CPU pushes error code)
 isr8:
-    swapGSIfFromProcess
+    swapGSIfFromProcessErr
 	; returns error code
 	push long 8
 	jmp isrCommon
@@ -148,37 +161,37 @@ isr9:
 	push long 9
 	jmp isrCommon
 
-; bad TSS exception
+; bad TSS exception (CPU pushes error code)
 isr10:
-    swapGSIfFromProcess
+    swapGSIfFromProcessErr
 	; returns error code
 	push long 10
 	jmp isrCommon
 
-; segment not present
+; segment not present (CPU pushes error code)
 isr11:
-    swapGSIfFromProcess
+    swapGSIfFromProcessErr
 	; returns error code
 	push long 11
 	jmp isrCommon
 
-; stack fault
+; stack fault (CPU pushes error code)
 isr12:
-    swapGSIfFromProcess
+    swapGSIfFromProcessErr
 	; returns error code
 	push long 12
 	jmp isrCommon
 
-; GPF exception
+; GPF exception (CPU pushes error code)
 isr13:
-    swapGSIfFromProcess
+    swapGSIfFromProcessErr
 	; returns error code
 	push long 13
 	jmp isrCommon
 
-; page fault
+; page fault (CPU pushes error code)
 isr14:
-    swapGSIfFromProcess
+    swapGSIfFromProcessErr
 	; returns error code
 	push long 14
 	jmp isrCommon
@@ -196,10 +209,10 @@ isr16:
 	push long 16
 	jmp isrCommon
 
-; alignment check exception
+; alignment check exception (CPU pushes error code)
 isr17:
-    swapGSIfFromProcess
-	push long 0
+    swapGSIfFromProcessErr
+	; returns error code
 	push long 17
 	jmp isrCommon
 

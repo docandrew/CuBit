@@ -168,29 +168,45 @@ package body Process.Loader is
         end if;
 
         -- Add these page(s) to the process
+        print ("Process.Loader: Mapping "); print (Integer(numPages));
+        print (" pages at "); println (segment.p_vaddr);
+
         for i in 0..numPages-1 loop
-            -- Add page
-            print ("Process.Loader: Mapping segment page "); print (Integer(i));
-            print (" at "); println (segment.p_vaddr + (i * Virtmem.PAGE_SIZE));
-            
             addPage (proc    => proc,
                      mapTo   => segment.p_vaddr + (i * Virtmem.PAGE_SIZE),
                      storage => storage,
                      flags   => flags);
 
-            -- Copy bytes from ELF image to page.
-            Util.memCopy (storage, elfAddr + segment.p_offset, segment.p_filesz);
+            -- Copy the portion of the segment that falls within this page.
+            -- Each page gets at most PAGE_SIZE bytes from the file, starting
+            -- at offset p_offset + i * PAGE_SIZE within the ELF image.
+            declare
+                pageOff  : constant Storage_Count := i * Virtmem.PAGE_SIZE;
+                copySize : Storage_Count;
+            begin
+                if pageOff < segment.p_filesz then
+                    copySize := segment.p_filesz - pageOff;
+                    if copySize > Virtmem.PAGE_SIZE then
+                        copySize := Virtmem.PAGE_SIZE;
+                    end if;
+                    Util.memCopy (storage,
+                                  elfAddr + segment.p_offset + pageOff,
+                                  copySize);
+                end if;
+            end;
 
         end loop;
+        println ("Process.Loader: Segment mapped OK.");
     end addSegmentToProcess;
 
     ---------------------------------------------------------------------------
     -- load
     ---------------------------------------------------------------------------
-    function load (elfHeader : ELF.ELFFileHeader;
-                   objStart  : System.Address;
-                   size      : System.Storage_Elements.Storage_Count;
-                   strAddr   : System.Address) return ProcessID with
+    function load (elfHeader    : ELF.ELFFileHeader;
+                   objStart     : System.Address;
+                   size         : System.Storage_Elements.Storage_Count;
+                   strAddr      : System.Address;
+                   requestedPID : ProcessID := NO_PROCESS) return ProcessID with
         SPARK_Mode => On
     is
         use type ELF.SegmentType;
@@ -203,7 +219,7 @@ package body Process.Loader is
             print ("Process.Loader: Entry point:               "); println (elfHeader.e_entry);
 
             declare
-                segments : ELF.ProgramHeaderTable(0..elfHeader.e_phnum) with Import, Address => objStart + elfHeader.e_phoff;
+                segments : ELF.ProgramHeaderTable(0..elfHeader.e_phnum - 1) with Import, Address => objStart + elfHeader.e_phoff;
 
                 newProc  : Process;
                 procName : ProcessName;
@@ -211,11 +227,12 @@ package body Process.Loader is
                 Strings.toAda(strAddr, procName);
 
                 -- Create new Process for this executable.
-                newProc := create (procStart   => elfHeader.e_entry,
-                                   ppid        => 0,
-                                   name        => procName,
-                                   priority    => 1,
-                                   procStack   => PROCESS_STACK_TOP_VIRT);
+                newProc := create (procStart    => elfHeader.e_entry,
+                                   ppid         => 0,
+                                   name         => procName,
+                                   priority     => 1,
+                                   procStack    => PROCESS_STACK_TOP_VIRT,
+                                   requestedPID => requestedPID);
 
                 for segment of segments loop
                     -- println;

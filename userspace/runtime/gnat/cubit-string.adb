@@ -5,6 +5,7 @@
  -- @summary
  -- Replacement for C string.h
  ------------------------------------------------------------------------------
+with Ada.Unchecked_Conversion;
 with System.Machine_Code; use System.Machine_Code;
 
 package body CuBit.String is
@@ -36,5 +37,36 @@ package body CuBit.String is
 
       return dest;
    end memcpy;
+
+   function memmove (dest : System.Address;
+                     src  : System.Address;
+                     len  : System.Storage_Elements.Storage_Count)
+      return System.Address
+   is
+      use System.Storage_Elements;
+
+      type Byte is mod 256;
+      type Byte_Ptr is access all Byte;
+      pragma No_Strict_Aliasing (Byte_Ptr);
+
+      function To_Ptr is new Ada.Unchecked_Conversion
+        (System.Address, Byte_Ptr);
+   begin
+      if len = 0 then
+         return dest;
+      end if;
+
+      if To_Integer (dest) <= To_Integer (src) then
+         for I in 0 .. len - 1 loop
+            To_Ptr (dest + I).all := To_Ptr (src + I).all;
+         end loop;
+      else
+         for I in reverse 0 .. len - 1 loop
+            To_Ptr (dest + I).all := To_Ptr (src + I).all;
+         end loop;
+      end if;
+
+      return dest;
+   end memmove;
 
 end CuBit.String;

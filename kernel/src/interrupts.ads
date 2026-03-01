@@ -197,9 +197,10 @@ private
     --  dpl: descriptor privilege level (Ring 0-3) for interrupt
     ---------------------------------------------------------------------------
     function createIDTEntry(handler : in Unsigned_64;
-                            isTrap : in Boolean; 
+                            isTrap : in Boolean;
                             gdtSelector : in segment.GDTOffset;
-                            dpl : in x86.PrivilegeLevel) return IDTEntry;
+                            dpl : in x86.PrivilegeLevel;
+                            ist : in Integer := 0) return IDTEntry;
 
     ---------------------------------------------------------------------------
     -- Put our interrupt vectors into the IDT array

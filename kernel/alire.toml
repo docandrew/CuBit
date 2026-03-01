@@ -1,0 +1,10 @@
+name = "cubit"
+description = "CuBitOS - A formally-verified microkernel OS in SPARK/Ada"
+version = "0.1.0-dev"
+
+authors = ["Jon Andrew"]
+licenses = "BSD-3-Clause"
+
+[[depends-on]]
+gnat_native = ">=14"
+gprbuild = "*"

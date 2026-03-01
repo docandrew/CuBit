@@ -2,6 +2,9 @@
 GIT_HASH := $(shell git rev-parse HEAD)
 BUILD_DATE := $(shell date)
 
+# Use Alire to get toolchain on PATH
+ALR := alr exec --
+
 all: cubit_kernel iso
 
 # Runtime library used by the CuBit Kernel itself (not the runtime used by
@@ -20,18 +23,18 @@ build/libcubit.a:
 		-e 's/SED_BUILD_DATE/$(BUILD_DATE)/' \
 		-e 's/SED_SRC_HASH/$(SRC_HASH)/' src/build.pre > src/build.ads
 
-	gprbuild -Pkernel_runtime.gpr
+	$(ALR) gprbuild -Pkernel_runtime.gpr
 
 # init usermode binary embedded in the kernel ELF object
 build/init.bin: src/init.asm
 	yasm --arch=x86 -fbin src/init.asm -o build/init.bin
 #	ld --omagic -e start -Ttext 0 -o build/init.out build/init.o
-#	objcopy -I binary -O elf64-x86-64 -B i386 
+#	objcopy -I binary -O elf64-x86-64 -B i386
 
 # kernel ELF object
 cubit_kernel: build/libcubit.a build/init.bin
 # Compile and bind only
-	gprbuild -b -c -Pcubit.gpr
+	$(ALR) gprbuild -b -c -Pcubit.gpr
 # Link - GRUB fails to identify this as a multiboot object without the -n
 	ld -n -o cubit_kernel -T linker.ld \
 		build/*.o \
@@ -46,12 +49,12 @@ cubit_kernel: build/libcubit.a build/init.bin
 
 .PHONY : prove
 prove:
-	gnatprove -Pcubit.gpr --mode=all --level=0 --no-axiom-guard
+	$(ALR) gnatprove -Pcubit.gpr --mode=all --level=0 --no-axiom-guard
 
 .PHONY : clean
 clean:
-	gprclean -Pcubit.gpr
-	gprclean -Pkernel_runtime.gpr
+	$(ALR) gprclean -Pcubit.gpr
+	$(ALR) gprclean -Pkernel_runtime.gpr
 	-rm build/*.o
 	-rm build/*.ali
 	-rm -rf build/gnatdoc/*
@@ -65,7 +68,7 @@ clean:
 run-raw:
 	qemu-system-x86_64 -kernel cubit_kernel
 
-.PHONY : run
+.PHONY : run-qemu
 run-qemu:
 # add -S to pause simulation at startup to allow debugger connection
 # add -d int,cpu_reset,guest_errors for exception debugging
@@ -80,15 +83,52 @@ run-qemu:
 		-drive file=nvm.qcow2,if=none,id=nvm \
 		-device nvme,serial=MyNVMeDrive,drive=nvm
 
+# Headless QEMU for CLI testing - serial output to file, no GUI
+.PHONY : run-headless
+run-headless:
+	@rm -f serial_output.log
+	timeout 45 qemu-system-x86_64 \
+		-machine q35 \
+		-cpu Broadwell \
+		-m 128M \
+		-cdrom cubit_kernel.iso \
+		-display none \
+		-serial file:serial_output.log \
+		-no-reboot; \
+	echo "--- Serial Output ---"; \
+	cat serial_output.log
+
+# Build DOOM and copy ELF into ISO directory
+.PHONY : doom
+doom:
+	$(MAKE) -C ../userspace/c/doom_src
+	cp ../userspace/c/doom_src/build/doom.elf isodir/boot/doom.elf
+
 iso: cubit_kernel
 	cp cubit_kernel isodir/boot/
 	grub-mkrescue -o cubit_kernel.iso isodir
 
+# Build everything including DOOM, then create ISO
+.PHONY : world
+world: cubit_kernel doom iso
+
+# Run QEMU with display (for WSL2 with GUI support)
+.PHONY : run
+run:
+	@rm -f serial_output.log
+	qemu-system-x86_64 \
+		-machine q35 \
+		-cpu Broadwell \
+		-m 128M \
+		-cdrom cubit_kernel.iso \
+		-serial file:serial_output.log \
+		-no-reboot
+
 .PHONY : docs
 docs:
-	gnatdoc -l -d --preserve-source-formatting -w -P cubit.gpr
+	$(ALR) gnatdoc -l -d --preserve-source-formatting -w -P cubit.gpr
 
 .PHONY : html
 html:
 #	gnathtml.pl -l1 -I build/ -d -f -o documentation/html src/*.adb src/*.ads
-	gnathtml.pl -cc grey -sc red -o build/gnathtml src/*.adb src/*.ads
+	$(ALR) gnathtml.pl -cc grey -sc red -o build/gnathtml src/*.adb src/*.ads

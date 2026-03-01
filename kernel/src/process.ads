@@ -90,6 +90,7 @@ is
         SENDING,                    -- Queued for message delivery
         RECEIVING,                  -- Queued for message receipt
         WAITINGFORREPLY,            -- Receiver got message, sender waiting for reply
+        WAITINGFORCOMPLETION,       -- Blocked in waitCompletion()
         SUSPENDED                   -- Suspended until a resume call.
     );
 
@@ -210,6 +211,115 @@ is
     );
     
     ---------------------------------------------------------------------------
+    -- IPC Message Types
+    --
+    -- Multi-word register-based messages (L4/seL4 style).
+    -- MessageTag fits in a single register (64 bits). The full Message
+    -- carries the tag plus 4 data words, fitting in 5 registers total.
+    ---------------------------------------------------------------------------
+    type MessageTag is record
+        label  : Unsigned_32;   -- Operation code (OP_OPEN, OP_READ, etc.)
+        length : Unsigned_8;    -- Number of valid words (0-4)
+        flags  : Unsigned_8;    -- Reserved for future (grant, capability, etc.)
+        badge  : Unsigned_16;   -- Sender badge / endpoint ID
+    end record with Size => 64;
+
+    for MessageTag use record
+        label  at 0 range 0..31;
+        length at 4 range 0..7;
+        flags  at 5 range 0..7;
+        badge  at 6 range 0..15;
+    end record;
+
+    NULL_TAG : constant MessageTag := (label => 0, length => 0, flags => 0, badge => 0);
+
+    type MessageWords is array (0..3) of Unsigned_64;
+
+    type Message is record
+        tag   : MessageTag;
+        words : MessageWords;
+    end record;
+    -- Total: 40 bytes = 5 registers (tag + 4 words)
+
+    NULL_MESSAGE : constant Message := (tag => NULL_TAG, words => (others => 0));
+
+    ---------------------------------------------------------------------------
+    -- Async I/O Completion Queue Types
+    --
+    -- Completion queues allow clients to submit async IPC requests and
+    -- harvest completions later. Each process has a completion queue that
+    -- reply() enqueues into when the sender used submit() instead of send().
+    ---------------------------------------------------------------------------
+    COMPLETION_QUEUE_SIZE : constant := 64;
+    MAX_PENDING_ASYNC     : constant := 16;
+
+    subtype CompletionIndex is Natural range 0 .. COMPLETION_QUEUE_SIZE - 1;
+
+    type CompletionEntry is record
+        token : Unsigned_64;        -- Client-chosen opaque ID (like io_uring user_data)
+        msg   : Message;            -- Reply from server
+        from  : ProcessID;          -- Server PID that replied
+        valid : Boolean := False;
+    end record;
+
+    type CompletionRing is array (CompletionIndex) of CompletionEntry;
+
+    NULL_COMPLETION : constant CompletionEntry := (
+        token => 0,
+        msg   => NULL_MESSAGE,
+        from  => NO_PROCESS,
+        valid => False
+    );
+
+    type CompletionQueue is record
+        ring  : CompletionRing := (others => NULL_COMPLETION);
+        head  : CompletionIndex := 0;   -- Consumer reads here
+        tail  : CompletionIndex := 0;   -- Producer writes here
+        count : Natural := 0;
+    end record;
+
+    -- Tracks outstanding async requests so reply() can find the token
+    type PendingRequest is record
+        dest  : ProcessID   := NO_PROCESS;
+        token : Unsigned_64 := 0;
+    end record;
+
+    type PendingArray is array (0 .. MAX_PENDING_ASYNC - 1) of PendingRequest;
+
+    ---------------------------------------------------------------------------
+    -- Shared Memory Grant Types
+    --
+    -- Grants map physical pages from the granter's address space into the
+    -- grantee's address space, enabling zero-copy I/O between client and
+    -- server processes.
+    ---------------------------------------------------------------------------
+    MAX_GRANTS_PER_PROCESS : constant := 16;
+    MAX_GRANT_PAGES        : constant := 256;   -- 1 MiB max per grant
+
+    subtype GrantID is Natural range 0 .. MAX_GRANTS_PER_PROCESS - 1;
+
+    type GrantPermission is (GRANT_READ, GRANT_READWRITE);
+
+    type Grant is record
+        active       : Boolean         := False;
+        granterPID   : ProcessID       := NO_PROCESS;
+        granteePID   : ProcessID       := NO_PROCESS;
+        -- Granter's virtual address range
+        granterAddr  : System.Address  := System.Null_Address;
+        -- Where it was mapped in grantee's space
+        granteeAddr  : System.Address  := System.Null_Address;
+        numPages     : Natural         := 0;
+        permission   : GrantPermission := GRANT_READ;
+    end record;
+
+    type GrantArray is array (GrantID) of Grant;
+
+    -- Grant virtual address region in lower-half user space
+    GRANT_REGION_BASE : constant Integer_Address := 16#0000_4000_0000_0000#;
+    GRANT_SLOT_SIZE   : constant Integer_Address :=
+        Integer_Address (MAX_GRANT_PAGES) * Integer_Address (Virtmem.PAGE_SIZE);
+
+    ---------------------------------------------------------------------------
     -- Process mailboxes for low-level IPC
     -- @field sendQueue       - List of blocked senders waiting to send
     --                          this mailbox a message.
@@ -220,11 +330,11 @@ is
         lock        : Spinlocks.spinlock := (name => null, others => <>);
 
         hasMsg      : Boolean      := False;
-        message     : Unsigned_64  := Unsigned_64'Last;
+        msg         : Message      := NULL_MESSAGE;
         sender      : ProcessID    := NO_PROCESS;
 
         hasEvent    : Boolean      := False;
-        event       : Unsigned_64  := Unsigned_64'Last;
+        eventMsg    : Message      := NULL_MESSAGE;
         eventSender : ProcessID    := NO_PROCESS;
 
         sendQueue   : ProcQueue;
@@ -316,7 +426,12 @@ is
 
         -- For low-level IPC
         mail                : ProcessID;
-        reply               : Unsigned_64;
+        replyMsg            : Message := NULL_MESSAGE;
+
+        -- Async I/O: pending requests and grants
+        pendingRequests     : PendingArray := (others => (NO_PROCESS, 0));
+        numPending          : Natural := 0;
+        grants              : GrantArray := (others => <>);
 
         channel             : WaitChannel;
 
@@ -353,6 +468,14 @@ is
     ---------------------------------------------------------------------------
     type MailtabType is array (1..ProcessID'Last) of Mailbox;
     mailtab : MailtabType;
+
+    ---------------------------------------------------------------------------
+    -- CompletionTab. Array of completion queues, parallel to mailtab.
+    -- Indexed by ProcessID. Threads share their parent's completion queue.
+    -- Protected by mailtab(pid).lock (same lock, extends existing ordering).
+    ---------------------------------------------------------------------------
+    type CompletionTabType is array (1..ProcessID'Last) of CompletionQueue;
+    completionTab : CompletionTabType;
 
     -- WIP: proctab replacement
     type ProcPtr is access all Process;
@@ -427,12 +550,13 @@ is
     --
     -- @TODO add an error code so it's apparent why process creation failed.
     ---------------------------------------------------------------------------
-    function create (procStart   : in System.Address;
-                     ppid        : in ProcessID;
-                     name        : in ProcessName;
-                     priority    : in ProcessPriority;
-                     procStack   : in System.Address;
-                     thread      : in Boolean := False) return Process
+    function create (procStart    : in System.Address;
+                     ppid         : in ProcessID;
+                     name         : in ProcessName;
+                     priority     : in ProcessPriority;
+                     procStack    : in System.Address;
+                     thread       : in Boolean := False;
+                     requestedPID : in ProcessID := NO_PROCESS) return Process
         with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------

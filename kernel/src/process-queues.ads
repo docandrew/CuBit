@@ -28,40 +28,43 @@ is
     ---------------------------------------------------------------------------
     -- popFront
     ---------------------------------------------------------------------------
-    function popFront (q : in out ProcQueue) return ProcessID
+    procedure popFront (q : in out ProcQueue; result : out ProcessID)
         with SPARK_Mode => On;
 
     -- ---------------------------------------------------------------------------
     -- -- popBack
     -- ---------------------------------------------------------------------------
-    function popBack (q : in out ProcQueue) return ProcessID
+    procedure popBack (q : in out ProcQueue; result : out ProcessID)
         with SPARK_Mode => On;
 
     -- ---------------------------------------------------------------------------
     -- -- popItem
     -- ---------------------------------------------------------------------------
-    function popItem (q : in out ProcQueue; pid : ProcessID) return ProcessID
+    procedure popItem (q : in out ProcQueue; pid : ProcessID;
+                       result : out ProcessID)
         with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- enqueue
     ---------------------------------------------------------------------------
-    function enqueue (q : in out ProcQueue; pid : ProcessID) return ProcessID
+    procedure enqueue (q : in out ProcQueue; pid : ProcessID;
+                       result : out ProcessID)
         with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- dequeue
     ---------------------------------------------------------------------------
-    function dequeue (q : in out ProcQueue) return ProcessID
+    procedure dequeue (q : in out ProcQueue; result : out ProcessID)
         with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- insert
     -- inserts into a given queue in descending key order
     ---------------------------------------------------------------------------
-    function insert (q   : in out ProcQueue;
-                     pid : ProcessID;
-                     key : Integer) return ProcessID
+    procedure insert (q      : in out ProcQueue;
+                      pid    : ProcessID;
+                      key    : Integer;
+                      result : out ProcessID)
         with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
@@ -69,9 +72,10 @@ is
     -- inserts into a given queue in descending key order, using delta queue
     -- math to ensure delay is delta from previous node.
     ---------------------------------------------------------------------------
-    function insertDelta (q            : in out ProcQueue;
-                          pid          : ProcessID;
-                          delayFromNow : Integer) return ProcessID
+    procedure insertDelta (q            : in out ProcQueue;
+                           pid          : ProcessID;
+                           delayFromNow : Integer;
+                           result       : out ProcessID)
         with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------

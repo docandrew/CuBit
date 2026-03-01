@@ -9,6 +9,7 @@
 with Modules;
 with TextIO; use TextIO;
 with Util;
+with Video.VGA;
 
 package body Sysinfo is
 
@@ -29,6 +30,14 @@ package body Sysinfo is
             when SECONDARY_STACK_START =>
                 -- println ("Sysinfo: received query for secondary stack start");
                 return Util.addrToNum (Process.SECONDARY_STACK_START);
+            when FB_WIDTH =>
+                return Unsigned_64(Video.VGA.w);
+            when FB_HEIGHT =>
+                return Unsigned_64(Video.VGA.h);
+            when FB_PITCH =>
+                return Unsigned_64(Video.VGA.framebufferPitch);
+            when FB_BPP =>
+                return Unsigned_64(Video.VGA.framebufferDepth);
             when REGISTERED_DRIVER =>
                 return Unsigned_64(registeredDrivers(DriverID(detail)));
             when others =>

@@ -4,8 +4,13 @@
 --
 -- CuBitOS Processes
 --
---@TODO There are a lot of interwoven locks here that would be nice to model in
--- SPARK Mode to get some guarantees of correctness.
+-- Lock ordering (acquire in this order, never reverse):
+--   1. mailtab(pid).lock    (per-mailbox, also protects completionTab(pid))
+--   2. Process.lock         (global process table)
+--   3. readyList.lock       (scheduler)
+--   4. sleepList.lock       (sleep queue)
+--
+-- @TODO Model lock ordering in SPARK to get formal guarantees of correctness.
 -------------------------------------------------------------------------------
 with Ada.Unchecked_Conversion;
 with Ada.Unchecked_Deallocation;
@@ -15,6 +20,7 @@ with BuddyAllocator;
 with Config;
 with Mem_mgr;
 with PerCPUData;
+with Process.IPC;
 with Process.Queues;
 with Scheduler;
 with Segment;
@@ -200,19 +206,25 @@ is
     ---------------------------------------------------------------------------
     -- create
     ---------------------------------------------------------------------------
-    function create (procStart   : in System.Address;
-                     ppid        : in ProcessID;
-                     name        : in ProcessName;
-                     priority    : in ProcessPriority;
-                     procStack   : in System.Address;
-                     thread      : in Boolean := False) return Process
+    function create (procStart    : in System.Address;
+                     ppid         : in ProcessID;
+                     name         : in ProcessName;
+                     priority     : in ProcessPriority;
+                     procStack    : in System.Address;
+                     thread       : in Boolean := False;
+                     requestedPID : in ProcessID := NO_PROCESS) return Process
         with SPARK_Mode => Off
     is
         proc            : Process;
 
         procedure zeroize is new Virtmem.zeroize (Virtmem.P4);
     begin
-        PIDTracker.allocPID (proc.pid);
+        if requestedPID /= NO_PROCESS then
+            PIDTracker.allocSpecificPID (requestedPID);
+            proc.pid := requestedPID;
+        else
+            PIDTracker.allocPID (proc.pid);
+        end if;
 
         -- sanity checks
         if proc.pid = 0 then
@@ -324,7 +336,7 @@ is
         ret : ProcessID;
     begin
         proctab(pid).state := READY;
-        ret := Queues.insert (readyList, pid, proctab(pid).priority);
+        Queues.insert (readyList, pid, proctab(pid).priority, ret);
 
         if ret /= pid then
             raise ProcessException with "Process.ready: Error adding pid to ready list.";
@@ -447,8 +459,9 @@ is
         Spinlocks.enterCriticalSection (lock);
 
         if proctab(pid).state /= WAITINGFOREVENT and
-           proctab(pid).state /= WAITINGFORREPLY then
-            raise ProcessException with "Process.inform: Attempting to inform process not waiting for event.";
+           proctab(pid).state /= WAITINGFORREPLY and
+           proctab(pid).state /= WAITINGFORCOMPLETION then
+            raise ProcessException with "Process.inform: Attempting to inform process not waiting.";
         end if;
 
         ready (pid);
@@ -469,9 +482,10 @@ is
         -- println ("Going to sleep.");
         proctab(pid).state := SLEEPING;
 
-        ignore := Queues.insertDelta (q            => sleepList,
-                                      pid          => pid,
-                                      delayFromNow => Integer(us / 1000));
+        Queues.insertDelta (q            => sleepList,
+                            pid          => pid,
+                            delayFromNow => Integer(us / 1000),
+                            result       => ignore);
         yield;
 
     end sleep;
@@ -583,9 +597,9 @@ is
         ignore  : ProcessID;
     begin
         if state = SENDING then
-            ignore := Queues.popItem (mailtab(mailbox).sendQueue, pid);
+            Queues.popItem (mailtab(mailbox).sendQueue, pid, ignore);
         elsif state = RECEIVING then
-            ignore := Queues.popItem (mailtab(mailbox).recvQueue, pid);
+            Queues.popItem (mailtab(mailbox).recvQueue, pid, ignore);
         else
             raise ProcessException with "Process.removeFromMailQueue called on non-SENDING/RECEIVING process.";
         end if;
@@ -604,6 +618,8 @@ is
                                                           Name   => ProcessKernelStackPtr);
         ignore : ProcessID;
     begin
+        print ("Process.kill: terminating pid "); println (Integer(pid));
+
         -- Back to kernel addressing.
         Mem_mgr.switchAddressSpace;
 
@@ -613,10 +629,10 @@ is
         -- Remove this process from whatever list it was on (if any)
           case proctab(pid).state is
             when READY =>
-                ignore := Queues.popItem (readyList, pid);
-            
+                Queues.popItem (readyList, pid, ignore);
+
             when SLEEPING =>
-                ignore := Queues.popItem (sleepList, pid);
+                Queues.popItem (sleepList, pid, ignore);
             
             when SENDING | RECEIVING =>
                 removeFromMailQueue (pid);
@@ -626,6 +642,9 @@ is
         end case;
 
         proctab(pid).state := INVALID;
+
+        -- Revoke any shared memory grants this process had created
+        IPC.revokeAllGrants (pid);
 
         if proctab(pid).mode = USER and not proctab(pid).isThread then
 
@@ -676,16 +695,21 @@ is
         if (addr <= Proctab(pid).stackTop and addr >= Proctab(pid).stackBottom) or
            (addr <= Proctab(pid).heapEnd  and addr >= Proctab(pid).heapStart) then
 
-            -- print ("Process: Adding page to process "); println (pid);
+            print ("Process: Adding page for pid "); print (Integer(pid));
+            print (" at "); println (To_Address (To_Integer (addr) and Virtmem.PAGE_MASK));
             addPage (proc    => Proctab(pid),
                      mapTo   => To_Address (To_Integer (addr) and Virtmem.PAGE_MASK),   -- round down
                      storage => ignore);
-            -- print ("Process: Added page at "); println (To_Address (To_Integer (addr) and Virtmem.PAGE_MASK));
         else
-            -- @TODO use a heuristic here to figure out if this was a stack 
+            -- @TODO use a heuristic here to figure out if this was a stack
             -- overflow, or heap over/underflow and signal the process either way.
             -- (something like distance to stackBottom < distance to heapEnd = stack overflow)
-            print ("Process: Illegal memory access, killing pid "); println (pid);
+            print ("Process: Illegal memory access at "); print (addr);
+            print (" pid "); print (Integer(pid));
+            print (" stackTop "); print (Proctab(pid).stackTop);
+            print (" stackBottom "); print (Proctab(pid).stackBottom);
+            print (" heapStart "); print (Proctab(pid).heapStart);
+            print (" heapEnd "); println (Proctab(pid).heapEnd);
             kill (pid);
         end if;
     end pageFault;
@@ -698,17 +722,14 @@ is
     is
         pid : constant ProcessID := PerCPUData.getCurrentPID;
         newCR0 : Unsigned_64 := x86.getCR0;
-        newCR4 : Unsigned_64 := x86.getCR4;
     begin
-        Util.clearBit (newCR0, 2);  -- clear CR0.EM
-        Util.setBit (newCR0, 1);    -- set CR0.MP
-        Util.setBit (newCR4, 9);    -- set CR4.OSFXSR
-        Util.setBit (newCR4, 10);   -- set CR4.OSXMMEXCPT
+        -- Clear CR0.TS so FPU/SSE instructions execute without #NM.
+        -- CR4.OSFXSR and CR4.OSXMMEXCPT are set globally in boot.asm.
+        Util.clearBit (newCR0, 3);  -- clear CR0.TS
 
         proctab(pid).fpu := proctab(pid).kernelStack.all.fpuarea'Address;
-        
+
         x86.setCR0 (newCR0);
-        x86.setCR4 (newCR4);
     end enableFPU;
 
     ---------------------------------------------------------------------------
@@ -719,15 +740,12 @@ is
     procedure disableFPU with SPARK_Mode => On
     is
         newCR0 : Unsigned_64 := x86.getCR0;
-        newCR4 : Unsigned_64 := x86.getCR4;
     begin
-        Util.setBit (newCR0, 2);        -- set CR0.EM
-        Util.clearBit (newCR0, 1);      -- clear CR0.MP
-        Util.clearBit (newCR4, 9);      -- clear CR4.OSFXSR
-        Util.clearBit (newCR4, 10);     -- clear CR4.OSXMMEXCPT
-
+        -- Use CR0.TS (bit 3) to trap FPU/SSE usage. This generates #NM
+        -- for both x87 and SSE instructions, enabling lazy context switching.
+        -- CR4.OSFXSR stays set so SSE doesn't generate #UD.
+        Util.setBit (newCR0, 3);        -- set CR0.TS
         x86.setCR0 (newCR0);
-        x86.setCR4 (newCR4);
     end disableFPU;
 
     ---------------------------------------------------------------------------

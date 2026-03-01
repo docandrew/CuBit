@@ -124,7 +124,7 @@ is
     ---------------------------------------------------------------------------
     -- hasFree
     ---------------------------------------------------------------------------
-    function hasFree (pool : in out Slab) return Boolean is
+    function hasFree (pool : in Slab) return Boolean is
     begin
         if pool.numFree = 0 and pool.numBlocks = Config.MAX_SLAB_EXPAND_TIMES then
             return False;

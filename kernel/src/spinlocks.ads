@@ -10,6 +10,20 @@ with Interfaces; use Interfaces;
 with Locks; use Locks;
 with x86;
 
+-- Lock ordering (acquire in this order, never reverse):
+--   1. mailtab(pid).lock    (per-mailbox, also protects completionTab(pid))
+--   2. Process.lock         (global process table)
+--   3. readyList.lock       (scheduler)
+--   4. sleepList.lock       (sleep queue)
+--
+-- The NMI handler must NEVER acquire any lock. It writes directly to the
+-- serial port, bypassing TextIO.
+--
+-- sendEvent (called from interrupt context) acquires mailtab lock then
+-- Process.lock (via inform -> ready), which respects the ordering above.
+--
+-- reply() async path acquires mailtab(replyTo).lock to enqueue completions,
+-- then calls inform() which acquires Process.lock — respects ordering.
 package Spinlocks with
     SPARK_Mode => On
 is

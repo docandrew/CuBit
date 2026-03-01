@@ -33,29 +33,31 @@ is
     ---------------------------------------------------------------------------
     -- popFront
     ---------------------------------------------------------------------------
-    function popFront (q : in out ProcQueue) return ProcessID
+    procedure popFront (q : in out ProcQueue; result : out ProcessID)
         with SPARK_Mode => On
     is
     begin
         if isEmpty (q) then
-            return NO_PROCESS;
+            result := NO_PROCESS;
+            return;
         end if;
 
-        return popItem (q, q.head);
+        popItem (q, q.head, result);
     end popFront;
 
     ---------------------------------------------------------------------------
     -- popBack
     ---------------------------------------------------------------------------
-    function popBack (q : in out ProcQueue) return ProcessID
+    procedure popBack (q : in out ProcQueue; result : out ProcessID)
         with SPARK_Mode => On
     is
     begin
         if isEmpty(q) then
-            return NO_PROCESS;
+            result := NO_PROCESS;
+            return;
         end if;
 
-        return popItem (q, q.tail);
+        popItem (q, q.tail, result);
     end popBack;
 
     ---------------------------------------------------------------------------
@@ -66,15 +68,16 @@ is
     -- Public clients of the Process.Queues package use popItem which will hold
     -- the lock.
     ---------------------------------------------------------------------------
-    function popItemNoLock (q : in out ProcQueue; pid : ProcessID) return ProcessID
+    procedure popItemNoLock (q : in out ProcQueue; pid : ProcessID;
+        result : out ProcessID)
         with SPARK_Mode => On
     is
         prev, next : ProcessID;
     begin
-        
+
         next := proctab(pid).next;
         prev := proctab(pid).prev;
-        
+
         -- Unlink this process from its current list
         if prev /= NO_PROCESS then
             proctab(prev).next := next;
@@ -90,35 +93,34 @@ is
             q.tail := prev;
         end if;
 
-        return pid;
+        result := pid;
     end popItemNoLock;
 
     ---------------------------------------------------------------------------
     -- popItem
     ---------------------------------------------------------------------------
-    function popItem (q : in out ProcQueue; pid : ProcessID) return ProcessID
+    procedure popItem (q : in out ProcQueue; pid : ProcessID;
+        result : out ProcessID)
         with SPARK_Mode => On
     is
-        ret : ProcessID;
     begin
         Spinlocks.enterCriticalSection (q.lock);
-        
-        ret := popItemNoLock (q, pid);
-        
+
+        popItemNoLock (q, pid, result);
+
         Spinlocks.exitCriticalSection (q.lock);
-        
-        return ret;
     end popItem;
 
     ---------------------------------------------------------------------------
     -- enqueue - add to the back of the list while holding the list's lock
     ---------------------------------------------------------------------------
-    function enqueue (q : in out ProcQueue; pid : ProcessID) return ProcessID
+    procedure enqueue (q : in out ProcQueue; pid : ProcessID;
+        result : out ProcessID)
         with SPARK_Mode => On
     is
         prev : ProcessID;
     begin
-        
+
         Spinlocks.enterCriticalSection (q.lock);
 
         if isEmpty (q) then
@@ -134,63 +136,66 @@ is
         end if;
 
         Spinlocks.exitCriticalSection (q.lock);
-        
-        return pid;
+
+        result := pid;
     end enqueue;
 
     ---------------------------------------------------------------------------
     -- dequeueNoLock
     ---------------------------------------------------------------------------
-    function dequeueNoLock (q : in out ProcQueue) return ProcessID
+    procedure dequeueNoLock (q : in out ProcQueue; result : out ProcessID)
         with SPARK_Mode => On
     is
         pid : ProcessID;
     begin
-        
+
         if isEmpty (q) then
-            return NO_PROCESS;
+            result := NO_PROCESS;
+            return;
         end if;
 
-        pid := popItemNoLock (q, q.head);
+        popItemNoLock (q, q.head, pid);
 
         proctab(pid).prev := NO_PROCESS;
         proctab(pid).next := NO_PROCESS;
 
-        return pid;
+        result := pid;
     end dequeueNoLock;
 
     ---------------------------------------------------------------------------
     -- dequeue - remove from front of the list while holding the list's lock
     ---------------------------------------------------------------------------
-    function dequeue (q : in out ProcQueue) return ProcessID
+    procedure dequeue (q : in out ProcQueue; result : out ProcessID)
         with SPARK_Mode => On
     is
         pid : ProcessID;
     begin
-        
+
         Spinlocks.enterCriticalSection (q.lock);
 
         if isEmpty (q) then
             Spinlocks.exitCriticalSection (q.lock);
-            return NO_PROCESS;
+            result := NO_PROCESS;
+            return;
         end if;
 
-        pid := popItemNoLock (q, q.head);
+        popItemNoLock (q, q.head, pid);
 
         proctab(pid).prev := NO_PROCESS;
         proctab(pid).next := NO_PROCESS;
 
         Spinlocks.exitCriticalSection (q.lock);
-        
-        return pid;
+
+        result := pid;
     end dequeue;
 
     ---------------------------------------------------------------------------
     -- insert in descending key order
     ---------------------------------------------------------------------------
-    function insert (q   : in out ProcQueue;
-                     pid : ProcessID;
-                     key : Integer) return ProcessID
+    procedure insert (q      : in out ProcQueue;
+                      pid    : ProcessID;
+                      key    : Integer;
+                      result : out ProcessID)
         with SPARK_Mode => On
     is
         curr : ProcessID;
@@ -202,45 +207,57 @@ is
             -- empty list.
             q.head := pid;
             q.tail := pid;
+            proctab(pid).prev     := NO_PROCESS;
+            proctab(pid).next     := NO_PROCESS;
             proctab(pid).queueKey := key;
 
             Spinlocks.exitCriticalSection (q.lock);
-            return pid;
+            result := pid;
+            return;
         end if;
 
+        -- Walk the list to find the right insertion point (descending key order).
         curr := q.head;
 
         loop
             exit when key >= proctab(curr).queueKey or proctab(curr).next = NO_PROCESS;
-
             curr := proctab(curr).next;
         end loop;
 
-        -- Insert between previous node and current node
-        prev                  := proctab(curr).prev;
-        proctab(pid).next     := curr;
-        proctab(pid).prev     := prev;
-        proctab(pid).queueKey := key;
-        proctab(curr).prev    := pid;
+        if key >= proctab(curr).queueKey then
+            -- Insert BEFORE curr (new node has higher or equal priority)
+            prev                  := proctab(curr).prev;
+            proctab(pid).next     := curr;
+            proctab(pid).prev     := prev;
+            proctab(pid).queueKey := key;
+            proctab(curr).prev    := pid;
 
-        if prev /= NO_PROCESS then
-            proctab(prev).next := pid;
+            if prev /= NO_PROCESS then
+                proctab(prev).next := pid;
+            else
+                q.head := pid;
+            end if;
         else
-            -- adding to front of list
-            q.head := pid;
+            -- Append AFTER curr (new node has lowest priority, goes at tail)
+            proctab(pid).next     := NO_PROCESS;
+            proctab(pid).prev     := curr;
+            proctab(pid).queueKey := key;
+            proctab(curr).next    := pid;
+            q.tail                := pid;
         end if;
 
         Spinlocks.exitCriticalSection (q.lock);
 
-        return pid;
+        result := pid;
     end insert;
 
     ---------------------------------------------------------------------------
     -- insertDelta
     ---------------------------------------------------------------------------
-    function insertDelta (q            : in out ProcQueue;
-                          pid          : ProcessID;
-                          delayFromNow : Integer) return ProcessID
+    procedure insertDelta (q            : in out ProcQueue;
+                           pid          : ProcessID;
+                           delayFromNow : Integer;
+                           result       : out ProcessID)
         with SPARK_Mode => On
     is
         -- Need to track difference between desired delay and sum of delay of
@@ -258,7 +275,8 @@ is
             proctab(pid).queueKey := delayFromNow;
 
             Spinlocks.exitCriticalSection (q.lock);
-            return pid;
+            result := pid;
+            return;
         end if;
 
         curr := q.head;
@@ -268,7 +286,7 @@ is
         -- process into the list.
         loop
             exit when delayFromNow < prevDelaySum or proctab(curr).next = NO_PROCESS;
-            
+
             prevDelaySum := prevDelaySum + proctab(curr).queueKey;
             curr := proctab(curr).next;
         end loop;
@@ -289,7 +307,7 @@ is
 
         Spinlocks.exitCriticalSection (q.lock);
 
-        return pid;
+        result := pid;
     end insertDelta;
 
     ---------------------------------------------------------------------------
@@ -297,11 +315,13 @@ is
     ---------------------------------------------------------------------------
     procedure wakeup with SPARK_Mode => On
     is
+        wakePid : ProcessID;
     begin
         while not Queues.isEmpty (sleepList) and
             proctab(sleepList.head).queueKey <= 0 loop
             -- print ("Waking PID"); println (Integer(sleepList.head));
-            ready (Queues.dequeueNoLock (sleepList));
+            dequeueNoLock (sleepList, wakePid);
+            ready (wakePid);
         end loop;
     end wakeup;
 

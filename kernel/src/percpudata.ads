@@ -9,6 +9,7 @@
 -- Contains info about the currently running process.
 -- The address of the Per-CPU Data Region is always available at KERNEL_GS_BASE
 -------------------------------------------------------------------------------
+with Interfaces;
 with System; use System;
 
 pragma Warnings (Off);
@@ -68,6 +69,10 @@ is
 
         intsEnabled         : Boolean;
         numCLI              : Integer;
+
+        -- NMI tracking for lock-free NMI handler
+        nmiCount            : Natural := 0;
+        nmiInProgress       : Boolean := False;
     end record;
 
     -- Alignment of fields needs to be precisely specified because we're going
@@ -86,6 +91,8 @@ is
         schedulerContext    at 218  range 0..63;
         intsEnabled         at 226  range 0..31;
         numCLI              at 230  range 0..31;
+        nmiCount            at 234  range 0..31;
+        nmiInProgress       at 238  range 0..7;
     end record;
 
     -- If the secondary stack is used before per-CPU data is set up, this
@@ -137,6 +144,28 @@ is
     -- this CPU.
     ---------------------------------------------------------------------------
     function getCurrentPID return Process.ProcessID;
+
+    ---------------------------------------------------------------------------
+    -- IST (Interrupt Stack Table) stacks for critical exceptions.
+    -- Each CPU gets its own set of small stacks so that NMI, Double Fault,
+    -- and Machine Check exceptions get a known-good stack regardless of
+    -- what the CPU was doing when the exception fired.
+    --
+    -- IST 1 = NMI, IST 2 = Double Fault, IST 3 = Machine Check
+    ---------------------------------------------------------------------------
+    IST_STACK_SIZE : constant := 4096;  -- 4 KiB per IST stack
+
+    type ISTStack is array (1..IST_STACK_SIZE) of Interfaces.Unsigned_8
+        with Alignment => 16;
+
+    type ISTStacks is record
+        nmiStack          : ISTStack;   -- IST 1
+        doubleFaultStack  : ISTStack;   -- IST 2
+        machineCheckStack : ISTStack;   -- IST 3
+    end record;
+
+    -- One set of IST stacks per CPU
+    allISTStacks : array (0..Config.MAX_CPUS - 1) of ISTStacks;
 
     InterruptException : exception;
 

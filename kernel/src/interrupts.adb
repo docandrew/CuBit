@@ -13,6 +13,7 @@ with Mem_mgr;
 with Pic;
 with PerCpuData;
 with Process.IPC;
+with Serial;
 with TextIO; use TextIO;
 with Time;
 
@@ -82,8 +83,13 @@ is
                     pic.finishIRQ (num);
                 end if;
             when APIC =>
-                -- print ("APIC EOI"); println (Unsigned_32(num));
                 myLapic.finishIRQ;
+                -- When LAPIC is active but no IOAPIC (virtual wire mode),
+                -- PIC-sourced IRQs also need PIC EOI to allow the next
+                -- interrupt on that line.
+                if num in TIMER..IDE2 then
+                    pic.finishIRQ (num);
+                end if;
             when X2APIC =>
                 null;
             when NONE =>
@@ -116,9 +122,51 @@ is
         --print("In kernel address space: "); println(x86.getCR3);
 
         case interruptNumber is
+            when NMI =>
+                -- NMI handler: lock-free, writes directly to serial port.
+                -- Do NOT acquire any spinlocks here - NMI can fire while
+                -- a lock is held, leading to instant deadlock.
+                handleNMI : declare
+                    perCPUAddr : constant System.Address := PerCPUData.getPerCPUDataAddr;
+                    cpuData : PerCPUData.PerCPUData with
+                        Import, Address => perCPUAddr;
+                    nmiMsg : constant String := "NMI on CPU " & ASCII.LF;
+                begin
+                    -- Record NMI state per-CPU
+                    cpuData.nmiCount := cpuData.nmiCount + 1;
+
+                    if cpuData.nmiInProgress then
+                        -- Nested NMI - just count and return
+                        return;
+                    end if;
+
+                    cpuData.nmiInProgress := True;
+
+                    -- Log directly to serial port (bypasses TextIO lock)
+                    for C of nmiMsg loop
+                        Serial.send (Config.serialMirrorPort, C);
+                    end loop;
+
+                    cpuData.nmiInProgress := False;
+                end handleNMI;
+                -- NMI runs on IST 1, returns via iretq - no EOI needed
+                return;
+
+            when DOUBLE_FAULT =>
+                -- Double fault runs on IST 2. Unrecoverable.
+                println ("DOUBLE FAULT!");
+                printRegs (frame);
+                x86.halt;
+
+            when MACHINE_CHECK =>
+                -- Machine check runs on IST 3. Unrecoverable.
+                println ("MACHINE CHECK EXCEPTION!");
+                printRegs (frame);
+                x86.halt;
+
             when NO_MATH_COPROCESSOR =>
                 println ("Floating point co-processor used, enabling");
-                
+
                 if PerCPUData.getCurrentPID = Process.NO_PROCESS then
                     raise KernelFPUException with "Floating-point ops enabled in the kernel by mistake!";
                 else
@@ -127,7 +175,9 @@ is
 
             when PAGE_FAULT =>
                 print ("Page Fault at ");
-                println (frame.rip);
+                print (frame.rip);
+                print (" PID ");
+                println (PerCPUData.getCurrentPID);
                 handlePageFault (frame.errorCode);
 
             when TIMER =>
@@ -140,7 +190,9 @@ is
             when PS2KEYBOARD =>
                 -- println ("PS2 Interrupt");
                 eoi (PS2KEYBOARD);
-                Process.IPC.sendEvent (Config.SERVICE_KEYBOARD_PID, 1);
+                Process.IPC.sendEvent (Config.SERVICE_KEYBOARD_PID,
+                    (tag => (label => 1, length => 0, flags => 0, badge => 0),
+                     words => (others => 0)));
 
             when INVALID .. IDE2 =>
                 print ("IRQ: "); 
@@ -159,10 +211,19 @@ is
                 print ("SYSCALL");
 
             when others =>
-                print ("EXCEPTION: "); 
-                println (Integer(interruptNumber));
-                printRegs (frame);
-                x86.halt;   -- never iretq, so interrupts should still be disabled.
+                print ("EXCEPTION "); print (Integer(interruptNumber));
+                print (" at RIP "); print (frame.rip);
+                print (" PID "); println (PerCPUData.getCurrentPID);
+                if Util.isBitSet (frame.cs, 0) or Util.isBitSet (frame.cs, 1) then
+                    -- User-mode exception: kill the process, don't halt
+                    print ("  Killing user process "); println (PerCPUData.getCurrentPID);
+                    printRegs (frame);
+                    Process.kill (PerCPUData.getCurrentPID);
+                else
+                    -- Kernel exception: halt
+                    printRegs (frame);
+                    x86.halt;
+                end if;
         end case;
 
         -- if we return from this interrupt, put page tables back the way they were.
@@ -349,14 +410,15 @@ is
     function createIDTEntry (handler     : in Unsigned_64;
                              isTrap      : in Boolean;
                              gdtSelector : in segment.GDTOffset;
-                             dpl         : in x86.PrivilegeLevel) return IDTEntry
+                             dpl         : in x86.PrivilegeLevel;
+                             ist         : in Integer := 0) return IDTEntry
         with SPARK_Mode => On
     is
         newidt : IDTEntry;
     begin
         newidt.offset1  := Unsigned_16(handler and 16#FFFF#);
         newidt.selector := gdtSelector;
-        newidt.istIndex := 0;
+        newidt.istIndex := ist;
 
         newidt.istrap   := isTrap;
         newidt.dpl      := dpl;
@@ -383,13 +445,15 @@ is
         --textmode.println(isr0'Address);
         idt(0)  := createIDTEntry(addrToNum(isr0'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
         idt(1)  := createIDTEntry(addrToNum(isr1'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
-        idt(2)  := createIDTEntry(addrToNum(isr2'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        -- NMI uses IST 1: dedicated stack so NMI during lock-hold doesn't corrupt kernel stack
+        idt(2)  := createIDTEntry(addrToNum(isr2'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL, ist => 1);
         idt(3)  := createIDTEntry(addrToNum(isr3'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
         idt(4)  := createIDTEntry(addrToNum(isr4'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
         idt(5)  := createIDTEntry(addrToNum(isr5'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
         idt(6)  := createIDTEntry(addrToNum(isr6'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
         idt(7)  := createIDTEntry(addrToNum(isr7'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
-        idt(8)  := createIDTEntry(addrToNum(isr8'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        -- Double Fault uses IST 2: must have its own stack to handle stack overflow
+        idt(8)  := createIDTEntry(addrToNum(isr8'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL, ist => 2);
         idt(9)  := createIDTEntry(addrToNum(isr9'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
         idt(10) := createIDTEntry(addrToNum(isr10'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
         idt(11) := createIDTEntry(addrToNum(isr11'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
@@ -399,7 +463,8 @@ is
 
         idt(16) := createIDTEntry(addrToNum(isr16'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
         idt(17) := createIDTEntry(addrToNum(isr17'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
-        idt(18) := createIDTEntry(addrToNum(isr18'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        -- Machine Check uses IST 3: hardware failure must not corrupt existing stack
+        idt(18) := createIDTEntry(addrToNum(isr18'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL, ist => 3);
         idt(19) := createIDTEntry(addrToNum(isr19'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
 
         -- IRQs

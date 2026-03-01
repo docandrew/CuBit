@@ -18,4 +18,12 @@ package CuBit.String is
       Convention => C,
       External_Name => "memcpy";
 
+   function memmove (dest : System.Address;
+                     src  : System.Address;
+                     len  : System.Storage_Elements.Storage_Count)
+      return System.Address with
+      Export => True,
+      Convention => C,
+      External_Name => "memmove";
+
 end CuBit.String;

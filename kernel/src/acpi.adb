@@ -62,80 +62,80 @@ is
     -- getRSDP - convenience function for getting a RSDPRecord 
     -- @return True if successful, False if address does not point to an RSDP
     ---------------------------------------------------------------------------
-    function getRSDP(rsdpAddr : in System.Address; rsdp : in out RSDPRecord)
-        return Boolean with SPARK_Mode => Off
-    is    
+    procedure getRSDP(rsdpAddr : in System.Address; rsdp : in out RSDPRecord;
+        success : out Boolean) with SPARK_Mode => Off
+    is
         retRSDP : RSDPRecord with Import, Address => rsdpAddr;
     begin
         if retRSDP.signature = "RSD PTR " then
             rsdp := retRSDP;
-            return True;
+            success := True;
         else
-            return False;
+            success := False;
         end if;
     end getRSDP;
 
     ---------------------------------------------------------------------------
     -- getXSDT - convenience function for getting a XSDTRecord
     ---------------------------------------------------------------------------
-    function getXSDT(sdtAddr : in System.Address; xsdt : in out XSDTRecord) 
-        return Boolean with SPARK_Mode => Off
+    procedure getXSDT(sdtAddr : in System.Address; xsdt : in out XSDTRecord;
+        success : out Boolean) with SPARK_Mode => Off
     is
         retXSDT : XSDTRecord with Import, Address => sdtAddr;
     begin
         if retXSDT.header.signature = "XSDT" then
             xsdt := retXSDT;
-            return True;
+            success := True;
         else
-            return False;
+            success := False;
         end if;
     end getXSDT;
 
     ---------------------------------------------------------------------------
     -- getRSDT - convenience function for getting a RSDTRecord
     ---------------------------------------------------------------------------
-    function getRSDT(sdtAddr : in System.Address; rsdt : in out RSDTRecord) 
-        return Boolean with SPARK_Mode => Off
+    procedure getRSDT(sdtAddr : in System.Address; rsdt : in out RSDTRecord;
+        success : out Boolean) with SPARK_Mode => Off
     is
         retRSDT : RSDTRecord with Import, Address => sdtAddr;
     begin
         if retRSDT.header.signature = "RSDT" then
             rsdt := retRSDT;
-            return True;
+            success := True;
         else
-            return False;
+            success := False;
         end if;
     end getRSDT;
     
     ---------------------------------------------------------------------------
     -- getLAPIC - given an APIC table entry describing a local APIC, get it.
     ---------------------------------------------------------------------------
-    function getLAPIC(lapicAddr : in System.Address; lapic : in out LAPICRecord)
-        return Boolean with SPARK_Mode => Off
+    procedure getLAPIC(lapicAddr : in System.Address; lapic : in out LAPICRecord;
+        success : out Boolean) with SPARK_Mode => Off
     is
         retLAPIC : LAPICRecord with Import, Address => lapicAddr;
     begin
         if retLAPIC.header.length < (retLAPIC'Size / 8) then
-            return False;
+            success := False;
         else
             lapic := retLAPIC;
-            return True;
+            success := True;
         end if;
     end getLAPIC;
 
     ---------------------------------------------------------------------------
     -- getIOAPIC - given an APIC table entry describing an I/O APIC, get it.
     ---------------------------------------------------------------------------
-    function getIOAPIC(ioapicAddr : in System.Address; ioapic : in out IOAPICRecord)
-        return Boolean with SPARK_Mode => Off
+    procedure getIOAPIC(ioapicAddr : in System.Address; ioapic : in out IOAPICRecord;
+        success : out Boolean) with SPARK_Mode => Off
     is
         retIOAPIC : IOAPICRecord with Import, Address => ioapicAddr;
     begin
         if retIOAPIC.header.length < (retIOAPIC'Size / 8) then
-            return False;
+            success := False;
         else
             ioapic := retIOAPIC;
-            return True;
+            success := True;
         end if;
     end getIOAPIC;
 
@@ -163,6 +163,7 @@ is
                     with Import, Address => To_Address(entries_i);
                 lapic : LAPICRecord;
                 ioapic : IOAPICRecord;
+                ok : Boolean;
             begin
                 -- print("Checking APIC entry, type: ");
                 -- print(entryHeader.apicType);
@@ -172,7 +173,8 @@ is
                 case entryHeader.apicType is
                     when LOCAL_APIC =>
                         print(" Found Local APIC:");
-                        if getLAPIC(To_Address(entries_i), lapic) then
+                        getLAPIC(To_Address(entries_i), lapic, ok);
+                        if ok then
                             numCPUs := numCPUs + 1;
                             print(" LAPIC ID: ");
                             print(lapic.apicID);
@@ -183,7 +185,8 @@ is
                         end if;
                     when IO_APIC =>
                         print(" Found I/O APIC:");
-                        if getIOAPIC(To_Address(entries_i), ioapic) then
+                        getIOAPIC(To_Address(entries_i), ioapic, ok);
+                        if ok then
                             numIOAPICs := numIOAPICs + 1;
                             print(" ID: ");
                             print(ioapic.apicID);
@@ -325,6 +328,7 @@ is
         entries_0   : Integer_Address;  -- address of first SDT entry
         offset      : Integer_Address;  -- offset to i-th SDT entry
         entries_i   : Integer_Address;  -- entries_0 + offset
+        ok          : Boolean;
     begin
 
         if rsdpAddr = Null_Address then
@@ -332,7 +336,8 @@ is
             return False;
         end if;
 
-        if not getRSDP(rsdpAddr, rsdp) then
+        getRSDP(rsdpAddr, rsdp, ok);
+        if not ok then
             println("Invalid ACPI Tables (No RSDP)");
             return False;
         end if;
@@ -357,7 +362,8 @@ is
             sdtAddr := rsdp.XSDTAddress;
             print("ACPI XSDT at:  "); println(sdtAddr);
             
-            if not getXSDT(To_Address(virtmem.P2V(Integer_Address(sdtAddr))), xsdt) then
+            getXSDT(To_Address(virtmem.P2V(Integer_Address(sdtAddr))), xsdt, ok);
+            if not ok then
                 println("Error reading XSDT, defaulting to RSDT");
                 useXSDT := False;   -- try and fall back on RSDT
             else
@@ -372,7 +378,8 @@ is
             sdtAddr := Unsigned_64(rsdp.RSDTAddress);
             print("ACPI RSDT at:  "); println(sdtAddr);
 
-            if not getRSDT(To_Address(virtmem.P2V(Integer_Address(sdtAddr))), rsdt) then
+            getRSDT(To_Address(virtmem.P2V(Integer_Address(sdtAddr))), rsdt, ok);
+            if not ok then
                 println("Error reading RSDT");
                 return False;
             else

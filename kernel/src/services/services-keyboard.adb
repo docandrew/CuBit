@@ -24,14 +24,14 @@ is
     procedure start with SPARK_Mode => On is
         use Time;
 
-        event     : Unsigned_64;
+        event     : Process.Message;
         driverPID : Process.ProcessID := Process.NO_PROCESS;
         code      : Unsigned_8 := 0;
-        reply     : Unsigned_64;
+        replyTag  : Process.MessageTag;
     begin
         -- @TODO turn off caps lock to start.
         println ("Services.Keyboard: Started, waiting for upper-half driver to register.");
-        
+
         while driverPID = Process.NO_PROCESS loop
             -- poll until the upper-half driver is registered.
             Process.sleep (1 * Seconds);
@@ -41,7 +41,7 @@ is
         end loop;
 
         println ("Services.Keyboard: found upper-half driver!");
-        
+
         loop
             -- get notified of new keypress
             event := Process.IPC.receiveEvent;
@@ -49,8 +49,13 @@ is
             -- read it from the keyboard
             in8 (16#60#, code);
 
-            -- send it to the upper-half driver and get reply
-            reply := Process.IPC.send (driverPID, Unsigned_64(code));
+            -- send scancode to the upper-half driver via IPC message
+            replyTag := Process.IPC.send (driverPID,
+                (tag   => (label  => 1,
+                           length => 1,
+                           flags  => 0,
+                           badge  => 0),
+                 words => (0 => Unsigned_64(code), others => 0)));
         end loop;
     end start;
 

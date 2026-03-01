@@ -109,6 +109,8 @@ enable_pae:
                         ;  as a Spectre mitigation, but other methods exist to
                         ;  get precise timing data in app code
     or eax, 1 << 5      ; enable PAE
+    or eax, 1 << 9      ; enable SSE (OSFXSR)
+    or eax, 1 << 10     ; enable SSE exceptions (OSXMMEXCPT)
     or eax, 1 << 16     ; enable FSGSBASE instructions
     mov cr4, eax
 
@@ -124,7 +126,9 @@ enable_long_mode:
 enable_paging:
     ; enable paging in CR0 register
     mov eax, cr0
-    or eax, 1 << 31
+    or eax, 1 << 31        ; PG - enable paging
+    or eax, 1 << 1         ; MP - monitor coprocessor
+    and eax, ~(1 << 2)     ; clear EM - allow SSE (not emulated FPU)
     mov cr0, eax
 
 ;    mov ecx, (gdt64_pointer - KERNEL_BASE)

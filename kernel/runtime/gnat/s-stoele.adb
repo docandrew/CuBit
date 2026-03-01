@@ -28,9 +28,6 @@
 -- Extensive contributions were provided by Ada Core Technologies Inc.      --
 --                                                                          --
 ------------------------------------------------------------------------------
-
-pragma Compiler_Unit_Warning;
-
 with Ada.Unchecked_Conversion;
 
 package body System.Storage_Elements is

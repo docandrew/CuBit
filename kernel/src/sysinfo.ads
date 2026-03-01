@@ -17,6 +17,13 @@ package Sysinfo is
 
     MAGIC_RAMDISK_ADDRESS : constant QueryID := 1000;
     SECONDARY_STACK_START : constant QueryID := 1001;
+
+    -- Framebuffer info queries
+    FB_WIDTH              : constant QueryID := 1100;
+    FB_HEIGHT             : constant QueryID := 1101;
+    FB_PITCH              : constant QueryID := 1102;
+    FB_BPP                : constant QueryID := 1103;
+
     REGISTERED_DRIVER     : constant QueryID := 2000;
 
     subtype DriverID is QueryID range 0..127;

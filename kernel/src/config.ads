@@ -66,6 +66,7 @@ is
     FILEPATH_MAX_LENGTH : constant := 4096;
 
     -- Process IDs for CuBit services
-    SERVICE_IDLE_PID     : constant := 1;
-    SERVICE_KEYBOARD_PID : constant := 2;
+    SERVICE_IDLE_PID       : constant := 1;
+    SERVICE_KEYBOARD_PID   : constant := 2;
+    SERVICE_FILESYSTEM_PID : constant := 3;
 end Config;

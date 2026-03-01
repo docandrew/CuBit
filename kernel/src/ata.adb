@@ -112,7 +112,7 @@ is
     -- @TODO - maybe put this and checksumACPI in util since they do the same
     --  thing.
     --------------------------------------------------------------------------
-    function checksumATAID(drive : in out ATADrive)
+    function checksumATAID(drive : in ATADrive)
         return Boolean with SPARK_Mode => Off  -- Storage_Array
     is
         tableBytes : Storage_Array(1..Storage_Offset(512))

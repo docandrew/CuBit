@@ -41,9 +41,31 @@ is
         newPAT : x86.PATRegister;
     begin
         cpuData.currentPID := Process.NO_PROCESS;
+        cpuData.nmiCount := 0;
+        cpuData.nmiInProgress := False;
 
         -- Set the PAT register up the way we want it.
         x86.wrmsr (x86.MSRs.PAT, PATtoU64 (newPAT));
+
+        -- Set up IST stacks for critical exceptions.
+        -- Stack grows downward, so IST pointer = base + size (top of stack).
+        setupIST : declare
+        begin
+            -- IST 1: NMI stack (top of nmiStack)
+            cpuData.tss.ist1 := Util.addrToNum (
+                allISTStacks(cpuNum).nmiStack'Address +
+                System.Storage_Elements.Storage_Offset(IST_STACK_SIZE));
+
+            -- IST 2: Double Fault stack
+            cpuData.tss.ist2 := Util.addrToNum (
+                allISTStacks(cpuNum).doubleFaultStack'Address +
+                System.Storage_Elements.Storage_Offset(IST_STACK_SIZE));
+
+            -- IST 3: Machine Check stack
+            cpuData.tss.ist3 := Util.addrToNum (
+                allISTStacks(cpuNum).machineCheckStack'Address +
+                System.Storage_Elements.Storage_Offset(IST_STACK_SIZE));
+        end setupIST;
 
         cpuData.cpuNum := cpuNum;
         cpuData.gdt(GDT_SEGMENT_NULL) := toSegmentDescriptor(0);
@@ -149,6 +171,7 @@ is
             x86.wrmsr (x86.MSRs.STAR, starVal);
         end makeStar;
 
+        print ("LSTAR = "); println (syscallEntryPoint'Address);
         x86.wrmsr (x86.MSRs.LSTAR, Util.addrToNum(syscallEntryPoint'Address));
 
         -- Compatibility-mode not supported (CSTAR), but we'll load it anyway

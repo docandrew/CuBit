@@ -27,6 +27,7 @@ with Interrupts;
 with Lapic;
 with Mem_mgr;
 with MemoryAreas;
+with InterruptNumbers;
 with Modules;
 with Pci;
 with PerCpuData;
@@ -334,6 +335,8 @@ begin
         if ioapicBase = 0 then
             println (" WARNING: No I/O APIC found in the ACPI tables. ");
             println (" Defaulting to legacy PIC controller.");
+            -- Enable keyboard IRQ on legacy PIC (IRQ 1 = vector 33)
+            pic.enableIRQ (InterruptNumbers.PS2KEYBOARD);
         else
             -- disable caching on the mmap-ed I/O APIC registers,
             -- re-map it into the higher-half.

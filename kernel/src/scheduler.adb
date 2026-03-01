@@ -77,7 +77,7 @@ is
             -- println ("Scheduler - Ready List: ");
             -- Process.Queues.print (Process.readyList);
 
-            pid := Process.Queues.dequeue (Process.readyList);
+            Process.Queues.dequeue (Process.readyList, pid);
 
             -- print ("Scheduler: running "); print (Process.proctab(pid).name); print(" pid "); println (Integer(pid));
 
@@ -133,12 +133,13 @@ is
 
                     -- @TODO adjust priority here if we eat up full time-slice
                     -- put us back on the ready list.
-                    ign := Process.Queues.insert (q   => Process.readyList,
-                                                  pid => pid,
-                                                  key => Process.proctab(pid).priority);
+                    Process.Queues.insert (q      => Process.readyList,
+                                          pid    => pid,
+                                          key    => Process.proctab(pid).priority,
+                                          result => ign);
                 
                 when WAITING | RECEIVING | SENDING | WAITINGFOREVENT | WAITINGFORREPLY |
-                     SUSPENDED | SLEEPING =>
+                     WAITINGFORCOMPLETION | SUSPENDED | SLEEPING =>
                     -- print ("Scheduler: process "); print (i); 
                     -- print (" is blocked (waiting), saving context: ");
                     -- println (cpuData.oldContext);

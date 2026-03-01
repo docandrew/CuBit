@@ -30,7 +30,7 @@ project CuBit is
             --"-gnata",             -- Enable assertions
             "-gnatwa",              -- print all warnings...
             "-gnatw.X",             -- disable warnings for No_Exception_Propagation
-            "-gnatd.v",             -- SPARK elaboration model
+            -- "-gnatd.v",             -- SPARK elaboration model (disabled: circularity with GNAT 14)
             --"-fstack-check",        -- For debug builds only, can break things.
             "-s",                   -- recompile on compiler switch changes
             "-v",                   -- verbose

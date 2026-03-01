@@ -4,9 +4,13 @@
 
 # Build everything
 .PHONY: all
-all: runtime drivers services initrd
+all: runtime drivers services cprograms doom initrd
 	cp drivers/ramdisk/build/ramdisk.drv ../kernel/isodir/boot/ramdisk.drv
 	cp init.img ../kernel/isodir/boot/init.img
+	cp c/build/hello.elf ../kernel/isodir/boot/hello.elf
+	-cp services/filesystem/build/filesystem.svc ../kernel/isodir/boot/filesystem.svc 2>/dev/null
+	-cp drivers/ata/build/ata.drv ../kernel/isodir/boot/ata.drv 2>/dev/null
+	-cp c/doom_src/build/doom.elf ../kernel/isodir/boot/doom.elf 2>/dev/null
 
 ###############################################################################
 # Runtime library
@@ -32,27 +36,52 @@ drivers/ramdisk/build/ramdisk.drv: runtime
 	ld drivers/ramdisk/build/*.o runtime/adalib/art0.o runtime/adalib/libgnat-user.a -o drivers/ramdisk/build/ramdisk.drv
 
 ###############################################################################
+# ATA Driver
+###############################################################################
+.PHONY: ata
+ata: drivers/ata/build/ata.drv
+
+drivers/ata/build/ata.drv: runtime
+	gprbuild -b -c -p -Pdrivers/ata/ata.gpr
+
+	ld drivers/ata/build/*.o runtime/adalib/art0.o runtime/adalib/libgnat-user.a -o drivers/ata/build/ata.drv
+
+###############################################################################
 # Drivers meta-target
 ###############################################################################
 .PHONY: drivers
-drivers: ramdisk
+drivers: ramdisk ata
 
 ###############################################################################
 # Filesystem Service
 ###############################################################################
-.PHONY: fileservice
-fileservice: services/fileservice/build/fileservice.svc
+.PHONY: filesystem
+filesystem: services/filesystem/build/filesystem.svc
 
-services/fileservice/build/fileservice.svc: runtime
-	gprbuild -b -c -p -Pservices/fileservice/fileservice.gpr
+services/filesystem/build/filesystem.svc: runtime
+	gprbuild -b -c -p -Pservices/filesystem/filesystem.gpr
 
-	ld services/fileservice/build/*.o runtime/adalib/art0.o runtime/adalib/libgnat-user.a -o services/fileservice/build/fileservice.svc
+	ld services/filesystem/build/*.o runtime/adalib/art0.o runtime/adalib/libgnat-user.a -o services/filesystem/build/filesystem.svc
 
 ###############################################################################
 # Services meta-target
 ###############################################################################
 .PHONY: services
-services: fileservice
+services: filesystem
+
+###############################################################################
+# C Programs
+###############################################################################
+.PHONY: cprograms
+cprograms:
+	$(MAKE) -C c
+
+###############################################################################
+# DOOM
+###############################################################################
+.PHONY: doom
+doom: cprograms
+	$(MAKE) -C c/doom_src
 
 ###############################################################################
 # Initial Ramdisk Image (initrd)
@@ -66,7 +95,10 @@ initrd:
 ###############################################################################
 .PHONY: clean
 clean:
-	gprclean -Pdrivers/ramdisk/ramdisk.gpr
-	gprclean -Pservices/fileservice/fileservice.gpr
-	gprclean -Pruntime/user_runtime.gpr
-	rm runtime/adalib/art0.o
+	-gprclean -Pdrivers/ata/ata.gpr
+	-gprclean -Pdrivers/ramdisk/ramdisk.gpr
+	-gprclean -Pservices/filesystem/filesystem.gpr
+	-gprclean -Pruntime/user_runtime.gpr
+	rm -f runtime/adalib/art0.o
+	$(MAKE) -C c clean
+	$(MAKE) -C c/doom_src clean

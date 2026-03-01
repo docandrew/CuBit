@@ -189,7 +189,7 @@ is
     -- @return True if an Allocate call (or call to "new") will succeed on this
     --  storage pool, False otherwise.
     ---------------------------------------------------------------------------
-    function hasFree (pool : in out Slab) return Boolean;
+    function hasFree (pool : in Slab) return Boolean;
 
     ---------------------------------------------------------------------------
     -- Allocate - called automagically by "new". The first time this is called,
