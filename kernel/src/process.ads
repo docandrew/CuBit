@@ -32,6 +32,7 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 with Interfaces; use Interfaces;
 
+with Capabilities;
 with Descriptors;
 with LinkedLists;
 limited with Process.Queues;
@@ -236,12 +237,16 @@ is
     type MessageWords is array (0..3) of Unsigned_64;
 
     type Message is record
-        tag   : MessageTag;
-        words : MessageWords;
+        tag      : MessageTag;
+        capBadge : Unsigned_64 := 0;  -- Kernel-stamped 64-bit badge
+        words    : MessageWords;
     end record;
-    -- Total: 40 bytes = 5 registers (tag + 4 words)
+    -- Total: 48 bytes (tag:8 + badge:8 + words:32)
 
-    NULL_MESSAGE : constant Message := (tag => NULL_TAG, words => (others => 0));
+    NULL_MESSAGE : constant Message := (
+        tag      => NULL_TAG,
+        capBadge => 0,
+        words    => (others => 0));
 
     ---------------------------------------------------------------------------
     -- Async I/O Completion Queue Types
@@ -432,6 +437,9 @@ is
         pendingRequests     : PendingArray := (others => (NO_PROCESS, 0));
         numPending          : Natural := 0;
         grants              : GrantArray := (others => <>);
+
+        caps                : Capabilities.CapabilityTable :=
+                                  Capabilities.EMPTY_TABLE;
 
         channel             : WaitChannel;
 

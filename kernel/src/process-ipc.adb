@@ -10,9 +10,14 @@
 -- See process-ipc.ads for lock ordering documentation.
 -------------------------------------------------------------------------------
 with BuddyAllocator;
+with Capabilities.Operations;
+with Config;
 with PerCPUData;
 with Process.Queues;
 with Virtmem;
+
+use type Capabilities.CapabilityType;
+use type Capabilities.Operations.OperationStatus;
 
 package body Process.IPC with
     SPARK_Mode => On
@@ -295,6 +300,27 @@ is
 
         if proctab(dest).state = INVALID then
             return NULL_TAG;
+        end if;
+
+        -- Optional capability enforcement for legacy PID-based send
+        if Config.ENFORCE_IPC_CAPS then
+            enforceCheck : declare
+                found : Boolean := False;
+            begin
+                for i in Capabilities.CapabilitySlot loop
+                    if proctab(pid).caps(i).capType = Capabilities.CAP_ENDPOINT
+                       and then proctab(pid).caps(i).object.ref = Unsigned_64(dest)
+                       and then proctab(pid).caps(i).rights(Capabilities.RIGHT_WRITE)
+                    then
+                        found := True;
+                        exit;
+                    end if;
+                end loop;
+
+                if not found then
+                    return NULL_TAG;
+                end if;
+            end enforceCheck;
         end if;
 
         Spinlocks.enterCriticalSection (mailtab(dest).lock);
@@ -793,5 +819,111 @@ is
             end if;
         end loop;
     end revokeAllGrants;
+
+    ---------------------------------------------------------------------------
+    -- Capability-Aware IPC
+    ---------------------------------------------------------------------------
+
+    ---------------------------------------------------------------------------
+    -- capSend
+    ---------------------------------------------------------------------------
+    function capSend (capSlot : Capabilities.CapabilitySlot;
+                      msg     : Message) return MessageTag
+        with SPARK_Mode => On
+    is
+        pid     : constant ProcessID := PerCPUData.getCurrentPID;
+        destPID : Unsigned_64;
+        badge   : Capabilities.Badge;
+        status  : Capabilities.Operations.OperationStatus;
+        stamped : Message := msg;
+    begin
+        Capabilities.Operations.resolveEndpoint (
+            table   => proctab(pid).caps,
+            slot    => capSlot,
+            rights  => Capabilities.READ_WRITE,
+            destPID => destPID,
+            capBadge => badge,
+            status  => status);
+
+        if status /= Capabilities.Operations.OP_OK then
+            return NULL_TAG;
+        end if;
+
+        if destPID > Unsigned_64(ProcessID'Last) then
+            return NULL_TAG;
+        end if;
+
+        stamped.capBadge := badge;
+        return send (dest => ProcessID(destPID), msg => stamped);
+    end capSend;
+
+    ---------------------------------------------------------------------------
+    -- capCall
+    ---------------------------------------------------------------------------
+    function capCall (capSlot : Capabilities.CapabilitySlot;
+                      msg     : Message) return MessageTag
+        with SPARK_Mode => On
+    is
+        pid     : constant ProcessID := PerCPUData.getCurrentPID;
+        destPID : Unsigned_64;
+        badge   : Capabilities.Badge;
+        status  : Capabilities.Operations.OperationStatus;
+        stamped : Message := msg;
+    begin
+        Capabilities.Operations.resolveEndpoint (
+            table   => proctab(pid).caps,
+            slot    => capSlot,
+            rights  => Capabilities.READ_WRITE,
+            destPID => destPID,
+            capBadge => badge,
+            status  => status);
+
+        if status /= Capabilities.Operations.OP_OK then
+            return NULL_TAG;
+        end if;
+
+        if destPID > Unsigned_64(ProcessID'Last) then
+            return NULL_TAG;
+        end if;
+
+        stamped.capBadge := badge;
+        return send (dest => ProcessID(destPID), msg => stamped);
+    end capCall;
+
+    ---------------------------------------------------------------------------
+    -- capSubmit
+    ---------------------------------------------------------------------------
+    function capSubmit (capSlot : Capabilities.CapabilitySlot;
+                        msg     : Message;
+                        token   : Unsigned_64) return Boolean
+        with SPARK_Mode => On
+    is
+        pid     : constant ProcessID := PerCPUData.getCurrentPID;
+        destPID : Unsigned_64;
+        badge   : Capabilities.Badge;
+        status  : Capabilities.Operations.OperationStatus;
+        stamped : Message := msg;
+    begin
+        Capabilities.Operations.resolveEndpoint (
+            table   => proctab(pid).caps,
+            slot    => capSlot,
+            rights  => Capabilities.READ_WRITE,
+            destPID => destPID,
+            capBadge => badge,
+            status  => status);
+
+        if status /= Capabilities.Operations.OP_OK then
+            return False;
+        end if;
+
+        if destPID > Unsigned_64(ProcessID'Last) then
+            return False;
+        end if;
+
+        stamped.capBadge := badge;
+        return submit (dest  => ProcessID(destPID),
+                       msg   => stamped,
+                       token => token);
+    end capSubmit;
 
 end Process.IPC;

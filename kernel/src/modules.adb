@@ -9,6 +9,8 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with BuddyAllocator;
+with Capabilities;
+with Capabilities.Operations;
 with Config;
 with ELF;
 with Process;
@@ -101,6 +103,28 @@ package body Modules is
 
             ramdiskPID := pid;
 
+            -- Grant IOPORT caps for ATA ports to ramdisk driver
+            if pid /= Process.NO_PROCESS then
+                -- Slot 4: ATA primary ports 0x1F0-0x1F7
+                Capabilities.Operations.insertCapAt (
+                    table => Process.proctab(pid).caps,
+                    slot  => 4,
+                    cap   => (capType  => Capabilities.CAP_IOPORT,
+                              rights   => Capabilities.READ_WRITE,
+                              capBadge => Capabilities.NO_BADGE,
+                              object   => (ref => 16#1F0#, param => 8),
+                              gen      => Capabilities.INITIAL_GENERATION));
+                -- Slot 5: ATA control port 0x3F6
+                Capabilities.Operations.insertCapAt (
+                    table => Process.proctab(pid).caps,
+                    slot  => 5,
+                    cap   => (capType  => Capabilities.CAP_IOPORT,
+                              rights   => Capabilities.READ_WRITE,
+                              capBadge => Capabilities.NO_BADGE,
+                              object   => (ref => 16#3F6#, param => 1),
+                              gen      => Capabilities.INITIAL_GENERATION));
+            end if;
+
         elsif modName(1..14) = "filesystem.svc" then
 
             if filesystemPID /= Process.NO_PROCESS then
@@ -111,8 +135,18 @@ package body Modules is
             filesystemPID := pid;
 
         else
-            -- Generic ELF module: resume immediately
+            -- Generic ELF module: grant device mem cap for framebuffer, resume
             if pid /= Process.NO_PROCESS then
+                -- Slot 4: CAP_DEVICE_MEM for framebuffer access
+                Capabilities.Operations.insertCapAt (
+                    table => Process.proctab(pid).caps,
+                    slot  => 4,
+                    cap   => (capType  => Capabilities.CAP_DEVICE_MEM,
+                              rights   => Capabilities.READ_WRITE,
+                              capBadge => Capabilities.NO_BADGE,
+                              object   => (ref   => 0,
+                                           param => 16#1000_0000#),
+                              gen      => Capabilities.INITIAL_GENERATION));
                 print ("Modules: Starting module "); print (modName); println;
                 Process.resume (pid);
             end if;

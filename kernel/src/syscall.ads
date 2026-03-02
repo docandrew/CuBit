@@ -62,11 +62,23 @@ is
     SYSCALL_INS16           : constant SyscallNumber := 34;
     SYSCALL_OUTS16          : constant SyscallNumber := 35;
 
+    -- Capability-aware IPC syscalls
+    SYSCALL_CAP_SEND        : constant SyscallNumber := 40;
+    SYSCALL_CAP_CALL        : constant SyscallNumber := 41;
+    SYSCALL_CAP_SUBMIT      : constant SyscallNumber := 42;
+
     -- Access Controller Syscalls
     SYSCALL_CONTROLACCESS : constant SyscallNumber := 100;
     SYSCALL_GETTICKET     : constant SyscallNumber := 101;
     SYSCALL_GRANT         : constant SyscallNumber := 102;
     SYSCALL_REVOKE        : constant SyscallNumber := 103;
+
+    -- CONTROLACCESS sub-operation codes (passed in arg0)
+    CONTROLACCESS_INSERT  : constant Unsigned_64 := 1;
+    CONTROLACCESS_DERIVE  : constant Unsigned_64 := 2;
+    CONTROLACCESS_MINT    : constant Unsigned_64 := 3;
+    CONTROLACCESS_REMOVE  : constant Unsigned_64 := 4;
+    CONTROLACCESS_REVOKE  : constant Unsigned_64 := 5;
 
     -- Driver registration
     SYSCALL_REGISTER_DRIVER : constant SyscallNumber := 2000;

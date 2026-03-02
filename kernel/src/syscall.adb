@@ -7,6 +7,8 @@ with System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with BuddyAllocator;
+with Capabilities;
+with Capabilities.Operations;
 with Devices;
 with Filesystem.VFS.Paths;
 with Mem_mgr;
@@ -21,8 +23,9 @@ with Video.VGA;
 with Virtmem;
 with x86;
 
--- Bring MessageTag operators into scope for syscall dispatch
+-- Bring operators into scope for syscall dispatch
 use type Process.MessageTag;
+use type Capabilities.Operations.OperationStatus;
 
 package body Syscall is
 
@@ -235,27 +238,39 @@ package body Syscall is
                             Virtmem.LINEAR_BASE);
 
                     ok : Boolean := True;
+                    capAllowed : Boolean;
                 begin
-                    for i in 0 .. numPages - 1 loop
-                        declare
-                            pageOk : Boolean;
-                        begin
-                            mapPageInst (
-                                phys    => fbPhys + Virtmem.PhysAddress(i * Virtmem.PAGE_SIZE),
-                                virt    => FB_USER_BASE + Integer_Address(i * Virtmem.PAGE_SIZE),
-                                flags   => Virtmem.PG_USERIO_WC,
-                                myP4    => Process.addrtab(pid),
-                                success => pageOk);
-                            if not pageOk then
-                                ok := False;
-                            end if;
-                        end;
-                    end loop;
+                    -- Check CAP_DEVICE_MEM capability
+                    Capabilities.Operations.checkDeviceMemAccess (
+                        table   => Process.proctab(pid).caps,
+                        base    => 0,
+                        size    => Unsigned_64(fbSize),
+                        allowed => capAllowed);
 
-                    if ok then
-                        retval := Unsigned_64(FB_USER_BASE);
-                    else
+                    if not capAllowed then
                         retval := reterr;
+                    else
+                        for i in 0 .. numPages - 1 loop
+                            declare
+                                pageOk : Boolean;
+                            begin
+                                mapPageInst (
+                                    phys    => fbPhys + Virtmem.PhysAddress(i * Virtmem.PAGE_SIZE),
+                                    virt    => FB_USER_BASE + Integer_Address(i * Virtmem.PAGE_SIZE),
+                                    flags   => Virtmem.PG_USERIO_WC,
+                                    myP4    => Process.addrtab(pid),
+                                    success => pageOk);
+                                if not pageOk then
+                                    ok := False;
+                                end if;
+                            end;
+                        end loop;
+
+                        if ok then
+                            retval := Unsigned_64(FB_USER_BASE);
+                        else
+                            retval := reterr;
+                        end if;
                     end if;
                 end mapFBHandler;
 
@@ -294,8 +309,9 @@ package body Syscall is
 
                         pid : constant Process.ProcessID := PerCPUData.getCurrentPID;
                         sendMsg  : constant Process.Message := (
-                            tag   => u64ToTag (arg1),
-                            words => (arg2, arg3, arg4, arg5));
+                            tag      => u64ToTag (arg1),
+                            capBadge => 0,
+                            words    => (arg2, arg3, arg4, arg5));
                         replyTag : Process.MessageTag;
                     begin
                         replyTag := Process.IPC.send (
@@ -318,8 +334,9 @@ package body Syscall is
                             (Unsigned_64, Process.MessageTag);
 
                         replyMsg : constant Process.Message := (
-                            tag   => u64ToTag (arg1),
-                            words => (arg2, arg3, arg4, arg5));
+                            tag      => u64ToTag (arg1),
+                            capBadge => 0,
+                            words    => (arg2, arg3, arg4, arg5));
                     begin
                         retval := Process.IPC.reply (
                             replyTo => Process.ProcessID(arg0),
@@ -345,8 +362,9 @@ package body Syscall is
                             (Unsigned_64, Process.MessageTag);
 
                         eventMsg : constant Process.Message := (
-                            tag   => u64ToTag (arg1),
-                            words => (arg2, arg3, arg4, arg5));
+                            tag      => u64ToTag (arg1),
+                            capBadge => 0,
+                            words    => (arg2, arg3, arg4, arg5));
                     begin
                         Process.IPC.sendEvent (
                             dest => Process.ProcessID(arg0),
@@ -414,8 +432,9 @@ package body Syscall is
                             (Unsigned_64, Process.MessageTag);
 
                         submitMsg : constant Process.Message := (
-                            tag   => u64ToTag (arg1),
-                            words => (arg2, arg3, arg4, 0));
+                            tag      => u64ToTag (arg1),
+                            capBadge => 0,
+                            words    => (arg2, arg3, arg4, 0));
                         ok : Boolean;
                     begin
                         ok := Process.IPC.submit (
@@ -541,47 +560,410 @@ package body Syscall is
                                                driver => Sysinfo.DriverID(arg0));
 
             -- Port I/O syscalls for userspace drivers
-            -- TODO: Add IOPB permission checks per-process
+            -- Gated by CAP_IOPORT capability check.
             -- RDI=port
-            -- Returns: RAX=value (for INB/INW)
+            -- Returns: RAX=value (for INB/INW), -1 if denied
             when SYSCALL_INB =>
                 inbHandler : declare
                     val : Unsigned_8;
+                    capAllowed : Boolean;
                 begin
-                    x86.in8 (x86.IOPort(arg0 and 16#FFFF#), val);
-                    retval := Unsigned_64(val);
+                    Capabilities.Operations.checkPortAccess (
+                        Process.proctab(percpu.currentPID).caps,
+                        arg0 and 16#FFFF#, 1, False, capAllowed);
+                    if not capAllowed then
+                        retval := reterr;
+                    else
+                        x86.in8 (x86.IOPort(arg0 and 16#FFFF#), val);
+                        retval := Unsigned_64(val);
+                    end if;
                 end inbHandler;
 
             -- RDI=port, RSI=value
             when SYSCALL_OUTB =>
-                x86.out8 (x86.IOPort(arg0 and 16#FFFF#), Unsigned_8(arg1 and 16#FF#));
-                retval := 0;
+                outbHandler : declare
+                    capAllowed : Boolean;
+                begin
+                    Capabilities.Operations.checkPortAccess (
+                        Process.proctab(percpu.currentPID).caps,
+                        arg0 and 16#FFFF#, 1, True, capAllowed);
+                    if not capAllowed then
+                        retval := reterr;
+                    else
+                        x86.out8 (x86.IOPort(arg0 and 16#FFFF#),
+                                  Unsigned_8(arg1 and 16#FF#));
+                        retval := 0;
+                    end if;
+                end outbHandler;
 
             when SYSCALL_INW =>
                 inwHandler : declare
                     val : Unsigned_16;
+                    capAllowed : Boolean;
                 begin
-                    x86.in16 (x86.IOPort(arg0 and 16#FFFF#), val);
-                    retval := Unsigned_64(val);
+                    Capabilities.Operations.checkPortAccess (
+                        Process.proctab(percpu.currentPID).caps,
+                        arg0 and 16#FFFF#, 2, False, capAllowed);
+                    if not capAllowed then
+                        retval := reterr;
+                    else
+                        x86.in16 (x86.IOPort(arg0 and 16#FFFF#), val);
+                        retval := Unsigned_64(val);
+                    end if;
                 end inwHandler;
 
             -- RDI=port, RSI=value
             when SYSCALL_OUTW =>
-                x86.out16 (x86.IOPort(arg0 and 16#FFFF#), Unsigned_16(arg1 and 16#FFFF#));
-                retval := 0;
+                outwHandler : declare
+                    capAllowed : Boolean;
+                begin
+                    Capabilities.Operations.checkPortAccess (
+                        Process.proctab(percpu.currentPID).caps,
+                        arg0 and 16#FFFF#, 2, True, capAllowed);
+                    if not capAllowed then
+                        retval := reterr;
+                    else
+                        x86.out16 (x86.IOPort(arg0 and 16#FFFF#),
+                                   Unsigned_16(arg1 and 16#FFFF#));
+                        retval := 0;
+                    end if;
+                end outwHandler;
 
             -- Bulk port I/O: RDI=port, RSI=user_buffer_addr, RDX=word_count
             when SYSCALL_INS16 =>
-                x86.ins16 (x86.IOPort(arg0 and 16#FFFF#),
-                           Util.numToAddr(arg1),
-                           Unsigned_32(arg2));
-                retval := 0;
+                ins16Handler : declare
+                    capAllowed : Boolean;
+                begin
+                    Capabilities.Operations.checkPortAccess (
+                        Process.proctab(percpu.currentPID).caps,
+                        arg0 and 16#FFFF#, Unsigned_64(arg2) * 2, False,
+                        capAllowed);
+                    if not capAllowed then
+                        retval := reterr;
+                    else
+                        x86.ins16 (x86.IOPort(arg0 and 16#FFFF#),
+                                   Util.numToAddr(arg1),
+                                   Unsigned_32(arg2));
+                        retval := 0;
+                    end if;
+                end ins16Handler;
 
             when SYSCALL_OUTS16 =>
-                x86.outs16 (x86.IOPort(arg0 and 16#FFFF#),
-                            Util.numToAddr(arg1),
-                            Unsigned_32(arg2));
-                retval := 0;
+                outs16Handler : declare
+                    capAllowed : Boolean;
+                begin
+                    Capabilities.Operations.checkPortAccess (
+                        Process.proctab(percpu.currentPID).caps,
+                        arg0 and 16#FFFF#, Unsigned_64(arg2) * 2, True,
+                        capAllowed);
+                    if not capAllowed then
+                        retval := reterr;
+                    else
+                        x86.outs16 (x86.IOPort(arg0 and 16#FFFF#),
+                                    Util.numToAddr(arg1),
+                                    Unsigned_32(arg2));
+                        retval := 0;
+                    end if;
+                end outs16Handler;
+
+            -- CAP_SEND: RDI=cap_slot, RSI=tag, RDX=w0, RCX=w1, R8=w2, R9=w3
+            -- Returns: RAX=reply_tag
+            when SYSCALL_CAP_SEND =>
+                if arg0 > Unsigned_64(Capabilities.CapabilitySlot'Last) then
+                    retval := reterr;
+                else
+                    capSendHandler : declare
+                        function tagToU64 is new Ada.Unchecked_Conversion
+                            (Process.MessageTag, Unsigned_64);
+                        function u64ToTag is new Ada.Unchecked_Conversion
+                            (Unsigned_64, Process.MessageTag);
+
+                        pid : constant Process.ProcessID := PerCPUData.getCurrentPID;
+                        sendMsg : constant Process.Message := (
+                            tag      => u64ToTag (arg1),
+                            capBadge => 0,
+                            words    => (arg2, arg3, arg4, arg5));
+                        replyTag : Process.MessageTag;
+                    begin
+                        replyTag := Process.IPC.capSend (
+                            capSlot => Capabilities.CapabilitySlot(arg0),
+                            msg     => sendMsg);
+                        Process.proctab(pid).replyMsg := Process.NULL_MESSAGE;
+                        retval := tagToU64 (replyTag);
+                    end capSendHandler;
+                end if;
+
+            -- CAP_CALL: RDI=cap_slot, RSI=pointer to Message struct (in/out)
+            -- Returns: RAX=reply_tag
+            when SYSCALL_CAP_CALL =>
+                if arg0 > Unsigned_64(Capabilities.CapabilitySlot'Last) then
+                    retval := reterr;
+                else
+                    capCallHandler : declare
+                        function tagToU64 is new Ada.Unchecked_Conversion
+                            (Process.MessageTag, Unsigned_64);
+
+                        userMsg  : Process.Message
+                            with Import, Address => Util.numToAddr(arg1);
+                        replyTag : Process.MessageTag;
+                    begin
+                        replyTag := Process.IPC.capCall (
+                            capSlot => Capabilities.CapabilitySlot(arg0),
+                            msg     => userMsg);
+                        userMsg := Process.proctab(PerCPUData.getCurrentPID).replyMsg;
+                        Process.proctab(PerCPUData.getCurrentPID).replyMsg :=
+                            Process.NULL_MESSAGE;
+                        retval := tagToU64 (replyTag);
+                    end capCallHandler;
+                end if;
+
+            -- CAP_SUBMIT: RDI=cap_slot, RSI=tag, RDX=w0, RCX=w1, R8=w2, R9=token
+            -- Returns: RAX=1 success, 0 failure
+            when SYSCALL_CAP_SUBMIT =>
+                if arg0 > Unsigned_64(Capabilities.CapabilitySlot'Last) then
+                    retval := 0;
+                else
+                    capSubmitHandler : declare
+                        function u64ToTag is new Ada.Unchecked_Conversion
+                            (Unsigned_64, Process.MessageTag);
+
+                        submitMsg : constant Process.Message := (
+                            tag      => u64ToTag (arg1),
+                            capBadge => 0,
+                            words    => (arg2, arg3, arg4, 0));
+                        ok : Boolean;
+                    begin
+                        ok := Process.IPC.capSubmit (
+                            capSlot => Capabilities.CapabilitySlot(arg0),
+                            msg     => submitMsg,
+                            token   => arg5);
+                        if ok then
+                            retval := 1;
+                        else
+                            retval := 0;
+                        end if;
+                    end capSubmitHandler;
+                end if;
+
+            -- CONTROLACCESS: capability table manipulation
+            -- RDI=sub-op, RSI..R9=sub-op-specific arguments
+            -- Returns: RAX=slot index on success, -1 on error
+            when SYSCALL_CONTROLACCESS =>
+                controlAccessHandler : declare
+                    pid : constant Process.ProcessID := percpu.currentPID;
+                    subOp : constant Unsigned_64 := arg0;
+                    opStatus : Capabilities.Operations.OperationStatus;
+                    slot : Capabilities.CapabilitySlot;
+                begin
+                    case subOp is
+                        -- INSERT: arg1=capType, arg2=rights_bitmask,
+                        --         arg3=ref, arg4=param
+                        when CONTROLACCESS_INSERT =>
+                            insertHandler : declare
+                                function u64ToRights is new Ada.Unchecked_Conversion
+                                    (Unsigned_8, Capabilities.CapabilityRights);
+
+                                capTypeVal : Capabilities.CapabilityType;
+                                newCap : Capabilities.Capability;
+                            begin
+                                if arg1 > Capabilities.CapabilityType'Pos(
+                                    Capabilities.CapabilityType'Last) then
+                                    retval := reterr;
+                                else
+                                    capTypeVal := Capabilities.CapabilityType'Val(
+                                        Natural(arg1));
+                                    newCap := (
+                                        capType  => capTypeVal,
+                                        rights   => u64ToRights(Unsigned_8(arg2 and 16#FF#)),
+                                        capBadge => Capabilities.NO_BADGE,
+                                        object   => (ref => arg3, param => arg4),
+                                        gen      => Capabilities.INITIAL_GENERATION);
+                                    Capabilities.Operations.insertCap (
+                                        table  => Process.proctab(pid).caps,
+                                        cap    => newCap,
+                                        slot   => slot,
+                                        status => opStatus);
+                                    if opStatus = Capabilities.Operations.OP_OK then
+                                        retval := Unsigned_64(slot);
+                                    else
+                                        retval := reterr;
+                                    end if;
+                                end if;
+                            end insertHandler;
+
+                        -- DERIVE: arg1=source_slot, arg2=new_rights_bitmask,
+                        --         arg3=dest_slot (0=auto)
+                        when CONTROLACCESS_DERIVE =>
+                            deriveHandler : declare
+                                function u64ToRights is new Ada.Unchecked_Conversion
+                                    (Unsigned_8, Capabilities.CapabilityRights);
+
+                                srcCap  : Capabilities.Capability;
+                                newCap  : Capabilities.Capability;
+                                newRights : Capabilities.CapabilityRights;
+                            begin
+                                if arg1 > Unsigned_64(Capabilities.CapabilitySlot'Last) then
+                                    retval := reterr;
+                                else
+                                    Capabilities.Operations.lookupCap (
+                                        table  => Process.proctab(pid).caps,
+                                        slot   => Capabilities.CapabilitySlot(arg1),
+                                        cap    => srcCap,
+                                        status => opStatus);
+
+                                    if opStatus /= Capabilities.Operations.OP_OK then
+                                        retval := reterr;
+                                    else
+                                        newRights := u64ToRights(Unsigned_8(arg2 and 16#FF#));
+
+                                        if not Capabilities.isSubsetOf (newRights, srcCap.rights) then
+                                            retval := reterr;
+                                        else
+                                            newCap := Capabilities.derive (srcCap, newRights);
+
+                                            if arg3 /= 0 and then
+                                               arg3 <= Unsigned_64(Capabilities.CapabilitySlot'Last) then
+                                                Capabilities.Operations.insertCapAt (
+                                                    table => Process.proctab(pid).caps,
+                                                    slot  => Capabilities.CapabilitySlot(arg3),
+                                                    cap   => newCap);
+                                                retval := arg3;
+                                            else
+                                                Capabilities.Operations.insertCap (
+                                                    table  => Process.proctab(pid).caps,
+                                                    cap    => newCap,
+                                                    slot   => slot,
+                                                    status => opStatus);
+                                                if opStatus = Capabilities.Operations.OP_OK then
+                                                    retval := Unsigned_64(slot);
+                                                else
+                                                    retval := reterr;
+                                                end if;
+                                            end if;
+                                        end if;
+                                    end if;
+                                end if;
+                            end deriveHandler;
+
+                        -- MINT: arg1=source_slot, arg2=new_badge,
+                        --       arg3=rights_bitmask, arg4=dest_slot (0=auto)
+                        when CONTROLACCESS_MINT =>
+                            mintHandler : declare
+                                function u64ToRights is new Ada.Unchecked_Conversion
+                                    (Unsigned_8, Capabilities.CapabilityRights);
+
+                                srcCap    : Capabilities.Capability;
+                                newCap    : Capabilities.Capability;
+                                newRights : Capabilities.CapabilityRights;
+                            begin
+                                if arg1 > Unsigned_64(Capabilities.CapabilitySlot'Last) then
+                                    retval := reterr;
+                                else
+                                    Capabilities.Operations.lookupCap (
+                                        table  => Process.proctab(pid).caps,
+                                        slot   => Capabilities.CapabilitySlot(arg1),
+                                        cap    => srcCap,
+                                        status => opStatus);
+
+                                    if opStatus /= Capabilities.Operations.OP_OK then
+                                        retval := reterr;
+                                    else
+                                        newRights := u64ToRights(Unsigned_8(arg3 and 16#FF#));
+
+                                        if not Capabilities.isSubsetOf (newRights, srcCap.rights) then
+                                            retval := reterr;
+                                        else
+                                            newCap := Capabilities.mint (srcCap, arg2, newRights);
+
+                                            if arg4 /= 0 and then
+                                               arg4 <= Unsigned_64(Capabilities.CapabilitySlot'Last) then
+                                                Capabilities.Operations.insertCapAt (
+                                                    table => Process.proctab(pid).caps,
+                                                    slot  => Capabilities.CapabilitySlot(arg4),
+                                                    cap   => newCap);
+                                                retval := arg4;
+                                            else
+                                                Capabilities.Operations.insertCap (
+                                                    table  => Process.proctab(pid).caps,
+                                                    cap    => newCap,
+                                                    slot   => slot,
+                                                    status => opStatus);
+                                                if opStatus = Capabilities.Operations.OP_OK then
+                                                    retval := Unsigned_64(slot);
+                                                else
+                                                    retval := reterr;
+                                                end if;
+                                            end if;
+                                        end if;
+                                    end if;
+                                end if;
+                            end mintHandler;
+
+                        -- REMOVE: arg1=slot
+                        when CONTROLACCESS_REMOVE =>
+                            if arg1 > Unsigned_64(Capabilities.CapabilitySlot'Last) then
+                                retval := reterr;
+                            else
+                                Capabilities.Operations.removeCap (
+                                    table  => Process.proctab(pid).caps,
+                                    slot   => Capabilities.CapabilitySlot(arg1),
+                                    status => opStatus);
+                                if opStatus = Capabilities.Operations.OP_OK then
+                                    retval := Unsigned_64(arg1);
+                                else
+                                    retval := reterr;
+                                end if;
+                            end if;
+
+                        -- REVOKE: arg1=slot (nullify capability)
+                        when CONTROLACCESS_REVOKE =>
+                            if arg1 > Unsigned_64(Capabilities.CapabilitySlot'Last) then
+                                retval := reterr;
+                            else
+                                Capabilities.Operations.removeCap (
+                                    table  => Process.proctab(pid).caps,
+                                    slot   => Capabilities.CapabilitySlot(arg1),
+                                    status => opStatus);
+                                if opStatus = Capabilities.Operations.OP_OK then
+                                    retval := Unsigned_64(arg1);
+                                else
+                                    retval := reterr;
+                                end if;
+                            end if;
+
+                        when others =>
+                            retval := reterr;
+                    end case;
+                end controlAccessHandler;
+
+            -- GETTICKET: read capability from slot
+            -- RDI=slot, RSI=pointer to user-space Capability buffer
+            -- Returns: RAX=1 on success, 0 on error
+            when SYSCALL_GETTICKET =>
+                getTicketHandler : declare
+                    pid : constant Process.ProcessID := percpu.currentPID;
+                    cap : Capabilities.Capability;
+                    opStatus : Capabilities.Operations.OperationStatus;
+                    userCap : Capabilities.Capability with
+                        Import, Address => Util.numToAddr(arg1);
+                begin
+                    if arg0 > Unsigned_64(Capabilities.CapabilitySlot'Last) then
+                        retval := 0;
+                    else
+                        Capabilities.Operations.lookupCap (
+                            table  => Process.proctab(pid).caps,
+                            slot   => Capabilities.CapabilitySlot(arg0),
+                            cap    => cap,
+                            status => opStatus);
+
+                        if opStatus = Capabilities.Operations.OP_OK then
+                            userCap := cap;
+                            retval := 1;
+                        else
+                            retval := 0;
+                        end if;
+                    end if;
+                end getTicketHandler;
 
             when others =>
                 print ("Syscall: "); printd (syscallNum);

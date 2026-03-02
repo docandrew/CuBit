@@ -191,8 +191,9 @@ is
                 -- println ("PS2 Interrupt");
                 eoi (PS2KEYBOARD);
                 Process.IPC.sendEvent (Config.SERVICE_KEYBOARD_PID,
-                    (tag => (label => 1, length => 0, flags => 0, badge => 0),
-                     words => (others => 0)));
+                    (tag      => (label => 1, length => 0, flags => 0, badge => 0),
+                     capBadge => 0,
+                     words    => (others => 0)));
 
             when INVALID .. IDE2 =>
                 print ("IRQ: "); 

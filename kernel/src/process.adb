@@ -17,6 +17,7 @@ with Ada.Unchecked_Deallocation;
 with System.Machine_Code; use System.Machine_Code;
 
 with BuddyAllocator;
+with Capabilities.Operations;
 with Config;
 with Mem_mgr;
 with PerCPUData;
@@ -290,6 +291,11 @@ is
             );
 
             proc.mail := proc.pid;
+
+            -- Grant initial capabilities for well-known services
+            Capabilities.Operations.grantInitialCaps (
+                table => proc.caps,
+                pid   => Unsigned_64(proc.pid));
 
             zeroize (addrtab(proc.pgTable));
             Mem_mgr.mapKernelMemIntoProcess (addrtab(proc.pgTable));
@@ -645,6 +651,9 @@ is
 
         -- Revoke any shared memory grants this process had created
         IPC.revokeAllGrants (pid);
+
+        -- Clear capability table
+        Capabilities.Operations.clearTable (proctab(pid).caps);
 
         if proctab(pid).mode = USER and not proctab(pid).isThread then
 

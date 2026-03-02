@@ -15,6 +15,8 @@
 --   3. readyList.lock       (scheduler)
 --   4. sleepList.lock       (sleep queue)
 -------------------------------------------------------------------------------
+with Capabilities;
+
 package Process.IPC with
     SPARK_Mode => On
 is
@@ -159,6 +161,42 @@ is
     -- @param pid - PID of the process whose grants should be revoked
     ---------------------------------------------------------------------------
     procedure revokeAllGrants (pid : ProcessID)
+        with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- Capability-Aware IPC
+    ---------------------------------------------------------------------------
+
+    ---------------------------------------------------------------------------
+    -- capSend
+    -- Resolve the endpoint capability at capSlot in the caller's cap table,
+    -- stamp the message badge from the capability, and perform a synchronous
+    -- send to the resolved destination.
+    -- @return the reply message tag (NULL_TAG on capability error).
+    ---------------------------------------------------------------------------
+    function capSend (capSlot : Capabilities.CapabilitySlot;
+                      msg     : Message) return MessageTag
+        with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- capCall
+    -- Like capSend but writes the full reply message back via pointer.
+    -- Resolves endpoint cap, stamps badge, sends, returns reply tag.
+    -- The caller should read the full reply from proctab(pid).replyMsg.
+    -- @return the reply message tag (NULL_TAG on capability error).
+    ---------------------------------------------------------------------------
+    function capCall (capSlot : Capabilities.CapabilitySlot;
+                      msg     : Message) return MessageTag
+        with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- capSubmit
+    -- Resolve endpoint capability, stamp badge, perform async submit.
+    -- @return True on success, False on capability error or mailbox full.
+    ---------------------------------------------------------------------------
+    function capSubmit (capSlot : Capabilities.CapabilitySlot;
+                        msg     : Message;
+                        token   : Unsigned_64) return Boolean
         with SPARK_Mode => On;
 
 end Process.IPC;

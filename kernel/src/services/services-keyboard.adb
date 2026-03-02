@@ -51,11 +51,12 @@ is
 
             -- send scancode to the upper-half driver via IPC message
             replyTag := Process.IPC.send (driverPID,
-                (tag   => (label  => 1,
-                           length => 1,
-                           flags  => 0,
-                           badge  => 0),
-                 words => (0 => Unsigned_64(code), others => 0)));
+                (tag      => (label  => 1,
+                              length => 1,
+                              flags  => 0,
+                              badge  => 0),
+                 capBadge => 0,
+                 words    => (0 => Unsigned_64(code), others => 0)));
         end loop;
     end start;
 

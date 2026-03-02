@@ -57,6 +57,15 @@ is
     -- File/device descriptors per process
     PER_PROCESS_DESCRIPTORS : constant := 256;
 
+    -- Capabilities per process (capability table slots).
+    -- 64 is sufficient for early bring-up; expect to grow this (256+) once
+    -- capabilities replace file descriptors and per-connection endpoints.
+    PER_PROCESS_CAPABILITIES : constant := 64;
+
+    -- When True, legacy send() requires a matching CAP_ENDPOINT.
+    -- Default False for backward compat during capability migration.
+    ENFORCE_IPC_CAPS : constant Boolean := False;
+
     -- Number of files open on the system at once
     MAX_OPEN_FILES : constant := 256;
 
