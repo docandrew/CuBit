@@ -1,0 +1,88 @@
+#
+# CuBit OS - DOOM Build
+# Copyright (C) 2026 Jon Andrew
+#
+# Compiles doomgeneric with CuBit's freestanding C runtime to produce doom.elf.
+#
+
+CC      = gcc
+LD      = ld
+AR      = ar
+AS      = gcc
+
+# Paths
+CUBIT_C    = ..
+DG_DIR     = doomgeneric
+BUILDDIR   = build
+INCLUDE    = $(CUBIT_C)/include
+
+# Compiler flags: freestanding, use our headers before system headers
+CFLAGS  = -ffreestanding -nostdlib -nostartfiles -fno-builtin \
+          -fno-stack-protector -fno-pic -fno-pie \
+          -mcmodel=small -mno-red-zone \
+          -isystem $(INCLUDE) -I$(DG_DIR) -I$(CUBIT_C) \
+          -DNORMALUNIX -D_DEFAULT_SOURCE \
+          -Wall -Wno-missing-field-initializers \
+          -Wno-unused-parameter -Wno-unused-variable \
+          -Wno-sign-compare -Wno-pointer-sign \
+          -Wno-implicit-function-declaration \
+          -O2
+
+LDFLAGS = -nostdlib -static -T $(CUBIT_C)/link.ld
+
+# CuBit C runtime (CRT + lib)
+CRT_OBJ  = $(CUBIT_C)/build/crt0.o
+CUBIT_LIB = $(CUBIT_C)/build/libcubit.a
+
+# DOOM source files (from doomgeneric Makefile, minus platform-specific ones)
+DOOM_SRCS = \
+    dummy.c am_map.c doomdef.c doomstat.c dstrings.c \
+    d_event.c d_items.c d_iwad.c d_loop.c d_main.c d_mode.c d_net.c \
+    f_finale.c f_wipe.c g_game.c hu_lib.c hu_stuff.c \
+    info.c i_cdmus.c i_endoom.c i_joystick.c i_scale.c i_sound.c \
+    i_system.c i_timer.c i_input.c i_video.c \
+    memio.c m_argv.c m_bbox.c m_cheat.c m_config.c m_controls.c \
+    m_fixed.c m_menu.c m_misc.c m_random.c \
+    p_ceilng.c p_doors.c p_enemy.c p_floor.c p_inter.c p_lights.c \
+    p_map.c p_maputl.c p_mobj.c p_plats.c p_pspr.c p_saveg.c \
+    p_setup.c p_sight.c p_spec.c p_switch.c p_telept.c p_tick.c p_user.c \
+    r_bsp.c r_data.c r_draw.c r_main.c r_plane.c r_segs.c r_sky.c r_things.c \
+    sha1.c sounds.c statdump.c st_lib.c st_stuff.c s_sound.c tables.c \
+    v_video.c wi_stuff.c w_checksum.c w_file.c w_main.c w_wad.c \
+    z_zone.c w_file_stdc.c \
+    doomgeneric.c doomgeneric_cubit.c
+
+DOOM_OBJS = $(patsubst %.c,$(BUILDDIR)/%.o,$(DOOM_SRCS))
+
+# CuBit libc stubs (printf, ctype, strdup, math, etc.)
+LIBC_STUBS_OBJ = $(BUILDDIR)/libc_stubs.o
+
+OUTPUT = $(BUILDDIR)/doom.elf
+
+.PHONY: all clean cubit_runtime
+
+all: $(OUTPUT)
+
+$(BUILDDIR):
+	mkdir -p $(BUILDDIR)
+
+# Build the CuBit C runtime first
+cubit_runtime:
+	$(MAKE) -C $(CUBIT_C)
+
+# Compile DOOM sources
+$(BUILDDIR)/%.o: $(DG_DIR)/%.c | $(BUILDDIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Compile libc stubs
+$(LIBC_STUBS_OBJ): $(CUBIT_C)/libc_stubs.c $(CUBIT_C)/cubit.h | $(BUILDDIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Link: CRT + DOOM objects + libc stubs + cubit runtime
+$(OUTPUT): cubit_runtime $(DOOM_OBJS) $(LIBC_STUBS_OBJ)
+	$(LD) $(LDFLAGS) $(CRT_OBJ) $(DOOM_OBJS) $(LIBC_STUBS_OBJ) $(CUBIT_LIB) -o $@
+	@echo "Built: $@"
+	@size $@ || true
+
+clean:
+	rm -rf $(BUILDDIR)
