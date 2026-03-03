@@ -101,16 +101,54 @@ run-headless:
 # Build DOOM and copy ELF into ISO directory
 .PHONY : doom
 doom:
-	$(MAKE) -C ../userspace/c/doom_src
-	cp ../userspace/c/doom_src/build/doom.elf isodir/boot/doom.elf
+	$(MAKE) -C ../userspace/c -f Makefile.doomgeneric
+	cp ../userspace/c/doom_build/doom.elf isodir/boot/doom.elf
+
+# Build userspace Ada runtime (needed by filesystem server)
+.PHONY : user_runtime
+user_runtime:
+	mkdir -p ../userspace/runtime/build
+	mkdir -p ../userspace/runtime/adalib
+	$(ALR) gprbuild -P ../userspace/runtime/user_runtime.gpr
+
+# Build the userspace filesystem server
+.PHONY : filesystem
+filesystem: user_runtime
+	mkdir -p ../userspace/services/filesystem/build
+	$(ALR) gprbuild -P ../userspace/services/filesystem/filesystem.gpr
+	cp ../userspace/services/filesystem/build/filesystem.svc isodir/boot/filesystem.svc
+
+# Build the userspace ATA driver
+.PHONY : ata
+ata: user_runtime
+	mkdir -p ../userspace/services/ata/build
+	$(ALR) gprbuild -P ../userspace/services/ata/ata.gpr
+	cp ../userspace/services/ata/build/ata.drv isodir/boot/ata.drv
+
+# Create ext2 ATA disk image containing doom1.wad
+# Requires: mke2fs, debugfs (from e2fsprogs)
+.PHONY : ata_disk
+ata_disk:
+	dd if=/dev/zero of=ata_disk.img bs=1K count=8192
+	mke2fs -t ext2 ata_disk.img
+	debugfs -w -R "write ../doom1.wad doom1.wad" ata_disk.img
+
+# Create ext2 ramdisk image containing doom1.wad
+# Requires: mke2fs, debugfs (from e2fsprogs)
+.PHONY : doom_ramdisk
+doom_ramdisk:
+	dd if=/dev/zero of=isodir/boot/doom_ramdisk.img bs=1K count=4500
+	mke2fs -t ext2 isodir/boot/doom_ramdisk.img
+	debugfs -w -R "write ../doom1.wad doom1.wad" isodir/boot/doom_ramdisk.img
 
 iso: cubit_kernel
 	cp cubit_kernel isodir/boot/
 	grub-mkrescue -o cubit_kernel.iso isodir
 
 # Build everything including DOOM, then create ISO
+# TODO: update docs for all build targets (doom, filesystem, doom_ramdisk, world)
 .PHONY : world
-world: cubit_kernel doom iso
+world: cubit_kernel doom filesystem ata doom_ramdisk iso
 
 # Run QEMU with display (for WSL2 with GUI support)
 .PHONY : run
@@ -122,6 +160,23 @@ run:
 		-m 128M \
 		-cdrom cubit_kernel.iso \
 		-serial file:serial_output.log \
+		-no-reboot
+
+# Run QEMU with an ATA disk image (for testing userspace ATA driver)
+# q35 uses AHCI by default; add a PIIX3 IDE controller so the PIO driver
+# can access the disk on legacy ports 0x1F0/0x3F6.
+.PHONY : run-ata
+run-ata:
+	@rm -f serial_output.log
+	qemu-system-x86_64 \
+		-machine q35 \
+		-cpu Broadwell \
+		-m 128M \
+		-cdrom cubit_kernel.iso \
+		-serial file:serial_output.log \
+		-drive file=ata_disk.img,format=raw,if=none,id=ata0 \
+		-device piix3-ide,id=pata \
+		-device ide-hd,drive=ata0,bus=pata.0 \
 		-no-reboot
 
 .PHONY : docs

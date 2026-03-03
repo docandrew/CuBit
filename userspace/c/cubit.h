@@ -76,6 +76,7 @@ typedef long                ssize_t;
 #define SYSCALL_SUBMIT          23
 #define SYSCALL_WAIT_COMPLETION 24
 #define SYSCALL_POLL_COMPLETION 25
+#define SYSCALL_RECEIVE_EVENT_NB 26
 
 /* Time */
 #define SYSCALL_GETTIME         27
@@ -92,9 +93,33 @@ typedef long                ssize_t;
 #define SYSCALL_INS16           34
 #define SYSCALL_OUTS16          35
 
+/* Capability-aware IPC */
+#define SYSCALL_CAP_SEND        40
+#define SYSCALL_CAP_CALL        41
+#define SYSCALL_CAP_SUBMIT      42
+
+/* Notification IPC */
+#define SYSCALL_NOTIFY          43
+#define SYSCALL_NOTIFY_WAIT     44
+#define SYSCALL_NOTIFY_POLL     45
+#define SYSCALL_BIND_NOTIFICATION   46
+#define SYSCALL_UNBIND_NOTIFICATION 47
+#define SYSCALL_REPLY_WAIT      48
+
+/* Access Controller */
+#define SYSCALL_CONTROLACCESS   100
+#define SYSCALL_GETTICKET       101
+
 /* Grants */
 #define SYSCALL_GRANT           102
 #define SYSCALL_REVOKE          103
+
+/* Well-known capability slots */
+#define CAP_SLOT_SELF           0
+#define CAP_SLOT_FS             1
+#define CAP_SLOT_KEYBOARD       2
+#define CAP_SLOT_SELF_PROC      3
+#define CAP_SLOT_ATA            10
 
 /* Driver registration */
 #define SYSCALL_REGISTER_DRIVER 2000

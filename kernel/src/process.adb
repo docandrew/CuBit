@@ -340,12 +340,28 @@ is
         SPARK_Mode => On
     is
         ret : ProcessID;
+        currentPID : constant ProcessID := PerCPUData.getCurrentPID;
     begin
         proctab(pid).state := READY;
         Queues.insert (readyList, pid, proctab(pid).priority, ret);
 
         if ret /= pid then
             raise ProcessException with "Process.ready: Error adding pid to ready list.";
+        end if;
+
+        -- If the newly readied process has higher priority than the
+        -- currently running one, request preemption at interrupt return.
+        if currentPID /= NO_PROCESS and then
+           proctab(pid).priority > proctab(currentPID).priority
+        then
+            setNeedReschedule : declare
+                perCPUAddr : constant System.Address :=
+                    PerCPUData.getPerCPUDataAddr;
+                cpuData : PerCPUData.PerCPUData with
+                    Import, Address => perCPUAddr;
+            begin
+                cpuData.needReschedule := True;
+            end setNeedReschedule;
         end if;
     end ready;
 
@@ -466,7 +482,8 @@ is
 
         if proctab(pid).state /= WAITINGFOREVENT and
            proctab(pid).state /= WAITINGFORREPLY and
-           proctab(pid).state /= WAITINGFORCOMPLETION then
+           proctab(pid).state /= WAITINGFORCOMPLETION and
+           proctab(pid).state /= WAITINGFORNOTIFY then
             raise ProcessException with "Process.inform: Attempting to inform process not waiting.";
         end if;
 
@@ -651,6 +668,11 @@ is
 
         -- Revoke any shared memory grants this process had created
         IPC.revokeAllGrants (pid);
+
+        -- Bump generation counter to invalidate caps held by others
+        if proctab(pid).capGeneration < Capabilities.Generation'Last then
+            proctab(pid).capGeneration := proctab(pid).capGeneration + 1;
+        end if;
 
         -- Clear capability table
         Capabilities.Operations.clearTable (proctab(pid).caps);

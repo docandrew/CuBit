@@ -8,20 +8,16 @@ pragma Warnings (Off);
 with System.Secondary_Stack;
 pragma Warnings (On);
 
+with Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with ACPI;
-with ATA;
 with BootAllocator;
 with BuddyAllocator;
 with Build;
+with Capabilities.IRQ;
 with Config;
 with Cpuid;
-with Devices;
-
-with Filesystem.Ext2;
-with Filesystem.VFS;
-
 with Ioapic;
 with Interrupts;
 with Lapic;
@@ -53,9 +49,6 @@ pragma Unreferenced(Last_Chance_Handler);
 
 with Syscall;
 pragma Unreferenced(Syscall);
-
-with FileCache;
-pragma Unreferenced(FileCache);
 
 package body kmain is
 
@@ -138,13 +131,16 @@ begin
 
     TextIO.clear (BLACK);
 
-    println ("-----------------------------------------------------");
-    println ("                  CuBitOS v0.0.1                     ", LT_BLUE, BLACK);
-    println ("-----------------------------------------------------");
-    print ("Build Date:    "); println (Build.DATE);
-    print ("Git Commit:    "); println (Build.COMMIT);
-    print ("Source Hash:   "); println (Build.HASH);
-    print ("Compiled With: "); println (Standard'Compiler_Version);
+    -- Print minimal banner on screen, then switch to serial-only for the
+    -- verbose boot log. Video is re-enabled before starting userspace.
+    println ("CuBitOS v0.0.1", LT_BLUE, BLACK);
+    println ("Booting...");
+    TextIO.disableVideo;
+
+    println ("Build Date:    " & Build.DATE);
+    println ("Git Commit:    " & Build.COMMIT);
+    println ("Source Hash:   " & Build.HASH);
+    println ("Compiled With: " & Standard'Compiler_Version);
     println;
 
     println ("-----------------------------------------------------");
@@ -358,6 +354,10 @@ begin
                     -- Enable Keyboard Interrupts
                     println ("Enabling keyboard");
                     io_apic.enableIRQ (33, 0);
+
+                    -- Enable IDE1 Interrupts (for userspace ATA driver)
+                    println ("Enabling IDE1");
+                    io_apic.enableIRQ (InterruptNumbers.IDE1, 0);
                 end if;
             end setupIOAPIC;
         end if;
@@ -401,49 +401,6 @@ begin
     -- end initNVMe;
 
 
-    initFileCache: declare
-    begin
-        println("Initializing File Cache", LT_BLUE, BLACK);
-        FileCache.setup;
-    end initFileCache;
-
-
-    initATA: declare
-    begin
-        println ("Checking ATA disk controller", LT_BLUE, BLACK);
-        ATA.setupATA;
-    end initATA;
-
-    initFS : declare
-        package Ext2 renames Filesystem.Ext2;
-        package VFS renames Filesystem.VFS;
-        use ATA;
-        
-        fs           : Ext2.Ext2Filesystem;
-        currentDrive : VFS.DriveLetter := VFS.A;
-        inode        : Ext2.Inode;
-    begin
-        println ("Detecting Filesystems on ATA drives", LT_BLUE, BLACK);
-        for minor in ATA.drives'Range loop
-            if ATA.drives(minor).present and ATA.drives(minor).kind = ATA.PATA then
-
-                fs := Ext2.setup (device => (major => Devices.ATA, minor => minor, others => <>));
-
-                if fs.initialized then
-                    print (" Found compatible Ext2 filesystem, mounting at ", LT_GREEN, BLACK);
-                    print (Character'Val(VFS.DriveLetter'Pos(currentDrive) + 65), LT_BLUE, BLACK);
-                    println (":");
-                    print ("Number of block groups:"); println(Integer(fs.bgdt'Length));
-                    VFS.fstab(currentDrive) := (present => True, kind => VFS.EXT2);
-                    inode := Ext2.readInode (fs, 2);
-                    Ext2.dumpDirs (fs, inode.directBlock0, inode.sizeLo);
-                        
-                    currentDrive := VFS.DriveLetter'succ(currentDrive);
-                end if;
-            end if;
-        end loop;
-    end initFS;
-
     initModules: declare
     begin
         println;
@@ -485,7 +442,20 @@ begin
     Process.startKernelThread (procStart => Services.Keyboard.start'Address,
                                name      => "Keyboard        ",
                                pid       => Config.SERVICE_KEYBOARD_PID,
-                               priority  => 1);
+                               priority  => 10);
+
+    -- Register keyboard service as IRQ owner for PS/2 keyboard (vector 33)
+    registerIRQ : declare
+        irqOk : Boolean;
+    begin
+        Capabilities.IRQ.registerIRQ (
+            vector => 33,
+            pid    => Interfaces.Unsigned_64(Config.SERVICE_KEYBOARD_PID),
+            status => irqOk);
+        if irqOk then
+            println ("IRQ 33 registered to keyboard service");
+        end if;
+    end registerIRQ;
 
     -- println (testKThread1'Address);
     -- Process.startKernelThread (testKThread1'Address, "kthread1        ", 1);
@@ -495,6 +465,10 @@ begin
    
     -- println ("Creating User Process");
     -- Process.createFirstProcess;
+
+    -- Re-enable video output now that boot is done
+    TextIO.enableVideo;
+    TextIO.clear (BLACK);
 
     initScheduler: declare
     begin

@@ -46,6 +46,7 @@ is
     SYSCALL_SUBMIT          : constant SyscallNumber := 23;
     SYSCALL_WAIT_COMPLETION : constant SyscallNumber := 24;
     SYSCALL_POLL_COMPLETION : constant SyscallNumber := 25;
+    SYSCALL_RECEIVE_EVENT_NB : constant SyscallNumber := 26;
 
     -- Time syscalls
     SYSCALL_GETTIME         : constant SyscallNumber := 27;
@@ -67,6 +68,18 @@ is
     SYSCALL_CAP_CALL        : constant SyscallNumber := 41;
     SYSCALL_CAP_SUBMIT      : constant SyscallNumber := 42;
 
+    -- Notification syscalls
+    SYSCALL_NOTIFY          : constant SyscallNumber := 43;
+    SYSCALL_NOTIFY_WAIT     : constant SyscallNumber := 44;
+    SYSCALL_NOTIFY_POLL     : constant SyscallNumber := 45;
+
+    -- Notification binding
+    SYSCALL_BIND_NOTIFICATION   : constant SyscallNumber := 46;
+    SYSCALL_UNBIND_NOTIFICATION : constant SyscallNumber := 47;
+
+    -- Atomic reply+receive
+    SYSCALL_REPLY_WAIT      : constant SyscallNumber := 48;
+
     -- Access Controller Syscalls
     SYSCALL_CONTROLACCESS : constant SyscallNumber := 100;
     SYSCALL_GETTICKET     : constant SyscallNumber := 101;
@@ -78,7 +91,8 @@ is
     CONTROLACCESS_DERIVE  : constant Unsigned_64 := 2;
     CONTROLACCESS_MINT    : constant Unsigned_64 := 3;
     CONTROLACCESS_REMOVE  : constant Unsigned_64 := 4;
-    CONTROLACCESS_REVOKE  : constant Unsigned_64 := 5;
+    CONTROLACCESS_REVOKE      : constant Unsigned_64 := 5;
+    CONTROLACCESS_REVOKE_ALL  : constant Unsigned_64 := 6;
 
     -- Driver registration
     SYSCALL_REGISTER_DRIVER : constant SyscallNumber := 2000;

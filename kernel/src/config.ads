@@ -21,7 +21,7 @@ is
     MAX_CPUS : constant := 128;
 
     -- ms before context switch takes place.
-    TIME_SLICE : constant := 20;
+    TIME_SLICE : constant := 10;
 
     -- Debug flags that can be set at runtime
     debugFlag : Boolean := False;
@@ -62,9 +62,9 @@ is
     -- capabilities replace file descriptors and per-connection endpoints.
     PER_PROCESS_CAPABILITIES : constant := 64;
 
-    -- When True, legacy send() requires a matching CAP_ENDPOINT.
-    -- Default False for backward compat during capability migration.
-    ENFORCE_IPC_CAPS : constant Boolean := False;
+    -- When True, legacy send() from USER processes requires a matching
+    -- CAP_ENDPOINT. Kernel threads are exempt.
+    ENFORCE_IPC_CAPS : constant Boolean := True;
 
     -- Number of files open on the system at once
     MAX_OPEN_FILES : constant := 256;

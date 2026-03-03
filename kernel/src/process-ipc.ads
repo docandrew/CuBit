@@ -60,6 +60,15 @@ is
         with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
+    -- receiveEventNB
+    -- Non-blocking event receive. Pops from the event ring buffer.
+    -- @param msg   - the event message (valid only if found is True)
+    -- @param found - True if an event was available
+    ---------------------------------------------------------------------------
+    procedure receiveEventNB (msg : out Message; found : out Boolean)
+        with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
     -- reply
     -- Reply to a process who called send() or submit() and unblock it.
     -- Dual-path: if sender is in WAITINGFORREPLY (sync send), stores reply
@@ -68,6 +77,22 @@ is
     -- @return 1 on success.
     ---------------------------------------------------------------------------
     function reply (replyTo : ProcessID; msg : Message) return Unsigned_64
+        with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- replyWait
+    -- Atomic reply+receive in one syscall (seL4 ReplyRecv pattern).
+    -- Replies to replyTo, then blocks receiving the next message.
+    -- Halves syscall overhead for receive-dispatch-reply server loops.
+    -- @param replyTo  - PID to reply to
+    -- @param replyMsg - message to send as reply
+    -- @param from     - out: sender PID of next received message
+    -- @param msg      - out: next received message
+    ---------------------------------------------------------------------------
+    procedure replyWait (replyTo  : in  ProcessID;
+                         replyMsg : in  Message;
+                         from     : out ProcessID;
+                         msg      : out Message)
         with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
@@ -197,6 +222,58 @@ is
     function capSubmit (capSlot : Capabilities.CapabilitySlot;
                         msg     : Message;
                         token   : Unsigned_64) return Boolean
+        with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- Notification Operations
+    ---------------------------------------------------------------------------
+
+    ---------------------------------------------------------------------------
+    -- capNotify
+    -- Resolve a CAP_NOTIFICATION at capSlot, OR the cap's badge into the
+    -- destination's notifyWord, wake the destination if it is blocked in
+    -- WAITINGFORNOTIFY.
+    -- @return True on success, False on capability error.
+    ---------------------------------------------------------------------------
+    function capNotify (capSlot : Capabilities.CapabilitySlot) return Boolean
+        with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- notifyWait
+    -- Block until the caller's notifyWord is non-zero. Atomically read and
+    -- clear it.
+    -- @return the notification word value.
+    ---------------------------------------------------------------------------
+    function notifyWait return Unsigned_64
+        with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- notifyPoll
+    -- Non-blocking check of the caller's notifyWord. If non-zero, read and
+    -- clear it.
+    -- @return the notification word value (0 if no notification pending).
+    ---------------------------------------------------------------------------
+    function notifyPoll return Unsigned_64
+        with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- Notification Binding
+    ---------------------------------------------------------------------------
+
+    ---------------------------------------------------------------------------
+    -- bindNotification
+    -- Bind a notification to the calling process. When blocked in receive(),
+    -- the process will also be woken by signals to this notification.
+    -- @param notifPID - PID of the notification object to bind
+    ---------------------------------------------------------------------------
+    procedure bindNotification (notifPID : ProcessID)
+        with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- unbindNotification
+    -- Remove the notification binding from the calling process.
+    ---------------------------------------------------------------------------
+    procedure unbindNotification
         with SPARK_Mode => On;
 
 end Process.IPC;

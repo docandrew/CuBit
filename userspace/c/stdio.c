@@ -7,12 +7,16 @@
  *
  * Protocol:
  *   Client grants a shared buffer to the FS server, then sends
- *   OP_OPEN/OP_READ/OP_SEEK/OP_CLOSE messages via SYSCALL_CALL.
+ *   OP_OPEN/OP_READ/OP_SEEK/OP_CLOSE messages via SYSCALL_CAP_CALL.
  *   The FS server reads/writes the grant buffer and replies with results.
+ *
+ * All file operations route through CAP_SLOT_FS. The FS server is the
+ * namespace authority — it parses @scheme: prefixes and routes to
+ * backends (ramdisk, ATA, etc.) via its own capabilities.
  */
 #include "cubit.h"
 
-/* Filesystem server PID (must match kernel config.ads) */
+/* Filesystem server PID (used for grants, must match kernel config.ads) */
 #define FS_SERVER_PID   3
 
 /* IPC operation labels (must match kernel/src/ipc_labels.ads) */
@@ -56,6 +60,7 @@ typedef struct __attribute__((packed)) {
 
 typedef struct __attribute__((packed)) {
     ipc_tag_t tag;
+    uint64_t  capBadge;
     uint64_t  words[4];
 } ipc_message_t;
 
@@ -64,7 +69,7 @@ typedef struct __attribute__((packed)) {
  */
 struct _FILE {
     int      active;        /* 1 if this entry is in use */
-    int      handle;        /* file handle from FS server */
+    int      handle;        /* file handle from server */
     uint64_t grant_id;      /* grant ID for data buffer */
     void    *grant_buf;     /* local address of grant buffer */
     uint64_t offset;        /* current file position */
@@ -93,10 +98,10 @@ static void *alloc_page_buf(void)
     return page_align(raw);
 }
 
-/* Send an IPC call to the FS server and get the reply */
+/* Send an IPC call to the filesystem server and get the reply */
 static int fs_call(ipc_message_t *msg)
 {
-    long ret = syscall2(SYSCALL_CALL, FS_SERVER_PID, msg);
+    long ret = syscall2(SYSCALL_CAP_CALL, CAP_SLOT_FS, msg);
     if (ret == (long)(-1UL))
         return -1;
     return 0;
@@ -105,8 +110,8 @@ static int fs_call(ipc_message_t *msg)
 /*
  * fopen - Open a file on the filesystem server
  *
- * Grants a buffer to the FS server, copies the path into it,
- * sends OP_OPEN, receives the file handle in the reply.
+ * Sends the full path (including any @scheme: prefix) to the FS server
+ * which handles namespace routing internally.
  */
 FILE *fopen(const char *path, const char *mode)
 {
@@ -141,7 +146,7 @@ FILE *fopen(const char *path, const char *mode)
     }
     f->grant_id = (uint64_t)gid;
 
-    /* Copy path into grant buffer */
+    /* Copy full path into grant buffer */
     size_t pathlen = strlen(path);
     if (pathlen > GRANT_BUF_SIZE - 1)
         pathlen = GRANT_BUF_SIZE - 1;
@@ -179,7 +184,7 @@ FILE *fopen(const char *path, const char *mode)
 /*
  * fread - Read data from an open file
  *
- * Sends OP_READ to the FS server. The FS server writes file data
+ * Sends OP_READ to the server. The server writes file data
  * into our grant buffer, and we copy it to the user's buffer.
  */
 size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream)

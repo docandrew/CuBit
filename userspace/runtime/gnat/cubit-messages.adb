@@ -104,6 +104,21 @@ package body CuBit.Messages is
                        msg.words (3));
    end reply;
 
+   --  replyWait
+   --  REPLY_WAIT: RDI=replyTo, RSI=pointer to Message
+   --  Returns: RAX=sender PID of next received message
+
+   procedure replyWait
+     (replyTo  : ProcessID;
+      replyMsg : Message;
+      from     : out ProcessID;
+      msg      : in out Message)
+   is
+   begin
+      msg := replyMsg;
+      from := syscall (SYSCALL_REPLY_WAIT, replyTo, toNum (msg'Address));
+   end replyWait;
+
    --  receiveNB
    --  RECEIVE_NB: RDI=pointer to Message struct
    --  Returns: RAX=sender PID (0 if no message)
@@ -141,6 +156,103 @@ package body CuBit.Messages is
       return (ret = 1);
    end submit;
 
+   --  capSend
+   --  CAP_SEND: RDI=cap_slot, RSI=tag, RDX=w0, R10=w1, R8=w2, R9=w3
+   --  Returns: reply tag in RAX
+
+   function capSend
+     (slot : CapabilitySlot; msg : Message) return MessageTag
+   is
+      retTag : Unsigned_64;
+   begin
+      retTag := syscall (SYSCALL_CAP_SEND,
+                          slot,
+                          tagToU64 (msg.tag),
+                          msg.words (0),
+                          msg.words (1),
+                          msg.words (2),
+                          msg.words (3));
+      return u64ToTag (retTag);
+   end capSend;
+
+   --  capCall
+   --  CAP_CALL: RDI=cap_slot, RSI=pointer to Message struct (in/out)
+   --  Returns: reply tag in RAX
+
+   function capCall
+     (slot : CapabilitySlot; msg : in out Message) return MessageTag
+   is
+      retTag : Unsigned_64;
+   begin
+      retTag := syscall (SYSCALL_CAP_CALL, slot, toNum (msg'Address));
+      return u64ToTag (retTag);
+   end capCall;
+
+   --  capSubmit
+   --  CAP_SUBMIT: RDI=cap_slot, RSI=tag, RDX=w0, R10=w1, R8=w2, R9=token
+
+   function capSubmit
+     (slot  : CapabilitySlot;
+      msg   : Message;
+      token : Unsigned_64) return Boolean
+   is
+      ret : Unsigned_64;
+   begin
+      ret := syscall (SYSCALL_CAP_SUBMIT,
+                       slot,
+                       tagToU64 (msg.tag),
+                       msg.words (0),
+                       msg.words (1),
+                       msg.words (2),
+                       token);
+      return (ret = 1);
+   end capSubmit;
+
+   --  capNotify
+   --  NOTIFY: RDI=cap_slot
+
+   procedure capNotify (slot : CapabilitySlot) is
+      ignore : Unsigned_64;
+   begin
+      ignore := syscall (SYSCALL_NOTIFY, slot);
+   end capNotify;
+
+   --  notifyWait
+   --  NOTIFY_WAIT: no args
+   --  Returns: notifyWord value in RAX
+
+   function notifyWait return Unsigned_64 is
+   begin
+      return syscall (SYSCALL_NOTIFY_WAIT);
+   end notifyWait;
+
+   --  notifyPoll
+   --  NOTIFY_POLL: no args
+   --  Returns: notifyWord value in RAX (0 if none)
+
+   function notifyPoll return Unsigned_64 is
+   begin
+      return syscall (SYSCALL_NOTIFY_POLL);
+   end notifyPoll;
+
+   --  bindNotification
+   --  BIND_NOTIFICATION: RDI=notification PID
+
+   procedure bindNotification (notifPID : ProcessID) is
+      ignore : Unsigned_64;
+   begin
+      ignore := syscall (SYSCALL_BIND_NOTIFICATION, notifPID);
+   end bindNotification;
+
+   --  unbindNotification
+   --  UNBIND_NOTIFICATION: no args
+
+   procedure unbindNotification is
+      ignore : Unsigned_64;
+   begin
+      ignore := syscall (SYSCALL_UNBIND_NOTIFICATION);
+   end unbindNotification;
+
    --  sendEvent
    --  SEND_EVENT: RDI=dest, RSI=tag, RDX=w0, R10=w1, R8=w2, R9=w3
 
@@ -168,6 +280,18 @@ package body CuBit.Messages is
       msg.tag := u64ToTag (retTag);
       return msg;
    end receiveEvent;
+
+   --  receiveEventNB
+   --  RECEIVE_EVENT_NB: RDI=pointer to Message struct
+   --  Returns: RAX=1 if event found, 0 if not
+
+   function receiveEventNB (msg : out Message) return Boolean is
+      ret : Unsigned_64;
+   begin
+      msg := NULL_MESSAGE;
+      ret := syscall (SYSCALL_RECEIVE_EVENT_NB, toNum (msg'Address));
+      return (ret = 1);
+   end receiveEventNB;
 
    --  createGrant
    --  GRANT: RDI=grantee, RSI=localAddr, RDX=numPages, R10=permission
@@ -248,14 +372,12 @@ package body CuBit.Messages is
 
    function getSecondaryStack return System.Secondary_Stack.SS_Stack_Ptr
    is
-      SYSINFO_SECONDARY_STACK_START : constant Unsigned_64 := 1001;
-
       function toPtr is
          new Ada.Unchecked_Conversion
             (Source => Unsigned_64,
              Target => System.Secondary_Stack.SS_Stack_Ptr);
    begin
-      return toPtr (getInfo (SYSINFO_SECONDARY_STACK_START));
+      return toPtr (getInfo (SYSINFO_SECONDARY_STACK));
    end getSecondaryStack;
 
    --  Port I/O wrappers

@@ -1,4 +1,4 @@
-project Filesystem is
+project ATA is
 
     for Languages use ("Ada");
 
@@ -15,7 +15,7 @@ project Filesystem is
     -- For gprbuild
     package Builder is
 
-        for Executable ("main.adb") use "filesystem.svc";
+        for Executable ("main.adb") use "ata.drv";
 
         for Default_Switches ("Ada") use
         (
@@ -62,4 +62,4 @@ project Filesystem is
         );
     end Linker;
 
-end Filesystem;
+end ATA;

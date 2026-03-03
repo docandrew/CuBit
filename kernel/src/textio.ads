@@ -54,6 +54,13 @@ is
     procedure disableVideo;
 
     ---------------------------------------------------------------------------
+    -- enableVideo
+    -- Re-enable video output after a disableVideo call, provided a video
+    -- driver was previously set via setVideo.
+    ---------------------------------------------------------------------------
+    procedure enableVideo;
+
+    ---------------------------------------------------------------------------
     -- Procedure types that a video driver must supply to support Text IO
     ---------------------------------------------------------------------------
 

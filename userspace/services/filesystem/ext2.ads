@@ -121,11 +121,18 @@ package Ext2 is
    --  Get file size (combining sizeLo and sizeHi)
    function fileSize (ino : Inode) return Unsigned_64;
 
-   --  Context for an Ext2 filesystem image in memory
+   --  Block backend for an Ext2 filesystem
+   type BlockBackend is (RAMDISK, ATA);
+
+   --  Context for an Ext2 filesystem
    type Filesystem is record
-      base      : System.Address;     --  Base address of ramdisk image
-      sb        : Superblock;         --  Cached superblock
-      blkSize   : Unsigned_32;        --  Block size in bytes
+      base        : System.Address;     --  Base address of ramdisk image
+      sb          : Superblock;         --  Cached superblock
+      blkSize     : Unsigned_32;        --  Block size in bytes
+      backend     : BlockBackend := RAMDISK;
+      ataCapSlot  : Unsigned_64 := 0;   --  Cap slot for ATA IPC
+      ataGrantId  : Unsigned_64 := 0;   --  Grant for ATA data transfer
+      ataGrantBuf : System.Address := System.Null_Address;
    end record;
 
    --  Initialize filesystem from a memory-mapped ramdisk image
@@ -133,6 +140,14 @@ package Ext2 is
      (fs   : out Filesystem;
       base : System.Address;
       ok   : out Boolean);
+
+   --  Initialize filesystem backed by ATA driver IPC
+   procedure initATA
+     (fs         : out Filesystem;
+      capSlot    : Unsigned_64;
+      grantId    : Unsigned_64;
+      grantBuf   : System.Address;
+      ok         : out Boolean);
 
    --  Read an inode by number
    procedure readInode

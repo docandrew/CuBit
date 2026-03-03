@@ -3,6 +3,7 @@
 # Copyright (C) 2026 Jon Andrew
 #
 # Compiles doomgeneric with CuBit's freestanding C runtime to produce doom.elf.
+# Run from userspace/c/ via: make -f Makefile.doomgeneric
 #
 
 CC      = gcc
@@ -10,17 +11,17 @@ LD      = ld
 AR      = ar
 AS      = gcc
 
-# Paths
-CUBIT_C    = ..
-DG_DIR     = doomgeneric
-BUILDDIR   = build
-INCLUDE    = $(CUBIT_C)/include
+# Paths (relative to userspace/c/)
+DG_DIR     = doom_src/doomgeneric
+BUILDDIR   = doom_build
+INCLUDE    = include
 
 # Compiler flags: freestanding, use our headers before system headers
 CFLAGS  = -ffreestanding -nostdlib -nostartfiles -fno-builtin \
           -fno-stack-protector -fno-pic -fno-pie \
           -mcmodel=small -mno-red-zone \
-          -isystem $(INCLUDE) -I$(DG_DIR) -I$(CUBIT_C) \
+          -isystem $(INCLUDE) -I$(DG_DIR) -I. \
+          -std=c11 \
           -DNORMALUNIX -D_DEFAULT_SOURCE \
           -Wall -Wno-missing-field-initializers \
           -Wno-unused-parameter -Wno-unused-variable \
@@ -28,11 +29,11 @@ CFLAGS  = -ffreestanding -nostdlib -nostartfiles -fno-builtin \
           -Wno-implicit-function-declaration \
           -O2
 
-LDFLAGS = -nostdlib -static -T $(CUBIT_C)/link.ld
+LDFLAGS = -nostdlib -static -T link.ld
 
 # CuBit C runtime (CRT + lib)
-CRT_OBJ  = $(CUBIT_C)/build/crt0.o
-CUBIT_LIB = $(CUBIT_C)/build/libcubit.a
+CRT_OBJ  = build/crt0.o
+CUBIT_LIB = build/libcubit.a
 
 # DOOM source files (from doomgeneric Makefile, minus platform-specific ones)
 DOOM_SRCS = \
@@ -50,9 +51,12 @@ DOOM_SRCS = \
     sha1.c sounds.c statdump.c st_lib.c st_stuff.c s_sound.c tables.c \
     v_video.c wi_stuff.c w_checksum.c w_file.c w_main.c w_wad.c \
     z_zone.c w_file_stdc.c \
-    doomgeneric.c doomgeneric_cubit.c
+    doomgeneric.c
 
 DOOM_OBJS = $(patsubst %.c,$(BUILDDIR)/%.o,$(DOOM_SRCS))
+
+# Platform glue (lives in userspace/c/, not in cloned doomgeneric repo)
+CUBIT_PLATFORM_OBJ = $(BUILDDIR)/doomgeneric_cubit.o
 
 # CuBit libc stubs (printf, ctype, strdup, math, etc.)
 LIBC_STUBS_OBJ = $(BUILDDIR)/libc_stubs.o
@@ -68,19 +72,23 @@ $(BUILDDIR):
 
 # Build the CuBit C runtime first
 cubit_runtime:
-	$(MAKE) -C $(CUBIT_C)
+	$(MAKE) -C .
 
-# Compile DOOM sources
+# Compile DOOM sources (from cloned doomgeneric repo)
 $(BUILDDIR)/%.o: $(DG_DIR)/%.c | $(BUILDDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Compile libc stubs
-$(LIBC_STUBS_OBJ): $(CUBIT_C)/libc_stubs.c $(CUBIT_C)/cubit.h | $(BUILDDIR)
+# Compile CuBit platform glue (from userspace/c/)
+$(CUBIT_PLATFORM_OBJ): doomgeneric_cubit.c cubit.h | $(BUILDDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Link: CRT + DOOM objects + libc stubs + cubit runtime
-$(OUTPUT): cubit_runtime $(DOOM_OBJS) $(LIBC_STUBS_OBJ)
-	$(LD) $(LDFLAGS) $(CRT_OBJ) $(DOOM_OBJS) $(LIBC_STUBS_OBJ) $(CUBIT_LIB) -o $@
+# Compile libc stubs
+$(LIBC_STUBS_OBJ): libc_stubs.c cubit.h | $(BUILDDIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Link: CRT + DOOM objects + platform glue + libc stubs + cubit runtime
+$(OUTPUT): cubit_runtime $(DOOM_OBJS) $(CUBIT_PLATFORM_OBJ) $(LIBC_STUBS_OBJ)
+	$(LD) $(LDFLAGS) $(CRT_OBJ) $(DOOM_OBJS) $(CUBIT_PLATFORM_OBJ) $(LIBC_STUBS_OBJ) $(CUBIT_LIB) -o $@
 	@echo "Built: $@"
 	@size $@ || true
 

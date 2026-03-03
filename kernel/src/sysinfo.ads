@@ -30,6 +30,7 @@ package Sysinfo is
 
     DRIVER_NULL     : constant DriverID := 0;
     DRIVER_KEYBOARD : constant DriverID := 1;
+    DRIVER_ATA      : constant DriverID := 2;
 
     -- List of processes registered as a particular driver.
     type DriverList is array (DriverID) of Process.ProcessID;

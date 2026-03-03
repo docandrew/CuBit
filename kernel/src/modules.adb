@@ -10,9 +10,11 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with BuddyAllocator;
 with Capabilities;
+with Capabilities.IRQ;
 with Capabilities.Operations;
 with Config;
 with ELF;
+with InterruptNumbers;
 with Process;
 with Process.Loader;
 with Strings;
@@ -21,12 +23,15 @@ with Virtmem;
 
 package body Modules is
 
-    -- We need to special-case the Ramdisk driver, filesystem server, and
-    -- initrd image, so as we find those during module loading keep track here.
+    -- We need to special-case the Ramdisk driver, filesystem server, ATA
+    -- driver, and initrd image, so as we find those during module loading
+    -- keep track here.
     ramdiskPID    : Process.ProcessID;
     filesystemPID : Process.ProcessID;
+    ataPID        : Process.ProcessID;
     initrdAddr    : Virtmem.PhysAddress;
     initrdSize    : Storage_Count;
+
 
     ---------------------------------------------------------------------------
     -- printModuleInfo
@@ -74,7 +79,11 @@ package body Modules is
         if Process.Loader.isValidELF (elfHeader) then
             if modName(1..14) = "filesystem.svc" then
                 pid := Process.Loader.load (elfHeader, modStart, size, strAddr,
-                                            requestedPID => Config.SERVICE_FILESYSTEM_PID);
+                                            requestedPID => Config.SERVICE_FILESYSTEM_PID,
+                                            priority     => 5);
+            elsif modName(1..7) = "ata.drv" then
+                pid := Process.Loader.load (elfHeader, modStart, size, strAddr,
+                                            priority => 5);
             else
                 pid := Process.Loader.load (elfHeader, modStart, size, strAddr);
             end if;
@@ -125,6 +134,60 @@ package body Modules is
                               gen      => Capabilities.INITIAL_GENERATION));
             end if;
 
+        elsif modName(1..7) = "ata.drv" then
+
+            if ataPID /= Process.NO_PROCESS then
+                println ("Modules: Multiple ata.drv files found, using first one found.");
+                return;
+            end if;
+
+            ataPID := pid;
+
+            -- Grant IOPORT + IRQ caps to ATA driver
+            if pid /= Process.NO_PROCESS then
+                -- Slot 4: ATA primary I/O ports 0x1F0-0x1F7 (8 ports)
+                Capabilities.Operations.insertCapAt (
+                    table => Process.proctab(pid).caps,
+                    slot  => 4,
+                    cap   => (capType  => Capabilities.CAP_IOPORT,
+                              rights   => Capabilities.READ_WRITE,
+                              capBadge => Capabilities.NO_BADGE,
+                              object   => (ref => 16#1F0#, param => 8),
+                              gen      => Capabilities.INITIAL_GENERATION));
+                -- Slot 5: ATA primary control port 0x3F6 (1 port)
+                Capabilities.Operations.insertCapAt (
+                    table => Process.proctab(pid).caps,
+                    slot  => 5,
+                    cap   => (capType  => Capabilities.CAP_IOPORT,
+                              rights   => Capabilities.READ_WRITE,
+                              capBadge => Capabilities.NO_BADGE,
+                              object   => (ref => 16#3F6#, param => 1),
+                              gen      => Capabilities.INITIAL_GENERATION));
+                -- Slot 6: CAP_IRQ for IDE1 (vector 46)
+                Capabilities.Operations.insertCapAt (
+                    table => Process.proctab(pid).caps,
+                    slot  => 6,
+                    cap   => (capType  => Capabilities.CAP_IRQ,
+                              rights   => Capabilities.READ_ONLY,
+                              capBadge => Capabilities.NO_BADGE,
+                              object   => (ref   => Unsigned_64 (InterruptNumbers.IDE1),
+                                           param => 0),
+                              gen      => Capabilities.INITIAL_GENERATION));
+
+                -- Register this PID as the IDE1 IRQ owner
+                registerIDE1 : declare
+                    ok : Boolean;
+                begin
+                    Capabilities.IRQ.registerIRQ (
+                        vector => InterruptNumbers.IDE1,
+                        pid    => Unsigned_64 (pid),
+                        status => ok);
+                    if not ok then
+                        println ("Modules: Failed to register IDE1 IRQ owner.");
+                    end if;
+                end registerIDE1;
+            end if;
+
         elsif modName(1..14) = "filesystem.svc" then
 
             if filesystemPID /= Process.NO_PROCESS then
@@ -135,7 +198,7 @@ package body Modules is
             filesystemPID := pid;
 
         else
-            -- Generic ELF module: grant device mem cap for framebuffer, resume
+            -- Generic ELF module: grant device mem cap and start immediately
             if pid /= Process.NO_PROCESS then
                 -- Slot 4: CAP_DEVICE_MEM for framebuffer access
                 Capabilities.Operations.insertCapAt (
@@ -147,6 +210,7 @@ package body Modules is
                               object   => (ref   => 0,
                                            param => 16#1000_0000#),
                               gen      => Capabilities.INITIAL_GENERATION));
+
                 print ("Modules: Starting module "); print (modName); println;
                 Process.resume (pid);
             end if;
@@ -208,6 +272,7 @@ package body Modules is
         initrdSize    := 0;
         ramdiskPID    := Process.NO_PROCESS;
         filesystemPID := Process.NO_PROCESS;
+        ataPID        := Process.NO_PROCESS;
 
         if mbinfo.flags.hasModules then
             declare
@@ -250,6 +315,29 @@ package body Modules is
                -- No initrd, start FS server anyway (it will detect no ramdisk)
                println ("Modules: Starting Filesystem server (no initrd).");
                Process.resume (filesystemPID);
+            end if;
+
+            -- Start ATA driver if loaded (no initrd needed)
+            if ataPID /= Process.NO_PROCESS then
+               println ("Modules: Starting ATA driver.");
+               Process.resume (ataPID);
+            end if;
+
+            -- Grant CAP_ENDPOINT for ATA driver to FS server (slot 10)
+            -- so the FS server can send OP_READ_BLOCK IPC to ATA.
+            if ataPID /= Process.NO_PROCESS and
+               filesystemPID /= Process.NO_PROCESS
+            then
+               Capabilities.Operations.insertCapAt (
+                   table => Process.proctab(filesystemPID).caps,
+                   slot  => 10,
+                   cap   => (capType  => Capabilities.CAP_ENDPOINT,
+                             rights   => Capabilities.READ_WRITE,
+                             capBadge => Unsigned_64 (filesystemPID),
+                             object   => (ref   => Unsigned_64 (ataPID),
+                                          param => 0),
+                             gen      => Capabilities.INITIAL_GENERATION));
+               println ("Modules: Granted ATA endpoint to FS server.");
             end if;
         else
             println ("Modules: No boot drivers or services found.");

@@ -206,7 +206,8 @@ package body Process.Loader is
                    objStart     : System.Address;
                    size         : System.Storage_Elements.Storage_Count;
                    strAddr      : System.Address;
-                   requestedPID : ProcessID := NO_PROCESS) return ProcessID with
+                   requestedPID : ProcessID := NO_PROCESS;
+                   priority     : ProcessPriority := 1) return ProcessID with
         SPARK_Mode => On
     is
         use type ELF.SegmentType;
@@ -230,7 +231,7 @@ package body Process.Loader is
                 newProc := create (procStart    => elfHeader.e_entry,
                                    ppid         => 0,
                                    name         => procName,
-                                   priority     => 1,
+                                   priority     => priority,
                                    procStack    => PROCESS_STACK_TOP_VIRT,
                                    requestedPID => requestedPID);
 

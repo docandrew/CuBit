@@ -43,6 +43,7 @@ is
         cpuData.currentPID := Process.NO_PROCESS;
         cpuData.nmiCount := 0;
         cpuData.nmiInProgress := False;
+        cpuData.needReschedule := False;
 
         -- Set the PAT register up the way we want it.
         x86.wrmsr (x86.MSRs.PAT, PATtoU64 (newPAT));

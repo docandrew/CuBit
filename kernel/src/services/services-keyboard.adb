@@ -27,7 +27,6 @@ is
         event     : Process.Message;
         driverPID : Process.ProcessID := Process.NO_PROCESS;
         code      : Unsigned_8 := 0;
-        replyTag  : Process.MessageTag;
     begin
         -- @TODO turn off caps lock to start.
         println ("Services.Keyboard: Started, waiting for upper-half driver to register.");
@@ -49,8 +48,9 @@ is
             -- read it from the keyboard
             in8 (16#60#, code);
 
-            -- send scancode to the upper-half driver via IPC message
-            replyTag := Process.IPC.send (driverPID,
+            -- Fire-and-forget event to upper-half driver (non-blocking).
+            -- No reply needed — eliminates keyboard lag from blocking send().
+            Process.IPC.sendEvent (driverPID,
                 (tag      => (label  => 1,
                               length => 1,
                               flags  => 0,

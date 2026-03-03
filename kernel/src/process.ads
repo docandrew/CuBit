@@ -92,6 +92,7 @@ is
         RECEIVING,                  -- Queued for message receipt
         WAITINGFORREPLY,            -- Receiver got message, sender waiting for reply
         WAITINGFORCOMPLETION,       -- Blocked in waitCompletion()
+        WAITINGFORNOTIFY,           -- Blocked in notifyWait()
         SUSPENDED                   -- Suspended until a resume call.
     );
 
@@ -325,6 +326,21 @@ is
         Integer_Address (MAX_GRANT_PAGES) * Integer_Address (Virtmem.PAGE_SIZE);
 
     ---------------------------------------------------------------------------
+    -- Event Ring Buffer
+    -- Replaces single-slot event storage with a 16-entry ring buffer.
+    ---------------------------------------------------------------------------
+    EVENT_QUEUE_SIZE : constant := 32;
+    subtype EventIndex is Natural range 0 .. EVENT_QUEUE_SIZE - 1;
+    type EventArray is array (EventIndex) of Message;
+
+    type EventQueue is record
+        events : EventArray := (others => NULL_MESSAGE);
+        head   : EventIndex := 0;   -- next write position
+        tail   : EventIndex := 0;   -- next read position
+        count  : Natural    := 0;
+    end record;
+
+    ---------------------------------------------------------------------------
     -- Process mailboxes for low-level IPC
     -- @field sendQueue       - List of blocked senders waiting to send
     --                          this mailbox a message.
@@ -338,9 +354,12 @@ is
         msg         : Message      := NULL_MESSAGE;
         sender      : ProcessID    := NO_PROCESS;
 
-        hasEvent    : Boolean      := False;
-        eventMsg    : Message      := NULL_MESSAGE;
-        eventSender : ProcessID    := NO_PROCESS;
+        -- Event ring buffer (replaces single-slot hasEvent/eventMsg/eventSender)
+        events      : EventQueue;
+
+        -- Notification word: badge bits ORed in by capNotify()
+        notifyWord   : Unsigned_64 := 0;
+        notifyWaiter : Boolean     := False;
 
         sendQueue   : ProcQueue;
         recvQueue   : ProcQueue;
@@ -438,8 +457,17 @@ is
         numPending          : Natural := 0;
         grants              : GrantArray := (others => <>);
 
+        -- Bound notification: if non-zero, receive() checks this
+        -- notification's notifyWord before blocking.
+        boundNotification   : ProcessID := NO_PROCESS;
+
         caps                : Capabilities.CapabilityTable :=
                                   Capabilities.EMPTY_TABLE;
+
+        -- Generation counter for O(1) revocation. Caps referencing this
+        -- process are stale when their gen /= this counter.
+        capGeneration       : Capabilities.Generation :=
+                                  Capabilities.INITIAL_GENERATION;
 
         channel             : WaitChannel;
 

@@ -2,24 +2,25 @@
  * CuBit OS - Keyboard Input
  * Copyright (C) 2026 Jon Andrew
  *
- * Polls the keyboard service for scan codes via non-blocking IPC.
+ * Polls the keyboard service for scan codes via non-blocking event receive.
  * Translates PS/2 Set 1 scan codes for use by applications.
  *
  * Protocol:
  *   1. Register as DRIVER_KEYBOARD (1) via SYSCALL_REGISTER_DRIVER
- *   2. Keyboard kernel service sends IPC messages with scan code in words[0]
- *   3. We poll with SYSCALL_RECEIVE_NB and reply with SYSCALL_REPLY
+ *   2. Keyboard kernel service sends events with scan code in words[0]
+ *   3. We poll with SYSCALL_RECEIVE_EVENT_NB (no reply needed)
  */
 #include "cubit.h"
 
 #define DRIVER_KEYBOARD 1
 
-/* IPC Message layout matching kernel Process.Message (40 bytes) */
+/* IPC Message layout matching kernel Process.Message (48 bytes) */
 typedef struct {
     uint32_t label;
     uint8_t  length;
     uint8_t  flags;
     uint16_t badge;
+    uint64_t capBadge;
     uint64_t words[4];
 } cubit_message_t;
 
@@ -67,20 +68,20 @@ void cubit_keyboard_init(void)
 }
 
 /*---------------------------------------------------------------------------
- * cubit_keyboard_poll - Drain pending keyboard IPC messages into ring buffer
+ * cubit_keyboard_poll - Drain pending keyboard events into ring buffer
  *
- * Call this at least once per frame to avoid the keyboard service blocking
- * too long on its synchronous send().
+ * Uses non-blocking event receive. No reply needed — events are
+ * fire-and-forget from the keyboard service.
  *---------------------------------------------------------------------------*/
 void cubit_keyboard_poll(void)
 {
     cubit_message_t msg;
     cubit_key_event_t ev;
 
-    /* Drain all pending keyboard messages */
+    /* Drain all pending keyboard events */
     for (;;) {
-        long sender = syscall1(SYSCALL_RECEIVE_NB, &msg);
-        if (sender == 0) break;  /* no message */
+        long found = syscall1(SYSCALL_RECEIVE_EVENT_NB, &msg);
+        if (!found) break;  /* no event */
 
         /* Extract scan code from words[0] */
         uint8_t raw = (uint8_t)(msg.words[0] & 0xFF);
@@ -95,12 +96,6 @@ void cubit_keyboard_poll(void)
         }
 
         key_buf_push(ev);
-
-        /* Reply to unblock the keyboard service */
-        cubit_syscall(SYSCALL_REPLY, sender,
-                      /* tag: label=REPLY_OK, length=0, flags=0, badge=0 */
-                      ((long)REPLY_OK_LABEL),
-                      0, 0, 0, 0);
     }
 }
 

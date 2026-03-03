@@ -73,6 +73,10 @@ is
         -- NMI tracking for lock-free NMI handler
         nmiCount            : Natural := 0;
         nmiInProgress       : Boolean := False;
+
+        -- Set by Process.ready() when a higher-priority process is readied;
+        -- checked at interrupt return to trigger immediate preemption.
+        needReschedule      : Boolean := False;
     end record;
 
     -- Alignment of fields needs to be precisely specified because we're going
@@ -93,6 +97,7 @@ is
         numCLI              at 230  range 0..31;
         nmiCount            at 234  range 0..31;
         nmiInProgress       at 238  range 0..7;
+        needReschedule      at 239  range 0..7;
     end record;
 
     -- If the secondary stack is used before per-CPU data is set up, this

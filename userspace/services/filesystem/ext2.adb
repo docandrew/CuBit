@@ -8,22 +8,107 @@
 ------------------------------------------------------------------------------
 with System.Storage_Elements; use System.Storage_Elements;
 
+with CuBit.Messages; use CuBit.Messages;
+
 package body Ext2 is
 
-   --  Read bytes from the ramdisk image at a byte offset
+   --  ATA sector size
+   ATA_SECTOR_SIZE : constant := 512;
+
+   --  IPC labels for block device operations
+   OP_READ_BLOCK : constant Unsigned_32 := 16#0210#;
+   REPLY_OK      : constant Unsigned_32 := 16#F000#;
+
+   --  Read bytes from the filesystem at a byte offset.
+   --  Dispatches on fs.backend: RAMDISK does direct memory copy,
+   --  ATA sends OP_READ_BLOCK IPC to the ATA driver.
    procedure readBytes
      (fs     : Filesystem;
       offset : Storage_Offset;
       dest   : System.Address;
       len    : Storage_Count)
    is
-      src : constant System.Address := fs.base + offset;
-      srcBuf : String (1 .. Natural (len))
-        with Import, Address => src;
-      dstBuf : String (1 .. Natural (len))
-        with Import, Address => dest;
    begin
-      dstBuf := srcBuf;
+      case fs.backend is
+         when RAMDISK =>
+            declare
+               src : constant System.Address := fs.base + offset;
+               srcBuf : String (1 .. Natural (len))
+                 with Import, Address => src;
+               dstBuf : String (1 .. Natural (len))
+                 with Import, Address => dest;
+            begin
+               dstBuf := srcBuf;
+            end;
+
+         when ATA =>
+            --  Convert byte offset/len to sector reads via ATA IPC.
+            --  Read sector-aligned chunks into grant buffer, copy to dest.
+            declare
+               byteOff   : Unsigned_64 := Unsigned_64 (offset);
+               remaining : Unsigned_64 := Unsigned_64 (len);
+               dstOff    : Storage_Offset := 0;
+               lba       : Unsigned_32;
+               secOff    : Unsigned_64;
+               copyLen   : Unsigned_64;
+               msg       : Message;
+               ignore    : MessageTag;
+
+               grantBuf : String (1 .. ATA_SECTOR_SIZE)
+                 with Import, Address => fs.ataGrantBuf;
+               dstBuf   : String (1 .. Natural (len))
+                 with Import, Address => dest;
+            begin
+               while remaining > 0 loop
+                  lba    := Unsigned_32 (byteOff / ATA_SECTOR_SIZE);
+                  secOff := byteOff mod ATA_SECTOR_SIZE;
+
+                  --  Read one sector from ATA driver
+                  msg.tag := (label  => OP_READ_BLOCK,
+                              length => 3,
+                              flags  => 0,
+                              badge  => 0);
+                  msg.capBadge := 0;
+                  msg.words := (0 => Unsigned_64 (lba),
+                                1 => fs.ataGrantId,
+                                2 => 1,
+                                3 => 0);
+
+                  ignore := capCall (fs.ataCapSlot, msg);
+
+                  if msg.tag.label /= REPLY_OK then
+                     debugPrint ("Ext2: ATA reply not OK." & ASCII.LF);
+                     --  ATA read failed; zero-fill remaining
+                     for i in Natural (dstOff) + 1 .. Natural (len) loop
+                        dstBuf (i) := Character'Val (0);
+                     end loop;
+                     return;
+                  end if;
+
+                  --  Copy relevant portion from grant buffer to dest
+                  copyLen := ATA_SECTOR_SIZE - secOff;
+                  if copyLen > remaining then
+                     copyLen := remaining;
+                  end if;
+
+                  declare
+                     srcSlice : String (1 .. Natural (copyLen))
+                       with Import,
+                            Address => fs.ataGrantBuf +
+                              Storage_Offset (secOff);
+                     dstSlice : String (1 .. Natural (copyLen))
+                       with Import,
+                            Address => dest + dstOff;
+                  begin
+                     dstSlice := srcSlice;
+                  end;
+
+                  byteOff   := byteOff + copyLen;
+                  dstOff    := dstOff + Storage_Offset (copyLen);
+                  remaining := remaining - copyLen;
+               end loop;
+            end;
+      end case;
    end readBytes;
 
    --  Read a full block from the ramdisk
@@ -64,7 +149,13 @@ package body Ext2 is
       fs.base := base;
 
       --  Read superblock from offset 1024
-      readBytes ((base => base, sb => sb, blkSize => 0),
+      readBytes ((base        => base,
+                  sb          => sb,
+                  blkSize     => 0,
+                  backend     => RAMDISK,
+                  ataCapSlot  => 0,
+                  ataGrantId  => 0,
+                  ataGrantBuf => System.Null_Address),
                  SUPERBLOCK_OFFSET, sb'Address, Superblock'Size / 8);
 
       if sb.signature /= EXT2_SIGNATURE then
@@ -72,9 +163,13 @@ package body Ext2 is
          return;
       end if;
 
-      fs.sb      := sb;
-      fs.blkSize := blockSize (sb);
-      ok         := True;
+      fs.sb          := sb;
+      fs.blkSize     := blockSize (sb);
+      fs.backend     := RAMDISK;
+      fs.ataCapSlot  := 0;
+      fs.ataGrantId  := 0;
+      fs.ataGrantBuf := System.Null_Address;
+      ok             := True;
    end init;
 
    procedure readInode
@@ -162,7 +257,9 @@ package body Ext2 is
                         match : Boolean := True;
                      begin
                         for i in 1 .. name'Length loop
-                           if entryName (i) /= name (i) then
+                           if entryName (i) /=
+                              name (name'First + i - 1)
+                           then
                               match := False;
                               exit;
                            end if;
@@ -370,5 +467,44 @@ package body Ext2 is
 
       return bytesRead;
    end readData;
+
+   procedure initATA
+     (fs         : out Filesystem;
+      capSlot    : Unsigned_64;
+      grantId    : Unsigned_64;
+      grantBuf   : System.Address;
+      ok         : out Boolean)
+   is
+      sb : Superblock;
+
+      --  Temporary filesystem for reading superblock via ATA
+      tmpFs : Filesystem;
+   begin
+      tmpFs.base        := System.Null_Address;
+      tmpFs.blkSize     := 0;
+      tmpFs.backend     := ATA;
+      tmpFs.ataCapSlot  := capSlot;
+      tmpFs.ataGrantId  := grantId;
+      tmpFs.ataGrantBuf := grantBuf;
+
+      --  Read superblock via ATA.  The first read may return stale data
+      --  if the grant mapping hasn't fully propagated yet, so retry once.
+      for attempt in 1 .. 2 loop
+         readBytes (tmpFs, SUPERBLOCK_OFFSET, sb'Address,
+                    Superblock'Size / 8);
+         exit when sb.signature = EXT2_SIGNATURE;
+      end loop;
+
+      if sb.signature /= EXT2_SIGNATURE then
+         debugPrint ("Ext2.initATA: bad ext2 signature." & ASCII.LF);
+         ok := False;
+         return;
+      end if;
+
+      fs := tmpFs;
+      fs.sb      := sb;
+      fs.blkSize := blockSize (sb);
+      ok         := True;
+   end initATA;
 
 end Ext2;

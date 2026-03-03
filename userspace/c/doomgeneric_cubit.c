@@ -16,6 +16,7 @@
 #include "doomgeneric.h"
 
 #include "cubit.h"
+#include <stdio.h>
 
 /* Framebuffer state */
 static cubit_framebuffer_t fb;
@@ -60,7 +61,7 @@ static const unsigned char scancode_to_doom[128] = {
     /* 0x1A */  '[',
     /* 0x1B */  ']',
     /* 0x1C */  KEY_ENTER,
-    /* 0x1D */  KEY_RCTRL,      /* Left Ctrl -> fire */
+    /* 0x1D */  KEY_FIRE,       /* Left Ctrl -> fire */
     /* 0x1E */  'a',
     /* 0x1F */  's',
     /* 0x20 */  'd',
@@ -88,7 +89,7 @@ static const unsigned char scancode_to_doom[128] = {
     /* 0x36 */  KEY_RSHIFT,     /* Right Shift */
     /* 0x37 */  '*',            /* Keypad * */
     /* 0x38 */  KEY_RALT,       /* Left Alt -> strafe */
-    /* 0x39 */  ' ',            /* Space -> use */
+    /* 0x39 */  KEY_USE,        /* Space -> use */
     /* 0x3A */  KEY_CAPSLOCK,
     /* 0x3B */  KEY_F1,
     /* 0x3C */  KEY_F2,
@@ -261,8 +262,20 @@ int main(void)
 {
     cubit_puts("DOOM: Starting on CuBit OS...\n");
 
-    /* Fixed argv for doomgeneric - no command-line args on CuBit */
-    static char *argv[] = {"doom", "-iwad", "doom1.wad", NULL};
+    /* Try ATA disk first, fall back to ramdisk */
+    static char *wad_path;
+    FILE *test = fopen("@ata:0/doom1.wad", "r");
+    if (test) {
+        fclose(test);
+        wad_path = "@ata:0/doom1.wad";
+        cubit_puts("DOOM: Using WAD from ATA disk.\n");
+    } else {
+        wad_path = "doom1.wad";
+        cubit_puts("DOOM: ATA not available, using ramdisk WAD.\n");
+    }
+
+    static char *argv[] = {"doom", "-iwad", NULL, NULL};
+    argv[2] = wad_path;
     doomgeneric_Create(3, argv);
 
     while (1) {

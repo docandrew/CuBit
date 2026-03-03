@@ -9,8 +9,6 @@ with System.Storage_Elements; use System.Storage_Elements;
 with BuddyAllocator;
 with Capabilities;
 with Capabilities.Operations;
-with Devices;
-with Filesystem.VFS.Paths;
 with Mem_mgr;
 with PerCpuData;
 with Process;
@@ -352,6 +350,25 @@ package body Syscall is
                 begin
                     retval := tagToU64 (eventMsg.tag);
                 end receiveEventHandler;
+
+            -- RECEIVE_EVENT_NB: non-blocking event receive
+            -- RDI=pointer to Message struct
+            -- Returns: RAX=1 if event found, 0 if not
+            when SYSCALL_RECEIVE_EVENT_NB =>
+                receiveEventNBHandler : declare
+                    eventMsg : Process.Message;
+                    found    : Boolean;
+                    userMsg  : Process.Message with
+                        Import, Address => Util.numToAddr(arg0);
+                begin
+                    Process.IPC.receiveEventNB (eventMsg, found);
+                    if found then
+                        userMsg := eventMsg;
+                        retval := 1;
+                    else
+                        retval := 0;
+                    end if;
+                end receiveEventNBHandler;
 
             when SYSCALL_SEND_EVENT =>
                 if arg0 > Unsigned_64(Process.ProcessID'Last) then
@@ -745,6 +762,77 @@ package body Syscall is
                     end capSubmitHandler;
                 end if;
 
+            -- NOTIFY: signal a notification capability
+            -- RDI=cap_slot
+            -- Returns: RAX=1 success, 0 failure
+            when SYSCALL_NOTIFY =>
+                if arg0 > Unsigned_64(Capabilities.CapabilitySlot'Last) then
+                    retval := 0;
+                else
+                    if Process.IPC.capNotify (
+                        capSlot => Capabilities.CapabilitySlot(arg0))
+                    then
+                        retval := 1;
+                    else
+                        retval := 0;
+                    end if;
+                end if;
+
+            -- NOTIFY_WAIT: block until notification word is non-zero
+            -- Returns: RAX=notification word value
+            when SYSCALL_NOTIFY_WAIT =>
+                retval := Process.IPC.notifyWait;
+
+            -- NOTIFY_POLL: non-blocking notification check
+            -- Returns: RAX=notification word value (0 if none)
+            when SYSCALL_NOTIFY_POLL =>
+                retval := Process.IPC.notifyPoll;
+
+            -- BIND_NOTIFICATION: bind a notification to the calling process
+            -- RDI=notification PID
+            -- Returns: RAX=1
+            when SYSCALL_BIND_NOTIFICATION =>
+                if arg0 > Unsigned_64(Process.ProcessID'Last) then
+                    retval := reterr;
+                else
+                    Process.IPC.bindNotification (
+                        notifPID => Process.ProcessID(arg0));
+                    retval := 1;
+                end if;
+
+            -- UNBIND_NOTIFICATION: remove notification binding
+            -- Returns: RAX=1
+            when SYSCALL_UNBIND_NOTIFICATION =>
+                Process.IPC.unbindNotification;
+                retval := 1;
+
+            -- REPLY_WAIT: atomic reply+receive (seL4 ReplyRecv)
+            -- RDI=replyTo PID, RSI=pointer to Message struct (in: reply, out: received)
+            -- Returns: RAX=sender PID of next received message
+            when SYSCALL_REPLY_WAIT =>
+                if arg0 > Unsigned_64(Process.ProcessID'Last) then
+                    retval := reterr;
+                else
+                    replyWaitHandler : declare
+                        function u64ToTag is new Ada.Unchecked_Conversion
+                            (Unsigned_64, Process.MessageTag);
+
+                        userMsg  : Process.Message
+                            with Import, Address => Util.numToAddr(arg1);
+                        replyMsg : constant Process.Message := userMsg;
+                        from     : Process.ProcessID;
+                        recvMsg  : Process.Message;
+                    begin
+                        Process.IPC.replyWait (
+                            replyTo  => Process.ProcessID(arg0),
+                            replyMsg => replyMsg,
+                            from     => from,
+                            msg      => recvMsg);
+                        userMsg := recvMsg;
+                        retval := Unsigned_64(from);
+                    end replyWaitHandler;
+                end if;
+
             -- CONTROLACCESS: capability table manipulation
             -- RDI=sub-op, RSI..R9=sub-op-specific arguments
             -- Returns: RAX=slot index on success, -1 on error
@@ -929,6 +1017,21 @@ package body Syscall is
                                 else
                                     retval := reterr;
                                 end if;
+                            end if;
+
+                        -- REVOKE_ALL: bump this process' generation counter,
+                        -- invalidating all caps held by other processes that
+                        -- reference this process.
+                        when CONTROLACCESS_REVOKE_ALL =>
+                            if Process.proctab(pid).capGeneration <
+                               Capabilities.Generation'Last
+                            then
+                                Process.proctab(pid).capGeneration :=
+                                    Process.proctab(pid).capGeneration + 1;
+                                retval := Unsigned_64(
+                                    Process.proctab(pid).capGeneration);
+                            else
+                                retval := reterr;
                             end if;
 
                         when others =>

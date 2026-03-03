@@ -86,6 +86,20 @@ package body TextIO is
     end disableVideo;
 
     ---------------------------------------------------------------------------
+    -- enableVideo
+    ---------------------------------------------------------------------------
+    procedure enableVideo is
+    begin
+        if put /= null then
+            if output = SERIAL_ONLY then
+                output := SERIAL_VIDEO;
+            elsif output = NONE then
+                output := VIDEO_ONLY;
+            end if;
+        end if;
+    end enableVideo;
+
+    ---------------------------------------------------------------------------
     -- clear
     ---------------------------------------------------------------------------
     procedure clear (bg : TextIO.Color) is

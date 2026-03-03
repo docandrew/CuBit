@@ -4,14 +4,17 @@
 --
 -- @description x86-64 interrupt handler routines and interrupt vector setup.
 -------------------------------------------------------------------------------
+with Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
+with Capabilities.IRQ;
 with Config;
 with InterruptNumbers; use InterruptNumbers;
 with Lapic;
 with Mem_mgr;
 with Pic;
 with PerCpuData;
+with Process;
 with Process.IPC;
 with Serial;
 with TextIO; use TextIO;
@@ -190,13 +193,63 @@ is
             when PS2KEYBOARD =>
                 -- println ("PS2 Interrupt");
                 eoi (PS2KEYBOARD);
-                Process.IPC.sendEvent (Config.SERVICE_KEYBOARD_PID,
-                    (tag      => (label => 1, length => 0, flags => 0, badge => 0),
-                     capBadge => 0,
-                     words    => (others => 0)));
+                irqDispatch : declare
+                    irqDest : constant Interfaces.Unsigned_64 :=
+                        Capabilities.IRQ.getOwner (PS2KEYBOARD);
+                begin
+                    if irqDest > 0 and then
+                       irqDest <= Interfaces.Unsigned_64(Process.ProcessID'Last)
+                    then
+                        Process.IPC.sendEvent (Process.ProcessID(irqDest),
+                            (tag      => (label  => 1,
+                                          length => 0,
+                                          flags  => 0,
+                                          badge  => 0),
+                             capBadge => 0,
+                             words    => (others => 0)));
+                    end if;
+                end irqDispatch;
 
-            when INVALID .. IDE2 =>
-                print ("IRQ: "); 
+            when IDE1 =>
+                eoi (IDE1);
+                ide1Dispatch : declare
+                    dest : constant Interfaces.Unsigned_64 :=
+                        Capabilities.IRQ.getOwner (IDE1);
+                begin
+                    if dest > 0 and then
+                       dest <= Interfaces.Unsigned_64 (Process.ProcessID'Last)
+                    then
+                        Process.IPC.sendEvent (Process.ProcessID (dest),
+                            (tag      => (label  => 1,
+                                          length => 0,
+                                          flags  => 0,
+                                          badge  => 0),
+                             capBadge => 0,
+                             words    => (others => 0)));
+                    end if;
+                end ide1Dispatch;
+
+            when IDE2 =>
+                eoi (IDE2);
+                ide2Dispatch : declare
+                    dest : constant Interfaces.Unsigned_64 :=
+                        Capabilities.IRQ.getOwner (IDE2);
+                begin
+                    if dest > 0 and then
+                       dest <= Interfaces.Unsigned_64 (Process.ProcessID'Last)
+                    then
+                        Process.IPC.sendEvent (Process.ProcessID (dest),
+                            (tag      => (label  => 1,
+                                          length => 0,
+                                          flags  => 0,
+                                          badge  => 0),
+                             capBadge => 0,
+                             words    => (others => 0)));
+                    end if;
+                end ide2Dispatch;
+
+            when INVALID .. COPROCESSOR =>
+                print ("IRQ: ");
                 println (Integer(interruptNumber));
                 eoi (interruptNumber);
 
@@ -226,6 +279,25 @@ is
                     x86.halt;
                 end if;
         end case;
+
+        -- If a higher-priority process was readied during this interrupt
+        -- (e.g. keyboard IRQ woke the keyboard service), preempt now.
+        -- Guard: only yield when a real process is running. If the timer
+        -- fires during the scheduler context (currentPID = NO_PROCESS),
+        -- skip — the scheduler will pick the highest-priority process.
+        checkPreempt : declare
+            perCPUAddr : constant System.Address :=
+                PerCPUData.getPerCPUDataAddr;
+            cpuData : PerCPUData.PerCPUData with
+                Import, Address => perCPUAddr;
+        begin
+            if cpuData.needReschedule then
+                cpuData.needReschedule := False;
+                if cpuData.currentPID /= Process.NO_PROCESS then
+                    Process.yield;
+                end if;
+            end if;
+        end checkPreempt;
 
         -- if we return from this interrupt, put page tables back the way they were.
         -- TODO: check cs to see if we were in user code?
