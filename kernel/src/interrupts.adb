@@ -4,11 +4,13 @@
 --
 -- @description x86-64 interrupt handler routines and interrupt vector setup.
 -------------------------------------------------------------------------------
-with Interfaces;
+with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with Capabilities.IRQ;
 with Config;
+with ioapic;
+with IPC_Labels;
 with InterruptNumbers; use InterruptNumbers;
 with Lapic;
 with Mem_mgr;
@@ -132,7 +134,7 @@ is
                 handleNMI : declare
                     perCPUAddr : constant System.Address := PerCPUData.getPerCPUDataAddr;
                     cpuData : PerCPUData.PerCPUData with
-                        Import, Address => perCPUAddr;
+                        Import, Volatile, Address => perCPUAddr;
                     nmiMsg : constant String := "NMI on CPU " & ASCII.LF;
                 begin
                     -- Record NMI state per-CPU
@@ -168,13 +170,50 @@ is
                 x86.halt;
 
             when NO_MATH_COPROCESSOR =>
-                println ("Floating point co-processor used, enabling");
+                -- Lazy FPU: save old owner's state, enable for current process,
+                -- restore current process's state if it used FPU before.
+                lazyFPU : declare
+                    perCPUAddr : constant System.Address :=
+                        PerCPUData.getPerCPUDataAddr;
+                begin
+                    lazyFPUBlock : declare
+                        cpuData    : PerCPUData.PerCPUData with
+                            Import, Volatile, Address => perCPUAddr;
+                        currentPID : constant Process.ProcessID :=
+                            cpuData.currentPID;
+                        oldOwner   : constant Process.ProcessID :=
+                            cpuData.fpuOwner;
+                        -- Snapshot BEFORE enableFPU sets fpuOwner
+                        hadFPU     : constant Boolean :=
+                            System."/=" (Process.proctab(currentPID).fpu,
+                                         System.Null_Address);
+                    begin
+                        if currentPID = Process.NO_PROCESS then
+                            raise KernelFPUException
+                                with "FPU used in kernel context";
+                        end if;
 
-                if PerCPUData.getCurrentPID = Process.NO_PROCESS then
-                    raise KernelFPUException with "Floating-point ops enabled in the kernel by mistake!";
-                else
-                    Process.enableFPU;
-                end if;
+                        if oldOwner = currentPID then
+                            -- Same process re-triggered #NM (CR0.TS was set
+                            -- by directSwitch or scheduler). FPU registers
+                            -- already have the correct state — just re-enable.
+                            Process.enableFPU;
+                        else
+                            -- Save old owner's FPU state if present
+                            if oldOwner /= Process.NO_PROCESS then
+                                Process.saveFPUState (oldOwner);
+                            end if;
+
+                            -- enableFPU clears CR0.TS, sets fpuOwner
+                            Process.enableFPU;
+
+                            -- Restore current process's state if used before
+                            if hadFPU then
+                                Process.restoreFPUState (currentPID);
+                            end if;
+                        end if;
+                    end lazyFPUBlock;
+                end lazyFPU;
 
             when PAGE_FAULT =>
                 print ("Page Fault at ");
@@ -249,9 +288,36 @@ is
                 end ide2Dispatch;
 
             when INVALID .. COPROCESSOR =>
-                print ("IRQ: ");
-                println (Integer(interruptNumber));
                 eoi (interruptNumber);
+                pciDispatch : declare
+                    dest : constant Interfaces.Unsigned_64 :=
+                        Capabilities.IRQ.getOwner (interruptNumber);
+                begin
+                    if dest > 0 and then
+                       dest <= Interfaces.Unsigned_64 (Process.ProcessID'Last)
+                    then
+                        Process.IPC.sendEvent (Process.ProcessID (dest),
+                            (tag      => (label  => 1,
+                                          length => 0,
+                                          flags  => 0,
+                                          badge  => 0),
+                             capBadge => 0,
+                             words    => (others => 0)));
+                    end if;
+                end pciDispatch;
+
+            when RESCHEDULE =>
+                eoi (RESCHEDULE);
+                -- IPI from another CPU: set needReschedule so the
+                -- checkPreempt block at interrupt return yields.
+                reschedIPI : declare
+                    perCPUAddr2 : constant System.Address :=
+                        PerCPUData.getPerCPUDataAddr;
+                    cpuData2 : PerCPUData.PerCPUData with
+                        Import, Volatile, Address => perCPUAddr2;
+                begin
+                    cpuData2.needReschedule := True;
+                end reschedIPI;
 
             when SPURIOUS =>
                 println ("Spurious Interrupt");
@@ -269,9 +335,15 @@ is
                 print (" at RIP "); print (frame.rip);
                 print (" PID "); println (PerCPUData.getCurrentPID);
                 if Util.isBitSet (frame.cs, 0) or Util.isBitSet (frame.cs, 1) then
-                    -- User-mode exception: kill the process, don't halt
+                    -- User-mode exception: notify supervisor, then kill
                     print ("  Killing user process "); println (PerCPUData.getCurrentPID);
                     printRegs (frame);
+                    Process.IPC.notifySupervisor (
+                        pid        => PerCPUData.getCurrentPID,
+                        faultLabel => IPC_Labels.EVENT_PROCESS_FAULT,
+                        detail0    => Interfaces.Unsigned_64 (interruptNumber),
+                        detail1    => Util.addrToNum (frame.rip),
+                        detail2    => Interfaces.Unsigned_64 (frame.errorCode));
                     Process.kill (PerCPUData.getCurrentPID);
                 else
                     -- Kernel exception: halt
@@ -289,7 +361,7 @@ is
             perCPUAddr : constant System.Address :=
                 PerCPUData.getPerCPUDataAddr;
             cpuData : PerCPUData.PerCPUData with
-                Import, Address => perCPUAddr;
+                Import, Volatile, Address => perCPUAddr;
         begin
             if cpuData.needReschedule then
                 cpuData.needReschedule := False;
@@ -564,8 +636,63 @@ is
         -- Syscall (old school, we use the actual syscall/sysret instructions in CuBit)
         idt(128) := createIDTEntry(addrToNum(isr128'Address), True, GDT_OFFSET_KERNEL_CODE, DPL_USER);
 
+        -- Reschedule IPI
+        idt(249) := createIDTEntry(addrToNum(isr249'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+
         -- Spurious Vector
         idt(255) := createIDTEntry(addrToNum(isr255'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
     end createIDT;
+
+    ---------------------------------------------------------------------------
+    -- IOAPIC base address for enableDeviceIRQ
+    ---------------------------------------------------------------------------
+    ioapicAddr : System.Address := System.Null_Address;
+
+    ---------------------------------------------------------------------------
+    -- setIOAPICBaseAddress
+    ---------------------------------------------------------------------------
+    procedure setIOAPICBaseAddress (addr : in System.Address) with
+        SPARK_Mode => On
+    is
+    begin
+        ioapicAddr := addr;
+    end setIOAPICBaseAddress;
+
+    ---------------------------------------------------------------------------
+    -- Shared LAPIC timer interval (BSP-calibrated, used by APs)
+    ---------------------------------------------------------------------------
+    lapicTimerInterval : Unsigned_32 := 0;
+
+    function getLAPICTimerInterval return Unsigned_32 is
+    begin
+        return lapicTimerInterval;
+    end getLAPICTimerInterval;
+
+    procedure setLAPICTimerInterval (interval : in Unsigned_32) is
+    begin
+        lapicTimerInterval := interval;
+    end setLAPICTimerInterval;
+
+    ---------------------------------------------------------------------------
+    -- enableDeviceIRQ
+    --  If IOAPIC is available, route via IOAPIC.  Otherwise fall back to
+    --  legacy 8259 PIC unmask.
+    ---------------------------------------------------------------------------
+    procedure enableDeviceIRQ (vector : in InterruptNumbers.x86Interrupt;
+                               cpu    : in Unsigned_32) with
+        SPARK_Mode => Off   -- generic instantiation
+    is
+    begin
+        if System."/=" (ioapicAddr, System.Null_Address) then
+            enableIOAPIC : declare
+                package myIOAPIC is new ioapic (ioapicAddr);
+            begin
+                myIOAPIC.enableIRQ (vector, cpu);
+            end enableIOAPIC;
+        else
+            --  No IOAPIC; unmask on legacy PIC instead
+            Pic.enableIRQ (vector);
+        end if;
+    end enableDeviceIRQ;
 
 end Interrupts;

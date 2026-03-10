@@ -79,6 +79,66 @@ is
     end readConfig8;
 
     ---------------------------------------------------------------------------
+    -- Write dword
+    ---------------------------------------------------------------------------
+    procedure writeConfig32 (bus    : in PCIBusNum;
+                             slot   : in PCISlotNum;
+                             func   : in PCIFunctionNum;
+                             offset : in Unsigned_8;
+                             val    : in Unsigned_32)
+        with SPARK_Mode => On
+    is
+        addr : constant Unsigned_32 :=
+                            Shift_Left (Unsigned_32(bus), 16) or
+                            Shift_Left (Unsigned_32(slot), 11) or
+                            Shift_Left (Unsigned_32(func), 8) or
+                            Unsigned_32(offset) or 16#8000_0000#;
+    begin
+        x86.out32 (PCI_CONFIG_ADDRESS, addr);
+        x86.out32 (PCI_CONFIG_DATA, val);
+    end writeConfig32;
+
+    ---------------------------------------------------------------------------
+    -- Write word
+    ---------------------------------------------------------------------------
+    procedure writeConfig16 (bus    : in PCIBusNum;
+                             slot   : in PCISlotNum;
+                             func   : in PCIFunctionNum;
+                             offset : in Unsigned_8;
+                             val    : in Unsigned_16)
+        with SPARK_Mode => On
+    is
+        addr : constant Unsigned_32 :=
+                            Shift_Left (Unsigned_32(bus), 16) or
+                            Shift_Left (Unsigned_32(slot), 11) or
+                            Shift_Left (Unsigned_32(func), 8) or
+                            Unsigned_32(offset) or 16#8000_0000#;
+    begin
+        x86.out32 (PCI_CONFIG_ADDRESS, addr);
+        x86.out16 (PCI_CONFIG_DATA + x86.IOPort(offset and 3), val);
+    end writeConfig16;
+
+    ---------------------------------------------------------------------------
+    -- Write byte
+    ---------------------------------------------------------------------------
+    procedure writeConfig8 (bus    : in PCIBusNum;
+                            slot   : in PCISlotNum;
+                            func   : in PCIFunctionNum;
+                            offset : in Unsigned_8;
+                            val    : in Unsigned_8)
+        with SPARK_Mode => On
+    is
+        addr : constant Unsigned_32 :=
+                            Shift_Left (Unsigned_32(bus), 16) or
+                            Shift_Left (Unsigned_32(slot), 11) or
+                            Shift_Left (Unsigned_32(func), 8) or
+                            Unsigned_32(offset) or 16#8000_0000#;
+    begin
+        x86.out32 (PCI_CONFIG_ADDRESS, addr);
+        x86.out8 (PCI_CONFIG_DATA + x86.IOPort(offset and 3), val);
+    end writeConfig8;
+
+    ---------------------------------------------------------------------------
     -- Dump the device's configuration space
     ---------------------------------------------------------------------------
     procedure dumpDevice (bus  : PCIBusNum;
@@ -300,7 +360,7 @@ is
         devBase : System.Address := base + 
             ((Storage_Offset(bus) * 256) + (Storage_Offset(slot) * 8) + Storage_Offset(func)) * 4096;
     
-        ret     : PCIDeviceHeader with Import, Address => devBase;
+        ret     : PCIDeviceHeader with Import, Volatile, Address => devBase;
     begin
         conf := ret;
     end getPCIeConfig;

@@ -11,6 +11,12 @@
 #include <string.h>
 
 /*---------------------------------------------------------------------------
+ * DOOM sound config variables (referenced by i_sound.c when FEATURE_SOUND)
+ *---------------------------------------------------------------------------*/
+int use_libsamplerate = 0;
+float libsamplerate_scale = 0.65f;
+
+/*---------------------------------------------------------------------------
  * Internal: number-to-string conversion for printf
  *---------------------------------------------------------------------------*/
 static int _emit(char *buf, size_t pos, size_t limit, char c)
@@ -381,18 +387,6 @@ char *fgets(char *s, int size, FILE *stream)
     if (size <= 0) return NULL;
     s[0] = '\0';
     return NULL; /* No interactive input support yet */
-}
-
-/*---------------------------------------------------------------------------
- * fwrite - Write data to a file (stub: writes to stdout for debug)
- *---------------------------------------------------------------------------*/
-size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
-{
-    (void)stream;
-    size_t total = size * nmemb;
-    if (total > 0)
-        cubit_write(STDOUT, ptr, total);
-    return nmemb;
 }
 
 int remove(const char *pathname)

@@ -16,8 +16,27 @@ package body Ext2 is
    ATA_SECTOR_SIZE : constant := 512;
 
    --  IPC labels for block device operations
-   OP_READ_BLOCK : constant Unsigned_32 := 16#0210#;
-   REPLY_OK      : constant Unsigned_32 := 16#F000#;
+   OP_READ_BLOCK  : constant Unsigned_32 := 16#0210#;
+   OP_WRITE_BLOCK : constant Unsigned_32 := 16#0211#;
+   REPLY_OK       : constant Unsigned_32 := 16#F000#;
+
+   --  Indirect block cache (avoids re-reading same block per getDataBlock call)
+   --  Sized for max 4KB ext2 blocks (1024 ptrs); 1KB blocks use first 256.
+   cachedIndBlockNum : Unsigned_32 := 0;
+   cachedIndBuf      : array (0 .. 1023) of Unsigned_32;
+
+   cachedDIndL1Num   : Unsigned_32 := 0;
+   cachedDIndL1Buf   : array (0 .. 1023) of Unsigned_32;
+
+   cachedDIndL2Num   : Unsigned_32 := 0;
+   cachedDIndL2Buf   : array (0 .. 1023) of Unsigned_32;
+
+   procedure invalidateBlockCache is
+   begin
+      cachedIndBlockNum := 0;
+      cachedDIndL1Num   := 0;
+      cachedDIndL2Num   := 0;
+   end invalidateBlockCache;
 
    --  Read bytes from the filesystem at a byte offset.
    --  Dispatches on fs.backend: RAMDISK does direct memory copy,
@@ -30,63 +49,65 @@ package body Ext2 is
    is
    begin
       case fs.backend is
-         when RAMDISK =>
+         when ATA | NVME =>
+            --  Convert byte offset/len to multi-sector reads via IPC.
+            --  Read up to grantBufSize/sectorSize sectors per IPC call
+            --  into the grant buffer, then copy to dest.
             declare
-               src : constant System.Address := fs.base + offset;
-               srcBuf : String (1 .. Natural (len))
-                 with Import, Address => src;
-               dstBuf : String (1 .. Natural (len))
-                 with Import, Address => dest;
-            begin
-               dstBuf := srcBuf;
-            end;
-
-         when ATA =>
-            --  Convert byte offset/len to sector reads via ATA IPC.
-            --  Read sector-aligned chunks into grant buffer, copy to dest.
-            declare
-               byteOff   : Unsigned_64 := Unsigned_64 (offset);
-               remaining : Unsigned_64 := Unsigned_64 (len);
-               dstOff    : Storage_Offset := 0;
-               lba       : Unsigned_32;
-               secOff    : Unsigned_64;
-               copyLen   : Unsigned_64;
-               msg       : Message;
-               ignore    : MessageTag;
-
-               grantBuf : String (1 .. ATA_SECTOR_SIZE)
-                 with Import, Address => fs.ataGrantBuf;
-               dstBuf   : String (1 .. Natural (len))
-                 with Import, Address => dest;
+               byteOff       : Unsigned_64 := Unsigned_64 (offset);
+               remaining     : Unsigned_64 := Unsigned_64 (len);
+               dstOff        : Storage_Offset := 0;
+               lba           : Unsigned_64;
+               secOff        : Unsigned_64;
+               copyLen       : Unsigned_64;
+               sectorsNeeded : Unsigned_64;
+               maxSectors    : constant Unsigned_64 :=
+                 Unsigned_64 (fs.grantBufSize) / ATA_SECTOR_SIZE;
+               msg           : Message;
+               ignore        : MessageTag;
             begin
                while remaining > 0 loop
-                  lba    := Unsigned_32 (byteOff / ATA_SECTOR_SIZE);
+                  lba    := byteOff / ATA_SECTOR_SIZE;
                   secOff := byteOff mod ATA_SECTOR_SIZE;
 
-                  --  Read one sector from ATA driver
+                  --  Calculate how many sectors to read in this batch
+                  sectorsNeeded :=
+                    (remaining + secOff + ATA_SECTOR_SIZE - 1) /
+                    ATA_SECTOR_SIZE;
+                  if sectorsNeeded > maxSectors then
+                     sectorsNeeded := maxSectors;
+                  end if;
+
+                  --  Read multiple sectors from driver
                   msg.tag := (label  => OP_READ_BLOCK,
                               length => 3,
                               flags  => 0,
                               badge  => 0);
                   msg.capBadge := 0;
-                  msg.words := (0 => Unsigned_64 (lba),
+                  msg.words := (0 => lba,
                                 1 => fs.ataGrantId,
-                                2 => 1,
+                                2 => sectorsNeeded,
                                 3 => 0);
 
                   ignore := capCall (fs.ataCapSlot, msg);
 
                   if msg.tag.label /= REPLY_OK then
-                     debugPrint ("Ext2: ATA reply not OK." & ASCII.LF);
-                     --  ATA read failed; zero-fill remaining
-                     for i in Natural (dstOff) + 1 .. Natural (len) loop
-                        dstBuf (i) := Character'Val (0);
-                     end loop;
+                     debugPrint ("Ext2: read reply not OK." & ASCII.LF);
+                     --  Read failed; zero-fill remaining
+                     declare
+                        dstBuf : String (1 .. Natural (len))
+                          with Import, Address => dest;
+                     begin
+                        for i in Natural (dstOff) + 1 .. Natural (len) loop
+                           dstBuf (i) := Character'Val (0);
+                        end loop;
+                     end;
                      return;
                   end if;
 
                   --  Copy relevant portion from grant buffer to dest
-                  copyLen := ATA_SECTOR_SIZE - secOff;
+                  copyLen :=
+                    sectorsNeeded * ATA_SECTOR_SIZE - secOff;
                   if copyLen > remaining then
                      copyLen := remaining;
                   end if;
@@ -138,39 +159,6 @@ package body Ext2 is
       return Unsigned_64 (ino.sizeHi_DirACL) * 16#1_0000_0000# +
              Unsigned_64 (ino.sizeLo);
    end fileSize;
-
-   procedure init
-     (fs   : out Filesystem;
-      base : System.Address;
-      ok   : out Boolean)
-   is
-      sb : Superblock;
-   begin
-      fs.base := base;
-
-      --  Read superblock from offset 1024
-      readBytes ((base        => base,
-                  sb          => sb,
-                  blkSize     => 0,
-                  backend     => RAMDISK,
-                  ataCapSlot  => 0,
-                  ataGrantId  => 0,
-                  ataGrantBuf => System.Null_Address),
-                 SUPERBLOCK_OFFSET, sb'Address, Superblock'Size / 8);
-
-      if sb.signature /= EXT2_SIGNATURE then
-         ok := False;
-         return;
-      end if;
-
-      fs.sb          := sb;
-      fs.blkSize     := blockSize (sb);
-      fs.backend     := RAMDISK;
-      fs.ataCapSlot  := 0;
-      fs.ataGrantId  := 0;
-      fs.ataGrantBuf := System.Null_Address;
-      ok             := True;
-   end init;
 
    procedure readInode
      (fs       : Filesystem;
@@ -358,14 +346,13 @@ package body Ext2 is
                return 0;
             end if;
 
-            --  Read indirect block and extract pointer
-            declare
-               indBuf : array (0 .. ptrsPerBlock - 1) of Unsigned_32
-                 with Alignment => 8;
-            begin
-               readBlock (fs, ino.singleIndirectBlock, indBuf'Address);
-               return indBuf (indirectIdx);
-            end;
+            --  Read indirect block only if not cached
+            if ino.singleIndirectBlock /= cachedIndBlockNum then
+               readBlock (fs, ino.singleIndirectBlock,
+                          cachedIndBuf'Address);
+               cachedIndBlockNum := ino.singleIndirectBlock;
+            end if;
+            return cachedIndBuf (Natural (indirectIdx));
          end if;
       end;
 
@@ -381,24 +368,114 @@ package body Ext2 is
                return 0;
             end if;
 
-            declare
-               l1Buf : array (0 .. ptrsPerBlock - 1) of Unsigned_32
-                 with Alignment => 8;
-               l2Buf : array (0 .. ptrsPerBlock - 1) of Unsigned_32
-                 with Alignment => 8;
-            begin
-               readBlock (fs, ino.doubleIndirectBlock, l1Buf'Address);
-               if l1Buf (l1Idx) = 0 then
-                  return 0;
-               end if;
-               readBlock (fs, l1Buf (l1Idx), l2Buf'Address);
-               return l2Buf (l2Idx);
-            end;
+            --  Cache L1 (top-level double-indirect) block
+            if ino.doubleIndirectBlock /= cachedDIndL1Num then
+               readBlock (fs, ino.doubleIndirectBlock,
+                          cachedDIndL1Buf'Address);
+               cachedDIndL1Num := ino.doubleIndirectBlock;
+            end if;
+
+            if cachedDIndL1Buf (Natural (l1Idx)) = 0 then
+               return 0;
+            end if;
+
+            --  Cache L2 (second-level double-indirect) block
+            if cachedDIndL1Buf (Natural (l1Idx)) /= cachedDIndL2Num then
+               readBlock (fs, cachedDIndL1Buf (Natural (l1Idx)),
+                          cachedDIndL2Buf'Address);
+               cachedDIndL2Num := cachedDIndL1Buf (Natural (l1Idx));
+            end if;
+
+            return cachedDIndL2Buf (Natural (l2Idx));
          end if;
       end;
 
       return 0;  --  Beyond supported range
    end getDataBlock;
+
+   function readDir
+     (fs       : Filesystem;
+      dirIno   : Inode;
+      dest     : System.Address;
+      destSize : Unsigned_64) return Unsigned_64
+   is
+      size : constant Unsigned_64 := fileSize (dirIno);
+      bytesScanned : Unsigned_64 := 0;
+      written      : Unsigned_64 := 0;
+      blockBuf : String (1 .. Natural (fs.blkSize))
+        with Alignment => 8;
+      blockIdx : Natural := 0;
+
+      outBuf : String (1 .. Natural (destSize))
+        with Import, Address => dest;
+   begin
+      while bytesScanned < size and blockIdx < NUM_DIRECT_BLOCKS loop
+         declare
+            blkNum : constant Unsigned_32 :=
+              dirIno.directBlocks (blockIdx);
+            offset : Storage_Offset := 0;
+         begin
+            if blkNum = 0 then
+               exit;
+            end if;
+
+            readBlock (fs, blkNum, blockBuf'Address);
+
+            while offset < Storage_Offset (fs.blkSize) and
+                  bytesScanned < size
+            loop
+               declare
+                  dent : DirectoryEntry
+                    with Import,
+                         Address => blockBuf'Address + offset;
+               begin
+                  if dent.inode /= 0 and dent.nameLength > 0 then
+                     declare
+                        nameLen : constant Natural :=
+                          Natural (dent.nameLength);
+                        entryName : String (1 .. nameLen)
+                          with Import,
+                               Address => blockBuf'Address + offset +
+                                          (DirectoryEntry'Size / 8);
+                     begin
+                        --  Skip "." and ".." entries
+                        if not (nameLen = 1 and then
+                                entryName (1) = '.') and then
+                           not (nameLen = 2 and then
+                                entryName (1) = '.' and then
+                                entryName (2) = '.')
+                        then
+                           --  Check room for name + newline
+                           if written + Unsigned_64 (nameLen) + 1 <=
+                              destSize
+                           then
+                              for i in 1 .. nameLen loop
+                                 outBuf (Natural (written) + i) :=
+                                   entryName (i);
+                              end loop;
+                              written := written + Unsigned_64 (nameLen);
+                              outBuf (Natural (written) + 1) := ASCII.LF;
+                              written := written + 1;
+                           else
+                              --  No more room
+                              return written;
+                           end if;
+                        end if;
+                     end;
+                  end if;
+
+                  bytesScanned := bytesScanned +
+                    Unsigned_64 (dent.length);
+                  offset := offset + Storage_Offset (dent.length);
+                  exit when dent.length = 0;
+               end;
+            end loop;
+         end;
+         blockIdx := blockIdx + 1;
+      end loop;
+
+      return written;
+   end readDir;
 
    function readData
      (fs     : Filesystem;
@@ -411,6 +488,251 @@ package body Ext2 is
       remaining : Unsigned_64;
       pos       : Unsigned_64 := offset;
       bytesRead : Unsigned_64 := 0;
+
+      --  Max contiguous bytes per batch (matches grant buffer size)
+      maxContigBytes : constant Unsigned_64 := Unsigned_64 (fs.grantBufSize);
+   begin
+      if offset >= size then
+         return 0;
+      end if;
+
+      remaining := size - offset;
+      if remaining > count then
+         remaining := count;
+      end if;
+
+      --  Note: no cache invalidation needed here. The indirect block cache
+      --  is keyed by physical block number, which is unique across all
+      --  inodes in ext2. Different files miss naturally; same file hits.
+
+      while remaining > 0 loop
+         declare
+            logBlock    : constant Unsigned_32 :=
+              Unsigned_32 (pos / Unsigned_64 (fs.blkSize));
+            blockOffset : constant Unsigned_32 :=
+              Unsigned_32 (pos mod Unsigned_64 (fs.blkSize));
+            physBlock   : constant Unsigned_32 :=
+              getDataBlock (fs, ino, logBlock);
+            canRead     : Unsigned_64;
+         begin
+            if physBlock = 0 then
+               --  Sparse block (hole) — fill with zeros
+               canRead := Unsigned_64 (fs.blkSize - blockOffset);
+               if canRead > remaining then
+                  canRead := remaining;
+               end if;
+               declare
+                  dst : String (1 .. Natural (canRead))
+                    with Import, Address => buf + Storage_Offset (bytesRead);
+               begin
+                  for i in dst'Range loop
+                     dst (i) := Character'Val (0);
+                  end loop;
+               end;
+            else
+               --  Scan ahead for contiguous physical blocks to batch
+               --  into a single readBytes call.
+               declare
+                  contigBlocks : Unsigned_32 := 1;
+                  maxBlocks    : Unsigned_32;
+                  nextPhys     : Unsigned_32;
+               begin
+                  if blockOffset = 0 then
+                     --  Only batch from block-aligned positions
+                     maxBlocks := Unsigned_32
+                       (maxContigBytes / Unsigned_64 (fs.blkSize));
+                     if maxBlocks = 0 then
+                        maxBlocks := 1;
+                     end if;
+
+                     while contigBlocks < maxBlocks loop
+                        --  Don't read past file or request
+                        exit when Unsigned_64 (contigBlocks) *
+                          Unsigned_64 (fs.blkSize) >= remaining;
+
+                        nextPhys := getDataBlock
+                          (fs, ino, logBlock + contigBlocks);
+
+                        --  Must be consecutive physical blocks
+                        exit when nextPhys /= physBlock + contigBlocks;
+
+                        contigBlocks := contigBlocks + 1;
+                     end loop;
+                  end if;
+
+                  canRead := Unsigned_64 (contigBlocks) *
+                    Unsigned_64 (fs.blkSize) -
+                    Unsigned_64 (blockOffset);
+                  if canRead > remaining then
+                     canRead := remaining;
+                  end if;
+
+                  readBytes (fs,
+                             Storage_Offset (physBlock) *
+                               Storage_Offset (fs.blkSize) +
+                               Storage_Offset (blockOffset),
+                             buf + Storage_Offset (bytesRead),
+                             Storage_Count (canRead));
+               end;
+            end if;
+
+            bytesRead := bytesRead + canRead;
+            pos       := pos + canRead;
+            remaining := remaining - canRead;
+         end;
+      end loop;
+
+      return bytesRead;
+   end readData;
+
+   --  (writeBytes uses fs.grantBufSize for sector limit)
+
+   --  Write bytes to the filesystem at a raw byte offset.
+   --  Handles non-aligned writes via read-modify-write of partial sectors.
+   procedure writeBytes
+     (fs     : Filesystem;
+      offset : Storage_Offset;
+      src    : System.Address;
+      len    : Storage_Count)
+   is
+   begin
+      case fs.backend is
+         when ATA | NVME =>
+            declare
+               byteOff   : Unsigned_64 := Unsigned_64 (offset);
+               remaining : Unsigned_64 := Unsigned_64 (len);
+               srcOff    : Storage_Offset := 0;
+               lba       : Unsigned_64;
+               secOff    : Unsigned_64;
+               copyLen   : Unsigned_64;
+               msg       : Message;
+               ignore    : MessageTag;
+            begin
+               while remaining > 0 loop
+                  lba    := byteOff / ATA_SECTOR_SIZE;
+                  secOff := byteOff mod ATA_SECTOR_SIZE;
+
+                  if secOff /= 0 or remaining < ATA_SECTOR_SIZE then
+                     --  Partial sector: read-modify-write
+                     copyLen := ATA_SECTOR_SIZE - secOff;
+                     if copyLen > remaining then
+                        copyLen := remaining;
+                     end if;
+
+                     --  Read the sector into grant buffer
+                     msg.tag := (label  => OP_READ_BLOCK,
+                                 length => 3,
+                                 flags  => 0,
+                                 badge  => 0);
+                     msg.capBadge := 0;
+                     msg.words := (0 => lba,
+                                   1 => fs.ataGrantId,
+                                   2 => 1,
+                                   3 => 0);
+                     ignore := capCall (fs.ataCapSlot, msg);
+
+                     if msg.tag.label /= REPLY_OK then
+                        debugPrint
+                          ("Ext2: write RMW read failed." & ASCII.LF);
+                        return;
+                     end if;
+
+                     --  Overlay our data onto the grant buffer
+                     declare
+                        dstSlice : String (1 .. Natural (copyLen))
+                          with Import,
+                               Address => fs.ataGrantBuf +
+                                 Storage_Offset (secOff);
+                        srcSlice : String (1 .. Natural (copyLen))
+                          with Import,
+                               Address => src + srcOff;
+                     begin
+                        dstSlice := srcSlice;
+                     end;
+
+                     --  Write the modified sector back
+                     msg.tag := (label  => OP_WRITE_BLOCK,
+                                 length => 3,
+                                 flags  => 0,
+                                 badge  => 0);
+                     msg.capBadge := 0;
+                     msg.words := (0 => lba,
+                                   1 => fs.ataGrantId,
+                                   2 => 1,
+                                   3 => 0);
+                     ignore := capCall (fs.ataCapSlot, msg);
+
+                     if msg.tag.label /= REPLY_OK then
+                        debugPrint
+                          ("Ext2: write RMW write failed." & ASCII.LF);
+                        return;
+                     end if;
+                  else
+                     --  Sector-aligned: batch write full sectors
+                     declare
+                        maxWriteSectors : constant Unsigned_64 :=
+                          Unsigned_64 (fs.grantBufSize) / ATA_SECTOR_SIZE;
+                        sectorsNeeded : Unsigned_64 :=
+                          remaining / ATA_SECTOR_SIZE;
+                     begin
+                        if sectorsNeeded > maxWriteSectors then
+                           sectorsNeeded := maxWriteSectors;
+                        end if;
+
+                        copyLen :=
+                          sectorsNeeded * ATA_SECTOR_SIZE;
+
+                        --  Copy source data into grant buffer
+                        declare
+                           dstSlice : String (1 .. Natural (copyLen))
+                             with Import, Address => fs.ataGrantBuf;
+                           srcSlice : String (1 .. Natural (copyLen))
+                             with Import, Address => src + srcOff;
+                        begin
+                           dstSlice := srcSlice;
+                        end;
+
+                        --  Write sectors
+                        msg.tag := (label  => OP_WRITE_BLOCK,
+                                    length => 3,
+                                    flags  => 0,
+                                    badge  => 0);
+                        msg.capBadge := 0;
+                        msg.words := (0 => lba,
+                                      1 => fs.ataGrantId,
+                                      2 => sectorsNeeded,
+                                      3 => 0);
+                        ignore := capCall (fs.ataCapSlot, msg);
+
+                        if msg.tag.label /= REPLY_OK then
+                           debugPrint
+                             ("Ext2: batch write failed." & ASCII.LF);
+                           return;
+                        end if;
+                     end;
+                  end if;
+
+                  byteOff   := byteOff + copyLen;
+                  srcOff    := srcOff + Storage_Offset (copyLen);
+                  remaining := remaining - copyLen;
+               end loop;
+            end;
+      end case;
+   end writeBytes;
+
+   --  Write file data to an inode starting at the given offset.
+   --  Overwrites existing allocated blocks only (no file growth).
+   function writeData
+     (fs     : Filesystem;
+      ino    : Inode;
+      offset : Unsigned_64;
+      buf    : System.Address;
+      count  : Unsigned_64) return Unsigned_64
+   is
+      size      : constant Unsigned_64 := fileSize (ino);
+      remaining : Unsigned_64;
+      pos       : Unsigned_64 := offset;
+      written   : Unsigned_64 := 0;
    begin
       if offset >= size then
          return 0;
@@ -429,44 +751,35 @@ package body Ext2 is
               Unsigned_32 (pos mod Unsigned_64 (fs.blkSize));
             physBlock   : constant Unsigned_32 :=
               getDataBlock (fs, ino, logBlock);
-            canRead     : Unsigned_64 :=
+            canWrite    : Unsigned_64 :=
               Unsigned_64 (fs.blkSize - blockOffset);
          begin
             if physBlock = 0 then
-               --  Sparse block (hole) — fill with zeros
-               if canRead > remaining then
-                  canRead := remaining;
+               --  Sparse block (hole) — skip, don't allocate
+               if canWrite > remaining then
+                  canWrite := remaining;
                end if;
-               declare
-                  dst : String (1 .. Natural (canRead))
-                    with Import, Address => buf + Storage_Offset (bytesRead);
-               begin
-                  for i in dst'Range loop
-                     dst (i) := Character'Val (0);
-                  end loop;
-               end;
             else
-               if canRead > remaining then
-                  canRead := remaining;
+               if canWrite > remaining then
+                  canWrite := remaining;
                end if;
 
-               --  Read from ramdisk
-               readBytes (fs,
-                          Storage_Offset (physBlock) *
-                            Storage_Offset (fs.blkSize) +
-                            Storage_Offset (blockOffset),
-                          buf + Storage_Offset (bytesRead),
-                          Storage_Count (canRead));
+               writeBytes (fs,
+                           Storage_Offset (physBlock) *
+                             Storage_Offset (fs.blkSize) +
+                             Storage_Offset (blockOffset),
+                           buf + Storage_Offset (written),
+                           Storage_Count (canWrite));
             end if;
 
-            bytesRead := bytesRead + canRead;
-            pos       := pos + canRead;
-            remaining := remaining - canRead;
+            written   := written + canWrite;
+            pos       := pos + canWrite;
+            remaining := remaining - canWrite;
          end;
       end loop;
 
-      return bytesRead;
-   end readData;
+      return written;
+   end writeData;
 
    procedure initATA
      (fs         : out Filesystem;

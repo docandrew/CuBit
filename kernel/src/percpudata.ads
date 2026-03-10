@@ -77,6 +77,10 @@ is
         -- Set by Process.ready() when a higher-priority process is readied;
         -- checked at interrupt return to trigger immediate preemption.
         needReschedule      : Boolean := False;
+
+        -- Lazy FPU: PID of the process whose FPU state is currently live
+        -- in the hardware registers. NO_PROCESS means no owner.
+        fpuOwner            : Process.ProcessID := Process.NO_PROCESS;
     end record;
 
     -- Alignment of fields needs to be precisely specified because we're going
@@ -98,6 +102,7 @@ is
         nmiCount            at 234  range 0..31;
         nmiInProgress       at 238  range 0..7;
         needReschedule      at 239  range 0..7;
+        fpuOwner            at 240  range 0..31;
     end record;
 
     -- If the secondary stack is used before per-CPU data is set up, this

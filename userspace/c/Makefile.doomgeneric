@@ -10,11 +10,13 @@ CC      = gcc
 LD      = ld
 AR      = ar
 AS      = gcc
+GNATCC  = $(HOME)/.local/share/alire/toolchains/gnat_native_15.2.1_4640d4b3/bin/gcc
 
 # Paths (relative to userspace/c/)
 DG_DIR     = doom_src/doomgeneric
 BUILDDIR   = doom_build
 INCLUDE    = include
+RUNTIME    = ../runtime
 
 # Compiler flags: freestanding, use our headers before system headers
 CFLAGS  = -ffreestanding -nostdlib -nostartfiles -fno-builtin \
@@ -22,18 +24,24 @@ CFLAGS  = -ffreestanding -nostdlib -nostartfiles -fno-builtin \
           -mcmodel=small -mno-red-zone \
           -isystem $(INCLUDE) -I$(DG_DIR) -I. \
           -std=c11 \
-          -DNORMALUNIX -D_DEFAULT_SOURCE \
+          -DNORMALUNIX -D_DEFAULT_SOURCE -DFEATURE_SOUND \
           -Wall -Wno-missing-field-initializers \
           -Wno-unused-parameter -Wno-unused-variable \
           -Wno-sign-compare -Wno-pointer-sign \
           -Wno-implicit-function-declaration \
           -O2
 
+# Ada compiler flags for freestanding code
+ADAFLAGS = -gnatA --RTS=$(RUNTIME) \
+           -g -fomit-frame-pointer -mno-red-zone -fno-pic \
+           -mno-sse -mno-sse2
+
 LDFLAGS = -nostdlib -static -T link.ld
 
 # CuBit C runtime (CRT + lib)
-CRT_OBJ  = build/crt0.o
+CRT_OBJ   = build/crt0.o
 CUBIT_LIB = build/libcubit.a
+ADA_LIB   = $(RUNTIME)/adalib/libgnat-user.a
 
 # DOOM source files (from doomgeneric Makefile, minus platform-specific ones)
 DOOM_SRCS = \
@@ -57,6 +65,10 @@ DOOM_OBJS = $(patsubst %.c,$(BUILDDIR)/%.o,$(DOOM_SRCS))
 
 # Platform glue (lives in userspace/c/, not in cloned doomgeneric repo)
 CUBIT_PLATFORM_OBJ = $(BUILDDIR)/doomgeneric_cubit.o
+
+# Sound module (C shim + Ada engine)
+CUBIT_SOUND_C_OBJ  = $(BUILDDIR)/doomgeneric_sound.o
+CUBIT_SOUND_ADA_OBJ = $(BUILDDIR)/cubit-doom_sound.o
 
 # CuBit libc stubs (printf, ctype, strdup, math, etc.)
 LIBC_STUBS_OBJ = $(BUILDDIR)/libc_stubs.o
@@ -86,9 +98,17 @@ $(CUBIT_PLATFORM_OBJ): doomgeneric_cubit.c cubit.h | $(BUILDDIR)
 $(LIBC_STUBS_OBJ): libc_stubs.c cubit.h | $(BUILDDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Link: CRT + DOOM objects + platform glue + libc stubs + cubit runtime
-$(OUTPUT): cubit_runtime $(DOOM_OBJS) $(CUBIT_PLATFORM_OBJ) $(LIBC_STUBS_OBJ)
-	$(LD) $(LDFLAGS) $(CRT_OBJ) $(DOOM_OBJS) $(CUBIT_PLATFORM_OBJ) $(LIBC_STUBS_OBJ) $(CUBIT_LIB) -o $@
+# Compile sound C shim
+$(CUBIT_SOUND_C_OBJ): doomgeneric_sound.c | $(BUILDDIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Compile Ada sound engine
+$(CUBIT_SOUND_ADA_OBJ): cubit-doom_sound.adb cubit-doom_sound.ads | $(BUILDDIR)
+	$(GNATCC) $(ADAFLAGS) -c cubit-doom_sound.adb -o $@
+
+# Link: CRT + DOOM + platform + sound + libc stubs + Ada runtime
+$(OUTPUT): cubit_runtime $(DOOM_OBJS) $(CUBIT_PLATFORM_OBJ) $(CUBIT_SOUND_C_OBJ) $(CUBIT_SOUND_ADA_OBJ) $(LIBC_STUBS_OBJ)
+	$(LD) $(LDFLAGS) $(CRT_OBJ) $(DOOM_OBJS) $(CUBIT_PLATFORM_OBJ) $(CUBIT_SOUND_C_OBJ) $(CUBIT_SOUND_ADA_OBJ) $(LIBC_STUBS_OBJ) $(CUBIT_LIB) $(ADA_LIB) -o $@
 	@echo "Built: $@"
 	@size $@ || true
 

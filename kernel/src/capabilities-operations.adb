@@ -186,14 +186,7 @@ is
                          param => 0),
             gen      => INITIAL_GENERATION);
 
-        -- Slot 2: Keyboard driver endpoint
-        table(2) := (
-            capType  => CAP_ENDPOINT,
-            rights   => READ_WRITE,
-            capBadge => pid,
-            object   => (ref => Unsigned_64(Config.SERVICE_KEYBOARD_PID),
-                         param => 0),
-            gen      => INITIAL_GENERATION);
+        -- Slot 2: Reserved (formerly kernel keyboard endpoint)
 
         -- Slot 3: Self process control
         table(3) := (

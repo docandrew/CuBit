@@ -70,7 +70,9 @@ with System.Storage_Elements; use System.Storage_Elements;
 with BootAllocator;
 with Config;
 with MemoryAreas;
+with Spinlocks;
 with Virtmem;
+with x86;
 
 package BuddyAllocator with
     SPARK_Mode => On
@@ -121,6 +123,10 @@ is
     -- Array of free lists for each order/block size
     ---------------------------------------------------------------------------
     freeLists : FreeListArray;
+
+    lockName : aliased String := "buddy";
+    lock : Spinlocks.Spinlock :=
+        (name => lockName'Access, others => <>);
 
     function "<" (Left : in System.Address; Right : System.Address) return Boolean;
     pragma Convention (Intrinsic, "<");
@@ -181,15 +187,19 @@ is
     -- use any memory < Config.MIN_PHYS_ALLOC.
     ---------------------------------------------------------------------------
     procedure setup (areas : in MemoryAreas.MemoryAreaArray) with
-        Global  => (In_Out      => (freeLists, BuddyAllocator.initialized),
-                    Input       => (BootAllocator.BitmapState,
-                                    Virtmem.MAX_PHYS_USABLE),
-                    Proof_In    => BootAllocator.initialized),
-        Depends => (freeLists   => (areas,
+        Global  => (In_Out      => (freeLists, BuddyAllocator.initialized,
                                     BootAllocator.BitmapState,
-                                    Virtmem.MAX_PHYS_USABLE),
-                    BuddyAllocator.initialized => null,
-                    null        => (freeLists, BuddyAllocator.initialized)),
+                                    x86.interruptsEnabled),
+                    Input       => Virtmem.MAX_PHYS_USABLE,
+                    Proof_In    => BootAllocator.initialized),
+        Depends => (freeLists                  => (areas,
+                                                   BootAllocator.BitmapState,
+                                                   Virtmem.MAX_PHYS_USABLE),
+                    BootAllocator.BitmapState   =>+ Virtmem.MAX_PHYS_USABLE,
+                    x86.interruptsEnabled       =>+ null,
+                    BuddyAllocator.initialized  => null,
+                    null                        => (freeLists,
+                                                   BuddyAllocator.initialized)),
         Pre     => BootAllocator.initialized,
         Post    => BuddyAllocator.initialized;
 
@@ -201,10 +211,13 @@ is
     --  NO_BLOCK_AVAILABLE if no blocks of suitable size were found.
     ---------------------------------------------------------------------------
     procedure alloc (ord : in Order; addr : out System.Address) with
-        Global  => (In_Out      => freeLists,
+        Global  => (In_Out      => (freeLists, lock,
+                                    x86.interruptsEnabled),
                     Proof_In    => BuddyAllocator.initialized),
-        Depends => (addr        => (ord, freeLists),
-                    freeLists   => (ord, freeLists)),
+        Depends => (addr                    => (ord, freeLists),
+                    freeLists               => (ord, freeLists),
+                    lock                    =>+ null,
+                    x86.interruptsEnabled   =>+ null),
         Pre     => BuddyAllocator.initialized and ord < Order'Last,
         Post    => isValidBlock (ord, addr);
 
@@ -215,10 +228,13 @@ is
     -- @param addr - output address returned by this function, 0 if unsuccessful.
     ---------------------------------------------------------------------------
     procedure allocFrame (addr : out Virtmem.PhysAddress) with
-        Global  => (In_Out      => freeLists,
+        Global  => (In_Out      => (freeLists, lock,
+                                    x86.interruptsEnabled),
                     Proof_In    => BuddyAllocator.initialized),
-        Depends => (addr        => (freeLists),
-                    freeLists   => (freeLists)),
+        Depends => (addr                    => (freeLists),
+                    freeLists               => (freeLists),
+                    lock                    =>+ null,
+                    x86.interruptsEnabled   =>+ null),
         Pre     => BuddyAllocator.initialized,
         Post    => isValidBlock (0, To_Address(addr));
 
@@ -229,9 +245,12 @@ is
     -- @param addr - address of the _original allocation_
     ---------------------------------------------------------------------------
     procedure free (ord : in Order; addr : in System.Address) with
-        Global  => (In_Out      => freeLists,
+        Global  => (In_Out      => (freeLists, lock,
+                                    x86.interruptsEnabled),
                     Proof_In    => BuddyAllocator.initialized),
-        Depends => (freeLists   => (ord, addr, freeLists)),
+        Depends => (freeLists               => (ord, addr, freeLists),
+                    lock                    =>+ null,
+                    x86.interruptsEnabled   =>+ null),
         Pre     => isValidBlock(ord, addr) and BuddyAllocator.initialized and
                    ord < Order'Last;
 
@@ -242,9 +261,12 @@ is
     -- @param addr - address of the _original allocation_
     ---------------------------------------------------------------------------
     procedure freeFrame (addr : in Virtmem.PhysAddress) with
-        Global  => (In_Out      => freeLists,
+        Global  => (In_Out      => (freeLists, lock,
+                                    x86.interruptsEnabled),
                     Proof_In    => BuddyAllocator.initialized),
-        Depends => (freeLists   => (addr, freeLists)),
+        Depends => (freeLists               => (addr, freeLists),
+                    lock                    =>+ null,
+                    x86.interruptsEnabled   =>+ null),
         Pre     => isValidBlock(0, To_Address(addr)) and BuddyAllocator.initialized;
 
     ---------------------------------------------------------------------------

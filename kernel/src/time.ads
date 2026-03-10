@@ -24,7 +24,7 @@ is
     ---------------------------------------------------------------------------
     -- msTicks is a running count, updated by the interruptHandler.
     ---------------------------------------------------------------------------
-    msTicks             : Unsigned_64 := 0;
+    msTicks             : Unsigned_64 := 0 with Volatile;
 
     ---------------------------------------------------------------------------
     -- TSC ticks per time duration

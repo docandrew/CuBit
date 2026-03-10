@@ -33,7 +33,8 @@ package Process.Loader is
                    size         : System.Storage_Elements.Storage_Count;
                    strAddr      : System.Address;
                    requestedPID : ProcessID := NO_PROCESS;
-                   priority     : ProcessPriority := 1) return ProcessID
+                   priority     : ProcessPriority := 1;
+                   ppid         : ProcessID := NO_PROCESS) return ProcessID
         with SPARK_Mode => On;
 
 end Process.Loader;

@@ -166,6 +166,25 @@ is
     ---------------------------------------------------------------------------
     procedure unmapKernelMemFromProcess (procP4 : in out Virtmem.P4);
 
+    ---------------------------------------------------------------------------
+    -- createGuardPage - unmap a single 4KB page from the kernel's
+    -- linear-mapped region so that accesses fault. If the page falls within
+    -- a 2MB big page, the big page is split into 512 individual 4KB
+    -- mappings first. Used to create guard pages below kernel stacks.
+    --
+    -- @param physAddr - physical address of the page to unmap
+    ---------------------------------------------------------------------------
+    procedure createGuardPage (physAddr : in Virtmem.PhysAddress);
+
+    ---------------------------------------------------------------------------
+    -- removeGuardPage - restore a previously unmapped guard page so the
+    -- buddy allocator can reuse the frame. Must be called before freeing
+    -- the underlying frame.
+    --
+    -- @param physAddr - physical address of the page to remap
+    ---------------------------------------------------------------------------
+    procedure removeGuardPage (physAddr : in Virtmem.PhysAddress);
+
 private
     ---------------------------------------------------------------------------
     -- determineFlagsAndMapFrame

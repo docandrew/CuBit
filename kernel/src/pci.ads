@@ -286,6 +286,37 @@ is
                           offset : in Unsigned_8) return Unsigned_8;
 
     ---------------------------------------------------------------------------
+    -- writeConfig32 - write a 32-bit value to the PCI configuration space
+    -- @param offset - must be 32-bit aligned (bottom 2 bits = 0)
+    ---------------------------------------------------------------------------
+    procedure writeConfig32 (bus    : in PCIBusNum;
+                             slot   : in PCISlotNum;
+                             func   : in PCIFunctionNum;
+                             offset : in Unsigned_8;
+                             val    : in Unsigned_32) with
+        Pre => (offset and 3) = 0;
+
+    ---------------------------------------------------------------------------
+    -- writeConfig16 - write a 16-bit word to the PCI configuration space
+    -- @param offset - must be 16-bit aligned (bottom bit = 0)
+    ---------------------------------------------------------------------------
+    procedure writeConfig16 (bus    : in PCIBusNum;
+                             slot   : in PCISlotNum;
+                             func   : in PCIFunctionNum;
+                             offset : in Unsigned_8;
+                             val    : in Unsigned_16) with
+        Pre => (offset and 1) = 0;
+
+    ---------------------------------------------------------------------------
+    -- writeConfig8 - write a byte to the PCI configuration space
+    ---------------------------------------------------------------------------
+    procedure writeConfig8 (bus    : in PCIBusNum;
+                            slot   : in PCISlotNum;
+                            func   : in PCIFunctionNum;
+                            offset : in Unsigned_8;
+                            val    : in Unsigned_8);
+
+    ---------------------------------------------------------------------------
     -- enumerateDevices - dump the configuration space of all PCI devices
     -- found on this computer.
     ---------------------------------------------------------------------------

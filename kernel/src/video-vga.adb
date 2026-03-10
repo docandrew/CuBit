@@ -342,7 +342,7 @@ package body Video.VGA is
         -- bytesPerRow : Storage_Offset := bpp * Storage_Offset(w);
 
         bb : Storage_Array(0..framebufferSize-1)
-            with Import, Address => backbufferAddr;
+            with Import, Volatile, Address => backbufferAddr;
 
         i  : Storage_Offset := getOffset (x, y);
     begin
@@ -390,7 +390,7 @@ package body Video.VGA is
         use System.Storage_Elements;
 
         bb : Storage_Array(0..framebufferSize-1)
-            with Import, Address => backbufferAddr;
+            with Import, Volatile, Address => backbufferAddr;
 
         idx : Storage_Offset := 0;
     begin

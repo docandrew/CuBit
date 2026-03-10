@@ -15,12 +15,12 @@ package body ATA_PIO is
    procedure outb (port : Unsigned_16; val : Unsigned_8) is
       ignore : Unsigned_64;
    begin
-      ignore := portOut8 (port, val);
+      ignore := portOutp8 (port, val);
    end outb;
 
    function inb (port : Unsigned_16) return Unsigned_8 is
    begin
-      return Unsigned_8 (portIn8 (port) and 16#FF#);
+      return Unsigned_8 (portInp8 (port) and 16#FF#);
    end inb;
 
    procedure ins16 (port : Unsigned_16;
@@ -28,7 +28,7 @@ package body ATA_PIO is
                     count : Unsigned_32) is
       ignore : Unsigned_64;
    begin
-      ignore := portIns16 (port, addr, count);
+      ignore := portInps16 (port, addr, count);
    end ins16;
 
    --  Wait for BSY to clear

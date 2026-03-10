@@ -156,6 +156,30 @@ package body CuBit.Messages is
       return (ret = 1);
    end submit;
 
+   --  waitCompletion
+   --  WAIT_COMPLETION: RDI=pointer to buffer, RSI=maxEntries, RDX=minWait
+   --  Returns: RAX=numReturned
+
+   function waitCompletion
+     (entries : System.Address;
+      max     : Unsigned_64;
+      min     : Unsigned_64) return Unsigned_64
+   is
+   begin
+      return syscall (SYSCALL_WAIT_COMPLETION, toNum (entries), max, min);
+   end waitCompletion;
+
+   --  pollCompletion
+   --  POLL_COMPLETION: RDI=pointer to CompletionEntry
+   --  Returns: RAX=1 if found, 0 if empty
+
+   function pollCompletion
+     (result : System.Address) return Unsigned_64
+   is
+   begin
+      return syscall (SYSCALL_POLL_COMPLETION, toNum (result));
+   end pollCompletion;
+
    --  capSend
    --  CAP_SEND: RDI=cap_slot, RSI=tag, RDX=w0, R10=w1, R8=w2, R9=w3
    --  Returns: reply tag in RAX
@@ -382,40 +406,105 @@ package body CuBit.Messages is
 
    --  Port I/O wrappers
 
-   function portIn8 (port : Unsigned_16) return Unsigned_64 is
+   function portInp8 (port : Unsigned_16) return Unsigned_64 is
    begin
-      return syscall (SYSCALL_INB, Unsigned_64 (port));
-   end portIn8;
+      return syscall (SYSCALL_INP8, Unsigned_64 (port));
+   end portInp8;
 
-   function portOut8
+   function portOutp8
      (port : Unsigned_16; val : Unsigned_8) return Unsigned_64
    is
    begin
-      return syscall (SYSCALL_OUTB, Unsigned_64 (port), Unsigned_64 (val));
-   end portOut8;
+      return syscall (SYSCALL_OUTP8, Unsigned_64 (port), Unsigned_64 (val));
+   end portOutp8;
 
-   function portIn16 (port : Unsigned_16) return Unsigned_64 is
+   function portInp16 (port : Unsigned_16) return Unsigned_64 is
    begin
-      return syscall (SYSCALL_INW, Unsigned_64 (port));
-   end portIn16;
+      return syscall (SYSCALL_INP16, Unsigned_64 (port));
+   end portInp16;
 
-   function portOut16
+   function portOutp16
      (port : Unsigned_16; val : Unsigned_16) return Unsigned_64
    is
    begin
-      return syscall (SYSCALL_OUTW, Unsigned_64 (port), Unsigned_64 (val));
-   end portOut16;
+      return syscall (SYSCALL_OUTP16, Unsigned_64 (port), Unsigned_64 (val));
+   end portOutp16;
 
-   function portIns16
+   function portInps16
      (port  : Unsigned_16;
       addr  : System.Address;
       count : Unsigned_32) return Unsigned_64
    is
    begin
-      return syscall (SYSCALL_INS16,
+      return syscall (SYSCALL_INPS16,
                       Unsigned_64 (port),
                       toNum (addr),
                       Unsigned_64 (count));
-   end portIns16;
+   end portInps16;
+
+   function portInp32 (port : Unsigned_16) return Unsigned_64 is
+   begin
+      return syscall (SYSCALL_INP32, Unsigned_64 (port));
+   end portInp32;
+
+   function portOutp32
+     (port : Unsigned_16; val : Unsigned_32) return Unsigned_64
+   is
+   begin
+      return syscall (SYSCALL_OUTP32, Unsigned_64 (port), Unsigned_64 (val));
+   end portOutp32;
+
+   function virtToPhys (addr : System.Address) return Unsigned_64 is
+   begin
+      return syscall (SYSCALL_VIRT_TO_PHYS, toNum (addr));
+   end virtToPhys;
+
+   --  Device manager wrappers
+
+   function allocDma
+     (targetPID : Unsigned_64;
+      order     : Unsigned_64;
+      virtBase  : Unsigned_64) return Unsigned_64
+   is
+   begin
+      return syscall (SYSCALL_ALLOC_DMA, targetPID, order, virtBase);
+   end allocDma;
+
+   function enableIrq
+     (vector    : Unsigned_64;
+      ownerPID  : Unsigned_64;
+      targetCPU : Unsigned_64) return Unsigned_64
+   is
+   begin
+      return syscall (SYSCALL_ENABLE_IRQ, vector, ownerPID, targetCPU);
+   end enableIrq;
+
+   function mapInto
+     (targetPID : Unsigned_64;
+      physAddr  : Unsigned_64;
+      virtAddr  : Unsigned_64;
+      numPages  : Unsigned_64;
+      flags     : Unsigned_64) return Unsigned_64
+   is
+   begin
+      return syscall (SYSCALL_MAP_INTO,
+                      targetPID, physAddr, virtAddr, numPages, flags);
+   end mapInto;
+
+   function setSysinfo
+     (queryID : Unsigned_64;
+      value   : Unsigned_64) return Unsigned_64
+   is
+   begin
+      return syscall (SYSCALL_SET_SYSINFO, queryID, value);
+   end setSysinfo;
+
+   function setCpu
+     (targetPID : Unsigned_64;
+      cpu       : Unsigned_64) return Unsigned_64
+   is
+   begin
+      return syscall (SYSCALL_SET_CPU, targetPID, cpu);
+   end setCpu;
 
 end CuBit.Messages;

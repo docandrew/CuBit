@@ -33,6 +33,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with Interfaces; use Interfaces;
 
 with Capabilities;
+with Config;
 with Descriptors;
 with LinkedLists;
 limited with Process.Queues;
@@ -175,7 +176,7 @@ is
         canary          : Unsigned_64 := KSTACK_CANARY;
         filler          : PKStackFiller;
         context         : SavedState;       -- used in switch
-        returnAddress   : System.Address;   -- when switch returns the first 
+        returnAddress   : System.Address;   -- when switch returns the first
                                             -- time, it returns here
         interruptFrame  : Stackframe.InterruptStackFrame;
     end record with Size => virtmem.FRAME_SIZE * 8;
@@ -197,13 +198,10 @@ is
         tail : ProcessID;
     end record;
 
-    -- @TODO move to a per-CPU ready list.
-    readyListLockName : aliased String := "Ready List";
-    readyList : ProcQueue := (
-        lock => (name => readyListLockName'Access, others => <>),
-        head => NO_PROCESS,
-        tail => NO_PROCESS
-    );
+    -- Per-CPU ready lists. Each CPU dequeues from its own list.
+    cpuReadyLists : array (0..Config.MAX_SMP_CPUS - 1) of ProcQueue :=
+        (others => (lock => (name => null, others => <>),
+                    head => NO_PROCESS, tail => NO_PROCESS));
 
     sleepListLockName : aliased String := "Sleep List";
     sleepList : ProcQueue := (
@@ -415,6 +413,7 @@ is
         isThread            : Boolean := False;
         pid                 : ProcessID;        -- Index into the proctab
         ppid                : ProcessID;        -- Parent process ID
+        svpid               : ProcessID := NO_PROCESS;  -- Supervisor PID
 
         name                : ProcessName;
         state               : ProcessState := SUSPENDED;
@@ -427,6 +426,10 @@ is
         context             : System.Address;   -- Pointer to the saved state
 
         kernelStack         : ProcessKernelStackPtr;
+
+        -- Physical address of the guard page below this process' kernel
+        -- stack. Zero if no guard page (shouldn't happen after creation).
+        guardPage           : Virtmem.PhysAddress := 0;
 
         frames              : FrameLists.List;
         numStackFrames      : Natural := 0;
@@ -476,6 +479,9 @@ is
         workingDirectory    : Unsigned_64;          --@TODO make this VFS Inode
         -- workingDevice       : Devices.DeviceID;     --@TODO make this drive letter
         fpu                 : System.Address := System.Null_Address;
+
+        -- Home CPU for scheduling (process always runs on this CPU)
+        cpu                 : Natural := 0;
     end record;
 
     -- Lock for protecting the proctab
@@ -541,7 +547,8 @@ is
     procedure startKernelThread (procStart  : in System.Address;
                                  name       : in ProcessName;
                                  pid        : in ProcessID;
-                                 priority   : in ProcessPriority)
+                                 priority   : in ProcessPriority;
+                                 homeCPU    : in Natural := 0)
         with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
@@ -568,8 +575,8 @@ is
     ---------------------------------------------------------------------------
     -- create:
     --
-    -- Creates a new process or thread in the SUSPENDED state. This function
-    -- does NOT add the process to the proctab.
+    -- Creates a new process or thread in the SUSPENDED state. Writes
+    -- directly to proctab(pid) to avoid large stack allocations.
     --
     -- @param procStart - the virtual process address where execution should
     --  start.
@@ -580,9 +587,8 @@ is
     -- @param thread - If true, this process will share an address space with
     --  the parent process (given via ppid). Ensure procStack is set up
     --  appropriately.
-    -- @return : new process with a unique PID. If the PID of the returned
-    --  process is 0, the process is invalid, perhaps due to PID exhaustion or
-    --  a failure to allocate memory for page tables.
+    -- @return : new ProcessID. If the returned PID is 0, creation failed,
+    --  perhaps due to PID exhaustion or a failure to allocate memory.
     --
     -- @TODO add an error code so it's apparent why process creation failed.
     ---------------------------------------------------------------------------
@@ -592,7 +598,7 @@ is
                      priority     : in ProcessPriority;
                      procStack    : in System.Address;
                      thread       : in Boolean := False;
-                     requestedPID : in ProcessID := NO_PROCESS) return Process
+                     requestedPID : in ProcessID := NO_PROCESS) return ProcessID
         with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
@@ -639,10 +645,10 @@ is
     procedure resume (pid : ProcessID) with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
-    -- inform
-    -- Move the given PID from WAITINGFOREVENT to READY state
+    -- notify
+    -- Wake a blocked process by moving it to READY state
     ---------------------------------------------------------------------------
-    procedure inform (pid : ProcessID) with SPARK_Mode => On;
+    procedure notify (pid : ProcessID) with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- sleep
@@ -727,6 +733,21 @@ is
     -- Turn on FPU state saving/restoring for this process.
     ---------------------------------------------------------------------------
     procedure enableFPU with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- disableFPU
+    -- Set CR0.TS to trap FPU/SSE usage (#NM), enabling lazy context switch.
+    ---------------------------------------------------------------------------
+    procedure disableFPU with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- directSwitch
+    -- Direct context switch from one process to another without going through
+    -- the scheduler. Used by IPC fast path for send→receive and reply→sender.
+    -- Caller MUST hold Process.lock before calling.
+    ---------------------------------------------------------------------------
+    procedure directSwitch (fromPID : ProcessID; toPID : ProcessID)
+        with SPARK_Mode => Off;
 
     ---------------------------------------------------------------------------
     -- saveFPUState

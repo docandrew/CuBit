@@ -61,7 +61,7 @@ is
         IOWIN           at 16#10# range 0..31;
     end record;
 
-    ioapic : IOAPICStruct with Import, Address => baseAddr;
+    ioapic : IOAPICStruct with Import, Volatile, Address => baseAddr;
 
     --function read(index : in IOAPICAddress) return Unsigned_32;    
     --procedure write(index : in IOAPICAddress, val : in Unsigned_32);

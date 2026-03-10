@@ -12,7 +12,7 @@
 -- Lock ordering (acquire in this order, never reverse):
 --   1. mailtab(pid).lock    (per-mailbox, also protects completionTab(pid))
 --   2. Process.lock         (global process table)
---   3. readyList.lock       (scheduler)
+--   3. cpuReadyLists.lock   (per-CPU scheduler)
 --   4. sleepList.lock       (sleep queue)
 -------------------------------------------------------------------------------
 with Capabilities;
@@ -254,6 +254,27 @@ is
     -- @return the notification word value (0 if no notification pending).
     ---------------------------------------------------------------------------
     function notifyPoll return Unsigned_64
+        with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- Supervisor Notification
+    ---------------------------------------------------------------------------
+
+    ---------------------------------------------------------------------------
+    -- notifySupervisor
+    -- Send a non-blocking fault event to the supervisor of the given process.
+    -- Safe to call before acquiring Process.lock (respects lock ordering).
+    -- @param pid        - offending process
+    -- @param faultLabel - EVENT_CAP_FAULT or EVENT_PROCESS_FAULT
+    -- @param detail0    - syscall number or exception vector
+    -- @param detail1    - what was attempted (arg0 or fault address)
+    -- @param detail2    - additional context (arg1 or RIP)
+    ---------------------------------------------------------------------------
+    procedure notifySupervisor (pid        : ProcessID;
+                                faultLabel : Unsigned_32;
+                                detail0    : Unsigned_64;
+                                detail1    : Unsigned_64;
+                                detail2    : Unsigned_64)
         with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------

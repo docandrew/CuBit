@@ -6,13 +6,20 @@ with Ada.Unchecked_Conversion;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
 
+with acpi;
 with BuddyAllocator;
 with Capabilities;
+with Capabilities.IRQ;
 with Capabilities.Operations;
+with InterruptNumbers;
+with IPC_Labels;
+with ELF;
+with Interrupts;
 with Mem_mgr;
 with PerCpuData;
 with Process;
 with Process.IPC;
+with Process.Loader;
 with Sysinfo;
 with TextIO; use TextIO;
 with Time;
@@ -23,6 +30,7 @@ with x86;
 
 -- Bring operators into scope for syscall dispatch
 use type Process.MessageTag;
+use type Process.ProcessMode;
 use type Capabilities.Operations.OperationStatus;
 
 package body Syscall is
@@ -118,6 +126,346 @@ package body Syscall is
     end write;
 
     ---------------------------------------------------------------------------
+    -- handleSpawn
+    -- Extracted to its own procedure to keep Process.Loader.load's deep
+    -- call chain off syscallHandler's stack frame.
+    ---------------------------------------------------------------------------
+    procedure handleSpawn (callerPID : Process.ProcessID;
+                           arg0      : Unsigned_64;
+                           arg1      : Unsigned_64;
+                           arg2      : Unsigned_64;
+                           arg3      : Unsigned_64;
+                           arg4      : Unsigned_64;
+                           arg5      : Unsigned_64;
+                           retval    : out Unsigned_64) with
+        SPARK_Mode => Off   -- Import overlay
+    is
+        use type ELF.SegmentType;
+        use type Capabilities.CapabilityType;
+
+        function toErr is
+            new Ada.Unchecked_Conversion (Long_Integer, Unsigned_64);
+        reterr : constant Unsigned_64 := toErr (-1);
+
+        hasCap   : Boolean := False;
+        elfAddr  : constant System.Address := Util.numToAddr (arg0);
+        elfSize  : constant Storage_Count := Storage_Count (arg1);
+        priority : Process.ProcessPriority;
+        elfHeader : ELF.ELFFileHeader with Import, Address => elfAddr;
+        spawnName : aliased constant String := "spawned" & ASCII.NUL;
+        newPID   : Process.ProcessID;
+        reqPID   : Process.ProcessID := Process.NO_PROCESS;
+    begin
+        retval := reterr;
+
+        for slot in Capabilities.CapabilitySlot loop
+            if Process.proctab(callerPID).caps(slot).capType =
+               Capabilities.CAP_PROCESS and then
+               Process.proctab(callerPID).caps(slot).rights(
+                   Capabilities.RIGHT_EXECUTE)
+            then
+                hasCap := True;
+                exit;
+            end if;
+        end loop;
+
+        if not hasCap then
+            println ("SPAWN: denied, no CAP_PROCESS/EXECUTE");
+            return;
+        elsif elfSize < 64 then
+            println ("SPAWN: ELF too small");
+            return;
+        elsif not Process.Loader.isValidELF (elfHeader) then
+            println ("SPAWN: invalid ELF header");
+            return;
+        end if;
+
+        if arg2 > 10 then
+            priority := 5;
+        elsif arg2 = 0 then
+            priority := 1;
+        else
+            priority := Process.ProcessPriority (arg2);
+        end if;
+
+        if arg4 > 0 and arg4 <= Unsigned_64 (Process.ProcessID'Last) then
+            reqPID := Process.ProcessID (arg4);
+        end if;
+
+        newPID := Process.Loader.load (
+            elfHeader    => elfHeader,
+            objStart     => elfAddr,
+            size         => elfSize,
+            strAddr      => spawnName'Address,
+            requestedPID => reqPID,
+            priority     => priority,
+            ppid         => Process.ProcessID (arg5 and 16#FF#));
+
+        if newPID = Process.NO_PROCESS then
+            println ("SPAWN: load failed");
+            return;
+        end if;
+
+        if (arg3 and 1) = 0 then
+            Process.resume (newPID);
+            print ("SPAWN: started PID ");
+        else
+            print ("SPAWN: created suspended PID ");
+        end if;
+        println (Integer (newPID));
+        retval := Unsigned_64 (newPID);
+    end handleSpawn;
+
+    ---------------------------------------------------------------------------
+    -- handleMapDevice
+    -- Extracted to its own procedure to keep mapPage instantiation off
+    -- syscallHandler's stack frame.
+    ---------------------------------------------------------------------------
+    procedure handleMapDevice (callerPID : Process.ProcessID;
+                               arg0      : Unsigned_64;
+                               arg1      : Unsigned_64;
+                               arg2      : Unsigned_64;
+                               retval    : out Unsigned_64) with
+        SPARK_Mode => Off   -- generic instantiation
+    is
+        function toErr is
+            new Ada.Unchecked_Conversion (Long_Integer, Unsigned_64);
+        reterr : constant Unsigned_64 := toErr (-1);
+
+        procedure mapPageInst is new Virtmem.mapPage
+            (BuddyAllocator.allocFrame);
+
+        physAddr : constant Virtmem.PhysAddress :=
+            Virtmem.PhysAddress (arg0);
+        virtAddr : constant Integer_Address := Integer_Address (arg1);
+        numPages : constant Unsigned_64 := arg2;
+        capAllowed : Boolean;
+        ok : Boolean := True;
+    begin
+        retval := reterr;
+
+        if numPages = 0 or numPages > 1024 then
+            return;
+        end if;
+
+        Capabilities.Operations.checkDeviceMemAccess (
+            table   => Process.proctab(callerPID).caps,
+            base    => arg0,
+            size    => numPages * Unsigned_64 (Virtmem.PAGE_SIZE),
+            allowed => capAllowed);
+
+        if not capAllowed then
+            println ("MAP_DEVICE: denied, no CAP_DEVICE_MEM");
+            return;
+        end if;
+
+        for i in 0 .. numPages - 1 loop
+            declare
+                pageOk : Boolean;
+            begin
+                mapPageInst (
+                    phys    => physAddr +
+                        Virtmem.PhysAddress (
+                            i * Unsigned_64 (Virtmem.PAGE_SIZE)),
+                    virt    => virtAddr +
+                        Integer_Address (
+                            i * Unsigned_64 (Virtmem.PAGE_SIZE)),
+                    flags   => Virtmem.PG_USERIO,
+                    myP4    => Process.addrtab(callerPID),
+                    success => pageOk);
+                if not pageOk then
+                    ok := False;
+                end if;
+            end;
+        end loop;
+
+        if ok then
+            retval := 0;
+        end if;
+    end handleMapDevice;
+
+    ---------------------------------------------------------------------------
+    -- handleAllocDma
+    -- Extracted to its own procedure to avoid inflating syscallHandler's
+    -- stack frame with mapPage generic instantiation + locals.
+    ---------------------------------------------------------------------------
+    procedure handleAllocDma (callerPID : Process.ProcessID;
+                              arg0      : Unsigned_64;
+                              arg1      : Unsigned_64;
+                              arg2      : Unsigned_64;
+                              retval    : out Unsigned_64) with
+        SPARK_Mode => Off   -- generic instantiation
+    is
+        use type Capabilities.CapabilityType;
+        use type Process.ProcessState;
+
+        function toErr is
+            new Ada.Unchecked_Conversion (Long_Integer, Unsigned_64);
+        reterr : constant Unsigned_64 := toErr (-1);
+
+        targetPID : Process.ProcessID;
+        hasCap    : Boolean := False;
+        order     : BuddyAllocator.Order;
+        dmaAddr   : System.Address;
+        dmaPhys   : Virtmem.PhysAddress;
+        virtBase  : Virtmem.VirtAddress;
+        ok        : Boolean;
+
+        procedure mapPage is new Virtmem.mapPage
+            (BuddyAllocator.allocFrame);
+    begin
+        retval := reterr;
+
+        if arg0 > Unsigned_64 (Process.ProcessID'Last) or arg0 = 0 then
+            return;
+        elsif arg1 >= Unsigned_64 (BuddyAllocator.Order'Last) then
+            println ("ALLOC_DMA: order too large");
+            return;
+        end if;
+
+        targetPID := Process.ProcessID (arg0);
+        order := BuddyAllocator.Order (arg1);
+        virtBase := Virtmem.VirtAddress (arg2);
+
+        for slot in Capabilities.CapabilitySlot loop
+            if Process.proctab(callerPID).caps(slot).capType =
+               Capabilities.CAP_PROCESS and then
+               Process.proctab(callerPID).caps(slot).rights(
+                   Capabilities.RIGHT_GRANT)
+            then
+                hasCap := True;
+                exit;
+            end if;
+        end loop;
+
+        if not hasCap then
+            println ("ALLOC_DMA: denied, no RIGHT_GRANT");
+            return;
+        elsif Process.proctab(targetPID).state = Process.INVALID then
+            println ("ALLOC_DMA: target not valid");
+            return;
+        end if;
+
+        BuddyAllocator.alloc (order, dmaAddr);
+
+        if System."=" (dmaAddr, BuddyAllocator.NO_BLOCK_AVAILABLE) then
+            println ("ALLOC_DMA: alloc failed");
+            return;
+        end if;
+
+        dmaPhys := Virtmem.V2P (dmaAddr);
+        declare
+            numPages : constant Natural := 2 ** Natural (order);
+        begin
+            for i in 0 .. numPages - 1 loop
+                mapPage (
+                    phys    => dmaPhys +
+                        Virtmem.PhysAddress (i * Virtmem.PAGE_SIZE),
+                    virt    => virtBase +
+                        Virtmem.VirtAddress (i * Virtmem.PAGE_SIZE),
+                    flags   => Virtmem.PG_USERDATA,
+                    myP4    => Process.addrtab (targetPID),
+                    success => ok);
+
+                if not ok then
+                    print ("ALLOC_DMA: map fail pg ");
+                    println (i);
+                    return;
+                end if;
+            end loop;
+
+            retval := Unsigned_64 (dmaPhys);
+        end;
+    end handleAllocDma;
+
+    ---------------------------------------------------------------------------
+    -- handleMapInto
+    -- Extracted to its own procedure to avoid inflating syscallHandler's
+    -- stack frame with mapPage generic instantiation + locals.
+    ---------------------------------------------------------------------------
+    procedure handleMapInto (callerPID : Process.ProcessID;
+                             arg0      : Unsigned_64;
+                             arg1      : Unsigned_64;
+                             arg2      : Unsigned_64;
+                             arg3      : Unsigned_64;
+                             arg4      : Unsigned_64;
+                             retval    : out Unsigned_64) with
+        SPARK_Mode => Off   -- generic instantiation
+    is
+        use type Capabilities.CapabilityType;
+        use type Process.ProcessState;
+
+        function toErr is
+            new Ada.Unchecked_Conversion (Long_Integer, Unsigned_64);
+        reterr : constant Unsigned_64 := toErr (-1);
+
+        targetPID : Process.ProcessID;
+        hasCap    : Boolean := False;
+        ok        : Boolean;
+        pgFlags   : Unsigned_64;
+
+        procedure mapPage is new Virtmem.mapPage
+            (BuddyAllocator.allocFrame);
+    begin
+        retval := reterr;
+
+        if arg0 > Unsigned_64 (Process.ProcessID'Last) or arg0 = 0 then
+            return;
+        elsif arg3 > 1024 then
+            println ("MAP_INTO: too many pages");
+            return;
+        end if;
+
+        targetPID := Process.ProcessID (arg0);
+
+        for slot in Capabilities.CapabilitySlot loop
+            if Process.proctab(callerPID).caps(slot).capType =
+               Capabilities.CAP_PROCESS and then
+               Process.proctab(callerPID).caps(slot).rights(
+                   Capabilities.RIGHT_GRANT)
+            then
+                hasCap := True;
+                exit;
+            end if;
+        end loop;
+
+        if not hasCap then
+            println ("MAP_INTO: denied, no RIGHT_GRANT");
+            return;
+        elsif Process.proctab(targetPID).state = Process.INVALID then
+            println ("MAP_INTO: target not valid");
+            return;
+        end if;
+
+        case arg4 is
+            when 0 => pgFlags := Virtmem.PG_USERDATA;
+            when 1 => pgFlags := Virtmem.PG_USERDATARO;
+            when 2 => pgFlags := Virtmem.PG_USERIO;
+            when others => pgFlags := Virtmem.PG_USERDATA;
+        end case;
+
+        ok := True;
+        for i in 0 .. Natural (arg3) - 1 loop
+            mapPage (
+                phys    => Virtmem.PhysAddress (arg1) +
+                    Virtmem.PhysAddress (i * Virtmem.PAGE_SIZE),
+                virt    => Virtmem.VirtAddress (arg2) +
+                    Virtmem.VirtAddress (i * Virtmem.PAGE_SIZE),
+                flags   => pgFlags,
+                myP4    => Process.addrtab (targetPID),
+                success => ok);
+
+            if not ok then
+                print ("MAP_INTO: map fail page ");
+                println (i);
+                return;
+            end if;
+        end loop;
+
+        retval := 0;
+    end handleMapInto;
+
+    ---------------------------------------------------------------------------
     -- We get parameters passed here using the SysV ABI
     ---------------------------------------------------------------------------
     function syscallHandler (arg0,   -- rdi
@@ -132,7 +480,7 @@ package body Syscall is
         oldCR3 : Integer_Address;
 
         percpu : PerCPUData.PerCPUData with
-            Import, Address => PerCPUData.getPerCPUDataAddr;
+            Import, Volatile, Address => PerCPUData.getPerCPUDataAddr;
 
         retval  : Unsigned_64 := 0;
         retval2 : Unsigned_64 := 0;
@@ -375,18 +723,68 @@ package body Syscall is
                     retval := reterr;
                 else
                     sendEventHandler : declare
+                        use type Capabilities.CapabilityType;
                         function u64ToTag is new Ada.Unchecked_Conversion
                             (Unsigned_64, Process.MessageTag);
 
+                        callerPID : constant Process.ProcessID :=
+                            percpu.currentPID;
+                        destPID : constant Process.ProcessID :=
+                            Process.ProcessID (arg0);
+                        hasCap  : Boolean := False;
                         eventMsg : constant Process.Message := (
                             tag      => u64ToTag (arg1),
                             capBadge => 0,
                             words    => (arg2, arg3, arg4, arg5));
                     begin
-                        Process.IPC.sendEvent (
-                            dest => Process.ProcessID(arg0),
-                            msg  => eventMsg);
-                        retval := 1;
+                        -- Kernel-mode threads are exempt
+                        if Process.proctab(callerPID).mode =
+                           Process.KERNEL
+                        then
+                            hasCap := True;
+                        end if;
+
+                        -- CAP_IRQ holders are hardware drivers that
+                        -- forward events to consumers by definition.
+                        if not hasCap then
+                            for slot in Capabilities.CapabilitySlot loop
+                                if Process.proctab(callerPID).caps(slot).capType =
+                                   Capabilities.CAP_IRQ
+                                then
+                                    hasCap := True;
+                                    exit;
+                                end if;
+                            end loop;
+                        end if;
+
+                        if not hasCap then
+                            for slot in Capabilities.CapabilitySlot loop
+                                if Process.proctab(callerPID).caps(slot).capType =
+                                   Capabilities.CAP_ENDPOINT and then
+                                   Process.proctab(callerPID).caps(slot).object.ref =
+                                   Unsigned_64 (destPID) and then
+                                   Process.proctab(callerPID).caps(slot).rights(
+                                       Capabilities.RIGHT_WRITE)
+                                then
+                                    hasCap := True;
+                                    exit;
+                                end if;
+                            end loop;
+                        end if;
+
+                        if not hasCap then
+                            Process.IPC.notifySupervisor (
+                                callerPID,
+                                IPC_Labels.EVENT_CAP_FAULT,
+                                SYSCALL_SEND_EVENT,
+                                arg0, 0);
+                            retval := reterr;
+                        else
+                            Process.IPC.sendEvent (
+                                dest => destPID,
+                                msg  => eventMsg);
+                            retval := 1;
+                        end if;
                     end sendEventHandler;
                 end if;
 
@@ -471,7 +869,6 @@ package body Syscall is
             -- Returns: RAX=count
             when SYSCALL_WAIT_COMPLETION =>
                 waitCompletionHandler : declare
-                    entries : Process.CompletionRing;
                     numReturned : Natural;
                     userBuf : Process.CompletionRing with
                         Import, Address => Util.numToAddr(arg0);
@@ -490,16 +887,12 @@ package body Syscall is
                         effectiveMin := Natural(arg2);
                     end if;
 
+                    -- Write directly to user buffer to avoid 4KB stack copy
                     Process.IPC.waitCompletion (
-                        entries     => entries,
+                        entries     => userBuf,
                         maxEntries  => effectiveMax,
                         minWait     => effectiveMin,
                         numReturned => numReturned);
-
-                    -- Copy results to user buffer
-                    for i in 0 .. numReturned - 1 loop
-                        userBuf(i) := entries(i);
-                    end loop;
 
                     retval := Unsigned_64(numReturned);
                 end waitCompletionHandler;
@@ -509,14 +902,12 @@ package body Syscall is
             -- Returns: RAX=1 if found, 0 if not
             when SYSCALL_POLL_COMPLETION =>
                 pollCompletionHandler : declare
-                    pollResult : Process.CompletionEntry;
                     found : Boolean;
                     userEntry : Process.CompletionEntry with
                         Import, Address => Util.numToAddr(arg0);
                 begin
-                    Process.IPC.pollCompletion (pollResult, found);
+                    Process.IPC.pollCompletion (userEntry, found);
                     if found then
-                        userEntry := pollResult;
                         retval := 1;
                     else
                         retval := 0;
@@ -526,33 +917,86 @@ package body Syscall is
             -- GRANT: create shared memory grant
             -- RDI=grantee_pid, RSI=local_addr, RDX=num_pages, RCX=permission
             -- Returns: RAX=grant_id (16#FFFF_FFFF_FFFF_FFFF# on error)
+            -- Requires: CAP_ENDPOINT to grantee PID
             when SYSCALL_GRANT =>
                 if arg0 > Unsigned_64(Process.ProcessID'Last) then
                     retval := reterr;
                 else
                     grantHandler : declare
+                        use type Capabilities.CapabilityType;
+                        callerPID : constant Process.ProcessID :=
+                            percpu.currentPID;
+                        granteePID : constant Process.ProcessID :=
+                            Process.ProcessID (arg0);
+                        hasCap : Boolean := False;
                         gid : Process.GrantID;
                         perm : Process.GrantPermission;
                         ok : Boolean;
                     begin
-                        if arg3 = 1 then
-                            perm := Process.GRANT_READWRITE;
+                        -- Kernel-mode threads exempt
+                        if Process.proctab(callerPID).mode =
+                           Process.KERNEL
+                        then
+                            hasCap := True;
                         else
-                            perm := Process.GRANT_READ;
+                            -- Forward: caller has endpoint to grantee
+                            for slot in Capabilities.CapabilitySlot loop
+                                if Process.proctab(callerPID).caps(slot).capType =
+                                   Capabilities.CAP_ENDPOINT and then
+                                   Process.proctab(callerPID).caps(slot).object.ref =
+                                   Unsigned_64 (granteePID)
+                                then
+                                    hasCap := True;
+                                    exit;
+                                end if;
+                            end loop;
                         end if;
 
-                        Process.IPC.createGrant (
-                            grantee   => Process.ProcessID(arg0),
-                            localAddr => Util.numToAddr(arg1),
-                            numPages  => Natural(arg2),
-                            perm      => perm,
-                            id        => gid,
-                            success   => ok);
+                        -- Reverse: grantee has endpoint to caller
+                        -- with RIGHT_GRANT (explicit opt-in to
+                        -- receiving grants from that service).
+                        if not hasCap then
+                            for slot in Capabilities.CapabilitySlot loop
+                                if Process.proctab(granteePID).caps(slot).capType =
+                                   Capabilities.CAP_ENDPOINT and then
+                                   Process.proctab(granteePID).caps(slot).object.ref =
+                                   Unsigned_64 (callerPID) and then
+                                   Process.proctab(granteePID).caps(slot).rights(
+                                       Capabilities.RIGHT_GRANT)
+                                then
+                                    hasCap := True;
+                                    exit;
+                                end if;
+                            end loop;
+                        end if;
 
-                        if ok then
-                            retval := Unsigned_64(gid);
-                        else
+                        if not hasCap then
+                            Process.IPC.notifySupervisor (
+                                callerPID,
+                                IPC_Labels.EVENT_CAP_FAULT,
+                                SYSCALL_GRANT,
+                                arg0, arg1);
                             retval := reterr;
+                        else
+                            if arg3 = 1 then
+                                perm := Process.GRANT_READWRITE;
+                            else
+                                perm := Process.GRANT_READ;
+                            end if;
+
+                            Process.IPC.createGrant (
+                                grantee   => granteePID,
+                                localAddr => Util.numToAddr(arg1),
+                                numPages  => Natural(arg2),
+                                perm      => perm,
+                                id        => gid,
+                                success   => ok);
+
+                            if ok then
+                                retval := Unsigned_64(gid);
+                            else
+                                retval := reterr;
+                            end if;
                         end if;
                     end grantHandler;
                 end if;
@@ -560,19 +1004,124 @@ package body Syscall is
             -- REVOKE: revoke shared memory grant
             -- RDI=grant_id
             -- Returns: RAX=1 success, 0 failure
+            -- Only the original granter can revoke.
             when SYSCALL_REVOKE =>
                 if arg0 > Unsigned_64(Process.GrantID'Last) then
                     retval := 0;
                 else
-                    Process.IPC.revokeGrant (id => Process.GrantID(arg0));
-                    retval := 1;
+                    revokeHandler : declare
+                        callerPID : constant Process.ProcessID :=
+                            percpu.currentPID;
+                        gid : constant Process.GrantID :=
+                            Process.GrantID (arg0);
+                    begin
+                        if Process.proctab(callerPID).grants(gid).granterPID /=
+                           callerPID
+                        then
+                            Process.IPC.notifySupervisor (
+                                callerPID,
+                                IPC_Labels.EVENT_CAP_FAULT,
+                                SYSCALL_REVOKE,
+                                arg0, 0);
+                            retval := 0;
+                        else
+                            Process.IPC.revokeGrant (id => gid);
+                            retval := 1;
+                        end if;
+                    end revokeHandler;
                 end if;
 
             when SYSCALL_INFO =>
-                return Sysinfo.getInfo (query  => arg0,
-                                        detail => arg1);
+                -- Public queries (no cap needed): FB dims, NUM_CPUS
+                -- Private queries: require CAP_PROCESS + RIGHT_READ
+                sysinfoHandler : declare
+                    use type Capabilities.CapabilityType;
+                    callerPID : constant Process.ProcessID :=
+                        percpu.currentPID;
+                    isPublic  : Boolean := False;
+                    hasCap    : Boolean := False;
+                begin
+                    case arg0 is
+                        when Sysinfo.FB_WIDTH | Sysinfo.FB_HEIGHT |
+                             Sysinfo.FB_PITCH | Sysinfo.FB_BPP |
+                             Sysinfo.NUM_CPUS |
+                             Sysinfo.REGISTERED_DRIVER =>
+                            isPublic := True;
+                        when others =>
+                            isPublic := False;
+                    end case;
+
+                    if isPublic then
+                        return Sysinfo.getInfo (arg0, arg1);
+                    end if;
+
+                    -- Kernel-mode threads exempt
+                    if Process.proctab(callerPID).mode =
+                       Process.KERNEL
+                    then
+                        hasCap := True;
+                    else
+                        for slot in Capabilities.CapabilitySlot loop
+                            if Process.proctab(callerPID).caps(slot).capType =
+                               Capabilities.CAP_PROCESS and then
+                               Process.proctab(callerPID).caps(slot).rights(
+                                   Capabilities.RIGHT_READ)
+                            then
+                                hasCap := True;
+                                exit;
+                            end if;
+                        end loop;
+                    end if;
+
+                    if not hasCap then
+                        Process.IPC.notifySupervisor (
+                            callerPID,
+                            IPC_Labels.EVENT_CAP_FAULT,
+                            SYSCALL_INFO,
+                            arg0, arg1);
+                        return reterr;
+                    end if;
+
+                    return Sysinfo.getInfo (arg0, arg1);
+                end sysinfoHandler;
 
             when SYSCALL_REGISTER_DRIVER =>
+                --  Gate ALL driver IDs on CAP_NOTIFICATION with matching ref
+                registerDriverCapCheck : declare
+                    use type Capabilities.CapabilityType;
+                    hasCap : Boolean := False;
+                    callerPID : constant Process.ProcessID :=
+                        percpu.currentPID;
+                begin
+                    if arg0 > Unsigned_64 (Sysinfo.DriverID'Last) then
+                        return reterr;
+                    end if;
+
+                    -- Kernel-mode threads are exempt
+                    if Process.proctab(callerPID).mode = Process.KERNEL then
+                        hasCap := True;
+                    else
+                        for slot in Capabilities.CapabilitySlot loop
+                            if Process.proctab(callerPID).caps(slot).capType =
+                               Capabilities.CAP_NOTIFICATION and then
+                               Process.proctab(callerPID).caps(slot).object.ref =
+                               arg0
+                            then
+                                hasCap := True;
+                                exit;
+                            end if;
+                        end loop;
+                    end if;
+
+                    if not hasCap then
+                        Process.IPC.notifySupervisor (
+                            callerPID,
+                            IPC_Labels.EVENT_CAP_FAULT,
+                            SYSCALL_REGISTER_DRIVER,
+                            arg0, 0);
+                        return reterr;
+                    end if;
+                end registerDriverCapCheck;
                 return Sysinfo.registerDriver (pid    => PerCPUData.getCurrentPID,
                                                driver => Sysinfo.DriverID(arg0));
 
@@ -580,7 +1129,7 @@ package body Syscall is
             -- Gated by CAP_IOPORT capability check.
             -- RDI=port
             -- Returns: RAX=value (for INB/INW), -1 if denied
-            when SYSCALL_INB =>
+            when SYSCALL_INP8 =>
                 inbHandler : declare
                     val : Unsigned_8;
                     capAllowed : Boolean;
@@ -597,7 +1146,7 @@ package body Syscall is
                 end inbHandler;
 
             -- RDI=port, RSI=value
-            when SYSCALL_OUTB =>
+            when SYSCALL_OUTP8 =>
                 outbHandler : declare
                     capAllowed : Boolean;
                 begin
@@ -613,7 +1162,7 @@ package body Syscall is
                     end if;
                 end outbHandler;
 
-            when SYSCALL_INW =>
+            when SYSCALL_INP16 =>
                 inwHandler : declare
                     val : Unsigned_16;
                     capAllowed : Boolean;
@@ -630,7 +1179,7 @@ package body Syscall is
                 end inwHandler;
 
             -- RDI=port, RSI=value
-            when SYSCALL_OUTW =>
+            when SYSCALL_OUTP16 =>
                 outwHandler : declare
                     capAllowed : Boolean;
                 begin
@@ -647,7 +1196,7 @@ package body Syscall is
                 end outwHandler;
 
             -- Bulk port I/O: RDI=port, RSI=user_buffer_addr, RDX=word_count
-            when SYSCALL_INS16 =>
+            when SYSCALL_INPS16 =>
                 ins16Handler : declare
                     capAllowed : Boolean;
                 begin
@@ -665,7 +1214,7 @@ package body Syscall is
                     end if;
                 end ins16Handler;
 
-            when SYSCALL_OUTS16 =>
+            when SYSCALL_OUTPS16 =>
                 outs16Handler : declare
                     capAllowed : Boolean;
                 begin
@@ -682,6 +1231,85 @@ package body Syscall is
                         retval := 0;
                     end if;
                 end outs16Handler;
+
+            -- 32-bit port I/O: RDI=port
+            when SYSCALL_INP32 =>
+                inlHandler : declare
+                    val : Unsigned_32;
+                    capAllowed : Boolean;
+                begin
+                    Capabilities.Operations.checkPortAccess (
+                        Process.proctab(percpu.currentPID).caps,
+                        arg0 and 16#FFFF#, 4, False, capAllowed);
+                    if not capAllowed then
+                        retval := reterr;
+                    else
+                        x86.in32 (x86.IOPort(arg0 and 16#FFFF#), val);
+                        retval := Unsigned_64(val);
+                    end if;
+                end inlHandler;
+
+            -- 32-bit port write: RDI=port, RSI=value
+            when SYSCALL_OUTP32 =>
+                outlHandler : declare
+                    capAllowed : Boolean;
+                begin
+                    Capabilities.Operations.checkPortAccess (
+                        Process.proctab(percpu.currentPID).caps,
+                        arg0 and 16#FFFF#, 4, True, capAllowed);
+                    if not capAllowed then
+                        retval := reterr;
+                    else
+                        x86.out32 (x86.IOPort(arg0 and 16#FFFF#),
+                                   Unsigned_32(arg1 and 16#FFFF_FFFF#));
+                        retval := 0;
+                    end if;
+                end outlHandler;
+
+            -- VIRT_TO_PHYS: RDI=virtual address
+            -- Returns: physical address, or -1 if unmapped
+            -- Requires: CAP_DEVICE_MEM (only DMA drivers need phys addrs)
+            when SYSCALL_VIRT_TO_PHYS =>
+                vtpHandler : declare
+                    use type Capabilities.CapabilityType;
+                    pid  : constant Process.ProcessID :=
+                        percpu.currentPID;
+                    phys : Virtmem.PhysAddress;
+                    hasCap : Boolean := False;
+                begin
+                    -- Kernel-mode threads exempt
+                    if Process.proctab(pid).mode = Process.KERNEL then
+                        hasCap := True;
+                    else
+                        for slot in Capabilities.CapabilitySlot loop
+                            if Process.proctab(pid).caps(slot).capType =
+                               Capabilities.CAP_DEVICE_MEM
+                            then
+                                hasCap := True;
+                                exit;
+                            end if;
+                        end loop;
+                    end if;
+
+                    if not hasCap then
+                        Process.IPC.notifySupervisor (
+                            pid,
+                            IPC_Labels.EVENT_CAP_FAULT,
+                            SYSCALL_VIRT_TO_PHYS,
+                            arg0, 0);
+                        retval := reterr;
+                    else
+                        phys := Virtmem.tableWalk (
+                            Virtmem.VirtAddress(arg0),
+                            Process.addrtab(pid));
+                        if phys = 0 then
+                            retval := reterr;
+                        else
+                            retval := Unsigned_64(phys) +
+                                (arg0 and 16#FFF#);
+                        end if;
+                    end if;
+                end vtpHandler;
 
             -- CAP_SEND: RDI=cap_slot, RSI=tag, RDX=w0, RCX=w1, R8=w2, R9=w3
             -- Returns: RAX=reply_tag
@@ -1067,6 +1695,489 @@ package body Syscall is
                         end if;
                     end if;
                 end getTicketHandler;
+
+            -- SPAWN: create a new process from an ELF image in caller's memory
+            -- RDI=virtual address of ELF image, RSI=size in bytes, RDX=priority
+            -- Returns: RAX=new PID, or -1 on error
+            -- Requires: CAP_PROCESS with RIGHT_EXECUTE
+            -- SPAWN: create a new process from an ELF binary
+            -- arg0 = ELF address, arg1 = ELF size, arg2 = priority,
+            -- arg3 = flags (bit 0 = SPAWN_SUSPENDED),
+            -- arg4 = requested PID (0 = auto-assign)
+            -- Returns: new PID, or -1 on error
+            -- Requires: CAP_PROCESS with RIGHT_EXECUTE
+            when SYSCALL_SPAWN =>
+                handleSpawn (percpu.currentPID,
+                             arg0, arg1, arg2, arg3, arg4, arg5, retval);
+
+            -- MAP_DEVICE: map device MMIO into calling process' address space
+            -- arg0 = physical address, arg1 = virtual address, arg2 = number of pages
+            -- Returns: 0 on success, -1 on failure
+            -- Requires: CAP_DEVICE_MEM covering [physAddr, physAddr + numPages*4096)
+            when SYSCALL_MAP_DEVICE =>
+                handleMapDevice (percpu.currentPID,
+                                 arg0, arg1, arg2, retval);
+
+            -- PROCLIST: write process table entries into user buffer
+            -- arg0 = buffer address, arg1 = buffer size in bytes
+            -- Returns: number of entries written
+            -- Requires: CAP_PROCESS with RIGHT_READ
+            when SYSCALL_PROCLIST =>
+                proclistCapCheck : declare
+                    use type Capabilities.CapabilityType;
+                    callerPID : constant Process.ProcessID :=
+                        percpu.currentPID;
+                    hasCap : Boolean := False;
+                begin
+                    for slot in Capabilities.CapabilitySlot loop
+                        if Process.proctab(callerPID).caps(slot).capType =
+                           Capabilities.CAP_PROCESS and then
+                           Process.proctab(callerPID).caps(slot).rights(
+                               Capabilities.RIGHT_READ)
+                        then
+                            hasCap := True;
+                            exit;
+                        end if;
+                    end loop;
+                    if not hasCap then
+                        Process.IPC.notifySupervisor (
+                            callerPID,
+                            IPC_Labels.EVENT_CAP_FAULT,
+                            SYSCALL_PROCLIST,
+                            arg0, arg1);
+                        retval := reterr;
+                    end if;
+                end proclistCapCheck;
+
+                if retval /= reterr then
+                proclistHandler : declare
+                    use type Process.ProcessState;
+
+                    function priToU16 is new Ada.Unchecked_Conversion
+                        (Integer_16, Unsigned_16);
+
+                    bufAddr : constant System.Address := Util.numToAddr (arg0);
+                    bufSize : constant Unsigned_64 := arg1;
+                    ENTRY_SIZE : constant := 32;
+                    maxEntries : Unsigned_64;
+                    count : Unsigned_64 := 0;
+                begin
+                    if bufSize < ENTRY_SIZE then
+                        retval := 0;
+                    else
+                        maxEntries := bufSize / ENTRY_SIZE;
+
+                        for i in Process.proctab'Range loop
+                            exit when count >= maxEntries;
+
+                            if Process.proctab(i).state /= Process.INVALID then
+                                declare
+                                    offset : constant Storage_Offset :=
+                                        Storage_Offset (count * ENTRY_SIZE);
+                                    entryAddr : constant System.Address :=
+                                        bufAddr + offset;
+
+                                    -- PID (2 bytes)
+                                    pidVal : Unsigned_16 with
+                                        Import, Address => entryAddr;
+                                    -- State (1 byte)
+                                    stateVal : Unsigned_8 with
+                                        Import, Address => entryAddr + 2;
+                                    -- CPU (1 byte)
+                                    cpuVal : Unsigned_8 with
+                                        Import, Address => entryAddr + 3;
+                                    -- Priority (2 bytes, signed stored as unsigned)
+                                    priVal : Unsigned_16 with
+                                        Import, Address => entryAddr + 4;
+                                    -- Pad (2 bytes at offset 6)
+                                    padVal : Unsigned_16 with
+                                        Import, Address => entryAddr + 6;
+                                    -- Name (16 bytes at offset 8)
+                                    nameField : String (1 .. 16) with
+                                        Import, Address => entryAddr + 8;
+                                    -- Reserved (8 bytes at offset 24)
+                                    reservedField : Unsigned_64 with
+                                        Import, Address => entryAddr + 24;
+                                begin
+                                    pidVal := Unsigned_16 (
+                                        Process.proctab(i).pid);
+                                    stateVal := Process.ProcessState'Pos (
+                                        Process.proctab(i).state);
+                                    cpuVal := Unsigned_8 (
+                                        Process.proctab(i).cpu);
+                                    priVal := priToU16 (Integer_16 (
+                                        Process.proctab(i).priority));
+                                    padVal := 0;
+                                    nameField :=
+                                        Process.proctab(i).name;
+                                    reservedField := 0;
+                                    count := count + 1;
+                                end;
+                            end if;
+                        end loop;
+
+                        retval := count;
+                    end if;
+                end proclistHandler;
+                end if;
+
+            -- MINT_CAP: insert a capability into a target process' cap table
+            -- arg0 = target PID, arg1 = cap type (CapabilityType'Pos),
+            -- arg2 = object ref, arg3 = object param,
+            -- arg4 = rights bitmask (bit0=R,1=W,2=X,3=GRANT,4=REVOKE),
+            -- arg5 = slot number
+            -- Requires: CAP_PROCESS with RIGHT_GRANT for target PID
+            when SYSCALL_MINT_CAP =>
+                mintCapHandler : declare
+                    use type Capabilities.CapabilityType;
+                    use type Process.ProcessState;
+
+                    callerPID : constant Process.ProcessID :=
+                        percpu.currentPID;
+                    targetPID : Process.ProcessID;
+                    hasCap    : Boolean := False;
+                    capTypePos : Natural;
+                    newCap    : Capabilities.Capability;
+                    newRights : Capabilities.CapabilityRights;
+                    targetSlot : Capabilities.CapabilitySlot;
+                begin
+                    -- Validate target PID range
+                    if arg0 > Unsigned_64 (Process.ProcessID'Last) or
+                       arg0 = 0
+                    then
+                        println ("MINT_CAP: invalid target PID");
+                        retval := reterr;
+                    else
+                        targetPID := Process.ProcessID (arg0);
+
+                        -- Check caller has CAP_PROCESS with RIGHT_GRANT
+                        for slot in Capabilities.CapabilitySlot loop
+                            if Process.proctab(callerPID).caps(slot).capType =
+                               Capabilities.CAP_PROCESS and then
+                               Process.proctab(callerPID).caps(slot).rights(
+                                   Capabilities.RIGHT_GRANT)
+                            then
+                                hasCap := True;
+                                exit;
+                            end if;
+                        end loop;
+
+                        if not hasCap then
+                            println ("MINT_CAP: denied, no RIGHT_GRANT");
+                            retval := reterr;
+                        elsif Process.proctab(targetPID).state =
+                              Process.INVALID
+                        then
+                            println ("MINT_CAP: target not valid");
+                            retval := reterr;
+                        elsif arg5 >
+                              Unsigned_64 (Capabilities.CapabilitySlot'Last)
+                        then
+                            println ("MINT_CAP: invalid slot");
+                            retval := reterr;
+                        elsif arg1 >
+                              Unsigned_64 (Capabilities.CapabilityType'Pos (
+                                  Capabilities.CapabilityType'Last))
+                        then
+                            println ("MINT_CAP: invalid cap type");
+                            retval := reterr;
+                        else
+                            targetSlot :=
+                                Capabilities.CapabilitySlot (arg5);
+                            capTypePos := Natural (arg1);
+
+                            -- Build rights from bitmask
+                            newRights := (
+                                Capabilities.RIGHT_READ    =>
+                                    (arg4 and 1) /= 0,
+                                Capabilities.RIGHT_WRITE   =>
+                                    (arg4 and 2) /= 0,
+                                Capabilities.RIGHT_EXECUTE =>
+                                    (arg4 and 4) /= 0,
+                                Capabilities.RIGHT_GRANT   =>
+                                    (arg4 and 8) /= 0,
+                                Capabilities.RIGHT_REVOKE  =>
+                                    (arg4 and 16) /= 0);
+
+                            -- Build capability.
+                            -- For endpoint caps, badge = target PID so the
+                            -- server can identify the caller on capCall.
+                            newCap := (
+                                capType  => Capabilities.CapabilityType'Val (
+                                    capTypePos),
+                                rights   => newRights,
+                                capBadge => Unsigned_64 (targetPID),
+                                object   => (ref   => arg2,
+                                             param => arg3),
+                                gen      => Capabilities.INITIAL_GENERATION);
+
+                            Capabilities.Operations.insertCapAt (
+                                table => Process.proctab(targetPID).caps,
+                                slot  => targetSlot,
+                                cap   => newCap);
+
+                            retval := 0;
+                        end if;
+                    end if;
+                end mintCapHandler;
+
+            -- RESUME: resume a suspended process
+            -- arg0 = target PID
+            -- Requires: CAP_PROCESS with RIGHT_EXECUTE for target
+            when SYSCALL_RESUME =>
+                resumeHandler : declare
+                    use type Capabilities.CapabilityType;
+                    use type Process.ProcessState;
+
+                    callerPID : constant Process.ProcessID :=
+                        percpu.currentPID;
+                    targetPID : Process.ProcessID;
+                    hasCap    : Boolean := False;
+                begin
+                    if arg0 > Unsigned_64 (Process.ProcessID'Last) or
+                       arg0 = 0
+                    then
+                        println ("RESUME: invalid target PID");
+                        retval := reterr;
+                    else
+                        targetPID := Process.ProcessID (arg0);
+
+                        -- Check caller has CAP_PROCESS with RIGHT_EXECUTE
+                        for slot in Capabilities.CapabilitySlot loop
+                            if Process.proctab(callerPID).caps(slot).capType =
+                               Capabilities.CAP_PROCESS and then
+                               Process.proctab(callerPID).caps(slot).rights(
+                                   Capabilities.RIGHT_EXECUTE)
+                            then
+                                hasCap := True;
+                                exit;
+                            end if;
+                        end loop;
+
+                        if not hasCap then
+                            println ("RESUME: denied, no RIGHT_EXECUTE");
+                            retval := reterr;
+                        elsif Process.proctab(targetPID).state /=
+                              Process.SUSPENDED
+                        then
+                            println ("RESUME: target not suspended");
+                            retval := reterr;
+                        else
+                            Process.resume (targetPID);
+                            print ("RESUME: resumed PID ");
+                            println (Integer (targetPID));
+                            retval := 0;
+                        end if;
+                    end if;
+                end resumeHandler;
+
+            -- ALLOC_DMA: allocate contiguous physical pages, map into target
+            -- arg0 = targetPID, arg1 = order, arg2 = virtBase
+            -- Returns: physical address, or -1 on error
+            -- Requires: CAP_PROCESS with RIGHT_GRANT
+            when SYSCALL_ALLOC_DMA =>
+                handleAllocDma (percpu.currentPID,
+                                arg0, arg1, arg2, retval);
+
+            -- ENABLE_IRQ: enable IOAPIC routing and register IRQ owner
+            -- arg0 = vector, arg1 = ownerPID, arg2 = target CPU
+            -- Returns: 0 on success, -1 on error
+            -- Requires: CAP_PROCESS with RIGHT_GRANT
+            when SYSCALL_ENABLE_IRQ =>
+                enableIrqHandler : declare
+                    use type Capabilities.CapabilityType;
+
+                    callerPID : constant Process.ProcessID :=
+                        percpu.currentPID;
+                    hasCap    : Boolean := False;
+                    irqOk     : Boolean;
+                begin
+                    for slot in Capabilities.CapabilitySlot loop
+                        if Process.proctab(callerPID).caps(slot).capType =
+                           Capabilities.CAP_PROCESS and then
+                           Process.proctab(callerPID).caps(slot).rights(
+                               Capabilities.RIGHT_GRANT)
+                        then
+                            hasCap := True;
+                            exit;
+                        end if;
+                    end loop;
+
+                    if not hasCap then
+                        println ("ENABLE_IRQ: denied, no RIGHT_GRANT");
+                        retval := reterr;
+                    elsif arg0 > 255 then
+                        println ("ENABLE_IRQ: invalid vector");
+                        retval := reterr;
+                    elsif arg1 > Unsigned_64 (Process.ProcessID'Last) or
+                          arg1 = 0
+                    then
+                        println ("ENABLE_IRQ: invalid owner PID");
+                        retval := reterr;
+                    else
+                        Interrupts.enableDeviceIRQ (
+                            InterruptNumbers.x86Interrupt (arg0),
+                            Unsigned_32 (arg2));
+
+                        Capabilities.IRQ.registerIRQ (
+                            vector => Natural (arg0),
+                            pid    => arg1,
+                            status => irqOk);
+
+                        if irqOk then
+                            retval := 0;
+                        else
+                            println ("ENABLE_IRQ: IRQ already owned");
+                            retval := reterr;
+                        end if;
+                    end if;
+                end enableIrqHandler;
+
+            -- MAP_INTO: map physical pages into a target process
+            -- arg0 = targetPID, arg1 = physical address,
+            -- arg2 = virtual address, arg3 = number of pages,
+            -- arg4 = flags (0=USERDATA, 1=USERDATARO, 2=USERIO)
+            -- Returns: 0 on success, -1 on error
+            -- Requires: CAP_PROCESS with RIGHT_GRANT
+            when SYSCALL_MAP_INTO =>
+                handleMapInto (percpu.currentPID,
+                               arg0, arg1, arg2, arg3, arg4, retval);
+
+            -- SET_SYSINFO: set a sysinfo value from userspace
+            -- arg0 = queryID, arg1 = value
+            -- Returns: 0 on success, -1 on error
+            -- Requires: CAP_PROCESS with RIGHT_WRITE
+            when SYSCALL_SET_SYSINFO =>
+                setSysinfoHandler : declare
+                    use type Capabilities.CapabilityType;
+
+                    callerPID : constant Process.ProcessID :=
+                        percpu.currentPID;
+                    hasCap    : Boolean := False;
+                begin
+                    for slot in Capabilities.CapabilitySlot loop
+                        if Process.proctab(callerPID).caps(slot).capType =
+                           Capabilities.CAP_PROCESS and then
+                           Process.proctab(callerPID).caps(slot).rights(
+                               Capabilities.RIGHT_WRITE)
+                        then
+                            hasCap := True;
+                            exit;
+                        end if;
+                    end loop;
+
+                    if not hasCap then
+                        println ("SET_SYSINFO: denied, no RIGHT_WRITE");
+                        retval := reterr;
+                    elsif Sysinfo.setInfo (arg0, arg1) then
+                        retval := 0;
+                    else
+                        println ("SET_SYSINFO: unknown queryID");
+                        retval := reterr;
+                    end if;
+                end setSysinfoHandler;
+
+            -- SET_CPU: set CPU affinity for a process
+            -- arg0 = targetPID, arg1 = CPU number
+            -- Returns: 0 on success, -1 on error
+            -- Requires: CAP_PROCESS with RIGHT_GRANT
+            when SYSCALL_SET_CPU =>
+                setCpuHandler : declare
+                    use type Capabilities.CapabilityType;
+                    use type Process.ProcessState;
+
+                    callerPID : constant Process.ProcessID :=
+                        percpu.currentPID;
+                    targetPID : Process.ProcessID;
+                    hasCap    : Boolean := False;
+                begin
+                    if arg0 > Unsigned_64 (Process.ProcessID'Last) or
+                       arg0 = 0
+                    then
+                        retval := reterr;
+                    elsif arg1 >= Unsigned_64 (acpi.numCPUs) then
+                        println ("SET_CPU: CPU number out of range");
+                        retval := reterr;
+                    else
+                        targetPID := Process.ProcessID (arg0);
+
+                        for slot in Capabilities.CapabilitySlot loop
+                            if Process.proctab(callerPID).caps(slot).capType =
+                               Capabilities.CAP_PROCESS and then
+                               Process.proctab(callerPID).caps(slot).rights(
+                                   Capabilities.RIGHT_GRANT)
+                            then
+                                hasCap := True;
+                                exit;
+                            end if;
+                        end loop;
+
+                        if not hasCap then
+                            println ("SET_CPU: denied, no RIGHT_GRANT");
+                            retval := reterr;
+                        elsif Process.proctab(targetPID).state =
+                              Process.INVALID
+                        then
+                            println ("SET_CPU: target not valid");
+                            retval := reterr;
+                        else
+                            Process.proctab(targetPID).cpu :=
+                                Natural (arg1);
+                            retval := 0;
+                        end if;
+                    end if;
+                end setCpuHandler;
+
+            -- SET_SUPERVISOR: reassign supervisor for a process
+            -- arg0 = target PID, arg1 = new supervisor PID
+            -- Returns: 0 on success, -1 on error
+            -- Requires: CAP_PROCESS with RIGHT_GRANT
+            when SYSCALL_SET_SUPERVISOR =>
+                setSupervisorHandler : declare
+                    use type Capabilities.CapabilityType;
+                    use type Process.ProcessState;
+
+                    callerPID : constant Process.ProcessID :=
+                        percpu.currentPID;
+                    targetPID : Process.ProcessID;
+                    newSvPID  : Process.ProcessID;
+                    hasCap    : Boolean := False;
+                begin
+                    if arg0 > Unsigned_64 (Process.ProcessID'Last) or
+                       arg0 = 0
+                    then
+                        retval := reterr;
+                    elsif arg1 > Unsigned_64 (Process.ProcessID'Last) then
+                        retval := reterr;
+                    else
+                        targetPID := Process.ProcessID (arg0);
+                        newSvPID  := Process.ProcessID (arg1);
+
+                        for slot in Capabilities.CapabilitySlot loop
+                            if Process.proctab(callerPID).caps(slot).capType =
+                               Capabilities.CAP_PROCESS and then
+                               Process.proctab(callerPID).caps(slot).rights(
+                                   Capabilities.RIGHT_GRANT)
+                            then
+                                hasCap := True;
+                                exit;
+                            end if;
+                        end loop;
+
+                        if not hasCap then
+                            null;  -- notifySupervisor below
+                            retval := reterr;
+                        elsif Process.proctab(targetPID).state =
+                              Process.INVALID
+                        then
+                            println ("SET_SUPERVISOR: target invalid");
+                            retval := reterr;
+                        else
+                            Process.proctab(targetPID).svpid := newSvPID;
+                            retval := 0;
+                        end if;
+                    end if;
+                end setSupervisorHandler;
 
             when others =>
                 print ("Syscall: "); printd (syscallNum);

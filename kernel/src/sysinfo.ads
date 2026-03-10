@@ -17,12 +17,27 @@ package Sysinfo is
 
     MAGIC_RAMDISK_ADDRESS : constant QueryID := 1000;
     SECONDARY_STACK_START : constant QueryID := 1001;
+    RAMDISK_SIZE          : constant QueryID := 1002;
 
     -- Framebuffer info queries
     FB_WIDTH              : constant QueryID := 1100;
     FB_HEIGHT             : constant QueryID := 1101;
     FB_PITCH              : constant QueryID := 1102;
     FB_BPP                : constant QueryID := 1103;
+
+    -- Network device info
+    NET_IOBASE            : constant QueryID := 1200;
+
+    -- NVMe device info
+    NVME_BAR0             : constant QueryID := 1300;
+    NVME_DMA_PHYS         : constant QueryID := 1301;
+
+    -- HDA device info
+    HDA_BAR0              : constant QueryID := 1500;
+    HDA_DMA_PHYS          : constant QueryID := 1501;
+
+    -- CPU info
+    NUM_CPUS              : constant QueryID := 1400;
 
     REGISTERED_DRIVER     : constant QueryID := 2000;
 
@@ -31,6 +46,14 @@ package Sysinfo is
     DRIVER_NULL     : constant DriverID := 0;
     DRIVER_KEYBOARD : constant DriverID := 1;
     DRIVER_ATA      : constant DriverID := 2;
+    DRIVER_NETSTACK : constant DriverID := 3;
+    DRIVER_PROCMGR  : constant DriverID := 4;
+    DRIVER_NVME     : constant DriverID := 5;
+    DRIVER_FS       : constant DriverID := 6;
+    DRIVER_DEVMGR   : constant DriverID := 7;
+    DRIVER_HDA      : constant DriverID := 8;
+    DRIVER_MIXER    : constant DriverID := 9;
+    DRIVER_MOUSE    : constant DriverID := 10;
 
     -- List of processes registered as a particular driver.
     type DriverList is array (DriverID) of Process.ProcessID;
@@ -51,6 +74,29 @@ package Sysinfo is
     ---------------------------------------------------------------------------
     function registerDriver (pid    : Process.ProcessID;
                              driver : DriverID) return Unsigned_64
+        with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- setNetIOBase
+    -- Store the BAR0 I/O base for the network device (for driver queries).
+    ---------------------------------------------------------------------------
+    procedure setNetIOBase (ioBase : Unsigned_64)
+        with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- setNvmeInfo
+    -- Store the BAR0 and DMA physical addresses for the NVMe device.
+    ---------------------------------------------------------------------------
+    procedure setNvmeInfo (bar0 : Unsigned_64; dmaPhys : Unsigned_64)
+        with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- setInfo
+    -- Set a sysinfo value from userspace (via SYSCALL_SET_SYSINFO).
+    -- Only allows writable query IDs; returns True on success.
+    ---------------------------------------------------------------------------
+    function setInfo (queryID : Unsigned_64;
+                      value   : Unsigned_64) return Boolean
         with SPARK_Mode => On;
 
 end Sysinfo;

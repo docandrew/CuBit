@@ -20,108 +20,105 @@ package body Lapic
     with SPARK_Mode => On
 is
     type LAPICRegister is new Unsigned_32;
-    
-    -- type LAPICRegisterRW is access all      LAPICRegister;
-    -- type LAPICRegisterRO is access constant LAPICRegister;
-    -- subtype LAPICRegisterWO is LAPICRegisterRW;
 
     ---------------------------------------------------------------------------
     -- Offsets for the various LAPIC registers from the base address.
-    -- See Vol 3, Section 10.4.1 in Intel x86 manual for descriptions
+    -- See Vol 3, Section 10.4.1 in Intel x86 manual for descriptions.
+    -- All registers are Volatile — they are memory-mapped device I/O.
     ---------------------------------------------------------------------------
-    id                  : LAPICRegister with Import, 
+    id                  : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0020#);
-    version             : LAPICRegister with Import, 
+    version             : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0030#);
-    tpr                 : LAPICRegister with Import, 
+    tpr                 : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0080#);
-    apr                 : LAPICRegister with Import, 
+    apr                 : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0090#);
-    ppr                 : LAPICRegister with Import, 
+    ppr                 : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#00A0#);
-    eoi                 : LAPICRegister with Import, 
+    eoi                 : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#00B0#);
-    rrd                 : LAPICRegister with Import, 
+    rrd                 : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#00C0#);
-    ldr                 : LAPICRegister with Import, 
+    ldr                 : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#00D0#);
-    dfr                 : LAPICRegister with Import, 
+    dfr                 : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#00E0#);
-    svr                 : LAPICRegister with Import, 
+    svr                 : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#00F0#);
-    isr0                : LAPICRegister with Import, 
+    isr0                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0100#);
-    isr1                : LAPICRegister with Import, 
+    isr1                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0110#);
-    isr2                : LAPICRegister with Import, 
+    isr2                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0120#);
-    isr3                : LAPICRegister with Import, 
+    isr3                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0130#);
-    isr4                : LAPICRegister with Import, 
+    isr4                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0140#);
-    isr5                : LAPICRegister with Import, 
+    isr5                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0150#);
-    isr6                : LAPICRegister with Import, 
+    isr6                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0160#);
-    isr7                : LAPICRegister with Import, 
+    isr7                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0170#);
-    tmr0                : LAPICRegister with Import, 
+    tmr0                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0180#);
-    tmr1                : LAPICRegister with Import, 
+    tmr1                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0190#);
-    tmr2                : LAPICRegister with Import, 
+    tmr2                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#01A0#);
-    tmr3                : LAPICRegister with Import, 
+    tmr3                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#01B0#);
-    tmr4                : LAPICRegister with Import, 
+    tmr4                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#01C0#);
-    tmr5                : LAPICRegister with Import, 
+    tmr5                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#01D0#);
-    tmr6                : LAPICRegister with Import, 
+    tmr6                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#01E0#);
-    tmr7                : LAPICRegister with Import, 
+    tmr7                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#01F0#);
-    irr0                : LAPICRegister with Import, 
+    irr0                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0200#);
-    irr1                : LAPICRegister with Import, 
+    irr1                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0210#);
-    irr2                : LAPICRegister with Import, 
+    irr2                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0220#);
-    irr3                : LAPICRegister with Import, 
+    irr3                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0230#);
-    irr4                : LAPICRegister with Import, 
+    irr4                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0240#);
-    irr5                : LAPICRegister with Import, 
+    irr5                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0250#);
-    irr6                : LAPICRegister with Import, 
+    irr6                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0260#);
-    irr7                : LAPICRegister with Import, 
+    irr7                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0270#);
-    esr                 : LAPICRegister with Import, 
+    esr                 : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0280#);
-    lvtCMCI             : LAPICRegister with Import, 
+    lvtCMCI             : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#02F0#);
-    icr0                : LAPICRegister with Import, 
+    icr0                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0300#);
-    icr1                : LAPICRegister with Import, 
+    icr1                : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0310#);
-    lvtTimer            : LAPICRegister with Import, 
+    lvtTimer            : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0320#);
-    lvtThermalSensor    : LAPICRegister with Import, 
+    lvtThermalSensor    : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0330#);
-    lvtPerfMon          : LAPICRegister with Import, 
+    lvtPerfMon          : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0340#);
-    lvtLINT0            : LAPICRegister with Import, 
+    lvtLINT0            : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0350#);
-    lvtLINT1            : LAPICRegister with Import, 
+    lvtLINT1            : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0360#);
-    lvtError            : LAPICRegister with Import, 
+    lvtError            : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0370#);
-    timerInitialCount   : LAPICRegister with Import, 
+    timerInitialCount   : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0380#);
-    timerCurrentCount   : LAPICRegister with Import, 
+    timerCurrentCount   : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#0390#);
-    timerDivideConf     : LAPICRegister with Import, 
+    timerDivideConf     : LAPICRegister with Import, Volatile,
         Address => To_Address(To_Integer(baseAddr) + 16#03E0#);
 
     ---------------------------------------------------------------------------
@@ -381,6 +378,9 @@ is
     ---------------------------------------------------------------------------
     procedure setupLAPIC_AP is
     begin
+        -- Enable this CPU's LAPIC via spurious vector register
+        write(svr, SVR_ENABLE or Unsigned_32(InterruptNumbers.SPURIOUS));
+
         write(timerDivideConf, DIVIDE_BY_16);
         write(lvtTimer, Unsigned_32(InterruptNumbers.TIMER) or TIMER_PERIODIC);
         write(timerInitialCount, timerInterval);
@@ -399,6 +399,16 @@ is
         -- Enable LAPIC interrupts (CPU interrupts still disabled until sti)
         write(lapic.tpr, 0);
     end setupLAPIC_AP;
+
+    function getTimerInterval return Unsigned_32 is
+    begin
+        return timerInterval;
+    end getTimerInterval;
+
+    procedure setTimerInterval (interval : in Unsigned_32) is
+    begin
+        timerInterval := interval;
+    end setTimerInterval;
 
     procedure finishIRQ
         with SPARK_Mode => On
@@ -432,10 +442,10 @@ is
     -- The warm reset vector specifies the boot address based on the CMOS
     -- "shutdown." It's a segment:offset address.
     ---------------------------------------------------------------------------
-    warmResetVectorSeg : Unsigned_16 
-            with Import, Address => To_Address(virtmem.P2V(16#0469#));
+    warmResetVectorSeg : Unsigned_16
+            with Import, Volatile, Address => To_Address(virtmem.P2V(16#0469#));
     warmResetVectorOff : Unsigned_16
-            with Import, Address => To_Address(virtmem.P2V(16#0467#));
+            with Import, Volatile, Address => To_Address(virtmem.P2V(16#0467#));
 
     ---------------------------------------------------------------------------
     -- setWarmResetVector

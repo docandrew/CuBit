@@ -69,4 +69,23 @@ package body CuBit.String is
       return dest;
    end memmove;
 
+   function memset (dest : System.Address;
+                    val  : Integer;
+                    len  : System.Storage_Elements.Storage_Count)
+      return System.Address
+   is
+      use System.Storage_Elements;
+      type Byte is mod 256;
+      b : constant Byte := Byte (val mod 256);
+   begin
+      for i in 0 .. len - 1 loop
+         declare
+            dst : Byte with Import, Address => dest + i;
+         begin
+            dst := b;
+         end;
+      end loop;
+      return dest;
+   end memset;
+
 end CuBit.String;

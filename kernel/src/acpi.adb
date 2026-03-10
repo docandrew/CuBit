@@ -29,7 +29,7 @@ is
         return Boolean with SPARK_Mode => Off  -- Storage_Array
     is
         tableBytes : Storage_Array(1..Storage_Offset(len))
-            with Import, Address => tableAddr;
+            with Import, Volatile, Address => tableAddr;
         sum : Unsigned_32 := 0;
     begin
         for i in 1..len loop
@@ -65,7 +65,7 @@ is
     procedure getRSDP(rsdpAddr : in System.Address; rsdp : in out RSDPRecord;
         success : out Boolean) with SPARK_Mode => Off
     is
-        retRSDP : RSDPRecord with Import, Address => rsdpAddr;
+        retRSDP : RSDPRecord with Import, Volatile, Address => rsdpAddr;
     begin
         if retRSDP.signature = "RSD PTR " then
             rsdp := retRSDP;
@@ -81,7 +81,7 @@ is
     procedure getXSDT(sdtAddr : in System.Address; xsdt : in out XSDTRecord;
         success : out Boolean) with SPARK_Mode => Off
     is
-        retXSDT : XSDTRecord with Import, Address => sdtAddr;
+        retXSDT : XSDTRecord with Import, Volatile, Address => sdtAddr;
     begin
         if retXSDT.header.signature = "XSDT" then
             xsdt := retXSDT;
@@ -97,7 +97,7 @@ is
     procedure getRSDT(sdtAddr : in System.Address; rsdt : in out RSDTRecord;
         success : out Boolean) with SPARK_Mode => Off
     is
-        retRSDT : RSDTRecord with Import, Address => sdtAddr;
+        retRSDT : RSDTRecord with Import, Volatile, Address => sdtAddr;
     begin
         if retRSDT.header.signature = "RSDT" then
             rsdt := retRSDT;
@@ -113,7 +113,7 @@ is
     procedure getLAPIC(lapicAddr : in System.Address; lapic : in out LAPICRecord;
         success : out Boolean) with SPARK_Mode => Off
     is
-        retLAPIC : LAPICRecord with Import, Address => lapicAddr;
+        retLAPIC : LAPICRecord with Import, Volatile, Address => lapicAddr;
     begin
         if retLAPIC.header.length < (retLAPIC'Size / 8) then
             success := False;
@@ -129,7 +129,7 @@ is
     procedure getIOAPIC(ioapicAddr : in System.Address; ioapic : in out IOAPICRecord;
         success : out Boolean) with SPARK_Mode => Off
     is
-        retIOAPIC : IOAPICRecord with Import, Address => ioapicAddr;
+        retIOAPIC : IOAPICRecord with Import, Volatile, Address => ioapicAddr;
     begin
         if retIOAPIC.header.length < (retIOAPIC'Size / 8) then
             success := False;
@@ -146,13 +146,11 @@ is
         with SPARK_Mode => Off
     is
         madt : MADTRecord
-            with Import, Address => madtAddr;
+            with Import, Volatile, Address => madtAddr;
 
         madtAddrInt : Integer_Address := To_Integer(madtAddr);
         entries_0 : constant Integer_Address := To_Integer(madt.entries'Address);
-        --offset : Integer_Address := 0;
         entries_i : Integer_Address := entries_0;
-        entryHeader : APICRecordHeader;
 
         endMADT : Integer_Address := madtAddrInt + Integer_Address(madt.header.length);
     begin
@@ -160,7 +158,7 @@ is
         APICLoop : loop
             ThisEntry : declare
                 entryHeader : APICRecordHeader
-                    with Import, Address => To_Address(entries_i);
+                    with Import, Volatile, Address => To_Address(entries_i);
                 lapic : LAPICRecord;
                 ioapic : IOAPICRecord;
                 ok : Boolean;
@@ -222,12 +220,10 @@ is
                 end case;
                 -- advance to next entry.
                 entries_i := entries_i + Integer_Address(entryHeader.length);
-            end ThisEntry;
-            
-            -- print(" MADT entries(0): "); print(madt.entries.apicType);
-            -- print(" length: "); println(madt.entries.length);
 
-            exit APICLoop when entries_i >= endMADT or entryHeader.length = 0;
+                exit APICLoop when entries_i >= endMADT
+                                or entryHeader.length = 0;
+            end ThisEntry;
         end loop APICLoop;
 
         lapicAddr := Virtmem.PhysAddress(madt.lapicAddress);
@@ -242,7 +238,7 @@ is
     -- parseDSDT
     ---------------------------------------------------------------------------
     procedure parseDSDT (dsdtAddr : System.Address) is
-        dsdt : DSDTRecord with Import, Address => dsdtAddr;
+        dsdt : DSDTRecord with Import, Volatile, Address => dsdtAddr;
     begin
         if dsdt.header.signature /= "DSDT" then
             println ("ACPI: Error parsing DSDT, bad address or corrupted table.");
@@ -258,7 +254,7 @@ is
     ---------------------------------------------------------------------------
     procedure parseMCFG (mcfgAddr : System.Address) is
         
-        mcfg     : MCFGRecord with Import, Address => mcfgAddr;
+        mcfg     : MCFGRecord with Import, Volatile, Address => mcfgAddr;
         tableLen : Unsigned_32;
         curTable : System.Address;
         idx      : Unsigned_32 := 0;
@@ -422,10 +418,10 @@ is
             printRecordHeader : declare
 
                 entries_i_val : constant Integer_Address
-                    with Import, Address => To_Address(entries_i);
+                    with Import, Volatile, Address => To_Address(entries_i);
 
                 descHdr : DescriptionHeader
-                    with Import, Address => To_Address(makeTableAddress(entries_i_val, sdtPtrSize));
+                    with Import, Volatile, Address => To_Address(makeTableAddress(entries_i_val, sdtPtrSize));
             begin
                 -- print("entries_0: "); println(entries_0);
                 -- print("offset: "); println(offset);
@@ -439,7 +435,7 @@ is
                 if descHdr.signature = "FACP" then
                     parseFADT : declare
                     fadt : FADTRecord
-                        with Import, Address => descHdr'Address;
+                        with Import, Volatile, Address => descHdr'Address;
                     begin
                         print (" DSDT Address:          "); println (fadt.dsdt);
                         print (" DSDT extended Address: "); println (fadt.exDsdt);

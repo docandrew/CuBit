@@ -54,6 +54,20 @@ is
     procedure sendIPI(cpuNum : in Unsigned_8; intCommand : in Unsigned_32);
 
     ---------------------------------------------------------------------------
+    -- getTimerInterval
+    -- Return the calibrated APIC timer ticks-per-ms value. Only valid after
+    -- setupLAPIC_BSP has been called.
+    ---------------------------------------------------------------------------
+    function getTimerInterval return Unsigned_32;
+
+    ---------------------------------------------------------------------------
+    -- setTimerInterval
+    -- Set the APIC timer ticks-per-ms from a shared calibrated value.
+    -- Used by APs to adopt the BSP's calibration.
+    ---------------------------------------------------------------------------
+    procedure setTimerInterval (interval : in Unsigned_32);
+
+    ---------------------------------------------------------------------------
     -- bootAP - send the necessary IPI sequence to an AP to tell it to boot.
     -- @param cpuNum - CPU number to start, not 0. (TODO: can our BSP ever be
     --  non-zero?)

@@ -161,10 +161,10 @@ private
 
     ---------------------------------------------------------------------------
     -- markUsed
-    -- set a page's bit to 1
+    -- set a page's bit to 1 (mark as allocated)
     ---------------------------------------------------------------------------
-    procedure markUsed(frame : in Virtmem.PFN) with
-        Global  => (In_Out      => BitmapState, 
+    procedure markUsed (frame : in Virtmem.PFN) with
+        Global  => (In_Out      => BitmapState,
                     Proof_In    => BootAllocator.initialized),
         Pre     => (BootAllocator.initialized and then frame <= MAX_BOOT_PFN);
 

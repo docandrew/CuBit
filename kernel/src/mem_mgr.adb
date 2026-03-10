@@ -7,6 +7,7 @@
 
 with Interfaces; use Interfaces;
 with BootAllocator;
+with BuddyAllocator;
 with MemoryAreas; use MemoryAreas;
 with TextIO; use TextIO;
 with x86;
@@ -319,6 +320,191 @@ is
 
     end setup;
 
+
+    ---------------------------------------------------------------------------
+    -- createGuardPage
+    -- Unmap a single 4KB page from the kernel linear map. If the page is
+    -- part of a 2MB big page, split the big page into 512 small pages first,
+    -- then clear the target P1 entry. Used for kernel stack guard pages.
+    ---------------------------------------------------------------------------
+    procedure createGuardPage (physAddr : in Virtmem.PhysAddress) with
+        SPARK_Mode => Off  -- uses 'Address, Import overlays
+    is
+        use Virtmem;
+
+        function getP3 is new getNextTable (P4);
+        function getP2 is new getNextTable (P3);
+
+        virt    : constant VirtAddress := P2V (physAddr);
+        p4Index : constant PageTableIndex := getP4Index (virt);
+        p3Index : constant PageTableIndex := getP3Index (virt);
+        p2Index : constant PageTableIndex := getP2Index (virt);
+        p1Index : constant PageTableIndex := getP1Index (virt);
+
+        p3Addr : PhysAddress;
+        p2Addr : PhysAddress;
+    begin
+        p3Addr := getP3 (kernelP4, p4Index);
+        if p3Addr = 0 then
+            raise RemapException with
+                "createGuardPage: P3 not present";
+        end if;
+
+        walkP3 : declare
+            myP3 : P3 with Import, Address => To_Address (P2V (p3Addr));
+        begin
+            p2Addr := getP2 (myP3, p3Index);
+            if p2Addr = 0 then
+                raise RemapException with
+                    "createGuardPage: P2 not present";
+            end if;
+
+            walkP2 : declare
+                myP2 : P2 with Import, Address => To_Address (P2V (p2Addr));
+            begin
+                -- If this is a big page, split it into 512 small pages
+                if myP2(p2Index).size then
+                    splitBigPage : declare
+                        -- Physical base of the 2MB region
+                        bigBase  : constant PhysAddress :=
+                            PFNToAddr (myP2(p2Index).pgNum);
+
+                        -- Preserve flags from big page entry
+                        wasWritable      : constant Boolean := myP2(p2Index).writable;
+                        wasGlobal        : constant Boolean := myP2(p2Index).global;
+                        wasNX            : constant Boolean := myP2(p2Index).NX;
+                        wasUser          : constant Boolean := myP2(p2Index).user;
+                        wasWriteThrough  : constant Boolean := myP2(p2Index).writeThrough;
+                        wasCacheDisabled : constant Boolean := myP2(p2Index).cacheDisabled;
+
+                        -- Allocate a frame for the new P1 table
+                        p1Phys : PhysAddress;
+                    begin
+                        BuddyAllocator.allocFrame (p1Phys);
+                        if p1Phys = 0 then
+                            raise RemapException with
+                                "createGuardPage: cannot allocate P1 frame";
+                        end if;
+
+                        fillP1 : declare
+                            newP1 : P1 with Import,
+                                Address => To_Address (P2V (p1Phys));
+                        begin
+                            -- Fill 512 P1 entries to map each 4KB sub-page
+                            for i in PageTableIndex loop
+                                newP1(i).pgNum        := addrToPFN (bigBase) +
+                                                          PFN (i);
+                                newP1(i).present       := True;
+                                newP1(i).writable      := wasWritable;
+                                newP1(i).global        := wasGlobal;
+                                newP1(i).NX            := wasNX;
+                                newP1(i).user          := wasUser;
+                                newP1(i).writeThrough  := wasWriteThrough;
+                                newP1(i).cacheDisabled := wasCacheDisabled;
+                                newP1(i).size          := False;
+                            end loop;
+
+                            -- Now clear the guard page entry
+                            newP1(p1Index).present := False;
+                        end fillP1;
+
+                        -- Update P2 to point to new P1 table instead of big page
+                        myP2(p2Index).pgNum   := addrToPFN (p1Phys);
+                        myP2(p2Index).size    := False;
+                        -- P2 entry pointing to P1 needs USER+WRITABLE+PRESENT
+                        -- to be permissive (actual permissions in P1 entries)
+                        myP2(p2Index).present  := True;
+                        myP2(p2Index).writable := True;
+                        myP2(p2Index).user     := False;
+                        myP2(p2Index).global   := False;
+                        myP2(p2Index).NX       := False;
+                    end splitBigPage;
+                else
+                    -- Already using small pages, just walk to P1
+                    clearEntry : declare
+                        function getP1 is new getNextTable (P2);
+                        p1Addr : constant PhysAddress :=
+                            getP1 (myP2, p2Index);
+                    begin
+                        if p1Addr = 0 then
+                            raise RemapException with
+                                "createGuardPage: P1 not present";
+                        end if;
+
+                        doUnmap : declare
+                            myP1 : P1 with Import,
+                                Address => To_Address (P2V (p1Addr));
+                        begin
+                            myP1(p1Index).present := False;
+                        end doUnmap;
+                    end clearEntry;
+                end if;
+            end walkP2;
+        end walkP3;
+
+        flushTLB;
+    end createGuardPage;
+
+    ---------------------------------------------------------------------------
+    -- removeGuardPage
+    -- Restore a previously unmapped kernel linear page so the buddy
+    -- allocator can reuse the frame. Assumes big page was already split.
+    ---------------------------------------------------------------------------
+    procedure removeGuardPage (physAddr : in Virtmem.PhysAddress) with
+        SPARK_Mode => Off  -- uses 'Address, Import overlays
+    is
+        use Virtmem;
+
+        function getP3 is new getNextTable (P4);
+        function getP2 is new getNextTable (P3);
+        function getP1 is new getNextTable (P2);
+
+        virt    : constant VirtAddress := P2V (physAddr);
+        p4Index : constant PageTableIndex := getP4Index (virt);
+        p3Index : constant PageTableIndex := getP3Index (virt);
+        p2Index : constant PageTableIndex := getP2Index (virt);
+        p1Index : constant PageTableIndex := getP1Index (virt);
+
+        p3Addr : PhysAddress;
+        p2Addr : PhysAddress;
+        p1Addr : PhysAddress;
+    begin
+        p3Addr := getP3 (kernelP4, p4Index);
+        if p3Addr = 0 then
+            raise RemapException with
+                "removeGuardPage: P3 not present";
+        end if;
+
+        walkP3 : declare
+            myP3 : P3 with Import, Address => To_Address (P2V (p3Addr));
+        begin
+            p2Addr := getP2 (myP3, p3Index);
+            if p2Addr = 0 then
+                raise RemapException with
+                    "removeGuardPage: P2 not present";
+            end if;
+
+            walkP2 : declare
+                myP2 : P2 with Import, Address => To_Address (P2V (p2Addr));
+            begin
+                p1Addr := getP1 (myP2, p2Index);
+                if p1Addr = 0 then
+                    raise RemapException with
+                        "removeGuardPage: P1 not present";
+                end if;
+
+                restoreEntry : declare
+                    myP1 : P1 with Import,
+                        Address => To_Address (P2V (p1Addr));
+                begin
+                    myP1(p1Index) := makePTE (addrToPFN (physAddr),
+                                              PG_KERNELDATA);
+                end restoreEntry;
+            end walkP2;
+        end walkP3;
+
+        flushTLB;
+    end removeGuardPage;
 
     ---------------------------------------------------------------------------
     -- switchAddressSpace - make the kernel's page table the active one.

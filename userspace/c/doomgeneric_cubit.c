@@ -14,9 +14,38 @@
 #include "doomkeys.h"
 #include "m_argv.h"
 #include "doomgeneric.h"
+#include "d_event.h"
 
 #include "cubit.h"
 #include <stdio.h>
+
+/* Declare capability requirements in ELF manifest:
+ *   slot 4  - CAP_DEVICE_MEM (framebuffer)
+ *   slot 1  - CAP_ENDPOINT to FS server (DRIVER_FS = 6)
+ *   slot 14 - CAP_ENDPOINT to mixer (DRIVER_MIXER = 9)
+ */
+static const unsigned char __cubit_manifest[]
+    __attribute__((section(".cubit.caps"), used)) = {
+    /* Header: magic "CBIT" LE, version 1, count 3 */
+    0x54, 0x49, 0x42, 0x43,
+    0x01, 0x00,
+    0x03, 0x00,
+
+    /* Entry 0: REQ_FRAMEBUFFER, RW, slot 4 */
+    CUBIT_REQ_FRAMEBUFFER, CUBIT_RIGHT_RW, 4, 0x00,
+    0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+
+    /* Entry 1: REQ_SERVICE, RW, slot 1, driver_id=6 (DRIVER_FS) */
+    CUBIT_REQ_SERVICE, CUBIT_RIGHT_RW, 1, 0x00,
+    0x06, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+
+    /* Entry 2: REQ_SERVICE, RW|GRANT, slot 14, driver_id=9 (DRIVER_MIXER) */
+    CUBIT_REQ_SERVICE, CUBIT_RIGHT_RW | CUBIT_RIGHT_GRANT, 14, 0x00,
+    0x09, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+};
 
 /* Framebuffer state */
 static cubit_framebuffer_t fb;
@@ -155,6 +184,20 @@ static void poll_keyboard(void)
     }
 }
 
+static void poll_mouse(void)
+{
+    cubit_mouse_event_t mev;
+    while (cubit_mouse_get(&mev)) {
+        event_t doom_ev;
+        doom_ev.type = ev_mouse;
+        doom_ev.data1 = mev.buttons;
+        doom_ev.data2 = mev.dx;         /* X = turn */
+        doom_ev.data3 = -mev.dy;        /* DOOM negates Y */
+        doom_ev.data4 = 0;
+        D_PostEvent(&doom_ev);
+    }
+}
+
 /*---------------------------------------------------------------------------
  * DG_Init - Initialize framebuffer and keyboard
  *---------------------------------------------------------------------------*/
@@ -175,10 +218,11 @@ void DG_Init(void)
              (unsigned long)fb.addr, fb.width, fb.height, fb.pitch, fb.bpp);
     cubit_puts(buf);
 
-    /* Register as keyboard driver and start receiving scan codes */
+    /* Register as keyboard and mouse driver */
     cubit_keyboard_init();
+    cubit_mouse_init();
 
-    cubit_puts("DOOM: Keyboard initialized.\n");
+    cubit_puts("DOOM: Input initialized.\n");
 }
 
 /*---------------------------------------------------------------------------
@@ -209,8 +253,9 @@ void DG_DrawFrame(void)
         memcpy(dst, src, DOOMGENERIC_RESX * 4);
     }
 
-    /* Poll keyboard each frame */
+    /* Poll input each frame */
     poll_keyboard();
+    poll_mouse();
 }
 
 /*---------------------------------------------------------------------------
@@ -262,16 +307,23 @@ int main(void)
 {
     cubit_puts("DOOM: Starting on CuBit OS...\n");
 
-    /* Try ATA disk first, fall back to ramdisk */
+    /* Try NVMe first, then ATA, fall back to ramdisk */
     static char *wad_path;
-    FILE *test = fopen("@ata:0/doom1.wad", "r");
+    FILE *test = fopen("@nvme:0/doom1.wad", "r");
     if (test) {
         fclose(test);
-        wad_path = "@ata:0/doom1.wad";
-        cubit_puts("DOOM: Using WAD from ATA disk.\n");
+        wad_path = "@nvme:0/doom1.wad";
+        cubit_puts("DOOM: Using WAD from NVMe disk.\n");
     } else {
-        wad_path = "doom1.wad";
-        cubit_puts("DOOM: ATA not available, using ramdisk WAD.\n");
+        test = fopen("@ata:0/doom1.wad", "r");
+        if (test) {
+            fclose(test);
+            wad_path = "@ata:0/doom1.wad";
+            cubit_puts("DOOM: Using WAD from ATA disk.\n");
+        } else {
+            wad_path = "doom1.wad";
+            cubit_puts("DOOM: No disk, using ramdisk WAD.\n");
+        }
     }
 
     static char *argv[] = {"doom", "-iwad", NULL, NULL};

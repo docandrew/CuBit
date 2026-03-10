@@ -5,6 +5,9 @@
 -- ELF Loading & Process Creation
 -------------------------------------------------------------------------------
 
+with Interfaces; use Interfaces;
+with System.Storage_Elements; use System.Storage_Elements;
+
 with Process;
 with Strings;
 with TextIO; use TextIO;
@@ -207,7 +210,8 @@ package body Process.Loader is
                    size         : System.Storage_Elements.Storage_Count;
                    strAddr      : System.Address;
                    requestedPID : ProcessID := NO_PROCESS;
-                   priority     : ProcessPriority := 1) return ProcessID with
+                   priority     : ProcessPriority := 1;
+                   ppid         : ProcessID := NO_PROCESS) return ProcessID with
         SPARK_Mode => On
     is
         use type ELF.SegmentType;
@@ -220,45 +224,36 @@ package body Process.Loader is
             print ("Process.Loader: Entry point:               "); println (elfHeader.e_entry);
 
             declare
-                segments : ELF.ProgramHeaderTable(0..elfHeader.e_phnum - 1) with Import, Address => objStart + elfHeader.e_phoff;
+                segments : ELF.ProgramHeaderTable(0..elfHeader.e_phnum - 1)
+                    with Import, Address => objStart + elfHeader.e_phoff;
 
-                newProc  : Process;
+                pid      : ProcessID;
                 procName : ProcessName;
             begin
                 Strings.toAda(strAddr, procName);
 
-                -- Create new Process for this executable.
-                newProc := create (procStart    => elfHeader.e_entry,
-                                   ppid         => 0,
-                                   name         => procName,
-                                   priority     => priority,
-                                   procStack    => PROCESS_STACK_TOP_VIRT,
-                                   requestedPID => requestedPID);
+                pid := create (procStart    => elfHeader.e_entry,
+                               ppid         => ppid,
+                               name         => procName,
+                               priority     => priority,
+                               procStack    => PROCESS_STACK_TOP_VIRT,
+                               requestedPID => requestedPID);
 
                 for segment of segments loop
-                    -- println;
-                    -- print ("Modules: Segment type:            "); printSegmentType (segment.p_type); println;
-                    -- print ("Modules: Segment flags:           "); printSegmentFlags (segment.p_flags); println;
-                    -- print ("Modules: Segment offset:          "); println (segment.p_offset'Image);
-                    -- print ("Modules: Segment virtual address: "); println (segment.p_vaddr);
-                    -- print ("Modules: Segment file size:       "); println (segment.p_filesz'Image);
-                    -- print ("Modules: Segment memory size:     "); println (segment.p_memsz'Image);
-                    -- print ("Modules: Segment alignment:       "); println (segment.p_align'Image);
-
                     if segment.p_type = ELF.PT_LOAD and segment.p_memsz > 0 then
                         addSegmentToProcess (elfAddr => objStart,
                                              segment => segment,
-                                             proc    => newProc);
+                                             proc    => proctab(pid));
                     end if;
                 end loop;
 
-                print ("Process.Loader: Loaded module "); print (procName); print (" w/ process ID "); println (newProc.pid);
+                print ("Process.Loader: Loaded module "); print (procName);
+                print (" w/ process ID "); println (pid);
 
-                addToProctab (newProc);
-                return newProc.pid;
+                return pid;
             end;
         end if;
-    
+
         return NO_PROCESS;
     end load;
 

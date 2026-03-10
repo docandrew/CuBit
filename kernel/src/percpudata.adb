@@ -211,7 +211,7 @@ is
     begin
         getCPUContext: declare
             cpuData : PerCPUData with
-                Import, Address => perCPUAddr;
+                Import, Volatile, Address => perCPUAddr;
         begin
             return cpuData.cpuNum;
         end getCPUContext;
@@ -227,7 +227,7 @@ is
     begin
         getCPUContext: declare
             cpuData : PerCPUData with
-                Import, Address => perCPUAddr;
+                Import, Volatile, Address => perCPUAddr;
         begin
             return cpuData.currentPID;
         end getCPUContext;
@@ -243,7 +243,7 @@ is
     begin
         getCPUContext : declare
             cpuData : PerCPUData with
-                Import, Address => perCPUAddr;
+                Import, Volatile, Address => perCPUAddr;
         begin
             return cpuData.intsEnabled;
         end getCPUContext;
@@ -259,7 +259,7 @@ is
     begin
         getCPUContext : declare
             cpuData : PerCPUData with
-                Import, Address => perCPUAddr;
+                Import, Volatile, Address => perCPUAddr;
         begin
             return cpuData.numCLI;
         end getCPUContext;
@@ -274,17 +274,17 @@ is
     begin
         declare
             cpuData : PerCPUData with
-                Import, Address => perCPUAddr;
+                Import, Volatile, Address => perCPUAddr;
         begin
             priorFlags := x86.getFlags;
             x86.cli;
 
-            cpuData.numCLI := cpuData.numCLI + 1;
-
             if cpuData.numCLI = 0 then
                 cpuData.intsEnabled := priorFlags.interrupt;
             end if;
-        end;        
+
+            cpuData.numCLI := cpuData.numCLI + 1;
+        end;
     end pushCLI;
 
     ---------------------------------------------------------------------------
@@ -296,7 +296,7 @@ is
     begin
         declare
             cpuData : PerCPUData with
-                Import, Address => perCPUAddr;
+                Import, Volatile, Address => perCPUAddr;
         begin
             priorFlags := x86.getFlags;
 
@@ -338,7 +338,7 @@ is
 
         getPerCPU : declare
             perCPU : PerCPUData
-                with Import, Address => getPerCPUDataAddr;
+                with Import, Volatile, Address => getPerCPUDataAddr;
         begin
             totalStackSize := Unsigned_64(Virtmem.STACK_TOP - Virtmem.STACK_BOTTOM);
 

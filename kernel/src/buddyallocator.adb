@@ -7,12 +7,24 @@
 with Ada.Unchecked_Conversion;
 with Interfaces; use Interfaces;
 
+with Spinlocks;
 with TextIO; use TextIO;
 with Util;
 
 package body BuddyAllocator
     with SPARK_Mode => On
 is
+
+    ---------------------------------------------------------------------------
+    -- Buddy-pair XOR bitmap for safe coalesce checks.
+    -- One bit per buddy pair per order, toggled on each alloc/free
+    -- transition. Replaces unsafe in-place metadata check that read from
+    -- allocated blocks (whose content could spoof the buddy address).
+    -- Dynamically allocated from the boot allocator during setup.
+    ---------------------------------------------------------------------------
+    bitmapBase     : System.Address := System.Null_Address;
+    maxBitmapPFN   : Unsigned_64 := 0;
+    orderBitOffset : array (Order) of Unsigned_64 := (others => 0);
 
     ---------------------------------------------------------------------------
     -- Address Arithmetic (don't tell!)
@@ -75,6 +87,97 @@ is
     end blockEnd;
 
     ---------------------------------------------------------------------------
+    -- allocBitmap - Allocate and initialize the buddy-pair XOR bitmap
+    -- from the boot allocator. Must be called before any free/alloc ops.
+    ---------------------------------------------------------------------------
+    procedure allocBitmap with
+        SPARK_Mode => Off
+    is
+        maxPFN     : constant Unsigned_64 :=
+            Unsigned_64(Virtmem.MAX_PHYS_USABLE) /
+            Unsigned_64(Virtmem.FRAME_SIZE);
+        totalBits  : Unsigned_64 := 0;
+        totalBytes : Storage_Count;
+        numFrames  : Positive;
+        physAddr   : Virtmem.PhysAddress;
+    begin
+        for ord in Order range 0 .. Order'Last - 1 loop
+            orderBitOffset(ord) := totalBits;
+            totalBits := totalBits +
+                Shift_Right(maxPFN, Natural(ord) + 1);
+        end loop;
+
+        totalBytes := Storage_Count(Shift_Right(totalBits + 63, 6) * 8);
+
+        if totalBytes < Virtmem.FRAME_SIZE then
+            numFrames := 1;
+        else
+            numFrames := Natural(
+                (totalBytes + Virtmem.FRAME_SIZE - 1) / Virtmem.FRAME_SIZE);
+        end if;
+
+        BootAllocator.allocFrames(numFrames, physAddr);
+
+        bitmapBase   := Virtmem.P2Va(physAddr);
+        maxBitmapPFN := maxPFN;
+
+        declare
+            ignore : System.Address;
+        begin
+            ignore := Util.memset(bitmapBase, 0, totalBytes);
+        end;
+
+        print("Buddy bitmap: ");
+        print(Natural(totalBytes));
+        println(" bytes");
+    end allocBitmap;
+
+    ---------------------------------------------------------------------------
+    -- toggleBit - Toggle the XOR bit for the buddy pair containing addr
+    -- at the given order. Called on each alloc/free state transition.
+    ---------------------------------------------------------------------------
+    procedure toggleBit (ord : in Order; addr : in System.Address) with
+        SPARK_Mode => Off
+    is
+        pfn     : constant Unsigned_64 :=
+            Unsigned_64(Virtmem.vaddrToPFN(addr));
+        pi      : constant Unsigned_64 :=
+            Shift_Right(pfn, Natural(ord) + 1);
+        bitPos  : constant Unsigned_64 := orderBitOffset(ord) + pi;
+        wordIdx : constant Unsigned_64 := Shift_Right(bitPos, 6);
+        bitIdx  : constant Natural := Natural(bitPos and 63);
+
+        word : aliased Unsigned_64 with
+            Import, Address => bitmapBase +
+                Storage_Offset(wordIdx * 8);
+    begin
+        word := word xor Shift_Left(Unsigned_64(1), bitIdx);
+    end toggleBit;
+
+    ---------------------------------------------------------------------------
+    -- testBit - Return True if the buddy-pair bit is set (one buddy free,
+    -- one allocated). Return False if clear (both in same state).
+    ---------------------------------------------------------------------------
+    function testBit (ord : in Order; addr : in System.Address)
+        return Boolean with
+        SPARK_Mode => Off
+    is
+        pfn     : constant Unsigned_64 :=
+            Unsigned_64(Virtmem.vaddrToPFN(addr));
+        pi      : constant Unsigned_64 :=
+            Shift_Right(pfn, Natural(ord) + 1);
+        bitPos  : constant Unsigned_64 := orderBitOffset(ord) + pi;
+        wordIdx : constant Unsigned_64 := Shift_Right(bitPos, 6);
+        bitIdx  : constant Natural := Natural(bitPos and 63);
+
+        word : aliased Unsigned_64 with
+            Import, Address => bitmapBase +
+                Storage_Offset(wordIdx * 8);
+    begin
+        return (word and Shift_Left(Unsigned_64(1), bitIdx)) /= 0;
+    end testBit;
+
+    ---------------------------------------------------------------------------
     -- popFromFreeList
     ---------------------------------------------------------------------------
     procedure popFromFreeList (ord  : in Order;
@@ -85,15 +188,15 @@ is
                    freeLists(ord).numFreeBlocks - 1
     is
         retBlock : aliased FreeBlock
-            with Import, Address => freeLists(ord).nextBlock;
+            with Import, Volatile, Address => freeLists(ord).nextBlock;
     begin
         -- set output
         addr := freeLists(ord).nextBlock;
-        
+
         linkNext:
         declare
             nextBlock : aliased FreeBlock
-                with Import, Address => retBlock.nextBlock;
+                with Import, Volatile, Address => retBlock.nextBlock;
         begin
             -- fwd link to next block in list (may be the head)
             freeLists(ord).nextBlock := retBlock.nextBlock;
@@ -102,15 +205,12 @@ is
             nextBlock.prevBlock := retBlock.prevBlock;
         end linkNext;
 
-        -- clear the buddy flag so when our buddy checks to see
-        -- if we're free, he knows we aren't. Zeroize the whole block for
-        -- safety.
-        Util.memset (addr, 0, blockSize (ord));
-        -- retBlock.buddy      := System.Null_Address;
-        -- retBlock.prevBlock  := System.Null_Address;
-        -- retBlock.nextBlock  := System.Null_Address;
-
         freeLists(ord).numFreeBlocks := freeLists(ord).numFreeBlocks - 1;
+
+        -- Toggle bitmap: this block transitions from free to allocated.
+        if ord < Order'Last then
+            toggleBit (ord, addr);
+        end if;
     end popFromFreeList;
 
     ---------------------------------------------------------------------------
@@ -122,10 +222,10 @@ is
         SPARK_Mode => On
     is
         newBlock  : aliased FreeBlock with
-            Import, Address => newBlockAddr;
+            Import, Volatile, Address => newBlockAddr;
 
         nextBlock : aliased FreeBlock with
-            Import, Address => freeLists(ord).nextBlock;
+            Import, Volatile, Address => freeLists(ord).nextBlock;
     begin
         -- point us to the next block in the line
         newBlock.prevBlock          := nextBlock.prevBlock;
@@ -157,23 +257,27 @@ is
         rightHalfAddr : constant System.Address := getBuddy((ord - 1), addr);
     begin
         addToFreeList (ord - 1, rightHalfAddr);
+
+        -- Toggle bitmap: right half transitions to free at ord-1.
+        toggleBit (ord - 1, rightHalfAddr);
     end splitBlock;
 
     ---------------------------------------------------------------------------
     -- isBuddyFree - given an order and a block address, determine whether that
     -- block's buddy is free.
     ---------------------------------------------------------------------------
+    ---------------------------------------------------------------------------
+    -- isBuddyFree - uses the XOR bitmap. The caller must have already
+    -- toggled the bit for this pair (see free procedure). Bit = 0 after
+    -- toggle means both buddies are in the same state; since we just freed
+    -- ours, the buddy must also be free.
+    ---------------------------------------------------------------------------
     function isBuddyFree (ord : in Order; addr : in System.Address) return Boolean
     with
-        SPARK_Mode => On
+        SPARK_Mode => Off
     is
-        use System; -- for "=" operator
-
-        buddy : aliased FreeBlock with
-            Import, Address => getBuddy (ord, addr);
     begin
-        -- Later on, we can replace this function with a bitmap lookup
-        return buddy.buddy = addr;
+        return not testBit (ord, addr);
     end isBuddyFree;
 
     ---------------------------------------------------------------------------
@@ -191,7 +295,7 @@ is
                 freeLists(ord).numFreeBlocks'Old - 1
     is
         block : aliased FreeBlock with
-            Import, Address => addr;
+            Import, Volatile, Address => addr;
 
         prevAddr : constant System.Address := block.prevBlock;
         nextAddr : constant System.Address := block.nextBlock;
@@ -200,10 +304,10 @@ is
         linkNeighbors:
         declare
             prevBlock : aliased FreeBlock with
-                Import, Address => prevAddr;
+                Import, Volatile, Address => prevAddr;
 
             nextBlock : aliased FreeBlock with
-                Import, Address => nextAddr;
+                Import, Volatile, Address => nextAddr;
         begin
             prevBlock.nextBlock := nextAddr;
             nextBlock.prevBlock := prevAddr;
@@ -318,6 +422,9 @@ is
             freeLists(ord).buddy     := System.Null_Address;
         end loop;
 
+        -- Allocate XOR bitmap for safe buddy-pair coalesce checks.
+        allocBitmap;
+
         eachArea:
         for area of areas loop
             if area.kind /= MemoryAreas.USABLE or 
@@ -387,16 +494,18 @@ is
     -- alloc
     ---------------------------------------------------------------------------
     procedure alloc (ord : in Order; addr : out System.Address) with
-        SPARK_Mode => On
+        SPARK_Mode => Off  -- lock calls change Global contract
     is
         use System;
 
         retBlock : System.Address;
         curOrd   : Order := ord;
     begin
+        Spinlocks.enterCriticalSection (lock);
+
         -- find a list order big enough to satisfy our request
         findLoop: loop
-            
+
             if freeLists(curOrd).nextBlock /= getListAddress (curOrd) then
                 -- found free space in order i
                 -- remove the block from the list
@@ -416,6 +525,16 @@ is
                     curOrd := curOrd - 1;
                 end loop;
 
+                Spinlocks.exitCriticalSection (lock);
+
+                -- Zero the allocated block outside the lock to prevent
+                -- information leakage between processes. Only zero the
+                -- requested size, not the full popped block.
+                declare
+                    ignore : System.Address;
+                begin
+                    ignore := Util.memset (addr, 0, blockSize (ord));
+                end;
                 return;
             end if;
 
@@ -425,13 +544,14 @@ is
 
         -- no blocks found that can satisfy the request
         addr := NO_BLOCK_AVAILABLE;
+        Spinlocks.exitCriticalSection (lock);
     end alloc;
 
     ---------------------------------------------------------------------------
     -- allocFrame
     ---------------------------------------------------------------------------
     procedure allocFrame (addr : out Virtmem.PhysAddress) with
-        SPARK_Mode => On
+        SPARK_Mode => Off
     is
         vaddr : System.Address;
     begin
@@ -453,18 +573,23 @@ is
     -- free
     ---------------------------------------------------------------------------
     procedure free (ord : in Order; addr : in System.Address) with
-        SPARK_Mode => On
+        SPARK_Mode => Off  -- lock calls change Global contract
     is
         curOrd   : Order := ord;
         freeAddr : Integer_Address := To_Integer(addr);
     begin
+        Spinlocks.enterCriticalSection (lock);
+
         -- "bubble up" free blocks as long as each order's buddy is free
         -- and we aren't at max order
         coalesce: while curOrd < Order'Last loop
 
+            -- Toggle bitmap for this buddy pair, then test.
+            toggleBit (curOrd, To_Address(freeAddr));
+
             if isBuddyFree (curOrd, To_Address(freeAddr)) then
-                -- buddy indicates free (see CAUTION), coalesce
-                
+                -- buddy is free, coalesce
+
                 -- remove buddy from its current free list
                 unlink (curOrd, getBuddy (curOrd, To_Address(freeAddr)));
 
@@ -474,29 +599,22 @@ is
                 -- see if our coalesced block can be combined with the next level up
                 curOrd := curOrd + 1;
             else
-                -- buddy not free, annotate ourselves with his address so when
-                -- he's freed later he can coalesce with us.
-                markBuddy:
-                declare
-                    block: aliased FreeBlock with
-                        Import, Address => To_Address(freeAddr);
-                begin
-                    block.buddy := getBuddy (curOrd, To_Address(freeAddr));
-                end markBuddy;
-
+                -- buddy not free
                 exit coalesce;
             end if;
         end loop coalesce;
 
         -- add us to front of the respective free list
         addToFreeList (curOrd, To_Address(freeAddr));
+
+        Spinlocks.exitCriticalSection (lock);
     end free;
 
     ---------------------------------------------------------------------------
     -- freeFrame
     ---------------------------------------------------------------------------
     procedure freeFrame (addr : in Virtmem.PhysAddress) with
-        SPARK_Mode => On
+        SPARK_Mode => Off
     is
     begin
         free (0, Virtmem.P2Va (addr));

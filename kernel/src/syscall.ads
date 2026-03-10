@@ -56,12 +56,40 @@ is
     SYSCALL_MAPFB           : constant SyscallNumber := 29;
 
     -- Port I/O syscalls (for userspace drivers)
-    SYSCALL_INB             : constant SyscallNumber := 30;
-    SYSCALL_OUTB            : constant SyscallNumber := 31;
-    SYSCALL_INW             : constant SyscallNumber := 32;
-    SYSCALL_OUTW            : constant SyscallNumber := 33;
-    SYSCALL_INS16           : constant SyscallNumber := 34;
-    SYSCALL_OUTS16          : constant SyscallNumber := 35;
+    SYSCALL_INP8            : constant SyscallNumber := 30;
+    SYSCALL_OUTP8           : constant SyscallNumber := 31;
+    SYSCALL_INP16           : constant SyscallNumber := 32;
+    SYSCALL_OUTP16          : constant SyscallNumber := 33;
+    SYSCALL_INPS16          : constant SyscallNumber := 34;
+    SYSCALL_OUTPS16         : constant SyscallNumber := 35;
+    SYSCALL_INP32           : constant SyscallNumber := 36;
+    SYSCALL_OUTP32          : constant SyscallNumber := 37;
+
+    -- Virtual-to-physical address translation
+    SYSCALL_VIRT_TO_PHYS    : constant SyscallNumber := 50;
+
+    -- Process spawning
+    SYSCALL_SPAWN           : constant SyscallNumber := 60;
+
+    -- Device MMIO mapping (for userspace drivers)
+    SYSCALL_MAP_DEVICE      : constant SyscallNumber := 70;
+
+    -- Process listing (for ps command)
+    SYSCALL_PROCLIST        : constant SyscallNumber := 71;
+
+    -- Capability minting (for process managers)
+    SYSCALL_MINT_CAP        : constant SyscallNumber := 72;
+
+    -- Resume a suspended process
+    SYSCALL_RESUME          : constant SyscallNumber := 73;
+
+    -- Device manager syscalls
+    SYSCALL_ALLOC_DMA       : constant SyscallNumber := 74;
+    SYSCALL_ENABLE_IRQ      : constant SyscallNumber := 75;
+    SYSCALL_MAP_INTO        : constant SyscallNumber := 76;
+    SYSCALL_SET_SYSINFO     : constant SyscallNumber := 77;
+    SYSCALL_SET_CPU         : constant SyscallNumber := 78;
+    SYSCALL_SET_SUPERVISOR  : constant SyscallNumber := 79;
 
     -- Capability-aware IPC syscalls
     SYSCALL_CAP_SEND        : constant SyscallNumber := 40;

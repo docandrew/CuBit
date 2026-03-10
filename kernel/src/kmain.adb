@@ -15,11 +15,11 @@ with ACPI;
 with BootAllocator;
 with BuddyAllocator;
 with Build;
-with Capabilities.IRQ;
 with Config;
 with Cpuid;
 with Ioapic;
 with Interrupts;
+with IPI;
 with Lapic;
 with Mem_mgr;
 with MemoryAreas;
@@ -32,7 +32,6 @@ with Process;
 with Scheduler;
 with Serial;
 with Services.Idle;
-with Services.Keyboard;
 with StoragePools;
 with TextIO; use TextIO;
 with Time;
@@ -113,6 +112,7 @@ begin
     memAreas := Multiboot.getMemoryAreas (mbInfo);
 
     BootAllocator.setup (memAreas);
+
     Mem_mgr.setup (memAreas);
     BuddyAllocator.setup (memAreas);
     StoragePools.setup;
@@ -290,10 +290,13 @@ begin
                 package myLapic is new lapic(To_Address(virtmem.P2V(apicBase)));
             begin
                 myLapic.setupLAPIC_BSP;
+                -- Store calibrated timer interval for APs to use
+                Interrupts.setLAPICTimerInterval (myLapic.getTimerInterval);
             end setupLAPIC;
 
             Interrupts.setInterruptController (Interrupts.APIC);
             Interrupts.setLAPICBaseAddress (apicBase);
+            IPI.init (To_Address (virtmem.P2V (apicBase)));
             pic.disable;
         else
             -- @TODO not a big deal to fall-back to the PIC, but we need to
@@ -355,9 +358,17 @@ begin
                     println ("Enabling keyboard");
                     io_apic.enableIRQ (33, 0);
 
+                    -- Enable PS/2 Mouse Interrupts (IRQ 12 = vector 44)
+                    println ("Enabling PS/2 mouse");
+                    io_apic.enableIRQ (InterruptNumbers.PS2MOUSE, 0);
+
                     -- Enable IDE1 Interrupts (for userspace ATA driver)
                     println ("Enabling IDE1");
                     io_apic.enableIRQ (InterruptNumbers.IDE1, 0);
+
+                    -- Store IOAPIC base for later use by modules
+                    Interrupts.setIOAPICBaseAddress (
+                        To_Address (ioapicVirtBase));
                 end if;
             end setupIOAPIC;
         end if;
@@ -411,51 +422,31 @@ begin
         Modules.setup (mbInfo);
     end initModules;
 
-    -- if acpi.numCPUs > 1 then
-    --     initSMP: declare
-    --         package myLapic is new lapic(To_Address(virtmem.P2V(apicBase)));
-    --         cpu : Natural := 1;
-    --     begin
-    --         println("Starting SMP CPUs", textmode.LT_BLUE, textmode.BLACK);
+    if acpi.numCPUs > 1 then
+        initSMP: declare
+            package myLapic is new lapic(To_Address(virtmem.P2V(apicBase)));
+            maxAPs : constant Natural :=
+                Natural'Min(acpi.numCPUs - 1, Config.MAX_SMP_CPUS - 1);
+        begin
+            println("Starting SMP CPUs", LT_BLUE, BLACK);
 
-    --         for cpu in 1..(acpi.numCPUs - 1) loop
-                
-    --             startingCPU := Unsigned_32(cpu);
-                
-    --             myLapic.bootAP(Unsigned_8(cpu), 16#7000#);
+            for cpu in 1 .. maxAPs loop
+                startingCPU := Unsigned_32(cpu);
+                myLapic.bootAP(Unsigned_8(cpu), 16#7000#);
 
-    --             while startingCPU /= 0 loop
-    --                 Time.sleep(1 * time.Milliseconds);
-    --             end loop;
-    --         end loop;
-    --     end initSMP;
-    -- end if;
+                while startingCPU /= 0 loop
+                    Time.sleep(1 * Time.Milliseconds);
+                end loop;
+            end loop;
+        end initSMP;
+    end if;
 
     println ("Starting idle service");
-    -- @TODO may need to start one of these per-CPU
     Process.startKernelThread (procStart => Services.Idle.start'Address,
                                name      => "Idle            ",
                                pid       => Config.SERVICE_IDLE_PID,
-                               priority  => -1);
-
-    println ("Starting keyboard service");
-    Process.startKernelThread (procStart => Services.Keyboard.start'Address,
-                               name      => "Keyboard        ",
-                               pid       => Config.SERVICE_KEYBOARD_PID,
-                               priority  => 10);
-
-    -- Register keyboard service as IRQ owner for PS/2 keyboard (vector 33)
-    registerIRQ : declare
-        irqOk : Boolean;
-    begin
-        Capabilities.IRQ.registerIRQ (
-            vector => 33,
-            pid    => Interfaces.Unsigned_64(Config.SERVICE_KEYBOARD_PID),
-            status => irqOk);
-        if irqOk then
-            println ("IRQ 33 registered to keyboard service");
-        end if;
-    end registerIRQ;
+                               priority  => -1,
+                               homeCPU   => 0);
 
     -- println (testKThread1'Address);
     -- Process.startKernelThread (testKThread1'Address, "kthread1        ", 1);
@@ -465,10 +456,6 @@ begin
    
     -- println ("Creating User Process");
     -- Process.createFirstProcess;
-
-    -- Re-enable video output now that boot is done
-    TextIO.enableVideo;
-    TextIO.clear (BLACK);
 
     initScheduler: declare
     begin
@@ -493,9 +480,11 @@ procedure apEnter (cpuNum : in Unsigned_32) is
     cpuData         : aliased PerCpuData.PerCPUData;
     ssPtr           : System.Secondary_Stack.SS_Stack_Ptr;
     DummyException  : exception;
+    idlePID         : constant Process.ProcessID :=
+        Process.ProcessID(Config.IDLE_PID_BASE + Natural(cpuNum));
 begin
     print ("CPU started: ", GREEN, BLACK); printdln (cpuNum);
-    
+
     PerCPUData.setup (Integer(cpuNum),
                       cpuData,
                       cpuData'Address,
@@ -507,18 +496,32 @@ begin
     ssPtr := PerCPUData.getSecondaryStack;
     System.Secondary_Stack.SS_Init (ssPtr);
 
-    -- print("# zeroes = "); printd(cpuNum); print(" "); println(allZeroes(Integer(cpuNum)));
-
-    -- print("CPU local data:       "); println(cpuData'Address);
-    -- print(" as by getPerCPUData: "); println(PerCPUData.getPerCPUDataAddr);
-    
     Interrupts.loadIDT;
 
     -- switch to the kernel's primary page tables.
     Mem_mgr.switchAddressSpace;
 
-    -- now that we're up, we can signal the startup loop to continue
+    -- Set up LAPIC timer on this AP using BSP's calibrated interval
+    setupAPLapic : declare
+        package myLapic is new lapic(Interrupts.lapicAddr);
+    begin
+        myLapic.setTimerInterval (Interrupts.getLAPICTimerInterval);
+        myLapic.setupLAPIC_AP;
+    end setupAPLapic;
+
+    -- Create idle process for this CPU
+    Process.startKernelThread (
+        procStart => Services.Idle.start'Address,
+        name      => "Idle            ",
+        pid       => idlePID,
+        priority  => -1,
+        homeCPU   => Natural(cpuNum));
+
+    -- Signal BSP that we're up
     startingCPU := 0;
+
+    -- Enable interrupts before entering scheduler (needed for timer)
+    x86.sti;
 
     Scheduler.schedule (cpuData);
     x86.halt;

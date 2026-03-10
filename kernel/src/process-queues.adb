@@ -260,16 +260,19 @@ is
                            result       : out ProcessID)
         with SPARK_Mode => On
     is
-        -- Need to track difference between desired delay and sum of delay of
-        -- all previous processes on the sleep list.
-        prevDelaySum : Integer := 0;
+        -- accumDelay tracks the absolute wakeup time of all entries
+        -- before the current insertion point.
+        accumDelay : Integer := 0;
 
         prev, curr : ProcessID;
     begin
         Spinlocks.enterCriticalSection (q.lock);
 
+        -- Initialize new node's links
+        proctab(pid).next := NO_PROCESS;
+        proctab(pid).prev := NO_PROCESS;
+
         if isEmpty (q) then
-            -- empty list.
             q.head := pid;
             q.tail := pid;
             proctab(pid).queueKey := delayFromNow;
@@ -281,32 +284,47 @@ is
 
         curr := q.head;
 
-        -- Sum up previous delays. When our desired delay is less than the sum
-        -- of the previous delays or we reach the end of the list, insert our
-        -- process into the list.
+        -- Walk the delta list.  accumDelay + curr.queueKey gives the
+        -- absolute wakeup time of curr.  Insert before the first node
+        -- whose absolute time exceeds our delay.
         loop
-            exit when delayFromNow < prevDelaySum or proctab(curr).next = NO_PROCESS;
+            if delayFromNow < accumDelay + proctab(curr).queueKey then
+                -- Insert before curr
+                proctab(pid).queueKey := delayFromNow - accumDelay;
 
-            prevDelaySum := prevDelaySum + proctab(curr).queueKey;
+                -- Reduce curr's delta (now relative to the new node)
+                proctab(curr).queueKey :=
+                    proctab(curr).queueKey - proctab(pid).queueKey;
+
+                prev := proctab(curr).prev;
+                proctab(pid).next := curr;
+                proctab(pid).prev := prev;
+                proctab(curr).prev := pid;
+
+                if prev /= NO_PROCESS then
+                    proctab(prev).next := pid;
+                else
+                    q.head := pid;
+                end if;
+
+                Spinlocks.exitCriticalSection (q.lock);
+                result := pid;
+                return;
+            end if;
+
+            accumDelay := accumDelay + proctab(curr).queueKey;
+
+            exit when proctab(curr).next = NO_PROCESS;
             curr := proctab(curr).next;
         end loop;
 
-        -- Insert between previous node and current node
-        prev                  := proctab(curr).prev;
-        proctab(pid).next     := curr;
-        proctab(pid).prev     := prev;
-        proctab(pid).queueKey := delayFromNow - prevDelaySum;
-        proctab(curr).prev    := pid;
-
-        if prev /= NO_PROCESS then
-            proctab(prev).next := pid;
-        else
-            -- adding to front of list
-            q.head := pid;
-        end if;
+        -- Append at the tail (after curr)
+        proctab(pid).queueKey := delayFromNow - accumDelay;
+        proctab(pid).prev     := curr;
+        proctab(curr).next    := pid;
+        q.tail                := pid;
 
         Spinlocks.exitCriticalSection (q.lock);
-
         result := pid;
     end insertDelta;
 
@@ -334,7 +352,6 @@ is
         Spinlocks.enterCriticalSection (sleepList.lock);
 
         if not isEmpty (sleepList) then
-            -- print (sleepList);
             -- decrement head of sleep list by 1 ms
             proctab(sleepList.head).queueKey := proctab(sleepList.head).queueKey - 1;
 
@@ -342,9 +359,6 @@ is
                 -- wakeup all processes with this delay
                 wakeup;
             end if;
-        else
-            -- print (".");
-            null;
         end if;
 
         Spinlocks.exitCriticalSection (sleepList.lock);

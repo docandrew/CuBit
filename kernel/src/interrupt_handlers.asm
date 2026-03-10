@@ -59,6 +59,7 @@ global isr47
 
 global isr127   ; KERNEL PANIC
 global isr128   ; SYSCALL
+global isr249   ; Reschedule IPI
 global isr255   ; Spurious
 
 ; If this interrupt occurred while executing a user-mode process, we need to 
@@ -343,6 +344,13 @@ isr128:
 	push long 0
 	push long 0x80
 	jmp isrCommon
+
+; Reschedule IPI
+isr249:
+    swapGSIfFromProcess
+    push long 0
+    push long 249
+    jmp isrCommon
 
 ; Spurious Interrupt
 isr255:

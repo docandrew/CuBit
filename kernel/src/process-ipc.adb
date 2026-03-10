@@ -333,7 +333,10 @@ is
     ---------------------------------------------------------------------------
     ---------------------------------------------------------------------------
     -- replyWait
-    -- Atomic reply+receive: reply to one sender, then block receiving next.
+    -- Fused reply+receive: reply to previous sender, then check for next
+    -- message immediately without yielding. In the common server pattern
+    -- (next client already waiting in sendQueue), this handles the full
+    -- round-trip with zero context switches.
     ---------------------------------------------------------------------------
     procedure replyWait (replyTo  : in  ProcessID;
                          replyMsg : in  Message;
@@ -341,13 +344,75 @@ is
                          msg      : out Message) with
         SPARK_Mode => On
     is
-        ignore : Unsigned_64;
+        mypid    : constant ProcessID := PerCPUData.getCurrentPID;
+        receiver : constant ProcessID := getReceiver (mypid);
+        ignore   : Unsigned_64;
+        sender   : ProcessID;
+        ign      : ProcessID;
     begin
-        -- Perform the reply (wakes the sender)
-        ignore := reply (replyTo, replyMsg);
+        -----------------------------------------------------------------------
+        -- Phase 1: Reply to previous sender
+        -----------------------------------------------------------------------
+        if replyTo /= NO_PROCESS
+           and then proctab(replyTo).state /= INVALID
+        then
+            if proctab(replyTo).state = WAITINGFORREPLY then
+                -- Sync path: store reply, make sender READY (no direct switch
+                -- yet — check for next message first).
+                proctab(replyTo).replyMsg := replyMsg;
+                notify (replyTo);
+            else
+                -- Async path: delegate to full reply()
+                ignore := reply (replyTo, replyMsg);
+            end if;
+        end if;
 
-        -- Block receiving the next message
-        receive (from, msg);
+        -----------------------------------------------------------------------
+        -- Phase 2: Receive next message without yielding if possible
+        -----------------------------------------------------------------------
+        Spinlocks.enterCriticalSection (mailtab(receiver).lock);
+
+        -- Check sendQueue first (sender already waiting)
+        if not Queues.isEmpty (mailtab(receiver).sendQueue) then
+            Queues.dequeue (mailtab(receiver).sendQueue, sender);
+
+            msg  := mailtab(receiver).msg;
+            from := mailtab(receiver).sender;
+            mailtab(receiver).hasMsg := False;
+
+            proctab(sender).state := WAITINGFORREPLY;
+
+            Spinlocks.exitCriticalSection (mailtab(receiver).lock);
+            return;
+        end if;
+
+        -- Check deposited message (sender already in WAITINGFORREPLY)
+        if mailtab(receiver).hasMsg then
+            msg  := mailtab(receiver).msg;
+            from := mailtab(receiver).sender;
+            mailtab(receiver).hasMsg := False;
+
+            Spinlocks.exitCriticalSection (mailtab(receiver).lock);
+            return;
+        end if;
+
+        -- No message available — block as receiver
+        proctab(mypid).queueKey := receiver;
+        Queues.enqueue (mailtab(receiver).recvQueue, mypid, ign);
+        proctab(mypid).state := RECEIVING;
+
+        Spinlocks.exitCriticalSection (mailtab(receiver).lock);
+
+        yield;
+
+        -- Woken by sender — read message from mailbox
+        Spinlocks.enterCriticalSection (mailtab(receiver).lock);
+
+        msg  := mailtab(receiver).msg;
+        from := mailtab(receiver).sender;
+        mailtab(receiver).hasMsg := False;
+
+        Spinlocks.exitCriticalSection (mailtab(receiver).lock);
     end replyWait;
 
     procedure receiveNB (from  : out ProcessID;
@@ -402,7 +467,7 @@ is
     -- Path 2 (no receiver waiting):
     --   Deposit message, enqueue in sendQueue, set SENDING, yield once.
     --   The receiver's receive()/receiveNB() will dequeue us and set our
-    --   state to WAITINGFORREPLY. Then reply() calls inform() which adds
+    --   state to WAITINGFORREPLY. Then reply() calls notify() which adds
     --   us to the ready list. We resume with reply already delivered.
     ---------------------------------------------------------------------------
     function send (dest : ProcessID; msg : Message) return MessageTag
@@ -456,16 +521,28 @@ is
         mailtab(dest).sender  := pid;
 
         if not Queues.isEmpty (mailtab(dest).recvQueue) then
-            -- Path 1: receiver already waiting. Dequeue and wake them.
+            -- Path 1: receiver already waiting. Dequeue them.
             Queues.dequeue (mailtab(dest).recvQueue, receiver);
 
             -- Sender goes to WAITINGFORREPLY
             proctab(pid).state := WAITINGFORREPLY;
 
-            -- Remove receiver from RECEIVING state, make READY
-            ready (receiver);
-
             Spinlocks.exitCriticalSection (mailtab(dest).lock);
+
+            if proctab(receiver).cpu = PerCPUData.getCPUNumber then
+                -- Same CPU: fast path directSwitch to receiver.
+                Spinlocks.enterCriticalSection (lock);
+                directSwitch (pid, receiver);
+                Spinlocks.exitCriticalSection (lock);
+
+                -- Resumed: reply delivered via directSwitch from reply()
+                replyTag := proctab(pid).replyMsg.tag;
+                return replyTag;
+            else
+                -- Cross CPU: make receiver ready on its home CPU.
+                -- Sender is WAITINGFORREPLY; fall through to yield.
+                ready (receiver);
+            end if;
         else
             -- Path 2: no receiver yet. Enqueue ourselves as a sender.
             proctab(pid).queueKey := dest;
@@ -475,10 +552,7 @@ is
             Spinlocks.exitCriticalSection (mailtab(dest).lock);
         end if;
 
-        -- Single yield per path:
-        -- Path 1: WAITINGFORREPLY — woken by reply() calling inform()
-        -- Path 2: SENDING — receiver sets us to WAITINGFORREPLY,
-        --         then reply() calls inform() to wake us
+        -- Path 2: yield and wait for receiver to dequeue us
         yield;
 
         -- Reply delivered — replyMsg populated by reply()
@@ -510,11 +584,41 @@ is
         enqueueEvent (dest, msg, ok);
 
         if proctab(dest).state = WAITINGFOREVENT then
-            inform (dest);
+            notify (dest);
         end if;
 
         Spinlocks.exitCriticalSection (mailtab(dest).lock);
     end sendEvent;
+
+    ---------------------------------------------------------------------------
+    -- notifySupervisor
+    -- Send a non-blocking fault event to the supervisor of the given process.
+    ---------------------------------------------------------------------------
+    procedure notifySupervisor (pid        : ProcessID;
+                                faultLabel : Unsigned_32;
+                                detail0    : Unsigned_64;
+                                detail1    : Unsigned_64;
+                                detail2    : Unsigned_64)
+        with SPARK_Mode => On
+    is
+        svpid : constant ProcessID := proctab(pid).svpid;
+        faultMsg : Message := NULL_MESSAGE;
+    begin
+        if svpid = NO_PROCESS then
+            return;
+        end if;
+
+        faultMsg.tag := (label  => faultLabel,
+                         length => 4,
+                         flags  => 0,
+                         badge  => 0);
+        faultMsg.words (0) := Unsigned_64 (pid);
+        faultMsg.words (1) := detail0;
+        faultMsg.words (2) := detail1;
+        faultMsg.words (3) := detail2;
+
+        sendEvent (svpid, faultMsg);
+    end notifySupervisor;
 
     ---------------------------------------------------------------------------
     -- reply
@@ -542,9 +646,18 @@ is
         end if;
 
         if proctab(replyTo).state = WAITINGFORREPLY then
-            -- SYNC PATH (unchanged): store reply in proctab, wake sender
+            -- SYNC PATH: store reply, wake sender
             proctab(replyTo).replyMsg := msg;
-            inform (replyTo);
+            if proctab(replyTo).cpu = PerCPUData.getCPUNumber then
+                -- Same CPU: fast path directSwitch to sender
+                Spinlocks.enterCriticalSection (lock);
+                ready (mypid);
+                directSwitch (mypid, replyTo);
+                Spinlocks.exitCriticalSection (lock);
+            else
+                -- Cross CPU: wake sender on its home CPU, keep running
+                notify (replyTo);
+            end if;
         else
             -- ASYNC PATH: look up token from sender's pendingRequests,
             -- enqueue CompletionEntry, wake if WAITINGFORCOMPLETION.
@@ -582,7 +695,7 @@ is
 
             -- Wake sender if blocked in waitCompletion
             if proctab(replyTo).state = WAITINGFORCOMPLETION then
-                inform (replyTo);
+                notify (replyTo);
             end if;
         end if;
 
@@ -1126,7 +1239,7 @@ is
         -- Wake if blocked in notifyWait
         if mailtab(ProcessID(destPID)).notifyWaiter then
             mailtab(ProcessID(destPID)).notifyWaiter := False;
-            inform (ProcessID(destPID));
+            notify (ProcessID(destPID));
         -- Also wake if blocked in receive() with this notification bound.
         -- The notification PID is the target; find any process that has it
         -- as their boundNotification and is in RECEIVING state.
@@ -1153,7 +1266,7 @@ is
                                  others => 0));
                 mailtab(recv).sender := NO_PROCESS;
                 mailtab(ProcessID(destPID)).notifyWord := 0;
-                inform (recvPID);
+                notify (recvPID);
             end wakeRecv;
         end if;
 

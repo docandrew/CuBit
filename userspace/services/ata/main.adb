@@ -9,7 +9,7 @@
 --  to detect the drive, then enters an IPC server loop handling
 --  OP_READ_BLOCK requests from clients (e.g., filesystem server).
 --
---  All hardware access is via portOut8/portIn8/portIns16 syscalls,
+--  All hardware access is via portOutp8/portInp8/portInps16 syscalls,
 --  validated by IOPORT capabilities granted at load time.
 ------------------------------------------------------------------------------
 with Ada.Unchecked_Conversion;
@@ -24,6 +24,7 @@ procedure main is
 
    --  IPC operation labels (must match kernel/src/ipc_labels.ads)
    OP_READ_BLOCK  : constant Unsigned_32 := 16#0210#;
+   OP_WRITE_BLOCK : constant Unsigned_32 := 16#0211#;
    OP_IDENTIFY    : constant Unsigned_32 := 16#0212#;
    REPLY_OK       : constant Unsigned_32 := 16#F000#;
    REPLY_ERR      : constant Unsigned_32 := 16#F001#;
@@ -49,6 +50,7 @@ procedure main is
    --  ATA commands
    CMD_IDENTIFY   : constant Unsigned_8 := 16#EC#;
    CMD_READ_PIO   : constant Unsigned_8 := 16#20#;
+   CMD_WRITE_PIO  : constant Unsigned_8 := 16#30#;
 
    --  Drive select values
    SELECT_MASTER  : constant Unsigned_8 := 16#A0#;
@@ -75,12 +77,12 @@ procedure main is
    procedure outb (port : Unsigned_16; val : Unsigned_8) is
       ignore : Unsigned_64;
    begin
-      ignore := portOut8 (port, val);
+      ignore := portOutp8 (port, val);
    end outb;
 
    function inb (port : Unsigned_16) return Unsigned_8 is
    begin
-      return Unsigned_8 (portIn8 (port) and 16#FF#);
+      return Unsigned_8 (portInp8 (port) and 16#FF#);
    end inb;
 
    --  Floating bus value (no controller present)
@@ -188,7 +190,7 @@ procedure main is
       end if;
 
       --  Read 256 words of identify data
-      ignore := portIns16 (REG_DATA, buf'Address, 256);
+      ignore := portInps16 (REG_DATA, buf'Address, 256);
 
       debugPrint ("ATA: Drive detected on primary master." & LF);
       return True;
@@ -238,8 +240,8 @@ procedure main is
             return Unsigned_64 (sec * SECTOR_SIZE);
          end if;
 
-         --  Read 256 words (512 bytes) via individual portIn16 calls.
-         --  rep insw (portIns16) doesn't work reliably from userspace
+         --  Read 256 words (512 bytes) via individual portInp16 calls.
+         --  rep insw (portInps16) doesn't work reliably from userspace
          --  because the kernel ins16 syscall writes to a user address
          --  from ring 0 context.
          declare
@@ -253,13 +255,83 @@ procedure main is
          begin
             for i in sectorWords'Range loop
                sectorWords (i) :=
-                 Unsigned_16 (portIn16 (REG_DATA) and 16#FFFF#);
+                 Unsigned_16 (portInp16 (REG_DATA) and 16#FFFF#);
             end loop;
          end;
       end loop;
 
       return Unsigned_64 (Natural (count) * SECTOR_SIZE);
    end readSectors;
+
+   ---------------------------------------------------------------------------
+   --  writeSectors - PIO write of count sectors starting at LBA from addr
+   --  Returns number of bytes written, or 0 on error.
+   ---------------------------------------------------------------------------
+   function writeSectors (lba   : Unsigned_32;
+                          count : Unsigned_8;
+                          addr  : System.Address) return Unsigned_64
+   is
+      drv : Unsigned_8;
+   begin
+      if count = 0 then
+         return 0;
+      end if;
+
+      --  Select drive with LBA mode + top 4 bits of LBA
+      drv := SELECT_MASTER or SELECT_LBA or
+             Unsigned_8 (Shift_Right (lba, 24) and 16#0F#);
+      outb (REG_DRIVE_SEL, drv);
+      ata400nsDelay;
+
+      --  Set sector count
+      outb (REG_SECTOR_CT, count);
+
+      --  Set LBA bytes
+      outb (REG_LBA_LOW, Unsigned_8 (lba and 16#FF#));
+      outb (REG_LBA_MID, Unsigned_8 (Shift_Right (lba, 8) and 16#FF#));
+      outb (REG_LBA_HI,  Unsigned_8 (Shift_Right (lba, 16) and 16#FF#));
+
+      --  Send WRITE PIO command
+      outb (REG_COMMAND, CMD_WRITE_PIO);
+
+      --  Write each sector
+      for sec in 0 .. Natural (count) - 1 loop
+         ata400nsDelay;
+         if not waitBSY then
+            debugPrint ("ATA: BSY timeout during write." & LF);
+            return Unsigned_64 (sec * SECTOR_SIZE);
+         end if;
+
+         if not waitDRQ then
+            debugPrint ("ATA: Write error at sector." & LF);
+            return Unsigned_64 (sec * SECTOR_SIZE);
+         end if;
+
+         --  Write 256 words (512 bytes) via individual portOutp16 calls
+         declare
+            type WordBuf is array (0 .. 255) of Unsigned_16
+              with Pack;
+            sectorWords : WordBuf
+              with Import,
+                   Address => addr +
+                     System.Storage_Elements.Storage_Offset
+                       (sec * SECTOR_SIZE);
+            ignore : Unsigned_64;
+         begin
+            for i in sectorWords'Range loop
+               ignore := portOutp16 (REG_DATA, sectorWords (i));
+            end loop;
+         end;
+      end loop;
+
+      --  Flush the write cache
+      ata400nsDelay;
+      if not waitBSY then
+         debugPrint ("ATA: BSY timeout after write." & LF);
+      end if;
+
+      return Unsigned_64 (Natural (count) * SECTOR_SIZE);
+   end writeSectors;
 
    ---------------------------------------------------------------------------
    --  sendReply - send a reply message
@@ -309,6 +381,35 @@ procedure main is
    end handleReadBlock;
 
    ---------------------------------------------------------------------------
+   --  handleWriteBlock
+   --  words(0) = LBA (sector number)
+   --  words(1) = grant_id (buffer to read data from)
+   --  words(2) = sector_count (number of sectors to write)
+   ---------------------------------------------------------------------------
+   procedure handleWriteBlock (sender : ProcessID; msg : Message) is
+      lba          : constant Unsigned_32 := Unsigned_32 (msg.words (0));
+      grantId      : constant Unsigned_64 := msg.words (1);
+      sectorCt     : constant Unsigned_8  :=
+        Unsigned_8 (msg.words (2) and 16#FF#);
+      grantAddr    : constant Unsigned_64 :=
+        GRANT_REGION_BASE + grantId * GRANT_SLOT_SIZE;
+      bytesWritten : Unsigned_64;
+   begin
+      if not drivePresent then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+
+      if sectorCt = 0 then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+
+      bytesWritten := writeSectors (lba, sectorCt, toAddr (grantAddr));
+      sendReply (sender, REPLY_OK, bytesWritten);
+   end handleWriteBlock;
+
+   ---------------------------------------------------------------------------
    --  handleIdentify
    --  Reply with drive presence status
    ---------------------------------------------------------------------------
@@ -348,6 +449,8 @@ begin
       case msg.tag.label is
          when OP_READ_BLOCK =>
             handleReadBlock (sender, msg);
+         when OP_WRITE_BLOCK =>
+            handleWriteBlock (sender, msg);
          when OP_IDENTIFY =>
             handleIdentify (sender);
          when others =>

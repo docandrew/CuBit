@@ -36,6 +36,11 @@ SECTIONS
     }
     __bss_end = .;
 
+    .cubit.caps (INFO) : ALIGN(4)
+    {
+        KEEP(*(.cubit.caps))
+    }
+
     /DISCARD/ :
     {
         *(.eh_frame)

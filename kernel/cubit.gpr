@@ -49,7 +49,7 @@ project CuBit is
             "-mno-red-zone",
             "-fno-pic",
             "-mcmodel=kernel",      -- all kernel code in top 2GiB of memory
-            --"-O2",
+            "-O2",
             "-mno-sse",             -- not supported
             "-mno-sse2",
             "-I-"                   -- don't look for source files in the same folder

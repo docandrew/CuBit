@@ -74,8 +74,12 @@ is
     FILENAME_MAX_LENGTH : constant := 256;
     FILEPATH_MAX_LENGTH : constant := 4096;
 
-    -- Process IDs for CuBit services
-    SERVICE_IDLE_PID       : constant := 1;
-    SERVICE_KEYBOARD_PID   : constant := 2;
-    SERVICE_FILESYSTEM_PID : constant := 3;
+    -- Per-CPU idle processes use PIDs 1..MAX_SMP_CPUS (reserved range).
+    -- CPU 0 = PID 1, CPU 1 = PID 2, etc.
+    MAX_SMP_CPUS : constant := 8;
+    IDLE_PID_BASE : constant := 1;
+
+    -- Process IDs for CuBit services (above idle PID range)
+    SERVICE_IDLE_PID       : constant := IDLE_PID_BASE;  -- CPU 0's idle
+    SERVICE_FILESYSTEM_PID : constant := 10;
 end Config;

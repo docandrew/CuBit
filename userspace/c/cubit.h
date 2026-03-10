@@ -86,12 +86,17 @@ typedef long                ssize_t;
 #define SYSCALL_MAPFB           29
 
 /* Port I/O (for userspace drivers) */
-#define SYSCALL_INB             30
-#define SYSCALL_OUTB            31
-#define SYSCALL_INW             32
-#define SYSCALL_OUTW            33
-#define SYSCALL_INS16           34
-#define SYSCALL_OUTS16          35
+#define SYSCALL_INP8            30
+#define SYSCALL_OUTP8           31
+#define SYSCALL_INP16           32
+#define SYSCALL_OUTP16          33
+#define SYSCALL_INPS16          34
+#define SYSCALL_OUTPS16         35
+#define SYSCALL_INP32           36
+#define SYSCALL_OUTP32          37
+
+/* Virtual-to-physical address translation */
+#define SYSCALL_VIRT_TO_PHYS    50
 
 /* Capability-aware IPC */
 #define SYSCALL_CAP_SEND        40
@@ -120,9 +125,53 @@ typedef long                ssize_t;
 #define CAP_SLOT_KEYBOARD       2
 #define CAP_SLOT_SELF_PROC      3
 #define CAP_SLOT_ATA            10
+#define CAP_SLOT_MIXER          14
+#define CAP_SLOT_MIXER_NTF      15
+
+/* Capability minting (for process managers) */
+#define SYSCALL_MINT_CAP        72
+#define SYSCALL_RESUME          73
 
 /* Driver registration */
 #define SYSCALL_REGISTER_DRIVER 2000
+
+/*---------------------------------------------------------------------------
+ * ELF Capability Manifest (.cubit.caps section)
+ *
+ * Allows ELF binaries to declare required capabilities. The process manager
+ * reads this section and mints capabilities into the spawned process.
+ *
+ * Header (8 bytes): magic(4) + version(2) + count(2)
+ * Entry (16 bytes): reqType(1) + rights(1) + slot(1) + reserved(1) +
+ *                   param0(4) + param1(8)
+ *---------------------------------------------------------------------------*/
+#define CUBIT_CAP_MAGIC  0x43424954  /* "CBIT" in little-endian */
+
+/* Request types */
+#define CUBIT_REQ_FRAMEBUFFER  1
+#define CUBIT_REQ_SERVICE      2
+#define CUBIT_REQ_IOPORT       3
+#define CUBIT_REQ_IRQ          4
+#define CUBIT_REQ_DEVICE_MEM   5
+#define CUBIT_REQ_PROCESS      6
+
+/* Rights bitmask */
+#define CUBIT_RIGHT_R     0x01
+#define CUBIT_RIGHT_W     0x02
+#define CUBIT_RIGHT_RW    0x03
+#define CUBIT_RIGHT_X     0x04
+#define CUBIT_RIGHT_GRANT 0x08
+
+/* Convenience macro: declare a framebuffer capability manifest */
+#define CUBIT_MANIFEST_FRAMEBUFFER(slot_num) \
+    static const unsigned char __cubit_manifest[] \
+        __attribute__((section(".cubit.caps"), used)) = { \
+        0x54, 0x49, 0x42, 0x43, \
+        0x01, 0x00, 0x01, 0x00, \
+        0x01, 0x03, (slot_num), 0x00, \
+        0x00, 0x00, 0x00, 0x00, \
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00  \
+    };
 
 /*---------------------------------------------------------------------------
  * Standard Descriptors
@@ -204,6 +253,17 @@ typedef struct {
 void cubit_keyboard_init(void);
 void cubit_keyboard_poll(void);
 int  cubit_keyboard_get(cubit_key_event_t *ev);
+
+/* Mouse input */
+typedef struct {
+    int16_t dx, dy;
+    int8_t  dz;
+    uint8_t buttons;    /* bit 0=L, 1=R, 2=M */
+} cubit_mouse_event_t;
+
+void cubit_mouse_init(void);
+void cubit_mouse_poll(void);
+int  cubit_mouse_get(cubit_mouse_event_t *ev);
 
 /* String functions */
 void *memcpy(void *dest, const void *src, size_t n);

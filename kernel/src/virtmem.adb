@@ -268,7 +268,11 @@ is
             allocate (addrNext);
             --print("zeroizing "); printd(Unsigned_32(PN'Size) / 8); print(" bytes at ");
             --println(addrNext);
-            Util.memset (To_Address(P2V (addrNext)), 0, PN'Size / 8);
+            declare
+                ignore : System.Address;
+            begin
+                ignore := Util.memset (To_Address(P2V (addrNext)), 0, PN'Size / 8);
+            end;
 
             if(addrNext /= 0) then
                 

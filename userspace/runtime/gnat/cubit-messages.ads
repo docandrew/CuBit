@@ -40,12 +40,36 @@ package CuBit.Messages is
    SYSCALL_SLEEP           : constant Unsigned_64 := 28;
    SYSCALL_GRANT           : constant Unsigned_64 := 102;
    SYSCALL_REVOKE          : constant Unsigned_64 := 103;
-   SYSCALL_INB             : constant Unsigned_64 := 30;
-   SYSCALL_OUTB            : constant Unsigned_64 := 31;
-   SYSCALL_INW             : constant Unsigned_64 := 32;
-   SYSCALL_OUTW            : constant Unsigned_64 := 33;
-   SYSCALL_INS16           : constant Unsigned_64 := 34;
-   SYSCALL_OUTS16          : constant Unsigned_64 := 35;
+   SYSCALL_INP8            : constant Unsigned_64 := 30;
+   SYSCALL_OUTP8           : constant Unsigned_64 := 31;
+   SYSCALL_INP16           : constant Unsigned_64 := 32;
+   SYSCALL_OUTP16          : constant Unsigned_64 := 33;
+   SYSCALL_INPS16          : constant Unsigned_64 := 34;
+   SYSCALL_OUTPS16         : constant Unsigned_64 := 35;
+   SYSCALL_INP32           : constant Unsigned_64 := 36;
+   SYSCALL_OUTP32          : constant Unsigned_64 := 37;
+
+   SYSCALL_MAPFB           : constant Unsigned_64 := 29;
+
+   SYSCALL_VIRT_TO_PHYS    : constant Unsigned_64 := 50;
+
+   SYSCALL_SPAWN           : constant Unsigned_64 := 60;
+
+   SYSCALL_MAP_DEVICE      : constant Unsigned_64 := 70;
+   SYSCALL_PROCLIST        : constant Unsigned_64 := 71;
+   SYSCALL_MINT_CAP        : constant Unsigned_64 := 72;
+   SYSCALL_RESUME          : constant Unsigned_64 := 73;
+
+   --  Device manager syscalls
+   SYSCALL_ALLOC_DMA       : constant Unsigned_64 := 74;
+   SYSCALL_ENABLE_IRQ      : constant Unsigned_64 := 75;
+   SYSCALL_MAP_INTO        : constant Unsigned_64 := 76;
+   SYSCALL_SET_SYSINFO     : constant Unsigned_64 := 77;
+   SYSCALL_SET_CPU         : constant Unsigned_64 := 78;
+   SYSCALL_SET_SUPERVISOR  : constant Unsigned_64 := 79;
+
+   SPAWN_SUSPENDED         : constant Unsigned_64 := 1;
+
    SYSCALL_REGISTER_DRIVER : constant Unsigned_64 := 2000;
 
    --  Capability-aware IPC syscalls
@@ -75,6 +99,11 @@ package CuBit.Messages is
    CAP_SLOT_KEYBOARD  : constant Unsigned_64 := 2;
    CAP_SLOT_SELF_PROC : constant Unsigned_64 := 3;
    CAP_SLOT_ATA       : constant Unsigned_64 := 10;
+   CAP_SLOT_NVME      : constant Unsigned_64 := 11;
+   CAP_SLOT_NET       : constant Unsigned_64 := 11;
+   CAP_SLOT_PROCMGR   : constant Unsigned_64 := 12;
+   CAP_SLOT_MIXER     : constant Unsigned_64 := 14;
+   CAP_SLOT_MIXER_NTF : constant Unsigned_64 := 15;
 
    subtype CapabilitySlot is Unsigned_64 range 0 .. 63;
 
@@ -83,11 +112,26 @@ package CuBit.Messages is
    --  Sysinfo query IDs (must match kernel/src/sysinfo.ads)
    SYSINFO_RAMDISK_ADDRESS    : constant Unsigned_64 := 1000;
    SYSINFO_SECONDARY_STACK    : constant Unsigned_64 := 1001;
+   SYSINFO_RAMDISK_SIZE       : constant Unsigned_64 := 1002;
+   SYSINFO_NET_IOBASE         : constant Unsigned_64 := 1200;
+   SYSINFO_NVME_BAR0          : constant Unsigned_64 := 1300;
+   SYSINFO_NVME_DMA_PHYS      : constant Unsigned_64 := 1301;
+   SYSINFO_HDA_BAR0           : constant Unsigned_64 := 1500;
+   SYSINFO_HDA_DMA_PHYS       : constant Unsigned_64 := 1501;
+   SYSINFO_NUM_CPUS           : constant Unsigned_64 := 1400;
    SYSINFO_REGISTERED_DRIVER  : constant Unsigned_64 := 2000;
 
    --  Driver IDs for SYSINFO_REGISTERED_DRIVER queries
    DRIVER_KEYBOARD : constant Unsigned_64 := 1;
    DRIVER_ATA      : constant Unsigned_64 := 2;
+   DRIVER_NETSTACK : constant Unsigned_64 := 3;
+   DRIVER_PROCMGR  : constant Unsigned_64 := 4;
+   DRIVER_NVME     : constant Unsigned_64 := 5;
+   DRIVER_FS       : constant Unsigned_64 := 6;
+   DRIVER_DEVMGR   : constant Unsigned_64 := 7;
+   DRIVER_HDA      : constant Unsigned_64 := 8;
+   DRIVER_MIXER    : constant Unsigned_64 := 9;
+   DRIVER_MOUSE    : constant Unsigned_64 := 10;
 
    --  IPC Message Types (matching kernel Process.Message)
 
@@ -121,6 +165,22 @@ package CuBit.Messages is
 
    subtype ProcessID is Unsigned_64;
    NO_PROCESS : constant ProcessID := 0;
+
+   --  Async completion queue types (matching kernel process.ads)
+
+   type CompletionEntry is record
+      token : Unsigned_64;
+      msg   : Message;
+      from  : Unsigned_64;
+      valid : Boolean := False;
+   end record;
+
+   NULL_COMPLETION : constant CompletionEntry :=
+     (token => 0, msg => NULL_MESSAGE, from => 0, valid => False);
+
+   COMPLETION_QUEUE_SIZE : constant := 64;
+   subtype CompletionIndex is Natural range 0 .. COMPLETION_QUEUE_SIZE - 1;
+   type CompletionRing is array (CompletionIndex) of CompletionEntry;
 
    --  Raw syscall wrapper
 
@@ -161,6 +221,22 @@ package CuBit.Messages is
      (dest  : ProcessID;
       msg   : Message;
       token : Unsigned_64) return Boolean;
+
+   --  Async completion queue wrappers
+
+   --  Block until at least minWait completions available, return up to max.
+   --  entries must point to a CompletionRing (or large enough buffer).
+   --  Returns the number of completions actually drained.
+   function waitCompletion
+     (entries : System.Address;
+      max     : Unsigned_64;
+      min     : Unsigned_64) return Unsigned_64;
+
+   --  Non-blocking: check for one completion.
+   --  result must point to a CompletionEntry.
+   --  Returns 1 if found, 0 if empty.
+   function pollCompletion
+     (result : System.Address) return Unsigned_64;
 
    --  Capability-aware IPC wrappers
 
@@ -218,15 +294,56 @@ package CuBit.Messages is
    procedure revokeGrant (id : Unsigned_64);
 
    --  Port I/O wrappers for userspace drivers.
-   function portIn8 (port : Unsigned_16) return Unsigned_64;
-   function portOut8 (port : Unsigned_16; val : Unsigned_8) return Unsigned_64;
-   function portIn16 (port : Unsigned_16) return Unsigned_64;
-   function portOut16
+   function portInp8 (port : Unsigned_16) return Unsigned_64;
+   function portOutp8
+     (port : Unsigned_16; val : Unsigned_8) return Unsigned_64;
+   function portInp16 (port : Unsigned_16) return Unsigned_64;
+   function portOutp16
      (port : Unsigned_16; val : Unsigned_16) return Unsigned_64;
-   function portIns16
+   function portInps16
      (port  : Unsigned_16;
       addr  : System.Address;
       count : Unsigned_32) return Unsigned_64;
+   function portInp32 (port : Unsigned_16) return Unsigned_64;
+   function portOutp32
+     (port : Unsigned_16; val : Unsigned_32) return Unsigned_64;
+
+   --  Translate a virtual address to its physical address
+   function virtToPhys (addr : System.Address) return Unsigned_64;
+
+   --  Device manager wrappers
+
+   --  Allocate DMA: contiguous physical pages mapped into target process.
+   --  Returns physical address, or -1 on error.
+   function allocDma
+     (targetPID : Unsigned_64;
+      order     : Unsigned_64;
+      virtBase  : Unsigned_64) return Unsigned_64;
+
+   --  Enable IOAPIC routing and register IRQ owner.
+   function enableIrq
+     (vector    : Unsigned_64;
+      ownerPID  : Unsigned_64;
+      targetCPU : Unsigned_64) return Unsigned_64;
+
+   --  Map physical pages into a target process's address space.
+   --  flags: 0=RW, 1=RO, 2=IO (uncacheable)
+   function mapInto
+     (targetPID : Unsigned_64;
+      physAddr  : Unsigned_64;
+      virtAddr  : Unsigned_64;
+      numPages  : Unsigned_64;
+      flags     : Unsigned_64) return Unsigned_64;
+
+   --  Set a sysinfo query value from userspace.
+   function setSysinfo
+     (queryID : Unsigned_64;
+      value   : Unsigned_64) return Unsigned_64;
+
+   --  Set CPU affinity for a process.
+   function setCpu
+     (targetPID : Unsigned_64;
+      cpu       : Unsigned_64) return Unsigned_64;
 
    --  Legacy/convenience wrappers
 

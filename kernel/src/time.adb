@@ -85,20 +85,29 @@ is
 
     ---------------------------------------------------------------------------
     -- clockTick
+    -- Per-CPU timer handler. Only BSP (CPU 0) manages global time and sleep
+    -- list. All CPUs handle their own preemption quantum.
     ---------------------------------------------------------------------------
+    cpuQuantumTicks : array (0..Config.MAX_SMP_CPUS - 1) of Natural :=
+        (others => 0);
+
     procedure clockTick with SPARK_Mode => On
     is
+        cpuNum : constant Natural := PerCPUData.getCPUNumber;
     begin
-        -- possible overflow in geologic time scales.
-        Time.msTicks := Time.msTicks + 1;
+        -- Only BSP handles global timekeeping and sleep list
+        if cpuNum = 0 then
+            Time.msTicks := Time.msTicks + 1;
+            Process.Queues.clockTick;
+        end if;
 
-        -- Adjust sleep list, wake any processes that need it
-        Process.Queues.clockTick;
-
-        -- If we're at the quantum, yield the current process.
-        if Time.msTicks mod Config.TIME_SLICE = 0 and 
-            PerCPUData.getCurrentPID /= Process.NO_PROCESS then
-                Process.yield;
+        -- All CPUs handle their own preemption quantum
+        cpuQuantumTicks(cpuNum) := cpuQuantumTicks(cpuNum) + 1;
+        if cpuQuantumTicks(cpuNum) >= Config.TIME_SLICE and
+           PerCPUData.getCurrentPID /= Process.NO_PROCESS
+        then
+            cpuQuantumTicks(cpuNum) := 0;
+            Process.yield;
         end if;
     end clockTick;
 

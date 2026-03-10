@@ -149,12 +149,12 @@ is
     -- from comp.lang.ada h/t Shark8
     -- https://groups.google.com/forum/#!topic/comp.lang.ada/v7HUbFJqKYI
     ---------------------------------------------------------------------------
-    procedure memset (addr   : System.Address; 
-                      val    : System.Storage_Elements.Storage_Element;
-                      len    : System.Storage_Elements.Storage_Count) with
+    function memset (addr   : System.Address;
+                     val    : System.Storage_Elements.Storage_Element;
+                     len    : System.Storage_Elements.Storage_Count) return System.Address with
         SPARK_Mode => Off,
-        Export => True, 
-        Convention => C, 
+        Export => True,
+        Convention => C,
         External_Name => "memset";
 
     ---------------------------------------------------------------------------

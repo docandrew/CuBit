@@ -52,6 +52,7 @@ is
 
     -- CuBitOS defined
     KERNEL_PANIC                : constant x86Interrupt := 127;
+    RESCHEDULE                  : constant x86Interrupt := 249;
 
     -- User interrupt. Use same number as Linux for ease of porting sw
     SYSCALL                     : constant x86Interrupt := 128;

@@ -193,17 +193,20 @@ is
 
 
     -- Set all elements of memory to a particular value.
-    procedure memset(addr   : System.Address; 
-                     val    : System.Storage_Elements.Storage_Element;
-                     len    : System.Storage_Elements.Storage_Count)
-        with SPARK_Mode => Off 
+    -- Returns addr to match C memset ABI (GCC relies on return value at -O2).
+    function memset(addr   : System.Address;
+                    val    : System.Storage_Elements.Storage_Element;
+                    len    : System.Storage_Elements.Storage_Count)
+                    return System.Address
+        with SPARK_Mode => Off
     is
         mem : Storage_Array(1..len)
-            with Import, Address => addr;
+            with Import, Volatile, Address => addr;
     begin
         for element of mem loop
             element := val;
         end loop;
+        return addr;
     end memset;
 
 
@@ -214,9 +217,9 @@ is
         with SPARK_Mode => Off
     is
         mem1 : Storage_Array(1..Storage_Offset(len))
-            with Import, Address => s1;
+            with Import, Volatile, Address => s1;
         mem2 : Storage_Array(1..Storage_Offset(len))
-            with Import, Address => s2;
+            with Import, Volatile, Address => s2;
         diff : Integer;
     begin
         if len = 0 then
@@ -272,10 +275,10 @@ is
         use type System.Address;
 
         memd : Storage_Array(1..len)
-            with Import, Address => dest;
-        
+            with Import, Volatile, Address => dest;
+
         mems : Storage_Array(1..len)
-            with Import, Address => src;
+            with Import, Volatile, Address => src;
     begin
         -- These ranges might overlap, so if destination is above the source,
         -- copy back to front. Otherwise, copy front-to-back.

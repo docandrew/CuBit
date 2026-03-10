@@ -17,6 +17,7 @@ is
     ModuleException : exception;
 
     MAGIC_RAMDISK_ADDRESS : System.Address;
+    MAGIC_RAMDISK_SIZE    : Storage_Count := 0;
 
     ---------------------------------------------------------------------------
     -- setup

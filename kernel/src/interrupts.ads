@@ -19,6 +19,7 @@
 with Interfaces; use Interfaces;
 with System;
 
+with InterruptNumbers;
 with Process;
 -- with Scheduler;
 with Segment;
@@ -161,7 +162,30 @@ is
     ---------------------------------------------------------------------------
     procedure loadIDT with
         Pre => validIDT;
-        
+
+    ---------------------------------------------------------------------------
+    -- setIOAPICBaseAddress
+    -- Store the IOAPIC virtual base address so enableDeviceIRQ can use it.
+    ---------------------------------------------------------------------------
+    procedure setIOAPICBaseAddress (addr : in System.Address);
+
+    ---------------------------------------------------------------------------
+    -- enableDeviceIRQ
+    -- Enable an IRQ vector on the IOAPIC, routing to the specified CPU.
+    -- Usable from modules.adb etc. after setIOAPICBaseAddress has been called.
+    ---------------------------------------------------------------------------
+    procedure enableDeviceIRQ (vector : in InterruptNumbers.x86Interrupt;
+                               cpu    : in Unsigned_32);
+
+    ---------------------------------------------------------------------------
+    -- getLAPICTimerInterval / setLAPICTimerInterval
+    -- Shared storage for the BSP-calibrated LAPIC timer ticks-per-ms.
+    -- BSP stores this after calibration; APs read it to configure their
+    -- own LAPIC timer with the same interval.
+    ---------------------------------------------------------------------------
+    function getLAPICTimerInterval return Unsigned_32;
+    procedure setLAPICTimerInterval (interval : in Unsigned_32);
+
     -- Interrupt Controller
     intController : InterruptController := NONE;
     lapicAddr     : System.Address := System.Null_Address;
@@ -255,6 +279,9 @@ private
 
     -- Syscall software interrupt
     isr128  : Symbol with Import, Convention => C;
+
+    -- Reschedule IPI
+    isr249  : Symbol with Import, Convention => C;
 
     -- Spurious Vector
     isr255  : Symbol with Import, Convention => C;
