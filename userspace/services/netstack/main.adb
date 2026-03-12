@@ -2669,6 +2669,19 @@ begin
    --  We do this after the driver starts and sends us OP_NET_ATTACH.
    --  For now, just enter the message loop and wait.
 
+   --  Signal devmgr that we are ready
+   declare
+      CAP_SLOT_READY : constant Unsigned_64 := 15;
+      OP_READY       : constant Unsigned_32 := 16#FF00#;
+      rdyIgnore : MessageTag;
+   begin
+      rdyIgnore := capSend (CAP_SLOT_READY,
+         (tag      => (label => OP_READY, length => 0,
+                       flags => 0, badge => 0),
+          capBadge => 0,
+          words    => (others => 0)));
+   end;
+
    debugPrint ("netstack: waiting for driver attach..." & LF);
 
    --  Message loop

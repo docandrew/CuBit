@@ -163,6 +163,23 @@ typedef long                ssize_t;
 #define CUBIT_RIGHT_GRANT 0x08
 
 /* Convenience macro: declare a framebuffer capability manifest */
+/*---------------------------------------------------------------------------
+ * ELF Filesystem Access Declaration (.cubit.access section)
+ *
+ * Allows ELF binaries to declare required filesystem paths. The process
+ * manager reads this section and sends ACL entries to the FS server.
+ *
+ * Header (16 bytes): magic(4) + version(2) + count(2) + uid(2) + gid(2) +
+ *                    trustFloor(1) + reserved(3)
+ * Entry (80 bytes):  rights(1) + prefixLen(1) + flags(1) + reserved(1) +
+ *                    uid(2) + gid(2) + prefix(64) + reserved64(8)
+ *---------------------------------------------------------------------------*/
+#define CUBIT_ACCESS_MAGIC  0x43434143  /* "CACC" in little-endian */
+#define CUBIT_ACL_READ    0x01
+#define CUBIT_ACL_WRITE   0x02
+#define CUBIT_ACL_EXEC    0x04
+#define CUBIT_ACL_CREATE  0x08
+
 #define CUBIT_MANIFEST_FRAMEBUFFER(slot_num) \
     static const unsigned char __cubit_manifest[] \
         __attribute__((section(".cubit.caps"), used)) = { \

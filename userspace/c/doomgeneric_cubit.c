@@ -47,6 +47,63 @@ static const unsigned char __cubit_manifest[]
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 };
 
+/* Declare filesystem access requirements in ELF .cubit.access section:
+ *   Entry 0: READ  doom1.wad           (ramdisk fallback)
+ *   Entry 1: READ  @ata:0/doom1.wad    (ATA disk)
+ *   Entry 2: READ  @nvme:0/doom1.wad   (NVMe disk)
+ */
+static const unsigned char __cubit_access[]
+    __attribute__((section(".cubit.access"), used)) = {
+    /* Header (16 bytes): magic "CACC" LE, version 1, count 3,
+     * uid=0, gid=0, trustFloor=0, reserved=0 */
+    0x43, 0x41, 0x43, 0x43,             /* magic */
+    0x01, 0x00,                         /* version */
+    0x03, 0x00,                         /* count */
+    0x00, 0x00,                         /* uid */
+    0x00, 0x00,                         /* gid */
+    0x00,                               /* trustFloor */
+    0x00, 0x00, 0x00,                   /* reserved */
+
+    /* Entry 0 (80 bytes): READ doom1.wad (prefixLen=9) */
+    CUBIT_ACL_READ,                     /* rights */
+    9,                                  /* prefixLen */
+    0x00,                               /* flags */
+    0x00,                               /* reserved */
+    0x00, 0x00,                         /* uid */
+    0x00, 0x00,                         /* gid */
+    'd','o','o','m','1','.','w','a','d', 0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,   /* 64 bytes prefix */
+    0,0,0,0,0,0,0,0,                   /* reserved64 */
+
+    /* Entry 1 (80 bytes): READ @ata:0/doom1.wad (prefixLen=16) */
+    CUBIT_ACL_READ,                     /* rights */
+    16,                                 /* prefixLen */
+    0x00,                               /* flags */
+    0x00,                               /* reserved */
+    0x00, 0x00,                         /* uid */
+    0x00, 0x00,                         /* gid */
+    '@','a','t','a',':','0','/','d','o','o','m','1','.','w','a','d',
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,   /* 64 bytes prefix */
+    0,0,0,0,0,0,0,0,                   /* reserved64 */
+
+    /* Entry 2 (80 bytes): READ @nvme:0/doom1.wad (prefixLen=17) */
+    CUBIT_ACL_READ,                     /* rights */
+    17,                                 /* prefixLen */
+    0x00,                               /* flags */
+    0x00,                               /* reserved */
+    0x00, 0x00,                         /* uid */
+    0x00, 0x00,                         /* gid */
+    '@','n','v','m','e',':','0','/','d','o','o','m','1','.','w','a',
+    'd',0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,   /* 64 bytes prefix */
+    0,0,0,0,0,0,0,0                    /* reserved64 */
+};
+
 /* Framebuffer state */
 static cubit_framebuffer_t fb;
 static uint32_t *fb_ptr = NULL;

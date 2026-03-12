@@ -166,7 +166,8 @@ is
     -- grantInitialCaps
     ---------------------------------------------------------------------------
     procedure grantInitialCaps (table : in out CapabilityTable;
-                                pid   : in     Unsigned_64)
+                                pid   : in     Unsigned_64;
+                                gen   : in     Generation)
     is
     begin
         -- Slot 0: Self endpoint (send + receive)
@@ -175,7 +176,7 @@ is
             rights   => ALL_RIGHTS,
             capBadge => pid,
             object   => (ref => pid, param => 0),
-            gen      => INITIAL_GENERATION);
+            gen      => gen);
 
         -- Slot 1: Filesystem server endpoint
         table(1) := (
@@ -184,7 +185,7 @@ is
             capBadge => pid,
             object   => (ref => Unsigned_64(Config.SERVICE_FILESYSTEM_PID),
                          param => 0),
-            gen      => INITIAL_GENERATION);
+            gen      => gen);
 
         -- Slot 2: Reserved (formerly kernel keyboard endpoint)
 
@@ -194,7 +195,7 @@ is
             rights   => ALL_RIGHTS,
             capBadge => NO_BADGE,
             object   => (ref => pid, param => 0),
-            gen      => INITIAL_GENERATION);
+            gen      => gen);
     end grantInitialCaps;
 
     ---------------------------------------------------------------------------

@@ -419,8 +419,20 @@ begin
    --  1. Query sysinfo for BAR0 I/O base
    ioBase := Unsigned_16 (getInfo (SYSINFO_NET_IOBASE) and 16#FFFF#);
 
-   if ioBase = 0 then
+   if ioBase = 0 or ioBase = 16#FFFF# then
       debugPrint ("virtio-net: no I/O base from sysinfo, exiting." & LF);
+      --  Signal devmgr that no hardware is present
+      declare
+         CAP_SLOT_READY  : constant Unsigned_64 := 15;
+         OP_NOT_PRESENT  : constant Unsigned_32 := 16#FF01#;
+         rdyIgnore : MessageTag;
+      begin
+         rdyIgnore := capSend (CAP_SLOT_READY,
+            (tag      => (label => OP_NOT_PRESENT, length => 0,
+                          flags => 0, badge => 0),
+             capBadge => 0,
+             words    => (others => 0)));
+      end;
       return;
    end if;
 
@@ -434,6 +446,18 @@ begin
 
    if DMA_PHYS_BASE = Unsigned_64'Last then
       debugPrint ("virtio-net: DMA virt-to-phys failed." & LF);
+      --  Signal devmgr that no hardware is present
+      declare
+         CAP_SLOT_READY  : constant Unsigned_64 := 15;
+         OP_NOT_PRESENT  : constant Unsigned_32 := 16#FF01#;
+         rdyIgnore : MessageTag;
+      begin
+         rdyIgnore := capSend (CAP_SLOT_READY,
+            (tag      => (label => OP_NOT_PRESENT, length => 0,
+                          flags => 0, badge => 0),
+             capBadge => 0,
+             words    => (others => 0)));
+      end;
       return;
    end if;
 
@@ -518,6 +542,19 @@ begin
 
    --  8. Attach to netstack service
    attachToNetstack;
+
+   --  Signal devmgr that we are ready
+   declare
+      CAP_SLOT_READY : constant Unsigned_64 := 15;
+      OP_READY       : constant Unsigned_32 := 16#FF00#;
+      rdyIgnore : MessageTag;
+   begin
+      rdyIgnore := capSend (CAP_SLOT_READY,
+         (tag      => (label => OP_READY, length => 0,
+                       flags => 0, badge => 0),
+          capBadge => 0,
+          words    => (others => 0)));
+   end;
 
    --  9. Event loop: poll both IPC and event queues.
    --  IPC messages come from netstack (OP_NET_TX); events come from

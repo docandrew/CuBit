@@ -15,6 +15,7 @@ with Config;
 with PerCPUData;
 with Process.Queues;
 with Virtmem;
+with x86;
 
 use type Capabilities.CapabilityType;
 use type Capabilities.Operations.OperationStatus;
@@ -768,7 +769,8 @@ is
                               maxEntries  : in  Natural;
                               minWait     : in  Natural;
                               numReturned : out Natural)
-        with SPARK_Mode => On
+        -- SPARK_Mode Off: uses x86.stac/clac for SMAP user memory access
+        with SPARK_Mode => Off
     is
         mypid    : constant ProcessID := PerCPUData.getCurrentPID;
         receiver : constant ProcessID := getReceiver (mypid);
@@ -778,8 +780,10 @@ is
         effectiveMax : Natural;
         effectiveMin : Natural;
     begin
-        -- Initialize output
+        -- Initialize output (entries is user memory, needs STAC/CLAC)
+        x86.stac;
         entries     := (others => NULL_COMPLETION);
+        x86.clac;
         numReturned := 0;
 
         if mypid = NO_PROCESS then
@@ -803,20 +807,24 @@ is
             Spinlocks.enterCriticalSection (mailtab(receiver).lock);
 
             if completionTab(receiver).count >= effectiveMin then
-                -- Drain up to effectiveMax entries
+                -- Drain up to effectiveMax entries into user buffer
+                x86.stac;
                 while drained < effectiveMax loop
                     dequeueCompletion (receiver, item, ok);
                     exit when not ok;
                     entries(drained) := item;
                     drained := drained + 1;
                 end loop;
+                x86.clac;
 
                 Spinlocks.exitCriticalSection (mailtab(receiver).lock);
                 numReturned := drained;
                 return;
             end if;
 
-            -- Not enough completions yet — block
+            -- Not enough completions yet — block.
+            -- EFLAGS.AC (SMAP) is cleared by context switch; re-set
+            -- STAC when we loop back to drain.
             proctab(mypid).state := WAITINGFORCOMPLETION;
             Spinlocks.exitCriticalSection (mailtab(receiver).lock);
 

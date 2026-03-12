@@ -314,6 +314,19 @@ begin
    --  Flush stale bytes from PS/2 output buffer
    flushPS2;
 
+   --  Signal devmgr that we are ready
+   declare
+      CAP_SLOT_READY : constant Unsigned_64 := 15;
+      OP_READY       : constant Unsigned_32 := 16#FF00#;
+      rdyIgnore : MessageTag;
+   begin
+      rdyIgnore := capSend (CAP_SLOT_READY,
+         (tag      => (label => OP_READY, length => 0,
+                       flags => 0, badge => 0),
+          capBadge => 0,
+          words    => (others => 0)));
+   end;
+
    --  Wait for at least one consumer to register before starting
    loop
       refreshConsumers;

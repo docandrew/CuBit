@@ -210,6 +210,9 @@ shell: user_runtime
 	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
 		../userspace/apps/shell/manifest.c \
 		-o ../userspace/apps/shell/build/manifest.o
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/apps/shell/manifest_access.c \
+		-o ../userspace/apps/shell/build/manifest_access.o
 	$(ALR) gprbuild -P ../userspace/apps/shell/shell.gpr
 	cp ../userspace/apps/shell/build/shell.app isodir/boot/shell.app
 

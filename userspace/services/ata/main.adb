@@ -142,7 +142,6 @@ procedure main is
       st   : Unsigned_8;
       mid  : Unsigned_8;
       hi   : Unsigned_8;
-      ignore : Unsigned_64;
 
       --  256-word (512 byte) identify buffer
       type IdentifyBuf is array (0 .. 255) of Unsigned_16;
@@ -189,8 +188,11 @@ procedure main is
          return False;
       end if;
 
-      --  Read 256 words of identify data
-      ignore := portInps16 (REG_DATA, buf'Address, 256);
+      --  Read 256 words of identify data via individual portInp16 calls.
+      --  rep insw (portInps16) doesn't work reliably from userspace.
+      for i in buf'Range loop
+         buf (i) := Unsigned_16 (portInp16 (REG_DATA) and 16#FFFF#);
+      end loop;
 
       debugPrint ("ATA: Drive detected on primary master." & LF);
       return True;
@@ -441,6 +443,21 @@ begin
    begin
       ignore := registerDriver (2);  --  DRIVER_ATA = 2
    end;
+
+   --  Signal devmgr that we are ready
+   declare
+      CAP_SLOT_READY : constant Unsigned_64 := 15;
+      OP_READY       : constant Unsigned_32 := 16#FF00#;
+      ignore : MessageTag;
+   begin
+      ignore := capSend (CAP_SLOT_READY,
+         (tag      => (label => OP_READY, length => 0,
+                       flags => 0, badge => 0),
+          capBadge => 0,
+          words    => (others => 0)));
+   end;
+
+   debugPrint ("ATA: registered, entering message loop" & LF);
 
    --  Main IPC message loop
    loop

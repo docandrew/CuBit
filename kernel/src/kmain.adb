@@ -96,6 +96,22 @@ begin
 
     cpuid.setupCPUID;
 
+    -- Enable SMEP/SMAP if supported
+    enableSMEPSMAP : declare
+        use Interfaces;
+        cr4 : Unsigned_64 := x86.getCR4;
+    begin
+        if cpuid.leaf7ebx.hasSMEP then
+            cr4 := cr4 or x86.CR4_SMEP;
+            println ("SMEP enabled");
+        end if;
+        if cpuid.leaf7ebx.hasSMAP then
+            cr4 := cr4 or x86.CR4_SMAP;
+            println ("SMAP enabled");
+        end if;
+        x86.setCR4 (cr4);
+    end enableSMEPSMAP;
+
     PerCPUData.setup (0,
                       cpu0Data, 
                       cpu0Data'Address,
@@ -500,6 +516,20 @@ begin
 
     -- switch to the kernel's primary page tables.
     Mem_mgr.switchAddressSpace;
+
+    -- Enable SMEP/SMAP on this AP
+    enableAPSMEPSMAP : declare
+        use Interfaces;
+        cr4 : Unsigned_64 := x86.getCR4;
+    begin
+        if cpuid.leaf7ebx.hasSMEP then
+            cr4 := cr4 or x86.CR4_SMEP;
+        end if;
+        if cpuid.leaf7ebx.hasSMAP then
+            cr4 := cr4 or x86.CR4_SMAP;
+        end if;
+        x86.setCR4 (cr4);
+    end enableAPSMEPSMAP;
 
     -- Set up LAPIC timer on this AP using BSP's calibrated interval
     setupAPLapic : declare

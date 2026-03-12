@@ -19,7 +19,8 @@ procedure main is
    use ASCII;
 
    --  IPC labels (must match kernel/src/ipc_labels.ads)
-   REPLY_OK : constant Unsigned_32 := 16#F000#;
+   REPLY_OK  : constant Unsigned_32 := 16#F000#;
+   REPLY_ERR : constant Unsigned_32 := 16#F001#;
 
    --  Sysinfo / driver ID constants
    DRIVER_KEYBOARD : constant Unsigned_64 := 1;
@@ -375,24 +376,48 @@ procedure main is
       end if;
    end resumeProc;
 
+   --  IPC ready protocol constants
+   OP_READY      : constant Unsigned_32 := 16#FF00#;
+   OP_NOT_PRESENT : constant Unsigned_32 := 16#FF01#;
+   CAP_SLOT_READY : constant Unsigned_64 := 15;
+
+   --  Our PID (discovered via registerDriver)
+   myPID : Unsigned_64 := 0;
+
    ---------------------------------------------------------------------------
-   -- Wait for a driver to register via sysinfo polling
+   -- Wait for a driver to signal readiness via IPC.
+   -- Returns True if driver sent OP_READY, False if OP_NOT_PRESENT.
    ---------------------------------------------------------------------------
-   procedure waitForDriver (driverID : Unsigned_64;
-                            maxWaits : Natural := 50)
-   is
+   function waitReady (driverPID : Unsigned_64) return Boolean is
+      sender : ProcessID;
+      rdyMsg : Message;
       ignore : Unsigned_64;
-      pid    : Unsigned_64;
    begin
-      for i in 1 .. maxWaits loop
-         pid := getInfo (SYSINFO_REGISTERED_DRIVER, driverID);
-         if pid /= 0 then
-            return;
-         end if;
-         ignore := syscall (SYSCALL_SLEEP, 50);
-      end loop;
-      debugPrint ("devmgr: driver registration timeout" & LF);
-   end waitForDriver;
+      receive (sender, rdyMsg);
+      ignore := reply (sender, NULL_MESSAGE);
+      return rdyMsg.tag.label = OP_READY;
+   end waitReady;
+
+   ---------------------------------------------------------------------------
+   -- Send a wildcard ACL to the filesystem server for a target process
+   ---------------------------------------------------------------------------
+   OP_SET_ACL : constant Unsigned_32 := 16#0080#;
+
+   procedure sendWildcardACL (targetPID : Unsigned_64) is
+      aclMsg : Message;
+      ignore : MessageTag;
+   begin
+      if filesystemPID = 0 then
+         return;
+      end if;
+      aclMsg.tag := (label  => OP_SET_ACL,
+                      length => 4,
+                      flags  => 0,
+                      badge  => 0);
+      aclMsg.capBadge := 0;
+      aclMsg.words := (0 => targetPID, 1 => 0, 2 => 0, 3 => 0);
+      ignore := capCall (1, aclMsg);
+   end sendWildcardACL;
 
    ---------------------------------------------------------------------------
    -- Setup NVMe driver: PCI config, DMA, capabilities
@@ -727,9 +752,28 @@ begin
       mintCap (filesystemPID, CAP_NOTIFICATION, DRIVER_FS, 0,
                RIGHT_WRITE, 7);
 
+      --  Register early to discover our own PID
+      ret := registerDriver (DRIVER_DEVMGR);
+      myPID := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DEVMGR);
+
       assignCPU (filesystemPID, "filesystem.svc");
+      mintCap (filesystemPID, CAP_ENDPOINT, myPID, 0,
+               RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (filesystemPID);
       debugPrint ("devmgr: filesystem server started" & LF);
+
+      --  Wait for FS to signal ready, then grant ourselves a FS endpoint
+      --  at slot 1 so we can send ACL management messages.
+      if not waitReady (filesystemPID) then
+         filesystemPID := 0;
+      end if;
+
+      if myPID /= 0 and myPID /= Unsigned_64'Last and
+         filesystemPID /= 0
+      then
+         grantEndpoint (myPID, filesystemPID, 1, myPID);
+         debugPrint ("devmgr: minted FS endpoint at slot 1" & LF);
+      end if;
    end if;
 
    -----------------------------------------------------------------------
@@ -747,11 +791,17 @@ begin
       mintCap (ataPID, CAP_NOTIFICATION, DRIVER_ATA, 0,
                RIGHT_WRITE, 7);
       assignCPU (ataPID, "ata.drv");
+      mintCap (ataPID, CAP_ENDPOINT, myPID, 0,
+               RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (ataPID);
       debugPrint ("devmgr: ATA driver started" & LF);
 
+      if not waitReady (ataPID) then
+         ataPID := 0;
+      end if;
+
       --  Grant ATA endpoint to FS server (slot 10)
-      if filesystemPID /= 0 then
+      if filesystemPID /= 0 and ataPID /= 0 then
          grantEndpoint (filesystemPID, ataPID, 10, filesystemPID);
       end if;
    end if;
@@ -767,21 +817,19 @@ begin
       mintCap (nvmePID, CAP_NOTIFICATION, DRIVER_NVME, 0,
                RIGHT_WRITE, 7);
       assignCPU (nvmePID, "nvme.drv");
+      mintCap (nvmePID, CAP_ENDPOINT, myPID, 0,
+               RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (nvmePID);
       debugPrint ("devmgr: NVMe driver started" & LF);
 
+      if not waitReady (nvmePID) then
+         nvmePID := 0;
+      end if;
+
       --  Grant NVMe endpoint to FS server (slot 11)
-      if filesystemPID /= 0 then
+      if filesystemPID /= 0 and nvmePID /= 0 then
          grantEndpoint (filesystemPID, nvmePID, 11, filesystemPID);
       end if;
-   end if;
-
-   --  Wait for disk drivers to register before starting remaining services
-   if ataPID /= 0 then
-      waitForDriver (DRIVER_ATA);
-   end if;
-   if nvmePID /= 0 then
-      waitForDriver (DRIVER_NVME);
    end if;
 
    -----------------------------------------------------------------------
@@ -794,8 +842,14 @@ begin
    if ps2PID /= 0 then
       setupPS2;
       assignCPU (ps2PID, "ps2.drv");
+      mintCap (ps2PID, CAP_ENDPOINT, myPID, 0,
+               RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (ps2PID);
       debugPrint ("devmgr: PS/2 driver started" & LF);
+
+      if not waitReady (ps2PID) then
+         ps2PID := 0;
+      end if;
    end if;
 
    -----------------------------------------------------------------------
@@ -829,19 +883,37 @@ begin
                RIGHT_WRITE, 8);
 
       assignCPU (netstackPID, "netstack.svc");
+      mintCap (netstackPID, CAP_ENDPOINT, myPID, 0,
+               RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (netstackPID);
       debugPrint ("devmgr: netstack started" & LF);
 
+      if not waitReady (netstackPID) then
+         netstackPID := 0;
+      end if;
+
       assignCPU (virtioNetPID, "virtio-net.drv");
+      mintCap (virtioNetPID, CAP_ENDPOINT, myPID, 0,
+               RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (virtioNetPID);
       debugPrint ("devmgr: virtio-net driver started" & LF);
+
+      if not waitReady (virtioNetPID) then
+         virtioNetPID := 0;
+      end if;
    elsif netstackPID /= 0 then
       --  Netstack without virtio-net (no network device found)
       --  CAP_NOTIFICATION for DRIVER_NETSTACK registration (slot 8)
       mintCap (netstackPID, CAP_NOTIFICATION, DRIVER_NETSTACK, 0,
                RIGHT_WRITE, 8);
       assignCPU (netstackPID, "netstack.svc");
+      mintCap (netstackPID, CAP_ENDPOINT, myPID, 0,
+               RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (netstackPID);
+
+      if not waitReady (netstackPID) then
+         netstackPID := 0;
+      end if;
    end if;
 
    -----------------------------------------------------------------------
@@ -878,19 +950,37 @@ begin
                RIGHT_WRITE, 8);
 
       assignCPU (hdaPID, "hda.drv");
+      mintCap (hdaPID, CAP_ENDPOINT, myPID, 0,
+               RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (hdaPID);
       debugPrint ("devmgr: HDA driver started" & LF);
 
+      if not waitReady (hdaPID) then
+         hdaPID := 0;
+      end if;
+
       assignCPU (mixerPID, "mixer.svc");
+      mintCap (mixerPID, CAP_ENDPOINT, myPID, 0,
+               RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (mixerPID);
       debugPrint ("devmgr: mixer started" & LF);
+
+      if not waitReady (mixerPID) then
+         mixerPID := 0;
+      end if;
    elsif mixerPID /= 0 then
       --  Mixer without HDA (no audio hardware found)
       --  CAP_NOTIFICATION for DRIVER_MIXER registration (slot 8)
       mintCap (mixerPID, CAP_NOTIFICATION, DRIVER_MIXER, 0,
                RIGHT_WRITE, 8);
       assignCPU (mixerPID, "mixer.svc");
+      mintCap (mixerPID, CAP_ENDPOINT, myPID, 0,
+               RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (mixerPID);
+
+      if not waitReady (mixerPID) then
+         mixerPID := 0;
+      end if;
    end if;
 
    -----------------------------------------------------------------------
@@ -904,12 +994,20 @@ begin
       --  Grant netstack endpoint to wget at slot 11
       grantEndpoint (wgetPID, netstackPID, 11, wgetPID);
       assignCPU (wgetPID, "wget.app");
+      sendWildcardACL (wgetPID);
+      mintCap (wgetPID, CAP_ENDPOINT, myPID, 0,
+               RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (wgetPID);
       debugPrint ("devmgr: wget started" & LF);
+
+      if not waitReady (wgetPID) then
+         wgetPID := 0;
+      end if;
    end if;
 
    -----------------------------------------------------------------------
    -- Phase 6: Spawn procmgr
+   -- Disk drivers already waited in Phase 2, no duplicate wait needed.
    -----------------------------------------------------------------------
    procmgrPID := spawnFromCpio ("procmgr.svc", 5);
    if procmgrPID = reterr then
@@ -939,21 +1037,24 @@ begin
                RIGHT_WRITE or RIGHT_GRANT, 9);
 
       assignCPU (procmgrPID, "procmgr.svc");
+      sendWildcardACL (procmgrPID);
+      mintCap (procmgrPID, CAP_ENDPOINT, myPID, 0,
+               RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (procmgrPID);
       debugPrint ("devmgr: procmgr started" & LF);
-   end if;
 
-   -----------------------------------------------------------------------
-   -- Service loop: register as DRIVER_DEVMGR and wait for IPC
-   -----------------------------------------------------------------------
-   ret := registerDriver (DRIVER_DEVMGR);
+      if not waitReady (procmgrPID) then
+         procmgrPID := 0;
+      end if;
+   end if;
    debugPrint ("devmgr: startup complete, entering service loop" & LF);
 
    loop
       receive (from, msg);
-      --  For now, reply OK to any message
+      --  Reject unknown messages; devmgr has no runtime API yet
+      debugPrint ("devmgr: rejected unknown message" & LF);
       ret := Unsigned_64 (reply (from,
-                                 (tag => (label  => REPLY_OK,
+                                 (tag => (label  => REPLY_ERR,
                                           length => 0,
                                           flags  => 0,
                                           badge  => 0),

@@ -849,6 +849,8 @@ is
     leaf6ebx : CPUID_6_EBX;
     leaf6ecx : CPUID_6_ECX;
 
+    leaf7ebx : CPUID_7_EBX;
+
     -- Leaves above 8000_0000h
     extLeaf1ecx : CPUID_EXT_1_ECX;
     extLeaf1edx : CPUID_EXT_1_EDX;

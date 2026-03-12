@@ -27,8 +27,11 @@ procedure main is
    OP_WRITE   : constant Unsigned_32 := 16#0004#;
    OP_SEEK    : constant Unsigned_32 := 16#0006#;
    OP_READDIR : constant Unsigned_32 := 16#0007#;
-   REPLY_OK   : constant Unsigned_32 := 16#F000#;
-   REPLY_ERR  : constant Unsigned_32 := 16#F001#;
+   REPLY_OK            : constant Unsigned_32 := 16#F000#;
+   REPLY_ERR           : constant Unsigned_32 := 16#F001#;
+   REPLY_ACCESS_DENIED : constant Unsigned_32 := 16#F007#;
+   OP_SET_ACL          : constant Unsigned_32 := 16#0080#;
+   OP_REVOKE_ACL       : constant Unsigned_32 := 16#0081#;
 
    --  Sysinfo query for ramdisk address
    --  (uses SYSINFO_RAMDISK_ADDRESS from CuBit.Messages)
@@ -81,6 +84,114 @@ procedure main is
    nvmeGrantBuf     : System.Address := System.Null_Address;
    nvmeGrantId      : Unsigned_64 := 0;
 
+   ---------------------------------------------------------------------------
+   --  Per-process file ACL infrastructure
+   ---------------------------------------------------------------------------
+
+   ACL_READ  : constant Unsigned_8 := 1;
+
+   MAX_ACL_PREFIX : constant := 64;
+   MAX_ACL_ENTRIES : constant := 16;
+   MAX_ACL_PROFILES : constant := 32;
+
+   type ACLEntry is record
+      prefix    : String (1 .. MAX_ACL_PREFIX);
+      prefixLen : Natural    := 0;  --  0 = wildcard (matches everything)
+      rights    : Unsigned_8 := 0;
+   end record;
+
+   type ACLEntryArray is
+     array (0 .. MAX_ACL_ENTRIES - 1) of ACLEntry;
+
+   type ACLProfile is record
+      pid    : ProcessID := NO_PROCESS;
+      active : Boolean   := False;
+      count  : Natural   := 0;
+      entries : ACLEntryArray;
+   end record;
+
+   aclProfiles : array (0 .. MAX_ACL_PROFILES - 1) of ACLProfile;
+
+   --  Admin tracking: first OP_SET_ACL sender auto-becomes primary admin
+   primaryAdmin   : ProcessID    := NO_PROCESS;
+   procmgrAdmin   : Unsigned_64  := 0;
+
+   --  Check if sender is an authorized admin (devmgr or procmgr)
+   function isAdmin (sender : ProcessID) return Boolean is
+   begin
+      if primaryAdmin /= NO_PROCESS and then sender = primaryAdmin then
+         return True;
+      end if;
+
+      --  Lazy-discover procmgr PID via sysinfo
+      if procmgrAdmin = 0 then
+         procmgrAdmin := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_PROCMGR);
+         if procmgrAdmin = 0 or procmgrAdmin = Unsigned_64'Last then
+            procmgrAdmin := 0;
+         end if;
+      end if;
+
+      if procmgrAdmin /= 0 and then sender = procmgrAdmin then
+         return True;
+      end if;
+
+      return False;
+   end isAdmin;
+
+   --  Check if sender has access rights for the given path
+   function checkAccess
+     (sender : ProcessID;
+      path   : String;
+      rights : Unsigned_8) return Boolean
+   is
+   begin
+      for i in aclProfiles'Range loop
+         if aclProfiles (i).active and then
+            aclProfiles (i).pid = sender
+         then
+            --  Profile found; scan entries for prefix match
+            for j in 0 .. aclProfiles (i).count - 1 loop
+               if (aclProfiles (i).entries (j).rights and rights) = rights
+               then
+                  --  Wildcard entry matches everything
+                  if aclProfiles (i).entries (j).prefixLen = 0 then
+                     return True;
+                  end if;
+
+                  --  Prefix match
+                  if path'Length >=
+                     aclProfiles (i).entries (j).prefixLen
+                  then
+                     declare
+                        pLen : constant Natural :=
+                          aclProfiles (i).entries (j).prefixLen;
+                        match : Boolean := True;
+                     begin
+                        for k in 0 .. pLen - 1 loop
+                           if path (path'First + k) /=
+                              aclProfiles (i).entries (j).prefix (1 + k)
+                           then
+                              match := False;
+                              exit;
+                           end if;
+                        end loop;
+                        if match then
+                           return True;
+                        end if;
+                     end;
+                  end if;
+               end if;
+            end loop;
+
+            --  Profile found but no matching entry
+            return False;
+         end if;
+      end loop;
+
+      --  No profile found: default deny
+      return False;
+   end checkAccess;
+
    --  Conversion helpers
    function toAddr is new Ada.Unchecked_Conversion
      (Unsigned_64, System.Address);
@@ -112,6 +223,120 @@ procedure main is
       replyMsg.words := (0 => word0, others => 0);
       ignore := reply (dest, replyMsg);
    end sendReply;
+
+   --  Handle OP_SET_ACL
+   --  words(0) = target PID
+   --  words(1) = entry count (0 = wildcard full access)
+   --  words(2) = grant_id (when count > 0)
+   --  words(3) = reserved
+   procedure handleSetACL (sender : ProcessID; msg : Message) is
+      targetPID  : constant ProcessID := msg.words (0);
+      entryCount : constant Natural := Natural (msg.words (1));
+      slotIdx    : Integer := -1;
+   begin
+      --  Auto-register first sender as primary admin (devmgr)
+      if primaryAdmin = NO_PROCESS then
+         primaryAdmin := sender;
+      end if;
+
+      if not isAdmin (sender) then
+         sendReply (sender, REPLY_ACCESS_DENIED, 0);
+         return;
+      end if;
+
+      if entryCount > MAX_ACL_ENTRIES then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+
+      --  Find existing profile or allocate a free slot
+      for i in aclProfiles'Range loop
+         if aclProfiles (i).active and then
+            aclProfiles (i).pid = targetPID
+         then
+            slotIdx := i;
+            exit;
+         end if;
+      end loop;
+
+      if slotIdx < 0 then
+         for i in aclProfiles'Range loop
+            if not aclProfiles (i).active then
+               slotIdx := i;
+               exit;
+            end if;
+         end loop;
+      end if;
+
+      if slotIdx < 0 then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+
+      aclProfiles (slotIdx).pid    := targetPID;
+      aclProfiles (slotIdx).active := True;
+
+      if entryCount = 0 then
+         --  Wildcard: single entry with prefixLen=0, rights=all
+         aclProfiles (slotIdx).count := 1;
+         aclProfiles (slotIdx).entries (0).prefixLen := 0;
+         aclProfiles (slotIdx).entries (0).rights := 16#FF#;
+      else
+         --  Read entries from grant buffer
+         --  Each entry: 1 byte rights, 1 byte prefixLen, 6 reserved,
+         --  64 bytes prefix = 72 bytes total
+         declare
+            grantId   : constant Unsigned_64 := msg.words (2);
+            grantAddr : constant Unsigned_64 :=
+              GRANT_REGION_BASE + grantId * GRANT_SLOT_SIZE;
+            buf : array (0 .. Natural (entryCount) * 72 - 1) of Unsigned_8
+              with Import, Address => toAddr (grantAddr);
+            base : Natural;
+            pLen : Natural;
+         begin
+            aclProfiles (slotIdx).count := entryCount;
+            for e in 0 .. entryCount - 1 loop
+               base := e * 72;
+               aclProfiles (slotIdx).entries (e).rights := buf (base);
+               pLen := Natural (buf (base + 1));
+               if pLen > MAX_ACL_PREFIX then
+                  pLen := MAX_ACL_PREFIX;
+               end if;
+               aclProfiles (slotIdx).entries (e).prefixLen := pLen;
+               for c in 0 .. pLen - 1 loop
+                  aclProfiles (slotIdx).entries (e).prefix (1 + c) :=
+                    Character'Val (buf (base + 8 + c));
+               end loop;
+            end loop;
+         end;
+      end if;
+
+      debugPrint ("FS Server: ACL set for PID" & LF);
+      sendReply (sender, REPLY_OK, 0);
+   end handleSetACL;
+
+   --  Handle OP_REVOKE_ACL
+   --  words(0) = target PID
+   procedure handleRevokeACL (sender : ProcessID; msg : Message) is
+      targetPID : constant ProcessID := msg.words (0);
+   begin
+      if not isAdmin (sender) then
+         sendReply (sender, REPLY_ACCESS_DENIED, 0);
+         return;
+      end if;
+
+      for i in aclProfiles'Range loop
+         if aclProfiles (i).active and then
+            aclProfiles (i).pid = targetPID
+         then
+            aclProfiles (i).active := False;
+            aclProfiles (i).pid    := NO_PROCESS;
+            aclProfiles (i).count  := 0;
+         end if;
+      end loop;
+
+      sendReply (sender, REPLY_OK, 0);
+   end handleRevokeACL;
 
    --  ATA driver PID (discovered at runtime via sysinfo)
    ataDriverPID  : Unsigned_64 := 0;
@@ -305,6 +530,34 @@ procedure main is
       end if;
    end ensureNVMe;
 
+   --  Reject paths containing ".." traversal components.
+   --  Checks for: exact "..", leading "../", trailing "/..", and "/../".
+   function hasTraversal (path : String) return Boolean is
+   begin
+      if path'Length = 2 and then
+         path (path'First) = '.' and then path (path'First + 1) = '.'
+      then
+         return True;
+      end if;
+
+      for i in path'First .. path'Last - 1 loop
+         if path (i) = '.' and then path (i + 1) = '.' then
+            declare
+               atStart : constant Boolean :=
+                 (i = path'First) or else path (i - 1) = '/';
+               atEnd   : constant Boolean :=
+                 (i + 1 = path'Last) or else path (i + 2) = '/';
+            begin
+               if atStart and atEnd then
+                  return True;
+               end if;
+            end;
+         end if;
+      end loop;
+
+      return False;
+   end hasTraversal;
+
    --  Handle OP_OPEN
    --  words(0) = grant_id (where path string is)
    --  words(1) = path_length
@@ -352,6 +605,17 @@ procedure main is
             end if;
          end skipSelector;
       begin
+         if hasTraversal (pathStr) then
+            sendReply (sender, REPLY_ERR, Unsigned_64'Last);
+            return;
+         end if;
+
+         if not checkAccess (sender, pathStr, ACL_READ) then
+            debugPrint ("FS: access denied for PID" & LF);
+            sendReply (sender, REPLY_ACCESS_DENIED, Unsigned_64'Last);
+            return;
+         end if;
+
          parseScheme (pathStr, isATA, isNVMe, relStart);
 
          if isNVMe then
@@ -453,6 +717,7 @@ procedure main is
       end;
 
       if inodeNum = 0 then
+         debugPrint ("FS: file not found" & LF);
          sendReply (sender, REPLY_ERR, Unsigned_64'Last);
          return;
       end if;
@@ -526,6 +791,11 @@ procedure main is
          return;
       end if;
 
+      if files (handle).ownerPID /= sender then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+
       case files (handle).backend is
          when CPIO_RAMDISK =>
             bytesRead := Cpio.readData
@@ -573,6 +843,11 @@ procedure main is
          return;
       end if;
 
+      if files (handle).ownerPID /= sender then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+
       case files (handle).backend is
          when CPIO_RAMDISK =>
             --  CPIO ramdisk is read-only
@@ -616,6 +891,11 @@ procedure main is
          return;
       end if;
 
+      if files (handle).ownerPID /= sender then
+         sendReply (sender, REPLY_ERR, Unsigned_64'Last);
+         return;
+      end if;
+
       case files (handle).backend is
          when CPIO_RAMDISK =>
             size := cpioArchive.files (files (handle).cpioFileIdx).dataSize;
@@ -647,6 +927,11 @@ procedure main is
       if handle < 0 or handle >= MAX_OPEN_FILES or
          not files (handle).active
       then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+
+      if files (handle).ownerPID /= sender then
          sendReply (sender, REPLY_ERR, 0);
          return;
       end if;
@@ -729,6 +1014,16 @@ procedure main is
                                      GRANT_SLOT_SIZE);
          end resolveAndReadDir;
       begin
+         if hasTraversal (pathStr) then
+            sendReply (sender, REPLY_ERR, 0);
+            return;
+         end if;
+
+         if not checkAccess (sender, pathStr, ACL_READ) then
+            sendReply (sender, REPLY_ACCESS_DENIED, 0);
+            return;
+         end if;
+
          parseScheme (pathStr, isATA, isNVMe, relStart);
 
          if isNVMe then
@@ -817,6 +1112,19 @@ begin
       ignore := registerDriver (DRIVER_FS);
    end;
 
+   --  Signal devmgr that we are ready
+   declare
+      CAP_SLOT_READY : constant Unsigned_64 := 15;
+      OP_READY       : constant Unsigned_32 := 16#FF00#;
+      ignore : MessageTag;
+   begin
+      ignore := capSend (CAP_SLOT_READY,
+         (tag      => (label => OP_READY, length => 0,
+                       flags => 0, badge => 0),
+          capBadge => 0,
+          words    => (others => 0)));
+   end;
+
    debugPrint ("FS Server: Entering message loop." & LF);
 
    --  Main IPC message loop.
@@ -839,6 +1147,10 @@ begin
             handleClose (sender, msg);
          when OP_READDIR =>
             handleReaddir (sender, msg);
+         when OP_SET_ACL =>
+            handleSetACL (sender, msg);
+         when OP_REVOKE_ACL =>
+            handleRevokeACL (sender, msg);
          when others =>
             sendReply (sender, REPLY_ERR, 0);
       end case;

@@ -23,6 +23,9 @@ is
     -- TODO: add more here
     FLAGS_INTERRUPT : constant Unsigned_64 := 16#0200#;
 
+    CR4_SMEP : constant Unsigned_64 := 16#0010_0000#;  -- bit 20
+    CR4_SMAP : constant Unsigned_64 := 16#0020_0000#;  -- bit 21
+
     ---------------------------------------------------------------------------
     -- panicked - if any CPU calls x86.panic, it will set this flag to indicate
     --  to the scheduler running on other CPUs to cease operation.
@@ -195,6 +198,9 @@ is
     ---------------------------------------------------------------------------
     function getCR4 return Unsigned_64;
     procedure setCR4 (cr4 : Unsigned_64);
+
+    procedure stac with Inline;  -- Set AC flag (allow user access)
+    procedure clac with Inline;  -- Clear AC flag (deny user access)
 
     ---------------------------------------------------------------------------
     -- Get base pointer. In debug mode, calling convention stores the caller

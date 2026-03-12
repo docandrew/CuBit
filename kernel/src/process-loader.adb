@@ -223,6 +223,16 @@ package body Process.Loader is
             print ("Process.Loader: Number of Program headers: "); println (elfHeader.e_phnum);
             print ("Process.Loader: Entry point:               "); println (elfHeader.e_entry);
 
+            -- Validate program header table fits within image
+            if Unsigned_64 (elfHeader.e_phoff) +
+               Unsigned_64 (elfHeader.e_phnum) *
+               Unsigned_64 (elfHeader.e_phentsize) >
+               Unsigned_64 (size)
+            then
+                raise ProcessLoadException
+                    with "ELF: phdr table exceeds image bounds";
+            end if;
+
             declare
                 segments : ELF.ProgramHeaderTable(0..elfHeader.e_phnum - 1)
                     with Import, Address => objStart + elfHeader.e_phoff;
@@ -241,6 +251,15 @@ package body Process.Loader is
 
                 for segment of segments loop
                     if segment.p_type = ELF.PT_LOAD and segment.p_memsz > 0 then
+                        -- Validate segment data fits within image
+                        if Unsigned_64 (segment.p_offset) +
+                           Unsigned_64 (segment.p_filesz) >
+                           Unsigned_64 (size)
+                        then
+                            raise ProcessLoadException
+                                with "ELF: segment exceeds image bounds";
+                        end if;
+
                         addSegmentToProcess (elfAddr => objStart,
                                              segment => segment,
                                              proc    => proctab(pid));

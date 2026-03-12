@@ -29,25 +29,27 @@ package body CuBit.Messages is
 
       ret : Unsigned_64;
    begin
+      --  Use proper register constraints so the compiler places call in rax,
+      --  arg0 in rdi, arg1 in rsi, arg2 in rdx.  For r10/r8/r9, which lack
+      --  single-letter constraints, we use explicit mov from "rm" operands.
+      --  The "=a" output captures the return value from rax in the same asm
+      --  block, avoiding the split-block bug where rax could be clobbered
+      --  between two separate Asm statements.
       Asm
-        ("mov %0, %%rax" & LF & "mov %1, %%rdi" & LF & "mov %2, %%rsi" & LF &
-         "mov %3, %%rdx" & LF & "mov %4, %%r10" & LF & "mov %5, %%r8" & LF &
-         "mov %6, %%r9" & LF & "syscall",
+        ("mov %5, %%r10" & LF &
+         "mov %6, %%r8" & LF &
+         "mov %7, %%r9" & LF &
+         "syscall",
+         Outputs => (Unsigned_64'Asm_Output ("=a", ret)),
          Inputs =>
-           (Unsigned_64'Asm_Input ("g", call),
-            Unsigned_64'Asm_Input ("g", arg0),
-            Unsigned_64'Asm_Input ("g", arg1),
-            Unsigned_64'Asm_Input ("g", arg2),
-            Unsigned_64'Asm_Input ("g", arg3),
-            Unsigned_64'Asm_Input ("g", arg4),
-            Unsigned_64'Asm_Input ("g", arg5)),
-         Clobber => "rax, rdi, rsi, rdx, r10, rcx, r8, r9, r11",
-         Volatile => True);
-
-      Asm
-        ("mov %%rax, %0" & LF,
-         Outputs => (Unsigned_64'Asm_Output ("=g", ret)),
-         Clobber => "memory",
+           (Unsigned_64'Asm_Input ("a", call),
+            Unsigned_64'Asm_Input ("D", arg0),
+            Unsigned_64'Asm_Input ("S", arg1),
+            Unsigned_64'Asm_Input ("d", arg2),
+            Unsigned_64'Asm_Input ("rm", arg3),
+            Unsigned_64'Asm_Input ("rm", arg4),
+            Unsigned_64'Asm_Input ("rm", arg5)),
+         Clobber => "r10, rcx, r8, r9, r11, memory",
          Volatile => True);
 
       return ret;

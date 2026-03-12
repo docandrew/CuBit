@@ -252,11 +252,20 @@ is
         end if;
 
         -- Clear the proctab entry before populating fields. The entry may
-        -- contain stale data from a previously killed process.
+        -- contain stale data from a previously killed process. Preserve the
+        -- capability generation counter so recycled PIDs don't reset to
+        -- INITIAL_GENERATION (which would let stale caps pass gen checks).
         declare
-            ignore : System.Address;
+            savedGen : constant Capabilities.Generation :=
+                proctab(pid).capGeneration;
+            ignore   : System.Address;
         begin
             ignore := Util.memset (proctab(pid)'Address, 0, Process'Size / 8);
+            if savedGen >= Capabilities.INITIAL_GENERATION then
+                proctab(pid).capGeneration := savedGen;
+            else
+                proctab(pid).capGeneration := Capabilities.INITIAL_GENERATION;
+            end if;
         end;
 
         proctab(pid).pid          := pid;
@@ -268,7 +277,6 @@ is
         proctab(pid).priority     := priority;
         proctab(pid).stackTop     := procStack;
         proctab(pid).stackBottom  := procStack - STACK_SIZE;
-        proctab(pid).capGeneration := Capabilities.INITIAL_GENERATION;
 
         -- heap can't be calculated until the image segments are added to this
         -- process, so set to non-canonical address to start
@@ -342,7 +350,8 @@ is
             -- Grant initial capabilities for well-known services
             Capabilities.Operations.grantInitialCaps (
                 table => proctab(pid).caps,
-                pid   => Unsigned_64(pid));
+                pid   => Unsigned_64(pid),
+                gen   => proctab(pid).capGeneration);
 
             zeroize (addrtab(pid));
             Mem_mgr.mapKernelMemIntoProcess (addrtab(pid));
@@ -799,6 +808,9 @@ is
             proctab(pid).kernelStack := null;
         end if;
 
+        -- Return PID to the free pool for reuse.
+        PIDTracker.freePID (pid);
+
         -- Nothing to return to, go back to scheduler.
         Scheduler.enter;
 
@@ -1016,12 +1028,15 @@ is
         end allocSpecificPID;
 
 
-        -- Mark a PID as free.
+        -- Mark a PID as free. Acquires pidLock for thread safety.
         procedure freePID(pid : in ProcessID) with
             SPARK_Mode => On
         is
+            use Spinlocks;
         begin
+            enterCriticalSection (pidLock);
             markFree(pid);
+            exitCriticalSection (pidLock);
         end freePID;
 
 

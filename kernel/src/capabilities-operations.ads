@@ -107,7 +107,8 @@ is
     -- grantInitialCaps
     -- Populate a freshly-created process' capability table with well-known
     -- endpoint capabilities for standard services. Takes Unsigned_64 for
-    -- PID to avoid depending on Process.
+    -- PID to avoid depending on Process. gen is the process's current
+    -- capability generation (preserved across PID recycling).
     --
     -- Slot layout:
     --   0: CAP_ENDPOINT  self (ref=pid)                     badge=pid
@@ -116,7 +117,8 @@ is
     --   3: CAP_PROCESS   self process control (ref=pid)     badge=0
     ---------------------------------------------------------------------------
     procedure grantInitialCaps (table : in out CapabilityTable;
-                                pid   : in     Unsigned_64);
+                                pid   : in     Unsigned_64;
+                                gen   : in     Generation);
 
     ---------------------------------------------------------------------------
     -- checkPortAccess

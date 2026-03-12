@@ -467,6 +467,12 @@ is
                 leaf6ecx := toRecord(ecx);
             end if;
 
+            -- Extended feature flags (SMEP, SMAP, etc.)
+            if maxStdLeaf >= 7 then
+                cpuid (7, eax, ebx, ecx, unused);
+                leaf7ebx := toRecord (ebx);
+            end if;
+
             -- TSC frequency info
             if maxStdLeaf >= 16#15# then
                 cpuid(16#15#, eax, ebx, ecx, unused);

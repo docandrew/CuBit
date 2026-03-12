@@ -28,8 +28,9 @@ procedure main is
    OP_OPEN    : constant Unsigned_32 := 16#0001#;
    OP_READ    : constant Unsigned_32 := 16#0003#;
    OP_CLOSE   : constant Unsigned_32 := 16#0002#;
-   REPLY_OK   : constant Unsigned_32 := 16#F000#;
-   REPLY_ERR  : constant Unsigned_32 := 16#F001#;
+   REPLY_OK     : constant Unsigned_32 := 16#F000#;
+   REPLY_ERR    : constant Unsigned_32 := 16#F001#;
+   OP_SET_ACL   : constant Unsigned_32 := 16#0080#;
 
    --  Grant region constants (must match kernel process.ads)
    GRANT_REGION_BASE : constant Unsigned_64 := 16#0000_4000_0000_0000#;
@@ -456,6 +457,177 @@ procedure main is
    end parseAndGrantManifest;
 
    ---------------------------------------------------------------------------
+   --  Access manifest constants
+   ---------------------------------------------------------------------------
+   ACCESS_MAGIC : constant Unsigned_32 := 16#43434143#;  -- "CACC" LE
+   MAX_ACL      : constant := 16;
+
+   ---------------------------------------------------------------------------
+   --  parseAndSendACL
+   --  Parse .cubit.access section from the ELF in elfBuf and send
+   --  OP_SET_ACL to the FS server. Falls back to wildcard if no section.
+   ---------------------------------------------------------------------------
+   procedure parseAndSendACL
+     (childPID : Unsigned_64;
+      elfSize  : Unsigned_64)
+   is
+      e_shoff     : Unsigned_64;
+      e_shentsize : Unsigned_16;
+      e_shnum     : Unsigned_16;
+   begin
+      if elfSize < 64 then
+         goto Send_Wildcard;
+      end if;
+
+      e_shoff     := readU64 (40);
+      e_shentsize := readU16 (58);
+      e_shnum     := readU16 (60);
+
+      if e_shentsize /= 64 or e_shoff = 0 or e_shnum = 0 then
+         goto Send_Wildcard;
+      end if;
+
+      if e_shoff + Unsigned_64 (e_shnum) * 64 > elfSize then
+         goto Send_Wildcard;
+      end if;
+
+      --  Scan section headers for .cubit.access (PROGBITS with CACC magic)
+      for i in 0 .. Unsigned_16'(e_shnum - 1) loop
+         declare
+            shBase    : constant Unsigned_64 :=
+               e_shoff + Unsigned_64 (i) * 64;
+            sh_type   : constant Unsigned_32 := readU32 (shBase + 4);
+            sh_offset : Unsigned_64;
+            sh_size   : Unsigned_64;
+         begin
+            if sh_type = SHT_PROGBITS then
+               sh_offset := readU64 (shBase + 24);
+               sh_size   := readU64 (shBase + 32);
+
+               --  Need at least 16 bytes for access header
+               if sh_size >= 16 and then
+                  sh_offset + sh_size <= elfSize and then
+                  readU32 (sh_offset) = ACCESS_MAGIC
+               then
+                  declare
+                     version : constant Unsigned_16 :=
+                        readU16 (sh_offset + 4);
+                     count   : constant Unsigned_16 :=
+                        readU16 (sh_offset + 6);
+                  begin
+                     if version /= 1 then
+                        debugPrint ("procmgr: unknown access v" & LF);
+                        goto Send_Wildcard;
+                     end if;
+
+                     if count = 0 or count > MAX_ACL then
+                        goto Send_Wildcard;
+                     end if;
+
+                     --  Validate entries fit: 16 + 80*count
+                     if sh_size < 16 + Unsigned_64 (count) * 80 then
+                        debugPrint ("procmgr: access truncated" & LF);
+                        goto Send_Wildcard;
+                     end if;
+
+                     debugPrint ("procmgr: access has ");
+                     printDec (Unsigned_32 (count));
+                     debugPrint (" ACL entries" & LF);
+
+                     --  Copy entries to stack-local array before
+                     --  overwriting elfBuf with FS grant format.
+                     --  Per entry: 1 byte rights + 1 byte prefixLen +
+                     --  64 bytes prefix = 66 bytes.
+                     declare
+                        type LocalEntry is record
+                           rights    : Unsigned_8;
+                           prefixLen : Unsigned_8;
+                           prefix    : String (1 .. 64);
+                        end record;
+                        locals : array (0 .. Natural (count) - 1)
+                           of LocalEntry;
+                        entBase : Unsigned_64;
+                        pLen    : Natural;
+                     begin
+                        for j in 0 .. Natural (count) - 1 loop
+                           entBase := sh_offset + 16 +
+                              Unsigned_64 (j) * 80;
+                           locals (j).rights :=
+                              readU8 (entBase);
+                           locals (j).prefixLen :=
+                              readU8 (entBase + 1);
+                           pLen := Natural (locals (j).prefixLen);
+                           if pLen > 64 then
+                              pLen := 64;
+                              locals (j).prefixLen := 64;
+                           end if;
+                           for c in 0 .. pLen - 1 loop
+                              locals (j).prefix (1 + c) :=
+                                 Character'Val (
+                                    Natural (readU8 (entBase + 8 +
+                                       Unsigned_64 (c))));
+                           end loop;
+                        end loop;
+
+                        --  Write FS ACL grant format to elfBuf:
+                        --  72 bytes/entry: rights(1) + prefixLen(1) +
+                        --  reserved(6) + prefix(64)
+                        declare
+                           grantBuf : array (0 .. Natural (count) * 72 - 1)
+                              of Unsigned_8 with
+                              Import, Address => elfBuf;
+                           base : Natural;
+                        begin
+                           --  Zero-fill entire region first
+                           for b in grantBuf'Range loop
+                              grantBuf (b) := 0;
+                           end loop;
+
+                           for j in 0 .. Natural (count) - 1 loop
+                              base := j * 72;
+                              grantBuf (base) := locals (j).rights;
+                              grantBuf (base + 1) := locals (j).prefixLen;
+                              pLen := Natural (locals (j).prefixLen);
+                              for c in 0 .. pLen - 1 loop
+                                 grantBuf (base + 8 + c) :=
+                                    Unsigned_8 (Character'Pos (
+                                       locals (j).prefix (1 + c)));
+                              end loop;
+                           end loop;
+                        end;
+
+                        --  Send OP_SET_ACL to FS server
+                        declare
+                           aclMsg : Message := NULL_MESSAGE;
+                           aclTag : MessageTag;
+                        begin
+                           aclMsg.tag := (label  => OP_SET_ACL,
+                                          length => 4,
+                                          flags  => 0,
+                                          badge  => 0);
+                           aclMsg.words := (0 => childPID,
+                                            1 => Unsigned_64 (count),
+                                            2 => fsGrantId,
+                                            3 => 0);
+                           aclTag := capCall (CAP_SLOT_FS_LOCAL, aclMsg);
+                        end;
+
+                        return;  -- done, skip wildcard
+                     end;
+                  end;
+               end if;
+            end if;
+         end;
+      end loop;
+
+   <<Send_Wildcard>>
+      --  No .cubit.access section: deny-by-default.
+      --  FS server denies access for processes with no ACL profile,
+      --  so we simply don't send OP_SET_ACL.
+      debugPrint ("procmgr: no .cubit.access, deny-by-default" & LF);
+   end parseAndSendACL;
+
+   ---------------------------------------------------------------------------
    --  spawnByName
    --  Read ELF from filesystem, spawn suspended, grant manifest caps, resume.
    --  Returns PID on success, 0 on failure.
@@ -546,6 +718,9 @@ procedure main is
                             CAP_SLOT_MOUSE_FOCUS);
       end;
 
+      --  Parse .cubit.access and send ACLs to FS server (or wildcard)
+      parseAndSendACL (newPID, elfSize);
+
       declare
          ignore : Unsigned_64;
       begin
@@ -613,10 +788,21 @@ procedure main is
 
       confSize : Unsigned_64;
    begin
-      --  Device manager ensures disk drivers are ready before starting
-      --  procmgr, so no retry needed.
+      --  Retry init.conf read: the ATA driver may still be registering
+      --  when procmgr starts, so the FS server might not have a disk
+      --  backend ready yet.
       debugPrint ("procmgr: reading init.conf..." & LF);
-      confSize := readFileFromFS ("init.conf");
+      for attempt in 1 .. 10 loop
+         confSize := readFileFromFS ("init.conf");
+         exit when confSize > 0;
+         if attempt < 10 then
+            declare
+               ignore : Unsigned_64;
+            begin
+               ignore := syscall (SYSCALL_SLEEP, 100);
+            end;
+         end if;
+      end loop;
       if confSize = 0 then
          debugPrint ("procmgr: init.conf not found, skipping" & LF);
          return;
@@ -767,6 +953,19 @@ begin
       ignore : Unsigned_64;
    begin
       ignore := registerDriver (DRIVER_PROCMGR);
+   end;
+
+   --  Signal devmgr that we are ready
+   declare
+      CAP_SLOT_READY : constant Unsigned_64 := 15;
+      OP_READY       : constant Unsigned_32 := 16#FF00#;
+      ignore : MessageTag;
+   begin
+      ignore := capSend (CAP_SLOT_READY,
+         (tag      => (label => OP_READY, length => 0,
+                       flags => 0, badge => 0),
+          capBadge => 0,
+          words    => (others => 0)));
    end;
 
    debugPrint ("procmgr: registered as driver" & LF);

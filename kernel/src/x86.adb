@@ -304,6 +304,22 @@ is
     end setCR4;
 
     ---------------------------------------------------------------------------
+    -- STAC - Set AC flag (allow user page access under SMAP)
+    ---------------------------------------------------------------------------
+    procedure stac is
+    begin
+        Asm ("stac", Clobber => "memory", Volatile => True);
+    end stac;
+
+    ---------------------------------------------------------------------------
+    -- CLAC - Clear AC flag (deny user page access under SMAP)
+    ---------------------------------------------------------------------------
+    procedure clac is
+    begin
+        Asm ("clac", Clobber => "memory", Volatile => True);
+    end clac;
+
+    ---------------------------------------------------------------------------
     -- get base pointer
     ---------------------------------------------------------------------------
     function getRBP return Unsigned_64 is

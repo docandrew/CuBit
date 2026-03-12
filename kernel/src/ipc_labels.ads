@@ -28,7 +28,10 @@ is
     OP_WRITE   : constant Unsigned_32 := 16#0004#;
     OP_STAT    : constant Unsigned_32 := 16#0005#;
     OP_SEEK    : constant Unsigned_32 := 16#0006#;
-    OP_READDIR : constant Unsigned_32 := 16#0007#;
+    OP_READDIR    : constant Unsigned_32 := 16#0007#;
+    OP_SET_ACL    : constant Unsigned_32 := 16#0080#;
+    OP_REVOKE_ACL : constant Unsigned_32 := 16#0081#;
+    OP_QUERY_ACL  : constant Unsigned_32 := 16#0082#;
 
     -- Process operations
     OP_SPAWN   : constant Unsigned_32 := 16#0100#;
@@ -98,6 +101,7 @@ is
     REPLY_CANCELED : constant Unsigned_32 := 16#F003#;
     REPLY_TIMEOUT  : constant Unsigned_32 := 16#F004#;
     REPLY_FULL     : constant Unsigned_32 := 16#F005#;
-    REPLY_EOF      : constant Unsigned_32 := 16#F006#;
+    REPLY_EOF           : constant Unsigned_32 := 16#F006#;
+    REPLY_ACCESS_DENIED : constant Unsigned_32 := 16#F007#;
 
 end IPC_Labels;

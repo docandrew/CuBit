@@ -804,7 +804,7 @@ private
             Global => (In_Out => PIDTrackerState);
 
         -----------------------------------------------------------------------
-        -- freePID: mark PID as free in bitmap. Not locked.
+        -- freePID: mark PID as free in bitmap. Acquires pidLock.
         -----------------------------------------------------------------------
         procedure freePID (pid : in ProcessID) with
             SPARK_Mode => On,

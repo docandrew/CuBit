@@ -16,7 +16,8 @@ with Video.VGA;
 
 package body Sysinfo is
 
-    registeredDrivers : DriverList := (others => Process.NO_PROCESS);
+    registeredDrivers : DriverList := (others => Process.NO_PROCESS)
+        with Volatile;
     netIOBase : Unsigned_64 := 0;
     nvmeBar0  : Unsigned_64 := 0;
     nvmeDma   : Unsigned_64 := 0;
@@ -61,7 +62,8 @@ package body Sysinfo is
             when NUM_CPUS =>
                 return Unsigned_64 (acpi.numCPUs);
             when REGISTERED_DRIVER =>
-                return Unsigned_64(registeredDrivers(DriverID(detail)));
+                return Unsigned_64(
+                    registeredDrivers(DriverID(detail)));
             when others =>
                 return Unsigned_64'Last;
         end case;
@@ -76,6 +78,11 @@ package body Sysinfo is
     is
     begin
         registeredDrivers (driver) := pid;
+        print ("sysinfo: registered drv ");
+        printd (Unsigned_64(driver));
+        print (" = pid ");
+        printd (Unsigned_64(pid));
+        println;
         return Unsigned_64(pid);
     end registerDriver;
 

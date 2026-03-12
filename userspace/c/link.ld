@@ -41,6 +41,11 @@ SECTIONS
         KEEP(*(.cubit.caps))
     }
 
+    .cubit.access (INFO) : ALIGN(4)
+    {
+        KEEP(*(.cubit.access))
+    }
+
     /DISCARD/ :
     {
         *(.eh_frame)

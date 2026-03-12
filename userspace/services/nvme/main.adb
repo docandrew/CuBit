@@ -129,10 +129,19 @@ begin
    dmaPhys  := getInfo (SYSINFO_NVME_DMA_PHYS);
 
    if bar0Phys = 0 or bar0Phys = Unsigned_64'Last then
-      debugPrint ("NVMe Driver: No BAR0 in sysinfo, halting." & LF);
+      debugPrint ("NVMe Driver: No BAR0 in sysinfo, exiting." & LF);
+      --  Signal devmgr that no hardware is present
       declare
+         CAP_SLOT_READY  : constant Unsigned_64 := 15;
+         OP_NOT_PRESENT  : constant Unsigned_32 := 16#FF01#;
+         rdyIgnore : MessageTag;
          ignore : Unsigned_64;
       begin
+         rdyIgnore := capSend (CAP_SLOT_READY,
+            (tag      => (label => OP_NOT_PRESENT, length => 0,
+                          flags => 0, badge => 0),
+             capBadge => 0,
+             words    => (others => 0)));
          ignore := syscall (SYSCALL_EXIT);
       end;
       return;
@@ -155,6 +164,19 @@ begin
       ignore : Unsigned_64;
    begin
       ignore := registerDriver (DRIVER_NVME);
+   end;
+
+   --  Signal devmgr that we are ready
+   declare
+      CAP_SLOT_READY : constant Unsigned_64 := 15;
+      OP_READY       : constant Unsigned_32 := 16#FF00#;
+      ignore : MessageTag;
+   begin
+      ignore := capSend (CAP_SLOT_READY,
+         (tag      => (label => OP_READY, length => 0,
+                       flags => 0, badge => 0),
+          capBadge => 0,
+          words    => (others => 0)));
    end;
 
    debugPrint ("NVMe Driver: Ready, entering message loop." & LF);

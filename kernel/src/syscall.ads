@@ -115,7 +115,7 @@ is
     SYSCALL_REVOKE        : constant SyscallNumber := 103;
 
     -- CONTROLACCESS sub-operation codes (passed in arg0)
-    CONTROLACCESS_INSERT  : constant Unsigned_64 := 1;
+    -- CONTROLACCESS_INSERT (1) removed: capability bypass vulnerability.
     CONTROLACCESS_DERIVE  : constant Unsigned_64 := 2;
     CONTROLACCESS_MINT    : constant Unsigned_64 := 3;
     CONTROLACCESS_REMOVE  : constant Unsigned_64 := 4;
