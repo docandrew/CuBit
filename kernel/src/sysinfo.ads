@@ -39,6 +39,10 @@ package Sysinfo is
     -- CPU info
     NUM_CPUS              : constant QueryID := 1400;
 
+    -- Memory info
+    MEM_FREE              : constant QueryID := 1600;
+    MEM_TOTAL             : constant QueryID := 1601;
+
     REGISTERED_DRIVER     : constant QueryID := 2000;
 
     subtype DriverID is QueryID range 0..127;
@@ -88,6 +92,14 @@ package Sysinfo is
     -- Store the BAR0 and DMA physical addresses for the NVMe device.
     ---------------------------------------------------------------------------
     procedure setNvmeInfo (bar0 : Unsigned_64; dmaPhys : Unsigned_64)
+        with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- unregisterDriverByPID
+    -- Remove all driver registrations belonging to a given process.
+    -- Called during process kill().
+    ---------------------------------------------------------------------------
+    procedure unregisterDriverByPID (pid : Process.ProcessID)
         with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------

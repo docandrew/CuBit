@@ -44,4 +44,16 @@ is
         return irqOwners(vector);
     end getOwner;
 
+    ---------------------------------------------------------------------------
+    -- unregisterAllByPID
+    ---------------------------------------------------------------------------
+    procedure unregisterAllByPID (pid : Unsigned_64) is
+    begin
+        for v in IRQVector loop
+            if irqOwners(v) = pid then
+                irqOwners(v) := 0;
+            end if;
+        end loop;
+    end unregisterAllByPID;
+
 end Capabilities.IRQ;

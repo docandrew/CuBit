@@ -98,6 +98,9 @@ typedef long                ssize_t;
 /* Virtual-to-physical address translation */
 #define SYSCALL_VIRT_TO_PHYS    50
 
+/* Move reply cap from slot 63 to another slot (deferred replies) */
+#define SYSCALL_SAVE_REPLY_CAP  51
+
 /* Capability-aware IPC */
 #define SYSCALL_CAP_SEND        40
 #define SYSCALL_CAP_CALL        41

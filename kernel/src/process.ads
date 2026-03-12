@@ -32,6 +32,7 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 with Interfaces; use Interfaces;
 
+with BuddyAllocator;
 with Capabilities;
 with Config;
 with Descriptors;
@@ -291,6 +292,21 @@ is
     type PendingArray is array (0 .. MAX_PENDING_ASYNC - 1) of PendingRequest;
 
     ---------------------------------------------------------------------------
+    -- DMA Allocation Tracking
+    --
+    -- Tracks DMA memory allocated via ALLOC_DMA so it can be freed on kill().
+    ---------------------------------------------------------------------------
+    MAX_DMA_ALLOCS : constant := 4;
+
+    type DMAAlloc is record
+        active   : Boolean              := False;
+        physAddr : Virtmem.PhysAddress  := 0;
+        order    : BuddyAllocator.Order := 0;
+    end record;
+
+    type DMAAllocArray is array (0 .. MAX_DMA_ALLOCS - 1) of DMAAlloc;
+
+    ---------------------------------------------------------------------------
     -- Shared Memory Grant Types
     --
     -- Grants map physical pages from the granter's address space into the
@@ -459,6 +475,7 @@ is
         pendingRequests     : PendingArray := (others => (NO_PROCESS, 0));
         numPending          : Natural := 0;
         grants              : GrantArray := (others => <>);
+        dmaAllocs           : DMAAllocArray := (others => <>);
 
         -- Bound notification: if non-zero, receive() checks this
         -- notification's notifyWord before blocking.

@@ -68,8 +68,6 @@ package CuBit.Messages is
    SYSCALL_SET_CPU         : constant Unsigned_64 := 78;
    SYSCALL_SET_SUPERVISOR  : constant Unsigned_64 := 79;
 
-   SPAWN_SUSPENDED         : constant Unsigned_64 := 1;
-
    SYSCALL_REGISTER_DRIVER : constant Unsigned_64 := 2000;
 
    --  Capability-aware IPC syscalls
@@ -88,6 +86,9 @@ package CuBit.Messages is
 
    --  Atomic reply+receive
    SYSCALL_REPLY_WAIT      : constant Unsigned_64 := 48;
+
+   --  Move reply cap from slot 63 to another slot (deferred replies)
+   SYSCALL_SAVE_REPLY_CAP  : constant Unsigned_64 := 51;
 
    --  Access Controller syscalls
    SYSCALL_CONTROLACCESS   : constant Unsigned_64 := 100;
@@ -292,6 +293,10 @@ package CuBit.Messages is
 
    --  Revoke a shared memory grant.
    procedure revokeGrant (id : Unsigned_64);
+
+   --  Save the reply cap from slot 63 to destSlot (for deferred replies).
+   --  Returns 1 on success, 0 on failure.
+   function saveReplyCap (destSlot : Unsigned_64) return Unsigned_64;
 
    --  Port I/O wrappers for userspace drivers.
    function portInp8 (port : Unsigned_16) return Unsigned_64;

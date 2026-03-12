@@ -38,7 +38,8 @@ is
         CAP_IOPORT,         -- I/O port range
         CAP_IRQ,            -- Hardware interrupt
         CAP_PROCESS,        -- Process/thread control
-        CAP_DEVICE_MEM      -- Device memory (framebuffer, MMIO)
+        CAP_DEVICE_MEM,     -- Device memory (framebuffer, MMIO)
+        CAP_REPLY           -- One-use reply capability (kernel-minted)
     );
 
     ---------------------------------------------------------------------------
@@ -107,6 +108,7 @@ is
     -- | IRQ          | Interrupt vector     | (reserved)     |
     -- | PROCESS      | Target PID           | (reserved)     |
     -- | DEVICE_MEM   | Base physical address | Size in bytes |
+    -- | REPLY        | Sender PID           | (reserved)     |
     --
     -- Two plain fields instead of a variant record (README warns against
     -- variant records for overlays).
@@ -142,6 +144,10 @@ is
     ---------------------------------------------------------------------------
     subtype CapabilitySlot is Natural range 0 ..
         Config.PER_PROCESS_CAPABILITIES - 1;
+
+    -- Well-known slot for kernel-minted reply capabilities.
+    -- Highest slot, not used by any service convention.
+    REPLY_CAP_SLOT : constant CapabilitySlot := CapabilitySlot'Last;
 
     type CapabilityTable is array (CapabilitySlot) of Capability;
 

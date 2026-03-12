@@ -68,6 +68,9 @@ is
     -- Virtual-to-physical address translation
     SYSCALL_VIRT_TO_PHYS    : constant SyscallNumber := 50;
 
+    -- Move reply cap from slot 63 to another slot (for deferred replies)
+    SYSCALL_SAVE_REPLY_CAP  : constant SyscallNumber := 51;
+
     -- Process spawning
     SYSCALL_SPAWN           : constant SyscallNumber := 60;
 

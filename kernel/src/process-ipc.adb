@@ -218,6 +218,15 @@ is
 
             proctab(sender).state := WAITINGFORREPLY;
 
+            -- Mint one-use reply cap for this sender
+            proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
+                (capType  => Capabilities.CAP_REPLY,
+                 rights   => Capabilities.ALL_RIGHTS,
+                 capBadge => Capabilities.NO_BADGE,
+                 object   => (ref   => Unsigned_64(from),
+                              param => 0),
+                 gen      => proctab(from).capGeneration);
+
             Spinlocks.exitCriticalSection (mailtab(receiver).lock);
             return;
         end if;
@@ -227,6 +236,15 @@ is
             msg  := mailtab(receiver).msg;
             from := mailtab(receiver).sender;
             mailtab(receiver).hasMsg := False;
+
+            -- Mint one-use reply cap for this sender
+            proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
+                (capType  => Capabilities.CAP_REPLY,
+                 rights   => Capabilities.ALL_RIGHTS,
+                 capBadge => Capabilities.NO_BADGE,
+                 object   => (ref   => Unsigned_64(from),
+                              param => 0),
+                 gen      => proctab(from).capGeneration);
 
             Spinlocks.exitCriticalSection (mailtab(receiver).lock);
             return;
@@ -250,6 +268,10 @@ is
                                           others => 0));
                     mailtab(bn).notifyWord := 0;
 
+                    -- No real sender — clear any stale reply cap
+                    proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
+                        Capabilities.NULL_CAPABILITY;
+
                     Spinlocks.exitCriticalSection (mailtab(receiver).lock);
                     return;
                 end if;
@@ -272,6 +294,15 @@ is
         msg  := mailtab(receiver).msg;
         from := mailtab(receiver).sender;
         mailtab(receiver).hasMsg := False;
+
+        -- Mint one-use reply cap for this sender
+        proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
+            (capType  => Capabilities.CAP_REPLY,
+             rights   => Capabilities.ALL_RIGHTS,
+             capBadge => Capabilities.NO_BADGE,
+             object   => (ref   => Unsigned_64(from),
+                          param => 0),
+             gen      => proctab(from).capGeneration);
 
         -- The sender is already in WAITINGFORREPLY (set by send)
         Spinlocks.exitCriticalSection (mailtab(receiver).lock);
@@ -358,10 +389,63 @@ is
            and then proctab(replyTo).state /= INVALID
         then
             if proctab(replyTo).state = WAITINGFORREPLY then
-                -- Sync path: store reply, make sender READY (no direct switch
-                -- yet — check for next message first).
-                proctab(replyTo).replyMsg := replyMsg;
-                notify (replyTo);
+                -- Validate reply cap and deliver reply.
+                -- Kernel threads are exempt; userspace must hold a
+                -- matching CAP_REPLY. If validation fails, silently
+                -- skip the reply — Phase 2 will mint a fresh cap.
+                validateRW : declare
+                    doReply   : Boolean := False;
+                    foundSlot : Capabilities.CapabilitySlot :=
+                        Capabilities.REPLY_CAP_SLOT;
+                begin
+                    if proctab(mypid).mode /= USER then
+                        doReply := True;
+                    else
+                        checkCap : declare
+                            cap : Capabilities.Capability;
+                        begin
+                            cap := proctab(mypid).caps(
+                                Capabilities.REPLY_CAP_SLOT);
+                            if cap.capType = Capabilities.CAP_REPLY
+                               and then cap.object.ref =
+                                   Unsigned_64(replyTo)
+                               and then cap.gen =
+                                   proctab(replyTo).capGeneration
+                            then
+                                doReply := True;
+                            else
+                                for s in Capabilities.CapabilitySlot loop
+                                    cap := proctab(mypid).caps(s);
+                                    if cap.capType =
+                                       Capabilities.CAP_REPLY
+                                       and then cap.object.ref =
+                                           Unsigned_64(replyTo)
+                                       and then cap.gen =
+                                           proctab(replyTo)
+                                               .capGeneration
+                                    then
+                                        doReply := True;
+                                        foundSlot := s;
+                                        exit;
+                                    end if;
+                                end loop;
+                            end if;
+                        end checkCap;
+                    end if;
+
+                    if doReply then
+                        -- Consume one-use reply cap
+                        if proctab(mypid).mode = USER then
+                            proctab(mypid).caps(foundSlot) :=
+                                Capabilities.NULL_CAPABILITY;
+                        end if;
+
+                        -- Store reply, make sender READY (no direct
+                        -- switch — check for next message first).
+                        proctab(replyTo).replyMsg := replyMsg;
+                        notify (replyTo);
+                    end if;
+                end validateRW;
             else
                 -- Async path: delegate to full reply()
                 ignore := reply (replyTo, replyMsg);
@@ -383,6 +467,15 @@ is
 
             proctab(sender).state := WAITINGFORREPLY;
 
+            -- Mint one-use reply cap for this sender
+            proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
+                (capType  => Capabilities.CAP_REPLY,
+                 rights   => Capabilities.ALL_RIGHTS,
+                 capBadge => Capabilities.NO_BADGE,
+                 object   => (ref   => Unsigned_64(from),
+                              param => 0),
+                 gen      => proctab(from).capGeneration);
+
             Spinlocks.exitCriticalSection (mailtab(receiver).lock);
             return;
         end if;
@@ -392,6 +485,15 @@ is
             msg  := mailtab(receiver).msg;
             from := mailtab(receiver).sender;
             mailtab(receiver).hasMsg := False;
+
+            -- Mint one-use reply cap for this sender
+            proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
+                (capType  => Capabilities.CAP_REPLY,
+                 rights   => Capabilities.ALL_RIGHTS,
+                 capBadge => Capabilities.NO_BADGE,
+                 object   => (ref   => Unsigned_64(from),
+                              param => 0),
+                 gen      => proctab(from).capGeneration);
 
             Spinlocks.exitCriticalSection (mailtab(receiver).lock);
             return;
@@ -412,6 +514,15 @@ is
         msg  := mailtab(receiver).msg;
         from := mailtab(receiver).sender;
         mailtab(receiver).hasMsg := False;
+
+        -- Mint one-use reply cap for this sender
+        proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
+            (capType  => Capabilities.CAP_REPLY,
+             rights   => Capabilities.ALL_RIGHTS,
+             capBadge => Capabilities.NO_BADGE,
+             object   => (ref   => Unsigned_64(from),
+                          param => 0),
+             gen      => proctab(from).capGeneration);
 
         Spinlocks.exitCriticalSection (mailtab(receiver).lock);
     end replyWait;
@@ -441,12 +552,30 @@ is
 
             proctab(sender).state := WAITINGFORREPLY;
 
+            -- Mint one-use reply cap for this sender
+            proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
+                (capType  => Capabilities.CAP_REPLY,
+                 rights   => Capabilities.ALL_RIGHTS,
+                 capBadge => Capabilities.NO_BADGE,
+                 object   => (ref   => Unsigned_64(from),
+                              param => 0),
+                 gen      => proctab(from).capGeneration);
+
         elsif mailtab(receiver).hasMsg then
             -- Message delivered directly (sender already WAITINGFORREPLY)
             msg   := mailtab(receiver).msg;
             from  := mailtab(receiver).sender;
             mailtab(receiver).hasMsg := False;
             found := True;
+
+            -- Mint one-use reply cap for this sender
+            proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
+                (capType  => Capabilities.CAP_REPLY,
+                 rights   => Capabilities.ALL_RIGHTS,
+                 capBadge => Capabilities.NO_BADGE,
+                 object   => (ref   => Unsigned_64(from),
+                              param => 0),
+                 gen      => proctab(from).capGeneration);
         else
             from  := NO_PROCESS;
             msg   := NULL_MESSAGE;
@@ -647,6 +776,50 @@ is
         end if;
 
         if proctab(replyTo).state = WAITINGFORREPLY then
+            -- Validate reply cap (userspace only; kernel threads are exempt)
+            if proctab(mypid).mode = USER then
+                validateReply : declare
+                    cap        : Capabilities.Capability;
+                    authorized : Boolean := False;
+                    foundSlot  : Capabilities.CapabilitySlot :=
+                        Capabilities.REPLY_CAP_SLOT;
+                begin
+                    -- Fast path: check well-known slot 63
+                    cap := proctab(mypid).caps(
+                        Capabilities.REPLY_CAP_SLOT);
+                    if cap.capType = Capabilities.CAP_REPLY
+                       and then cap.object.ref = Unsigned_64(replyTo)
+                       and then cap.gen =
+                           proctab(replyTo).capGeneration
+                    then
+                        authorized := True;
+                    else
+                        -- Slow path: scan all slots (deferred reply caps)
+                        for s in Capabilities.CapabilitySlot loop
+                            cap := proctab(mypid).caps(s);
+                            if cap.capType = Capabilities.CAP_REPLY
+                               and then cap.object.ref =
+                                   Unsigned_64(replyTo)
+                               and then cap.gen =
+                                   proctab(replyTo).capGeneration
+                            then
+                                authorized := True;
+                                foundSlot := s;
+                                exit;
+                            end if;
+                        end loop;
+                    end if;
+
+                    if not authorized then
+                        return 0;
+                    end if;
+
+                    -- Consume (one-use)
+                    proctab(mypid).caps(foundSlot) :=
+                        Capabilities.NULL_CAPABILITY;
+                end validateReply;
+            end if;
+
             -- SYNC PATH: store reply, wake sender
             proctab(replyTo).replyMsg := msg;
             if proctab(replyTo).cpu = PerCPUData.getCPUNumber then
@@ -1006,6 +1179,12 @@ is
         g     : Grant renames proctab(pid).grants(id);
     begin
         if not g.active then
+            return;
+        end if;
+
+        --  Don't unmap if grantee is already dead (page tables freed)
+        if proctab(g.granteePID).state = INVALID then
+            g := (active => False, others => <>);
             return;
         end if;
 

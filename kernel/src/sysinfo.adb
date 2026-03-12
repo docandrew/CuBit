@@ -9,6 +9,7 @@
 with System.Storage_Elements;
 
 with acpi;
+with BuddyAllocator;
 with Modules;
 with TextIO; use TextIO;
 with Util;
@@ -61,6 +62,10 @@ package body Sysinfo is
                 return hdaDma;
             when NUM_CPUS =>
                 return Unsigned_64 (acpi.numCPUs);
+            when MEM_FREE =>
+                return Unsigned_64 (BuddyAllocator.getFreeBytes);
+            when MEM_TOTAL =>
+                return Unsigned_64 (BuddyAllocator.getTotalBytes);
             when REGISTERED_DRIVER =>
                 return Unsigned_64(
                     registeredDrivers(DriverID(detail)));
@@ -85,6 +90,20 @@ package body Sysinfo is
         println;
         return Unsigned_64(pid);
     end registerDriver;
+
+    ---------------------------------------------------------------------------
+    -- unregisterDriverByPID
+    ---------------------------------------------------------------------------
+    procedure unregisterDriverByPID (pid : Process.ProcessID)
+        with SPARK_Mode => On
+    is
+    begin
+        for d in DriverID loop
+            if registeredDrivers(d) = pid then
+                registeredDrivers(d) := Process.NO_PROCESS;
+            end if;
+        end loop;
+    end unregisterDriverByPID;
 
     ---------------------------------------------------------------------------
     -- setNetIOBase

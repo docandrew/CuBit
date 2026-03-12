@@ -465,7 +465,7 @@ package body Syscall.Admin is
             --         arg3=dest_slot (0=auto)
             when CONTROLACCESS_DERIVE =>
                 declare
-
+                    use type Capabilities.CapabilityType;
                     srcCap    : Capabilities.Capability;
                     newCap    : Capabilities.Capability;
                     newRights : Capabilities.CapabilityRights;
@@ -485,6 +485,10 @@ package body Syscall.Admin is
                         if opStatus /=
                            Capabilities.Operations.OP_OK
                         then
+                            retval := reterr;
+                        elsif srcCap.capType = Capabilities.CAP_REPLY
+                        then
+                            -- CAP_REPLY cannot be derived
                             retval := reterr;
                         else
                             newRights := u64ToRights(
@@ -536,7 +540,7 @@ package body Syscall.Admin is
             --       arg3=rights_bitmask, arg4=dest_slot (0=auto)
             when CONTROLACCESS_MINT =>
                 declare
-
+                    use type Capabilities.CapabilityType;
                     srcCap    : Capabilities.Capability;
                     newCap    : Capabilities.Capability;
                     newRights : Capabilities.CapabilityRights;
@@ -556,6 +560,10 @@ package body Syscall.Admin is
                         if opStatus /=
                            Capabilities.Operations.OP_OK
                         then
+                            retval := reterr;
+                        elsif srcCap.capType = Capabilities.CAP_REPLY
+                        then
+                            -- CAP_REPLY cannot be minted
                             retval := reterr;
                         else
                             newRights := u64ToRights(
@@ -781,8 +789,10 @@ package body Syscall.Admin is
                         Import, Address => entryAddr + 6;
                     nameField : String (1 .. 16) with
                         Import, Address => entryAddr + 8;
-                    reservedField : Unsigned_64 with
+                    framesVal : Unsigned_32 with
                         Import, Address => entryAddr + 24;
+                    reservedVal : Unsigned_32 with
+                        Import, Address => entryAddr + 28;
                 begin
                     pidVal := Unsigned_16 (
                         Process.proctab(i).pid);
@@ -795,7 +805,9 @@ package body Syscall.Admin is
                     padVal := 0;
                     nameField :=
                         Process.proctab(i).name;
-                    reservedField := 0;
+                    framesVal := Unsigned_32 (
+                        Process.proctab(i).frames.length);
+                    reservedVal := 0;
                     count := count + 1;
                 end;
             end if;
@@ -856,6 +868,12 @@ package body Syscall.Admin is
                   Capabilities.CapabilityType'Last))
         then
             println ("MINT_CAP: invalid cap type");
+            retval := reterr;
+            return;
+        elsif arg1 = Unsigned_64 (Capabilities.CapabilityType'Pos (
+                  Capabilities.CAP_REPLY))
+        then
+            println ("MINT_CAP: CAP_REPLY cannot be minted");
             retval := reterr;
             return;
         end if;
@@ -1115,4 +1133,48 @@ package body Syscall.Admin is
             retval := 0;
         end if;
     end handleSetSupervisor;
+    ---------------------------------------------------------------------------
+    -- handleSaveReplyCap
+    -- Move CAP_REPLY from slot 63 to the specified destination slot.
+    -- Used by servers that need to defer replies (e.g. netstack).
+    ---------------------------------------------------------------------------
+    procedure handleSaveReplyCap (callerPID : Process.ProcessID;
+                                   arg0      : Unsigned_64;
+                                   retval    : out Unsigned_64) with
+        SPARK_Mode => Off
+    is
+        use type Capabilities.CapabilityType;
+
+        destSlot : Capabilities.CapabilitySlot;
+        cap      : Capabilities.Capability;
+    begin
+        -- Validate destination slot
+        if arg0 > Unsigned_64(Capabilities.CapabilitySlot'Last) then
+            retval := 0;
+            return;
+        end if;
+
+        destSlot := Capabilities.CapabilitySlot(arg0);
+
+        -- Cannot save to slot 63 itself
+        if destSlot = Capabilities.REPLY_CAP_SLOT then
+            retval := 0;
+            return;
+        end if;
+
+        -- Slot 63 must actually hold a CAP_REPLY
+        cap := Process.proctab(callerPID).caps(
+            Capabilities.REPLY_CAP_SLOT);
+        if cap.capType /= Capabilities.CAP_REPLY then
+            retval := 0;
+            return;
+        end if;
+
+        -- Move: copy to dest, clear slot 63
+        Process.proctab(callerPID).caps(destSlot) := cap;
+        Process.proctab(callerPID).caps(Capabilities.REPLY_CAP_SLOT) :=
+            Capabilities.NULL_CAPABILITY;
+        retval := 1;
+    end handleSaveReplyCap;
+
 end Syscall.Admin;

@@ -64,7 +64,8 @@ package body Syscall.IPC is
         elfSize  : constant Storage_Count := Storage_Count (arg1);
         priority : Process.ProcessPriority;
         elfHeader : ELF.ELFFileHeader with Import, Address => elfAddr;
-        spawnName : aliased constant String := "spawned" & ASCII.NUL;
+        defaultName : aliased constant String := "spawned" & ASCII.NUL;
+        nameAddr : System.Address;
         newPID   : Process.ProcessID;
         reqPID   : Process.ProcessID := Process.NO_PROCESS;
     begin
@@ -110,11 +111,18 @@ package body Syscall.IPC is
             reqPID := Process.ProcessID (arg4);
         end if;
 
+        -- arg3 = name pointer (0 = default "spawned")
+        if arg3 /= 0 then
+            nameAddr := Util.numToAddr (arg3);
+        else
+            nameAddr := defaultName'Address;
+        end if;
+
         newPID := Process.Loader.load (
             elfHeader    => elfHeader,
             objStart     => elfAddr,
             size         => elfSize,
-            strAddr      => spawnName'Address,
+            strAddr      => nameAddr,
             requestedPID => reqPID,
             priority     => priority,
             ppid         => (if arg5 <= Unsigned_64 (Process.ProcessID'Last)
@@ -128,12 +136,8 @@ package body Syscall.IPC is
             return;
         end if;
 
-        if (arg3 and 1) = 0 then
-            Process.resume (newPID);
-            print ("SPAWN: started PID ");
-        else
-            print ("SPAWN: created suspended PID ");
-        end if;
+        -- Always spawn suspended; caller resumes after granting caps
+        print ("SPAWN: created suspended PID ");
         println (Integer (newPID));
         retval := Unsigned_64 (newPID);
     end handleSpawn;
@@ -295,6 +299,17 @@ package body Syscall.IPC is
                     return;
                 end if;
             end loop;
+
+            --  Track DMA allocation for cleanup on kill()
+            trackDMA : for d in Process.DMAAllocArray'Range loop
+                if not Process.proctab(targetPID).dmaAllocs(d).active then
+                    Process.proctab(targetPID).dmaAllocs(d) :=
+                        (active   => True,
+                         physAddr => dmaPhys,
+                         order    => order);
+                    exit trackDMA;
+                end if;
+            end loop trackDMA;
 
             retval := Unsigned_64 (dmaPhys);
         end;

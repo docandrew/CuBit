@@ -80,4 +80,8 @@ is
                                    arg0, arg1 : Unsigned_64;
                                    retval     : out Unsigned_64);
 
+    procedure handleSaveReplyCap (callerPID : Process.ProcessID;
+                                   arg0      : Unsigned_64;
+                                   retval    : out Unsigned_64);
+
 end Syscall.Admin;

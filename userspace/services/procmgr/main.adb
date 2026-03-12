@@ -669,12 +669,22 @@ procedure main is
       declare
          function toNum is new Ada.Unchecked_Conversion
             (System.Address, Unsigned_64);
+         --  NUL-terminated copy of name for kernel to read
+         nameBuf : String (1 .. 17) := (others => Character'Val (0));
+         nameLen : Natural := name'Length;
       begin
+         if nameLen > 16 then
+            nameLen := 16;
+         end if;
+         for i in 0 .. nameLen - 1 loop
+            nameBuf (i + 1) := name (name'First + i);
+         end loop;
+
          newPID := syscall (SYSCALL_SPAWN,
                             toNum (elfBuf),
                             elfSize,
                             pri,
-                            SPAWN_SUSPENDED,
+                            toNum (nameBuf'Address),
                             0,          -- arg4: auto-assign PID
                             requester); -- arg5: ppid = who asked for spawn
       end;

@@ -16,6 +16,7 @@ with Ada.Unchecked_Conversion;
 with System.Machine_Code; use System.Machine_Code;
 
 with BuddyAllocator;
+with Capabilities.IRQ;
 with Capabilities.Operations;
 with IPC_Labels;
 with IPI;
@@ -26,6 +27,7 @@ with Process.IPC;
 with Process.Queues;
 with Scheduler;
 with Segment;
+with Sysinfo;
 with TextIO; use TextIO;
 with x86;
 
@@ -759,6 +761,78 @@ is
 
         proctab(pid).state := INVALID;
 
+        --  Wake processes blocked on our mailbox (sendQueue / recvQueue)
+        drainMailQueues : declare
+            stuckPID : ProcessID;
+        begin
+            --  Drain sendQueue: processes waiting to SEND to dying process
+            loop
+                exit when Queues.isEmpty (mailtab(pid).sendQueue);
+                Queues.dequeue (mailtab(pid).sendQueue, stuckPID);
+                proctab(stuckPID).replyMsg := NULL_MESSAGE;
+                ready (stuckPID);
+            end loop;
+
+            --  Drain recvQueue: processes waiting to RECEIVE from dying process
+            loop
+                exit when Queues.isEmpty (mailtab(pid).recvQueue);
+                Queues.dequeue (mailtab(pid).recvQueue, stuckPID);
+                proctab(stuckPID).replyMsg := NULL_MESSAGE;
+                ready (stuckPID);
+            end loop;
+
+            --  Wake deposited-message sender (in WAITINGFORREPLY, no CAP_REPLY
+            --  minted yet because receive() wasn't called)
+            if mailtab(pid).hasMsg and then
+               mailtab(pid).sender /= NO_PROCESS and then
+               proctab(mailtab(pid).sender).state = WAITINGFORREPLY
+            then
+                proctab(mailtab(pid).sender).replyMsg := NULL_MESSAGE;
+                ready (mailtab(pid).sender);
+            end if;
+        end drainMailQueues;
+
+        --  Wake processes waiting for reply from dying process (CAP_REPLY scan)
+        wakeWaiters : declare
+            use type Capabilities.CapabilityType;
+            cap : Capabilities.Capability;
+        begin
+            for s in Capabilities.CapabilitySlot loop
+                cap := proctab(pid).caps(s);
+                if cap.capType = Capabilities.CAP_REPLY and then
+                   cap.object.ref > 0 and then
+                   cap.object.ref <= Unsigned_64 (ProcessID'Last)
+                then
+                    declare
+                        senderPID : constant ProcessID :=
+                            ProcessID (cap.object.ref);
+                    begin
+                        if proctab(senderPID).state = WAITINGFORREPLY and then
+                           cap.gen = proctab(senderPID).capGeneration
+                        then
+                            proctab(senderPID).replyMsg := NULL_MESSAGE;
+                            ready (senderPID);
+                        end if;
+                    end;
+                end if;
+            end loop;
+        end wakeWaiters;
+
+        --  Clear stale mailbox state
+        mailtab(pid).hasMsg       := False;
+        mailtab(pid).msg          := NULL_MESSAGE;
+        mailtab(pid).sender       := NO_PROCESS;
+        mailtab(pid).events       := (others => <>);
+        mailtab(pid).notifyWord   := 0;
+        mailtab(pid).notifyWaiter := False;
+        proctab(pid).boundNotification := NO_PROCESS;
+
+        --  Clear completion queue and pending requests
+        completionTab(pid) := (ring => (others => NULL_COMPLETION),
+                               head => 0, tail => 0, count => 0);
+        proctab(pid).pendingRequests := (others => (NO_PROCESS, 0));
+        proctab(pid).numPending := 0;
+
         -- Clear FPU ownership if killed process owns the FPU
         clearFPU : declare
             perCPUAddr : constant System.Address :=
@@ -773,6 +847,20 @@ is
 
         -- Revoke any shared memory grants this process had created
         IPC.revokeAllGrants (pid);
+
+        --  Free DMA allocations tracked for this process
+        for d in DMAAllocArray'Range loop
+            if proctab(pid).dmaAllocs(d).active then
+                BuddyAllocator.free (
+                    proctab(pid).dmaAllocs(d).order,
+                    Virtmem.P2Va (proctab(pid).dmaAllocs(d).physAddr));
+                proctab(pid).dmaAllocs(d).active := False;
+            end if;
+        end loop;
+
+        --  Unregister IRQ and sysinfo driver registrations
+        Capabilities.IRQ.unregisterAllByPID (Unsigned_64 (pid));
+        Sysinfo.unregisterDriverByPID (pid);
 
         -- Bump generation counter to invalidate caps held by others
         if proctab(pid).capGeneration < Capabilities.Generation'Last then

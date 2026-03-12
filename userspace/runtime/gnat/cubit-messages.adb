@@ -406,6 +406,15 @@ package body CuBit.Messages is
       return toPtr (getInfo (SYSINFO_SECONDARY_STACK));
    end getSecondaryStack;
 
+   --  saveReplyCap
+   --  SAVE_REPLY_CAP: RDI=destSlot
+   --  Returns: RAX=1 on success, 0 on failure
+
+   function saveReplyCap (destSlot : Unsigned_64) return Unsigned_64 is
+   begin
+      return syscall (SYSCALL_SAVE_REPLY_CAP, destSlot);
+   end saveReplyCap;
+
    --  Port I/O wrappers
 
    function portInp8 (port : Unsigned_16) return Unsigned_64 is

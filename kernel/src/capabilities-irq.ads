@@ -40,6 +40,13 @@ is
     ---------------------------------------------------------------------------
     function getOwner (vector : IRQVector) return Unsigned_64;
 
+    ---------------------------------------------------------------------------
+    -- unregisterAllByPID
+    -- Remove all IRQ registrations belonging to a given process.
+    -- Called during process kill().
+    ---------------------------------------------------------------------------
+    procedure unregisterAllByPID (pid : Unsigned_64);
+
 private
 
     type IRQOwnerTable is array (IRQVector) of Unsigned_64;

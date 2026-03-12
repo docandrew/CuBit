@@ -371,26 +371,44 @@ is
 
     ---------------------------------------------------------------------------
     -- getAlignedStart
-    -- Given the start of a _physical_ memory region, round up to the nearest max 
-    -- block-aligned _virtual_ (linear-mapped) address.
+    -- Given the start of a _physical_ memory region, round up to the nearest
+    -- block-aligned _virtual_ (linear-mapped) address at the given order.
     ---------------------------------------------------------------------------
-    function getAlignedStart (startPhys : Virtmem.PhysAddress) return System.Address
+    function getAlignedStart (startPhys : Virtmem.PhysAddress;
+                              ord       : Order) return System.Address
     is
     begin
-        return blockStart (Order'Last, Virtmem.P2Va(startPhys))
-             + blockSize (Order'Last);
+        return blockStart (ord, Virtmem.P2Va(startPhys))
+             + blockSize (ord);
     end getAlignedStart;
 
     ---------------------------------------------------------------------------
     -- getAlignedEnd
-    -- Given the end of a physical memory region, round down to the nearest max
-    -- block-aligned _virtual_ (linear-mapped) address.
+    -- Given the end of a physical memory region, round down to the nearest
+    -- block-aligned _virtual_ (linear-mapped) address at the given order.
     ---------------------------------------------------------------------------
-    function getAlignedEnd (endPhys : Virtmem.PhysAddress) return System.Address
+    function getAlignedEnd (endPhys : Virtmem.PhysAddress;
+                            ord     : Order) return System.Address
     is
     begin
-        return blockStart (Order'last, Virtmem.P2Va(endPhys)) - 1;
+        return blockStart (ord, Virtmem.P2Va(endPhys)) - 1;
     end getAlignedEnd;
+
+    ---------------------------------------------------------------------------
+    -- effectiveOrder
+    -- Choose the largest block order where alignment waste stays reasonable
+    -- for the given area size.  Target: blockSize(order) <= areaSize / 32,
+    -- so we lose at most ~6% to boundary alignment.
+    ---------------------------------------------------------------------------
+    function effectiveOrder (areaSize : Storage_Count) return Order
+    is
+        effOrd : Order := Order'Last;
+    begin
+        while effOrd > 0 and then blockSize (effOrd) > areaSize / 32 loop
+            effOrd := effOrd - 1;
+        end loop;
+        return effOrd;
+    end effectiveOrder;
 
     ---------------------------------------------------------------------------
     -- setup
@@ -427,56 +445,55 @@ is
 
         eachArea:
         for area of areas loop
-            if area.kind /= MemoryAreas.USABLE or 
+            if area.kind /= MemoryAreas.USABLE or
                area.endAddr < Config.MIN_PHYS_ALLOC then
                 null;
-            else           
-                -- Determine max-block aligned memory boundaries.
-                alignedStart := getAlignedStart (area.startAddr);
-                alignedEnd   := getAlignedEnd (area.endAddr);
+            else
+                -- Pick the largest block order that keeps alignment waste
+                -- reasonable for this area's size.
+                declare
+                    areaSize : constant Storage_Count :=
+                        Storage_Count (area.endAddr - area.startAddr);
+                    effOrd   : constant Order := effectiveOrder (areaSize);
+                begin
+                    alignedStart := getAlignedStart (area.startAddr, effOrd);
+                    alignedEnd   := getAlignedEnd (area.endAddr, effOrd);
 
-                numTopLevelBlocksHere := (alignedEnd - alignedStart) / blockSize (Order'Last);
+                    numTopLevelBlocksHere :=
+                        (alignedEnd - alignedStart) / blockSize (effOrd);
 
-                -- If this memory area was too small to fit a top-level block,
-                -- then the "round up" and "round down" will be flip-flopped.
-                if alignedEnd < alignedStart then
-                    -- This memory area is too small. Skip it.
-                    null;
-                else
-                    pragma Assert (alignedStart mod blockSize(Order'Last) = 0);
-                    pragma Assert (alignedEnd mod blockSize(Order'Last) = 0);
-                    pragma Assert (alignedEnd - alignedStart >= blockSize(Order'Last));
+                    -- If this memory area was too small to fit a block at
+                    -- effOrd, the round-up and round-down will be flipped.
+                    if alignedEnd < alignedStart then
+                        null;
+                    else
+                        for i in 0 .. numTopLevelBlocksHere - 1 loop
 
-                    -- if this top level block is beyond the area owned by the
-                    -- boot allocator, we can free the entire top-level block.
-                    -- Otherwise, we go page-by-page based on what's
-                    -- not owned by the boot allocator.
-                    for i in 0..numTopLevelBlocksHere - 1 loop
+                            topLevelBlockStart :=
+                                alignedStart + (i * blockSize (effOrd));
 
-                        topLevelBlockStart := alignedStart + (i * blockSize (Order'Last));
+                            topLevelBlockEnd :=
+                                topLevelBlockStart + (blockSize (effOrd) - 1);
 
-                        topLevelBlockEnd := topLevelBlockStart + (blockSize (Order'Last) - 1);
+                            startPFN := Virtmem.vaddrToPFN (topLevelBlockStart);
+                            endPFN   := Virtmem.vaddrToPFN (topLevelBlockEnd);
 
-                        startPFN := Virtmem.vaddrToPFN (topLevelBlockStart);
-                        endPFN   := Virtmem.vaddrToPFN (topLevelBlockEnd);
-
-                        if BootAllocator.highestPFNAllocated > startPFN then
-
-                            -- go page by page in this block
-                            eachPFN: for pfn in startPFN..endPFN loop
-
-                                if BootAllocator.isFree (pfn) then
-                                    free (ord  => Order'First,
-                                          addr => Virtmem.P2Va (Virtmem.pfnToAddr (pfn)));
-                                end if;
-
-                            end loop eachPFN;
-                        else
-                            free (Order'Last, topLevelBlockStart);
-
-                        end if;
-                    end loop;
-                end if;
+                            if BootAllocator.highestPFNAllocated > startPFN then
+                                -- Within boot allocator range: page by page
+                                eachPFN:
+                                for pfn in startPFN .. endPFN loop
+                                    if BootAllocator.isFree (pfn) then
+                                        free (ord  => Order'First,
+                                              addr => Virtmem.P2Va (
+                                                  Virtmem.pfnToAddr (pfn)));
+                                    end if;
+                                end loop eachPFN;
+                            else
+                                free (effOrd, topLevelBlockStart);
+                            end if;
+                        end loop;
+                    end if;
+                end;
             end if;
         end loop eachArea;
 
@@ -486,6 +503,18 @@ is
         -- play some games with the linker script to put the bitmaps in their
         -- own section, then we'll have symbols here that we can use to reclaim
         -- that memory.
+
+        --  Record total usable memory before anything is allocated
+        declare
+            total : Storage_Count := 0;
+        begin
+            for ord in Order'Range loop
+                total := total +
+                    Storage_Count (freeLists (ord).numFreeBlocks) *
+                    blockSize (ord);
+            end loop;
+            totalManagedBytes := total;
+        end;
 
         initialized := True;        -- Ghost assignment
     end setup;
@@ -622,6 +651,14 @@ is
 
     ---------------------------------------------------------------------------
     -- getFreeBytes
+    ---------------------------------------------------------------------------
+    function getTotalBytes return Storage_Count with
+        SPARK_Mode => On
+    is
+    begin
+        return totalManagedBytes;
+    end getTotalBytes;
+
     ---------------------------------------------------------------------------
     function getFreeBytes return Storage_Count with
         SPARK_Mode => On

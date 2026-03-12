@@ -255,6 +255,10 @@ package body Syscall is
                 Admin.handleVirtToPhys (
                     percpu.currentPID, arg0, retval);
 
+            when SYSCALL_SAVE_REPLY_CAP =>
+                Admin.handleSaveReplyCap (
+                    percpu.currentPID, arg0, retval);
+
             when SYSCALL_CAP_SEND =>
                 Admin.handleCapSend (
                     percpu.currentPID,

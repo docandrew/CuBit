@@ -166,6 +166,7 @@ procedure main is
       maxLen     : Natural := 0;
       txid       : Unsigned_16 := 0;
       dstPort    : Unsigned_16 := 0;
+      replySlot  : Unsigned_64 := 0;
    end record;
 
    MAX_PENDING : constant := 8;
@@ -1901,10 +1902,15 @@ procedure main is
    --  addPending - store a pending request in the first free slot
    ---------------------------------------------------------------------------
    function addPending (req : PendingRequest) return Boolean is
+      ignore : Unsigned_64;
    begin
       for i in pendingReqs'Range loop
          if pendingReqs (i).kind = PENDING_NONE then
             pendingReqs (i) := req;
+            -- Save reply cap from slot 63 to slot 16+i so the next
+            -- receive() won't overwrite it.
+            pendingReqs (i).replySlot := Unsigned_64 (16 + i);
+            ignore := saveReplyCap (Unsigned_64 (16 + i));
             return True;
          end if;
       end loop;
@@ -1990,7 +1996,8 @@ procedure main is
           bufOff     => 0,
           maxLen     => 0,
           txid       => txid,
-          dstPort    => 0));
+          dstPort    => 0,
+          replySlot  => 0));
 
       if not ok then
          replyError (snd);
@@ -2064,7 +2071,8 @@ procedure main is
           bufOff     => 0,
           maxLen     => 0,
           txid       => 0,
-          dstPort    => 0));
+          dstPort    => 0,
+          replySlot  => 0));
 
       if not ok then
          replyError (snd);
@@ -2168,7 +2176,8 @@ procedure main is
           bufOff     => offset,
           maxLen     => maxLen,
           txid       => 0,
-          dstPort    => 0));
+          dstPort    => 0,
+          replySlot  => 0));
 
       if not ok then
          replyError (snd);
@@ -2314,7 +2323,8 @@ procedure main is
                 bufOff     => 0,
                 maxLen     => 0,
                 txid       => 0,
-                dstPort    => scheme.port));
+                dstPort    => scheme.port,
+                replySlot  => 0));
             if not ok then
                channels (chIdx).kind := CHANNEL_NONE;
                replyError (snd);
@@ -2338,7 +2348,8 @@ procedure main is
                 bufOff     => 0,
                 maxLen     => 0,
                 txid       => txid,
-                dstPort    => scheme.port));
+                dstPort    => scheme.port,
+                replySlot  => 0));
             if not ok then
                channels (chIdx).kind := CHANNEL_NONE;
                replyError (snd);
@@ -2462,7 +2473,8 @@ procedure main is
           bufOff     => offset,
           maxLen     => maxLen,
           txid       => 0,
-          dstPort    => 0));
+          dstPort    => 0,
+          replySlot  => 0));
       if not ok then
          replyError (snd);
       end if;

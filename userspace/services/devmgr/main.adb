@@ -259,6 +259,9 @@ procedure main is
       idx  : Natural;
       addr : Unsigned_64;
       size : Unsigned_64;
+      --  NUL-terminated copy of name for kernel to read
+      nameBuf : String (1 .. 17) := (others => Character'Val (0));
+      nameLen : Natural;
    begin
       idx := Cpio.findFile (cpioArchive, name);
       if idx >= cpioArchive.count then
@@ -270,8 +273,16 @@ procedure main is
               Unsigned_64 (cpioArchive.files (idx).dataOff);
       size := Unsigned_64 (cpioArchive.files (idx).dataSize);
 
+      nameLen := name'Length;
+      if nameLen > 16 then
+         nameLen := 16;
+      end if;
+      for i in 0 .. nameLen - 1 loop
+         nameBuf (i + 1) := name (name'First + i);
+      end loop;
+
       return syscall (SYSCALL_SPAWN, addr, size, priority,
-                      SPAWN_SUSPENDED, reqPID);
+                      Unsigned_64 (To_Integer (nameBuf'Address)), reqPID);
    end spawnFromCpio;
 
    ---------------------------------------------------------------------------

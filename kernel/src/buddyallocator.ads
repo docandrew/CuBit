@@ -124,6 +124,8 @@ is
     ---------------------------------------------------------------------------
     freeLists : FreeListArray;
 
+    totalManagedBytes : Storage_Count := 0;
+
     lockName : aliased String := "buddy";
     lock : Spinlocks.Spinlock :=
         (name => lockName'Access, others => <>);
@@ -268,6 +270,16 @@ is
                     lock                    =>+ null,
                     x86.interruptsEnabled   =>+ null),
         Pre     => isValidBlock(0, To_Address(addr)) and BuddyAllocator.initialized;
+
+    ---------------------------------------------------------------------------
+    -- getTotalBytes
+    -- Returns the total usable memory (in bytes) tracked by this allocator
+    ---------------------------------------------------------------------------
+    function getTotalBytes return Storage_Count with
+        Global  => (Input    => totalManagedBytes,
+                    Proof_In => BuddyAllocator.initialized),
+        Depends => (getTotalBytes'Result => totalManagedBytes),
+        Pre     => BuddyAllocator.initialized;
 
     ---------------------------------------------------------------------------
     -- getFreeBytes
