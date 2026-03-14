@@ -43,7 +43,12 @@ procedure main is
    bufCapacity : Natural := INITIAL_BUF_PAGES * PAGE_SIZE;
 
    --  FS capability slot
-   CAP_SLOT_FS_LOCAL : constant Unsigned_64 := 1;
+   CAP_SLOT_FS_LOCAL     : constant Unsigned_64 := 1;
+   CAP_SLOT_CONFIG_LOCAL : constant Unsigned_64 := 2;
+
+   --  Service routing identifiers
+   SERVICE_FS     : constant Unsigned_8 := 0;
+   SERVICE_CONFIG : constant Unsigned_8 := 1;
 
    --  FS server PID (for grant creation)
    fsPID : ProcessID := NO_PROCESS;
@@ -53,6 +58,9 @@ procedure main is
 
    --  Grant to FS server covering elfBuf
    fsGrantId : Unsigned_64 := 0;
+
+   --  Grant to config service covering elfBuf
+   configGrantId : Unsigned_64 := 0;
 
    ---------------------------------------------------------------------------
    --  printDec - print a small unsigned number in decimal
@@ -535,19 +543,22 @@ procedure main is
                      debugPrint (" ACL entries" & LF);
 
                      --  Copy entries to stack-local array before
-                     --  overwriting elfBuf with FS grant format.
+                     --  overwriting elfBuf with grant format.
                      --  Per entry: 1 byte rights + 1 byte prefixLen +
-                     --  64 bytes prefix = 66 bytes.
+                     --  1 byte service + 64 bytes prefix.
                      declare
                         type LocalEntry is record
                            rights    : Unsigned_8;
                            prefixLen : Unsigned_8;
+                           service   : Unsigned_8;
                            prefix    : String (1 .. 64);
                         end record;
                         locals : array (0 .. Natural (count) - 1)
                            of LocalEntry;
                         entBase : Unsigned_64;
                         pLen    : Natural;
+                        fsCount     : Natural := 0;
+                        configCount : Natural := 0;
                      begin
                         for j in 0 .. Natural (count) - 1 loop
                            entBase := sh_offset + 16 +
@@ -556,6 +567,8 @@ procedure main is
                               readU8 (entBase);
                            locals (j).prefixLen :=
                               readU8 (entBase + 1);
+                           locals (j).service :=
+                              readU8 (entBase + 2);
                            pLen := Natural (locals (j).prefixLen);
                            if pLen > 64 then
                               pLen := 64;
@@ -569,48 +582,114 @@ procedure main is
                            end loop;
                         end loop;
 
-                        --  Write FS ACL grant format to elfBuf:
-                        --  72 bytes/entry: rights(1) + prefixLen(1) +
-                        --  reserved(6) + prefix(64)
-                        declare
-                           grantBuf : array (0 .. Natural (count) * 72 - 1)
-                              of Unsigned_8 with
-                              Import, Address => elfBuf;
-                           base : Natural;
-                        begin
-                           --  Zero-fill entire region first
-                           for b in grantBuf'Range loop
-                              grantBuf (b) := 0;
-                           end loop;
+                        --  Count FS vs CONFIG entries
+                        for j in 0 .. Natural (count) - 1 loop
+                           if locals (j).service = SERVICE_CONFIG then
+                              configCount := configCount + 1;
+                           else
+                              fsCount := fsCount + 1;
+                           end if;
+                        end loop;
 
-                           for j in 0 .. Natural (count) - 1 loop
-                              base := j * 72;
-                              grantBuf (base) := locals (j).rights;
-                              grantBuf (base + 1) := locals (j).prefixLen;
-                              pLen := Natural (locals (j).prefixLen);
-                              for c in 0 .. pLen - 1 loop
-                                 grantBuf (base + 8 + c) :=
-                                    Unsigned_8 (Character'Pos (
-                                       locals (j).prefix (1 + c)));
+                        --  Pass 1: Write FS entries to elfBuf and send
+                        if fsCount > 0 then
+                           declare
+                              grantBuf : array (0 .. fsCount * 72 - 1)
+                                 of Unsigned_8 with
+                                 Import, Address => elfBuf;
+                              base : Natural;
+                              idx  : Natural := 0;
+                           begin
+                              for b in grantBuf'Range loop
+                                 grantBuf (b) := 0;
                               end loop;
-                           end loop;
-                        end;
 
-                        --  Send OP_SET_ACL to FS server
-                        declare
-                           aclMsg : Message := NULL_MESSAGE;
-                           aclTag : MessageTag;
-                        begin
-                           aclMsg.tag := (label  => OP_SET_ACL,
-                                          length => 4,
-                                          flags  => 0,
-                                          badge  => 0);
-                           aclMsg.words := (0 => childPID,
-                                            1 => Unsigned_64 (count),
-                                            2 => fsGrantId,
-                                            3 => 0);
-                           aclTag := capCall (CAP_SLOT_FS_LOCAL, aclMsg);
-                        end;
+                              for j in 0 .. Natural (count) - 1 loop
+                                 if locals (j).service /= SERVICE_CONFIG
+                                 then
+                                    base := idx * 72;
+                                    grantBuf (base) := locals (j).rights;
+                                    grantBuf (base + 1) :=
+                                       locals (j).prefixLen;
+                                    pLen :=
+                                       Natural (locals (j).prefixLen);
+                                    for c in 0 .. pLen - 1 loop
+                                       grantBuf (base + 8 + c) :=
+                                          Unsigned_8 (Character'Pos (
+                                             locals (j).prefix (1 + c)));
+                                    end loop;
+                                    idx := idx + 1;
+                                 end if;
+                              end loop;
+                           end;
+
+                           declare
+                              aclMsg : Message := NULL_MESSAGE;
+                              aclTag : MessageTag;
+                           begin
+                              aclMsg.tag := (label  => OP_SET_ACL,
+                                             length => 4,
+                                             flags  => 0,
+                                             badge  => 0);
+                              aclMsg.words := (0 => childPID,
+                                               1 => Unsigned_64 (fsCount),
+                                               2 => fsGrantId,
+                                               3 => 0);
+                              aclTag := capCall (
+                                 CAP_SLOT_FS_LOCAL, aclMsg);
+                           end;
+                        end if;
+
+                        --  Pass 2: Write CONFIG entries and send
+                        if configCount > 0 and configGrantId /= 0 then
+                           declare
+                              grantBuf : array
+                                 (0 .. configCount * 72 - 1)
+                                 of Unsigned_8 with
+                                 Import, Address => elfBuf;
+                              base : Natural;
+                              idx  : Natural := 0;
+                           begin
+                              for b in grantBuf'Range loop
+                                 grantBuf (b) := 0;
+                              end loop;
+
+                              for j in 0 .. Natural (count) - 1 loop
+                                 if locals (j).service = SERVICE_CONFIG
+                                 then
+                                    base := idx * 72;
+                                    grantBuf (base) := locals (j).rights;
+                                    grantBuf (base + 1) :=
+                                       locals (j).prefixLen;
+                                    pLen :=
+                                       Natural (locals (j).prefixLen);
+                                    for c in 0 .. pLen - 1 loop
+                                       grantBuf (base + 8 + c) :=
+                                          Unsigned_8 (Character'Pos (
+                                             locals (j).prefix (1 + c)));
+                                    end loop;
+                                    idx := idx + 1;
+                                 end if;
+                              end loop;
+                           end;
+
+                           declare
+                              aclMsg : Message := NULL_MESSAGE;
+                              aclTag : MessageTag;
+                           begin
+                              aclMsg.tag := (label  => OP_SET_ACL,
+                                             length => 4,
+                                             flags  => 0,
+                                             badge  => 0);
+                              aclMsg.words := (
+                                 0 => childPID,
+                                 1 => Unsigned_64 (configCount),
+                                 2 => configGrantId,
+                                 3 => 0);
+                              aclTag := capCall (
+                                 CAP_SLOT_CONFIG_LOCAL, aclMsg);
+                           end;
+                        end if;
 
                         return;  -- done, skip wildcard
                      end;
@@ -1022,6 +1101,29 @@ begin
             ignore := syscall (SYSCALL_EXIT, 1);
          end;
          return;
+      end if;
+   end;
+
+   --  Create grant to config service (if present) for ACL delivery.
+   --  Config PID discovered via sysinfo; grant covers same elfBuf.
+   declare
+      configPID : Unsigned_64;
+      ok : Boolean;
+   begin
+      configPID := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_CONFIG);
+      if configPID /= 0 and configPID /= Unsigned_64'Last then
+         createGrant (
+            grantee   => configPID,
+            localAddr => elfBuf,
+            numPages  => INITIAL_BUF_PAGES,
+            readWrite => True,
+            grantId   => configGrantId,
+            success   => ok);
+
+         if not ok then
+            debugPrint ("procmgr: config grant failed" & LF);
+            configGrantId := 0;
+         end if;
       end if;
    end;
 

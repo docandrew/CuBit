@@ -103,4 +103,22 @@ package Net is
                        ip    : IPv4Address;
                        mac   : out MACAddress) return Boolean;
 
+   ---------------------------------------------------------------------------
+   --  packIPv4 - pack 4-byte IPv4Address into low 32 bits of Unsigned_64
+   --  Format: a(0) | a(1)<<8 | a(2)<<16 | a(3)<<24
+   ---------------------------------------------------------------------------
+   function packIPv4 (addr : IPv4Address) return Unsigned_64;
+
+   ---------------------------------------------------------------------------
+   --  unpackIPv4 - unpack low 32 bits of Unsigned_64 into IPv4Address
+   ---------------------------------------------------------------------------
+   function unpackIPv4 (packed : Unsigned_64) return IPv4Address;
+
+   ---------------------------------------------------------------------------
+   --  matchesPrefix - check if ip matches network/prefix
+   ---------------------------------------------------------------------------
+   function matchesPrefix (ip     : IPv4Address;
+                           network : IPv4Address;
+                           prefix  : Natural) return Boolean;
+
 end Net;

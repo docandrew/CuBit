@@ -409,6 +409,7 @@ procedure main is
    evtMsg     : Message;
    evtFound   : Boolean;
    isr        : Unsigned_8;
+   rxActive   : Boolean;
    devQSz     : Unsigned_16;
    rxPFN      : Unsigned_32;
    txPFN      : Unsigned_32;
@@ -556,13 +557,14 @@ begin
           words    => (others => 0)));
    end;
 
-   --  9. Event loop: poll both IPC and event queues.
-   --  IPC messages come from netstack (OP_NET_TX); events come from
-   --  IRQs. When both queues are empty we sleep briefly to avoid
-   --  busy-spinning.
+   --  9. Event loop: poll IPC, events, and RX used ring.
+   --  PCI INTx routing on q35 may not deliver IRQs reliably, so we
+   --  always poll the RX used ring rather than waiting for events.
+   --  Sleep briefly when idle to avoid busy-spinning.
    loop
       ipcFound := False;
       evtFound := False;
+      rxActive := False;
 
       --  Check for IPC messages from netstack (non-blocking)
       receiveNB (ipcSender, ipcMsg, ipcFound);
@@ -604,20 +606,23 @@ begin
          end case;
       end if;
 
-      --  Check for IRQ events (non-blocking)
+      --  Drain IRQ events if any (clears ISR status)
       evtFound := receiveEventNB (evtMsg);
-
       if evtFound then
          isr := Virtio.readISR (ioBase);
-         if (isr and 1) /= 0 then
-            processRX;
-            processTXUsed;
-            Virtio.notifyQueue (ioBase, RX_QUEUE);
-         end if;
+      end if;
+
+      --  Always poll RX used ring regardless of IRQ delivery.
+      --  This handles q35 PIRQ routing issues where INTx never fires.
+      if lastRXUsedIdx /= rxUsed.idx then
+         rxActive := True;
+         processRX;
+         processTXUsed;
+         Virtio.notifyQueue (ioBase, RX_QUEUE);
       end if;
 
       --  If nothing happened, sleep 1ms to avoid busy-spinning
-      if not ipcFound and not evtFound then
+      if not ipcFound and not evtFound and not rxActive then
          declare
             ignore : Unsigned_64;
          begin

@@ -33,6 +33,8 @@ procedure main is
    DRIVER_HDA      : constant Unsigned_64 := 8;
    DRIVER_MIXER    : constant Unsigned_64 := 9;
    DRIVER_MOUSE    : constant Unsigned_64 := 10;
+   DRIVER_CONFIG   : constant Unsigned_64 := 11;
+   DRIVER_NETMGR   : constant Unsigned_64 := 12;
 
    --  Well-known filesystem server PID (must match kernel config)
    SERVICE_FILESYSTEM_PID : constant Unsigned_64 := 10;
@@ -102,12 +104,13 @@ procedure main is
    nvmePID       : Unsigned_64 := 0;
    netstackPID   : Unsigned_64 := 0;
    virtioNetPID  : Unsigned_64 := 0;
-   wgetPID       : Unsigned_64 := 0;
    procmgrPID    : Unsigned_64 := 0;
    shellPID      : Unsigned_64 := 0;
    hdaPID        : Unsigned_64 := 0;
    mixerPID      : Unsigned_64 := 0;
    ps2PID        : Unsigned_64 := 0;
+   configPID     : Unsigned_64 := 0;
+   netmgrPID     : Unsigned_64 := 0;
 
    --  CPIO archive
    cpioArchive : Cpio.Archive;
@@ -358,7 +361,8 @@ procedure main is
          cpu := 0;
       --  Network services on CPU 1
       elsif strEq (name, "netstack.svc") or
-            strEq (name, "virtio-net.drv") or strEq (name, "wget.app")
+            strEq (name, "virtio-net.drv") or
+            strEq (name, "netmgr.svc")
       then
          if numCPUs > 1 then
             cpu := 1;
@@ -429,6 +433,25 @@ procedure main is
       aclMsg.words := (0 => targetPID, 1 => 0, 2 => 0, 3 => 0);
       ignore := capCall (1, aclMsg);
    end sendWildcardACL;
+
+   ---------------------------------------------------------------------------
+   -- Send a wildcard ACL to the config store for a target process
+   ---------------------------------------------------------------------------
+   procedure sendWildcardACLConfig (targetPID : Unsigned_64) is
+      aclMsg : Message;
+      ignore : MessageTag;
+   begin
+      if configPID = 0 then
+         return;
+      end if;
+      aclMsg.tag := (label  => OP_SET_ACL,
+                      length => 4,
+                      flags  => 0,
+                      badge  => 0);
+      aclMsg.capBadge := 0;
+      aclMsg.words := (0 => targetPID, 1 => 0, 2 => 0, 3 => 0);
+      ignore := capCall (2, aclMsg);
+   end sendWildcardACLConfig;
 
    ---------------------------------------------------------------------------
    -- Setup NVMe driver: PCI config, DMA, capabilities
@@ -864,6 +887,202 @@ begin
    end if;
 
    -----------------------------------------------------------------------
+   -- Phase 2c: Spawn config store service
+   -----------------------------------------------------------------------
+   configPID := spawnFromCpio ("config.svc", 5);
+   if configPID = reterr then
+      configPID := 0;
+   end if;
+   if configPID /= 0 then
+      mintCap (configPID, CAP_NOTIFICATION, DRIVER_CONFIG, 0,
+               RIGHT_WRITE, 7);
+      assignCPU (configPID, "config.svc");
+      mintCap (configPID, CAP_ENDPOINT, myPID, 0,
+               RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
+      resumeProc (configPID);
+      debugPrint ("devmgr: config server started" & LF);
+
+      if not waitReady (configPID) then
+         configPID := 0;
+      end if;
+
+      --  Grant ourselves config endpoint at slot 2
+      if configPID /= 0 then
+         grantEndpoint (myPID, configPID, 2, myPID);
+      end if;
+
+      --  Grant FS endpoint to config.svc at slot 1 (for persistence)
+      if configPID /= 0 and filesystemPID /= 0 then
+         grantEndpoint (configPID, filesystemPID, 1, configPID);
+         --  Grant FS ACL for config.svc (wildcard RW)
+         sendWildcardACL (configPID);
+      end if;
+
+      --  Grant config ACL for devmgr itself (wildcard, so we can SET)
+      if configPID /= 0 then
+         sendWildcardACLConfig (myPID);
+      end if;
+
+      --  Seed config from system.conf in CPIO initrd
+      if configPID /= 0 then
+         declare
+            OP_CONFIG_SET  : constant Unsigned_32 := 16#0601#;
+            OP_CONFIG_LOAD : constant Unsigned_32 := 16#0604#;
+            confIdx    : Natural;
+            confAddr   : Unsigned_64;
+            confSize   : Unsigned_64;
+            --  Grant buffer for sending key=value to config.svc
+            cfgRawAddr : Unsigned_64;
+            cfgAligned : Unsigned_64;
+            cfgBufAddr : System.Address;
+            cfgGid     : Unsigned_64;
+            cfgOk      : Boolean;
+            cfgMsg     : Message;
+         begin
+            confIdx := Cpio.findFile (cpioArchive, "system.conf");
+            if confIdx < cpioArchive.count then
+               confAddr := INITRD_BASE +
+                 Unsigned_64 (cpioArchive.files (confIdx).dataOff);
+               confSize := Unsigned_64 (cpioArchive.files (confIdx).dataSize);
+
+               --  Allocate grant buffer (2 pages for alignment)
+               cfgRawAddr := syscall (SYSCALL_SBRK, 2 * 4096);
+               if cfgRawAddr /= Unsigned_64'Last then
+                  cfgAligned := (cfgRawAddr + 4095) and
+                    not Unsigned_64 (4095);
+                  cfgBufAddr := To_Address (Integer_Address (cfgAligned));
+
+                  --  Create grant to config.svc (1 page RW)
+                  createGrant
+                    (grantee   => configPID,
+                     localAddr => cfgBufAddr,
+                     numPages  => 1,
+                     readWrite => True,
+                     grantId   => cfgGid,
+                     success   => cfgOk);
+
+                  if cfgOk then
+                     --  Parse system.conf line by line from CPIO memory
+                     declare
+                        data : array (0 .. Natural (confSize) - 1)
+                          of Unsigned_8
+                          with Import,
+                               Address => To_Address (
+                                 Integer_Address (confAddr));
+                        pos      : Natural := 0;
+                        lineStart : Natural;
+                        eol      : Natural;
+                        eqPos    : Integer;
+                     begin
+                        while pos < Natural (confSize) loop
+                           lineStart := pos;
+
+                           --  Find end of line
+                           eol := pos;
+                           while eol < Natural (confSize)
+                             and then data (eol) /= 16#0A#
+                           loop
+                              eol := eol + 1;
+                           end loop;
+
+                           declare
+                              lineEnd : Natural := eol;
+                           begin
+                              --  Trim CR
+                              if lineEnd > lineStart
+                                and then data (lineEnd - 1) = 16#0D#
+                              then
+                                 lineEnd := lineEnd - 1;
+                              end if;
+
+                              --  Advance past newline
+                              if eol < Natural (confSize) then
+                                 pos := eol + 1;
+                              else
+                                 pos := Natural (confSize);
+                              end if;
+
+                              --  Skip blank lines and comments
+                              if lineEnd > lineStart
+                                and then data (lineStart) /= 16#23#
+                              then
+                                 --  Find '='
+                                 eqPos := -1;
+                                 for e in lineStart .. lineEnd - 1 loop
+                                    if data (e) = 16#3D# then
+                                       eqPos := e;
+                                       exit;
+                                    end if;
+                                 end loop;
+
+                                 if eqPos > Integer (lineStart)
+                                   and eqPos < Integer (lineEnd)
+                                 then
+                                    declare
+                                       kLen : constant Natural :=
+                                         Natural (eqPos) - lineStart;
+                                       vLen : constant Natural :=
+                                         lineEnd - Natural (eqPos) - 1;
+                                       gBuf : array (0 .. kLen + vLen - 1)
+                                         of Unsigned_8
+                                         with Import,
+                                              Address => cfgBufAddr;
+                                    begin
+                                       --  Copy key to grant buf
+                                       for c in 0 .. kLen - 1 loop
+                                          gBuf (c) :=
+                                            data (lineStart + c);
+                                       end loop;
+                                       --  Copy value after key
+                                       for c in 0 .. vLen - 1 loop
+                                          gBuf (kLen + c) := data (
+                                            Natural (eqPos) + 1 + c);
+                                       end loop;
+
+                                       --  Send OP_CONFIG_SET
+                                       cfgMsg :=
+                                         (tag => (label  => OP_CONFIG_SET,
+                                                  length => 3,
+                                                  flags  => 0,
+                                                  badge  => 0),
+                                          capBadge => 0,
+                                          words =>
+                                            (0 => cfgGid,
+                                             1 => Unsigned_64 (kLen),
+                                             2 => Unsigned_64 (vLen),
+                                             others => 0));
+                                       cfgMsg.tag :=
+                                         capCall (2, cfgMsg);
+                                    end;
+                                 end if;
+                              end if;
+                           end;
+                        end loop;
+                     end;
+
+                     debugPrint (
+                       "devmgr: system.conf seeded into config" & LF);
+
+                     --  Send OP_CONFIG_LOAD to trigger disk load
+                     cfgMsg :=
+                       (tag => (label  => OP_CONFIG_LOAD,
+                                length => 0,
+                                flags  => 0,
+                                badge  => 0),
+                        capBadge => 0,
+                        words => (others => 0));
+                     cfgMsg.tag := capCall (2, cfgMsg);
+                  end if;
+               end if;
+            else
+               debugPrint (
+                 "devmgr: system.conf not found in CPIO" & LF);
+            end if;
+         end;
+      end if;
+   end if;
+
+   -----------------------------------------------------------------------
    -- Phase 3: Spawn networking services
    -----------------------------------------------------------------------
 
@@ -924,6 +1143,55 @@ begin
 
       if not waitReady (netstackPID) then
          netstackPID := 0;
+      end if;
+   end if;
+
+   -----------------------------------------------------------------------
+   -- Phase 3b: Spawn network manager service
+   -----------------------------------------------------------------------
+   netmgrPID := spawnFromCpio ("netmgr.svc", 5);
+   if netmgrPID = reterr then
+      netmgrPID := 0;
+   end if;
+   if netmgrPID /= 0 and netstackPID /= 0 then
+      --  Slot 4: endpoint to netstack (config + raw UDP IPC)
+      grantEndpoint (netmgrPID, netstackPID, 4, netmgrPID);
+
+      --  Slot 20: endpoint to config.svc (CAP_SLOT_CONFIG)
+      if configPID /= 0 then
+         grantEndpoint (netmgrPID, configPID, 20, netmgrPID);
+      end if;
+
+      --  Slot 8: CAP_NOTIFICATION for DRIVER_NETMGR registration
+      mintCap (netmgrPID, CAP_NOTIFICATION, DRIVER_NETMGR, 0,
+               RIGHT_WRITE, 8);
+
+      --  Config ACL for reading net.* keys
+      sendWildcardACLConfig (netmgrPID);
+
+      assignCPU (netmgrPID, "netmgr.svc");
+      mintCap (netmgrPID, CAP_ENDPOINT, myPID, 0,
+               RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
+      resumeProc (netmgrPID);
+      debugPrint ("devmgr: netmgr started" & LF);
+
+      if not waitReady (netmgrPID) then
+         netmgrPID := 0;
+      end if;
+   elsif netmgrPID /= 0 then
+      --  netmgr without netstack - still spawn so it can read config
+      if configPID /= 0 then
+         grantEndpoint (netmgrPID, configPID, 20, netmgrPID);
+      end if;
+      mintCap (netmgrPID, CAP_NOTIFICATION, DRIVER_NETMGR, 0,
+               RIGHT_WRITE, 8);
+      sendWildcardACLConfig (netmgrPID);
+      assignCPU (netmgrPID, "netmgr.svc");
+      mintCap (netmgrPID, CAP_ENDPOINT, myPID, 0,
+               RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
+      resumeProc (netmgrPID);
+      if not waitReady (netmgrPID) then
+         netmgrPID := 0;
       end if;
    end if;
 
@@ -995,29 +1263,7 @@ begin
    end if;
 
    -----------------------------------------------------------------------
-   -- Phase 5: Spawn wget app
-   -----------------------------------------------------------------------
-   wgetPID := spawnFromCpio ("wget.app", 4);
-   if wgetPID = reterr then
-      wgetPID := 0;
-   end if;
-   if wgetPID /= 0 and netstackPID /= 0 then
-      --  Grant netstack endpoint to wget at slot 11
-      grantEndpoint (wgetPID, netstackPID, 11, wgetPID);
-      assignCPU (wgetPID, "wget.app");
-      sendWildcardACL (wgetPID);
-      mintCap (wgetPID, CAP_ENDPOINT, myPID, 0,
-               RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
-      resumeProc (wgetPID);
-      debugPrint ("devmgr: wget started" & LF);
-
-      if not waitReady (wgetPID) then
-         wgetPID := 0;
-      end if;
-   end if;
-
-   -----------------------------------------------------------------------
-   -- Phase 6: Spawn procmgr
+   -- Phase 5: Spawn procmgr
    -- Disk drivers already waited in Phase 2, no duplicate wait needed.
    -----------------------------------------------------------------------
    procmgrPID := spawnFromCpio ("procmgr.svc", 5);
@@ -1032,6 +1278,11 @@ begin
       --  Grant FS endpoint at slot 1
       if filesystemPID /= 0 then
          grantEndpoint (procmgrPID, filesystemPID, 1, procmgrPID);
+      end if;
+
+      --  Grant config endpoint at slot 2
+      if configPID /= 0 then
+         grantEndpoint (procmgrPID, configPID, 2, procmgrPID);
       end if;
 
       --  CAP_NOTIFICATION for DRIVER_PROCMGR registration (slot 7)
@@ -1049,6 +1300,7 @@ begin
 
       assignCPU (procmgrPID, "procmgr.svc");
       sendWildcardACL (procmgrPID);
+      sendWildcardACLConfig (procmgrPID);
       mintCap (procmgrPID, CAP_ENDPOINT, myPID, 0,
                RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (procmgrPID);

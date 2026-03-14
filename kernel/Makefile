@@ -79,40 +79,6 @@ clean:
 	-rm cubit_kernel
 	-rm cubit_kernel.iso
 
-.PHONY : run-raw
-run-raw:
-	qemu-system-x86_64 -kernel cubit_kernel
-
-.PHONY : run-qemu
-run-qemu:
-# add -S to pause simulation at startup to allow debugger connection
-# add -d int,cpu_reset,guest_errors for exception debugging
-	qemu-system-x86_64 \
-		-machine q35 \
-		-cpu Broadwell \
-		-d cpu_reset \
-		-s \
-		-m 128M \
-		-cdrom cubit_kernel.iso \
-		-serial stdio \
-		-drive file=nvm.qcow2,if=none,id=nvm \
-		-device nvme,serial=MyNVMeDrive,drive=nvm
-
-# Headless QEMU for CLI testing - serial output to file, no GUI
-.PHONY : run-headless
-run-headless:
-	@rm -f serial_output.log
-	timeout 45 qemu-system-x86_64 \
-		-machine q35 \
-		-cpu Broadwell \
-		-m 128M \
-		-cdrom cubit_kernel.iso \
-		-display none \
-		-serial file:serial_output.log \
-		-no-reboot; \
-	echo "--- Serial Output ---"; \
-	cat serial_output.log
-
 # Build DOOM and copy ELF into ISO directory
 .PHONY : doom
 doom:
@@ -196,6 +162,20 @@ ps2: user_runtime
 	$(ALR) gprbuild -P ../userspace/services/ps2/ps2.gpr
 	cp ../userspace/services/ps2/build/ps2.drv isodir/boot/ps2.drv
 
+# Build the userspace config store service
+.PHONY : config
+config: user_runtime
+	mkdir -p ../userspace/services/config/build
+	$(ALR) gprbuild -P ../userspace/services/config/config.gpr
+	cp ../userspace/services/config/build/config.svc isodir/boot/config.svc
+
+# Build the userspace network manager service
+.PHONY : netmgr
+netmgr: user_runtime
+	mkdir -p ../userspace/services/netmgr/build
+	$(ALR) gprbuild -P ../userspace/services/netmgr/netmgr.gpr
+	cp ../userspace/services/netmgr/build/netmgr.svc isodir/boot/netmgr.svc
+
 # Build the userspace device manager
 .PHONY : devmgr
 devmgr: user_runtime
@@ -231,8 +211,12 @@ ata_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write ../init.conf init.conf" ata_disk.img
 	debugfs -w -R "write isodir/boot/shell.app shell.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" ata_disk.img
+	debugfs -w -R "write isodir/boot/wget.app wget.app" ata_disk.img
+	dd if=/dev/zero of=/tmp/config.dat bs=8192 count=1
+	debugfs -w -R "write /tmp/config.dat config.dat" ata_disk.img
+	rm -f /tmp/config.dat
 
-# Create ext2 NVMe disk image containing motd.txt, doom1.wad, doom.elf, init.conf, shell.app
+# Create ext2 NVMe disk image containing motd.txt, doom1.wad, doom.elf, init.conf, shell.app, wget.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
 nvme_disk.img: $(DISK_CONTENTS)
 	dd if=/dev/zero of=nvme_disk.img bs=1K count=16384
@@ -242,6 +226,10 @@ nvme_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" nvme_disk.img
 	debugfs -w -R "write ../init.conf init.conf" nvme_disk.img
 	debugfs -w -R "write isodir/boot/shell.app shell.app" nvme_disk.img
+	debugfs -w -R "write isodir/boot/wget.app wget.app" nvme_disk.img
+	dd if=/dev/zero of=/tmp/config.dat bs=8192 count=1
+	debugfs -w -R "write /tmp/config.dat config.dat" nvme_disk.img
+	rm -f /tmp/config.dat
 
 # Convenience aliases for manual rebuilds (e.g. make ata_disk)
 .PHONY : ata_disk nvme_disk
@@ -261,11 +249,13 @@ initrd:
 	-cp isodir/boot/nvme.drv ramdisk_staging/
 	-cp isodir/boot/netstack.svc ramdisk_staging/
 	-cp isodir/boot/virtio-net.drv ramdisk_staging/
-	-cp isodir/boot/wget.app ramdisk_staging/
 	-cp isodir/boot/hda.drv ramdisk_staging/
 	-cp isodir/boot/mixer.svc ramdisk_staging/
 	-cp isodir/boot/ps2.drv ramdisk_staging/
+	-cp isodir/boot/config.svc ramdisk_staging/
+	-cp isodir/boot/netmgr.svc ramdisk_staging/
 	-cp isodir/boot/procmgr.svc ramdisk_staging/
+	-cp ../system.conf ramdisk_staging/
 	cd ramdisk_staging && ls | cpio -o -H newc > ../isodir/boot/initrd.img
 	rm -rf ramdisk_staging
 
@@ -275,12 +265,12 @@ iso: cubit_kernel
 
 # Build everything including DOOM, then create ISO and disk images
 .PHONY : world
-world: cubit_kernel doom filesystem ata nvme virtio-net netstack wget procmgr shell hda mixer ps2 devmgr initrd ata_disk.img nvme_disk.img iso
+world: cubit_kernel doom filesystem ata nvme virtio-net netstack wget procmgr shell hda mixer ps2 config netmgr devmgr initrd ata_disk.img nvme_disk.img iso
 
-# Run QEMU with NVMe disk, HDA audio, shell (everything)
+# Run QEMU with NVMe + virtio-net + HDA audio, shell (everything)
 .PHONY : run
 run: nvme_disk.img
-	@rm -f serial_output.log
+	@rm -f serial_output.log net.pcap
 	sed -i 's/^set default=.*/set default=4/' isodir/boot/grub/grub.cfg
 	grub-mkrescue -o cubit_kernel.iso isodir
 	sed -i 's/^set default=.*/set default=0/' isodir/boot/grub/grub.cfg
@@ -294,163 +284,13 @@ run: nvme_disk.img
 		-display gtk,zoom-to-fit=on \
 		-drive file=nvme_disk.img,if=none,id=nvme0,format=raw \
 		-device nvme,serial=cubitnvme,drive=nvme0 \
-		-audiodev sdl,id=snd0 \
-		-device intel-hda \
-		-device hda-output,audiodev=snd0 \
-		-no-reboot
-
-# Run QEMU with an ATA disk image (for testing userspace ATA driver)
-# q35 uses AHCI by default; add a PIIX3 IDE controller so the PIO driver
-# can access the disk on legacy ports 0x1F0/0x3F6.
-.PHONY : run-ata
-run-ata: ata_disk.img
-	@rm -f serial_output.log
-	qemu-system-x86_64 \
-		-machine q35 \
-		-cpu Broadwell \
-		-m 128M \
-		-cdrom cubit_kernel.iso \
-		-serial file:serial_output.log \
-		-drive file=ata_disk.img,format=raw,if=none,id=ata0 \
-		-device piix3-ide,id=pata \
-		-device ide-hd,drive=ata0,bus=pata.0 \
-		-no-reboot
-
-# Run QEMU with shell + ATA disk (selects shell menu entry, index 3)
-.PHONY : run-shell
-run-shell: ata_disk.img
-	@rm -f serial_output.log
-	sed -i 's/^set default=.*/set default=3/' isodir/boot/grub/grub.cfg
-	grub-mkrescue -o cubit_kernel.iso isodir
-	sed -i 's/^set default=.*/set default=0/' isodir/boot/grub/grub.cfg
-	qemu-system-x86_64 \
-		-machine q35 \
-		-cpu Broadwell \
-		-m 128M \
-		-cdrom cubit_kernel.iso \
-		-serial file:serial_output.log \
-		-display gtk,zoom-to-fit=on \
-		-drive file=ata_disk.img,format=raw,if=none,id=ata0 \
-		-device piix3-ide,id=pata \
-		-device ide-hd,drive=ata0,bus=pata.0 \
-		-audiodev sdl,id=snd0 \
-		-device intel-hda \
-		-device hda-output,audiodev=snd0 \
-		-no-reboot
-
-# Run QEMU with shell + NVMe disk (selects NVMe shell menu entry, index 4)
-.PHONY : run-nvme
-run-nvme: nvme_disk.img
-	@rm -f serial_output.log
-	sed -i 's/^set default=.*/set default=4/' isodir/boot/grub/grub.cfg
-	grub-mkrescue -o cubit_kernel.iso isodir
-	sed -i 's/^set default=.*/set default=0/' isodir/boot/grub/grub.cfg
-	qemu-system-x86_64 \
-		-machine q35 \
-		-cpu Broadwell \
-		-smp 4 \
-		-m 128M \
-		-cdrom cubit_kernel.iso \
-		-serial file:serial_output.log \
-		-display gtk,zoom-to-fit=on \
-		-drive file=nvme_disk.img,if=none,id=nvme0,format=raw \
-		-device nvme,serial=cubitnvme,drive=nvme0 \
-		-audiodev sdl,id=snd0 \
-		-device intel-hda \
-		-device hda-output,audiodev=snd0 \
-		-no-reboot
-
-# Run QEMU with a virtio-net device (user-mode networking, pcap capture)
-# Temporarily sets GRUB default to the net test entry, rebuilds ISO, then restores.
-.PHONY : run-net
-run-net:
-	@rm -f serial_output.log net.pcap
-	sed -i 's/^set default=.*/set default=1/' isodir/boot/grub/grub.cfg
-	grub-mkrescue -o cubit_kernel.iso isodir
-	sed -i 's/^set default=.*/set default=0/' isodir/boot/grub/grub.cfg
-	timeout 30 qemu-system-x86_64 \
-		-machine q35 \
-		-cpu Broadwell \
-		-m 128M \
-		-cdrom cubit_kernel.iso \
-		-display none \
-		-serial file:serial_output.log \
 		-device virtio-net-pci,netdev=net0 \
 		-netdev user,id=net0 \
 		-object filter-dump,id=f0,netdev=net0,file=net.pcap \
-		-no-reboot; \
-	echo "--- Serial Output ---"; \
-	cat serial_output.log
-
-# Run QEMU with virtio-net for wget test (selects wget menu entry, index 2)
-.PHONY : run-wget
-run-wget:
-	@rm -f serial_output.log net.pcap
-	sed -i 's/^set default=.*/set default=2/' isodir/boot/grub/grub.cfg
-	grub-mkrescue -o cubit_kernel.iso isodir
-	sed -i 's/^set default=.*/set default=0/' isodir/boot/grub/grub.cfg
-	timeout 45 qemu-system-x86_64 \
-		-machine q35 \
-		-cpu Broadwell \
-		-m 128M \
-		-cdrom cubit_kernel.iso \
-		-display none \
-		-serial file:serial_output.log \
-		-device virtio-net-pci,netdev=net0 \
-		-netdev user,id=net0 \
-		-object filter-dump,id=f0,netdev=net0,file=net.pcap \
-		-no-reboot; \
-	echo "--- Serial Output ---"; \
-	cat serial_output.log
-
-# Run QEMU with Intel HDA audio device (selects audio test entry, index 5)
-.PHONY : run-audio
-run-audio:
-	@rm -f serial_output.log
-	sed -i 's/^set default=.*/set default=5/' isodir/boot/grub/grub.cfg
-	grub-mkrescue -o cubit_kernel.iso isodir
-	sed -i 's/^set default=.*/set default=0/' isodir/boot/grub/grub.cfg
-	timeout 30 qemu-system-x86_64 \
-		-machine q35 \
-		-cpu Broadwell \
-		-m 128M \
-		-cdrom cubit_kernel.iso \
-		-display none \
-		-serial file:serial_output.log \
-		-device intel-hda \
-		-device hda-output \
-		-no-reboot; \
-	echo "--- Serial Output ---"; \
-	cat serial_output.log
-
-# Run DOOM with audio: ATA disk (doom.elf + doom1.wad) + HDA audio device
-# Uses GRUB entry 0 (DOOM, 1024x768x32) with a doom-specific init.conf
-.PHONY : run-doom-audio
-run-doom-audio: ata_disk.img
-	@rm -f serial_output.log
-	@echo "doom.elf" > /tmp/cubit_doom_init.conf
-	debugfs -w -R "rm init.conf" ata_disk.img 2>/dev/null; true
-	debugfs -w -R "write /tmp/cubit_doom_init.conf init.conf" ata_disk.img
-	@rm -f /tmp/cubit_doom_init.conf
-	qemu-system-x86_64 \
-		-machine q35 \
-		-cpu Broadwell \
-		-smp 2 \
-		-m 128M \
-		-cdrom cubit_kernel.iso \
-		-serial file:serial_output.log \
-		-display gtk,zoom-to-fit=on \
-		-drive file=ata_disk.img,format=raw,if=none,id=ata0 \
-		-device piix3-ide,id=pata \
-		-device ide-hd,drive=ata0,bus=pata.0 \
 		-audiodev sdl,id=snd0 \
 		-device intel-hda \
 		-device hda-output,audiodev=snd0 \
 		-no-reboot
-	@echo "--- Serial Output ---"
-	@cat serial_output.log
-	@debugfs -w -R "rm init.conf" ata_disk.img 2>/dev/null; true
-	@debugfs -w -R "write ../init.conf init.conf" ata_disk.img
 
 .PHONY : docs
 docs:

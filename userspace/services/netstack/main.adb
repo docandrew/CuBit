@@ -42,52 +42,52 @@ procedure main is
    TX_AREA_OFFSET   : constant := PACKET_BUF_SIZE / 2;    -- TX half
    TX_SLOT_SIZE     : constant := 2048;                   -- per-slot size
    NUM_TX_SLOTS     : constant := 8;                      -- rotating slots
-   txSlotIdx        : Natural := 0;
 
    --  Grant region mapping (must match kernel process.ads)
    GRANT_REGION_BASE : constant Integer_Address := 16#0000_4000_0000_0000#;
    GRANT_SLOT_SIZE   : constant Integer_Address := 256 * 4096;
 
-   --  Network config (QEMU user-mode defaults)
-   OUR_IP     : constant Net.IPv4Address := (10, 0, 2, 15);
-   GATEWAY_IP : constant Net.IPv4Address := (10, 0, 2, 2);
-   DNS_IP     : constant Net.IPv4Address := (10, 0, 2, 3);
-   ourMAC     : Net.MACAddress := (others => 0);
+   --  Multi-interface support
+   MAX_INTERFACES : constant := 4;
+   type InterfaceState is (IF_DOWN, IF_UP, IF_CONFIGURING);
 
-   --  ARP cache
-   arpCache : Net.ARPTable := (others =>
-      (ip => (others => 0), mac => (others => 0), valid => False));
+   type InterfaceRecord is record
+      state     : InterfaceState := IF_DOWN;
+      mac       : Net.MACAddress := (others => 0);
+      ipv4      : Net.IPv4Address := (others => 0);
+      netmask   : Net.IPv4Address := (others => 0);
+      gateway   : Net.IPv4Address := (others => 0);
+      driverPID : ProcessID := NO_PROCESS;
+      arpCache  : Net.ARPTable := (others =>
+         (ip => (others => 0), mac => (others => 0), valid => False));
+      gwMAC     : Net.MACAddress := Net.ZERO_MAC;
+      grantId   : Unsigned_64 := 0;
+      txSlotIdx : Natural := 0;
+      pktBuf    : System.Address := System.Null_Address;
+      pktGrant  : Unsigned_64 := 0;
+   end record;
 
-   --  Gateway MAC (resolved via ARP)
-   gwMAC : Net.MACAddress := Net.ZERO_MAC;
+   interfaces : array (0 .. MAX_INTERFACES - 1) of InterfaceRecord;
+   numIfaces  : Natural := 0;
 
-   --  State machine
-   type NetPhase is (STATE_INIT, STATE_WAIT_ARP, STATE_PING_SENT,
-                     STATE_DNS_SENT, STATE_TCP_TEST, STATE_RUNNING);
-   netState : NetPhase := STATE_INIT;
+   --  Global DNS (not per-interface)
+   primaryDNS   : Net.IPv4Address := (others => 0);
+   secondaryDNS : Net.IPv4Address := (others => 0);
 
-   --  Protocol state flags
-   gotPingReply : Boolean := False;
-   dnsResolved  : Boolean := False;
-   tcpTestDone  : Boolean := False;
-   tcpQuerySent : Boolean := False;
+   --  Convenience aliases for interface 0 (used during transition)
+   --  These are procedures/functions that access interfaces(0) directly.
+   --  TODO: thread ifIdx through all packet handlers for full multi-if.
+
+   --  Self-test state (removed: netmgr handles config now)
    resolvedIP   : Net.IPv4Address := (others => 0);
-
-   --  Ping tracking
-   pingSeq : Unsigned_16 := 1;
 
    --  TCP connection table (types in TCPSession package)
    tcpConns : TCPSession.ConnTable;
    tcpISN   : Unsigned_32 := 16#CB17_0000#;
    nextEphemeralPort : Unsigned_16 := 49152;  -- incrementing ephemeral port
-   selfTestConnIdx : Integer := -1;  -- tracks self-test TCP connection
 
-   --  Driver PID (learned from OP_NET_ATTACH or sysinfo)
-   driverPID : ProcessID := NO_PROCESS;
-
-   --  Grant info
-   packetBuf     : System.Address := System.Null_Address;
-   packetGrantId : Unsigned_64 := 0;
+   --  Legacy aliases to interface 0 (for incremental refactoring)
+   --  New code should use interfaces(ifIdx).xxx directly.
 
    --  IPC label constants (must match kernel ipc_labels.ads)
    OP_NET_ATTACH  : constant Unsigned_32 := 16#0400#;
@@ -102,9 +102,33 @@ procedure main is
    OP_NET_WRITE   : constant Unsigned_32 := 16#0421#;
    OP_NET_READ    : constant Unsigned_32 := 16#0422#;
    OP_NET_SHUT    : constant Unsigned_32 := 16#0423#;
+   OP_NET_OPEN_RAW : constant Unsigned_32 := 16#0426#;
+
+   --  Network management IPC labels (from netmgr)
+   OP_NET_CONFIGURE : constant Unsigned_32 := 16#0430#;
+   OP_NET_SET_DNS   : constant Unsigned_32 := 16#0432#;
+   OP_NET_ROUTE_ADD : constant Unsigned_32 := 16#0433#;
+   OP_NET_ROUTE_DEL : constant Unsigned_32 := 16#0434#;
+   OP_NET_LIST_IF    : constant Unsigned_32 := 16#0435#;
+   OP_NET_IF_DETAIL  : constant Unsigned_32 := 16#0436#;
+   OP_NET_ROUTE_LIST : constant Unsigned_32 := 16#0437#;
+   OP_NET_PING       : constant Unsigned_32 := 16#0438#;
+
    REPLY_OK       : constant Unsigned_32 := 16#F000#;
    REPLY_ERR      : constant Unsigned_32 := 16#F001#;
    REPLY_EOF      : constant Unsigned_32 := 16#F006#;
+
+   --  Routing table
+   MAX_ROUTES : constant := 16;
+   type RouteEntry is record
+      active  : Boolean := False;
+      dest    : Net.IPv4Address := (others => 0);
+      prefix  : Natural := 0;
+      gateway : Net.IPv4Address := (others => 0);
+      ifIdx   : Natural := 0;
+      metric  : Natural := 0;
+   end record;
+   routeTable : array (0 .. MAX_ROUTES - 1) of RouteEntry;
 
    --  Deferred TX queue: during OP_NET_RX processing we can't capCall to
    --  the driver (it's blocked waiting for our reply). Buffer frames here
@@ -155,7 +179,7 @@ procedure main is
    --  Pending request queue (deferred reply for blocking ops)
    type PendingKind is (PENDING_NONE, PENDING_RESOLVE,
                         PENDING_CONNECT, PENDING_RECV,
-                        PENDING_OPEN);
+                        PENDING_OPEN, PENDING_PING);
    type PendingRequest is record
       kind       : PendingKind := PENDING_NONE;
       sender     : ProcessID := NO_PROCESS;
@@ -241,18 +265,147 @@ procedure main is
    end printIP;
 
    ---------------------------------------------------------------------------
-   --  gwMACResolved - check if gateway MAC has been resolved via ARP
+   --  findInterfaceByPID - find interface slot by driver PID
+   ---------------------------------------------------------------------------
+   function findInterfaceByPID (pid : ProcessID) return Integer is
+   begin
+      for i in 0 .. numIfaces - 1 loop
+         if interfaces (i).driverPID = pid then
+            return i;
+         end if;
+      end loop;
+      return -1;
+   end findInterfaceByPID;
+
+   ---------------------------------------------------------------------------
+   --  findInterfaceForIP - find interface that owns this IP
+   ---------------------------------------------------------------------------
+   function findInterfaceForIP (ip : Net.IPv4Address) return Integer is
+   begin
+      for i in 0 .. numIfaces - 1 loop
+         if interfaces (i).state = IF_UP and then
+            interfaces (i).ipv4 = ip
+         then
+            return i;
+         end if;
+      end loop;
+      --  Also accept broadcast
+      if ip = (255, 255, 255, 255) and numIfaces > 0 then
+         return 0;
+      end if;
+      return -1;
+   end findInterfaceForIP;
+
+   ---------------------------------------------------------------------------
+   --  gwMACResolved - check if interface 0 gateway MAC is resolved
    --  (element-wise to avoid memcmp in freestanding)
    ---------------------------------------------------------------------------
    function gwMACResolved return Boolean is
    begin
-      for i in gwMAC'Range loop
-         if gwMAC (i) /= 0 then
+      if numIfaces = 0 then
+         return False;
+      end if;
+      for i in interfaces (0).gwMAC'Range loop
+         if interfaces (0).gwMAC (i) /= 0 then
             return True;
          end if;
       end loop;
       return False;
    end gwMACResolved;
+
+   ---------------------------------------------------------------------------
+   --  routeLookup - longest-prefix match routing lookup
+   --  Returns interface index and next-hop gateway.
+   ---------------------------------------------------------------------------
+   procedure routeLookup (dstIP   : Net.IPv4Address;
+                          ifIdx   : out Integer;
+                          nextHop : out Net.IPv4Address)
+   is
+      bestPrefix : Integer := -1;
+      bestMetric : Natural := Natural'Last;
+   begin
+      ifIdx := -1;
+      nextHop := (others => 0);
+
+      for i in routeTable'Range loop
+         if routeTable (i).active then
+            if Net.matchesPrefix (dstIP, routeTable (i).dest,
+                                  routeTable (i).prefix) then
+               if routeTable (i).prefix > bestPrefix or
+                  (routeTable (i).prefix = bestPrefix and
+                   routeTable (i).metric < bestMetric)
+               then
+                  bestPrefix := routeTable (i).prefix;
+                  bestMetric := routeTable (i).metric;
+                  ifIdx := routeTable (i).ifIdx;
+                  nextHop := routeTable (i).gateway;
+               end if;
+            end if;
+         end if;
+      end loop;
+
+      --  If next-hop is 0.0.0.0 (connected route), send directly
+      if ifIdx >= 0 and nextHop = Net.IPv4Address'(others => 0) then
+         nextHop := dstIP;
+      end if;
+   end routeLookup;
+
+   ---------------------------------------------------------------------------
+   --  installConnectedRoute - add connected route for an interface
+   ---------------------------------------------------------------------------
+   procedure installConnectedRoute (ifIdx : Natural) is
+      network : Net.IPv4Address;
+   begin
+      --  Compute network address from IP & netmask
+      for i in 0 .. 3 loop
+         network (i) := interfaces (ifIdx).ipv4 (i) and
+                        interfaces (ifIdx).netmask (i);
+      end loop;
+
+      --  Compute prefix length from netmask
+      declare
+         maskPacked : constant Unsigned_32 :=
+            Shift_Left (Unsigned_32 (interfaces (ifIdx).netmask (0)), 24) or
+            Shift_Left (Unsigned_32 (interfaces (ifIdx).netmask (1)), 16) or
+            Shift_Left (Unsigned_32 (interfaces (ifIdx).netmask (2)), 8) or
+            Unsigned_32 (interfaces (ifIdx).netmask (3));
+         prefix : Natural := 0;
+         m : Unsigned_32 := maskPacked;
+      begin
+         while (m and 16#8000_0000#) /= 0 loop
+            prefix := prefix + 1;
+            m := Shift_Left (m, 1);
+         end loop;
+
+         --  Find free slot
+         for i in routeTable'Range loop
+            if not routeTable (i).active then
+               routeTable (i) := (active  => True,
+                                   dest    => network,
+                                   prefix  => prefix,
+                                   gateway => (others => 0),
+                                   ifIdx   => ifIdx,
+                                   metric  => 0);
+               exit;
+            end if;
+         end loop;
+      end;
+
+      --  Install default route via gateway if set
+      if interfaces (ifIdx).gateway /= Net.IPv4Address'(others => 0) then
+         for i in routeTable'Range loop
+            if not routeTable (i).active then
+               routeTable (i) := (active  => True,
+                                   dest    => (others => 0),
+                                   prefix  => 0,
+                                   gateway => interfaces (ifIdx).gateway,
+                                   ifIdx   => ifIdx,
+                                   metric  => 100);
+               exit;
+            end if;
+         end loop;
+      end if;
+   end installConnectedRoute;
 
    ---------------------------------------------------------------------------
    --  doSendFrame - send a frame to the driver via capSubmit (non-blocking)
@@ -265,10 +418,11 @@ procedure main is
    ---------------------------------------------------------------------------
    function doSendFrame (frameAddr : System.Address;
                          frameLen  : Natural) return Boolean is
+      curBuf  : constant System.Address := interfaces (0).pktBuf;
       slotOff : constant Natural :=
-         TX_AREA_OFFSET + txSlotIdx * TX_SLOT_SIZE;
+         TX_AREA_OFFSET + interfaces (0).txSlotIdx * TX_SLOT_SIZE;
       txBuf   : constant System.Address :=
-         packetBuf + Storage_Offset (slotOff);
+         curBuf + Storage_Offset (slotOff);
       txMsg   : Message :=
         (tag      => (label  => OP_NET_TX,
                       length => 2,
@@ -294,7 +448,8 @@ procedure main is
 
       ok := capSubmit (CAP_SLOT_NET_DRV, txMsg, 0);
       if ok then
-         txSlotIdx := (txSlotIdx + 1) mod NUM_TX_SLOTS;
+         interfaces (0).txSlotIdx :=
+            (interfaces (0).txSlotIdx + 1) mod NUM_TX_SLOTS;
       end if;
       return ok;
    end doSendFrame;
@@ -334,7 +489,9 @@ procedure main is
    procedure sendFrame (frameAddr : System.Address; frameLen : Natural) is
       ok : Boolean;
    begin
-      if driverPID = NO_PROCESS or packetBuf = System.Null_Address then
+      if interfaces (0).driverPID = NO_PROCESS or
+         interfaces (0).pktBuf = System.Null_Address
+      then
          debugPrint ("netstack: sendFrame: not attached" & LF);
          return;
       end if;
@@ -374,7 +531,7 @@ procedure main is
    begin
       --  Ethernet header
       Net.putMAC   (fAddr, 0,  dstMAC);
-      Net.putMAC   (fAddr, 6,  ourMAC);
+      Net.putMAC   (fAddr, 6,  interfaces (0).mac);
       Net.putU16BE (fAddr, 12, Net.ETHERTYPE_ARP);
 
       --  ARP payload
@@ -383,8 +540,8 @@ procedure main is
       Net.putU8    (fAddr, 18, 6);                  -- HLEN
       Net.putU8    (fAddr, 19, 4);                  -- PLEN
       Net.putU16BE (fAddr, 20, Net.ARP_REPLY);     -- OPER
-      Net.putMAC   (fAddr, 22, ourMAC);
-      Net.putIP    (fAddr, 28, OUR_IP);
+      Net.putMAC   (fAddr, 22, interfaces (0).mac);
+      Net.putIP    (fAddr, 28, interfaces (0).ipv4);
       Net.putMAC   (fAddr, 32, dstMAC);
       Net.putIP    (fAddr, 38, dstIP);
 
@@ -402,7 +559,7 @@ procedure main is
       fAddr : constant System.Address := frame'Address;
    begin
       Net.putMAC   (fAddr, 0,  Net.BROADCAST_MAC);
-      Net.putMAC   (fAddr, 6,  ourMAC);
+      Net.putMAC   (fAddr, 6,  interfaces (0).mac);
       Net.putU16BE (fAddr, 12, Net.ETHERTYPE_ARP);
 
       Net.putU16BE (fAddr, 14, 1);
@@ -410,14 +567,14 @@ procedure main is
       Net.putU8    (fAddr, 18, 6);
       Net.putU8    (fAddr, 19, 4);
       Net.putU16BE (fAddr, 20, Net.ARP_REPLY);
-      Net.putMAC   (fAddr, 22, ourMAC);
-      Net.putIP    (fAddr, 28, OUR_IP);
+      Net.putMAC   (fAddr, 22, interfaces (0).mac);
+      Net.putIP    (fAddr, 28, interfaces (0).ipv4);
       Net.putMAC   (fAddr, 32, Net.ZERO_MAC);
-      Net.putIP    (fAddr, 38, OUR_IP);
+      Net.putIP    (fAddr, 38, interfaces (0).ipv4);
 
       sendFrame (fAddr, 42);
       debugPrint ("NET: sent gratuitous ARP for ");
-      printIP (OUR_IP);
+      printIP (interfaces (0).ipv4);
       debugPrint ("" & LF);
    end sendGratuitousARP;
 
@@ -429,7 +586,7 @@ procedure main is
       fAddr : constant System.Address := frame'Address;
    begin
       Net.putMAC   (fAddr, 0,  Net.BROADCAST_MAC);
-      Net.putMAC   (fAddr, 6,  ourMAC);
+      Net.putMAC   (fAddr, 6,  interfaces (0).mac);
       Net.putU16BE (fAddr, 12, Net.ETHERTYPE_ARP);
 
       Net.putU16BE (fAddr, 14, 1);
@@ -437,8 +594,8 @@ procedure main is
       Net.putU8    (fAddr, 18, 6);
       Net.putU8    (fAddr, 19, 4);
       Net.putU16BE (fAddr, 20, Net.ARP_REQUEST);
-      Net.putMAC   (fAddr, 22, ourMAC);
-      Net.putIP    (fAddr, 28, OUR_IP);
+      Net.putMAC   (fAddr, 22, interfaces (0).mac);
+      Net.putIP    (fAddr, 28, interfaces (0).ipv4);
       Net.putMAC   (fAddr, 32, Net.ZERO_MAC);
       Net.putIP    (fAddr, 38, targetIP);
 
@@ -453,7 +610,8 @@ procedure main is
    ---------------------------------------------------------------------------
    procedure sendICMPEchoRequest (dstIP  : Net.IPv4Address;
                                   dstMAC : Net.MACAddress;
-                                  seq    : Unsigned_16) is
+                                  seq    : Unsigned_16;
+                                  ifIdx  : Natural := 0) is
       FRAME_LEN   : constant := 74;
       PAYLOAD_LEN : constant := 32;
       frame : array (0 .. FRAME_LEN - 1) of Unsigned_8;
@@ -466,7 +624,7 @@ procedure main is
 
       --  Ethernet header
       Net.putMAC   (fAddr, 0,  dstMAC);
-      Net.putMAC   (fAddr, 6,  ourMAC);
+      Net.putMAC   (fAddr, 6,  interfaces (ifIdx).mac);
       Net.putU16BE (fAddr, 12, Net.ETHERTYPE_IPV4);
 
       --  IPv4 header (20 bytes at offset 14)
@@ -478,7 +636,7 @@ procedure main is
       Net.putU8    (fAddr, 22, 64);
       Net.putU8    (fAddr, 23, Net.PROTO_ICMP);
       Net.putU16BE (fAddr, 24, 0);
-      Net.putIP    (fAddr, 26, OUR_IP);
+      Net.putIP    (fAddr, 26, interfaces (ifIdx).ipv4);
       Net.putIP    (fAddr, 30, dstIP);
 
       declare
@@ -529,7 +687,7 @@ procedure main is
    begin
       --  Ethernet header
       Net.putMAC   (fAddr, 0,  dstMAC);
-      Net.putMAC   (fAddr, 6,  ourMAC);
+      Net.putMAC   (fAddr, 6,  interfaces (0).mac);
       Net.putU16BE (fAddr, 12, Net.ETHERTYPE_IPV4);
 
       --  IPv4 header (20 bytes at offset 14)
@@ -541,7 +699,7 @@ procedure main is
       Net.putU8    (fAddr, 22, 64);              -- TTL
       Net.putU8    (fAddr, 23, proto);
       Net.putU16BE (fAddr, 24, 0);               -- checksum (filled below)
-      Net.putIP    (fAddr, 26, OUR_IP);
+      Net.putIP    (fAddr, 26, interfaces (0).ipv4);
       Net.putIP    (fAddr, 30, dstIP);
 
       declare
@@ -607,7 +765,7 @@ procedure main is
          cksum : Unsigned_16;
       begin
          cksum := Net.transportChecksum
-            (OUR_IP, dstIP, Net.PROTO_UDP, fAddr + 34, totalUDP);
+            (interfaces (0).ipv4, dstIP, Net.PROTO_UDP, fAddr + 34, totalUDP);
          Net.putU16BE (fAddr, 40, cksum);   -- UDP checksum at offset 34+6
       end;
 
@@ -669,15 +827,16 @@ procedure main is
       off := off + 2;
 
       --  Resolve DNS server MAC
-      if not Net.arpLookup (arpCache, DNS_IP, dnsMAC) then
-         dnsMAC := gwMAC;
+      if not Net.arpLookup (interfaces (0).arpCache, primaryDNS,
+                             dnsMAC) then
+         dnsMAC := interfaces (0).gwMAC;
       end if;
 
-      sendUDP (DNS_IP, dnsMAC, 10053, 53, pAddr, off);
+      sendUDP (primaryDNS, dnsMAC, 10053, 53, pAddr, off);
       debugPrint ("UDP: sent DNS query for ");
       debugPrint (hostname);
       debugPrint (" to ");
-      printIP (DNS_IP);
+      printIP (primaryDNS);
       debugPrint ("" & LF);
    end sendDNSQuery;
 
@@ -791,7 +950,6 @@ procedure main is
       --  A record: type=1, rdlen=4
       if rtype = 1 and rdlen = 4 and off + 4 <= dnsLen then
          Net.getIP (dnsBuf, off, resolvedIP);
-         dnsResolved := True;
          debugPrint ("DNS: response -> ");
          printIP (resolvedIP);
          debugPrint ("" & LF);
@@ -836,7 +994,7 @@ procedure main is
                begin
                   if chIdx >= 0 and chIdx <= channels'Last then
                      channels (chIdx).remoteIP := resolvedIP;
-                     connIdx := tcpConnect (resolvedIP, gwMAC,
+                     connIdx := tcpConnect (resolvedIP, interfaces (0).gwMAC,
                                             pendingReqs (i).dstPort);
                      if connIdx < 0 then
                         channels (chIdx).kind := CHANNEL_NONE;
@@ -994,7 +1152,7 @@ procedure main is
          cksum : Unsigned_16;
       begin
          cksum := Net.transportChecksum
-            (OUR_IP, conn.remoteIP, Net.PROTO_TCP, fAddr + 34, tcpLen);
+            (interfaces (0).ipv4, conn.remoteIP, Net.PROTO_TCP, fAddr + 34, tcpLen);
          Net.putU16BE (fAddr, 50, cksum);  -- TCP checksum at 34+16
       end;
 
@@ -1314,9 +1472,6 @@ procedure main is
 
             when TCPSession.ACT_NOTIFY_CLOSED =>
                debugPrint ("TCP: connection closed" & LF);
-               if connIdx = selfTestConnIdx then
-                  tcpTestDone := True;
-               end if;
                completePendingRecvEOF (connIdx);
 
             when TCPSession.ACT_NOTIFY_ERROR =>
@@ -1431,7 +1586,7 @@ procedure main is
       Net.getIP  (pktBuf, 28, senderIP);
       Net.getIP  (pktBuf, 38, targetIP);
 
-      Net.arpUpdate (arpCache, senderIP, senderMAC);
+      Net.arpUpdate (interfaces (0).arpCache, senderIP, senderMAC);
 
       if oper = Net.ARP_REQUEST then
          debugPrint ("ARP: request from ");
@@ -1440,7 +1595,7 @@ procedure main is
          printIP (targetIP);
          debugPrint ("" & LF);
 
-         if targetIP = OUR_IP then
+         if findInterfaceForIP (targetIP) >= 0 then
             sendARPReply (senderMAC, senderIP);
          end if;
 
@@ -1450,6 +1605,14 @@ procedure main is
          debugPrint (" [");
          printMACAddr (senderMAC);
          debugPrint ("]" & LF);
+
+         --  If this is from our gateway, record the gateway MAC
+         for i in 0 .. numIfaces - 1 loop
+            if interfaces (i).gateway = senderIP then
+               interfaces (i).gwMAC := senderMAC;
+               debugPrint ("ARP: gateway MAC resolved" & LF);
+            end if;
+         end loop;
       end if;
    end handleARP;
 
@@ -1471,7 +1634,7 @@ procedure main is
       end loop;
 
       Net.putMAC   (fAddr, 0,  srcMAC);
-      Net.putMAC   (fAddr, 6,  ourMAC);
+      Net.putMAC   (fAddr, 6,  interfaces (0).mac);
       Net.putU16BE (fAddr, 12, Net.ETHERTYPE_IPV4);
 
       Net.putU8    (fAddr, 14, 16#45#);
@@ -1482,7 +1645,7 @@ procedure main is
       Net.putU8    (fAddr, 22, 64);
       Net.putU8    (fAddr, 23, Net.PROTO_ICMP);
       Net.putU16BE (fAddr, 24, 0);
-      Net.putIP    (fAddr, 26, OUR_IP);
+      Net.putIP    (fAddr, 26, interfaces (0).ipv4);
       Net.putIP    (fAddr, 30, srcIP);
 
       declare
@@ -1550,7 +1713,48 @@ procedure main is
          debugPrint (" seq=");
          printDec (Unsigned_32 (icmpSeq));
          debugPrint ("" & LF);
-         gotPingReply := True;
+
+         --  Check identifier (must be our 0xCB17)
+         declare
+            icmpId : constant Unsigned_16 :=
+               Net.getU16BE (pktBuf, icmpOff + 4);
+            nowMs  : constant Unsigned_64 :=
+               syscall (SYSCALL_GETTIME);
+         begin
+            if icmpId = 16#CB17# then
+               for i in pendingReqs'Range loop
+                  if pendingReqs (i).kind = PENDING_PING and
+                     pendingReqs (i).txid = icmpSeq
+                  then
+                     declare
+                        sendTs : constant Unsigned_64 := Unsigned_64 (
+                           To_Integer (pendingReqs (i).bufAddr));
+                        rtt : Unsigned_64 := 0;
+                        srcPacked : constant Unsigned_64 :=
+                           Net.packIPv4 (srcIP);
+                        replyMsg : constant Message :=
+                          (tag      => (label  => REPLY_OK,
+                                        length => 3,
+                                        flags  => 0,
+                                        badge  => 0),
+                           capBadge => 0,
+                           words    => (0 => Unsigned_64 (icmpSeq),
+                                        1 => srcPacked,
+                                        2 => (if nowMs > sendTs
+                                              then nowMs - sendTs
+                                              else 0),
+                                        3 => 0));
+                        ignore : Unsigned_64;
+                     begin
+                        ignore := reply (pendingReqs (i).sender,
+                                         replyMsg);
+                     end;
+                     pendingReqs (i).kind := PENDING_NONE;
+                     exit;
+                  end if;
+               end loop;
+            end if;
+         end;
       end if;
    end handleICMP;
 
@@ -1591,7 +1795,7 @@ procedure main is
       Net.getIP (pktBuf, ipOff + 16, dstIP);
       Net.getMAC (pktBuf, 6, srcMAC);
 
-      if dstIP /= OUR_IP then
+      if findInterfaceForIP (dstIP) < 0 then
          return;
       end if;
 
@@ -1626,62 +1830,8 @@ procedure main is
       end if;
    end handlePacket;
 
-   ---------------------------------------------------------------------------
-   --  runStateMachine - drive ARP resolution and initial ping
-   ---------------------------------------------------------------------------
-   procedure runStateMachine is
-      dnsMAC : Net.MACAddress;
-   begin
-      case netState is
-         when STATE_INIT =>
-            if driverPID /= NO_PROCESS then
-               sendGratuitousARP;
-               sendARPRequest (GATEWAY_IP);
-               netState := STATE_WAIT_ARP;
-            end if;
-
-         when STATE_WAIT_ARP =>
-            if Net.arpLookup (arpCache, GATEWAY_IP, gwMAC) then
-               sendICMPEchoRequest (GATEWAY_IP, gwMAC, pingSeq);
-               pingSeq := pingSeq + 1;
-               netState := STATE_PING_SENT;
-            end if;
-
-         when STATE_PING_SENT =>
-            if gotPingReply then
-               sendDNSQuery ("example.com", 16#CB17#);
-               netState := STATE_DNS_SENT;
-            end if;
-
-         when STATE_DNS_SENT =>
-            if dnsResolved then
-               --  DNS server MAC: same as gateway in QEMU user-mode
-               if not Net.arpLookup (arpCache, DNS_IP, dnsMAC) then
-                  dnsMAC := gwMAC;
-               end if;
-               selfTestConnIdx := tcpConnect (DNS_IP, dnsMAC, 53);
-               netState := STATE_TCP_TEST;
-            end if;
-
-         when STATE_TCP_TEST =>
-            --  Once established, send DNS query (handleTCP will close
-            --  after receiving the response data + FIN from server)
-            if selfTestConnIdx >= 0 and then
-               tcpConns (selfTestConnIdx).state =
-                  TCPSession.TCP_ESTABLISHED and then
-               not tcpQuerySent
-            then
-               sendTCPDNSQuery (selfTestConnIdx);
-               tcpQuerySent := True;
-            end if;
-            if tcpTestDone then
-               netState := STATE_RUNNING;
-            end if;
-
-         when STATE_RUNNING =>
-            null;
-      end case;
-   end runStateMachine;
+   --  State machine removed: netmgr now handles IP configuration.
+   --  Interface goes IF_DOWN -> IF_UP via OP_NET_CONFIGURE.
 
    ---------------------------------------------------------------------------
    --  findAppChannel - find or allocate app channel for a sender PID
@@ -2056,7 +2206,7 @@ procedure main is
       end if;
 
       --  All traffic goes through gateway MAC
-      connIdx := tcpConnect (dstIP, gwMAC, port);
+      connIdx := tcpConnect (dstIP, interfaces (0).gwMAC, port);
       if connIdx < 0 then
          replyError (snd);
          return;
@@ -2306,7 +2456,7 @@ procedure main is
             end if;
 
             channels (chIdx).remoteIP := dstIP;
-            connIdx := tcpConnect (dstIP, gwMAC, scheme.port);
+            connIdx := tcpConnect (dstIP, interfaces (0).gwMAC, scheme.port);
             if connIdx < 0 then
                channels (chIdx).kind := CHANNEL_NONE;
                replyError (snd);
@@ -2541,39 +2691,38 @@ procedure main is
    --  with the grant ID + our MAC address packed into a u64.
    ---------------------------------------------------------------------------
    procedure handleAttach (sender : ProcessID) is
-      ok      : Boolean;
+      ok    : Boolean;
+      ifIdx : Natural;
    begin
-      driverPID := sender;
+      --  Allocate an interface slot for this driver
+      if numIfaces >= MAX_INTERFACES then
+         debugPrint ("netstack: too many interfaces" & LF);
+         replyError (sender);
+         return;
+      end if;
+      ifIdx := numIfaces;
+      numIfaces := numIfaces + 1;
+      interfaces (ifIdx).driverPID := sender;
 
       --  Allocate shared packet buffer if not yet done
-      if packetBuf = System.Null_Address then
+      if interfaces (ifIdx).pktBuf = System.Null_Address then
          declare
             ret : Unsigned_64;
          begin
             ret := syscall (SYSCALL_SBRK, Unsigned_64 (PACKET_BUF_SIZE));
             if ret = Unsigned_64'Last then
                debugPrint ("netstack: sbrk failed for packet buffer" & LF);
-               declare
-                  replyMsg : constant Message :=
-                    (tag      => (label  => REPLY_ERR,
-                                  length => 0,
-                                  flags  => 0,
-                                  badge  => 0),
-                     capBadge => 0,
-                     words    => (others => 0));
-                  ignore : Unsigned_64;
-               begin
-                  ignore := reply (sender, replyMsg);
-               end;
+               replyError (sender);
+               numIfaces := numIfaces - 1;
                return;
             end if;
-            packetBuf := To_Address (Integer_Address (ret));
+            interfaces (ifIdx).pktBuf := To_Address (Integer_Address (ret));
          end;
 
          --  Zero the buffer manually (avoid memset)
          declare
             buf : array (0 .. PACKET_BUF_SIZE - 1) of Unsigned_8 with
-               Import, Address => packetBuf;
+               Import, Address => interfaces (ifIdx).pktBuf;
          begin
             for i in buf'Range loop
                buf (i) := 0;
@@ -2583,32 +2732,22 @@ procedure main is
 
       --  Create grant to the driver for our packet buffer
       createGrant (
-         grantee   => driverPID,
-         localAddr => packetBuf,
+         grantee   => interfaces (ifIdx).driverPID,
+         localAddr => interfaces (ifIdx).pktBuf,
          numPages  => PACKET_BUF_PAGES,
          readWrite => True,
-         grantId   => packetGrantId,
+         grantId   => interfaces (ifIdx).pktGrant,
          success   => ok);
 
       if not ok then
          debugPrint ("netstack: createGrant failed" & LF);
-         declare
-            replyMsg : constant Message :=
-              (tag      => (label  => REPLY_ERR,
-                            length => 0,
-                            flags  => 0,
-                            badge  => 0),
-               capBadge => 0,
-               words    => (others => 0));
-            ignore : Unsigned_64;
-         begin
-            ignore := reply (sender, replyMsg);
-         end;
+         replyError (sender);
+         numIfaces := numIfaces - 1;
          return;
       end if;
 
       debugPrint ("netstack: grant created, id=");
-      printDec (Unsigned_32 (packetGrantId));
+      printDec (Unsigned_32 (interfaces (ifIdx).pktGrant));
       debugPrint ("" & LF);
 
       --  Reply with grant ID and buffer size
@@ -2619,7 +2758,7 @@ procedure main is
                          flags  => 0,
                          badge  => 0),
             capBadge => 0,
-            words    => (0 => packetGrantId,
+            words    => (0 => interfaces (ifIdx).pktGrant,
                          1 => Unsigned_64 (PACKET_BUF_SIZE),
                          others => 0));
          ignore : Unsigned_64;
@@ -2628,7 +2767,7 @@ procedure main is
       end;
 
       debugPrint ("netstack: attached to driver pid=");
-      printDec (Unsigned_32 (driverPID));
+      printDec (Unsigned_32 (interfaces (ifIdx).driverPID));
       debugPrint ("" & LF);
    end handleAttach;
 
@@ -2638,12 +2777,19 @@ procedure main is
    --  The driver copied the packet into RX area of our grant buffer and
    --  sent the offset + length via sendEvent (non-blocking).
    ---------------------------------------------------------------------------
-   procedure handleNetRX (msg : Message) is
+   procedure handleNetRX (msg : Message; sender : ProcessID) is
       offset : constant Unsigned_64 := msg.words (0);
       len    : constant Unsigned_64 := msg.words (1);
       pktBuf : System.Address;
+      ifIdx  : Integer;
    begin
-      if packetBuf = System.Null_Address then
+      --  Find the interface this RX came from
+      ifIdx := findInterfaceByPID (sender);
+      if ifIdx < 0 then
+         return;
+      end if;
+
+      if interfaces (ifIdx).pktBuf = System.Null_Address then
          return;
       end if;
 
@@ -2655,7 +2801,7 @@ procedure main is
          return;
       end if;
 
-      pktBuf := packetBuf + Storage_Offset (offset);
+      pktBuf := interfaces (ifIdx).pktBuf + Storage_Offset (offset);
       handlePacket (pktBuf, Natural (len));
    end handleNetRX;
 
@@ -2711,7 +2857,6 @@ begin
       --  2. If no message but deferred TX pending, try to flush one frame
       if not found and deferredCount > 0 then
          if not flushOneDeferredTX then
-            --  Driver mailbox still full — yield and retry next iteration
             declare
                ignore : Unsigned_64;
             begin
@@ -2719,10 +2864,34 @@ begin
             end;
          end if;
 
-      --  3. If no message and no deferred TX, block for next message
+      --  3. If no message, check for expired pings before blocking
       elsif not found then
-         receive (sender, msg);
-         found := True;
+         declare
+            nowMs : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+            PING_TIMEOUT_MS : constant Unsigned_64 := 5000;
+         begin
+            --  Expire any timed-out pings before blocking
+            for i in pendingReqs'Range loop
+               if pendingReqs (i).kind = PENDING_PING then
+                  declare
+                     sendTs : constant Unsigned_64 := Unsigned_64 (
+                        To_Integer (pendingReqs (i).bufAddr));
+                  begin
+                     if nowMs > sendTs and
+                        nowMs - sendTs > PING_TIMEOUT_MS
+                     then
+                        replyError (pendingReqs (i).sender);
+                        pendingReqs (i).kind := PENDING_NONE;
+                     end if;
+                  end;
+               end if;
+            end loop;
+
+            --  Block until next message. ICMP replies arrive as
+            --  OP_NET_RX IPC from the driver, so we wake immediately.
+            receive (sender, msg);
+            found := True;
+         end;
       end if;
 
       --  4. Dispatch message
@@ -2731,31 +2900,33 @@ begin
             when OP_NET_ATTACH =>
                handleAttach (sender);
 
-               --  Extract MAC from the attach message words(0)
-               declare
-                  macPacked : constant Unsigned_64 := msg.words (0);
-               begin
-                  ourMAC (0) := Unsigned_8 (macPacked and 16#FF#);
-                  ourMAC (1) := Unsigned_8 (
-                     Shift_Right (macPacked, 8) and 16#FF#);
-                  ourMAC (2) := Unsigned_8 (
-                     Shift_Right (macPacked, 16) and 16#FF#);
-                  ourMAC (3) := Unsigned_8 (
-                     Shift_Right (macPacked, 24) and 16#FF#);
-                  ourMAC (4) := Unsigned_8 (
-                     Shift_Right (macPacked, 32) and 16#FF#);
-                  ourMAC (5) := Unsigned_8 (
-                     Shift_Right (macPacked, 40) and 16#FF#);
-               end;
+               --  Extract MAC from attach message into latest interface
+               if numIfaces > 0 then
+                  declare
+                     macPacked : constant Unsigned_64 := msg.words (0);
+                     idx : constant Natural := numIfaces - 1;
+                  begin
+                     interfaces (idx).mac (0) :=
+                        Unsigned_8 (macPacked and 16#FF#);
+                     interfaces (idx).mac (1) := Unsigned_8 (
+                        Shift_Right (macPacked, 8) and 16#FF#);
+                     interfaces (idx).mac (2) := Unsigned_8 (
+                        Shift_Right (macPacked, 16) and 16#FF#);
+                     interfaces (idx).mac (3) := Unsigned_8 (
+                        Shift_Right (macPacked, 24) and 16#FF#);
+                     interfaces (idx).mac (4) := Unsigned_8 (
+                        Shift_Right (macPacked, 32) and 16#FF#);
+                     interfaces (idx).mac (5) := Unsigned_8 (
+                        Shift_Right (macPacked, 40) and 16#FF#);
 
-               debugPrint ("netstack: attached, MAC=");
-               printMACAddr (ourMAC);
-               debugPrint ("" & LF);
-
-               runStateMachine;
+                     debugPrint ("netstack: attached, MAC=");
+                     printMACAddr (interfaces (idx).mac);
+                     debugPrint ("" & LF);
+                  end;
+               end if;
 
             when OP_NET_RX =>
-               handleNetRX (msg);
+               handleNetRX (msg, sender);
 
                --  Reply to the driver so it unblocks
                declare
@@ -2771,8 +2942,320 @@ begin
                   ignore := reply (sender, replyMsg);
                end;
 
-               --  Drive state machine after processing packets
-               runStateMachine;
+            --  Network management IPC (from netmgr)
+            when OP_NET_CONFIGURE =>
+               declare
+                  cfgIfIdx : constant Natural :=
+                     Natural (msg.words (0));
+                  addrPacked : constant Unsigned_64 := msg.words (1);
+                  maskPacked : constant Unsigned_64 := msg.words (2);
+                  gwPacked   : constant Unsigned_64 := msg.words (3);
+               begin
+                  if cfgIfIdx < numIfaces then
+                     interfaces (cfgIfIdx).ipv4 :=
+                        Net.unpackIPv4 (addrPacked);
+                     interfaces (cfgIfIdx).netmask :=
+                        Net.unpackIPv4 (maskPacked);
+                     interfaces (cfgIfIdx).gateway :=
+                        Net.unpackIPv4 (gwPacked);
+                     interfaces (cfgIfIdx).state := IF_UP;
+
+                     --  Install connected + default routes
+                     installConnectedRoute (cfgIfIdx);
+
+                     --  Send gratuitous ARP and ARP for gateway
+                     sendGratuitousARP;
+                     if interfaces (cfgIfIdx).gateway /=
+                        Net.IPv4Address'(others => 0)
+                     then
+                        sendARPRequest (interfaces (cfgIfIdx).gateway);
+                     end if;
+
+                     debugPrint ("netstack: if");
+                     printDec (Unsigned_32 (cfgIfIdx));
+                     debugPrint (" configured: ");
+                     printIP (interfaces (cfgIfIdx).ipv4);
+                     debugPrint ("" & LF);
+
+                     replyOKWord (sender, 0);
+                  else
+                     replyError (sender);
+                  end if;
+               end;
+
+            when OP_NET_SET_DNS =>
+               primaryDNS := Net.unpackIPv4 (msg.words (0));
+               if msg.words (1) /= 0 then
+                  secondaryDNS := Net.unpackIPv4 (msg.words (1));
+               end if;
+               debugPrint ("netstack: DNS set to ");
+               printIP (primaryDNS);
+               debugPrint ("" & LF);
+               replyOKWord (sender, 0);
+
+            when OP_NET_LIST_IF =>
+               replyOKWord (sender, Unsigned_64 (numIfaces));
+
+            when OP_NET_IF_DETAIL =>
+               declare
+                  reqIfIdx : constant Natural :=
+                     Natural (msg.words (0));
+               begin
+                  if reqIfIdx < numIfaces then
+                     declare
+                        ifc : InterfaceRecord renames
+                           interfaces (reqIfIdx);
+                        stateVal : Unsigned_64 :=
+                           (case ifc.state is
+                               when IF_DOWN => 0,
+                               when IF_UP => 1,
+                               when IF_CONFIGURING => 2);
+                        ipPacked : constant Unsigned_64 :=
+                           Net.packIPv4 (ifc.ipv4);
+                        maskPacked : constant Unsigned_64 :=
+                           Net.packIPv4 (ifc.netmask);
+                        gwPacked : constant Unsigned_64 :=
+                           Net.packIPv4 (ifc.gateway);
+                        macPacked : constant Unsigned_64 :=
+                           Unsigned_64 (ifc.mac (0)) or
+                           Shift_Left (Unsigned_64 (ifc.mac (1)), 8) or
+                           Shift_Left (Unsigned_64 (ifc.mac (2)), 16) or
+                           Shift_Left (Unsigned_64 (ifc.mac (3)), 24) or
+                           Shift_Left (Unsigned_64 (ifc.mac (4)), 32) or
+                           Shift_Left (Unsigned_64 (ifc.mac (5)), 40);
+                        dnsPri : constant Unsigned_64 :=
+                           Net.packIPv4 (primaryDNS);
+                        dnsSec : constant Unsigned_64 :=
+                           Net.packIPv4 (secondaryDNS);
+                        detailMsg : constant Message :=
+                          (tag      => (label  => REPLY_OK,
+                                        length => 4,
+                                        flags  => 0,
+                                        badge  => 0),
+                           capBadge => 0,
+                           words    => (
+                              0 => ipPacked or
+                                   Shift_Left (stateVal, 32),
+                              1 => maskPacked or
+                                   Shift_Left (gwPacked, 32),
+                              2 => macPacked,
+                              3 => dnsPri or
+                                   Shift_Left (dnsSec, 32)));
+                        ignore : Unsigned_64;
+                     begin
+                        ignore := reply (sender, detailMsg);
+                     end;
+                  else
+                     replyError (sender);
+                  end if;
+               end;
+
+            when OP_NET_ROUTE_LIST =>
+               declare
+                  startIdx : constant Natural :=
+                     Natural (msg.words (0));
+                  total  : Natural := 0;
+                  packed : array (0 .. 3) of Unsigned_64 := (others => 0);
+                  slot   : Natural := 0;
+                  nextStart : Natural := 0;
+               begin
+                  --  Count total active routes
+                  for i in routeTable'Range loop
+                     if routeTable (i).active then
+                        total := total + 1;
+                     end if;
+                  end loop;
+
+                  --  Pack up to 2 routes starting from startIdx
+                  declare
+                     seen : Natural := 0;
+                  begin
+                     for i in routeTable'Range loop
+                        if routeTable (i).active then
+                           if seen >= startIdx and slot < 2 then
+                              packed (slot * 2) :=
+                                 Net.packIPv4 (routeTable (i).dest) or
+                                 Shift_Left (Unsigned_64 (
+                                    routeTable (i).prefix), 32) or
+                                 Shift_Left (Unsigned_64 (
+                                    routeTable (i).ifIdx), 40) or
+                                 Shift_Left (Unsigned_64 (
+                                    routeTable (i).metric), 48);
+                              packed (slot * 2 + 1) :=
+                                 Net.packIPv4 (routeTable (i).gateway);
+                              slot := slot + 1;
+                              nextStart := seen + 1;
+                           end if;
+                           seen := seen + 1;
+                        end if;
+                     end loop;
+                  end;
+
+                  declare
+                     routeReply : constant Message :=
+                       (tag      => (label  => REPLY_OK,
+                                     length => Unsigned_8 (total),
+                                     flags  => Unsigned_8 (nextStart),
+                                     badge  => 0),
+                        capBadge => 0,
+                        words    => (0 => packed (0),
+                                     1 => packed (1),
+                                     2 => packed (2),
+                                     3 => packed (3)));
+                     ignore : Unsigned_64;
+                  begin
+                     ignore := reply (sender, routeReply);
+                  end;
+               end;
+
+            when OP_NET_PING =>
+               declare
+                  dstIP : constant Net.IPv4Address :=
+                     Net.unpackIPv4 (msg.words (0));
+                  seq : constant Unsigned_16 :=
+                     Unsigned_16 (msg.words (1) and 16#FFFF#);
+                  sendTs : constant Unsigned_64 := msg.words (2);
+                  isLoopback : Boolean := False;
+                  rIfIdx  : Integer;
+                  nextHop : Net.IPv4Address;
+                  dstMAC  : Net.MACAddress;
+                  ok : Boolean;
+               begin
+                  --  Loopback: 127.0.0.0/8 or own interface IP
+                  if dstIP (0) = 127 then
+                     isLoopback := True;
+                  else
+                     for i in 0 .. numIfaces - 1 loop
+                        if interfaces (i).ipv4 = dstIP and
+                           interfaces (i).state = IF_UP
+                        then
+                           isLoopback := True;
+                           exit;
+                        end if;
+                     end loop;
+                  end if;
+
+                  if isLoopback then
+                     --  Immediate reply with RTT=0
+                     declare
+                        nowMs : constant Unsigned_64 :=
+                           syscall (SYSCALL_GETTIME);
+                        rtt   : constant Unsigned_64 :=
+                           (if nowMs >= sendTs then nowMs - sendTs
+                            else 0);
+                        loopReply : Message :=
+                          (tag      => (label  => REPLY_OK,
+                                        length => 3,
+                                        flags  => 0,
+                                        badge  => 0),
+                           capBadge => 0,
+                           words    => (0 => Unsigned_64 (seq),
+                                        1 => msg.words (0),
+                                        2 => rtt,
+                                        others => 0));
+                        ignore : Unsigned_64;
+                     begin
+                        ignore := reply (sender, loopReply);
+                     end;
+                  else
+                     routeLookup (dstIP, rIfIdx, nextHop);
+                     if rIfIdx < 0 then
+                        replyError (sender);
+                     else
+                        --  Resolve MAC: ARP cache, fall back to gwMAC
+                        if not Net.arpLookup (
+                           interfaces (rIfIdx).arpCache, nextHop,
+                           dstMAC)
+                        then
+                           dstMAC := interfaces (rIfIdx).gwMAC;
+                        end if;
+
+                        ok := addPending (
+                           (kind       => PENDING_PING,
+                            sender     => sender,
+                            connIdx    => -1,
+                            channelIdx => -1,
+                            bufAddr    => To_Address (
+                               Integer_Address (sendTs)),
+                            bufOff     => 0,
+                            maxLen     => 0,
+                            txid       => seq,
+                            dstPort    => 0,
+                            replySlot  => 0));
+
+                        if ok then
+                           sendICMPEchoRequest (dstIP, dstMAC, seq,
+                                                rIfIdx);
+                        else
+                           replyError (sender);
+                        end if;
+                     end if;
+                  end if;
+               end;
+
+            when OP_NET_ROUTE_ADD =>
+               declare
+                  routeDest : constant Net.IPv4Address :=
+                     Net.unpackIPv4 (msg.words (0));
+                  routePrefix : constant Natural :=
+                     Natural (msg.words (1));
+                  routeGW : constant Net.IPv4Address :=
+                     Net.unpackIPv4 (msg.words (2));
+                  routeIF : constant Natural :=
+                     Natural (msg.words (3));
+                  added : Boolean := False;
+               begin
+                  for i in routeTable'Range loop
+                     if not routeTable (i).active then
+                        routeTable (i) :=
+                          (active  => True,
+                           dest    => routeDest,
+                           prefix  => routePrefix,
+                           gateway => routeGW,
+                           ifIdx   => routeIF,
+                           metric  => 0);
+                        added := True;
+                        exit;
+                     end if;
+                  end loop;
+                  if added then
+                     replyOKWord (sender, 0);
+                  else
+                     replyError (sender);
+                  end if;
+               end;
+
+            when OP_NET_ROUTE_DEL =>
+               declare
+                  routeDest : constant Net.IPv4Address :=
+                     Net.unpackIPv4 (msg.words (0));
+                  routePrefix : constant Natural :=
+                     Natural (msg.words (1));
+                  deleted : Boolean := False;
+               begin
+                  for i in routeTable'Range loop
+                     if routeTable (i).active and then
+                        routeTable (i).dest = routeDest and then
+                        routeTable (i).prefix = routePrefix
+                     then
+                        routeTable (i).active := False;
+                        deleted := True;
+                        exit;
+                     end if;
+                  end loop;
+                  if deleted then
+                     replyOKWord (sender, 0);
+                  else
+                     replyError (sender);
+                  end if;
+               end;
+
+            when OP_NET_OPEN_RAW =>
+               --  Open raw UDP channel (for DHCP etc.)
+               --  words(0)=ifIdx, words(1)=proto, words(2)=port
+               --  For now, just acknowledge (raw channel handled by
+               --  regular packet dispatch with broadcast acceptance)
+               replyOKWord (sender, 0);
 
             when OP_NET_RESOLVE =>
                handleAppResolve (sender, msg);

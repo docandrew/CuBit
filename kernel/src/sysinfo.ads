@@ -58,6 +58,8 @@ package Sysinfo is
     DRIVER_HDA      : constant DriverID := 8;
     DRIVER_MIXER    : constant DriverID := 9;
     DRIVER_MOUSE    : constant DriverID := 10;
+    DRIVER_CONFIG   : constant DriverID := 11;
+    DRIVER_NETMGR   : constant DriverID := 12;
 
     -- List of processes registered as a particular driver.
     type DriverList is array (DriverID) of Process.ProcessID;

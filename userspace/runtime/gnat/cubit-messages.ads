@@ -105,6 +105,7 @@ package CuBit.Messages is
    CAP_SLOT_PROCMGR   : constant Unsigned_64 := 12;
    CAP_SLOT_MIXER     : constant Unsigned_64 := 14;
    CAP_SLOT_MIXER_NTF : constant Unsigned_64 := 15;
+   CAP_SLOT_CONFIG    : constant Unsigned_64 := 20;
 
    subtype CapabilitySlot is Unsigned_64 range 0 .. 63;
 
@@ -133,6 +134,8 @@ package CuBit.Messages is
    DRIVER_HDA      : constant Unsigned_64 := 8;
    DRIVER_MIXER    : constant Unsigned_64 := 9;
    DRIVER_MOUSE    : constant Unsigned_64 := 10;
+   DRIVER_CONFIG   : constant Unsigned_64 := 11;
+   DRIVER_NETMGR   : constant Unsigned_64 := 12;
 
    --  IPC Message Types (matching kernel Process.Message)
 

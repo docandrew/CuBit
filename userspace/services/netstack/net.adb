@@ -247,4 +247,56 @@ package body Net is
       return not Unsigned_16 (sum and 16#FFFF#);
    end transportChecksum;
 
+   ---------------------------------------------------------------------------
+   --  packIPv4
+   ---------------------------------------------------------------------------
+   function packIPv4 (addr : IPv4Address) return Unsigned_64 is
+   begin
+      return Unsigned_64 (addr (0)) or
+             Shift_Left (Unsigned_64 (addr (1)), 8) or
+             Shift_Left (Unsigned_64 (addr (2)), 16) or
+             Shift_Left (Unsigned_64 (addr (3)), 24);
+   end packIPv4;
+
+   ---------------------------------------------------------------------------
+   --  unpackIPv4
+   ---------------------------------------------------------------------------
+   function unpackIPv4 (packed : Unsigned_64) return IPv4Address is
+   begin
+      return (Unsigned_8 (packed and 16#FF#),
+              Unsigned_8 (Shift_Right (packed, 8) and 16#FF#),
+              Unsigned_8 (Shift_Right (packed, 16) and 16#FF#),
+              Unsigned_8 (Shift_Right (packed, 24) and 16#FF#));
+   end unpackIPv4;
+
+   ---------------------------------------------------------------------------
+   --  matchesPrefix
+   ---------------------------------------------------------------------------
+   function matchesPrefix (ip      : IPv4Address;
+                           network : IPv4Address;
+                           prefix  : Natural) return Boolean is
+      ipPacked  : Unsigned_32;
+      netPacked : Unsigned_32;
+      mask      : Unsigned_32;
+   begin
+      if prefix = 0 then
+         return True;
+      end if;
+      if prefix > 32 then
+         return False;
+      end if;
+
+      ipPacked := Shift_Left (Unsigned_32 (ip (0)), 24) or
+                  Shift_Left (Unsigned_32 (ip (1)), 16) or
+                  Shift_Left (Unsigned_32 (ip (2)), 8) or
+                  Unsigned_32 (ip (3));
+      netPacked := Shift_Left (Unsigned_32 (network (0)), 24) or
+                   Shift_Left (Unsigned_32 (network (1)), 16) or
+                   Shift_Left (Unsigned_32 (network (2)), 8) or
+                   Unsigned_32 (network (3));
+
+      mask := Shift_Left (16#FFFF_FFFF#, 32 - prefix);
+      return (ipPacked and mask) = (netPacked and mask);
+   end matchesPrefix;
+
 end Net;

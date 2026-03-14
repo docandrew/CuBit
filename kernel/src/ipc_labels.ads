@@ -77,6 +77,17 @@ is
     OP_NET_SHUT       : constant Unsigned_32 := 16#0423#;
     OP_NET_BIND       : constant Unsigned_32 := 16#0424#;
     OP_NET_ACCEPT     : constant Unsigned_32 := 16#0425#;
+    OP_NET_OPEN_RAW   : constant Unsigned_32 := 16#0426#;
+
+    -- Network management operations (netmgr -> netstack)
+    OP_NET_CONFIGURE  : constant Unsigned_32 := 16#0430#;
+    OP_NET_SET_DNS    : constant Unsigned_32 := 16#0432#;
+    OP_NET_ROUTE_ADD  : constant Unsigned_32 := 16#0433#;
+    OP_NET_ROUTE_DEL  : constant Unsigned_32 := 16#0434#;
+    OP_NET_LIST_IF    : constant Unsigned_32 := 16#0435#;
+    OP_NET_IF_DETAIL  : constant Unsigned_32 := 16#0436#;
+    OP_NET_ROUTE_LIST : constant Unsigned_32 := 16#0437#;
+    OP_NET_PING       : constant Unsigned_32 := 16#0438#;
 
     -- Audio operations (app ↔ mixer)
     OP_AUDIO_OPEN     : constant Unsigned_32 := 16#0500#;

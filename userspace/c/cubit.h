@@ -130,6 +130,7 @@ typedef long                ssize_t;
 #define CAP_SLOT_ATA            10
 #define CAP_SLOT_MIXER          14
 #define CAP_SLOT_MIXER_NTF      15
+#define CAP_SLOT_CONFIG         20
 
 /* Capability minting (for process managers) */
 #define SYSCALL_MINT_CAP        72
@@ -137,6 +138,18 @@ typedef long                ssize_t;
 
 /* Driver registration */
 #define SYSCALL_REGISTER_DRIVER 2000
+
+/* Sysinfo queries */
+#define SYSINFO_REGISTERED_DRIVER 2000
+#define DRIVER_CONFIG             11
+
+/* Config store IPC labels */
+#define OP_CONFIG_GET     0x0600
+#define OP_CONFIG_SET     0x0601
+#define OP_CONFIG_DELETE  0x0602
+#define OP_CONFIG_LIST    0x0603
+#define OP_CONFIG_LOAD    0x0604
+#define OP_CONFIG_SAVE    0x0605
 
 /*---------------------------------------------------------------------------
  * ELF Capability Manifest (.cubit.caps section)
@@ -182,6 +195,11 @@ typedef long                ssize_t;
 #define CUBIT_ACL_WRITE   0x02
 #define CUBIT_ACL_EXEC    0x04
 #define CUBIT_ACL_CREATE  0x08
+
+/* Service identifiers for .cubit.access section routing */
+#define CUBIT_SERVICE_FS      0
+#define CUBIT_SERVICE_CONFIG  1
+#define CUBIT_SERVICE_SECRETS 2
 
 #define CUBIT_MANIFEST_FRAMEBUFFER(slot_num) \
     static const unsigned char __cubit_manifest[] \
@@ -316,5 +334,24 @@ static inline void cubit_puts(const char *s)
     while (s[len]) len++;
     cubit_write(STDOUT, s, len);
 }
+
+/* Config store client API */
+int cubit_config_get(const char *key, void *buf,
+                     size_t buf_size, size_t *out_len);
+int cubit_config_set(const char *key, const void *value,
+                     size_t value_len);
+int cubit_config_delete(const char *key);
+int cubit_config_list(const char *prefix, char *buf,
+                      size_t buf_size, int *out_count);
+
+/* Scheme resolution */
+typedef struct {
+    uint64_t driver_id;
+    uint64_t cap_slot;
+    uint64_t pid;
+    int      found;
+} cubit_scheme_info_t;
+
+int cubit_resolve_scheme(const char *name, cubit_scheme_info_t *info);
 
 #endif /* CUBIT_H */
