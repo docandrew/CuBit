@@ -1044,7 +1044,7 @@ is
                            localAddr : in  System.Address;
                            numPages  : in  Natural;
                            perm      : in  GrantPermission;
-                           id        : out GrantID;
+                           id        : out Natural;
                            success   : out Boolean)
         with SPARK_Mode => On
     is
@@ -1054,6 +1054,12 @@ is
         flags    : Unsigned_64;
         ok       : Boolean;
         slotFound : Boolean := False;
+        granterSlot : GrantID := 0;
+
+        --  Globally unique grant ID: granterPID * MAX_GRANTS + granterSlot.
+        --  This ensures each grant maps to a unique address in the grantee,
+        --  even when multiple granters create grants to the same grantee.
+        globalId : Natural;
 
         procedure mapPageInst is new Virtmem.mapPage (BuddyAllocator.allocFrame);
     begin
@@ -1078,11 +1084,11 @@ is
             return;
         end if;
 
-        -- Find a free grant slot
+        -- Find a free grant slot in granter's array
         for i in GrantID loop
             if not proctab(pid).grants(i).active then
-                id        := i;
-                slotFound := True;
+                granterSlot := i;
+                slotFound   := True;
                 exit;
             end if;
         end loop;
@@ -1090,6 +1096,10 @@ is
         if not slotFound then
             return;
         end if;
+
+        --  Compute globally unique ID: each granter PID gets its own
+        --  region in the grantee's address space.
+        globalId := Natural (pid) * MAX_GRANTS_PER_PROCESS + granterSlot;
 
         -- Determine permission flags
         if perm = GRANT_READWRITE then
@@ -1110,7 +1120,7 @@ is
                 -- Page not mapped in granter's space — roll back
                 for j in 0 .. i - 1 loop
                     granteeVirt := GRANT_REGION_BASE +
-                        Integer_Address (id) * GRANT_SLOT_SIZE +
+                        Integer_Address (globalId) * GRANT_SLOT_SIZE +
                         Integer_Address (j) * Integer_Address (Virtmem.PAGE_SIZE);
 
                     Virtmem.unmapPage (
@@ -1123,7 +1133,7 @@ is
 
             -- Calculate target virtual address in grantee's space
             granteeVirt := GRANT_REGION_BASE +
-                Integer_Address (id) * GRANT_SLOT_SIZE +
+                Integer_Address (globalId) * GRANT_SLOT_SIZE +
                 Integer_Address (i) * Integer_Address (Virtmem.PAGE_SIZE);
 
             -- Map the physical page into grantee's address space
@@ -1138,7 +1148,7 @@ is
                 -- Roll back previously mapped pages
                 for j in 0 .. i - 1 loop
                     granteeVirt := GRANT_REGION_BASE +
-                        Integer_Address (id) * GRANT_SLOT_SIZE +
+                        Integer_Address (globalId) * GRANT_SLOT_SIZE +
                         Integer_Address (j) * Integer_Address (Virtmem.PAGE_SIZE);
 
                     Virtmem.unmapPage (
@@ -1151,18 +1161,21 @@ is
         end loop;
 
         -- Record grant metadata
-        proctab(pid).grants(id) := (
+        proctab(pid).grants(granterSlot) := (
             active      => True,
             granterPID  => pid,
             granteePID  => grantee,
             granterAddr => localAddr,
             granteeAddr => To_Address (
                 GRANT_REGION_BASE +
-                Integer_Address (id) * GRANT_SLOT_SIZE),
+                Integer_Address (globalId) * GRANT_SLOT_SIZE),
             numPages    => numPages,
             permission  => perm
         );
 
+        --  Return globally unique ID for both address computation
+        --  and revocation.
+        id      := globalId;
         success := True;
     end createGrant;
 
@@ -1238,6 +1251,7 @@ is
                             myP4    => addrtab(proctab(g.granteePID).pgTable),
                             success => ok);
                     end loop;
+
                 end if;
 
                 proctab(pid).grants(i) := (active => False, others => <>);

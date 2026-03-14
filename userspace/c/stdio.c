@@ -16,8 +16,8 @@
  */
 #include "cubit.h"
 
-/* Filesystem server PID (used for grants, must match kernel config.ads) */
-#define FS_SERVER_PID   10
+/* Grants now use SYSCALL_GRANT_VIA_CAP with CAP_SLOT_FS instead of a
+ * hardcoded PID, so the FS server can run at any PID. */
 
 /* IPC operation labels (must match kernel/src/ipc_labels.ads) */
 #define OP_OPEN     0x0001
@@ -67,7 +67,8 @@ typedef struct __attribute__((packed)) {
 } ipc_message_t;
 
 /*
- * FILE structure
+ * FILE structure — includes a write buffer to batch small writes into
+ * single IPC calls to the filesystem server.
  */
 struct _FILE {
     int      active;        /* 1 if this entry is in use */
@@ -75,6 +76,8 @@ struct _FILE {
     uint64_t grant_id;      /* grant ID for data buffer */
     void    *grant_buf;     /* local address of grant buffer */
     uint64_t offset;        /* current file position */
+    int      writable;      /* 1 if opened for writing */
+    size_t   wbuf_pos;      /* bytes buffered for writing */
 };
 
 typedef struct _FILE FILE;
@@ -110,6 +113,39 @@ static int fs_call(ipc_message_t *msg)
 }
 
 /*
+ * flush_write_buf - Flush buffered write data to the FS server.
+ * Returns 0 on success, -1 on error.
+ */
+static int flush_write_buf(FILE *f)
+{
+    if (f->wbuf_pos == 0)
+        return 0;
+
+    /* Data is already in grant_buf at offset 0..wbuf_pos-1 */
+    ipc_message_t msg;
+    msg.tag.label  = OP_WRITE;
+    msg.tag.length = 3;
+    msg.tag.flags  = 0;
+    msg.tag.badge  = 0;
+    msg.words[0] = (uint64_t)f->handle;
+    msg.words[1] = f->grant_id;
+    msg.words[2] = f->wbuf_pos;
+    msg.words[3] = 0;
+
+    if (fs_call(&msg) < 0)
+        return -1;
+
+    if (msg.tag.label != REPLY_OK)
+        return -1;
+
+    uint64_t bytes_written = msg.words[0];
+    f->offset += bytes_written;
+    f->wbuf_pos = 0;
+
+    return (bytes_written > 0) ? 0 : -1;
+}
+
+/*
  * fopen - Open a file on the filesystem server
  *
  * Sends the full path (including any @scheme: prefix) to the FS server
@@ -117,10 +153,22 @@ static int fs_call(ipc_message_t *msg)
  */
 FILE *fopen(const char *path, const char *mode)
 {
-    (void)mode;  /* mode ignored for now (read-only FS) */
-
     if (!path)
         return NULL;
+
+    /* Parse mode string into open flags */
+    uint64_t flags = 0;
+    int writable = 0;
+    if (mode) {
+        if (mode[0] == 'w') {
+            flags = O_WRONLY | O_CREAT | O_TRUNC;
+            writable = 1;
+        } else if (mode[0] == 'a') {
+            flags = O_WRONLY | O_CREAT;
+            writable = 1;
+        }
+        /* 'r' (default) = flags 0 = read-only open */
+    }
 
     /* Find a free file table entry */
     int slot = -1;
@@ -140,8 +188,8 @@ FILE *fopen(const char *path, const char *mode)
     if (!f->grant_buf)
         return NULL;
 
-    /* Create a read-write grant to the FS server */
-    long gid = syscall4(SYSCALL_GRANT, FS_SERVER_PID,
+    /* Create a read-write grant to the FS server via its cap slot */
+    long gid = syscall4(SYSCALL_GRANT_VIA_CAP, CAP_SLOT_FS,
                          f->grant_buf, GRANT_BUF_PAGES, GRANT_READWRITE);
     if (gid == (long)(-1UL)) {
         return NULL;
@@ -162,7 +210,7 @@ FILE *fopen(const char *path, const char *mode)
     msg.tag.badge  = 0;
     msg.words[0] = f->grant_id;    /* grant_id (where path is) */
     msg.words[1] = pathlen;        /* path length */
-    msg.words[2] = 0;              /* flags (unused) */
+    msg.words[2] = flags;          /* open flags (O_CREAT, O_TRUNC, etc.) */
     msg.words[3] = 0;
 
     if (fs_call(&msg) < 0) {
@@ -179,6 +227,8 @@ FILE *fopen(const char *path, const char *mode)
     f->handle = (int)msg.words[0];
     f->offset = 0;
     f->active = 1;
+    f->writable = writable;
+    f->wbuf_pos = 0;
 
     return f;
 }
@@ -242,7 +292,9 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream)
 /*
  * fwrite - Write data to an open file
  *
- * Copies data into the grant buffer and sends OP_WRITE to the server.
+ * Buffers data in the grant buffer and flushes when full or on fclose.
+ * This batches many small writes (common in save games) into single
+ * IPC calls to the filesystem server.
  */
 size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
 {
@@ -261,46 +313,29 @@ size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
     if (total == 0)
         return 0;
 
-    size_t bytes_copied = 0;
+    size_t bytes_consumed = 0;
     const char *src = (const char *)ptr;
 
-    while (bytes_copied < total) {
-        /* Write in chunks that fit in the grant buffer */
-        size_t chunk = total - bytes_copied;
-        if (chunk > GRANT_BUF_SIZE)
-            chunk = GRANT_BUF_SIZE;
+    while (bytes_consumed < total) {
+        size_t space = GRANT_BUF_SIZE - stream->wbuf_pos;
+        size_t chunk = total - bytes_consumed;
+        if (chunk > space)
+            chunk = space;
 
-        /* Copy data into grant buffer */
-        memcpy(stream->grant_buf, src + bytes_copied, chunk);
+        /* Copy into write buffer (which IS the grant buffer) */
+        memcpy((char *)stream->grant_buf + stream->wbuf_pos,
+               src + bytes_consumed, chunk);
+        stream->wbuf_pos += chunk;
+        bytes_consumed += chunk;
 
-        ipc_message_t msg;
-        msg.tag.label  = OP_WRITE;
-        msg.tag.length = 3;
-        msg.tag.flags  = 0;
-        msg.tag.badge  = 0;
-        msg.words[0] = (uint64_t)stream->handle;
-        msg.words[1] = stream->grant_id;
-        msg.words[2] = chunk;
-        msg.words[3] = 0;
-
-        if (fs_call(&msg) < 0)
-            break;
-
-        if (msg.tag.label != REPLY_OK)
-            break;
-
-        uint64_t bytes_written = msg.words[0];
-        if (bytes_written == 0)
-            break;
-
-        bytes_copied += (size_t)bytes_written;
-        stream->offset += bytes_written;
-
-        if (bytes_written < chunk)
-            break;  /* Short write */
+        /* Flush when buffer is full */
+        if (stream->wbuf_pos >= GRANT_BUF_SIZE) {
+            if (flush_write_buf(stream) < 0)
+                break;
+        }
     }
 
-    return bytes_copied / size;
+    return bytes_consumed / size;
 }
 
 /*
@@ -310,6 +345,10 @@ int fseek(FILE *stream, long offset, int whence)
 {
     if (!stream || !stream->active)
         return -1;
+
+    /* Flush any buffered writes before seeking */
+    if (stream->wbuf_pos > 0)
+        flush_write_buf(stream);
 
     uint64_t w;
     switch (whence) {
@@ -346,7 +385,7 @@ long ftell(FILE *stream)
 {
     if (!stream || !stream->active)
         return -1;
-    return (long)stream->offset;
+    return (long)(stream->offset + stream->wbuf_pos);
 }
 
 /*
@@ -356,6 +395,10 @@ int fclose(FILE *stream)
 {
     if (!stream || !stream->active)
         return -1;
+
+    /* Flush any buffered writes */
+    if (stream->wbuf_pos > 0)
+        flush_write_buf(stream);
 
     ipc_message_t msg;
     msg.tag.label  = OP_CLOSE;

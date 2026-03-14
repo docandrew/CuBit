@@ -36,8 +36,8 @@ procedure main is
    DRIVER_CONFIG   : constant Unsigned_64 := 11;
    DRIVER_NETMGR   : constant Unsigned_64 := 12;
 
-   --  Well-known filesystem server PID (must match kernel config)
-   SERVICE_FILESYSTEM_PID : constant Unsigned_64 := 10;
+   --  (SERVICE_FILESYSTEM_PID removed: now uses dynamic PID assignment
+   --  and kernel well-known service registry)
 
    --  Address where kernel mapped the initrd into our space
    INITRD_BASE : constant Unsigned_64 := 16#0000_5000_0000_0000#;
@@ -756,13 +756,17 @@ begin
    scanPCI;
 
    -----------------------------------------------------------------------
-   -- Phase 1: Spawn filesystem server (well-known PID)
+   -- Phase 1: Spawn filesystem server (auto-assign PID)
    -----------------------------------------------------------------------
-   filesystemPID := spawnFromCpio ("filesystem.svc", 5,
-                                   SERVICE_FILESYSTEM_PID);
+   filesystemPID := spawnFromCpio ("filesystem.svc", 5, 0);
    if filesystemPID = reterr then
       filesystemPID := 0;
       debugPrint ("devmgr: filesystem.svc spawn failed" & LF);
+   end if;
+
+   --  Register FS PID in kernel well-known service registry
+   if filesystemPID /= 0 then
+      ret := setWellKnown (ROLE_FILESYSTEM, filesystemPID);
    end if;
 
    if filesystemPID /= 0 then

@@ -178,14 +178,22 @@ is
             object   => (ref => pid, param => 0),
             gen      => gen);
 
-        -- Slot 1: Filesystem server endpoint
-        table(1) := (
-            capType  => CAP_ENDPOINT,
-            rights   => READ_WRITE,
-            capBadge => pid,
-            object   => (ref => Unsigned_64(Config.SERVICE_FILESYSTEM_PID),
-                         param => 0),
-            gen      => gen);
+        -- Slot 1: Filesystem server endpoint (from well-known registry)
+        if Config.wellKnownServices(Config.ROLE_FILESYSTEM).pid /=
+           Config.NO_PROCESS_ID
+        then
+            table(1) := (
+                capType  => CAP_ENDPOINT,
+                rights   => READ_WRITE,
+                capBadge => pid,
+                object   => (ref => Unsigned_64 (
+                                Config.wellKnownServices(
+                                    Config.ROLE_FILESYSTEM).pid),
+                             param => 0),
+                gen      => Generation (
+                                Config.wellKnownServices(
+                                    Config.ROLE_FILESYSTEM).gen));
+        end if;
 
         -- Slot 2: Reserved (formerly kernel keyboard endpoint)
 

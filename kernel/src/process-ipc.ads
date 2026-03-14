@@ -166,7 +166,7 @@ is
                            localAddr : in  System.Address;
                            numPages  : in  Natural;
                            perm      : in  GrantPermission;
-                           id        : out GrantID;
+                           id        : out Natural;
                            success   : out Boolean)
         with SPARK_Mode => On;
 

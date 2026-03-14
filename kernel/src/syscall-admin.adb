@@ -12,6 +12,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with acpi;
 with Capabilities;
 with Capabilities.IRQ;
+with Config;
 with Capabilities.Operations;
 with InterruptNumbers;
 with IPC_Labels;
@@ -965,6 +966,104 @@ package body Syscall.Admin is
             retval := 0;
         end if;
     end handleResume;
+
+    ---------------------------------------------------------------------------
+    -- handleKill
+    ---------------------------------------------------------------------------
+    procedure handleKill (callerPID : Process.ProcessID;
+                          arg0      : Unsigned_64;
+                          retval    : out Unsigned_64) with
+        SPARK_Mode => Off
+    is
+        use type Process.ProcessState;
+
+        targetPID : Process.ProcessID;
+    begin
+        if arg0 > Unsigned_64 (Process.ProcessID'Last) or
+           arg0 = 0
+        then
+            println ("KILL: invalid target PID");
+            retval := reterr;
+            return;
+        end if;
+
+        targetPID := Process.ProcessID (arg0);
+
+        if Process.proctab(targetPID).state = Process.INVALID then
+            println ("KILL: target not active");
+            retval := reterr;
+            return;
+        end if;
+
+        if not hasCapProcessFor (callerPID, targetPID,
+                                 Capabilities.RIGHT_WRITE)
+        then
+            println ("KILL: denied, no RIGHT_WRITE");
+            retval := reterr;
+            return;
+        end if;
+
+        if targetPID = callerPID then
+            -- Self-kill: use kill which enters scheduler (never returns)
+            Process.kill (targetPID);
+            -- unreachable
+            retval := 0;
+        else
+            -- Kill another process: terminate and continue
+            Process.killProcess (targetPID);
+            print ("KILL: terminated PID ");
+            println (Integer (targetPID));
+            retval := 0;
+        end if;
+    end handleKill;
+
+    ---------------------------------------------------------------------------
+    -- handleSetWellKnown
+    -- arg0 = role (ServiceRole), arg1 = PID to register
+    ---------------------------------------------------------------------------
+    procedure handleSetWellKnown (callerPID : Process.ProcessID;
+                                   arg0, arg1 : Unsigned_64;
+                                   retval     : out Unsigned_64) with
+        SPARK_Mode => Off
+    is
+        use type Process.ProcessState;
+
+        targetPID : Process.ProcessID;
+    begin
+        if arg0 > Unsigned_64 (Config.ServiceRole'Last) then
+            println ("SET_WELL_KNOWN: invalid role");
+            retval := reterr;
+            return;
+        end if;
+
+        if arg1 > Unsigned_64 (Process.ProcessID'Last) or
+           arg1 = 0
+        then
+            println ("SET_WELL_KNOWN: invalid PID");
+            retval := reterr;
+            return;
+        end if;
+
+        targetPID := Process.ProcessID (arg1);
+
+        if not hasCapProcessFor (callerPID, targetPID,
+                                 Capabilities.RIGHT_GRANT)
+        then
+            println ("SET_WELL_KNOWN: denied, no RIGHT_GRANT");
+            retval := reterr;
+            return;
+        end if;
+
+        Config.wellKnownServices (Config.ServiceRole (arg0)) :=
+            (pid => Natural (targetPID),
+             gen => Process.proctab(targetPID).capGeneration);
+
+        print ("SET_WELL_KNOWN: role ");
+        print (Integer (arg0));
+        print (" => PID ");
+        println (Integer (targetPID));
+        retval := 0;
+    end handleSetWellKnown;
 
     ---------------------------------------------------------------------------
     -- handleEnableIrq

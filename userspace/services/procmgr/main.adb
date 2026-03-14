@@ -50,9 +50,6 @@ procedure main is
    SERVICE_FS     : constant Unsigned_8 := 0;
    SERVICE_CONFIG : constant Unsigned_8 := 1;
 
-   --  FS server PID (for grant creation)
-   fsPID : ProcessID := NO_PROCESS;
-
    --  ELF buffer (also serves as grant buffer to FS for zero-copy reads)
    elfBuf : System.Address := System.Null_Address;
 
@@ -136,8 +133,8 @@ procedure main is
       --  Revoke old grant and create a larger one
       revokeGrant (fsGrantId);
 
-      createGrant (
-         grantee   => fsPID,
+      createGrantViaCap (
+         slot      => CAP_SLOT_FS_LOCAL,
          localAddr => elfBuf,
          numPages  => newPages,
          readWrite => True,
@@ -259,11 +256,13 @@ procedure main is
    --  Capability type position values (must match kernel CapabilityType enum)
    CAP_TYPE_ENDPOINT      : constant Unsigned_64 := 1;
    CAP_TYPE_NOTIFICATION  : constant Unsigned_64 := 2;
+   CAP_TYPE_PROCESS       : constant Unsigned_64 := 6;
    CAP_TYPE_DEVICE_MEM    : constant Unsigned_64 := 7;
 
    --  Well-known slots for input focus capabilities
    CAP_SLOT_KBD_FOCUS     : constant Unsigned_64 := 13;
    CAP_SLOT_MOUSE_FOCUS   : constant Unsigned_64 := 16;
+   CAP_SLOT_PROCESS_MGMT  : constant Unsigned_64 := 5;
 
    ---------------------------------------------------------------------------
    --  readU16 - read a little-endian Unsigned_16 from elfBuf at byte offset
@@ -805,6 +804,15 @@ procedure main is
                             0,                -- param
                             2,                -- rights = RIGHT_WRITE
                             CAP_SLOT_MOUSE_FOCUS);
+         --  Mint CAP_PROCESS(ref=0 wildcard, RIGHT_READ+RIGHT_WRITE)
+         --  so spawned apps can kill child processes.
+         ignore := syscall (SYSCALL_MINT_CAP,
+                            newPID,
+                            CAP_TYPE_PROCESS,
+                            0,                -- ref = 0 (wildcard)
+                            0,                -- param
+                            3,                -- rights = READ+WRITE
+                            CAP_SLOT_PROCESS_MGMT);
       end;
 
       --  Parse .cubit.access and send ACLs to FS server (or wildcard)
@@ -1079,14 +1087,13 @@ begin
    end;
 
    --  Grant elfBuf directly to FS server for zero-copy reads.
-   --  FS is at well-known PID 10 (Config.SERVICE_FILESYSTEM_PID).
-   fsPID := 10;
-
+   --  Use createGrantViaCap with our FS endpoint cap (slot 1) to avoid
+   --  hardcoding the FS server PID.
    declare
       ok : Boolean;
    begin
-      createGrant (
-         grantee   => fsPID,
+      createGrantViaCap (
+         slot      => CAP_SLOT_FS_LOCAL,
          localAddr => elfBuf,
          numPages  => INITIAL_BUF_PAGES,
          readWrite => True,
@@ -1094,7 +1101,7 @@ begin
          success   => ok);
 
       if not ok then
-         debugPrint ("procmgr: createGrant to FS failed" & LF);
+         debugPrint ("procmgr: createGrantViaCap to FS failed" & LF);
          declare
             ignore : Unsigned_64;
          begin

@@ -106,7 +106,9 @@ begin
 
       case msg.tag.label is
          when OP_AUDIO_HW_INIT =>
-            --  Mixer is initializing us (redundant since we self-init)
+            --  words(0) = staging grant ID
+            HDA.stagingBase := HDA.GRANT_REGION_BASE +
+               msg.words (0) * HDA.GRANT_SLOT_SIZE;
             sendReply (from, REPLY_OK);
 
          when OP_AUDIO_HW_START =>

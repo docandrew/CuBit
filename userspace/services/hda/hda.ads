@@ -261,6 +261,9 @@ package HDA is
    codecFound  : Boolean := False;
    codecVendor : Unsigned_32 := 0;
 
+   --  Staging buffer base address in grant region (set by OP_AUDIO_HW_INIT)
+   stagingBase : Unsigned_64 := GRANT_REGION_BASE;
+
    --  Discovered output path
    dacNID      : Unsigned_8 := 0;
    pinNID      : Unsigned_8 := 0;

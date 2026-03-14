@@ -153,6 +153,12 @@ package Ext2 is
       inodeNum : Unsigned_32;
       ino    : out Inode);
 
+   --  Write an inode back to disk
+   procedure writeInode
+     (fs       : Filesystem;
+      inodeNum : Unsigned_32;
+      ino      : Inode);
+
    --  Look up a filename in a directory inode, return the inode number.
    --  Returns 0 if not found.
    function lookupInDir
@@ -193,13 +199,84 @@ package Ext2 is
       len    : Storage_Count);
 
    --  Write file data to an inode starting at the given offset.
-   --  Overwrites existing allocated blocks only (no file growth).
-   --  Returns the number of bytes actually written.
+   --  Supports file growth: allocates new blocks as needed and updates
+   --  inode size. Returns the number of bytes actually written.
    function writeData
-     (fs     : Filesystem;
-      ino    : Inode;
-      offset : Unsigned_64;
-      buf    : System.Address;
-      count  : Unsigned_64) return Unsigned_64;
+     (fs       : in out Filesystem;
+      inodeNum : Unsigned_32;
+      ino      : in out Inode;
+      offset   : Unsigned_64;
+      buf      : System.Address;
+      count    : Unsigned_64) return Unsigned_64;
+
+   --  Allocate a free block from block group 0.
+   --  Sets blockNum to the allocated block, ok to True on success.
+   procedure allocateBlock
+     (fs       : in out Filesystem;
+      blockNum : out Unsigned_32;
+      ok       : out Boolean);
+
+   --  Free a previously allocated block.
+   procedure freeBlock
+     (fs       : in out Filesystem;
+      blockNum : Unsigned_32);
+
+   --  Allocate a free inode from block group 0.
+   --  Sets inodeNum to the allocated inode (1-based), ok to True on success.
+   procedure allocateInode
+     (fs       : in out Filesystem;
+      inodeNum : out Unsigned_32;
+      ok       : out Boolean);
+
+   --  Free a previously allocated inode.
+   procedure freeInode
+     (fs       : in out Filesystem;
+      inodeNum : Unsigned_32);
+
+   --  Create a new file in a directory.
+   --  Returns the new file's inode number, or 0 on failure.
+   function createFile
+     (fs         : in out Filesystem;
+      dirInodeNum : Unsigned_32;
+      name       : String;
+      fileType   : Unsigned_8) return Unsigned_32;
+
+   --  Truncate a file to newSize bytes. Frees blocks beyond the new size.
+   procedure truncateFile
+     (fs       : in out Filesystem;
+      inodeNum : Unsigned_32;
+      newSize  : Unsigned_64);
+
+   --  Add a directory entry pointing to an existing inode.
+   --  Returns True on success.
+   function addDirectoryEntry
+     (fs          : in out Filesystem;
+      dirInodeNum : Unsigned_32;
+      inodeNum    : Unsigned_32;
+      name        : String;
+      fileType    : Unsigned_8) return Boolean;
+
+   --  Remove a directory entry by name.
+   --  Returns the inode number of the removed entry, or 0 on failure.
+   function removeDirectoryEntry
+     (fs          : in out Filesystem;
+      dirInodeNum : Unsigned_32;
+      name        : String) return Unsigned_32;
+
+   --  Rename a file within the same directory.
+   function renameEntry
+     (fs          : in out Filesystem;
+      dirInodeNum : Unsigned_32;
+      oldName     : String;
+      newName     : String) return Boolean;
+
+   --  Write the superblock back to disk
+   procedure writeSuperblock (fs : Filesystem);
+
+   --  Write a block group descriptor back to disk
+   procedure writeBGD
+     (fs         : Filesystem;
+      blockGroup : Unsigned_32;
+      bgd        : BlockGroupDescriptor);
 
 end Ext2;

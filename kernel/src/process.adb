@@ -693,9 +693,9 @@ is
     end removeFromMailQueue;
 
     ---------------------------------------------------------------------------
-    -- kill
+    -- killProcess
     ---------------------------------------------------------------------------
-    procedure kill (pid : in ProcessID) with
+    procedure killProcess (pid : in ProcessID) with
         SPARK_Mode => On
     is
         -- recursively unmaps/deallocates process' full paging hierarchy
@@ -703,7 +703,7 @@ is
 
         ignore : ProcessID;
     begin
-        print ("Process.kill: terminating pid "); println (Integer(pid));
+        print ("Process.killProcess: cleaning up pid "); println (Integer(pid));
 
         -- Back to kernel addressing.
         Mem_mgr.switchAddressSpace;
@@ -898,6 +898,34 @@ is
 
         -- Return PID to the free pool for reuse.
         PIDTracker.freePID (pid);
+
+        Spinlocks.exitCriticalSection (lock);
+
+        -- Restore the caller's address space. killProcess switched to kernel
+        -- page tables (line 709) for safe teardown of the target's pages.
+        -- If we're killing another process (not self), we need to switch back
+        -- so the caller can resume in userspace.
+        declare
+            callerPID : constant ProcessID := PerCPUData.getCurrentPID;
+        begin
+            if callerPID /= pid and callerPID /= NO_PROCESS then
+                switchAddressSpace (callerPID);
+            end if;
+        end;
+    end killProcess;
+
+    ---------------------------------------------------------------------------
+    -- kill
+    ---------------------------------------------------------------------------
+    procedure kill (pid : in ProcessID) with
+        SPARK_Mode => On
+    is
+    begin
+        killProcess (pid);
+
+        -- killProcess released the lock, but Scheduler.enter expects it
+        -- held (the next process resuming from yield will release it).
+        Spinlocks.enterCriticalSection (lock);
 
         -- Nothing to return to, go back to scheduler.
         Scheduler.enter;

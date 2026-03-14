@@ -4,6 +4,7 @@
 --
 -- Global configuration constants
 -------------------------------------------------------------------------------
+with Interfaces; use Interfaces;
 with System.Parameters;
 
 with Serial; use Serial;
@@ -81,5 +82,26 @@ is
 
     -- Process IDs for CuBit services (above idle PID range)
     SERVICE_IDLE_PID       : constant := IDLE_PID_BASE;  -- CPU 0's idle
-    SERVICE_FILESYSTEM_PID : constant := 10;
+
+    ---------------------------------------------------------------------------
+    -- Well-Known Service Registry
+    --
+    -- Kernel-side lookup table mapping service roles to PIDs. Populated at
+    -- boot by userspace (devmgr) via SYSCALL_SET_WELL_KNOWN and queried by
+    -- the kernel (e.g. grantInitialCaps) to avoid hardcoded PIDs.
+    ---------------------------------------------------------------------------
+    type ServiceRole is range 0 .. 15;
+    ROLE_FILESYSTEM : constant ServiceRole := 1;
+    ROLE_PROCMGR    : constant ServiceRole := 2;
+
+    NO_PROCESS_ID : constant := 0;
+
+    type WellKnownEntry is record
+        pid : Natural;
+        gen : Unsigned_32;
+    end record;
+
+    wellKnownServices : array (ServiceRole) of WellKnownEntry
+        := (others => (pid => NO_PROCESS_ID, gen => 0));
+
 end Config;

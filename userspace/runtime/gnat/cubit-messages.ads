@@ -21,6 +21,7 @@ package CuBit.Messages is
    SYSCALL_EXIT            : constant Unsigned_64 := 0;
    SYSCALL_READ            : constant Unsigned_64 := 1;
    SYSCALL_CLOSE           : constant Unsigned_64 := 2;
+   SYSCALL_KILL            : constant Unsigned_64 := 7;
    SYSCALL_SBRK            : constant Unsigned_64 := 8;
    SYSCALL_WRITE           : constant Unsigned_64 := 12;
    SYSCALL_OPEN            : constant Unsigned_64 := 13;
@@ -93,6 +94,14 @@ package CuBit.Messages is
    --  Access Controller syscalls
    SYSCALL_CONTROLACCESS   : constant Unsigned_64 := 100;
    SYSCALL_GETTICKET       : constant Unsigned_64 := 101;
+
+   --  Service discovery syscalls
+   SYSCALL_GRANT_VIA_CAP   : constant Unsigned_64 := 106;
+   SYSCALL_SET_WELL_KNOWN  : constant Unsigned_64 := 107;
+
+   --  Well-known service roles (must match kernel Config.ServiceRole)
+   ROLE_FILESYSTEM : constant Unsigned_64 := 1;
+   ROLE_PROCMGR    : constant Unsigned_64 := 2;
 
    --  Well-known capability slots
    CAP_SLOT_SELF      : constant Unsigned_64 := 0;
@@ -293,6 +302,24 @@ package CuBit.Messages is
       readWrite : Boolean;
       grantId   : out Unsigned_64;
       success   : out Boolean);
+
+   --  Kill a process by PID. Returns 0 on success, -1 on error.
+   function killProcess (pid : ProcessID) return Unsigned_64;
+
+   --  Create a shared memory grant via capability slot (no raw PID needed).
+   --  slot = CAP_ENDPOINT slot identifying grantee.
+   procedure createGrantViaCap
+     (slot      : CapabilitySlot;
+      localAddr : System.Address;
+      numPages  : Natural;
+      readWrite : Boolean;
+      grantId   : out Unsigned_64;
+      success   : out Boolean);
+
+   --  Register a well-known service role in the kernel registry.
+   function setWellKnown
+     (role : Unsigned_64;
+      pid  : Unsigned_64) return Unsigned_64;
 
    --  Revoke a shared memory grant.
    procedure revokeGrant (id : Unsigned_64);

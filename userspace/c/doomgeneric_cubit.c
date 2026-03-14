@@ -54,11 +54,11 @@ static const unsigned char __cubit_manifest[]
  */
 static const unsigned char __cubit_access[]
     __attribute__((section(".cubit.access"), used)) = {
-    /* Header (16 bytes): magic "CACC" LE, version 1, count 3,
+    /* Header (16 bytes): magic "CACC" LE, version 1, count 5,
      * uid=0, gid=0, trustFloor=0, reserved=0 */
     0x43, 0x41, 0x43, 0x43,             /* magic */
     0x01, 0x00,                         /* version */
-    0x03, 0x00,                         /* count */
+    0x05, 0x00,                         /* count */
     0x00, 0x00,                         /* uid */
     0x00, 0x00,                         /* gid */
     0x00,                               /* trustFloor */
@@ -99,6 +99,32 @@ static const unsigned char __cubit_access[]
     0x00, 0x00,                         /* gid */
     '@','n','v','m','e',':','0','/','d','o','o','m','1','.','w','a',
     'd',0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,   /* 64 bytes prefix */
+    0,0,0,0,0,0,0,0,                   /* reserved64 */
+
+    /* Entry 3 (80 bytes): RW+CREATE @ata:0/ (prefixLen=7) — saves on ATA */
+    CUBIT_ACL_READ | CUBIT_ACL_WRITE | CUBIT_ACL_CREATE, /* rights */
+    7,                                  /* prefixLen */
+    0x00,                               /* flags */
+    0x00,                               /* reserved */
+    0x00, 0x00,                         /* uid */
+    0x00, 0x00,                         /* gid */
+    '@','a','t','a',':','0','/',0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,   /* 64 bytes prefix */
+    0,0,0,0,0,0,0,0,                   /* reserved64 */
+
+    /* Entry 4 (80 bytes): RW+CREATE @nvme:0/ (prefixLen=8) — saves on NVMe */
+    CUBIT_ACL_READ | CUBIT_ACL_WRITE | CUBIT_ACL_CREATE, /* rights */
+    8,                                  /* prefixLen */
+    0x00,                               /* flags */
+    0x00,                               /* reserved */
+    0x00, 0x00,                         /* uid */
+    0x00, 0x00,                         /* gid */
+    '@','n','v','m','e',':','0','/',0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,   /* 64 bytes prefix */
     0,0,0,0,0,0,0,0                    /* reserved64 */
@@ -386,6 +412,25 @@ int main(void)
     static char *argv[] = {"doom", "-iwad", NULL, NULL};
     argv[2] = wad_path;
     doomgeneric_Create(3, argv);
+
+    /* Override savegame directory to use flat paths on the disk
+     * since CuBit doesn't have mkdir/subdirectory creation yet. */
+    {
+        extern char *savegamedir;
+        if (wad_path[0] == '@') {
+            /* Extract scheme prefix (e.g. "@nvme:0/") for saves */
+            int slash = 0;
+            for (int i = 0; wad_path[i]; i++) {
+                if (wad_path[i] == '/') { slash = i + 1; break; }
+            }
+            if (slash > 0) {
+                char *sd = malloc(slash + 1);
+                memcpy(sd, wad_path, slash);
+                sd[slash] = '\0';
+                savegamedir = sd;
+            }
+        }
+    }
 
     while (1) {
         doomgeneric_Tick();

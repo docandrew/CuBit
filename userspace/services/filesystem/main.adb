@@ -27,6 +27,7 @@ procedure main is
    OP_WRITE   : constant Unsigned_32 := 16#0004#;
    OP_SEEK    : constant Unsigned_32 := 16#0006#;
    OP_READDIR : constant Unsigned_32 := 16#0007#;
+   OP_RENAME  : constant Unsigned_32 := 16#0008#;
    REPLY_OK            : constant Unsigned_32 := 16#F000#;
    REPLY_ERR           : constant Unsigned_32 := 16#F001#;
    REPLY_ACCESS_DENIED : constant Unsigned_32 := 16#F007#;
@@ -88,7 +89,9 @@ procedure main is
    --  Per-process file ACL infrastructure
    ---------------------------------------------------------------------------
 
-   ACL_READ  : constant Unsigned_8 := 1;
+   ACL_READ   : constant Unsigned_8 := 1;
+   ACL_WRITE  : constant Unsigned_8 := 2;
+   ACL_CREATE : constant Unsigned_8 := 8;
 
    MAX_ACL_PREFIX : constant := 64;
    MAX_ACL_ENTRIES : constant := 16;
@@ -562,9 +565,15 @@ procedure main is
    --  words(0) = grant_id (where path string is)
    --  words(1) = path_length
    --  words(2) = flags (unused for now)
+   --  Open flags (matching POSIX conventions)
+   O_WRONLY : constant Unsigned_64 := 1;
+   O_CREAT  : constant Unsigned_64 := 64;
+   O_TRUNC  : constant Unsigned_64 := 512;
+
    procedure handleOpen (sender : ProcessID; msg : Message) is
       grantId   : constant Unsigned_64 := msg.words (0);
       pathLen   : constant Unsigned_64 := msg.words (1);
+      openFlags : constant Unsigned_64 := msg.words (2);
       grantAddr : constant Unsigned_64 :=
         GRANT_REGION_BASE + grantId * GRANT_SLOT_SIZE;
 
@@ -610,11 +619,21 @@ procedure main is
             return;
          end if;
 
-         if not checkAccess (sender, pathStr, ACL_READ) then
-            debugPrint ("FS: access denied for PID" & LF);
-            sendReply (sender, REPLY_ACCESS_DENIED, Unsigned_64'Last);
-            return;
-         end if;
+         declare
+            requiredRights : Unsigned_8 := ACL_READ;
+         begin
+            if (openFlags and O_CREAT) /= 0 then
+               requiredRights := requiredRights or ACL_WRITE or ACL_CREATE;
+            elsif (openFlags and O_WRONLY) /= 0 then
+               requiredRights := requiredRights or ACL_WRITE;
+            end if;
+
+            if not checkAccess (sender, pathStr, requiredRights) then
+               debugPrint ("FS: access denied for PID" & LF);
+               sendReply (sender, REPLY_ACCESS_DENIED, Unsigned_64'Last);
+               return;
+            end if;
+         end;
 
          parseScheme (pathStr, isATA, isNVMe, relStart);
 
@@ -717,9 +736,107 @@ procedure main is
       end;
 
       if inodeNum = 0 then
-         debugPrint ("FS: file not found" & LF);
-         sendReply (sender, REPLY_ERR, Unsigned_64'Last);
-         return;
+         --  O_CREAT: create the file if it doesn't exist
+         if (openFlags and O_CREAT) /= 0 and
+            useBackend in EXT2_ATA | EXT2_NVME
+         then
+            declare
+               pathStr : String (1 .. Natural (pathLen))
+                 with Import, Address => toAddr (grantAddr);
+
+               --  Strip scheme prefix (@ata:, @nvme:) and device selector
+               --  (0/) to get the pure filesystem path.
+               relPath   : String renames
+                 pathStr (relStart .. Natural (pathLen));
+               fileStart : Natural := relPath'First;
+               dirEnd    : Natural := 0;
+               nameFirst : Natural;
+            begin
+               --  Skip device selector (e.g. "0/")
+               if relPath'Length > 0 and then
+                  relPath (relPath'First) in '0' .. '9'
+               then
+                  fileStart := relPath'First + 1;
+                  if fileStart <= relPath'Last and then
+                     relPath (fileStart) = '/'
+                  then
+                     fileStart := fileStart + 1;
+                  end if;
+               end if;
+
+               if fileStart > relPath'Last then
+                  sendReply (sender, REPLY_ERR, Unsigned_64'Last);
+                  return;
+               end if;
+
+               --  Find last '/' in the relative path to split dir/name
+               for i in reverse fileStart .. relPath'Last loop
+                  if relPath (i) = '/' then
+                     dirEnd := i;
+                     exit;
+                  end if;
+               end loop;
+
+               if dirEnd = 0 then
+                  nameFirst := fileStart;
+               else
+                  nameFirst := dirEnd + 1;
+               end if;
+
+               if nameFirst > relPath'Last then
+                  sendReply (sender, REPLY_ERR, Unsigned_64'Last);
+                  return;
+               end if;
+
+               declare
+                  dirInodeNum : Unsigned_32 := Ext2.ROOT_INODE;
+               begin
+                  --  Resolve parent directory (relative path only)
+                  if dirEnd > 0 then
+                     if useBackend = EXT2_ATA then
+                        dirInodeNum := Ext2.resolvePath
+                          (ataFs, relPath (fileStart .. dirEnd - 1));
+                     elsif useBackend = EXT2_NVME then
+                        dirInodeNum := Ext2.resolvePath
+                          (nvmeFs, relPath (fileStart .. dirEnd - 1));
+                     end if;
+                  end if;
+
+                  if dirInodeNum = 0 then
+                     debugPrint ("FS: parent dir not found" & LF);
+                     sendReply (sender, REPLY_ERR, Unsigned_64'Last);
+                     return;
+                  end if;
+
+                  if useBackend = EXT2_ATA then
+                     inodeNum := Ext2.createFile
+                       (ataFs, dirInodeNum,
+                        relPath (nameFirst .. relPath'Last),
+                        Ext2.FILETYPE_REGULAR);
+                  elsif useBackend = EXT2_NVME then
+                     inodeNum := Ext2.createFile
+                       (nvmeFs, dirInodeNum,
+                        relPath (nameFirst .. relPath'Last),
+                        Ext2.FILETYPE_REGULAR);
+                  end if;
+               end;
+            end;
+         end if;
+
+         if inodeNum = 0 then
+            debugPrint ("FS: file not found" & LF);
+            sendReply (sender, REPLY_ERR, Unsigned_64'Last);
+            return;
+         end if;
+      end if;
+
+      --  O_TRUNC: truncate existing file to zero length
+      if (openFlags and O_TRUNC) /= 0 and inodeNum /= 0 then
+         if useBackend = EXT2_ATA then
+            Ext2.truncateFile (ataFs, inodeNum, 0);
+         elsif useBackend = EXT2_NVME then
+            Ext2.truncateFile (nvmeFs, inodeNum, 0);
+         end if;
       end if;
 
       --  Allocate file handle
@@ -856,6 +973,7 @@ procedure main is
          when EXT2_ATA =>
             bytesWritten := Ext2.writeData
               (ataFs,
+               files (handle).inodeNum,
                files (handle).ino,
                files (handle).offset,
                toAddr (grantAddr),
@@ -863,6 +981,7 @@ procedure main is
          when EXT2_NVME =>
             bytesWritten := Ext2.writeData
               (nvmeFs,
+               files (handle).inodeNum,
                files (handle).ino,
                files (handle).offset,
                toAddr (grantAddr),
@@ -1082,6 +1201,136 @@ procedure main is
    end record;
    pendingClients : array (0 .. MAX_PENDING_CLIENTS - 1) of PendingClient;
 
+   --  Handle OP_RENAME
+   --  words(0) = grant_id (buffer with both paths)
+   --  words(1) = old_path_length
+   --  words(2) = new_path_length
+   --  Grant buffer layout: [old_path][new_path]
+   procedure handleRename (sender : ProcessID; msg : Message) is
+      grantId    : constant Unsigned_64 := msg.words (0);
+      oldPathLen : constant Unsigned_64 := msg.words (1);
+      newPathLen : constant Unsigned_64 := msg.words (2);
+      grantAddr  : constant Unsigned_64 :=
+        GRANT_REGION_BASE + grantId * GRANT_SLOT_SIZE;
+   begin
+      if oldPathLen = 0 or newPathLen = 0 or
+         oldPathLen + newPathLen > MAX_PATH_LEN * 2
+      then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+
+      declare
+         totalLen : constant Natural :=
+           Natural (oldPathLen + newPathLen);
+         bothPaths : String (1 .. totalLen)
+           with Import, Address => toAddr (grantAddr);
+         oldPath : String renames
+           bothPaths (1 .. Natural (oldPathLen));
+         newPath : String renames
+           bothPaths (Natural (oldPathLen) + 1 .. totalLen);
+
+         oldIsATA, oldIsNVMe : Boolean;
+         newIsATA, newIsNVMe : Boolean;
+         oldRelStart, newRelStart : Natural;
+      begin
+         parseScheme (oldPath, oldIsATA, oldIsNVMe, oldRelStart);
+         parseScheme (newPath, newIsATA, newIsNVMe, newRelStart);
+
+         if oldIsATA /= newIsATA or oldIsNVMe /= newIsNVMe then
+            sendReply (sender, REPLY_ERR, 0);
+            return;
+         end if;
+
+         declare
+            procedure skipSel (path : String; idx : out Natural) is
+            begin
+               idx := path'First;
+               if path'Length > 0 and then
+                  path (path'First) in '0' .. '9'
+               then
+                  idx := path'First + 1;
+                  if idx <= path'Last and then
+                     path (idx) = '/'
+                  then
+                     idx := idx + 1;
+                  end if;
+               end if;
+            end skipSel;
+
+            oldSkip, newSkip : Natural;
+            ok : Boolean;
+         begin
+            if oldIsNVMe then
+               declare
+                  okInit : Boolean;
+               begin
+                  ensureNVMe (okInit);
+                  if not okInit then
+                     sendReply (sender, REPLY_ERR, 0);
+                     return;
+                  end if;
+               end;
+
+               skipSel (oldPath (oldRelStart .. oldPath'Last),
+                        oldSkip);
+               skipSel (newPath (newRelStart .. newPath'Last),
+                        newSkip);
+
+               declare
+                  oldRel : String renames
+                    oldPath (oldSkip .. oldPath'Last);
+                  newRel : String renames
+                    newPath (newSkip .. newPath'Last);
+               begin
+                  debugPrint ("FS: rename '" & oldRel & "' -> '"
+                              & newRel & "'" & LF);
+                  ok := Ext2.renameEntry
+                    (nvmeFs, Ext2.ROOT_INODE, oldRel, newRel);
+                  if ok then
+                     debugPrint ("FS: rename OK" & LF);
+                  else
+                     debugPrint ("FS: rename FAILED" & LF);
+                  end if;
+               end;
+            elsif oldIsATA then
+               declare
+                  okInit : Boolean;
+               begin
+                  ensureATA (okInit);
+                  if not okInit then
+                     sendReply (sender, REPLY_ERR, 0);
+                     return;
+                  end if;
+               end;
+
+               skipSel (oldPath (oldRelStart .. oldPath'Last),
+                        oldSkip);
+               skipSel (newPath (newRelStart .. newPath'Last),
+                        newSkip);
+
+               declare
+                  oldRel : String renames
+                    oldPath (oldSkip .. oldPath'Last);
+                  newRel : String renames
+                    newPath (newSkip .. newPath'Last);
+               begin
+                  ok := Ext2.renameEntry
+                    (ataFs, Ext2.ROOT_INODE, oldRel, newRel);
+               end;
+            else
+               ok := False;
+            end if;
+
+            if ok then
+               sendReply (sender, REPLY_OK, 0);
+            else
+               sendReply (sender, REPLY_ERR, 0);
+            end if;
+         end;
+      end;
+   end handleRename;
+
    --  Main message loop variables
    sender : ProcessID;
    msg    : Message;
@@ -1151,6 +1400,8 @@ begin
             handleSetACL (sender, msg);
          when OP_REVOKE_ACL =>
             handleRevokeACL (sender, msg);
+         when OP_RENAME =>
+            handleRename (sender, msg);
          when others =>
             sendReply (sender, REPLY_ERR, 0);
       end case;

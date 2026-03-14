@@ -117,6 +117,10 @@ is
     SYSCALL_GRANT         : constant SyscallNumber := 102;
     SYSCALL_REVOKE        : constant SyscallNumber := 103;
 
+    -- Service discovery syscalls
+    SYSCALL_GRANT_VIA_CAP   : constant SyscallNumber := 106;
+    SYSCALL_SET_WELL_KNOWN  : constant SyscallNumber := 107;
+
     -- CONTROLACCESS sub-operation codes (passed in arg0)
     -- CONTROLACCESS_INSERT (1) removed: capability bypass vulnerability.
     CONTROLACCESS_DERIVE  : constant Unsigned_64 := 2;

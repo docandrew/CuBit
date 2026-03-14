@@ -397,8 +397,63 @@ int remove(const char *pathname)
 
 int rename(const char *oldpath, const char *newpath)
 {
-    (void)oldpath; (void)newpath;
-    return -1;
+    if (!oldpath || !newpath)
+        return -1;
+
+    size_t oldlen = strlen(oldpath);
+    size_t newlen = strlen(newpath);
+    if (oldlen + newlen > 32768 - 4096)
+        return -1;
+
+    /* Allocate a page-aligned grant buffer for both paths */
+    void *raw = cubit_sbrk(32768 + 4096);
+    if ((long)raw == -1)
+        return -1;
+
+    uintptr_t addr = (uintptr_t)raw;
+    addr = (addr + 4095) & ~(uintptr_t)4095;
+    void *buf = (void *)addr;
+
+    long gid = syscall4(SYSCALL_GRANT_VIA_CAP, CAP_SLOT_FS, buf, 8, 1);
+    if (gid == (long)(-1UL))
+        return -1;
+
+    /* Pack both paths into the grant buffer: [oldpath][newpath] */
+    memcpy(buf, oldpath, oldlen);
+    memcpy((char *)buf + oldlen, newpath, newlen);
+
+    /* Send OP_RENAME (0x0008) to FS server */
+    typedef struct __attribute__((packed)) {
+        uint32_t label; uint8_t length; uint8_t flags; uint16_t badge;
+    } rename_tag_t;
+    typedef struct __attribute__((packed)) {
+        rename_tag_t tag; uint64_t capBadge; uint64_t words[4];
+    } rename_msg_t;
+
+    rename_msg_t msg;
+    msg.tag.label  = 0x0008;
+    msg.tag.length = 3;
+    msg.tag.flags  = 0;
+    msg.tag.badge  = 0;
+    msg.words[0] = (uint64_t)gid;
+    msg.words[1] = oldlen;
+    msg.words[2] = newlen;
+    msg.words[3] = 0;
+
+    long ret = syscall2(SYSCALL_CAP_CALL, CAP_SLOT_FS, &msg);
+    syscall1(SYSCALL_REVOKE, (uint64_t)gid);
+
+    if (ret == (long)(-1UL) || msg.tag.label != 0xF000)
+        return -1;
+
+    return 0;
+}
+
+int mkdir(const char *path, int mode)
+{
+    (void)path; (void)mode;
+    /* Silently succeed — flat filesystem, no real directory creation yet */
+    return 0;
 }
 
 /*---------------------------------------------------------------------------

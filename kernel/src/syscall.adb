@@ -136,6 +136,10 @@ package body Syscall is
             when SYSCALL_EXIT =>
                 exitp (percpu.currentPID);
 
+            when SYSCALL_KILL =>
+                Admin.handleKill (
+                    percpu.currentPID, arg0, retval);
+
             when SYSCALL_READ =>
                 retval := read (
                     fd    => Descriptors.DescriptorNum(arg0),
@@ -368,6 +372,15 @@ package body Syscall is
 
             when SYSCALL_SET_SUPERVISOR =>
                 Admin.handleSetSupervisor (
+                    percpu.currentPID, arg0, arg1, retval);
+
+            when SYSCALL_GRANT_VIA_CAP =>
+                IPC.handleGrantViaCap (
+                    percpu.currentPID,
+                    arg0, arg1, arg2, arg3, retval);
+
+            when SYSCALL_SET_WELL_KNOWN =>
+                Admin.handleSetWellKnown (
                     percpu.currentPID, arg0, arg1, retval);
 
             when others =>

@@ -31,10 +31,11 @@ LIB      = $(BUILDDIR)/libcubit.a
 # Programs to build
 HELLO_ELF      = $(BUILDDIR)/hello.elf
 TEST_MALLOC_ELF = $(BUILDDIR)/test_malloc.elf
+SPIN_ELF       = $(BUILDDIR)/spin.elf
 
 .PHONY: all clean
 
-all: $(HELLO_ELF) $(TEST_MALLOC_ELF)
+all: $(HELLO_ELF) $(TEST_MALLOC_ELF) $(SPIN_ELF)
 
 $(BUILDDIR):
 	mkdir -p $(BUILDDIR)
@@ -58,6 +59,9 @@ $(HELLO_ELF): $(CRT_OBJ) $(BUILDDIR)/hello.o $(LIB)
 
 $(TEST_MALLOC_ELF): $(CRT_OBJ) $(BUILDDIR)/test_malloc.o $(LIB)
 	$(LD) $(LDFLAGS) $(CRT_OBJ) $(BUILDDIR)/test_malloc.o $(LIB) -o $@
+
+$(SPIN_ELF): $(CRT_OBJ) $(BUILDDIR)/spin.o $(LIB)
+	$(LD) $(LDFLAGS) $(CRT_OBJ) $(BUILDDIR)/spin.o $(LIB) -o $@
 
 clean:
 	rm -rf $(BUILDDIR)

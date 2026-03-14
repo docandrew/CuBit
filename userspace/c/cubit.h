@@ -121,6 +121,12 @@ typedef long                ssize_t;
 /* Grants */
 #define SYSCALL_GRANT           102
 #define SYSCALL_REVOKE          103
+#define SYSCALL_GRANT_VIA_CAP   106
+#define SYSCALL_SET_WELL_KNOWN  107
+
+/* Well-known service roles */
+#define ROLE_FILESYSTEM         1
+#define ROLE_PROCMGR            2
 
 /* Well-known capability slots */
 #define CAP_SLOT_SELF           0
@@ -353,5 +359,12 @@ typedef struct {
 } cubit_scheme_info_t;
 
 int cubit_resolve_scheme(const char *name, cubit_scheme_info_t *info);
+
+/* File open flags */
+#define O_RDONLY   0
+#define O_WRONLY   1
+#define O_RDWR     2
+#define O_CREAT    64
+#define O_TRUNC    512
 
 #endif /* CUBIT_H */

@@ -854,7 +854,7 @@ package body Syscall.IPC is
 
         granteePID : Process.ProcessID;
         hasCap : Boolean := False;
-        gid : Process.GrantID;
+        gid : Natural;
         perm : Process.GrantPermission;
         ok : Boolean;
     begin
@@ -938,22 +938,32 @@ package body Syscall.IPC is
                             retval    : out Unsigned_64) with
         SPARK_Mode => Off
     is
+        --  arg0 is the global grant ID = granterPID * MAX_GRANTS + slot.
+        --  Extract the granter slot and verify the PID matches.
+        expectedPID : constant Unsigned_64 :=
+            arg0 / Unsigned_64 (Process.MAX_GRANTS_PER_PROCESS);
+        slot : constant Unsigned_64 :=
+            arg0 mod Unsigned_64 (Process.MAX_GRANTS_PER_PROCESS);
     begin
-        if arg0 > Unsigned_64(Process.GrantID'Last) then
+        if expectedPID /= Unsigned_64 (callerPID) then
             retval := 0;
-        elsif Process.proctab(callerPID).grants(
-                  Process.GrantID (arg0)).granterPID /= callerPID
-        then
-            Process.IPC.notifySupervisor (
-                callerPID,
-                IPC_Labels.EVENT_CAP_FAULT,
-                SYSCALL_REVOKE,
-                arg0, 0);
-            retval := 0;
-        else
-            Process.IPC.revokeGrant (id => Process.GrantID (arg0));
-            retval := 1;
+            return;
         end if;
+
+        if slot > Unsigned_64 (Process.GrantID'Last) then
+            retval := 0;
+            return;
+        end if;
+
+        if not Process.proctab(callerPID).grants(
+                  Process.GrantID (slot)).active
+        then
+            retval := 0;
+            return;
+        end if;
+
+        Process.IPC.revokeGrant (id => Process.GrantID (slot));
+        retval := 1;
     end handleRevoke;
 
     ---------------------------------------------------------------------------
@@ -1030,5 +1040,83 @@ package body Syscall.IPC is
 
         retval := Sysinfo.getInfo (arg0, arg1);
     end handleInfo;
+
+    ---------------------------------------------------------------------------
+    -- handleGrantViaCap
+    -- Create a shared memory grant using a capability slot to identify the
+    -- grantee, instead of a raw PID.
+    -- arg0 = cap slot, arg1 = local addr, arg2 = num pages, arg3 = RW flag
+    ---------------------------------------------------------------------------
+    procedure handleGrantViaCap (callerPID : Process.ProcessID;
+                                  arg0, arg1, arg2, arg3 : Unsigned_64;
+                                  retval : out Unsigned_64) with
+        SPARK_Mode => Off
+    is
+        use type Capabilities.CapabilityType;
+
+        cap : Capabilities.Capability;
+        granteePID : Process.ProcessID;
+        gid : Natural;
+        perm : Process.GrantPermission;
+        ok : Boolean;
+    begin
+        if arg0 > Unsigned_64 (Capabilities.CapabilitySlot'Last) then
+            println ("GRANT_VIA_CAP: invalid slot");
+            retval := reterr;
+            return;
+        end if;
+
+        cap := Process.proctab(callerPID).caps(
+            Capabilities.CapabilitySlot (arg0));
+
+        if cap.capType /= Capabilities.CAP_ENDPOINT then
+            println ("GRANT_VIA_CAP: slot is not CAP_ENDPOINT");
+            retval := reterr;
+            return;
+        end if;
+
+        if not cap.rights(Capabilities.RIGHT_READ) then
+            println ("GRANT_VIA_CAP: no RIGHT_READ on endpoint");
+            retval := reterr;
+            return;
+        end if;
+
+        if cap.object.ref > Unsigned_64 (Process.ProcessID'Last) or
+           cap.object.ref = 0
+        then
+            println ("GRANT_VIA_CAP: invalid PID in cap");
+            retval := reterr;
+            return;
+        end if;
+
+        granteePID := Process.ProcessID (cap.object.ref);
+
+        -- Validate generation (stale cap check)
+        if cap.gen /= Process.proctab(granteePID).capGeneration then
+            println ("GRANT_VIA_CAP: stale capability");
+            retval := reterr;
+            return;
+        end if;
+
+        if arg3 = 1 then
+            perm := Process.GRANT_READWRITE;
+        else
+            perm := Process.GRANT_READ;
+        end if;
+
+        Process.IPC.createGrant (
+            grantee   => granteePID,
+            localAddr => Util.numToAddr(arg1),
+            numPages  => Natural(arg2),
+            perm      => perm,
+            id        => gid,
+            success   => ok);
+
+        if ok then
+            retval := Unsigned_64(gid);
+        else
+            retval := reterr;
+        end if;
+    end handleGrantViaCap;
 
 end Syscall.IPC;

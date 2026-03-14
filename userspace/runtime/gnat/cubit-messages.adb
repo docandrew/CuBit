@@ -361,6 +361,49 @@ package body CuBit.Messages is
       ignore := syscall (SYSCALL_REVOKE, id);
    end revokeGrant;
 
+   function killProcess (pid : ProcessID) return Unsigned_64 is
+   begin
+      return syscall (SYSCALL_KILL, pid);
+   end killProcess;
+
+   procedure createGrantViaCap
+     (slot      : CapabilitySlot;
+      localAddr : System.Address;
+      numPages  : Natural;
+      readWrite : Boolean;
+      grantId   : out Unsigned_64;
+      success   : out Boolean)
+   is
+      function toNum is new Ada.Unchecked_Conversion
+         (System.Address, Unsigned_64);
+      rwFlag : Unsigned_64 := 0;
+      ret    : Unsigned_64;
+   begin
+      if readWrite then
+         rwFlag := 1;
+      end if;
+      ret := syscall (SYSCALL_GRANT_VIA_CAP,
+                       slot,
+                       toNum (localAddr),
+                       Unsigned_64 (numPages),
+                       rwFlag);
+      if ret = Unsigned_64'Last then
+         grantId := 0;
+         success := False;
+      else
+         grantId := ret;
+         success := True;
+      end if;
+   end createGrantViaCap;
+
+   function setWellKnown
+     (role : Unsigned_64;
+      pid  : Unsigned_64) return Unsigned_64
+   is
+   begin
+      return syscall (SYSCALL_SET_WELL_KNOWN, role, pid);
+   end setWellKnown;
+
    --  Legacy wrappers
 
    function sendMsg (to : Unsigned_64; msg : Unsigned_64)

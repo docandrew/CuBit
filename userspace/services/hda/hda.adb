@@ -528,7 +528,7 @@ package body HDA is
          Unsigned_64 (slotIdx) * Unsigned_64 (PCM_PERIOD_BYTES);
 
       srcAddr : constant Unsigned_64 :=
-         GRANT_REGION_BASE + Unsigned_64 (srcOff);
+         stagingBase + Unsigned_64 (srcOff);
 
       type ByteArray is array (Natural range <>) of Unsigned_8
          with Convention => C;

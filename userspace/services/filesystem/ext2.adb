@@ -720,57 +720,427 @@ package body Ext2 is
       end case;
    end writeBytes;
 
-   --  Write file data to an inode starting at the given offset.
-   --  Overwrites existing allocated blocks only (no file growth).
-   function writeData
-     (fs     : Filesystem;
-      ino    : Inode;
-      offset : Unsigned_64;
-      buf    : System.Address;
-      count  : Unsigned_64) return Unsigned_64
+   --  Write an inode back to disk (mirror of readInode)
+   procedure writeInode
+     (fs       : Filesystem;
+      inodeNum : Unsigned_32;
+      ino      : Inode)
    is
-      size      : constant Unsigned_64 := fileSize (ino);
-      remaining : Unsigned_64;
+      blockGroup : constant Unsigned_32 :=
+        (inodeNum - 1) / fs.sb.inodesPerBlockGroup;
+
+      inodeIndex : constant Unsigned_32 :=
+        (inodeNum - 1) mod fs.sb.inodesPerBlockGroup;
+
+      bgdtOffset : constant Storage_Offset :=
+        Storage_Offset ((fs.sb.firstDataBlock + 1) * fs.blkSize) +
+        Storage_Offset (blockGroup) * (BlockGroupDescriptor'Size / 8);
+
+      bgd : BlockGroupDescriptor;
+
+      inodeTableByteOffset : Storage_Offset;
+      inoSize : Unsigned_32;
+   begin
+      readBytes (fs, bgdtOffset, bgd'Address, BlockGroupDescriptor'Size / 8);
+
+      if fs.sb.majorVersion >= 1 then
+         inoSize := Unsigned_32 (fs.sb.inodeSize);
+      else
+         inoSize := 128;
+      end if;
+
+      inodeTableByteOffset :=
+        Storage_Offset (bgd.inodeTableAddr) * Storage_Offset (fs.blkSize) +
+        Storage_Offset (inodeIndex) * Storage_Offset (inoSize);
+
+      writeBytes (fs, inodeTableByteOffset, ino'Address, Inode'Size / 8);
+   end writeInode;
+
+   --  Write the superblock back to disk
+   procedure writeSuperblock (fs : Filesystem) is
+   begin
+      writeBytes (fs, SUPERBLOCK_OFFSET, fs.sb'Address,
+                  Superblock'Size / 8);
+   end writeSuperblock;
+
+   --  Write a block group descriptor back to disk
+   procedure writeBGD
+     (fs         : Filesystem;
+      blockGroup : Unsigned_32;
+      bgd        : BlockGroupDescriptor)
+   is
+      bgdtOffset : constant Storage_Offset :=
+        Storage_Offset ((fs.sb.firstDataBlock + 1) * fs.blkSize) +
+        Storage_Offset (blockGroup) * (BlockGroupDescriptor'Size / 8);
+   begin
+      writeBytes (fs, bgdtOffset, bgd'Address,
+                  BlockGroupDescriptor'Size / 8);
+   end writeBGD;
+
+   --  Read block group descriptor for a given block group
+   procedure readBGD
+     (fs         : Filesystem;
+      blockGroup : Unsigned_32;
+      bgd        : out BlockGroupDescriptor)
+   is
+      bgdtOffset : constant Storage_Offset :=
+        Storage_Offset ((fs.sb.firstDataBlock + 1) * fs.blkSize) +
+        Storage_Offset (blockGroup) * (BlockGroupDescriptor'Size / 8);
+   begin
+      readBytes (fs, bgdtOffset, bgd'Address,
+                 BlockGroupDescriptor'Size / 8);
+   end readBGD;
+
+   --  Allocate a free block from block group 0
+   procedure allocateBlock
+     (fs       : in out Filesystem;
+      blockNum : out Unsigned_32;
+      ok       : out Boolean)
+   is
+      bgd : BlockGroupDescriptor;
+      bitmapBuf : array (0 .. 4095) of Unsigned_8 with Alignment => 8;
+      bitmapBytes : constant Unsigned_32 :=
+        (fs.sb.blocksPerBlockGroup + 7) / 8;
+      readSize : Unsigned_32;
+   begin
+      blockNum := 0;
+      ok := False;
+
+      readBGD (fs, 0, bgd);
+
+      if bgd.numFreeBlocks = 0 then
+         return;
+      end if;
+
+      readSize := bitmapBytes;
+      if readSize > bitmapBuf'Length then
+         readSize := Unsigned_32 (bitmapBuf'Length);
+      end if;
+
+      readBytes (fs,
+                 Storage_Offset (bgd.blockBitmapAddr) *
+                   Storage_Offset (fs.blkSize),
+                 bitmapBuf'Address,
+                 Storage_Count (readSize));
+
+      --  Scan for first free bit
+      for byteIdx in 0 .. Natural (readSize) - 1 loop
+         if bitmapBuf (byteIdx) /= 16#FF# then
+            for bitIdx in 0 .. 7 loop
+               if (bitmapBuf (byteIdx) and
+                   Shift_Left (Unsigned_8'(1), bitIdx)) = 0
+               then
+                  blockNum := Unsigned_32 (byteIdx * 8 + bitIdx) +
+                    fs.sb.firstDataBlock;
+
+                  --  Set the bit
+                  bitmapBuf (byteIdx) := bitmapBuf (byteIdx) or
+                    Shift_Left (Unsigned_8'(1), bitIdx);
+
+                  --  Write bitmap back
+                  writeBytes (fs,
+                              Storage_Offset (bgd.blockBitmapAddr) *
+                                Storage_Offset (fs.blkSize),
+                              bitmapBuf'Address,
+                              Storage_Count (readSize));
+
+                  --  Update counts
+                  bgd.numFreeBlocks := bgd.numFreeBlocks - 1;
+                  writeBGD (fs, 0, bgd);
+
+                  fs.sb.freeBlocks := fs.sb.freeBlocks - 1;
+                  writeSuperblock (fs);
+
+                  ok := True;
+                  return;
+               end if;
+            end loop;
+         end if;
+      end loop;
+   end allocateBlock;
+
+   --  Free a previously allocated block
+   procedure freeBlock
+     (fs       : in out Filesystem;
+      blockNum : Unsigned_32)
+   is
+      bgd : BlockGroupDescriptor;
+      relBlock : constant Unsigned_32 := blockNum - fs.sb.firstDataBlock;
+      byteIdx  : constant Natural := Natural (relBlock / 8);
+      bitIdx   : constant Natural := Natural (relBlock mod 8);
+      bitmapBuf : array (0 .. 4095) of Unsigned_8 with Alignment => 8;
+      bitmapBytes : constant Unsigned_32 :=
+        (fs.sb.blocksPerBlockGroup + 7) / 8;
+      readSize : Unsigned_32;
+   begin
+      readBGD (fs, 0, bgd);
+
+      readSize := bitmapBytes;
+      if readSize > Unsigned_32 (bitmapBuf'Length) then
+         readSize := Unsigned_32 (bitmapBuf'Length);
+      end if;
+
+      readBytes (fs,
+                 Storage_Offset (bgd.blockBitmapAddr) *
+                   Storage_Offset (fs.blkSize),
+                 bitmapBuf'Address,
+                 Storage_Count (readSize));
+
+      --  Clear the bit
+      bitmapBuf (byteIdx) := bitmapBuf (byteIdx) and
+        not Shift_Left (Unsigned_8'(1), bitIdx);
+
+      writeBytes (fs,
+                  Storage_Offset (bgd.blockBitmapAddr) *
+                    Storage_Offset (fs.blkSize),
+                  bitmapBuf'Address,
+                  Storage_Count (readSize));
+
+      bgd.numFreeBlocks := bgd.numFreeBlocks + 1;
+      writeBGD (fs, 0, bgd);
+
+      fs.sb.freeBlocks := fs.sb.freeBlocks + 1;
+      writeSuperblock (fs);
+   end freeBlock;
+
+   --  Allocate a free inode from block group 0
+   procedure allocateInode
+     (fs       : in out Filesystem;
+      inodeNum : out Unsigned_32;
+      ok       : out Boolean)
+   is
+      bgd : BlockGroupDescriptor;
+      bitmapBuf : array (0 .. 4095) of Unsigned_8 with Alignment => 8;
+      bitmapBytes : constant Unsigned_32 :=
+        (fs.sb.inodesPerBlockGroup + 7) / 8;
+      readSize : Unsigned_32;
+   begin
+      inodeNum := 0;
+      ok := False;
+
+      readBGD (fs, 0, bgd);
+
+      if bgd.numFreeInodes = 0 then
+         return;
+      end if;
+
+      readSize := bitmapBytes;
+      if readSize > Unsigned_32 (bitmapBuf'Length) then
+         readSize := Unsigned_32 (bitmapBuf'Length);
+      end if;
+
+      readBytes (fs,
+                 Storage_Offset (bgd.inodeBitmapAddr) *
+                   Storage_Offset (fs.blkSize),
+                 bitmapBuf'Address,
+                 Storage_Count (readSize));
+
+      for byteIdx in 0 .. Natural (readSize) - 1 loop
+         if bitmapBuf (byteIdx) /= 16#FF# then
+            for bitIdx in 0 .. 7 loop
+               if (bitmapBuf (byteIdx) and
+                   Shift_Left (Unsigned_8'(1), bitIdx)) = 0
+               then
+                  --  Inode numbers are 1-based
+                  inodeNum := Unsigned_32 (byteIdx * 8 + bitIdx) + 1;
+
+                  --  Skip reserved inodes (1..10 in standard ext2)
+                  if inodeNum < 11 then
+                     goto Continue_Scan;
+                  end if;
+
+                  bitmapBuf (byteIdx) := bitmapBuf (byteIdx) or
+                    Shift_Left (Unsigned_8'(1), bitIdx);
+
+                  writeBytes (fs,
+                              Storage_Offset (bgd.inodeBitmapAddr) *
+                                Storage_Offset (fs.blkSize),
+                              bitmapBuf'Address,
+                              Storage_Count (readSize));
+
+                  bgd.numFreeInodes := bgd.numFreeInodes - 1;
+                  writeBGD (fs, 0, bgd);
+
+                  fs.sb.freeInodes := fs.sb.freeInodes - 1;
+                  writeSuperblock (fs);
+
+                  --  Initialize blank inode on disk
+                  declare
+                     blankIno : Inode;
+                  begin
+                     blankIno := (typeAndPermissions => 0,
+                                  uid => 0, sizeLo => 0,
+                                  accessedTime => 0, creationTime => 0,
+                                  modifiedTime => 0, deletedTime => 0,
+                                  gid => 0, numHardLinks => 0,
+                                  numDiskSectors => 0, flags => 0,
+                                  osSpecific1 => 0,
+                                  directBlocks => (others => 0),
+                                  singleIndirectBlock => 0,
+                                  doubleIndirectBlock => 0,
+                                  tripleIndirectBlock => 0,
+                                  generationNumber => 0,
+                                  fileACL => 0, sizeHi_DirACL => 0,
+                                  fragmentBlockAddr => 0,
+                                  osSpecific2A => 0, osSpecific2B => 0,
+                                  osSpecific2C => 0);
+                     writeInode (fs, inodeNum, blankIno);
+                  end;
+
+                  ok := True;
+                  return;
+
+                  <<Continue_Scan>>
+               end if;
+            end loop;
+         end if;
+      end loop;
+   end allocateInode;
+
+   --  Free a previously allocated inode
+   procedure freeInode
+     (fs       : in out Filesystem;
+      inodeNum : Unsigned_32)
+   is
+      bgd : BlockGroupDescriptor;
+      relInode : constant Unsigned_32 := inodeNum - 1;
+      byteIdx  : constant Natural := Natural (relInode / 8);
+      bitIdx   : constant Natural := Natural (relInode mod 8);
+      bitmapBuf : array (0 .. 4095) of Unsigned_8 with Alignment => 8;
+      bitmapBytes : constant Unsigned_32 :=
+        (fs.sb.inodesPerBlockGroup + 7) / 8;
+      readSize : Unsigned_32;
+   begin
+      readBGD (fs, 0, bgd);
+
+      readSize := bitmapBytes;
+      if readSize > Unsigned_32 (bitmapBuf'Length) then
+         readSize := Unsigned_32 (bitmapBuf'Length);
+      end if;
+
+      readBytes (fs,
+                 Storage_Offset (bgd.inodeBitmapAddr) *
+                   Storage_Offset (fs.blkSize),
+                 bitmapBuf'Address,
+                 Storage_Count (readSize));
+
+      bitmapBuf (byteIdx) := bitmapBuf (byteIdx) and
+        not Shift_Left (Unsigned_8'(1), bitIdx);
+
+      writeBytes (fs,
+                  Storage_Offset (bgd.inodeBitmapAddr) *
+                    Storage_Offset (fs.blkSize),
+                  bitmapBuf'Address,
+                  Storage_Count (readSize));
+
+      bgd.numFreeInodes := bgd.numFreeInodes + 1;
+      writeBGD (fs, 0, bgd);
+
+      fs.sb.freeInodes := fs.sb.freeInodes + 1;
+      writeSuperblock (fs);
+   end freeInode;
+
+   --  Set a block pointer in an inode (direct or single indirect).
+   --  Updates ino in place and writes the indirect block if needed.
+   procedure setBlockPointer
+     (fs       : in out Filesystem;
+      ino      : in out Inode;
+      logBlock : Unsigned_32;
+      physBlk  : Unsigned_32)
+   is
+      ptrsPerBlock : constant Unsigned_32 := fs.blkSize / 4;
+   begin
+      if logBlock < NUM_DIRECT_BLOCKS then
+         ino.directBlocks (Natural (logBlock)) := physBlk;
+      elsif logBlock - Unsigned_32 (NUM_DIRECT_BLOCKS) < ptrsPerBlock then
+         --  Single indirect
+         declare
+            indirectIdx : constant Unsigned_32 :=
+              logBlock - Unsigned_32 (NUM_DIRECT_BLOCKS);
+            indBuf : array (0 .. 1023) of Unsigned_32 with Alignment => 8;
+         begin
+            if ino.singleIndirectBlock = 0 then
+               --  Allocate the indirect block itself
+               declare
+                  newBlk : Unsigned_32;
+                  allocOk : Boolean;
+               begin
+                  allocateBlock (fs, newBlk, allocOk);
+                  if not allocOk then
+                     return;
+                  end if;
+                  ino.singleIndirectBlock := newBlk;
+                  --  Zero-fill the new indirect block
+                  indBuf := (others => 0);
+               end;
+            else
+               readBlock (fs, ino.singleIndirectBlock, indBuf'Address);
+            end if;
+
+            indBuf (Natural (indirectIdx)) := physBlk;
+            declare
+               blkOffset : constant Storage_Offset :=
+                 Storage_Offset (ino.singleIndirectBlock) *
+                   Storage_Offset (fs.blkSize);
+            begin
+               writeBytes (fs, blkOffset, indBuf'Address,
+                           Storage_Count (fs.blkSize));
+            end;
+            invalidateBlockCache;
+         end;
+      end if;
+      --  Double/triple indirect allocation not implemented
+   end setBlockPointer;
+
+   --  Write file data to an inode starting at the given offset.
+   --  Supports file growth via block allocation.
+   function writeData
+     (fs       : in out Filesystem;
+      inodeNum : Unsigned_32;
+      ino      : in out Inode;
+      offset   : Unsigned_64;
+      buf      : System.Address;
+      count    : Unsigned_64) return Unsigned_64
+   is
+      remaining : Unsigned_64 := count;
       pos       : Unsigned_64 := offset;
       written   : Unsigned_64 := 0;
    begin
-      if offset >= size then
-         return 0;
-      end if;
-
-      remaining := size - offset;
-      if remaining > count then
-         remaining := count;
-      end if;
-
       while remaining > 0 loop
          declare
             logBlock    : constant Unsigned_32 :=
               Unsigned_32 (pos / Unsigned_64 (fs.blkSize));
             blockOffset : constant Unsigned_32 :=
               Unsigned_32 (pos mod Unsigned_64 (fs.blkSize));
-            physBlock   : constant Unsigned_32 :=
+            physBlock   : Unsigned_32 :=
               getDataBlock (fs, ino, logBlock);
             canWrite    : Unsigned_64 :=
               Unsigned_64 (fs.blkSize - blockOffset);
          begin
             if physBlock = 0 then
-               --  Sparse block (hole) — skip, don't allocate
-               if canWrite > remaining then
-                  canWrite := remaining;
-               end if;
-            else
-               if canWrite > remaining then
-                  canWrite := remaining;
-               end if;
-
-               writeBytes (fs,
-                           Storage_Offset (physBlock) *
-                             Storage_Offset (fs.blkSize) +
-                             Storage_Offset (blockOffset),
-                           buf + Storage_Offset (written),
-                           Storage_Count (canWrite));
+               --  Need to allocate a new block
+               declare
+                  allocOk : Boolean;
+               begin
+                  allocateBlock (fs, physBlock, allocOk);
+                  if not allocOk then
+                     --  Out of space
+                     exit;
+                  end if;
+                  setBlockPointer (fs, ino, logBlock, physBlock);
+               end;
             end if;
+
+            if canWrite > remaining then
+               canWrite := remaining;
+            end if;
+
+            writeBytes (fs,
+                        Storage_Offset (physBlock) *
+                          Storage_Offset (fs.blkSize) +
+                          Storage_Offset (blockOffset),
+                        buf + Storage_Offset (written),
+                        Storage_Count (canWrite));
 
             written   := written + canWrite;
             pos       := pos + canWrite;
@@ -778,8 +1148,484 @@ package body Ext2 is
          end;
       end loop;
 
+      --  Update inode size if we wrote past EOF
+      declare
+         newEnd : constant Unsigned_64 := offset + written;
+         oldSize : constant Unsigned_64 := fileSize (ino);
+      begin
+         if newEnd > oldSize then
+            ino.sizeLo := Unsigned_32 (newEnd and 16#FFFF_FFFF#);
+            ino.sizeHi_DirACL :=
+              Unsigned_32 (Shift_Right (newEnd, 32));
+
+            --  Update disk sector count (512-byte sectors)
+            ino.numDiskSectors :=
+              Unsigned_32 ((newEnd + 511) / 512);
+         end if;
+      end;
+
+      --  Write updated inode back to disk
+      writeInode (fs, inodeNum, ino);
+
       return written;
    end writeData;
+
+   --  Add a directory entry pointing to an existing inode.
+   function addDirectoryEntry
+     (fs          : in out Filesystem;
+      dirInodeNum : Unsigned_32;
+      inodeNum    : Unsigned_32;
+      name        : String;
+      fileType    : Unsigned_8) return Boolean
+   is
+      dirIno   : Inode;
+      blockBuf : String (1 .. Natural (fs.blkSize))
+        with Alignment => 8;
+   begin
+      if name'Length = 0 or name'Length > 255 then
+         return False;
+      end if;
+
+      readInode (fs, dirInodeNum, dirIno);
+
+      declare
+         size : constant Unsigned_64 := fileSize (dirIno);
+         bytesScanned : Unsigned_64 := 0;
+         blockIdx : Natural := 0;
+         rawSize : constant Unsigned_32 :=
+           Unsigned_32 (DirectoryEntry'Size / 8 + name'Length + 3);
+         entrySize : constant Unsigned_16 :=
+           Unsigned_16 (rawSize and not Unsigned_32'(3));
+         inserted : Boolean := False;
+      begin
+         while bytesScanned < size and
+               blockIdx < NUM_DIRECT_BLOCKS and
+               not inserted
+         loop
+            declare
+               blkNum : constant Unsigned_32 :=
+                 dirIno.directBlocks (blockIdx);
+               scanOff : Storage_Offset := 0;
+            begin
+               if blkNum = 0 then
+                  exit;
+               end if;
+
+               readBlock (fs, blkNum, blockBuf'Address);
+
+               while scanOff < Storage_Offset (fs.blkSize) and
+                     bytesScanned < size and not inserted
+               loop
+                  declare
+                     dent : DirectoryEntry
+                       with Import,
+                            Address => blockBuf'Address + scanOff;
+                     rawReal : constant Unsigned_32 :=
+                       Unsigned_32 (DirectoryEntry'Size / 8 +
+                         Natural (dent.nameLength) + 3);
+                     realSize : constant Unsigned_16 :=
+                       Unsigned_16 (rawReal and not Unsigned_32'(3));
+                     slack : Unsigned_16;
+                  begin
+                     if dent.length = 0 then
+                        exit;
+                     end if;
+
+                     slack := dent.length - realSize;
+
+                     if slack >= entrySize then
+                        dent.length := realSize;
+
+                        declare
+                           newOff : constant Storage_Offset :=
+                             scanOff + Storage_Offset (realSize);
+                           newDent : DirectoryEntry
+                             with Import,
+                                  Address => blockBuf'Address + newOff;
+                        begin
+                           newDent.inode := inodeNum;
+                           newDent.length := slack;
+                           newDent.nameLength :=
+                             Unsigned_8 (name'Length);
+                           newDent.fileType := fileType;
+
+                           declare
+                              entName :
+                                String (1 .. name'Length)
+                                  with Import,
+                                       Address => blockBuf'Address +
+                                         newOff +
+                                         (DirectoryEntry'Size / 8);
+                           begin
+                              for i in 1 .. name'Length loop
+                                 entName (i) :=
+                                   name (name'First + i - 1);
+                              end loop;
+                           end;
+                        end;
+
+                        declare
+                           blkOffset : constant Storage_Offset :=
+                             Storage_Offset (blkNum) *
+                               Storage_Offset (fs.blkSize);
+                        begin
+                           writeBytes (fs, blkOffset,
+                                       blockBuf'Address,
+                                       Storage_Count (fs.blkSize));
+                        end;
+                        inserted := True;
+                     end if;
+
+                     bytesScanned := bytesScanned +
+                       Unsigned_64 (dent.length);
+                     scanOff := scanOff +
+                       Storage_Offset (dent.length);
+                  end;
+               end loop;
+            end;
+            blockIdx := blockIdx + 1;
+         end loop;
+
+         if not inserted then
+            declare
+               newBlk : Unsigned_32;
+               blkOk  : Boolean;
+               dent   : DirectoryEntry
+                 with Import, Address => blockBuf'Address;
+            begin
+               allocateBlock (fs, newBlk, blkOk);
+               if not blkOk then
+                  return False;
+               end if;
+
+               for i in blockBuf'Range loop
+                  blockBuf (i) := Character'Val (0);
+               end loop;
+
+               dent.inode := inodeNum;
+               dent.length := Unsigned_16 (fs.blkSize);
+               dent.nameLength := Unsigned_8 (name'Length);
+               dent.fileType := fileType;
+
+               declare
+                  entName : String (1 .. name'Length)
+                    with Import,
+                         Address => blockBuf'Address +
+                           (DirectoryEntry'Size / 8);
+               begin
+                  for i in 1 .. name'Length loop
+                     entName (i) := name (name'First + i - 1);
+                  end loop;
+               end;
+
+               declare
+                  blkOffset : constant Storage_Offset :=
+                    Storage_Offset (newBlk) *
+                      Storage_Offset (fs.blkSize);
+               begin
+                  writeBytes (fs, blkOffset, blockBuf'Address,
+                              Storage_Count (fs.blkSize));
+               end;
+
+               setBlockPointer (fs, dirIno, Unsigned_32 (blockIdx),
+                                newBlk);
+               dirIno.sizeLo := dirIno.sizeLo + fs.blkSize;
+               dirIno.numDiskSectors := dirIno.numDiskSectors +
+                 Unsigned_32 (fs.blkSize / 512);
+               writeInode (fs, dirInodeNum, dirIno);
+            end;
+         end if;
+      end;
+
+      return True;
+   end addDirectoryEntry;
+
+   --  Remove a directory entry by name.
+   --  Returns the inode number of the removed entry, or 0 on failure.
+   function removeDirectoryEntry
+     (fs          : in out Filesystem;
+      dirInodeNum : Unsigned_32;
+      name        : String) return Unsigned_32
+   is
+      dirIno   : Inode;
+      blockBuf : String (1 .. Natural (fs.blkSize))
+        with Alignment => 8;
+   begin
+      if name'Length = 0 or name'Length > 255 then
+         return 0;
+      end if;
+
+      readInode (fs, dirInodeNum, dirIno);
+
+      declare
+         size : constant Unsigned_64 := fileSize (dirIno);
+         bytesScanned : Unsigned_64 := 0;
+         blockIdx : Natural := 0;
+      begin
+         while bytesScanned < size and
+               blockIdx < NUM_DIRECT_BLOCKS
+         loop
+            declare
+               blkNum  : constant Unsigned_32 :=
+                 dirIno.directBlocks (blockIdx);
+               scanOff : Storage_Offset := 0;
+               prevOff : Storage_Offset := 0;
+               isFirst : Boolean := True;
+            begin
+               if blkNum = 0 then
+                  exit;
+               end if;
+
+               readBlock (fs, blkNum, blockBuf'Address);
+
+               while scanOff < Storage_Offset (fs.blkSize) and
+                     bytesScanned < size
+               loop
+                  declare
+                     dent : DirectoryEntry
+                       with Import,
+                            Address => blockBuf'Address + scanOff;
+                  begin
+                     if dent.length = 0 then
+                        exit;
+                     end if;
+
+                     if Natural (dent.nameLength) = name'Length and
+                        dent.inode /= 0
+                     then
+                        declare
+                           entName : String (1 .. Natural (dent.nameLength))
+                             with Import,
+                                  Address => blockBuf'Address + scanOff +
+                                    (DirectoryEntry'Size / 8);
+                           match : Boolean := True;
+                           removedInode : Unsigned_32;
+                        begin
+                           for i in 1 .. name'Length loop
+                              if entName (i) /=
+                                 name (name'First + i - 1)
+                              then
+                                 match := False;
+                                 exit;
+                              end if;
+                           end loop;
+
+                           if match then
+                              removedInode := dent.inode;
+
+                              if isFirst then
+                                 --  First entry in block: zero inode
+                                 dent.inode := 0;
+                              else
+                                 --  Merge into previous entry
+                                 declare
+                                    prevDent : DirectoryEntry
+                                      with Import,
+                                           Address => blockBuf'Address +
+                                             prevOff;
+                                 begin
+                                    prevDent.length :=
+                                      prevDent.length + dent.length;
+                                 end;
+                              end if;
+
+                              declare
+                                 blkOffset : constant Storage_Offset :=
+                                   Storage_Offset (blkNum) *
+                                     Storage_Offset (fs.blkSize);
+                              begin
+                                 writeBytes (fs, blkOffset,
+                                             blockBuf'Address,
+                                             Storage_Count (fs.blkSize));
+                              end;
+
+                              return removedInode;
+                           end if;
+                        end;
+                     end if;
+
+                     bytesScanned := bytesScanned +
+                       Unsigned_64 (dent.length);
+                     prevOff := scanOff;
+                     isFirst := False;
+                     scanOff := scanOff +
+                       Storage_Offset (dent.length);
+                  end;
+               end loop;
+            end;
+            blockIdx := blockIdx + 1;
+         end loop;
+      end;
+
+      return 0;
+   end removeDirectoryEntry;
+
+   --  Rename a file within the same directory.
+   function renameEntry
+     (fs          : in out Filesystem;
+      dirInodeNum : Unsigned_32;
+      oldName     : String;
+      newName     : String) return Boolean
+   is
+      removedInode : Unsigned_32;
+      oldIno       : Inode;
+      ft           : Unsigned_8;
+      inoType      : Unsigned_8;
+   begin
+      --  Look up the old entry to get its inode and file type
+      removedInode := removeDirectoryEntry (fs, dirInodeNum, oldName);
+      if removedInode = 0 then
+         return False;
+      end if;
+
+      --  Determine file type from the inode, convert to dir entry type.
+      --  inodeType returns upper nibble (0x4=dir, 0x8=regular, 0xA=symlink)
+      --  but dir entries use different codes (2=dir, 1=regular, 7=symlink).
+      readInode (fs, removedInode, oldIno);
+      inoType := inodeType (oldIno);
+      case inoType is
+         when 16#4# => ft := FILETYPE_DIRECTORY;
+         when others => ft := FILETYPE_REGULAR;
+      end case;
+
+      --  Add new entry pointing to the same inode
+      return addDirectoryEntry (fs, dirInodeNum, removedInode, newName, ft);
+   end renameEntry;
+
+   --  Create a new file in a directory
+   function createFile
+     (fs          : in out Filesystem;
+      dirInodeNum : Unsigned_32;
+      name        : String;
+      fileType    : Unsigned_8) return Unsigned_32
+   is
+      newInodeNum : Unsigned_32;
+      allocOk     : Boolean;
+      newIno      : Inode;
+   begin
+      if name'Length = 0 or name'Length > 255 then
+         return 0;
+      end if;
+
+      --  Allocate inode
+      allocateInode (fs, newInodeNum, allocOk);
+      if not allocOk then
+         return 0;
+      end if;
+
+      --  Initialize new inode
+      readInode (fs, newInodeNum, newIno);
+      if fileType = FILETYPE_DIRECTORY then
+         newIno.typeAndPermissions := 16#41FF#;  -- drwxrwxrwx
+      else
+         newIno.typeAndPermissions := 16#81A4#;  -- -rw-r--r--
+      end if;
+      newIno.numHardLinks := 1;
+      newIno.sizeLo := 0;
+      newIno.sizeHi_DirACL := 0;
+      writeInode (fs, newInodeNum, newIno);
+
+      --  Add directory entry to parent
+      if not addDirectoryEntry (fs, dirInodeNum, newInodeNum,
+                                name, fileType)
+      then
+         freeInode (fs, newInodeNum);
+         return 0;
+      end if;
+
+      return newInodeNum;
+   end createFile;
+
+   --  Truncate a file to newSize bytes
+   procedure truncateFile
+     (fs       : in out Filesystem;
+      inodeNum : Unsigned_32;
+      newSize  : Unsigned_64)
+   is
+      ino : Inode;
+      oldSize    : Unsigned_64;
+      firstFree  : Unsigned_32;
+      ptrsPerBlk : Unsigned_32;
+   begin
+      readInode (fs, inodeNum, ino);
+      oldSize := fileSize (ino);
+
+      if newSize >= oldSize then
+         return;
+      end if;
+
+      --  First logical block to free (round up)
+      firstFree := Unsigned_32 (
+        (newSize + Unsigned_64 (fs.blkSize) - 1) /
+        Unsigned_64 (fs.blkSize));
+      ptrsPerBlk := fs.blkSize / 4;
+
+      --  Free direct blocks beyond newSize
+      for i in Natural (firstFree) .. NUM_DIRECT_BLOCKS - 1 loop
+         if ino.directBlocks (i) /= 0 then
+            freeBlock (fs, ino.directBlocks (i));
+            ino.directBlocks (i) := 0;
+         end if;
+      end loop;
+
+      --  Free single indirect block entries
+      if ino.singleIndirectBlock /= 0 then
+         declare
+            indBuf : array (0 .. 1023) of Unsigned_32
+              with Alignment => 8;
+            startIdx : Unsigned_32 := 0;
+            anyLeft  : Boolean := False;
+         begin
+            readBlock (fs, ino.singleIndirectBlock, indBuf'Address);
+
+            if firstFree > Unsigned_32 (NUM_DIRECT_BLOCKS) then
+               startIdx := firstFree -
+                 Unsigned_32 (NUM_DIRECT_BLOCKS);
+            end if;
+
+            for i in Natural (startIdx) ..
+                     Natural (ptrsPerBlk) - 1
+            loop
+               if indBuf (i) /= 0 then
+                  freeBlock (fs, indBuf (i));
+                  indBuf (i) := 0;
+               end if;
+            end loop;
+
+            --  Check if any entries remain
+            for i in 0 .. Natural (startIdx) - 1 loop
+               if indBuf (i) /= 0 then
+                  anyLeft := True;
+                  exit;
+               end if;
+            end loop;
+
+            if anyLeft then
+               --  Write modified indirect block
+               declare
+                  blkOffset : constant Storage_Offset :=
+                    Storage_Offset (ino.singleIndirectBlock) *
+                      Storage_Offset (fs.blkSize);
+               begin
+                  writeBytes (fs, blkOffset, indBuf'Address,
+                              Storage_Count (fs.blkSize));
+               end;
+            else
+               freeBlock (fs, ino.singleIndirectBlock);
+               ino.singleIndirectBlock := 0;
+            end if;
+
+            invalidateBlockCache;
+         end;
+      end if;
+
+      --  Update inode size
+      ino.sizeLo := Unsigned_32 (newSize and 16#FFFF_FFFF#);
+      ino.sizeHi_DirACL := Unsigned_32 (Shift_Right (newSize, 32));
+      ino.numDiskSectors := Unsigned_32 ((newSize + 511) / 512);
+
+      writeInode (fs, inodeNum, ino);
+   end truncateFile;
 
    procedure initATA
      (fs         : out Filesystem;

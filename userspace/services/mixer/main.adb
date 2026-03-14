@@ -132,6 +132,19 @@ begin
                success   => grantOK);
 
             if grantOK then
+               --  Tell HDA where the staging buffer is mapped
+               declare
+                  OP_AUDIO_HW_INIT : constant Unsigned_32 := 16#0510#;
+                  initMsg : Message :=
+                     (tag => (label  => OP_AUDIO_HW_INIT,
+                              length => 1,
+                              flags  => 0,
+                              badge  => 0),
+                      capBadge => 0,
+                      words => (0 => gid, others => 0));
+               begin
+                  initMsg.tag := capCall (CAP_SLOT_HDA, initMsg);
+               end;
                debugPrint ("mixer: staging granted to HDA" & ASCII.LF);
             else
                debugPrint ("mixer: staging grant failed" & ASCII.LF);

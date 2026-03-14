@@ -84,4 +84,12 @@ is
                                    arg0      : Unsigned_64;
                                    retval    : out Unsigned_64);
 
+    procedure handleKill (callerPID : Process.ProcessID;
+                          arg0      : Unsigned_64;
+                          retval    : out Unsigned_64);
+
+    procedure handleSetWellKnown (callerPID : Process.ProcessID;
+                                   arg0, arg1 : Unsigned_64;
+                                   retval     : out Unsigned_64);
+
 end Syscall.Admin;

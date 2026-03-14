@@ -723,9 +723,18 @@ is
         with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
+    -- killProcess
+    -- Clean up and free all resources for the given process, but do NOT
+    -- enter the scheduler. Used for killing another process where the
+    -- caller needs to continue executing.
+    ---------------------------------------------------------------------------
+    procedure killProcess (pid : in ProcessID)
+        with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
     -- kill
-    -- End this process
-    -- @TODO ensure freeing all resources.
+    -- End this process and enter the scheduler (never returns).
+    -- Used for self-kill (SYSCALL_EXIT).
     ---------------------------------------------------------------------------
     procedure kill (pid : in ProcessID)
         with SPARK_Mode => On;
