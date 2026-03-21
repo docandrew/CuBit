@@ -1,0 +1,66 @@
+project Sleep is
+
+    for Languages use ("Ada");
+
+    for Object_Dir use "build";
+
+    for Source_Dirs use (".");
+
+    for Main use ("main.adb");
+
+    for Runtime ("Ada") use "../../runtime";
+
+    for Library_Dir use "";
+
+    -- For gprbuild
+    package Builder is
+
+        for Executable ("main.adb") use "sleep.app";
+
+        for Default_Switches ("Ada") use
+        (
+            "-g",
+            "-gnatwa",
+            "-gnatw.X",
+            "-s",
+            "-v",
+            "-nostdlib"
+        );
+    end Builder;
+
+    -- For compiler & assembler
+    package Compiler is
+        for Default_Switches ("Ada") use
+        (
+            "-fstack-usage",
+            "-fomit-frame-pointer",
+            "-mno-red-zone",
+            "-fno-pic",
+            "-mno-sse",
+            "-mno-sse2"
+        );
+    end Compiler;
+
+    -- For binder
+    package Binder is
+        for Default_Switches ("Ada") use
+        (
+            "-d_C"
+        );
+    end Binder;
+
+    -- For linker (uses C runtime crt0 + linker script for _start entry)
+    package Linker is
+        for Default_Switches ("Ada") use
+        (
+            "-nostdlib",
+            "-static",
+            "-no-pie",
+            "-lgnat-user",
+            "-T", "../../c/link.ld",
+            "../../c/build/crt0.o",
+            "build/manifest.o"
+        );
+    end Linker;
+
+end Sleep;

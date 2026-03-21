@@ -157,6 +157,15 @@ typedef long                ssize_t;
 #define OP_CONFIG_LOAD    0x0604
 #define OP_CONFIG_SAVE    0x0605
 
+/* Stream IPC labels */
+#define OP_STREAM_SUBSCRIBE   0x0700
+#define OP_STREAM_UNSUBSCRIBE 0x0701
+#define OP_STREAM_NOTIFY      0x0702
+#define OP_STREAM_WAKEUP      0x0704
+#define OP_STREAM_LIST        0x0705
+#define OP_STREAM_AVAILABLE   0x0706
+#define OP_STREAM_GONE        0x0707
+
 /*---------------------------------------------------------------------------
  * ELF Capability Manifest (.cubit.caps section)
  *
@@ -176,6 +185,19 @@ typedef long                ssize_t;
 #define CUBIT_REQ_IRQ          4
 #define CUBIT_REQ_DEVICE_MEM   5
 #define CUBIT_REQ_PROCESS      6
+#define CUBIT_REQ_STREAM       8
+
+/* Well-known stream IDs */
+#define CUBIT_STREAM_STDIN    0x01
+#define CUBIT_STREAM_STDOUT   0x02
+#define CUBIT_STREAM_STDERR   0x03
+#define CUBIT_STREAM_LOG      0x04
+#define CUBIT_STREAM_METRIC   0x06
+#define CUBIT_STREAM_HEALTH   0x09
+
+/* Stream type tags */
+#define CUBIT_TYPE_RAW        0x0000
+#define CUBIT_TYPE_TEXT        0x0001
 
 /* Rights bitmask */
 #define CUBIT_RIGHT_R     0x01

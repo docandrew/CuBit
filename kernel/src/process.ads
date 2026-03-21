@@ -376,6 +376,11 @@ is
         notifyWord   : Unsigned_64 := 0;
         notifyWaiter : Boolean     := False;
 
+        -- PID of the process that bound this notification via
+        -- bindNotification. capNotify checks this to wake a receiver
+        -- blocked in receive() with this notification bound.
+        boundReceiver : ProcessID  := NO_PROCESS;
+
         sendQueue   : ProcQueue;
         recvQueue   : ProcQueue;
     end record;
@@ -486,6 +491,11 @@ is
         caps                : Capabilities.CapabilityTable :=
                                   Capabilities.EMPTY_TABLE;
 
+        -- Bitmap of slots holding deferred reply caps (set by
+        -- SAVE_REPLY_CAP, cleared when consumed by reply/replyWait).
+        -- Bit N set means caps(N) holds a CAP_REPLY.
+        deferredReplyCaps   : Unsigned_64 := 0;
+
         -- Generation counter for O(1) revocation. Caps referencing this
         -- process are stale when their gen /= this counter.
         capGeneration       : Capabilities.Generation :=
@@ -506,6 +516,14 @@ is
     -- Lock for protecting the proctab
     lockname : aliased String := "Proctab";
     lock : Spinlocks.Spinlock := (name => lockname'Access, others => <>);
+
+    ---------------------------------------------------------------------------
+    -- TLB flush request array. Set by revokeGrant when a grantee on a
+    -- remote CPU needs its TLB flushed. Checked by the RESCHEDULE IPI
+    -- handler (interrupts.adb). Indexed by CPU number.
+    ---------------------------------------------------------------------------
+    tlbFlushPending : array (0 .. Config.MAX_SMP_CPUS - 1) of Boolean :=
+        (others => False);
 
     ---------------------------------------------------------------------------
     -- Proctab. Array of Process entries and master list of active processes in

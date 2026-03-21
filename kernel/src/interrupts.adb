@@ -21,6 +21,7 @@ with Process.IPC;
 with Serial;
 with TextIO; use TextIO;
 with Time;
+with Virtmem;
 
 package body Interrupts with
     SPARK_Mode => On
@@ -310,13 +311,19 @@ is
                 eoi (RESCHEDULE);
                 -- IPI from another CPU: set needReschedule so the
                 -- checkPreempt block at interrupt return yields.
+                -- Also flush TLB if a grant revocation requires it.
                 reschedIPI : declare
                     perCPUAddr2 : constant System.Address :=
                         PerCPUData.getPerCPUDataAddr;
                     cpuData2 : PerCPUData.PerCPUData with
                         Import, Volatile, Address => perCPUAddr2;
+                    myCPU : constant Natural := cpuData2.cpuNum;
                 begin
                     cpuData2.needReschedule := True;
+                    if Process.tlbFlushPending(myCPU) then
+                        Process.tlbFlushPending(myCPU) := False;
+                        Virtmem.flushTLB;
+                    end if;
                 end reschedIPI;
 
             when SPURIOUS =>

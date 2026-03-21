@@ -249,6 +249,10 @@ procedure main is
    --  Manifest request types
    REQ_FRAMEBUFFER  : constant Unsigned_8 := 1;
    REQ_SERVICE      : constant Unsigned_8 := 2;
+   REQ_STREAM       : constant Unsigned_8 := 8;
+
+   --  Stream notification label
+   OP_STREAM_AVAILABLE : constant Unsigned_32 := 16#0706#;
 
    --  ELF section header type for PROGBITS
    SHT_PROGBITS     : constant Unsigned_32 := 1;
@@ -310,8 +314,9 @@ procedure main is
    --  capabilities into the child process via SYSCALL_MINT_CAP.
    ---------------------------------------------------------------------------
    procedure parseAndGrantManifest
-     (childPID : Unsigned_64;
-      elfSize  : Unsigned_64)
+     (childPID  : Unsigned_64;
+      elfSize   : Unsigned_64;
+      requester : Unsigned_64 := 0)
    is
       --  ELF64 header field offsets
       e_shoff_off     : constant := 40;  -- Section header table offset
@@ -369,13 +374,14 @@ procedure main is
                         readU16 (sh_offset + 4);
                      count   : constant Unsigned_16 :=
                         readU16 (sh_offset + 6);
-                     entryBase  : Unsigned_64;
-                     reqType    : Unsigned_8;
-                     rights     : Unsigned_8;
-                     slotNum    : Unsigned_8;
-                     param0     : Unsigned_32;
-                     rightsMask : Unsigned_64;
-                     ignore     : Unsigned_64;
+                     entryBase     : Unsigned_64;
+                     reqType       : Unsigned_8;
+                     rights        : Unsigned_8;
+                     slotNum       : Unsigned_8;
+                     param0        : Unsigned_32;
+                     rightsMask    : Unsigned_64;
+                     ignore        : Unsigned_64;
+                     streamBitmask : Unsigned_64 := 0;
                   begin
                      if version /= 1 then
                         debugPrint ("procmgr: unknown manifest v" & LF);
@@ -448,11 +454,48 @@ procedure main is
                                  end if;
                               end;
 
+                           when REQ_STREAM =>
+                              --  param0 low 16 bits = stream ID
+                              declare
+                                 sid : constant Unsigned_64 :=
+                                    Unsigned_64 (param0 and 16#FFFF#);
+                              begin
+                                 if sid < 64 then
+                                    streamBitmask := streamBitmask or
+                                       Shift_Left (Unsigned_64'(1),
+                                          Natural (sid));
+                                 end if;
+                                 debugPrint (
+                                    "procmgr: stream id=");
+                                 printDec (Unsigned_32 (sid));
+                                 debugPrint ("" & LF);
+                              end;
+
                            when others =>
                               debugPrint (
                                  "procmgr: unknown req type" & LF);
                         end case;
                      end loop;
+
+                     --  Notify requester about declared streams
+                     if streamBitmask /= 0 and requester /= 0 then
+                        declare
+                           evMsg : Message := NULL_MESSAGE;
+                        begin
+                           evMsg.tag := (
+                              label  => OP_STREAM_AVAILABLE,
+                              length => 2,
+                              flags  => 0,
+                              badge  => 0);
+                           evMsg.words (0) := childPID;
+                           evMsg.words (1) := streamBitmask;
+                           sendEvent (
+                              ProcessID (requester), evMsg);
+                           debugPrint (
+                              "procmgr: sent stream available" &
+                              LF);
+                        end;
+                     end if;
                   end;
 
                   --  Only process first matching manifest section
@@ -778,7 +821,7 @@ procedure main is
       debugPrint ("ms" & LF);
 
       t0 := syscall (SYSCALL_GETTIME);
-      parseAndGrantManifest (newPID, elfSize);
+      parseAndGrantManifest (newPID, elfSize, requester);
       t1 := syscall (SYSCALL_GETTIME);
 
       debugPrint ("procmgr: manifest took ");

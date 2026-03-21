@@ -85,10 +85,14 @@ doom:
 	$(MAKE) -C ../userspace/c -f Makefile.doomgeneric
 	cp ../userspace/c/doom_build/doom.elf isodir/boot/doom.elf
 
-.PHONY : spin
-spin:
-	$(MAKE) -C ../userspace/c build/spin.elf
-	cp ../userspace/c/build/spin.elf isodir/boot/spin.elf
+.PHONY : sleep
+sleep: user_runtime
+	mkdir -p ../userspace/apps/sleep/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/apps/sleep/manifest.c \
+		-o ../userspace/apps/sleep/build/manifest.o
+	$(ALR) gprbuild -P ../userspace/apps/sleep/sleep.gpr
+	cp ../userspace/apps/sleep/build/sleep.app isodir/boot/sleep.app
 
 # Build userspace Ada runtime (needed by filesystem server)
 .PHONY : user_runtime
@@ -206,7 +210,7 @@ shell: user_runtime
 
 # Files that live on ext2 disk images (stage-2 content).
 # Disk images rebuild automatically when any of these change.
-DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/spin.elf \
+DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/sleep.app \
 	../init.conf ../motd.txt ../doom1.wad
 
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.conf, shell.app
@@ -219,7 +223,7 @@ ata_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write ../init.conf init.conf" ata_disk.img
 	debugfs -w -R "write isodir/boot/shell.app shell.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" ata_disk.img
-	debugfs -w -R "write isodir/boot/spin.elf spin.elf" ata_disk.img
+	debugfs -w -R "write isodir/boot/sleep.app sleep.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/wget.app wget.app" ata_disk.img
 	dd if=/dev/zero of=/tmp/config.dat bs=8192 count=1
 	debugfs -w -R "write /tmp/config.dat config.dat" ata_disk.img
@@ -233,7 +237,7 @@ nvme_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write ../motd.txt motd.txt" nvme_disk.img
 	debugfs -w -R "write ../doom1.wad doom1.wad" nvme_disk.img
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" nvme_disk.img
-	debugfs -w -R "write isodir/boot/spin.elf spin.elf" nvme_disk.img
+	debugfs -w -R "write isodir/boot/sleep.app sleep.app" nvme_disk.img
 	debugfs -w -R "write ../init.conf init.conf" nvme_disk.img
 	debugfs -w -R "write isodir/boot/shell.app shell.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/wget.app wget.app" nvme_disk.img
@@ -275,7 +279,7 @@ iso: cubit_kernel
 
 # Build everything including DOOM, then create ISO and disk images
 .PHONY : world
-world: cubit_kernel doom spin filesystem ata nvme virtio-net netstack wget procmgr shell hda mixer ps2 config netmgr devmgr initrd ata_disk.img nvme_disk.img iso
+world: cubit_kernel doom sleep filesystem ata nvme virtio-net netstack wget procmgr shell hda mixer ps2 config netmgr devmgr initrd ata_disk.img nvme_disk.img iso
 
 # Run QEMU with NVMe + virtio-net + HDA audio, shell (everything)
 .PHONY : run

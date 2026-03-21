@@ -1269,10 +1269,13 @@ package body Syscall.Admin is
             return;
         end if;
 
-        -- Move: copy to dest, clear slot 63
+        -- Move: copy to dest, clear slot 63, set bitmap bit
         Process.proctab(callerPID).caps(destSlot) := cap;
         Process.proctab(callerPID).caps(Capabilities.REPLY_CAP_SLOT) :=
             Capabilities.NULL_CAPABILITY;
+        Process.proctab(callerPID).deferredReplyCaps :=
+            Process.proctab(callerPID).deferredReplyCaps or
+            Shift_Left (Unsigned_64'(1), destSlot);
         retval := 1;
     end handleSaveReplyCap;
 

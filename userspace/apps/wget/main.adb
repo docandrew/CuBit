@@ -268,6 +268,13 @@ begin
 
    --  6. OP_NET_READ loop until EOF
    loop
+      --  Handle any pending stream IPC (e.g. OP_STREAM_LIST) before blocking
+      declare
+         ignore : Boolean;
+      begin
+         ignore := CuBit.Streams.streamHandleSubscription;
+      end;
+
       msg := NULL_MESSAGE;
       msg.tag := (label  => OP_NET_READ,
                   length => 3,
@@ -331,6 +338,13 @@ begin
       ignore : MessageTag;
    begin
       ignore := capCall (CAP_SLOT_NET, msg);
+   end;
+
+   --  Drain any pending stream IPC before exit
+   declare
+      ignore : Boolean;
+   begin
+      ignore := CuBit.Streams.streamHandleSubscription;
    end;
 
    debugPrint ("wget: done" & LF);

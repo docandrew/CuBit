@@ -281,6 +281,29 @@ package body CuBit.Streams is
 
          return True;
 
+      elsif msg.tag.label = OP_STREAM_LIST then
+         --  Return bitmask of active streams and count
+         declare
+            bitmask     : Unsigned_64 := 0;
+            activeCount : Unsigned_32 := 0;
+            replyMsg    : Message := NULL_MESSAGE;
+            ignore      : Unsigned_64;
+         begin
+            for i in StreamIndex loop
+               if streamTab (i).active then
+                  bitmask := bitmask or
+                     Shift_Left (Unsigned_64'(1),
+                        Natural (streamTab (i).id));
+                  activeCount := activeCount + 1;
+               end if;
+            end loop;
+            replyMsg.tag.label := REPLY_OK;
+            replyMsg.words (0) := bitmask;
+            replyMsg.words (1) := Unsigned_64 (activeCount);
+            ignore := reply (from, replyMsg);
+         end;
+         return True;
+
       elsif msg.tag.label = OP_STREAM_UNSUBSCRIBE then
          declare
             reqId   : constant StreamId :=

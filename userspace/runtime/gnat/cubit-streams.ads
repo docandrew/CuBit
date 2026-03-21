@@ -52,6 +52,11 @@ package CuBit.Streams is
    --  IPC labels
    OP_STREAM_SUBSCRIBE   : constant Unsigned_32 := 16#0700#;
    OP_STREAM_UNSUBSCRIBE : constant Unsigned_32 := 16#0701#;
+   OP_STREAM_NOTIFY      : constant Unsigned_32 := 16#0702#;
+   OP_STREAM_WAKEUP      : constant Unsigned_32 := 16#0704#;
+   OP_STREAM_LIST        : constant Unsigned_32 := 16#0705#;
+   OP_STREAM_AVAILABLE   : constant Unsigned_32 := 16#0706#;
+   OP_STREAM_GONE        : constant Unsigned_32 := 16#0707#;
 
    MAX_STREAMS     : constant := 4;
    MAX_SUBSCRIBERS : constant := 8;

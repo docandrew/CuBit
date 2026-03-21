@@ -101,6 +101,7 @@ procedure main is
    GRANT_REGION_BASE : constant Unsigned_64 := 16#4000_0000_0000#;
    GRANT_SLOT_SIZE   : constant Unsigned_64 := 256 * 4096;
    STREAM_SUB_TOKEN  : constant Unsigned_64 := 42;
+   STREAM_LIST_TOKEN : constant Unsigned_64 := 43;
 
    --  Buffer for reading child stream data (global to avoid stack growth)
    streamRdBuf : array (0 .. 511) of Unsigned_8;
@@ -388,6 +389,7 @@ procedure main is
    begin
       putStr ("Commands:" & LF);
       putStr ("  acl <file>       - show app access policy" & LF);
+      putStr ("  bg <file>        - spawn process in background" & LF);
       putStr ("  cat <path>       - display file contents" & LF);
       putStr ("  cd [path]        - change working directory" & LF);
       putStr ("  clear            - clear screen" & LF);
@@ -407,6 +409,7 @@ procedure main is
       putStr ("  pwd              - print working directory" & LF);
       putStr ("  route            - show routing table" & LF);
       putStr ("  spawn <file>     - spawn a new process" & LF);
+      putStr ("  streams <pid>    - list process streams" & LF);
       putStr ("  sysinfo          - system information" & LF);
       putStr ("  uptime           - time since boot" & LF);
       putStr ("  wc <path>        - line/word/byte counts" & LF);
@@ -513,6 +516,62 @@ procedure main is
          putStr ("spawn failed" & LF);
       end if;
    end cmdSpawn;
+
+   ---------------------------------------------------------------------------
+   --  cmdBg - spawn a process in the background (no foreground tracking)
+   ---------------------------------------------------------------------------
+   procedure cmdBg (filename : String) is
+      msg : Message;
+      tag : MessageTag;
+   begin
+      if procmgrPID = NO_PROCESS then
+         putStr ("error: procmgr not found" & LF);
+         return;
+      end if;
+
+      if filename'Length = 0 then
+         putStr ("usage: bg <filename>" & LF);
+         return;
+      end if;
+
+      --  Write filename into grant buffer with cwd prefix if needed
+      declare
+         buf : array (0 .. GRANT_BUF_PAGES * 4096 - 1) of Unsigned_8 with
+            Import, Address => grantBuf;
+         pos : Natural := 0;
+         totalLen : Natural;
+      begin
+         if filename (filename'First) /= '@' and cwdLen > 0 then
+            for i in 1 .. cwdLen loop
+               buf (pos) := Unsigned_8 (Character'Pos (cwdBuf (i)));
+               pos := pos + 1;
+            end loop;
+         end if;
+         for i in 0 .. filename'Length - 1 loop
+            buf (pos) := Unsigned_8 (
+               Character'Pos (filename (filename'First + i)));
+            pos := pos + 1;
+         end loop;
+         totalLen := pos;
+
+         msg := NULL_MESSAGE;
+         msg.tag := (label  => OP_SPAWN,
+                     length => Unsigned_8 (totalLen),
+                     flags  => 0,
+                     badge  => 0);
+         msg.words (0) := grantId;
+         msg.words (1) := 5;
+         tag := capCall (CAP_SLOT_PROCMGR, msg);
+      end;
+
+      if tag.label = REPLY_OK then
+         putStr ("[bg] PID ");
+         putDec (Unsigned_32 (msg.words (0)));
+         putChar (LF);
+      else
+         putStr ("bg: spawn failed" & LF);
+      end if;
+   end cmdBg;
 
    ---------------------------------------------------------------------------
    --  cmdKill - kill a process by PID
@@ -1927,14 +1986,16 @@ procedure main is
                                     nlen : Natural;
                                  end record;
                                  reqNames : constant
-                                    array (0 .. 6) of ReqName := (
+                                    array (0 .. 8) of ReqName := (
                                     0 => ("UNKNOWN     ", 7),
                                     1 => ("FRAMEBUFFER ", 11),
                                     2 => ("SERVICE     ", 7),
                                     3 => ("IOPORT      ", 6),
                                     4 => ("IRQ         ", 3),
                                     5 => ("DEVICE_MEM  ", 10),
-                                    6 => ("PROCESS     ", 7));
+                                    6 => ("PROCESS     ", 7),
+                                    7 => ("UNKNOWN     ", 7),
+                                    8 => ("STREAM      ", 6));
                               begin
                                  putChar (LF);
                                  putStr ("Capabilities "
@@ -1964,7 +2025,7 @@ procedure main is
                                              bufU32 (eBase + 4);
                                           rIdx : Natural := reqType;
                                        begin
-                                          if rIdx > 6 then
+                                          if rIdx > 8 then
                                              rIdx := 0;
                                           end if;
 
@@ -2001,6 +2062,29 @@ procedure main is
                                              putDec (param0);
                                           end if;
 
+                                          --  Stream details: lo16=ID, hi16=pages
+                                          if reqType = 8 then
+                                             declare
+                                                sid : constant Unsigned_32 :=
+                                                   param0 and 16#FFFF#;
+                                                pg  : constant Unsigned_32 :=
+                                                   Shift_Right (param0, 16)
+                                                      and 16#FFFF#;
+                                             begin
+                                                putStr ("  id=");
+                                                case sid is
+                                                   when 1 => putStr ("stdin");
+                                                   when 2 => putStr ("stdout");
+                                                   when 3 => putStr ("stderr");
+                                                   when 4 => putStr ("log");
+                                                   when others =>
+                                                      putDec (sid);
+                                                end case;
+                                                putStr (" pages=");
+                                                putDec (pg);
+                                             end;
+                                          end if;
+
                                           putChar (LF);
                                        end;
                                     end loop;
@@ -2021,8 +2105,8 @@ procedure main is
 
       --  Report missing sections
       if not foundAccess then
-         putStr ("Filesystem Access: "
-            & "(none - wildcard access)" & LF);
+         putStr ("Filesystem Access: (no .cubit.access)" & LF);
+         putStr ("  deny-by-default (no filesystem access)" & LF);
       end if;
       if not foundCaps then
          putStr ("Capabilities: (none)" & LF);
@@ -2577,6 +2661,107 @@ procedure main is
       end if;
    end cmdNslookup;
 
+   ---------------------------------------------------------------------------
+   --  cmdStreams - query a process for its active streams
+   ---------------------------------------------------------------------------
+   procedure cmdStreams (args : String) is
+      OP_STREAM_LIST : constant Unsigned_32 := 16#0705#;
+      pid     : Unsigned_64 := 0;
+      ch      : Character;
+      msg     : Message;
+      comp    : CompletionEntry;
+      ok      : Boolean;
+      ret     : Unsigned_64;
+      bitmask : Unsigned_64;
+      count   : Unsigned_32;
+   begin
+      if args'Length = 0 then
+         putStr ("usage: streams <pid>" & LF);
+         return;
+      end if;
+
+      --  Parse decimal PID
+      for i in args'Range loop
+         ch := args (i);
+         if ch >= '0' and ch <= '9' then
+            pid := pid * 10 +
+               Unsigned_64 (Character'Pos (ch) - Character'Pos ('0'));
+         else
+            putStr ("streams: invalid PID" & LF);
+            return;
+         end if;
+      end loop;
+
+      if pid = 0 or pid > 255 then
+         putStr ("streams: PID out of range" & LF);
+         return;
+      end if;
+
+      --  Build and send OP_STREAM_LIST
+      msg := NULL_MESSAGE;
+      msg.tag := (label  => OP_STREAM_LIST,
+                  length => 0, flags => 0, badge => 0);
+
+      ok := submit (ProcessID (pid), msg, STREAM_LIST_TOKEN);
+      if not ok then
+         putStr ("streams: send failed" & LF);
+         return;
+      end if;
+
+      --  Poll for completion with timeout
+      for attempt in 1 .. 50 loop
+         ret := pollCompletion (comp'Address);
+         if ret = 1 and then comp.token = STREAM_LIST_TOKEN then
+            if comp.msg.tag.label = REPLY_OK then
+               bitmask := comp.msg.words (0);
+               count   := Unsigned_32 (comp.msg.words (1));
+
+               putStr ("PID ");
+               putDec (Unsigned_32 (pid));
+               putStr (": ");
+               putDec (count);
+               putStr (" stream(s)" & LF);
+
+               --  Scan bits 0..15 for active stream IDs
+               for bit in 0 .. 15 loop
+                  if (bitmask and Shift_Left (1, bit)) /= 0 then
+                     putStr ("  stream ");
+                     putDec (Unsigned_32 (bit));
+                     putStr (" = ");
+                     case bit is
+                        when 1 => putStr ("stdin");
+                        when 2 => putStr ("stdout");
+                        when 3 => putStr ("stderr");
+                        when 4 => putStr ("log");
+                        when others =>
+                           putStr ("id:");
+                           putDec (Unsigned_32 (bit));
+                     end case;
+                     putChar (LF);
+                  end if;
+               end loop;
+            elsif comp.msg.tag.label = REPLY_ERR then
+               putStr ("streams: error from PID ");
+               putDec (Unsigned_32 (pid));
+               putChar (LF);
+            else
+               putStr ("streams: unexpected reply" & LF);
+            end if;
+            return;
+         end if;
+
+         declare
+            ignore : Unsigned_64;
+         begin
+            ignore := syscall (SYSCALL_SLEEP, 10);
+         end;
+      end loop;
+
+      putStr ("streams: no response from PID ");
+      putDec (Unsigned_32 (pid));
+      putChar (LF);
+   end cmdStreams;
+
    procedure dispatchCommand is
       line : String renames lineBuf (1 .. lineLen);
    begin
@@ -2596,6 +2781,10 @@ procedure main is
          cmdAcl (line (5 .. lineLen));
       elsif strEqual (line, "acl") then
          putStr ("usage: acl <file>" & LF);
+      elsif startsWith (line, "bg ") and lineLen > 3 then
+         cmdBg (line (4 .. lineLen));
+      elsif strEqual (line, "bg") then
+         putStr ("usage: bg <filename>" & LF);
       elsif strEqual (line, "clear") then
          cmdClear;
       elsif startsWith (line, "echo ") and lineLen > 5 then
@@ -2654,6 +2843,10 @@ procedure main is
          cmdNslookup (line (10 .. lineLen));
       elsif strEqual (line, "nslookup") then
          putStr ("usage: nslookup <hostname>" & LF);
+      elsif startsWith (line, "streams ") and lineLen > 8 then
+         cmdStreams (line (9 .. lineLen));
+      elsif strEqual (line, "streams") then
+         putStr ("usage: streams <pid>" & LF);
       elsif startsWith (line, "write ") and lineLen > 6 then
          cmdWrite (line (7 .. lineLen));
       elsif strEqual (line, "write") then
@@ -3003,6 +3196,14 @@ begin
                debugPrint ("shell: cap fault pid=");
                printDec (Unsigned_32 (eventMsg.words (0)));
                debugPrint (" syscall=");
+               printDec (Unsigned_32 (eventMsg.words (1)));
+               debugPrint ("" & LF);
+            elsif found and then
+               eventMsg.tag.label = CuBit.Streams.OP_STREAM_AVAILABLE
+            then
+               debugPrint ("shell: stream available pid=");
+               printDec (Unsigned_32 (eventMsg.words (0)));
+               debugPrint (" mask=");
                printDec (Unsigned_32 (eventMsg.words (1)));
                debugPrint ("" & LF);
             elsif found and then eventMsg.tag.label = 1 then

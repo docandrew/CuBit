@@ -12,8 +12,10 @@
 with BuddyAllocator;
 with Capabilities.Operations;
 with Config;
+with IPI;
 with PerCPUData;
 with Process.Queues;
+with Util;
 with Virtmem;
 with x86;
 
@@ -231,10 +233,18 @@ is
         end if;
 
         if mailtab(receiver).hasMsg then
-            -- Message delivered directly (sender already WAITINGFORREPLY).
-            msg  := mailtab(receiver).msg;
+            -- Message deposited by send() Path 1 or submit().
             from := mailtab(receiver).sender;
             mailtab(receiver).hasMsg := False;
+            -- Path 1: sender in WAITINGFORREPLY, msg in sendMsg.
+            -- submit(): sender running, msg in mailtab.msg.
+            if from /= NO_PROCESS
+               and then proctab(from).state = WAITINGFORREPLY
+            then
+                msg := proctab(from).sendMsg;
+            else
+                msg := mailtab(receiver).msg;
+            end if;
 
             -- Mint one-use reply cap for this sender
             proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
@@ -298,10 +308,18 @@ is
 
             proctab(sender).state := WAITINGFORREPLY;
         else
-            -- Woken by send() Path 1 or submit(): message in mailbox
-            msg  := mailtab(receiver).msg;
+            -- Woken by send() Path 1 or submit().
             from := mailtab(receiver).sender;
             mailtab(receiver).hasMsg := False;
+            -- Path 1 sender is in WAITINGFORREPLY; read from sendMsg.
+            -- submit() sender is running; read from mailtab.msg.
+            if from /= NO_PROCESS
+               and then proctab(from).state = WAITINGFORREPLY
+            then
+                msg := proctab(from).sendMsg;
+            else
+                msg := mailtab(receiver).msg;
+            end if;
         end if;
 
         -- Mint one-use reply cap for this sender
@@ -389,32 +407,36 @@ is
         ignore   : Unsigned_64;
         sender   : ProcessID;
         ign      : ProcessID;
+        rtState  : ProcessState;
     begin
         -----------------------------------------------------------------------
         -- Phase 1: Reply to previous sender
         -----------------------------------------------------------------------
-        if replyTo /= NO_PROCESS
-           and then proctab(replyTo).state /= INVALID
-        then
-            if proctab(replyTo).state = WAITINGFORREPLY then
-                -- Validate reply cap and deliver reply.
-                -- Kernel threads are exempt; userspace must hold a
-                -- matching CAP_REPLY. If validation fails, silently
-                -- skip the reply — Phase 2 will mint a fresh cap.
-                validateRW : declare
-                    doReply   : Boolean := False;
-                    foundSlot : Capabilities.CapabilitySlot :=
-                        Capabilities.REPLY_CAP_SLOT;
-                begin
-                    if proctab(mypid).mode /= USER then
-                        doReply := True;
-                    else
-                        checkCap : declare
-                            cap : Capabilities.Capability;
-                        begin
+        if replyTo /= NO_PROCESS then
+            -- Read state once to avoid TOCTOU (Fix 1)
+            rtState := proctab(replyTo).state;
+
+            if rtState /= INVALID then
+                if rtState = WAITINGFORREPLY then
+                    -- Validate reply cap and deliver reply.
+                    -- Kernel threads are exempt; userspace must
+                    -- hold a matching CAP_REPLY. If validation
+                    -- fails, silently skip — Phase 2 mints fresh.
+                    validateRW : declare
+                        doReply   : Boolean := False;
+                        foundSlot : Capabilities.CapabilitySlot :=
+                            Capabilities.REPLY_CAP_SLOT;
+                        cap : Capabilities.Capability;
+                        remaining : Unsigned_64;
+                        bs  : Natural;
+                    begin
+                        if proctab(mypid).mode /= USER then
+                            doReply := True;
+                        else
                             cap := proctab(mypid).caps(
                                 Capabilities.REPLY_CAP_SLOT);
-                            if cap.capType = Capabilities.CAP_REPLY
+                            if cap.capType =
+                                   Capabilities.CAP_REPLY
                                and then cap.object.ref =
                                    Unsigned_64(replyTo)
                                and then cap.gen =
@@ -422,8 +444,14 @@ is
                             then
                                 doReply := True;
                             else
-                                for s in Capabilities.CapabilitySlot loop
-                                    cap := proctab(mypid).caps(s);
+                                -- Bitmap scan: iterate only
+                                -- deferred reply cap slots
+                                remaining := proctab(mypid)
+                                    .deferredReplyCaps;
+                                while remaining /= 0 loop
+                                    bs := Util.getFirstSetBit
+                                        (remaining);
+                                    cap := proctab(mypid).caps(bs);
                                     if cap.capType =
                                        Capabilities.CAP_REPLY
                                        and then cap.object.ref =
@@ -433,30 +461,37 @@ is
                                                .capGeneration
                                     then
                                         doReply := True;
-                                        foundSlot := s;
+                                        foundSlot := bs;
                                         exit;
                                     end if;
+                                    remaining :=
+                                        remaining and (remaining - 1);
                                 end loop;
                             end if;
-                        end checkCap;
-                    end if;
-
-                    if doReply then
-                        -- Consume one-use reply cap
-                        if proctab(mypid).mode = USER then
-                            proctab(mypid).caps(foundSlot) :=
-                                Capabilities.NULL_CAPABILITY;
                         end if;
 
-                        -- Store reply, make sender READY (no direct
-                        -- switch — check for next message first).
-                        proctab(replyTo).replyMsg := replyMsg;
-                        notify (replyTo);
-                    end if;
-                end validateRW;
-            else
-                -- Async path: delegate to full reply()
-                ignore := reply (replyTo, replyMsg);
+                        if doReply then
+                            -- Consume one-use reply cap + bitmap
+                            if proctab(mypid).mode = USER then
+                                proctab(mypid).caps(foundSlot) :=
+                                    Capabilities.NULL_CAPABILITY;
+                                proctab(mypid).deferredReplyCaps :=
+                                    proctab(mypid).deferredReplyCaps
+                                    and not Shift_Left
+                                        (Unsigned_64'(1),
+                                         foundSlot);
+                            end if;
+
+                            -- Store reply, make sender READY (no
+                            -- directSwitch — check for next msg).
+                            proctab(replyTo).replyMsg := replyMsg;
+                            notify (replyTo);
+                        end if;
+                    end validateRW;
+                else
+                    -- Async path: delegate to full reply()
+                    ignore := reply (replyTo, replyMsg);
+                end if;
             end if;
         end if;
 
@@ -489,11 +524,17 @@ is
             return;
         end if;
 
-        -- Check deposited message (sender already in WAITINGFORREPLY)
+        -- Check deposited message (send Path 1 or submit)
         if mailtab(receiver).hasMsg then
-            msg  := mailtab(receiver).msg;
             from := mailtab(receiver).sender;
             mailtab(receiver).hasMsg := False;
+            if from /= NO_PROCESS
+               and then proctab(from).state = WAITINGFORREPLY
+            then
+                msg := proctab(from).sendMsg;
+            else
+                msg := mailtab(receiver).msg;
+            end if;
 
             -- Mint one-use reply cap for this sender
             proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
@@ -529,10 +570,18 @@ is
 
             proctab(sender).state := WAITINGFORREPLY;
         else
-            -- Woken by send() Path 1 or submit(): message in mailbox
-            msg  := mailtab(receiver).msg;
+            -- Woken by send() Path 1 or submit().
             from := mailtab(receiver).sender;
             mailtab(receiver).hasMsg := False;
+            -- Path 1 sender is in WAITINGFORREPLY; read from sendMsg.
+            -- submit() sender is running; read from mailtab.msg.
+            if from /= NO_PROCESS
+               and then proctab(from).state = WAITINGFORREPLY
+            then
+                msg := proctab(from).sendMsg;
+            else
+                msg := mailtab(receiver).msg;
+            end if;
         end if;
 
         -- Mint one-use reply cap for this sender
@@ -580,11 +629,17 @@ is
                  gen      => proctab(from).capGeneration);
 
         elsif mailtab(receiver).hasMsg then
-            -- Message delivered directly (sender already WAITINGFORREPLY)
-            msg   := mailtab(receiver).msg;
+            -- Message deposited by send() Path 1 or submit()
             from  := mailtab(receiver).sender;
             mailtab(receiver).hasMsg := False;
             found := True;
+            if from /= NO_PROCESS
+               and then proctab(from).state = WAITINGFORREPLY
+            then
+                msg := proctab(from).sendMsg;
+            else
+                msg := mailtab(receiver).msg;
+            end if;
 
             -- Mint one-use reply cap for this sender
             proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
@@ -669,10 +724,9 @@ is
 
         if not Queues.isEmpty (mailtab(dest).recvQueue) then
             -- Path 1: receiver already waiting. Dequeue them.
-            -- Deposit in mailbox for the wakeup path (only one Path 1
-            -- sender can exist since we dequeue the receiver).
+            -- Message already in proctab(pid).sendMsg; just record
+            -- sender identity. Skip redundant 48-byte mailbox copy.
             mailtab(dest).hasMsg  := True;
-            mailtab(dest).msg     := msg;
             mailtab(dest).sender  := pid;
 
             Queues.dequeue (mailtab(dest).recvQueue, receiver);
@@ -680,11 +734,12 @@ is
             -- Sender goes to WAITINGFORREPLY
             proctab(pid).state := WAITINGFORREPLY;
 
-            Spinlocks.exitCriticalSection (mailtab(dest).lock);
-
+            -- Acquire Process.lock BEFORE releasing mailtab.lock to
+            -- close the window where receiver could be killed/migrated.
+            -- Lock ordering: mailtab < Process.lock (documented).
             if proctab(receiver).cpu = PerCPUData.getCPUNumber then
-                -- Same CPU: fast path directSwitch to receiver.
                 Spinlocks.enterCriticalSection (lock);
+                Spinlocks.exitCriticalSection (mailtab(dest).lock);
                 directSwitch (pid, receiver);
                 Spinlocks.exitCriticalSection (lock);
 
@@ -692,9 +747,12 @@ is
                 replyTag := proctab(pid).replyMsg.tag;
                 return replyTag;
             else
-                -- Cross CPU: make receiver ready on its home CPU.
-                -- Sender is WAITINGFORREPLY; fall through to yield.
+                -- Cross CPU: acquire Process.lock, release mailtab,
+                -- enqueue receiver, release Process.lock.
+                Spinlocks.enterCriticalSection (lock);
+                Spinlocks.exitCriticalSection (mailtab(dest).lock);
                 ready (receiver);
+                Spinlocks.exitCriticalSection (lock);
             end if;
         else
             -- Path 2: no receiver yet. Enqueue ourselves as a sender.
@@ -817,29 +875,43 @@ is
                     then
                         authorized := True;
                     else
-                        -- Slow path: scan all slots (deferred reply caps)
-                        for s in Capabilities.CapabilitySlot loop
-                            cap := proctab(mypid).caps(s);
-                            if cap.capType = Capabilities.CAP_REPLY
-                               and then cap.object.ref =
-                                   Unsigned_64(replyTo)
-                               and then cap.gen =
-                                   proctab(replyTo).capGeneration
-                            then
-                                authorized := True;
-                                foundSlot := s;
-                                exit;
-                            end if;
-                        end loop;
+                        -- Slow path: iterate only deferred reply cap
+                        -- slots via bitmap (avoids scanning all 64).
+                        bitmapScan : declare
+                            remaining : Unsigned_64 :=
+                                proctab(mypid).deferredReplyCaps;
+                            s : Natural;
+                        begin
+                            while remaining /= 0 loop
+                                s := Util.getFirstSetBit (remaining);
+                                cap := proctab(mypid).caps(s);
+                                if cap.capType = Capabilities.CAP_REPLY
+                                   and then cap.object.ref =
+                                       Unsigned_64(replyTo)
+                                   and then cap.gen =
+                                       proctab(replyTo).capGeneration
+                                then
+                                    authorized := True;
+                                    foundSlot := s;
+                                    exit;
+                                end if;
+                                -- Clear lowest set bit
+                                remaining :=
+                                    remaining and (remaining - 1);
+                            end loop;
+                        end bitmapScan;
                     end if;
 
                     if not authorized then
                         return 0;
                     end if;
 
-                    -- Consume (one-use)
+                    -- Consume (one-use) and clear bitmap bit
                     proctab(mypid).caps(foundSlot) :=
                         Capabilities.NULL_CAPABILITY;
+                    proctab(mypid).deferredReplyCaps :=
+                        proctab(mypid).deferredReplyCaps and
+                        not Shift_Left (Unsigned_64'(1), foundSlot);
                 end validateReply;
             end if;
 
@@ -1087,6 +1159,9 @@ is
         with SPARK_Mode => On
     is
         pid      : constant ProcessID := PerCPUData.getCurrentPID;
+        -- Threads share parent's address space and grant table
+        owner    : constant ProcessID :=
+            (if proctab(pid).isThread then proctab(pid).ppid else pid);
         physAddr : Virtmem.PhysAddress;
         granteeVirt : Integer_Address;
         flags    : Unsigned_64;
@@ -1094,7 +1169,7 @@ is
         slotFound : Boolean := False;
         granterSlot : GrantID := 0;
 
-        --  Globally unique grant ID: granterPID * MAX_GRANTS + granterSlot.
+        --  Globally unique grant ID: ownerPID * MAX_GRANTS + granterSlot.
         --  This ensures each grant maps to a unique address in the grantee,
         --  even when multiple granters create grants to the same grantee.
         globalId : Natural;
@@ -1122,9 +1197,9 @@ is
             return;
         end if;
 
-        -- Find a free grant slot in granter's array
+        -- Find a free grant slot in owner's array
         for i in GrantID loop
-            if not proctab(pid).grants(i).active then
+            if not proctab(owner).grants(i).active then
                 granterSlot := i;
                 slotFound   := True;
                 exit;
@@ -1135,9 +1210,9 @@ is
             return;
         end if;
 
-        --  Compute globally unique ID: each granter PID gets its own
+        --  Compute globally unique ID: each owner PID gets its own
         --  region in the grantee's address space.
-        globalId := Natural (pid) * MAX_GRANTS_PER_PROCESS + granterSlot;
+        globalId := Natural (owner) * MAX_GRANTS_PER_PROCESS + granterSlot;
 
         -- Determine permission flags
         if perm = GRANT_READWRITE then
@@ -1148,11 +1223,11 @@ is
 
         -- Map each page from granter's space into grantee's space
         for i in 0 .. numPages - 1 loop
-            -- Look up physical address behind granter's virtual address
+            -- Look up physical address behind owner's virtual address
             physAddr := Virtmem.tableWalk (
                 virt => To_Integer (localAddr) +
                         Integer_Address (i) * Integer_Address (Virtmem.PAGE_SIZE),
-                myP4 => addrtab(proctab(pid).pgTable));
+                myP4 => addrtab(proctab(owner).pgTable));
 
             if physAddr = 0 then
                 -- Page not mapped in granter's space — roll back
@@ -1198,10 +1273,10 @@ is
             end if;
         end loop;
 
-        -- Record grant metadata
-        proctab(pid).grants(granterSlot) := (
+        -- Record grant metadata in owner's grant table
+        proctab(owner).grants(granterSlot) := (
             active      => True,
-            granterPID  => pid,
+            granterPID  => owner,
             granteePID  => grantee,
             granterAddr => localAddr,
             granteeAddr => To_Address (
@@ -1225,9 +1300,12 @@ is
         with SPARK_Mode => On
     is
         pid   : constant ProcessID := PerCPUData.getCurrentPID;
+        -- Threads share parent's grant table
+        owner : constant ProcessID :=
+            (if proctab(pid).isThread then proctab(pid).ppid else pid);
         granteeVirt : Integer_Address;
         ok    : Boolean;
-        g     : Grant renames proctab(pid).grants(id);
+        g     : Grant renames proctab(owner).grants(id);
     begin
         if not g.active then
             return;
@@ -1250,13 +1328,19 @@ is
                 success => ok);
         end loop;
 
-        -- Invalidate TLB for grantee if they have a valid page table
-        -- (Full TLB shootdown via IPI is future work — for now we flush
-        -- the local TLB if grantee happens to be current)
-        if PerCPUData.getCurrentPID = g.granteePID then
-            Virtmem.setActiveP4 (
-                Virtmem.K2P (addrtab(proctab(g.granteePID).pgTable)'Address));
-        end if;
+        -- Invalidate TLB for grantee. If grantee is on this CPU,
+        -- flush locally. If on another CPU, set the global TLB flush
+        -- flag and send reschedule IPI to trigger remote flush.
+        tlbShootdown : declare
+            granteeCPU : constant Natural := proctab(g.granteePID).cpu;
+        begin
+            if granteeCPU = PerCPUData.getCPUNumber then
+                Virtmem.flushTLB;
+            else
+                tlbFlushPending(granteeCPU) := True;
+                IPI.sendReschedule (granteeCPU);
+            end if;
+        end tlbShootdown;
 
         -- Mark grant slot as inactive
         g := (active => False, others => <>);
@@ -1479,33 +1563,35 @@ is
         if mailtab(ProcessID(destPID)).notifyWaiter then
             mailtab(ProcessID(destPID)).notifyWaiter := False;
             notify (ProcessID(destPID));
-        -- Also wake if blocked in receive() with this notification bound.
-        -- The notification PID is the target; find any process that has it
-        -- as their boundNotification and is in RECEIVING state.
-        elsif proctab(ProcessID(destPID)).state = RECEIVING
-              and then proctab(ProcessID(destPID)).boundNotification =
-                       ProcessID(destPID)
+        -- Also wake if a process bound this notification and is blocked
+        -- in receive(). boundReceiver tracks which process called
+        -- bindNotification on this notification PID.
+        elsif mailtab(ProcessID(destPID)).boundReceiver /= NO_PROCESS
         then
-            -- Remove from recvQueue and wake
             wakeRecv : declare
-                recvPID : constant ProcessID := ProcessID(destPID);
+                recvPID : constant ProcessID :=
+                    mailtab(ProcessID(destPID)).boundReceiver;
                 ignore  : ProcessID;
                 recv    : constant ProcessID := getReceiver (recvPID);
             begin
-                Queues.popItem (mailtab(recv).recvQueue, recvPID, ignore);
-                -- Deliver notification as synthetic message in mailbox
-                mailtab(recv).hasMsg  := True;
-                mailtab(recv).msg    := (
-                    tag      => (label  => 0,
-                                 length => 1,
-                                 flags  => 0,
-                                 badge  => 0),
-                    capBadge => 0,
-                    words    => (0 => mailtab(ProcessID(destPID)).notifyWord,
-                                 others => 0));
-                mailtab(recv).sender := NO_PROCESS;
-                mailtab(ProcessID(destPID)).notifyWord := 0;
-                notify (recvPID);
+                if proctab(recvPID).state = RECEIVING then
+                    Queues.popItem (
+                        mailtab(recv).recvQueue, recvPID, ignore);
+                    -- Deliver notification as synthetic message
+                    mailtab(recv).hasMsg  := True;
+                    mailtab(recv).msg    := (
+                        tag      => (label  => 0,
+                                     length => 1,
+                                     flags  => 0,
+                                     badge  => 0),
+                        capBadge => 0,
+                        words    => (
+                            0 => mailtab(ProcessID(destPID)).notifyWord,
+                            others => 0));
+                    mailtab(recv).sender := NO_PROCESS;
+                    mailtab(ProcessID(destPID)).notifyWord := 0;
+                    notify (recvPID);
+                end if;
             end wakeRecv;
         end if;
 
@@ -1582,6 +1668,7 @@ is
         end if;
 
         proctab(mypid).boundNotification := notifPID;
+        mailtab(notifPID).boundReceiver  := mypid;
     end bindNotification;
 
     ---------------------------------------------------------------------------
@@ -1591,12 +1678,18 @@ is
         with SPARK_Mode => On
     is
         mypid : constant ProcessID := PerCPUData.getCurrentPID;
+        old   : ProcessID;
     begin
         if mypid = NO_PROCESS then
             return;
         end if;
 
+        old := proctab(mypid).boundNotification;
         proctab(mypid).boundNotification := NO_PROCESS;
+
+        if old /= NO_PROCESS then
+            mailtab(old).boundReceiver := NO_PROCESS;
+        end if;
     end unbindNotification;
 
 end Process.IPC;
