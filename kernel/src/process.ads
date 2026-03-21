@@ -255,8 +255,9 @@ is
     -- harvest completions later. Each process has a completion queue that
     -- reply() enqueues into when the sender used submit() instead of send().
     ---------------------------------------------------------------------------
-    COMPLETION_QUEUE_SIZE : constant := 64;
-    MAX_PENDING_ASYNC     : constant := 16;
+    COMPLETION_QUEUE_SIZE  : constant := 64;
+    MAX_PENDING_ASYNC      : constant := 16;
+    NO_COMPLETION_TOKEN    : constant Unsigned_64 := Unsigned_64'Last;
 
     subtype CompletionIndex is Natural range 0 .. COMPLETION_QUEUE_SIZE - 1;
 
@@ -470,6 +471,7 @@ is
         -- For low-level IPC
         mail                : ProcessID;
         replyMsg            : Message := NULL_MESSAGE;
+        sendMsg             : Message := NULL_MESSAGE;
 
         -- Async I/O: pending requests and grants
         pendingRequests     : PendingArray := (others => (NO_PROCESS, 0));

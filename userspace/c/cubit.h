@@ -367,4 +367,33 @@ int cubit_resolve_scheme(const char *name, cubit_scheme_info_t *info);
 #define O_CREAT    64
 #define O_TRUNC    512
 
+/*---------------------------------------------------------------------------
+ * I/O Streams - Producer-owned ring buffer model
+ *
+ * Same shared memory layout as the Ada CuBit.Streams package.
+ * A C producer can serve Ada subscribers and vice versa.
+ *---------------------------------------------------------------------------*/
+
+/* Stream IDs */
+#define CUBIT_STREAM_STDIN    0x01
+#define CUBIT_STREAM_STDOUT   0x02
+#define CUBIT_STREAM_STDERR   0x03
+
+/* Stream type tags */
+#define CUBIT_TYPE_RAW_BYTES  0x0000
+#define CUBIT_TYPE_TEXT_LINE  0x0001
+
+/* IPC labels for stream subscription */
+#define OP_STREAM_SUBSCRIBE   0x0700
+#define OP_STREAM_UNSUBSCRIBE 0x0701
+
+/* Producer API */
+void     cubit_stream_create(uint16_t stream_id, unsigned pages,
+                             uint16_t type_tag);
+uint32_t cubit_stream_write(uint16_t stream_id, const void *data,
+                            uint32_t len, uint16_t type_tag);
+void     cubit_stream_print(uint16_t stream_id, const char *msg);
+int      cubit_stream_handle_subscription(void);
+void     cubit_stream_flush(uint16_t stream_id);
+
 #endif /* CUBIT_H */

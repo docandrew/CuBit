@@ -869,10 +869,12 @@ package body Syscall.IPC is
         if Process.proctab(callerPID).mode = Process.KERNEL then
             hasCap := True;
         else
-            -- Forward: caller has endpoint to grantee
+            -- Forward: caller has endpoint or reply cap to grantee
             for slot in Capabilities.CapabilitySlot loop
-                if Process.proctab(callerPID).caps(slot).capType =
-                   Capabilities.CAP_ENDPOINT and then
+                if (Process.proctab(callerPID).caps(slot).capType =
+                   Capabilities.CAP_ENDPOINT or
+                   Process.proctab(callerPID).caps(slot).capType =
+                   Capabilities.CAP_REPLY) and then
                    Process.proctab(callerPID).caps(slot).object.ref =
                    Unsigned_64 (granteePID)
                 then

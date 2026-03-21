@@ -206,15 +206,14 @@ is
 
         Spinlocks.enterCriticalSection (mailtab(receiver).lock);
 
-        -- Check sendQueue FIRST. When send() doesn't find a waiting
-        -- receiver, it deposits the message (hasMsg=True) AND enqueues
-        -- in sendQueue. We must dequeue and advance sender state.
+        -- Check sendQueue FIRST. Path 2 senders store their message
+        -- in proctab(sender).sendMsg, not in the shared mailbox.
         if not Queues.isEmpty (mailtab(receiver).sendQueue) then
             Queues.dequeue (mailtab(receiver).sendQueue, sender);
 
-            msg  := mailtab(receiver).msg;
-            from := mailtab(receiver).sender;
-            mailtab(receiver).hasMsg := False;
+            -- Read from the sender's per-process storage
+            msg  := proctab(sender).sendMsg;
+            from := sender;
 
             proctab(sender).state := WAITINGFORREPLY;
 
@@ -287,13 +286,23 @@ is
 
         yield;
 
-        -- Woken up by a sender's send() call. The sender placed the message
-        -- in the mailbox and set us to READY before we got here.
+        -- Woken by send() Path 1 or submit(). Check sendQueue first
+        -- in case Path 2 senders enqueued while we were blocked.
         Spinlocks.enterCriticalSection (mailtab(receiver).lock);
 
-        msg  := mailtab(receiver).msg;
-        from := mailtab(receiver).sender;
-        mailtab(receiver).hasMsg := False;
+        if not Queues.isEmpty (mailtab(receiver).sendQueue) then
+            Queues.dequeue (mailtab(receiver).sendQueue, sender);
+
+            msg  := proctab(sender).sendMsg;
+            from := sender;
+
+            proctab(sender).state := WAITINGFORREPLY;
+        else
+            -- Woken by send() Path 1 or submit(): message in mailbox
+            msg  := mailtab(receiver).msg;
+            from := mailtab(receiver).sender;
+            mailtab(receiver).hasMsg := False;
+        end if;
 
         -- Mint one-use reply cap for this sender
         proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
@@ -304,7 +313,6 @@ is
                           param => 0),
              gen      => proctab(from).capGeneration);
 
-        -- The sender is already in WAITINGFORREPLY (set by send)
         Spinlocks.exitCriticalSection (mailtab(receiver).lock);
     end receive;
 
@@ -457,13 +465,14 @@ is
         -----------------------------------------------------------------------
         Spinlocks.enterCriticalSection (mailtab(receiver).lock);
 
-        -- Check sendQueue first (sender already waiting)
+        -- Check sendQueue first. Path 2 senders store their message
+        -- in proctab(sender).sendMsg, not in the shared mailbox.
         if not Queues.isEmpty (mailtab(receiver).sendQueue) then
             Queues.dequeue (mailtab(receiver).sendQueue, sender);
 
-            msg  := mailtab(receiver).msg;
-            from := mailtab(receiver).sender;
-            mailtab(receiver).hasMsg := False;
+            -- Read from the sender's per-process storage
+            msg  := proctab(sender).sendMsg;
+            from := sender;
 
             proctab(sender).state := WAITINGFORREPLY;
 
@@ -508,12 +517,23 @@ is
 
         yield;
 
-        -- Woken by sender — read message from mailbox
+        -- Woken by send() Path 1 or submit(). Check sendQueue first
+        -- in case Path 2 senders enqueued while we were blocked.
         Spinlocks.enterCriticalSection (mailtab(receiver).lock);
 
-        msg  := mailtab(receiver).msg;
-        from := mailtab(receiver).sender;
-        mailtab(receiver).hasMsg := False;
+        if not Queues.isEmpty (mailtab(receiver).sendQueue) then
+            Queues.dequeue (mailtab(receiver).sendQueue, sender);
+
+            msg  := proctab(sender).sendMsg;
+            from := sender;
+
+            proctab(sender).state := WAITINGFORREPLY;
+        else
+            -- Woken by send() Path 1 or submit(): message in mailbox
+            msg  := mailtab(receiver).msg;
+            from := mailtab(receiver).sender;
+            mailtab(receiver).hasMsg := False;
+        end if;
 
         -- Mint one-use reply cap for this sender
         proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
@@ -538,16 +558,14 @@ is
     begin
         Spinlocks.enterCriticalSection (mailtab(receiver).lock);
 
-        -- Check sendQueue FIRST. When send() doesn't find a waiting
-        -- receiver, it deposits the message (hasMsg=True) AND enqueues
-        -- in sendQueue. We must dequeue the sender and advance their
-        -- state to WAITINGFORREPLY so that reply() can wake them.
+        -- Check sendQueue FIRST. Path 2 senders store their message
+        -- in proctab(sender).sendMsg, not in the shared mailbox.
         if not Queues.isEmpty (mailtab(receiver).sendQueue) then
             Queues.dequeue (mailtab(receiver).sendQueue, sender);
 
-            msg   := mailtab(receiver).msg;
-            from  := mailtab(receiver).sender;
-            mailtab(receiver).hasMsg := False;
+            -- Read from the sender's per-process storage
+            msg   := proctab(sender).sendMsg;
+            from  := sender;
             found := True;
 
             proctab(sender).state := WAITINGFORREPLY;
@@ -643,15 +661,20 @@ is
             end enforceCheck;
         end if;
 
-        Spinlocks.enterCriticalSection (mailtab(dest).lock);
+        -- Store our message in per-sender storage so it cannot be
+        -- overwritten by another sender racing to the same destination.
+        proctab(pid).sendMsg := msg;
 
-        -- Deposit our message in the mailbox regardless of path
-        mailtab(dest).hasMsg  := True;
-        mailtab(dest).msg := msg;
-        mailtab(dest).sender  := pid;
+        Spinlocks.enterCriticalSection (mailtab(dest).lock);
 
         if not Queues.isEmpty (mailtab(dest).recvQueue) then
             -- Path 1: receiver already waiting. Dequeue them.
+            -- Deposit in mailbox for the wakeup path (only one Path 1
+            -- sender can exist since we dequeue the receiver).
+            mailtab(dest).hasMsg  := True;
+            mailtab(dest).msg     := msg;
+            mailtab(dest).sender  := pid;
+
             Queues.dequeue (mailtab(dest).recvQueue, receiver);
 
             -- Sender goes to WAITINGFORREPLY
@@ -879,7 +902,10 @@ is
     ---------------------------------------------------------------------------
     -- submit
     -- Non-blocking async send. Delivers message to dest's mailbox and
-    -- returns immediately. Records (dest, token) in caller's pending array.
+    -- returns immediately.  When token /= NO_COMPLETION_TOKEN, records
+    -- (dest, token) in caller's pending array so that a later reply()
+    -- can enqueue a CompletionEntry.  Fire-and-forget senders pass
+    -- NO_COMPLETION_TOKEN to avoid leaking pending slots.
     ---------------------------------------------------------------------------
     function submit (dest  : ProcessID;
                      msg   : Message;
@@ -888,6 +914,8 @@ is
     is
         pid      : constant ProcessID := PerCPUData.getCurrentPID;
         receiver : ProcessID;
+        wantCompletion : constant Boolean :=
+            (token /= NO_COMPLETION_TOKEN);
     begin
         -- Validate destination
         if dest = NO_PROCESS then
@@ -899,7 +927,9 @@ is
         end if;
 
         -- Check we have room for another pending request
-        if proctab(pid).numPending >= MAX_PENDING_ASYNC then
+        if wantCompletion and
+           proctab(pid).numPending >= MAX_PENDING_ASYNC
+        then
             return False;
         end if;
 
@@ -916,15 +946,23 @@ is
         mailtab(dest).msg     := msg;
         mailtab(dest).sender  := pid;
 
-        -- Record pending request (for reply() to find the token)
-        proctab(pid).pendingRequests(proctab(pid).numPending) :=
-            (dest => dest, token => token);
-        proctab(pid).numPending := proctab(pid).numPending + 1;
+        -- Record pending request only when a completion is expected
+        if wantCompletion then
+            proctab(pid).pendingRequests(proctab(pid).numPending) :=
+                (dest => dest, token => token);
+            proctab(pid).numPending := proctab(pid).numPending + 1;
+        end if;
 
         -- Wake receiver if one is waiting
         if not Queues.isEmpty (mailtab(dest).recvQueue) then
             Queues.dequeue (mailtab(dest).recvQueue, receiver);
             ready (receiver);
+        elsif proctab(dest).state = SLEEPING then
+            declare
+                woken : Boolean;
+            begin
+                Queues.wakeFromSleep (dest, woken);
+            end;
         end if;
 
         Spinlocks.exitCriticalSection (mailtab(dest).lock);

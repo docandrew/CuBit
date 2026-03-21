@@ -90,12 +90,13 @@ package Virtio is
 
    ---------------------------------------------------------------------------
    --  Vring available ring — must match virtio spec layout exactly
+   --  Volatile: device reads these fields asynchronously via DMA.
    ---------------------------------------------------------------------------
    type VringAvail is record
       flags : Unsigned_16;
       idx   : Unsigned_16;
       ring  : RingArray;
-   end record;
+   end record with Volatile;
 
    for VringAvail use record
       flags at 0 range 0 .. 15;
@@ -105,12 +106,13 @@ package Virtio is
 
    ---------------------------------------------------------------------------
    --  Vring used ring — must match virtio spec layout exactly
+   --  Volatile: device writes these fields asynchronously via DMA.
    ---------------------------------------------------------------------------
    type VringUsed is record
       flags : Unsigned_16;
       idx   : Unsigned_16;
       ring  : UsedArray;
-   end record;
+   end record with Volatile;
 
    for VringUsed use record
       flags at 0 range 0 .. 15;

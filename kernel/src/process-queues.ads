@@ -79,6 +79,25 @@ is
         with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
+    -- insertDeltaNoLock
+    -- Same as insertDelta but caller must already hold q.lock.
+    -- Used by Process.sleep to atomically set state + insert.
+    ---------------------------------------------------------------------------
+    procedure insertDeltaNoLock (q            : in out ProcQueue;
+                                 pid          : ProcessID;
+                                 delayFromNow : Integer;
+                                 result       : out ProcessID)
+        with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- wakeFromSleep
+    -- Remove a specific process from the sleep delta queue and ready it.
+    -- Adjusts the successor's delta to preserve remaining timings.
+    ---------------------------------------------------------------------------
+    procedure wakeFromSleep (pid : ProcessID; woken : out Boolean)
+        with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
     -- clockTick
     -- Adjust the delta queue entries by the elapsed tick, wake up any sleeping
     -- processes whose delay has elapsed.

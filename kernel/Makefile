@@ -136,6 +136,9 @@ netstack: user_runtime
 .PHONY : wget
 wget: user_runtime
 	mkdir -p ../userspace/apps/wget/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/apps/wget/manifest.c \
+		-o ../userspace/apps/wget/build/manifest.o
 	$(ALR) gprbuild -P ../userspace/apps/wget/wget.gpr
 	cp ../userspace/apps/wget/build/wget.app isodir/boot/wget.app
 

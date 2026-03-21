@@ -27,6 +27,7 @@ with Process.IPC;
 with Process.Queues;
 with Scheduler;
 with Segment;
+with Spinlocks;
 with Sysinfo;
 with TextIO; use TextIO;
 with x86;
@@ -569,12 +570,18 @@ is
         pid    : ProcessID := PerCPUData.getCurrentPID;
         ignore : ProcessID;
     begin
+        -- Hold sleepList.lock across state change + insertion so that
+        -- wakeFromSleep cannot see SLEEPING before we are in the queue.
+        Spinlocks.enterCriticalSection (sleepList.lock);
+
         proctab(pid).state := SLEEPING;
 
-        Queues.insertDelta (q            => sleepList,
-                            pid          => pid,
-                            delayFromNow => Integer(us / 1000),
-                            result       => ignore);
+        Queues.insertDeltaNoLock (q            => sleepList,
+                                  pid          => pid,
+                                  delayFromNow => Integer(us / 1000),
+                                  result       => ignore);
+
+        Spinlocks.exitCriticalSection (sleepList.lock);
 
         yield;
     end sleep;
@@ -847,6 +854,29 @@ is
 
         -- Revoke any shared memory grants this process had created
         IPC.revokeAllGrants (pid);
+
+        -- Clean pending requests targeting this process from all others
+        cleanPending : declare
+        begin
+            for p in ProcessID'First + 1 .. ProcessID'Last loop
+                if proctab(p).state /= INVALID and p /= pid then
+                    declare
+                        writeIdx : Natural := 0;
+                    begin
+                        for r in 0 .. proctab(p).numPending - 1 loop
+                            if proctab(p).pendingRequests(r).dest /= pid then
+                                if writeIdx /= r then
+                                    proctab(p).pendingRequests(writeIdx) :=
+                                        proctab(p).pendingRequests(r);
+                                end if;
+                                writeIdx := writeIdx + 1;
+                            end if;
+                        end loop;
+                        proctab(p).numPending := writeIdx;
+                    end;
+                end if;
+            end loop;
+        end cleanPending;
 
         --  Free DMA allocations tracked for this process
         for d in DMAAllocArray'Range loop

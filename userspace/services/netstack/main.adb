@@ -446,7 +446,7 @@ procedure main is
          end loop;
       end;
 
-      ok := capSubmit (CAP_SLOT_NET_DRV, txMsg, 0);
+      ok := capSubmit (CAP_SLOT_NET_DRV, txMsg, Unsigned_64'Last);
       if ok then
          interfaces (0).txSlotIdx :=
             (interfaces (0).txSlotIdx + 1) mod NUM_TX_SLOTS;
@@ -515,6 +515,11 @@ procedure main is
             end;
             deferredTX (deferredCount).len := frameLen;
             deferredCount := deferredCount + 1;
+            debugPrint ("netstack: deferred TX (");
+            printDec (Unsigned_32 (deferredCount));
+            debugPrint ("/");
+            printDec (Unsigned_32 (MAX_DEFERRED_TX));
+            debugPrint (")" & LF);
          else
             debugPrint ("netstack: deferred TX full, dropping" & LF);
          end if;
@@ -1359,7 +1364,7 @@ procedure main is
                             Unsigned_64 (copyLen));
             end;
             pendingReqs (i).kind := PENDING_NONE;
-            exit;
+            return;
          end if;
       end loop;
    end completePendingRecv;
@@ -1386,7 +1391,6 @@ procedure main is
                ignore := reply (pendingReqs (i).sender, eofMsg);
             end;
             pendingReqs (i).kind := PENDING_NONE;
-            exit;
          end if;
       end loop;
    end completePendingRecvEOF;
@@ -1722,37 +1726,59 @@ procedure main is
                syscall (SYSCALL_GETTIME);
          begin
             if icmpId = 16#CB17# then
-               for i in pendingReqs'Range loop
-                  if pendingReqs (i).kind = PENDING_PING and
-                     pendingReqs (i).txid = icmpSeq
-                  then
-                     declare
-                        sendTs : constant Unsigned_64 := Unsigned_64 (
-                           To_Integer (pendingReqs (i).bufAddr));
-                        rtt : Unsigned_64 := 0;
-                        srcPacked : constant Unsigned_64 :=
-                           Net.packIPv4 (srcIP);
-                        replyMsg : constant Message :=
-                          (tag      => (label  => REPLY_OK,
-                                        length => 3,
-                                        flags  => 0,
-                                        badge  => 0),
-                           capBadge => 0,
-                           words    => (0 => Unsigned_64 (icmpSeq),
-                                        1 => srcPacked,
-                                        2 => (if nowMs > sendTs
-                                              then nowMs - sendTs
-                                              else 0),
-                                        3 => 0));
-                        ignore : Unsigned_64;
-                     begin
-                        ignore := reply (pendingReqs (i).sender,
-                                         replyMsg);
-                     end;
-                     pendingReqs (i).kind := PENDING_NONE;
-                     exit;
+               declare
+                  matched : Boolean := False;
+               begin
+                  for i in pendingReqs'Range loop
+                     if pendingReqs (i).kind = PENDING_PING and
+                        pendingReqs (i).txid = icmpSeq
+                     then
+                        declare
+                           sendTs : constant Unsigned_64 := Unsigned_64 (
+                              To_Integer (pendingReqs (i).bufAddr));
+                           rtt : Unsigned_64 := 0;
+                           srcPacked : constant Unsigned_64 :=
+                              Net.packIPv4 (srcIP);
+                           replyMsg : constant Message :=
+                             (tag      => (label  => REPLY_OK,
+                                           length => 3,
+                                           flags  => 0,
+                                           badge  => 0),
+                              capBadge => 0,
+                              words    => (0 => Unsigned_64 (icmpSeq),
+                                           1 => srcPacked,
+                                           2 => (if nowMs > sendTs
+                                                 then nowMs - sendTs
+                                                 else 0),
+                                           3 => 0));
+                           ignore : Unsigned_64;
+                        begin
+                           ignore := reply (pendingReqs (i).sender,
+                                            replyMsg);
+                        end;
+                        pendingReqs (i).kind := PENDING_NONE;
+                        matched := True;
+                        exit;
+                     end if;
+                  end loop;
+                  if not matched then
+                     debugPrint ("ICMP: unmatched reply seq=");
+                     printDec (Unsigned_32 (icmpSeq));
+                     debugPrint (" pending=[");
+                     for i in pendingReqs'Range loop
+                        printDec (Unsigned_32 (
+                           PendingKind'Pos (pendingReqs (i).kind)));
+                        if i < pendingReqs'Last then
+                           debugPrint (",");
+                        end if;
+                     end loop;
+                     debugPrint ("]" & LF);
                   end if;
-               end loop;
+               end;
+            else
+               debugPrint ("ICMP: reply wrong id=");
+               printDec (Unsigned_32 (icmpId));
+               debugPrint (" (expected CB17)" & LF);
             end if;
          end;
       end if;
@@ -2064,6 +2090,9 @@ procedure main is
             return True;
          end if;
       end loop;
+      debugPrint ("PEND+: FULL, cannot add kind=");
+      printDec (Unsigned_32 (PendingKind'Pos (req.kind)));
+      debugPrint ("" & LF);
       return False;
    end addPending;
 
@@ -2648,7 +2677,7 @@ procedure main is
          return;
       end if;
 
-      --  Complete any pending RECV for this connection with EOF
+      --  Complete all pending RECV for this connection with EOF
       if channels (chHandle).connIdx >= 0 then
          for i in pendingReqs'Range loop
             if pendingReqs (i).kind = PENDING_RECV and
@@ -2667,7 +2696,6 @@ procedure main is
                   ignore := reply (pendingReqs (i).sender, eofMsg);
                end;
                pendingReqs (i).kind := PENDING_NONE;
-               exit;
             end if;
          end loop;
 

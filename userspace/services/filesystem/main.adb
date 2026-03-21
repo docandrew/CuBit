@@ -1283,15 +1283,8 @@ procedure main is
                   newRel : String renames
                     newPath (newSkip .. newPath'Last);
                begin
-                  debugPrint ("FS: rename '" & oldRel & "' -> '"
-                              & newRel & "'" & LF);
                   ok := Ext2.renameEntry
                     (nvmeFs, Ext2.ROOT_INODE, oldRel, newRel);
-                  if ok then
-                     debugPrint ("FS: rename OK" & LF);
-                  else
-                     debugPrint ("FS: rename FAILED" & LF);
-                  end if;
                end;
             elsif oldIsATA then
                declare

@@ -11,6 +11,9 @@ package body Process.Queues with
     SPARK_Mode => On
 is
 
+    function isInSleepQueue (pid : ProcessID) return Boolean
+        with SPARK_Mode => On;
+
     procedure initQueue (q : in out ProcQueue; locknamePtr : access String)
         with SPARK_Mode => On
     is
@@ -342,6 +345,121 @@ is
             ready (wakePid);
         end loop;
     end wakeup;
+
+    ---------------------------------------------------------------------------
+    -- insertDeltaNoLock
+    -- Same as insertDelta but caller must already hold q.lock.
+    ---------------------------------------------------------------------------
+    procedure insertDeltaNoLock (q            : in out ProcQueue;
+                                 pid          : ProcessID;
+                                 delayFromNow : Integer;
+                                 result       : out ProcessID)
+        with SPARK_Mode => On
+    is
+        accumDelay : Integer := 0;
+        prev, curr : ProcessID;
+    begin
+        proctab(pid).next := NO_PROCESS;
+        proctab(pid).prev := NO_PROCESS;
+
+        if isEmpty (q) then
+            q.head := pid;
+            q.tail := pid;
+            proctab(pid).queueKey := delayFromNow;
+            result := pid;
+            return;
+        end if;
+
+        curr := q.head;
+
+        loop
+            if delayFromNow < accumDelay + proctab(curr).queueKey then
+                proctab(pid).queueKey := delayFromNow - accumDelay;
+                proctab(curr).queueKey :=
+                    proctab(curr).queueKey - proctab(pid).queueKey;
+
+                prev := proctab(curr).prev;
+                proctab(pid).next := curr;
+                proctab(pid).prev := prev;
+                proctab(curr).prev := pid;
+
+                if prev /= NO_PROCESS then
+                    proctab(prev).next := pid;
+                else
+                    q.head := pid;
+                end if;
+
+                result := pid;
+                return;
+            end if;
+
+            accumDelay := accumDelay + proctab(curr).queueKey;
+
+            exit when proctab(curr).next = NO_PROCESS;
+            curr := proctab(curr).next;
+        end loop;
+
+        proctab(pid).queueKey := delayFromNow - accumDelay;
+        proctab(pid).prev     := curr;
+        proctab(curr).next    := pid;
+        q.tail                := pid;
+
+        result := pid;
+    end insertDeltaNoLock;
+
+    ---------------------------------------------------------------------------
+    -- isInSleepQueue
+    -- Check whether the process is actually linked in the sleep delta queue.
+    -- Must be called while holding sleepList.lock.
+    ---------------------------------------------------------------------------
+    function isInSleepQueue (pid : ProcessID) return Boolean
+        with SPARK_Mode => On
+    is
+        curr : ProcessID := sleepList.head;
+    begin
+        while curr /= NO_PROCESS loop
+            if curr = pid then
+                return True;
+            end if;
+            curr := proctab(curr).next;
+        end loop;
+        return False;
+    end isInSleepQueue;
+
+    ---------------------------------------------------------------------------
+    -- wakeFromSleep
+    -- Remove a specific process from the sleep delta queue and ready it.
+    -- Adjusts the successor's delta to preserve remaining timings.
+    -- Verifies the process is actually in the queue to avoid corruption
+    -- from a race with Process.sleep.
+    ---------------------------------------------------------------------------
+    procedure wakeFromSleep (pid : ProcessID; woken : out Boolean)
+        with SPARK_Mode => On
+    is
+        ignore  : ProcessID;
+        nextPID : ProcessID;
+    begin
+        woken := False;
+        Spinlocks.enterCriticalSection (sleepList.lock);
+
+        if proctab(pid).state = SLEEPING and then
+           isInSleepQueue (pid)
+        then
+            nextPID := proctab(pid).next;
+            if nextPID /= NO_PROCESS then
+                proctab(nextPID).queueKey :=
+                    proctab(nextPID).queueKey + proctab(pid).queueKey;
+            end if;
+            popItemNoLock (sleepList, pid, ignore);
+            woken := True;
+        end if;
+
+        Spinlocks.exitCriticalSection (sleepList.lock);
+
+        if woken then
+            ready (pid);
+        end if;
+    end wakeFromSleep;
 
     ---------------------------------------------------------------------------
     -- clockTick
