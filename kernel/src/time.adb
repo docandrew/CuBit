@@ -93,7 +93,8 @@ is
 
     procedure clockTick with SPARK_Mode => On
     is
-        cpuNum : constant Natural := PerCPUData.getCPUNumber;
+        cpuNum    : constant Natural := PerCPUData.getCPUNumber;
+        currentPID : constant Process.ProcessID := PerCPUData.getCurrentPID;
     begin
         -- Only BSP handles global timekeeping and sleep list
         if cpuNum = 0 then
@@ -101,10 +102,40 @@ is
             Process.Queues.clockTick;
         end if;
 
+        -- CPU quota enforcement (before normal quantum check)
+        if currentPID /= Process.NO_PROCESS then
+            checkQuota : declare
+                q : Process.ResourceQuota renames
+                    Process.proctab(currentPID).quota;
+            begin
+                if q.cpuQuotaUs > 0 then
+                    -- Check for new period (each tick = 1ms = 1000us)
+                    if q.cpuPeriodUs > 0 and then
+                       (Time.msTicks - q.periodStartTick) >=
+                       Unsigned_64 (q.cpuPeriodUs / 1000)
+                    then
+                        q.cpuUsedTicks    := 0;
+                        q.periodStartTick := Time.msTicks;
+                    end if;
+
+                    q.cpuUsedTicks := q.cpuUsedTicks + 1;
+
+                    -- Exceeded quota for this period? Force yield.
+                    if q.cpuUsedTicks >=
+                       Natural (q.cpuQuotaUs / 1000)
+                    then
+                        cpuQuantumTicks(cpuNum) := 0;
+                        Process.yield;
+                        return;
+                    end if;
+                end if;
+            end checkQuota;
+        end if;
+
         -- All CPUs handle their own preemption quantum
         cpuQuantumTicks(cpuNum) := cpuQuantumTicks(cpuNum) + 1;
         if cpuQuantumTicks(cpuNum) >= Config.TIME_SLICE and
-           PerCPUData.getCurrentPID /= Process.NO_PROCESS
+           currentPID /= Process.NO_PROCESS
         then
             cpuQuantumTicks(cpuNum) := 0;
             Process.yield;

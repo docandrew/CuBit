@@ -145,6 +145,7 @@ package CuBit.Messages is
    DRIVER_MOUSE    : constant Unsigned_64 := 10;
    DRIVER_CONFIG   : constant Unsigned_64 := 11;
    DRIVER_NETMGR   : constant Unsigned_64 := 12;
+   DRIVER_LOGSTORE : constant Unsigned_64 := 13;
 
    --  IPC Message Types (matching kernel Process.Message)
 

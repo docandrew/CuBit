@@ -245,14 +245,23 @@ procedure main is
    --  Manifest constants
    ---------------------------------------------------------------------------
    MANIFEST_MAGIC   : constant Unsigned_32 := 16#43424954#;  -- "CBIT" LE
+   ID_MAGIC         : constant Unsigned_32 := 16#44494243#;  -- "CBID" LE
+   STREAMS_MAGIC    : constant Unsigned_32 := 16#54534243#;  -- "CBST" LE
 
    --  Manifest request types
    REQ_FRAMEBUFFER  : constant Unsigned_8 := 1;
    REQ_SERVICE      : constant Unsigned_8 := 2;
    REQ_STREAM       : constant Unsigned_8 := 8;
+   REQ_RESOURCE     : constant Unsigned_8 := 9;
 
    --  Stream notification label
    OP_STREAM_AVAILABLE : constant Unsigned_32 := 16#0706#;
+
+   --  Config store IPC label
+   OP_CONFIG_GET : constant Unsigned_32 := 16#0600#;
+
+   --  Well-known slot for config-based resource quota
+   RESOURCE_CAP_SLOT : constant Unsigned_64 := 62;
 
    --  ELF section header type for PROGBITS
    SHT_PROGBITS     : constant Unsigned_32 := 1;
@@ -262,6 +271,7 @@ procedure main is
    CAP_TYPE_NOTIFICATION  : constant Unsigned_64 := 2;
    CAP_TYPE_PROCESS       : constant Unsigned_64 := 6;
    CAP_TYPE_DEVICE_MEM    : constant Unsigned_64 := 7;
+   CAP_TYPE_RESOURCE      : constant Unsigned_64 := 9;
 
    --  Well-known slots for input focus capabilities
    CAP_SLOT_KBD_FOCUS     : constant Unsigned_64 := 13;
@@ -309,14 +319,209 @@ procedure main is
    end readU8;
 
    ---------------------------------------------------------------------------
+   --  parseIdSection
+   --  Parse the .cubit.id section from the ELF in elfBuf. Searches for
+   --  the "id" key and copies its value into pkgId.
+   ---------------------------------------------------------------------------
+   procedure parseIdSection
+     (elfSize  : Unsigned_64;
+      pkgId    : out String;
+      pkgIdLen : out Natural)
+   is
+      e_shoff     : Unsigned_64;
+      e_shnum     : Unsigned_16;
+   begin
+      pkgIdLen := 0;
+
+      if elfSize < 64 then
+         return;
+      end if;
+
+      e_shoff := readU64 (40);
+      e_shnum := readU16 (60);
+
+      if readU16 (58) /= 64 or e_shoff = 0 or e_shnum = 0 then
+         return;
+      end if;
+
+      if e_shoff + Unsigned_64 (e_shnum) * 64 > elfSize then
+         return;
+      end if;
+
+      for i in 0 .. Unsigned_16'(e_shnum - 1) loop
+         declare
+            shBase    : constant Unsigned_64 :=
+               e_shoff + Unsigned_64 (i) * 64;
+            sh_type   : constant Unsigned_32 := readU32 (shBase + 4);
+            sh_offset : Unsigned_64;
+            sh_size   : Unsigned_64;
+         begin
+            if sh_type = SHT_PROGBITS then
+               sh_offset := readU64 (shBase + 24);
+               sh_size   := readU64 (shBase + 32);
+
+               if sh_size >= 8 and then
+                  sh_offset + sh_size <= elfSize and then
+                  readU32 (sh_offset) = ID_MAGIC
+               then
+                  declare
+                     version : constant Unsigned_16 :=
+                        readU16 (sh_offset + 4);
+                     count   : constant Unsigned_16 :=
+                        readU16 (sh_offset + 6);
+                     pos     : Unsigned_64 := sh_offset + 8;
+                  begin
+                     if version /= 1 then
+                        return;
+                     end if;
+
+                     for j in 0 .. Unsigned_16'(count - 1) loop
+                        exit when pos + 3 > sh_offset + sh_size;
+
+                        declare
+                           kLen : constant Natural :=
+                              Natural (readU8 (pos));
+                           vLen : constant Natural :=
+                              Natural (readU16 (pos + 1));
+                        begin
+                           pos := pos + 3;
+
+                           exit when pos + Unsigned_64 (kLen) +
+                                     Unsigned_64 (vLen) >
+                                     sh_offset + sh_size;
+
+                           --  Check if key is "id" (2 bytes)
+                           if kLen = 2 and then
+                              readU8 (pos) =
+                                 Unsigned_8 (Character'Pos ('i'))
+                              and then
+                              readU8 (pos + 1) =
+                                 Unsigned_8 (Character'Pos ('d'))
+                           then
+                              pkgIdLen := Natural'Min (
+                                 vLen, pkgId'Length);
+                              for c in 0 .. pkgIdLen - 1 loop
+                                 pkgId (pkgId'First + c) :=
+                                    Character'Val (Natural (readU8 (
+                                       pos + Unsigned_64 (kLen) +
+                                       Unsigned_64 (c))));
+                              end loop;
+
+                              debugPrint ("procmgr: pkg id=");
+                              debugPrint (
+                                 pkgId (pkgId'First ..
+                                    pkgId'First + pkgIdLen - 1));
+                              debugPrint ("" & LF);
+                              return;
+                           end if;
+
+                           pos := pos + Unsigned_64 (kLen) +
+                                  Unsigned_64 (vLen);
+                        end;
+                     end loop;
+
+                     return;  -- only process first matching section
+                  end;
+               end if;
+            end if;
+         end;
+      end loop;
+   end parseIdSection;
+
+   ---------------------------------------------------------------------------
+   --  parseStreamsSection
+   --  Parse the .cubit.streams section from the ELF in elfBuf. Builds a
+   --  64-bit bitmask where bit N means stream ID N is declared.
+   ---------------------------------------------------------------------------
+   procedure parseStreamsSection
+     (elfSize       : Unsigned_64;
+      streamBitmask : out Unsigned_64)
+   is
+      e_shoff : Unsigned_64;
+      e_shnum : Unsigned_16;
+   begin
+      streamBitmask := 0;
+
+      if elfSize < 64 then
+         return;
+      end if;
+
+      e_shoff := readU64 (40);
+      e_shnum := readU16 (60);
+
+      if readU16 (58) /= 64 or e_shoff = 0 or e_shnum = 0 then
+         return;
+      end if;
+
+      if e_shoff + Unsigned_64 (e_shnum) * 64 > elfSize then
+         return;
+      end if;
+
+      for i in 0 .. Unsigned_16'(e_shnum - 1) loop
+         declare
+            shBase    : constant Unsigned_64 :=
+               e_shoff + Unsigned_64 (i) * 64;
+            sh_type   : constant Unsigned_32 := readU32 (shBase + 4);
+            sh_offset : Unsigned_64;
+            sh_size   : Unsigned_64;
+         begin
+            if sh_type = SHT_PROGBITS then
+               sh_offset := readU64 (shBase + 24);
+               sh_size   := readU64 (shBase + 32);
+
+               if sh_size >= 8 and then
+                  sh_offset + sh_size <= elfSize and then
+                  readU32 (sh_offset) = STREAMS_MAGIC
+               then
+                  declare
+                     version : constant Unsigned_16 :=
+                        readU16 (sh_offset + 4);
+                     count   : constant Unsigned_16 :=
+                        readU16 (sh_offset + 6);
+                  begin
+                     if version /= 1 then
+                        return;
+                     end if;
+
+                     if sh_size < 8 + Unsigned_64 (count) * 8 then
+                        return;
+                     end if;
+
+                     for j in 0 .. Unsigned_16'(count - 1) loop
+                        declare
+                           entBase  : constant Unsigned_64 :=
+                              sh_offset + 8 + Unsigned_64 (j) * 8;
+                           streamId : constant Unsigned_16 :=
+                              readU16 (entBase);
+                        begin
+                           if Unsigned_64 (streamId) < 64 then
+                              streamBitmask := streamBitmask or
+                                 Shift_Left (Unsigned_64'(1),
+                                    Natural (streamId));
+                           end if;
+                           debugPrint ("procmgr: stream decl id=");
+                           printDec (Unsigned_32 (streamId));
+                           debugPrint ("" & LF);
+                        end;
+                     end loop;
+
+                     return;
+                  end;
+               end if;
+            end if;
+         end;
+      end loop;
+   end parseStreamsSection;
+
+   ---------------------------------------------------------------------------
    --  parseAndGrantManifest
    --  Parse the .cubit.caps section from the ELF in elfBuf and mint
    --  capabilities into the child process via SYSCALL_MINT_CAP.
    ---------------------------------------------------------------------------
    procedure parseAndGrantManifest
-     (childPID  : Unsigned_64;
-      elfSize   : Unsigned_64;
-      requester : Unsigned_64 := 0)
+     (childPID      : Unsigned_64;
+      elfSize       : Unsigned_64;
+      streamBitmask : in out Unsigned_64)
    is
       --  ELF64 header field offsets
       e_shoff_off     : constant := 40;  -- Section header table offset
@@ -381,7 +586,6 @@ procedure main is
                      param0        : Unsigned_32;
                      rightsMask    : Unsigned_64;
                      ignore        : Unsigned_64;
-                     streamBitmask : Unsigned_64 := 0;
                   begin
                      if version /= 1 then
                         debugPrint ("procmgr: unknown manifest v" & LF);
@@ -455,20 +659,46 @@ procedure main is
                               end;
 
                            when REQ_STREAM =>
-                              --  param0 low 16 bits = stream ID
+                              --  Fallback: only use .cubit.caps stream
+                              --  entries if no .cubit.streams section found
+                              if streamBitmask = 0 then
+                                 declare
+                                    sid : constant Unsigned_64 :=
+                                       Unsigned_64 (
+                                          param0 and 16#FFFF#);
+                                 begin
+                                    if sid < 64 then
+                                       streamBitmask :=
+                                          streamBitmask or
+                                          Shift_Left (
+                                             Unsigned_64'(1),
+                                             Natural (sid));
+                                    end if;
+                                    debugPrint (
+                                       "procmgr: stream id=");
+                                    printDec (Unsigned_32 (sid));
+                                    debugPrint ("" & LF);
+                                 end;
+                              end if;
+
+                           when REQ_RESOURCE =>
+                              --  param0 = maxFrames
+                              --  param1 = cpuQuotaUs(lo32)|cpuPeriodUs(hi32)
                               declare
-                                 sid : constant Unsigned_64 :=
-                                    Unsigned_64 (param0 and 16#FFFF#);
+                                 param1 : constant Unsigned_64 :=
+                                    readU64 (entryBase + 8);
                               begin
-                                 if sid < 64 then
-                                    streamBitmask := streamBitmask or
-                                       Shift_Left (Unsigned_64'(1),
-                                          Natural (sid));
-                                 end if;
+                                 ignore := syscall (
+                                    SYSCALL_MINT_CAP,
+                                    childPID,
+                                    CAP_TYPE_RESOURCE,
+                                    Unsigned_64 (param0),
+                                    param1,
+                                    rightsMask,
+                                    Unsigned_64 (slotNum));
                                  debugPrint (
-                                    "procmgr: stream id=");
-                                 printDec (Unsigned_32 (sid));
-                                 debugPrint ("" & LF);
+                                    "procmgr: minted resource cap" &
+                                    LF);
                               end;
 
                            when others =>
@@ -477,25 +707,6 @@ procedure main is
                         end case;
                      end loop;
 
-                     --  Notify requester about declared streams
-                     if streamBitmask /= 0 and requester /= 0 then
-                        declare
-                           evMsg : Message := NULL_MESSAGE;
-                        begin
-                           evMsg.tag := (
-                              label  => OP_STREAM_AVAILABLE,
-                              length => 2,
-                              flags  => 0,
-                              badge  => 0);
-                           evMsg.words (0) := childPID;
-                           evMsg.words (1) := streamBitmask;
-                           sendEvent (
-                              ProcessID (requester), evMsg);
-                           debugPrint (
-                              "procmgr: sent stream available" &
-                              LF);
-                        end;
-                     end if;
                   end;
 
                   --  Only process first matching manifest section
@@ -749,6 +960,99 @@ procedure main is
    end parseAndSendACL;
 
    ---------------------------------------------------------------------------
+   --  queryConfigQuota
+   --  Query the config store for resource quotas keyed by package ID.
+   --  Uses configGrantId (which maps elfBuf). Safe to call after all ELF
+   --  section parsing is done, since this overwrites elfBuf.
+   ---------------------------------------------------------------------------
+   procedure queryConfigQuota
+     (pkgId       : String;
+      maxFrames   : out Unsigned_32;
+      cpuQuotaUs  : out Unsigned_32;
+      cpuPeriodUs : out Unsigned_32)
+   is
+      procedure queryOne (suffix : String; result : out Unsigned_32) is
+         prefix   : constant String := "resource/";
+         totalLen : constant Natural :=
+            prefix'Length + pkgId'Length + 1 + suffix'Length;
+         cfgMsg   : Message;
+      begin
+         result := 0;
+
+         if configGrantId = 0 or totalLen > PAGE_SIZE then
+            return;
+         end if;
+
+         --  Write key to elfBuf (grant buffer for config)
+         declare
+            keyBuf : array (0 .. totalLen - 1) of Unsigned_8 with
+               Import, Address => elfBuf;
+            pos : Natural := 0;
+         begin
+            for c in prefix'Range loop
+               keyBuf (pos) :=
+                  Unsigned_8 (Character'Pos (prefix (c)));
+               pos := pos + 1;
+            end loop;
+            for c in pkgId'Range loop
+               keyBuf (pos) :=
+                  Unsigned_8 (Character'Pos (pkgId (c)));
+               pos := pos + 1;
+            end loop;
+            keyBuf (pos) := Unsigned_8 (Character'Pos ('/'));
+            pos := pos + 1;
+            for c in suffix'Range loop
+               keyBuf (pos) :=
+                  Unsigned_8 (Character'Pos (suffix (c)));
+               pos := pos + 1;
+            end loop;
+         end;
+
+         cfgMsg := NULL_MESSAGE;
+         cfgMsg.tag := (label  => OP_CONFIG_GET,
+                        length => 2,
+                        flags  => 0,
+                        badge  => 0);
+         cfgMsg.words (0) := configGrantId;
+         cfgMsg.words (1) := Unsigned_64 (totalLen);
+         cfgMsg.tag := capCall (CAP_SLOT_CONFIG_LOCAL, cfgMsg);
+
+         if cfgMsg.tag.label /= REPLY_OK then
+            return;
+         end if;
+
+         --  Parse decimal value from grant buffer
+         declare
+            valLen : constant Natural :=
+               Natural (cfgMsg.words (0));
+         begin
+            if valLen > 0 and valLen <= PAGE_SIZE then
+               declare
+                  valBuf : array (0 .. valLen - 1) of Unsigned_8
+                     with Import, Address => elfBuf;
+                  acc : Unsigned_32 := 0;
+                  ch  : Unsigned_8;
+               begin
+                  for v in 0 .. valLen - 1 loop
+                     ch := valBuf (v);
+                     exit when ch < Unsigned_8 (Character'Pos ('0'))
+                        or ch > Unsigned_8 (Character'Pos ('9'));
+                     acc := acc * 10 +
+                        Unsigned_32 (ch -
+                           Unsigned_8 (Character'Pos ('0')));
+                  end loop;
+                  result := acc;
+               end;
+            end if;
+         end;
+      end queryOne;
+   begin
+      queryOne ("max-frames", maxFrames);
+      queryOne ("cpu-quota-us", cpuQuotaUs);
+      queryOne ("cpu-period-us", cpuPeriodUs);
+   end queryConfigQuota;
+
+   ---------------------------------------------------------------------------
    --  spawnByName
    --  Read ELF from filesystem, spawn suspended, grant manifest caps, resume.
    --  Returns PID on success, 0 on failure.
@@ -758,10 +1062,13 @@ procedure main is
       priority  : Unsigned_64;
       requester : Unsigned_64 := 0) return Unsigned_64
    is
-      elfSize : Unsigned_64;
-      newPID  : Unsigned_64;
-      pri     : Unsigned_64 := priority;
-      t0, t1  : Unsigned_64;
+      elfSize       : Unsigned_64;
+      newPID        : Unsigned_64;
+      pri           : Unsigned_64 := priority;
+      t0, t1        : Unsigned_64;
+      pkgId         : String (1 .. 128);
+      pkgIdLen      : Natural := 0;
+      streamBitmask : Unsigned_64 := 0;
    begin
       debugPrint ("procmgr: spawn: ");
       debugPrint (name);
@@ -820,8 +1127,15 @@ procedure main is
       printDec (Unsigned_32 (t1 - t0));
       debugPrint ("ms" & LF);
 
+      --  Parse .cubit.id section for package identity
+      parseIdSection (elfSize, pkgId, pkgIdLen);
+
+      --  Parse .cubit.streams section for stream declarations
+      parseStreamsSection (elfSize, streamBitmask);
+
+      --  Parse .cubit.caps manifest (streams fallback if no .cubit.streams)
       t0 := syscall (SYSCALL_GETTIME);
-      parseAndGrantManifest (newPID, elfSize, requester);
+      parseAndGrantManifest (newPID, elfSize, streamBitmask);
       t1 := syscall (SYSCALL_GETTIME);
 
       debugPrint ("procmgr: manifest took ");
@@ -829,7 +1143,8 @@ procedure main is
       debugPrint ("ms" & LF);
 
       --  Mint input focus capabilities (CAP_NOTIFICATION) so the child
-      --  can call registerDriver(DRIVER_KEYBOARD) and registerDriver(DRIVER_MOUSE).
+      --  can call registerDriver(DRIVER_KEYBOARD) and
+      --  registerDriver(DRIVER_MOUSE).
       declare
          ignore : Unsigned_64;
       begin
@@ -858,8 +1173,69 @@ procedure main is
                             CAP_SLOT_PROCESS_MGMT);
       end;
 
+      --  Mint CAP_NOTIFICATION for logstore driver registration
+      if pkgIdLen = 18 then
+         declare
+            LOGSTORE_ID : constant String := "com.cubit.logstore";
+            match : Boolean := True;
+            ignore : Unsigned_64;
+         begin
+            for c in 0 .. 17 loop
+               if pkgId (1 + c) /= LOGSTORE_ID (1 + c) then
+                  match := False;
+                  exit;
+               end if;
+            end loop;
+            if match then
+               ignore := syscall (SYSCALL_MINT_CAP,
+                                  newPID,
+                                  CAP_TYPE_NOTIFICATION,
+                                  DRIVER_LOGSTORE,  -- ref = 13
+                                  0,                -- param
+                                  2,                -- rights = RIGHT_WRITE
+                                  7);               -- slot 7
+               debugPrint ("procmgr: minted logstore ntf cap" & LF);
+            end if;
+         end;
+      end if;
+
       --  Parse .cubit.access and send ACLs to FS server (or wildcard)
       parseAndSendACL (newPID, elfSize);
+
+      --  Query config store for resource quotas (overwrites elfBuf)
+      declare
+         maxFrames   : Unsigned_32 := 0;
+         cpuQuotaUs  : Unsigned_32 := 0;
+         cpuPeriodUs : Unsigned_32 := 0;
+         ignore      : Unsigned_64;
+      begin
+         if pkgIdLen > 0 then
+            queryConfigQuota (
+               pkgId (1 .. pkgIdLen),
+               maxFrames, cpuQuotaUs, cpuPeriodUs);
+         else
+            queryConfigQuota (
+               name, maxFrames, cpuQuotaUs, cpuPeriodUs);
+         end if;
+
+         if maxFrames /= 0 or cpuQuotaUs /= 0 then
+            declare
+               param1 : constant Unsigned_64 :=
+                  Unsigned_64 (cpuQuotaUs) or
+                  Shift_Left (Unsigned_64 (cpuPeriodUs), 32);
+            begin
+               ignore := syscall (SYSCALL_MINT_CAP,
+                  newPID,
+                  CAP_TYPE_RESOURCE,
+                  Unsigned_64 (maxFrames),
+                  param1,
+                  1,   -- rights = RIGHT_READ
+                  RESOURCE_CAP_SLOT);
+               debugPrint (
+                  "procmgr: minted config resource cap" & LF);
+            end;
+         end if;
+      end;
 
       declare
          ignore : Unsigned_64;
@@ -870,6 +1246,40 @@ procedure main is
       debugPrint ("procmgr: resumed PID ");
       printDec (Unsigned_32 (newPID));
       debugPrint ("" & LF);
+
+      --  Notify requester and logstore about declared streams (after resume)
+      if streamBitmask /= 0 then
+         declare
+            evMsg : Message := NULL_MESSAGE;
+         begin
+            evMsg.tag := (
+               label  => OP_STREAM_AVAILABLE,
+               length => 2,
+               flags  => 0,
+               badge  => 0);
+            evMsg.words (0) := newPID;
+            evMsg.words (1) := streamBitmask;
+
+            if requester /= 0 then
+               sendEvent (ProcessID (requester), evMsg);
+               debugPrint ("procmgr: sent stream available" & LF);
+            end if;
+
+            --  Also notify log store (if registered) via submit
+            --  (sendEvent requires CAP_ENDPOINT; submit does not)
+            declare
+               logPID : constant Unsigned_64 :=
+                  getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_LOGSTORE);
+               ignore : Boolean;
+            begin
+               if logPID /= 0 and logPID /= Unsigned_64'Last then
+                  ignore := submit (ProcessID (logPID), evMsg,
+                                    Unsigned_64'Last);
+                  debugPrint ("procmgr: notified logstore" & LF);
+               end if;
+            end;
+         end;
+      end if;
 
       return newPID;
    end spawnByName;

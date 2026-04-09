@@ -388,7 +388,7 @@ procedure main is
    procedure cmdHelp is
    begin
       putStr ("Commands:" & LF);
-      putStr ("  acl <file>       - show app access policy" & LF);
+      putStr ("  inspect <file>   - show app manifest metadata" & LF);
       putStr ("  bg <file>        - spawn process in background" & LF);
       putStr ("  cat <path>       - display file contents" & LF);
       putStr ("  cd [path]        - change working directory" & LF);
@@ -400,6 +400,7 @@ procedure main is
       putStr ("  help             - show this help" & LF);
       putStr ("  ifconfig         - show network interface" & LF);
       putStr ("  kill <pid>       - terminate a process" & LF);
+      putStr ("  logs             - show recent log entries" & LF);
       putStr ("  ls [path]        - list directory contents" & LF);
       putStr ("  mem              - show memory usage" & LF);
       putStr ("  nslookup <host>  - DNS lookup" & LF);
@@ -1677,7 +1678,8 @@ procedure main is
    end cmdWc;
 
    ---------------------------------------------------------------------------
-   --  cmdAcl - show app access policy (.cubit.access and .cubit.caps)
+   --  cmdInspect - show app manifest metadata (.cubit.id, .cubit.streams,
+   --                .cubit.caps, .cubit.access)
    ---------------------------------------------------------------------------
    OP_SEEK : constant Unsigned_32 := 16#0006#;
 
@@ -1743,7 +1745,7 @@ procedure main is
       return msg.words (0);
    end readChunk;
 
-   procedure cmdAcl (path : String) is
+   procedure cmdInspect (path : String) is
       msg    : Message;
       tag    : MessageTag;
       handle : Unsigned_64;
@@ -1755,8 +1757,12 @@ procedure main is
       SHT_PROGBITS   : constant Unsigned_32 := 1;
       CACC_MAGIC     : constant Unsigned_32 := 16#43434143#;
       CBIT_MAGIC     : constant Unsigned_32 := 16#43424954#;
+      CBID_MAGIC     : constant Unsigned_32 := 16#44494243#;
+      CBST_MAGIC     : constant Unsigned_32 := 16#54534243#;
       foundAccess    : Boolean := False;
       foundCaps      : Boolean := False;
+      foundId        : Boolean := False;
+      foundStreams    : Boolean := False;
    begin
       if not fsReady then
          putStr ("error: filesystem not available" & LF);
@@ -1764,7 +1770,7 @@ procedure main is
       end if;
 
       if path'Length = 0 then
-         putStr ("usage: acl <file>" & LF);
+         putStr ("usage: inspect <file>" & LF);
          return;
       end if;
 
@@ -1783,7 +1789,7 @@ procedure main is
       end;
 
       if tag.label /= REPLY_OK then
-         putStr ("acl: file not found" & LF);
+         putStr ("inspect: file not found" & LF);
          return;
       end if;
 
@@ -1793,7 +1799,7 @@ procedure main is
       --  Read ELF header (first 64 bytes)
       bytesRead := readChunk (handle, 64);
       if bytesRead < 64 then
-         putStr ("acl: file too small" & LF);
+         putStr ("inspect: file too small" & LF);
          goto Close_File;
       end if;
 
@@ -1801,7 +1807,7 @@ procedure main is
       if bufU8 (0) /= 16#7F# or bufU8 (1) /= 16#45# or
          bufU8 (2) /= 16#4C# or bufU8 (3) /= 16#46#
       then
-         putStr ("acl: not an ELF file" & LF);
+         putStr ("inspect: not an ELF file" & LF);
          goto Close_File;
       end if;
 
@@ -1809,7 +1815,7 @@ procedure main is
       e_shnum := bufU16 (60);
 
       if e_shoff = 0 or e_shnum = 0 then
-         putStr ("acl: no section headers" & LF);
+         putStr ("inspect: no section headers" & LF);
          goto Close_File;
       end if;
 
@@ -1878,9 +1884,179 @@ procedure main is
                         magic : constant Unsigned_32 := bufU32 (0);
                      begin
                         -------------------------------------------------------
+                        --  .cubit.id section (CBID)
+                        -------------------------------------------------------
+                        if magic = CBID_MAGIC and not foundId then
+                           seekTo (handle, sections (s).sh_offset);
+                           bytesRead := readChunk (handle,
+                              sections (s).sh_size);
+
+                           if bytesRead >= 8 then
+                              declare
+                                 ver : constant Unsigned_16 :=
+                                    bufU16 (4);
+                                 cnt : constant Unsigned_16 :=
+                                    bufU16 (6);
+                                 pos : Natural := 8;
+                              begin
+                                 putStr ("Package Identity "
+                                    & "(.cubit.id v");
+                                 putDec (Unsigned_32 (ver));
+                                 putStr (", ");
+                                 putDec (Unsigned_32 (cnt));
+                                 putStr (" entries):" & LF);
+
+                                 if ver = 1 and cnt > 0 then
+                                    for e in 0 ..
+                                       Natural (cnt) - 1
+                                    loop
+                                       exit when pos + 3 >
+                                          Natural (bytesRead);
+
+                                       declare
+                                          kLen : constant Natural :=
+                                             Natural (bufU8 (pos));
+                                          vLen : constant Natural :=
+                                             Natural (bufU16 (pos + 1));
+                                       begin
+                                          pos := pos + 3;
+                                          exit when pos + kLen + vLen >
+                                             Natural (bytesRead);
+
+                                          putStr ("  ");
+                                          --  Print key
+                                          for c in 0 .. kLen - 1 loop
+                                             putChar (
+                                                Character'Val (
+                                                   Natural (
+                                                      bufU8 (pos + c))));
+                                          end loop;
+                                          putStr (" = ");
+                                          --  Print value
+                                          for c in 0 .. vLen - 1 loop
+                                             declare
+                                                ch : constant Unsigned_8 :=
+                                                   bufU8 (
+                                                      pos + kLen + c);
+                                             begin
+                                                if ch >= 32 and
+                                                   ch < 127
+                                                then
+                                                   putChar (
+                                                      Character'Val (
+                                                         Natural (ch)));
+                                                end if;
+                                             end;
+                                          end loop;
+                                          putChar (LF);
+
+                                          pos := pos + kLen + vLen;
+                                       end;
+                                    end loop;
+                                 end if;
+                              end;
+
+                              foundId := True;
+                           end if;
+
+                        -------------------------------------------------------
+                        --  .cubit.streams section (CBST)
+                        -------------------------------------------------------
+                        elsif magic = CBST_MAGIC and not foundStreams then
+                           seekTo (handle, sections (s).sh_offset);
+                           bytesRead := readChunk (handle,
+                              sections (s).sh_size);
+
+                           if bytesRead >= 8 then
+                              declare
+                                 ver : constant Unsigned_16 :=
+                                    bufU16 (4);
+                                 cnt : constant Unsigned_16 :=
+                                    bufU16 (6);
+                              begin
+                                 putChar (LF);
+                                 putStr ("Streams "
+                                    & "(.cubit.streams v");
+                                 putDec (Unsigned_32 (ver));
+                                 putStr (", ");
+                                 putDec (Unsigned_32 (cnt));
+                                 putStr (" entries):" & LF);
+
+                                 if ver = 1 and cnt > 0 and
+                                    bytesRead >= 8 +
+                                       Unsigned_64 (cnt) * 8
+                                 then
+                                    for e in 0 ..
+                                       Natural (cnt) - 1
+                                    loop
+                                       declare
+                                          eBase : constant Natural :=
+                                             8 + e * 8;
+                                          sid : constant Unsigned_16 :=
+                                             bufU16 (eBase);
+                                          pg  : constant Unsigned_16 :=
+                                             bufU16 (eBase + 2);
+                                          tt  : constant Unsigned_16 :=
+                                             bufU16 (eBase + 4);
+                                          fl  : constant Unsigned_16 :=
+                                             bufU16 (eBase + 6);
+                                       begin
+                                          putStr ("  [");
+                                          putDec (Unsigned_32 (e));
+                                          putStr ("] ");
+
+                                          --  Stream name
+                                          case sid is
+                                             when 1 =>
+                                                putStr ("stdin ");
+                                             when 2 =>
+                                                putStr ("stdout");
+                                             when 3 =>
+                                                putStr ("stderr");
+                                             when 4 =>
+                                                putStr ("log   ");
+                                             when 6 =>
+                                                putStr ("metric");
+                                             when 9 =>
+                                                putStr ("health");
+                                             when others =>
+                                                putStr ("id=");
+                                                putDec (
+                                                   Unsigned_32 (sid));
+                                          end case;
+
+                                          putStr ("  pages=");
+                                          putDec (Unsigned_32 (pg));
+
+                                          putStr ("  type=");
+                                          case tt is
+                                             when 0 =>
+                                                putStr ("raw");
+                                             when 1 =>
+                                                putStr ("text");
+                                             when others =>
+                                                putDec (
+                                                   Unsigned_32 (tt));
+                                          end case;
+
+                                          if fl /= 0 then
+                                             putStr ("  flags=");
+                                             putDec (Unsigned_32 (fl));
+                                          end if;
+
+                                          putChar (LF);
+                                       end;
+                                    end loop;
+                                 end if;
+                              end;
+
+                              foundStreams := True;
+                           end if;
+
+                        -------------------------------------------------------
                         --  .cubit.access section (CACC)
                         -------------------------------------------------------
-                        if magic = CACC_MAGIC and not foundAccess then
+                        elsif magic = CACC_MAGIC and not foundAccess then
                            seekTo (handle, sections (s).sh_offset);
                            bytesRead := readChunk (handle,
                               sections (s).sh_size);
@@ -1892,6 +2068,7 @@ procedure main is
                                  cnt   : constant Unsigned_16 :=
                                     bufU16 (6);
                               begin
+                                 putChar (LF);
                                  putStr ("Filesystem Access "
                                     & "(.cubit.access v");
                                  putDec (Unsigned_32 (ver));
@@ -1986,7 +2163,7 @@ procedure main is
                                     nlen : Natural;
                                  end record;
                                  reqNames : constant
-                                    array (0 .. 8) of ReqName := (
+                                    array (0 .. 9) of ReqName := (
                                     0 => ("UNKNOWN     ", 7),
                                     1 => ("FRAMEBUFFER ", 11),
                                     2 => ("SERVICE     ", 7),
@@ -1995,7 +2172,8 @@ procedure main is
                                     5 => ("DEVICE_MEM  ", 10),
                                     6 => ("PROCESS     ", 7),
                                     7 => ("UNKNOWN     ", 7),
-                                    8 => ("STREAM      ", 6));
+                                    8 => ("STREAM      ", 6),
+                                    9 => ("RESOURCE    ", 8));
                               begin
                                  putChar (LF);
                                  putStr ("Capabilities "
@@ -2025,7 +2203,7 @@ procedure main is
                                              bufU32 (eBase + 4);
                                           rIdx : Natural := reqType;
                                        begin
-                                          if rIdx > 8 then
+                                          if rIdx > 9 then
                                              rIdx := 0;
                                           end if;
 
@@ -2054,12 +2232,38 @@ procedure main is
                                           putStr ("   slot ");
                                           putDec (Unsigned_32 (slot));
 
-                                          --  Driver ID for SERVICE type
-                                          if reqType = 2 and
-                                             param0 /= 0
-                                          then
-                                             putStr ("  driver=");
-                                             putDec (param0);
+                                          --  Driver name for SERVICE type
+                                          if reqType = 2 then
+                                             putStr ("  ");
+                                             case param0 is
+                                                when 1 =>
+                                                   putStr ("keyboard");
+                                                when 2 =>
+                                                   putStr ("ata");
+                                                when 3 =>
+                                                   putStr ("netstack");
+                                                when 4 =>
+                                                   putStr ("procmgr");
+                                                when 5 =>
+                                                   putStr ("nvme");
+                                                when 6 =>
+                                                   putStr ("fs");
+                                                when 7 =>
+                                                   putStr ("devmgr");
+                                                when 8 =>
+                                                   putStr ("hda");
+                                                when 9 =>
+                                                   putStr ("mixer");
+                                                when 10 =>
+                                                   putStr ("mouse");
+                                                when 11 =>
+                                                   putStr ("config");
+                                                when 12 =>
+                                                   putStr ("netmgr");
+                                                when others =>
+                                                   putStr ("driver=");
+                                                   putDec (param0);
+                                             end case;
                                           end if;
 
                                           --  Stream details: lo16=ID, hi16=pages
@@ -2098,18 +2302,26 @@ procedure main is
                   end if;
                end if;
 
-               exit when foundAccess and foundCaps;
+               exit when foundId and foundStreams and
+                         foundAccess and foundCaps;
             end loop;
          end;
       end;
 
       --  Report missing sections
-      if not foundAccess then
-         putStr ("Filesystem Access: (no .cubit.access)" & LF);
-         putStr ("  deny-by-default (no filesystem access)" & LF);
+      if not foundId then
+         putStr ("Package Identity: (no .cubit.id)" & LF);
+      end if;
+      if not foundStreams and not foundCaps then
+         putStr ("Streams: (none)" & LF);
       end if;
       if not foundCaps then
          putStr ("Capabilities: (none)" & LF);
+      end if;
+      if not foundAccess then
+         putChar (LF);
+         putStr ("Filesystem Access: (no .cubit.access)" & LF);
+         putStr ("  deny-by-default (no filesystem access)" & LF);
       end if;
 
    <<Close_File>>
@@ -2120,7 +2332,7 @@ procedure main is
       tag := capCall (CAP_SLOT_FS, msg);
 
       renderDirty;
-   end cmdAcl;
+   end cmdInspect;
 
    --  Manual string comparison (avoids memcmp dependency)
    function strEqual (a : String; b : String) return Boolean is
@@ -2762,6 +2974,146 @@ procedure main is
       putChar (LF);
    end cmdStreams;
 
+   ---------------------------------------------------------------------------
+   --  cmdLogs - query the log store service for recent log entries
+   --  Uses async submit + pollCompletion to get full reply message
+   --  (send() only returns the tag, not the reply words).
+   --  Logstore creates a temporary read-only grant to us, writes entries,
+   --  then replies with the grant ID.
+   ---------------------------------------------------------------------------
+   logstorePID : ProcessID := NO_PROCESS;
+   LOG_QUERY_TOKEN : constant Unsigned_64 := 99;
+
+   procedure cmdLogs is
+      OP_LOG_QUERY : constant Unsigned_32 := 16#0800#;
+      LOG_MAX_ENTRIES : constant := 50;
+   begin
+      --  Lazy-discover logstore PID
+      if logstorePID = NO_PROCESS then
+         logstorePID := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_LOGSTORE);
+         if logstorePID = 0 or logstorePID = Unsigned_64'Last then
+            logstorePID := NO_PROCESS;
+            putStr ("logstore not running" & LF);
+            return;
+         end if;
+      end if;
+
+      --  Submit async OP_LOG_QUERY
+      declare
+         qMsg : constant Message := (
+            tag => (label  => OP_LOG_QUERY,
+                    length => 2,
+                    flags  => 0,
+                    badge  => 0),
+            capBadge => 0,
+            words    => (0 => LOG_MAX_ENTRIES,
+                         1 => 0,  --  filter: all PIDs
+                         others => 0));
+         ok : Boolean;
+      begin
+         ok := submit (logstorePID, qMsg, LOG_QUERY_TOKEN);
+         if not ok then
+            putStr ("error: submit failed" & LF);
+            return;
+         end if;
+      end;
+
+      --  Poll for completion (with brief timeout)
+      for attempt in 1 .. 200 loop
+         declare
+            comp : CompletionEntry;
+            ret  : Unsigned_64;
+            ignore : Unsigned_64;
+         begin
+            ret := pollCompletion (comp'Address);
+            if ret = 1 and then comp.token = LOG_QUERY_TOKEN then
+               if comp.msg.tag.label /= 16#F000# then
+                  putStr ("error: log query failed" & LF);
+                  return;
+               end if;
+
+               declare
+                  written : constant Natural :=
+                    Natural (comp.msg.words (0));
+                  gid     : constant Unsigned_64 := comp.msg.words (2);
+               begin
+                  if written = 0 then
+                     putStr ("no log entries" & LF);
+                     return;
+                  end if;
+
+                  --  Read entries from grant region
+                  declare
+                     grantAddr : constant System.Address := To_Address (
+                       Integer_Address (
+                         GRANT_REGION_BASE + gid * GRANT_SLOT_SIZE));
+                     eBuf   : array (0 .. 4095) of Unsigned_8
+                       with Import, Address => grantAddr;
+                     off    : Natural := 8;
+                     maxOff : constant Natural := 4096;
+                  begin
+                     for i in 0 .. written - 1 loop
+                        exit when off + 8 > maxOff;
+                        declare
+                           ePID : constant Unsigned_16 :=
+                             Unsigned_16 (eBuf (off)) or
+                             Shift_Left (Unsigned_16 (eBuf (off + 1)), 8);
+                           eDataLen : constant Natural := Natural (
+                             Unsigned_16 (eBuf (off + 2)) or
+                             Shift_Left (
+                                Unsigned_16 (eBuf (off + 3)), 8));
+                           eTS : constant Unsigned_32 :=
+                             Unsigned_32 (eBuf (off + 4)) or
+                             Shift_Left (
+                                Unsigned_32 (eBuf (off + 5)), 8) or
+                             Shift_Left (
+                                Unsigned_32 (eBuf (off + 6)), 16) or
+                             Shift_Left (
+                                Unsigned_32 (eBuf (off + 7)), 24);
+                        begin
+                           exit when off + 8 + eDataLen > maxOff;
+
+                           putStr ("[PID ");
+                           putDec (Unsigned_32 (ePID));
+                           putStr ("] ");
+                           putDec (eTS);
+                           putStr (": ");
+
+                           for j in 0 .. eDataLen - 1 loop
+                              declare
+                                 ch : constant Unsigned_8 :=
+                                   eBuf (off + 8 + j);
+                              begin
+                                 if ch = 10 then
+                                    putChar (LF);
+                                 elsif ch >= 32 and ch < 127 then
+                                    putChar (
+                                       Character'Val (Natural (ch)));
+                                 end if;
+                              end;
+                           end loop;
+
+                           if eDataLen = 0 or else
+                              eBuf (off + 8 + eDataLen - 1) /= 10
+                           then
+                              putChar (LF);
+                           end if;
+
+                           off := off + 8 + eDataLen;
+                        end;
+                     end loop;
+                  end;
+               end;
+               return;
+            end if;
+
+            ignore := syscall (SYSCALL_SLEEP, 10);
+         end;
+      end loop;
+
+      putStr ("logs: timeout waiting for response" & LF);
+   end cmdLogs;
+
    procedure dispatchCommand is
       line : String renames lineBuf (1 .. lineLen);
    begin
@@ -2777,10 +3129,10 @@ procedure main is
          cmdCd ("");
       elsif strEqual (line, "pwd") then
          cmdPwd;
-      elsif startsWith (line, "acl ") and lineLen > 4 then
-         cmdAcl (line (5 .. lineLen));
-      elsif strEqual (line, "acl") then
-         putStr ("usage: acl <file>" & LF);
+      elsif startsWith (line, "inspect ") and lineLen > 8 then
+         cmdInspect (line (9 .. lineLen));
+      elsif strEqual (line, "inspect") then
+         putStr ("usage: inspect <file>" & LF);
       elsif startsWith (line, "bg ") and lineLen > 3 then
          cmdBg (line (4 .. lineLen));
       elsif strEqual (line, "bg") then
@@ -2805,6 +3157,8 @@ procedure main is
          cmdLs (line (4 .. lineLen));
       elsif strEqual (line, "ls") then
          cmdLs ("");
+      elsif strEqual (line, "logs") then
+         cmdLogs;
       elsif strEqual (line, "uptime") then
          cmdUptime;
       elsif strEqual (line, "sysinfo") then

@@ -157,6 +157,10 @@ typedef long                ssize_t;
 #define OP_CONFIG_LOAD    0x0604
 #define OP_CONFIG_SAVE    0x0605
 
+/* Log store IPC labels */
+#define OP_LOG_QUERY      0x0800
+#define OP_LOG_CLEAR      0x0801
+
 /* Stream IPC labels */
 #define OP_STREAM_SUBSCRIBE   0x0700
 #define OP_STREAM_UNSUBSCRIBE 0x0701
@@ -176,7 +180,15 @@ typedef long                ssize_t;
  * Entry (16 bytes): reqType(1) + rights(1) + slot(1) + reserved(1) +
  *                   param0(4) + param1(8)
  *---------------------------------------------------------------------------*/
-#define CUBIT_CAP_MAGIC  0x43424954  /* "CBIT" in little-endian */
+#define CUBIT_CAP_MAGIC      0x43424954  /* "CBIT" in little-endian */
+#define CUBIT_ID_MAGIC       0x44494243  /* "CBID" LE */
+#define CUBIT_STREAMS_MAGIC  0x54534243  /* "CBST" LE */
+
+#define CUBIT_STREAM_DECL(stream_id, pages, type_tag, flags) \
+    ((stream_id) & 0xFF), (((stream_id) >> 8) & 0xFF), \
+    ((pages) & 0xFF), (((pages) >> 8) & 0xFF), \
+    ((type_tag) & 0xFF), (((type_tag) >> 8) & 0xFF), \
+    ((flags) & 0xFF), (((flags) >> 8) & 0xFF)
 
 /* Request types */
 #define CUBIT_REQ_FRAMEBUFFER  1
@@ -186,6 +198,7 @@ typedef long                ssize_t;
 #define CUBIT_REQ_DEVICE_MEM   5
 #define CUBIT_REQ_PROCESS      6
 #define CUBIT_REQ_STREAM       8
+#define CUBIT_REQ_RESOURCE     9
 
 /* Well-known stream IDs */
 #define CUBIT_STREAM_STDIN    0x01
@@ -238,6 +251,21 @@ typedef long                ssize_t;
         0x00, 0x00, 0x00, 0x00, \
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00  \
     };
+
+/* Convenience macro: declare a resource quota manifest entry.
+ * slot       = capability slot number
+ * max_frames = max physical frames (0 = unlimited)
+ * cpu_q_us   = CPU quota in microseconds per period (0 = unlimited)
+ * cpu_p_us   = CPU period in microseconds
+ * Packed param1: cpu_q_us in low 32 bits, cpu_p_us in high 32 bits. */
+#define CUBIT_MANIFEST_RESOURCE_ENTRY(slot, max_frames, cpu_q_us, cpu_p_us) \
+    0x09, 0x01, (slot), 0x00, \
+    ((max_frames) & 0xFF), (((max_frames) >> 8) & 0xFF), \
+    (((max_frames) >> 16) & 0xFF), (((max_frames) >> 24) & 0xFF), \
+    ((cpu_q_us) & 0xFF), (((cpu_q_us) >> 8) & 0xFF), \
+    (((cpu_q_us) >> 16) & 0xFF), (((cpu_q_us) >> 24) & 0xFF), \
+    ((cpu_p_us) & 0xFF), (((cpu_p_us) >> 8) & 0xFF), \
+    (((cpu_p_us) >> 16) & 0xFF), (((cpu_p_us) >> 24) & 0xFF)
 
 /*---------------------------------------------------------------------------
  * Standard Descriptors

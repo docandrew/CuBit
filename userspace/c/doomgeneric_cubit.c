@@ -19,6 +19,40 @@
 #include "cubit.h"
 #include <stdio.h>
 
+/* Package identity (.cubit.id section) */
+static const unsigned char __cubit_id[]
+    __attribute__((section(".cubit.id"), used)) = {
+    /* Header: magic "CBID" LE, version 1, count 2 */
+    0x43, 0x42, 0x49, 0x44,
+    0x01, 0x00,
+    0x02, 0x00,
+
+    /* Entry 0: id = "com.cubit.doom" */
+    0x02,                       /* keyLen = 2 */
+    0x0E, 0x00,                 /* valLen = 14 */
+    'i', 'd',
+    'c', 'o', 'm', '.', 'c', 'u', 'b', 'i', 't', '.', 'd', 'o', 'o', 'm',
+
+    /* Entry 1: version = "1.0.0" */
+    0x07,                       /* keyLen = 7 */
+    0x05, 0x00,                 /* valLen = 5 */
+    'v', 'e', 'r', 's', 'i', 'o', 'n',
+    '1', '.', '0', '.', '0'
+};
+
+/* Stream declarations (.cubit.streams section):
+ *   LOG stream (id=4, 4 pages, TYPE_TEXT) — startup/debug messages */
+static const unsigned char __cubit_streams[]
+    __attribute__((section(".cubit.streams"), used)) = {
+    /* Header: magic "CBST" LE, version 1, count 1 */
+    0x43, 0x42, 0x53, 0x54,
+    0x01, 0x00,
+    0x01, 0x00,
+
+    /* Entry 0: streamID=4(LOG), pages=4, typeTag=1(TEXT), flags=0 */
+    0x04, 0x00, 0x04, 0x00, 0x01, 0x00, 0x00, 0x00
+};
+
 /* Declare capability requirements in ELF manifest:
  *   slot 4  - CAP_DEVICE_MEM (framebuffer)
  *   slot 1  - CAP_ENDPOINT to FS server (DRIVER_FS = 6)
@@ -288,24 +322,25 @@ void DG_Init(void)
 {
     /* Map framebuffer */
     if (cubit_map_framebuffer(&fb) < 0) {
-        cubit_puts("DOOM: Failed to map framebuffer!\n");
+        cubit_stream_print(CUBIT_STREAM_LOG, "DOOM: Failed to map framebuffer!\n");
         cubit_exit(1);
     }
 
     fb_ptr = (uint32_t *)fb.addr;
 
-    cubit_puts("DOOM: Framebuffer mapped at ");
-    /* Simple hex print since printf may not be available yet */
-    char buf[64];
-    snprintf(buf, sizeof(buf), "0x%lx (%ux%u, pitch=%u, bpp=%u)\n",
-             (unsigned long)fb.addr, fb.width, fb.height, fb.pitch, fb.bpp);
-    cubit_puts(buf);
+    /* Log framebuffer info */
+    {
+        char buf[80];
+        snprintf(buf, sizeof(buf), "DOOM: Framebuffer mapped at 0x%lx (%ux%u, pitch=%u, bpp=%u)",
+                 (unsigned long)fb.addr, fb.width, fb.height, fb.pitch, fb.bpp);
+        cubit_stream_print(CUBIT_STREAM_LOG, buf);
+    }
 
     /* Register as keyboard and mouse driver */
     cubit_keyboard_init();
     cubit_mouse_init();
 
-    cubit_puts("DOOM: Input initialized.\n");
+    cubit_stream_print(CUBIT_STREAM_LOG, "DOOM: Input initialized.\n");
 }
 
 /*---------------------------------------------------------------------------
@@ -388,7 +423,10 @@ void DG_SetWindowTitle(const char *title)
  *---------------------------------------------------------------------------*/
 int main(void)
 {
-    cubit_puts("DOOM: Starting on CuBit OS...\n");
+    /* Create LOG stream for debug output */
+    cubit_stream_create(CUBIT_STREAM_LOG, 4, CUBIT_TYPE_TEXT);
+
+    cubit_stream_print(CUBIT_STREAM_LOG, "DOOM: Starting on CuBit OS...\n");
 
     /* Try NVMe first, then ATA, fall back to ramdisk */
     static char *wad_path;
@@ -396,16 +434,16 @@ int main(void)
     if (test) {
         fclose(test);
         wad_path = "@nvme:0/doom1.wad";
-        cubit_puts("DOOM: Using WAD from NVMe disk.\n");
+        cubit_stream_print(CUBIT_STREAM_LOG, "DOOM: Using WAD from NVMe disk.\n");
     } else {
         test = fopen("@ata:0/doom1.wad", "r");
         if (test) {
             fclose(test);
             wad_path = "@ata:0/doom1.wad";
-            cubit_puts("DOOM: Using WAD from ATA disk.\n");
+            cubit_stream_print(CUBIT_STREAM_LOG, "DOOM: Using WAD from ATA disk.\n");
         } else {
             wad_path = "doom1.wad";
-            cubit_puts("DOOM: No disk, using ramdisk WAD.\n");
+            cubit_stream_print(CUBIT_STREAM_LOG, "DOOM: No disk, using ramdisk WAD.\n");
         }
     }
 

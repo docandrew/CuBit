@@ -140,6 +140,10 @@ procedure main is
       rights : Unsigned_8) return Boolean
    is
    begin
+      if isAdmin (sender) then
+         return True;
+      end if;
+
       for i in aclProfiles'Range loop
          if aclProfiles (i).active and then
             aclProfiles (i).pid = sender

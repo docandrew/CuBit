@@ -46,6 +46,16 @@ SECTIONS
         KEEP(*(.cubit.access))
     }
 
+    .cubit.id (INFO) : ALIGN(4)
+    {
+        KEEP(*(.cubit.id))
+    }
+
+    .cubit.streams (INFO) : ALIGN(4)
+    {
+        KEEP(*(.cubit.streams))
+    }
+
     /DISCARD/ :
     {
         *(.eh_frame)

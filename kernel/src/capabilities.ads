@@ -39,7 +39,8 @@ is
         CAP_IRQ,            -- Hardware interrupt
         CAP_PROCESS,        -- Process/thread control
         CAP_DEVICE_MEM,     -- Device memory (framebuffer, MMIO)
-        CAP_REPLY           -- One-use reply capability (kernel-minted)
+        CAP_REPLY,          -- One-use reply capability (kernel-minted)
+        CAP_RESOURCE        -- Resource quota (memory/CPU limits)
     );
 
     ---------------------------------------------------------------------------
@@ -109,6 +110,7 @@ is
     -- | PROCESS      | Target PID           | (reserved)     |
     -- | DEVICE_MEM   | Base physical address | Size in bytes |
     -- | REPLY        | Sender PID           | (reserved)     |
+    -- | RESOURCE     | maxFrames            | cpuQuota(lo32)|cpuPeriod(hi32)|
     --
     -- Two plain fields instead of a variant record (README warns against
     -- variant records for overlays).

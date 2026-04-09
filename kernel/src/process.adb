@@ -986,6 +986,22 @@ is
         if (addr <= Proctab(pid).stackTop and addr >= Proctab(pid).stackBottom) or
            (addr <= Proctab(pid).heapEnd  and addr >= Proctab(pid).heapStart) then
 
+            -- Check memory quota before allocating
+            if Proctab(pid).quota.maxFrames > 0 and then
+               Proctab(pid).frames.length >= Proctab(pid).quota.maxFrames
+            then
+                print ("Process: memory quota exceeded for pid ");
+                println (Integer(pid));
+                IPC.notifySupervisor (
+                    pid        => pid,
+                    faultLabel => IPC_Labels.EVENT_PROCESS_FAULT,
+                    detail0    => 14,
+                    detail1    => Unsigned_64 (To_Integer (addr)),
+                    detail2    => Unsigned_64 (Proctab(pid).quota.maxFrames));
+                kill (pid);
+                return;
+            end if;
+
             print ("Process: Adding page for pid "); print (Integer(pid));
             print (" at "); println (To_Address (To_Integer (addr) and Virtmem.PAGE_MASK));
             addPage (proc    => Proctab(pid),

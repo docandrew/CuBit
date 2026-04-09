@@ -308,6 +308,21 @@ is
     type DMAAllocArray is array (0 .. MAX_DMA_ALLOCS - 1) of DMAAlloc;
 
     ---------------------------------------------------------------------------
+    -- Resource Quota
+    --
+    -- Per-process resource limits populated from CAP_RESOURCE on resume.
+    -- maxFrames limits physical memory; cpuQuotaUs/cpuPeriodUs limit CPU.
+    -- Zero values mean unlimited.
+    ---------------------------------------------------------------------------
+    type ResourceQuota is record
+        maxFrames       : Natural      := 0;  -- 0 = unlimited
+        cpuQuotaUs      : Unsigned_32  := 0;  -- max us per period (0 = unlimited)
+        cpuPeriodUs     : Unsigned_32  := 0;  -- period length in us
+        cpuUsedTicks    : Natural      := 0;  -- ticks consumed this period
+        periodStartTick : Unsigned_64  := 0;  -- msTicks at period start
+    end record;
+
+    ---------------------------------------------------------------------------
     -- Shared Memory Grant Types
     --
     -- Grants map physical pages from the granter's address space into the
@@ -511,6 +526,9 @@ is
 
         -- Home CPU for scheduling (process always runs on this CPU)
         cpu                 : Natural := 0;
+
+        -- Resource quota (populated from CAP_RESOURCE on resume)
+        quota               : ResourceQuota;
     end record;
 
     -- Lock for protecting the proctab

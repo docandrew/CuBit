@@ -181,6 +181,16 @@ config: user_runtime
 	$(ALR) gprbuild -P ../userspace/services/config/config.gpr
 	cp ../userspace/services/config/build/config.svc isodir/boot/config.svc
 
+# Build the userspace log store service
+.PHONY : logstore
+logstore: user_runtime
+	mkdir -p ../userspace/services/logstore/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/services/logstore/manifest.c \
+		-o ../userspace/services/logstore/build/manifest.o
+	$(ALR) gprbuild -P ../userspace/services/logstore/logstore.gpr
+	cp ../userspace/services/logstore/build/logstore.svc isodir/boot/logstore.svc
+
 # Build the userspace network manager service
 .PHONY : netmgr
 netmgr: user_runtime
@@ -211,7 +221,7 @@ shell: user_runtime
 # Files that live on ext2 disk images (stage-2 content).
 # Disk images rebuild automatically when any of these change.
 DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/sleep.app \
-	../init.conf ../motd.txt ../doom1.wad
+	isodir/boot/logstore.svc ../init.conf ../motd.txt ../doom1.wad
 
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.conf, shell.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
@@ -225,6 +235,7 @@ ata_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" ata_disk.img
 	debugfs -w -R "write isodir/boot/sleep.app sleep.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/wget.app wget.app" ata_disk.img
+	debugfs -w -R "write isodir/boot/logstore.svc logstore.svc" ata_disk.img
 	dd if=/dev/zero of=/tmp/config.dat bs=8192 count=1
 	debugfs -w -R "write /tmp/config.dat config.dat" ata_disk.img
 	rm -f /tmp/config.dat
@@ -238,6 +249,7 @@ nvme_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write ../doom1.wad doom1.wad" nvme_disk.img
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" nvme_disk.img
 	debugfs -w -R "write isodir/boot/sleep.app sleep.app" nvme_disk.img
+	debugfs -w -R "write isodir/boot/logstore.svc logstore.svc" nvme_disk.img
 	debugfs -w -R "write ../init.conf init.conf" nvme_disk.img
 	debugfs -w -R "write isodir/boot/shell.app shell.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/wget.app wget.app" nvme_disk.img
@@ -279,7 +291,7 @@ iso: cubit_kernel
 
 # Build everything including DOOM, then create ISO and disk images
 .PHONY : world
-world: cubit_kernel doom sleep filesystem ata nvme virtio-net netstack wget procmgr shell hda mixer ps2 config netmgr devmgr initrd ata_disk.img nvme_disk.img iso
+world: cubit_kernel doom sleep filesystem ata nvme virtio-net netstack wget procmgr shell hda mixer ps2 config netmgr logstore devmgr initrd ata_disk.img nvme_disk.img iso
 
 # Run QEMU with NVMe + virtio-net + HDA audio, shell (everything)
 .PHONY : run

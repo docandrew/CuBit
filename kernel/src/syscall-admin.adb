@@ -22,6 +22,7 @@ with Process;
 with Process.IPC;
 with Sysinfo;
 with TextIO; use TextIO;
+with Time;
 with Util;
 with Virtmem;
 with x86;
@@ -960,6 +961,30 @@ package body Syscall.Admin is
             println ("RESUME: target not suspended");
             retval := reterr;
         else
+            -- Scan child's cap table for CAP_RESOURCE and populate quota
+            for slot in Capabilities.CapabilitySlot loop
+                if Process.proctab(targetPID).caps(slot).capType =
+                   Capabilities.CAP_RESOURCE
+                then
+                    declare
+                        cap : Capabilities.Capability renames
+                            Process.proctab(targetPID).caps(slot);
+                        q   : Process.ResourceQuota renames
+                            Process.proctab(targetPID).quota;
+                    begin
+                        q.maxFrames :=
+                            Natural (cap.object.ref);
+                        q.cpuQuotaUs :=
+                            Unsigned_32 (cap.object.param and 16#FFFF_FFFF#);
+                        q.cpuPeriodUs :=
+                            Unsigned_32 (Shift_Right (cap.object.param, 32));
+                        q.cpuUsedTicks    := 0;
+                        q.periodStartTick := Time.msTicks;
+                    end;
+                    exit;
+                end if;
+            end loop;
+
             Process.resume (targetPID);
             print ("RESUME: resumed PID ");
             println (Integer (targetPID));

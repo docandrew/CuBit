@@ -440,6 +440,17 @@ package body Syscall.IPC is
                 Integer_Address(Virtmem.PAGE_MASK));
 
             while To_Integer(curPage) < To_Integer(newPage) loop
+                -- Check memory quota before allocating
+                if Process.proctab(callerPID).quota.maxFrames > 0 and then
+                   Process.proctab(callerPID).frames.length >=
+                   Process.proctab(callerPID).quota.maxFrames
+                then
+                    -- Partial alloc: update heapEnd to what we managed
+                    Process.proctab(callerPID).heapEnd := curPage;
+                    retval := toNum (oldEnd);
+                    return;
+                end if;
+
                 Process.addPage (
                     proc    => Process.proctab(callerPID),
                     mapTo   => curPage,
