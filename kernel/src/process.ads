@@ -356,18 +356,29 @@ is
         Integer_Address (MAX_GRANT_PAGES) * Integer_Address (Virtmem.PAGE_SIZE);
 
     ---------------------------------------------------------------------------
-    -- Event Ring Buffer
-    -- Replaces single-slot event storage with a 16-entry ring buffer.
+    -- Unified IPC Ring Buffer
+    -- Single ring for both submit() messages and sendEvent() events.
+    -- Each entry carries the message and the sender PID (NO_PROCESS for
+    -- fire-and-forget events).
     ---------------------------------------------------------------------------
-    EVENT_QUEUE_SIZE : constant := 32;
-    subtype EventIndex is Natural range 0 .. EVENT_QUEUE_SIZE - 1;
-    type EventArray is array (EventIndex) of Message;
+    RING_SIZE : constant := 32;
+    subtype RingIndex is Natural range 0 .. RING_SIZE - 1;
 
-    type EventQueue is record
-        events : EventArray := (others => NULL_MESSAGE);
-        head   : EventIndex := 0;   -- next write position
-        tail   : EventIndex := 0;   -- next read position
-        count  : Natural    := 0;
+    type RingEntry is record
+        msg    : Message   := NULL_MESSAGE;
+        sender : ProcessID := NO_PROCESS;
+    end record;
+
+    NULL_RING_ENTRY : constant RingEntry :=
+        (msg => NULL_MESSAGE, sender => NO_PROCESS);
+
+    type RingArray is array (RingIndex) of RingEntry;
+
+    type MessageRing is record
+        entries : RingArray := (others => NULL_RING_ENTRY);
+        head    : RingIndex := 0;   -- next write position
+        tail    : RingIndex := 0;   -- next read position
+        count   : Natural   := 0;
     end record;
 
     ---------------------------------------------------------------------------
@@ -376,16 +387,13 @@ is
     --                          this mailbox a message.
     -- @field recvQueue       - List of the blocked receivers waiting
     --                          to receive a message destined for this mailbox
+    -- @field ring            - Unified ring for submit() and sendEvent()
     ---------------------------------------------------------------------------
     type Mailbox is record
         lock        : Spinlocks.spinlock := (name => null, others => <>);
 
-        hasMsg      : Boolean      := False;
-        msg         : Message      := NULL_MESSAGE;
-        sender      : ProcessID    := NO_PROCESS;
-
-        -- Event ring buffer (replaces single-slot hasEvent/eventMsg/eventSender)
-        events      : EventQueue;
+        -- Unified ring buffer for async messages and events
+        ring        : MessageRing;
 
         -- Notification word: badge bits ORed in by capNotify()
         notifyWord   : Unsigned_64 := 0;

@@ -227,7 +227,7 @@ typedef long                ssize_t;
  * manager reads this section and sends ACL entries to the FS server.
  *
  * Header (16 bytes): magic(4) + version(2) + count(2) + uid(2) + gid(2) +
- *                    trustFloor(1) + reserved(3)
+ *                    trustFloor(1) + sandboxMode(1) + reserved(2)
  * Entry (80 bytes):  rights(1) + prefixLen(1) + flags(1) + reserved(1) +
  *                    uid(2) + gid(2) + prefix(64) + reserved64(8)
  *---------------------------------------------------------------------------*/
@@ -241,6 +241,11 @@ typedef long                ssize_t;
 #define CUBIT_SERVICE_FS      0
 #define CUBIT_SERVICE_CONFIG  1
 #define CUBIT_SERVICE_SECRETS 2
+
+/* Sandbox modes for .cubit.access header byte 13 */
+#define CUBIT_SANDBOX_NONE        0
+#define CUBIT_SANDBOX_RUN_FOLDER  1
+#define CUBIT_SANDBOX_APP_FOLDER  2
 
 #define CUBIT_MANIFEST_FRAMEBUFFER(slot_num) \
     static const unsigned char __cubit_manifest[] \

@@ -112,10 +112,10 @@ is
 
     ---------------------------------------------------------------------------
     -- submit
-    -- Non-blocking async send. Delivers message to dest's mailbox and
+    -- Non-blocking async send. Enqueues message in dest's ring and
     -- returns immediately. The caller records a (dest, token) pending
     -- request so that reply() can enqueue a completion.
-    -- @return True on success, False if mailbox full or invalid dest.
+    -- @return True on success, False if ring full or invalid dest.
     ---------------------------------------------------------------------------
     function submit (dest  : ProcessID;
                      msg   : Message;

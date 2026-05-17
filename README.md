@@ -34,13 +34,16 @@ probably provided in your distro's package manager. This can be built in Linux
 and on Windows using WSL.
 
     git clone https://github.com/docandrew/CuBit.git
-    make
+    cd CuBit/kernel
+    make world
 
 This will build CuBit and create a Live-CD .iso file. The ISO can be mounted
 and run in VirtualBox, Bochs, or QEMU.
 
 Documentation (work in progress):
 ---------------------------------
+
+The documentation is being organized as [The CuBit Book](docs/README.md).
 
 |  Task                                |   Command   |
 |--------------------------------------|-------------|

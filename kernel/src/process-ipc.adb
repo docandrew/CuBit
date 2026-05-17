@@ -132,57 +132,57 @@ is
     end findAndRemovePending;
 
     ---------------------------------------------------------------------------
-    -- Event Ring Buffer Helpers
+    -- Unified Ring Buffer Helpers
     ---------------------------------------------------------------------------
 
     ---------------------------------------------------------------------------
-    -- enqueueEvent
-    -- Push an event into a mailbox's event ring buffer.
+    -- enqueueRing
+    -- Push an entry into a mailbox's unified ring buffer.
     -- Caller must hold mailtab(owner).lock.
-    -- @return True if enqueued, False if queue is full (event dropped).
+    -- @return True if enqueued, False if queue is full (entry dropped).
     ---------------------------------------------------------------------------
-    procedure enqueueEvent (owner   : in  ProcessID;
-                            item    : in  Message;
-                            success : out Boolean)
+    procedure enqueueRing (owner   : in  ProcessID;
+                           item    : in  RingEntry;
+                           success : out Boolean)
         with SPARK_Mode => On
     is
-        eq : EventQueue renames mailtab(owner).events;
+        r : MessageRing renames mailtab(owner).ring;
     begin
-        if eq.count >= EVENT_QUEUE_SIZE then
+        if r.count >= RING_SIZE then
             success := False;
             return;
         end if;
 
-        eq.events(eq.head) := item;
-        eq.head  := (eq.head + 1) mod EVENT_QUEUE_SIZE;
-        eq.count := eq.count + 1;
-        success  := True;
-    end enqueueEvent;
+        r.entries(r.head) := item;
+        r.head  := (r.head + 1) mod RING_SIZE;
+        r.count := r.count + 1;
+        success := True;
+    end enqueueRing;
 
     ---------------------------------------------------------------------------
-    -- dequeueEvent
-    -- Pop an event from a mailbox's event ring buffer.
+    -- dequeueRing
+    -- Pop an entry from a mailbox's unified ring buffer.
     -- Caller must hold mailtab(owner).lock.
     ---------------------------------------------------------------------------
-    procedure dequeueEvent (owner   : in  ProcessID;
-                            item    : out Message;
-                            success : out Boolean)
+    procedure dequeueRing (owner   : in  ProcessID;
+                           item    : out RingEntry;
+                           success : out Boolean)
         with SPARK_Mode => On
     is
-        eq : EventQueue renames mailtab(owner).events;
+        r : MessageRing renames mailtab(owner).ring;
     begin
-        if eq.count = 0 then
-            item    := NULL_MESSAGE;
+        if r.count = 0 then
+            item    := NULL_RING_ENTRY;
             success := False;
             return;
         end if;
 
-        item     := eq.events(eq.tail);
-        eq.events(eq.tail) := NULL_MESSAGE;
-        eq.tail  := (eq.tail + 1) mod EVENT_QUEUE_SIZE;
-        eq.count := eq.count - 1;
-        success  := True;
-    end dequeueEvent;
+        item     := r.entries(r.tail);
+        r.entries(r.tail) := NULL_RING_ENTRY;
+        r.tail  := (r.tail + 1) mod RING_SIZE;
+        r.count := r.count - 1;
+        success := True;
+    end dequeueRing;
 
     ---------------------------------------------------------------------------
     -- receive
@@ -198,6 +198,8 @@ is
         receiver : constant ProcessID := getReceiver (mypid);
         sender   : ProcessID;
         ignore   : ProcessID;
+        re       : RingEntry;
+        ok       : Boolean;
     begin
         -- Validate our own state
         if mypid = NO_PROCESS then
@@ -208,12 +210,10 @@ is
 
         Spinlocks.enterCriticalSection (mailtab(receiver).lock);
 
-        -- Check sendQueue FIRST. Path 2 senders store their message
-        -- in proctab(sender).sendMsg, not in the shared mailbox.
+        -- Check sendQueue FIRST (synchronous call/send senders).
         if not Queues.isEmpty (mailtab(receiver).sendQueue) then
             Queues.dequeue (mailtab(receiver).sendQueue, sender);
 
-            -- Read from the sender's per-process storage
             msg  := proctab(sender).sendMsg;
             from := sender;
 
@@ -232,36 +232,31 @@ is
             return;
         end if;
 
-        if mailtab(receiver).hasMsg then
-            -- Message deposited by send() Path 1 or submit().
-            from := mailtab(receiver).sender;
-            mailtab(receiver).hasMsg := False;
-            -- Path 1: sender in WAITINGFORREPLY, msg in sendMsg.
-            -- submit(): sender running, msg in mailtab.msg.
-            if from /= NO_PROCESS
-               and then proctab(from).state = WAITINGFORREPLY
-            then
-                msg := proctab(from).sendMsg;
-            else
-                msg := mailtab(receiver).msg;
-            end if;
+        -- Check unified ring (submit messages, events, send Path 1).
+        dequeueRing (receiver, re, ok);
+        if ok then
+            from := re.sender;
+            msg  := re.msg;
 
-            -- Mint one-use reply cap for this sender
-            proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
-                (capType  => Capabilities.CAP_REPLY,
-                 rights   => Capabilities.ALL_RIGHTS,
-                 capBadge => Capabilities.NO_BADGE,
-                 object   => (ref   => Unsigned_64(from),
-                              param => 0),
-                 gen      => proctab(from).capGeneration);
+            -- Mint reply cap only for messages with a real sender
+            if from /= NO_PROCESS then
+                proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
+                    (capType  => Capabilities.CAP_REPLY,
+                     rights   => Capabilities.ALL_RIGHTS,
+                     capBadge => Capabilities.NO_BADGE,
+                     object   => (ref   => Unsigned_64(from),
+                                  param => 0),
+                     gen      => proctab(from).capGeneration);
+            else
+                proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
+                    Capabilities.NULL_CAPABILITY;
+            end if;
 
             Spinlocks.exitCriticalSection (mailtab(receiver).lock);
             return;
         end if;
 
         -- Check bound notification before blocking (seL4-style).
-        -- If this process has a bound notification with pending bits,
-        -- return it as a synthetic message instead of blocking.
         if proctab(mypid).boundNotification /= NO_PROCESS then
             checkBound : declare
                 bn : constant ProcessID := proctab(mypid).boundNotification;
@@ -277,7 +272,6 @@ is
                                           others => 0));
                     mailtab(bn).notifyWord := 0;
 
-                    -- No real sender — clear any stale reply cap
                     proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
                         Capabilities.NULL_CAPABILITY;
 
@@ -296,8 +290,7 @@ is
 
         yield;
 
-        -- Woken by send() Path 1 or submit(). Check sendQueue first
-        -- in case Path 2 senders enqueued while we were blocked.
+        -- Woken by send/submit/sendEvent. Check sendQueue first.
         Spinlocks.enterCriticalSection (mailtab(receiver).lock);
 
         if not Queues.isEmpty (mailtab(receiver).sendQueue) then
@@ -308,52 +301,50 @@ is
 
             proctab(sender).state := WAITINGFORREPLY;
         else
-            -- Woken by send() Path 1 or submit().
-            from := mailtab(receiver).sender;
-            mailtab(receiver).hasMsg := False;
-            -- Path 1 sender is in WAITINGFORREPLY; read from sendMsg.
-            -- submit() sender is running; read from mailtab.msg.
-            if from /= NO_PROCESS
-               and then proctab(from).state = WAITINGFORREPLY
-            then
-                msg := proctab(from).sendMsg;
-            else
-                msg := mailtab(receiver).msg;
-            end if;
+            -- Woken by submit/sendEvent/send Path 1 — dequeue from ring.
+            dequeueRing (receiver, re, ok);
+            from := re.sender;
+            msg  := re.msg;
         end if;
 
-        -- Mint one-use reply cap for this sender
-        proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
-            (capType  => Capabilities.CAP_REPLY,
-             rights   => Capabilities.ALL_RIGHTS,
-             capBadge => Capabilities.NO_BADGE,
-             object   => (ref   => Unsigned_64(from),
-                          param => 0),
-             gen      => proctab(from).capGeneration);
+        -- Mint reply cap if real sender
+        if from /= NO_PROCESS then
+            proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
+                (capType  => Capabilities.CAP_REPLY,
+                 rights   => Capabilities.ALL_RIGHTS,
+                 capBadge => Capabilities.NO_BADGE,
+                 object   => (ref   => Unsigned_64(from),
+                              param => 0),
+                 gen      => proctab(from).capGeneration);
+        else
+            proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
+                Capabilities.NULL_CAPABILITY;
+        end if;
 
         Spinlocks.exitCriticalSection (mailtab(receiver).lock);
     end receive;
 
     ---------------------------------------------------------------------------
     -- receiveEvent
+    -- Blocking receive from the unified ring buffer.
     ---------------------------------------------------------------------------
     function receiveEvent return Message with SPARK_Mode => On is
         mypid    : constant ProcessID := PerCPUData.getCurrentPID;
         receiver : constant ProcessID := getReceiver (mypid);
-        event    : Message;
+        re       : RingEntry;
         ok       : Boolean;
     begin
         loop
             Spinlocks.enterCriticalSection (mailtab(receiver).lock);
 
-            dequeueEvent (receiver, event, ok);
+            dequeueRing (receiver, re, ok);
 
             if ok then
                 Spinlocks.exitCriticalSection (mailtab(receiver).lock);
-                return event;
+                return re.msg;
             end if;
 
-            -- No event available, block
+            -- No entry available, block
             proctab(mypid).state := WAITINGFOREVENT;
             Spinlocks.exitCriticalSection (mailtab(receiver).lock);
 
@@ -363,13 +354,14 @@ is
 
     ---------------------------------------------------------------------------
     -- receiveEventNB
-    -- Non-blocking event receive. Pops from the event ring buffer.
+    -- Non-blocking receive from the unified ring buffer.
     ---------------------------------------------------------------------------
     procedure receiveEventNB (msg : out Message; found : out Boolean) with
         SPARK_Mode => On
     is
         mypid    : constant ProcessID := PerCPUData.getCurrentPID;
         receiver : constant ProcessID := getReceiver (mypid);
+        re       : RingEntry;
     begin
         msg   := NULL_MESSAGE;
         found := False;
@@ -380,7 +372,10 @@ is
 
         Spinlocks.enterCriticalSection (mailtab(receiver).lock);
 
-        dequeueEvent (receiver, msg, found);
+        dequeueRing (receiver, re, found);
+        if found then
+            msg := re.msg;
+        end if;
 
         Spinlocks.exitCriticalSection (mailtab(receiver).lock);
     end receiveEventNB;
@@ -408,20 +403,17 @@ is
         sender   : ProcessID;
         ign      : ProcessID;
         rtState  : ProcessState;
+        re       : RingEntry;
+        ok       : Boolean;
     begin
         -----------------------------------------------------------------------
         -- Phase 1: Reply to previous sender
         -----------------------------------------------------------------------
         if replyTo /= NO_PROCESS then
-            -- Read state once to avoid TOCTOU (Fix 1)
             rtState := proctab(replyTo).state;
 
             if rtState /= INVALID then
                 if rtState = WAITINGFORREPLY then
-                    -- Validate reply cap and deliver reply.
-                    -- Kernel threads are exempt; userspace must
-                    -- hold a matching CAP_REPLY. If validation
-                    -- fails, silently skip — Phase 2 mints fresh.
                     validateRW : declare
                         doReply   : Boolean := False;
                         foundSlot : Capabilities.CapabilitySlot :=
@@ -444,8 +436,6 @@ is
                             then
                                 doReply := True;
                             else
-                                -- Bitmap scan: iterate only
-                                -- deferred reply cap slots
                                 remaining := proctab(mypid)
                                     .deferredReplyCaps;
                                 while remaining /= 0 loop
@@ -471,7 +461,6 @@ is
                         end if;
 
                         if doReply then
-                            -- Consume one-use reply cap + bitmap
                             if proctab(mypid).mode = USER then
                                 proctab(mypid).caps(foundSlot) :=
                                     Capabilities.NULL_CAPABILITY;
@@ -482,36 +471,30 @@ is
                                          foundSlot);
                             end if;
 
-                            -- Store reply, make sender READY (no
-                            -- directSwitch — check for next msg).
                             proctab(replyTo).replyMsg := replyMsg;
                             notify (replyTo);
                         end if;
                     end validateRW;
                 else
-                    -- Async path: delegate to full reply()
                     ignore := reply (replyTo, replyMsg);
                 end if;
             end if;
         end if;
 
         -----------------------------------------------------------------------
-        -- Phase 2: Receive next message without yielding if possible
+        -- Phase 2: Receive next message
         -----------------------------------------------------------------------
         Spinlocks.enterCriticalSection (mailtab(receiver).lock);
 
-        -- Check sendQueue first. Path 2 senders store their message
-        -- in proctab(sender).sendMsg, not in the shared mailbox.
+        -- Check sendQueue first (synchronous senders).
         if not Queues.isEmpty (mailtab(receiver).sendQueue) then
             Queues.dequeue (mailtab(receiver).sendQueue, sender);
 
-            -- Read from the sender's per-process storage
             msg  := proctab(sender).sendMsg;
             from := sender;
 
             proctab(sender).state := WAITINGFORREPLY;
 
-            -- Mint one-use reply cap for this sender
             proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
                 (capType  => Capabilities.CAP_REPLY,
                  rights   => Capabilities.ALL_RIGHTS,
@@ -524,26 +507,24 @@ is
             return;
         end if;
 
-        -- Check deposited message (send Path 1 or submit)
-        if mailtab(receiver).hasMsg then
-            from := mailtab(receiver).sender;
-            mailtab(receiver).hasMsg := False;
-            if from /= NO_PROCESS
-               and then proctab(from).state = WAITINGFORREPLY
-            then
-                msg := proctab(from).sendMsg;
-            else
-                msg := mailtab(receiver).msg;
-            end if;
+        -- Check unified ring (submit, events, send Path 1).
+        dequeueRing (receiver, re, ok);
+        if ok then
+            from := re.sender;
+            msg  := re.msg;
 
-            -- Mint one-use reply cap for this sender
-            proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
-                (capType  => Capabilities.CAP_REPLY,
-                 rights   => Capabilities.ALL_RIGHTS,
-                 capBadge => Capabilities.NO_BADGE,
-                 object   => (ref   => Unsigned_64(from),
-                              param => 0),
-                 gen      => proctab(from).capGeneration);
+            if from /= NO_PROCESS then
+                proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
+                    (capType  => Capabilities.CAP_REPLY,
+                     rights   => Capabilities.ALL_RIGHTS,
+                     capBadge => Capabilities.NO_BADGE,
+                     object   => (ref   => Unsigned_64(from),
+                                  param => 0),
+                     gen      => proctab(from).capGeneration);
+            else
+                proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
+                    Capabilities.NULL_CAPABILITY;
+            end if;
 
             Spinlocks.exitCriticalSection (mailtab(receiver).lock);
             return;
@@ -558,8 +539,7 @@ is
 
         yield;
 
-        -- Woken by send() Path 1 or submit(). Check sendQueue first
-        -- in case Path 2 senders enqueued while we were blocked.
+        -- Woken — check sendQueue first.
         Spinlocks.enterCriticalSection (mailtab(receiver).lock);
 
         if not Queues.isEmpty (mailtab(receiver).sendQueue) then
@@ -570,28 +550,24 @@ is
 
             proctab(sender).state := WAITINGFORREPLY;
         else
-            -- Woken by send() Path 1 or submit().
-            from := mailtab(receiver).sender;
-            mailtab(receiver).hasMsg := False;
-            -- Path 1 sender is in WAITINGFORREPLY; read from sendMsg.
-            -- submit() sender is running; read from mailtab.msg.
-            if from /= NO_PROCESS
-               and then proctab(from).state = WAITINGFORREPLY
-            then
-                msg := proctab(from).sendMsg;
-            else
-                msg := mailtab(receiver).msg;
-            end if;
+            dequeueRing (receiver, re, ok);
+            from := re.sender;
+            msg  := re.msg;
         end if;
 
-        -- Mint one-use reply cap for this sender
-        proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
-            (capType  => Capabilities.CAP_REPLY,
-             rights   => Capabilities.ALL_RIGHTS,
-             capBadge => Capabilities.NO_BADGE,
-             object   => (ref   => Unsigned_64(from),
-                          param => 0),
-             gen      => proctab(from).capGeneration);
+        -- Mint reply cap if real sender
+        if from /= NO_PROCESS then
+            proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
+                (capType  => Capabilities.CAP_REPLY,
+                 rights   => Capabilities.ALL_RIGHTS,
+                 capBadge => Capabilities.NO_BADGE,
+                 object   => (ref   => Unsigned_64(from),
+                              param => 0),
+                 gen      => proctab(from).capGeneration);
+        else
+            proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
+                Capabilities.NULL_CAPABILITY;
+        end if;
 
         Spinlocks.exitCriticalSection (mailtab(receiver).lock);
     end replyWait;
@@ -604,44 +580,20 @@ is
         mypid    : constant ProcessID := PerCPUData.getCurrentPID;
         receiver : constant ProcessID := getReceiver (mypid);
         sender   : ProcessID;
+        re       : RingEntry;
     begin
         Spinlocks.enterCriticalSection (mailtab(receiver).lock);
 
-        -- Check sendQueue FIRST. Path 2 senders store their message
-        -- in proctab(sender).sendMsg, not in the shared mailbox.
+        -- Check sendQueue first (synchronous senders).
         if not Queues.isEmpty (mailtab(receiver).sendQueue) then
             Queues.dequeue (mailtab(receiver).sendQueue, sender);
 
-            -- Read from the sender's per-process storage
             msg   := proctab(sender).sendMsg;
             from  := sender;
             found := True;
 
             proctab(sender).state := WAITINGFORREPLY;
 
-            -- Mint one-use reply cap for this sender
-            proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
-                (capType  => Capabilities.CAP_REPLY,
-                 rights   => Capabilities.ALL_RIGHTS,
-                 capBadge => Capabilities.NO_BADGE,
-                 object   => (ref   => Unsigned_64(from),
-                              param => 0),
-                 gen      => proctab(from).capGeneration);
-
-        elsif mailtab(receiver).hasMsg then
-            -- Message deposited by send() Path 1 or submit()
-            from  := mailtab(receiver).sender;
-            mailtab(receiver).hasMsg := False;
-            found := True;
-            if from /= NO_PROCESS
-               and then proctab(from).state = WAITINGFORREPLY
-            then
-                msg := proctab(from).sendMsg;
-            else
-                msg := mailtab(receiver).msg;
-            end if;
-
-            -- Mint one-use reply cap for this sender
             proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
                 (capType  => Capabilities.CAP_REPLY,
                  rights   => Capabilities.ALL_RIGHTS,
@@ -650,9 +602,28 @@ is
                               param => 0),
                  gen      => proctab(from).capGeneration);
         else
-            from  := NO_PROCESS;
-            msg   := NULL_MESSAGE;
-            found := False;
+            -- Check unified ring (submit, events, send Path 1).
+            dequeueRing (receiver, re, found);
+            if found then
+                from := re.sender;
+                msg  := re.msg;
+
+                if from /= NO_PROCESS then
+                    proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
+                        (capType  => Capabilities.CAP_REPLY,
+                         rights   => Capabilities.ALL_RIGHTS,
+                         capBadge => Capabilities.NO_BADGE,
+                         object   => (ref   => Unsigned_64(from),
+                                      param => 0),
+                         gen      => proctab(from).capGeneration);
+                else
+                    proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
+                        Capabilities.NULL_CAPABILITY;
+                end if;
+            else
+                from  := NO_PROCESS;
+                msg   := NULL_MESSAGE;
+            end if;
         end if;
 
         Spinlocks.exitCriticalSection (mailtab(receiver).lock);
@@ -723,11 +694,16 @@ is
         Spinlocks.enterCriticalSection (mailtab(dest).lock);
 
         if not Queues.isEmpty (mailtab(dest).recvQueue) then
-            -- Path 1: receiver already waiting. Dequeue them.
-            -- Message already in proctab(pid).sendMsg; just record
-            -- sender identity. Skip redundant 48-byte mailbox copy.
-            mailtab(dest).hasMsg  := True;
-            mailtab(dest).sender  := pid;
+            -- Path 1: receiver already waiting. Enqueue message in
+            -- unified ring so receiver can dequeue it after waking.
+            enqueueP1 : declare
+                ok : Boolean;
+            begin
+                enqueueRing (dest,
+                             (msg    => msg,
+                              sender => pid),
+                             ok);
+            end enqueueP1;
 
             Queues.dequeue (mailtab(dest).recvQueue, receiver);
 
@@ -792,7 +768,10 @@ is
 
         Spinlocks.enterCriticalSection (mailtab(dest).lock);
 
-        enqueueEvent (dest, msg, ok);
+        enqueueRing (dest,
+                     (msg    => msg,
+                      sender => NO_PROCESS),
+                     ok);
 
         if proctab(dest).state = WAITINGFOREVENT then
             notify (dest);
@@ -986,6 +965,7 @@ is
     is
         pid      : constant ProcessID := PerCPUData.getCurrentPID;
         receiver : ProcessID;
+        ok       : Boolean;
         wantCompletion : constant Boolean :=
             (token /= NO_COMPLETION_TOKEN);
     begin
@@ -1007,16 +987,16 @@ is
 
         Spinlocks.enterCriticalSection (mailtab(dest).lock);
 
-        -- Check mailbox not full (single-slot)
-        if mailtab(dest).hasMsg then
+        -- Enqueue in unified ring
+        enqueueRing (dest,
+                     (msg    => msg,
+                      sender => pid),
+                     ok);
+
+        if not ok then
             Spinlocks.exitCriticalSection (mailtab(dest).lock);
             return False;
         end if;
-
-        -- Deposit message in mailbox
-        mailtab(dest).hasMsg  := True;
-        mailtab(dest).msg     := msg;
-        mailtab(dest).sender  := pid;
 
         -- Record pending request only when a completion is expected
         if wantCompletion then
@@ -1573,22 +1553,25 @@ is
                     mailtab(ProcessID(destPID)).boundReceiver;
                 ignore  : ProcessID;
                 recv    : constant ProcessID := getReceiver (recvPID);
+                ringOk  : Boolean;
             begin
                 if proctab(recvPID).state = RECEIVING then
                     Queues.popItem (
                         mailtab(recv).recvQueue, recvPID, ignore);
-                    -- Deliver notification as synthetic message
-                    mailtab(recv).hasMsg  := True;
-                    mailtab(recv).msg    := (
-                        tag      => (label  => 0,
-                                     length => 1,
-                                     flags  => 0,
-                                     badge  => 0),
-                        capBadge => 0,
-                        words    => (
-                            0 => mailtab(ProcessID(destPID)).notifyWord,
-                            others => 0));
-                    mailtab(recv).sender := NO_PROCESS;
+                    -- Deliver notification via unified ring
+                    enqueueRing (recv,
+                        (msg    => (
+                            tag      => (label  => 0,
+                                         length => 1,
+                                         flags  => 0,
+                                         badge  => 0),
+                            capBadge => 0,
+                            words    => (
+                                0 => mailtab(ProcessID(destPID))
+                                         .notifyWord,
+                                others => 0)),
+                         sender => NO_PROCESS),
+                        ringOk);
                     mailtab(ProcessID(destPID)).notifyWord := 0;
                     notify (recvPID);
                 end if;

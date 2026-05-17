@@ -788,15 +788,24 @@ is
                 ready (stuckPID);
             end loop;
 
-            --  Wake deposited-message sender (in WAITINGFORREPLY, no CAP_REPLY
-            --  minted yet because receive() wasn't called)
-            if mailtab(pid).hasMsg and then
-               mailtab(pid).sender /= NO_PROCESS and then
-               proctab(mailtab(pid).sender).state = WAITINGFORREPLY
-            then
-                proctab(mailtab(pid).sender).replyMsg := NULL_MESSAGE;
-                ready (mailtab(pid).sender);
-            end if;
+            --  Wake senders in the ring that are WAITINGFORREPLY
+            --  (from send() Path 1, never dequeued by receive())
+            drainRingSenders : declare
+                r   : MessageRing renames mailtab(pid).ring;
+                idx : RingIndex;
+                s   : ProcessID;
+            begin
+                for i in 0 .. r.count - 1 loop
+                    idx := (r.tail + i) mod RING_SIZE;
+                    s   := r.entries(idx).sender;
+                    if s /= NO_PROCESS
+                       and then proctab(s).state = WAITINGFORREPLY
+                    then
+                        proctab(s).replyMsg := NULL_MESSAGE;
+                        ready (s);
+                    end if;
+                end loop;
+            end drainRingSenders;
         end drainMailQueues;
 
         --  Wake processes waiting for reply from dying process (CAP_REPLY scan)
@@ -826,10 +835,7 @@ is
         end wakeWaiters;
 
         --  Clear stale mailbox state
-        mailtab(pid).hasMsg       := False;
-        mailtab(pid).msg          := NULL_MESSAGE;
-        mailtab(pid).sender       := NO_PROCESS;
-        mailtab(pid).events       := (others => <>);
+        mailtab(pid).ring         := (others => <>);
         mailtab(pid).notifyWord   := 0;
         mailtab(pid).notifyWaiter := False;
         proctab(pid).boundNotification := NO_PROCESS;

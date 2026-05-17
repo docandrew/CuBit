@@ -470,6 +470,12 @@ procedure main is
          end loop;
          totalLen := pos;
 
+         --  Append cwd after filename for sandbox support
+         for i in 1 .. cwdLen loop
+            buf (totalLen + i - 1) :=
+               Unsigned_8 (Character'Pos (cwdBuf (i)));
+         end loop;
+
          --  Send OP_SPAWN to procmgr
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_SPAWN,
@@ -478,6 +484,8 @@ procedure main is
                      badge  => 0);
          msg.words (0) := grantId;
          msg.words (1) := 5;  -- default priority
+         msg.words (2) := 0;  -- no sandbox override from shell
+         msg.words (3) := Unsigned_64 (cwdLen);
          tag := capCall (CAP_SLOT_PROCMGR, msg);
       end;
 
@@ -555,6 +563,12 @@ procedure main is
          end loop;
          totalLen := pos;
 
+         --  Append cwd after filename for sandbox support
+         for i in 1 .. cwdLen loop
+            buf (totalLen + i - 1) :=
+               Unsigned_8 (Character'Pos (cwdBuf (i)));
+         end loop;
+
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_SPAWN,
                      length => Unsigned_8 (totalLen),
@@ -562,6 +576,8 @@ procedure main is
                      badge  => 0);
          msg.words (0) := grantId;
          msg.words (1) := 5;
+         msg.words (2) := 0;  -- no sandbox override from shell
+         msg.words (3) := Unsigned_64 (cwdLen);
          tag := capCall (CAP_SLOT_PROCMGR, msg);
       end;
 

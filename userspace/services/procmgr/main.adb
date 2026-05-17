@@ -723,14 +723,23 @@ procedure main is
    ACCESS_MAGIC : constant Unsigned_32 := 16#43434143#;  -- "CACC" LE
    MAX_ACL      : constant := 16;
 
+   SANDBOX_NONE       : constant Unsigned_8 := 0;
+   SANDBOX_RUN_FOLDER : constant Unsigned_8 := 1;
+   SANDBOX_APP_FOLDER : constant Unsigned_8 := 2;
+
    ---------------------------------------------------------------------------
    --  parseAndSendACL
    --  Parse .cubit.access section from the ELF in elfBuf and send
    --  OP_SET_ACL to the FS server. Falls back to wildcard if no section.
+   --  sandboxOverride / cwd / binaryName enable RUN_FOLDER / APP_FOLDER
+   --  prefix rewriting for wildcard FS entries.
    ---------------------------------------------------------------------------
    procedure parseAndSendACL
-     (childPID : Unsigned_64;
-      elfSize  : Unsigned_64)
+     (childPID        : Unsigned_64;
+      elfSize         : Unsigned_64;
+      sandboxOverride : Unsigned_8 := SANDBOX_NONE;
+      cwd             : String := "";
+      binaryName      : String := "")
    is
       e_shoff     : Unsigned_64;
       e_shentsize : Unsigned_16;
@@ -795,6 +804,75 @@ procedure main is
                      printDec (Unsigned_32 (count));
                      debugPrint (" ACL entries" & LF);
 
+                     --  Read sandbox mode from header byte 13
+                     declare
+                        manifestSandbox : Unsigned_8 :=
+                           readU8 (sh_offset + 13);
+                        effectiveSandbox : Unsigned_8;
+                        sandboxPrefix    : String (1 .. 64) :=
+                           (others => ' ');
+                        sandboxPrefixLen : Natural := 0;
+                     begin
+                        --  Clamp to valid range
+                        if manifestSandbox > SANDBOX_APP_FOLDER then
+                           manifestSandbox := SANDBOX_NONE;
+                        end if;
+
+                        --  Most restrictive wins (higher = more
+                        --  restrictive)
+                        if sandboxOverride > manifestSandbox then
+                           effectiveSandbox := sandboxOverride;
+                        else
+                           effectiveSandbox := manifestSandbox;
+                        end if;
+
+                        --  Compute sandbox prefix
+                        if effectiveSandbox = SANDBOX_RUN_FOLDER then
+                           --  Use cwd from spawner
+                           sandboxPrefixLen := cwd'Length;
+                           if sandboxPrefixLen > 64 then
+                              sandboxPrefixLen := 64;
+                           end if;
+                           for c in 0 .. sandboxPrefixLen - 1 loop
+                              sandboxPrefix (1 + c) :=
+                                 cwd (cwd'First + c);
+                           end loop;
+                        elsif effectiveSandbox = SANDBOX_APP_FOLDER
+                        then
+                           --  dirname(binaryName): find last '/'
+                           declare
+                              lastSlash : Natural := 0;
+                           begin
+                              for c in 0 .. binaryName'Length - 1 loop
+                                 if binaryName (
+                                    binaryName'First + c) = '/'
+                                 then
+                                    lastSlash := c + 1;
+                                 end if;
+                              end loop;
+                              sandboxPrefixLen := lastSlash;
+                              if sandboxPrefixLen > 64 then
+                                 sandboxPrefixLen := 64;
+                              end if;
+                              for c in 0 ..
+                                 sandboxPrefixLen - 1
+                              loop
+                                 sandboxPrefix (1 + c) :=
+                                    binaryName (
+                                       binaryName'First + c);
+                              end loop;
+                           end;
+                        end if;
+
+                        if effectiveSandbox /= SANDBOX_NONE
+                           and sandboxPrefixLen > 0
+                        then
+                           debugPrint ("procmgr: sandbox prefix=");
+                           debugPrint (
+                              sandboxPrefix (1 .. sandboxPrefixLen));
+                           debugPrint ("" & LF);
+                        end if;
+
                      --  Copy entries to stack-local array before
                      --  overwriting elfBuf with grant format.
                      --  Per entry: 1 byte rights + 1 byte prefixLen +
@@ -834,6 +912,27 @@ procedure main is
                                        Unsigned_64 (c))));
                            end loop;
                         end loop;
+
+                        --  Sandbox rewrite: set prefix on wildcard FS
+                        --  entries (prefixLen=0, service=FS)
+                        if effectiveSandbox /= SANDBOX_NONE
+                           and sandboxPrefixLen > 0
+                        then
+                           for j in 0 .. Natural (count) - 1 loop
+                              if locals (j).service = SERVICE_FS
+                                 and locals (j).prefixLen = 0
+                              then
+                                 locals (j).prefixLen :=
+                                    Unsigned_8 (sandboxPrefixLen);
+                                 for c in 0 ..
+                                    sandboxPrefixLen - 1
+                                 loop
+                                    locals (j).prefix (1 + c) :=
+                                       sandboxPrefix (1 + c);
+                                 end loop;
+                              end if;
+                           end loop;
+                        end if;
 
                         --  Count FS vs CONFIG entries
                         for j in 0 .. Natural (count) - 1 loop
@@ -946,6 +1045,7 @@ procedure main is
 
                         return;  -- done, skip wildcard
                      end;
+                     end;  -- sandbox declare
                   end;
                end if;
             end if;
@@ -1058,9 +1158,11 @@ procedure main is
    --  Returns PID on success, 0 on failure.
    ---------------------------------------------------------------------------
    function spawnByName
-     (name      : String;
-      priority  : Unsigned_64;
-      requester : Unsigned_64 := 0) return Unsigned_64
+     (name        : String;
+      priority    : Unsigned_64;
+      requester   : Unsigned_64 := 0;
+      sandboxMode : Unsigned_8 := SANDBOX_NONE;
+      cwd         : String := "") return Unsigned_64
    is
       elfSize       : Unsigned_64;
       newPID        : Unsigned_64;
@@ -1200,7 +1302,8 @@ procedure main is
       end if;
 
       --  Parse .cubit.access and send ACLs to FS server (or wildcard)
-      parseAndSendACL (newPID, elfSize);
+      parseAndSendACL (newPID, elfSize,
+                       sandboxMode, cwd, name);
 
       --  Query config store for resource quotas (overwrites elfBuf)
       declare
@@ -1287,13 +1390,19 @@ procedure main is
    ---------------------------------------------------------------------------
    --  handleSpawn
    --  Request: tag.label=OP_SPAWN, words(0)=grant_id (filename in grant buf),
-   --           tag.length=filename length, words(1)=priority
+   --           tag.length=filename length, words(1)=priority,
+   --           words(2)=spawnFlags (low 2 bits = sandbox override),
+   --           words(3)=cwdLen (cwd bytes follow filename in grant buf)
    ---------------------------------------------------------------------------
    procedure handleSpawn (sender : ProcessID; msg : Message) is
-      nameLen   : constant Natural := Natural (msg.tag.length);
-      grantId   : constant Unsigned_64 := msg.words (0);
-      priority  : constant Unsigned_64 := msg.words (1);
-      grantAddr : constant System.Address :=
+      nameLen     : constant Natural := Natural (msg.tag.length);
+      grantId     : constant Unsigned_64 := msg.words (0);
+      priority    : constant Unsigned_64 := msg.words (1);
+      spawnFlags  : constant Unsigned_64 := msg.words (2);
+      cwdLen      : Natural := Natural (msg.words (3) and 16#FF#);
+      sandboxMode : constant Unsigned_8 :=
+         Unsigned_8 (spawnFlags and 16#03#);
+      grantAddr   : constant System.Address :=
          To_Address (Integer_Address (
             GRANT_REGION_BASE + grantId * GRANT_SLOT_SIZE));
       newPID : Unsigned_64;
@@ -1303,11 +1412,33 @@ procedure main is
          return;
       end if;
 
+      --  Clamp cwdLen to fit in grant buffer after filename
+      if cwdLen > 128 then
+         cwdLen := 128;
+      end if;
+
       declare
          name : String (1 .. nameLen) with
             Import, Address => grantAddr;
       begin
-         newPID := spawnByName (name, priority, Unsigned_64 (sender));
+         if cwdLen > 0 then
+            declare
+               cwdAddr : constant System.Address :=
+                  To_Address (Integer_Address (
+                     GRANT_REGION_BASE + grantId * GRANT_SLOT_SIZE +
+                     Unsigned_64 (nameLen)));
+               cwdStr : String (1 .. cwdLen) with
+                  Import, Address => cwdAddr;
+            begin
+               newPID := spawnByName (name, priority,
+                                      Unsigned_64 (sender),
+                                      sandboxMode, cwdStr);
+            end;
+         else
+            newPID := spawnByName (name, priority,
+                                   Unsigned_64 (sender),
+                                   sandboxMode);
+         end if;
       end;
 
       if newPID = 0 then
