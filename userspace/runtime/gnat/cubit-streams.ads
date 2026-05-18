@@ -8,7 +8,7 @@
 --  @description
 --  Producer-owned ring buffer model for structured process output.
 --  Producers create streams (e.g. stdout) and handle subscription
---  requests opportunistically inside streamPrint via receiveNB.
+--  requests opportunistically inside streamPrint via Poll_Service_Request.
 --  Subscribers send an async subscribe, receive a read-only grant
 --  to the ring buffer, then poll for new data.
 --
@@ -88,7 +88,7 @@ package CuBit.Streams is
    procedure streamPrint (id  : StreamId;
                            msg : String);
 
-   --  Handle one pending subscription or unsubscription request via receiveNB.
+   --  Handle one pending subscription/unsubscription service request.
    --  Returns True if a request was handled. Call this periodically in
    --  processes that produce streams but may not call streamWrite frequently.
    function streamHandleSubscription return Boolean;

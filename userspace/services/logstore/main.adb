@@ -569,8 +569,10 @@ begin
 
    --  Main polling loop
    loop
-      --  1. Handle IPC requests and stream notifications (via mailbox)
-      receiveNB (sender, msg, found);
+      --  1. Handle service requests and stream subscription traffic.
+      --     Poll_Service_Request is deliberately narrow: it will not consume
+      --     event-lane traffic while logstore is checking for client work.
+      Poll_Service_Request (sender, msg, found);
       if found then
          case msg.tag.label is
             when OP_LOG_QUERY =>
@@ -585,8 +587,9 @@ begin
          end case;
       end if;
 
-      --  2. Drain event ring
-      found := receiveEventNB (eventMsg);
+      --  2. Drain event ring. Events are unsolicited notifications from
+      --     producers and supervisors, not request/reply work.
+      found := Poll_Event (eventMsg);
 
       --  2b. Retry pending subscribes (target mailbox was full earlier)
       for i in producers'Range loop
@@ -621,7 +624,7 @@ begin
          comp : CompletionEntry;
          ret  : Unsigned_64;
       begin
-         ret := pollCompletion (comp'Address);
+         ret := Poll_Completion (comp'Address);
          if ret = 1 then
             if comp.token >= TOKEN_BASE and then
                comp.token < TOKEN_BASE + Unsigned_64 (MAX_PRODUCERS)

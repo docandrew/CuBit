@@ -71,12 +71,15 @@ typedef long                ssize_t;
 #define SYSCALL_RECEIVE_EVENT   20
 #define SYSCALL_CALL            21
 #define SYSCALL_RECEIVE_NB      22
+#define SYSCALL_POLL_ANY_IPC    22
 
 /* IPC - Async */
 #define SYSCALL_SUBMIT          23
 #define SYSCALL_WAIT_COMPLETION 24
 #define SYSCALL_POLL_COMPLETION 25
 #define SYSCALL_RECEIVE_EVENT_NB 26
+#define SYSCALL_POLL_EVENT      26
+#define SYSCALL_POLL_SERVICE_REQUEST 80
 
 /* Time */
 #define SYSCALL_GETTIME         27
@@ -100,6 +103,7 @@ typedef long                ssize_t;
 
 /* Move reply cap from slot 63 to another slot (deferred replies) */
 #define SYSCALL_SAVE_REPLY_CAP  51
+#define SYSCALL_REPLY_CAP       52
 
 /* Capability-aware IPC */
 #define SYSCALL_CAP_SEND        40
@@ -137,6 +141,7 @@ typedef long                ssize_t;
 #define CAP_SLOT_MIXER          14
 #define CAP_SLOT_MIXER_NTF      15
 #define CAP_SLOT_CONFIG         20
+#define CAP_SLOT_DESKTOP        21
 
 /* Capability minting (for process managers) */
 #define SYSCALL_MINT_CAP        72
@@ -148,6 +153,8 @@ typedef long                ssize_t;
 /* Sysinfo queries */
 #define SYSINFO_REGISTERED_DRIVER 2000
 #define DRIVER_CONFIG             11
+#define DRIVER_IPCTEST            14
+#define DRIVER_DESKTOP            15
 
 /* Config store IPC labels */
 #define OP_CONFIG_GET     0x0600

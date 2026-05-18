@@ -61,6 +61,8 @@ package Sysinfo is
     DRIVER_CONFIG   : constant DriverID := 11;
     DRIVER_NETMGR   : constant DriverID := 12;
     DRIVER_LOGSTORE : constant DriverID := 13;
+    DRIVER_IPCTEST  : constant DriverID := 14;
+    DRIVER_DESKTOP  : constant DriverID := 15;
 
     -- List of processes registered as a particular driver.
     type DriverList is array (DriverID) of Process.ProcessID;

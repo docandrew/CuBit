@@ -599,6 +599,28 @@ package body Syscall.IPC is
     end handleReply;
 
     ---------------------------------------------------------------------------
+    -- handleReplyCap
+    ---------------------------------------------------------------------------
+    procedure handleReplyCap (arg0, arg1, arg2, arg3,
+                              arg4, arg5 : Unsigned_64;
+                              retval     : out Unsigned_64) with
+        SPARK_Mode => Off
+    is
+        replyMsg : constant Process.Message := (
+            tag      => u64ToTag (arg1),
+            capBadge => 0,
+            words    => (arg2, arg3, arg4, arg5));
+    begin
+        if arg0 > Unsigned_64(Capabilities.CapabilitySlot'Last) then
+            retval := 0;
+        else
+            retval := Process.IPC.replyCap (
+                capSlot => Capabilities.CapabilitySlot(arg0),
+                msg     => replyMsg);
+        end if;
+    end handleReplyCap;
+
+    ---------------------------------------------------------------------------
     -- handleReceiveEventNB
     ---------------------------------------------------------------------------
     procedure handleReceiveEventNB (arg0   : Unsigned_64;
@@ -740,10 +762,15 @@ package body Syscall.IPC is
     end handleCall;
 
     ---------------------------------------------------------------------------
-    -- handleReceiveNB
+    -- handlePollServiceRequest
+    --
+    -- Non-blocking service-request receive. This syscall is intentionally
+    -- narrow: it accepts client work for a server but will not consume input
+    -- events, IRQ-style notifications, or lifecycle events queued in the same
+    -- mailbox ring.
     ---------------------------------------------------------------------------
-    procedure handleReceiveNB (arg0   : Unsigned_64;
-                               retval : out Unsigned_64) with
+    procedure handlePollServiceRequest (arg0   : Unsigned_64;
+                                        retval : out Unsigned_64) with
         SPARK_Mode => Off
     is
         from    : Process.ProcessID;
@@ -752,7 +779,7 @@ package body Syscall.IPC is
         userMsg : Process.Message with
             Import, Address => Util.numToAddr(arg0);
     begin
-        Process.IPC.receiveNB (from, recvMsg, found);
+        Process.IPC.receiveServiceRequestNB (from, recvMsg, found);
         if found then
             x86.stac;
             userMsg := recvMsg;
@@ -761,6 +788,47 @@ package body Syscall.IPC is
         else
             retval := 0;
         end if;
+    end handlePollServiceRequest;
+
+    ---------------------------------------------------------------------------
+    -- handlePollAnyIpc
+    --
+    -- Non-blocking mixed receive. This is the explicit escape hatch for
+    -- runtimes that want one central dispatcher for every IPC class.
+    ---------------------------------------------------------------------------
+    procedure handlePollAnyIpc (arg0   : Unsigned_64;
+                                retval : out Unsigned_64) with
+        SPARK_Mode => Off
+    is
+        from    : Process.ProcessID;
+        recvMsg : Process.Message;
+        found   : Boolean;
+        userMsg : Process.Message with
+            Import, Address => Util.numToAddr(arg0);
+    begin
+        Process.IPC.receiveAnyIpcNB (from, recvMsg, found);
+        if found then
+            x86.stac;
+            userMsg := recvMsg;
+            x86.clac;
+            retval := Unsigned_64(from);
+        else
+            retval := 0;
+        end if;
+    end handlePollAnyIpc;
+
+    ---------------------------------------------------------------------------
+    -- handleReceiveNB
+    --
+    -- Deprecated syscall-handler spelling kept while callers migrate. It maps
+    -- to the explicit mixed receive so old binaries preserve old behavior.
+    ---------------------------------------------------------------------------
+    procedure handleReceiveNB (arg0   : Unsigned_64;
+                               retval : out Unsigned_64) with
+        SPARK_Mode => Off
+    is
+    begin
+        handlePollAnyIpc (arg0, retval);
     end handleReceiveNB;
 
     ---------------------------------------------------------------------------

@@ -368,6 +368,32 @@ procedure main is
       putStr (buf (pos + 1 .. buf'Last));
    end putDec;
 
+   function hasSuffix (s, suffix : String) return Boolean is
+      offset : Natural;
+   begin
+      if s'Length < suffix'Length then
+         return False;
+      end if;
+
+      offset := s'Last - suffix'Length + 1;
+      for i in suffix'Range loop
+         if s (offset + (i - suffix'First)) /= suffix (i) then
+            return False;
+         end if;
+      end loop;
+
+      return True;
+   end hasSuffix;
+
+   function shouldRunInBackground (filename : String) return Boolean is
+   begin
+      --  Long-lived services/drivers should not become the shell foreground
+      --  child. A foreground child intentionally steals the command loop until
+      --  it exits, which is correct for apps like DOOM and wrong for services
+      --  such as desktop.svc.
+      return hasSuffix (filename, ".svc") or else hasSuffix (filename, ".drv");
+   end shouldRunInBackground;
+
    --  Print prompt
    procedure printPrompt is
    begin
@@ -494,6 +520,11 @@ procedure main is
          putDec (Unsigned_32 (msg.words (0)));
          putChar (LF);
          renderDirty;
+         if shouldRunInBackground (filename) then
+            printPrompt;
+            return;
+         end if;
+
          foregroundPID := msg.words (0);
          debugPrint ("shell: foregroundPID set to ");
          printDec (Unsigned_32 (foregroundPID));
@@ -2938,7 +2969,7 @@ procedure main is
 
       --  Poll for completion with timeout
       for attempt in 1 .. 50 loop
-         ret := pollCompletion (comp'Address);
+         ret := Poll_Completion (comp'Address);
          if ret = 1 and then comp.token = STREAM_LIST_TOKEN then
             if comp.msg.tag.label = REPLY_OK then
                bitmask := comp.msg.words (0);
@@ -2992,7 +3023,7 @@ procedure main is
 
    ---------------------------------------------------------------------------
    --  cmdLogs - query the log store service for recent log entries
-   --  Uses async submit + pollCompletion to get full reply message
+   --  Uses async submit + Poll_Completion to get full reply message
    --  (send() only returns the tag, not the reply words).
    --  Logstore creates a temporary read-only grant to us, writes entries,
    --  then replies with the grant ID.
@@ -3041,7 +3072,7 @@ procedure main is
             ret  : Unsigned_64;
             ignore : Unsigned_64;
          begin
-            ret := pollCompletion (comp'Address);
+            ret := Poll_Completion (comp'Address);
             if ret = 1 and then comp.token = LOG_QUERY_TOKEN then
                if comp.msg.tag.label /= 16#F000# then
                   putStr ("error: log query failed" & LF);
@@ -3499,7 +3530,7 @@ begin
       flushed  : Boolean;
    begin
       loop
-         flushed := receiveEventNB (flushMsg);
+         flushed := Poll_Event (flushMsg);
          exit when not flushed;
       end loop;
    end;
@@ -3513,12 +3544,12 @@ begin
    --  Main loop: poll keyboard events, or wait for foreground child
    loop
       if foregroundPID /= 0 then
-         --  Poll for child exit event. We use receiveEventNB because the
-         --  blocking receiveEvent only returns the tag (words are lost).
+         --  Poll for child exit event. We use Poll_Event because the
+         --  legacy blocking Wait_Event path only returns the tag.
          declare
             found : Boolean;
          begin
-            found := receiveEventNB (eventMsg);
+            found := Poll_Event (eventMsg);
             if found then
                debugPrint ("shell: FG event label=");
                printDec (eventMsg.tag.label);
@@ -3613,7 +3644,7 @@ begin
                   comp : CompletionEntry;
                   ret  : Unsigned_64;
                begin
-                  ret := pollCompletion (comp'Address);
+                  ret := Poll_Completion (comp'Address);
                   if ret = 1 and then comp.token = STREAM_SUB_TOKEN
                      and then comp.msg.tag.label = REPLY_OK
                   then
@@ -3676,7 +3707,7 @@ begin
          declare
             found : Boolean;
          begin
-            found := receiveEventNB (eventMsg);
+            found := Poll_Event (eventMsg);
             if found then
                --  Only process keyboard events (label=1), skip mouse/other
                if eventMsg.tag.label = 1 then
@@ -3713,7 +3744,7 @@ begin
             comp : CompletionEntry;
             ret  : Unsigned_64;
          begin
-            ret := pollCompletion (comp'Address);
+            ret := Poll_Completion (comp'Address);
             if ret = 1 then
                streamSubPending := False;
                streamDrainPolls := 0;

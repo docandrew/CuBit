@@ -2879,8 +2879,9 @@ begin
    loop
       found := False;
 
-      --  1. Try non-blocking receive to keep responsiveness
-      receiveNB (sender, msg, found);
+      --  1. Try non-blocking service-request receive to keep responsiveness.
+      --     Network driver events and completions stay on their own lanes.
+      Poll_Service_Request (sender, msg, found);
 
       --  2. If no message but deferred TX pending, try to flush one frame
       if not found and deferredCount > 0 then

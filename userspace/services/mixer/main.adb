@@ -179,8 +179,9 @@ begin
 
    --  Main loop: poll for IPC messages and periodically mix audio
    loop
-      --  Non-blocking receive: process pending IPC requests
-      receiveNB (from, msg, found);
+      --  Non-blocking service-request receive. Audio control messages are
+      --  client work; event/notification traffic must not be consumed here.
+      Poll_Service_Request (from, msg, found);
 
       if found then
          from := ProcessID (msg.capBadge);

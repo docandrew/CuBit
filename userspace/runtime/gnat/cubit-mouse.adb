@@ -67,7 +67,7 @@ package body CuBit.Mouse is
       dzRaw  : Unsigned_8;
    begin
       loop
-         found := receiveEventNB (msg);
+         found := Poll_Event (msg);
          exit when not found;
 
          --  Mouse events have label=2 (keyboard events have label=1)

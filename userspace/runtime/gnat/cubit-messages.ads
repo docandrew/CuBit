@@ -33,12 +33,15 @@ package CuBit.Messages is
    SYSCALL_RECEIVE_EVENT   : constant Unsigned_64 := 20;
    SYSCALL_CALL            : constant Unsigned_64 := 21;
    SYSCALL_RECEIVE_NB      : constant Unsigned_64 := 22;
+   SYSCALL_POLL_ANY_IPC    : constant Unsigned_64 := 22;
    SYSCALL_SUBMIT          : constant Unsigned_64 := 23;
    SYSCALL_WAIT_COMPLETION : constant Unsigned_64 := 24;
    SYSCALL_POLL_COMPLETION : constant Unsigned_64 := 25;
    SYSCALL_RECEIVE_EVENT_NB : constant Unsigned_64 := 26;
+   SYSCALL_POLL_EVENT      : constant Unsigned_64 := 26;
    SYSCALL_GETTIME         : constant Unsigned_64 := 27;
    SYSCALL_SLEEP           : constant Unsigned_64 := 28;
+   SYSCALL_POLL_SERVICE_REQUEST : constant Unsigned_64 := 80;
    SYSCALL_GRANT           : constant Unsigned_64 := 102;
    SYSCALL_REVOKE          : constant Unsigned_64 := 103;
    SYSCALL_INP8            : constant Unsigned_64 := 30;
@@ -90,6 +93,7 @@ package CuBit.Messages is
 
    --  Move reply cap from slot 63 to another slot (deferred replies)
    SYSCALL_SAVE_REPLY_CAP  : constant Unsigned_64 := 51;
+   SYSCALL_REPLY_CAP       : constant Unsigned_64 := 52;
 
    --  Access Controller syscalls
    SYSCALL_CONTROLACCESS   : constant Unsigned_64 := 100;
@@ -115,6 +119,7 @@ package CuBit.Messages is
    CAP_SLOT_MIXER     : constant Unsigned_64 := 14;
    CAP_SLOT_MIXER_NTF : constant Unsigned_64 := 15;
    CAP_SLOT_CONFIG    : constant Unsigned_64 := 20;
+   CAP_SLOT_DESKTOP   : constant Unsigned_64 := 21;
 
    subtype CapabilitySlot is Unsigned_64 range 0 .. 63;
 
@@ -146,6 +151,8 @@ package CuBit.Messages is
    DRIVER_CONFIG   : constant Unsigned_64 := 11;
    DRIVER_NETMGR   : constant Unsigned_64 := 12;
    DRIVER_LOGSTORE : constant Unsigned_64 := 13;
+   DRIVER_IPCTEST  : constant Unsigned_64 := 14;
+   DRIVER_DESKTOP  : constant Unsigned_64 := 15;
 
    --  IPC Message Types (matching kernel Process.Message)
 
@@ -182,15 +189,28 @@ package CuBit.Messages is
 
    --  Async completion queue types (matching kernel process.ads)
 
+   NO_COMPLETION_TOKEN : constant Unsigned_64 := Unsigned_64'Last;
+   COMPLETION_OK              : constant Unsigned_64 := 0;
+   COMPLETION_TARGET_DIED     : constant Unsigned_64 := 1;
+   COMPLETION_CANCELLED       : constant Unsigned_64 := 2;
+   COMPLETION_QUEUE_OVERFLOW  : constant Unsigned_64 := 3;
+
    type CompletionEntry is record
+      requestId : Unsigned_64;
       token : Unsigned_64;
       msg   : Message;
       from  : Unsigned_64;
+      status : Unsigned_64 := COMPLETION_OK;
       valid : Boolean := False;
    end record;
 
    NULL_COMPLETION : constant CompletionEntry :=
-     (token => 0, msg => NULL_MESSAGE, from => 0, valid => False);
+     (requestId => 0,
+      token     => 0,
+      msg       => NULL_MESSAGE,
+      from      => 0,
+      status    => COMPLETION_OK,
+      valid     => False);
 
    COMPLETION_QUEUE_SIZE : constant := 64;
    subtype CompletionIndex is Natural range 0 .. COMPLETION_QUEUE_SIZE - 1;
@@ -216,6 +236,10 @@ package CuBit.Messages is
    function reply
      (replyTo : ProcessID; msg : Message) return Unsigned_64;
 
+   --  Reply using a specific saved CAP_REPLY slot.
+   function replyCap
+     (slot : CapabilitySlot; msg : Message) return Unsigned_64;
+
    --  Atomic reply+receive (seL4 ReplyRecv pattern).
    --  Replies to replyTo with replyMsg, then blocks receiving next message.
    procedure replyWait
@@ -224,7 +248,43 @@ package CuBit.Messages is
       from     : out ProcessID;
       msg      : in out Message);
 
-   --  Non-blocking receive: returns True if a message was available.
+   --  Poll_Service_Request
+   --
+   --  Non-blocking receive for incoming service/client work only.
+   --
+   --  This is the default receive primitive for servers. It may return:
+   --    * a synchronous send/call request, with a reply cap minted;
+   --    * an async request submitted with a completion token, with a reply cap
+   --      minted for the request ID;
+   --    * a one-way service message, with no reply cap minted.
+   --
+   --  It never consumes keyboard/mouse input, device events, lifecycle events,
+   --  or notifications. Those belong to Poll_Event/Wait_Event or notification
+   --  APIs. If found is False, from is NO_PROCESS and msg is NULL_MESSAGE.
+   procedure Poll_Service_Request
+     (from  : out ProcessID;
+      msg   : out Message;
+      found : out Boolean);
+
+   --  Poll_Any_Ipc
+   --
+   --  Non-blocking mixed receive. This is intentionally loud because it can
+   --  consume any pending IPC class from the unified mailbox ring: service
+   --  requests, one-way messages, events, and notifications.
+   --
+   --  Use this only when implementing a central dispatcher that deliberately
+   --  handles all IPC classes itself. Most services should call
+   --  Poll_Service_Request, Poll_Event, and Poll_Completion separately.
+   procedure Poll_Any_Ipc
+     (from  : out ProcessID;
+      msg   : out Message;
+      found : out Boolean);
+
+   --  receiveNB
+   --
+   --  Deprecated compatibility name for Poll_Any_Ipc. New code should not use
+   --  this spelling because it hides the fact that mixed IPC can consume input
+   --  events and other unsolicited traffic.
    procedure receiveNB
      (from  : out ProcessID;
       msg   : out Message;
@@ -246,9 +306,19 @@ package CuBit.Messages is
       max     : Unsigned_64;
       min     : Unsigned_64) return Unsigned_64;
 
-   --  Non-blocking: check for one completion.
-   --  result must point to a CompletionEntry.
-   --  Returns 1 if found, 0 if empty.
+   --  Poll_Completion
+   --
+   --  Non-blocking completion receive for work this process initiated with
+   --  submit/capSubmit. Completions are not incoming client requests; they are
+   --  the answers to this process' own async operations.
+   --
+   --  result must point to a CompletionEntry. Returns 1 if found, 0 if empty.
+   function Poll_Completion
+     (result : System.Address) return Unsigned_64;
+
+   --  pollCompletion
+   --
+   --  Compatibility spelling for Poll_Completion.
    function pollCompletion
      (result : System.Address) return Unsigned_64;
 
@@ -279,9 +349,10 @@ package CuBit.Messages is
    --  Non-blocking poll: return notifyWord (0 if none), clear it.
    function notifyPoll return Unsigned_64;
 
-   --  Bind a notification to the calling process. When blocked in receive(),
-   --  the process will also be woken by signals to this notification.
-   procedure bindNotification (notifPID : ProcessID);
+   --  Bind a notification capability to the calling process. When blocked in
+   --  receive(), the process will also be woken by signals to this
+   --  notification.
+   procedure bindNotification (slot : CapabilitySlot);
 
    --  Remove the notification binding from the calling process.
    procedure unbindNotification;
@@ -289,10 +360,29 @@ package CuBit.Messages is
    --  Send async event (non-blocking, intended for interrupt contexts).
    procedure sendEvent (dest : ProcessID; msg : Message);
 
+   --  Wait_Event
+   --
+   --  Blocking receive for unsolicited events. Events are things that happened
+   --  independently of a service request/reply exchange: keyboard/mouse input,
+   --  IRQ fanout, process lifecycle notices, and similar traffic.
+   --
+   --  Current legacy syscall returns the tag only; prefer Poll_Event when the
+   --  event payload words matter.
+   function Wait_Event return Message;
+
    --  Blocking receive event.
+   --  Compatibility spelling for Wait_Event.
    function receiveEvent return Message;
 
+   --  Poll_Event
+   --
+   --  Non-blocking event receive. Returns True if an event was available and
+   --  fills msg with the event payload. It never consumes service requests or
+   --  completions.
+   function Poll_Event (msg : out Message) return Boolean;
+
    --  Non-blocking receive event. Returns True if an event was available.
+   --  Compatibility spelling for Poll_Event.
    function receiveEventNB (msg : out Message) return Boolean;
 
    --  Create a shared memory grant.

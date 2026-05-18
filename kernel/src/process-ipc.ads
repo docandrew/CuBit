@@ -6,8 +6,8 @@
 -- CuBitOS IPC
 --
 -- Multi-word register-based IPC (L4/seL4 style). Messages carry a tag
--- (opcode, length, flags, badge) plus up to 4 64-bit data words, for a
--- total of 40 bytes passed entirely in registers.
+-- (opcode, length, flags, badge), a kernel-stamped capability badge, and up to
+-- 4 64-bit data words, for a total of 48 bytes.
 --
 -- Lock ordering (acquire in this order, never reverse):
 --   1. mailtab(pid).lock    (per-mailbox, also protects completionTab(pid))
@@ -73,10 +73,22 @@ is
     -- Reply to a process who called send() or submit() and unblock it.
     -- Dual-path: if sender is in WAITINGFORREPLY (sync send), stores reply
     -- and wakes them directly. If sender used submit() (async), enqueues a
-    -- CompletionEntry and wakes them if in WAITINGFORCOMPLETION.
+    -- CompletionEntry matched by the reply cap's request ID and wakes them if
+    -- in WAITINGFORCOMPLETION.
     -- @return 1 on success.
     ---------------------------------------------------------------------------
     function reply (replyTo : ProcessID; msg : Message) return Unsigned_64
+        with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- replyCap
+    -- Reply using a specific CAP_REPLY slot. This lets deferred-reply servers
+    -- choose the exact saved reply authority/request ID to complete.
+    -- @return 1 on success.
+    ---------------------------------------------------------------------------
+    function replyCap
+        (capSlot : Capabilities.CapabilitySlot;
+         msg     : Message) return Unsigned_64
         with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
@@ -96,10 +108,47 @@ is
         with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
+    -- receiveServiceRequestNB
+    -- Non-blocking receive for the service-request lane only.
+    --
+    -- This procedure deliberately ignores events and notifications even though
+    -- they share the same underlying ring. It may return:
+    --   * synchronous send/call requests, which mint a reply capability;
+    --   * async requests submitted with a completion token, which mint a
+    --     reply capability carrying the async request ID;
+    --   * one-way service messages, which have a sender but do not mint reply
+    --     authority.
+    --
+    -- Use this for ordinary server dispatch loops. Input, IRQ, lifecycle, and
+    -- other unsolicited traffic must be received through the event lane.
+    ---------------------------------------------------------------------------
+    procedure receiveServiceRequestNB (from  : out ProcessID;
+                                       msg   : out Message;
+                                       found : out Boolean)
+        with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- receiveAnyIpcNB
+    -- Non-blocking mixed receive.
+    --
+    -- This is the explicit footgun. It may consume service requests, events,
+    -- notifications, and one-way messages from the unified ring. Callers must
+    -- inspect the returned message and sender and perform their own dispatch.
+    --
+    -- Prefer receiveServiceRequestNB, receiveEventNB, or completion polling
+    -- unless the caller is intentionally implementing a mixed IPC event loop.
+    ---------------------------------------------------------------------------
+    procedure receiveAnyIpcNB (from  : out ProcessID;
+                               msg   : out Message;
+                               found : out Boolean)
+        with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
     -- receiveNB
-    -- Non-blocking version of receive.
-    -- If a message is available, sets found to True and fills from/msg.
-    -- Otherwise sets found to False.
+    -- Deprecated compatibility spelling for receiveAnyIpcNB.
+    --
+    -- New code must not use this name. It hides whether the caller wants a
+    -- service request, an event, a notification, or mixed traffic.
     ---------------------------------------------------------------------------
     procedure receiveNB (from  : out ProcessID;
                          msg   : out Message;
@@ -113,8 +162,9 @@ is
     ---------------------------------------------------------------------------
     -- submit
     -- Non-blocking async send. Enqueues message in dest's ring and
-    -- returns immediately. The caller records a (dest, token) pending
-    -- request so that reply() can enqueue a completion.
+    -- returns immediately. If token /= NO_COMPLETION_TOKEN, the caller records
+    -- a (dest, requestId, token) pending request so that reply() can enqueue a
+    -- completion.
     -- @return True on success, False if ring full or invalid dest.
     ---------------------------------------------------------------------------
     function submit (dest  : ProcessID;
@@ -283,11 +333,13 @@ is
 
     ---------------------------------------------------------------------------
     -- bindNotification
-    -- Bind a notification to the calling process. When blocked in receive(),
-    -- the process will also be woken by signals to this notification.
-    -- @param notifPID - PID of the notification object to bind
+    -- Bind a notification capability to the calling process. When blocked in
+    -- receive(), the process will also be woken by signals to this
+    -- notification.
+    -- @param capSlot - slot holding CAP_NOTIFICATION
     ---------------------------------------------------------------------------
-    procedure bindNotification (notifPID : ProcessID)
+    function bindNotification
+        (capSlot : Capabilities.CapabilitySlot) return Boolean
         with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------

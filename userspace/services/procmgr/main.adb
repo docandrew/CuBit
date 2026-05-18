@@ -277,6 +277,7 @@ procedure main is
    CAP_SLOT_KBD_FOCUS     : constant Unsigned_64 := 13;
    CAP_SLOT_MOUSE_FOCUS   : constant Unsigned_64 := 16;
    CAP_SLOT_PROCESS_MGMT  : constant Unsigned_64 := 5;
+   CAP_SLOT_SERVICE_REG   : constant Unsigned_64 := 7;
 
    ---------------------------------------------------------------------------
    --  readU16 - read a little-endian Unsigned_16 from elfBuf at byte offset
@@ -1297,6 +1298,62 @@ procedure main is
                                   2,                -- rights = RIGHT_WRITE
                                   7);               -- slot 7
                debugPrint ("procmgr: minted logstore ntf cap" & LF);
+            end if;
+         end;
+      end if;
+
+      --  Mint CAP_NOTIFICATION for desktop.svc registration.
+      --  The desktop endpoint is intentionally not granted to every process:
+      --  only the process whose package identity is com.cubit.desktop should
+      --  be able to claim DRIVER_DESKTOP via registerDriver().
+      if pkgIdLen = 17 then
+         declare
+            DESKTOP_ID : constant String := "com.cubit.desktop";
+            match : Boolean := True;
+            ignore : Unsigned_64;
+         begin
+            for c in 0 .. 16 loop
+               if pkgId (1 + c) /= DESKTOP_ID (1 + c) then
+                  match := False;
+                  exit;
+               end if;
+            end loop;
+            if match then
+               ignore := syscall (SYSCALL_MINT_CAP,
+                                  newPID,
+                                  CAP_TYPE_NOTIFICATION,
+                                  DRIVER_DESKTOP,
+                                  0,
+                                  2,
+                                  CAP_SLOT_SERVICE_REG);
+               debugPrint ("procmgr: minted desktop ntf cap" & LF);
+            end if;
+         end;
+      end if;
+
+      --  Mint CAP_NOTIFICATION for the headless IPC regression server.
+      if pkgIdLen = 24 then
+         declare
+            IPCTEST_SERVER_ID : constant String :=
+               "com.cubit.ipctest.server";
+            match : Boolean := True;
+            ignore : Unsigned_64;
+         begin
+            for c in 0 .. 23 loop
+               if pkgId (1 + c) /= IPCTEST_SERVER_ID (1 + c) then
+                  match := False;
+                  exit;
+               end if;
+            end loop;
+            if match then
+               ignore := syscall (SYSCALL_MINT_CAP,
+                                  newPID,
+                                  CAP_TYPE_NOTIFICATION,
+                                  DRIVER_IPCTEST,
+                                  0,
+                                  2,
+                                  7);
+               debugPrint ("procmgr: minted ipctest ntf cap" & LF);
             end if;
          end;
       end if;

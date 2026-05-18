@@ -8,7 +8,7 @@
 --  @description
 --  Provides mouse event polling for userspace applications. Registers as
 --  DRIVER_MOUSE and receives packed PS/2 mouse events from the kernel
---  mouse service via receiveEventNB.
+--  mouse service via Poll_Event.
 --
 --  Mouse event packed format in words(0):
 --    Bits  0-7:   buttons (L=0, R=1, M=2)

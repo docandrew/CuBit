@@ -843,8 +843,10 @@ is
         --  Clear completion queue and pending requests
         completionTab(pid) := (ring => (others => NULL_COMPLETION),
                                head => 0, tail => 0, count => 0);
-        proctab(pid).pendingRequests := (others => (NO_PROCESS, 0));
+        proctab(pid).pendingRequests :=
+            (others => (NO_PROCESS, NO_REQUEST_ID, 0));
         proctab(pid).numPending := 0;
+        proctab(pid).nextRequestId := 1;
 
         -- Clear FPU ownership if killed process owns the FPU
         clearFPU : declare
@@ -868,6 +870,7 @@ is
                 if proctab(p).state /= INVALID and p /= pid then
                     declare
                         writeIdx : Natural := 0;
+                        cq       : CompletionQueue renames completionTab(p);
                     begin
                         for r in 0 .. proctab(p).numPending - 1 loop
                             if proctab(p).pendingRequests(r).dest /= pid then
@@ -876,9 +879,35 @@ is
                                         proctab(p).pendingRequests(r);
                                 end if;
                                 writeIdx := writeIdx + 1;
+                            else
+                                if cq.count < COMPLETION_QUEUE_SIZE then
+                                    cq.ring(cq.tail) :=
+                                        (requestId =>
+                                            proctab(p).pendingRequests(r)
+                                                .requestId,
+                                         token =>
+                                            proctab(p).pendingRequests(r)
+                                                .token,
+                                         msg       => NULL_MESSAGE,
+                                         from      => pid,
+                                         status    => COMPLETION_TARGET_DIED,
+                                         valid     => True);
+                                    cq.tail := (cq.tail + 1) mod
+                                        COMPLETION_QUEUE_SIZE;
+                                    cq.count := cq.count + 1;
+                                    if proctab(p).state =
+                                        WAITINGFORCOMPLETION
+                                    then
+                                        ready (p);
+                                    end if;
+                                end if;
                             end if;
                         end loop;
                         proctab(p).numPending := writeIdx;
+                        for r in writeIdx .. MAX_PENDING_ASYNC - 1 loop
+                            proctab(p).pendingRequests(r) :=
+                                (NO_PROCESS, NO_REQUEST_ID, 0);
+                        end loop;
                     end;
                 end if;
             end loop;

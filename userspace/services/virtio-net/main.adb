@@ -566,8 +566,9 @@ begin
       evtFound := False;
       rxActive := False;
 
-      --  Check for IPC messages from netstack (non-blocking)
-      receiveNB (ipcSender, ipcMsg, ipcFound);
+      --  Check for service requests from netstack. IRQ-style traffic is
+      --  handled through Poll_Event below, so this must stay request-only.
+      Poll_Service_Request (ipcSender, ipcMsg, ipcFound);
 
       if ipcFound then
          case ipcMsg.tag.label is
@@ -607,7 +608,7 @@ begin
       end if;
 
       --  Drain IRQ events if any (clears ISR status)
-      evtFound := receiveEventNB (evtMsg);
+      evtFound := Poll_Event (evtMsg);
       if evtFound then
          isr := Virtio.readISR (ioBase);
       end if;

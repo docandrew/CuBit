@@ -35,6 +35,7 @@ procedure main is
    DRIVER_MOUSE    : constant Unsigned_64 := 10;
    DRIVER_CONFIG   : constant Unsigned_64 := 11;
    DRIVER_NETMGR   : constant Unsigned_64 := 12;
+   DRIVER_DESKTOP  : constant Unsigned_64 := 15;
 
    --  (SERVICE_FILESYSTEM_PID removed: now uses dynamic PID assignment
    --  and kernel well-known service registry)

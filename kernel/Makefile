@@ -94,6 +94,24 @@ sleep: user_runtime
 	$(ALR) gprbuild -P ../userspace/apps/sleep/sleep.gpr
 	cp ../userspace/apps/sleep/build/sleep.app isodir/boot/sleep.app
 
+.PHONY : ipctest-server
+ipctest-server: user_runtime
+	mkdir -p ../userspace/apps/ipctest-server/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/apps/ipctest-server/manifest.c \
+		-o ../userspace/apps/ipctest-server/build/manifest.o
+	$(ALR) gprbuild -P ../userspace/apps/ipctest-server/ipctest_server.gpr
+	cp ../userspace/apps/ipctest-server/build/ipctest-server.app isodir/boot/ipctest-server.app
+
+.PHONY : ipctest-client
+ipctest-client: user_runtime
+	mkdir -p ../userspace/apps/ipctest-client/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/apps/ipctest-client/manifest.c \
+		-o ../userspace/apps/ipctest-client/build/manifest.o
+	$(ALR) gprbuild -P ../userspace/apps/ipctest-client/ipctest_client.gpr
+	cp ../userspace/apps/ipctest-client/build/ipctest-client.app isodir/boot/ipctest-client.app
+
 # Build userspace Ada runtime (needed by filesystem server)
 .PHONY : user_runtime
 user_runtime:
@@ -146,6 +164,26 @@ wget: user_runtime
 	$(ALR) gprbuild -P ../userspace/apps/wget/wget.gpr
 	cp ../userspace/apps/wget/build/wget.app isodir/boot/wget.app
 
+# Build the graphical Security Center prototype
+.PHONY : security-center
+security-center: user_runtime
+	mkdir -p ../userspace/apps/security-center/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/apps/security-center/manifest.c \
+		-o ../userspace/apps/security-center/build/manifest.o
+	$(ALR) gprbuild -P ../userspace/apps/security-center/security_center.gpr
+	cp ../userspace/apps/security-center/build/security-center.app isodir/boot/security-center.app
+
+# Build the first desktop shell client
+.PHONY : desktop-shell
+desktop-shell: user_runtime
+	mkdir -p ../userspace/apps/desktop-shell/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/apps/desktop-shell/manifest.c \
+		-o ../userspace/apps/desktop-shell/build/manifest.o
+	$(ALR) gprbuild -P ../userspace/apps/desktop-shell/desktop_shell.gpr
+	cp ../userspace/apps/desktop-shell/build/desktop-shell.app isodir/boot/desktop-shell.app
+
 # Build the userspace process manager service
 .PHONY : procmgr
 procmgr: user_runtime
@@ -191,6 +229,16 @@ logstore: user_runtime
 	$(ALR) gprbuild -P ../userspace/services/logstore/logstore.gpr
 	cp ../userspace/services/logstore/build/logstore.svc isodir/boot/logstore.svc
 
+# Build the userspace desktop compositor/session service prototype
+.PHONY : desktop
+desktop: user_runtime
+	mkdir -p ../userspace/services/desktop/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/services/desktop/manifest.c \
+		-o ../userspace/services/desktop/build/manifest.o
+	$(ALR) gprbuild -P ../userspace/services/desktop/desktop.gpr
+	cp ../userspace/services/desktop/build/desktop.svc isodir/boot/desktop.svc
+
 # Build the userspace network manager service
 .PHONY : netmgr
 netmgr: user_runtime
@@ -221,7 +269,11 @@ shell: user_runtime
 # Files that live on ext2 disk images (stage-2 content).
 # Disk images rebuild automatically when any of these change.
 DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/sleep.app \
-	isodir/boot/logstore.svc ../init.conf ../motd.txt ../doom1.wad
+	isodir/boot/wget.app isodir/boot/security-center.app \
+	isodir/boot/desktop-shell.app \
+	isodir/boot/ipctest-server.app isodir/boot/ipctest-client.app \
+	isodir/boot/logstore.svc isodir/boot/desktop.svc \
+	../init.conf ../motd.txt ../doom1.wad
 
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.conf, shell.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
@@ -235,7 +287,12 @@ ata_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" ata_disk.img
 	debugfs -w -R "write isodir/boot/sleep.app sleep.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/wget.app wget.app" ata_disk.img
+	debugfs -w -R "write isodir/boot/security-center.app security-center.app" ata_disk.img
+	debugfs -w -R "write isodir/boot/desktop-shell.app desktop-shell.app" ata_disk.img
+	debugfs -w -R "write isodir/boot/ipctest-server.app ipctest-server.app" ata_disk.img
+	debugfs -w -R "write isodir/boot/ipctest-client.app ipctest-client.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/logstore.svc logstore.svc" ata_disk.img
+	debugfs -w -R "write isodir/boot/desktop.svc desktop.svc" ata_disk.img
 	dd if=/dev/zero of=/tmp/config.dat bs=8192 count=1
 	debugfs -w -R "write /tmp/config.dat config.dat" ata_disk.img
 	rm -f /tmp/config.dat
@@ -253,6 +310,11 @@ nvme_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write ../init.conf init.conf" nvme_disk.img
 	debugfs -w -R "write isodir/boot/shell.app shell.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/wget.app wget.app" nvme_disk.img
+	debugfs -w -R "write isodir/boot/security-center.app security-center.app" nvme_disk.img
+	debugfs -w -R "write isodir/boot/desktop-shell.app desktop-shell.app" nvme_disk.img
+	debugfs -w -R "write isodir/boot/ipctest-server.app ipctest-server.app" nvme_disk.img
+	debugfs -w -R "write isodir/boot/ipctest-client.app ipctest-client.app" nvme_disk.img
+	debugfs -w -R "write isodir/boot/desktop.svc desktop.svc" nvme_disk.img
 	dd if=/dev/zero of=/tmp/config.dat bs=8192 count=1
 	debugfs -w -R "write /tmp/config.dat config.dat" nvme_disk.img
 	rm -f /tmp/config.dat
@@ -291,7 +353,12 @@ iso: cubit_kernel
 
 # Build everything including DOOM, then create ISO and disk images
 .PHONY : world
-world: cubit_kernel doom sleep filesystem ata nvme virtio-net netstack wget procmgr shell hda mixer ps2 config netmgr logstore devmgr initrd ata_disk.img nvme_disk.img iso
+world: cubit_kernel doom sleep ipctest-server ipctest-client filesystem ata nvme virtio-net netstack wget security-center desktop-shell procmgr shell hda mixer ps2 config netmgr logstore desktop devmgr initrd ata_disk.img nvme_disk.img iso
+
+.PHONY : headless-test
+headless-test: world
+	bash ../tests/headless/run.sh --test boot-shell-nvme
+	bash ../tests/headless/run.sh --test async-ipc
 
 # Run QEMU with NVMe + virtio-net + HDA audio, shell (everything)
 .PHONY : run

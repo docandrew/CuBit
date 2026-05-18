@@ -258,22 +258,32 @@ is
     COMPLETION_QUEUE_SIZE  : constant := 64;
     MAX_PENDING_ASYNC      : constant := 16;
     NO_COMPLETION_TOKEN    : constant Unsigned_64 := Unsigned_64'Last;
+    NO_REQUEST_ID          : constant Unsigned_64 := 0;
+
+    COMPLETION_OK              : constant Unsigned_64 := 0;
+    COMPLETION_TARGET_DIED     : constant Unsigned_64 := 1;
+    COMPLETION_CANCELLED       : constant Unsigned_64 := 2;
+    COMPLETION_QUEUE_OVERFLOW  : constant Unsigned_64 := 3;
 
     subtype CompletionIndex is Natural range 0 .. COMPLETION_QUEUE_SIZE - 1;
 
     type CompletionEntry is record
+        requestId : Unsigned_64;        -- Kernel-generated request identity
         token : Unsigned_64;        -- Client-chosen opaque ID (like io_uring user_data)
         msg   : Message;            -- Reply from server
         from  : ProcessID;          -- Server PID that replied
+        status : Unsigned_64 := COMPLETION_OK;
         valid : Boolean := False;
     end record;
 
     type CompletionRing is array (CompletionIndex) of CompletionEntry;
 
     NULL_COMPLETION : constant CompletionEntry := (
+        requestId => NO_REQUEST_ID,
         token => 0,
         msg   => NULL_MESSAGE,
         from  => NO_PROCESS,
+        status => COMPLETION_OK,
         valid => False
     );
 
@@ -286,8 +296,9 @@ is
 
     -- Tracks outstanding async requests so reply() can find the token
     type PendingRequest is record
-        dest  : ProcessID   := NO_PROCESS;
-        token : Unsigned_64 := 0;
+        dest      : ProcessID   := NO_PROCESS;
+        requestId : Unsigned_64 := NO_REQUEST_ID;
+        token     : Unsigned_64 := 0;
     end record;
 
     type PendingArray is array (0 .. MAX_PENDING_ASYNC - 1) of PendingRequest;
@@ -357,20 +368,34 @@ is
 
     ---------------------------------------------------------------------------
     -- Unified IPC Ring Buffer
-    -- Single ring for both submit() messages and sendEvent() events.
-    -- Each entry carries the message and the sender PID (NO_PROCESS for
-    -- fire-and-forget events).
+    -- Single ring for async requests, one-way messages, events, notifications,
+    -- and direct sync handoff. Each entry carries an explicit kind so receive
+    -- paths can avoid consuming unrelated traffic classes.
     ---------------------------------------------------------------------------
     RING_SIZE : constant := 32;
     subtype RingIndex is Natural range 0 .. RING_SIZE - 1;
 
+    type RingEntryKind is (
+        RING_EMPTY,
+        RING_SYNC,
+        RING_ASYNC_REQUEST,
+        RING_ONEWAY,
+        RING_EVENT,
+        RING_NOTIFY
+    );
+
     type RingEntry is record
-        msg    : Message   := NULL_MESSAGE;
-        sender : ProcessID := NO_PROCESS;
+        msg       : Message   := NULL_MESSAGE;
+        sender    : ProcessID := NO_PROCESS;
+        kind      : RingEntryKind := RING_EMPTY;
+        requestId : Unsigned_64 := NO_REQUEST_ID;
     end record;
 
     NULL_RING_ENTRY : constant RingEntry :=
-        (msg => NULL_MESSAGE, sender => NO_PROCESS);
+        (msg       => NULL_MESSAGE,
+         sender    => NO_PROCESS,
+         kind      => RING_EMPTY,
+         requestId => NO_REQUEST_ID);
 
     type RingArray is array (RingIndex) of RingEntry;
 
@@ -502,8 +527,10 @@ is
         sendMsg             : Message := NULL_MESSAGE;
 
         -- Async I/O: pending requests and grants
-        pendingRequests     : PendingArray := (others => (NO_PROCESS, 0));
+        pendingRequests     : PendingArray :=
+                                  (others => (NO_PROCESS, NO_REQUEST_ID, 0));
         numPending          : Natural := 0;
+        nextRequestId       : Unsigned_64 := 1;
         grants              : GrantArray := (others => <>);
         dmaAllocs           : DMAAllocArray := (others => <>);
 

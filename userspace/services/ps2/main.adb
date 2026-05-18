@@ -339,7 +339,7 @@ begin
    --  Main event loop
    loop
       --  Block until IRQ 33 or 44 fires
-      event := receiveEvent;
+      event := Wait_Event;
 
       --  Read PS/2 status register
       status := inb (STATUS_PORT);

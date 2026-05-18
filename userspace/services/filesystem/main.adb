@@ -1371,7 +1371,7 @@ begin
 
    --  Main IPC message loop.
    --  Uses blocking receive for lowest latency.  Future async work
-   --  can switch to receiveNB + pollCompletion when capSubmit-based
+   --  can switch to Poll_Service_Request + Poll_Completion when capSubmit-based
    --  driver I/O is implemented.
    loop
       receive (sender, msg);

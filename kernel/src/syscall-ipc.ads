@@ -49,6 +49,10 @@ is
                            arg4, arg5 : Unsigned_64;
                            retval     : out Unsigned_64);
 
+    procedure handleReplyCap (arg0, arg1, arg2, arg3,
+                              arg4, arg5 : Unsigned_64;
+                              retval     : out Unsigned_64);
+
     procedure handleReceiveEventNB (arg0   : Unsigned_64;
                                     retval : out Unsigned_64);
 
@@ -60,6 +64,12 @@ is
     procedure handleCall (callerPID  : Process.ProcessID;
                           arg0, arg1 : Unsigned_64;
                           retval     : out Unsigned_64);
+
+    procedure handlePollServiceRequest (arg0   : Unsigned_64;
+                                        retval : out Unsigned_64);
+
+    procedure handlePollAnyIpc (arg0   : Unsigned_64;
+                                retval : out Unsigned_64);
 
     procedure handleReceiveNB (arg0   : Unsigned_64;
                                retval : out Unsigned_64);

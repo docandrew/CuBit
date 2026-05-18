@@ -181,7 +181,7 @@ package body CuBit.Streams is
    ---------------------------------------------------------------------------
    --  streamHandleSubscription
    --
-   --  Public. Drains 1 pending IPC message via receiveNB and handles
+   --  Public. Drains 1 pending service request and handles
    --  subscribe or unsubscribe requests. Returns True if handled.
    ---------------------------------------------------------------------------
    function streamHandleSubscription return Boolean is
@@ -189,7 +189,7 @@ package body CuBit.Streams is
       msg   : Message;
       found : Boolean;
    begin
-      receiveNB (from, msg, found);
+      Poll_Service_Request (from, msg, found);
 
       if not found then
          return False;

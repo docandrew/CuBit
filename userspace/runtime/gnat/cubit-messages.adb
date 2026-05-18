@@ -106,6 +106,22 @@ package body CuBit.Messages is
                        msg.words (3));
    end reply;
 
+   --  replyCap
+   --  REPLY_CAP: RDI=reply cap slot, RSI=tag, RDX=w0, R10=w1, R8=w2, R9=w3
+
+   function replyCap
+     (slot : CapabilitySlot; msg : Message) return Unsigned_64
+   is
+   begin
+      return syscall (SYSCALL_REPLY_CAP,
+                       slot,
+                       tagToU64 (msg.tag),
+                       msg.words (0),
+                       msg.words (1),
+                       msg.words (2),
+                       msg.words (3));
+   end replyCap;
+
    --  replyWait
    --  REPLY_WAIT: RDI=replyTo, RSI=pointer to Message
    --  Returns: RAX=sender PID of next received message
@@ -121,20 +137,55 @@ package body CuBit.Messages is
       from := syscall (SYSCALL_REPLY_WAIT, replyTo, toNum (msg'Address));
    end replyWait;
 
-   --  receiveNB
-   --  RECEIVE_NB: RDI=pointer to Message struct
-   --  Returns: RAX=sender PID (0 if no message)
-
-   procedure receiveNB
+   --  Poll_Service_Request
+   --  POLL_SERVICE_REQUEST: RDI=pointer to Message struct
+   --  Returns: RAX=sender PID (0 if no service request)
+   --
+   --  This wrapper is intentionally semantic rather than queue-shaped. The
+   --  kernel still stores several IPC classes in one mailbox ring, but this
+   --  syscall asks for only request-like work destined for a service.
+   procedure Poll_Service_Request
      (from  : out ProcessID;
       msg   : out Message;
       found : out Boolean)
    is
       ret : Unsigned_64;
    begin
-      ret := syscall (SYSCALL_RECEIVE_NB, toNum (msg'Address));
+      msg := NULL_MESSAGE;
+      ret := syscall (SYSCALL_POLL_SERVICE_REQUEST, toNum (msg'Address));
       from := ret;
       found := (ret /= 0);
+   end Poll_Service_Request;
+
+   --  Poll_Any_Ipc
+   --  POLL_ANY_IPC: RDI=pointer to Message struct
+   --  Returns: RAX=sender PID, or 0 if no mixed IPC was available.
+   --
+   --  This preserves the old receiveNB behavior. It can consume events and
+   --  notifications, so call sites should look unusual on purpose.
+   procedure Poll_Any_Ipc
+     (from  : out ProcessID;
+      msg   : out Message;
+      found : out Boolean)
+   is
+      ret : Unsigned_64;
+   begin
+      msg := NULL_MESSAGE;
+      ret := syscall (SYSCALL_POLL_ANY_IPC, toNum (msg'Address));
+      from := ret;
+      found := (ret /= 0);
+   end Poll_Any_Ipc;
+
+   --  receiveNB
+   --  Deprecated compatibility spelling for Poll_Any_Ipc.
+
+   procedure receiveNB
+     (from  : out ProcessID;
+      msg   : out Message;
+      found : out Boolean)
+   is
+   begin
+      Poll_Any_Ipc (from, msg, found);
    end receiveNB;
 
    --  submit
@@ -171,15 +222,22 @@ package body CuBit.Messages is
       return syscall (SYSCALL_WAIT_COMPLETION, toNum (entries), max, min);
    end waitCompletion;
 
-   --  pollCompletion
+   --  Poll_Completion
    --  POLL_COMPLETION: RDI=pointer to CompletionEntry
    --  Returns: RAX=1 if found, 0 if empty
+
+   function Poll_Completion
+     (result : System.Address) return Unsigned_64
+   is
+   begin
+      return syscall (SYSCALL_POLL_COMPLETION, toNum (result));
+   end Poll_Completion;
 
    function pollCompletion
      (result : System.Address) return Unsigned_64
    is
    begin
-      return syscall (SYSCALL_POLL_COMPLETION, toNum (result));
+      return Poll_Completion (result);
    end pollCompletion;
 
    --  capSend
@@ -262,12 +320,12 @@ package body CuBit.Messages is
    end notifyPoll;
 
    --  bindNotification
-   --  BIND_NOTIFICATION: RDI=notification PID
+   --  BIND_NOTIFICATION: RDI=notification capability slot
 
-   procedure bindNotification (notifPID : ProcessID) is
+   procedure bindNotification (slot : CapabilitySlot) is
       ignore : Unsigned_64;
    begin
-      ignore := syscall (SYSCALL_BIND_NOTIFICATION, notifPID);
+      ignore := syscall (SYSCALL_BIND_NOTIFICATION, slot);
    end bindNotification;
 
    --  unbindNotification
@@ -294,29 +352,39 @@ package body CuBit.Messages is
                           msg.words (3));
    end sendEvent;
 
-   --  receiveEvent
+   --  Wait_Event
    --  RECEIVE_EVENT: no args
    --  Returns: event tag in RAX
 
-   function receiveEvent return Message is
+   function Wait_Event return Message is
       retTag : Unsigned_64;
       msg : Message := NULL_MESSAGE;
    begin
       retTag := syscall (SYSCALL_RECEIVE_EVENT);
       msg.tag := u64ToTag (retTag);
       return msg;
+   end Wait_Event;
+
+   function receiveEvent return Message is
+   begin
+      return Wait_Event;
    end receiveEvent;
 
-   --  receiveEventNB
-   --  RECEIVE_EVENT_NB: RDI=pointer to Message struct
+   --  Poll_Event
+   --  POLL_EVENT: RDI=pointer to Message struct
    --  Returns: RAX=1 if event found, 0 if not
 
-   function receiveEventNB (msg : out Message) return Boolean is
+   function Poll_Event (msg : out Message) return Boolean is
       ret : Unsigned_64;
    begin
       msg := NULL_MESSAGE;
-      ret := syscall (SYSCALL_RECEIVE_EVENT_NB, toNum (msg'Address));
+      ret := syscall (SYSCALL_POLL_EVENT, toNum (msg'Address));
       return (ret = 1);
+   end Poll_Event;
+
+   function receiveEventNB (msg : out Message) return Boolean is
+   begin
+      return Poll_Event (msg);
    end receiveEventNB;
 
    --  createGrant

@@ -41,12 +41,19 @@ is
     SYSCALL_RECEIVE_EVENT : constant SyscallNumber := 20;
     SYSCALL_CALL          : constant SyscallNumber := 21;
     SYSCALL_RECEIVE_NB    : constant SyscallNumber := 22;
+    SYSCALL_POLL_ANY_IPC  : constant SyscallNumber := 22;
 
     -- Async I/O Syscalls
     SYSCALL_SUBMIT          : constant SyscallNumber := 23;
     SYSCALL_WAIT_COMPLETION : constant SyscallNumber := 24;
     SYSCALL_POLL_COMPLETION : constant SyscallNumber := 25;
     SYSCALL_RECEIVE_EVENT_NB : constant SyscallNumber := 26;
+
+    -- Typed IPC polling.
+    -- Service-request polling never consumes events/notifications. Mixed IPC
+    -- polling is available through SYSCALL_POLL_ANY_IPC above and should be
+    -- rare enough to look suspicious at review time.
+    SYSCALL_POLL_SERVICE_REQUEST : constant SyscallNumber := 80;
 
     -- Time syscalls
     SYSCALL_GETTIME         : constant SyscallNumber := 27;
@@ -70,6 +77,7 @@ is
 
     -- Move reply cap from slot 63 to another slot (for deferred replies)
     SYSCALL_SAVE_REPLY_CAP  : constant SyscallNumber := 51;
+    SYSCALL_REPLY_CAP       : constant SyscallNumber := 52;
 
     -- Process spawning
     SYSCALL_SPAWN           : constant SyscallNumber := 60;

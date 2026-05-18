@@ -194,6 +194,10 @@ package body Syscall is
                 IPC.handleReply (
                     arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
+            when SYSCALL_REPLY_CAP =>
+                IPC.handleReplyCap (
+                    arg0, arg1, arg2, arg3, arg4, arg5, retval);
+
             when SYSCALL_RECEIVE_EVENT =>
                 declare
                     function tagToU64 is new Ada.Unchecked_Conversion
@@ -217,7 +221,10 @@ package body Syscall is
                     percpu.currentPID, arg0, arg1, retval);
 
             when SYSCALL_RECEIVE_NB =>
-                IPC.handleReceiveNB (arg0, retval);
+                IPC.handlePollAnyIpc (arg0, retval);
+
+            when SYSCALL_POLL_SERVICE_REQUEST =>
+                IPC.handlePollServiceRequest (arg0, retval);
 
             when SYSCALL_SUBMIT =>
                 IPC.handleSubmit (
@@ -298,17 +305,16 @@ package body Syscall is
                 retval := Process.IPC.notifyPoll;
 
             when SYSCALL_BIND_NOTIFICATION =>
-                if arg0 > Unsigned_64(Process.ProcessID'Last) then
-                    declare
-                        function toErr is new Ada.Unchecked_Conversion
-                            (Long_Integer, Unsigned_64);
-                    begin
-                        retval := toErr (-1);
-                    end;
+                if arg0 > Unsigned_64(Capabilities.CapabilitySlot'Last) then
+                    retval := 0;
                 else
-                    Process.IPC.bindNotification (
-                        notifPID => Process.ProcessID(arg0));
-                    retval := 1;
+                    if Process.IPC.bindNotification (
+                        capSlot => Capabilities.CapabilitySlot(arg0))
+                    then
+                        retval := 1;
+                    else
+                        retval := 0;
+                    end if;
                 end if;
 
             when SYSCALL_UNBIND_NOTIFICATION =>
