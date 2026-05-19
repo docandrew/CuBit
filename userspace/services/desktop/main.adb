@@ -127,6 +127,7 @@ procedure main is
    cursorX : Natural := 80;
    cursorY : Natural := 80;
    lastButtons : Unsigned_64 := 0;
+   launchMenuOpen : Boolean := False;
 
    DRAG_NONE        : constant Natural := 0;
    DRAG_MOVE        : constant Natural := 1;
@@ -142,6 +143,11 @@ procedure main is
 
    TITLE_HEIGHT : constant Natural := 24;
    BORDER_SIZE  : constant Natural := 6;
+   TASKBAR_H    : constant Natural := 36;
+   LAUNCH_W     : constant Natural := 88;
+   LAUNCH_H     : constant Natural := 24;
+   MENU_W       : constant Natural := 232;
+   MENU_H       : constant Natural := 154;
    CURSOR_W     : constant Natural := 12;
    CURSOR_H     : constant Natural := 18;
    CURSOR_PIXELS : constant Natural := CURSOR_W * CURSOR_H;
@@ -154,19 +160,20 @@ procedure main is
    cursorSaveValid : Boolean := False;
    cursorSaveRect  : Rect;
 
-   C_BG     : constant Unsigned_32 := 16#0013_1518#;
-   C_PANEL  : constant Unsigned_32 := 16#0022_272D#;
-   C_TEXT   : constant Unsigned_32 := 16#00E8_ECEF#;
-   C_MUTED  : constant Unsigned_32 := 16#0098_A2AD#;
-   C_ACCENT : constant Unsigned_32 := 16#0037_B4D8#;
-   C_GOOD   : constant Unsigned_32 := 16#0049_C070#;
+   C_BG     : constant Unsigned_32 := 16#001F_2430#;
+   C_PANEL  : constant Unsigned_32 := 16#0024_2936#;
+   C_TEXT   : constant Unsigned_32 := 16#00CB_CAC2#;
+   C_MUTED  : constant Unsigned_32 := 16#0070_7A8C#;
+   C_ACCENT : constant Unsigned_32 := 16#00FF_CC66#;
+   C_GOOD   : constant Unsigned_32 := 16#00BA_E67E#;
    C_WHITE  : constant Unsigned_32 := 16#00FF_FFFF#;
    C_BLACK  : constant Unsigned_32 := 16#0000_0000#;
-   C_DESK   : constant Unsigned_32 := 16#0000_8080#;
-   C_BAR    : constant Unsigned_32 := 16#00C0_C0C0#;
-   C_DARK   : constant Unsigned_32 := 16#0080_8080#;
-   C_BLUE   : constant Unsigned_32 := 16#0000_0080#;
-   C_WIN    : constant Unsigned_32 := 16#00DF_DFDB#;
+   C_DESK   : constant Unsigned_32 := 16#001B_202B#;
+   C_BAR    : constant Unsigned_32 := 16#0024_2936#;
+   C_BLUE   : constant Unsigned_32 := 16#003F_6380#;
+   C_WIN    : constant Unsigned_32 := 16#0028_2E3D#;
+   C_EDGE   : constant Unsigned_32 := 16#004B_5263#;
+   C_SHADOW : constant Unsigned_32 := 16#0014_1820#;
 
    statsStartMs      : Unsigned_64 := 0;
    statsEvents       : Unsigned_64 := 0;
@@ -387,6 +394,38 @@ procedure main is
       return clampRect ((x => cursorX, y => cursorY,
                          w => CURSOR_W, h => CURSOR_H));
    end cursorRect;
+
+   function taskbarY return Natural is
+   begin
+      if fbHeight > TASKBAR_H then
+         return fbHeight - TASKBAR_H;
+      else
+         return 0;
+      end if;
+   end taskbarY;
+
+   function launchButtonRect return Rect is
+   begin
+      return clampRect ((x => 6, y => taskbarY + 6,
+                         w => LAUNCH_W, h => LAUNCH_H));
+   end launchButtonRect;
+
+   function launchMenuRect return Rect is
+      y : Natural := 0;
+   begin
+      if taskbarY > MENU_H then
+         y := taskbarY - MENU_H;
+      end if;
+
+      return clampRect ((x => 6, y => y, w => MENU_W, h => MENU_H));
+   end launchMenuRect;
+
+   function pointInRect (x, y : Natural; r : Rect) return Boolean is
+   begin
+      return not isEmpty (r) and then
+         x >= r.x and then y >= r.y and then
+         x < r.x + r.w and then y < r.y + r.h;
+   end pointInRect;
 
    function unionRect (a, b : Rect) return Rect is
       ax2 : constant Natural := a.x + a.w;
@@ -758,23 +797,24 @@ procedure main is
          return;
       end if;
 
+      fillRect (x + 3, y + 3, w, h, C_SHADOW);
       fillRect (x, y, w, h, C_WIN);
-      strokeRect (x, y, w, h, C_WHITE, C_DARK);
+      strokeRect (x, y, w, h, C_EDGE, C_SHADOW);
       fillRect (x + 3, y + 3, w - 6, titleH, C_BLUE);
       drawText (x + 10, y + 7, "Demo Window", C_WHITE, C_BLUE);
 
       --  Close box placeholder. It is drawn by the compositor because close,
       --  move, resize, and focus are all authority-sensitive window mechanics.
       fillRect (x + w - 23, y + 6, 14, 14, C_BAR);
-      strokeRect (x + w - 23, y + 6, 14, 14, C_WHITE, C_DARK);
-      drawText (x + w - 20, y + 5, "x", C_BLACK, C_BAR);
+      strokeRect (x + w - 23, y + 6, 14, 14, C_EDGE, C_SHADOW);
+      drawText (x + w - 20, y + 5, "x", C_TEXT, C_BAR);
 
       drawText (x + 18, y + 44, "This is a real child surface.",
-                C_BLACK, C_WIN);
+                C_TEXT, C_WIN);
       drawText (x + 18, y + 70, "Drag title bar to move.",
-                C_BLACK, C_WIN);
+                C_TEXT, C_WIN);
       drawText (x + 18, y + 96, "Drag edges to resize.",
-                C_BLACK, C_WIN);
+                C_TEXT, C_WIN);
    end drawWindow;
 
    procedure drawDragOutline is
@@ -794,10 +834,29 @@ procedure main is
       end if;
    end drawDragOutline;
 
+   procedure drawLaunchMenu is
+      r : constant Rect := launchMenuRect;
+   begin
+      if not launchMenuOpen or else isEmpty (r) then
+         return;
+      end if;
+
+      fillRect (r.x + 3, r.y + 3, r.w, r.h, C_SHADOW);
+      fillRect (r.x, r.y, r.w, r.h, C_PANEL);
+      strokeRect (r.x, r.y, r.w, r.h, C_EDGE, C_SHADOW);
+      fillRect (r.x, r.y, 4, r.h, C_ACCENT);
+
+      drawText (r.x + 18, r.y + 14, "CuBit", C_TEXT, C_PANEL);
+      drawText (r.x + 18, r.y + 42, "Terminal", C_TEXT, C_PANEL);
+      drawText (r.x + 18, r.y + 68, "Files", C_MUTED, C_PANEL);
+      drawText (r.x + 18, r.y + 94, "Security Center", C_MUTED, C_PANEL);
+      fillRect (r.x + 12, r.y + 122, r.w - 24, 1, C_EDGE);
+      drawText (r.x + 18, r.y + 130, "Power", C_MUTED, C_PANEL);
+   end drawLaunchMenu;
+
    procedure drawDesktopShell is
-      taskbarH : constant Natural := 36;
-      barY     : Natural := 0;
-      startW   : constant Natural := 88;
+      barY     : constant Natural := taskbarY;
+      launch   : constant Rect := launchButtonRect;
       panelW   : constant Natural := 310;
       panelH   : constant Natural := 150;
       px       : Natural := 24;
@@ -807,40 +866,41 @@ procedure main is
          return;
       end if;
 
-      if fbHeight > taskbarH then
-         barY := fbHeight - taskbarH;
-      end if;
-
       --  First shell renderer: deliberately Win95-simple. The compositor owns
       --  pixels for now; the shell owns policy and talks through the protocol.
       --  Shared client buffers can replace this drawing path later without
       --  changing the surface/session shape.
       fillRect (0, 0, fbWidth, fbHeight, C_DESK);
-      fillRect (0, barY, fbWidth, taskbarH, C_BAR);
-      strokeRect (0, barY, fbWidth, taskbarH, C_WHITE, C_DARK);
+      fillRect (0, barY, fbWidth, TASKBAR_H, C_BAR);
+      strokeRect (0, barY, fbWidth, TASKBAR_H, C_EDGE, C_SHADOW);
+      fillRect (0, barY, fbWidth, 2, C_ACCENT);
 
-      fillRect (6, barY + 6, startW, 24, C_BAR);
-      strokeRect (6, barY + 6, startW, 24, C_WHITE, C_DARK);
-      drawText (20, barY + 10, "Start", C_BLACK, C_BAR);
+      fillRect (launch.x, launch.y, launch.w, launch.h, C_BAR);
+      if launchMenuOpen then
+         strokeRect (launch.x, launch.y, launch.w, launch.h, C_SHADOW, C_EDGE);
+      else
+         strokeRect (launch.x, launch.y, launch.w, launch.h, C_EDGE, C_SHADOW);
+      end if;
+      drawText (18, barY + 10, "Launch", C_TEXT, C_BAR);
 
-      if fbWidth > panelW + 48 and then fbHeight > panelH + taskbarH + 48 then
+      if fbWidth > panelW + 48 and then fbHeight > panelH + TASKBAR_H + 48 then
          px := (fbWidth - panelW) / 2;
-         py := (fbHeight - taskbarH - panelH) / 2;
+         py := (fbHeight - TASKBAR_H - panelH) / 2;
       end if;
 
       fillRect (px, py, panelW, panelH, C_BAR);
-      strokeRect (px, py, panelW, panelH, C_WHITE, C_DARK);
+      strokeRect (px, py, panelW, panelH, C_EDGE, C_SHADOW);
       fillRect (px + 3, py + 3, panelW - 6, 22, C_BLUE);
       drawText (px + 10, py + 7, "CuBit Desktop", C_WHITE, C_BLUE);
       drawText (px + 18, py + 44, "desktop-shell.app connected",
-                C_BLACK, C_BAR);
+                C_TEXT, C_BAR);
       drawText (px + 18, py + 70, "surface protocol: child window",
-                C_BLACK, C_BAR);
+                C_TEXT, C_BAR);
       drawText (px + 18, py + 96, "Q or Esc exits desktop shell",
-                C_BLACK, C_BAR);
+                C_TEXT, C_BAR);
 
-      drawText (16, 18, "Computer", C_WHITE, C_DESK);
-      drawText (16, 48, "Security", C_WHITE, C_DESK);
+      drawText (16, 18, "System", C_WHITE, C_DESK);
+      drawText (16, 48, "Authority", C_WHITE, C_DESK);
 
       for i in surfaces'Range loop
          if surfaces (i).used and then
@@ -849,6 +909,8 @@ procedure main is
             drawWindow (surfaces (i));
          end if;
       end loop;
+
+      drawLaunchMenu;
    end drawDesktopShell;
 
    procedure drawCurrentScene is
@@ -1009,6 +1071,30 @@ procedure main is
       return -1;
    end findSurface;
 
+   function anySurfaceUsed return Boolean is
+   begin
+      for i in surfaces'Range loop
+         if surfaces (i).used then
+            return True;
+         end if;
+      end loop;
+
+      return False;
+   end anySurfaceUsed;
+
+   function shellSurfaceVisible return Boolean is
+   begin
+      for i in surfaces'Range loop
+         if surfaces (i).used and then
+            (surfaces (i).flags and SURFACE_FLAG_SHELL) /= 0
+         then
+            return True;
+         end if;
+      end loop;
+
+      return False;
+   end shellSurfaceVisible;
+
    procedure queueConfigure (surfaceId, w, h : Unsigned_64) is
    begin
       inputEvent :=
@@ -1075,6 +1161,7 @@ procedure main is
        w3    : Unsigned_64 := 0) return Message;
 
    procedure setupDisplayBuffer (ok : out Boolean);
+   procedure releaseDisplayBuffer;
 
    procedure handleRequest (from : ProcessID; request : Message) is
       replyMsg : Message := NULL_MESSAGE;
@@ -1297,7 +1384,11 @@ procedure main is
                                    flags  => 0,
                                    badge  => 0);
                   replyMsg.words (0) := UI_OK;
-                  scheduleRedraw;
+                  if anySurfaceUsed then
+                     scheduleRedraw;
+                  else
+                     releaseDisplayBuffer;
+                  end if;
                end if;
             end;
 
@@ -1334,7 +1425,11 @@ procedure main is
                              flags  => 0,
                              badge  => 0);
             replyMsg.words (0) := UI_OK;
-            scheduleRedraw;
+            if anySurfaceUsed then
+               scheduleRedraw;
+            else
+               releaseDisplayBuffer;
+            end if;
 
          when others =>
             replyMsg.tag := (label  => request.tag.label,
@@ -1443,6 +1538,7 @@ procedure main is
       leftDown  : constant Boolean := (buttons and 1) /= 0;
       leftWasDown : constant Boolean := (lastButtons and 1) /= 0;
       sceneDamage : constant Boolean := leftDown or else leftWasDown;
+      handledChromeClick : Boolean := False;
       maxX      : Integer := 0;
       maxY      : Integer := 0;
    begin
@@ -1460,8 +1556,30 @@ procedure main is
       damage := unionRect (damage, cursorRect);
 
       if leftDown and then not leftWasDown then
+         if shellSurfaceVisible and then
+            pointInRect (cursorX, cursorY, launchButtonRect)
+         then
+            launchMenuOpen := not launchMenuOpen;
+            damage := unionRect
+              (damage,
+               inflateRect (unionRect (launchButtonRect, launchMenuRect), 4));
+            handledChromeClick := True;
+         elsif launchMenuOpen and then
+            pointInRect (cursorX, cursorY, launchMenuRect)
+         then
+            --  Menu entries are visual placeholders until desktop-shell.app
+            --  grows a launcher protocol. Close the menu to acknowledge the
+            --  click without granting any process-launch authority yet.
+            launchMenuOpen := False;
+            damage := unionRect (damage, inflateRect (launchMenuRect, 4));
+            handledChromeClick := True;
+         elsif launchMenuOpen then
+            launchMenuOpen := False;
+            damage := unionRect (damage, inflateRect (launchMenuRect, 4));
+         end if;
+
          idx := hitSurface (cursorX, cursorY);
-         if idx >= 0 then
+         if not handledChromeClick and then idx >= 0 then
             focusSurface := surfaces (SurfaceIndex (idx)).id;
             dragMode := hitMode (surfaces (SurfaceIndex (idx)), cursorX, cursorY);
             dragSurfaceId := focusSurface;
@@ -1570,6 +1688,28 @@ procedure main is
       msg.tag := tag;
       return msg;
    end callDisplay;
+
+   procedure releaseDisplayBuffer is
+      released : Message;
+   begin
+      if not backBufferReady then
+         return;
+      end if;
+
+      restoreCursorOverlay;
+      released := callDisplay (OP_DISPLAY_RELEASE);
+      if released.tag.length >= 1 and then released.words (0) /= 0 then
+         debugPrint ("desktop: display release failed" & LF);
+      end if;
+
+      backBufferReady := False;
+      drawingBackBuffer := False;
+      cursorSaveValid := False;
+      framePending := False;
+      frameDamage := (others => 0);
+      frameDueMs := 0;
+      inputEvent.valid := False;
+   end releaseDisplayBuffer;
 
    function alignUpPage (addr : Unsigned_64) return Unsigned_64 is
    begin
