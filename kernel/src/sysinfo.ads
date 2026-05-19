@@ -36,6 +36,16 @@ package Sysinfo is
     HDA_BAR0              : constant QueryID := 1500;
     HDA_DMA_PHYS          : constant QueryID := 1501;
 
+    -- VirtIO-GPU device info
+    GPU_BAR0              : constant QueryID := 1700;
+    GPU_DMA_PHYS          : constant QueryID := 1701;
+    GPU_COMMON_OFF        : constant QueryID := 1702;
+    GPU_NOTIFY_OFF        : constant QueryID := 1703;
+    GPU_ISR_OFF           : constant QueryID := 1704;
+    GPU_DEVICE_OFF        : constant QueryID := 1705;
+    GPU_NOTIFY_MULT       : constant QueryID := 1706;
+    GPU_IS_PRIMARY        : constant QueryID := 1707;
+
     -- CPU info
     NUM_CPUS              : constant QueryID := 1400;
 
@@ -63,6 +73,8 @@ package Sysinfo is
     DRIVER_LOGSTORE : constant DriverID := 13;
     DRIVER_IPCTEST  : constant DriverID := 14;
     DRIVER_DESKTOP  : constant DriverID := 15;
+    DRIVER_DISPLAY  : constant DriverID := 16;
+    DRIVER_GPU      : constant DriverID := 17;
 
     -- List of processes registered as a particular driver.
     type DriverList is array (DriverID) of Process.ProcessID;

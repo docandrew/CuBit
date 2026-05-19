@@ -1,0 +1,61 @@
+project Display is
+
+    for Languages use ("Ada");
+
+    for Object_Dir use "build";
+
+    for Source_Dirs use (".");
+
+    for Main use ("main.adb");
+
+    for Runtime ("Ada") use "../../runtime";
+
+    for Library_Dir use "";
+
+    package Builder is
+        for Executable ("main.adb") use "display.svc";
+
+        for Default_Switches ("Ada") use
+        (
+            "-g",
+            "-gnatwa",
+            "-gnatw.X",
+            "-s",
+            "-v",
+            "-nostdlib"
+        );
+    end Builder;
+
+    package Compiler is
+        for Default_Switches ("Ada") use
+        (
+            "-fstack-usage",
+            "-fomit-frame-pointer",
+            "-mno-red-zone",
+            "-fno-pic",
+            "-mno-sse",
+            "-mno-sse2"
+        );
+    end Compiler;
+
+    package Binder is
+        for Default_Switches ("Ada") use
+        (
+            "-d_C"
+        );
+    end Binder;
+
+    package Linker is
+        for Default_Switches ("Ada") use
+        (
+            "-nostdlib",
+            "-static",
+            "-no-pie",
+            "-lgnat-user",
+            "-T", "../../c/link.ld",
+            "../../c/build/crt0.o",
+            "build/manifest.o"
+        );
+    end Linker;
+
+end Display;

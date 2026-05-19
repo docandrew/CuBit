@@ -20,7 +20,8 @@ procedure main is
    OP_SURFACE_RESIZE   : constant Unsigned_32 := 16#0813#;
    OP_INPUT_POLL       : constant Unsigned_32 := 16#0821#;
 
-   SURFACE_FLAG_SHELL : constant Unsigned_64 := 1;
+   SURFACE_FLAG_SHELL  : constant Unsigned_64 := 1;
+   SURFACE_FLAG_WINDOW : constant Unsigned_64 := 2;
 
    INPUT_NONE      : constant Unsigned_64 := 0;
    INPUT_KEY_DOWN  : constant Unsigned_64 := 1;
@@ -34,8 +35,11 @@ procedure main is
       0 or Shift_Left (Unsigned_64'(1), 32);
 
    surfaceId : Unsigned_64 := 0;
+   windowId  : Unsigned_64 := 0;
    width     : Unsigned_64 := 0;
    height    : Unsigned_64 := 0;
+   windowW   : Unsigned_64 := 360;
+   windowH   : Unsigned_64 := 220;
    lastEvent : Unsigned_64 := 0;
    compact   : Boolean := False;
    running   : Boolean := True;
@@ -68,18 +72,22 @@ procedure main is
 
    procedure present is
       reply : Message;
+      target : Unsigned_64 := surfaceId;
    begin
-      reply := callDesktop (OP_SURFACE_PRESENT, surfaceId, 0, 0, 0);
+      if windowId /= 0 then
+         target := windowId;
+      end if;
+
+      reply := callDesktop (OP_SURFACE_PRESENT, target, 0, 0, 0);
    end present;
 
    procedure requestResize is
       reply : Message;
-      nextW : Unsigned_64 := width;
-      nextH : Unsigned_64 := height;
+      nextW : Unsigned_64 := windowW;
+      nextH : Unsigned_64 := windowH;
    begin
-      --  Bring-up resize exercise: press R to toggle a classic 640x480-ish
-      --  work area against the full display. This keeps resizing observable
-      --  before we have movable/resizable application windows.
+      --  Bring-up resize exercise: press R to toggle a single child window.
+      --  This proves resize belongs to a surface, not the whole desktop.
       if compact then
          compact := False;
       else
@@ -87,18 +95,17 @@ procedure main is
       end if;
 
       if compact then
-         if width > 640 then
-            nextW := 640;
-         end if;
-         if height > 480 then
-            nextH := 480;
-         end if;
+         nextW := 520;
+         nextH := 320;
+      else
+         nextW := 360;
+         nextH := 220;
       end if;
 
-      reply := callDesktop (OP_SURFACE_RESIZE, surfaceId, nextW, nextH, 0);
+      reply := callDesktop (OP_SURFACE_RESIZE, windowId, nextW, nextH, 0);
       if reply.words (0) = 0 then
-         width := reply.words (1);
-         height := reply.words (2);
+         windowW := reply.words (1);
+         windowH := reply.words (2);
          present;
       end if;
    end requestResize;
@@ -156,20 +163,41 @@ begin
       end if;
    end;
 
+   declare
+      created : constant Message :=
+         callDesktop (OP_SURFACE_CREATE,
+                      windowW,
+                      windowH,
+                      SURFACE_FLAG_WINDOW,
+                      surfaceId);
+   begin
+      windowId := created.words (0);
+      windowW := created.words (1);
+      windowH := created.words (2);
+      if windowId = 0 then
+         debugPrint ("desktop-shell: create window failed" & LF);
+         closeSession;
+         ignore := syscall (SYSCALL_EXIT, 1);
+         return;
+      end if;
+   end;
+
    debugPrint ("desktop-shell: connected" & LF);
    present;
 
    while running loop
       declare
          ev : constant Message :=
-            callDesktop (OP_INPUT_POLL, surfaceId, lastEvent, 0, 0);
+            callDesktop (OP_INPUT_POLL, windowId, lastEvent, 0, 0);
       begin
          if ev.words (0) /= INPUT_NONE then
             lastEvent := ev.words (1);
 
             if ev.words (0) = INPUT_CONFIGURE then
-               width := ev.words (2);
-               height := ev.words (3);
+               if ev.words (1) /= 0 then
+                  windowW := ev.words (2);
+                  windowH := ev.words (3);
+               end if;
             elsif ev.words (0) = INPUT_KEY_DOWN then
                if ev.words (2) = KEY_ESC or else ev.words (2) = KEY_Q then
                   closeSession;

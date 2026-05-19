@@ -133,6 +133,22 @@ package body Syscall.Admin is
     is
 
         capAllowed : Boolean;
+
+        procedure logDenied (port : Unsigned_64;
+                             size : Unsigned_64;
+                             writeAccess : Boolean) is
+        begin
+            print ("PORTIO: denied pid=");
+            print (Unsigned_16 (callerPID));
+            print (" syscall=");
+            print (Unsigned_64 (syscallNum));
+            print (" port=");
+            print (port and 16#FFFF#);
+            print (" size=");
+            print (size);
+            print (" write=");
+            println (writeAccess);
+        end logDenied;
     begin
         case syscallNum is
             when SYSCALL_INP8 =>
@@ -140,6 +156,7 @@ package body Syscall.Admin is
                     Process.proctab(callerPID).caps,
                     arg0 and 16#FFFF#, 1, False, capAllowed);
                 if not capAllowed then
+                    logDenied (arg0, 1, False);
                     retval := reterr;
                 else
                     declare
@@ -155,6 +172,7 @@ package body Syscall.Admin is
                     Process.proctab(callerPID).caps,
                     arg0 and 16#FFFF#, 1, True, capAllowed);
                 if not capAllowed then
+                    logDenied (arg0, 1, True);
                     retval := reterr;
                 else
                     x86.out8 (x86.IOPort(arg0 and 16#FFFF#),
@@ -167,6 +185,7 @@ package body Syscall.Admin is
                     Process.proctab(callerPID).caps,
                     arg0 and 16#FFFF#, 2, False, capAllowed);
                 if not capAllowed then
+                    logDenied (arg0, 2, False);
                     retval := reterr;
                 else
                     declare
@@ -182,6 +201,7 @@ package body Syscall.Admin is
                     Process.proctab(callerPID).caps,
                     arg0 and 16#FFFF#, 2, True, capAllowed);
                 if not capAllowed then
+                    logDenied (arg0, 2, True);
                     retval := reterr;
                 else
                     x86.out16 (x86.IOPort(arg0 and 16#FFFF#),
@@ -195,6 +215,7 @@ package body Syscall.Admin is
                     arg0 and 16#FFFF#, Unsigned_64(arg2) * 2, False,
                     capAllowed);
                 if not capAllowed then
+                    logDenied (arg0, Unsigned_64(arg2) * 2, False);
                     retval := reterr;
                 else
                     x86.stac;
@@ -211,6 +232,7 @@ package body Syscall.Admin is
                     arg0 and 16#FFFF#, Unsigned_64(arg2) * 2, True,
                     capAllowed);
                 if not capAllowed then
+                    logDenied (arg0, Unsigned_64(arg2) * 2, True);
                     retval := reterr;
                 else
                     x86.stac;
@@ -226,6 +248,7 @@ package body Syscall.Admin is
                     Process.proctab(callerPID).caps,
                     arg0 and 16#FFFF#, 4, False, capAllowed);
                 if not capAllowed then
+                    logDenied (arg0, 4, False);
                     retval := reterr;
                 else
                     declare
@@ -241,6 +264,7 @@ package body Syscall.Admin is
                     Process.proctab(callerPID).caps,
                     arg0 and 16#FFFF#, 4, True, capAllowed);
                 if not capAllowed then
+                    logDenied (arg0, 4, True);
                     retval := reterr;
                 else
                     x86.out32 (x86.IOPort(arg0 and 16#FFFF#),

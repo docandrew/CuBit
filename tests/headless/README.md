@@ -26,6 +26,12 @@ The suite currently includes:
 - `boot-shell-nvme`: boots the normal NVMe shell profile.
 - `async-ipc`: boots a test init profile that starts an IPC test server and
   client from the NVMe image.
+- `desktop-display`: boots a test init profile that starts `display.svc` and
+  `desktop.svc`, then verifies the display backend status handshake.
+- `virtio-gpu`: boots with QEMU's `virtio-gpu-pci` device and verifies the
+  modern virtio-gpu command path reaches scanout presentation.
+- `virtio-vga-primary`: boots with primary QEMU `virtio-vga` under
+  `-display none` and verifies that `display.svc` selects the GPU backend.
 
 `boot-shell-nvme` waits for these milestones:
 
@@ -37,6 +43,28 @@ The suite currently includes:
 The runner also fails the test if the serial log contains obvious fatal
 signatures such as panics, assertion failures, triple faults, general
 protection faults, or deadlock reports.
+
+`desktop-display` waits for these milestones:
+
+- `display.svc` detected that the separate VirtIO-GPU device is not the
+  primary visible adapter and kept the `linear-fb` backend.
+- `desktop.svc` attached its grant-backed compositor buffer.
+- `desktop.svc` queried `OP_DISPLAY_GET_STATUS` and saw backend `1`,
+  capability mask `3` (`copy-present | vblank-wait`).
+- the regular shell still starts with `@nvme:0/` as its working directory.
+
+`virtio-gpu` waits for these milestones:
+
+- `devmgr` discovers the virtio-gpu PCI function.
+- `devmgr` parses the modern virtio PCI transport and grants MMIO/DMA/IRQ
+  authority.
+- `virtio-gpu.drv` configures the control virtqueue.
+- the driver creates, attaches, transfers, and flushes a scanout test frame.
+
+`virtio-vga-primary` waits for the same driver milestones, then verifies that
+the primary scanout is `1024x768` and `display.svc` reports the VirtIO-GPU
+backend. This is the safe headless probe for the experimental
+`make run-virtio-vga` path.
 
 ## Design
 

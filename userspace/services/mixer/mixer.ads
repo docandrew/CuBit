@@ -113,7 +113,7 @@ package Mixer is
    RING_DATA_SIZE : constant Unsigned_32 := RING_TOTAL - RING_HDR_SIZE;
 
    GRANT_REGION_BASE : constant Unsigned_64 := 16#4000_0000_0000#;
-   GRANT_SLOT_SIZE   : constant Unsigned_64 := 256 * 4096;
+   GRANT_SLOT_SIZE   : constant Unsigned_64 := 4096 * 4096;
 
    --  Pre-allocated ring buffer addresses (set at startup via sbrk)
    type RingBufAddrs is array (0 .. MAX_STREAMS - 1) of Unsigned_64;

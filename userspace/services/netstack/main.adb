@@ -45,7 +45,7 @@ procedure main is
 
    --  Grant region mapping (must match kernel process.ads)
    GRANT_REGION_BASE : constant Integer_Address := 16#0000_4000_0000_0000#;
-   GRANT_SLOT_SIZE   : constant Integer_Address := 256 * 4096;
+   GRANT_SLOT_SIZE   : constant Integer_Address := 4096 * 4096;
 
    --  Multi-interface support
    MAX_INTERFACES : constant := 4;

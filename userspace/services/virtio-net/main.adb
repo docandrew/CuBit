@@ -53,7 +53,7 @@ procedure main is
 
    --  Grant region constants (must match kernel process.ads)
    GRANT_REGION_BASE : constant Integer_Address := 16#0000_4000_0000_0000#;
-   GRANT_SLOT_SIZE   : constant Integer_Address := 256 * 4096;
+   GRANT_SLOT_SIZE   : constant Integer_Address := 4096 * 4096;
 
    --  Cap slot for netstack endpoint (granted by kernel modules.adb)
    CAP_SLOT_NETSTACK : constant CapabilitySlot := 7;

@@ -41,14 +41,15 @@ static const unsigned char __cubit_id[]
  *   slot 12 - CAP_ENDPOINT to procmgr (DRIVER_PROCMGR = 4)
  *   slot 11 - CAP_ENDPOINT to netstack (DRIVER_NETSTACK = 3)
  *   slot 20 - CAP_ENDPOINT to config (DRIVER_CONFIG = 11)
+ *   slot 22 - CAP_ENDPOINT to display (DRIVER_DISPLAY = 16)
  *---------------------------------------------------------------------------*/
 
 static const unsigned char __cubit_manifest[]
     __attribute__((section(".cubit.caps"), used)) = {
-    /* Header: magic "CBIT" LE, version 1, count 5 */
+    /* Header: magic "CBIT" LE, version 1, count 6 */
     0x54, 0x49, 0x42, 0x43,     /* magic */
     0x01, 0x00,                 /* version */
-    0x05, 0x00,                 /* count */
+    0x06, 0x00,                 /* count */
 
     /* Entry 0: REQ_FRAMEBUFFER, RW, slot 4 */
     0x01, 0x03, 0x04, 0x00,     /* type, rights, slot, reserved */
@@ -73,5 +74,10 @@ static const unsigned char __cubit_manifest[]
     /* Entry 4: REQ_SERVICE, RW, slot 11, driver_id=3 (DRIVER_NETSTACK) */
     0x02, 0x03, 0x0B, 0x00,     /* type, rights, slot, reserved */
     0x03, 0x00, 0x00, 0x00,     /* param0 = DRIVER_NETSTACK */
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  /* param1 */
+
+    /* Entry 5: REQ_SERVICE, RW, slot 22, driver_id=16 (DRIVER_DISPLAY) */
+    0x02, 0x03, 0x16, 0x00,     /* type, rights, slot, reserved */
+    0x10, 0x00, 0x00, 0x00,     /* param0 = DRIVER_DISPLAY */
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00   /* param1 */
 };

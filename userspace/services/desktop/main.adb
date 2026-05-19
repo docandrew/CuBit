@@ -32,13 +32,22 @@ procedure main is
    OP_SURFACE_RESIZE   : constant Unsigned_32 := 16#0813#;
    OP_INPUT_POLL       : constant Unsigned_32 := 16#0821#;
 
+   OP_DISPLAY_GET_INFO      : constant Unsigned_32 := 16#0900#;
+   OP_DISPLAY_ATTACH_BUFFER : constant Unsigned_32 := 16#0901#;
+   OP_DISPLAY_PRESENT_RECT  : constant Unsigned_32 := 16#0902#;
+   OP_DISPLAY_CLEAR         : constant Unsigned_32 := 16#0903#;
+   OP_DISPLAY_GET_STATUS    : constant Unsigned_32 := 16#0904#;
+   OP_DISPLAY_ACQUIRE       : constant Unsigned_32 := 16#0905#;
+   OP_DISPLAY_RELEASE       : constant Unsigned_32 := 16#0906#;
+
    UI_OK              : constant Unsigned_64 := 0;
    UI_ERR_DENIED      : constant Unsigned_64 := 1;
    UI_ERR_BAD_OBJECT  : constant Unsigned_64 := 2;
    UI_ERR_BAD_STATE   : constant Unsigned_64 := 3;
    UI_ERR_UNSUPPORTED : constant Unsigned_64 := 5;
 
-   SURFACE_FLAG_SHELL : constant Unsigned_64 := 1;
+   SURFACE_FLAG_SHELL  : constant Unsigned_64 := 1;
+   SURFACE_FLAG_WINDOW : constant Unsigned_64 := 2;
 
    INPUT_NONE      : constant Unsigned_64 := 0;
    INPUT_KEY_DOWN  : constant Unsigned_64 := 1;
@@ -54,7 +63,32 @@ procedure main is
    fbHeight : Natural := 0;
    fbPitch  : Natural := 0;
    fbBpp    : Natural := 0;
-   fbAddr   : System.Address := System.Null_Address;
+   backBufferAddr : System.Address := System.Null_Address;
+   backBufferGrant : Unsigned_64 := 0;
+
+   --  Prototype compositor shadow framebuffer. All desktop drawing goes here
+   --  first, then a completed frame is copied to the real framebuffer in one
+   --  pass. That avoids exposing intermediate clear/background/window phases
+   --  to the display and is the first step toward real compositor buffering.
+   backBufferReady : Boolean := False;
+   drawingBackBuffer : Boolean := False;
+
+   type Rect is record
+      x : Natural := 0;
+      y : Natural := 0;
+      w : Natural := 0;
+      h : Natural := 0;
+   end record;
+
+   --  Damage clipping for compositor redraws. A full scene redraw with a clip
+   --  rectangle lets existing drawing code repaint correct background/window
+   --  ordering while touching only the region that changed.
+   clipEnabled : Boolean := False;
+   clipRect    : Rect;
+   framePending : Boolean := False;
+   frameDamage  : Rect;
+   frameDueMs   : Unsigned_64 := 0;
+   FRAME_INTERVAL_MS : constant Unsigned_64 := 16;
 
    type Surface is record
       used      : Boolean := False;
@@ -90,6 +124,36 @@ procedure main is
 
    inputEvent : PendingInput;
 
+   cursorX : Natural := 80;
+   cursorY : Natural := 80;
+   lastButtons : Unsigned_64 := 0;
+
+   DRAG_NONE        : constant Natural := 0;
+   DRAG_MOVE        : constant Natural := 1;
+   DRAG_RESIZE_E    : constant Natural := 2;
+   DRAG_RESIZE_S    : constant Natural := 3;
+   DRAG_RESIZE_SE   : constant Natural := 4;
+   dragMode         : Natural := DRAG_NONE;
+   dragSurfaceId    : Unsigned_64 := 0;
+   dragOffsetX      : Natural := 0;
+   dragOffsetY      : Natural := 0;
+   dragPreviewValid : Boolean := False;
+   dragPreviewRect  : Rect;
+
+   TITLE_HEIGHT : constant Natural := 24;
+   BORDER_SIZE  : constant Natural := 6;
+   CURSOR_W     : constant Natural := 12;
+   CURSOR_H     : constant Natural := 18;
+   CURSOR_PIXELS : constant Natural := CURSOR_W * CURSOR_H;
+   MIN_WIN_W    : constant Natural := 120;
+   MIN_WIN_H    : constant Natural := 80;
+
+   type CursorSaveBuffer is array (Natural range 0 .. CURSOR_PIXELS - 1)
+      of Unsigned_32;
+   cursorSave      : CursorSaveBuffer := (others => 0);
+   cursorSaveValid : Boolean := False;
+   cursorSaveRect  : Rect;
+
    C_BG     : constant Unsigned_32 := 16#0013_1518#;
    C_PANEL  : constant Unsigned_32 := 16#0022_272D#;
    C_TEXT   : constant Unsigned_32 := 16#00E8_ECEF#;
@@ -102,23 +166,396 @@ procedure main is
    C_BAR    : constant Unsigned_32 := 16#00C0_C0C0#;
    C_DARK   : constant Unsigned_32 := 16#0080_8080#;
    C_BLUE   : constant Unsigned_32 := 16#0000_0080#;
+   C_WIN    : constant Unsigned_32 := 16#00DF_DFDB#;
+
+   statsStartMs      : Unsigned_64 := 0;
+   statsEvents       : Unsigned_64 := 0;
+   statsMouseEvents  : Unsigned_64 := 0;
+   statsRequests     : Unsigned_64 := 0;
+   statsFrames       : Unsigned_64 := 0;
+   statsFullFrames   : Unsigned_64 := 0;
+   statsDrawMs       : Unsigned_64 := 0;
+   statsPresentOps   : Unsigned_64 := 0;
+   statsPresentMs    : Unsigned_64 := 0;
+   statsDamagePixels : Unsigned_64 := 0;
+
+   procedure printDec (val : Unsigned_64) is
+      buf : String (1 .. 20);
+      pos : Natural := buf'Last;
+      v   : Unsigned_64 := val;
+   begin
+      if v = 0 then
+         debugPrint ("0");
+         return;
+      end if;
+
+      while v > 0 loop
+         buf (pos) := Character'Val (Character'Pos ('0') +
+                                      Natural (v mod 10));
+         v := v / 10;
+         pos := pos - 1;
+      end loop;
+
+      debugPrint (buf (pos + 1 .. buf'Last));
+   end printDec;
+
+   procedure maybePrintStats is
+      now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+   begin
+      if now = Unsigned_64'Last then
+         return;
+      end if;
+
+      if statsStartMs = 0 then
+         statsStartMs := now;
+         return;
+      end if;
+
+      if now < statsStartMs or else now - statsStartMs < 1000 then
+         return;
+      end if;
+
+      if statsFrames > 0 or else statsEvents > 0 then
+         debugPrint ("desktop: stats ev=");
+         printDec (statsEvents);
+         debugPrint (" mouse=");
+         printDec (statsMouseEvents);
+         debugPrint (" req=");
+         printDec (statsRequests);
+         debugPrint (" frames=");
+         printDec (statsFrames);
+         debugPrint (" full=");
+         printDec (statsFullFrames);
+         debugPrint (" draw_ms=");
+         printDec (statsDrawMs);
+         debugPrint (" submit=");
+         printDec (statsPresentOps);
+         debugPrint (" submit_ms=");
+         printDec (statsPresentMs);
+         debugPrint (" px=");
+         printDec (statsDamagePixels);
+         debugPrint ("" & LF);
+      end if;
+
+      statsStartMs := now;
+      statsEvents := 0;
+      statsMouseEvents := 0;
+      statsRequests := 0;
+      statsFrames := 0;
+      statsFullFrames := 0;
+      statsDrawMs := 0;
+      statsPresentOps := 0;
+      statsPresentMs := 0;
+      statsDamagePixels := 0;
+   end maybePrintStats;
+
+   function nowMs return Unsigned_64 is
+   begin
+      return syscall (SYSCALL_GETTIME);
+   end nowMs;
 
    procedure putPixel (x, y : Natural; color : Unsigned_32) is
       offset : constant Storage_Offset :=
          Storage_Offset (y * fbPitch + x * 4);
-      pixel : Unsigned_32 with Import, Address => fbAddr + offset;
    begin
       if x < fbWidth and then y < fbHeight then
-         pixel := color;
+         if clipEnabled and then
+            (x < clipRect.x or else y < clipRect.y or else
+             x >= clipRect.x + clipRect.w or else
+             y >= clipRect.y + clipRect.h)
+         then
+            return;
+         end if;
+
+         if drawingBackBuffer then
+            declare
+               pixel : Unsigned_32 with
+                  Import, Address => backBufferAddr + offset;
+            begin
+               pixel := color;
+            end;
+         elsif backBufferAddr /= System.Null_Address then
+            declare
+               pixel : Unsigned_32 with
+                  Import, Address => backBufferAddr + offset;
+            begin
+               pixel := color;
+            end;
+         else
+            --  No display buffer is attached yet. This should only happen if
+            --  desktop.svc was started before display.svc or grant setup
+            --  failed; keep the compositor alive so bring-up remains debuggable.
+            null;
+         end if;
       end if;
    end putPixel;
 
+   function readBackPixel (x, y : Natural) return Unsigned_32 is
+      offset : constant Storage_Offset :=
+         Storage_Offset (y * fbPitch + x * 4);
+   begin
+      if backBufferAddr = System.Null_Address or else
+         x >= fbWidth or else y >= fbHeight
+      then
+         return 0;
+      end if;
+
+      declare
+         pixel : Unsigned_32 with
+            Import, Address => backBufferAddr + offset;
+      begin
+         return pixel;
+      end;
+   end readBackPixel;
+
+   procedure writeBackPixel (x, y : Natural; color : Unsigned_32) is
+      offset : constant Storage_Offset :=
+         Storage_Offset (y * fbPitch + x * 4);
+   begin
+      if backBufferAddr = System.Null_Address or else
+         x >= fbWidth or else y >= fbHeight
+      then
+         return;
+      end if;
+
+      declare
+         pixel : Unsigned_32 with
+            Import, Address => backBufferAddr + offset;
+      begin
+         pixel := color;
+      end;
+   end writeBackPixel;
+
+   function Cursor_Core (xx, yy : Integer) return Boolean is
+   begin
+      if xx < 0 or else yy < 0 or else
+         xx >= Integer (CURSOR_W) or else yy >= Integer (CURSOR_H)
+      then
+         return False;
+      end if;
+
+      --  Keep the cursor intentionally chunky while the compositor is still
+      --  using software damage tracking. A one-pixel cursor is easy to lose
+      --  on light UI chrome and makes partial-present bugs hard to see.
+      return
+         (yy >= 1 and then yy < 15 and then
+          xx >= 1 and then xx <= yy / 2 + 1) or else
+         (yy >= 10 and then yy < 18 and then
+          xx >= 4 and then xx <= 6);
+   end Cursor_Core;
+
+   function Cursor_Near_Core (xx, yy : Integer) return Boolean is
+   begin
+      for oy in -1 .. 1 loop
+         for ox in -1 .. 1 loop
+            if Cursor_Core (xx + ox, yy + oy) then
+               return True;
+            end if;
+         end loop;
+      end loop;
+
+      return False;
+   end Cursor_Near_Core;
+
+   function isEmpty (r : Rect) return Boolean is
+   begin
+      return r.w = 0 or else r.h = 0;
+   end isEmpty;
+
+   function clampRect (r : Rect) return Rect is
+      x2 : Natural := r.x + r.w;
+      y2 : Natural := r.y + r.h;
+   begin
+      if r.w = 0 or else r.h = 0 or else
+         r.x >= fbWidth or else r.y >= fbHeight
+      then
+         return (others => 0);
+      end if;
+
+      if x2 > fbWidth then
+         x2 := fbWidth;
+      end if;
+      if y2 > fbHeight then
+         y2 := fbHeight;
+      end if;
+
+      return (x => r.x, y => r.y, w => x2 - r.x, h => y2 - r.y);
+   end clampRect;
+
+   function cursorRect return Rect is
+   begin
+      return clampRect ((x => cursorX, y => cursorY,
+                         w => CURSOR_W, h => CURSOR_H));
+   end cursorRect;
+
+   function unionRect (a, b : Rect) return Rect is
+      ax2 : constant Natural := a.x + a.w;
+      ay2 : constant Natural := a.y + a.h;
+      bx2 : constant Natural := b.x + b.w;
+      by2 : constant Natural := b.y + b.h;
+      x1  : Natural;
+      y1  : Natural;
+      x2  : Natural;
+      y2  : Natural;
+   begin
+      if isEmpty (a) then
+         return b;
+      elsif isEmpty (b) then
+         return a;
+      end if;
+
+      x1 := Natural'Min (a.x, b.x);
+      y1 := Natural'Min (a.y, b.y);
+      x2 := Natural'Max (ax2, bx2);
+      y2 := Natural'Max (ay2, by2);
+      return (x => x1, y => y1, w => x2 - x1, h => y2 - y1);
+   end unionRect;
+
+   function inflateRect (r : Rect; amount : Natural) return Rect is
+      x1 : Natural := r.x;
+      y1 : Natural := r.y;
+      x2 : Natural := r.x + r.w;
+      y2 : Natural := r.y + r.h;
+   begin
+      if isEmpty (r) then
+         return r;
+      end if;
+
+      if x1 > amount then
+         x1 := x1 - amount;
+      else
+         x1 := 0;
+      end if;
+
+      if y1 > amount then
+         y1 := y1 - amount;
+      else
+         y1 := 0;
+      end if;
+
+      x2 := Natural'Min (fbWidth, x2 + amount);
+      y2 := Natural'Min (fbHeight, y2 + amount);
+
+      return (x => x1, y => y1, w => x2 - x1, h => y2 - y1);
+   end inflateRect;
+
+   function surfaceRect (s : Surface) return Rect is
+   begin
+      return clampRect ((x => s.x, y => s.y, w => s.w, h => s.h));
+   end surfaceRect;
+
+   function signed12 (x : Unsigned_64) return Integer is
+      v : constant Unsigned_64 := x and 16#FFF#;
+   begin
+      if (v and 16#800#) /= 0 then
+         return Integer (v) - 4096;
+      else
+         return Integer (v);
+      end if;
+   end signed12;
+
+   function hitSurface (x, y : Natural) return Integer is
+   begin
+      for i in reverse surfaces'Range loop
+         if surfaces (i).used and then
+            (surfaces (i).flags and SURFACE_FLAG_WINDOW) /= 0 and then
+            x >= surfaces (i).x and then y >= surfaces (i).y and then
+            x < surfaces (i).x + surfaces (i).w and then
+            y < surfaces (i).y + surfaces (i).h
+         then
+            return Integer (i);
+         end if;
+      end loop;
+
+      return -1;
+   end hitSurface;
+
+   function hitMode (s : Surface; x, y : Natural) return Natural is
+      onRight  : constant Boolean :=
+         x + BORDER_SIZE >= s.x + s.w;
+      onBottom : constant Boolean :=
+         y + BORDER_SIZE >= s.y + s.h;
+      inTitle  : constant Boolean :=
+         y >= s.y and then y < s.y + TITLE_HEIGHT;
+   begin
+      if onRight and then onBottom then
+         return DRAG_RESIZE_SE;
+      elsif onRight then
+         return DRAG_RESIZE_E;
+      elsif onBottom then
+         return DRAG_RESIZE_S;
+      elsif inTitle then
+         return DRAG_MOVE;
+      else
+         return DRAG_NONE;
+      end if;
+   end hitMode;
+
+   procedure flushBackBufferRect (dirty : Rect) is
+      r : constant Rect := clampRect (dirty);
+      msg : Message :=
+        (tag      => (label  => OP_DISPLAY_PRESENT_RECT,
+                      length => 4,
+                      flags  => 0,
+                      badge  => 0),
+         capBadge => 0,
+         words    => (Unsigned_64 (r.x),
+                      Unsigned_64 (r.y),
+                      Unsigned_64 (r.w),
+                      Unsigned_64 (r.h)));
+      t0 : Unsigned_64;
+      t1 : Unsigned_64;
+   begin
+      if not backBufferReady or else fbBpp /= 32 then
+         return;
+      end if;
+      if isEmpty (r) then
+         return;
+      end if;
+
+      --  Present is delegated to display.svc, the sole scanout owner. Keeping
+      --  display timing in one service gives us a clean place for vblank waits,
+      --  page flips, and frame-deadline scheduling.
+      --
+      --  This service currently has one mutable backbuffer, so use the
+      --  synchronous present form. Async present needs either buffer rotation
+      --  or a returned fence/completion before we can safely draw the next
+      --  frame without smearing cursor/window damage.
+      t0 := syscall (SYSCALL_GETTIME);
+      msg.tag := capCall (CAP_SLOT_DISPLAY, msg);
+      t1 := syscall (SYSCALL_GETTIME);
+
+      statsPresentOps := statsPresentOps + 1;
+      if t0 /= Unsigned_64'Last and then t1 /= Unsigned_64'Last and then
+         t1 >= t0
+      then
+         statsPresentMs := statsPresentMs + (t1 - t0);
+      end if;
+   end flushBackBufferRect;
+
    procedure fillRect (x, y, w, h : Natural; color : Unsigned_32) is
+      minX : Natural := x;
+      minY : Natural := y;
       maxX : Natural := x + w;
       maxY : Natural := y + h;
    begin
       if w = 0 or else h = 0 or else x >= fbWidth or else y >= fbHeight then
          return;
+      end if;
+
+      if clipEnabled then
+         if minX < clipRect.x then
+            minX := clipRect.x;
+         end if;
+         if minY < clipRect.y then
+            minY := clipRect.y;
+         end if;
+         if maxX > clipRect.x + clipRect.w then
+            maxX := clipRect.x + clipRect.w;
+         end if;
+         if maxY > clipRect.y + clipRect.h then
+            maxY := clipRect.y + clipRect.h;
+         end if;
       end if;
 
       if maxX > fbWidth then
@@ -127,11 +564,33 @@ procedure main is
       if maxY > fbHeight then
          maxY := fbHeight;
       end if;
+      if minX >= maxX or else minY >= maxY then
+         return;
+      end if;
 
-      for yy in y .. maxY - 1 loop
-         for xx in x .. maxX - 1 loop
-            putPixel (xx, yy, color);
+      if backBufferAddr = System.Null_Address then
+         return;
+      end if;
+
+      --  Rect fills dominate compositor redraws. Do clipping and target
+      --  selection once, then write the clipped rows directly instead of
+      --  paying putPixel's bounds/clip checks for every pixel.
+      for yy in minY .. maxY - 1 loop
+         declare
+            rowOffset : constant Storage_Offset :=
+               Storage_Offset (yy * fbPitch + minX * 4);
+         begin
+         for xx in minX .. maxX - 1 loop
+            declare
+               pixel : Unsigned_32 with
+                  Import, Address =>
+                     backBufferAddr + rowOffset +
+                     Storage_Offset ((xx - minX) * 4);
+            begin
+               pixel := color;
+            end;
          end loop;
+         end;
       end loop;
    end fillRect;
 
@@ -188,6 +647,69 @@ procedure main is
       end loop;
    end drawText;
 
+   procedure restoreCursorOverlay is
+   begin
+      if not cursorSaveValid then
+         return;
+      end if;
+
+      --  The cursor is an overlay, not part of the scene. Restore the saved
+      --  pixels before repainting scene damage or moving the cursor, so window
+      --  redraws never have to know where the pointer was.
+      for yy in 0 .. cursorSaveRect.h - 1 loop
+         for xx in 0 .. cursorSaveRect.w - 1 loop
+            writeBackPixel
+              (cursorSaveRect.x + xx,
+               cursorSaveRect.y + yy,
+               cursorSave (yy * CURSOR_W + xx));
+         end loop;
+      end loop;
+
+      cursorSaveValid := False;
+   end restoreCursorOverlay;
+
+   procedure drawCursorOverlay is
+      r : constant Rect := cursorRect;
+   begin
+      if isEmpty (r) then
+         return;
+      end if;
+
+      --  Save the clean scene pixels under the cursor before drawing it. This
+      --  is the software version of a hardware cursor plane: motion restores a
+      --  tiny old rectangle and draws a tiny new one instead of repainting the
+      --  full compositor scene.
+      for yy in 0 .. r.h - 1 loop
+         for xx in 0 .. r.w - 1 loop
+            cursorSave (yy * CURSOR_W + xx) :=
+               readBackPixel (r.x + xx, r.y + yy);
+         end loop;
+      end loop;
+
+      cursorSaveRect := r;
+      cursorSaveValid := True;
+
+      for yy in 0 .. r.h - 1 loop
+         for xx in 0 .. r.w - 1 loop
+            if Cursor_Core (xx, yy) then
+               writeBackPixel (r.x + xx, r.y + yy, C_WHITE);
+            elsif Cursor_Near_Core (xx, yy) then
+               writeBackPixel (r.x + xx, r.y + yy, C_BLACK);
+            end if;
+         end loop;
+      end loop;
+   end drawCursorOverlay;
+
+   procedure moveCursorOverlay (oldCursor : Rect) is
+      newCursor : constant Rect := cursorRect;
+      damage    : Rect := unionRect (oldCursor, newCursor);
+   begin
+      restoreCursorOverlay;
+      drawCursorOverlay;
+      damage := inflateRect (damage, 1);
+      flushBackBufferRect (damage);
+   end moveCursorOverlay;
+
    procedure drawSplash is
       panelW : constant Natural := 560;
       panelH : constant Natural := 170;
@@ -216,11 +738,65 @@ procedure main is
                 C_TEXT, C_PANEL);
    end drawSplash;
 
+   procedure drawWindow (s : Surface) is
+      titleH : constant Natural := 24;
+      minW   : constant Natural := 80;
+      minH   : constant Natural := 60;
+      x      : Natural := s.x;
+      y      : Natural := s.y;
+      w      : Natural := s.w;
+      h      : Natural := s.h;
+   begin
+      if w < minW then
+         w := minW;
+      end if;
+      if h < minH then
+         h := minH;
+      end if;
+
+      if x >= fbWidth or else y >= fbHeight then
+         return;
+      end if;
+
+      fillRect (x, y, w, h, C_WIN);
+      strokeRect (x, y, w, h, C_WHITE, C_DARK);
+      fillRect (x + 3, y + 3, w - 6, titleH, C_BLUE);
+      drawText (x + 10, y + 7, "Demo Window", C_WHITE, C_BLUE);
+
+      --  Close box placeholder. It is drawn by the compositor because close,
+      --  move, resize, and focus are all authority-sensitive window mechanics.
+      fillRect (x + w - 23, y + 6, 14, 14, C_BAR);
+      strokeRect (x + w - 23, y + 6, 14, 14, C_WHITE, C_DARK);
+      drawText (x + w - 20, y + 5, "x", C_BLACK, C_BAR);
+
+      drawText (x + 18, y + 44, "This is a real child surface.",
+                C_BLACK, C_WIN);
+      drawText (x + 18, y + 70, "Drag title bar to move.",
+                C_BLACK, C_WIN);
+      drawText (x + 18, y + 96, "Drag edges to resize.",
+                C_BLACK, C_WIN);
+   end drawWindow;
+
+   procedure drawDragOutline is
+      r : constant Rect := clampRect (dragPreviewRect);
+   begin
+      if not dragPreviewValid or else isEmpty (r) then
+         return;
+      end if;
+
+      --  Classic low-cost shell behavior: during move/resize we draw a
+      --  compositor-owned preview rectangle and commit the real surface only
+      --  when the button is released. That keeps interactive drag latency from
+      --  depending on repainting and copying the entire window every tick.
+      strokeRect (r.x, r.y, r.w, r.h, C_WHITE, C_BLACK);
+      if r.w > 4 and then r.h > 4 then
+         strokeRect (r.x + 2, r.y + 2, r.w - 4, r.h - 4, C_BLACK, C_WHITE);
+      end if;
+   end drawDragOutline;
+
    procedure drawDesktopShell is
       taskbarH : constant Natural := 36;
       barY     : Natural := 0;
-      shellW   : Natural := fbWidth;
-      shellH   : Natural := fbHeight;
       startW   : constant Natural := 88;
       panelW   : constant Natural := 310;
       panelH   : constant Natural := 150;
@@ -231,43 +807,25 @@ procedure main is
          return;
       end if;
 
-      for i in surfaces'Range loop
-         if surfaces (i).used and then
-            (surfaces (i).flags and SURFACE_FLAG_SHELL) /= 0
-         then
-            shellW := surfaces (i).w;
-            shellH := surfaces (i).h;
-            exit;
-         end if;
-      end loop;
-
-      if shellW > fbWidth then
-         shellW := fbWidth;
-      end if;
-      if shellH > fbHeight then
-         shellH := fbHeight;
-      end if;
-
-      if shellH > taskbarH then
-         barY := shellH - taskbarH;
+      if fbHeight > taskbarH then
+         barY := fbHeight - taskbarH;
       end if;
 
       --  First shell renderer: deliberately Win95-simple. The compositor owns
       --  pixels for now; the shell owns policy and talks through the protocol.
       --  Shared client buffers can replace this drawing path later without
       --  changing the surface/session shape.
-      fillRect (0, 0, fbWidth, fbHeight, C_BG);
-      fillRect (0, 0, shellW, shellH, C_DESK);
-      fillRect (0, barY, shellW, taskbarH, C_BAR);
-      strokeRect (0, barY, shellW, taskbarH, C_WHITE, C_DARK);
+      fillRect (0, 0, fbWidth, fbHeight, C_DESK);
+      fillRect (0, barY, fbWidth, taskbarH, C_BAR);
+      strokeRect (0, barY, fbWidth, taskbarH, C_WHITE, C_DARK);
 
       fillRect (6, barY + 6, startW, 24, C_BAR);
       strokeRect (6, barY + 6, startW, 24, C_WHITE, C_DARK);
       drawText (20, barY + 10, "Start", C_BLACK, C_BAR);
 
-      if shellW > panelW + 48 and then shellH > panelH + taskbarH + 48 then
-         px := (shellW - panelW) / 2;
-         py := (shellH - taskbarH - panelH) / 2;
+      if fbWidth > panelW + 48 and then fbHeight > panelH + taskbarH + 48 then
+         px := (fbWidth - panelW) / 2;
+         py := (fbHeight - taskbarH - panelH) / 2;
       end if;
 
       fillRect (px, py, panelW, panelH, C_BAR);
@@ -276,22 +834,26 @@ procedure main is
       drawText (px + 10, py + 7, "CuBit Desktop", C_WHITE, C_BLUE);
       drawText (px + 18, py + 44, "desktop-shell.app connected",
                 C_BLACK, C_BAR);
-      drawText (px + 18, py + 70, "surface protocol: session + resize",
+      drawText (px + 18, py + 70, "surface protocol: child window",
                 C_BLACK, C_BAR);
-      drawText (px + 18, py + 96, "Q or Esc exits desktop.svc",
+      drawText (px + 18, py + 96, "Q or Esc exits desktop shell",
                 C_BLACK, C_BAR);
 
       drawText (16, 18, "Computer", C_WHITE, C_DESK);
       drawText (16, 48, "Security", C_WHITE, C_DESK);
+
+      for i in surfaces'Range loop
+         if surfaces (i).used and then
+            (surfaces (i).flags and SURFACE_FLAG_WINDOW) /= 0
+         then
+            drawWindow (surfaces (i));
+         end if;
+      end loop;
    end drawDesktopShell;
 
-   procedure redraw is
+   procedure drawCurrentScene is
       shellVisible : Boolean := False;
    begin
-      if fbBpp /= 32 then
-         return;
-      end if;
-
       for i in surfaces'Range loop
          if surfaces (i).used and then
             (surfaces (i).flags and SURFACE_FLAG_SHELL) /= 0
@@ -305,7 +867,136 @@ procedure main is
       else
          drawSplash;
       end if;
+      drawDragOutline;
+   end drawCurrentScene;
+
+   procedure redraw is
+   begin
+      if fbBpp /= 32 then
+         return;
+      end if;
+
+      restoreCursorOverlay;
+      clipEnabled := False;
+      drawingBackBuffer := backBufferReady;
+
+      drawCurrentScene;
+      drawCursorOverlay;
+
+      if drawingBackBuffer then
+         drawingBackBuffer := False;
+         flushBackBufferRect ((x => 0, y => 0, w => fbWidth, h => fbHeight));
+      end if;
    end redraw;
+
+   procedure redrawRect (dirty : Rect) is
+      r : constant Rect := clampRect (dirty);
+   begin
+      if fbBpp /= 32 or else isEmpty (r) then
+         return;
+      end if;
+
+      restoreCursorOverlay;
+      clipRect := r;
+      clipEnabled := True;
+      drawingBackBuffer := backBufferReady;
+
+      drawCurrentScene;
+      drawCursorOverlay;
+
+      if drawingBackBuffer then
+         drawingBackBuffer := False;
+         flushBackBufferRect (unionRect (r, cursorRect));
+      end if;
+
+      clipEnabled := False;
+   end redrawRect;
+
+   procedure scheduleRedraw is
+      now : constant Unsigned_64 := nowMs;
+   begin
+      framePending := True;
+      frameDamage := (x => 0, y => 0, w => fbWidth, h => fbHeight);
+      if now /= Unsigned_64'Last then
+         frameDueMs := now;
+      else
+         frameDueMs := 0;
+      end if;
+   end scheduleRedraw;
+
+   procedure scheduleRedrawRect (dirty : Rect; defer : Boolean := False) is
+      r : constant Rect := clampRect (dirty);
+      now : constant Unsigned_64 := nowMs;
+      due : Unsigned_64 := 0;
+   begin
+      if isEmpty (r) then
+         return;
+      end if;
+
+      if now /= Unsigned_64'Last then
+         if defer then
+            due := now + FRAME_INTERVAL_MS;
+         else
+            due := now;
+         end if;
+      end if;
+
+      if framePending then
+         frameDamage := unionRect (frameDamage, r);
+         --  Non-deferred damage, such as surface creation/resize, should not
+         --  wait behind a mouse coalescing deadline.
+         if not defer then
+            frameDueMs := due;
+         end if;
+      else
+         frameDamage := r;
+         framePending := True;
+         frameDueMs := due;
+      end if;
+   end scheduleRedrawRect;
+
+   procedure flushFrame is
+      damage : constant Rect := frameDamage;
+      now : constant Unsigned_64 := nowMs;
+      t0 : Unsigned_64;
+      t1 : Unsigned_64;
+      full : constant Boolean :=
+         damage.x = 0 and then damage.y = 0 and then
+         damage.w = fbWidth and then damage.h = fbHeight;
+   begin
+      if not framePending then
+         return;
+      end if;
+      if now /= Unsigned_64'Last and then frameDueMs /= 0 and then
+         now < frameDueMs
+      then
+         return;
+      end if;
+
+      framePending := False;
+      frameDamage := (others => 0);
+      frameDueMs := 0;
+
+      t0 := syscall (SYSCALL_GETTIME);
+      if full then
+         redraw;
+      else
+         redrawRect (damage);
+      end if;
+      t1 := syscall (SYSCALL_GETTIME);
+
+      statsFrames := statsFrames + 1;
+      if full then
+         statsFullFrames := statsFullFrames + 1;
+      end if;
+      statsDamagePixels :=
+         statsDamagePixels + Unsigned_64 (damage.w) * Unsigned_64 (damage.h);
+      if t0 /= Unsigned_64'Last and then t1 /= Unsigned_64'Last and then
+         t1 >= t0
+      then
+         statsDrawMs := statsDrawMs + (t1 - t0);
+      end if;
+   end flushFrame;
 
    function findSurface (id : Unsigned_64) return Integer is
    begin
@@ -376,10 +1067,21 @@ procedure main is
       inputOwned := True;
    end claimInput;
 
+   function callDisplay
+      (label : Unsigned_32;
+       w0    : Unsigned_64 := 0;
+       w1    : Unsigned_64 := 0;
+       w2    : Unsigned_64 := 0;
+       w3    : Unsigned_64 := 0) return Message;
+
+   procedure setupDisplayBuffer (ok : out Boolean);
+
    procedure handleRequest (from : ProcessID; request : Message) is
       replyMsg : Message := NULL_MESSAGE;
       ignore   : Unsigned_64;
    begin
+      statsRequests := statsRequests + 1;
+
       case request.tag.label is
          when OP_DESKTOP_HELLO =>
             replyMsg.tag := (label  => OP_DESKTOP_HELLO,
@@ -406,7 +1108,14 @@ procedure main is
                slot : Integer := -1;
                reqW : Natural := Natural (request.words (0));
                reqH : Natural := Natural (request.words (1));
+               surfX : Natural := 0;
+               surfY : Natural := 0;
+               displayReady : Boolean := True;
             begin
+               if not backBufferReady then
+                  setupDisplayBuffer (displayReady);
+               end if;
+
                for i in surfaces'Range loop
                   if not surfaces (i).used then
                      slot := Integer (i);
@@ -414,7 +1123,13 @@ procedure main is
                   end if;
                end loop;
 
-               if slot < 0 then
+               if not displayReady then
+                  replyMsg.tag := (label  => OP_SURFACE_CREATE,
+                                   length => 1,
+                                   flags  => 0,
+                                   badge  => 0);
+                  replyMsg.words (0) := UI_ERR_BAD_STATE;
+               elsif slot < 0 then
                   replyMsg.tag := (label  => OP_SURFACE_CREATE,
                                    length => 1,
                                    flags  => 0,
@@ -428,12 +1143,29 @@ procedure main is
                      reqH := fbHeight;
                   end if;
 
+                  if (request.words (2) and SURFACE_FLAG_WINDOW) /= 0 then
+                     surfX := 80 + Natural (slot) * 18;
+                     surfY := 64 + Natural (slot) * 18;
+                     if reqW = fbWidth or else reqW < 220 then
+                        reqW := 360;
+                     end if;
+                     if reqH = fbHeight or else reqH < 140 then
+                        reqH := 220;
+                     end if;
+                     if surfX + reqW > fbWidth then
+                        reqW := fbWidth - surfX;
+                     end if;
+                     if surfY + reqH > fbHeight then
+                        reqH := fbHeight - surfY;
+                     end if;
+                  end if;
+
                   surfaces (SurfaceIndex (slot)) :=
                     (used   => True,
                      owner  => from,
                      id     => nextSurfaceId,
-                     x      => 0,
-                     y      => 0,
+                     x      => surfX,
+                     y      => surfY,
                      w      => reqW,
                      h      => reqH,
                      flags  => request.words (2),
@@ -455,7 +1187,7 @@ procedure main is
                                   Unsigned_64 (reqH));
                   nextSurfaceId := nextSurfaceId + 1;
                   claimInput;
-                  redraw;
+                  scheduleRedraw;
                end if;
             end;
 
@@ -464,6 +1196,8 @@ procedure main is
                idx  : constant Integer := findSurface (request.words (0));
                newW : Natural := Natural (request.words (1));
                newH : Natural := Natural (request.words (2));
+               oldBounds : Rect;
+               newBounds : Rect;
             begin
                if idx < 0 then
                   replyMsg.tag := (label  => OP_SURFACE_RESIZE,
@@ -484,12 +1218,20 @@ procedure main is
                   if newH = 0 or else newH > fbHeight then
                      newH := fbHeight;
                   end if;
+                  if surfaces (SurfaceIndex (idx)).x + newW > fbWidth then
+                     newW := fbWidth - surfaces (SurfaceIndex (idx)).x;
+                  end if;
+                  if surfaces (SurfaceIndex (idx)).y + newH > fbHeight then
+                     newH := fbHeight - surfaces (SurfaceIndex (idx)).y;
+                  end if;
 
+                  oldBounds := surfaceRect (surfaces (SurfaceIndex (idx)));
                   surfaces (SurfaceIndex (idx)).w := newW;
                   surfaces (SurfaceIndex (idx)).h := newH;
                   surfaces (SurfaceIndex (idx)).serial :=
                      surfaces (SurfaceIndex (idx)).serial + 1;
                   surfaces (SurfaceIndex (idx)).dirty := True;
+                  newBounds := surfaceRect (surfaces (SurfaceIndex (idx)));
 
                   replyMsg.tag := (label  => OP_SURFACE_RESIZE,
                                    length => 4,
@@ -503,7 +1245,8 @@ procedure main is
                   queueConfigure (request.words (0),
                                   Unsigned_64 (newW),
                                   Unsigned_64 (newH));
-                  redraw;
+                  scheduleRedrawRect
+                    (inflateRect (unionRect (oldBounds, newBounds), 4));
                end if;
             end;
 
@@ -513,7 +1256,20 @@ procedure main is
                              flags  => 0,
                              badge  => 0);
             replyMsg.words (0) := UI_OK;
-            redraw;
+            declare
+               idx : constant Integer := findSurface (request.words (0));
+            begin
+               if idx >= 0 and then
+                  (surfaces (SurfaceIndex (idx)).flags and
+                   SURFACE_FLAG_SHELL) = 0
+               then
+                  scheduleRedrawRect
+                    (inflateRect
+                       (surfaceRect (surfaces (SurfaceIndex (idx))), 4));
+               else
+                  scheduleRedraw;
+               end if;
+            end;
 
          when OP_SURFACE_DESTROY =>
             declare
@@ -541,7 +1297,7 @@ procedure main is
                                    flags  => 0,
                                    badge  => 0);
                   replyMsg.words (0) := UI_OK;
-                  redraw;
+                  scheduleRedraw;
                end if;
             end;
 
@@ -578,7 +1334,7 @@ procedure main is
                              flags  => 0,
                              badge  => 0);
             replyMsg.words (0) := UI_OK;
-            redraw;
+            scheduleRedraw;
 
          when others =>
             replyMsg.tag := (label  => request.tag.label,
@@ -598,9 +1354,182 @@ procedure main is
       return (not release) and then (code = 16#01# or else code = 16#10#);
    end shouldExitKey;
 
+   function clampPointerCoord (value, maxValue : Integer) return Natural is
+   begin
+      if value < 0 then
+         return 0;
+      elsif value > maxValue then
+         return Natural (maxValue);
+      else
+         return Natural (value);
+      end if;
+   end clampPointerCoord;
+
+   function clampWindowRect (r : Rect) return Rect is
+      ret : Rect := r;
+   begin
+      if ret.w < MIN_WIN_W then
+         ret.w := MIN_WIN_W;
+      end if;
+      if ret.h < MIN_WIN_H then
+         ret.h := MIN_WIN_H;
+      end if;
+
+      if ret.w > fbWidth then
+         ret.w := fbWidth;
+      end if;
+      if ret.h > fbHeight then
+         ret.h := fbHeight;
+      end if;
+
+      if ret.x + ret.w > fbWidth then
+         ret.x := fbWidth - ret.w;
+      end if;
+      if ret.y + ret.h > fbHeight then
+         ret.y := fbHeight - ret.h;
+      end if;
+
+      return ret;
+   end clampWindowRect;
+
+   function previewRectFromPointer (s : Surface) return Rect is
+      r : Rect := dragPreviewRect;
+   begin
+      case dragMode is
+         when DRAG_MOVE =>
+            if cursorX > dragOffsetX then
+               r.x := cursorX - dragOffsetX;
+            else
+               r.x := 0;
+            end if;
+            if cursorY > dragOffsetY then
+               r.y := cursorY - dragOffsetY;
+            else
+               r.y := 0;
+            end if;
+
+         when DRAG_RESIZE_E | DRAG_RESIZE_SE =>
+            if cursorX > s.x + MIN_WIN_W then
+               r.w := cursorX - s.x;
+            else
+               r.w := MIN_WIN_W;
+            end if;
+
+         when others =>
+            null;
+      end case;
+
+      if dragMode = DRAG_RESIZE_S or else dragMode = DRAG_RESIZE_SE then
+         if cursorY > s.y + MIN_WIN_H then
+            r.h := cursorY - s.y;
+         else
+            r.h := MIN_WIN_H;
+         end if;
+      end if;
+
+      return clampWindowRect (r);
+   end previewRectFromPointer;
+
+   procedure handleMouseMotion
+      (buttons : Unsigned_64;
+       dx      : Integer;
+       dy      : Integer)
+   is
+      oldCursor : constant Rect := cursorRect;
+      oldBounds : Rect := (others => 0);
+      newBounds : Rect := (others => 0);
+      damage    : Rect := oldCursor;
+      idx       : Integer;
+      leftDown  : constant Boolean := (buttons and 1) /= 0;
+      leftWasDown : constant Boolean := (lastButtons and 1) /= 0;
+      sceneDamage : constant Boolean := leftDown or else leftWasDown;
+      maxX      : Integer := 0;
+      maxY      : Integer := 0;
+   begin
+      if fbWidth > CURSOR_W then
+         maxX := Integer (fbWidth - CURSOR_W);
+      end if;
+      if fbHeight > CURSOR_H then
+         maxY := Integer (fbHeight - CURSOR_H);
+      end if;
+
+      --  PS/2 reports positive Y as upward motion; screen coordinates grow
+      --  downward.
+      cursorX := clampPointerCoord (Integer (cursorX) + dx, maxX);
+      cursorY := clampPointerCoord (Integer (cursorY) - dy, maxY);
+      damage := unionRect (damage, cursorRect);
+
+      if leftDown and then not leftWasDown then
+         idx := hitSurface (cursorX, cursorY);
+         if idx >= 0 then
+            focusSurface := surfaces (SurfaceIndex (idx)).id;
+            dragMode := hitMode (surfaces (SurfaceIndex (idx)), cursorX, cursorY);
+            dragSurfaceId := focusSurface;
+            dragOffsetX := cursorX - surfaces (SurfaceIndex (idx)).x;
+            dragOffsetY := cursorY - surfaces (SurfaceIndex (idx)).y;
+            dragPreviewRect := surfaceRect (surfaces (SurfaceIndex (idx)));
+            dragPreviewValid := dragMode /= DRAG_NONE;
+            if dragPreviewValid then
+               damage := unionRect (damage, inflateRect (dragPreviewRect, 4));
+            end if;
+         end if;
+      elsif not leftDown and then leftWasDown and then
+            dragMode /= DRAG_NONE and then dragSurfaceId /= 0
+      then
+         idx := findSurface (dragSurfaceId);
+         if idx >= 0 and then dragPreviewValid then
+            oldBounds := surfaceRect (surfaces (SurfaceIndex (idx)));
+            newBounds := clampWindowRect (dragPreviewRect);
+
+            surfaces (SurfaceIndex (idx)).x := newBounds.x;
+            surfaces (SurfaceIndex (idx)).y := newBounds.y;
+            surfaces (SurfaceIndex (idx)).w := newBounds.w;
+            surfaces (SurfaceIndex (idx)).h := newBounds.h;
+            surfaces (SurfaceIndex (idx)).serial :=
+               surfaces (SurfaceIndex (idx)).serial + 1;
+            queueConfigure (surfaces (SurfaceIndex (idx)).id,
+                            Unsigned_64 (newBounds.w),
+                            Unsigned_64 (newBounds.h));
+
+            damage := unionRect (damage,
+                       inflateRect (unionRect (oldBounds, newBounds), 4));
+         end if;
+
+         dragPreviewValid := False;
+         dragMode := DRAG_NONE;
+         dragSurfaceId := 0;
+      elsif not leftDown then
+         dragPreviewValid := False;
+         dragMode := DRAG_NONE;
+         dragSurfaceId := 0;
+      end if;
+
+      if leftDown and then dragMode /= DRAG_NONE and then dragSurfaceId /= 0 then
+         idx := findSurface (dragSurfaceId);
+         if idx >= 0 then
+            oldBounds := dragPreviewRect;
+            dragPreviewRect :=
+               previewRectFromPointer (surfaces (SurfaceIndex (idx)));
+            newBounds := dragPreviewRect;
+            damage := unionRect (damage,
+                       inflateRect (unionRect (oldBounds, newBounds), 4));
+         end if;
+      end if;
+
+      lastButtons := buttons;
+      if sceneDamage or else framePending then
+         scheduleRedrawRect (inflateRect (damage, 2), defer => True);
+      else
+         moveCursorOverlay (oldCursor);
+      end if;
+   end handleMouseMotion;
+
    procedure handleEvent (eventMsg : Message; running : in out Boolean) is
       raw : Unsigned_8;
+      packed : Unsigned_64;
    begin
+      statsEvents := statsEvents + 1;
+
       if eventMsg.tag.label = EVENT_KEYBOARD then
          raw := Unsigned_8 (eventMsg.words (0) and 16#FF#);
 
@@ -615,15 +1544,148 @@ procedure main is
             running := False;
          end if;
       elsif eventMsg.tag.label = EVENT_MOUSE then
-         null;
+         statsMouseEvents := statsMouseEvents + 1;
+         packed := eventMsg.words (0);
+         handleMouseMotion
+           (buttons => packed and 16#FF#,
+            dx      => signed12 (Shift_Right (packed, 8)),
+            dy      => signed12 (Shift_Right (packed, 20)));
       end if;
    end handleEvent;
+
+   function callDisplay
+      (label : Unsigned_32;
+       w0    : Unsigned_64 := 0;
+       w1    : Unsigned_64 := 0;
+       w2    : Unsigned_64 := 0;
+       w3    : Unsigned_64 := 0) return Message
+   is
+      msg : Message :=
+        (tag      => (label => label, length => 4, flags => 0, badge => 0),
+         capBadge => 0,
+         words    => (w0, w1, w2, w3));
+      tag : MessageTag;
+   begin
+      tag := capCall (CAP_SLOT_DISPLAY, msg);
+      msg.tag := tag;
+      return msg;
+   end callDisplay;
+
+   function alignUpPage (addr : Unsigned_64) return Unsigned_64 is
+   begin
+      return (addr + 4095) and not Unsigned_64'(4095);
+   end alignUpPage;
+
+   procedure setupDisplayBuffer (ok : out Boolean) is
+      info : constant Message := callDisplay (OP_DISPLAY_GET_INFO);
+      acquire : Message;
+      bytes : Unsigned_64;
+      pages : Unsigned_64;
+      raw   : Unsigned_64;
+      aligned : Unsigned_64;
+      grantOk : Boolean;
+      attach  : Message;
+      status  : Message;
+   begin
+      ok := False;
+
+      acquire := callDisplay (OP_DISPLAY_ACQUIRE);
+      if acquire.tag.length < 1 or else acquire.words (0) /= 0 then
+         debugPrint ("desktop: display acquire failed" & LF);
+         return;
+      end if;
+
+      fbWidth  := Natural (info.words (0));
+      fbHeight := Natural (info.words (1));
+      fbPitch  := Natural (info.words (2));
+      fbBpp    := Natural (info.words (3));
+
+      if fbWidth = 0 or else fbHeight = 0 or else fbPitch = 0 or else
+         fbBpp /= 32
+      then
+         debugPrint ("desktop: display info unsupported" & LF);
+         status := callDisplay (OP_DISPLAY_RELEASE);
+         return;
+      end if;
+
+      bytes := Unsigned_64 (fbPitch * fbHeight);
+      pages := (bytes + 4095) / 4096;
+      raw := syscall (SYSCALL_SBRK, pages * 4096 + 4096);
+      if raw = Unsigned_64'Last then
+         debugPrint ("desktop: backbuffer alloc failed" & LF);
+         status := callDisplay (OP_DISPLAY_RELEASE);
+         return;
+      end if;
+
+      aligned := alignUpPage (raw);
+      backBufferAddr := To_Address (Integer_Address (aligned));
+      createGrantViaCap
+        (slot      => CAP_SLOT_DISPLAY,
+         localAddr => backBufferAddr,
+         numPages  => Natural (pages),
+         readWrite => True,
+         grantId   => backBufferGrant,
+         success   => grantOk);
+      if not grantOk then
+         debugPrint ("desktop: display grant failed" & LF);
+         status := callDisplay (OP_DISPLAY_RELEASE);
+         return;
+      end if;
+
+      attach := callDisplay
+        (OP_DISPLAY_ATTACH_BUFFER,
+         backBufferGrant,
+         Unsigned_64 (fbWidth),
+         Unsigned_64 (fbHeight),
+         Unsigned_64 (fbPitch));
+      if attach.words (0) /= 0 then
+         debugPrint ("desktop: display attach failed" & LF);
+         status := callDisplay (OP_DISPLAY_RELEASE);
+         return;
+      end if;
+
+      backBufferReady := True;
+      status := callDisplay (OP_DISPLAY_GET_STATUS);
+      if status.tag.length >= 2 then
+         debugPrint ("desktop: display backend=");
+         printDec (status.words (0));
+         debugPrint (" caps=");
+         printDec (status.words (1));
+         debugPrint ("" & LF);
+      end if;
+      ok := True;
+   end setupDisplayBuffer;
+
+   procedure queryDisplayInfo (ok : out Boolean) is
+      info : constant Message := callDisplay (OP_DISPLAY_GET_INFO);
+   begin
+      ok := False;
+      if info.tag.length < 4 then
+         debugPrint ("desktop: display info unsupported" & LF);
+         return;
+      end if;
+
+      fbWidth  := Natural (info.words (0));
+      fbHeight := Natural (info.words (1));
+      fbPitch  := Natural (info.words (2));
+      fbBpp    := Natural (info.words (3));
+
+      if fbWidth = 0 or else fbHeight = 0 or else fbPitch = 0 or else
+         fbBpp /= 32
+      then
+         debugPrint ("desktop: display info unsupported" & LF);
+         return;
+      end if;
+
+      ok := True;
+   end queryDisplayInfo;
 
    ret      : Unsigned_64;
    from     : ProcessID;
    msg      : Message;
    found    : Boolean;
    running  : Boolean := True;
+   displayInfoOk : Boolean := False;
 begin
    debugPrint ("desktop: starting" & LF);
 
@@ -632,42 +1694,86 @@ begin
       debugPrint ("desktop: register failed" & LF);
    end if;
 
-   ret := syscall (SYSCALL_MAPFB);
-   if ret = Unsigned_64'Last then
-      debugPrint ("desktop: MAPFB failed" & LF);
+   --  Do not attach a display buffer yet. During manual bring-up the CLI
+   --  shell needs to remain visible long enough for the user to run
+   --  `spawn desktop-shell.app`; the desktop takes over scanout lazily when
+   --  the first real surface is created.
+   queryDisplayInfo (displayInfoOk);
+   if not displayInfoOk then
+      debugPrint ("desktop: display setup failed" & LF);
       ret := syscall (SYSCALL_EXIT, 1);
       return;
    end if;
-
-   fbAddr   := To_Address (Integer_Address (ret));
-   fbWidth  := Natural (getInfo (SYSINFO_FB_WIDTH));
-   fbHeight := Natural (getInfo (SYSINFO_FB_HEIGHT));
-   fbPitch  := Natural (getInfo (SYSINFO_FB_PITCH));
-   fbBpp    := Natural (getInfo (SYSINFO_FB_BPP));
+   debugPrint ("desktop: display info ready" & LF);
 
    debugPrint ("desktop: waiting for shell client" & LF);
 
    while running loop
       declare
          eventMsg   : Message;
-         eventFound : constant Boolean := Poll_Event (eventMsg);
+         eventFound : Boolean;
       begin
-         if eventFound then
+         loop
+            eventFound := Poll_Event (eventMsg);
+            exit when not eventFound;
             handleEvent (eventMsg, running);
-         else
+            exit when not running;
+         end loop;
+
+         loop
             Poll_Service_Request (from, msg, found);
-            if found then
-               handleRequest (from, msg);
-            elsif syscall (SYSCALL_SLEEP, 10) = Unsigned_64'Last then
-               null;
-            end if;
+            exit when not found;
+            handleRequest (from, msg);
+            exit when not running;
+         end loop;
+
+         flushFrame;
+         maybePrintStats;
+
+         if not eventFound and then not found then
+            declare
+               now : constant Unsigned_64 := nowMs;
+               sleepMs : Unsigned_64 := 2;
+            begin
+               if framePending and then now /= Unsigned_64'Last and then
+                  frameDueMs /= 0 and then now < frameDueMs
+               then
+                  sleepMs := frameDueMs - now;
+                  if sleepMs > 2 then
+                     sleepMs := 2;
+                  end if;
+               elsif framePending then
+                  sleepMs := 0;
+               end if;
+
+               if sleepMs > 0 and then
+                  syscall (SYSCALL_SLEEP, sleepMs) = Unsigned_64'Last
+               then
+                  null;
+               end if;
+            end;
          end if;
       end;
    end loop;
 
    if fbBpp = 32 then
-      fillRect (0, 0, fbWidth, fbHeight, C_BG);
+      declare
+         cleared : constant Message :=
+            callDisplay (OP_DISPLAY_CLEAR, Unsigned_64 (C_BG), 0, 0, 0);
+      begin
+         if cleared.words (0) /= 0 then
+            null;
+         end if;
+      end;
    end if;
+
+   declare
+      released : constant Message := callDisplay (OP_DISPLAY_RELEASE);
+   begin
+      if released.words (0) /= 0 then
+         null;
+      end if;
+   end;
 
    if syscall (SYSCALL_EXIT, 0) = Unsigned_64'Last then
       null;

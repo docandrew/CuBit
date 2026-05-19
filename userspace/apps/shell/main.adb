@@ -11,6 +11,7 @@
 --  Capability slots:
 --    4  = CAP_DEVICE_MEM (framebuffer access)
 --    12 = CAP_ENDPOINT to procmgr
+--    22 = CAP_ENDPOINT to display.svc
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with System; use System;
@@ -44,6 +45,20 @@ procedure main is
    OP_NET_IF_DETAIL  : constant Unsigned_32 := 16#0436#;
    OP_NET_ROUTE_LIST : constant Unsigned_32 := 16#0437#;
    OP_NET_PING       : constant Unsigned_32 := 16#0438#;
+
+   --  Display service labels.  The shell still renders into its mapped
+   --  framebuffer, but on GPU-backed displays that memory is no longer the
+   --  visible scanout.  In that case we grant the buffer to display.svc and
+   --  ask it to present dirty rectangles after text redraws.
+   OP_DISPLAY_ATTACH_BUFFER : constant Unsigned_32 := 16#0901#;
+   OP_DISPLAY_PRESENT_RECT  : constant Unsigned_32 := 16#0902#;
+   OP_DISPLAY_GET_STATUS    : constant Unsigned_32 := 16#0904#;
+   OP_DISPLAY_ACQUIRE       : constant Unsigned_32 := 16#0905#;
+   OP_DISPLAY_RELEASE       : constant Unsigned_32 := 16#0906#;
+
+   DISPLAY_OK                 : constant Unsigned_64 := 0;
+   DISPLAY_BACKEND_VIRTIO_GPU : constant Unsigned_64 := 3;
+
    --  Sysinfo query IDs for framebuffer
    SYSINFO_FB_WIDTH  : constant Unsigned_64 := 1100;
    SYSINFO_FB_HEIGHT : constant Unsigned_64 := 1101;
@@ -58,6 +73,13 @@ procedure main is
    fbHeight : Natural := 0;
    fbPitch  : Natural := 0;
    fbAddr   : System.Address := System.Null_Address;
+
+   --  Optional display.svc present bridge.  This is active only when the
+   --  display service reports a GPU backend; the linear framebuffer path keeps
+   --  drawing directly to visible memory as before.
+   displayAttached : Boolean := False;
+   displayGrantId  : Unsigned_64 := 0;
+   fullPresentNeeded : Boolean := False;
 
    --  Console grid dimensions
    cols : Natural := 0;
@@ -99,7 +121,7 @@ procedure main is
    streamSubPending : Boolean := False;  -- async subscribe in flight
    streamDrainPolls : Natural := 0;      -- polls since child exit
    GRANT_REGION_BASE : constant Unsigned_64 := 16#4000_0000_0000#;
-   GRANT_SLOT_SIZE   : constant Unsigned_64 := 256 * 4096;
+   GRANT_SLOT_SIZE   : constant Unsigned_64 := 4096 * 4096;
    STREAM_SUB_TOKEN  : constant Unsigned_64 := 42;
    STREAM_LIST_TOKEN : constant Unsigned_64 := 43;
 
@@ -277,17 +299,230 @@ procedure main is
       end loop;
    end renderGlyph;
 
+   procedure setupDisplayPresent;
+
+   procedure releaseDisplayPresent is
+      msg : Message := NULL_MESSAGE;
+      tag : MessageTag;
+   begin
+      msg.tag := (label  => OP_DISPLAY_RELEASE,
+                  length => 0,
+                  flags  => 0,
+                  badge  => 0);
+      tag := capCall (CAP_SLOT_DISPLAY, msg);
+      msg.tag := tag;
+      displayAttached := False;
+   end releaseDisplayPresent;
+
+   --  Present a framebuffer rectangle through display.svc.  This is the
+   --  narrow bridge that makes the old framebuffer console visible on primary
+   --  GPU modes: shell draws bytes, display.svc copies them to scanout.
+   procedure presentDisplayRect (x, y, w, h : Natural) is
+      msg : Message := NULL_MESSAGE;
+      tag : MessageTag;
+      retry : Boolean := False;
+   begin
+      if not displayAttached or else w = 0 or else h = 0 then
+         return;
+      end if;
+
+      loop
+         msg := NULL_MESSAGE;
+         msg.tag := (label  => OP_DISPLAY_PRESENT_RECT,
+                     length => 4,
+                     flags  => 0,
+                     badge  => 0);
+         msg.words (0) := Unsigned_64 (x);
+         msg.words (1) := Unsigned_64 (y);
+         msg.words (2) := Unsigned_64 (w);
+         msg.words (3) := Unsigned_64 (h);
+
+         tag := capCall (CAP_SLOT_DISPLAY, msg);
+         msg.tag := tag;
+         exit when tag.length >= 1 and then msg.words (0) = DISPLAY_OK;
+
+         displayAttached := False;
+         exit when retry;
+         exit when foregroundPID /= 0;
+
+         --  Another display client, such as desktop.svc, may have temporarily
+         --  attached its own buffer. Reattach the CLI buffer once so returning
+         --  from a graphical session does not leave the shell drawing into an
+         --  invisible stale buffer.
+         retry := True;
+         setupDisplayPresent;
+         exit when not displayAttached;
+      end loop;
+
+      if not displayAttached then
+         debugPrint ("shell: display present disabled" & LF);
+      end if;
+   end presentDisplayRect;
+
+   --  Attach the shell's mapped framebuffer to display.svc when the visible
+   --  device is GPU-backed.  Linear framebuffer mode intentionally skips this
+   --  path so legacy boot and plain VBE behavior remains unchanged.
+   procedure setupDisplayPresent is
+      status : Message := NULL_MESSAGE;
+      attach : Message := NULL_MESSAGE;
+      tag    : MessageTag;
+      pages  : Unsigned_64;
+      ok     : Boolean;
+      pid    : Unsigned_64;
+      acquire : Message := NULL_MESSAGE;
+   begin
+      pid := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DISPLAY);
+      if pid = 0 or else pid = Unsigned_64'Last then
+         debugPrint ("shell: display service unavailable" & LF);
+         return;
+      end if;
+      debugPrint ("shell: display service pid=");
+      printDec (Unsigned_32 (pid));
+      debugPrint ("" & LF);
+
+      status.tag := (label  => OP_DISPLAY_GET_STATUS,
+                     length => 0,
+                     flags  => 0,
+                     badge  => 0);
+      tag := capCall (CAP_SLOT_DISPLAY, status);
+      status.tag := tag;
+
+      if tag.length < 2 or else
+         status.words (0) /= DISPLAY_BACKEND_VIRTIO_GPU
+      then
+         debugPrint ("shell: display backend=");
+         if tag.length >= 1 then
+            printDec (Unsigned_32 (status.words (0)));
+         else
+            debugPrint ("?");
+         end if;
+         debugPrint (" no present bridge" & LF);
+         return;
+      end if;
+
+      acquire.tag := (label  => OP_DISPLAY_ACQUIRE,
+                      length => 0,
+                      flags  => 0,
+                      badge  => 0);
+      tag := capCall (CAP_SLOT_DISPLAY, acquire);
+      acquire.tag := tag;
+      if tag.length < 1 or else acquire.words (0) /= DISPLAY_OK then
+         debugPrint ("shell: display acquire denied" & LF);
+         return;
+      end if;
+
+      pages :=
+        (Unsigned_64 (fbPitch) * Unsigned_64 (fbHeight) + 4095) / 4096;
+
+      --  The service only needs to read the shell buffer, but grant it RW for
+      --  now because the current shared-memory grant API treats framebuffer
+      --  client buffers consistently with other display users.
+      createGrantViaCap
+        (slot      => CAP_SLOT_DISPLAY,
+         localAddr => fbAddr,
+         numPages  => Natural (pages),
+         readWrite => True,
+         grantId   => displayGrantId,
+         success   => ok);
+
+      if not ok then
+         debugPrint ("shell: display grant failed" & LF);
+         return;
+      end if;
+
+      attach.tag := (label  => OP_DISPLAY_ATTACH_BUFFER,
+                     length => 4,
+                     flags  => 0,
+                     badge  => 0);
+      attach.words (0) := displayGrantId;
+      attach.words (1) := Unsigned_64 (fbWidth);
+      attach.words (2) := Unsigned_64 (fbHeight);
+      attach.words (3) := Unsigned_64 (fbPitch);
+
+      tag := capCall (CAP_SLOT_DISPLAY, attach);
+      attach.tag := tag;
+      if tag.length >= 1 and then attach.words (0) = DISPLAY_OK then
+         displayAttached := True;
+         debugPrint ("shell: display buffer attached" & LF);
+      else
+         debugPrint ("shell: display attach failed" & LF);
+         releaseDisplayPresent;
+      end if;
+   end setupDisplayPresent;
+
+   procedure renderRow (row : Natural) is
+   begin
+      for col in 0 .. cols - 1 loop
+         renderGlyph (col, row, screen (row)(col));
+      end loop;
+   end renderRow;
+
    --  Render all dirty lines to framebuffer
    procedure renderDirty is
+      anyDirty : Boolean := False;
+      minRow   : Natural := 0;
+      maxRow   : Natural := 0;
    begin
       for row in 0 .. rows - 1 loop
          if dirty (row) then
-            for col in 0 .. cols - 1 loop
-               renderGlyph (col, row, screen (row)(col));
-            end loop;
+            if not anyDirty then
+               minRow := row;
+               maxRow := row;
+               anyDirty := True;
+            else
+               maxRow := row;
+            end if;
+
+            renderRow (row);
             dirty (row) := False;
          end if;
       end loop;
+
+      if anyDirty then
+         if fullPresentNeeded or else maxRow - minRow > 8 then
+            --  Scrolls, clears, startup redraws, and large command-output
+            --  bursts can affect many lines at once. Present the whole text
+            --  grid for those cases so the compatibility console remains
+            --  visually coherent on GPU-backed displays.
+            if displayAttached then
+               for row in 0 .. rows - 1 loop
+                  renderRow (row);
+               end loop;
+            end if;
+            presentDisplayRect
+              (0, 0,
+               cols * Font8x16.GLYPH_WIDTH,
+               rows * Font8x16.GLYPH_HEIGHT);
+            fullPresentNeeded := False;
+         else
+            --  Common interactive typing should be cheap: one dirty text row
+            --  is only a few kilobytes instead of a full 1024x768 transfer.
+            --  Include one neighboring row on each side so newline/prompt
+            --  transitions cannot leave stale glyph pixels at row boundaries.
+            declare
+               presentMin : Natural := minRow;
+               presentMax : Natural := maxRow;
+            begin
+               if presentMin > 0 then
+                  presentMin := presentMin - 1;
+               end if;
+               if presentMax + 1 < rows then
+                  presentMax := presentMax + 1;
+               end if;
+
+               if displayAttached then
+                  for row in presentMin .. presentMax loop
+                     renderRow (row);
+                  end loop;
+               end if;
+               presentDisplayRect
+                 (0,
+                  presentMin * Font8x16.GLYPH_HEIGHT,
+                  cols * Font8x16.GLYPH_WIDTH,
+                  (presentMax - presentMin + 1) * Font8x16.GLYPH_HEIGHT);
+            end;
+         end if;
+      end if;
    end renderDirty;
 
    ---------------------------------------------------------------------------
@@ -306,6 +541,7 @@ procedure main is
          screen (rows - 1)(col) := Character'Pos (' ');
       end loop;
       dirty (rows - 1) := True;
+      fullPresentNeeded := True;
    end scrollUp;
 
    --  Put a character at current cursor position and advance
@@ -394,6 +630,14 @@ procedure main is
       return hasSuffix (filename, ".svc") or else hasSuffix (filename, ".drv");
    end shouldRunInBackground;
 
+   function shouldYieldDisplayToChild (filename : String) return Boolean is
+   begin
+      --  Graphical foreground clients own visibility through desktop.svc. The
+      --  CLI shell keeps its old framebuffer mapped, but must not reattach it
+      --  to display.svc while the desktop compositor is presenting.
+      return hasSuffix (filename, "desktop-shell.app");
+   end shouldYieldDisplayToChild;
+
    --  Print prompt
    procedure printPrompt is
    begin
@@ -453,6 +697,7 @@ procedure main is
       end loop;
       cursorRow := 0;
       cursorCol := 0;
+      fullPresentNeeded := True;
    end cmdClear;
 
    procedure cmdEcho (arg : String) is
@@ -519,10 +764,15 @@ procedure main is
          putStr ("spawned PID ");
          putDec (Unsigned_32 (msg.words (0)));
          putChar (LF);
-         renderDirty;
          if shouldRunInBackground (filename) then
-            printPrompt;
+            renderDirty;
             return;
+         end if;
+
+         if shouldYieldDisplayToChild (filename) then
+            releaseDisplayPresent;
+         else
+            renderDirty;
          end if;
 
          foregroundPID := msg.words (0);
@@ -3332,7 +3582,9 @@ procedure main is
          renderDirty;
          dispatchCommand;
          lineLen := 0;
-         printPrompt;
+         if foregroundPID = 0 then
+            printPrompt;
+         end if;
       elsif ch = 8 then
          --  Backspace
          if lineLen > 0 then
@@ -3406,6 +3658,8 @@ begin
       rows := MAX_ROWS;
    end if;
 
+   setupDisplayPresent;
+
    --  Initialize screen buffer
    for row in 0 .. MAX_ROWS - 1 loop
       for col in 0 .. MAX_COLS - 1 loop
@@ -3413,6 +3667,7 @@ begin
       end loop;
       dirty (row) := True;
    end loop;
+   fullPresentNeeded := True;
 
    --  Discover procmgr PID
    declare
@@ -3589,6 +3844,8 @@ begin
                for row in 0 .. rows - 1 loop
                   dirty (row) := True;
                end loop;
+               fullPresentNeeded := True;
+               setupDisplayPresent;
                renderDirty;
                printPrompt;
             elsif found and then

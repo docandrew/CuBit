@@ -28,9 +28,14 @@ is
     function getFramebufferSize (mbInfo : in MultibootInfo) return Integer_Address is
         bytesPerPixel : Unsigned_32 := Unsigned_32(mbInfo.framebuffer_bpp / 8);
     begin
-        return Integer_Address(mbInfo.framebuffer_width * 
-                               mbInfo.framebuffer_height * 
-                               bytesPerPixel);
+        if mbInfo.framebuffer_pitch /= 0 then
+            return Integer_Address (mbInfo.framebuffer_pitch) *
+                   Integer_Address (mbInfo.framebuffer_height);
+        else
+            return Integer_Address (mbInfo.framebuffer_width *
+                                    mbInfo.framebuffer_height *
+                                    bytesPerPixel);
+        end if;
     end getFramebufferSize;
 
     ---------------------------------------------------------------------------

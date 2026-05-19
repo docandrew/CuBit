@@ -36,6 +36,7 @@ procedure main is
    DRIVER_CONFIG   : constant Unsigned_64 := 11;
    DRIVER_NETMGR   : constant Unsigned_64 := 12;
    DRIVER_DESKTOP  : constant Unsigned_64 := 15;
+   DRIVER_GPU      : constant Unsigned_64 := 17;
 
    --  (SERVICE_FILESYSTEM_PID removed: now uses dynamic PID assignment
    --  and kernel well-known service registry)
@@ -55,9 +56,11 @@ procedure main is
    CLASS_STORAGE_NVME  : constant Unsigned_16 := 16#0108#;
    CLASS_NET_ETHERNET  : constant Unsigned_16 := 16#0200#;
    CLASS_MULTIMEDIA_HDA : constant Unsigned_16 := 16#0403#;
+   CLASS_DISPLAY_VGA    : constant Unsigned_16 := 16#0300#;
 
    --  PCI vendor ID for virtio devices
    VENDOR_VIRTIO       : constant Unsigned_16 := 16#1AF4#;
+   DEVICE_VIRTIO_GPU    : constant Unsigned_16 := 16#1050#;
 
    --  PCI config space offsets
    PCI_VENDOR_ID       : constant Unsigned_8 := 0;
@@ -65,7 +68,15 @@ procedure main is
    PCI_CLASS_DEVICE    : constant Unsigned_8 := 10;
    PCI_BASEADDR_0      : constant Unsigned_8 := 16;
    PCI_BASEADDR_1      : constant Unsigned_8 := 20;
+   PCI_CAP_PTR         : constant Unsigned_8 := 52;
    PCI_INTERRUPT_LINE  : constant Unsigned_8 := 60;
+
+   --  VirtIO modern PCI capability types
+   PCI_CAP_ID_VENDOR_SPECIFIC : constant Unsigned_8 := 9;
+   VIRTIO_PCI_CAP_COMMON_CFG  : constant Unsigned_8 := 1;
+   VIRTIO_PCI_CAP_NOTIFY_CFG  : constant Unsigned_8 := 2;
+   VIRTIO_PCI_CAP_ISR_CFG     : constant Unsigned_8 := 3;
+   VIRTIO_PCI_CAP_DEVICE_CFG  : constant Unsigned_8 := 4;
 
    --  Capability types (must match kernel/src/capabilities.ads)
    CAP_ENDPOINT     : constant Unsigned_64 := 1;
@@ -98,6 +109,8 @@ procedure main is
    ataDev    : PCIDeviceInfo;
    netDev    : PCIDeviceInfo;
    hdaDev    : PCIDeviceInfo;
+   gpuDev    : PCIDeviceInfo;
+   gpuIsPrimary : Boolean := False;
 
    --  Service PIDs
    filesystemPID : Unsigned_64 := 0;
@@ -112,6 +125,7 @@ procedure main is
    ps2PID        : Unsigned_64 := 0;
    configPID     : Unsigned_64 := 0;
    netmgrPID     : Unsigned_64 := 0;
+   virtioGpuPID  : Unsigned_64 := 0;
 
    --  CPIO archive
    cpioArchive : Cpio.Archive;
@@ -217,12 +231,14 @@ procedure main is
    ---------------------------------------------------------------------------
    procedure scanPCI is
       vendorID  : Unsigned_16;
+      deviceID  : Unsigned_16;
       classCode : Unsigned_16;
    begin
       for bus in Unsigned_8 range 0 .. 0 loop
          for pSlot in Unsigned_8 range 0 .. 31 loop
             vendorID := pciReadConfig16 (bus, pSlot, 0, PCI_VENDOR_ID);
             if vendorID /= 16#FFFF# then
+               deviceID := pciReadConfig16 (bus, pSlot, 0, 2);
                --  class(byte 11) << 8 | subclass(byte 10)
                classCode := Unsigned_16 (
                    Shift_Right (pciReadConfig32 (bus, pSlot, 0,
@@ -246,6 +262,14 @@ procedure main is
                   hdaDev := (found => True, bus => bus,
                              slot => pSlot, func => 0);
                   debugPrint ("devmgr: found HDA at PCI" & LF);
+               elsif vendorID = VENDOR_VIRTIO and then
+                     (deviceID = DEVICE_VIRTIO_GPU or else
+                      classCode = CLASS_DISPLAY_VGA)
+               then
+                  gpuDev := (found => True, bus => bus,
+                             slot => pSlot, func => 0);
+                  gpuIsPrimary := classCode = CLASS_DISPLAY_VGA;
+                  debugPrint ("devmgr: found virtio-gpu at PCI" & LF);
                end if;
             end if;
          end loop;
@@ -366,6 +390,13 @@ procedure main is
             strEq (name, "netmgr.svc")
       then
          if numCPUs > 1 then
+            cpu := 1;
+         end if;
+      --  Display/GPU work gets its own CPU when available.
+      elsif strEq (name, "virtio-gpu.drv") then
+         if numCPUs > 2 then
+            cpu := 2;
+         elsif numCPUs > 1 then
             cpu := 1;
          end if;
       --  Other apps round-robin across CPUs 1..N-1
@@ -681,6 +712,149 @@ procedure main is
 
       debugPrint ("devmgr: HDA setup complete" & LF);
    end setupHDA;
+
+   ---------------------------------------------------------------------------
+   -- Setup VirtIO-GPU driver: parse modern PCI caps, DMA, capabilities
+   ---------------------------------------------------------------------------
+   procedure setupVirtioGpu is
+      capPtr : Unsigned_8;
+      capId  : Unsigned_8;
+      next   : Unsigned_8;
+      cfgType : Unsigned_8;
+      barIndex : Unsigned_8;
+      capOff : Unsigned_32;
+      notifyMult : Unsigned_32 := 0;
+      commonOff : Unsigned_32 := 0;
+      notifyOff : Unsigned_32 := 0;
+      isrOff : Unsigned_32 := 0;
+      deviceOff : Unsigned_32 := 0;
+      commonBar : Unsigned_8 := 16#FF#;
+      notifyBar : Unsigned_8 := 16#FF#;
+      isrBar : Unsigned_8 := 16#FF#;
+      deviceBar : Unsigned_8 := 16#FF#;
+      barRaw : Unsigned_32;
+      barPhys : Unsigned_64;
+      irqLine : Unsigned_8;
+      irqVector : Unsigned_64;
+      pciCmd : Unsigned_16;
+      dmaPhys : Unsigned_64;
+      ret : Unsigned_64;
+
+      DMA_ORDER : constant Unsigned_64 := 11; -- 8 MiB
+      DMA_PAGES : constant Unsigned_64 := 2048;
+      DMA_SIZE  : constant Unsigned_64 := DMA_PAGES * 4096;
+      BAR_MAP_SIZE : constant Unsigned_64 := 65536;
+
+      function readCap32 (offset : Unsigned_8) return Unsigned_32 is
+      begin
+         return pciReadConfig32 (gpuDev.bus, gpuDev.slot, gpuDev.func,
+                                 capPtr + offset);
+      end readCap32;
+   begin
+      if not gpuDev.found or virtioGpuPID = 0 then
+         return;
+      end if;
+
+      capPtr := pciReadConfig8 (gpuDev.bus, gpuDev.slot, gpuDev.func,
+                                PCI_CAP_PTR) and 16#FC#;
+      while capPtr /= 0 loop
+         capId := pciReadConfig8 (gpuDev.bus, gpuDev.slot, gpuDev.func,
+                                  capPtr);
+         next := pciReadConfig8 (gpuDev.bus, gpuDev.slot, gpuDev.func,
+                                 capPtr + 1) and 16#FC#;
+
+         if capId = PCI_CAP_ID_VENDOR_SPECIFIC then
+            cfgType := pciReadConfig8 (gpuDev.bus, gpuDev.slot, gpuDev.func,
+                                       capPtr + 3);
+            barIndex := pciReadConfig8 (gpuDev.bus, gpuDev.slot, gpuDev.func,
+                                        capPtr + 4);
+            capOff := readCap32 (8);
+
+            case cfgType is
+               when VIRTIO_PCI_CAP_COMMON_CFG =>
+                  commonBar := barIndex;
+                  commonOff := capOff;
+               when VIRTIO_PCI_CAP_NOTIFY_CFG =>
+                  notifyBar := barIndex;
+                  notifyOff := capOff;
+                  notifyMult := readCap32 (16);
+               when VIRTIO_PCI_CAP_ISR_CFG =>
+                  isrBar := barIndex;
+                  isrOff := capOff;
+               when VIRTIO_PCI_CAP_DEVICE_CFG =>
+                  deviceBar := barIndex;
+                  deviceOff := capOff;
+               when others =>
+                  null;
+            end case;
+         end if;
+
+         capPtr := next;
+      end loop;
+
+      if commonBar = 16#FF# or else notifyBar = 16#FF# or else
+         isrBar = 16#FF# or else notifyMult = 0
+      then
+         debugPrint ("devmgr: virtio-gpu missing modern caps" & LF);
+         return;
+      end if;
+
+      if commonBar /= notifyBar or else commonBar /= isrBar or else
+         (deviceBar /= 16#FF# and then commonBar /= deviceBar)
+      then
+         debugPrint ("devmgr: virtio-gpu split BARs unsupported" & LF);
+         return;
+      end if;
+
+      barRaw := pciReadConfig32
+        (gpuDev.bus, gpuDev.slot, gpuDev.func,
+         PCI_BASEADDR_0 + commonBar * 4);
+      if (barRaw and 1) /= 0 then
+         debugPrint ("devmgr: virtio-gpu common BAR is I/O, unsupported" & LF);
+         return;
+      end if;
+      barPhys := Unsigned_64 (barRaw and 16#FFFF_FFF0#);
+
+      irqLine := pciReadConfig8 (gpuDev.bus, gpuDev.slot, gpuDev.func,
+                                 PCI_INTERRUPT_LINE);
+      irqVector := 32 + Unsigned_64 (irqLine);
+
+      pciCmd := pciReadConfig16 (gpuDev.bus, gpuDev.slot, gpuDev.func,
+                                 PCI_COMMAND);
+      pciWriteConfig16 (gpuDev.bus, gpuDev.slot, gpuDev.func,
+                        PCI_COMMAND, pciCmd or 16#0006#);
+      ret := enableIrq (irqVector, virtioGpuPID, 0);
+
+      dmaPhys := allocDma (virtioGpuPID, DMA_ORDER, DMA_VIRT_BASE);
+      if dmaPhys = reterr then
+         debugPrint ("devmgr: virtio-gpu DMA alloc failed" & LF);
+         return;
+      end if;
+
+      --  Slot 4: virtio modern MMIO BAR.
+      mintCap (virtioGpuPID, CAP_DEVICE_MEM, barPhys, BAR_MAP_SIZE,
+               RIGHT_READ or RIGHT_WRITE, 4);
+      --  Slot 5: IRQ.
+      mintCap (virtioGpuPID, CAP_IRQ, irqVector, 0, RIGHT_READ, 5);
+      --  Slot 6: DMA region.
+      mintCap (virtioGpuPID, CAP_DEVICE_MEM, 0, DMA_SIZE,
+               RIGHT_READ or RIGHT_WRITE, 6);
+
+      ret := setSysinfo (SYSINFO_GPU_BAR0, barPhys);
+      ret := setSysinfo (SYSINFO_GPU_DMA_PHYS, dmaPhys);
+      ret := setSysinfo (SYSINFO_GPU_COMMON_OFF, Unsigned_64 (commonOff));
+      ret := setSysinfo (SYSINFO_GPU_NOTIFY_OFF, Unsigned_64 (notifyOff));
+      ret := setSysinfo (SYSINFO_GPU_ISR_OFF, Unsigned_64 (isrOff));
+      ret := setSysinfo (SYSINFO_GPU_DEVICE_OFF, Unsigned_64 (deviceOff));
+      ret := setSysinfo (SYSINFO_GPU_NOTIFY_MULT, Unsigned_64 (notifyMult));
+      if gpuIsPrimary then
+         ret := setSysinfo (SYSINFO_GPU_IS_PRIMARY, 1);
+      else
+         ret := setSysinfo (SYSINFO_GPU_IS_PRIMARY, 0);
+      end if;
+
+      debugPrint ("devmgr: virtio-gpu setup complete" & LF);
+   end setupVirtioGpu;
 
    ---------------------------------------------------------------------------
    -- Setup PS/2 driver: grant IOPORT + IRQ capabilities
@@ -1084,6 +1258,29 @@ begin
                  "devmgr: system.conf not found in CPIO" & LF);
             end if;
          end;
+      end if;
+   end if;
+
+   -----------------------------------------------------------------------
+   -- Phase 2d: Spawn VirtIO-GPU driver when QEMU/hardware exposes it
+   -----------------------------------------------------------------------
+   virtioGpuPID := spawnFromCpio ("virtio-gpu.drv", 5);
+   if virtioGpuPID = reterr then
+      virtioGpuPID := 0;
+   end if;
+   if virtioGpuPID /= 0 then
+      setupVirtioGpu;
+      --  CAP_NOTIFICATION for DRIVER_GPU registration (slot 8)
+      mintCap (virtioGpuPID, CAP_NOTIFICATION, DRIVER_GPU, 0,
+               RIGHT_WRITE, 8);
+      assignCPU (virtioGpuPID, "virtio-gpu.drv");
+      mintCap (virtioGpuPID, CAP_ENDPOINT, myPID, 0,
+               RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
+      resumeProc (virtioGpuPID);
+      debugPrint ("devmgr: virtio-gpu driver started" & LF);
+
+      if not waitReady (virtioGpuPID) then
+         virtioGpuPID := 0;
       end if;
    end if;
 

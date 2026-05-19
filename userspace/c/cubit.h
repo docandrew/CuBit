@@ -155,6 +155,7 @@ typedef long                ssize_t;
 #define DRIVER_CONFIG             11
 #define DRIVER_IPCTEST            14
 #define DRIVER_DESKTOP            15
+#define DRIVER_DISPLAY            16
 
 /* Config store IPC labels */
 #define OP_CONFIG_GET     0x0600

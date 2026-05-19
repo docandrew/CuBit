@@ -238,7 +238,7 @@ package body Video.VGA is
         framebufferAddr  := To_Address (mbInfo.framebuffer_addr + Virtmem.LINEAR_BASE);
         framebufferDepth := Storage_Offset(mbInfo.framebuffer_bpp);
         framebufferPitch := Storage_Offset(mbInfo.framebuffer_pitch);
-        framebufferSize  := Storage_Offset(h * w) * (framebufferDepth / 8);
+        framebufferSize  := framebufferPitch * Storage_Offset (h);
 
         case mbInfo.framebuffer_bpp is
             when 8 =>

@@ -120,6 +120,7 @@ package CuBit.Messages is
    CAP_SLOT_MIXER_NTF : constant Unsigned_64 := 15;
    CAP_SLOT_CONFIG    : constant Unsigned_64 := 20;
    CAP_SLOT_DESKTOP   : constant Unsigned_64 := 21;
+   CAP_SLOT_DISPLAY   : constant Unsigned_64 := 22;
 
    subtype CapabilitySlot is Unsigned_64 range 0 .. 63;
 
@@ -134,6 +135,14 @@ package CuBit.Messages is
    SYSINFO_NVME_DMA_PHYS      : constant Unsigned_64 := 1301;
    SYSINFO_HDA_BAR0           : constant Unsigned_64 := 1500;
    SYSINFO_HDA_DMA_PHYS       : constant Unsigned_64 := 1501;
+   SYSINFO_GPU_BAR0           : constant Unsigned_64 := 1700;
+   SYSINFO_GPU_DMA_PHYS       : constant Unsigned_64 := 1701;
+   SYSINFO_GPU_COMMON_OFF     : constant Unsigned_64 := 1702;
+   SYSINFO_GPU_NOTIFY_OFF     : constant Unsigned_64 := 1703;
+   SYSINFO_GPU_ISR_OFF        : constant Unsigned_64 := 1704;
+   SYSINFO_GPU_DEVICE_OFF     : constant Unsigned_64 := 1705;
+   SYSINFO_GPU_NOTIFY_MULT    : constant Unsigned_64 := 1706;
+   SYSINFO_GPU_IS_PRIMARY     : constant Unsigned_64 := 1707;
    SYSINFO_NUM_CPUS           : constant Unsigned_64 := 1400;
    SYSINFO_REGISTERED_DRIVER  : constant Unsigned_64 := 2000;
 
@@ -153,6 +162,8 @@ package CuBit.Messages is
    DRIVER_LOGSTORE : constant Unsigned_64 := 13;
    DRIVER_IPCTEST  : constant Unsigned_64 := 14;
    DRIVER_DESKTOP  : constant Unsigned_64 := 15;
+   DRIVER_DISPLAY  : constant Unsigned_64 := 16;
+   DRIVER_GPU      : constant Unsigned_64 := 17;
 
    --  IPC Message Types (matching kernel Process.Message)
 

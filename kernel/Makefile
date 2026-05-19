@@ -147,6 +147,13 @@ virtio-net: user_runtime
 	$(ALR) gprbuild -P ../userspace/services/virtio-net/virtio_net.gpr
 	cp ../userspace/services/virtio-net/build/virtio-net.drv isodir/boot/virtio-net.drv
 
+# Build the userspace virtio-gpu driver
+.PHONY : virtio-gpu
+virtio-gpu: user_runtime
+	mkdir -p ../userspace/services/virtio-gpu/build
+	$(ALR) gprbuild -P ../userspace/services/virtio-gpu/virtio_gpu.gpr
+	cp ../userspace/services/virtio-gpu/build/virtio-gpu.drv isodir/boot/virtio-gpu.drv
+
 # Build the userspace network stack service
 .PHONY : netstack
 netstack: user_runtime
@@ -239,6 +246,16 @@ desktop: user_runtime
 	$(ALR) gprbuild -P ../userspace/services/desktop/desktop.gpr
 	cp ../userspace/services/desktop/build/desktop.svc isodir/boot/desktop.svc
 
+# Build the userspace display scanout service prototype
+.PHONY : display
+display: user_runtime
+	mkdir -p ../userspace/services/display/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/services/display/manifest.c \
+		-o ../userspace/services/display/build/manifest.o
+	$(ALR) gprbuild -P ../userspace/services/display/display.gpr
+	cp ../userspace/services/display/build/display.svc isodir/boot/display.svc
+
 # Build the userspace network manager service
 .PHONY : netmgr
 netmgr: user_runtime
@@ -272,7 +289,7 @@ DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/sleep.ap
 	isodir/boot/wget.app isodir/boot/security-center.app \
 	isodir/boot/desktop-shell.app \
 	isodir/boot/ipctest-server.app isodir/boot/ipctest-client.app \
-	isodir/boot/logstore.svc isodir/boot/desktop.svc \
+	isodir/boot/logstore.svc isodir/boot/display.svc isodir/boot/desktop.svc \
 	../init.conf ../motd.txt ../doom1.wad
 
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.conf, shell.app
@@ -292,6 +309,7 @@ ata_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write isodir/boot/ipctest-server.app ipctest-server.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/ipctest-client.app ipctest-client.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/logstore.svc logstore.svc" ata_disk.img
+	debugfs -w -R "write isodir/boot/display.svc display.svc" ata_disk.img
 	debugfs -w -R "write isodir/boot/desktop.svc desktop.svc" ata_disk.img
 	dd if=/dev/zero of=/tmp/config.dat bs=8192 count=1
 	debugfs -w -R "write /tmp/config.dat config.dat" ata_disk.img
@@ -314,6 +332,7 @@ nvme_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write isodir/boot/desktop-shell.app desktop-shell.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/ipctest-server.app ipctest-server.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/ipctest-client.app ipctest-client.app" nvme_disk.img
+	debugfs -w -R "write isodir/boot/display.svc display.svc" nvme_disk.img
 	debugfs -w -R "write isodir/boot/desktop.svc desktop.svc" nvme_disk.img
 	dd if=/dev/zero of=/tmp/config.dat bs=8192 count=1
 	debugfs -w -R "write /tmp/config.dat config.dat" nvme_disk.img
@@ -337,6 +356,7 @@ initrd:
 	-cp isodir/boot/nvme.drv ramdisk_staging/
 	-cp isodir/boot/netstack.svc ramdisk_staging/
 	-cp isodir/boot/virtio-net.drv ramdisk_staging/
+	-cp isodir/boot/virtio-gpu.drv ramdisk_staging/
 	-cp isodir/boot/hda.drv ramdisk_staging/
 	-cp isodir/boot/mixer.svc ramdisk_staging/
 	-cp isodir/boot/ps2.drv ramdisk_staging/
@@ -353,12 +373,15 @@ iso: cubit_kernel
 
 # Build everything including DOOM, then create ISO and disk images
 .PHONY : world
-world: cubit_kernel doom sleep ipctest-server ipctest-client filesystem ata nvme virtio-net netstack wget security-center desktop-shell procmgr shell hda mixer ps2 config netmgr logstore desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: cubit_kernel doom sleep ipctest-server ipctest-client filesystem ata nvme virtio-net virtio-gpu netstack wget security-center desktop-shell procmgr shell hda mixer ps2 config netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world
 	bash ../tests/headless/run.sh --test boot-shell-nvme
 	bash ../tests/headless/run.sh --test async-ipc
+	bash ../tests/headless/run.sh --test desktop-display
+	bash ../tests/headless/run.sh --test virtio-gpu
+	bash ../tests/headless/run.sh --test virtio-vga-primary
 
 # Run QEMU with NVMe + virtio-net + HDA audio, shell (everything)
 .PHONY : run
@@ -374,6 +397,36 @@ run: nvme_disk.img
 		-m 128M \
 		-cdrom cubit_kernel.iso \
 		-serial file:serial_output.log \
+		-display gtk,zoom-to-fit=on \
+		-drive file=nvme_disk.img,if=none,id=nvme0,format=raw \
+		-device nvme,serial=cubitnvme,drive=nvme0 \
+		-device virtio-net-pci,netdev=net0 \
+		-device virtio-gpu-pci \
+		-netdev user,id=net0 \
+		-object filter-dump,id=f0,netdev=net0,file=net.pcap \
+		-audiodev sdl,id=snd0 \
+		-device intel-hda \
+		-device hda-output,audiodev=snd0 \
+		-no-reboot
+
+# Experimental primary VirtIO VGA path. This is useful for debugging the
+# virtio-gpu display backend, but it is not the default run target yet because
+# this path can currently wedge QEMU hard on some hosts.
+.PHONY : run-virtio-vga
+run-virtio-vga: nvme_disk.img
+	@rm -f serial_output.log net.pcap
+	sed -i 's/^set default=.*/set default=4/' isodir/boot/grub/grub.cfg
+	grub-mkrescue -o cubit_kernel.iso isodir
+	sed -i 's/^set default=.*/set default=0/' isodir/boot/grub/grub.cfg
+	qemu-system-x86_64 \
+		-machine q35 \
+		-cpu Broadwell \
+		-smp 4 \
+		-m 128M \
+		-cdrom cubit_kernel.iso \
+		-serial file:serial_output.log \
+		-vga none \
+		-device virtio-vga,xres=1024,yres=768 \
 		-display gtk,zoom-to-fit=on \
 		-drive file=nvme_disk.img,if=none,id=nvme0,format=raw \
 		-device nvme,serial=cubitnvme,drive=nvme0 \

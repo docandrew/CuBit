@@ -34,7 +34,7 @@ procedure main is
 
    --  Grant region constants (must match kernel process.ads)
    GRANT_REGION_BASE : constant Unsigned_64 := 16#0000_4000_0000_0000#;
-   GRANT_SLOT_SIZE   : constant Unsigned_64 := 256 * 4096;  -- 1 MiB
+   GRANT_SLOT_SIZE   : constant Unsigned_64 := 4096 * 4096; -- 16 MiB
 
    --  ELF buffer — starts small, grows dynamically via sbrk when needed.
    INITIAL_BUF_PAGES : constant := 16;  --  64 KB starting size
@@ -251,6 +251,7 @@ procedure main is
    --  Manifest request types
    REQ_FRAMEBUFFER  : constant Unsigned_8 := 1;
    REQ_SERVICE      : constant Unsigned_8 := 2;
+   REQ_IOPORT       : constant Unsigned_8 := 3;
    REQ_STREAM       : constant Unsigned_8 := 8;
    REQ_RESOURCE     : constant Unsigned_8 := 9;
 
@@ -269,6 +270,7 @@ procedure main is
    --  Capability type position values (must match kernel CapabilityType enum)
    CAP_TYPE_ENDPOINT      : constant Unsigned_64 := 1;
    CAP_TYPE_NOTIFICATION  : constant Unsigned_64 := 2;
+   CAP_TYPE_IOPORT        : constant Unsigned_64 := 4;
    CAP_TYPE_PROCESS       : constant Unsigned_64 := 6;
    CAP_TYPE_DEVICE_MEM    : constant Unsigned_64 := 7;
    CAP_TYPE_RESOURCE      : constant Unsigned_64 := 9;
@@ -585,6 +587,7 @@ procedure main is
                      rights        : Unsigned_8;
                      slotNum       : Unsigned_8;
                      param0        : Unsigned_32;
+                     param1        : Unsigned_64;
                      rightsMask    : Unsigned_64;
                      ignore        : Unsigned_64;
                   begin
@@ -610,6 +613,7 @@ procedure main is
                         rights  := readU8 (entryBase + 1);
                         slotNum := readU8 (entryBase + 2);
                         param0  := readU32 (entryBase + 4);
+                        param1  := readU64 (entryBase + 8);
 
                         rightsMask := Unsigned_64 (rights);
 
@@ -625,6 +629,35 @@ procedure main is
                                  rightsMask,
                                  Unsigned_64 (slotNum));
                               debugPrint ("procmgr: minted FB cap" & LF);
+
+                           when REQ_IOPORT =>
+                              --  CAP_IOPORT. param0 is the base I/O port.
+                              --  param1 low 16 bits optionally gives the port
+                              --  count; older manifests leave it zero and get
+                              --  the original one-port grant.
+                              if param1 = 0 then
+                                 param1 := 1;
+                              end if;
+                              debugPrint ("procmgr: i/o port request base=");
+                              printDec (param0 and 16#FFFF#);
+                              debugPrint (" count=");
+                              printDec (Unsigned_32 (param1 and 16#FFFF#));
+                              debugPrint (" slot=");
+                              printDec (Unsigned_32 (slotNum));
+                              debugPrint ("" & LF);
+                              ignore := syscall (
+                                 SYSCALL_MINT_CAP,
+                                 childPID,
+                                 CAP_TYPE_IOPORT,
+                                 Unsigned_64 (param0 and 16#FFFF#),
+                                 param1 and 16#FFFF#,
+                                 rightsMask,
+                                 Unsigned_64 (slotNum));
+                              if ignore = Unsigned_64'Last then
+                                 debugPrint ("procmgr: i/o port cap mint failed" & LF);
+                              else
+                                 debugPrint ("procmgr: minted i/o port cap" & LF);
+                              end if;
 
                            when REQ_SERVICE =>
                               --  Look up driver PID via sysinfo,
@@ -1327,6 +1360,33 @@ procedure main is
                                   2,
                                   CAP_SLOT_SERVICE_REG);
                debugPrint ("procmgr: minted desktop ntf cap" & LF);
+            end if;
+         end;
+      end if;
+
+      --  Mint CAP_NOTIFICATION for display.svc registration. display.svc is
+      --  the sole userspace owner of scanout framebuffer authority.
+      if pkgIdLen = 17 then
+         declare
+            DISPLAY_ID : constant String := "com.cubit.display";
+            match : Boolean := True;
+            ignore : Unsigned_64;
+         begin
+            for c in 0 .. 16 loop
+               if pkgId (1 + c) /= DISPLAY_ID (1 + c) then
+                  match := False;
+                  exit;
+               end if;
+            end loop;
+            if match then
+               ignore := syscall (SYSCALL_MINT_CAP,
+                                  newPID,
+                                  CAP_TYPE_NOTIFICATION,
+                                  DRIVER_DISPLAY,
+                                  0,
+                                  2,
+                                  CAP_SLOT_SERVICE_REG);
+               debugPrint ("procmgr: minted display ntf cap" & LF);
             end if;
          end;
       end if;

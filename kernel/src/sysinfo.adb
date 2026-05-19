@@ -24,6 +24,14 @@ package body Sysinfo is
     nvmeDma   : Unsigned_64 := 0;
     hdaBar0   : Unsigned_64 := 0;
     hdaDma    : Unsigned_64 := 0;
+    gpuBar0   : Unsigned_64 := 0;
+    gpuDma    : Unsigned_64 := 0;
+    gpuCommonOff : Unsigned_64 := 0;
+    gpuNotifyOff : Unsigned_64 := 0;
+    gpuIsrOff    : Unsigned_64 := 0;
+    gpuDeviceOff : Unsigned_64 := 0;
+    gpuNotifyMult : Unsigned_64 := 0;
+    gpuIsPrimary : Unsigned_64 := 0;
     
     ---------------------------------------------------------------------------
     -- getInfo
@@ -60,6 +68,22 @@ package body Sysinfo is
                 return hdaBar0;
             when HDA_DMA_PHYS =>
                 return hdaDma;
+            when GPU_BAR0 =>
+                return gpuBar0;
+            when GPU_DMA_PHYS =>
+                return gpuDma;
+            when GPU_COMMON_OFF =>
+                return gpuCommonOff;
+            when GPU_NOTIFY_OFF =>
+                return gpuNotifyOff;
+            when GPU_ISR_OFF =>
+                return gpuIsrOff;
+            when GPU_DEVICE_OFF =>
+                return gpuDeviceOff;
+            when GPU_NOTIFY_MULT =>
+                return gpuNotifyMult;
+            when GPU_IS_PRIMARY =>
+                return gpuIsPrimary;
             when NUM_CPUS =>
                 return Unsigned_64 (acpi.numCPUs);
             when MEM_FREE =>
@@ -149,6 +173,30 @@ package body Sysinfo is
                 return True;
             when NET_IOBASE =>
                 netIOBase := value;
+                return True;
+            when GPU_BAR0 =>
+                gpuBar0 := value;
+                return True;
+            when GPU_DMA_PHYS =>
+                gpuDma := value;
+                return True;
+            when GPU_COMMON_OFF =>
+                gpuCommonOff := value;
+                return True;
+            when GPU_NOTIFY_OFF =>
+                gpuNotifyOff := value;
+                return True;
+            when GPU_ISR_OFF =>
+                gpuIsrOff := value;
+                return True;
+            when GPU_DEVICE_OFF =>
+                gpuDeviceOff := value;
+                return True;
+            when GPU_NOTIFY_MULT =>
+                gpuNotifyMult := value;
+                return True;
+            when GPU_IS_PRIMARY =>
+                gpuIsPrimary := value;
                 return True;
             when RAMDISK_SIZE =>
                 Modules.MAGIC_RAMDISK_SIZE :=

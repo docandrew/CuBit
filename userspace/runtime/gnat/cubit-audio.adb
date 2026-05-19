@@ -27,7 +27,7 @@ package body CuBit.Audio is
 
    --  Grant region base (must match mixer)
    GRANT_REGION_BASE : constant Unsigned_64 := 16#4000_0000_0000#;
-   GRANT_SLOT_SIZE   : constant Unsigned_64 := 256 * 4096;
+   GRANT_SLOT_SIZE   : constant Unsigned_64 := 4096 * 4096;
 
    --  Local stream table
    streamTable : array (StreamIndex) of StreamRecord;

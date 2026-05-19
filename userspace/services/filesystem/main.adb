@@ -39,7 +39,7 @@ procedure main is
 
    --  Grant region constants (must match kernel process.ads)
    GRANT_REGION_BASE : constant Unsigned_64 := 16#0000_4000_0000_0000#;
-   GRANT_SLOT_SIZE   : constant Unsigned_64 := 256 * 4096;  --  1 MiB
+   GRANT_SLOT_SIZE   : constant Unsigned_64 := 4096 * 4096; -- 16 MiB
 
    --  Maximum open files and path length
    MAX_OPEN_FILES : constant := 32;

@@ -341,7 +341,11 @@ is
     -- server processes.
     ---------------------------------------------------------------------------
     MAX_GRANTS_PER_PROCESS : constant := 16;
-    MAX_GRANT_PAGES        : constant := 256;   -- 1 MiB max per grant
+    --  16 MiB per grant. Modern display buffers, media paths, and batched I/O
+    --  need grants larger than the original 1 MiB filesystem-buffer ceiling.
+    --  With 256 PIDs * 16 grants, this reserves a 64 GiB virtual grant
+    --  aperture at GRANT_REGION_BASE, still below PROCESS_STACK_TOP_VIRT.
+    MAX_GRANT_PAGES        : constant := 4096;
 
     subtype GrantID is Natural range 0 .. MAX_GRANTS_PER_PROCESS - 1;
 

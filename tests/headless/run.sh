@@ -20,7 +20,7 @@ Usage: tests/headless/run.sh [options]
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme or async-ipc
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, desktop-display, virtio-gpu, or virtio-vga-primary
   --timeout SECONDS    QEMU runtime before timeout is treated as success
   --serial PATH        Serial log path (default: /tmp/cubit-headless-*.log)
   --pcap PATH          Packet capture path (default: /tmp/cubit-headless-*.pcap)
@@ -94,7 +94,7 @@ case "$TIMEOUT_SECONDS" in
 esac
 
 case "$TEST_NAME" in
-    boot-shell-nvme|async-ipc)
+    boot-shell-nvme|async-ipc|desktop-display|virtio-gpu|virtio-vga-primary)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -117,7 +117,7 @@ if ! command -v grub-mkrescue >/dev/null 2>&1; then
     exit 127
 fi
 
-if [ "$TEST_NAME" = "async-ipc" ] && ! command -v debugfs >/dev/null 2>&1; then
+if [ "$TEST_NAME" != "boot-shell-nvme" ] && ! command -v debugfs >/dev/null 2>&1; then
     echo "headless: missing debugfs" >&2
     exit 127
 fi
@@ -158,12 +158,24 @@ if [ ! -f "$KERNEL_DIR/nvme_disk.img" ]; then
 fi
 
 DISK_IMAGE="$KERNEL_DIR/nvme_disk.img"
-if [ "$TEST_NAME" = "async-ipc" ]; then
-    TEMP_DISK="$(mktemp "${TMPDIR:-/tmp}/cubit-async-ipc-disk.XXXXXX.img")"
+INIT_PROFILE=""
+case "$TEST_NAME" in
+    async-ipc)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-async-ipc.conf"
+        ;;
+    desktop-display)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-desktop-display.conf"
+        ;;
+    virtio-gpu|virtio-vga-primary)
+        ;;
+esac
+
+if [ -n "$INIT_PROFILE" ]; then
+    TEMP_DISK="$(mktemp "${TMPDIR:-/tmp}/cubit-${TEST_NAME}-disk.XXXXXX.img")"
     cp "$KERNEL_DIR/nvme_disk.img" "$TEMP_DISK"
     debugfs -w -R "rm init.conf" "$TEMP_DISK" >/dev/null 2>&1
-    if ! debugfs -w -R "write $ROOT_DIR/tests/headless/init-async-ipc.conf init.conf" "$TEMP_DISK" >/dev/null 2>&1; then
-        echo "headless: failed to install async IPC init.conf" >&2
+    if ! debugfs -w -R "write $INIT_PROFILE init.conf" "$TEMP_DISK" >/dev/null 2>&1; then
+        echo "headless: failed to install $TEST_NAME init.conf" >&2
         exit 1
     fi
     DISK_IMAGE="$TEMP_DISK"
@@ -178,10 +190,16 @@ if ! grub-mkrescue -o "$KERNEL_DIR/cubit_kernel.iso" "$KERNEL_DIR/isodir" >/dev/
 fi
 cp "$GRUB_BAK" "$GRUB_CFG"
 
+VIDEO_ARGS="-device virtio-gpu-pci"
+if [ "$TEST_NAME" = "virtio-vga-primary" ]; then
+    VIDEO_ARGS="-vga none -device virtio-vga,xres=1024,yres=768"
+fi
+
 echo "headless: running $TEST_NAME for ${TIMEOUT_SECONDS}s"
 
 (
     cd "$KERNEL_DIR" || exit 1
+    # shellcheck disable=SC2086
     "$TIMEOUT_BIN" "$TIMEOUT_SECONDS" "$QEMU_BIN" \
         -machine q35 \
         -cpu Broadwell \
@@ -193,6 +211,7 @@ echo "headless: running $TEST_NAME for ${TIMEOUT_SECONDS}s"
         -drive "file=$DISK_IMAGE,if=none,id=nvme0,format=raw" \
         -device nvme,serial=cubitnvme,drive=nvme0 \
         -device virtio-net-pci,netdev=net0 \
+        $VIDEO_ARGS \
         -netdev user,id=net0 \
         -object "filter-dump,id=f0,netdev=net0,file=$NET_PCAP" \
         -audiodev none,id=snd0 \
@@ -226,6 +245,39 @@ ps2: consumer registered, entering event loop
 ipctest-server: registered
 ipctest-client: starting
 TEST: PASS async-ipc
+"
+        ;;
+    desktop-display)
+        required_markers="
+display: gpu not primary, using linear-fb
+desktop: display info ready
+desktop: waiting for shell client
+shell: cwd=@nvme:0/
+"
+        ;;
+    virtio-gpu)
+        required_markers="
+devmgr: found virtio-gpu at PCI
+devmgr: virtio-gpu setup complete
+virtio-gpu: transport ready queues=2
+virtio-gpu: scanout test frame presented
+virtio-gpu: ready
+shell: cwd=@nvme:0/
+"
+        ;;
+    virtio-vga-primary)
+        required_markers="
+devmgr: found virtio-gpu at PCI
+devmgr: virtio-gpu setup complete
+virtio-gpu: scanout0 1024x768 enabled=1
+virtio-gpu: scanout test frame presented
+virtio-gpu: ready
+display: backend virtio-gpu
+display: gpu scanout cleared
+display: gpu buffer attached
+display: buffer attached
+shell: display buffer attached
+shell: cwd=@nvme:0/
 "
         ;;
 esac
