@@ -6,6 +6,8 @@
 --  First desktop shell client
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
+with System; use System;
+with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
 
@@ -18,10 +20,12 @@ procedure main is
    OP_SURFACE_CREATE   : constant Unsigned_32 := 16#0810#;
    OP_SURFACE_PRESENT  : constant Unsigned_32 := 16#0812#;
    OP_SURFACE_RESIZE   : constant Unsigned_32 := 16#0813#;
+   OP_SURFACE_ATTACH_BUFFER : constant Unsigned_32 := 16#0814#;
    OP_INPUT_POLL       : constant Unsigned_32 := 16#0821#;
 
    SURFACE_FLAG_SHELL  : constant Unsigned_64 := 1;
    SURFACE_FLAG_WINDOW : constant Unsigned_64 := 2;
+   PIXEL_FORMAT_BGRA8888 : constant Unsigned_64 := 1;
 
    INPUT_NONE      : constant Unsigned_64 := 0;
    INPUT_KEY_DOWN  : constant Unsigned_64 := 1;
@@ -38,8 +42,13 @@ procedure main is
    windowId  : Unsigned_64 := 0;
    width     : Unsigned_64 := 0;
    height    : Unsigned_64 := 0;
-   windowW   : Unsigned_64 := 360;
+   windowW   : Unsigned_64 := 340;
    windowH   : Unsigned_64 := 220;
+   bufferW   : constant Natural := 320;
+   bufferH   : constant Natural := 176;
+   bufferPitch : constant Natural := bufferW * 4;
+   bufferAddr : System.Address := System.Null_Address;
+   bufferGrant : Unsigned_64 := 0;
    lastEvent : Unsigned_64 := 0;
    compact   : Boolean := False;
    running   : Boolean := True;
@@ -70,6 +79,82 @@ procedure main is
       return msg;
    end callDesktop;
 
+   function alignUpPage (value : Unsigned_64) return Unsigned_64 is
+   begin
+      return (value + 4095) and not Unsigned_64'(4095);
+   end alignUpPage;
+
+   procedure writePixel (x, y : Natural; color : Unsigned_32) is
+      offset : constant Storage_Offset :=
+         Storage_Offset (y * bufferPitch + x * 4);
+      pixel : Unsigned_32 with Import, Address => bufferAddr + offset;
+   begin
+      if bufferAddr /= System.Null_Address and then
+         x < bufferW and then y < bufferH
+      then
+         pixel := color;
+      end if;
+   end writePixel;
+
+   procedure drawPixelTest (phase : Unsigned_64) is
+      r : Unsigned_32;
+      g : Unsigned_32;
+      b : Unsigned_32;
+   begin
+      for y in 0 .. bufferH - 1 loop
+         for x in 0 .. bufferW - 1 loop
+            r := Unsigned_32 ((x + Natural (phase mod 64)) mod 256);
+            g := Unsigned_32 ((y * 2) mod 256);
+            b := Unsigned_32 (((x / 8 + y / 8) * 24) mod 256);
+            writePixel
+              (x, y,
+               Shift_Left (r, 16) or Shift_Left (g, 8) or b);
+         end loop;
+      end loop;
+   end drawPixelTest;
+
+   procedure attachPixelBuffer is
+      raw : Unsigned_64;
+      pages : constant Unsigned_64 :=
+         (Unsigned_64 (bufferPitch * bufferH) + 4095) / 4096;
+      grantOk : Boolean;
+      reply : Message;
+   begin
+      raw := syscall (SYSCALL_SBRK, pages * 4096 + 4096);
+      if raw = Unsigned_64'Last then
+         debugPrint ("desktop-shell: pixel buffer alloc failed" & LF);
+         return;
+      end if;
+
+      bufferAddr := To_Address (Integer_Address (alignUpPage (raw)));
+      drawPixelTest (0);
+
+      createGrantViaCap
+        (slot      => CAP_SLOT_DESKTOP,
+         localAddr => bufferAddr,
+         numPages  => Natural (pages),
+         readWrite => False,
+         grantId   => bufferGrant,
+         success   => grantOk);
+      if not grantOk then
+         debugPrint ("desktop-shell: pixel grant failed" & LF);
+         return;
+      end if;
+
+      reply := callDesktop
+        (OP_SURFACE_ATTACH_BUFFER,
+         windowId,
+         bufferGrant,
+         Unsigned_64 (bufferW) or Shift_Left (Unsigned_64 (bufferH), 32),
+         Unsigned_64 (bufferPitch) or
+            Shift_Left (PIXEL_FORMAT_BGRA8888, 32));
+      if reply.words (0) /= 0 then
+         debugPrint ("desktop-shell: pixel attach failed" & LF);
+      else
+         debugPrint ("desktop-shell: pixel buffer attached" & LF);
+      end if;
+   end attachPixelBuffer;
+
    procedure present is
       reply : Message;
       target : Unsigned_64 := surfaceId;
@@ -78,6 +163,9 @@ procedure main is
          target := windowId;
       end if;
 
+      if bufferAddr /= System.Null_Address then
+         drawPixelTest (lastEvent);
+      end if;
       reply := callDesktop (OP_SURFACE_PRESENT, target, 0, 0, 0);
    end present;
 
@@ -183,6 +271,7 @@ begin
    end;
 
    debugPrint ("desktop-shell: connected" & LF);
+   attachPixelBuffer;
    present;
 
    while running loop

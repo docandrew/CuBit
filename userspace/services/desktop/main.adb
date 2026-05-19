@@ -26,10 +26,13 @@ procedure main is
    OP_DESKTOP_HELLO    : constant Unsigned_32 := 16#0800#;
    OP_DESKTOP_BYE      : constant Unsigned_32 := 16#0801#;
    OP_DESKTOP_GET_INFO : constant Unsigned_32 := 16#0802#;
+   OP_SPAWN            : constant Unsigned_32 := 16#0100#;
    OP_SURFACE_CREATE   : constant Unsigned_32 := 16#0810#;
    OP_SURFACE_DESTROY  : constant Unsigned_32 := 16#0811#;
    OP_SURFACE_PRESENT  : constant Unsigned_32 := 16#0812#;
    OP_SURFACE_RESIZE   : constant Unsigned_32 := 16#0813#;
+   OP_SURFACE_ATTACH_BUFFER : constant Unsigned_32 := 16#0814#;
+   OP_WINDOW_SET_LIMITS : constant Unsigned_32 := 16#0841#;
    OP_INPUT_POLL       : constant Unsigned_32 := 16#0821#;
 
    OP_DISPLAY_GET_INFO      : constant Unsigned_32 := 16#0900#;
@@ -45,9 +48,23 @@ procedure main is
    UI_ERR_BAD_OBJECT  : constant Unsigned_64 := 2;
    UI_ERR_BAD_STATE   : constant Unsigned_64 := 3;
    UI_ERR_UNSUPPORTED : constant Unsigned_64 := 5;
+   REPLY_OK           : constant Unsigned_32 := 16#F000#;
 
    SURFACE_FLAG_SHELL  : constant Unsigned_64 := 1;
    SURFACE_FLAG_WINDOW : constant Unsigned_64 := 2;
+
+   WINDOW_FLAG_DECORATED      : constant Unsigned_64 := 1;
+   WINDOW_FLAG_RESIZABLE      : constant Unsigned_64 := 2;
+   WINDOW_FLAG_MINIMIZABLE    : constant Unsigned_64 := 4;
+   WINDOW_FLAG_MAXIMIZABLE    : constant Unsigned_64 := 8;
+   WINDOW_FLAG_CLOSEABLE      : constant Unsigned_64 := 16;
+   WINDOW_FLAG_FULLSCREENABLE : constant Unsigned_64 := 32;
+   WINDOW_FLAG_POINTER_CAPTURE : constant Unsigned_64 := 64;
+   WINDOW_FLAG_FIXED_SIZE     : constant Unsigned_64 := 128;
+   WINDOW_FLAGS_DEFAULT : constant Unsigned_64 :=
+      WINDOW_FLAG_DECORATED or WINDOW_FLAG_RESIZABLE or
+      WINDOW_FLAG_MINIMIZABLE or WINDOW_FLAG_MAXIMIZABLE or
+      WINDOW_FLAG_CLOSEABLE;
 
    INPUT_NONE      : constant Unsigned_64 := 0;
    INPUT_KEY_DOWN  : constant Unsigned_64 := 1;
@@ -59,12 +76,20 @@ procedure main is
    PROTOCOL_VERSION : constant Unsigned_64 :=
       PROTOCOL_MAJOR or Shift_Left (PROTOCOL_MINOR, 32);
 
+   PIXEL_FORMAT_BGRA8888 : constant Unsigned_64 := 1;
+   SCALE_1_0_16_16       : constant Unsigned_64 := 16#0001_0000#;
+   GRANT_REGION_BASE : constant Unsigned_64 := 16#0000_4000_0000_0000#;
+   GRANT_SLOT_SIZE   : constant Unsigned_64 := 4096 * 4096; -- 16 MiB
+
    fbWidth  : Natural := 0;
    fbHeight : Natural := 0;
    fbPitch  : Natural := 0;
    fbBpp    : Natural := 0;
    backBufferAddr : System.Address := System.Null_Address;
    backBufferGrant : Unsigned_64 := 0;
+   spawnGrantAddr : System.Address := System.Null_Address;
+   spawnGrantId   : Unsigned_64 := 0;
+   spawnGrantReady : Boolean := False;
 
    --  Prototype compositor shadow framebuffer. All desktop drawing goes here
    --  first, then a completed frame is copied to the real framebuffer in one
@@ -101,6 +126,25 @@ procedure main is
       flags     : Unsigned_64 := 0;
       serial    : Unsigned_64 := 0;
       dirty     : Boolean := True;
+      minimized : Boolean := False;
+      appKind   : Natural := 0;
+      maximized : Boolean := False;
+      restoreX  : Natural := 0;
+      restoreY  : Natural := 0;
+      restoreW  : Natural := 0;
+      restoreH  : Natural := 0;
+      minW      : Natural := 120;
+      minH      : Natural := 80;
+      maxW      : Natural := 0;
+      maxH      : Natural := 0;
+      windowFlags : Unsigned_64 := WINDOW_FLAGS_DEFAULT;
+      bufferAttached : Boolean := False;
+      bufferGrant    : Unsigned_64 := 0;
+      bufferAddr     : System.Address := System.Null_Address;
+      bufferW        : Natural := 0;
+      bufferH        : Natural := 0;
+      bufferPitch    : Natural := 0;
+      bufferFormat   : Unsigned_64 := 0;
    end record;
 
    MAX_SURFACES : constant Natural := 8;
@@ -110,6 +154,8 @@ procedure main is
    surfaces : SurfaceTable;
    nextSurfaceId : Unsigned_64 := 1;
    focusSurface  : Unsigned_64 := 0;
+   internalShellSurface : Unsigned_64 := 0;
+   internalDemoWindow   : Unsigned_64 := 0;
    nextInputSerial : Unsigned_64 := 1;
    inputOwned : Boolean := False;
 
@@ -128,12 +174,138 @@ procedure main is
    cursorY : Natural := 80;
    lastButtons : Unsigned_64 := 0;
    launchMenuOpen : Boolean := False;
+   desktopShiftDown : Boolean := False;
+   desktopCapsLockOn : Boolean := False;
+
+   CONSOLE_INPUT_MAX : constant Natural := 56;
+   consoleInput : String (1 .. CONSOLE_INPUT_MAX) := (others => ' ');
+   consoleInputLen : Natural := 0;
+   consoleLast : String (1 .. CONSOLE_INPUT_MAX) := (others => ' ');
+   consoleLastLen : Natural := 0;
+   consoleResult : String (1 .. 72) := (others => ' ');
+   consoleResultLen : Natural := 0;
+   CONSOLE_LINE_MAX : constant Natural := 72;
+   CONSOLE_HISTORY_ROWS : constant Natural := 5;
+   subtype ConsoleLine is String (1 .. CONSOLE_LINE_MAX);
+   type ConsoleHistoryTable is array (1 .. CONSOLE_HISTORY_ROWS) of ConsoleLine;
+   type ConsoleHistoryLengths is array (1 .. CONSOLE_HISTORY_ROWS) of Natural;
+   consoleHistory : ConsoleHistoryTable := (others => (others => ' '));
+   consoleHistoryLen : ConsoleHistoryLengths := (others => 0);
+
+   type ScanTable is array (Unsigned_8 range 0 .. 16#39#) of Unsigned_8;
+   scancodeNormal : constant ScanTable :=
+     (16#02# => Character'Pos ('1'),
+      16#03# => Character'Pos ('2'),
+      16#04# => Character'Pos ('3'),
+      16#05# => Character'Pos ('4'),
+      16#06# => Character'Pos ('5'),
+      16#07# => Character'Pos ('6'),
+      16#08# => Character'Pos ('7'),
+      16#09# => Character'Pos ('8'),
+      16#0A# => Character'Pos ('9'),
+      16#0B# => Character'Pos ('0'),
+      16#0C# => Character'Pos ('-'),
+      16#0D# => Character'Pos ('='),
+      16#0E# => 8,
+      16#10# => Character'Pos ('q'),
+      16#11# => Character'Pos ('w'),
+      16#12# => Character'Pos ('e'),
+      16#13# => Character'Pos ('r'),
+      16#14# => Character'Pos ('t'),
+      16#15# => Character'Pos ('y'),
+      16#16# => Character'Pos ('u'),
+      16#17# => Character'Pos ('i'),
+      16#18# => Character'Pos ('o'),
+      16#19# => Character'Pos ('p'),
+      16#1C# => 10,
+      16#1E# => Character'Pos ('a'),
+      16#1F# => Character'Pos ('s'),
+      16#20# => Character'Pos ('d'),
+      16#21# => Character'Pos ('f'),
+      16#22# => Character'Pos ('g'),
+      16#23# => Character'Pos ('h'),
+      16#24# => Character'Pos ('j'),
+      16#25# => Character'Pos ('k'),
+      16#26# => Character'Pos ('l'),
+      16#2C# => Character'Pos ('z'),
+      16#2D# => Character'Pos ('x'),
+      16#2E# => Character'Pos ('c'),
+      16#2F# => Character'Pos ('v'),
+      16#30# => Character'Pos ('b'),
+      16#31# => Character'Pos ('n'),
+      16#32# => Character'Pos ('m'),
+      16#33# => Character'Pos (','),
+      16#34# => Character'Pos ('.'),
+      16#35# => Character'Pos ('/'),
+      16#39# => Character'Pos (' '),
+      others => 0);
+
+   scancodeShifted : constant ScanTable :=
+     (16#02# => Character'Pos ('!'),
+      16#03# => Character'Pos ('@'),
+      16#04# => Character'Pos ('#'),
+      16#05# => Character'Pos ('$'),
+      16#06# => Character'Pos ('%'),
+      16#07# => Character'Pos ('^'),
+      16#08# => Character'Pos ('&'),
+      16#09# => Character'Pos ('*'),
+      16#0A# => Character'Pos ('('),
+      16#0B# => Character'Pos (')'),
+      16#0C# => Character'Pos ('_'),
+      16#0D# => Character'Pos ('+'),
+      16#0E# => 8,
+      16#10# => Character'Pos ('Q'),
+      16#11# => Character'Pos ('W'),
+      16#12# => Character'Pos ('E'),
+      16#13# => Character'Pos ('R'),
+      16#14# => Character'Pos ('T'),
+      16#15# => Character'Pos ('Y'),
+      16#16# => Character'Pos ('U'),
+      16#17# => Character'Pos ('I'),
+      16#18# => Character'Pos ('O'),
+      16#19# => Character'Pos ('P'),
+      16#1C# => 10,
+      16#1E# => Character'Pos ('A'),
+      16#1F# => Character'Pos ('S'),
+      16#20# => Character'Pos ('D'),
+      16#21# => Character'Pos ('F'),
+      16#22# => Character'Pos ('G'),
+      16#23# => Character'Pos ('H'),
+      16#24# => Character'Pos ('J'),
+      16#25# => Character'Pos ('K'),
+      16#26# => Character'Pos ('L'),
+      16#2C# => Character'Pos ('Z'),
+      16#2D# => Character'Pos ('X'),
+      16#2E# => Character'Pos ('C'),
+      16#2F# => Character'Pos ('V'),
+      16#30# => Character'Pos ('B'),
+      16#31# => Character'Pos ('N'),
+      16#32# => Character'Pos ('M'),
+      16#33# => Character'Pos ('<'),
+      16#34# => Character'Pos ('>'),
+      16#35# => Character'Pos ('?'),
+      16#39# => Character'Pos (' '),
+      others => 0);
+
+   APP_CLIENT   : constant Natural := 0;
+   APP_DEMO     : constant Natural := 1;
+   APP_CONSOLE  : constant Natural := 2;
+   APP_SECURITY : constant Natural := 3;
+
+   LAUNCH_NONE     : constant Natural := 0;
+   LAUNCH_CONSOLE : constant Natural := 1;
+   LAUNCH_FILES    : constant Natural := 2;
+   LAUNCH_SECURITY : constant Natural := 3;
+   LAUNCH_POWER    : constant Natural := 4;
 
    DRAG_NONE        : constant Natural := 0;
    DRAG_MOVE        : constant Natural := 1;
    DRAG_RESIZE_E    : constant Natural := 2;
    DRAG_RESIZE_S    : constant Natural := 3;
    DRAG_RESIZE_SE   : constant Natural := 4;
+   HIT_MINIMIZE     : constant Natural := 5;
+   HIT_CLOSE        : constant Natural := 6;
+   HIT_MAXIMIZE     : constant Natural := 7;
    dragMode         : Natural := DRAG_NONE;
    dragSurfaceId    : Unsigned_64 := 0;
    dragOffsetX      : Natural := 0;
@@ -148,6 +320,9 @@ procedure main is
    LAUNCH_H     : constant Natural := 24;
    MENU_W       : constant Natural := 232;
    MENU_H       : constant Natural := 154;
+   TASK_BUTTON_W : constant Natural := 156;
+   TASK_BUTTON_H : constant Natural := 24;
+   TASK_BUTTON_GAP : constant Natural := 6;
    CURSOR_W     : constant Natural := 12;
    CURSOR_H     : constant Natural := 18;
    CURSOR_PIXELS : constant Natural := CURSOR_W * CURSOR_H;
@@ -261,6 +436,11 @@ procedure main is
       return syscall (SYSCALL_GETTIME);
    end nowMs;
 
+   function alignUpPage (addr : Unsigned_64) return Unsigned_64 is
+   begin
+      return (addr + 4095) and not Unsigned_64'(4095);
+   end alignUpPage;
+
    procedure putPixel (x, y : Natural; color : Unsigned_32) is
       offset : constant Storage_Offset :=
          Storage_Offset (y * fbPitch + x * 4);
@@ -314,6 +494,26 @@ procedure main is
          return pixel;
       end;
    end readBackPixel;
+
+   function readClientPixel (s : Surface; x, y : Natural) return Unsigned_32 is
+      offset : constant Storage_Offset :=
+         Storage_Offset (y * s.bufferPitch + x * 4);
+   begin
+      if not s.bufferAttached or else
+         s.bufferAddr = System.Null_Address or else
+         x >= s.bufferW or else y >= s.bufferH or else
+         s.bufferFormat /= PIXEL_FORMAT_BGRA8888
+      then
+         return 0;
+      end if;
+
+      declare
+         pixel : Unsigned_32 with
+            Import, Address => s.bufferAddr + offset;
+      begin
+         return pixel;
+      end;
+   end readClientPixel;
 
    procedure writeBackPixel (x, y : Natural; color : Unsigned_32) is
       offset : constant Storage_Offset :=
@@ -420,12 +620,98 @@ procedure main is
       return clampRect ((x => 6, y => y, w => MENU_W, h => MENU_H));
    end launchMenuRect;
 
+   function launchItemRect (action : Natural) return Rect is
+      menu : constant Rect := launchMenuRect;
+      y    : Natural := menu.y + 34;
+   begin
+      if isEmpty (menu) or else action = LAUNCH_NONE or else menu.w <= 16 then
+         return (others => 0);
+      end if;
+
+      case action is
+         when LAUNCH_CONSOLE =>
+            y := menu.y + 34;
+         when LAUNCH_FILES =>
+            y := menu.y + 60;
+         when LAUNCH_SECURITY =>
+            y := menu.y + 86;
+         when LAUNCH_POWER =>
+            y := menu.y + 122;
+         when others =>
+            return (others => 0);
+      end case;
+
+      return clampRect ((x => menu.x + 8, y => y,
+                         w => menu.w - 16, h => 24));
+   end launchItemRect;
+
+   function taskButtonOrdinal (slot : SurfaceIndex) return Natural is
+      ordinal : Natural := 0;
+   begin
+      for i in surfaces'Range loop
+         exit when i = slot;
+         if surfaces (i).used and then
+            (surfaces (i).flags and SURFACE_FLAG_WINDOW) /= 0
+         then
+            ordinal := ordinal + 1;
+         end if;
+      end loop;
+
+      return ordinal;
+   end taskButtonOrdinal;
+
+   function taskButtonRect (slot : SurfaceIndex) return Rect is
+      ordinal : constant Natural := taskButtonOrdinal (slot);
+      x       : Natural := 104 + ordinal * (TASK_BUTTON_W + TASK_BUTTON_GAP);
+      maxW    : Natural := TASK_BUTTON_W;
+   begin
+      if x >= fbWidth then
+         return (others => 0);
+      end if;
+
+      if x + maxW + 6 > fbWidth then
+         maxW := fbWidth - x;
+      end if;
+
+      return clampRect ((x => x, y => taskbarY + 6,
+                         w => maxW, h => TASK_BUTTON_H));
+   end taskButtonRect;
+
    function pointInRect (x, y : Natural; r : Rect) return Boolean is
    begin
       return not isEmpty (r) and then
          x >= r.x and then y >= r.y and then
          x < r.x + r.w and then y < r.y + r.h;
    end pointInRect;
+
+   function hitLaunchItem (x, y : Natural) return Natural is
+   begin
+      if pointInRect (x, y, launchItemRect (LAUNCH_CONSOLE)) then
+         return LAUNCH_CONSOLE;
+      elsif pointInRect (x, y, launchItemRect (LAUNCH_FILES)) then
+         return LAUNCH_FILES;
+      elsif pointInRect (x, y, launchItemRect (LAUNCH_SECURITY)) then
+         return LAUNCH_SECURITY;
+      elsif pointInRect (x, y, launchItemRect (LAUNCH_POWER)) then
+         return LAUNCH_POWER;
+      else
+         return LAUNCH_NONE;
+      end if;
+   end hitLaunchItem;
+
+   function hitTaskButton (x, y : Natural) return Integer is
+   begin
+      for i in surfaces'Range loop
+         if surfaces (i).used and then
+            (surfaces (i).flags and SURFACE_FLAG_WINDOW) /= 0 and then
+            pointInRect (x, y, taskButtonRect (i))
+         then
+            return Integer (i);
+         end if;
+      end loop;
+
+      return -1;
+   end hitTaskButton;
 
    function unionRect (a, b : Rect) return Rect is
       ax2 : constant Natural := a.x + a.w;
@@ -483,6 +769,70 @@ procedure main is
       return clampRect ((x => s.x, y => s.y, w => s.w, h => s.h));
    end surfaceRect;
 
+   function hasWindowFlag (s : Surface; flag : Unsigned_64) return Boolean is
+   begin
+      return (s.windowFlags and flag) /= 0;
+   end hasWindowFlag;
+
+   procedure clampSurfaceSize
+      (s : Surface;
+       w : in out Natural;
+       h : in out Natural)
+   is
+   begin
+      if w < s.minW then
+         w := s.minW;
+      end if;
+      if h < s.minH then
+         h := s.minH;
+      end if;
+
+      if s.maxW /= 0 and then w > s.maxW then
+         w := s.maxW;
+      end if;
+      if s.maxH /= 0 and then h > s.maxH then
+         h := s.maxH;
+      end if;
+   end clampSurfaceSize;
+
+   function minimizeButtonRect (s : Surface) return Rect is
+   begin
+      if not hasWindowFlag (s, WINDOW_FLAG_MINIMIZABLE) or else s.w < 66 then
+         return (others => 0);
+      end if;
+
+      return clampRect ((x => s.x + s.w - 59,
+                         y => s.y + 6,
+                         w => 14,
+                         h => 14));
+   end minimizeButtonRect;
+
+   function maximizeButtonRect (s : Surface) return Rect is
+   begin
+      if not hasWindowFlag (s, WINDOW_FLAG_MAXIMIZABLE) or else
+         hasWindowFlag (s, WINDOW_FLAG_FIXED_SIZE) or else s.w < 48
+      then
+         return (others => 0);
+      end if;
+
+      return clampRect ((x => s.x + s.w - 41,
+                         y => s.y + 6,
+                         w => 14,
+                         h => 14));
+   end maximizeButtonRect;
+
+   function closeButtonRect (s : Surface) return Rect is
+   begin
+      if not hasWindowFlag (s, WINDOW_FLAG_CLOSEABLE) or else s.w < 30 then
+         return (others => 0);
+      end if;
+
+      return clampRect ((x => s.x + s.w - 23,
+                         y => s.y + 6,
+                         w => 14,
+                         h => 14));
+   end closeButtonRect;
+
    function signed12 (x : Unsigned_64) return Integer is
       v : constant Unsigned_64 := x and 16#FFF#;
    begin
@@ -497,6 +847,7 @@ procedure main is
    begin
       for i in reverse surfaces'Range loop
          if surfaces (i).used and then
+            not surfaces (i).minimized and then
             (surfaces (i).flags and SURFACE_FLAG_WINDOW) /= 0 and then
             x >= surfaces (i).x and then y >= surfaces (i).y and then
             x < surfaces (i).x + surfaces (i).w and then
@@ -517,7 +868,23 @@ procedure main is
       inTitle  : constant Boolean :=
          y >= s.y and then y < s.y + TITLE_HEIGHT;
    begin
-      if onRight and then onBottom then
+      if pointInRect (x, y, closeButtonRect (s)) then
+         return HIT_CLOSE;
+      elsif pointInRect (x, y, maximizeButtonRect (s)) then
+         return HIT_MAXIMIZE;
+      elsif pointInRect (x, y, minimizeButtonRect (s)) then
+         return HIT_MINIMIZE;
+      elsif s.maximized then
+         return DRAG_NONE;
+      elsif not hasWindowFlag (s, WINDOW_FLAG_RESIZABLE) or else
+         hasWindowFlag (s, WINDOW_FLAG_FIXED_SIZE)
+      then
+         if inTitle then
+            return DRAG_MOVE;
+         else
+            return DRAG_NONE;
+         end if;
+      elsif onRight and then onBottom then
          return DRAG_RESIZE_SE;
       elsif onRight then
          return DRAG_RESIZE_E;
@@ -686,6 +1053,83 @@ procedure main is
       end loop;
    end drawText;
 
+   procedure drawSurfaceTitle
+      (s       : Surface;
+       x, y    : Natural;
+       fg, bg  : Unsigned_32)
+   is
+   begin
+      case s.appKind is
+         when APP_CONSOLE =>
+            drawText (x, y, "CuBASIC Console", fg, bg);
+         when APP_SECURITY =>
+            drawText (x, y, "Security Center", fg, bg);
+         when APP_DEMO =>
+            drawText (x, y, "Demo Window", fg, bg);
+         when others =>
+            drawText (x, y, "Application", fg, bg);
+      end case;
+   end drawSurfaceTitle;
+
+   procedure drawConsoleText (x, y : Natural; bg : Unsigned_32) is
+   begin
+      drawText (x, y, "CuBASIC 0.1", C_ACCENT, bg);
+      drawText (x, y + 24, "READY.", C_GOOD, bg);
+
+      for row in 1 .. CONSOLE_HISTORY_ROWS loop
+         if consoleHistoryLen (row) > 0 then
+            drawText
+              (x, y + 48 + (row - 1) * 18,
+               consoleHistory (row) (1 .. consoleHistoryLen (row)),
+               C_TEXT, bg);
+         end if;
+      end loop;
+
+      drawText (x, y + 148, "]", C_GOOD, bg);
+      if consoleInputLen > 0 then
+         drawText (x + 24, y + 148, consoleInput (1 .. consoleInputLen),
+                   C_TEXT, bg);
+         drawText (x + 24 + consoleInputLen * Font8x16.GLYPH_WIDTH,
+                   y + 148, "_", C_GOOD, bg);
+      else
+         drawText (x + 24, y + 148, "_", C_GOOD, bg);
+      end if;
+
+      if consoleLastLen > 0 then
+         drawText (x, y + 182, "last:", C_MUTED, bg);
+         drawText (x + 48, y + 182, consoleLast (1 .. consoleLastLen),
+                   C_TEXT, bg);
+      else
+         drawText (x, y + 182, "type HELP, LIST SERVICES, SHOW CAPS",
+                   C_MUTED, bg);
+      end if;
+   end drawConsoleText;
+
+   procedure drawClientBuffer (s : Surface; x, y, w, h : Natural) is
+      copyW : Natural := w;
+      copyH : Natural := h;
+   begin
+      if not s.bufferAttached or else
+         s.bufferFormat /= PIXEL_FORMAT_BGRA8888 or else
+         s.bufferPitch < s.bufferW * 4
+      then
+         return;
+      end if;
+
+      if copyW > s.bufferW then
+         copyW := s.bufferW;
+      end if;
+      if copyH > s.bufferH then
+         copyH := s.bufferH;
+      end if;
+
+      for yy in 0 .. copyH - 1 loop
+         for xx in 0 .. copyW - 1 loop
+            putPixel (x + xx, y + yy, readClientPixel (s, xx, yy));
+         end loop;
+      end loop;
+   end drawClientBuffer;
+
    procedure restoreCursorOverlay is
    begin
       if not cursorSaveValid then
@@ -781,11 +1225,21 @@ procedure main is
       titleH : constant Natural := 24;
       minW   : constant Natural := 80;
       minH   : constant Natural := 60;
+      active  : constant Boolean := s.id = focusSurface;
+      frame   : Surface := s;
+      minBtn  : Rect;
+      maxBtn  : Rect;
+      closeBtn : Rect;
+      titleColor : Unsigned_32 := C_EDGE;
       x      : Natural := s.x;
       y      : Natural := s.y;
       w      : Natural := s.w;
       h      : Natural := s.h;
    begin
+      if s.minimized then
+         return;
+      end if;
+
       if w < minW then
          w := minW;
       end if;
@@ -797,25 +1251,112 @@ procedure main is
          return;
       end if;
 
+      if active then
+         titleColor := C_BLUE;
+      end if;
+
+      frame.x := x;
+      frame.y := y;
+      frame.w := w;
+      frame.h := h;
+
       fillRect (x + 3, y + 3, w, h, C_SHADOW);
       fillRect (x, y, w, h, C_WIN);
       strokeRect (x, y, w, h, C_EDGE, C_SHADOW);
-      fillRect (x + 3, y + 3, w - 6, titleH, C_BLUE);
-      drawText (x + 10, y + 7, "Demo Window", C_WHITE, C_BLUE);
+      fillRect (x + 3, y + 3, w - 6, titleH, titleColor);
+      drawSurfaceTitle (s, x + 10, y + 7, C_WHITE, titleColor);
 
-      --  Close box placeholder. It is drawn by the compositor because close,
-      --  move, resize, and focus are all authority-sensitive window mechanics.
-      fillRect (x + w - 23, y + 6, 14, 14, C_BAR);
-      strokeRect (x + w - 23, y + 6, 14, 14, C_EDGE, C_SHADOW);
-      drawText (x + w - 20, y + 5, "x", C_TEXT, C_BAR);
+      --  Window controls are compositor-owned because they mutate focus,
+      --  visibility, and eventually client lifecycle authority.
+      minBtn := minimizeButtonRect (frame);
+      maxBtn := maximizeButtonRect (frame);
+      closeBtn := closeButtonRect (frame);
 
-      drawText (x + 18, y + 44, "This is a real child surface.",
-                C_TEXT, C_WIN);
-      drawText (x + 18, y + 70, "Drag title bar to move.",
-                C_TEXT, C_WIN);
-      drawText (x + 18, y + 96, "Drag edges to resize.",
-                C_TEXT, C_WIN);
+      if not isEmpty (minBtn) then
+         fillRect (minBtn.x, minBtn.y, minBtn.w, minBtn.h, C_BAR);
+         strokeRect (minBtn.x, minBtn.y, minBtn.w, minBtn.h,
+                     C_EDGE, C_SHADOW);
+         drawText (minBtn.x + 4, minBtn.y + 1, "_", C_TEXT, C_BAR);
+      end if;
+
+      if not isEmpty (maxBtn) then
+         fillRect (maxBtn.x, maxBtn.y, maxBtn.w, maxBtn.h, C_BAR);
+         strokeRect (maxBtn.x, maxBtn.y, maxBtn.w, maxBtn.h,
+                     C_EDGE, C_SHADOW);
+         if s.maximized then
+            strokeRect (maxBtn.x + 3, maxBtn.y + 4, 7, 6, C_TEXT, C_TEXT);
+            strokeRect (maxBtn.x + 5, maxBtn.y + 2, 7, 6, C_TEXT, C_TEXT);
+         else
+            strokeRect (maxBtn.x + 3, maxBtn.y + 3, 8, 8, C_TEXT, C_TEXT);
+         end if;
+      end if;
+
+      if not isEmpty (closeBtn) then
+         fillRect (closeBtn.x, closeBtn.y, closeBtn.w, closeBtn.h, C_BAR);
+         strokeRect (closeBtn.x, closeBtn.y, closeBtn.w, closeBtn.h,
+                     C_EDGE, C_SHADOW);
+         drawText (closeBtn.x + 3, closeBtn.y - 1, "x", C_TEXT, C_BAR);
+      end if;
+
+      case s.appKind is
+         when APP_CONSOLE =>
+            fillRect (x + 14, y + 40, w - 28, h - 56, C_SHADOW);
+            drawConsoleText (x + 24, y + 50, C_SHADOW);
+         when APP_SECURITY =>
+            drawText (x + 18, y + 44, "Capability map", C_TEXT, C_WIN);
+            drawText (x + 18, y + 70, "Processes: procmgr, display, desktop",
+                      C_GOOD, C_WIN);
+            drawText (x + 18, y + 96, "Policy: least authority by default",
+                      C_TEXT, C_WIN);
+            drawText (x + 18, y + 122, "Live inspection hooks come next",
+                      C_MUTED, C_WIN);
+         when others =>
+            if s.bufferAttached then
+               fillRect (x + 10, y + 34, w - 20, h - 44, C_SHADOW);
+               drawClientBuffer (s, x + 10, y + 34, w - 20, h - 44);
+            else
+               drawText (x + 18, y + 44, "This is a real child surface.",
+                         C_TEXT, C_WIN);
+               drawText (x + 18, y + 70, "Drag title bar to move.",
+                         C_TEXT, C_WIN);
+               drawText (x + 18, y + 96, "Drag edges to resize.",
+                         C_TEXT, C_WIN);
+            end if;
+      end case;
    end drawWindow;
+
+   procedure drawTaskButtons is
+      r : Rect;
+      face : Unsigned_32;
+      light : Unsigned_32;
+      dark : Unsigned_32;
+   begin
+      for i in surfaces'Range loop
+         if surfaces (i).used and then
+            (surfaces (i).flags and SURFACE_FLAG_WINDOW) /= 0
+         then
+            r := taskButtonRect (i);
+            if not isEmpty (r) then
+               face := C_BAR;
+               light := C_EDGE;
+               dark := C_SHADOW;
+
+               if surfaces (i).id = focusSurface and then
+                  not surfaces (i).minimized
+               then
+                  face := C_WIN;
+                  light := C_SHADOW;
+                  dark := C_EDGE;
+               end if;
+
+               fillRect (r.x, r.y, r.w, r.h, face);
+               strokeRect (r.x, r.y, r.w, r.h, light, dark);
+               drawSurfaceTitle (surfaces (i), r.x + 10, r.y + 6,
+                                 C_TEXT, face);
+            end if;
+         end if;
+      end loop;
+   end drawTaskButtons;
 
    procedure drawDragOutline is
       r : constant Rect := clampRect (dragPreviewRect);
@@ -847,9 +1388,9 @@ procedure main is
       fillRect (r.x, r.y, 4, r.h, C_ACCENT);
 
       drawText (r.x + 18, r.y + 14, "CuBit", C_TEXT, C_PANEL);
-      drawText (r.x + 18, r.y + 42, "Terminal", C_TEXT, C_PANEL);
+      drawText (r.x + 18, r.y + 42, "CuBASIC", C_TEXT, C_PANEL);
       drawText (r.x + 18, r.y + 68, "Files", C_MUTED, C_PANEL);
-      drawText (r.x + 18, r.y + 94, "Security Center", C_MUTED, C_PANEL);
+      drawText (r.x + 18, r.y + 94, "Security Center", C_TEXT, C_PANEL);
       fillRect (r.x + 12, r.y + 122, r.w - 24, 1, C_EDGE);
       drawText (r.x + 18, r.y + 130, "Power", C_MUTED, C_PANEL);
    end drawLaunchMenu;
@@ -882,6 +1423,7 @@ procedure main is
          strokeRect (launch.x, launch.y, launch.w, launch.h, C_EDGE, C_SHADOW);
       end if;
       drawText (18, barY + 10, "Launch", C_TEXT, C_BAR);
+      drawTaskButtons;
 
       if fbWidth > panelW + 48 and then fbHeight > panelH + TASKBAR_H + 48 then
          px := (fbWidth - panelW) / 2;
@@ -892,9 +1434,9 @@ procedure main is
       strokeRect (px, py, panelW, panelH, C_EDGE, C_SHADOW);
       fillRect (px + 3, py + 3, panelW - 6, 22, C_BLUE);
       drawText (px + 10, py + 7, "CuBit Desktop", C_WHITE, C_BLUE);
-      drawText (px + 18, py + 44, "desktop-shell.app connected",
+      drawText (px + 18, py + 44, "desktop.svc owns the session",
                 C_TEXT, C_BAR);
-      drawText (px + 18, py + 70, "surface protocol: child window",
+      drawText (px + 18, py + 70, "Launch opens desktop windows",
                 C_TEXT, C_BAR);
       drawText (px + 18, py + 96, "Q or Esc exits desktop shell",
                 C_TEXT, C_BAR);
@@ -904,6 +1446,7 @@ procedure main is
 
       for i in surfaces'Range loop
          if surfaces (i).used and then
+            not surfaces (i).minimized and then
             (surfaces (i).flags and SURFACE_FLAG_WINDOW) /= 0
          then
             drawWindow (surfaces (i));
@@ -1084,6 +1627,10 @@ procedure main is
 
    function shellSurfaceVisible return Boolean is
    begin
+      if internalShellSurface /= 0 then
+         return True;
+      end if;
+
       for i in surfaces'Range loop
          if surfaces (i).used and then
             (surfaces (i).flags and SURFACE_FLAG_SHELL) /= 0
@@ -1094,6 +1641,358 @@ procedure main is
 
       return False;
    end shellSurfaceVisible;
+
+   procedure queueConfigure (surfaceId, w, h : Unsigned_64);
+   procedure restoreSurface (idx : SurfaceIndex; damage : in out Rect);
+
+   procedure focusTopmostVisibleWindow (damage : in out Rect) is
+   begin
+      for i in reverse surfaces'Range loop
+         if surfaces (i).used and then
+            not surfaces (i).minimized and then
+            (surfaces (i).flags and SURFACE_FLAG_WINDOW) /= 0
+         then
+            focusSurface := surfaces (i).id;
+            damage := unionRect
+              (damage, inflateRect (surfaceRect (surfaces (i)), 4));
+            damage := unionRect
+              (damage, inflateRect (taskButtonRect (i), 4));
+            return;
+         end if;
+      end loop;
+
+      focusSurface := 0;
+   end focusTopmostVisibleWindow;
+
+   procedure raiseSurface (idx : SurfaceIndex) is
+      moved : Surface := surfaces (idx);
+      last  : SurfaceIndex := idx;
+   begin
+      if (surfaces (idx).flags and SURFACE_FLAG_WINDOW) = 0 then
+         return;
+      end if;
+      if idx = surfaces'Last then
+         return;
+      end if;
+
+      for i in idx + 1 .. surfaces'Last loop
+         if surfaces (i).used and then
+            (surfaces (i).flags and SURFACE_FLAG_WINDOW) /= 0
+         then
+            surfaces (last) := surfaces (i);
+            last := i;
+         end if;
+      end loop;
+
+      surfaces (last) := moved;
+   end raiseSurface;
+
+   procedure focusAndRaiseSurface
+      (idx    : SurfaceIndex;
+       damage : in out Rect)
+   is
+      oldBounds : constant Rect := surfaceRect (surfaces (idx));
+      oldTask   : constant Rect := taskButtonRect (idx);
+      id        : constant Unsigned_64 := surfaces (idx).id;
+      raisedIdx : Integer;
+   begin
+      focusSurface := id;
+      raiseSurface (idx);
+      raisedIdx := findSurface (id);
+
+      damage := unionRect (damage, inflateRect (oldBounds, 4));
+      damage := unionRect (damage, inflateRect (oldTask, 4));
+
+      if raisedIdx >= 0 then
+         damage := unionRect
+           (damage,
+            inflateRect (surfaceRect (surfaces (SurfaceIndex (raisedIdx))), 4));
+         damage := unionRect
+           (damage,
+            inflateRect (taskButtonRect (SurfaceIndex (raisedIdx)), 4));
+      end if;
+   end focusAndRaiseSurface;
+
+   procedure cycleFocus (damage : in out Rect) is
+      current : Integer := findSurface (focusSurface);
+      base    : Natural := 0;
+      probe   : Natural;
+      chosen  : Integer := -1;
+   begin
+      if current >= 0 then
+         base := Natural (current) + 1;
+      end if;
+
+      for step in 0 .. MAX_SURFACES - 1 loop
+         probe := (base + step) mod MAX_SURFACES;
+         if surfaces (SurfaceIndex (probe)).used and then
+            (surfaces (SurfaceIndex (probe)).flags and
+             SURFACE_FLAG_WINDOW) /= 0
+         then
+            chosen := Integer (probe);
+            exit;
+         end if;
+      end loop;
+
+      if chosen >= 0 then
+         if surfaces (SurfaceIndex (chosen)).minimized then
+            restoreSurface (SurfaceIndex (chosen), damage);
+         end if;
+         focusAndRaiseSurface (SurfaceIndex (chosen), damage);
+      end if;
+   end cycleFocus;
+
+   procedure minimizeSurface (idx : SurfaceIndex; damage : in out Rect) is
+      oldBounds : constant Rect := surfaceRect (surfaces (idx));
+      button    : constant Rect := taskButtonRect (idx);
+   begin
+      surfaces (idx).minimized := True;
+      surfaces (idx).dirty := True;
+
+      if focusSurface = surfaces (idx).id then
+         focusSurface := 0;
+      end if;
+
+      damage := unionRect (damage, inflateRect (oldBounds, 4));
+      damage := unionRect (damage, inflateRect (button, 4));
+
+      if focusSurface = 0 then
+         focusTopmostVisibleWindow (damage);
+      end if;
+   end minimizeSurface;
+
+   procedure restoreSurface (idx : SurfaceIndex; damage : in out Rect) is
+      bounds : Rect;
+      button : constant Rect := taskButtonRect (idx);
+   begin
+      surfaces (idx).minimized := False;
+      surfaces (idx).dirty := True;
+      focusSurface := surfaces (idx).id;
+      bounds := surfaceRect (surfaces (idx));
+
+      damage := unionRect (damage, inflateRect (bounds, 4));
+      damage := unionRect (damage, inflateRect (button, 4));
+   end restoreSurface;
+
+   procedure toggleMaximizeSurface
+      (idx    : SurfaceIndex;
+       damage : in out Rect)
+   is
+      oldBounds : constant Rect := surfaceRect (surfaces (idx));
+      newBounds : Rect;
+      workH     : Natural := fbHeight;
+      nextW     : Natural;
+      nextH     : Natural;
+   begin
+      if not hasWindowFlag (surfaces (idx), WINDOW_FLAG_MAXIMIZABLE) or else
+         hasWindowFlag (surfaces (idx), WINDOW_FLAG_FIXED_SIZE)
+      then
+         return;
+      end if;
+
+      if fbHeight > TASKBAR_H then
+         workH := fbHeight - TASKBAR_H;
+      end if;
+
+      if surfaces (idx).maximized then
+         surfaces (idx).x := surfaces (idx).restoreX;
+         surfaces (idx).y := surfaces (idx).restoreY;
+         surfaces (idx).w := surfaces (idx).restoreW;
+         surfaces (idx).h := surfaces (idx).restoreH;
+         surfaces (idx).maximized := False;
+      else
+         surfaces (idx).restoreX := surfaces (idx).x;
+         surfaces (idx).restoreY := surfaces (idx).y;
+         surfaces (idx).restoreW := surfaces (idx).w;
+         surfaces (idx).restoreH := surfaces (idx).h;
+         nextW := fbWidth;
+         nextH := workH;
+         clampSurfaceSize (surfaces (idx), nextW, nextH);
+         surfaces (idx).x := 0;
+         surfaces (idx).y := 0;
+         surfaces (idx).w := nextW;
+         surfaces (idx).h := nextH;
+         surfaces (idx).maximized := True;
+      end if;
+
+      surfaces (idx).minimized := False;
+      surfaces (idx).dirty := True;
+      surfaces (idx).serial := surfaces (idx).serial + 1;
+      focusSurface := surfaces (idx).id;
+      newBounds := surfaceRect (surfaces (idx));
+
+      if surfaces (idx).owner /= NO_PROCESS then
+         queueConfigure (surfaces (idx).id,
+                         Unsigned_64 (newBounds.w),
+                         Unsigned_64 (newBounds.h));
+      end if;
+
+      damage := unionRect
+        (damage, inflateRect (unionRect (oldBounds, newBounds), 4));
+      damage := unionRect
+        (damage, inflateRect ((x => 0, y => taskbarY,
+                               w => fbWidth, h => TASKBAR_H), 2));
+   end toggleMaximizeSurface;
+
+   procedure closeSurface (idx : SurfaceIndex; damage : in out Rect) is
+      oldBounds : constant Rect := surfaceRect (surfaces (idx));
+      oldId     : constant Unsigned_64 := surfaces (idx).id;
+      button    : constant Rect := taskButtonRect (idx);
+   begin
+      --  Internal demo windows can disappear immediately. For client-owned
+      --  windows this is a temporary hard close; the protocol should later
+      --  grow a close-request event so clients can save state or refuse.
+      if oldId = internalDemoWindow then
+         internalDemoWindow := 0;
+      end if;
+
+      surfaces (idx) := (others => <>);
+
+      if focusSurface = oldId then
+         focusSurface := 0;
+      end if;
+
+      damage := unionRect (damage, inflateRect (oldBounds, 4));
+      damage := unionRect (damage, inflateRect (button, 4));
+
+      if focusSurface = 0 then
+         focusTopmostVisibleWindow (damage);
+      end if;
+   end closeSurface;
+
+   procedure createInternalSurface
+      (flags : Unsigned_64;
+       x, y  : Natural;
+       w, h  : Natural;
+       appKind : Natural;
+       id    : out Unsigned_64);
+
+   procedure openInternalApp (appKind : Natural; damage : in out Rect) is
+      existing : Integer := -1;
+      id       : Unsigned_64 := 0;
+      winX     : Natural := 96;
+      winY     : Natural := 72;
+      winW     : Natural := 420;
+      winH     : Natural := 240;
+   begin
+      for i in surfaces'Range loop
+         if surfaces (i).used and then
+            surfaces (i).owner = NO_PROCESS and then
+            surfaces (i).appKind = appKind
+         then
+            existing := Integer (i);
+            exit;
+         end if;
+      end loop;
+
+      if existing >= 0 then
+         restoreSurface (SurfaceIndex (existing), damage);
+         existing := findSurface (surfaces (SurfaceIndex (existing)).id);
+         if existing >= 0 then
+            focusAndRaiseSurface (SurfaceIndex (existing), damage);
+         end if;
+         return;
+      end if;
+
+      case appKind is
+         when APP_CONSOLE =>
+            winX := 86;
+            winY := 76;
+            winW := 620;
+            winH := 330;
+         when APP_SECURITY =>
+            winX := 132;
+            winY := 104;
+            winW := 480;
+            winH := 280;
+         when others =>
+            null;
+      end case;
+
+      if winX + winW > fbWidth then
+         winW := Natural'Max (MIN_WIN_W, fbWidth - winX);
+      end if;
+      if winY + winH > fbHeight then
+         winH := Natural'Max (MIN_WIN_H, fbHeight - winY);
+      end if;
+
+      createInternalSurface
+        (SURFACE_FLAG_WINDOW, winX, winY, winW, winH, appKind, id);
+
+      if id /= 0 then
+         declare
+            idx : constant Integer := findSurface (id);
+         begin
+            if idx >= 0 then
+               focusAndRaiseSurface (SurfaceIndex (idx), damage);
+            else
+               focusSurface := id;
+            end if;
+         end;
+         damage := unionRect
+           (damage,
+            inflateRect ((x => winX, y => winY, w => winW, h => winH), 4));
+         damage := unionRect
+           (damage,
+            inflateRect ((x => 0, y => taskbarY, w => fbWidth,
+                          h => TASKBAR_H), 2));
+      end if;
+   end openInternalApp;
+
+   procedure createInternalSurface
+      (flags : Unsigned_64;
+       x, y  : Natural;
+       w, h  : Natural;
+       appKind : Natural;
+       id    : out Unsigned_64)
+   is
+      slot : Integer := -1;
+   begin
+      id := 0;
+      for i in surfaces'Range loop
+         if not surfaces (i).used then
+            slot := Integer (i);
+            exit;
+         end if;
+      end loop;
+
+      if slot < 0 then
+         return;
+      end if;
+
+      surfaces (SurfaceIndex (slot)) :=
+        (used   => True,
+         owner  => NO_PROCESS,
+         id     => nextSurfaceId,
+         x      => x,
+         y      => y,
+         w      => w,
+         h      => h,
+         flags  => flags,
+         serial => 1,
+         dirty  => True,
+         minimized => False,
+         appKind => appKind,
+         maximized => False,
+         restoreX => x,
+         restoreY => y,
+         restoreW => w,
+         restoreH => h,
+         minW => MIN_WIN_W,
+         minH => MIN_WIN_H,
+         maxW => 0,
+         maxH => 0,
+         windowFlags => WINDOW_FLAGS_DEFAULT,
+         bufferAttached => False,
+         bufferGrant => 0,
+         bufferAddr => System.Null_Address,
+         bufferW => 0,
+         bufferH => 0,
+         bufferPitch => 0,
+         bufferFormat => 0);
+      id := nextSurfaceId;
+      nextSurfaceId := nextSurfaceId + 1;
+   end createInternalSurface;
 
    procedure queueConfigure (surfaceId, w, h : Unsigned_64) is
    begin
@@ -1162,6 +2061,7 @@ procedure main is
 
    procedure setupDisplayBuffer (ok : out Boolean);
    procedure releaseDisplayBuffer;
+   procedure activateInternalSession (ok : out Boolean);
 
    procedure handleRequest (from : ProcessID; request : Message) is
       replyMsg : Message := NULL_MESSAGE;
@@ -1187,8 +2087,8 @@ procedure main is
                              badge  => 0);
             replyMsg.words (0) := Unsigned_64 (fbWidth);
             replyMsg.words (1) := Unsigned_64 (fbHeight);
-            replyMsg.words (2) := 1; -- BGRA8888
-            replyMsg.words (3) := 16#0001_0000#; -- scale 1.0 in 16.16
+            replyMsg.words (2) := PIXEL_FORMAT_BGRA8888;
+            replyMsg.words (3) := SCALE_1_0_16_16;
 
          when OP_SURFACE_CREATE =>
             declare
@@ -1257,7 +2157,26 @@ procedure main is
                      h      => reqH,
                      flags  => request.words (2),
                      serial => 1,
-                     dirty  => True);
+                     dirty  => True,
+                     minimized => False,
+                     appKind => APP_CLIENT,
+                     maximized => False,
+                     restoreX => surfX,
+                     restoreY => surfY,
+                     restoreW => reqW,
+                     restoreH => reqH,
+                     minW => MIN_WIN_W,
+                     minH => MIN_WIN_H,
+                     maxW => 0,
+                     maxH => 0,
+                     windowFlags => WINDOW_FLAGS_DEFAULT,
+                     bufferAttached => False,
+                     bufferGrant => 0,
+                     bufferAddr => System.Null_Address,
+                     bufferW => 0,
+                     bufferH => 0,
+                     bufferPitch => 0,
+                     bufferFormat => 0);
                   focusSurface := nextSurfaceId;
 
                   replyMsg.tag := (label  => OP_SURFACE_CREATE,
@@ -1299,6 +2218,7 @@ procedure main is
                                    badge  => 0);
                   replyMsg.words (0) := UI_ERR_DENIED;
                else
+                  clampSurfaceSize (surfaces (SurfaceIndex (idx)), newW, newH);
                   if newW = 0 or else newW > fbWidth then
                      newW := fbWidth;
                   end if;
@@ -1334,6 +2254,141 @@ procedure main is
                                   Unsigned_64 (newH));
                   scheduleRedrawRect
                     (inflateRect (unionRect (oldBounds, newBounds), 4));
+               end if;
+            end;
+
+         when OP_WINDOW_SET_LIMITS =>
+            declare
+               idx  : constant Integer := findSurface (request.words (0));
+               minW : Natural :=
+                  Natural (request.words (1) and 16#FFFF_FFFF#);
+               minH : Natural := Natural (Shift_Right (request.words (1), 32));
+               maxW : Natural :=
+                  Natural (request.words (2) and 16#FFFF_FFFF#);
+               maxH : Natural := Natural (Shift_Right (request.words (2), 32));
+               winFlags : constant Unsigned_64 := request.words (3);
+               oldBounds : Rect;
+               newBounds : Rect;
+               nextW : Natural;
+               nextH : Natural;
+            begin
+               replyMsg.tag := (label  => OP_WINDOW_SET_LIMITS,
+                                length => 4,
+                                flags  => 0,
+                                badge  => 0);
+
+               if idx < 0 then
+                  replyMsg.words (0) := UI_ERR_BAD_OBJECT;
+               elsif surfaces (SurfaceIndex (idx)).owner /= from then
+                  replyMsg.words (0) := UI_ERR_DENIED;
+               else
+                  if minW < MIN_WIN_W then
+                     minW := MIN_WIN_W;
+                  end if;
+                  if minH < MIN_WIN_H then
+                     minH := MIN_WIN_H;
+                  end if;
+                  if maxW /= 0 and then maxW < minW then
+                     maxW := minW;
+                  end if;
+                  if maxH /= 0 and then maxH < minH then
+                     maxH := minH;
+                  end if;
+
+                  if (winFlags and WINDOW_FLAG_FIXED_SIZE) /= 0 then
+                     maxW := minW;
+                     maxH := minH;
+                  end if;
+
+                  oldBounds := surfaceRect (surfaces (SurfaceIndex (idx)));
+                  surfaces (SurfaceIndex (idx)).minW := minW;
+                  surfaces (SurfaceIndex (idx)).minH := minH;
+                  surfaces (SurfaceIndex (idx)).maxW := maxW;
+                  surfaces (SurfaceIndex (idx)).maxH := maxH;
+                  surfaces (SurfaceIndex (idx)).windowFlags := winFlags;
+                  nextW := surfaces (SurfaceIndex (idx)).w;
+                  nextH := surfaces (SurfaceIndex (idx)).h;
+                  clampSurfaceSize (surfaces (SurfaceIndex (idx)),
+                                    nextW, nextH);
+                  surfaces (SurfaceIndex (idx)).w := nextW;
+                  surfaces (SurfaceIndex (idx)).h := nextH;
+                  surfaces (SurfaceIndex (idx)).serial :=
+                     surfaces (SurfaceIndex (idx)).serial + 1;
+                  surfaces (SurfaceIndex (idx)).dirty := True;
+                  newBounds := surfaceRect (surfaces (SurfaceIndex (idx)));
+
+                  queueConfigure (surfaces (SurfaceIndex (idx)).id,
+                                  Unsigned_64 (newBounds.w),
+                                  Unsigned_64 (newBounds.h));
+
+                  replyMsg.words (0) := UI_OK;
+                  replyMsg.words (1) := Unsigned_64 (minW) or
+                     Shift_Left (Unsigned_64 (minH), 32);
+                  replyMsg.words (2) := Unsigned_64 (maxW) or
+                     Shift_Left (Unsigned_64 (maxH), 32);
+                  replyMsg.words (3) := surfaces (SurfaceIndex (idx)).serial;
+
+                  scheduleRedrawRect
+                    (inflateRect (unionRect (oldBounds, newBounds), 4));
+               end if;
+            end;
+
+         when OP_SURFACE_ATTACH_BUFFER =>
+            declare
+               idx    : constant Integer := findSurface (request.words (0));
+               grant  : constant Unsigned_64 := request.words (1);
+               bufW   : Natural :=
+                  Natural (request.words (2) and 16#FFFF_FFFF#);
+               bufH   : Natural := Natural (Shift_Right (request.words (2), 32));
+               pitch  : Natural :=
+                  Natural (request.words (3) and 16#FFFF_FFFF#);
+               format : constant Unsigned_64 := Shift_Right (request.words (3), 32);
+               pages  : Unsigned_64;
+            begin
+               replyMsg.tag := (label  => OP_SURFACE_ATTACH_BUFFER,
+                                length => 4,
+                                flags  => 0,
+                                badge  => 0);
+
+               if idx < 0 then
+                  replyMsg.words (0) := UI_ERR_BAD_OBJECT;
+               elsif surfaces (SurfaceIndex (idx)).owner /= from then
+                  replyMsg.words (0) := UI_ERR_DENIED;
+               elsif bufW = 0 or else bufH = 0 or else
+                  pitch < bufW * 4 or else format /= PIXEL_FORMAT_BGRA8888
+               then
+                  replyMsg.words (0) := UI_ERR_UNSUPPORTED;
+               else
+                  pages :=
+                    (Unsigned_64 (pitch) * Unsigned_64 (bufH) + 4095) / 4096;
+                  if pages > 4096 then
+                     replyMsg.words (0) := UI_ERR_BAD_STATE;
+                  else
+                     surfaces (SurfaceIndex (idx)).bufferAttached := True;
+                     surfaces (SurfaceIndex (idx)).bufferGrant := grant;
+                     surfaces (SurfaceIndex (idx)).bufferAddr :=
+                        To_Address
+                          (Integer_Address
+                             (GRANT_REGION_BASE + grant * GRANT_SLOT_SIZE));
+                     surfaces (SurfaceIndex (idx)).bufferW := bufW;
+                     surfaces (SurfaceIndex (idx)).bufferH := bufH;
+                     surfaces (SurfaceIndex (idx)).bufferPitch := pitch;
+                     surfaces (SurfaceIndex (idx)).bufferFormat := format;
+                     surfaces (SurfaceIndex (idx)).dirty := True;
+                     surfaces (SurfaceIndex (idx)).serial :=
+                        surfaces (SurfaceIndex (idx)).serial + 1;
+
+                     replyMsg.words (0) := UI_OK;
+                     replyMsg.words (1) := grant;
+                     replyMsg.words (2) := Unsigned_64 (bufW) or
+                        Shift_Left (Unsigned_64 (bufH), 32);
+                     replyMsg.words (3) :=
+                        surfaces (SurfaceIndex (idx)).serial;
+
+                     scheduleRedrawRect
+                       (inflateRect
+                          (surfaceRect (surfaces (SurfaceIndex (idx))), 4));
+                  end if;
                end if;
             end;
 
@@ -1449,6 +2504,360 @@ procedure main is
       return (not release) and then (code = 16#01# or else code = 16#10#);
    end shouldExitKey;
 
+   function shouldCycleFocusKey (raw : Unsigned_8) return Boolean is
+      release : constant Boolean := (raw and 16#80#) /= 0;
+      code    : constant Unsigned_8 := raw and 16#7F#;
+   begin
+      --  Plain Tab is a prototype stand-in for Alt+Tab until modifier state
+      --  is represented in the input model.
+      return (not release) and then code = 16#0F#;
+   end shouldCycleFocusKey;
+
+   function updateDesktopModifierKey (raw : Unsigned_8) return Boolean is
+      release : constant Boolean := (raw and 16#80#) /= 0;
+      code    : constant Unsigned_8 := raw and 16#7F#;
+   begin
+      --  Keep compositor-side modifier state for internal desktop surfaces.
+      --  Client surfaces still receive the raw key events; this state is only
+      --  used by compositor-owned widgets such as the CuBASIC prototype.
+      if code = 16#2A# or else code = 16#36# then
+         desktopShiftDown := not release;
+         return True;
+      elsif code = 16#3A# then
+         if not release then
+            desktopCapsLockOn := not desktopCapsLockOn;
+         end if;
+         return True;
+      end if;
+
+      return False;
+   end updateDesktopModifierKey;
+
+   function keyChar (code : Unsigned_8) return Character is
+      pos : Unsigned_8 := 0;
+      ch  : Character := Character'Val (0);
+   begin
+      if code > scancodeNormal'Last then
+         return Character'Val (0);
+      end if;
+
+      ch := Character'Val (scancodeNormal (code));
+      if ch >= 'a' and then ch <= 'z' then
+         if desktopShiftDown xor desktopCapsLockOn then
+            return Character'Val
+              (Character'Pos (ch) - Character'Pos ('a') + Character'Pos ('A'));
+         else
+            return ch;
+         end if;
+      elsif desktopShiftDown then
+         pos := scancodeShifted (code);
+      else
+         pos := scancodeNormal (code);
+      end if;
+
+      return Character'Val (pos);
+   end keyChar;
+
+   function upperChar (ch : Character) return Character is
+   begin
+      if ch >= 'a' and then ch <= 'z' then
+         return Character'Val
+           (Character'Pos (ch) - Character'Pos ('a') + Character'Pos ('A'));
+      end if;
+
+      return ch;
+   end upperChar;
+
+   function consoleMatches (pattern : String) return Boolean is
+   begin
+      if consoleInputLen /= pattern'Length then
+         return False;
+      end if;
+
+      for i in pattern'Range loop
+         if upperChar (consoleInput (i)) /= pattern (i) then
+            return False;
+         end if;
+      end loop;
+
+      return True;
+   end consoleMatches;
+
+   function consoleStartsWith (pattern : String) return Boolean is
+   begin
+      if consoleInputLen < pattern'Length then
+         return False;
+      end if;
+
+      for i in pattern'Range loop
+         if upperChar (consoleInput (i)) /= pattern (i) then
+            return False;
+         end if;
+      end loop;
+
+      return True;
+   end consoleStartsWith;
+
+   procedure setConsoleResult (text : String) is
+      count : Natural := text'Length;
+   begin
+      if count > consoleResult'Length then
+         count := consoleResult'Length;
+      end if;
+
+      consoleResult := (others => ' ');
+      consoleResultLen := count;
+      if count > 0 then
+         consoleResult (1 .. count) := text (text'First .. text'First + count - 1);
+      end if;
+   end setConsoleResult;
+
+   procedure setConsoleSpawned (pid : Unsigned_64) is
+      buf : String (1 .. 20);
+      pos : Natural := buf'Last;
+      v   : Unsigned_64 := pid;
+   begin
+      if v = 0 then
+         setConsoleResult ("SPAWNED PID 0");
+         return;
+      end if;
+
+      while v > 0 loop
+         buf (pos) := Character'Val (Character'Pos ('0') +
+                                      Natural (v mod 10));
+         v := v / 10;
+         pos := pos - 1;
+      end loop;
+
+      setConsoleResult ("SPAWNED PID " & buf (pos + 1 .. buf'Last));
+   end setConsoleSpawned;
+
+   procedure ensureSpawnGrant is
+      raw : Unsigned_64;
+      aligned : Unsigned_64;
+      grantOk : Boolean;
+   begin
+      if spawnGrantReady then
+         return;
+      end if;
+
+      raw := syscall (SYSCALL_SBRK, 8192);
+      if raw = Unsigned_64'Last then
+         setConsoleResult ("SPAWN BUFFER ALLOCATION FAILED");
+         return;
+      end if;
+
+      aligned := alignUpPage (raw);
+      spawnGrantAddr := To_Address (Integer_Address (aligned));
+      createGrantViaCap
+        (slot      => CAP_SLOT_PROCMGR,
+         localAddr => spawnGrantAddr,
+         numPages  => 1,
+         readWrite => True,
+         grantId   => spawnGrantId,
+         success   => grantOk);
+
+      if grantOk then
+         spawnGrantReady := True;
+      else
+         setConsoleResult ("SPAWN GRANT TO PROCMGR FAILED");
+      end if;
+   end ensureSpawnGrant;
+
+   procedure spawnFromConsole (name : String) is
+      msg : Message := NULL_MESSAGE;
+      tag : MessageTag;
+      len : Natural := name'Length;
+   begin
+      if len = 0 or else len > 255 then
+         setConsoleResult ("SPAWN NEEDS A SHORT APP NAME");
+         return;
+      end if;
+
+      ensureSpawnGrant;
+      if not spawnGrantReady then
+         return;
+      end if;
+
+      declare
+         buf : array (0 .. 4095) of Unsigned_8 with
+            Import, Address => spawnGrantAddr;
+      begin
+         for i in 0 .. len - 1 loop
+            buf (i) := Unsigned_8
+              (Character'Pos (name (name'First + i)));
+         end loop;
+      end;
+
+      msg.tag := (label  => OP_SPAWN,
+                  length => Unsigned_8 (len),
+                  flags  => 0,
+                  badge  => 0);
+      msg.words (0) := spawnGrantId;
+      msg.words (1) := 5;
+      msg.words (2) := 0;
+      msg.words (3) := 0;
+      tag := capCall (CAP_SLOT_PROCMGR, msg);
+
+      if tag.label = REPLY_OK then
+         setConsoleSpawned (msg.words (0));
+      else
+         setConsoleResult ("SPAWN FAILED");
+      end if;
+   end spawnFromConsole;
+
+   procedure pushConsoleLine (text : String) is
+      count : Natural := text'Length;
+   begin
+      if count > CONSOLE_LINE_MAX then
+         count := CONSOLE_LINE_MAX;
+      end if;
+
+      for row in 1 .. CONSOLE_HISTORY_ROWS - 1 loop
+         consoleHistory (row) := consoleHistory (row + 1);
+         consoleHistoryLen (row) := consoleHistoryLen (row + 1);
+      end loop;
+
+      consoleHistory (CONSOLE_HISTORY_ROWS) := (others => ' ');
+      consoleHistoryLen (CONSOLE_HISTORY_ROWS) := count;
+      if count > 0 then
+         consoleHistory (CONSOLE_HISTORY_ROWS) (1 .. count) :=
+            text (text'First .. text'First + count - 1);
+      end if;
+   end pushConsoleLine;
+
+   procedure pushConsoleInputLine is
+      line : ConsoleLine := (others => ' ');
+      count : Natural := consoleInputLen + 2;
+   begin
+      if count > CONSOLE_LINE_MAX then
+         count := CONSOLE_LINE_MAX;
+      end if;
+
+      line (1) := ']';
+      line (2) := ' ';
+      if count > 2 then
+         line (3 .. count) := consoleInput (1 .. count - 2);
+      end if;
+
+      pushConsoleLine (line (1 .. count));
+   end pushConsoleInputLine;
+
+   procedure evalConsoleLine is
+   begin
+      if consoleInputLen = 0 then
+         setConsoleResult ("READY.");
+      elsif consoleMatches ("HELP") then
+         setConsoleResult ("TRY: SERVICES, CAPS, SECRETS, SPAWN DOOM");
+      elsif consoleMatches ("LIST SERVICES") then
+         setConsoleResult ("desktop.svc display.svc procmgr secrets.svc");
+      elsif consoleMatches ("SERVICES") then
+         setConsoleResult ("desktop.svc display.svc procmgr secrets.svc");
+      elsif consoleMatches ("SHOW CAPS") then
+         setConsoleResult ("CAP DISPLAY.INPUT CAP DISPLAY.PRESENT CAP SESSION.OWN");
+      elsif consoleMatches ("CAPS") then
+         setConsoleResult ("CAP DISPLAY.INPUT CAP DISPLAY.PRESENT CAP SESSION.OWN");
+      elsif consoleMatches ("SECRETS") then
+         setConsoleResult ("SECRET VALUES ARE OBJECTS, NOT STRINGS");
+      elsif consoleStartsWith ("PRINT ") then
+         consoleResult := (others => ' ');
+         consoleResultLen := consoleInputLen - 6;
+         if consoleResultLen > consoleResult'Length then
+            consoleResultLen := consoleResult'Length;
+         end if;
+         if consoleResultLen > 0 then
+            consoleResult (1 .. consoleResultLen) :=
+               consoleInput (7 .. 6 + consoleResultLen);
+         end if;
+      elsif consoleStartsWith ("LET ") then
+         setConsoleResult ("BOUND VALUE IN THIS REPL SESSION");
+      elsif consoleMatches ("SPAWN DESKTOP-SHELL") then
+         spawnFromConsole ("desktop-shell.app");
+      elsif consoleMatches ("SPAWN DESKTOP-SHELL.APP") then
+         spawnFromConsole ("desktop-shell.app");
+      elsif consoleMatches ("SPAWN DOOM") then
+         spawnFromConsole ("doom.elf");
+      elsif consoleMatches ("SPAWN DOOM.ELF") then
+         spawnFromConsole ("doom.elf");
+      elsif consoleMatches ("CLS") then
+         consoleLast := (others => ' ');
+         consoleLastLen := 0;
+         consoleHistory := (others => (others => ' '));
+         consoleHistoryLen := (others => 0);
+         setConsoleResult ("READY.");
+      else
+         setConsoleResult ("?SYNTAX ERROR");
+      end if;
+   end evalConsoleLine;
+
+   procedure handleConsoleKey (raw : Unsigned_8; damage : in out Rect) is
+      release : constant Boolean := (raw and 16#80#) /= 0;
+      code    : constant Unsigned_8 := raw and 16#7F#;
+      ch      : Character;
+      idx     : constant Integer := findSurface (focusSurface);
+   begin
+      if release then
+         return;
+      end if;
+
+      ch := keyChar (code);
+      if ch = Character'Val (0) then
+         return;
+      elsif ch = Character'Val (8) then
+         if consoleInputLen > 0 then
+            consoleInput (consoleInputLen) := ' ';
+            consoleInputLen := consoleInputLen - 1;
+         end if;
+      elsif ch = LF then
+         pushConsoleInputLine;
+         consoleLast := (others => ' ');
+         consoleLastLen := consoleInputLen;
+         if consoleInputLen > 0 then
+            consoleLast (1 .. consoleInputLen) :=
+               consoleInput (1 .. consoleInputLen);
+         end if;
+         evalConsoleLine;
+         if consoleResultLen > 0 then
+            pushConsoleLine (consoleResult (1 .. consoleResultLen));
+         end if;
+         consoleInput := (others => ' ');
+         consoleInputLen := 0;
+      elsif consoleInputLen < CONSOLE_INPUT_MAX then
+         consoleInputLen := consoleInputLen + 1;
+         consoleInput (consoleInputLen) := ch;
+      end if;
+
+      if idx >= 0 then
+         damage := unionRect
+           (damage,
+            inflateRect (surfaceRect (surfaces (SurfaceIndex (idx))), 4));
+      end if;
+   end handleConsoleKey;
+
+   function handleInternalKey (raw : Unsigned_8; damage : in out Rect)
+      return Boolean
+   is
+      idx : constant Integer := findSurface (focusSurface);
+   begin
+      if idx < 0 then
+         return False;
+      end if;
+
+      if surfaces (SurfaceIndex (idx)).owner /= NO_PROCESS then
+         return False;
+      end if;
+
+      case surfaces (SurfaceIndex (idx)).appKind is
+         when APP_CONSOLE =>
+            handleConsoleKey (raw, damage);
+            return True;
+         when APP_SECURITY | APP_DEMO =>
+            return True;
+         when others =>
+            return False;
+      end case;
+   end handleInternalKey;
+
    function clampPointerCoord (value, maxValue : Integer) return Natural is
    begin
       if value < 0 then
@@ -1460,15 +2869,10 @@ procedure main is
       end if;
    end clampPointerCoord;
 
-   function clampWindowRect (r : Rect) return Rect is
+   function clampWindowRect (s : Surface; r : Rect) return Rect is
       ret : Rect := r;
    begin
-      if ret.w < MIN_WIN_W then
-         ret.w := MIN_WIN_W;
-      end if;
-      if ret.h < MIN_WIN_H then
-         ret.h := MIN_WIN_H;
-      end if;
+      clampSurfaceSize (s, ret.w, ret.h);
 
       if ret.w > fbWidth then
          ret.w := fbWidth;
@@ -1504,10 +2908,10 @@ procedure main is
             end if;
 
          when DRAG_RESIZE_E | DRAG_RESIZE_SE =>
-            if cursorX > s.x + MIN_WIN_W then
+            if cursorX > s.x + s.minW then
                r.w := cursorX - s.x;
             else
-               r.w := MIN_WIN_W;
+               r.w := s.minW;
             end if;
 
          when others =>
@@ -1515,14 +2919,14 @@ procedure main is
       end case;
 
       if dragMode = DRAG_RESIZE_S or else dragMode = DRAG_RESIZE_SE then
-         if cursorY > s.y + MIN_WIN_H then
+         if cursorY > s.y + s.minH then
             r.h := cursorY - s.y;
          else
-            r.h := MIN_WIN_H;
+            r.h := s.minH;
          end if;
       end if;
 
-      return clampWindowRect (r);
+      return clampWindowRect (s, r);
    end previewRectFromPointer;
 
    procedure handleMouseMotion
@@ -1539,6 +2943,9 @@ procedure main is
       leftWasDown : constant Boolean := (lastButtons and 1) /= 0;
       sceneDamage : constant Boolean := leftDown or else leftWasDown;
       handledChromeClick : Boolean := False;
+      taskIdx   : Integer;
+      launchAction : Natural;
+      clickedId : Unsigned_64;
       maxX      : Integer := 0;
       maxY      : Integer := 0;
    begin
@@ -1567,28 +2974,79 @@ procedure main is
          elsif launchMenuOpen and then
             pointInRect (cursorX, cursorY, launchMenuRect)
          then
-            --  Menu entries are visual placeholders until desktop-shell.app
-            --  grows a launcher protocol. Close the menu to acknowledge the
-            --  click without granting any process-launch authority yet.
+            launchAction := hitLaunchItem (cursorX, cursorY);
             launchMenuOpen := False;
             damage := unionRect (damage, inflateRect (launchMenuRect, 4));
+            case launchAction is
+               when LAUNCH_CONSOLE =>
+                  openInternalApp (APP_CONSOLE, damage);
+               when LAUNCH_SECURITY =>
+                  openInternalApp (APP_SECURITY, damage);
+               when others =>
+                  null;
+            end case;
             handledChromeClick := True;
          elsif launchMenuOpen then
             launchMenuOpen := False;
             damage := unionRect (damage, inflateRect (launchMenuRect, 4));
          end if;
 
+         taskIdx := hitTaskButton (cursorX, cursorY);
+         if not handledChromeClick and then taskIdx >= 0 then
+            clickedId := surfaces (SurfaceIndex (taskIdx)).id;
+            if surfaces (SurfaceIndex (taskIdx)).minimized then
+               restoreSurface (SurfaceIndex (taskIdx), damage);
+            end if;
+            taskIdx := findSurface (clickedId);
+            if taskIdx >= 0 then
+               focusAndRaiseSurface (SurfaceIndex (taskIdx), damage);
+            end if;
+            handledChromeClick := True;
+         end if;
+
          idx := hitSurface (cursorX, cursorY);
          if not handledChromeClick and then idx >= 0 then
-            focusSurface := surfaces (SurfaceIndex (idx)).id;
+            clickedId := surfaces (SurfaceIndex (idx)).id;
             dragMode := hitMode (surfaces (SurfaceIndex (idx)), cursorX, cursorY);
-            dragSurfaceId := focusSurface;
-            dragOffsetX := cursorX - surfaces (SurfaceIndex (idx)).x;
-            dragOffsetY := cursorY - surfaces (SurfaceIndex (idx)).y;
-            dragPreviewRect := surfaceRect (surfaces (SurfaceIndex (idx)));
-            dragPreviewValid := dragMode /= DRAG_NONE;
-            if dragPreviewValid then
-               damage := unionRect (damage, inflateRect (dragPreviewRect, 4));
+
+            if dragMode = HIT_CLOSE then
+               --  Window buttons are evaluated against the surface that was
+               --  under the pointer at mouse-down. Raising can reshuffle the
+               --  surface table, so always refind by id before mutating the
+               --  window. This keeps a stale slot from closing/minimizing the
+               --  wrong window when several windows overlap.
+               focusAndRaiseSurface (SurfaceIndex (idx), damage);
+               idx := findSurface (clickedId);
+               if idx >= 0 then
+                  closeSurface (SurfaceIndex (idx), damage);
+               end if;
+               dragMode := DRAG_NONE;
+            elsif dragMode = HIT_MINIMIZE then
+               focusAndRaiseSurface (SurfaceIndex (idx), damage);
+               idx := findSurface (clickedId);
+               if idx >= 0 then
+                  minimizeSurface (SurfaceIndex (idx), damage);
+               end if;
+               dragMode := DRAG_NONE;
+            else
+               focusAndRaiseSurface (SurfaceIndex (idx), damage);
+               idx := findSurface (clickedId);
+               if idx >= 0 then
+                  if dragMode = HIT_MAXIMIZE then
+                     toggleMaximizeSurface (SurfaceIndex (idx), damage);
+                     dragMode := DRAG_NONE;
+                  else
+                     dragSurfaceId := clickedId;
+                     dragOffsetX := cursorX - surfaces (SurfaceIndex (idx)).x;
+                     dragOffsetY := cursorY - surfaces (SurfaceIndex (idx)).y;
+                     dragPreviewRect := surfaceRect (surfaces (SurfaceIndex (idx)));
+                     dragPreviewValid := dragMode /= DRAG_NONE;
+                     if dragPreviewValid then
+                        damage := unionRect
+                          (damage, inflateRect (dragPreviewRect, 4));
+                     end if;
+                  end if;
+               end if;
             end if;
          end if;
       elsif not leftDown and then leftWasDown and then
@@ -1597,7 +3055,8 @@ procedure main is
          idx := findSurface (dragSurfaceId);
          if idx >= 0 and then dragPreviewValid then
             oldBounds := surfaceRect (surfaces (SurfaceIndex (idx)));
-            newBounds := clampWindowRect (dragPreviewRect);
+            newBounds := clampWindowRect
+              (surfaces (SurfaceIndex (idx)), dragPreviewRect);
 
             surfaces (SurfaceIndex (idx)).x := newBounds.x;
             surfaces (SurfaceIndex (idx)).y := newBounds.y;
@@ -1605,9 +3064,11 @@ procedure main is
             surfaces (SurfaceIndex (idx)).h := newBounds.h;
             surfaces (SurfaceIndex (idx)).serial :=
                surfaces (SurfaceIndex (idx)).serial + 1;
-            queueConfigure (surfaces (SurfaceIndex (idx)).id,
-                            Unsigned_64 (newBounds.w),
-                            Unsigned_64 (newBounds.h));
+            if surfaces (SurfaceIndex (idx)).owner /= NO_PROCESS then
+               queueConfigure (surfaces (SurfaceIndex (idx)).id,
+                               Unsigned_64 (newBounds.w),
+                               Unsigned_64 (newBounds.h));
+            end if;
 
             damage := unionRect (damage,
                        inflateRect (unionRect (oldBounds, newBounds), 4));
@@ -1650,13 +3111,31 @@ procedure main is
 
       if eventMsg.tag.label = EVENT_KEYBOARD then
          raw := Unsigned_8 (eventMsg.words (0) and 16#FF#);
+         if updateDesktopModifierKey (raw) then
+            null;
+         end if;
 
          --  Once a shell/client surface has focus, keyboard events belong to
          --  that surface. The service-level Q/Esc escape remains available
          --  only before a client has connected, which keeps early bring-up
          --  recoverable without stealing application quit keys.
-         if focusSurface /= 0 then
-            queueKey (raw);
+         if shouldCycleFocusKey (raw) then
+            declare
+               damage : Rect := cursorRect;
+            begin
+               cycleFocus (damage);
+               scheduleRedrawRect (inflateRect (damage, 2));
+            end;
+         elsif focusSurface /= 0 then
+            declare
+               damage : Rect := cursorRect;
+            begin
+               if handleInternalKey (raw, damage) then
+                  scheduleRedrawRect (inflateRect (damage, 2));
+               else
+                  queueKey (raw);
+               end if;
+            end;
          elsif shouldExitKey (raw) then
             debugPrint ("desktop: exit key" & LF);
             running := False;
@@ -1711,14 +3190,10 @@ procedure main is
       inputEvent.valid := False;
    end releaseDisplayBuffer;
 
-   function alignUpPage (addr : Unsigned_64) return Unsigned_64 is
-   begin
-      return (addr + 4095) and not Unsigned_64'(4095);
-   end alignUpPage;
-
    procedure setupDisplayBuffer (ok : out Boolean) is
       info : constant Message := callDisplay (OP_DISPLAY_GET_INFO);
       acquire : Message;
+      ignored : Unsigned_64;
       bytes : Unsigned_64;
       pages : Unsigned_64;
       raw   : Unsigned_64;
@@ -1729,7 +3204,17 @@ procedure main is
    begin
       ok := False;
 
-      acquire := callDisplay (OP_DISPLAY_ACQUIRE);
+      --  When desktop.svc is spawned from the CLI shell, both processes run
+      --  briefly in parallel: the shell releases its display lease only after
+      --  procmgr returns the spawn reply. Retry for a short bounded window so
+      --  normal foreground handoff is race-free without making display.svc
+      --  block indefinitely on a stale owner.
+      for attempt in 1 .. 100 loop
+         acquire := callDisplay (OP_DISPLAY_ACQUIRE);
+         exit when acquire.tag.length >= 1 and then acquire.words (0) = 0;
+         ignored := syscall (SYSCALL_SLEEP, 2);
+      end loop;
+
       if acquire.tag.length < 1 or else acquire.words (0) /= 0 then
          debugPrint ("desktop: display acquire failed" & LF);
          return;
@@ -1820,6 +3305,51 @@ procedure main is
       ok := True;
    end queryDisplayInfo;
 
+   procedure activateInternalSession (ok : out Boolean) is
+      displayReady : Boolean := True;
+      demoX : Natural := 98;
+      demoY : Natural := 72;
+      demoW : Natural := 360;
+      demoH : Natural := 220;
+   begin
+      ok := False;
+
+      if not backBufferReady then
+         setupDisplayBuffer (displayReady);
+      end if;
+      if not displayReady then
+         return;
+      end if;
+
+      if internalShellSurface = 0 then
+         createInternalSurface
+           (SURFACE_FLAG_SHELL, 0, 0, fbWidth, fbHeight,
+            APP_CLIENT, internalShellSurface);
+      end if;
+
+      if internalDemoWindow = 0 then
+         if demoX + demoW > fbWidth then
+            demoW := Natural'Max (MIN_WIN_W, fbWidth - demoX);
+         end if;
+         if demoY + demoH > fbHeight then
+            demoH := Natural'Max (MIN_WIN_H, fbHeight - demoY);
+         end if;
+
+         createInternalSurface
+           (SURFACE_FLAG_WINDOW, demoX, demoY, demoW, demoH,
+            APP_DEMO, internalDemoWindow);
+         focusSurface := internalDemoWindow;
+      end if;
+
+      if internalShellSurface = 0 then
+         return;
+      end if;
+
+      claimInput;
+      scheduleRedraw;
+      ok := True;
+   end activateInternalSession;
+
    ret      : Unsigned_64;
    from     : ProcessID;
    msg      : Message;
@@ -1846,7 +3376,16 @@ begin
    end if;
    debugPrint ("desktop: display info ready" & LF);
 
-   debugPrint ("desktop: waiting for shell client" & LF);
+   declare
+      activeOk : Boolean;
+   begin
+      activateInternalSession (activeOk);
+      if activeOk then
+         debugPrint ("desktop: internal shell active" & LF);
+      else
+         debugPrint ("desktop: waiting for shell client" & LF);
+      end if;
+   end;
 
    while running loop
       declare

@@ -251,7 +251,7 @@ TEST: PASS async-ipc
         required_markers="
 display: gpu not primary, using linear-fb
 desktop: display info ready
-desktop: waiting for shell client
+desktop: internal shell active
 shell: cwd=@nvme:0/
 "
         ;;

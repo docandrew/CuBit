@@ -48,7 +48,8 @@ protection faults, or deadlock reports.
 
 - `display.svc` detected that the separate VirtIO-GPU device is not the
   primary visible adapter and kept the `linear-fb` backend.
-- `desktop.svc` attached its grant-backed compositor buffer.
+- `desktop.svc` activated its integrated shell and attached its grant-backed
+  compositor buffer.
 - `desktop.svc` queried `OP_DISPLAY_GET_STATUS` and saw backend `1`,
   capability mask `3` (`copy-present | vblank-wait`).
 - the regular shell still starts with `@nvme:0/` as its working directory.

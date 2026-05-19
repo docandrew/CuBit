@@ -6,8 +6,9 @@
  *   DG_Init, DG_DrawFrame, DG_SleepMs, DG_GetTicksMs, DG_GetKey,
  *   DG_SetWindowTitle
  *
- * Framebuffer: mapped via SYSCALL_MAPFB
- * Keyboard:    polled via SYSCALL_RECEIVE_NB (PS/2 Set 1 scancodes)
+ * Desktop:     preferred path; draw into an app-owned surface buffer
+ * Framebuffer: fallback path via SYSCALL_MAPFB
+ * Keyboard:    desktop input events or fallback raw PS/2 scancodes
  * Timer:       SYSCALL_GETTIME (millisecond PIT ticks)
  */
 
@@ -54,16 +55,17 @@ static const unsigned char __cubit_streams[]
 };
 
 /* Declare capability requirements in ELF manifest:
- *   slot 4  - CAP_DEVICE_MEM (framebuffer)
+ *   slot 4  - CAP_DEVICE_MEM (framebuffer fallback)
  *   slot 1  - CAP_ENDPOINT to FS server (DRIVER_FS = 6)
  *   slot 14 - CAP_ENDPOINT to mixer (DRIVER_MIXER = 9)
+ *   slot 21 - CAP_ENDPOINT to desktop (DRIVER_DESKTOP = 15)
  */
 static const unsigned char __cubit_manifest[]
     __attribute__((section(".cubit.caps"), used)) = {
-    /* Header: magic "CBIT" LE, version 1, count 3 */
+    /* Header: magic "CBIT" LE, version 1, count 4 */
     0x54, 0x49, 0x42, 0x43,
     0x01, 0x00,
-    0x03, 0x00,
+    0x04, 0x00,
 
     /* Entry 0: REQ_FRAMEBUFFER, RW, slot 4 */
     CUBIT_REQ_FRAMEBUFFER, CUBIT_RIGHT_RW, 4, 0x00,
@@ -78,6 +80,11 @@ static const unsigned char __cubit_manifest[]
     /* Entry 2: REQ_SERVICE, RW|GRANT, slot 14, driver_id=9 (DRIVER_MIXER) */
     CUBIT_REQ_SERVICE, CUBIT_RIGHT_RW | CUBIT_RIGHT_GRANT, 14, 0x00,
     0x09, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+
+    /* Entry 3: REQ_SERVICE, RW, slot 21, driver_id=15 (DRIVER_DESKTOP) */
+    CUBIT_REQ_SERVICE, CUBIT_RIGHT_RW, 21, 0x00,
+    0x0F, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 };
 
@@ -167,6 +174,146 @@ static const unsigned char __cubit_access[]
 /* Framebuffer state */
 static cubit_framebuffer_t fb;
 static uint32_t *fb_ptr = NULL;
+
+/* Desktop surface protocol. These labels intentionally match the current
+ * prototype in desktop.svc; they are not yet a stable CuBit UI ABI. */
+#define OP_DESKTOP_HELLO          0x0800
+#define OP_DESKTOP_BYE            0x0801
+#define OP_SURFACE_CREATE         0x0810
+#define OP_SURFACE_PRESENT        0x0812
+#define OP_SURFACE_ATTACH_BUFFER  0x0814
+#define OP_WINDOW_SET_LIMITS      0x0841
+#define OP_INPUT_POLL             0x0821
+
+#define SURFACE_FLAG_WINDOW       2
+#define PIXEL_FORMAT_BGRA8888     1
+#define INPUT_NONE                0
+#define INPUT_KEY_DOWN            1
+#define INPUT_KEY_UP              2
+
+#define WINDOW_FLAG_DECORATED     1
+#define WINDOW_FLAG_MINIMIZABLE   4
+#define WINDOW_FLAG_CLOSEABLE     16
+#define WINDOW_FLAG_FIXED_SIZE    128
+
+#define DOOM_WINDOW_W             (DOOMGENERIC_RESX + 20)
+#define DOOM_WINDOW_H             (DOOMGENERIC_RESY + 44)
+#define DOOM_BUFFER_PITCH         (DOOMGENERIC_RESX * 4)
+#define DOOM_BUFFER_BYTES         (DOOM_BUFFER_PITCH * DOOMGENERIC_RESY)
+
+typedef struct {
+    uint32_t label;
+    uint8_t  length;
+    uint8_t  flags;
+    uint16_t badge;
+} cubit_message_tag_t;
+
+typedef struct {
+    cubit_message_tag_t tag;
+    uint64_t capBadge;
+    uint64_t words[4];
+} cubit_message_t;
+
+static int desktop_mode = 0;
+static uint64_t desktop_surface = 0;
+static uint64_t desktop_last_input_serial = 0;
+static uint64_t desktop_buffer_grant = 0;
+static uint32_t *desktop_buffer = NULL;
+
+static uint64_t pack_u32_pair(uint32_t lo, uint32_t hi)
+{
+    return ((uint64_t)lo) | (((uint64_t)hi) << 32);
+}
+
+static uintptr_t align_up_page_uintptr(uintptr_t value)
+{
+    return (value + 4095UL) & ~4095UL;
+}
+
+static int desktop_call(uint32_t label,
+                        uint64_t w0, uint64_t w1,
+                        uint64_t w2, uint64_t w3,
+                        cubit_message_t *reply)
+{
+    cubit_message_t msg;
+    memset(&msg, 0, sizeof(msg));
+    msg.tag.label = label;
+    msg.tag.length = 4;
+    msg.words[0] = w0;
+    msg.words[1] = w1;
+    msg.words[2] = w2;
+    msg.words[3] = w3;
+
+    if (syscall2(SYSCALL_CAP_CALL, CAP_SLOT_DESKTOP, &msg) == (long)(-1UL))
+        return -1;
+
+    if (reply)
+        *reply = msg;
+    return 0;
+}
+
+static int init_desktop_surface(void)
+{
+    cubit_message_t reply;
+    uint64_t pages;
+    long grant;
+    void *raw;
+    uint64_t fixed_flags;
+
+    if (desktop_call(OP_DESKTOP_HELLO,
+                     0x0000000100000000ULL, 0, 0, 0, &reply) < 0 ||
+        reply.words[0] == 0) {
+        return -1;
+    }
+
+    if (desktop_call(OP_SURFACE_CREATE,
+                     DOOM_WINDOW_W, DOOM_WINDOW_H,
+                     SURFACE_FLAG_WINDOW, 0, &reply) < 0 ||
+        reply.words[0] == 0) {
+        return -1;
+    }
+    desktop_surface = reply.words[0];
+
+    fixed_flags = WINDOW_FLAG_DECORATED |
+                  WINDOW_FLAG_MINIMIZABLE |
+                  WINDOW_FLAG_CLOSEABLE |
+                  WINDOW_FLAG_FIXED_SIZE;
+    (void)desktop_call(OP_WINDOW_SET_LIMITS,
+                       desktop_surface,
+                       pack_u32_pair(DOOM_WINDOW_W, DOOM_WINDOW_H),
+                       pack_u32_pair(DOOM_WINDOW_W, DOOM_WINDOW_H),
+                       fixed_flags,
+                       &reply);
+
+    pages = (DOOM_BUFFER_BYTES + 4095) / 4096;
+    raw = cubit_sbrk((intptr_t)(pages * 4096 + 4096));
+    if ((long)raw == -1)
+        return -1;
+
+    desktop_buffer = (uint32_t *)align_up_page_uintptr((uintptr_t)raw);
+    memset(desktop_buffer, 0, DOOM_BUFFER_BYTES);
+
+    grant = syscall4(SYSCALL_GRANT_VIA_CAP, CAP_SLOT_DESKTOP,
+                     desktop_buffer, pages, 0);
+    if (grant == (long)(-1UL))
+        return -1;
+    desktop_buffer_grant = (uint64_t)grant;
+
+    if (desktop_call(OP_SURFACE_ATTACH_BUFFER,
+                     desktop_surface,
+                     desktop_buffer_grant,
+                     pack_u32_pair(DOOMGENERIC_RESX, DOOMGENERIC_RESY),
+                     ((uint64_t)DOOM_BUFFER_PITCH) |
+                        (((uint64_t)PIXEL_FORMAT_BGRA8888) << 32),
+                     &reply) < 0 ||
+        reply.words[0] != 0) {
+        return -1;
+    }
+
+    desktop_mode = 1;
+    cubit_stream_print(CUBIT_STREAM_LOG, "DOOM: Desktop surface attached.\n");
+    return 0;
+}
 
 /*---------------------------------------------------------------------------
  * PS/2 Set 1 scancode -> DOOM key translation
@@ -290,8 +437,39 @@ static void push_key(unsigned char doomKey, int pressed)
     key_queue_head = next;
 }
 
+static void poll_desktop_input(void)
+{
+    cubit_message_t reply;
+
+    while (desktop_mode) {
+        if (desktop_call(OP_INPUT_POLL,
+                         desktop_surface,
+                         desktop_last_input_serial,
+                         0, 0, &reply) < 0) {
+            return;
+        }
+
+        if (reply.words[0] == INPUT_NONE)
+            return;
+
+        desktop_last_input_serial = reply.words[1];
+        if (reply.words[0] == INPUT_KEY_DOWN ||
+            reply.words[0] == INPUT_KEY_UP) {
+            uint8_t scancode = (uint8_t)(reply.words[2] & 0x7F);
+            int pressed = (reply.words[0] == INPUT_KEY_DOWN);
+            if (scancode < 128)
+                push_key(scancode_to_doom[scancode], pressed);
+        }
+    }
+}
+
 static void poll_keyboard(void)
 {
+    if (desktop_mode) {
+        poll_desktop_input();
+        return;
+    }
+
     cubit_key_event_t ev;
     while (cubit_keyboard_get(&ev)) {
         unsigned char doomKey = 0;
@@ -303,6 +481,10 @@ static void poll_keyboard(void)
 
 static void poll_mouse(void)
 {
+    if (desktop_mode) {
+        return;
+    }
+
     cubit_mouse_event_t mev;
     while (cubit_mouse_get(&mev)) {
         event_t doom_ev;
@@ -320,6 +502,15 @@ static void poll_mouse(void)
  *---------------------------------------------------------------------------*/
 void DG_Init(void)
 {
+    if (init_desktop_surface() == 0) {
+        cubit_stream_print(CUBIT_STREAM_LOG,
+                           "DOOM: Running inside desktop surface.\n");
+        return;
+    }
+
+    cubit_stream_print(CUBIT_STREAM_LOG,
+                       "DOOM: Desktop unavailable, using framebuffer.\n");
+
     /* Map framebuffer */
     if (cubit_map_framebuffer(&fb) < 0) {
         cubit_stream_print(CUBIT_STREAM_LOG, "DOOM: Failed to map framebuffer!\n");
@@ -351,6 +542,14 @@ void DG_Init(void)
  *---------------------------------------------------------------------------*/
 void DG_DrawFrame(void)
 {
+    if (desktop_mode && desktop_buffer) {
+        memcpy(desktop_buffer, DG_ScreenBuffer, DOOM_BUFFER_BYTES);
+        (void)desktop_call(OP_SURFACE_PRESENT,
+                           desktop_surface, 0, 0, 0, NULL);
+        poll_keyboard();
+        return;
+    }
+
     if (!fb_ptr) return;
 
     /* Calculate centering offset */

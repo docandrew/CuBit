@@ -265,6 +265,24 @@ procedure main is
       debugPrint (buf (pos + 1 .. buf'Last));
    end printDec;
 
+   procedure printDec64 (val : Unsigned_64) is
+      buf : String (1 .. 20);
+      pos : Natural := buf'Last;
+      v   : Unsigned_64 := val;
+   begin
+      if v = 0 then
+         debugPrint ("0");
+         return;
+      end if;
+      while v > 0 loop
+         buf (pos) := Character'Val (Character'Pos ('0') +
+                                      Natural (v mod 10));
+         v := v / 10;
+         pos := pos - 1;
+      end loop;
+      debugPrint (buf (pos + 1 .. buf'Last));
+   end printDec64;
+
    ---------------------------------------------------------------------------
    --  Framebuffer rendering
    ---------------------------------------------------------------------------
@@ -623,6 +641,10 @@ procedure main is
 
    function shouldRunInBackground (filename : String) return Boolean is
    begin
+      if hasSuffix (filename, "desktop.svc") then
+         return False;
+      end if;
+
       --  Long-lived services/drivers should not become the shell foreground
       --  child. A foreground child intentionally steals the command loop until
       --  it exits, which is correct for apps like DOOM and wrong for services
@@ -635,7 +657,8 @@ procedure main is
       --  Graphical foreground clients own visibility through desktop.svc. The
       --  CLI shell keeps its old framebuffer mapped, but must not reattach it
       --  to display.svc while the desktop compositor is presenting.
-      return hasSuffix (filename, "desktop-shell.app");
+      return hasSuffix (filename, "desktop-shell.app") or else
+             hasSuffix (filename, "desktop.svc");
    end shouldYieldDisplayToChild;
 
    --  Print prompt
@@ -3809,9 +3832,9 @@ begin
                debugPrint ("shell: FG event label=");
                printDec (eventMsg.tag.label);
                debugPrint (" w0=");
-               printDec (Unsigned_32 (eventMsg.words (0)));
+               printDec64 (eventMsg.words (0));
                debugPrint (" want=");
-               printDec (Unsigned_32 (foregroundPID));
+               printDec64 (foregroundPID);
                debugPrint ("" & LF);
             end if;
             if found and then
