@@ -20,7 +20,7 @@ Usage: tests/headless/run.sh [options]
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, desktop-display, virtio-gpu, or virtio-vga-primary
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, desktop-display, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
   --timeout SECONDS    QEMU runtime before timeout is treated as success
   --serial PATH        Serial log path (default: /tmp/cubit-headless-*.log)
   --pcap PATH          Packet capture path (default: /tmp/cubit-headless-*.pcap)
@@ -94,7 +94,7 @@ case "$TIMEOUT_SECONDS" in
 esac
 
 case "$TEST_NAME" in
-    boot-shell-nvme|async-ipc|desktop-display|virtio-gpu|virtio-vga-primary)
+    boot-shell-nvme|async-ipc|desktop-display|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -163,7 +163,7 @@ case "$TEST_NAME" in
     async-ipc)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-async-ipc.conf"
         ;;
-    desktop-display)
+    desktop-display|desktop-virtio-vga)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-desktop-display.conf"
         ;;
     virtio-gpu|virtio-vga-primary)
@@ -191,7 +191,7 @@ fi
 cp "$GRUB_BAK" "$GRUB_CFG"
 
 VIDEO_ARGS="-device virtio-gpu-pci"
-if [ "$TEST_NAME" = "virtio-vga-primary" ]; then
+if [ "$TEST_NAME" = "virtio-vga-primary" ] || [ "$TEST_NAME" = "desktop-virtio-vga" ]; then
     VIDEO_ARGS="-vga none -device virtio-vga,xres=1024,yres=768"
 fi
 
@@ -250,7 +250,16 @@ TEST: PASS async-ipc
     desktop-display)
         required_markers="
 display: gpu not primary, using linear-fb
-desktop: display info ready
+desktop: display backend=1 caps=3
+desktop: internal shell active
+shell: cwd=@nvme:0/
+"
+        ;;
+    desktop-virtio-vga)
+        required_markers="
+display: backend virtio-gpu
+display: direct gpu backbuffer mapped
+desktop: direct gpu backbuffer
 desktop: internal shell active
 shell: cwd=@nvme:0/
 "

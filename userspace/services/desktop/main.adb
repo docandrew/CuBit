@@ -42,6 +42,7 @@ procedure main is
    OP_DISPLAY_GET_STATUS    : constant Unsigned_32 := 16#0904#;
    OP_DISPLAY_ACQUIRE       : constant Unsigned_32 := 16#0905#;
    OP_DISPLAY_RELEASE       : constant Unsigned_32 := 16#0906#;
+   OP_DISPLAY_MAP_BACKBUFFER : constant Unsigned_32 := 16#0907#;
 
    UI_OK              : constant Unsigned_64 := 0;
    UI_ERR_DENIED      : constant Unsigned_64 := 1;
@@ -69,6 +70,9 @@ procedure main is
    INPUT_NONE      : constant Unsigned_64 := 0;
    INPUT_KEY_DOWN  : constant Unsigned_64 := 1;
    INPUT_KEY_UP    : constant Unsigned_64 := 2;
+   INPUT_POINTER_MOVE : constant Unsigned_64 := 3;
+   INPUT_POINTER_DOWN : constant Unsigned_64 := 4;
+   INPUT_POINTER_UP   : constant Unsigned_64 := 5;
    INPUT_CONFIGURE : constant Unsigned_64 := 8;
 
    PROTOCOL_MAJOR : constant Unsigned_64 := 0;
@@ -80,6 +84,9 @@ procedure main is
    SCALE_1_0_16_16       : constant Unsigned_64 := 16#0001_0000#;
    GRANT_REGION_BASE : constant Unsigned_64 := 16#0000_4000_0000_0000#;
    GRANT_SLOT_SIZE   : constant Unsigned_64 := 4096 * 4096; -- 16 MiB
+   DISPLAY_CAP_DIRECT_BACKBUFFER : constant Unsigned_64 := 16#0008#;
+   PS_BUF_SIZE : constant Unsigned_64 := 8192;
+   PS_ENTRY_SIZE : constant Storage_Offset := 32;
 
    fbWidth  : Natural := 0;
    fbHeight : Natural := 0;
@@ -90,6 +97,7 @@ procedure main is
    spawnGrantAddr : System.Address := System.Null_Address;
    spawnGrantId   : Unsigned_64 := 0;
    spawnGrantReady : Boolean := False;
+   psBufAddr : System.Address := System.Null_Address;
 
    --  Prototype compositor shadow framebuffer. All desktop drawing goes here
    --  first, then a completed frame is copied to the real framebuffer in one
@@ -114,6 +122,15 @@ procedure main is
    frameDamage  : Rect;
    frameDueMs   : Unsigned_64 := 0;
    FRAME_INTERVAL_MS : constant Unsigned_64 := 16;
+
+   function memcpy
+      (dest : System.Address;
+       src  : System.Address;
+       len  : Storage_Count)
+      return System.Address with
+      Import => True,
+      Convention => C,
+      External_Name => "memcpy";
 
    type Surface is record
       used      : Boolean := False;
@@ -168,11 +185,16 @@ procedure main is
       payload1 : Unsigned_64 := 0;
    end record;
 
-   inputEvent : PendingInput;
+   INPUT_QUEUE_SIZE : constant Natural := 64;
+   subtype InputQueueIndex is Natural range 0 .. INPUT_QUEUE_SIZE - 1;
+   type PendingInputQueue is array (InputQueueIndex) of PendingInput;
+
+   inputEvents : PendingInputQueue;
 
    cursorX : Natural := 80;
    cursorY : Natural := 80;
    lastButtons : Unsigned_64 := 0;
+   pointerSurfaceId : Unsigned_64 := 0;
    launchMenuOpen : Boolean := False;
    desktopShiftDown : Boolean := False;
    desktopCapsLockOn : Boolean := False;
@@ -495,26 +517,6 @@ procedure main is
       end;
    end readBackPixel;
 
-   function readClientPixel (s : Surface; x, y : Natural) return Unsigned_32 is
-      offset : constant Storage_Offset :=
-         Storage_Offset (y * s.bufferPitch + x * 4);
-   begin
-      if not s.bufferAttached or else
-         s.bufferAddr = System.Null_Address or else
-         x >= s.bufferW or else y >= s.bufferH or else
-         s.bufferFormat /= PIXEL_FORMAT_BGRA8888
-      then
-         return 0;
-      end if;
-
-      declare
-         pixel : Unsigned_32 with
-            Import, Address => s.bufferAddr + offset;
-      begin
-         return pixel;
-      end;
-   end readClientPixel;
-
    procedure writeBackPixel (x, y : Natural; color : Unsigned_32) is
       offset : constant Storage_Offset :=
          Storage_Offset (y * fbPitch + x * 4);
@@ -768,6 +770,84 @@ procedure main is
    begin
       return clampRect ((x => s.x, y => s.y, w => s.w, h => s.h));
    end surfaceRect;
+
+   function clientRect (s : Surface) return Rect is
+   begin
+      if s.w <= 20 or else s.h <= 44 then
+         return (others => 0);
+      end if;
+
+      return clampRect ((x => s.x + 10, y => s.y + 34,
+                         w => s.w - 20, h => s.h - 44));
+   end clientRect;
+
+   function unpackLo32 (x : Unsigned_64) return Natural is
+   begin
+      return Natural (x and 16#FFFF_FFFF#);
+   end unpackLo32;
+
+   function unpackHi32 (x : Unsigned_64) return Natural is
+   begin
+      return Natural (Shift_Right (x, 32));
+   end unpackHi32;
+
+   function packU32Pair (lo, hi : Natural) return Unsigned_64 is
+   begin
+      return Unsigned_64 (lo) or Shift_Left (Unsigned_64 (hi), 32);
+   end packU32Pair;
+
+   function ensureProcessListBuffer return Boolean is
+      raw : Unsigned_64;
+   begin
+      if psBufAddr /= System.Null_Address then
+         return True;
+      end if;
+
+      raw := syscall (SYSCALL_SBRK, PS_BUF_SIZE);
+      if raw = Unsigned_64'Last then
+         debugPrint ("desktop: ps buffer alloc failed" & LF);
+         return False;
+      end if;
+
+      psBufAddr := To_Address (Integer_Address (raw));
+      return True;
+   end ensureProcessListBuffer;
+
+   function processAlive (pid : ProcessID) return Boolean is
+      count : Unsigned_64;
+      entryAddr : System.Address;
+      pidVal : Unsigned_16;
+   begin
+      if pid = NO_PROCESS then
+         return True;
+      end if;
+      if not ensureProcessListBuffer then
+         --  Fail open: losing the process list should not destroy a valid
+         --  client window just because the diagnostic buffer could not grow.
+         return True;
+      end if;
+
+      count := syscall (SYSCALL_PROCLIST,
+                        Unsigned_64 (To_Integer (psBufAddr)),
+                        PS_BUF_SIZE);
+      if count = Unsigned_64'Last then
+         return True;
+      end if;
+
+      for i in 0 .. count - 1 loop
+         entryAddr := psBufAddr + Storage_Offset (i) * PS_ENTRY_SIZE;
+         declare
+            p : Unsigned_16 with Import, Address => entryAddr;
+         begin
+            pidVal := p;
+         end;
+         if ProcessID (pidVal) = pid then
+            return True;
+         end if;
+      end loop;
+
+      return False;
+   end processAlive;
 
    function hasWindowFlag (s : Surface; flag : Unsigned_64) return Boolean is
    begin
@@ -1108,8 +1188,14 @@ procedure main is
    procedure drawClientBuffer (s : Surface; x, y, w, h : Natural) is
       copyW : Natural := w;
       copyH : Natural := h;
+      minX  : Natural := x;
+      minY  : Natural := y;
+      maxX  : Natural;
+      maxY  : Natural;
    begin
       if not s.bufferAttached or else
+         s.bufferAddr = System.Null_Address or else
+         backBufferAddr = System.Null_Address or else
          s.bufferFormat /= PIXEL_FORMAT_BGRA8888 or else
          s.bufferPitch < s.bufferW * 4
       then
@@ -1122,11 +1208,57 @@ procedure main is
       if copyH > s.bufferH then
          copyH := s.bufferH;
       end if;
+      if copyW = 0 or else copyH = 0 or else
+         x >= fbWidth or else y >= fbHeight
+      then
+         return;
+      end if;
 
-      for yy in 0 .. copyH - 1 loop
-         for xx in 0 .. copyW - 1 loop
-            putPixel (x + xx, y + yy, readClientPixel (s, xx, yy));
-         end loop;
+      maxX := x + copyW;
+      maxY := y + copyH;
+
+      if clipEnabled then
+         if minX < clipRect.x then
+            minX := clipRect.x;
+         end if;
+         if minY < clipRect.y then
+            minY := clipRect.y;
+         end if;
+         if maxX > clipRect.x + clipRect.w then
+            maxX := clipRect.x + clipRect.w;
+         end if;
+         if maxY > clipRect.y + clipRect.h then
+            maxY := clipRect.y + clipRect.h;
+         end if;
+      end if;
+
+      if maxX > fbWidth then
+         maxX := fbWidth;
+      end if;
+      if maxY > fbHeight then
+         maxY := fbHeight;
+      end if;
+      if minX >= maxX or else minY >= maxY then
+         return;
+      end if;
+
+      --  Client buffers are already BGRA8888, matching the compositor
+      --  backbuffer. Clip once, then copy rows directly; bitmap-heavy clients
+      --  such as DOOM should not pay the cost of putPixel/readClientPixel for
+      --  every pixel in a full-frame present.
+      for yy in minY .. maxY - 1 loop
+         declare
+            srcY : constant Natural := yy - y;
+            srcX : constant Natural := minX - x;
+            bytes : constant Storage_Count := Storage_Count ((maxX - minX) * 4);
+            ignore : System.Address;
+         begin
+            ignore := memcpy
+              (backBufferAddr + Storage_Offset (yy * fbPitch + minX * 4),
+               s.bufferAddr +
+                  Storage_Offset (srcY * s.bufferPitch + srcX * 4),
+               bytes);
+         end;
       end loop;
    end drawClientBuffer;
 
@@ -1312,7 +1444,9 @@ procedure main is
                       C_MUTED, C_WIN);
          when others =>
             if s.bufferAttached then
-               fillRect (x + 10, y + 34, w - 20, h - 44, C_SHADOW);
+               if s.bufferW < w - 20 or else s.bufferH < h - 44 then
+                  fillRect (x + 10, y + 34, w - 20, h - 44, C_SHADOW);
+               end if;
                drawClientBuffer (s, x + 10, y + 34, w - 20, h - 44);
             else
                drawText (x + 18, y + 44, "This is a real child surface.",
@@ -1560,14 +1694,14 @@ procedure main is
       end if;
    end scheduleRedrawRect;
 
+   procedure reapDeadClientSurfaces (damage : in out Rect);
+
    procedure flushFrame is
-      damage : constant Rect := frameDamage;
+      damage : Rect := frameDamage;
       now : constant Unsigned_64 := nowMs;
       t0 : Unsigned_64;
       t1 : Unsigned_64;
-      full : constant Boolean :=
-         damage.x = 0 and then damage.y = 0 and then
-         damage.w = fbWidth and then damage.h = fbHeight;
+      full : Boolean;
    begin
       if not framePending then
          return;
@@ -1581,6 +1715,11 @@ procedure main is
       framePending := False;
       frameDamage := (others => 0);
       frameDueMs := 0;
+
+      reapDeadClientSurfaces (damage);
+      full :=
+         damage.x = 0 and then damage.y = 0 and then
+         damage.w = fbWidth and then damage.h = fbHeight;
 
       t0 := syscall (SYSCALL_GETTIME);
       if full then
@@ -1860,6 +1999,42 @@ procedure main is
       end if;
    end closeSurface;
 
+   procedure reapDeadClientSurfaces (damage : in out Rect) is
+      oldBounds : Rect;
+      oldTask   : Rect;
+      changed   : Boolean := False;
+   begin
+      for i in surfaces'Range loop
+         if surfaces (i).used and then
+            surfaces (i).owner /= NO_PROCESS and then
+            not processAlive (surfaces (i).owner)
+         then
+            --  Client-owned surface buffers are grants from the client. When
+            --  the client exits, the kernel revokes those grants. Reap the
+            --  stale surface before the compositor tries to blit from the
+            --  now-unmapped address.
+            oldBounds := surfaceRect (surfaces (i));
+            oldTask := taskButtonRect (i);
+            if focusSurface = surfaces (i).id then
+               focusSurface := 0;
+            end if;
+            surfaces (i) := (others => <>);
+            damage := unionRect (damage, inflateRect (oldBounds, 4));
+            damage := unionRect (damage, inflateRect (oldTask, 4));
+            changed := True;
+         end if;
+      end loop;
+
+      if changed then
+         if focusSurface = 0 then
+            focusTopmostVisibleWindow (damage);
+         end if;
+         damage := unionRect
+           (damage, inflateRect ((x => 0, y => taskbarY,
+                                  w => fbWidth, h => TASKBAR_H), 2));
+      end if;
+   end reapDeadClientSurfaces;
+
    procedure createInternalSurface
       (flags : Unsigned_64;
        x, y  : Natural;
@@ -1994,17 +2169,106 @@ procedure main is
       nextSurfaceId := nextSurfaceId + 1;
    end createInternalSurface;
 
+   procedure enqueueInput
+      (kind : Unsigned_64;
+       target : Unsigned_64;
+       payload0 : Unsigned_64;
+       payload1 : Unsigned_64);
+
+   procedure dequeueInput
+      (target : Unsigned_64;
+       afterSerial : Unsigned_64;
+       found : out Boolean;
+       event : out PendingInput);
+
+   procedure clearInputQueue;
+
    procedure queueConfigure (surfaceId, w, h : Unsigned_64) is
    begin
-      inputEvent :=
+      enqueueInput (INPUT_CONFIGURE, surfaceId, w, h);
+   end queueConfigure;
+
+   procedure enqueueInput
+      (kind : Unsigned_64;
+       target : Unsigned_64;
+       payload0 : Unsigned_64;
+       payload1 : Unsigned_64)
+   is
+      slot : Integer := -1;
+      oldest : Integer := -1;
+      oldestSerial : Unsigned_64 := Unsigned_64'Last;
+   begin
+      if target = 0 then
+         return;
+      end if;
+
+      for i in inputEvents'Range loop
+         if not inputEvents (i).valid and then slot < 0 then
+            slot := Integer (i);
+         elsif inputEvents (i).valid and then
+            inputEvents (i).serial < oldestSerial
+         then
+            oldest := Integer (i);
+            oldestSerial := inputEvents (i).serial;
+         end if;
+      end loop;
+
+      if slot < 0 then
+         --  Keep accepting fresh input rather than letting an unresponsive
+         --  client stall the compositor. With a 64-event queue this should be
+         --  rare, and dropping oldest preserves key releases much better than
+         --  overwriting the single pending event slot did.
+         slot := oldest;
+      end if;
+
+      if slot < 0 then
+         return;
+      end if;
+
+      inputEvents (InputQueueIndex (slot)) :=
         (valid    => True,
          serial   => nextInputSerial,
-         kind     => INPUT_CONFIGURE,
-         target   => surfaceId,
-         payload0 => w,
-         payload1 => h);
+         kind     => kind,
+         target   => target,
+         payload0 => payload0,
+         payload1 => payload1);
       nextInputSerial := nextInputSerial + 1;
-   end queueConfigure;
+   end enqueueInput;
+
+   procedure dequeueInput
+      (target : Unsigned_64;
+       afterSerial : Unsigned_64;
+       found : out Boolean;
+       event : out PendingInput)
+   is
+      best : Integer := -1;
+      bestSerial : Unsigned_64 := Unsigned_64'Last;
+   begin
+      found := False;
+      event := (others => <>);
+
+      for i in inputEvents'Range loop
+         if inputEvents (i).valid and then
+            inputEvents (i).target = target and then
+            inputEvents (i).serial > afterSerial and then
+            inputEvents (i).serial < bestSerial
+         then
+            best := Integer (i);
+            bestSerial := inputEvents (i).serial;
+         end if;
+      end loop;
+
+      if best >= 0 then
+         event := inputEvents (InputQueueIndex (best));
+         inputEvents (InputQueueIndex (best)).valid := False;
+         found := True;
+      end if;
+   end dequeueInput;
+
+   procedure clearInputQueue is
+   begin
+      inputEvents := (others => (others => <>));
+   end clearInputQueue;
 
    procedure queueKey (raw : Unsigned_8) is
       release : constant Boolean := (raw and 16#80#) /= 0;
@@ -2014,14 +2278,10 @@ procedure main is
          return;
       end if;
 
-      inputEvent :=
-        (valid    => True,
-         serial   => nextInputSerial,
-         kind     => (if release then INPUT_KEY_UP else INPUT_KEY_DOWN),
-         target   => focusSurface,
-         payload0 => code,
-         payload1 => 0);
-      nextInputSerial := nextInputSerial + 1;
+      enqueueInput ((if release then INPUT_KEY_UP else INPUT_KEY_DOWN),
+                    focusSurface,
+                    code,
+                    0);
    end queueKey;
 
    procedure claimInput is
@@ -2405,9 +2665,12 @@ procedure main is
                   (surfaces (SurfaceIndex (idx)).flags and
                    SURFACE_FLAG_SHELL) = 0
                then
+                  --  A client present changes the client buffer contents, not
+                  --  the compositor-owned decoration. Keep high-rate surfaces
+                  --  such as DOOM clipped to their content area so every tick
+                  --  does the minimum useful work.
                   scheduleRedrawRect
-                    (inflateRect
-                       (surfaceRect (surfaces (SurfaceIndex (idx))), 4));
+                    (clientRect (surfaces (SurfaceIndex (idx))));
                else
                   scheduleRedraw;
                end if;
@@ -2452,19 +2715,24 @@ procedure main is
                              length => 4,
                              flags  => 0,
                              badge  => 0);
-            if inputEvent.valid and then
-               inputEvent.target = request.words (0) and then
-               inputEvent.serial > request.words (1)
-            then
-               replyMsg.words (0) := inputEvent.kind;
-               replyMsg.words (1) := inputEvent.serial;
-               replyMsg.words (2) := inputEvent.payload0;
-               replyMsg.words (3) := inputEvent.payload1;
-               inputEvent.valid := False;
-            else
-               replyMsg.words (0) := INPUT_NONE;
-               replyMsg.words (1) := request.words (1);
-            end if;
+            declare
+               found : Boolean;
+               event : PendingInput;
+            begin
+               dequeueInput (request.words (0),
+                             request.words (1),
+                             found,
+                             event);
+               if found then
+                  replyMsg.words (0) := event.kind;
+                  replyMsg.words (1) := event.serial;
+                  replyMsg.words (2) := event.payload0;
+                  replyMsg.words (3) := event.payload1;
+               else
+                  replyMsg.words (0) := INPUT_NONE;
+                  replyMsg.words (1) := request.words (1);
+               end if;
+            end;
 
          when OP_DESKTOP_BYE =>
             for i in surfaces'Range loop
@@ -2664,13 +2932,62 @@ procedure main is
       end if;
    end ensureSpawnGrant;
 
-   procedure spawnFromConsole (name : String) is
+   function lowerChar (ch : Character) return Character is
+   begin
+      if ch >= 'A' and then ch <= 'Z' then
+         return Character'Val
+           (Character'Pos (ch) - Character'Pos ('A') + Character'Pos ('a'));
+      end if;
+
+      return ch;
+   end lowerChar;
+
+   procedure normalizeAppName
+      (source : String;
+       dest   : out String;
+       len    : out Natural)
+   is
+      first : Natural := source'First;
+      last  : Natural := source'Last;
+   begin
+      dest := (others => ' ');
+      len := 0;
+
+      while first <= source'Last and then source (first) = ' ' loop
+         first := first + 1;
+      end loop;
+      while last >= first and then source (last) = ' ' loop
+         last := last - 1;
+      end loop;
+
+      if first > last then
+         return;
+      end if;
+
+      for i in first .. last loop
+         exit when len = dest'Length;
+         len := len + 1;
+         dest (len) := lowerChar (source (i));
+      end loop;
+   end normalizeAppName;
+
+   function hasExtension (name : String) return Boolean is
+   begin
+      for i in name'Range loop
+         if name (i) = '.' then
+            return True;
+         end if;
+      end loop;
+      return False;
+   end hasExtension;
+
+   procedure trySpawnFromConsole (name : String; ok : out Boolean) is
       msg : Message := NULL_MESSAGE;
       tag : MessageTag;
       len : Natural := name'Length;
    begin
+      ok := False;
       if len = 0 or else len > 255 then
-         setConsoleResult ("SPAWN NEEDS A SHORT APP NAME");
          return;
       end if;
 
@@ -2701,8 +3018,35 @@ procedure main is
 
       if tag.label = REPLY_OK then
          setConsoleSpawned (msg.words (0));
+         ok := True;
+      end if;
+   end trySpawnFromConsole;
+
+   procedure spawnFromConsole (name : String) is
+      normalized : String (1 .. 64);
+      len : Natural;
+      ok : Boolean := False;
+   begin
+      normalizeAppName (name, normalized, len);
+      if len = 0 then
+         setConsoleResult ("SPAWN NEEDS AN APP NAME");
+         return;
+      elsif len > 60 then
+         setConsoleResult ("SPAWN NAME TOO LONG");
+         return;
+      end if;
+
+      if hasExtension (normalized (1 .. len)) then
+         trySpawnFromConsole (normalized (1 .. len), ok);
       else
-         setConsoleResult ("SPAWN FAILED");
+         trySpawnFromConsole (normalized (1 .. len) & ".app", ok);
+         if not ok then
+            trySpawnFromConsole (normalized (1 .. len) & ".elf", ok);
+         end if;
+      end if;
+
+      if not ok then
+         setConsoleResult ("SPAWN FAILED: " & normalized (1 .. len));
       end if;
    end spawnFromConsole;
 
@@ -2748,7 +3092,7 @@ procedure main is
       if consoleInputLen = 0 then
          setConsoleResult ("READY.");
       elsif consoleMatches ("HELP") then
-         setConsoleResult ("TRY: SERVICES, CAPS, SECRETS, SPAWN DOOM");
+         setConsoleResult ("TRY: SERVICES, CAPS, SECRETS, SPAWN <APP>");
       elsif consoleMatches ("LIST SERVICES") then
          setConsoleResult ("desktop.svc display.svc procmgr secrets.svc");
       elsif consoleMatches ("SERVICES") then
@@ -2771,14 +3115,8 @@ procedure main is
          end if;
       elsif consoleStartsWith ("LET ") then
          setConsoleResult ("BOUND VALUE IN THIS REPL SESSION");
-      elsif consoleMatches ("SPAWN DESKTOP-SHELL") then
-         spawnFromConsole ("desktop-shell.app");
-      elsif consoleMatches ("SPAWN DESKTOP-SHELL.APP") then
-         spawnFromConsole ("desktop-shell.app");
-      elsif consoleMatches ("SPAWN DOOM") then
-         spawnFromConsole ("doom.elf");
-      elsif consoleMatches ("SPAWN DOOM.ELF") then
-         spawnFromConsole ("doom.elf");
+      elsif consoleStartsWith ("SPAWN ") then
+         spawnFromConsole (consoleInput (7 .. consoleInputLen));
       elsif consoleMatches ("CLS") then
          consoleLast := (others => ' ');
          consoleLastLen := 0;
@@ -3187,7 +3525,7 @@ procedure main is
       framePending := False;
       frameDamage := (others => 0);
       frameDueMs := 0;
-      inputEvent.valid := False;
+      clearInputQueue;
    end releaseDisplayBuffer;
 
    procedure setupDisplayBuffer (ok : out Boolean) is
@@ -3201,6 +3539,7 @@ procedure main is
       grantOk : Boolean;
       attach  : Message;
       status  : Message;
+      direct : Message;
    begin
       ok := False;
 
@@ -3231,6 +3570,29 @@ procedure main is
          debugPrint ("desktop: display info unsupported" & LF);
          status := callDisplay (OP_DISPLAY_RELEASE);
          return;
+      end if;
+
+      status := callDisplay (OP_DISPLAY_GET_STATUS);
+      if status.tag.length >= 2 and then
+         (status.words (1) and DISPLAY_CAP_DIRECT_BACKBUFFER) /= 0
+      then
+         direct := callDisplay (OP_DISPLAY_MAP_BACKBUFFER);
+         if direct.tag.length >= 4 and then direct.words (0) = 0 then
+            backBufferGrant := direct.words (1);
+            backBufferAddr := To_Address
+              (Integer_Address
+                 (GRANT_REGION_BASE + backBufferGrant * GRANT_SLOT_SIZE));
+            fbWidth := unpackLo32 (direct.words (2));
+            fbHeight := unpackHi32 (direct.words (2));
+            fbPitch := Natural (direct.words (3));
+            backBufferReady := True;
+
+            debugPrint ("desktop: direct gpu backbuffer" & LF);
+            ok := True;
+            return;
+         end if;
+
+         debugPrint ("desktop: direct backbuffer unavailable" & LF);
       end if;
 
       bytes := Unsigned_64 (fbPitch * fbHeight);
@@ -3270,7 +3632,6 @@ procedure main is
       end if;
 
       backBufferReady := True;
-      status := callDisplay (OP_DISPLAY_GET_STATUS);
       if status.tag.length >= 2 then
          debugPrint ("desktop: display backend=");
          printDec (status.words (0));

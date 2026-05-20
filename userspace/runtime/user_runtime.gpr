@@ -22,6 +22,7 @@ library project user_runtime is
     package Compiler is
         for Default_Switches ("Ada") use
         (
+            "-O2",
             "-mno-red-zone",
             "-mcmodel=kernel",
             "-fno-pic",

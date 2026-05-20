@@ -191,6 +191,16 @@ desktop-shell: user_runtime
 	$(ALR) gprbuild -P ../userspace/apps/desktop-shell/desktop_shell.gpr
 	cp ../userspace/apps/desktop-shell/build/desktop-shell.app isodir/boot/desktop-shell.app
 
+# Build the UI primitive exercise app
+.PHONY : ui-lab
+ui-lab: user_runtime
+	mkdir -p ../userspace/apps/ui-lab/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/apps/ui-lab/manifest.c \
+		-o ../userspace/apps/ui-lab/build/manifest.o
+	$(ALR) gprbuild -P ../userspace/apps/ui-lab/ui_lab.gpr
+	cp ../userspace/apps/ui-lab/build/ui-lab.app isodir/boot/ui-lab.app
+
 # Build the userspace process manager service
 .PHONY : procmgr
 procmgr: user_runtime
@@ -287,7 +297,7 @@ shell: user_runtime
 # Disk images rebuild automatically when any of these change.
 DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/sleep.app \
 	isodir/boot/wget.app isodir/boot/security-center.app \
-	isodir/boot/desktop-shell.app \
+	isodir/boot/desktop-shell.app isodir/boot/ui-lab.app \
 	isodir/boot/ipctest-server.app isodir/boot/ipctest-client.app \
 	isodir/boot/logstore.svc isodir/boot/display.svc isodir/boot/desktop.svc \
 	../init.conf ../motd.txt ../doom1.wad
@@ -306,6 +316,7 @@ ata_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write isodir/boot/wget.app wget.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/security-center.app security-center.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/desktop-shell.app desktop-shell.app" ata_disk.img
+	debugfs -w -R "write isodir/boot/ui-lab.app ui-lab.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/ipctest-server.app ipctest-server.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/ipctest-client.app ipctest-client.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/logstore.svc logstore.svc" ata_disk.img
@@ -330,6 +341,7 @@ nvme_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write isodir/boot/wget.app wget.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/security-center.app security-center.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/desktop-shell.app desktop-shell.app" nvme_disk.img
+	debugfs -w -R "write isodir/boot/ui-lab.app ui-lab.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/ipctest-server.app ipctest-server.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/ipctest-client.app ipctest-client.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/display.svc display.svc" nvme_disk.img
@@ -367,13 +379,13 @@ initrd:
 	cd ramdisk_staging && ls | cpio -o -H newc > ../isodir/boot/initrd.img
 	rm -rf ramdisk_staging
 
-iso: cubit_kernel
+iso: cubit_kernel initrd
 	cp cubit_kernel isodir/boot/
 	grub-mkrescue -o cubit_kernel.iso isodir
 
 # Build everything including DOOM, then create ISO and disk images
 .PHONY : world
-world: cubit_kernel doom sleep ipctest-server ipctest-client filesystem ata nvme virtio-net virtio-gpu netstack wget security-center desktop-shell procmgr shell hda mixer ps2 config netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: cubit_kernel doom sleep ipctest-server ipctest-client filesystem ata nvme virtio-net virtio-gpu netstack wget security-center desktop-shell ui-lab procmgr shell hda mixer ps2 config netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world

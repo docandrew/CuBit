@@ -44,6 +44,11 @@ procedure main is
    mixFrames   : Natural;
    fillMsg     : Message;
    stagingAddr : Unsigned_64 := 0;
+   statsStartMs : Unsigned_64 := 0;
+   statsPeriods : Unsigned_64 := 0;
+   statsActivePeriods : Unsigned_64 := 0;
+   statsSilentPeriods : Unsigned_64 := 0;
+   statsUnderrunsLast : Unsigned_64 := 0;
 
    --  Silence flush: after audio stops, send enough silent periods to
    --  overwrite all BDL slots, then stop capCalling to save CPU.
@@ -52,6 +57,87 @@ procedure main is
 
    --  Mix timer: run at ~5ms intervals (~48kHz / 256 frames = 5.33ms)
    MIX_INTERVAL_MS : constant Unsigned_64 := 5;
+
+   procedure printDec (val : Unsigned_64) is
+      buf : String (1 .. 20);
+      pos : Natural := buf'Last;
+      v   : Unsigned_64 := val;
+   begin
+      if v = 0 then
+         debugPrint ("0");
+         return;
+      end if;
+
+      while v > 0 loop
+         buf (pos) := Character'Val (Character'Pos ('0') +
+                                      Natural (v mod 10));
+         v := v / 10;
+         pos := pos - 1;
+      end loop;
+
+      debugPrint (buf (pos + 1 .. buf'Last));
+   end printDec;
+
+   function totalUnderruns return Unsigned_64 is
+      total : Unsigned_64 := 0;
+   begin
+      for i in Mixer.streams'Range loop
+         if Mixer.streams (i).active and then Mixer.streams (i).ringAddr /= 0
+         then
+            declare
+               hdr : Mixer.RingHeader
+                  with Import,
+                       Address => To_Address
+                         (Integer_Address (Mixer.streams (i).ringAddr)),
+                       Volatile;
+            begin
+               total := total + Unsigned_64 (hdr.underruns);
+            end;
+         end if;
+      end loop;
+
+      return total;
+   end totalUnderruns;
+
+   procedure maybePrintStats is
+      now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      underruns : Unsigned_64;
+   begin
+      if now = Unsigned_64'Last then
+         return;
+      end if;
+
+      if statsStartMs = 0 then
+         statsStartMs := now;
+         statsUnderrunsLast := totalUnderruns;
+         return;
+      end if;
+
+      if now < statsStartMs or else now - statsStartMs < 1000 then
+         return;
+      end if;
+
+      underruns := totalUnderruns;
+      debugPrint ("mixer: stats periods=");
+      printDec (statsPeriods);
+      debugPrint (" active=");
+      printDec (statsActivePeriods);
+      debugPrint (" silent=");
+      printDec (statsSilentPeriods);
+      debugPrint (" underruns=");
+      if underruns >= statsUnderrunsLast then
+         printDec (underruns - statsUnderrunsLast);
+      else
+         printDec (underruns);
+      end if;
+      debugPrint ("" & LF);
+
+      statsStartMs := now;
+      statsPeriods := 0;
+      statsActivePeriods := 0;
+      statsSilentPeriods := 0;
+      statsUnderrunsLast := underruns;
+   end maybePrintStats;
 
    procedure sendReply (dest  : ProcessID;
                         label : Unsigned_32;
@@ -268,9 +354,11 @@ begin
       if stagingAddr /= 0 then
          mixFrames := Mixer.mixPeriod (mixBuf, stagingAddr,
                                         Mixer.MIX_FRAMES);
+         statsPeriods := statsPeriods + 1;
 
          if mixFrames > 0 then
             --  Active audio: always send, reset flush counter
+            statsActivePeriods := statsActivePeriods + 1;
             silenceCount := 0;
             fillMsg := (tag => (label  => OP_AUDIO_HW_FILL,
                                 length => 2,
@@ -283,6 +371,7 @@ begin
             fillMsg.tag := capCall (CAP_SLOT_HDA, fillMsg);
          elsif silenceCount < SILENCE_FLUSH then
             --  Flush remaining BDL slots with silence
+            statsSilentPeriods := statsSilentPeriods + 1;
             silenceCount := silenceCount + 1;
             fillMsg := (tag => (label  => OP_AUDIO_HW_FILL,
                                 length => 2,
@@ -295,6 +384,8 @@ begin
             fillMsg.tag := capCall (CAP_SLOT_HDA, fillMsg);
          end if;
       end if;
+
+      maybePrintStats;
 
       --  Sleep briefly to yield CPU when no audio is active
       ret := syscall (SYSCALL_SLEEP, MIX_INTERVAL_MS);

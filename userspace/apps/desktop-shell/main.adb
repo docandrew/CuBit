@@ -10,6 +10,7 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.UI;
 
 procedure main is
    use ASCII;
@@ -55,6 +56,17 @@ procedure main is
    sentBye   : Boolean := False;
    ignore    : Unsigned_64;
 
+   function canvas return CuBit.UI.Canvas is
+   begin
+      return
+        (addr        => bufferAddr,
+         width       => bufferW,
+         height      => bufferH,
+         pitch       => bufferPitch,
+         clipEnabled => False,
+         clip        => (others => 0));
+   end canvas;
+
    function callDesktop
       (label : Unsigned_32;
        w0    : Unsigned_64 := 0;
@@ -85,18 +97,12 @@ procedure main is
    end alignUpPage;
 
    procedure writePixel (x, y : Natural; color : Unsigned_32) is
-      offset : constant Storage_Offset :=
-         Storage_Offset (y * bufferPitch + x * 4);
-      pixel : Unsigned_32 with Import, Address => bufferAddr + offset;
    begin
-      if bufferAddr /= System.Null_Address and then
-         x < bufferW and then y < bufferH
-      then
-         pixel := color;
-      end if;
+      CuBit.UI.Set_Pixel (canvas, x, y, color);
    end writePixel;
 
    procedure drawPixelTest (phase : Unsigned_64) is
+      c : constant CuBit.UI.Canvas := canvas;
       r : Unsigned_32;
       g : Unsigned_32;
       b : Unsigned_32;
@@ -111,6 +117,17 @@ procedure main is
                Shift_Left (r, 16) or Shift_Left (g, 8) or b);
          end loop;
       end loop;
+
+      CuBit.UI.Draw_Button_Frame
+        (c,
+         (x => 8, y => 8, w => 132, h => 28),
+         CuBit.UI.Mirage,
+         CuBit.UI.Button_Active);
+      CuBit.UI.Draw_Button_Frame
+        (c,
+         (x => bufferW - 46, y => 8, w => 38, h => 28),
+         CuBit.UI.Mirage,
+         CuBit.UI.Button_Normal);
    end drawPixelTest;
 
    procedure attachPixelBuffer is

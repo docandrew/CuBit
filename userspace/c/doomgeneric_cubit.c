@@ -19,6 +19,7 @@
 
 #include "cubit.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 /* Package identity (.cubit.id section) */
 static const unsigned char __cubit_id[]
@@ -180,6 +181,7 @@ static uint32_t *fb_ptr = NULL;
 #define OP_DESKTOP_HELLO          0x0800
 #define OP_DESKTOP_BYE            0x0801
 #define OP_SURFACE_CREATE         0x0810
+#define OP_SURFACE_DESTROY        0x0811
 #define OP_SURFACE_PRESENT        0x0812
 #define OP_SURFACE_ATTACH_BUFFER  0x0814
 #define OP_WINDOW_SET_LIMITS      0x0841
@@ -219,6 +221,18 @@ static uint64_t desktop_surface = 0;
 static uint64_t desktop_last_input_serial = 0;
 static uint64_t desktop_buffer_grant = 0;
 static uint32_t *desktop_buffer = NULL;
+static uint64_t desktop_last_present_ms = 0;
+static uint64_t desktop_present_count = 0;
+static uint64_t desktop_skip_count = 0;
+static uint64_t desktop_present_ms_total = 0;
+static uint64_t desktop_stats_ms = 0;
+static int desktop_shutdown_registered = 0;
+static int desktop_shutdown_done = 0;
+
+/* Diagnostic throttle. The game/audio loop should not synchronously wait for
+ * the compositor more often than this while we are characterizing latency. */
+#define DESKTOP_PRESENT_INTERVAL_MS 50
+#define NO_COMPLETION_TOKEN       (~(uint64_t)0)
 
 static uint64_t pack_u32_pair(uint32_t lo, uint32_t hi)
 {
@@ -250,6 +264,109 @@ static int desktop_call(uint32_t label,
     if (reply)
         *reply = msg;
     return 0;
+}
+
+static int desktop_submit(uint32_t label,
+                          uint64_t w0, uint64_t w1, uint64_t w2)
+{
+    cubit_message_tag_t tag;
+    uint64_t tag_word;
+
+    memset(&tag, 0, sizeof(tag));
+    tag.label = label;
+    tag.length = 3;
+    memcpy(&tag_word, &tag, sizeof(tag_word));
+
+    return syscall6(SYSCALL_CAP_SUBMIT,
+                    CAP_SLOT_DESKTOP,
+                    tag_word,
+                    w0,
+                    w1,
+                    w2,
+                    NO_COMPLETION_TOKEN) == 1 ? 0 : -1;
+}
+
+static void shutdown_desktop_surface(void)
+{
+    cubit_message_t reply;
+
+    if (desktop_shutdown_done)
+        return;
+    desktop_shutdown_done = 1;
+
+    if (desktop_surface != 0) {
+        (void)desktop_call(OP_SURFACE_DESTROY,
+                           desktop_surface, 0, 0, 0, &reply);
+    }
+
+    if (desktop_mode || desktop_surface != 0) {
+        (void)desktop_call(OP_DESKTOP_BYE, 0, 0, 0, 0, &reply);
+    }
+
+    desktop_mode = 0;
+    desktop_surface = 0;
+    desktop_buffer = NULL;
+    desktop_buffer_grant = 0;
+}
+
+static void append_dec(char *buf, int *pos, int max, uint64_t value)
+{
+    char tmp[21];
+    int n = 0;
+
+    if (*pos >= max - 1)
+        return;
+
+    if (value == 0) {
+        buf[(*pos)++] = '0';
+        buf[*pos] = '\0';
+        return;
+    }
+
+    while (value > 0 && n < (int)sizeof(tmp)) {
+        tmp[n++] = (char)('0' + (value % 10));
+        value /= 10;
+    }
+    while (n > 0 && *pos < max - 1) {
+        buf[(*pos)++] = tmp[--n];
+    }
+    buf[*pos] = '\0';
+}
+
+static void append_str(char *buf, int *pos, int max, const char *s)
+{
+    while (*s && *pos < max - 1) {
+        buf[(*pos)++] = *s++;
+    }
+    buf[*pos] = '\0';
+}
+
+static void maybe_print_desktop_stats(uint64_t now)
+{
+    char buf[128];
+    int pos = 0;
+
+    if (desktop_stats_ms == 0) {
+        desktop_stats_ms = now;
+        return;
+    }
+
+    if (now < desktop_stats_ms || now - desktop_stats_ms < 1000)
+        return;
+
+    append_str(buf, &pos, sizeof(buf), "DOOM: desktop presents=");
+    append_dec(buf, &pos, sizeof(buf), desktop_present_count);
+    append_str(buf, &pos, sizeof(buf), " skipped=");
+    append_dec(buf, &pos, sizeof(buf), desktop_skip_count);
+    append_str(buf, &pos, sizeof(buf), " present_ms=");
+    append_dec(buf, &pos, sizeof(buf), desktop_present_ms_total);
+    append_str(buf, &pos, sizeof(buf), "\n");
+    cubit_stream_print(CUBIT_STREAM_LOG, buf);
+
+    desktop_present_count = 0;
+    desktop_skip_count = 0;
+    desktop_present_ms_total = 0;
+    desktop_stats_ms = now;
 }
 
 static int init_desktop_surface(void)
@@ -502,6 +619,11 @@ static void poll_mouse(void)
  *---------------------------------------------------------------------------*/
 void DG_Init(void)
 {
+    if (!desktop_shutdown_registered) {
+        if (atexit(shutdown_desktop_surface) == 0)
+            desktop_shutdown_registered = 1;
+    }
+
     if (init_desktop_surface() == 0) {
         cubit_stream_print(CUBIT_STREAM_LOG,
                            "DOOM: Running inside desktop surface.\n");
@@ -543,9 +665,27 @@ void DG_Init(void)
 void DG_DrawFrame(void)
 {
     if (desktop_mode && desktop_buffer) {
+        uint64_t now;
         memcpy(desktop_buffer, DG_ScreenBuffer, DOOM_BUFFER_BYTES);
-        (void)desktop_call(OP_SURFACE_PRESENT,
-                           desktop_surface, 0, 0, 0, NULL);
+
+        now = cubit_gettime_ms();
+        if (desktop_last_present_ms == 0 ||
+            now < desktop_last_present_ms ||
+            now - desktop_last_present_ms >= DESKTOP_PRESENT_INTERVAL_MS) {
+            uint64_t t0 = now;
+            uint64_t t1;
+            (void)desktop_submit(OP_SURFACE_PRESENT,
+                                 desktop_surface, 0, 0);
+            t1 = cubit_gettime_ms();
+            desktop_last_present_ms = now;
+            desktop_present_count++;
+            if (t1 != (uint64_t)-1 && t1 >= t0)
+                desktop_present_ms_total += t1 - t0;
+        } else {
+            desktop_skip_count++;
+        }
+
+        maybe_print_desktop_stats(now);
         poll_keyboard();
         return;
     }

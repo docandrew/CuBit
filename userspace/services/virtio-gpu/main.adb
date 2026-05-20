@@ -75,6 +75,8 @@ procedure main is
    OP_GPU_PRESENT_RECT  : constant Unsigned_32 := 16#0A02#;
    OP_GPU_CLEAR         : constant Unsigned_32 := 16#0A03#;
    OP_GPU_GET_STATUS    : constant Unsigned_32 := 16#0A04#;
+   OP_GPU_MAP_FRAMEBUFFER : constant Unsigned_32 := 16#0A05#;
+   OP_GPU_FLUSH_RECT    : constant Unsigned_32 := 16#0A06#;
 
    GPU_OK              : constant Unsigned_64 := 0;
    GPU_ERR_BAD_STATE   : constant Unsigned_64 := 3;
@@ -82,6 +84,12 @@ procedure main is
 
    FORMAT_B8G8R8X8_UNORM : constant Unsigned_32 := 2;
    SUBMIT_POLL_LIMIT : constant Natural := 500_000;
+
+   --  Per-command tracing is useful while bringing up the virtqueue, but it is
+   --  catastrophic once the display server starts presenting frames. Each frame
+   --  issues transfer/flush commands, and debugPrint goes through the kernel
+   --  text path. Keep startup/error logging live and leave this off by default.
+   TRACE_COMMANDS : constant Boolean := False;
 
    GRANT_REGION_BASE : constant Unsigned_64 := 16#0000_4000_0000_0000#;
    GRANT_SLOT_SIZE   : constant Unsigned_64 := 4096 * 4096;
@@ -198,7 +206,9 @@ procedure main is
 
    procedure trace (what : String) is
    begin
-      debugPrint ("virtio-gpu: " & what & LF);
+      if TRACE_COMMANDS then
+         debugPrint ("virtio-gpu: " & what & LF);
+      end if;
    end trace;
 
    procedure printHex32 (val : Unsigned_32) is
@@ -331,11 +341,13 @@ procedure main is
       ignoreSleep : Unsigned_64;
       typ : Unsigned_32;
    begin
-      debugPrint ("virtio-gpu: submit cmd=0x");
-      printHex32 (get32 (CMD_OFF, 0));
-      debugPrint (" expected=0x");
-      printHex32 (expected);
-      debugPrint ("" & LF);
+      if TRACE_COMMANDS then
+         debugPrint ("virtio-gpu: submit cmd=0x");
+         printHex32 (get32 (CMD_OFF, 0));
+         debugPrint (" expected=0x");
+         printHex32 (expected);
+         debugPrint ("" & LF);
+      end if;
 
       nextDesc := (nextDesc + 2) mod QUEUE_SIZE;
       descs (id) :=
@@ -730,6 +742,33 @@ procedure main is
             replyMsg.words (2) := Unsigned_64 (FB_W);
             replyMsg.words (3) := Unsigned_64 (FB_H);
 
+         when OP_GPU_MAP_FRAMEBUFFER =>
+            declare
+               pages : constant Natural :=
+                  Natural ((Unsigned_64 (FB_BYTES) + 4095) / 4096);
+               gid   : Unsigned_64;
+               grantOk : Boolean;
+            begin
+               replyMsg.tag := (label => OP_GPU_MAP_FRAMEBUFFER,
+                                length => 4, flags => 0, badge => 0);
+               createGrant
+                 (grantee   => from,
+                  localAddr => DMA_BASE + FB_OFF,
+                  numPages  => pages,
+                  readWrite => True,
+                  grantId   => gid,
+                  success   => grantOk);
+               if grantOk then
+                  replyMsg.words (0) := GPU_OK;
+                  replyMsg.words (1) := gid;
+                  replyMsg.words (2) := Unsigned_64 (FB_W) or
+                     Shift_Left (Unsigned_64 (FB_H), 32);
+                  replyMsg.words (3) := Unsigned_64 (FB_W) * 4;
+               else
+                  replyMsg.words (0) := GPU_ERR_BAD_STATE;
+               end if;
+            end;
+
          when OP_GPU_ATTACH_BUFFER =>
             replyMsg.tag := (label => OP_GPU_ATTACH_BUFFER,
                              length => 1, flags => 0, badge => 0);
@@ -770,6 +809,20 @@ procedure main is
                else
                   replyMsg.words (0) := GPU_ERR_BAD_STATE;
                end if;
+            end if;
+
+         when OP_GPU_FLUSH_RECT =>
+            replyMsg.tag := (label => OP_GPU_FLUSH_RECT,
+                             length => 1, flags => 0, badge => 0);
+            ok := transferAndFlush
+              (Natural (request.words (0)),
+               Natural (request.words (1)),
+               Natural (request.words (2)),
+               Natural (request.words (3)));
+            if ok then
+               replyMsg.words (0) := GPU_OK;
+            else
+               replyMsg.words (0) := GPU_ERR_BAD_STATE;
             end if;
 
          when OP_GPU_CLEAR =>

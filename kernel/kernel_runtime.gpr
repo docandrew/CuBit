@@ -21,7 +21,7 @@ library project kernel_runtime is
     package Compiler is
         for Default_Switches ("Ada") use
         (
-            --"-O1",
+            "-O2",
             "-mno-red-zone",
             "-mcmodel=kernel",
             "-fno-pic",

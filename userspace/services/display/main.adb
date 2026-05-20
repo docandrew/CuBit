@@ -26,11 +26,14 @@ procedure main is
    OP_DISPLAY_GET_STATUS    : constant Unsigned_32 := 16#0904#;
    OP_DISPLAY_ACQUIRE       : constant Unsigned_32 := 16#0905#;
    OP_DISPLAY_RELEASE       : constant Unsigned_32 := 16#0906#;
+   OP_DISPLAY_MAP_BACKBUFFER : constant Unsigned_32 := 16#0907#;
 
    OP_GPU_ATTACH_BUFFER : constant Unsigned_32 := 16#0A01#;
    OP_GPU_PRESENT_RECT  : constant Unsigned_32 := 16#0A02#;
    OP_GPU_CLEAR         : constant Unsigned_32 := 16#0A03#;
    OP_GPU_GET_STATUS    : constant Unsigned_32 := 16#0A04#;
+   OP_GPU_MAP_FRAMEBUFFER : constant Unsigned_32 := 16#0A05#;
+   OP_GPU_FLUSH_RECT    : constant Unsigned_32 := 16#0A06#;
 
    DISPLAY_OK              : constant Unsigned_64 := 0;
    DISPLAY_ERR_DENIED      : constant Unsigned_64 := 1;
@@ -49,6 +52,7 @@ procedure main is
    DISPLAY_CAP_COPY_PRESENT : constant Unsigned_64 := 16#0001#;
    DISPLAY_CAP_VBLANK_WAIT  : constant Unsigned_64 := 16#0002#;
    DISPLAY_CAP_GPU_PRESENT  : constant Unsigned_64 := 16#0004#;
+   DISPLAY_CAP_DIRECT_BACKBUFFER : constant Unsigned_64 := 16#0008#;
 
    CAP_SLOT_GPU : constant CapabilitySlot := 9;
 
@@ -66,6 +70,12 @@ procedure main is
    gpuAvailable : Boolean := False;
    gpuActive    : Boolean := False;
    gpuGrantId   : Unsigned_64 := 0;
+   directActive  : Boolean := False;
+   directAddr    : System.Address := System.Null_Address;
+   directGrantId : Unsigned_64 := 0;
+   directWidth   : Natural := 0;
+   directHeight  : Natural := 0;
+   directPitch   : Natural := 0;
    displayOwner : ProcessID := NO_PROCESS;
 
    type Rect is record
@@ -107,7 +117,8 @@ procedure main is
    function backendCaps return Unsigned_64 is
    begin
       if gpuAvailable then
-         return DISPLAY_CAP_COPY_PRESENT or DISPLAY_CAP_GPU_PRESENT;
+         return DISPLAY_CAP_COPY_PRESENT or DISPLAY_CAP_GPU_PRESENT or
+            DISPLAY_CAP_DIRECT_BACKBUFFER;
       else
          return DISPLAY_CAP_COPY_PRESENT or DISPLAY_CAP_VBLANK_WAIT;
       end if;
@@ -239,6 +250,7 @@ procedure main is
       pendingRect := (others => 0);
       gpuActive := False;
       gpuGrantId := 0;
+      directActive := False;
    end detachOwnerBuffer;
 
    function isEmpty (r : Rect) return Boolean is
@@ -294,6 +306,11 @@ procedure main is
    begin
       return Natural (Shift_Right (x, 32));
    end unpackHi32;
+
+   function packU32 (lo, hi : Unsigned_64) return Unsigned_64 is
+   begin
+      return (lo and 16#FFFF_FFFF#) or Shift_Left (hi and 16#FFFF_FFFF#, 32);
+   end packU32;
 
    procedure waitForVBlank is
       val : Unsigned_64;
@@ -493,6 +510,28 @@ procedure main is
       return False;
    end presentGpuRect;
 
+   function flushGpuRect (r : Rect) return Boolean is
+      reply : Message;
+   begin
+      if not directActive then
+         return False;
+      end if;
+
+      reply := callGpu
+        (OP_GPU_FLUSH_RECT,
+         Unsigned_64 (r.x),
+         Unsigned_64 (r.y),
+         Unsigned_64 (r.w),
+         Unsigned_64 (r.h));
+      if reply.tag.length >= 1 and then reply.words (0) = 0 then
+         return True;
+      end if;
+
+      debugPrint ("display: gpu direct flush failed" & LF);
+      directActive := False;
+      return False;
+   end flushGpuRect;
+
    procedure flushPendingPresent is
       r : constant Rect := pendingRect;
       waitStart : Unsigned_64;
@@ -513,7 +552,13 @@ procedure main is
       --  operation into a page flip or command submission without changing
       --  desktop.svc.
       waitStart := syscall (SYSCALL_GETTIME);
-      if gpuActive then
+      if directActive then
+         copyStart := syscall (SYSCALL_GETTIME);
+         if not flushGpuRect (r) then
+            waitForVBlank;
+            presentRect (r.x, r.y, r.w, r.h);
+         end if;
+      elsif gpuActive then
          copyStart := syscall (SYSCALL_GETTIME);
          if not presentGpuRect (r) then
             waitForVBlank;
@@ -614,6 +659,7 @@ procedure main is
                srcHeight := Natural (request.words (2));
                srcPitch  := Natural (request.words (3));
                srcOwner  := from;
+               directActive := False;
                if gpuAvailable then
                   if not attachGpuBuffer then
                      gpuActive := False;
@@ -624,6 +670,74 @@ procedure main is
                                 length => 1, flags => 0, badge => 0);
                replyMsg.words (0) := DISPLAY_OK;
                debugPrint ("display: buffer attached" & LF);
+            end if;
+
+         when OP_DISPLAY_MAP_BACKBUFFER =>
+            replyMsg.tag := (label => OP_DISPLAY_MAP_BACKBUFFER,
+                             length => 4, flags => 0, badge => 0);
+            if not ownsDisplay (from) then
+               replyMsg.words (0) := DISPLAY_ERR_DENIED;
+            elsif not gpuAvailable then
+               replyMsg.words (0) := DISPLAY_ERR_UNSUPPORTED;
+            else
+               declare
+                  gpuMap : Message;
+                  desktopGrant : Unsigned_64;
+                  grantOk : Boolean;
+                  pages : Natural;
+               begin
+                  if directAddr = System.Null_Address then
+                     gpuMap := callGpu (OP_GPU_MAP_FRAMEBUFFER);
+                     if gpuMap.tag.length >= 4 and then gpuMap.words (0) = 0
+                     then
+                        directGrantId := gpuMap.words (1);
+                        directAddr := toAddr
+                          (GRANT_REGION_BASE +
+                           directGrantId * GRANT_SLOT_SIZE);
+                        directWidth := unpackLo32 (gpuMap.words (2));
+                        directHeight := unpackHi32 (gpuMap.words (2));
+                        directPitch := Natural (gpuMap.words (3));
+                     end if;
+                  end if;
+
+                  if directAddr = System.Null_Address or else
+                     directWidth = 0 or else directHeight = 0 or else
+                     directPitch < directWidth * 4
+                  then
+                     replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
+                  else
+                     pages := Natural
+                       ((Unsigned_64 (directPitch) *
+                         Unsigned_64 (directHeight) + 4095) / 4096);
+                     createGrant
+                       (grantee   => from,
+                        localAddr => directAddr,
+                        numPages  => pages,
+                        readWrite => True,
+                        grantId   => desktopGrant,
+                        success   => grantOk);
+                     if grantOk then
+                        srcAddr := directAddr;
+                        srcWidth := directWidth;
+                        srcHeight := directHeight;
+                        srcPitch := directPitch;
+                        srcOwner := from;
+                        gpuActive := False;
+                        directActive := True;
+
+                        replyMsg.words (0) := DISPLAY_OK;
+                        replyMsg.words (1) := desktopGrant;
+                        replyMsg.words (2) :=
+                           packU32 (Unsigned_64 (directWidth),
+                                    Unsigned_64 (directHeight));
+                        replyMsg.words (3) := Unsigned_64 (directPitch);
+                        debugPrint ("display: direct gpu backbuffer mapped" &
+                                    LF);
+                     else
+                        replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
+                     end if;
+                  end if;
+               end;
             end if;
 
          when OP_DISPLAY_PRESENT_RECT =>
