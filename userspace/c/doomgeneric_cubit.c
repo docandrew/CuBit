@@ -226,12 +226,14 @@ static uint64_t desktop_present_count = 0;
 static uint64_t desktop_skip_count = 0;
 static uint64_t desktop_present_ms_total = 0;
 static uint64_t desktop_stats_ms = 0;
+static uint64_t desktop_next_idle_poll_ms = 0;
 static int desktop_shutdown_registered = 0;
 static int desktop_shutdown_done = 0;
 
-/* Diagnostic throttle. The game/audio loop should not synchronously wait for
- * the compositor more often than this while we are characterizing latency. */
-#define DESKTOP_PRESENT_INTERVAL_MS 50
+/* DOOM's native game tic rate is 35 Hz. Keep the desktop path close to that
+ * cadence; a 50 ms throttle made windowed DOOM look artificially sluggish even
+ * after the compositor got faster. */
+#define DESKTOP_PRESENT_INTERVAL_MS 28
 #define NO_COMPLETION_TOKEN       (~(uint64_t)0)
 
 static uint64_t pack_u32_pair(uint32_t lo, uint32_t hi)
@@ -557,6 +559,11 @@ static void push_key(unsigned char doomKey, int pressed)
 static void poll_desktop_input(void)
 {
     cubit_message_t reply;
+    uint64_t now = cubit_gettime_ms();
+    int saw_event = 0;
+
+    if (now != (uint64_t)-1 && now < desktop_next_idle_poll_ms)
+        return;
 
     while (desktop_mode) {
         if (desktop_call(OP_INPUT_POLL,
@@ -567,8 +574,9 @@ static void poll_desktop_input(void)
         }
 
         if (reply.words[0] == INPUT_NONE)
-            return;
+            break;
 
+        saw_event = 1;
         desktop_last_input_serial = reply.words[1];
         if (reply.words[0] == INPUT_KEY_DOWN ||
             reply.words[0] == INPUT_KEY_UP) {
@@ -578,6 +586,15 @@ static void poll_desktop_input(void)
                 push_key(scancode_to_doom[scancode], pressed);
         }
     }
+
+    /* Keep active input crisp, but avoid hammering the compositor with
+     * dozens of synchronous "nothing happened" polls per second while DOOM
+     * is just animating. An 8 ms idle backoff is below a 60 Hz frame period
+     * and still much shorter than a DOOM tic. */
+    if (!saw_event && now != (uint64_t)-1)
+        desktop_next_idle_poll_ms = now + 8;
+    else
+        desktop_next_idle_poll_ms = 0;
 }
 
 static void poll_keyboard(void)
@@ -666,7 +683,6 @@ void DG_DrawFrame(void)
 {
     if (desktop_mode && desktop_buffer) {
         uint64_t now;
-        memcpy(desktop_buffer, DG_ScreenBuffer, DOOM_BUFFER_BYTES);
 
         now = cubit_gettime_ms();
         if (desktop_last_present_ms == 0 ||
@@ -674,6 +690,7 @@ void DG_DrawFrame(void)
             now - desktop_last_present_ms >= DESKTOP_PRESENT_INTERVAL_MS) {
             uint64_t t0 = now;
             uint64_t t1;
+            memcpy(desktop_buffer, DG_ScreenBuffer, DOOM_BUFFER_BYTES);
             (void)desktop_submit(OP_SURFACE_PRESENT,
                                  desktop_surface, 0, 0);
             t1 = cubit_gettime_ms();

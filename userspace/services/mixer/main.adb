@@ -160,6 +160,14 @@ procedure main is
 begin
    debugPrint ("mixer: starting" & ASCII.LF);
 
+   ret := setLatencyContract
+      (LATENCY_REALTIME,
+       5_000,   --  Mixer wakes roughly every 5 ms.
+       1_500);  --  Budget hint: mix and submit one short audio period.
+   if ret = Unsigned_64'Last then
+      debugPrint ("mixer: latency contract rejected" & ASCII.LF);
+   end if;
+
    --  Pre-allocate ring buffers for all stream slots via sbrk.
    --  Each slot gets RING_PAGES (2) pages of page-aligned memory.
    declare

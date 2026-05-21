@@ -26,8 +26,12 @@ The suite currently includes:
 - `boot-shell-nvme`: boots the normal NVMe shell profile.
 - `async-ipc`: boots a test init profile that starts an IPC test server and
   client from the NVMe image.
+- `bench-ipc`: boots a benchmark init profile that starts an IPC benchmark
+  server and client, then emits compact timing summaries.
 - `desktop-display`: boots a test init profile that starts `display.svc` and
   `desktop.svc`, then verifies the display backend status handshake.
+- `desktop-doom`: boots `display.svc`, `desktop.svc`, and `doom.elf` on
+  primary `virtio-vga`, then captures compositor/display/audio telemetry.
 - `virtio-gpu`: boots with QEMU's `virtio-gpu-pci` device and verifies the
   modern virtio-gpu command path reaches scanout presentation.
 - `virtio-vga-primary`: boots with primary QEMU `virtio-vga` under
@@ -106,3 +110,46 @@ for stable guest scenarios such as boot-to-shell, async round trips, and queue
 pressure recovery. The useful signal is large regressions or timeouts; exact
 latency targets should wait until the IPC object model and scheduler behavior
 settle.
+
+Run the IPC benchmark directly with:
+
+```sh
+tests/headless/run.sh --test bench-ipc --timeout 30 --keep-logs
+```
+
+The guest prints stable summary lines:
+
+```text
+BENCH: ipc sync count=2000 total_ms=<n> avg_us=<n>
+BENCH: ipc async submitted=512 completed=512 total_ms=<n> avg_us=<n>
+BENCH: PASS ipc
+TRACE: summary begin
+TRACE: event=syscall_enter count=<n>
+TRACE: event=schedule_run count=<n>
+TRACE: event=schedule_stop count=<n>
+TRACE: hist=syscall_tsc le_tsc=<n> count=<n>
+TRACE: hist=run_tsc le_tsc=<n> count=<n>
+TRACE: hist=ready_latency_tsc le_tsc=<n> count=<n>
+TRACE: total=<n>
+TRACE: summary end
+```
+
+The synchronous result measures `capCall` round trips. The async result keeps
+up to 16 requests in flight and measures sustained submit/completion throughput
+over 512 requests. The trace summary is emitted after the measured loops, so
+serial output does not dominate the benchmark. The current trace view is still
+coarse, but it gives immediate syscall counts, scheduler-transition counts, and
+raw-TSC histograms for syscall body time, process run duration, and ready-to-run
+latency. These are diagnostic buckets, not portable performance claims.
+
+Run the desktop DOOM telemetry profile with:
+
+```sh
+tests/headless/run.sh --test desktop-doom --timeout 45 --keep-logs
+```
+
+Useful lines include `desktop: stats`, `display: stats`, and `mixer: stats`.
+For graphics work, compare compositor `frames`, `fast`, `present_req`,
+`input_req`, `draw_ms`, and `submit_ms` against display `presents` and
+`copy_ms`. The profile is deliberately headless, so treat the numbers as
+relative regression signals for QEMU/TCG rather than final hardware claims.

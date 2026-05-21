@@ -521,8 +521,13 @@ is
     ---------------------------------------------------------------------------
     procedure fxsave (saveArea : System.Address) is
     begin
-        Asm("fxsave %0",
-            Inputs => System.Address'Asm_Input("m", saveArea),
+        --  FXSAVE writes 512 bytes to the memory pointed to by saveArea.
+        --  Pass the address in a register and dereference it in assembly;
+        --  using an "m" constraint on the Ada System.Address object would
+        --  describe the stack slot holding the pointer, not the pointed-to
+        --  FPU save buffer.
+        Asm("fxsave (%0)",
+            Inputs => System.Address'Asm_Input("r", saveArea),
             Volatile => True);
     end fxsave;
 
@@ -531,8 +536,8 @@ is
     ---------------------------------------------------------------------------
     procedure fxrstor (saveArea : System.Address) is
     begin
-        Asm("fxrstor %0",
-            Inputs => System.Address'Asm_Input("m", saveArea),
+        Asm("fxrstor (%0)",
+            Inputs => System.Address'Asm_Input("r", saveArea),
             Volatile => True);
     end fxrstor;
 end x86;

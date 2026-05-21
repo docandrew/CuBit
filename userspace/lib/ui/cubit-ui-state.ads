@@ -50,10 +50,11 @@ package CuBit.UI.State is
 
    procedure Set_Pointer
       (st : in out UI_State;
-       x, y : Natural;
-       down : Boolean;
-       pressed : Boolean := False;
-       enabled : Boolean := True);
+      x, y : Natural;
+      down : Boolean;
+      pressed : Boolean := False;
+      released : Boolean := False;
+      enabled : Boolean := True);
 
    procedure Enter_Scope
       (st : in out UI_State;
@@ -76,4 +77,36 @@ package CuBit.UI.State is
    function Button
       (st : in out UI_State; bounds : CuBit.UI.Rect)
       return CuBit.UI.Widget_Result;
+
+   function Is_Last_Widget_Focused (st : UI_State) return Boolean;
+
+   procedure Clear_Keyboard_Focus (st : in out UI_State);
+
+   function Text_Field
+      (st : in out UI_State; bounds : CuBit.UI.Rect)
+      return CuBit.UI.Widget_Result;
+
+   function Text_Field_Key
+      (st : UI_State;
+       text : in out String;
+       textLen : in out Natural;
+       keyCode : Natural;
+       modifiers : Natural := 0) return Boolean;
+
+   function Text_Field_Text
+      (st : UI_State;
+       text : in out String;
+       textLen : in out Natural;
+       codepoint : Natural) return Boolean;
+
+   function Checkbox
+      (st : in out UI_State;
+       bounds : CuBit.UI.Rect;
+       checked : in out Boolean) return CuBit.UI.Widget_Result;
+
+   function Horizontal_Slider
+      (st : in out UI_State;
+       bounds : CuBit.UI.Rect;
+       value : in out Natural;
+       minValue, maxValue : Natural) return CuBit.UI.Widget_Result;
 end CuBit.UI.State;

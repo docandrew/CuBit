@@ -11,6 +11,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with Mem_mgr;
 with Process.Queues;
 with TextIO; use TextIO;
+with Trace;
 with x86;
 
 package body Scheduler with
@@ -65,6 +66,7 @@ is
 
         pid : ProcessID;
         ign : ProcessID;
+        runStartTSC : Unsigned_64;
     begin
 
         startSearch : loop
@@ -120,6 +122,20 @@ is
                 Process.disableFPU;
             end if;
 
+            if Process.proctab(pid).readyTSC /= 0 then
+                Trace.ObserveDuration
+                    (Trace.EVENT_READY_LATENCY,
+                     x86.rdtsc - Process.proctab(pid).readyTSC);
+                Process.proctab(pid).readyTSC := 0;
+            end if;
+
+            Trace.Emit
+                (Trace.EVENT_SCHEDULE_RUN,
+                 Unsigned_64 (pid),
+                 Unsigned_64 (Process.proctab(pid).priority));
+
+            runStartTSC := x86.rdtsc;
+
             -- Start executing new process
             Process.switch (cpuData.schedulerContext'Address, cpuData.currentContext);
 
@@ -127,6 +143,13 @@ is
             -- directSwitch may have changed who's running on this CPU,
             -- so refresh pid from per-CPU state before processing.
             pid := cpuData.currentPID;
+            Trace.Emit
+                (Trace.EVENT_SCHEDULE_STOP,
+                 Unsigned_64 (pid),
+                 Unsigned_64 (Process.ProcessState'Pos
+                    (Process.proctab(pid).state)));
+            Trace.ObserveDuration (Trace.EVENT_RUN_TIME,
+                                   x86.rdtsc - runStartTSC);
             cpuData.currentPID := Process.NO_PROCESS;
 
             -- switch back to kernel page tables if we weren't just running a kernel thread

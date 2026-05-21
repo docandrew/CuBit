@@ -71,6 +71,9 @@ package CuBit.Messages is
    SYSCALL_SET_SYSINFO     : constant Unsigned_64 := 77;
    SYSCALL_SET_CPU         : constant Unsigned_64 := 78;
    SYSCALL_SET_SUPERVISOR  : constant Unsigned_64 := 79;
+   SYSCALL_SET_LATENCY_CONTRACT : constant Unsigned_64 := 81;
+   SYSCALL_TRACE_RESET     : constant Unsigned_64 := 82;
+   SYSCALL_TRACE_SUMMARY   : constant Unsigned_64 := 83;
 
    SYSCALL_REGISTER_DRIVER : constant Unsigned_64 := 2000;
 
@@ -164,6 +167,12 @@ package CuBit.Messages is
    DRIVER_DESKTOP  : constant Unsigned_64 := 15;
    DRIVER_DISPLAY  : constant Unsigned_64 := 16;
    DRIVER_GPU      : constant Unsigned_64 := 17;
+
+   --  Scheduler latency classes. Values match kernel Process.LatencyClass.
+   LATENCY_BACKGROUND  : constant Unsigned_64 := 0;
+   LATENCY_NORMAL      : constant Unsigned_64 := 1;
+   LATENCY_INTERACTIVE : constant Unsigned_64 := 2;
+   LATENCY_REALTIME    : constant Unsigned_64 := 3;
 
    --  IPC Message Types (matching kernel Process.Message)
 
@@ -481,6 +490,15 @@ package CuBit.Messages is
    function setCpu
      (targetPID : Unsigned_64;
       cpu       : Unsigned_64) return Unsigned_64;
+
+   --  Declare this process' scheduler latency contract. The kernel records
+   --  the class, period, and budget now; later scheduler work will use the
+   --  same ABI for admission control, deadline ordering, and telemetry.
+   function setLatencyContract
+     (latencyClass : Unsigned_64;
+      periodUs     : Unsigned_64;
+      budgetUs     : Unsigned_64;
+      flags        : Unsigned_64 := 0) return Unsigned_64;
 
    --  Legacy/convenience wrappers
 

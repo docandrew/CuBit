@@ -368,7 +368,7 @@ procedure main is
       notifyQueue;
 
       while used.idx = lastUsedIdx and then polls < SUBMIT_POLL_LIMIT loop
-         if (polls mod 50_000) = 0 then
+         if polls /= 0 and then (polls mod 50_000) = 0 then
             ignoreSleep := syscall (SYSCALL_SLEEP, 1);
          end if;
          polls := polls + 1;

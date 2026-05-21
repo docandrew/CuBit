@@ -14,6 +14,7 @@ with Syscall.IPC;
 with Syscall.Admin;
 with TextIO; use TextIO;
 with Time;
+with Trace;
 with Util;
 with x86;
 
@@ -131,7 +132,10 @@ package body Syscall is
             Import, Volatile, Address => PerCPUData.getPerCPUDataAddr;
 
         retval : Unsigned_64 := 0;
+        startTSC : constant Unsigned_64 := x86.rdtsc;
     begin
+        Trace.Emit (Trace.EVENT_SYSCALL_ENTER, syscallNum, arg0);
+
         case syscallNum is
             when SYSCALL_EXIT =>
                 exitp (percpu.currentPID);
@@ -380,6 +384,39 @@ package body Syscall is
                 Admin.handleSetSupervisor (
                     percpu.currentPID, arg0, arg1, retval);
 
+            when SYSCALL_SET_LATENCY_CONTRACT =>
+                -- Advisory process-local scheduler contract. We validate the
+                -- ABI at the syscall boundary, but deliberately do not grant
+                -- more CPU yet. Admission control and hard enforcement need a
+                -- capability-governed policy pass so realtime cannot become a
+                -- denial-of-service footgun.
+                if arg0 > Unsigned_64 (Process.LatencyClass'Pos (
+                   Process.LatencyClass'Last)) or else
+                   arg1 > Unsigned_64 (Unsigned_32'Last) or else
+                   arg2 > Unsigned_64 (Unsigned_32'Last) or else
+                   arg3 > Unsigned_64 (Unsigned_32'Last)
+                then
+                    retval := Unsigned_64'Last;
+                elsif arg1 /= 0 and then arg2 > arg1 then
+                    retval := Unsigned_64'Last;
+                else
+                    Process.setLatencyContract (
+                        pid      => percpu.currentPID,
+                        class    => Process.LatencyClass'Val (Natural (arg0)),
+                        periodUs => Unsigned_32 (arg1),
+                        budgetUs => Unsigned_32 (arg2),
+                        flags    => Unsigned_32 (arg3));
+                    retval := 0;
+                end if;
+
+            when SYSCALL_TRACE_RESET =>
+                Trace.Reset;
+                retval := 0;
+
+            when SYSCALL_TRACE_SUMMARY =>
+                Trace.PrintSummary;
+                retval := 0;
+
             when SYSCALL_GRANT_VIA_CAP =>
                 IPC.handleGrantViaCap (
                     percpu.currentPID,
@@ -402,6 +439,8 @@ package body Syscall is
                 print ("  "); println (arg5);
         end case;
 
+        Trace.ObserveDuration (Trace.EVENT_SYSCALL_TIME,
+                               x86.rdtsc - startTSC);
         return retval;
     end syscallHandler;
 

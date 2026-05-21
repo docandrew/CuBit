@@ -278,6 +278,11 @@ is
         proctab(pid).mode         := USER;
         proctab(pid).state        := SUSPENDED;
         proctab(pid).priority     := priority;
+        proctab(pid).latency      :=
+            (class    => LATENCY_NORMAL,
+             periodUs => 0,
+             budgetUs => 0,
+             flags    => 0);
         proctab(pid).stackTop     := procStack;
         proctab(pid).stackBottom  := procStack - STACK_SIZE;
 
@@ -402,6 +407,7 @@ is
         targetCPU : constant Natural := proctab(pid).cpu;
         currentPID : constant ProcessID := PerCPUData.getCurrentPID;
     begin
+        proctab(pid).readyTSC := x86.rdtsc;
         proctab(pid).state := READY;
         Queues.insert (cpuReadyLists(targetCPU), pid,
                        proctab(pid).priority, ret);
@@ -433,6 +439,25 @@ is
             IPI.sendReschedule (targetCPU);
         end if;
     end ready;
+
+    ---------------------------------------------------------------------------
+    -- setLatencyContract
+    ---------------------------------------------------------------------------
+    procedure setLatencyContract
+        (pid      : ProcessID;
+         class    : LatencyClass;
+         periodUs : Unsigned_32;
+         budgetUs : Unsigned_32;
+         flags    : Unsigned_32)
+        with SPARK_Mode => On
+    is
+    begin
+        proctab(pid).latency :=
+            (class    => class,
+             periodUs => periodUs,
+             budgetUs => budgetUs,
+             flags    => flags);
+    end setLatencyContract;
 
     ---------------------------------------------------------------------------
     -- Release our hold on a resource and go into WAITING state.

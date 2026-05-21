@@ -102,6 +102,16 @@ is
     SYSCALL_SET_CPU         : constant SyscallNumber := 78;
     SYSCALL_SET_SUPERVISOR  : constant SyscallNumber := 79;
 
+    -- Scheduler latency contracts. arg0 = class, arg1 = period us,
+    -- arg2 = budget us, arg3 = reserved flags. This is process-local for now;
+    -- privileged cross-process scheduling policy belongs in procmgr later.
+    SYSCALL_SET_LATENCY_CONTRACT : constant SyscallNumber := 81;
+
+    -- Kernel trace controls. TRACE_RESET enables the low-overhead per-CPU
+    -- trace ring; TRACE_SUMMARY disables tracing and prints aggregate counts.
+    SYSCALL_TRACE_RESET      : constant SyscallNumber := 82;
+    SYSCALL_TRACE_SUMMARY    : constant SyscallNumber := 83;
+
     -- Capability-aware IPC syscalls
     SYSCALL_CAP_SEND        : constant SyscallNumber := 40;
     SYSCALL_CAP_CALL        : constant SyscallNumber := 41;

@@ -1392,19 +1392,31 @@ procedure main is
       end if;
 
       --  Mint CAP_NOTIFICATION for the headless IPC regression server.
-      if pkgIdLen = 24 then
+      if pkgIdLen = 24 or else pkgIdLen = 26 then
          declare
             IPCTEST_SERVER_ID : constant String :=
                "com.cubit.ipctest.server";
+            BENCH_IPC_SERVER_ID : constant String :=
+               "com.cubit.bench.ipc.server";
             match : Boolean := True;
             ignore : Unsigned_64;
          begin
-            for c in 0 .. 23 loop
-               if pkgId (1 + c) /= IPCTEST_SERVER_ID (1 + c) then
-                  match := False;
-                  exit;
-               end if;
-            end loop;
+            if pkgIdLen = 24 then
+               for c in 0 .. 23 loop
+                  if pkgId (1 + c) /= IPCTEST_SERVER_ID (1 + c) then
+                     match := False;
+                     exit;
+                  end if;
+               end loop;
+            else
+               for c in 0 .. 25 loop
+                  if pkgId (1 + c) /= BENCH_IPC_SERVER_ID (1 + c) then
+                     match := False;
+                     exit;
+                  end if;
+               end loop;
+            end if;
+
             if match then
                ignore := syscall (SYSCALL_MINT_CAP,
                                   newPID,

@@ -35,6 +35,8 @@ package body CuBit.UI.State is
          st.keyboardScope := NO_SCOPE;
       end if;
       st.keyboardHeartbeat := False;
+      st.pointer.pressed := False;
+      st.pointer.released := False;
 
       if st.currentScope /= NO_SCOPE then
          st.scopeError := True;
@@ -49,11 +51,13 @@ package body CuBit.UI.State is
        x, y : Natural;
        down : Boolean;
        pressed : Boolean := False;
+       released : Boolean := False;
        enabled : Boolean := True)
    is
    begin
       st.pointer := (x => x, y => y, down => down,
-                     pressed => pressed, enabled => enabled);
+                     pressed => pressed, released => released,
+                     enabled => enabled);
    end Set_Pointer;
 
    procedure Enter_Scope
@@ -163,8 +167,182 @@ package body CuBit.UI.State is
       return
         (hot       => hit,
          active    => hit and then
+                      st.pointer.down and then
                       st.activeItem = id and then
                       st.activeScope = scope,
-         activated => hit and then st.pointer.pressed);
+         activated => hit and then st.pointer.released and then
+                      st.activeItem = id and then
+                      st.activeScope = scope);
    end Button;
+
+   function Is_Last_Widget_Focused (st : UI_State) return Boolean is
+   begin
+      return st.keyboardItem = st.lastWidget and then
+             st.keyboardScope = st.lastScope;
+   end Is_Last_Widget_Focused;
+
+   procedure Clear_Keyboard_Focus (st : in out UI_State) is
+   begin
+      st.keyboardItem := NO_ITEM;
+      st.keyboardScope := NO_SCOPE;
+      st.keyboardHeartbeat := False;
+   end Clear_Keyboard_Focus;
+
+   function Text_Field
+      (st : in out UI_State; bounds : CuBit.UI.Rect)
+      return CuBit.UI.Widget_Result
+   is
+      id : constant Widget_ID := Next_ID (st);
+      scope : constant Scope_ID := st.currentScope;
+      hit : constant Boolean :=
+         st.pointer.enabled and then Region_Hit (st, bounds);
+      focused : Boolean;
+   begin
+      if hit then
+         st.hotItem := id;
+         st.hotScope := scope;
+
+         if st.activeItem = NO_ITEM and then st.pointer.down then
+            st.activeItem := id;
+            st.activeScope := scope;
+         end if;
+
+         if st.pointer.pressed then
+            st.keyboardItem := id;
+            st.keyboardScope := scope;
+         end if;
+      elsif st.pointer.pressed then
+         --  Pointer activation outside the field commits the click to the
+         --  target under the cursor and removes keyboard focus from this
+         --  field. Dialog focus rules can grow more nuanced later.
+         if st.keyboardItem = id and then st.keyboardScope = scope then
+            st.keyboardItem := NO_ITEM;
+            st.keyboardScope := NO_SCOPE;
+         end if;
+      end if;
+
+      focused := st.keyboardItem = id and then st.keyboardScope = scope;
+      if focused then
+         st.keyboardHeartbeat := True;
+      end if;
+
+      return
+        (hot       => hit,
+         active    => focused,
+         activated => hit and then st.pointer.released and then
+                      st.activeItem = id and then
+                      st.activeScope = scope);
+   end Text_Field;
+
+   function Text_Field_Key
+      (st : UI_State;
+       text : in out String;
+       textLen : in out Natural;
+       keyCode : Natural;
+       modifiers : Natural := 0) return Boolean
+   is
+      pragma Unreferenced (modifiers);
+      KEY_BACKSPACE : constant Natural := 16#0E#;
+   begin
+      if not Is_Last_Widget_Focused (st) then
+         return False;
+      end if;
+
+      if keyCode = KEY_BACKSPACE and then textLen > 0 then
+         text (textLen) := ' ';
+         textLen := textLen - 1;
+         return True;
+      end if;
+
+      return False;
+   end Text_Field_Key;
+
+   function Text_Field_Text
+      (st : UI_State;
+       text : in out String;
+       textLen : in out Natural;
+       codepoint : Natural) return Boolean
+   is
+   begin
+      if not Is_Last_Widget_Focused (st) then
+         return False;
+      end if;
+
+      if codepoint < Character'Pos (' ') or else codepoint >= 127 then
+         return False;
+      end if;
+
+      if textLen < text'Length then
+         textLen := textLen + 1;
+         text (textLen) := Character'Val (codepoint);
+         return True;
+      end if;
+
+      return False;
+   end Text_Field_Text;
+
+   function Checkbox
+      (st : in out UI_State;
+       bounds : CuBit.UI.Rect;
+       checked : in out Boolean) return CuBit.UI.Widget_Result
+   is
+      result : constant CuBit.UI.Widget_Result := Button (st, bounds);
+   begin
+      if result.activated then
+         checked := not checked;
+      end if;
+      return result;
+   end Checkbox;
+
+   function Horizontal_Slider
+      (st : in out UI_State;
+       bounds : CuBit.UI.Rect;
+       value : in out Natural;
+       minValue, maxValue : Natural) return CuBit.UI.Widget_Result
+   is
+      id : constant Widget_ID := Next_ID (st);
+      scope : constant Scope_ID := st.currentScope;
+      r : constant CuBit.UI.Rect := Offset_Rect (st, bounds);
+      hit : constant Boolean :=
+         st.pointer.enabled and then
+         CuBit.UI.Point_In_Rect (st.pointer.x, st.pointer.y, r);
+      active : Boolean := False;
+      span : Natural := 0;
+      relativeX : Natural := 0;
+   begin
+      if hit then
+         st.hotItem := id;
+         st.hotScope := scope;
+
+         if st.activeItem = NO_ITEM and then st.pointer.down then
+            st.activeItem := id;
+            st.activeScope := scope;
+         end if;
+      end if;
+
+      active := st.pointer.down and then
+                st.activeItem = id and then st.activeScope = scope;
+      if active and then st.pointer.down and then maxValue > minValue then
+         span := maxValue - minValue;
+         if st.pointer.x > r.x then
+            relativeX := Natural'Min (st.pointer.x - r.x, r.w);
+         end if;
+         if r.w > 0 then
+            value := minValue + (relativeX * span) / r.w;
+         end if;
+      end if;
+
+      if st.keyboardItem = NO_ITEM then
+         st.keyboardItem := id;
+         st.keyboardScope := scope;
+      end if;
+      if st.keyboardItem = id and then st.keyboardScope = scope then
+         st.keyboardHeartbeat := True;
+      end if;
+
+      return
+        (hot       => hit,
+         active    => active,
+         activated => hit and then st.pointer.released and then active);
+   end Horizontal_Slider;
 end CuBit.UI.State;

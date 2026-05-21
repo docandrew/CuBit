@@ -10,6 +10,9 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with Desktop_Icons;
+with Desktop_UI_Font;
+with Desktop_Window_Icons;
 with Font8x16;
 
 procedure main is
@@ -73,7 +76,13 @@ procedure main is
    INPUT_POINTER_MOVE : constant Unsigned_64 := 3;
    INPUT_POINTER_DOWN : constant Unsigned_64 := 4;
    INPUT_POINTER_UP   : constant Unsigned_64 := 5;
+   INPUT_TEXT      : constant Unsigned_64 := 6;
    INPUT_CONFIGURE : constant Unsigned_64 := 8;
+
+   KEYMOD_SHIFT : constant Unsigned_64 := 1;
+   KEYMOD_CTRL  : constant Unsigned_64 := 2;
+   KEYMOD_ALT   : constant Unsigned_64 := 4;
+   KEYMOD_CAPS  : constant Unsigned_64 := 8;
 
    PROTOCOL_MAJOR : constant Unsigned_64 := 0;
    PROTOCOL_MINOR : constant Unsigned_64 := 1;
@@ -97,6 +106,8 @@ procedure main is
    spawnGrantAddr : System.Address := System.Null_Address;
    spawnGrantId   : Unsigned_64 := 0;
    spawnGrantReady : Boolean := False;
+   lastSpawnedPid : ProcessID := NO_PROCESS;
+   doomPid : ProcessID := NO_PROCESS;
    psBufAddr : System.Address := System.Null_Address;
 
    --  Prototype compositor shadow framebuffer. All desktop drawing goes here
@@ -197,6 +208,8 @@ procedure main is
    pointerSurfaceId : Unsigned_64 := 0;
    launchMenuOpen : Boolean := False;
    desktopShiftDown : Boolean := False;
+   desktopCtrlDown  : Boolean := False;
+   desktopAltDown   : Boolean := False;
    desktopCapsLockOn : Boolean := False;
 
    CONSOLE_INPUT_MAX : constant Natural := 56;
@@ -316,9 +329,11 @@ procedure main is
 
    LAUNCH_NONE     : constant Natural := 0;
    LAUNCH_CONSOLE : constant Natural := 1;
-   LAUNCH_FILES    : constant Natural := 2;
-   LAUNCH_SECURITY : constant Natural := 3;
-   LAUNCH_POWER    : constant Natural := 4;
+   LAUNCH_UI_LAB   : constant Natural := 2;
+   LAUNCH_DOOM     : constant Natural := 3;
+   LAUNCH_SECURITY : constant Natural := 4;
+   LAUNCH_FILES    : constant Natural := 5;
+   LAUNCH_POWER    : constant Natural := 6;
 
    DRAG_NONE        : constant Natural := 0;
    DRAG_MOVE        : constant Natural := 1;
@@ -340,8 +355,8 @@ procedure main is
    TASKBAR_H    : constant Natural := 36;
    LAUNCH_W     : constant Natural := 88;
    LAUNCH_H     : constant Natural := 24;
-   MENU_W       : constant Natural := 232;
-   MENU_H       : constant Natural := 154;
+   MENU_W       : constant Natural := 250;
+   MENU_H       : constant Natural := 252;
    TASK_BUTTON_W : constant Natural := 156;
    TASK_BUTTON_H : constant Natural := 24;
    TASK_BUTTON_GAP : constant Natural := 6;
@@ -377,7 +392,11 @@ procedure main is
    statsMouseEvents  : Unsigned_64 := 0;
    statsRequests     : Unsigned_64 := 0;
    statsFrames       : Unsigned_64 := 0;
+   statsFastFrames   : Unsigned_64 := 0;
    statsFullFrames   : Unsigned_64 := 0;
+   statsPresentReq   : Unsigned_64 := 0;
+   statsInputReq     : Unsigned_64 := 0;
+   statsOtherReq     : Unsigned_64 := 0;
    statsDrawMs       : Unsigned_64 := 0;
    statsPresentOps   : Unsigned_64 := 0;
    statsPresentMs    : Unsigned_64 := 0;
@@ -428,8 +447,16 @@ procedure main is
          printDec (statsRequests);
          debugPrint (" frames=");
          printDec (statsFrames);
+         debugPrint (" fast=");
+         printDec (statsFastFrames);
          debugPrint (" full=");
          printDec (statsFullFrames);
+         debugPrint (" present_req=");
+         printDec (statsPresentReq);
+         debugPrint (" input_req=");
+         printDec (statsInputReq);
+         debugPrint (" other_req=");
+         printDec (statsOtherReq);
          debugPrint (" draw_ms=");
          printDec (statsDrawMs);
          debugPrint (" submit=");
@@ -446,7 +473,11 @@ procedure main is
       statsMouseEvents := 0;
       statsRequests := 0;
       statsFrames := 0;
+      statsFastFrames := 0;
       statsFullFrames := 0;
+      statsPresentReq := 0;
+      statsInputReq := 0;
+      statsOtherReq := 0;
       statsDrawMs := 0;
       statsPresentOps := 0;
       statsPresentMs := 0;
@@ -632,20 +663,36 @@ procedure main is
 
       case action is
          when LAUNCH_CONSOLE =>
-            y := menu.y + 34;
-         when LAUNCH_FILES =>
-            y := menu.y + 60;
+            y := menu.y + 42;
+         when LAUNCH_UI_LAB =>
+            y := menu.y + 76;
+         when LAUNCH_DOOM =>
+            y := menu.y + 110;
          when LAUNCH_SECURITY =>
-            y := menu.y + 86;
+            y := menu.y + 144;
+         when LAUNCH_FILES =>
+            y := menu.y + 178;
          when LAUNCH_POWER =>
-            y := menu.y + 122;
+            y := menu.y + 218;
          when others =>
             return (others => 0);
       end case;
 
       return clampRect ((x => menu.x + 8, y => y,
-                         w => menu.w - 16, h => 24));
+                         w => menu.w - 16, h => 30));
    end launchItemRect;
+
+   function launchSeparatorRect return Rect is
+      menu : constant Rect := launchMenuRect;
+      y    : Natural := 0;
+   begin
+      if isEmpty (menu) or else menu.w <= 24 then
+         return (others => 0);
+      end if;
+      y := menu.y + 210;
+      return clampRect ((x => menu.x + 12, y => y,
+                         w => menu.w - 24, h => 1));
+   end launchSeparatorRect;
 
    function taskButtonOrdinal (slot : SurfaceIndex) return Natural is
       ordinal : Natural := 0;
@@ -690,10 +737,14 @@ procedure main is
    begin
       if pointInRect (x, y, launchItemRect (LAUNCH_CONSOLE)) then
          return LAUNCH_CONSOLE;
-      elsif pointInRect (x, y, launchItemRect (LAUNCH_FILES)) then
-         return LAUNCH_FILES;
+      elsif pointInRect (x, y, launchItemRect (LAUNCH_UI_LAB)) then
+         return LAUNCH_UI_LAB;
+      elsif pointInRect (x, y, launchItemRect (LAUNCH_DOOM)) then
+         return LAUNCH_DOOM;
       elsif pointInRect (x, y, launchItemRect (LAUNCH_SECURITY)) then
          return LAUNCH_SECURITY;
+      elsif pointInRect (x, y, launchItemRect (LAUNCH_FILES)) then
+         return LAUNCH_FILES;
       elsif pointInRect (x, y, launchItemRect (LAUNCH_POWER)) then
          return LAUNCH_POWER;
       else
@@ -737,6 +788,26 @@ procedure main is
       y2 := Natural'Max (ay2, by2);
       return (x => x1, y => y1, w => x2 - x1, h => y2 - y1);
    end unionRect;
+
+   function rectContains (outer, inner : Rect) return Boolean is
+   begin
+      return not isEmpty (outer) and then
+         not isEmpty (inner) and then
+         inner.x >= outer.x and then
+         inner.y >= outer.y and then
+         inner.x + inner.w <= outer.x + outer.w and then
+         inner.y + inner.h <= outer.y + outer.h;
+   end rectContains;
+
+   function rectIntersects (a, b : Rect) return Boolean is
+   begin
+      return not isEmpty (a) and then
+         not isEmpty (b) and then
+         a.x < b.x + b.w and then
+         b.x < a.x + a.w and then
+         a.y < b.y + b.h and then
+         b.y < a.y + a.h;
+   end rectIntersects;
 
    function inflateRect (r : Rect; amount : Natural) return Rect is
       x1 : Natural := r.x;
@@ -1133,6 +1204,160 @@ procedure main is
       end loop;
    end drawText;
 
+   function blendPixel
+      (src : Unsigned_32;
+       dst : Unsigned_32;
+       alpha : Natural) return Unsigned_32
+   is
+      inv  : constant Natural := 255 - alpha;
+      sr   : constant Natural := Natural (Shift_Right (src, 16) and 16#FF#);
+      sg   : constant Natural := Natural (Shift_Right (src, 8) and 16#FF#);
+      sb   : constant Natural := Natural (src and 16#FF#);
+      dr   : constant Natural := Natural (Shift_Right (dst, 16) and 16#FF#);
+      dg   : constant Natural := Natural (Shift_Right (dst, 8) and 16#FF#);
+      db   : constant Natural := Natural (dst and 16#FF#);
+      rr   : constant Natural := (sr * alpha + dr * inv + 127) / 255;
+      rg   : constant Natural := (sg * alpha + dg * inv + 127) / 255;
+      rb   : constant Natural := (sb * alpha + db * inv + 127) / 255;
+   begin
+      return Shift_Left (Unsigned_32 (rr), 16) or
+             Shift_Left (Unsigned_32 (rg), 8) or
+             Unsigned_32 (rb);
+   end blendPixel;
+
+   function iconPixelOver
+      (srcARGB : Unsigned_32;
+       bg      : Unsigned_32) return Unsigned_32
+   is
+      alpha : constant Natural :=
+         Natural (Shift_Right (srcARGB, 24) and 16#FF#);
+      src   : constant Unsigned_32 := srcARGB and 16#00FF_FFFF#;
+   begin
+      if alpha = 0 then
+         return bg;
+      elsif alpha = 255 then
+         return src;
+      else
+         return blendPixel (src, bg, alpha);
+      end if;
+   end iconPixelOver;
+
+   procedure drawIcon
+      (id : Desktop_Icons.Icon_ID;
+       x, y : Natural;
+       bg   : Unsigned_32)
+   is
+      pixel : Unsigned_32;
+   begin
+      for yy in 0 .. Desktop_Icons.ICON_SIZE - 1 loop
+         for xx in 0 .. Desktop_Icons.ICON_SIZE - 1 loop
+            pixel := Desktop_Icons.Pixels (id)
+              (yy * Desktop_Icons.ICON_SIZE + xx);
+            if Shift_Right (pixel, 24) /= 0 then
+               putPixel (x + xx, y + yy, iconPixelOver (pixel, bg));
+            end if;
+         end loop;
+      end loop;
+   end drawIcon;
+
+   procedure drawWindowIcon
+      (id : Desktop_Window_Icons.Icon_ID;
+       x, y : Natural;
+       bg   : Unsigned_32)
+   is
+      pixel : Unsigned_32;
+   begin
+      for yy in 0 .. Desktop_Window_Icons.ICON_SIZE - 1 loop
+         for xx in 0 .. Desktop_Window_Icons.ICON_SIZE - 1 loop
+            pixel := Desktop_Window_Icons.Pixels (id)
+              (yy * Desktop_Window_Icons.ICON_SIZE + xx);
+            if Shift_Right (pixel, 24) /= 0 then
+               putPixel (x + xx, y + yy, iconPixelOver (pixel, bg));
+            end if;
+         end loop;
+      end loop;
+   end drawWindowIcon;
+
+   procedure drawWindowButtonIcon
+      (button : Rect;
+       id     : Desktop_Window_Icons.Icon_ID;
+       bg     : Unsigned_32)
+   is
+      iconX : Natural := button.x;
+      iconY : Natural := button.y;
+   begin
+      if button.w > Desktop_Window_Icons.ICON_SIZE then
+         iconX := button.x + (button.w - Desktop_Window_Icons.ICON_SIZE) / 2;
+      end if;
+      if button.h > Desktop_Window_Icons.ICON_SIZE then
+         iconY := button.y + (button.h - Desktop_Window_Icons.ICON_SIZE) / 2;
+      end if;
+
+      drawWindowIcon (id, iconX, iconY, bg);
+   end drawWindowButtonIcon;
+
+   function uiTextWidth (s : String) return Natural is
+      width : Natural := 0;
+      code  : Natural;
+   begin
+      for i in s'Range loop
+         code := Character'Pos (s (i));
+         if code >= Desktop_UI_Font.FIRST_GLYPH and then
+            code <= Desktop_UI_Font.LAST_GLYPH
+         then
+            width := width + Desktop_UI_Font.Widths (code);
+         else
+            width := width + Desktop_UI_Font.Widths (Character'Pos ('?'));
+         end if;
+      end loop;
+      return width;
+   end uiTextWidth;
+
+   procedure drawUIGlyph
+      (x, y : Natural;
+       ch   : Character;
+       fg   : Unsigned_32;
+       bg   : Unsigned_32)
+   is
+      code  : Natural := Character'Pos (ch);
+      width : Natural;
+      alpha : Natural;
+   begin
+      if code < Desktop_UI_Font.FIRST_GLYPH or else
+         code > Desktop_UI_Font.LAST_GLYPH
+      then
+         code := Character'Pos ('?');
+      end if;
+
+      width := Desktop_UI_Font.Widths (code);
+      fillRect (x, y, width, Desktop_UI_Font.LINE_HEIGHT, bg);
+
+      for yy in 0 .. Desktop_UI_Font.GLYPH_HEIGHT - 1 loop
+         for xx in 0 .. width - 1 loop
+            alpha := Natural (Desktop_UI_Font.Alpha (code) (yy) (xx));
+            if alpha = 255 then
+               putPixel (x + xx, y + yy, fg);
+            elsif alpha /= 0 then
+               putPixel (x + xx, y + yy, blendPixel (fg, bg, alpha));
+            end if;
+         end loop;
+      end loop;
+   end drawUIGlyph;
+
+   procedure drawUIText
+      (x, y : Natural;
+       s    : String;
+       fg   : Unsigned_32;
+       bg   : Unsigned_32)
+   is
+      cx : Natural := x;
+   begin
+      for i in s'Range loop
+         drawUIGlyph (cx, y, s (i), fg, bg);
+         cx := cx + uiTextWidth (s (i .. i));
+      end loop;
+   end drawUIText;
+
    procedure drawSurfaceTitle
       (s       : Surface;
        x, y    : Natural;
@@ -1141,13 +1366,13 @@ procedure main is
    begin
       case s.appKind is
          when APP_CONSOLE =>
-            drawText (x, y, "CuBASIC Console", fg, bg);
+            drawUIText (x, y, "CuBASIC Console", fg, bg);
          when APP_SECURITY =>
-            drawText (x, y, "Security Center", fg, bg);
+            drawUIText (x, y, "Security Center", fg, bg);
          when APP_DEMO =>
-            drawText (x, y, "Demo Window", fg, bg);
+            drawUIText (x, y, "Demo Window", fg, bg);
          when others =>
-            drawText (x, y, "Application", fg, bg);
+            drawUIText (x, y, "Application", fg, bg);
       end case;
    end drawSurfaceTitle;
 
@@ -1325,6 +1550,64 @@ procedure main is
       flushBackBufferRect (damage);
    end moveCursorOverlay;
 
+   function tryFastClientRedraw (dirty : Rect) return Boolean is
+      r : constant Rect := clampRect (dirty);
+      c : Rect;
+      oldCursor : Rect := (others => 0);
+      damage : Rect;
+      occluded : Boolean;
+   begin
+      if isEmpty (r) or else launchMenuOpen or else
+         not backBufferReady or else backBufferAddr = System.Null_Address
+      then
+         return False;
+      end if;
+
+      for i in surfaces'Range loop
+         if surfaces (i).used and then
+            not surfaces (i).minimized and then
+            surfaces (i).bufferAttached and then
+            (surfaces (i).flags and SURFACE_FLAG_WINDOW) /= 0
+         then
+            c := clientRect (surfaces (i));
+            if rectContains (c, r) then
+               occluded := False;
+
+               if i < SurfaceIndex'Last then
+                  for j in SurfaceIndex'Succ (i) .. SurfaceIndex'Last loop
+                     if surfaces (j).used and then
+                        not surfaces (j).minimized and then
+                        (surfaces (j).flags and SURFACE_FLAG_WINDOW) /= 0
+                        and then rectIntersects (r, surfaceRect (surfaces (j)))
+                     then
+                        occluded := True;
+                        exit;
+                     end if;
+                  end loop;
+               end if;
+
+               if not occluded then
+                  if cursorSaveValid then
+                     oldCursor := cursorSaveRect;
+                  end if;
+
+                  statsFastFrames := statsFastFrames + 1;
+                  restoreCursorOverlay;
+                  drawClientBuffer (surfaces (i), c.x, c.y, c.w, c.h);
+                  drawCursorOverlay;
+
+                  damage := unionRect (r, cursorRect);
+                  damage := unionRect (damage, oldCursor);
+                  flushBackBufferRect (damage);
+                  return True;
+               end if;
+            end if;
+         end if;
+      end loop;
+
+      return False;
+   end tryFastClientRedraw;
+
    procedure drawSplash is
       panelW : constant Natural := 560;
       panelH : constant Natural := 170;
@@ -1341,16 +1624,16 @@ procedure main is
       fillRect (0, 0, fbWidth, fbHeight, C_BG);
       fillRect (x, y, panelW, panelH, C_PANEL);
       fillRect (x, y, panelW, 4, C_ACCENT);
-      drawText (x + 24, y + 28, "CuBit desktop.svc", C_TEXT, C_PANEL);
-      drawText (x + 24, y + 58,
-                "display/input/session authority boundary",
-                C_MUTED, C_PANEL);
-      drawText (x + 24, y + 94,
-                "registered as DRIVER_DESKTOP / @desktop",
-                C_GOOD, C_PANEL);
-      drawText (x + 24, y + 126,
-                "Q or Esc exits this prototype owner",
-                C_TEXT, C_PANEL);
+      drawUIText (x + 24, y + 28, "CuBit desktop.svc", C_TEXT, C_PANEL);
+      drawUIText (x + 24, y + 58,
+                  "display/input/session authority boundary",
+                  C_MUTED, C_PANEL);
+      drawUIText (x + 24, y + 94,
+                  "registered as DRIVER_DESKTOP / @desktop",
+                  C_GOOD, C_PANEL);
+      drawUIText (x + 24, y + 126,
+                  "Q or Esc exits this prototype owner",
+                  C_TEXT, C_PANEL);
    end drawSplash;
 
    procedure drawWindow (s : Surface) is
@@ -1408,7 +1691,8 @@ procedure main is
          fillRect (minBtn.x, minBtn.y, minBtn.w, minBtn.h, C_BAR);
          strokeRect (minBtn.x, minBtn.y, minBtn.w, minBtn.h,
                      C_EDGE, C_SHADOW);
-         drawText (minBtn.x + 4, minBtn.y + 1, "_", C_TEXT, C_BAR);
+         drawWindowButtonIcon
+           (minBtn, Desktop_Window_Icons.Minimize, C_BAR);
       end if;
 
       if not isEmpty (maxBtn) then
@@ -1416,10 +1700,11 @@ procedure main is
          strokeRect (maxBtn.x, maxBtn.y, maxBtn.w, maxBtn.h,
                      C_EDGE, C_SHADOW);
          if s.maximized then
-            strokeRect (maxBtn.x + 3, maxBtn.y + 4, 7, 6, C_TEXT, C_TEXT);
-            strokeRect (maxBtn.x + 5, maxBtn.y + 2, 7, 6, C_TEXT, C_TEXT);
+            drawWindowButtonIcon
+              (maxBtn, Desktop_Window_Icons.Restore, C_BAR);
          else
-            strokeRect (maxBtn.x + 3, maxBtn.y + 3, 8, 8, C_TEXT, C_TEXT);
+            drawWindowButtonIcon
+              (maxBtn, Desktop_Window_Icons.Maximize, C_BAR);
          end if;
       end if;
 
@@ -1427,7 +1712,8 @@ procedure main is
          fillRect (closeBtn.x, closeBtn.y, closeBtn.w, closeBtn.h, C_BAR);
          strokeRect (closeBtn.x, closeBtn.y, closeBtn.w, closeBtn.h,
                      C_EDGE, C_SHADOW);
-         drawText (closeBtn.x + 3, closeBtn.y - 1, "x", C_TEXT, C_BAR);
+         drawWindowButtonIcon
+           (closeBtn, Desktop_Window_Icons.Close, C_BAR);
       end if;
 
       case s.appKind is
@@ -1435,13 +1721,13 @@ procedure main is
             fillRect (x + 14, y + 40, w - 28, h - 56, C_SHADOW);
             drawConsoleText (x + 24, y + 50, C_SHADOW);
          when APP_SECURITY =>
-            drawText (x + 18, y + 44, "Capability map", C_TEXT, C_WIN);
-            drawText (x + 18, y + 70, "Processes: procmgr, display, desktop",
-                      C_GOOD, C_WIN);
-            drawText (x + 18, y + 96, "Policy: least authority by default",
-                      C_TEXT, C_WIN);
-            drawText (x + 18, y + 122, "Live inspection hooks come next",
-                      C_MUTED, C_WIN);
+            drawUIText (x + 18, y + 44, "Capability map", C_TEXT, C_WIN);
+            drawUIText (x + 18, y + 70, "Processes: procmgr, display, desktop",
+                        C_GOOD, C_WIN);
+            drawUIText (x + 18, y + 96, "Policy: least authority by default",
+                        C_TEXT, C_WIN);
+            drawUIText (x + 18, y + 122, "Live inspection hooks come next",
+                        C_MUTED, C_WIN);
          when others =>
             if s.bufferAttached then
                if s.bufferW < w - 20 or else s.bufferH < h - 44 then
@@ -1449,12 +1735,12 @@ procedure main is
                end if;
                drawClientBuffer (s, x + 10, y + 34, w - 20, h - 44);
             else
-               drawText (x + 18, y + 44, "This is a real child surface.",
-                         C_TEXT, C_WIN);
-               drawText (x + 18, y + 70, "Drag title bar to move.",
-                         C_TEXT, C_WIN);
-               drawText (x + 18, y + 96, "Drag edges to resize.",
-                         C_TEXT, C_WIN);
+               drawUIText (x + 18, y + 44, "This is a real child surface.",
+                           C_TEXT, C_WIN);
+               drawUIText (x + 18, y + 70, "Drag title bar to move.",
+                           C_TEXT, C_WIN);
+               drawUIText (x + 18, y + 96, "Drag edges to resize.",
+                           C_TEXT, C_WIN);
             end if;
       end case;
    end drawWindow;
@@ -1511,6 +1797,18 @@ procedure main is
 
    procedure drawLaunchMenu is
       r : constant Rect := launchMenuRect;
+
+      procedure drawLaunchItem
+         (action : Natural;
+          icon   : Desktop_Icons.Icon_ID;
+          label  : String;
+          fg     : Unsigned_32)
+      is
+         item : constant Rect := launchItemRect (action);
+      begin
+         drawIcon (icon, item.x + 8, item.y + 3, C_PANEL);
+         drawUIText (item.x + 40, item.y + 7, label, fg, C_PANEL);
+      end drawLaunchItem;
    begin
       if not launchMenuOpen or else isEmpty (r) then
          return;
@@ -1521,12 +1819,19 @@ procedure main is
       strokeRect (r.x, r.y, r.w, r.h, C_EDGE, C_SHADOW);
       fillRect (r.x, r.y, 4, r.h, C_ACCENT);
 
-      drawText (r.x + 18, r.y + 14, "CuBit", C_TEXT, C_PANEL);
-      drawText (r.x + 18, r.y + 42, "CuBASIC", C_TEXT, C_PANEL);
-      drawText (r.x + 18, r.y + 68, "Files", C_MUTED, C_PANEL);
-      drawText (r.x + 18, r.y + 94, "Security Center", C_TEXT, C_PANEL);
-      fillRect (r.x + 12, r.y + 122, r.w - 24, 1, C_EDGE);
-      drawText (r.x + 18, r.y + 130, "Power", C_MUTED, C_PANEL);
+      drawIcon (Desktop_Icons.Start, r.x + 12, r.y + 10, C_PANEL);
+      drawUIText (r.x + 44, r.y + 14, "CuBit", C_TEXT, C_PANEL);
+      drawLaunchItem (1, Desktop_Icons.Console, "CuBASIC", C_TEXT);
+      drawLaunchItem (2, Desktop_Icons.UILab, "UI Lab", C_TEXT);
+      drawLaunchItem (3, Desktop_Icons.Doom, "DOOM", C_TEXT);
+      drawLaunchItem (4, Desktop_Icons.Security, "Security Center", C_TEXT);
+      drawLaunchItem (5, Desktop_Icons.Files, "Files", C_MUTED);
+      declare
+         sep : constant Rect := launchSeparatorRect;
+      begin
+         fillRect (sep.x, sep.y, sep.w, sep.h, C_EDGE);
+      end;
+      drawLaunchItem (6, Desktop_Icons.Power, "Power", C_MUTED);
    end drawLaunchMenu;
 
    procedure drawDesktopShell is
@@ -1556,7 +1861,8 @@ procedure main is
       else
          strokeRect (launch.x, launch.y, launch.w, launch.h, C_EDGE, C_SHADOW);
       end if;
-      drawText (18, barY + 10, "Launch", C_TEXT, C_BAR);
+      drawIcon (Desktop_Icons.Start, launch.x + 5, barY + 6, C_BAR);
+      drawUIText (launch.x + 34, barY + 7, "Launch", C_TEXT, C_BAR);
       drawTaskButtons;
 
       if fbWidth > panelW + 48 and then fbHeight > panelH + TASKBAR_H + 48 then
@@ -1567,16 +1873,16 @@ procedure main is
       fillRect (px, py, panelW, panelH, C_BAR);
       strokeRect (px, py, panelW, panelH, C_EDGE, C_SHADOW);
       fillRect (px + 3, py + 3, panelW - 6, 22, C_BLUE);
-      drawText (px + 10, py + 7, "CuBit Desktop", C_WHITE, C_BLUE);
-      drawText (px + 18, py + 44, "desktop.svc owns the session",
-                C_TEXT, C_BAR);
-      drawText (px + 18, py + 70, "Launch opens desktop windows",
-                C_TEXT, C_BAR);
-      drawText (px + 18, py + 96, "Q or Esc exits desktop shell",
-                C_TEXT, C_BAR);
+      drawUIText (px + 10, py + 6, "CuBit Desktop", C_WHITE, C_BLUE);
+      drawUIText (px + 18, py + 44, "desktop.svc owns the session",
+                  C_TEXT, C_BAR);
+      drawUIText (px + 18, py + 70, "Launch opens desktop windows",
+                  C_TEXT, C_BAR);
+      drawUIText (px + 18, py + 96, "Q or Esc exits desktop shell",
+                  C_TEXT, C_BAR);
 
-      drawText (16, 18, "System", C_WHITE, C_DESK);
-      drawText (16, 48, "Authority", C_WHITE, C_DESK);
+      drawUIText (16, 18, "System", C_WHITE, C_DESK);
+      drawUIText (16, 44, "Authority", C_WHITE, C_DESK);
 
       for i in surfaces'Range loop
          if surfaces (i).used and then
@@ -1632,6 +1938,10 @@ procedure main is
       r : constant Rect := clampRect (dirty);
    begin
       if fbBpp /= 32 or else isEmpty (r) then
+         return;
+      end if;
+
+      if tryFastClientRedraw (r) then
          return;
       end if;
 
@@ -2270,9 +2580,31 @@ procedure main is
       inputEvents := (others => (others => <>));
    end clearInputQueue;
 
+   function keyChar (code : Unsigned_8) return Character;
+
+   function modifierState return Unsigned_64 is
+      mods : Unsigned_64 := 0;
+   begin
+      if desktopShiftDown then
+         mods := mods or KEYMOD_SHIFT;
+      end if;
+      if desktopCtrlDown then
+         mods := mods or KEYMOD_CTRL;
+      end if;
+      if desktopAltDown then
+         mods := mods or KEYMOD_ALT;
+      end if;
+      if desktopCapsLockOn then
+         mods := mods or KEYMOD_CAPS;
+      end if;
+      return mods;
+   end modifierState;
+
    procedure queueKey (raw : Unsigned_8) is
       release : constant Boolean := (raw and 16#80#) /= 0;
       code    : constant Unsigned_64 := Unsigned_64 (raw and 16#7F#);
+      ch      : Character;
+      mods    : constant Unsigned_64 := modifierState;
    begin
       if focusSurface = 0 then
          return;
@@ -2281,8 +2613,69 @@ procedure main is
       enqueueInput ((if release then INPUT_KEY_UP else INPUT_KEY_DOWN),
                     focusSurface,
                     code,
-                    0);
+                    mods);
+      if not release and then
+         (mods and (KEYMOD_CTRL or KEYMOD_ALT)) = 0
+      then
+         --  Key events preserve the physical key identity for shortcuts and
+         --  games. Text input is a separate composed event so applications do
+         --  not need to duplicate keyboard layout, Shift, and Caps Lock state.
+         --  Ctrl/Alt combinations are shortcuts, not text-entry input.
+         ch := keyChar (raw and 16#7F#);
+         if ch >= ' ' and then ch < Character'Val (127) then
+            enqueueInput (INPUT_TEXT,
+                          focusSurface,
+                          Unsigned_64 (Character'Pos (ch)),
+                          0);
+         end if;
+      end if;
    end queueKey;
+
+   procedure queuePointer
+      (kind : Unsigned_64;
+       target : Unsigned_64;
+       screenX, screenY : Natural;
+       buttons : Unsigned_64)
+   is
+      idx : constant Integer := findSurface (target);
+      c   : Rect;
+      localX : Natural := 0;
+      localY : Natural := 0;
+   begin
+      if idx < 0 or else surfaces (SurfaceIndex (idx)).owner = NO_PROCESS then
+         return;
+      end if;
+
+      c := clientRect (surfaces (SurfaceIndex (idx)));
+      if screenX >= c.x then
+         localX := screenX - c.x;
+      end if;
+      if screenY >= c.y then
+         localY := screenY - c.y;
+      end if;
+
+      enqueueInput (kind,
+                    target,
+                    packU32Pair (localX, localY),
+                    buttons);
+   end queuePointer;
+
+   procedure queuePointerIfClient
+      (kind : Unsigned_64;
+       target : Unsigned_64;
+       screenX, screenY : Natural;
+       buttons : Unsigned_64)
+   is
+      idx : constant Integer := findSurface (target);
+   begin
+      if idx >= 0 and then
+         surfaces (SurfaceIndex (idx)).owner /= NO_PROCESS and then
+         pointInRect (screenX, screenY,
+                      clientRect (surfaces (SurfaceIndex (idx))))
+      then
+         queuePointer (kind, target, screenX, screenY, buttons);
+      end if;
+   end queuePointerIfClient;
 
    procedure claimInput is
       r : Unsigned_64;
@@ -2328,6 +2721,14 @@ procedure main is
       ignore   : Unsigned_64;
    begin
       statsRequests := statsRequests + 1;
+      case request.tag.label is
+         when OP_SURFACE_PRESENT =>
+            statsPresentReq := statsPresentReq + 1;
+         when OP_INPUT_POLL =>
+            statsInputReq := statsInputReq + 1;
+         when others =>
+            statsOtherReq := statsOtherReq + 1;
+      end case;
 
       case request.tag.label is
          when OP_DESKTOP_HELLO =>
@@ -2668,9 +3069,30 @@ procedure main is
                   --  A client present changes the client buffer contents, not
                   --  the compositor-owned decoration. Keep high-rate surfaces
                   --  such as DOOM clipped to their content area so every tick
-                  --  does the minimum useful work.
-                  scheduleRedrawRect
-                    (clientRect (surfaces (SurfaceIndex (idx))));
+                  --  does the minimum useful work. Newer clients may also
+                  --  pass a dirty rectangle in client-local coordinates:
+                  --  word1 = x/y, word2 = w/h. Legacy zero/zero presents
+                  --  still mean "the whole client area changed."
+                  declare
+                     client : constant Rect :=
+                        clientRect (surfaces (SurfaceIndex (idx)));
+                     localX : constant Natural := unpackLo32 (request.words (1));
+                     localY : constant Natural := unpackHi32 (request.words (1));
+                     localW : constant Natural := unpackLo32 (request.words (2));
+                     localH : constant Natural := unpackHi32 (request.words (2));
+                  begin
+                     if localW = 0 or else localH = 0 then
+                        scheduleRedrawRect (client);
+                     else
+                        scheduleRedrawRect
+                          ((x => client.x + localX,
+                            y => client.y + localY,
+                            w => Natural'Min (localW,
+                                  client.w - Natural'Min (localX, client.w)),
+                            h => Natural'Min (localH,
+                                  client.h - Natural'Min (localY, client.h))));
+                     end if;
+                  end;
                else
                   scheduleRedraw;
                end if;
@@ -2790,6 +3212,12 @@ procedure main is
       --  used by compositor-owned widgets such as the CuBASIC prototype.
       if code = 16#2A# or else code = 16#36# then
          desktopShiftDown := not release;
+         return True;
+      elsif code = 16#1D# then
+         desktopCtrlDown := not release;
+         return True;
+      elsif code = 16#38# then
+         desktopAltDown := not release;
          return True;
       elsif code = 16#3A# then
          if not release then
@@ -3017,6 +3445,7 @@ procedure main is
       tag := capCall (CAP_SLOT_PROCMGR, msg);
 
       if tag.label = REPLY_OK then
+         lastSpawnedPid := ProcessID (msg.words (0) and 16#FFFF#);
          setConsoleSpawned (msg.words (0));
          ok := True;
       end if;
@@ -3300,6 +3729,20 @@ procedure main is
       cursorY := clampPointerCoord (Integer (cursorY) - dy, maxY);
       damage := unionRect (damage, cursorRect);
 
+      if pointerSurfaceId /= 0 then
+         queuePointer (INPUT_POINTER_MOVE,
+                       pointerSurfaceId,
+                       cursorX,
+                       cursorY,
+                       buttons);
+      elsif focusSurface /= 0 then
+         queuePointerIfClient (INPUT_POINTER_MOVE,
+                               focusSurface,
+                               cursorX,
+                               cursorY,
+                               buttons);
+      end if;
+
       if leftDown and then not leftWasDown then
          if shellSurfaceVisible and then
             pointInRect (cursorX, cursorY, launchButtonRect)
@@ -3318,6 +3761,25 @@ procedure main is
             case launchAction is
                when LAUNCH_CONSOLE =>
                   openInternalApp (APP_CONSOLE, damage);
+               when LAUNCH_UI_LAB =>
+                  declare
+                     ok : Boolean;
+                  begin
+                     trySpawnFromConsole ("ui-lab.app", ok);
+                  end;
+               when LAUNCH_DOOM =>
+                  declare
+                     ok : Boolean;
+                  begin
+                     if doomPid /= NO_PROCESS and then processAlive (doomPid) then
+                        setConsoleResult ("DOOM IS ALREADY RUNNING");
+                     else
+                        trySpawnFromConsole ("doom.elf", ok);
+                        if ok then
+                           doomPid := lastSpawnedPid;
+                        end if;
+                     end if;
+                  end;
                when LAUNCH_SECURITY =>
                   openInternalApp (APP_SECURITY, damage);
                when others =>
@@ -3373,6 +3835,13 @@ procedure main is
                   if dragMode = HIT_MAXIMIZE then
                      toggleMaximizeSurface (SurfaceIndex (idx), damage);
                      dragMode := DRAG_NONE;
+                  elsif dragMode = DRAG_NONE then
+                     pointerSurfaceId := clickedId;
+                     queuePointerIfClient (INPUT_POINTER_DOWN,
+                                           clickedId,
+                                           cursorX,
+                                           cursorY,
+                                           buttons);
                   else
                      dragSurfaceId := clickedId;
                      dragOffsetX := cursorX - surfaces (SurfaceIndex (idx)).x;
@@ -3387,29 +3856,37 @@ procedure main is
                end if;
             end if;
          end if;
-      elsif not leftDown and then leftWasDown and then
-            dragMode /= DRAG_NONE and then dragSurfaceId /= 0
+      elsif not leftDown and then leftWasDown
       then
-         idx := findSurface (dragSurfaceId);
-         if idx >= 0 and then dragPreviewValid then
-            oldBounds := surfaceRect (surfaces (SurfaceIndex (idx)));
-            newBounds := clampWindowRect
-              (surfaces (SurfaceIndex (idx)), dragPreviewRect);
+         if pointerSurfaceId /= 0 then
+            queuePointer (INPUT_POINTER_UP,
+                          pointerSurfaceId,
+                          cursorX,
+                          cursorY,
+                          buttons);
+            pointerSurfaceId := 0;
+         elsif dragMode /= DRAG_NONE and then dragSurfaceId /= 0 then
+            idx := findSurface (dragSurfaceId);
+            if idx >= 0 and then dragPreviewValid then
+               oldBounds := surfaceRect (surfaces (SurfaceIndex (idx)));
+               newBounds := clampWindowRect
+                 (surfaces (SurfaceIndex (idx)), dragPreviewRect);
 
-            surfaces (SurfaceIndex (idx)).x := newBounds.x;
-            surfaces (SurfaceIndex (idx)).y := newBounds.y;
-            surfaces (SurfaceIndex (idx)).w := newBounds.w;
-            surfaces (SurfaceIndex (idx)).h := newBounds.h;
-            surfaces (SurfaceIndex (idx)).serial :=
-               surfaces (SurfaceIndex (idx)).serial + 1;
-            if surfaces (SurfaceIndex (idx)).owner /= NO_PROCESS then
-               queueConfigure (surfaces (SurfaceIndex (idx)).id,
-                               Unsigned_64 (newBounds.w),
-                               Unsigned_64 (newBounds.h));
+               surfaces (SurfaceIndex (idx)).x := newBounds.x;
+               surfaces (SurfaceIndex (idx)).y := newBounds.y;
+               surfaces (SurfaceIndex (idx)).w := newBounds.w;
+               surfaces (SurfaceIndex (idx)).h := newBounds.h;
+               surfaces (SurfaceIndex (idx)).serial :=
+                  surfaces (SurfaceIndex (idx)).serial + 1;
+               if surfaces (SurfaceIndex (idx)).owner /= NO_PROCESS then
+                  queueConfigure (surfaces (SurfaceIndex (idx)).id,
+                                  Unsigned_64 (newBounds.w),
+                                  Unsigned_64 (newBounds.h));
+               end if;
+
+               damage := unionRect (damage,
+                          inflateRect (unionRect (oldBounds, newBounds), 4));
             end if;
-
-            damage := unionRect (damage,
-                       inflateRect (unionRect (oldBounds, newBounds), 4));
          end if;
 
          dragPreviewValid := False;
@@ -3720,6 +4197,14 @@ procedure main is
 begin
    debugPrint ("desktop: starting" & LF);
 
+   ret := setLatencyContract
+      (LATENCY_INTERACTIVE,
+       16_667,  --  Target one compositor frame per 60 Hz display period.
+       4_000);  --  Budget hint for input dispatch and compositor drawing.
+   if ret = Unsigned_64'Last then
+      debugPrint ("desktop: latency contract rejected" & LF);
+   end if;
+
    ret := registerDriver (DRIVER_DESKTOP);
    if ret = Unsigned_64'Last then
       debugPrint ("desktop: register failed" & LF);
@@ -3752,6 +4237,7 @@ begin
       declare
          eventMsg   : Message;
          eventFound : Boolean;
+         requestsThisPass : Natural := 0;
       begin
          loop
             eventFound := Poll_Event (eventMsg);
@@ -3764,7 +4250,12 @@ begin
             Poll_Service_Request (from, msg, found);
             exit when not found;
             handleRequest (from, msg);
+            requestsThisPass := requestsThisPass + 1;
             exit when not running;
+            --  Do not let a steady stream of synchronous input polls hold a
+            --  completed client frame in the compositor. A small request
+            --  budget keeps IPC responsive while preserving frame latency.
+            exit when framePending and then requestsThisPass >= 8;
          end loop;
 
          flushFrame;

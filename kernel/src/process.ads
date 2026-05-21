@@ -83,6 +83,23 @@ is
 
     subtype ProcessPriority is Integer range -1..100;
 
+    -- Latency contracts are scheduler-facing intent, not authority by
+    -- themselves. They let services tell the kernel what kind of wakeup and
+    -- budget behavior they need before we commit to a hard real-time policy.
+    type LatencyClass is (
+        LATENCY_BACKGROUND,   -- Batch work; latency is not user-visible.
+        LATENCY_NORMAL,       -- Default fair scheduling behavior.
+        LATENCY_INTERACTIVE,  -- Input/compositor/UI work; avoid queue buildup.
+        LATENCY_REALTIME      -- Bounded-period multimedia or driver work.
+    );
+
+    type LatencyContract is record
+        class    : LatencyClass := LATENCY_NORMAL;
+        periodUs : Unsigned_32  := 0;  -- Repeating service period, 0 = none.
+        budgetUs : Unsigned_32  := 0;  -- Expected CPU budget per period.
+        flags    : Unsigned_32  := 0;  -- Reserved for admission/enforcement.
+    end record;
+
     type ProcessState is (
         INVALID,                    -- Entry in proctab does not refer to process
         READY,                      -- Process can be made active
@@ -566,8 +583,18 @@ is
         -- Home CPU for scheduling (process always runs on this CPU)
         cpu                 : Natural := 0;
 
+        -- TSC timestamp from the most recent transition into READY. This is
+        -- benchmark-only scheduler telemetry used to measure wake-to-run
+        -- latency without serial output in the hot path.
+        readyTSC            : Unsigned_64 := 0;
+
         -- Resource quota (populated from CAP_RESOURCE on resume)
         quota               : ResourceQuota;
+
+        -- Scheduler latency contract. This is intentionally advisory for
+        -- now; future scheduler policies can use it for admission control,
+        -- deadline ordering, priority inheritance, and overrun telemetry.
+        latency             : LatencyContract;
     end record;
 
     -- Lock for protecting the proctab
@@ -707,6 +734,21 @@ is
     -- Move a process into the ready list and change its state to READY
     ---------------------------------------------------------------------------
     procedure ready (pid : ProcessID) with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- setLatencyContract
+    --
+    -- Record a process' scheduling intent. The current skeleton does not
+    -- change queue ordering yet; it establishes the kernel-visible ABI and a
+    -- single place where future real-time admission and accounting will live.
+    ---------------------------------------------------------------------------
+    procedure setLatencyContract
+        (pid      : ProcessID;
+         class    : LatencyClass;
+         periodUs : Unsigned_32;
+         budgetUs : Unsigned_32;
+         flags    : Unsigned_32)
+        with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- wait

@@ -629,4 +629,15 @@ package body CuBit.Messages is
       return syscall (SYSCALL_SET_CPU, targetPID, cpu);
    end setCpu;
 
+   function setLatencyContract
+     (latencyClass : Unsigned_64;
+      periodUs     : Unsigned_64;
+      budgetUs     : Unsigned_64;
+      flags        : Unsigned_64 := 0) return Unsigned_64
+   is
+   begin
+      return syscall (SYSCALL_SET_LATENCY_CONTRACT,
+                      latencyClass, periodUs, budgetUs, flags);
+   end setLatencyContract;
+
 end CuBit.Messages;

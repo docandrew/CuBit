@@ -646,6 +646,7 @@ is
         ok       : Boolean;
         notifyMsg : Message;
         notifyFound : Boolean;
+        directReply : Boolean := False;
     begin
         -----------------------------------------------------------------------
         -- Phase 1: Reply to previous sender
@@ -713,7 +714,16 @@ is
                             end if;
 
                             proctab(replyTo).replyMsg := replyMsg;
-                            notify (replyTo);
+                            if proctab(replyTo).cpu =
+                               PerCPUData.getCPUNumber
+                            then
+                                -- Same-CPU replyWait can hand control
+                                -- directly back to the caller if this server
+                                -- has to block for the next request.
+                                directReply := True;
+                            else
+                                notify (replyTo);
+                            end if;
                         end if;
                     end validateRW;
                 else
@@ -729,6 +739,11 @@ is
 
         -- Check sendQueue first (synchronous senders).
         if not Queues.isEmpty (mailtab(receiver).sendQueue) then
+            if directReply then
+                notify (replyTo);
+                directReply := False;
+            end if;
+
             Queues.dequeue (mailtab(receiver).sendQueue, sender);
 
             msg  := proctab(sender).sendMsg;
@@ -755,6 +770,11 @@ is
         -- Check unified ring (submit, events, send Path 1).
         dequeueRing (receiver, re, ok);
         if ok then
+            if directReply then
+                notify (replyTo);
+                directReply := False;
+            end if;
+
             from := re.sender;
             msg  := re.msg;
 
@@ -780,6 +800,11 @@ is
         -- No message available — block as receiver
         takeBoundNotification (mypid, notifyFound, notifyMsg);
         if notifyFound then
+            if directReply then
+                notify (replyTo);
+                directReply := False;
+            end if;
+
             from := NO_PROCESS;
             msg  := notifyMsg;
 
@@ -795,9 +820,16 @@ is
         Queues.enqueue (mailtab(receiver).recvQueue, mypid, ign);
         proctab(mypid).state := RECEIVING;
 
-        Spinlocks.exitCriticalSection (mailtab(receiver).lock);
+        if directReply then
+            Spinlocks.enterCriticalSection (lock);
+            Spinlocks.exitCriticalSection (mailtab(receiver).lock);
+            directSwitch (mypid, replyTo);
+            Spinlocks.exitCriticalSection (lock);
+        else
+            Spinlocks.exitCriticalSection (mailtab(receiver).lock);
 
-        yield;
+            yield;
+        end if;
 
         -- Woken — check sendQueue first.
         Spinlocks.enterCriticalSection (mailtab(receiver).lock);

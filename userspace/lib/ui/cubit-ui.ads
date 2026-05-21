@@ -60,6 +60,7 @@ package CuBit.UI is
       y : Natural := 0;
       down : Boolean := False;
       pressed : Boolean := False;
+      released : Boolean := False;
       enabled : Boolean := True;
    end record;
 
@@ -83,8 +84,33 @@ package CuBit.UI is
       (c : Canvas; x, y : Natural; ch : Character; fg, bg : Color);
    procedure Draw_Text
       (c : Canvas; x, y : Natural; text : String; fg, bg : Color);
+   function UI_Text_Width (text : String) return Natural;
+   function UI_Text_Height return Natural;
+   procedure Draw_UI_Text
+      (c : Canvas; x, y : Natural; text : String; fg, bg : Color);
    procedure Draw_Button_Frame
       (c : Canvas; r : Rect; colors : Theme; style : Button_Style);
+   procedure Draw_Button
+      (c : Canvas; r : Rect; colors : Theme; style : Button_Style;
+       label : String);
+   procedure Draw_Natural_Value
+      (c : Canvas; r : Rect; colors : Theme; value : Natural);
+   procedure Draw_Progress_Bar
+      (c : Canvas; r : Rect; colors : Theme;
+       minValue, maxValue, value : Natural);
+   procedure Draw_Swatch
+      (c : Canvas; r : Rect; colors : Theme;
+       fill : Color; label : String);
+   procedure Draw_Text_Field
+      (c : Canvas; r : Rect; colors : Theme; text : String;
+       focused : Boolean; hot : Boolean);
+   procedure Draw_Checkbox
+      (c : Canvas; r : Rect; colors : Theme;
+       checked : Boolean; hot : Boolean; active : Boolean);
+   procedure Draw_Horizontal_Slider
+      (c : Canvas; r : Rect; colors : Theme;
+       minValue, maxValue, value : Natural;
+       hot : Boolean; active : Boolean);
 
    function Button
       (bounds : Rect; pointer : Pointer_State) return Widget_Result;

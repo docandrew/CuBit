@@ -1,0 +1,71 @@
+# CuBit UI Asset Provenance
+
+This directory contains generated UI assets used by CuBit userspace apps.
+
+## Luxi Sans Bitmap Font
+
+`cubit-ui-fonts_luxi_sans_12.ads` was generated from `luxisr.ttf`
+from the Bluecurve repository:
+
+https://github.com/neeeeow/Bluecurve
+
+The source font is Luxi Sans Regular from Bigelow & Holmes / URW++.
+The generated Ada package is a bitmap rendering of ASCII glyphs 32..126 at
+12 pt. CuBit does not parse or modify the TTF at runtime.
+
+Luxi font notice:
+
+```text
+Luxi fonts copyright (c) 2001 by Bigelow & Holmes Inc. Luxi font
+instruction code copyright (c) 2001 by URW++ GmbH. All Rights
+Reserved. Luxi is a registered trademark of Bigelow & Holmes Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of these Fonts and associated documentation files (the "Font
+Software"), to deal in the Font Software, including without
+limitation the rights to use, copy, merge, publish, distribute,
+sublicense, and/or sell copies of the Font Software, and to permit
+persons to whom the Font Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright and trademark notices and this permission notice
+shall be included in all copies of one or more of the Font Software.
+
+The Font Software may not be modified, altered, or added to, and in
+particular the designs of glyphs or characters in the Fonts may not
+be modified nor may additional glyphs or characters be added to the
+Fonts. This License becomes null and void when the Fonts or Font
+Software have been modified.
+
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT.  IN NO EVENT SHALL
+BIGELOW & HOLMES INC. OR URW++ GMBH. BE LIABLE FOR ANY CLAIM, DAMAGES
+OR OTHER LIABILITY, INCLUDING ANY GENERAL, SPECIAL, INDIRECT,
+INCIDENTAL, OR CONSEQUENTIAL DAMAGES, WHETHER IN AN ACTION OF
+CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF THE USE OR
+INABILITY TO USE THE FONT SOFTWARE OR FROM OTHER DEALINGS IN THE FONT
+SOFTWARE.
+
+Except as contained in this notice, the names of Bigelow & Holmes
+Inc. and URW++ GmbH. shall not be used in advertising or otherwise to
+promote the sale, use or other dealings in this Font Software without
+prior written authorization from Bigelow & Holmes Inc. and URW++ GmbH.
+```
+
+## Bluecurve Icon Atlas
+
+`userspace/services/desktop/desktop_icons.ads` was generated from 24x24 PNG
+icons from the same Bluecurve repository:
+
+https://github.com/neeeeow/Bluecurve
+
+The generated atlas currently includes the Start menu, CuBASIC Console, UI Lab,
+DOOM, Security Center, Files, and Power icons. The source repository declares
+GPL-3.0, and Fedora packages the Bluecurve icon theme as GPL-2.0-or-later.
+
+`userspace/services/desktop/desktop_window_icons.ads` was generated from the
+Bluecurve Metacity window control PNGs in `themes/Bluecurve/metacity-1`. The
+generated atlas currently includes Close, Minimize, Maximize, Restore, and Menu
+icons.

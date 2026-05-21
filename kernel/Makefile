@@ -112,6 +112,24 @@ ipctest-client: user_runtime
 	$(ALR) gprbuild -P ../userspace/apps/ipctest-client/ipctest_client.gpr
 	cp ../userspace/apps/ipctest-client/build/ipctest-client.app isodir/boot/ipctest-client.app
 
+.PHONY : bench-ipc-server
+bench-ipc-server: user_runtime
+	mkdir -p ../userspace/apps/bench-ipc-server/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/apps/bench-ipc-server/manifest.c \
+		-o ../userspace/apps/bench-ipc-server/build/manifest.o
+	$(ALR) gprbuild -P ../userspace/apps/bench-ipc-server/bench_ipc_server.gpr
+	cp ../userspace/apps/bench-ipc-server/build/bench-ipc-server.app isodir/boot/bench-ipc-server.app
+
+.PHONY : bench-ipc-client
+bench-ipc-client: user_runtime
+	mkdir -p ../userspace/apps/bench-ipc-client/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/apps/bench-ipc-client/manifest.c \
+		-o ../userspace/apps/bench-ipc-client/build/manifest.o
+	$(ALR) gprbuild -P ../userspace/apps/bench-ipc-client/bench_ipc_client.gpr
+	cp ../userspace/apps/bench-ipc-client/build/bench-ipc-client.app isodir/boot/bench-ipc-client.app
+
 # Build userspace Ada runtime (needed by filesystem server)
 .PHONY : user_runtime
 user_runtime:
@@ -299,8 +317,15 @@ DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/sleep.ap
 	isodir/boot/wget.app isodir/boot/security-center.app \
 	isodir/boot/desktop-shell.app isodir/boot/ui-lab.app \
 	isodir/boot/ipctest-server.app isodir/boot/ipctest-client.app \
+	isodir/boot/bench-ipc-server.app isodir/boot/bench-ipc-client.app \
 	isodir/boot/logstore.svc isodir/boot/display.svc isodir/boot/desktop.svc \
 	../init.conf ../motd.txt ../doom1.wad
+
+# Binaries used by the graphical desktop session. Keep this as a separate
+# staging target so run-desktop can build/copy them into isodir first, then
+# rebuild the ext2 disk image from those freshly staged files.
+.PHONY : desktop-session-content
+desktop-session-content: virtio-gpu desktop display desktop-shell ui-lab doom
 
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.conf, shell.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
@@ -319,6 +344,8 @@ ata_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write isodir/boot/ui-lab.app ui-lab.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/ipctest-server.app ipctest-server.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/ipctest-client.app ipctest-client.app" ata_disk.img
+	debugfs -w -R "write isodir/boot/bench-ipc-server.app bench-ipc-server.app" ata_disk.img
+	debugfs -w -R "write isodir/boot/bench-ipc-client.app bench-ipc-client.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/logstore.svc logstore.svc" ata_disk.img
 	debugfs -w -R "write isodir/boot/display.svc display.svc" ata_disk.img
 	debugfs -w -R "write isodir/boot/desktop.svc desktop.svc" ata_disk.img
@@ -344,6 +371,8 @@ nvme_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write isodir/boot/ui-lab.app ui-lab.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/ipctest-server.app ipctest-server.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/ipctest-client.app ipctest-client.app" nvme_disk.img
+	debugfs -w -R "write isodir/boot/bench-ipc-server.app bench-ipc-server.app" nvme_disk.img
+	debugfs -w -R "write isodir/boot/bench-ipc-client.app bench-ipc-client.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/display.svc display.svc" nvme_disk.img
 	debugfs -w -R "write isodir/boot/desktop.svc desktop.svc" nvme_disk.img
 	dd if=/dev/zero of=/tmp/config.dat bs=8192 count=1
@@ -385,12 +414,13 @@ iso: cubit_kernel initrd
 
 # Build everything including DOOM, then create ISO and disk images
 .PHONY : world
-world: cubit_kernel doom sleep ipctest-server ipctest-client filesystem ata nvme virtio-net virtio-gpu netstack wget security-center desktop-shell ui-lab procmgr shell hda mixer ps2 config netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: cubit_kernel doom sleep ipctest-server ipctest-client bench-ipc-server bench-ipc-client filesystem ata nvme virtio-net virtio-gpu netstack wget security-center desktop-shell ui-lab procmgr shell hda mixer ps2 config netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world
 	bash ../tests/headless/run.sh --test boot-shell-nvme
 	bash ../tests/headless/run.sh --test async-ipc
+	bash ../tests/headless/run.sh --test bench-ipc
 	bash ../tests/headless/run.sh --test desktop-display
 	bash ../tests/headless/run.sh --test virtio-gpu
 	bash ../tests/headless/run.sh --test virtio-vga-primary
@@ -414,6 +444,81 @@ run: nvme_disk.img
 		-device nvme,serial=cubitnvme,drive=nvme0 \
 		-device virtio-net-pci,netdev=net0 \
 		-device virtio-gpu-pci \
+		-netdev user,id=net0 \
+		-object filter-dump,id=f0,netdev=net0,file=net.pcap \
+		-audiodev sdl,id=snd0 \
+		-device intel-hda \
+		-device hda-output,audiodev=snd0 \
+		-no-reboot
+
+# Run QEMU with an init profile that starts display.svc + desktop.svc.
+# This keeps GUI iteration out of the CuBASIC/CLI launch path.
+.PHONY : run-desktop
+run-desktop: desktop-session-content
+	$(MAKE) nvme_disk.img
+	$(MAKE) initrd
+	@rm -f serial_output.log net.pcap desktop_disk.img
+	cp nvme_disk.img desktop_disk.img
+	-debugfs -w -R "rm init.conf" desktop_disk.img >/dev/null 2>&1
+	debugfs -w -R "write ../tests/headless/init-desktop-session.conf init.conf" desktop_disk.img
+	sed -i 's/^set default=.*/set default=4/' isodir/boot/grub/grub.cfg
+	grub-mkrescue -o cubit_kernel.iso isodir
+	sed -i 's/^set default=.*/set default=0/' isodir/boot/grub/grub.cfg
+	qemu-system-x86_64 \
+		-machine q35 \
+		-cpu Broadwell \
+		-smp 4 \
+		-m 128M \
+		-cdrom cubit_kernel.iso \
+		-serial file:serial_output.log \
+		-vga none \
+		-device virtio-vga,xres=1024,yres=768 \
+		-display gtk,zoom-to-fit=on \
+		-drive file=desktop_disk.img,if=none,id=nvme0,format=raw \
+		-device nvme,serial=cubitnvme,drive=nvme0 \
+		-device virtio-net-pci,netdev=net0 \
+		-netdev user,id=net0 \
+		-object filter-dump,id=f0,netdev=net0,file=net.pcap \
+		-audiodev sdl,id=snd0 \
+		-device intel-hda \
+		-device hda-output,audiodev=snd0 \
+		-no-reboot
+
+# Fast desktop launcher for UI iteration. This intentionally has no build
+# prerequisites: it reuses the current cubit_kernel.iso and nvme_disk.img,
+# then overlays the current staged desktop binaries into a temporary disk
+# image. Use run-desktop when binaries need to be rebuilt first.
+.PHONY : run-desktop-fast
+run-desktop-fast:
+	@test -f cubit_kernel.iso || (echo "missing cubit_kernel.iso; run make -C kernel run-desktop once first" && false)
+	@test -f nvme_disk.img || (echo "missing nvme_disk.img; run make -C kernel run-desktop once first" && false)
+	@rm -f serial_output.log net.pcap desktop_disk.img
+	cp nvme_disk.img desktop_disk.img
+	-debugfs -w -R "rm init.conf" desktop_disk.img >/dev/null 2>&1
+	-debugfs -w -R "rm desktop.svc" desktop_disk.img >/dev/null 2>&1
+	-debugfs -w -R "rm display.svc" desktop_disk.img >/dev/null 2>&1
+	-debugfs -w -R "rm desktop-shell.app" desktop_disk.img >/dev/null 2>&1
+	-debugfs -w -R "rm ui-lab.app" desktop_disk.img >/dev/null 2>&1
+	-debugfs -w -R "rm doom.elf" desktop_disk.img >/dev/null 2>&1
+	debugfs -w -R "write ../tests/headless/init-desktop-session.conf init.conf" desktop_disk.img
+	debugfs -w -R "write isodir/boot/desktop.svc desktop.svc" desktop_disk.img
+	debugfs -w -R "write isodir/boot/display.svc display.svc" desktop_disk.img
+	debugfs -w -R "write isodir/boot/desktop-shell.app desktop-shell.app" desktop_disk.img
+	debugfs -w -R "write isodir/boot/ui-lab.app ui-lab.app" desktop_disk.img
+	debugfs -w -R "write isodir/boot/doom.elf doom.elf" desktop_disk.img
+	qemu-system-x86_64 \
+		-machine q35 \
+		-cpu Broadwell \
+		-smp 4 \
+		-m 128M \
+		-cdrom cubit_kernel.iso \
+		-serial file:serial_output.log \
+		-vga none \
+		-device virtio-vga,xres=1024,yres=768 \
+		-display gtk,zoom-to-fit=on \
+		-drive file=desktop_disk.img,if=none,id=nvme0,format=raw \
+		-device nvme,serial=cubitnvme,drive=nvme0 \
+		-device virtio-net-pci,netdev=net0 \
 		-netdev user,id=net0 \
 		-object filter-dump,id=f0,netdev=net0,file=net.pcap \
 		-audiodev sdl,id=snd0 \

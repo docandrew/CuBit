@@ -128,6 +128,17 @@ typedef long                ssize_t;
 #define SYSCALL_GRANT_VIA_CAP   106
 #define SYSCALL_SET_WELL_KNOWN  107
 
+/* Scheduler latency contracts */
+#define SYSCALL_SET_LATENCY_CONTRACT 81
+#define LATENCY_BACKGROUND      0
+#define LATENCY_NORMAL          1
+#define LATENCY_INTERACTIVE     2
+#define LATENCY_REALTIME        3
+
+/* Kernel trace controls */
+#define SYSCALL_TRACE_RESET     82
+#define SYSCALL_TRACE_SUMMARY   83
+
 /* Well-known service roles */
 #define ROLE_FILESYSTEM         1
 #define ROLE_PROCMGR            2

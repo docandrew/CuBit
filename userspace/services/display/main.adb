@@ -585,10 +585,13 @@ procedure main is
       end if;
    end flushPendingPresent;
 
-   procedure handleRequest (from : ProcessID; request : Message) is
-      replyMsg : Message := NULL_MESSAGE;
-      ignore   : Unsigned_64;
+   procedure handleRequest
+      (from     : ProcessID;
+       request  : Message;
+       replyMsg : out Message)
+   is
    begin
+      replyMsg := NULL_MESSAGE;
       statsRequests := statsRequests + 1;
 
       case request.tag.label is
@@ -792,15 +795,22 @@ procedure main is
             replyMsg.words (0) := DISPLAY_ERR_UNSUPPORTED;
       end case;
 
-      ignore := reply (from, replyMsg);
    end handleRequest;
 
    ret     : Unsigned_64;
    from    : ProcessID;
    msg     : Message;
-   found   : Boolean;
+   replyMsg : Message := NULL_MESSAGE;
 begin
    debugPrint ("display: starting" & LF);
+
+   ret := setLatencyContract
+      (LATENCY_REALTIME,
+       16_667,  --  60 Hz scanout period in microseconds.
+       2_000);  --  Budget hint for coalesced present/flush work.
+   if ret = Unsigned_64'Last then
+      debugPrint ("display: latency contract rejected" & LF);
+   end if;
 
    ret := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DISPLAY);
    if ret /= 0 and then ret /= Unsigned_64'Last then
@@ -838,20 +848,18 @@ begin
    end if;
    debugPrint ("display: ready" & LF);
 
-   loop
-      loop
-         Poll_Service_Request (from, msg, found);
-         exit when not found;
-         handleRequest (from, msg);
-      end loop;
+   receive (from, msg);
 
+   loop
+      handleRequest (from, msg, replyMsg);
+
+      --  Async/no-completion presents are queued by handleRequest. Flush them
+      --  before replyWait can block the display service waiting for more work.
       if pendingPresent then
          flushPendingPresent;
-         maybePrintStats;
-      else
-         maybePrintStats;
-         receive (from, msg);
-         handleRequest (from, msg);
       end if;
+      maybePrintStats;
+
+      replyWait (from, replyMsg, from, msg);
    end loop;
 end main;
