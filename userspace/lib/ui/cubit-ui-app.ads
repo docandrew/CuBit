@@ -33,7 +33,9 @@ package CuBit.UI.App is
    KEYMOD_CAPS  : constant Unsigned_64 := 8;
 
    WINDOW_FLAG_DECORATED   : constant Unsigned_64 := 1;
+   WINDOW_FLAG_RESIZABLE   : constant Unsigned_64 := 2;
    WINDOW_FLAG_MINIMIZABLE : constant Unsigned_64 := 4;
+   WINDOW_FLAG_MAXIMIZABLE : constant Unsigned_64 := 8;
    WINDOW_FLAG_CLOSEABLE   : constant Unsigned_64 := 16;
    WINDOW_FLAG_FIXED_SIZE  : constant Unsigned_64 := 128;
 
@@ -54,6 +56,8 @@ package CuBit.UI.App is
 
    function Is_Open (win : Window) return Boolean;
    function Surface_ID (win : Window) return Unsigned_64;
+   function Width (win : Window) return Natural;
+   function Height (win : Window) return Natural;
    function Full_Rect (win : Window) return CuBit.UI.Rect;
    function Canvas (win : Window) return CuBit.UI.Canvas;
    function Canvas
@@ -82,8 +86,10 @@ package CuBit.UI.App is
 private
    type Window is record
       surfaceId : Unsigned_64 := 0;
+      flags : Unsigned_64 := 0;
       bufferAddr : System.Address := System.Null_Address;
       bufferGrant : Unsigned_64 := 0;
+      bufferPages : Unsigned_64 := 0;
       width : Natural := 0;
       height : Natural := 0;
       pitch : Natural := 0;

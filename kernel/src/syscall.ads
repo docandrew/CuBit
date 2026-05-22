@@ -112,6 +112,11 @@ is
     SYSCALL_TRACE_RESET      : constant SyscallNumber := 82;
     SYSCALL_TRACE_SUMMARY    : constant SyscallNumber := 83;
 
+    -- Read-only capability inspection. arg0 = target PID, arg1 = cap slot,
+    -- arg2 = user buffer for a 48-byte packed capability summary. Requires
+    -- CAP_PROCESS + RIGHT_READ for the target process.
+    SYSCALL_INSPECT_CAP      : constant SyscallNumber := 84;
+
     -- Capability-aware IPC syscalls
     SYSCALL_CAP_SEND        : constant SyscallNumber := 40;
     SYSCALL_CAP_CALL        : constant SyscallNumber := 41;

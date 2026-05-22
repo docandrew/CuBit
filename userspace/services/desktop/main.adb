@@ -36,6 +36,7 @@ procedure main is
    OP_SURFACE_RESIZE   : constant Unsigned_32 := 16#0813#;
    OP_SURFACE_ATTACH_BUFFER : constant Unsigned_32 := 16#0814#;
    OP_WINDOW_SET_LIMITS : constant Unsigned_32 := 16#0841#;
+   OP_STREAM_AVAILABLE  : constant Unsigned_32 := 16#0706#;
    OP_INPUT_POLL       : constant Unsigned_32 := 16#0821#;
 
    OP_DISPLAY_GET_INFO      : constant Unsigned_32 := 16#0900#;
@@ -181,6 +182,20 @@ procedure main is
    type SurfaceTable is array (SurfaceIndex) of Surface;
 
    surfaces : SurfaceTable;
+
+   MAX_STREAM_ANNOUNCEMENTS : constant Natural := 16;
+   subtype StreamAnnouncementIndex is Natural
+      range 0 .. MAX_STREAM_ANNOUNCEMENTS - 1;
+   type StreamAnnouncement is record
+      used : Boolean := False;
+      pid  : ProcessID := NO_PROCESS;
+      mask : Unsigned_64 := 0;
+   end record;
+   type StreamAnnouncementTable is array (StreamAnnouncementIndex) of
+      StreamAnnouncement;
+
+   streamAnnouncements : StreamAnnouncementTable;
+
    nextSurfaceId : Unsigned_64 := 1;
    focusSurface  : Unsigned_64 := 0;
    internalShellSurface : Unsigned_64 := 0;
@@ -1403,6 +1418,99 @@ procedure main is
       end case;
    end drawSurfaceTitle;
 
+   function streamName (id : Natural) return String is
+   begin
+      case id is
+         when 1 => return "in";
+         when 2 => return "out";
+         when 3 => return "err";
+         when 4 => return "audit";
+         when others => return "s";
+      end case;
+   end streamName;
+
+   function streamMaskForPID (pid : ProcessID) return Unsigned_64 is
+   begin
+      for i in streamAnnouncements'Range loop
+         if streamAnnouncements (i).used and then
+            streamAnnouncements (i).pid = pid
+         then
+            return streamAnnouncements (i).mask;
+         end if;
+      end loop;
+      return 0;
+   end streamMaskForPID;
+
+   procedure rememberStreams (pid : ProcessID; mask : Unsigned_64) is
+      firstFree : Integer := -1;
+   begin
+      if pid = NO_PROCESS then
+         return;
+      end if;
+
+      for i in streamAnnouncements'Range loop
+         if streamAnnouncements (i).used and then
+            streamAnnouncements (i).pid = pid
+         then
+            streamAnnouncements (i).mask := mask;
+            return;
+         elsif not streamAnnouncements (i).used and then firstFree < 0 then
+            firstFree := Integer (i);
+         end if;
+      end loop;
+
+      if firstFree < 0 then
+         firstFree := 0;
+      end if;
+
+      streamAnnouncements (StreamAnnouncementIndex (firstFree)) :=
+        (used => True, pid => pid, mask => mask);
+   end rememberStreams;
+
+   procedure drawStreamBadges
+      (s : Surface;
+       titleY : Natural)
+   is
+      mask : constant Unsigned_64 := streamMaskForPID (s.owner);
+      closeBtn : constant Rect := closeButtonRect (s);
+      maxBtn : constant Rect := maximizeButtonRect (s);
+      rightLimit : Natural := s.x + s.w - 8;
+      badgeW : constant Natural := 38;
+      badgeH : constant Natural := 14;
+      x : Natural;
+      drawn : Natural := 0;
+      r : Rect;
+   begin
+      if mask = 0 or else s.w < 190 then
+         return;
+      end if;
+
+      if not isEmpty (closeBtn) then
+         rightLimit := closeBtn.x - 6;
+      elsif not isEmpty (maxBtn) then
+         rightLimit := maxBtn.x - 6;
+      end if;
+
+      if rightLimit < s.x + 120 then
+         return;
+      end if;
+
+      x := rightLimit;
+      for bit in 1 .. 7 loop
+         exit when drawn >= 3;
+         if (mask and Shift_Left (Unsigned_64'(1), bit)) /= 0 then
+            exit when x < s.x + 120 + badgeW;
+            x := x - badgeW;
+            r := (x => x, y => titleY + 5, w => badgeW, h => badgeH);
+            fillRect (r.x, r.y, r.w, r.h, C_BAR);
+            strokeRect (r.x, r.y, r.w, r.h, C_EDGE, C_SHADOW);
+            drawUIText (r.x + 4, r.y + 2, streamName (bit), C_TEXT, C_BAR);
+            x := x - 4;
+            drawn := drawn + 1;
+         end if;
+      end loop;
+   end drawStreamBadges;
+
    procedure drawConsoleText (x, y : Natural; bg : Unsigned_32) is
    begin
       drawText (x, y, "CuBASIC 0.1", C_ACCENT, bg);
@@ -1707,6 +1815,7 @@ procedure main is
       strokeRect (x, y, w, h, C_EDGE, C_SHADOW);
       fillRect (x + 3, y + 3, w - 6, titleH, titleColor);
       drawSurfaceTitle (s, x + 10, y + 7, C_WHITE, titleColor);
+      drawStreamBadges (s, y + 3);
 
       --  Window controls are compositor-owned because they mutate focus,
       --  visibility, and eventually client lifecycle authority.
@@ -3877,7 +3986,11 @@ procedure main is
                      end if;
                   end;
                when LAUNCH_SECURITY =>
-                  openInternalApp (APP_SECURITY, damage);
+                  declare
+                     ok : Boolean;
+                  begin
+                     trySpawnFromConsole ("security-center.app", ok);
+                  end;
                when others =>
                   null;
             end case;
@@ -4059,6 +4172,11 @@ procedure main is
             dx      => signed12 (Shift_Right (packed, 8)),
             dy      => signed12 (Shift_Right (packed, 20)),
             dz      => signed8 (Shift_Right (packed, 32)));
+      elsif eventMsg.tag.label = OP_STREAM_AVAILABLE then
+         rememberStreams
+           (ProcessID (eventMsg.words (0) and 16#FFFF#),
+            eventMsg.words (1));
+         scheduleRedrawRect ((x => 0, y => 0, w => fbWidth, h => fbHeight));
       end if;
    end handleEvent;
 

@@ -5,6 +5,7 @@
 --  @summary
 --  Minimal desktop-surface harness for native CuBit UI applications
 ------------------------------------------------------------------------------
+with System; use type System.Address;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
@@ -21,6 +22,8 @@ package body CuBit.UI.App is
 
    SURFACE_FLAG_WINDOW : constant Unsigned_64 := 2;
    PIXEL_FORMAT_BGRA8888 : constant Unsigned_64 := 1;
+   WINDOW_CHROME_W : constant Natural := 20;
+   WINDOW_CHROME_H : constant Natural := 44;
    PROTOCOL_VERSION : constant Unsigned_64 :=
       0 or Shift_Left (Unsigned_64'(1), 32);
 
@@ -65,6 +68,16 @@ package body CuBit.UI.App is
       return win.surfaceId;
    end Surface_ID;
 
+   function Width (win : Window) return Natural is
+   begin
+      return win.width;
+   end Width;
+
+   function Height (win : Window) return Natural is
+   begin
+      return win.height;
+   end Height;
+
    function Full_Rect (win : Window) return CuBit.UI.Rect is
    begin
       return (x => 0, y => 0, w => win.width, h => win.height);
@@ -103,6 +116,112 @@ package body CuBit.UI.App is
       end if;
    end Canvas;
 
+   function Horizontal_Chrome (win : Window) return Natural is
+   begin
+      if (win.flags and WINDOW_FLAG_DECORATED) /= 0 then
+         return WINDOW_CHROME_W;
+      end if;
+      return 0;
+   end Horizontal_Chrome;
+
+   function Vertical_Chrome (win : Window) return Natural is
+   begin
+      if (win.flags and WINDOW_FLAG_DECORATED) /= 0 then
+         return WINDOW_CHROME_H;
+      end if;
+      return 0;
+   end Vertical_Chrome;
+
+   function Content_Size_From_Surface
+      (win : Window; surfaceSize : Unsigned_64; horizontal : Boolean)
+      return Natural
+   is
+      chrome : constant Natural :=
+         (if horizontal then Horizontal_Chrome (win) else Vertical_Chrome (win));
+      value : Natural;
+   begin
+      if surfaceSize <= Unsigned_64 (chrome) then
+         return 1;
+      end if;
+      value := Natural (surfaceSize - Unsigned_64 (chrome));
+      if value = 0 then
+         return 1;
+      end if;
+      return value;
+   end Content_Size_From_Surface;
+
+   procedure Attach_Buffer
+      (win : in out Window;
+       width, height : Natural;
+       ok : out Boolean)
+   is
+      reply : Message;
+   begin
+      ok := False;
+      if win.surfaceId = 0 or else win.bufferGrant = 0 or else
+         width = 0 or else height = 0
+      then
+         return;
+      end if;
+
+      win.width := width;
+      win.height := height;
+      win.pitch := width * 4;
+
+      reply := Call_Desktop
+        (OP_SURFACE_ATTACH_BUFFER,
+         win.surfaceId,
+         win.bufferGrant,
+         Pack_U32_Pair (Unsigned_64 (win.width), Unsigned_64 (win.height)),
+         Unsigned_64 (win.pitch) or
+            Shift_Left (PIXEL_FORMAT_BGRA8888, 32));
+      ok := reply.words (0) = 0;
+   end Attach_Buffer;
+
+   procedure Ensure_Buffer
+      (win : in out Window;
+       width, height : Natural;
+       ok : out Boolean)
+   is
+      raw : Unsigned_64;
+      pages : Unsigned_64;
+      grantOk : Boolean;
+   begin
+      ok := False;
+      if width = 0 or else height = 0 then
+         return;
+      end if;
+
+      pages := (Unsigned_64 (width * 4) * Unsigned_64 (height) + 4095) / 4096;
+      if pages = 0 then
+         pages := 1;
+      end if;
+
+      if win.bufferAddr = System.Null_Address or else pages > win.bufferPages
+      then
+         raw := syscall (SYSCALL_SBRK, pages * 4096 + 4096);
+         if raw = Unsigned_64'Last then
+            return;
+         end if;
+
+         win.bufferAddr := To_Address (Integer_Address (Align_Up_Page (raw)));
+         createGrantViaCap
+           (slot      => CAP_SLOT_DESKTOP,
+            localAddr => win.bufferAddr,
+            numPages  => Natural (pages),
+            readWrite => False,
+            grantId   => win.bufferGrant,
+            success   => grantOk);
+         if not grantOk then
+            win.bufferGrant := 0;
+            return;
+         end if;
+         win.bufferPages := pages;
+      end if;
+
+      Attach_Buffer (win, width, height, ok);
+   end Ensure_Buffer;
+
    procedure Open
       (win : in out Window;
        width, height : Natural;
@@ -113,15 +232,22 @@ package body CuBit.UI.App is
       info : Message;
       created : Message;
       reply : Message;
-      raw : Unsigned_64;
-      pages : Unsigned_64;
-      grantOk : Boolean;
+      minW : constant Unsigned_64 :=
+         Unsigned_64 (width + WINDOW_CHROME_W);
+      minH : constant Unsigned_64 :=
+         Unsigned_64 (height + WINDOW_CHROME_H);
+      maxW : Unsigned_64 := 0;
+      maxH : Unsigned_64 := 0;
+      attached : Boolean;
    begin
       ok := False;
       win := (others => <>);
-      win.width := width;
-      win.height := height;
-      win.pitch := width * 4;
+      win.flags := flags;
+
+      if (flags and WINDOW_FLAG_FIXED_SIZE) /= 0 then
+         maxW := minW;
+         maxH := minH;
+      end if;
 
       hello := Call_Desktop (OP_DESKTOP_HELLO, PROTOCOL_VERSION, 0, 0, 0);
       if hello.words (0) = 0 then
@@ -136,8 +262,8 @@ package body CuBit.UI.App is
       created :=
          Call_Desktop
            (OP_SURFACE_CREATE,
-            Unsigned_64 (width + 20),
-            Unsigned_64 (height + 44),
+            minW,
+            minH,
             SURFACE_FLAG_WINDOW,
             0);
       win.surfaceId := created.words (0);
@@ -149,41 +275,16 @@ package body CuBit.UI.App is
       reply := Call_Desktop
         (OP_WINDOW_SET_LIMITS,
          win.surfaceId,
-         Pack_U32_Pair (Unsigned_64 (width + 20),
-                        Unsigned_64 (height + 44)),
-         Pack_U32_Pair (Unsigned_64 (width + 20),
-                        Unsigned_64 (height + 44)),
+         Pack_U32_Pair (minW, minH),
+         Pack_U32_Pair (maxW, maxH),
          flags);
       if reply.words (0) = 0 then
          null;
       end if;
 
-      pages := (Unsigned_64 (win.pitch * win.height) + 4095) / 4096;
-      raw := syscall (SYSCALL_SBRK, pages * 4096 + 4096);
-      if raw = Unsigned_64'Last then
-         return;
-      end if;
-
-      win.bufferAddr := To_Address (Integer_Address (Align_Up_Page (raw)));
-      createGrantViaCap
-        (slot      => CAP_SLOT_DESKTOP,
-         localAddr => win.bufferAddr,
-         numPages  => Natural (pages),
-         readWrite => False,
-         grantId   => win.bufferGrant,
-         success   => grantOk);
-      if not grantOk then
-         return;
-      end if;
-
-      reply := Call_Desktop
-        (OP_SURFACE_ATTACH_BUFFER,
-         win.surfaceId,
-         win.bufferGrant,
-         Pack_U32_Pair (Unsigned_64 (win.width), Unsigned_64 (win.height)),
-         Unsigned_64 (win.pitch) or
-            Shift_Left (PIXEL_FORMAT_BGRA8888, 32));
-      if reply.words (0) /= 0 then
+      Ensure_Buffer (win, width, height, attached);
+      if not attached then
+         Close (win);
          return;
       end if;
 
@@ -215,6 +316,19 @@ package body CuBit.UI.App is
          serial   => reply.words (1),
          payload0 => reply.words (2),
          payload1 => reply.words (3));
+      if event.kind = INPUT_CONFIGURE then
+         declare
+            newW : constant Natural :=
+               Content_Size_From_Surface (win, event.payload0, True);
+            newH : constant Natural :=
+               Content_Size_From_Surface (win, event.payload1, False);
+            resized : Boolean;
+         begin
+            Ensure_Buffer (win, newW, newH, resized);
+            event.payload0 := Unsigned_64 (win.width);
+            event.payload1 := Unsigned_64 (win.height);
+         end;
+      end if;
       found := True;
    end Poll_Input;
 

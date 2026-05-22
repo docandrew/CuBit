@@ -55,6 +55,10 @@ is
                               arg0, arg1 : Unsigned_64;
                               retval     : out Unsigned_64);
 
+    procedure handleInspectCap (callerPID  : Process.ProcessID;
+                                arg0, arg1, arg2 : Unsigned_64;
+                                retval     : out Unsigned_64);
+
     procedure handleMintCap (callerPID : Process.ProcessID;
                              arg0, arg1, arg2, arg3,
                              arg4, arg5 : Unsigned_64;

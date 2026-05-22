@@ -9,6 +9,11 @@ with CuBit.UI.Controls;
 with CuBit.UI.State;
 
 package CuBit.UI.Widgets is
+   DEFAULT_PADDING : constant Natural := 8;
+   DENSE_PADDING   : constant Natural := 6;
+
+   type Badge_Style is (Badge_Neutral, Badge_Good, Badge_Danger);
+
    subtype Tab_Title is String;
    type Tab_Title_Access is access constant Tab_Title;
    type Tab_Title_List is array (Positive range <>) of Tab_Title_Access;
@@ -34,6 +39,28 @@ package CuBit.UI.Widgets is
        title : String;
        content : out CuBit.UI.Rect;
        padding : Natural := 8);
+
+   procedure Badge
+      (c : CuBit.UI.Canvas;
+       bounds : CuBit.UI.Rect;
+       colors : CuBit.UI.Theme;
+       label : String;
+       style : Badge_Style := Badge_Neutral);
+
+   procedure Key_Value
+      (c : CuBit.UI.Canvas;
+       bounds : CuBit.UI.Rect;
+       colors : CuBit.UI.Theme;
+       key : String;
+       value : String;
+       mutedValue : Boolean := False);
+
+   procedure Metric_Card
+      (c : CuBit.UI.Canvas;
+       bounds : CuBit.UI.Rect;
+       colors : CuBit.UI.Theme;
+       title : String;
+       value : Natural);
 
    procedure Split_Pane
       (c : CuBit.UI.Canvas;
@@ -180,6 +207,7 @@ package CuBit.UI.Widgets is
        labels : Tab_Title_List;
        selectedIndex : in out Natural;
        page : out CuBit.UI.Rect;
+       changed : out Boolean;
        stripHeight : Natural := 30);
 
    procedure Horizontal_Slider

@@ -3,262 +3,151 @@
 --  Copyright (C) 2026 Jon Andrew
 --
 --  @summary
---  Security Center prototype
+--  Security Center desktop client
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
-with System; use System;
-with System.Storage_Elements; use System.Storage_Elements;
+with System;
+with System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
-with Font8x16;
+with CuBit.UI;
+with CuBit.UI.App;
+with CuBit.UI.Controls;
+with CuBit.UI.Labels;
+with CuBit.UI.Layout;
+with CuBit.UI.State;
+with CuBit.UI.Tables;
+with CuBit.UI.Trees;
+with CuBit.UI.Widgets;
+with Security_Center_Form;
 
 procedure main is
    use ASCII;
 
-   SYSINFO_FB_WIDTH  : constant Unsigned_64 := 1100;
-   SYSINFO_FB_HEIGHT : constant Unsigned_64 := 1101;
-   SYSINFO_FB_PITCH  : constant Unsigned_64 := 1102;
-   SYSINFO_FB_BPP    : constant Unsigned_64 := 1103;
    SYSINFO_NUM_CPUS  : constant Unsigned_64 := 1400;
    SYSINFO_MEM_FREE  : constant Unsigned_64 := 1600;
    SYSINFO_MEM_TOTAL : constant Unsigned_64 := 1601;
+   OP_STREAM_LIST    : constant Unsigned_32 := 16#0705#;
+   OP_STREAM_AVAILABLE : constant Unsigned_32 := 16#0706#;
+   REPLY_OK          : constant Unsigned_32 := 16#F000#;
+   STREAM_LIST_TOKEN : constant Unsigned_64 := 16#5343_5354#;
+   MAX_DRIVER_ID     : constant Natural := 17;
+   MAX_CAP_SLOT      : constant Natural := 63;
 
-   EVENT_KEYBOARD : constant Unsigned_32 := 1;
+   CAP_NULL         : constant Unsigned_64 := 0;
+   CAP_ENDPOINT     : constant Unsigned_64 := 1;
+   CAP_NOTIFICATION : constant Unsigned_64 := 2;
+   CAP_MEMORY       : constant Unsigned_64 := 3;
+   CAP_IOPORT       : constant Unsigned_64 := 4;
+   CAP_IRQ          : constant Unsigned_64 := 5;
+   CAP_PROCESS      : constant Unsigned_64 := 6;
+   CAP_DEVICE_MEM   : constant Unsigned_64 := 7;
+   CAP_REPLY        : constant Unsigned_64 := 8;
+   CAP_RESOURCE     : constant Unsigned_64 := 9;
 
-   fbWidth  : Natural := 0;
-   fbHeight : Natural := 0;
-   fbPitch  : Natural := 0;
-   fbBpp    : Natural := 0;
-   fbAddr   : System.Address := System.Null_Address;
-   activeTab : Natural := 0;
+   initialW : constant Natural := 760;
+   initialH : constant Natural := 520;
 
-   type DirtyState is record
-      chrome  : Boolean := True;
-      tabs    : Boolean := True;
-      side    : Boolean := True;
-      metrics : Boolean := True;
-      content : Boolean := True;
+   win : CuBit.UI.App.Window;
+   ignore : Unsigned_64;
+   ui : CuBit.UI.State.UI_State;
+   controls : CuBit.UI.Controls.Control_Map;
+
+   CONTROL_TAB_BASE : constant CuBit.UI.Controls.Control_ID := 1;
+   CONTROL_REFRESH  : constant CuBit.UI.Controls.Control_ID := 8;
+   CONTROL_LOCKDOWN : constant CuBit.UI.Controls.Control_ID := 9;
+   CONTROL_NAV_SCROLL : constant CuBit.UI.Controls.Control_ID := 10;
+   CONTROL_ROW_1    : constant CuBit.UI.Controls.Control_ID := 20;
+   CONTROL_GRANT_1  : constant CuBit.UI.Controls.Control_ID := 80;
+
+   activeTab : Natural := 1;
+   selectedProcess : Natural := 1;
+   navigatorScroll : Natural := 0;
+   selectedGrant : Natural := 1;
+   refreshCount : Natural := 0;
+   selectedStreamMask : Unsigned_64 := 0;
+   selectedStreamCount : Unsigned_64 := 0;
+   streamQueryPending : Boolean := False;
+
+   type Cap_Info is record
+      capType : Unsigned_64 := 0;
+      rights  : Unsigned_64 := 0;
+      badge   : Unsigned_64 := 0;
+      ref     : Unsigned_64 := 0;
+      param   : Unsigned_64 := 0;
+      gen     : Unsigned_64 := 0;
    end record;
 
-   dirty : DirtyState;
+   type Cap_Cache_Array is array (Natural range 0 .. MAX_CAP_SLOT) of Cap_Info;
+   capCache : Cap_Cache_Array := (others => (others => 0));
+   capCachePID : Unsigned_64 := Unsigned_64'Last;
+   capCacheCount : Natural := 0;
+   capCacheValid : Boolean := False;
 
-   C_BG        : constant Unsigned_32 := 16#0014_171A#;
-   C_PANEL     : constant Unsigned_32 := 16#0021_252A#;
-   C_PANEL_2   : constant Unsigned_32 := 16#002B_3036#;
-   C_BORDER    : constant Unsigned_32 := 16#0048_515C#;
-   C_TEXT      : constant Unsigned_32 := 16#00E8_ECEF#;
-   C_MUTED     : constant Unsigned_32 := 16#0098_A2AD#;
-   C_ACCENT    : constant Unsigned_32 := 16#0037_B4D8#;
-   C_GOOD      : constant Unsigned_32 := 16#0049_C070#;
-   C_WARN      : constant Unsigned_32 := 16#00D8_A137#;
-   C_PURPLE    : constant Unsigned_32 := 16#0096_7ADC#;
-
-   type Rect is record
-      x : Natural;
-      y : Natural;
-      w : Natural;
-      h : Natural;
+   type Dashboard_Layout is record
+      root : CuBit.UI.Rect := (others => 0);
+      header : CuBit.UI.Rect := (others => 0);
+      tabs : CuBit.UI.Rect := (others => 0);
+      page : CuBit.UI.Rect := (others => 0);
+      sidebar : CuBit.UI.Rect := (others => 0);
+      content : CuBit.UI.Rect := (others => 0);
+      status : CuBit.UI.Rect := (others => 0);
+      refresh : CuBit.UI.Rect := (others => 0);
+      lockdown : CuBit.UI.Rect := (others => 0);
    end record;
 
-   function layoutMargin return Natural is (24);
-   function layoutTop return Natural is (24);
-   function layoutLeftW return Natural is (210);
-   function layoutBodyY return Natural is (layoutTop + 96);
-   function layoutMainX return Natural is
-      (layoutMargin + layoutLeftW + 18);
-   function layoutMainW return Natural is
-      (fbWidth - (layoutMargin * 2) - layoutLeftW - 18);
-
-   procedure invalidateAll is
+   function unpackLo32 (value : Unsigned_64) return Natural is
    begin
-      dirty := (chrome  => True,
-                tabs    => True,
-                side    => True,
-                metrics => True,
-                content => True);
-   end invalidateAll;
+      return Natural (value and 16#FFFF_FFFF#);
+   end unpackLo32;
 
-   procedure invalidateView is
+   function unpackHi32 (value : Unsigned_64) return Natural is
    begin
-      dirty.tabs := True;
-      dirty.side := True;
-      dirty.content := True;
-   end invalidateView;
+      return Natural (Shift_Right (value, 32));
+   end unpackHi32;
 
-   procedure putPixel (x, y : Natural; color : Unsigned_32) is
-      offset : constant Storage_Offset :=
-         Storage_Offset (y * fbPitch + x * 4);
-      pixel : Unsigned_32 with Import, Address => fbAddr + offset;
+   function unpackSignedLo32 (value : Unsigned_64) return Integer is
+      lo : constant Unsigned_64 := value and 16#FFFF_FFFF#;
    begin
-      if x < fbWidth and then y < fbHeight then
-         pixel := color;
+      if (lo and 16#8000_0000#) /= 0 then
+         return -Integer ((not lo + 1) and 16#FFFF_FFFF#);
       end if;
-   end putPixel;
+      return Integer (lo);
+   end unpackSignedLo32;
 
-   procedure fillRect
-      (x, y, w, h : Natural; color : Unsigned_32)
-   is
-      maxX : Natural := x + w;
-      maxY : Natural := y + h;
+   function addrToU64 (addr : System.Address) return Unsigned_64 is
    begin
-      if x >= fbWidth or else y >= fbHeight then
-         return;
-      end if;
+      return Unsigned_64 (System.Storage_Elements.To_Integer (addr));
+   end addrToU64;
 
-      if maxX > fbWidth then
-         maxX := fbWidth;
-      end if;
-      if maxY > fbHeight then
-         maxY := fbHeight;
-      end if;
-
-      for yy in y .. maxY - 1 loop
-         for xx in x .. maxX - 1 loop
-            putPixel (xx, yy, color);
-         end loop;
-      end loop;
-   end fillRect;
-
-   procedure fillRect (r : Rect; color : Unsigned_32) is
+   function driverName (id : Natural) return String is
    begin
-      fillRect (r.x, r.y, r.w, r.h, color);
-   end fillRect;
-
-   procedure strokeRect
-      (x, y, w, h : Natural; color : Unsigned_32)
-   is
-   begin
-      if w = 0 or else h = 0 then
-         return;
-      end if;
-
-      fillRect (x, y, w, 1, color);
-      fillRect (x, y + h - 1, w, 1, color);
-      fillRect (x, y, 1, h, color);
-      fillRect (x + w - 1, y, 1, h, color);
-   end strokeRect;
-
-   procedure drawGlyph
-      (x, y : Natural;
-       ch   : Character;
-       fg   : Unsigned_32;
-       bg   : Unsigned_32)
-   is
-      glyph : Font8x16.GlyphData renames Font8x16.font (Character'Pos (ch));
-   begin
-      for row in 0 .. Font8x16.GLYPH_HEIGHT - 1 loop
-         declare
-            bits : constant Unsigned_8 := glyph (row);
-         begin
-            for bit in 0 .. Font8x16.GLYPH_WIDTH - 1 loop
-               if (bits and Shift_Right (16#80#, bit)) /= 0 then
-                  putPixel (x + bit, y + row, fg);
-               else
-                  putPixel (x + bit, y + row, bg);
-               end if;
-            end loop;
-         end;
-      end loop;
-   end drawGlyph;
-
-   procedure drawText
-      (x, y : Natural;
-       s    : String;
-       fg   : Unsigned_32;
-       bg   : Unsigned_32)
-   is
-      cx : Natural := x;
-   begin
-      for i in s'Range loop
-         if cx + Font8x16.GLYPH_WIDTH <= fbWidth then
-            drawGlyph (cx, y, s (i), fg, bg);
-         end if;
-         cx := cx + Font8x16.GLYPH_WIDTH;
-      end loop;
-   end drawText;
-
-   procedure drawUnsigned
-      (x, y  : Natural;
-       value : Unsigned_64;
-       fg    : Unsigned_32;
-       bg    : Unsigned_32)
-   is
-      buf : String (1 .. 20);
-      pos : Natural := buf'Last;
-      v   : Unsigned_64 := value;
-   begin
-      if v = 0 then
-         drawText (x, y, "0", fg, bg);
-         return;
-      end if;
-
-      while v > 0 and then pos >= buf'First loop
-         buf (pos) :=
-            Character'Val (Character'Pos ('0') + Natural (v mod 10));
-         v := v / 10;
-         exit when pos = buf'First;
-         pos := pos - 1;
-      end loop;
-
-      drawText (x, y, buf (pos .. buf'Last), fg, bg);
-   end drawUnsigned;
-
-   procedure drawCard
-      (x, y, w, h : Natural; title : String)
-   is
-   begin
-      fillRect (x, y, w, h, C_PANEL);
-      strokeRect (x, y, w, h, C_BORDER);
-      fillRect (x, y, w, 28, C_PANEL_2);
-      drawText (x + 12, y + 7, title, C_TEXT, C_PANEL_2);
-   end drawCard;
-
-   procedure drawPill
-      (x, y, w : Natural; label : String; color : Unsigned_32)
-   is
-   begin
-      fillRect (x, y, w, 24, color);
-      drawText (x + 10, y + 5, label, C_TEXT, color);
-   end drawPill;
-
-   procedure drawTab
-      (x, y, w : Natural; label : String; active : Boolean)
-   is
-      bg : constant Unsigned_32 := (if active then C_ACCENT else C_PANEL_2);
-      fg : constant Unsigned_32 := (if active then C_TEXT else C_MUTED);
-   begin
-      fillRect (x, y, w, 32, bg);
-      strokeRect (x, y, w, 32, (if active then C_ACCENT else C_BORDER));
-      drawText (x + 12, y + 8, label, fg, bg);
-   end drawTab;
-
-   procedure drawMetricUnsigned
-      (x, y : Natural; label : String; value : Unsigned_64; color : Unsigned_32)
-   is
-   begin
-      fillRect (x, y, 150, 64, C_PANEL_2);
-      strokeRect (x, y, 150, 64, C_BORDER);
-      drawText (x + 12, y + 10, label, C_MUTED, C_PANEL_2);
-      drawUnsigned (x + 12, y + 34, value, color, C_PANEL_2);
-   end drawMetricUnsigned;
-
-   procedure drawRow
-      (x, y, w : Natural;
-       a, b, c, d : String;
-       bg : Unsigned_32)
-   is
-   begin
-      fillRect (x, y, w, 24, bg);
-      drawText (x + 10,  y + 4, a, C_TEXT,  bg);
-      drawText (x + 82,  y + 4, b, C_MUTED, bg);
-      drawText (x + 184, y + 4, c, C_TEXT,  bg);
-      drawText (x + 330, y + 4, d, C_MUTED, bg);
-   end drawRow;
+      case id is
+         when 1  => return "keyboard";
+         when 2  => return "ata";
+         when 3  => return "netstack";
+         when 4  => return "procmgr";
+         when 5  => return "nvme";
+         when 6  => return "filesystem";
+         when 7  => return "devmgr";
+         when 8  => return "hda";
+         when 9  => return "mixer";
+         when 10 => return "mouse";
+         when 11 => return "config";
+         when 12 => return "netmgr";
+         when 13 => return "logstore";
+         when 14 => return "ipctest";
+         when 15 => return "desktop";
+         when 16 => return "display";
+         when 17 => return "virtio-gpu";
+         when others => return "service";
+      end case;
+   end driverName;
 
    function serviceCount return Unsigned_64 is
       count : Unsigned_64 := 0;
    begin
-      for id in 1 .. 14 loop
+      for id in 1 .. MAX_DRIVER_ID loop
          if getInfo (SYSINFO_REGISTERED_DRIVER, Unsigned_64 (id)) /= 0 then
             count := count + 1;
          end if;
@@ -266,344 +155,1105 @@ procedure main is
       return count;
    end serviceCount;
 
+   function processCount return Natural is
+      count : Natural := 0;
+   begin
+      for id in 1 .. MAX_DRIVER_ID loop
+         if getInfo (SYSINFO_REGISTERED_DRIVER, Unsigned_64 (id)) /= 0 then
+            count := count + 1;
+         end if;
+      end loop;
+      return count;
+   end processCount;
+
+   function driverForRow (row : Natural) return Natural is
+      seen : Natural := 0;
+   begin
+      for id in 1 .. MAX_DRIVER_ID loop
+         if getInfo (SYSINFO_REGISTERED_DRIVER, Unsigned_64 (id)) /= 0 then
+            seen := seen + 1;
+            if seen = row then
+               return id;
+            end if;
+         end if;
+      end loop;
+      return 0;
+   end driverForRow;
+
+   function pidForRow (row : Natural) return Unsigned_64 is
+      driver : constant Natural := driverForRow (row);
+   begin
+      if driver = 0 then
+         return 0;
+      end if;
+      return getInfo (SYSINFO_REGISTERED_DRIVER, Unsigned_64 (driver));
+   end pidForRow;
+
    function memMiB (bytes : Unsigned_64) return Unsigned_64 is
    begin
       return bytes / (1024 * 1024);
    end memMiB;
 
-   procedure drawSidePanel
-      (x, y, w, h : Natural)
-   is
+   function processName (id : Natural) return String is
+      driver : constant Natural := driverForRow (id);
    begin
-      drawCard (x, y, w, h, "Session");
-      drawText (x + 14, y + 48, "mode", C_MUTED, C_PANEL);
-      drawText (x + 90, y + 48, "direct fb", C_TEXT, C_PANEL);
-      drawText (x + 14, y + 76, "active", C_MUTED, C_PANEL);
-      case activeTab is
-         when 0 => drawText (x + 90, y + 76, "processes", C_TEXT, C_PANEL);
-         when 1 => drawText (x + 90, y + 76, "services", C_TEXT, C_PANEL);
-         when 2 => drawText (x + 90, y + 76, "caps", C_TEXT, C_PANEL);
-         when 3 => drawText (x + 90, y + 76, "ipc", C_TEXT, C_PANEL);
-         when 4 => drawText (x + 90, y + 76, "streams", C_TEXT, C_PANEL);
-         when others => drawText (x + 90, y + 76, "launch", C_TEXT, C_PANEL);
+      if driver = 0 then
+         return "process";
+      end if;
+      return driverName (driver) & ".svc";
+   end processName;
+
+   function processProfile (id : Natural) return String is
+      driver : constant Natural := driverForRow (id);
+   begin
+      case driver is
+         when 4  => return "process authority";
+         when 6  => return "filesystem authority";
+         when 9  => return "audio authority";
+         when 13 => return "stream collector";
+         when 15 => return "session authority";
+         when 16 => return "display owner";
+         when 17 => return "device driver";
+         when others => return "registered service";
       end case;
-      drawText (x + 14, y + 104, "keys", C_MUTED, C_PANEL);
-      drawText (x + 14, y + 128, "Tab / 1-6 switch", C_TEXT, C_PANEL);
-      drawText (x + 14, y + 152, "Q or Esc exits", C_TEXT, C_PANEL);
-      drawText (x + 14, y + 196, "next", C_MUTED, C_PANEL);
-      drawText (x + 14, y + 220, "input routing", C_TEXT, C_PANEL);
-      drawText (x + 14, y + 244, "live cap tables", C_TEXT, C_PANEL);
-      drawText (x + 14, y + 268, "desktop.svc", C_TEXT, C_PANEL);
-   end drawSidePanel;
+   end processProfile;
 
-   procedure drawProcesses
-      (x, y, w : Natural)
+   function inspectCap
+      (pid : Unsigned_64;
+       slot : Natural;
+       cap : out Cap_Info) return Boolean
    is
+      ret : Unsigned_64;
    begin
-      drawCard (x, y, w, 190, "Processes");
-      drawRow (x + 14, y + 40, w - 28,
-               "PID", "STATE", "NAME", "AUTHORITY", C_PANEL_2);
-      drawRow (x + 14, y + 68, w - 28,
-               "1", "READY", "procmgr.svc", "spawn / mint", C_PANEL);
-      drawRow (x + 14, y + 96, w - 28,
-               "2", "READY", "filesystem.svc", "@nvme / @ata", C_PANEL_2);
-      drawRow (x + 14, y + 124, w - 28,
-               "3", "READY", "shell.app", "fb / procmgr", C_PANEL);
-      drawRow (x + 14, y + 152, w - 28,
-               "?", "RUNNING", "security-center", "framebuffer", C_PANEL_2);
+      cap := (others => 0);
+      ret := syscall
+        (SYSCALL_INSPECT_CAP,
+         pid,
+         Unsigned_64 (slot),
+         addrToU64 (cap'Address));
+      return ret = 1;
+   end inspectCap;
 
-      drawCard (x, y + 208, w, 150, "Capability Actions");
-      drawText (x + 18, y + 252,
-                "Open file -> mint scoped file capability",
-                C_TEXT, C_PANEL);
-      drawText (x + 18, y + 280,
-                "Disable network -> revoke or withhold @net",
-                C_TEXT, C_PANEL);
-      drawText (x + 18, y + 308,
-                "Launch app -> choose authority profile first",
-                C_TEXT, C_PANEL);
-   end drawProcesses;
-
-   procedure drawServices
-      (x, y, w : Natural)
-   is
-      rowY : Natural := y + 40;
-      pid  : Unsigned_64;
+   procedure refreshCapCache (pid : Unsigned_64) is
+      cap : Cap_Info;
    begin
-      drawCard (x, y, w, 360, "Registered Services");
-      drawRow (x + 14, rowY, w - 28,
-               "ID", "PID", "ROLE", "STATUS", C_PANEL_2);
-      rowY := rowY + 28;
-
-      for id in 1 .. 14 loop
-         pid := getInfo (SYSINFO_REGISTERED_DRIVER, Unsigned_64 (id));
-         if pid /= 0 then
-            declare
-               rowBg : constant Unsigned_32 :=
-                  (if (id mod 2) = 0 then C_PANEL else C_PANEL_2);
-            begin
-               fillRect (x + 14, rowY, w - 28, 24, rowBg);
-               drawUnsigned (x + 24, rowY + 4, Unsigned_64 (id), C_TEXT,
-                             rowBg);
-               drawUnsigned (x + 96, rowY + 4, pid, C_MUTED, rowBg);
-               case id is
-                  when 1  => drawText (x + 198, rowY + 4, "keyboard", C_TEXT, rowBg);
-                  when 2  => drawText (x + 198, rowY + 4, "ata", C_TEXT, rowBg);
-                  when 3  => drawText (x + 198, rowY + 4, "netstack", C_TEXT, rowBg);
-                  when 4  => drawText (x + 198, rowY + 4, "procmgr", C_TEXT, rowBg);
-                  when 5  => drawText (x + 198, rowY + 4, "nvme", C_TEXT, rowBg);
-                  when 6  => drawText (x + 198, rowY + 4, "filesystem", C_TEXT, rowBg);
-                  when 7  => drawText (x + 198, rowY + 4, "devmgr", C_TEXT, rowBg);
-                  when 8  => drawText (x + 198, rowY + 4, "hda", C_TEXT, rowBg);
-                  when 9  => drawText (x + 198, rowY + 4, "mixer", C_TEXT, rowBg);
-                  when 10 => drawText (x + 198, rowY + 4, "mouse", C_TEXT, rowBg);
-                  when 11 => drawText (x + 198, rowY + 4, "config", C_TEXT, rowBg);
-                  when 12 => drawText (x + 198, rowY + 4, "netmgr", C_TEXT, rowBg);
-                  when 13 => drawText (x + 198, rowY + 4, "logstore", C_TEXT, rowBg);
-                  when others => drawText (x + 198, rowY + 4, "test", C_TEXT, rowBg);
-               end case;
-               drawText (x + 344, rowY + 4, "registered", C_GOOD, rowBg);
-            end;
-            rowY := rowY + 28;
-         end if;
-      end loop;
-   end drawServices;
-
-   procedure drawPlaceholder
-      (x, y, w : Natural; title, text : String; color : Unsigned_32)
-   is
-   begin
-      drawCard (x, y, w, 230, title);
-      drawText (x + 18, y + 54, text, C_TEXT, C_PANEL);
-      drawText (x + 18, y + 86,
-                "This view is intentionally protocol-shaped before the",
-                C_MUTED, C_PANEL);
-      drawText (x + 18, y + 110,
-                "compositor exists. The backend can land behind it.",
-                C_MUTED, C_PANEL);
-      fillRect (x + 18, y + 154, 180, 28, color);
-      drawText (x + 30, y + 160, "planned backend", C_TEXT, color);
-   end drawPlaceholder;
-
-   procedure paintChrome is
-      margin : constant Natural := layoutMargin;
-      top    : constant Natural := layoutTop;
-   begin
-      fillRect (0, 0, fbWidth, fbHeight, C_BG);
-
-      drawText (margin, top, "CuBit Security Center", C_TEXT, C_BG);
-      drawText (margin, top + 22,
-                "direct framebuffer prototype / future desktop client",
-                C_MUTED, C_BG);
-
-      drawPill (fbWidth - 300, top, 118, "IPC ASYNC", C_GOOD);
-      drawPill (fbWidth - 170, top, 126, "CAPABILITY", C_ACCENT);
-   end paintChrome;
-
-   procedure paintTabs is
-      margin : constant Natural := layoutMargin;
-      top    : constant Natural := layoutTop;
-      tabArea : constant Rect := (x => margin,
-                                  y => top + 56,
-                                  w => 650,
-                                  h => 34);
-   begin
-      fillRect (tabArea, C_BG);
-      drawTab (margin, top + 56, 104, "Processes", activeTab = 0);
-      drawTab (margin + 112, top + 56, 92, "Services", activeTab = 1);
-      drawTab (margin + 212, top + 56, 116, "Caps", activeTab = 2);
-      drawTab (margin + 336, top + 56, 76, "IPC", activeTab = 3);
-      drawTab (margin + 420, top + 56, 100, "Streams", activeTab = 4);
-      drawTab (margin + 528, top + 56, 108, "Launch", activeTab = 5);
-   end paintTabs;
-
-   procedure paintSidePanel is
-      margin : constant Natural := layoutMargin;
-      bodyY  : constant Natural := layoutBodyY;
-      panel  : constant Rect := (x => margin,
-                                 y => bodyY,
-                                 w => layoutLeftW,
-                                 h => fbHeight - bodyY - margin);
-   begin
-      fillRect (panel, C_BG);
-      drawSidePanel (panel.x, panel.y, panel.w, panel.h);
-   end paintSidePanel;
-
-   procedure paintMetrics is
-      mainX  : constant Natural := layoutMainX;
-      mainW  : constant Natural := layoutMainW;
-      bodyY  : constant Natural := layoutBodyY;
-      area   : constant Rect := (x => mainX,
-                                 y => bodyY,
-                                 w => mainW,
-                                 h => 112);
-   begin
-      fillRect (area, C_BG);
-      drawCard (mainX, bodyY, mainW, 112, "System Snapshot");
-      drawMetricUnsigned (mainX + 18,  bodyY + 38, "CPUs",
-                          getInfo (SYSINFO_NUM_CPUS), C_GOOD);
-      drawMetricUnsigned (mainX + 184, bodyY + 38, "Services",
-                          serviceCount, C_ACCENT);
-      drawMetricUnsigned (mainX + 350, bodyY + 38, "Mem Free",
-                          memMiB (getInfo (SYSINFO_MEM_FREE)), C_WARN);
-      drawText (mainX + 418, bodyY + 72, "MiB", C_WARN, C_PANEL_2);
-      drawMetricUnsigned (mainX + 516, bodyY + 38, "Mem Total",
-                          memMiB (getInfo (SYSINFO_MEM_TOTAL)), C_PURPLE);
-      drawText (mainX + 584, bodyY + 72, "MiB", C_PURPLE, C_PANEL_2);
-   end paintMetrics;
-
-   procedure paintContent is
-      margin : constant Natural := layoutMargin;
-      mainX  : constant Natural := layoutMainX;
-      mainW  : constant Natural := layoutMainW;
-      bodyY  : constant Natural := layoutBodyY;
-      area   : constant Rect := (x => mainX,
-                                 y => bodyY + 130,
-                                 w => mainW,
-                                 h => fbHeight - (bodyY + 130) - margin);
-   begin
-      fillRect (area, C_BG);
-      case activeTab is
-         when 0 =>
-            drawProcesses (mainX, bodyY + 130, mainW);
-         when 1 =>
-            drawServices (mainX, bodyY + 130, mainW);
-         when 2 =>
-            drawPlaceholder (mainX, bodyY + 130, mainW, "Capabilities",
-                             "Per-process cap tables will land here.",
-                             C_ACCENT);
-         when 3 =>
-            drawPlaceholder (mainX, bodyY + 130, mainW, "IPC",
-                             "Recent sends, completions, and blocked waits.",
-                             C_GOOD);
-         when 4 =>
-            drawPlaceholder (mainX, bodyY + 130, mainW, "Streams",
-                             "Subscribe to stdout, logs, metrics, health.",
-                             C_PURPLE);
-         when others =>
-            drawPlaceholder (mainX, bodyY + 130, mainW, "Launcher",
-                             "Spawn apps with selected authority profiles.",
-                             C_WARN);
-      end case;
-   end paintContent;
-
-   procedure paintDirty is
-   begin
-      if dirty.chrome then
-         paintChrome;
-         dirty.chrome := False;
-         dirty.tabs := True;
-         dirty.side := True;
-         dirty.metrics := True;
-         dirty.content := True;
-      end if;
-
-      if dirty.tabs then
-         paintTabs;
-         dirty.tabs := False;
-      end if;
-
-      if dirty.side then
-         paintSidePanel;
-         dirty.side := False;
-      end if;
-
-      if dirty.metrics then
-         paintMetrics;
-         dirty.metrics := False;
-      end if;
-
-      if dirty.content then
-         paintContent;
-         dirty.content := False;
-      end if;
-   end paintDirty;
-
-   procedure handleKey (raw : Unsigned_8; running : in out Boolean) is
-      release : constant Boolean := (raw and 16#80#) /= 0;
-      code    : constant Unsigned_8 := raw and 16#7F#;
-   begin
-      if release then
+      if capCacheValid and then capCachePID = pid then
          return;
       end if;
 
-      case code is
-         when 16#01# => -- Esc
+      capCache := (others => (others => 0));
+      capCachePID := pid;
+      capCacheCount := 0;
+
+      if pid /= 0 then
+         for slot in 0 .. MAX_CAP_SLOT loop
+            if inspectCap (pid, slot, cap) then
+               capCache (slot) := cap;
+               if cap.capType /= CAP_NULL then
+                  capCacheCount := capCacheCount + 1;
+               end if;
+            end if;
+         end loop;
+      end if;
+
+      capCacheValid := True;
+   end refreshCapCache;
+
+   function rightsText (rights : Unsigned_64) return String is
+      result : String (1 .. 5) := "-----";
+   begin
+      if (rights and 1) /= 0 then
+         result (1) := 'R';
+      end if;
+      if (rights and 2) /= 0 then
+         result (2) := 'W';
+      end if;
+      if (rights and 4) /= 0 then
+         result (3) := 'X';
+      end if;
+      if (rights and 8) /= 0 then
+         result (4) := 'G';
+      end if;
+      if (rights and 16) /= 0 then
+         result (5) := 'V';
+      end if;
+      return result;
+   end rightsText;
+
+   function capTypeName (capType : Unsigned_64) return String is
+   begin
+      case capType is
+         when CAP_ENDPOINT     => return "endpoint";
+         when CAP_NOTIFICATION => return "notify";
+         when CAP_MEMORY       => return "memory";
+         when CAP_IOPORT       => return "ioport";
+         when CAP_IRQ          => return "irq";
+         when CAP_PROCESS      => return "process";
+         when CAP_DEVICE_MEM   => return "device mem";
+         when CAP_REPLY        => return "reply";
+         when CAP_RESOURCE     => return "resource";
+         when others           => return "null";
+      end case;
+   end capTypeName;
+
+   function driverForPID (pid : Unsigned_64) return Natural is
+   begin
+      for id in 1 .. MAX_DRIVER_ID loop
+         if getInfo (SYSINFO_REGISTERED_DRIVER, Unsigned_64 (id)) = pid then
+            return id;
+         end if;
+      end loop;
+      return 0;
+   end driverForPID;
+
+   function capObjectName (cap : Cap_Info) return String is
+      driver : Natural;
+   begin
+      if cap.capType = CAP_ENDPOINT then
+         driver := driverForPID (cap.ref);
+         if driver /= 0 then
+            return driverName (driver) & ".svc";
+         end if;
+         return "pid endpoint";
+      elsif cap.capType = CAP_NOTIFICATION then
+         if cap.ref <= Unsigned_64 (MAX_DRIVER_ID) then
+            return driverName (Natural (cap.ref)) & " event";
+         end if;
+         return "notification";
+      elsif cap.capType = CAP_PROCESS then
+         if cap.ref = 0 then
+            return "all processes";
+         end if;
+         return "process";
+      elsif cap.capType = CAP_IOPORT then
+         return "i/o port";
+      elsif cap.capType = CAP_DEVICE_MEM then
+         return "device memory";
+      elsif cap.capType = CAP_RESOURCE then
+         return "resource budget";
+      end if;
+      return "object";
+   end capObjectName;
+
+   function hasCap
+      (pid : Unsigned_64;
+       capType : Unsigned_64;
+       ref : Unsigned_64 := Unsigned_64'Last) return Boolean
+   is
+   begin
+      refreshCapCache (pid);
+      for slot in 0 .. MAX_CAP_SLOT loop
+         if capCache (slot).capType = capType and then
+            (ref = Unsigned_64'Last or else capCache (slot).ref = ref)
+         then
+            return True;
+         end if;
+      end loop;
+      return False;
+   end hasCap;
+
+   function hasEndpointToDriver
+      (pid : Unsigned_64;
+       driver : Unsigned_64) return Boolean
+   is
+      target : constant Unsigned_64 :=
+        getInfo (SYSINFO_REGISTERED_DRIVER, driver);
+   begin
+      return target /= 0 and then hasCap (pid, CAP_ENDPOINT, target);
+   end hasEndpointToDriver;
+
+   function capCount (pid : Unsigned_64) return Natural is
+   begin
+      refreshCapCache (pid);
+      return capCacheCount;
+   end capCount;
+
+   function capForRow
+      (pid : Unsigned_64;
+       row : Natural;
+       cap : out Cap_Info;
+       slotOut : out Natural) return Boolean
+   is
+      seen : Natural := 0;
+   begin
+      refreshCapCache (pid);
+      for slot in 0 .. MAX_CAP_SLOT loop
+         if capCache (slot).capType /= CAP_NULL then
+            seen := seen + 1;
+            if seen = row then
+               cap := capCache (slot);
+               slotOut := slot;
+               return True;
+            end if;
+         end if;
+      end loop;
+      cap := (others => 0);
+      slotOut := 0;
+      return False;
+   end capForRow;
+
+   function capSlotLabel (id : Natural) return String is
+      cap : Cap_Info;
+      slot : Natural;
+   begin
+      if capForRow (pidForRow (selectedProcess), id, cap, slot) then
+         return "slot" & Natural'Image (slot);
+      end if;
+      return "-";
+   end capSlotLabel;
+
+   function streamName (id : Natural) return String is
+   begin
+      case id is
+         when 1 => return "stdin";
+         when 2 => return "stdout";
+         when 3 => return "stderr";
+         when 4 => return "log";
+         when others => return "stream";
+      end case;
+   end streamName;
+
+   function grantPath (id : Natural) return String is
+      cap : Cap_Info;
+      slot : Natural;
+   begin
+      if capForRow (pidForRow (selectedProcess), id, cap, slot) then
+         if cap.capType = CAP_ENDPOINT and then
+            cap.ref = getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_FS)
+         then
+            return "filesystem endpoint";
+         end if;
+         return capObjectName (cap);
+      end if;
+      return "none";
+   end grantPath;
+
+   function grantRights (id : Natural) return String is
+      cap : Cap_Info;
+      slot : Natural;
+   begin
+      if capForRow (pidForRow (selectedProcess), id, cap, slot) then
+         return rightsText (cap.rights);
+      end if;
+      return "none";
+   end grantRights;
+
+   function grantSource (id : Natural) return String is
+      cap : Cap_Info;
+      slot : Natural;
+   begin
+      if capForRow (pidForRow (selectedProcess), id, cap, slot) then
+         return capSlotLabel (id) & " " & capTypeName (cap.capType);
+      end if;
+      return "no capability";
+   end grantSource;
+
+   function computeLayout (width, height : Natural) return Dashboard_Layout is
+      ret : Dashboard_Layout;
+      frame : CuBit.UI.Layout.Dock_Frame;
+      inspector : CuBit.UI.Rect;
+      inspectorFrame : CuBit.UI.Layout.Dock_Frame;
+      rootW : Natural := width;
+      rootH : Natural := height;
+      sidebarW : Natural := 180;
+   begin
+      --  Security Center is the first real resize client, so keep the model
+      --  intentionally plain: a docked outer frame, a left object browser,
+      --  and a right inspector whose tabs choose the current view.
+      if rootW < initialW then
+         rootW := initialW;
+      end if;
+      if rootH < initialH then
+         rootH := initialH;
+      end if;
+      ret.root := (x => 14, y => 14, w => rootW - 28, h => rootH - 28);
+      frame := CuBit.UI.Layout.Begin_Dock (ret.root);
+      ret.header := CuBit.UI.Layout.Dock_Top (frame, 60);
+      ret.status := CuBit.UI.Layout.Dock_Bottom (frame, 24);
+      ret.page := CuBit.UI.Layout.Inset
+        (CuBit.UI.Layout.Fill (frame), 0, 12, 0, 10);
+
+      if ret.page.w > 720 then
+         sidebarW := 200;
+      end if;
+      ret.sidebar :=
+        (x => ret.page.x, y => ret.page.y, w => sidebarW, h => ret.page.h);
+      inspector :=
+        (x => ret.sidebar.x + ret.sidebar.w + 12,
+         y => ret.page.y,
+         w => ret.page.w - ret.sidebar.w - 12,
+         h => ret.page.h);
+      inspectorFrame := CuBit.UI.Layout.Begin_Dock (inspector);
+      ret.tabs := CuBit.UI.Layout.Dock_Top (inspectorFrame, 32);
+      ret.content := CuBit.UI.Layout.Inset
+        (CuBit.UI.Layout.Fill (inspectorFrame), 0, 10, 0, 0);
+      ret.refresh :=
+        (x => ret.header.x + ret.header.w - 226,
+         y => ret.header.y + 16, w => 96, h => 30);
+      ret.lockdown :=
+        (x => ret.header.x + ret.header.w - 120,
+         y => ret.header.y + 16, w => 106, h => 30);
+      return ret;
+   end computeLayout;
+
+   layout : Dashboard_Layout := computeLayout (initialW, initialH);
+
+   procedure drawText
+      (c : CuBit.UI.Canvas;
+       r : CuBit.UI.Rect;
+       text : String;
+       muted : Boolean := False)
+   is
+   begin
+      CuBit.UI.Labels.Label (c, r, CuBit.UI.Classic, text, muted);
+   end drawText;
+
+   procedure drawConnector
+      (c : CuBit.UI.Canvas;
+       fromX, fromY, toX, toY : Natural;
+       color : CuBit.UI.Color)
+   is
+      x1 : Natural := fromX;
+      x2 : Natural := toX;
+      y1 : Natural := fromY;
+      y2 : Natural := toY;
+   begin
+      if x2 < x1 then
+         x1 := toX;
+         x2 := fromX;
+      end if;
+      if y2 < y1 then
+         y1 := toY;
+         y2 := fromY;
+      end if;
+
+      if x2 > x1 then
+         CuBit.UI.Fill_Rect
+           (c, (x => x1, y => fromY, w => x2 - x1 + 1, h => 2), color);
+      end if;
+      if y2 > y1 then
+         CuBit.UI.Fill_Rect
+           (c, (x => toX, y => y1, w => 2, h => y2 - y1 + 1), color);
+      end if;
+   end drawConnector;
+
+   procedure requestSelectedStreams is
+      pid : constant Unsigned_64 := pidForRow (selectedProcess);
+      msg : Message := NULL_MESSAGE;
+      ok  : Boolean;
+   begin
+      selectedStreamMask := 0;
+      selectedStreamCount := 0;
+      streamQueryPending := False;
+
+      if pid = 0 or else pid > 255 then
+         return;
+      end if;
+
+      msg.tag := (label => OP_STREAM_LIST,
+                  length => 0,
+                  flags => 0,
+                  badge => 0);
+      ok := submit (ProcessID (pid), msg, STREAM_LIST_TOKEN);
+      streamQueryPending := ok;
+   end requestSelectedStreams;
+
+   procedure pollStreamQuery is
+      comp : CompletionEntry;
+      ret  : Unsigned_64;
+   begin
+      ret := Poll_Completion (comp'Address);
+      if ret = 1 and then comp.token = STREAM_LIST_TOKEN then
+         streamQueryPending := False;
+         if comp.status = COMPLETION_OK and then
+            comp.msg.tag.label = REPLY_OK
+         then
+            selectedStreamMask := comp.msg.words (0);
+            selectedStreamCount := comp.msg.words (1);
+         end if;
+      end if;
+   end pollStreamQuery;
+
+   procedure scrollByWheel
+      (value : in out Natural;
+       maxValue : Natural;
+       wheelDelta : Integer)
+   is
+   begin
+      if wheelDelta > 0 then
+         if value = 0 then
+            return;
+         end if;
+         value := value - 1;
+      elsif wheelDelta < 0 then
+         value := Natural'Min (value + 1, maxValue);
+      end if;
+   end scrollByWheel;
+
+   procedure drawStreamBadges
+      (c : CuBit.UI.Canvas;
+       bounds : CuBit.UI.Rect;
+       mask : Unsigned_64)
+   is
+      x : Natural := bounds.x;
+      y : constant Natural := bounds.y;
+      r : CuBit.UI.Rect;
+   begin
+      for bit in 1 .. 7 loop
+         if (mask and Shift_Left (Unsigned_64'(1), bit)) /= 0 then
+            r := (x => x, y => y, w => 74, h => 26);
+            CuBit.UI.Widgets.Badge
+              (c, r, CuBit.UI.Classic, streamName (bit),
+               CuBit.UI.Widgets.Badge_Good);
+            x := x + 82;
+         end if;
+      end loop;
+      if mask = 0 then
+         drawText (c, bounds, "No active streams reported", True);
+      end if;
+   end drawStreamBadges;
+
+   procedure drawAuthorityMap
+      (c : CuBit.UI.Canvas;
+       bounds : CuBit.UI.Rect)
+   is
+      colors : constant CuBit.UI.Theme := CuBit.UI.Classic;
+      pid : constant Unsigned_64 := pidForRow (selectedProcess);
+      totalCaps : constant Natural := capCount (pid);
+      content : CuBit.UI.Rect;
+      app : CuBit.UI.Rect;
+      centerX : Natural;
+      centerH : Natural := 54;
+      cap : Cap_Info;
+      slot : Natural;
+      node : CuBit.UI.Rect;
+      nodeY : Natural;
+      nodeW : Natural := 150;
+      rowsPerSide : Natural := 3;
+      visibleCaps : Natural;
+      more : CuBit.UI.Rect;
+
+      function nodeLabel (info : Cap_Info) return String is
+      begin
+         if info.capType = CAP_ENDPOINT or else
+            info.capType = CAP_NOTIFICATION
+         then
+            return capObjectName (info);
+         else
+            return capTypeName (info.capType);
+         end if;
+      end nodeLabel;
+   begin
+      CuBit.UI.Widgets.Group_Box
+        (c, bounds, colors, "Effective authority map", content, 10);
+
+      if content.h < 190 then
+         centerH := 46;
+      end if;
+      centerX := content.x + content.w / 2;
+      if content.w < 520 then
+         nodeW := 124;
+      end if;
+      if content.h > 230 then
+         rowsPerSide := 4;
+      end if;
+      visibleCaps := Natural'Min (rowsPerSide * 2, totalCaps);
+
+      app :=
+        (x => centerX - 82, y => content.y + content.h / 2 - centerH / 2,
+         w => 164, h => centerH);
+
+      CuBit.UI.Fill_Rect (c, app, colors.accent);
+      CuBit.UI.Stroke_Rect (c, app, colors.edge, colors.shadow);
+      CuBit.UI.Draw_UI_Text
+        (c, app.x + 10, app.y + 8, processName (selectedProcess),
+         colors.text, colors.accent);
+      CuBit.UI.Draw_UI_Text
+        (c, app.x + 10, app.y + 28, processProfile (selectedProcess),
+         colors.text, colors.accent);
+
+      if visibleCaps = 0 then
+         CuBit.UI.Widgets.Badge
+           (c, (x => centerX - 74, y => app.y + app.h + 18,
+                w => 148, h => 28),
+            colors, "no live caps", CuBit.UI.Widgets.Badge_Neutral);
+         return;
+      end if;
+
+      for id in 1 .. visibleCaps loop
+         if capForRow (pid, id, cap, slot) then
+            if id <= rowsPerSide then
+               nodeY := content.y + 18 + (id - 1) * 44;
+               node := (x => content.x + 8, y => nodeY, w => nodeW, h => 34);
+               drawConnector
+                 (c, app.x, app.y + app.h / 2,
+                  node.x + node.w, node.y + node.h / 2,
+                  colors.shadow);
+            else
+               nodeY := content.y + 18 + (id - rowsPerSide - 1) * 44;
+               node := (x => content.x + content.w - nodeW - 8,
+                        y => nodeY, w => nodeW, h => 34);
+               drawConnector
+                 (c, app.x + app.w, app.y + app.h / 2,
+                  node.x, node.y + node.h / 2,
+                  colors.shadow);
+            end if;
+
+            CuBit.UI.Widgets.Badge
+              (c, node, colors, nodeLabel (cap),
+               (if cap.capType = CAP_ENDPOINT or else
+                   cap.capType = CAP_NOTIFICATION
+                then CuBit.UI.Widgets.Badge_Good
+                else CuBit.UI.Widgets.Badge_Neutral));
+         end if;
+      end loop;
+
+      if totalCaps > visibleCaps then
+         more :=
+           (x => centerX - 64, y => content.y + content.h - 34,
+            w => 128, h => 28);
+         CuBit.UI.Widgets.Badge
+           (c, more, colors,
+            "+" & Natural'Image (totalCaps - visibleCaps) & " more",
+            CuBit.UI.Widgets.Badge_Neutral);
+      end if;
+   end drawAuthorityMap;
+
+   procedure drawNavigator
+      (c : CuBit.UI.Canvas)
+   is
+      colors : constant CuBit.UI.Theme := CuBit.UI.Classic;
+      content : CuBit.UI.Rect;
+      parent : CuBit.UI.Layout.Container;
+      listArea : CuBit.UI.Rect;
+      scrollBar : CuBit.UI.Rect;
+      row : CuBit.UI.Rect;
+      rowY : Natural;
+      rowIndex : Natural := 0;
+      visibleRows : Natural := 0;
+      totalRows : constant Natural := processCount;
+      maxScroll : Natural := 0;
+      result : CuBit.UI.Widget_Result;
+      scrollResult : CuBit.UI.Widget_Result;
+      dummySelection : Natural := 0;
+      rowId : constant CuBit.UI.Controls.Control_ID := CONTROL_ROW_1;
+   begin
+      CuBit.UI.Widgets.Group_Box
+        (c, layout.sidebar, colors, "System", content, 8);
+      scrollBar :=
+        (x => content.x + content.w - 14, y => content.y + 28,
+         w => 14, h => content.h - 28);
+      listArea :=
+        (x => content.x, y => content.y, w => content.w - 18,
+         h => content.h);
+      parent := CuBit.UI.Layout.Root (listArea);
+
+      row := CuBit.UI.Layout.Resolve
+        (parent, (x => 0, y => 0, w => listArea.w, h => 24));
+      CuBit.UI.Trees.Tree_Item
+        (c, ui, controls, rowId, row, layout.sidebar, colors,
+         "Processes", 0, dummySelection,
+         depth => 0, expanded => True, hasChildren => True,
+         result => result);
+
+      rowY := 28;
+      if listArea.h > rowY + 24 then
+         visibleRows := (listArea.h - rowY) / 24;
+      end if;
+      if totalRows > visibleRows then
+         maxScroll := totalRows - visibleRows;
+      end if;
+      if navigatorScroll > maxScroll then
+         navigatorScroll := maxScroll;
+      end if;
+
+      for driver in 1 .. MAX_DRIVER_ID loop
+         if getInfo (SYSINFO_REGISTERED_DRIVER, Unsigned_64 (driver)) /= 0 then
+            rowIndex := rowIndex + 1;
+            if rowIndex > navigatorScroll and then
+               rowIndex <= navigatorScroll + visibleRows
+            then
+               row := CuBit.UI.Layout.Resolve
+                 (parent, (x => 0, y => rowY, w => listArea.w, h => 24));
+               CuBit.UI.Trees.Tree_Item
+                 (c, ui, controls, rowId + rowIndex, row, layout.sidebar, colors,
+                  driverName (driver) & ".svc", rowIndex, selectedProcess,
+                  depth => 1, expanded => False, hasChildren => False,
+                  result => result);
+               rowY := rowY + 24;
+            end if;
+         end if;
+      end loop;
+
+      if rowIndex = 0 then
+         selectedProcess := 1;
+      elsif selectedProcess > rowIndex then
+         selectedProcess := rowIndex;
+      end if;
+
+      if maxScroll > 0 then
+         CuBit.UI.Widgets.Vertical_Scrollbar
+           (c, ui, controls, CONTROL_NAV_SCROLL,
+            scrollBar, layout.sidebar, colors,
+            0, maxScroll, navigatorScroll, scrollResult);
+      end if;
+   end drawNavigator;
+
+   procedure drawOverview
+      (c : CuBit.UI.Canvas)
+   is
+      colors : constant CuBit.UI.Theme := CuBit.UI.Classic;
+      parent : constant CuBit.UI.Layout.Container :=
+         CuBit.UI.Layout.Root (layout.content);
+      card : CuBit.UI.Rect;
+      content : CuBit.UI.Rect;
+      result : CuBit.UI.Widget_Result;
+      metricW : constant Natural := (layout.content.w - 24) / 4;
+      mapH : Natural := layout.content.h - 140;
+   begin
+      if mapH < 210 then
+         mapH := 210;
+      end if;
+      CuBit.UI.Widgets.Metric_Card
+        (c, CuBit.UI.Layout.Resolve
+              (parent, (x => 0, y => 0, w => metricW, h => 50)),
+         colors, "CPUs", Natural (getInfo (SYSINFO_NUM_CPUS)));
+      CuBit.UI.Widgets.Metric_Card
+        (c, CuBit.UI.Layout.Resolve
+              (parent, (x => metricW + 8, y => 0, w => metricW, h => 50)),
+         colors, "Services", Natural (serviceCount));
+      CuBit.UI.Widgets.Metric_Card
+        (c, CuBit.UI.Layout.Resolve
+              (parent, (x => (metricW + 8) * 2, y => 0, w => metricW, h => 50)),
+         colors, "Free MiB", Natural (memMiB (getInfo (SYSINFO_MEM_FREE))));
+      CuBit.UI.Widgets.Metric_Card
+        (c, CuBit.UI.Layout.Resolve
+              (parent, (x => (metricW + 8) * 3, y => 0, w => metricW, h => 50)),
+         colors, "Total MiB", Natural (memMiB (getInfo (SYSINFO_MEM_TOTAL))));
+
+      card := CuBit.UI.Layout.Resolve
+        (parent, (x => 0, y => 62, w => layout.content.w, h => mapH));
+      drawAuthorityMap (c, card);
+
+      card := CuBit.UI.Layout.Resolve
+        (parent, (x => 0, y => 74 + mapH, w => layout.content.w, h => 66));
+      CuBit.UI.Widgets.Group_Box (c, card, colors, "Recommended actions",
+                                  content, 10);
+      drawText
+        (c, (x => content.x, y => content.y, w => content.w, h => 18),
+         "Inspect effective authority, not only manifest intent.");
+      drawText
+        (c, (x => content.x, y => content.y + 26, w => content.w, h => 18),
+         "Filesystem, network, secrets, surfaces, and realtime are explicit grants.",
+         True);
+      CuBit.UI.Widgets.Button
+        (c, ui, controls, CONTROL_REFRESH,
+         (x => content.x + content.w - 112, y => content.y + 24, w => 104, h => 30),
+         card, colors, "Refresh", result);
+      if result.activated then
+         refreshCount := refreshCount + 1;
+         capCacheValid := False;
+      end if;
+   end drawOverview;
+
+   procedure drawFilesystem
+      (c : CuBit.UI.Canvas)
+   is
+      colors : constant CuBit.UI.Theme := CuBit.UI.Classic;
+      pid : constant Unsigned_64 := pidForRow (selectedProcess);
+      fsPID : constant Unsigned_64 :=
+        getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_FS);
+      fsEndpoint : constant Boolean := hasEndpointToDriver (pid, DRIVER_FS);
+      totalCaps : constant Natural := capCount (pid);
+      parent : constant CuBit.UI.Layout.Container :=
+         CuBit.UI.Layout.Root (layout.content);
+      table : constant CuBit.UI.Rect :=
+         CuBit.UI.Layout.Resolve
+           (parent, (x => 0, y => 0, w => layout.content.w, h => 200));
+      row : CuBit.UI.Rect;
+      result : CuBit.UI.Widget_Result;
+      rowY : Natural;
+      rowId : CuBit.UI.Controls.Control_ID := CONTROL_GRANT_1;
+      detail : CuBit.UI.Rect;
+      content : CuBit.UI.Rect;
+   begin
+      if totalCaps = 0 then
+         selectedGrant := 1;
+      elsif selectedGrant > totalCaps then
+         selectedGrant := totalCaps;
+      end if;
+
+      CuBit.UI.Widgets.Panel (c, table, colors, row, 8);
+      CuBit.UI.Draw_Table_Header
+        (c, (x => row.x, y => row.y, w => row.w, h => 22),
+         colors, "Object", "Rights", "Capability");
+      rowY := row.y + 22;
+      for id in 1 .. Natural'Min (6, totalCaps) loop
+         CuBit.UI.Tables.Row
+           (c, ui, controls, rowId,
+            (x => row.x, y => rowY, w => row.w, h => 24),
+            table, colors,
+            grantPath (id),
+            grantRights (id),
+            grantSource (id),
+            id,
+            selectedGrant,
+            result);
+         rowY := rowY + 24;
+         rowId := rowId + 1;
+      end loop;
+
+      detail := CuBit.UI.Layout.Resolve
+        (parent, (x => 0, y => 220, w => layout.content.w, h => 132));
+      CuBit.UI.Widgets.Group_Box
+        (c, detail, colors, "Filesystem authority", content, 10);
+      CuBit.UI.Widgets.Key_Value
+        (c, (x => content.x, y => content.y, w => content.w, h => 22),
+         colors, "Filesystem endpoint",
+         (if fsEndpoint then "present" else "absent"));
+      CuBit.UI.Widgets.Key_Value
+        (c, (x => content.x, y => content.y + 28, w => content.w, h => 22),
+         colors, "Filesystem service PID", Unsigned_64'Image (fsPID));
+      CuBit.UI.Widgets.Key_Value
+        (c, (x => content.x, y => content.y + 56, w => content.w, h => 22),
+         colors, "Selected cap", grantSource (selectedGrant), True);
+      drawText
+        (c, (x => content.x, y => content.y + 88, w => content.w, h => 18),
+         "Path-level file grants are not kernel-visible yet; this view now shows the real endpoint authority.",
+         True);
+   end drawFilesystem;
+
+   procedure drawCapabilities
+      (c : CuBit.UI.Canvas)
+   is
+      colors : constant CuBit.UI.Theme := CuBit.UI.Classic;
+      pid : constant Unsigned_64 := pidForRow (selectedProcess);
+      totalCaps : constant Natural := capCount (pid);
+      parent : constant CuBit.UI.Layout.Container :=
+         CuBit.UI.Layout.Root (layout.content);
+      table : constant CuBit.UI.Rect :=
+         CuBit.UI.Layout.Resolve
+           (parent, (x => 0, y => 0, w => layout.content.w, h => 232));
+      row : CuBit.UI.Rect;
+      result : CuBit.UI.Widget_Result;
+      rowY : Natural;
+      rowId : CuBit.UI.Controls.Control_ID := CONTROL_GRANT_1 + 16;
+      notes : CuBit.UI.Rect;
+      content : CuBit.UI.Rect;
+   begin
+      if totalCaps = 0 then
+         selectedGrant := 1;
+      elsif selectedGrant > totalCaps then
+         selectedGrant := totalCaps;
+      end if;
+
+      CuBit.UI.Widgets.Panel (c, table, colors, row, 8);
+      CuBit.UI.Draw_Table_Header
+        (c, (x => row.x, y => row.y, w => row.w, h => 22),
+         colors, "Slot", "Rights", "Object");
+      rowY := row.y + 22;
+      for id in 1 .. Natural'Min (8, totalCaps) loop
+         CuBit.UI.Tables.Row
+           (c, ui, controls, rowId,
+            (x => row.x, y => rowY, w => row.w, h => 24),
+            table, colors,
+            capSlotLabel (id),
+            grantRights (id),
+            grantPath (id),
+            id,
+            selectedGrant,
+            result);
+         rowY := rowY + 24;
+         rowId := rowId + 1;
+      end loop;
+
+      notes := CuBit.UI.Layout.Resolve
+        (parent, (x => 0, y => 250, w => layout.content.w, h => 122));
+      CuBit.UI.Widgets.Group_Box
+        (c, notes, colors, "Selected capability", content, 10);
+      CuBit.UI.Widgets.Key_Value
+        (c, (x => content.x, y => content.y, w => content.w, h => 22),
+         colors, "Slot", capSlotLabel (selectedGrant));
+      CuBit.UI.Widgets.Key_Value
+        (c, (x => content.x, y => content.y + 28, w => content.w, h => 22),
+         colors, "Object", grantPath (selectedGrant));
+      CuBit.UI.Widgets.Key_Value
+        (c, (x => content.x, y => content.y + 56, w => content.w, h => 22),
+         colors, "Type", grantSource (selectedGrant), True);
+      drawText
+        (c, (x => content.x, y => content.y + 88, w => content.w, h => 18),
+         "Live kernel slot inspection; manifest/session lineage can layer on top of this later.",
+         True);
+   end drawCapabilities;
+
+   procedure drawIPC
+      (c : CuBit.UI.Canvas)
+   is
+      colors : constant CuBit.UI.Theme := CuBit.UI.Classic;
+      content : CuBit.UI.Rect;
+      left : CuBit.UI.Rect;
+      right : CuBit.UI.Rect;
+      midY : Natural;
+   begin
+      CuBit.UI.Widgets.Group_Box
+        (c, layout.content, colors, "IPC and surface flow", content, 10);
+      left := (x => content.x + 10, y => content.y + 34, w => 164, h => 42);
+      right := (x => content.x + content.w - 184, y => content.y + 34,
+                w => 164, h => 42);
+      midY := left.y + 20;
+      CuBit.UI.Fill_Rect (c, left, colors.face);
+      CuBit.UI.Stroke_Rect (c, left, colors.edge, colors.shadow);
+      CuBit.UI.Draw_UI_Text
+        (c, left.x + 8, left.y + 12, processName (selectedProcess),
+         colors.text, colors.face);
+      CuBit.UI.Fill_Rect (c, right, colors.face);
+      CuBit.UI.Stroke_Rect (c, right, colors.edge, colors.shadow);
+      CuBit.UI.Draw_UI_Text
+        (c, right.x + 8, right.y + 12, "desktop.svc",
+         colors.text, colors.face);
+      drawConnector
+        (c, left.x + left.w, midY, right.x, midY, colors.accent);
+      drawText
+        (c, (x => content.x + 190, y => midY - 20, w => 180, h => 18),
+         "surface + input");
+      drawText
+        (c, (x => content.x + 10, y => content.y + 110, w => content.w, h => 18),
+         "Next backend: recent sends, completions, blocked waits, and capability-carrying messages.",
+         True);
+   end drawIPC;
+
+   procedure drawStreams
+      (c : CuBit.UI.Canvas)
+   is
+      colors : constant CuBit.UI.Theme := CuBit.UI.Classic;
+      content : CuBit.UI.Rect;
+   begin
+      CuBit.UI.Widgets.Group_Box
+        (c, layout.content, colors, "Streams for selected process",
+         content, 10);
+      drawText
+        (c, (x => content.x, y => content.y, w => content.w, h => 18),
+         processName (selectedProcess) & " exposes live stream routes.");
+      drawText
+        (c, (x => content.x, y => content.y + 26, w => content.w, h => 18),
+         "Refresh asks the selected process for OP_STREAM_LIST.", True);
+      if streamQueryPending then
+         drawText
+           (c, (x => content.x, y => content.y + 64,
+                w => content.w, h => 18),
+            "Waiting for stream reply...", True);
+      else
+         drawStreamBadges
+           (c, (x => content.x, y => content.y + 64,
+                w => content.w, h => 28),
+            selectedStreamMask);
+      end if;
+      drawText
+        (c, (x => content.x, y => content.y + 112, w => content.w, h => 18),
+         "Next: route audit/log/metrics streams to files, apps, or network endpoints.",
+         True);
+      CuBit.UI.Draw_Natural_Value
+        (c, (x => content.x, y => content.y + 144, w => 80, h => 18),
+         colors, Natural (selectedStreamCount));
+   end drawStreams;
+
+   procedure drawPlaceholder
+      (c : CuBit.UI.Canvas;
+       title, message : String)
+   is
+      colors : constant CuBit.UI.Theme := CuBit.UI.Classic;
+      content : CuBit.UI.Rect;
+   begin
+      CuBit.UI.Widgets.Group_Box
+        (c, layout.content, colors, title, content, 12);
+      drawText
+        (c, (x => content.x, y => content.y, w => content.w, h => 18),
+         message);
+      drawText
+        (c, (x => content.x, y => content.y + 30, w => content.w, h => 18),
+         "The front-end surface exists now; the live backend can land behind it.",
+         True);
+   end drawPlaceholder;
+
+   procedure render
+      (win : in out CuBit.UI.App.Window; damage : CuBit.UI.Rect)
+   is
+      colors : constant CuBit.UI.Theme := CuBit.UI.Classic;
+      c : constant CuBit.UI.Canvas := CuBit.UI.App.Canvas (win, damage);
+      page : CuBit.UI.Rect;
+      tabChanged : Boolean;
+      buttonResult : CuBit.UI.Widget_Result;
+   begin
+      layout := computeLayout (CuBit.UI.App.Width (win),
+                               CuBit.UI.App.Height (win));
+      pollStreamQuery;
+      CuBit.UI.Controls.Clear (controls);
+      CuBit.UI.State.Begin_Frame (ui);
+      CuBit.UI.State.Enter_Scope (ui);
+
+      CuBit.UI.Fill_Rect (c, CuBit.UI.App.Full_Rect (win), colors.desktop);
+      CuBit.UI.Fill_Rect (c, layout.root, colors.panel);
+      CuBit.UI.Stroke_Rect (c, layout.root, colors.edge, colors.shadow);
+
+      drawText
+        (c, (x => layout.header.x + 8, y => layout.header.y + 8,
+             w => 300, h => 20),
+         "CuBit Security Center");
+      drawText
+        (c, (x => layout.header.x + 8, y => layout.header.y + 34,
+             w => 420, h => 18),
+         "Capability-aware system control surface", True);
+
+      CuBit.UI.Widgets.Button
+        (c, ui, controls, CONTROL_REFRESH,
+         layout.refresh, layout.header, colors, "Refresh", buttonResult);
+      if buttonResult.activated then
+         refreshCount := refreshCount + 1;
+         capCacheValid := False;
+         requestSelectedStreams;
+      end if;
+      CuBit.UI.Widgets.Button
+        (c, ui, controls, CONTROL_LOCKDOWN,
+         layout.lockdown, layout.header, colors, "Lockdown", buttonResult);
+
+      CuBit.UI.Widgets.Tab_Panel
+        (c, ui, controls, CONTROL_TAB_BASE,
+         layout.tabs, layout.root, colors,
+         Security_Center_Form.TAB_LABELS, activeTab, page, tabChanged);
+
+      drawNavigator (c);
+      case activeTab is
+         when 1 => drawOverview (c);
+         when 2 => drawFilesystem (c);
+         when 3 => drawCapabilities (c);
+         when 4 => drawIPC (c);
+         when 5 => drawStreams (c);
+         when others => drawPlaceholder
+            (c, "Launch",
+             "Spawn applications with visible authority profiles.");
+      end case;
+
+      CuBit.UI.Draw_Status_Bar
+        (c, layout.status, colors,
+         "Ready. Tab switches views. Esc/Q exits.",
+         (if refreshCount = 0 then "draft"
+          else "refreshed"));
+
+      CuBit.UI.State.Exit_Scope (ui);
+      CuBit.UI.State.Finish_Frame (ui);
+   end render;
+
+   procedure handleEvent
+      (win : in out CuBit.UI.App.Window;
+       ev : CuBit.UI.App.Input_Event;
+       dirty : in out CuBit.UI.Rect;
+       running : in out Boolean)
+   is
+      x : Natural;
+      y : Natural;
+      down : Boolean;
+      hit : CuBit.UI.Controls.Control_ID;
+      wheelDelta : Integer;
+      visibleRows : Natural := 0;
+      maxScroll : Natural := 0;
+   begin
+      if ev.kind = CuBit.UI.App.INPUT_KEY_DOWN then
+         if ev.payload0 = CuBit.UI.App.KEY_ESC or else
+            ev.payload0 = CuBit.UI.App.KEY_Q
+         then
             running := False;
-         when 16#10# => -- Q
-            running := False;
-         when 16#0F# => -- Tab
-            if activeTab = 5 then
-               activeTab := 0;
+         elsif ev.payload0 = 16#0F# then
+            if activeTab >= Security_Center_Form.TAB_LABELS'Length then
+               activeTab := 1;
             else
                activeTab := activeTab + 1;
             end if;
-            invalidateView;
-         when 16#02# => activeTab := 0; invalidateView; -- 1
-         when 16#03# => activeTab := 1; invalidateView; -- 2
-         when 16#04# => activeTab := 2; invalidateView; -- 3
-         when 16#05# => activeTab := 3; invalidateView; -- 4
-         when 16#06# => activeTab := 4; invalidateView; -- 5
-         when 16#07# => activeTab := 5; invalidateView; -- 6
-         when others =>
-            null;
-      end case;
-   end handleKey;
+            dirty := CuBit.UI.App.Full_Rect (win);
+         end if;
+      elsif ev.kind = CuBit.UI.App.INPUT_CONFIGURE then
+         dirty := CuBit.UI.App.Full_Rect (win);
+      elsif ev.kind = Unsigned_64 (OP_STREAM_AVAILABLE) then
+         if ev.payload0 = pidForRow (selectedProcess) then
+            selectedStreamMask := ev.payload1;
+            selectedStreamCount := 0;
+            for bit in 0 .. 63 loop
+               if (selectedStreamMask and Shift_Left (Unsigned_64'(1), bit))
+                  /= 0
+               then
+                  selectedStreamCount := selectedStreamCount + 1;
+               end if;
+            end loop;
+            streamQueryPending := False;
+            dirty := CuBit.UI.App.Full_Rect (win);
+         end if;
+      elsif ev.kind = CuBit.UI.App.INPUT_POINTER_MOVE then
+         x := unpackLo32 (ev.payload0);
+         y := unpackHi32 (ev.payload0);
+         down := (ev.payload1 and 1) /= 0;
+         CuBit.UI.State.Set_Pointer (ui, x, y, down);
+         dirty := CuBit.UI.App.Full_Rect (win);
+      elsif ev.kind = CuBit.UI.App.INPUT_POINTER_WHEEL then
+         x := unpackLo32 (ev.payload0);
+         y := unpackHi32 (ev.payload0);
+         wheelDelta := unpackSignedLo32 (ev.payload1);
+         hit := CuBit.UI.Controls.Hit (controls, x, y);
+         if CuBit.UI.Point_In_Rect (x, y, layout.sidebar) or else
+            hit = CONTROL_NAV_SCROLL
+         then
+            if layout.sidebar.h > 80 then
+               visibleRows := (layout.sidebar.h - 80) / 24;
+            end if;
+            if processCount > visibleRows then
+               maxScroll := processCount - visibleRows;
+            end if;
+            scrollByWheel (navigatorScroll, maxScroll, wheelDelta);
+            dirty := CuBit.UI.Union_Rect (dirty, layout.sidebar);
+         end if;
+      elsif ev.kind = CuBit.UI.App.INPUT_POINTER_DOWN then
+         x := unpackLo32 (ev.payload0);
+         y := unpackHi32 (ev.payload0);
+         CuBit.UI.State.Set_Pointer (ui, x, y, True, pressed => True);
+         dirty := CuBit.UI.App.Full_Rect (win);
+      elsif ev.kind = CuBit.UI.App.INPUT_POINTER_UP then
+         x := unpackLo32 (ev.payload0);
+         y := unpackHi32 (ev.payload0);
+         hit := CuBit.UI.Controls.Hit (controls, x, y);
+         if hit >= CONTROL_TAB_BASE and then
+            hit < CONTROL_TAB_BASE + Security_Center_Form.TAB_LABELS'Length
+         then
+            activeTab := hit - CONTROL_TAB_BASE + 1;
+         end if;
+         CuBit.UI.State.Set_Pointer (ui, x, y, False, released => True);
+         dirty := CuBit.UI.App.Full_Rect (win);
+      end if;
+   end handleEvent;
 
-   ret : Unsigned_64;
-   eventMsg : Message;
-   running : Boolean := True;
-   idleTicks : Natural := 0;
+   procedure runUI is new CuBit.UI.App.Run
+      (Render       => render,
+       Handle_Event => handleEvent);
+
 begin
    debugPrint ("security-center: starting" & LF);
 
-   ret := syscall (SYSCALL_MAPFB);
-   if ret = Unsigned_64'Last then
-      debugPrint ("security-center: MAPFB failed" & LF);
-      ret := syscall (SYSCALL_EXIT, 1);
-      return;
-   end if;
+   declare
+      ok : Boolean;
+      flags : constant Unsigned_64 :=
+         CuBit.UI.App.WINDOW_FLAG_DECORATED or
+         CuBit.UI.App.WINDOW_FLAG_RESIZABLE or
+         CuBit.UI.App.WINDOW_FLAG_MINIMIZABLE or
+         CuBit.UI.App.WINDOW_FLAG_MAXIMIZABLE or
+         CuBit.UI.App.WINDOW_FLAG_CLOSEABLE;
+   begin
+      CuBit.UI.App.Open (win, initialW, initialH, flags, ok);
+      if not ok then
+         debugPrint ("security-center: window open failed" & LF);
+         ignore := syscall (SYSCALL_EXIT, 1);
+         return;
+      end if;
+   end;
 
-   fbAddr   := To_Address (Integer_Address (ret));
-   fbWidth  := Natural (getInfo (SYSINFO_FB_WIDTH));
-   fbHeight := Natural (getInfo (SYSINFO_FB_HEIGHT));
-   fbPitch  := Natural (getInfo (SYSINFO_FB_PITCH));
-   fbBpp    := Natural (getInfo (SYSINFO_FB_BPP));
+   runUI (win);
 
-   if fbWidth < 640 or else fbHeight < 360 or else fbBpp /= 32 then
-      debugPrint ("security-center: unsupported framebuffer" & LF);
-      ret := syscall (SYSCALL_EXIT, 1);
-      return;
-   end if;
-
-   ret := registerDriver (DRIVER_KEYBOARD);
-   debugPrint ("" & LF);
-
-   debugPrint ("security-center: frame drawn" & LF);
-   invalidateAll;
-
-   while running loop
-      paintDirty;
-
-      foundPoll : declare
-         found : constant Boolean := Poll_Event (eventMsg);
-      begin
-         if found and then eventMsg.tag.label = EVENT_KEYBOARD then
-            handleKey (Unsigned_8 (eventMsg.words (0) and 16#FF#), running);
-         elsif syscall (SYSCALL_SLEEP, 10) = Unsigned_64'Last then
-            null;
-         else
-            idleTicks := idleTicks + 1;
-            if idleTicks >= 100 then
-               idleTicks := 0;
-               dirty.metrics := True;
-            end if;
-         end if;
-      end foundPoll;
-   end loop;
-
-   fillRect (0, 0, fbWidth, fbHeight, C_BG);
-   if syscall (SYSCALL_EXIT, 0) = Unsigned_64'Last then
-      null;
-   end if;
+   CuBit.UI.App.Close (win);
+   ignore := syscall (SYSCALL_EXIT, 0);
 end main;

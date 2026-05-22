@@ -350,6 +350,10 @@ package body Syscall is
                 Admin.handleProclist (
                     percpu.currentPID, arg0, arg1, retval);
 
+            when SYSCALL_INSPECT_CAP =>
+                Admin.handleInspectCap (
+                    percpu.currentPID, arg0, arg1, arg2, retval);
+
             when SYSCALL_MINT_CAP =>
                 Admin.handleMintCap (
                     percpu.currentPID,

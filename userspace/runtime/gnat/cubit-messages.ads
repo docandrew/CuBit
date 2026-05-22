@@ -74,6 +74,7 @@ package CuBit.Messages is
    SYSCALL_SET_LATENCY_CONTRACT : constant Unsigned_64 := 81;
    SYSCALL_TRACE_RESET     : constant Unsigned_64 := 82;
    SYSCALL_TRACE_SUMMARY   : constant Unsigned_64 := 83;
+   SYSCALL_INSPECT_CAP     : constant Unsigned_64 := 84;
 
    SYSCALL_REGISTER_DRIVER : constant Unsigned_64 := 2000;
 

@@ -844,6 +844,85 @@ package body Syscall.Admin is
     end handleProclist;
 
     ---------------------------------------------------------------------------
+    -- handleInspectCap
+    ---------------------------------------------------------------------------
+    procedure handleInspectCap (callerPID  : Process.ProcessID;
+                                arg0, arg1, arg2 : Unsigned_64;
+                                retval     : out Unsigned_64) with
+        SPARK_Mode => Off
+    is
+        use type Capabilities.CapabilityType;
+        use type Process.ProcessState;
+
+        targetPID : Process.ProcessID;
+        slot      : Capabilities.CapabilitySlot;
+        cap       : Capabilities.Capability;
+        outAddr   : constant System.Address := Util.numToAddr (arg2);
+        typeVal   : Unsigned_64 with Import, Address => outAddr;
+        rightsVal : Unsigned_64 with Import, Address => outAddr + 8;
+        badgeVal  : Unsigned_64 with Import, Address => outAddr + 16;
+        refVal    : Unsigned_64 with Import, Address => outAddr + 24;
+        paramVal  : Unsigned_64 with Import, Address => outAddr + 32;
+        genVal    : Unsigned_64 with Import, Address => outAddr + 40;
+        rights    : Unsigned_64 := 0;
+    begin
+        if arg0 > Unsigned_64 (Process.ProcessID'Last) or else
+           arg0 = 0 or else
+           arg1 > Unsigned_64 (Capabilities.CapabilitySlot'Last) or else
+           arg2 = 0
+        then
+            retval := reterr;
+            return;
+        end if;
+
+        targetPID := Process.ProcessID (arg0);
+        slot := Capabilities.CapabilitySlot (arg1);
+
+        if Process.proctab(targetPID).state = Process.INVALID then
+            retval := reterr;
+            return;
+        elsif not hasCapProcessFor (callerPID, targetPID,
+                                    Capabilities.RIGHT_READ)
+        then
+            Process.IPC.notifySupervisor (
+                callerPID,
+                IPC_Labels.EVENT_CAP_FAULT,
+                SYSCALL_INSPECT_CAP,
+                arg0, arg1);
+            retval := reterr;
+            return;
+        end if;
+
+        cap := Process.proctab(targetPID).caps(slot);
+        if cap.rights(Capabilities.RIGHT_READ) then
+            rights := rights or 1;
+        end if;
+        if cap.rights(Capabilities.RIGHT_WRITE) then
+            rights := rights or 2;
+        end if;
+        if cap.rights(Capabilities.RIGHT_EXECUTE) then
+            rights := rights or 4;
+        end if;
+        if cap.rights(Capabilities.RIGHT_GRANT) then
+            rights := rights or 8;
+        end if;
+        if cap.rights(Capabilities.RIGHT_REVOKE) then
+            rights := rights or 16;
+        end if;
+
+        x86.stac;
+        typeVal := Unsigned_64 (Capabilities.CapabilityType'Pos (cap.capType));
+        rightsVal := rights;
+        badgeVal := cap.capBadge;
+        refVal := cap.object.ref;
+        paramVal := cap.object.param;
+        genVal := Unsigned_64 (cap.gen);
+        x86.clac;
+
+        retval := 1;
+    end handleInspectCap;
+
+    ---------------------------------------------------------------------------
     -- handleMintCap
     ---------------------------------------------------------------------------
     procedure handleMintCap (callerPID : Process.ProcessID;

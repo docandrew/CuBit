@@ -325,7 +325,7 @@ DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/sleep.ap
 # staging target so run-desktop can build/copy them into isodir first, then
 # rebuild the ext2 disk image from those freshly staged files.
 .PHONY : desktop-session-content
-desktop-session-content: virtio-gpu desktop display desktop-shell ui-lab doom
+desktop-session-content: virtio-gpu desktop display desktop-shell ui-lab security-center doom
 
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.conf, shell.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
@@ -499,12 +499,14 @@ run-desktop-fast:
 	-debugfs -w -R "rm display.svc" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm desktop-shell.app" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm ui-lab.app" desktop_disk.img >/dev/null 2>&1
+	-debugfs -w -R "rm security-center.app" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm doom.elf" desktop_disk.img >/dev/null 2>&1
 	debugfs -w -R "write ../tests/headless/init-desktop-session.conf init.conf" desktop_disk.img
 	debugfs -w -R "write isodir/boot/desktop.svc desktop.svc" desktop_disk.img
 	debugfs -w -R "write isodir/boot/display.svc display.svc" desktop_disk.img
 	debugfs -w -R "write isodir/boot/desktop-shell.app desktop-shell.app" desktop_disk.img
 	debugfs -w -R "write isodir/boot/ui-lab.app ui-lab.app" desktop_disk.img
+	debugfs -w -R "write isodir/boot/security-center.app security-center.app" desktop_disk.img
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" desktop_disk.img
 	qemu-system-x86_64 \
 		-machine q35 \

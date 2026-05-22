@@ -81,8 +81,93 @@ package body CuBit.UI.Widgets is
             padding,
             padding + CuBit.UI.UI_Text_Height,
             padding,
-            padding);
+           padding);
    end Group_Box;
+
+   procedure Badge
+      (c : CuBit.UI.Canvas;
+       bounds : CuBit.UI.Rect;
+       colors : CuBit.UI.Theme;
+       label : String;
+       style : Badge_Style := Badge_Neutral)
+   is
+      fill : CuBit.UI.Color := colors.face;
+      fg   : CuBit.UI.Color := colors.text;
+      textY : Natural := bounds.y;
+   begin
+      if CuBit.UI.Is_Empty (bounds) then
+         return;
+      end if;
+
+      case style is
+         when Badge_Neutral =>
+            fill := colors.panel;
+            fg := colors.text;
+         when Badge_Good =>
+            fill := 16#CFE8D8#;
+            fg := colors.good;
+         when Badge_Danger =>
+            fill := 16#F2C9C4#;
+            fg := colors.danger;
+      end case;
+
+      if bounds.h > CuBit.UI.UI_Text_Height then
+         textY := bounds.y + (bounds.h - CuBit.UI.UI_Text_Height) / 2;
+      end if;
+
+      CuBit.UI.Fill_Rect (c, bounds, fill);
+      CuBit.UI.Stroke_Rect (c, bounds, colors.edge, colors.shadow);
+      CuBit.UI.Draw_UI_Text (c, bounds.x + 6, textY, label, fg, fill);
+   end Badge;
+
+   procedure Key_Value
+      (c : CuBit.UI.Canvas;
+       bounds : CuBit.UI.Rect;
+       colors : CuBit.UI.Theme;
+       key : String;
+       value : String;
+       mutedValue : Boolean := False)
+   is
+      keyW : constant Natural := Natural'Min (96, bounds.w / 2);
+      valueX : constant Natural := bounds.x + keyW + 8;
+      fgValue : constant CuBit.UI.Color :=
+         (if mutedValue then colors.muted else colors.text);
+      y : Natural := bounds.y;
+   begin
+      if CuBit.UI.Is_Empty (bounds) then
+         return;
+      end if;
+
+      if bounds.h > CuBit.UI.UI_Text_Height then
+         y := bounds.y + (bounds.h - CuBit.UI.UI_Text_Height) / 2;
+      end if;
+
+      CuBit.UI.Draw_UI_Text (c, bounds.x, y, key, colors.muted, colors.face);
+      if valueX < bounds.x + bounds.w then
+         CuBit.UI.Draw_UI_Text
+           (c, valueX, y, value, fgValue, colors.face);
+      end if;
+   end Key_Value;
+
+   procedure Metric_Card
+      (c : CuBit.UI.Canvas;
+       bounds : CuBit.UI.Rect;
+       colors : CuBit.UI.Theme;
+       title : String;
+       value : Natural)
+   is
+      content : CuBit.UI.Rect;
+   begin
+      Panel (c, bounds, colors, content, DEFAULT_PADDING);
+      Label
+        (c, (x => content.x, y => content.y,
+             w => content.w, h => CuBit.UI.UI_Text_Height),
+         colors, title, muted => True);
+      CuBit.UI.Draw_Natural_Value
+        (c, (x => content.x, y => content.y + 24,
+             w => content.w, h => CuBit.UI.UI_Text_Height),
+         colors, value);
+   end Metric_Card;
 
    procedure Split_Pane
       (c : CuBit.UI.Canvas;
@@ -434,6 +519,7 @@ package body CuBit.UI.Widgets is
        labels : Tab_Title_List;
        selectedIndex : in out Natural;
        page : out CuBit.UI.Rect;
+       changed : out Boolean;
        stripHeight : Natural := 30)
    is
       padding : constant Natural := 24;
@@ -450,6 +536,7 @@ package body CuBit.UI.Widgets is
       tabBounds : CuBit.UI.Rect;
       tabW : Natural;
    begin
+      changed := False;
       if labels'Length = 0 then
          selectedIndex := 0;
       elsif selectedIndex = 0 or else selectedIndex > labels'Length then
@@ -478,7 +565,10 @@ package body CuBit.UI.Widgets is
             CuBit.UI.Controls.Add (controls, id, tabBounds, damage);
             result := CuBit.UI.State.Button (st, tabBounds);
             if result.activated then
-               selectedIndex := index;
+               if selectedIndex /= index then
+                  selectedIndex := index;
+                  changed := True;
+               end if;
             end if;
             CuBit.UI.Draw_Tab
               (c, tabBounds, colors, selectedIndex = index,

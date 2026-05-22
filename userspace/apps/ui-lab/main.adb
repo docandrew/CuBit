@@ -448,6 +448,7 @@ procedure main is
       tableRow : CuBit.UI.Widget_Result;
       treeItem : CuBit.UI.Widget_Result;
       page : CuBit.UI.Rect;
+      tabChanged : Boolean;
       dataLeft : CuBit.UI.Rect;
       dataRight : CuBit.UI.Rect;
       streamContent : CuBit.UI.Rect;
@@ -498,7 +499,7 @@ procedure main is
       CuBit.UI.Widgets.Tab_Panel
         (c, ui, controls, CONTROL_TAB_BASE,
          layout.content, tabDamage, colors,
-         UI_Lab_Form.TAB_LABELS, activeTab, page);
+         UI_Lab_Form.TAB_LABELS, activeTab, page, tabChanged);
 
       if activeTab = 1 then
          drawLabel (c, layout.buttonLabel.x, layout.buttonLabel.y, "Button");
@@ -950,6 +951,12 @@ procedure main is
             when others =>
                null;
          end case;
+         if newHover >= CONTROL_TAB_BASE and then
+            newHover < CONTROL_TAB_BASE + UI_Lab_Form.TAB_LABELS'Length
+         then
+            activeTab := newHover - CONTROL_TAB_BASE + 1;
+            dirty := CuBit.UI.Union_Rect (dirty, tabDamage);
+         end if;
          ensureSelectedVisible;
          CuBit.UI.State.Set_Pointer
            (ui, newX, newY, False, released => True);
