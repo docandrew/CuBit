@@ -52,6 +52,18 @@ package CuBit.UI is
       good    => 16#95E6CB#,
       danger  => 16#F28779#);
 
+   Classic : constant Theme :=
+     (desktop => 16#4E6F82#,
+      panel   => 16#D6D3CE#,
+      face    => 16#E8E6DF#,
+      edge    => 16#FFFFFF#,
+      shadow  => 16#6F6B63#,
+      text    => 16#111111#,
+      muted   => 16#555555#,
+      accent  => 16#2B63B7#,
+      good    => 16#1E7F4F#,
+      danger  => 16#B3261E#);
+
    type Button_Style is (Button_Normal, Button_Hot, Button_Pressed,
                          Button_Disabled, Button_Active);
 
@@ -75,6 +87,7 @@ package CuBit.UI is
    function Union_Rect (a, b : Rect) return Rect;
    function Inflate_Rect (r : Rect; amount : Natural) return Rect;
    function Clamp_Rect (c : Canvas; r : Rect) return Rect;
+   function With_Clip (c : Canvas; clip : Rect) return Canvas;
 
    procedure Set_Pixel (c : Canvas; x, y : Natural; fill : Color);
    procedure Fill_Rect (c : Canvas; r : Rect; fill : Color);
@@ -93,6 +106,27 @@ package CuBit.UI is
    procedure Draw_Button
       (c : Canvas; r : Rect; colors : Theme; style : Button_Style;
        label : String);
+   procedure Draw_Menu_Bar
+      (c : Canvas; r : Rect; colors : Theme);
+   procedure Draw_Menu_Title
+      (c : Canvas; r : Rect; colors : Theme;
+       hot : Boolean; active : Boolean; label : String);
+   procedure Draw_Status_Bar
+      (c : Canvas; r : Rect; colors : Theme; left, right : String);
+   procedure Draw_Pane
+      (c : Canvas; r : Rect; colors : Theme; title : String);
+   procedure Draw_Table_Header
+      (c : Canvas; r : Rect; colors : Theme; c1, c2, c3 : String);
+   procedure Draw_Table_Row
+      (c : Canvas; r : Rect; colors : Theme;
+       selected : Boolean; hot : Boolean;
+       c1, c2, c3 : String);
+   procedure Draw_Tab_Strip
+      (c : Canvas; r : Rect; colors : Theme);
+   procedure Draw_Tab
+      (c : Canvas; r : Rect; colors : Theme;
+       selected : Boolean; hot : Boolean; active : Boolean;
+       label : String);
    procedure Draw_Natural_Value
       (c : Canvas; r : Rect; colors : Theme; value : Natural);
    procedure Draw_Progress_Bar
@@ -104,10 +138,29 @@ package CuBit.UI is
    procedure Draw_Text_Field
       (c : Canvas; r : Rect; colors : Theme; text : String;
        focused : Boolean; hot : Boolean);
+   procedure Draw_Text_Edit_Field
+      (c : Canvas; r : Rect; colors : Theme; text : String;
+       cursor, selectionStart, selectionEnd : Natural;
+       focused : Boolean; hot : Boolean);
    procedure Draw_Checkbox
       (c : Canvas; r : Rect; colors : Theme;
        checked : Boolean; hot : Boolean; active : Boolean);
+   procedure Draw_Radio_Button
+      (c : Canvas; r : Rect; colors : Theme;
+       selected : Boolean; hot : Boolean; active : Boolean;
+       label : String);
+   procedure Draw_List_Item
+      (c : Canvas; r : Rect; colors : Theme;
+       selected : Boolean; hot : Boolean; label : String);
+   procedure Draw_Menu_Item
+      (c : Canvas; r : Rect; colors : Theme;
+       hot : Boolean; active : Boolean; enabled : Boolean;
+       label : String);
    procedure Draw_Horizontal_Slider
+      (c : Canvas; r : Rect; colors : Theme;
+       minValue, maxValue, value : Natural;
+       hot : Boolean; active : Boolean);
+   procedure Draw_Vertical_Scrollbar
       (c : Canvas; r : Rect; colors : Theme;
        minValue, maxValue, value : Natural;
        hot : Boolean; active : Boolean);

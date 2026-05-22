@@ -77,6 +77,7 @@ procedure main is
    INPUT_POINTER_DOWN : constant Unsigned_64 := 4;
    INPUT_POINTER_UP   : constant Unsigned_64 := 5;
    INPUT_TEXT      : constant Unsigned_64 := 6;
+   INPUT_POINTER_WHEEL : constant Unsigned_64 := 7;
    INPUT_CONFIGURE : constant Unsigned_64 := 8;
 
    KEYMOD_SHIFT : constant Unsigned_64 := 1;
@@ -993,6 +994,32 @@ procedure main is
          return Integer (v);
       end if;
    end signed12;
+
+   function signed8 (x : Unsigned_64) return Integer is
+      v : constant Unsigned_64 := x and 16#FF#;
+   begin
+      if (v and 16#80#) /= 0 then
+         return Integer (v) - 256;
+      else
+         return Integer (v);
+      end if;
+   end signed8;
+
+   function packI32Buttons
+      (value : Integer;
+       buttons : Unsigned_64) return Unsigned_64
+   is
+      low : Unsigned_64;
+   begin
+      if value < 0 then
+         low := 16#1_0000_0000# - Unsigned_64 (-value);
+      else
+         low := Unsigned_64 (value);
+      end if;
+
+      return (low and 16#FFFF_FFFF#) or
+             Shift_Left (buttons and 16#FFFF_FFFF#, 32);
+   end packI32Buttons;
 
    function hitSurface (x, y : Natural) return Integer is
    begin
@@ -2512,6 +2539,23 @@ procedure main is
          return;
       end if;
 
+      if kind = INPUT_POINTER_MOVE then
+         --  Pointer motion is stateful: an undelivered old coordinate is
+         --  strictly worse than the newest one for cursor/hover latency. Keep
+         --  the original serial so clients waiting after the previous event
+         --  still observe this move, but collapse bursts into one delivery.
+         for i in inputEvents'Range loop
+            if inputEvents (i).valid and then
+               inputEvents (i).target = target and then
+               inputEvents (i).kind = INPUT_POINTER_MOVE
+            then
+               inputEvents (i).payload0 := payload0;
+               inputEvents (i).payload1 := payload1;
+               return;
+            end if;
+         end loop;
+      end if;
+
       for i in inputEvents'Range loop
          if not inputEvents (i).valid and then slot < 0 then
             slot := Integer (i);
@@ -2676,6 +2720,39 @@ procedure main is
          queuePointer (kind, target, screenX, screenY, buttons);
       end if;
    end queuePointerIfClient;
+
+   procedure queuePointerWheel
+      (target : Unsigned_64;
+       screenX, screenY : Natural;
+       buttons : Unsigned_64;
+       dz : Integer)
+   is
+      idx : constant Integer := findSurface (target);
+      c   : Rect;
+      localX : Natural := 0;
+      localY : Natural := 0;
+   begin
+      if idx < 0 or else surfaces (SurfaceIndex (idx)).owner = NO_PROCESS then
+         return;
+      end if;
+
+      c := clientRect (surfaces (SurfaceIndex (idx)));
+      if not pointInRect (screenX, screenY, c) then
+         return;
+      end if;
+      if screenX >= c.x then
+         localX := screenX - c.x;
+      end if;
+      if screenY >= c.y then
+         localY := screenY - c.y;
+      end if;
+
+      enqueueInput
+        (INPUT_POINTER_WHEEL,
+         target,
+         packU32Pair (localX, localY),
+         packI32Buttons (dz, buttons));
+   end queuePointerWheel;
 
    procedure claimInput is
       r : Unsigned_64;
@@ -3699,7 +3776,8 @@ procedure main is
    procedure handleMouseMotion
       (buttons : Unsigned_64;
        dx      : Integer;
-       dy      : Integer)
+       dy      : Integer;
+       dz      : Integer)
    is
       oldCursor : constant Rect := cursorRect;
       oldBounds : Rect := (others => 0);
@@ -3715,6 +3793,7 @@ procedure main is
       clickedId : Unsigned_64;
       maxX      : Integer := 0;
       maxY      : Integer := 0;
+      wheelIdx  : Integer;
    begin
       if fbWidth > CURSOR_W then
          maxX := Integer (fbWidth - CURSOR_W);
@@ -3735,12 +3814,29 @@ procedure main is
                        cursorX,
                        cursorY,
                        buttons);
+         if dz /= 0 then
+            queuePointerWheel
+              (pointerSurfaceId, cursorX, cursorY, buttons, dz);
+         end if;
       elsif focusSurface /= 0 then
          queuePointerIfClient (INPUT_POINTER_MOVE,
                                focusSurface,
                                cursorX,
                                cursorY,
                                buttons);
+         if dz /= 0 then
+            wheelIdx := hitSurface (cursorX, cursorY);
+            if wheelIdx >= 0 then
+               queuePointerWheel
+                 (surfaces (SurfaceIndex (wheelIdx)).id,
+                  cursorX,
+                  cursorY,
+                  buttons,
+                  dz);
+            else
+               queuePointerWheel (focusSurface, cursorX, cursorY, buttons, dz);
+            end if;
+         end if;
       end if;
 
       if leftDown and then not leftWasDown then
@@ -3961,7 +4057,8 @@ procedure main is
          handleMouseMotion
            (buttons => packed and 16#FF#,
             dx      => signed12 (Shift_Right (packed, 8)),
-            dy      => signed12 (Shift_Right (packed, 20)));
+            dy      => signed12 (Shift_Right (packed, 20)),
+            dz      => signed8 (Shift_Right (packed, 32)));
       end if;
    end handleEvent;
 

@@ -24,6 +24,10 @@ package CuBit.UI.State is
 
    type UI_State is record
       pointer : CuBit.UI.Pointer_State := (others => <>);
+      frameCounter : Natural := 0;
+      lastClickFrame : Natural := 0;
+      lastClickX : Natural := 0;
+      lastClickY : Natural := 0;
 
       hotItem    : Widget_ID := NO_ITEM;
       hotScope   : Scope_ID := NO_SCOPE;
@@ -33,6 +37,12 @@ package CuBit.UI.State is
       keyboardItem : Widget_ID := NO_ITEM;
       keyboardScope : Scope_ID := NO_SCOPE;
       keyboardHeartbeat : Boolean := False;
+      textCursor : Natural := 0;
+      textSelectionStart : Natural := 0;
+      textSelectionEnd : Natural := 0;
+      textSelectionAnchor : Natural := 0;
+      textWordSelect : Boolean := False;
+      textDoubleClick : Boolean := False;
 
       currentScope : Scope_ID := NO_SCOPE;
       scopeXOffset : Natural := 0;
@@ -83,18 +93,18 @@ package CuBit.UI.State is
    procedure Clear_Keyboard_Focus (st : in out UI_State);
 
    function Text_Field
-      (st : in out UI_State; bounds : CuBit.UI.Rect)
+      (st : in out UI_State; bounds : CuBit.UI.Rect; text : String)
       return CuBit.UI.Widget_Result;
 
    function Text_Field_Key
-      (st : UI_State;
+      (st : in out UI_State;
        text : in out String;
        textLen : in out Natural;
        keyCode : Natural;
        modifiers : Natural := 0) return Boolean;
 
    function Text_Field_Text
-      (st : UI_State;
+      (st : in out UI_State;
        text : in out String;
        textLen : in out Natural;
        codepoint : Natural) return Boolean;
@@ -105,6 +115,12 @@ package CuBit.UI.State is
        checked : in out Boolean) return CuBit.UI.Widget_Result;
 
    function Horizontal_Slider
+      (st : in out UI_State;
+       bounds : CuBit.UI.Rect;
+       value : in out Natural;
+       minValue, maxValue : Natural) return CuBit.UI.Widget_Result;
+
+   function Vertical_Scrollbar
       (st : in out UI_State;
        bounds : CuBit.UI.Rect;
        value : in out Natural;

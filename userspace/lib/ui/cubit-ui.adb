@@ -102,6 +102,14 @@ package body CuBit.UI is
       return (x => minX, y => minY, w => maxX - minX, h => maxY - minY);
    end Clamp_Rect;
 
+   function With_Clip (c : Canvas; clip : Rect) return Canvas is
+      ret : Canvas := c;
+   begin
+      ret.clip := Clamp_Rect (c, clip);
+      ret.clipEnabled := True;
+      return ret;
+   end With_Clip;
+
    procedure Set_Pixel (c : Canvas; x, y : Natural; fill : Color) is
       offset : constant Storage_Offset := Storage_Offset (y * c.pitch + x * 4);
       pixel : Color with Import, Address => c.addr + offset;
@@ -362,6 +370,192 @@ package body CuBit.UI is
       Draw_UI_Text (c, tx, ty, label, fg, Button_Face (colors, style));
    end Draw_Button;
 
+   procedure Draw_Menu_Bar
+      (c : Canvas; r : Rect; colors : Theme)
+   is
+      bottom : constant Rect :=
+        (x => r.x, y => r.y + r.h - 1, w => r.w, h => 1);
+   begin
+      Fill_Rect (c, r, colors.panel);
+      if r.h > 0 then
+         Fill_Rect (c, bottom, colors.shadow);
+      end if;
+   end Draw_Menu_Bar;
+
+   procedure Draw_Menu_Title
+      (c : Canvas; r : Rect; colors : Theme;
+       hot : Boolean; active : Boolean; label : String)
+   is
+      bg : Color := colors.panel;
+      fg : Color := colors.text;
+      tx : constant Natural := r.x + 8;
+      ty : Natural := r.y;
+   begin
+      if active then
+         bg := colors.accent;
+         fg := colors.edge;
+      elsif hot then
+         bg := colors.face;
+      end if;
+
+      Fill_Rect (c, r, bg);
+      if active or else hot then
+         Stroke_Rect (c, r, colors.edge, colors.shadow);
+      end if;
+      if r.h > UI_Text_Height then
+         ty := r.y + (r.h - UI_Text_Height) / 2;
+      end if;
+      Draw_UI_Text (c, tx, ty, label, fg, bg);
+   end Draw_Menu_Title;
+
+   procedure Draw_Status_Bar
+      (c : Canvas; r : Rect; colors : Theme; left, right : String)
+   is
+      leftPane : Rect :=
+        (x => r.x + 3, y => r.y + 3,
+         w => (if r.w > 156 then r.w - 150 else r.w),
+         h => (if r.h > 6 then r.h - 6 else r.h));
+      rightPane : Rect :=
+        (x => r.x, y => r.y + 3,
+         w => 137, h => (if r.h > 6 then r.h - 6 else r.h));
+      rightX : Natural := rightPane.x + 5;
+      rightW : constant Natural := UI_Text_Width (right);
+   begin
+      Fill_Rect (c, r, colors.panel);
+      Fill_Rect (c, (x => r.x, y => r.y, w => r.w, h => 1), colors.edge);
+
+      if r.w <= 156 then
+         leftPane.w := (if r.w > 6 then r.w - 6 else r.w);
+         rightPane := (others => 0);
+      else
+         rightPane.x := r.x + r.w - 140;
+      end if;
+
+      Fill_Rect (c, leftPane, colors.face);
+      Stroke_Rect (c, leftPane, colors.shadow, colors.edge);
+      Draw_UI_Text (c, leftPane.x + 5, leftPane.y + 2,
+                    left, colors.text, colors.face);
+
+      if not Is_Empty (rightPane) then
+         Fill_Rect (c, rightPane, colors.face);
+         Stroke_Rect (c, rightPane, colors.shadow, colors.edge);
+         if rightPane.w > rightW + 10 then
+            rightX := rightPane.x + rightPane.w - rightW - 5;
+         end if;
+         Draw_UI_Text (c, rightX, rightPane.y + 2,
+                       right, colors.muted, colors.face);
+      end if;
+   end Draw_Status_Bar;
+
+   procedure Draw_Pane
+      (c : Canvas; r : Rect; colors : Theme; title : String)
+   is
+      titleW : constant Natural := UI_Text_Width (title);
+      titleRect : constant Rect :=
+        (x => r.x + 8, y => r.y, w => titleW + 8, h => UI_Text_Height);
+   begin
+      Fill_Rect (c, r, colors.face);
+      Stroke_Rect (c, r, colors.shadow, colors.edge);
+      if title'Length > 0 then
+         Fill_Rect (c, titleRect, colors.panel);
+         Draw_UI_Text (c, titleRect.x + 4, titleRect.y,
+                       title, colors.text, colors.panel);
+      end if;
+   end Draw_Pane;
+
+   procedure Draw_Table_Header
+      (c : Canvas; r : Rect; colors : Theme; c1, c2, c3 : String)
+   is
+      col1 : constant Natural := r.x + 6;
+      col2 : constant Natural := r.x + (r.w * 42) / 100;
+      col3 : constant Natural := r.x + (r.w * 70) / 100;
+      sep1 : constant Rect := (x => col2 - 5, y => r.y + 2, w => 1,
+                               h => (if r.h > 4 then r.h - 4 else r.h));
+      sep2 : constant Rect := (x => col3 - 5, y => r.y + 2, w => 1,
+                               h => (if r.h > 4 then r.h - 4 else r.h));
+   begin
+      Fill_Rect (c, r, colors.panel);
+      Stroke_Rect (c, r, colors.edge, colors.shadow);
+      Fill_Rect (c, sep1, colors.shadow);
+      Fill_Rect (c, sep2, colors.shadow);
+      Draw_UI_Text (c, col1, r.y + 3, c1, colors.text, colors.panel);
+      Draw_UI_Text (c, col2, r.y + 3, c2, colors.text, colors.panel);
+      Draw_UI_Text (c, col3, r.y + 3, c3, colors.text, colors.panel);
+   end Draw_Table_Header;
+
+   procedure Draw_Table_Row
+      (c : Canvas; r : Rect; colors : Theme;
+       selected : Boolean; hot : Boolean;
+       c1, c2, c3 : String)
+   is
+      bg : Color := colors.face;
+      fg : Color := colors.text;
+      col1 : constant Natural := r.x + 6;
+      col2 : constant Natural := r.x + (r.w * 42) / 100;
+      col3 : constant Natural := r.x + (r.w * 70) / 100;
+   begin
+      if selected then
+         bg := colors.accent;
+         fg := colors.edge;
+      elsif hot then
+         bg := colors.panel;
+      end if;
+
+      Fill_Rect (c, r, bg);
+      Fill_Rect (c, (x => r.x, y => r.y + r.h - 1, w => r.w, h => 1),
+                 colors.panel);
+      Draw_UI_Text (c, col1, r.y + 3, c1, fg, bg);
+      Draw_UI_Text (c, col2, r.y + 3, c2, fg, bg);
+      Draw_UI_Text (c, col3, r.y + 3, c3, fg, bg);
+   end Draw_Table_Row;
+
+   procedure Draw_Tab_Strip
+      (c : Canvas; r : Rect; colors : Theme)
+   is
+   begin
+      Fill_Rect (c, r, colors.panel);
+      if r.h > 0 then
+         Fill_Rect
+           (c, (x => r.x, y => r.y + r.h - 1, w => r.w, h => 1),
+            colors.shadow);
+      end if;
+   end Draw_Tab_Strip;
+
+   procedure Draw_Tab
+      (c : Canvas; r : Rect; colors : Theme;
+       selected : Boolean; hot : Boolean; active : Boolean;
+       label : String)
+   is
+      bg : Color := colors.panel;
+      fg : Color := colors.text;
+      ty : Natural := r.y;
+   begin
+      if selected then
+         bg := colors.face;
+      elsif hot then
+         bg := colors.edge;
+      end if;
+      if active then
+         bg := colors.shadow;
+         fg := colors.edge;
+      end if;
+
+      Fill_Rect (c, r, bg);
+      Stroke_Rect (c, r,
+                   (if selected then colors.edge else colors.panel),
+                   colors.shadow);
+      if r.h > UI_Text_Height then
+         ty := r.y + (r.h - UI_Text_Height) / 2;
+      end if;
+      Draw_UI_Text (c, r.x + 10, ty, label, fg, bg);
+      if selected and then r.h > 0 then
+         Fill_Rect
+           (c, (x => r.x + 1, y => r.y + r.h - 1,
+                w => (if r.w > 2 then r.w - 2 else r.w), h => 1),
+            colors.face);
+      end if;
+   end Draw_Tab;
+
    procedure Draw_Natural_Value
       (c : Canvas; r : Rect; colors : Theme; value : Natural)
    is
@@ -467,6 +661,68 @@ package body CuBit.UI is
       end if;
    end Draw_Text_Field;
 
+   procedure Draw_Text_Edit_Field
+      (c : Canvas; r : Rect; colors : Theme; text : String;
+       cursor, selectionStart, selectionEnd : Natural;
+       focused : Boolean; hot : Boolean)
+   is
+      face : Color := colors.shadow;
+      textX : Natural := r.x + 6;
+      textY : Natural := r.y;
+      cursorX : Natural := textX;
+      charW : Natural;
+      fg : Color;
+      bg : Color;
+      caret : Rect;
+   begin
+      if hot then
+         face := colors.face;
+      end if;
+
+      Fill_Rect (c, r, face);
+      Stroke_Rect (c, r,
+                   (if focused then colors.accent else colors.edge),
+                   colors.shadow);
+
+      if r.h > UI_Text_Height then
+         textY := r.y + (r.h - UI_Text_Height) / 2;
+      end if;
+
+      for i in text'Range loop
+         if focused and then
+            Natural (i - text'First) >= selectionStart and then
+            Natural (i - text'First) < selectionEnd
+         then
+            fg := face;
+            bg := colors.text;
+         else
+            fg := colors.text;
+            bg := face;
+         end if;
+
+         if cursor = Natural (i - text'First) then
+            cursorX := textX;
+         end if;
+
+         Draw_UI_Text (c, textX, textY, text (i .. i), fg, bg);
+         charW := UI_Text_Width (text (i .. i));
+         textX := textX + charW;
+      end loop;
+
+      if cursor >= text'Length then
+         cursorX := textX;
+      end if;
+
+      if focused then
+         if cursorX + 1 >= r.x + r.w then
+            cursorX := r.x + r.w - 2;
+         end if;
+         caret := (x => cursorX + 1, y => textY + 2,
+                   w => 1, h => UI_Text_Height - 4);
+         Fill_Rect (c, caret, colors.accent);
+      end if;
+   end Draw_Text_Edit_Field;
+
    procedure Draw_Checkbox
       (c : Canvas; r : Rect; colors : Theme;
        checked : Boolean; hot : Boolean; active : Boolean)
@@ -490,6 +746,76 @@ package body CuBit.UI is
          Stroke_Rect (c, mark, colors.good, colors.shadow);
       end if;
    end Draw_Checkbox;
+
+   procedure Draw_Radio_Button
+      (c : Canvas; r : Rect; colors : Theme;
+       selected : Boolean; hot : Boolean; active : Boolean;
+       label : String)
+   is
+      box : constant Rect := (x => r.x, y => r.y, w => 18, h => 18);
+      mark : constant Rect := (x => r.x + 5, y => r.y + 5, w => 8, h => 8);
+      face : Color := colors.shadow;
+   begin
+      if hot then
+         face := colors.face;
+      end if;
+      if active then
+         face := colors.edge;
+      end if;
+
+      Fill_Rect (c, box, face);
+      Stroke_Rect (c, box, colors.edge, colors.shadow);
+      if selected then
+         Fill_Rect (c, mark, colors.accent);
+      end if;
+      Draw_UI_Text (c, r.x + 28, r.y + 1, label, colors.text, colors.panel);
+   end Draw_Radio_Button;
+
+   procedure Draw_List_Item
+      (c : Canvas; r : Rect; colors : Theme;
+       selected : Boolean; hot : Boolean; label : String)
+   is
+      bg : Color := colors.panel;
+      fg : Color := colors.text;
+   begin
+      if selected then
+         bg := colors.accent;
+         fg := colors.shadow;
+      elsif hot then
+         bg := colors.face;
+      end if;
+
+      Fill_Rect (c, r, bg);
+      Draw_UI_Text (c, r.x + 6, r.y + 3, label, fg, bg);
+   end Draw_List_Item;
+
+   procedure Draw_Menu_Item
+      (c : Canvas; r : Rect; colors : Theme;
+       hot : Boolean; active : Boolean; enabled : Boolean;
+       label : String)
+   is
+      bg : Color := colors.panel;
+      fg : Color := colors.text;
+      icon : constant Rect := (x => r.x + 5, y => r.y + 4, w => 14, h => 14);
+   begin
+      if not enabled then
+         fg := colors.muted;
+      elsif active then
+         bg := colors.accent;
+         fg := colors.edge;
+      elsif hot then
+         bg := colors.face;
+      end if;
+
+      Fill_Rect (c, r, bg);
+      if enabled then
+         Fill_Rect (c, icon, colors.face);
+         Stroke_Rect (c, icon, colors.edge, colors.shadow);
+      else
+         Stroke_Rect (c, icon, colors.edge, colors.shadow);
+      end if;
+      Draw_UI_Text (c, r.x + 26, r.y + 3, label, fg, bg);
+   end Draw_Menu_Item;
 
    procedure Draw_Horizontal_Slider
       (c : Canvas; r : Rect; colors : Theme;
@@ -538,6 +864,52 @@ package body CuBit.UI is
       Fill_Rect (c, knob, colors.face);
       Stroke_Rect (c, knob, colors.edge, colors.shadow);
    end Draw_Horizontal_Slider;
+
+   procedure Draw_Vertical_Scrollbar
+      (c : Canvas; r : Rect; colors : Theme;
+       minValue, maxValue, value : Natural;
+       hot : Boolean; active : Boolean)
+   is
+      track : constant Rect := (x => r.x + 5, y => r.y + 4,
+                                w => (if r.w > 10 then r.w - 10 else 0),
+                                h => (if r.h > 8 then r.h - 8 else 0));
+      span : Natural := 1;
+      pos  : Natural := 0;
+      knobY : Natural := r.y;
+      knob : Rect;
+      knobColor : Color := colors.face;
+   begin
+      if maxValue > minValue then
+         span := maxValue - minValue;
+      end if;
+      if value > minValue then
+         pos := Natural'Min (value - minValue, span);
+      end if;
+      if not Is_Empty (track) then
+         knobY := track.y + (pos * track.h) / span;
+      end if;
+      if r.h > 18 and then knobY > r.y + r.h - 18 then
+         knobY := r.y + r.h - 18;
+      end if;
+
+      if active then
+         knobColor := colors.good;
+      elsif hot then
+         knobColor := colors.accent;
+      end if;
+
+      Fill_Rect (c, r, colors.shadow);
+      Stroke_Rect (c, r, colors.edge, colors.shadow);
+      if not Is_Empty (track) then
+         Fill_Rect (c, track, colors.panel);
+      end if;
+
+      knob := (x => r.x + 3, y => knobY,
+               w => (if r.w > 6 then r.w - 6 else r.w),
+               h => 18);
+      Fill_Rect (c, knob, knobColor);
+      Stroke_Rect (c, knob, colors.edge, colors.shadow);
+   end Draw_Vertical_Scrollbar;
 
    function Button
       (bounds : Rect; pointer : Pointer_State) return Widget_Result
