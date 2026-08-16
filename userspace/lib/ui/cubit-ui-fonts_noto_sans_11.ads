@@ -6,7 +6,7 @@
 ------------------------------------------------------------------------------
 with Interfaces;
 
-package Desktop_UI_Font is
+package CuBit.UI.Fonts_Noto_Sans_11 is
    FIRST_GLYPH : constant := 32;
    LAST_GLYPH  : constant := 126;
    GLYPH_HEIGHT : constant := 17;
@@ -1927,4 +1927,4 @@ package Desktop_UI_Font is
          16 => (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
       )
    );
-end Desktop_UI_Font;
+end CuBit.UI.Fonts_Noto_Sans_11;

@@ -809,46 +809,65 @@ procedure main is
       content : CuBit.UI.Rect;
       result : CuBit.UI.Widget_Result;
       metricW : constant Natural := (layout.content.w - 24) / 4;
-      mapH : Natural := layout.content.h - 140;
+      metricH : constant Natural := 50;
+      gap : constant Natural := 12;
+      actionsH : Natural := 82;
+      mapY : constant Natural := metricH + gap;
+      mapH : Natural := 170;
+      actionsY : Natural;
+      textW : Natural;
    begin
-      if mapH < 210 then
-         mapH := 210;
+      if layout.content.h < metricH + gap + actionsH + 150 then
+         actionsH := 72;
       end if;
+
+      if layout.content.h > metricH + gap * 2 + actionsH then
+         mapH := layout.content.h - metricH - gap * 2 - actionsH;
+      end if;
+      if mapH < 150 then
+         mapH := 150;
+      end if;
+      actionsY := mapY + mapH + gap;
+
       CuBit.UI.Widgets.Metric_Card
         (c, CuBit.UI.Layout.Resolve
-              (parent, (x => 0, y => 0, w => metricW, h => 50)),
+              (parent, (x => 0, y => 0, w => metricW, h => metricH)),
          colors, "CPUs", Natural (getInfo (SYSINFO_NUM_CPUS)));
       CuBit.UI.Widgets.Metric_Card
         (c, CuBit.UI.Layout.Resolve
-              (parent, (x => metricW + 8, y => 0, w => metricW, h => 50)),
+              (parent, (x => metricW + 8, y => 0, w => metricW, h => metricH)),
          colors, "Services", Natural (serviceCount));
       CuBit.UI.Widgets.Metric_Card
         (c, CuBit.UI.Layout.Resolve
-              (parent, (x => (metricW + 8) * 2, y => 0, w => metricW, h => 50)),
+              (parent, (x => (metricW + 8) * 2, y => 0, w => metricW, h => metricH)),
          colors, "Free MiB", Natural (memMiB (getInfo (SYSINFO_MEM_FREE))));
       CuBit.UI.Widgets.Metric_Card
         (c, CuBit.UI.Layout.Resolve
-              (parent, (x => (metricW + 8) * 3, y => 0, w => metricW, h => 50)),
+              (parent, (x => (metricW + 8) * 3, y => 0, w => metricW, h => metricH)),
          colors, "Total MiB", Natural (memMiB (getInfo (SYSINFO_MEM_TOTAL))));
 
       card := CuBit.UI.Layout.Resolve
-        (parent, (x => 0, y => 62, w => layout.content.w, h => mapH));
+        (parent, (x => 0, y => mapY, w => layout.content.w, h => mapH));
       drawAuthorityMap (c, card);
 
       card := CuBit.UI.Layout.Resolve
-        (parent, (x => 0, y => 74 + mapH, w => layout.content.w, h => 66));
+        (parent, (x => 0, y => actionsY, w => layout.content.w, h => actionsH));
       CuBit.UI.Widgets.Group_Box (c, card, colors, "Recommended actions",
                                   content, 10);
+      textW := content.w;
+      if textW > 128 then
+         textW := textW - 128;
+      end if;
       drawText
-        (c, (x => content.x, y => content.y, w => content.w, h => 18),
+        (c, (x => content.x, y => content.y, w => textW, h => 18),
          "Inspect effective authority, not only manifest intent.");
       drawText
-        (c, (x => content.x, y => content.y + 26, w => content.w, h => 18),
+        (c, (x => content.x, y => content.y + 24, w => textW, h => 18),
          "Filesystem, network, secrets, surfaces, and realtime are explicit grants.",
          True);
       CuBit.UI.Widgets.Button
         (c, ui, controls, CONTROL_REFRESH,
-         (x => content.x + content.w - 112, y => content.y + 24, w => 104, h => 30),
+         (x => content.x + content.w - 112, y => content.y + 8, w => 104, h => 30),
          card, colors, "Refresh", result);
       if result.activated then
          refreshCount := refreshCount + 1;

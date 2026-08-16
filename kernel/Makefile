@@ -528,6 +528,62 @@ run-desktop-fast:
 		-device hda-output,audiodev=snd0 \
 		-no-reboot
 
+# Interactive desktop launcher for UI inspection. This keeps the GTK window for
+# manual interaction and exposes monitor sockets so screenshots can be captured
+# from the current guest framebuffer without disturbing the session.
+QEMU_QMP ?= /tmp/cubit-qmp.sock
+QEMU_MONITOR ?= /tmp/cubit-monitor.sock
+QEMU_SCREENSHOT ?= /tmp/cubit-screen.ppm
+
+.PHONY : run-desktop-inspect
+run-desktop-inspect:
+	@test -f cubit_kernel.iso || (echo "missing cubit_kernel.iso; run make -C kernel run-desktop once first" && false)
+	@test -f nvme_disk.img || (echo "missing nvme_disk.img; run make -C kernel run-desktop once first" && false)
+	@rm -f serial_output.log net.pcap desktop_disk.img $(QEMU_QMP) $(QEMU_MONITOR) $(QEMU_SCREENSHOT)
+	cp nvme_disk.img desktop_disk.img
+	-debugfs -w -R "rm init.conf" desktop_disk.img >/dev/null 2>&1
+	-debugfs -w -R "rm desktop.svc" desktop_disk.img >/dev/null 2>&1
+	-debugfs -w -R "rm display.svc" desktop_disk.img >/dev/null 2>&1
+	-debugfs -w -R "rm desktop-shell.app" desktop_disk.img >/dev/null 2>&1
+	-debugfs -w -R "rm ui-lab.app" desktop_disk.img >/dev/null 2>&1
+	-debugfs -w -R "rm security-center.app" desktop_disk.img >/dev/null 2>&1
+	-debugfs -w -R "rm doom.elf" desktop_disk.img >/dev/null 2>&1
+	debugfs -w -R "write ../tests/headless/init-desktop-session.conf init.conf" desktop_disk.img
+	debugfs -w -R "write isodir/boot/desktop.svc desktop.svc" desktop_disk.img
+	debugfs -w -R "write isodir/boot/display.svc display.svc" desktop_disk.img
+	debugfs -w -R "write isodir/boot/desktop-shell.app desktop-shell.app" desktop_disk.img
+	debugfs -w -R "write isodir/boot/ui-lab.app ui-lab.app" desktop_disk.img
+	debugfs -w -R "write isodir/boot/security-center.app security-center.app" desktop_disk.img
+	debugfs -w -R "write isodir/boot/doom.elf doom.elf" desktop_disk.img
+	qemu-system-x86_64 \
+		-machine q35 \
+		-cpu Broadwell \
+		-smp 4 \
+		-m 128M \
+		-cdrom cubit_kernel.iso \
+		-serial file:serial_output.log \
+		-vga none \
+		-device virtio-vga,xres=1024,yres=768 \
+		-display gtk,zoom-to-fit=on \
+		-qmp unix:$(QEMU_QMP),server=on,wait=off \
+		-monitor unix:$(QEMU_MONITOR),server,nowait \
+		-drive file=desktop_disk.img,if=none,id=nvme0,format=raw \
+		-device nvme,serial=cubitnvme,drive=nvme0 \
+		-device virtio-net-pci,netdev=net0 \
+		-netdev user,id=net0 \
+		-object filter-dump,id=f0,netdev=net0,file=net.pcap \
+		-audiodev sdl,id=snd0 \
+		-device intel-hda \
+		-device hda-output,audiodev=snd0 \
+		-no-reboot
+
+.PHONY : capture-desktop
+capture-desktop:
+	@test -S $(QEMU_MONITOR) || (echo "missing QEMU monitor socket: $(QEMU_MONITOR); run make run-desktop-inspect first" && false)
+	@command -v socat >/dev/null 2>&1 || (echo "missing socat; install it or send 'screendump $(QEMU_SCREENSHOT)' to $(QEMU_MONITOR)" && false)
+	printf 'screendump $(QEMU_SCREENSHOT)\n' | socat - UNIX-CONNECT:$(QEMU_MONITOR)
+	@echo "wrote $(QEMU_SCREENSHOT)"
+
 # Experimental primary VirtIO VGA path. This is useful for debugging the
 # virtio-gpu display backend, but it is not the default run target yet because
 # this path can currently wedge QEMU hard on some hosts.

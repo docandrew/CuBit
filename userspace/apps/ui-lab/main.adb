@@ -301,22 +301,22 @@ procedure main is
         (x => ret.content.x, y => ret.content.y + ret.content.h - 16,
          w => ret.content.w, h => 16);
 
-      l := CuBit.UI.Layout.Start (ret.tabPage, 14, 12);
+      l := CuBit.UI.Layout.Start (ret.tabPage, 18, 18);
       ret.buttonLabel := CuBit.UI.Layout.Take_Remaining (l, 18);
-      CuBit.UI.Layout.New_Row (l, 2);
-      ret.actionButton := CuBit.UI.Layout.Take (l, 108, 30);
-      ret.disabledButton := CuBit.UI.Layout.Take (l, 108, 30);
-      CuBit.UI.Layout.New_Row (l, 16);
+      CuBit.UI.Layout.New_Row (l, 1);
+      ret.actionButton := CuBit.UI.Layout.Take (l, 108, 26);
+      ret.disabledButton := CuBit.UI.Layout.Take (l, 108, 26);
+      CuBit.UI.Layout.New_Row (l, 14);
       ret.controlsLabel := CuBit.UI.Layout.Take_Remaining (l, 18);
-      CuBit.UI.Layout.New_Row (l, 4);
-      ret.checkbox := CuBit.UI.Layout.Take (l, 22, 22);
-      CuBit.UI.Layout.New_Row (l, 12);
-      ret.slider := CuBit.UI.Layout.Take (l, 210, 26);
-      CuBit.UI.Layout.New_Row (l, 12);
+      CuBit.UI.Layout.New_Row (l, 6);
+      ret.checkbox := CuBit.UI.Layout.Take (l, 20, 20);
+      CuBit.UI.Layout.New_Row (l, 14);
+      ret.slider := CuBit.UI.Layout.Take (l, 210, 24);
+      CuBit.UI.Layout.New_Row (l, 10);
       ret.counter := CuBit.UI.Layout.Take (l, 160, 18);
       CuBit.UI.Layout.New_Row (l, 12);
-      ret.textField := CuBit.UI.Layout.Take (l, 250, 28);
-      CuBit.UI.Layout.New_Row (l, 16);
+      ret.textField := CuBit.UI.Layout.Take (l, 250, 24);
+      CuBit.UI.Layout.New_Row (l, 14);
       ret.radioLabel := CuBit.UI.Layout.Take_Remaining (l, 18);
       CuBit.UI.Layout.New_Row (l, 4);
       ret.radioFast := CuBit.UI.Layout.Take (l, 152, 20);
@@ -332,7 +332,7 @@ procedure main is
             h => ret.radioProof.y + ret.radioProof.h - ret.radioFast.y),
            2);
 
-      l := CuBit.UI.Layout.Start (ret.tabPage, 14, 12);
+      l := CuBit.UI.Layout.Start (ret.tabPage, 18, 18);
       ret.tableLabel := CuBit.UI.Layout.Take_Remaining (l, 18);
       CuBit.UI.Layout.New_Row (l, 4);
       ret.dataSplit := CuBit.UI.Layout.Take (l, ret.tabPage.w - 28, 170);
@@ -350,7 +350,7 @@ procedure main is
         (x => ret.streamHeader.x, y => ret.streamRow2.y + 20,
          w => ret.streamHeader.w, h => 20);
 
-      l := CuBit.UI.Layout.Start (ret.tabPage, 14, 12);
+      l := CuBit.UI.Layout.Start (ret.tabPage, 18, 18);
       ret.listLabel := CuBit.UI.Layout.Take_Remaining (l, 18);
       CuBit.UI.Layout.New_Row (l, 4);
       ret.listBox := CuBit.UI.Layout.Take (l, 246, 118);
@@ -372,7 +372,7 @@ procedure main is
         (x => ret.listBox.x + 2, y => ret.listSlot3.y + 22,
          w => ret.listBox.w - 20, h => 22);
 
-      l := CuBit.UI.Layout.Start (ret.tabPage, 14, 12);
+      l := CuBit.UI.Layout.Start (ret.tabPage, 18, 18);
       ret.menuLabel := CuBit.UI.Layout.Take_Remaining (l, 18);
       CuBit.UI.Layout.New_Row (l, 4);
       ret.menuButton := CuBit.UI.Layout.Take (l, 132, 28);

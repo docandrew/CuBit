@@ -8,36 +8,99 @@
 
 void *memcpy(void *dest, const void *src, size_t n)
 {
-    char *d = (char *)dest;
-    const char *s = (const char *)src;
-    for (size_t i = 0; i < n; i++) {
-        d[i] = s[i];
+    unsigned char *d = (unsigned char *)dest;
+    const unsigned char *s = (const unsigned char *)src;
+
+    if (n == 0 || d == s) {
+        return dest;
     }
+
+    if ((((uintptr_t)d ^ (uintptr_t)s) & 7UL) == 0) {
+        while (n > 0 && ((uintptr_t)d & 7UL) != 0) {
+            *d++ = *s++;
+            n--;
+        }
+
+        while (n >= 8) {
+            *(uint64_t *)d = *(const uint64_t *)s;
+            d += 8;
+            s += 8;
+            n -= 8;
+        }
+    }
+
+    while (n > 0) {
+        *d++ = *s++;
+        n--;
+    }
+
     return dest;
 }
 
 void *memmove(void *dest, const void *src, size_t n)
 {
-    char *d = (char *)dest;
-    const char *s = (const char *)src;
+    unsigned char *d = (unsigned char *)dest;
+    const unsigned char *s = (const unsigned char *)src;
+
+    if (n == 0 || d == s) {
+        return dest;
+    }
+
     if (d < s) {
-        for (size_t i = 0; i < n; i++) {
-            d[i] = s[i];
-        }
+        return memcpy(dest, src, n);
     } else if (d > s) {
-        for (size_t i = n; i > 0; i--) {
-            d[i - 1] = s[i - 1];
+        d += n;
+        s += n;
+
+        if ((((uintptr_t)d ^ (uintptr_t)s) & 7UL) == 0) {
+            while (n > 0 && ((uintptr_t)d & 7UL) != 0) {
+                *--d = *--s;
+                n--;
+            }
+
+            while (n >= 8) {
+                d -= 8;
+                s -= 8;
+                *(uint64_t *)d = *(const uint64_t *)s;
+                n -= 8;
+            }
+        }
+
+        while (n > 0) {
+            *--d = *--s;
+            n--;
         }
     }
+
     return dest;
 }
 
 void *memset(void *s, int c, size_t n)
 {
     unsigned char *p = (unsigned char *)s;
-    for (size_t i = 0; i < n; i++) {
-        p[i] = (unsigned char)c;
+    unsigned char byte = (unsigned char)c;
+    uint64_t word = byte;
+
+    word |= word << 8;
+    word |= word << 16;
+    word |= word << 32;
+
+    while (n > 0 && ((uintptr_t)p & 7UL) != 0) {
+        *p++ = byte;
+        n--;
     }
+
+    while (n >= 8) {
+        *(uint64_t *)p = word;
+        p += 8;
+        n -= 8;
+    }
+
+    while (n > 0) {
+        *p++ = byte;
+        n--;
+    }
+
     return s;
 }
 

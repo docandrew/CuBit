@@ -11,6 +11,8 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 
 package body CuBit.UI.App is
+   use ASCII;
+
    OP_DESKTOP_HELLO    : constant Unsigned_32 := 16#0800#;
    OP_DESKTOP_BYE      : constant Unsigned_32 := 16#0801#;
    OP_DESKTOP_GET_INFO : constant Unsigned_32 := 16#0802#;
@@ -251,11 +253,13 @@ package body CuBit.UI.App is
 
       hello := Call_Desktop (OP_DESKTOP_HELLO, PROTOCOL_VERSION, 0, 0, 0);
       if hello.words (0) = 0 then
+         debugPrint ("ui-app: desktop hello failed" & LF);
          return;
       end if;
 
       info := Call_Desktop (OP_DESKTOP_GET_INFO);
       if info.words (0) = 0 then
+         debugPrint ("ui-app: desktop info failed" & LF);
          return;
       end if;
 
@@ -268,6 +272,7 @@ package body CuBit.UI.App is
             0);
       win.surfaceId := created.words (0);
       if win.surfaceId = 0 then
+         debugPrint ("ui-app: surface create failed" & LF);
          Close (win);
          return;
       end if;
@@ -284,6 +289,7 @@ package body CuBit.UI.App is
 
       Ensure_Buffer (win, width, height, attached);
       if not attached then
+         debugPrint ("ui-app: buffer attach failed" & LF);
          Close (win);
          return;
       end if;
@@ -399,7 +405,7 @@ package body CuBit.UI.App is
                if sawInput then
                   ignore := syscall (SYSCALL_SLEEP, 1);
                else
-                  ignore := syscall (SYSCALL_SLEEP, 5);
+                  ignore := syscall (SYSCALL_SLEEP, 10);
                end if;
             end if;
          end;

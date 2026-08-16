@@ -7,11 +7,11 @@
 ------------------------------------------------------------------------------
 with System.Storage_Elements; use System.Storage_Elements;
 with Font8x16;
-with CuBit.UI.Fonts_Luxi_Sans_12;
+with CuBit.UI.Fonts_Noto_Sans_11;
 
 package body CuBit.UI is
    use type System.Address;
-   package UI_Font renames CuBit.UI.Fonts_Luxi_Sans_12;
+   package UI_Font renames CuBit.UI.Fonts_Noto_Sans_11;
 
    function Is_Empty (r : Rect) return Boolean is
    begin
@@ -124,21 +124,49 @@ package body CuBit.UI is
 
    procedure Fill_Rect (c : Canvas; r : Rect; fill : Color) is
       clipped : constant Rect := Clamp_Rect (c, r);
+      pairFill : constant Unsigned_64 :=
+         Shift_Left (Unsigned_64 (fill), 32) or Unsigned_64 (fill);
+      startX : Natural;
+      endX : Natural;
+      offset : Storage_Offset;
    begin
       if c.addr = System.Null_Address or else Is_Empty (clipped) then
          return;
       end if;
 
       for yy in clipped.y .. clipped.y + clipped.h - 1 loop
-         for xx in clipped.x .. clipped.x + clipped.w - 1 loop
+         startX := clipped.x;
+         endX := clipped.x + clipped.w;
+
+         if startX < endX and then startX mod 2 /= 0 then
             declare
                offset : constant Storage_Offset :=
-                  Storage_Offset (yy * c.pitch + xx * 4);
+                  Storage_Offset (yy * c.pitch + startX * 4);
                pixel : Color with Import, Address => c.addr + offset;
             begin
                pixel := fill;
             end;
+            startX := startX + 1;
+         end if;
+
+         while startX + 1 < endX loop
+            offset := Storage_Offset (yy * c.pitch + startX * 4);
+            declare
+               pixels : Unsigned_64 with Import, Address => c.addr + offset;
+            begin
+               pixels := pairFill;
+            end;
+            startX := startX + 2;
          end loop;
+
+         if startX < endX then
+            offset := Storage_Offset (yy * c.pitch + startX * 4);
+            declare
+               pixel : Color with Import, Address => c.addr + offset;
+            begin
+               pixel := fill;
+            end;
+         end if;
       end loop;
    end Fill_Rect;
 
@@ -156,21 +184,61 @@ package body CuBit.UI is
       Fill_Rect (c, (x => r.x + r.w - 1, y => r.y, w => 1, h => r.h), dark);
    end Stroke_Rect;
 
+   procedure Stroke_Sunken (c : Canvas; r : Rect; colors : Theme) is
+   begin
+      Stroke_Rect (c, r, colors.shadow, colors.edge);
+   end Stroke_Sunken;
+
+   procedure Stroke_Raised (c : Canvas; r : Rect; colors : Theme) is
+   begin
+      Stroke_Rect (c, r, colors.edge, colors.shadow);
+   end Stroke_Raised;
+
+   function Center_Text_Y (r : Rect) return Natural is
+      y : Natural := r.y;
+   begin
+      if r.h > UI_Text_Height then
+         y := r.y + (r.h - UI_Text_Height) / 2;
+      end if;
+      if y > r.y then
+         y := y - 1;
+      end if;
+      return y;
+   end Center_Text_Y;
+
    procedure Draw_Glyph
       (c : Canvas; x, y : Natural; ch : Character; fg, bg : Color)
    is
       glyph : Font8x16.GlyphData renames Font8x16.font (Character'Pos (ch));
+      clipped : constant Rect :=
+        Clamp_Rect (c, (x => x, y => y,
+                        w => Font8x16.GLYPH_WIDTH,
+                        h => Font8x16.GLYPH_HEIGHT));
+      offset : Storage_Offset;
+      row : Natural;
+      bit : Natural;
    begin
-      for row in 0 .. Font8x16.GLYPH_HEIGHT - 1 loop
+      if c.addr = System.Null_Address or else Is_Empty (clipped) then
+         return;
+      end if;
+
+      for yy in clipped.y .. clipped.y + clipped.h - 1 loop
+         row := yy - y;
          declare
             bits : constant Unsigned_8 := glyph (row);
          begin
-            for bit in 0 .. Font8x16.GLYPH_WIDTH - 1 loop
+            for xx in clipped.x .. clipped.x + clipped.w - 1 loop
+               bit := xx - x;
+               offset := Storage_Offset (yy * c.pitch + xx * 4);
+               declare
+                  pixel : Color with Import, Address => c.addr + offset;
+               begin
                if (bits and Shift_Right (16#80#, bit)) /= 0 then
-                  Set_Pixel (c, x + bit, y + row, fg);
+                     pixel := fg;
                else
-                  Set_Pixel (c, x + bit, y + row, bg);
+                     pixel := bg;
                end if;
+               end;
             end loop;
          end;
       end loop;
@@ -248,20 +316,43 @@ package body CuBit.UI is
       code : Natural := Character'Pos (ch);
       width : Natural;
       alpha : Unsigned_8;
+      clipped : Rect;
+      offset : Storage_Offset;
+      srcX : Natural;
+      srcY : Natural;
    begin
       if code < UI_Font.FIRST_GLYPH or else code > UI_Font.LAST_GLYPH then
          code := Character'Pos ('?');
       end if;
 
       width := UI_Font.Widths (code);
+      clipped := Clamp_Rect
+        (c, (x => x, y => y, w => width, h => UI_Font.LINE_HEIGHT));
+
+      if c.addr = System.Null_Address or else Is_Empty (clipped) then
+         return;
+      end if;
+
       Fill_Rect (c, (x => x, y => y, w => width, h => UI_Font.LINE_HEIGHT), bg);
-      for yy in 0 .. UI_Font.LINE_HEIGHT - 1 loop
-         for xx in 0 .. width - 1 loop
-            alpha := UI_Font.Alpha (code) (yy) (xx);
+      for yy in clipped.y .. clipped.y + clipped.h - 1 loop
+         srcY := yy - y;
+         for xx in clipped.x .. clipped.x + clipped.w - 1 loop
+            srcX := xx - x;
+            alpha := UI_Font.Alpha (code) (srcY) (srcX);
             if alpha = 255 then
-               Set_Pixel (c, x + xx, y + yy, fg);
+               offset := Storage_Offset (yy * c.pitch + xx * 4);
+               declare
+                  pixel : Color with Import, Address => c.addr + offset;
+               begin
+                  pixel := fg;
+               end;
             elsif alpha > 0 then
-               Set_Pixel (c, x + xx, y + yy, Blend (fg, bg, alpha));
+               offset := Storage_Offset (yy * c.pitch + xx * 4);
+               declare
+                  pixel : Color with Import, Address => c.addr + offset;
+               begin
+                  pixel := Blend (fg, bg, alpha);
+               end;
             end if;
          end loop;
       end loop;
@@ -307,29 +398,33 @@ package body CuBit.UI is
       (c : Canvas; r : Rect; colors : Theme; style : Button_Style)
    is
       face : Color := colors.face;
-      light : Color := colors.edge;
-      dark : Color := colors.shadow;
+      border : Color := colors.edge;
    begin
       case style is
          when Button_Hot =>
             face := colors.panel;
+            border := colors.accent;
          when Button_Pressed =>
-            light := colors.shadow;
-            dark := colors.edge;
+            face := colors.edge;
+            border := colors.accent;
          when Button_Disabled =>
-            face := colors.shadow;
-            light := colors.edge;
-            dark := colors.shadow;
+            face := colors.panel;
+            border := colors.edge;
          when Button_Active =>
             face := colors.accent;
-            light := colors.edge;
-            dark := colors.shadow;
+            border := colors.accent;
          when Button_Normal =>
             null;
       end case;
 
       Fill_Rect (c, r, face);
-      Stroke_Rect (c, r, light, dark);
+      if style = Button_Pressed or else style = Button_Active then
+         Stroke_Sunken (c, r, colors);
+      elsif style = Button_Hot then
+         Stroke_Rect (c, r, border, colors.shadow);
+      else
+         Stroke_Raised (c, r, colors);
+      end if;
    end Draw_Button_Frame;
 
    function Button_Face (colors : Theme; style : Button_Style) return Color is
@@ -338,10 +433,12 @@ package body CuBit.UI is
          when Button_Hot =>
             return colors.panel;
          when Button_Disabled =>
-            return colors.shadow;
+            return colors.panel;
          when Button_Active =>
             return colors.accent;
-         when Button_Normal | Button_Pressed =>
+         when Button_Pressed =>
+            return colors.edge;
+         when Button_Normal =>
             return colors.face;
       end case;
    end Button_Face;
@@ -360,11 +457,15 @@ package body CuBit.UI is
       if r.w > textW then
          tx := r.x + (r.w - textW) / 2;
       end if;
-      if r.h > UI_Text_Height then
-         ty := r.y + (r.h - UI_Text_Height) / 2;
+      ty := Center_Text_Y (r);
+      if style = Button_Pressed and then r.w > 2 and then r.h > 2 then
+         tx := tx + 1;
+         ty := ty + 1;
       end if;
       if style = Button_Disabled then
          fg := colors.muted;
+      elsif style = Button_Active then
+         fg := colors.face;
       end if;
 
       Draw_UI_Text (c, tx, ty, label, fg, Button_Face (colors, style));
@@ -393,18 +494,16 @@ package body CuBit.UI is
    begin
       if active then
          bg := colors.accent;
-         fg := colors.edge;
+         fg := colors.face;
       elsif hot then
          bg := colors.face;
       end if;
 
       Fill_Rect (c, r, bg);
       if active or else hot then
-         Stroke_Rect (c, r, colors.edge, colors.shadow);
+         Stroke_Rect (c, r, colors.accent, colors.shadow);
       end if;
-      if r.h > UI_Text_Height then
-         ty := r.y + (r.h - UI_Text_Height) / 2;
-      end if;
+      ty := Center_Text_Y (r);
       Draw_UI_Text (c, tx, ty, label, fg, bg);
    end Draw_Menu_Title;
 
@@ -432,17 +531,17 @@ package body CuBit.UI is
       end if;
 
       Fill_Rect (c, leftPane, colors.face);
-      Stroke_Rect (c, leftPane, colors.shadow, colors.edge);
-      Draw_UI_Text (c, leftPane.x + 5, leftPane.y + 2,
+      Stroke_Sunken (c, leftPane, colors);
+      Draw_UI_Text (c, leftPane.x + 5, Center_Text_Y (leftPane),
                     left, colors.text, colors.face);
 
       if not Is_Empty (rightPane) then
          Fill_Rect (c, rightPane, colors.face);
-         Stroke_Rect (c, rightPane, colors.shadow, colors.edge);
+         Stroke_Sunken (c, rightPane, colors);
          if rightPane.w > rightW + 10 then
             rightX := rightPane.x + rightPane.w - rightW - 5;
          end if;
-         Draw_UI_Text (c, rightX, rightPane.y + 2,
+         Draw_UI_Text (c, rightX, Center_Text_Y (rightPane),
                        right, colors.muted, colors.face);
       end if;
    end Draw_Status_Bar;
@@ -455,11 +554,11 @@ package body CuBit.UI is
         (x => r.x + 8, y => r.y, w => titleW + 8, h => UI_Text_Height);
    begin
       Fill_Rect (c, r, colors.face);
-      Stroke_Rect (c, r, colors.shadow, colors.edge);
+      Stroke_Sunken (c, r, colors);
       if title'Length > 0 then
-         Fill_Rect (c, titleRect, colors.panel);
+         Fill_Rect (c, titleRect, colors.face);
          Draw_UI_Text (c, titleRect.x + 4, titleRect.y,
-                       title, colors.text, colors.panel);
+                       title, colors.muted, colors.face);
       end if;
    end Draw_Pane;
 
@@ -475,12 +574,12 @@ package body CuBit.UI is
                                h => (if r.h > 4 then r.h - 4 else r.h));
    begin
       Fill_Rect (c, r, colors.panel);
-      Stroke_Rect (c, r, colors.edge, colors.shadow);
-      Fill_Rect (c, sep1, colors.shadow);
-      Fill_Rect (c, sep2, colors.shadow);
-      Draw_UI_Text (c, col1, r.y + 3, c1, colors.text, colors.panel);
-      Draw_UI_Text (c, col2, r.y + 3, c2, colors.text, colors.panel);
-      Draw_UI_Text (c, col3, r.y + 3, c3, colors.text, colors.panel);
+      Stroke_Raised (c, r, colors);
+      Fill_Rect (c, sep1, colors.edge);
+      Fill_Rect (c, sep2, colors.edge);
+      Draw_UI_Text (c, col1, Center_Text_Y (r), c1, colors.muted, colors.panel);
+      Draw_UI_Text (c, col2, Center_Text_Y (r), c2, colors.muted, colors.panel);
+      Draw_UI_Text (c, col3, Center_Text_Y (r), c3, colors.muted, colors.panel);
    end Draw_Table_Header;
 
    procedure Draw_Table_Row
@@ -496,7 +595,7 @@ package body CuBit.UI is
    begin
       if selected then
          bg := colors.accent;
-         fg := colors.edge;
+         fg := colors.face;
       elsif hot then
          bg := colors.panel;
       end if;
@@ -504,9 +603,9 @@ package body CuBit.UI is
       Fill_Rect (c, r, bg);
       Fill_Rect (c, (x => r.x, y => r.y + r.h - 1, w => r.w, h => 1),
                  colors.panel);
-      Draw_UI_Text (c, col1, r.y + 3, c1, fg, bg);
-      Draw_UI_Text (c, col2, r.y + 3, c2, fg, bg);
-      Draw_UI_Text (c, col3, r.y + 3, c3, fg, bg);
+      Draw_UI_Text (c, col1, Center_Text_Y (r), c1, fg, bg);
+      Draw_UI_Text (c, col2, Center_Text_Y (r), c2, fg, bg);
+      Draw_UI_Text (c, col3, Center_Text_Y (r), c3, fg, bg);
    end Draw_Table_Row;
 
    procedure Draw_Tab_Strip
@@ -537,16 +636,16 @@ package body CuBit.UI is
       end if;
       if active then
          bg := colors.shadow;
-         fg := colors.edge;
+         fg := colors.face;
       end if;
 
       Fill_Rect (c, r, bg);
-      Stroke_Rect (c, r,
-                   (if selected then colors.edge else colors.panel),
-                   colors.shadow);
-      if r.h > UI_Text_Height then
-         ty := r.y + (r.h - UI_Text_Height) / 2;
+      if selected then
+         Stroke_Rect (c, r, colors.shadow, colors.shadow);
+      else
+         Stroke_Rect (c, r, colors.panel, colors.shadow);
       end if;
+      ty := Center_Text_Y (r);
       Draw_UI_Text (c, r.x + 10, ty, label, fg, bg);
       if selected and then r.h > 0 then
          Fill_Rect
@@ -642,13 +741,13 @@ package body CuBit.UI is
       end if;
 
       Fill_Rect (c, r, face);
-      Stroke_Rect (c, r,
-                   (if focused then colors.accent else colors.edge),
-                   colors.shadow);
-
-      if r.h > UI_Text_Height then
-         textY := r.y + (r.h - UI_Text_Height) / 2;
+      if focused then
+         Stroke_Rect (c, r, colors.accent, colors.shadow);
+      else
+         Stroke_Sunken (c, r, colors);
       end if;
+
+      textY := Center_Text_Y (r);
 
       Draw_UI_Text (c, textX, textY, text, colors.text, face);
       if focused then
@@ -680,13 +779,13 @@ package body CuBit.UI is
       end if;
 
       Fill_Rect (c, r, face);
-      Stroke_Rect (c, r,
-                   (if focused then colors.accent else colors.edge),
-                   colors.shadow);
-
-      if r.h > UI_Text_Height then
-         textY := r.y + (r.h - UI_Text_Height) / 2;
+      if focused then
+         Stroke_Rect (c, r, colors.accent, colors.shadow);
+      else
+         Stroke_Sunken (c, r, colors);
       end if;
+
+      textY := Center_Text_Y (r);
 
       for i in text'Range loop
          if focused and then
@@ -740,7 +839,7 @@ package body CuBit.UI is
       end if;
 
       Fill_Rect (c, r, face);
-      Stroke_Rect (c, r, colors.edge, colors.shadow);
+      Stroke_Sunken (c, r, colors);
       if checked and then not Is_Empty (mark) then
          Fill_Rect (c, mark, colors.accent);
          Stroke_Rect (c, mark, colors.good, colors.shadow);
@@ -764,7 +863,7 @@ package body CuBit.UI is
       end if;
 
       Fill_Rect (c, box, face);
-      Stroke_Rect (c, box, colors.edge, colors.shadow);
+      Stroke_Sunken (c, box, colors);
       if selected then
          Fill_Rect (c, mark, colors.accent);
       end if;
@@ -786,7 +885,7 @@ package body CuBit.UI is
       end if;
 
       Fill_Rect (c, r, bg);
-      Draw_UI_Text (c, r.x + 6, r.y + 3, label, fg, bg);
+      Draw_UI_Text (c, r.x + 6, Center_Text_Y (r), label, fg, bg);
    end Draw_List_Item;
 
    procedure Draw_Menu_Item

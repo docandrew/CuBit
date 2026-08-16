@@ -10,6 +10,7 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Theme;
 with Desktop_Icons;
 with Desktop_UI_Font;
 with Desktop_Window_Icons;
@@ -342,6 +343,7 @@ procedure main is
    APP_DEMO     : constant Natural := 1;
    APP_CONSOLE  : constant Natural := 2;
    APP_SECURITY : constant Natural := 3;
+   APP_DOOM     : constant Natural := 4;
 
    LAUNCH_NONE     : constant Natural := 0;
    LAUNCH_CONSOLE : constant Natural := 1;
@@ -388,20 +390,20 @@ procedure main is
    cursorSaveValid : Boolean := False;
    cursorSaveRect  : Rect;
 
-   C_BG     : constant Unsigned_32 := 16#001F_2430#;
-   C_PANEL  : constant Unsigned_32 := 16#0024_2936#;
-   C_TEXT   : constant Unsigned_32 := 16#00CB_CAC2#;
-   C_MUTED  : constant Unsigned_32 := 16#0070_7A8C#;
-   C_ACCENT : constant Unsigned_32 := 16#00FF_CC66#;
-   C_GOOD   : constant Unsigned_32 := 16#00BA_E67E#;
-   C_WHITE  : constant Unsigned_32 := 16#00FF_FFFF#;
-   C_BLACK  : constant Unsigned_32 := 16#0000_0000#;
-   C_DESK   : constant Unsigned_32 := 16#001B_202B#;
-   C_BAR    : constant Unsigned_32 := 16#0024_2936#;
-   C_BLUE   : constant Unsigned_32 := 16#003F_6380#;
-   C_WIN    : constant Unsigned_32 := 16#0028_2E3D#;
-   C_EDGE   : constant Unsigned_32 := 16#004B_5263#;
-   C_SHADOW : constant Unsigned_32 := 16#0014_1820#;
+   C_BG     : constant Unsigned_32 := CuBit.Theme.Desktop;
+   C_PANEL  : constant Unsigned_32 := CuBit.Theme.Panel;
+   C_TEXT   : constant Unsigned_32 := CuBit.Theme.Text;
+   C_MUTED  : constant Unsigned_32 := CuBit.Theme.Muted;
+   C_ACCENT : constant Unsigned_32 := CuBit.Theme.Accent;
+   C_GOOD   : constant Unsigned_32 := CuBit.Theme.Good;
+   C_WHITE  : constant Unsigned_32 := CuBit.Theme.White;
+   C_BLACK  : constant Unsigned_32 := CuBit.Theme.Black;
+   C_DESK   : constant Unsigned_32 := CuBit.Theme.Desktop;
+   C_BAR    : constant Unsigned_32 := CuBit.Theme.Panel;
+   C_BLUE   : constant Unsigned_32 := CuBit.Theme.Accent;
+   C_WIN    : constant Unsigned_32 := CuBit.Theme.Face;
+   C_EDGE   : constant Unsigned_32 := CuBit.Theme.Edge;
+   C_SHADOW : constant Unsigned_32 := CuBit.Theme.Shadow;
 
    statsStartMs      : Unsigned_64 := 0;
    statsEvents       : Unsigned_64 := 0;
@@ -1137,6 +1139,11 @@ procedure main is
       minY : Natural := y;
       maxX : Natural := x + w;
       maxY : Natural := y + h;
+      pairColor : constant Unsigned_64 :=
+         Shift_Left (Unsigned_64 (color), 32) or Unsigned_64 (color);
+      startX : Natural;
+      endX : Natural;
+      offset : Storage_Offset;
    begin
       if w = 0 or else h = 0 or else x >= fbWidth or else y >= fbHeight then
          return;
@@ -1175,21 +1182,41 @@ procedure main is
       --  selection once, then write the clipped rows directly instead of
       --  paying putPixel's bounds/clip checks for every pixel.
       for yy in minY .. maxY - 1 loop
-         declare
-            rowOffset : constant Storage_Offset :=
-               Storage_Offset (yy * fbPitch + minX * 4);
-         begin
-         for xx in minX .. maxX - 1 loop
+         startX := minX;
+         endX := maxX;
+
+         if startX < endX and then startX mod 2 /= 0 then
             declare
+               offset : constant Storage_Offset :=
+                  Storage_Offset (yy * fbPitch + startX * 4);
                pixel : Unsigned_32 with
-                  Import, Address =>
-                     backBufferAddr + rowOffset +
-                     Storage_Offset ((xx - minX) * 4);
+                  Import, Address => backBufferAddr + offset;
             begin
                pixel := color;
             end;
+            startX := startX + 1;
+         end if;
+
+         while startX + 1 < endX loop
+            offset := Storage_Offset (yy * fbPitch + startX * 4);
+            declare
+               pixels : Unsigned_64 with
+                  Import, Address => backBufferAddr + offset;
+            begin
+               pixels := pairColor;
+            end;
+            startX := startX + 2;
          end loop;
-         end;
+
+         if startX < endX then
+            offset := Storage_Offset (yy * fbPitch + startX * 4);
+            declare
+               pixel : Unsigned_32 with
+                  Import, Address => backBufferAddr + offset;
+            begin
+               pixel := color;
+            end;
+         end if;
       end loop;
    end fillRect;
 
@@ -1214,17 +1241,45 @@ procedure main is
        bg   : Unsigned_32)
    is
       glyph : Font8x16.GlyphData renames Font8x16.font (Character'Pos (ch));
+      minX : Natural := x;
+      minY : Natural := y;
+      maxX : Natural := x + Font8x16.GLYPH_WIDTH;
+      maxY : Natural := y + Font8x16.GLYPH_HEIGHT;
+      offset : Storage_Offset;
+      row : Natural;
+      bit : Natural;
    begin
-      for row in 0 .. Font8x16.GLYPH_HEIGHT - 1 loop
+      if backBufferAddr = System.Null_Address or else
+         x >= fbWidth or else y >= fbHeight
+      then
+         return;
+      end if;
+
+      if maxX > fbWidth then
+         maxX := fbWidth;
+      end if;
+      if maxY > fbHeight then
+         maxY := fbHeight;
+      end if;
+
+      for yy in minY .. maxY - 1 loop
+         row := yy - y;
          declare
             bits : constant Unsigned_8 := glyph (row);
          begin
-            for bit in 0 .. Font8x16.GLYPH_WIDTH - 1 loop
+            for xx in minX .. maxX - 1 loop
+               bit := xx - x;
+               offset := Storage_Offset (yy * fbPitch + xx * 4);
+               declare
+                  pixel : Unsigned_32 with
+                     Import, Address => backBufferAddr + offset;
+               begin
                if (bits and Shift_Right (16#80#, bit)) /= 0 then
-                  putPixel (x + bit, y + row, fg);
+                     pixel := fg;
                else
-                  putPixel (x + bit, y + row, bg);
+                     pixel := bg;
                end if;
+               end;
             end loop;
          end;
       end loop;
@@ -1411,6 +1466,8 @@ procedure main is
             drawUIText (x, y, "CuBASIC Console", fg, bg);
          when APP_SECURITY =>
             drawUIText (x, y, "Security Center", fg, bg);
+         when APP_DOOM =>
+            drawUIText (x, y, "DOOM", fg, bg);
          when APP_DEMO =>
             drawUIText (x, y, "Demo Window", fg, bg);
          when others =>
@@ -1780,7 +1837,8 @@ procedure main is
       minBtn  : Rect;
       maxBtn  : Rect;
       closeBtn : Rect;
-      titleColor : Unsigned_32 := C_EDGE;
+      titleColor : Unsigned_32 := C_PANEL;
+      titleText  : Unsigned_32 := C_TEXT;
       x      : Natural := s.x;
       y      : Natural := s.y;
       w      : Natural := s.w;
@@ -1803,6 +1861,7 @@ procedure main is
 
       if active then
          titleColor := C_BLUE;
+         titleText := C_WHITE;
       end if;
 
       frame.x := x;
@@ -1814,7 +1873,7 @@ procedure main is
       fillRect (x, y, w, h, C_WIN);
       strokeRect (x, y, w, h, C_EDGE, C_SHADOW);
       fillRect (x + 3, y + 3, w - 6, titleH, titleColor);
-      drawSurfaceTitle (s, x + 10, y + 7, C_WHITE, titleColor);
+      drawSurfaceTitle (s, x + 10, y + 7, titleText, titleColor);
       drawStreamBadges (s, y + 3);
 
       --  Window controls are compositor-owned because they mutate focus,
@@ -1973,6 +2032,16 @@ procedure main is
    procedure drawDesktopShell is
       barY     : constant Natural := taskbarY;
       launch   : constant Rect := launchButtonRect;
+      launchIconY : constant Natural :=
+         launch.y +
+         (if launch.h > Desktop_Icons.ICON_SIZE
+          then (launch.h - Desktop_Icons.ICON_SIZE) / 2
+          else 0);
+      launchTextY : constant Natural :=
+         launch.y +
+         (if launch.h > Desktop_UI_Font.LINE_HEIGHT
+          then (launch.h - Desktop_UI_Font.LINE_HEIGHT) / 2
+          else 0);
       panelW   : constant Natural := 310;
       panelH   : constant Natural := 150;
       px       : Natural := 24;
@@ -1997,8 +2066,8 @@ procedure main is
       else
          strokeRect (launch.x, launch.y, launch.w, launch.h, C_EDGE, C_SHADOW);
       end if;
-      drawIcon (Desktop_Icons.Start, launch.x + 5, barY + 6, C_BAR);
-      drawUIText (launch.x + 34, barY + 7, "Launch", C_TEXT, C_BAR);
+      drawIcon (Desktop_Icons.Start, launch.x + 5, launchIconY, C_BAR);
+      drawUIText (launch.x + 34, launchTextY, "Launch", C_TEXT, C_BAR);
       drawTaskButtons;
 
       if fbWidth > panelW + 48 and then fbHeight > panelH + TASKBAR_H + 48 then
@@ -2422,11 +2491,14 @@ procedure main is
    procedure closeSurface (idx : SurfaceIndex; damage : in out Rect) is
       oldBounds : constant Rect := surfaceRect (surfaces (idx));
       oldId     : constant Unsigned_64 := surfaces (idx).id;
+      oldOwner  : constant ProcessID := surfaces (idx).owner;
       button    : constant Rect := taskButtonRect (idx);
+      ignore    : Unsigned_64;
    begin
       --  Internal demo windows can disappear immediately. For client-owned
-      --  windows this is a temporary hard close; the protocol should later
-      --  grow a close-request event so clients can save state or refuse.
+      --  windows this is a temporary hard close. The protocol should later
+      --  grow a close-request event so clients can save state or refuse, but
+      --  removing only the surface leaves clients polling a dead object.
       if oldId = internalDemoWindow then
          internalDemoWindow := 0;
       end if;
@@ -2442,6 +2514,10 @@ procedure main is
 
       if focusSurface = 0 then
          focusTopmostVisibleWindow (damage);
+      end if;
+
+      if oldOwner /= NO_PROCESS and then processAlive (oldOwner) then
+         ignore := killProcess (oldOwner);
       end if;
    end closeSurface;
 
@@ -3006,7 +3082,11 @@ procedure main is
                      serial => 1,
                      dirty  => True,
                      minimized => False,
-                     appKind => APP_CLIENT,
+                     appKind =>
+                       (if from = doomPid and then doomPid /= NO_PROCESS
+                         and then processAlive (doomPid)
+                        then APP_DOOM
+                        else APP_CLIENT),
                      maximized => False,
                      restoreX => surfX,
                      restoreY => surfY,
@@ -4469,8 +4549,9 @@ begin
             exit when not running;
             --  Do not let a steady stream of synchronous input polls hold a
             --  completed client frame in the compositor. A small request
-            --  budget keeps IPC responsive while preserving frame latency.
-            exit when framePending and then requestsThisPass >= 8;
+            --  budget keeps IPC responsive while preserving frame latency and
+            --  prevents idle pollers from starving new window handshakes.
+            exit when requestsThisPass >= (if framePending then 8 else 32);
          end loop;
 
          flushFrame;

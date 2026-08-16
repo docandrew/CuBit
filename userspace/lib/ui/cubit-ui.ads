@@ -7,6 +7,7 @@
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with System;
+with CuBit.Theme;
 
 package CuBit.UI is
    subtype Color is Unsigned_32;
@@ -53,16 +54,16 @@ package CuBit.UI is
       danger  => 16#F28779#);
 
    Classic : constant Theme :=
-     (desktop => 16#4E6F82#,
-      panel   => 16#D6D3CE#,
-      face    => 16#E8E6DF#,
-      edge    => 16#FFFFFF#,
-      shadow  => 16#6F6B63#,
-      text    => 16#111111#,
-      muted   => 16#555555#,
-      accent  => 16#2B63B7#,
-      good    => 16#1E7F4F#,
-      danger  => 16#B3261E#);
+     (desktop => CuBit.Theme.Desktop,
+      panel   => CuBit.Theme.Panel,
+      face    => CuBit.Theme.Face,
+      edge    => CuBit.Theme.Edge,
+      shadow  => CuBit.Theme.Shadow,
+      text    => CuBit.Theme.Text,
+      muted   => CuBit.Theme.Muted,
+      accent  => CuBit.Theme.Accent,
+      good    => CuBit.Theme.Good,
+      danger  => CuBit.Theme.Danger);
 
    type Button_Style is (Button_Normal, Button_Hot, Button_Pressed,
                          Button_Disabled, Button_Active);

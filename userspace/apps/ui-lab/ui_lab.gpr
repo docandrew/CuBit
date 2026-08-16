@@ -2,7 +2,7 @@ project UI_Lab is
 
     for Languages use ("Ada");
     for Object_Dir use "build";
-    for Source_Dirs use (".", "../../lib/ui");
+    for Source_Dirs use (".", "../../lib/ui", "../../lib/theme");
     for Main use ("main.adb");
     for Runtime ("Ada") use "../../runtime";
     for Library_Dir use "";

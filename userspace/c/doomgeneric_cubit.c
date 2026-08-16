@@ -6,9 +6,8 @@
  *   DG_Init, DG_DrawFrame, DG_SleepMs, DG_GetTicksMs, DG_GetKey,
  *   DG_SetWindowTitle
  *
- * Desktop:     preferred path; draw into an app-owned surface buffer
- * Framebuffer: fallback path via SYSCALL_MAPFB
- * Keyboard:    desktop input events or fallback raw PS/2 scancodes
+ * Desktop:     draw into an app-owned window surface buffer
+ * Keyboard:    desktop input events
  * Timer:       SYSCALL_GETTIME (millisecond PIT ticks)
  */
 
@@ -56,34 +55,28 @@ static const unsigned char __cubit_streams[]
 };
 
 /* Declare capability requirements in ELF manifest:
- *   slot 4  - CAP_DEVICE_MEM (framebuffer fallback)
  *   slot 1  - CAP_ENDPOINT to FS server (DRIVER_FS = 6)
  *   slot 14 - CAP_ENDPOINT to mixer (DRIVER_MIXER = 9)
  *   slot 21 - CAP_ENDPOINT to desktop (DRIVER_DESKTOP = 15)
  */
 static const unsigned char __cubit_manifest[]
     __attribute__((section(".cubit.caps"), used)) = {
-    /* Header: magic "CBIT" LE, version 1, count 4 */
+    /* Header: magic "CBIT" LE, version 1, count 3 */
     0x54, 0x49, 0x42, 0x43,
     0x01, 0x00,
-    0x04, 0x00,
+    0x03, 0x00,
 
-    /* Entry 0: REQ_FRAMEBUFFER, RW, slot 4 */
-    CUBIT_REQ_FRAMEBUFFER, CUBIT_RIGHT_RW, 4, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-
-    /* Entry 1: REQ_SERVICE, RW, slot 1, driver_id=6 (DRIVER_FS) */
+    /* Entry 0: REQ_SERVICE, RW, slot 1, driver_id=6 (DRIVER_FS) */
     CUBIT_REQ_SERVICE, CUBIT_RIGHT_RW, 1, 0x00,
     0x06, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 
-    /* Entry 2: REQ_SERVICE, RW|GRANT, slot 14, driver_id=9 (DRIVER_MIXER) */
+    /* Entry 1: REQ_SERVICE, RW|GRANT, slot 14, driver_id=9 (DRIVER_MIXER) */
     CUBIT_REQ_SERVICE, CUBIT_RIGHT_RW | CUBIT_RIGHT_GRANT, 14, 0x00,
     0x09, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 
-    /* Entry 3: REQ_SERVICE, RW, slot 21, driver_id=15 (DRIVER_DESKTOP) */
+    /* Entry 2: REQ_SERVICE, RW, slot 21, driver_id=15 (DRIVER_DESKTOP) */
     CUBIT_REQ_SERVICE, CUBIT_RIGHT_RW, 21, 0x00,
     0x0F, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
@@ -171,10 +164,6 @@ static const unsigned char __cubit_access[]
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,   /* 64 bytes prefix */
     0,0,0,0,0,0,0,0                    /* reserved64 */
 };
-
-/* Framebuffer state */
-static cubit_framebuffer_t fb;
-static uint32_t *fb_ptr = NULL;
 
 /* Desktop surface protocol. These labels intentionally match the current
  * prototype in desktop.svc; they are not yet a stable CuBit UI ABI. */
@@ -599,40 +588,14 @@ static void poll_desktop_input(void)
 
 static void poll_keyboard(void)
 {
-    if (desktop_mode) {
+    if (desktop_mode)
         poll_desktop_input();
+    else
         return;
-    }
-
-    cubit_key_event_t ev;
-    while (cubit_keyboard_get(&ev)) {
-        unsigned char doomKey = 0;
-        if (ev.scancode < 128)
-            doomKey = scancode_to_doom[ev.scancode];
-        push_key(doomKey, ev.pressed);
-    }
-}
-
-static void poll_mouse(void)
-{
-    if (desktop_mode) {
-        return;
-    }
-
-    cubit_mouse_event_t mev;
-    while (cubit_mouse_get(&mev)) {
-        event_t doom_ev;
-        doom_ev.type = ev_mouse;
-        doom_ev.data1 = mev.buttons;
-        doom_ev.data2 = mev.dx;         /* X = turn */
-        doom_ev.data3 = -mev.dy;        /* DOOM negates Y */
-        doom_ev.data4 = 0;
-        D_PostEvent(&doom_ev);
-    }
 }
 
 /*---------------------------------------------------------------------------
- * DG_Init - Initialize framebuffer and keyboard
+ * DG_Init - Initialize desktop window and keyboard input
  *---------------------------------------------------------------------------*/
 void DG_Init(void)
 {
@@ -648,36 +611,15 @@ void DG_Init(void)
     }
 
     cubit_stream_print(CUBIT_STREAM_LOG,
-                       "DOOM: Desktop unavailable, using framebuffer.\n");
-
-    /* Map framebuffer */
-    if (cubit_map_framebuffer(&fb) < 0) {
-        cubit_stream_print(CUBIT_STREAM_LOG, "DOOM: Failed to map framebuffer!\n");
-        cubit_exit(1);
-    }
-
-    fb_ptr = (uint32_t *)fb.addr;
-
-    /* Log framebuffer info */
-    {
-        char buf[80];
-        snprintf(buf, sizeof(buf), "DOOM: Framebuffer mapped at 0x%lx (%ux%u, pitch=%u, bpp=%u)",
-                 (unsigned long)fb.addr, fb.width, fb.height, fb.pitch, fb.bpp);
-        cubit_stream_print(CUBIT_STREAM_LOG, buf);
-    }
-
-    /* Register as keyboard and mouse driver */
-    cubit_keyboard_init();
-    cubit_mouse_init();
-
-    cubit_stream_print(CUBIT_STREAM_LOG, "DOOM: Input initialized.\n");
+                       "DOOM: desktop.svc unavailable; windowed DOOM requires the desktop.\n");
+    cubit_exit(1);
 }
 
 /*---------------------------------------------------------------------------
- * DG_DrawFrame - Blit DOOM's 640x400 screen buffer to framebuffer
+ * DG_DrawFrame - Blit DOOM's 640x400 screen buffer to desktop surface
  *
  * DOOM renders at DOOMGENERIC_RESX x DOOMGENERIC_RESY (640x400) in XRGB8888.
- * We center the image on screen if the framebuffer is larger.
+ * The compositor clips and presents this app-owned buffer inside window chrome.
  *---------------------------------------------------------------------------*/
 void DG_DrawFrame(void)
 {
@@ -707,29 +649,7 @@ void DG_DrawFrame(void)
         return;
     }
 
-    if (!fb_ptr) return;
-
-    /* Calculate centering offset */
-    int off_x = 0, off_y = 0;
-    if (fb.width > DOOMGENERIC_RESX)
-        off_x = (fb.width - DOOMGENERIC_RESX) / 2;
-    if (fb.height > DOOMGENERIC_RESY)
-        off_y = (fb.height - DOOMGENERIC_RESY) / 2;
-
-    /* Pitch is in bytes, convert to uint32_t stride */
-    int fb_stride = fb.pitch / 4;
-
-    /* Copy each scanline */
-    for (int y = 0; y < DOOMGENERIC_RESY; y++) {
-        if ((unsigned int)(y + off_y) >= fb.height) break;
-        uint32_t *dst = fb_ptr + (y + off_y) * fb_stride + off_x;
-        uint32_t *src = DG_ScreenBuffer + y * DOOMGENERIC_RESX;
-        memcpy(dst, src, DOOMGENERIC_RESX * 4);
-    }
-
-    /* Poll input each frame */
     poll_keyboard();
-    poll_mouse();
 }
 
 /*---------------------------------------------------------------------------
@@ -767,7 +687,7 @@ int DG_GetKey(int *pressed, unsigned char *doomKey)
 }
 
 /*---------------------------------------------------------------------------
- * DG_SetWindowTitle - No-op on framebuffer console
+ * DG_SetWindowTitle - Title protocol can be added to desktop.svc later.
  *---------------------------------------------------------------------------*/
 void DG_SetWindowTitle(const char *title)
 {

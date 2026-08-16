@@ -4,7 +4,7 @@ project Desktop is
 
     for Object_Dir use "build";
 
-    for Source_Dirs use (".");
+    for Source_Dirs use (".", "../../lib/theme");
 
     for Main use ("main.adb");
 

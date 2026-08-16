@@ -75,16 +75,23 @@ package body CuBit.String is
       return System.Address
    is
       use System.Storage_Elements;
-      type Byte is mod 256;
-      b : constant Byte := Byte (val mod 256);
+      dstl : System.Address := dest;
+      lenl : Storage_Count := len;
+      byte : constant Integer := val mod 256;
    begin
-      for i in 0 .. len - 1 loop
-         declare
-            dst : Byte with Import, Address => dest + i;
-         begin
-            dst := b;
-         end;
-      end loop;
+      Asm ("rep stosb",
+          Outputs => (
+             System.Address'Asm_Output ("=D", dstl),
+             Storage_Count'Asm_Output ("=c", lenl)
+          ),
+          Inputs => (
+             System.Address'Asm_Input ("0", dstl),
+             Storage_Count'Asm_Input ("1", lenl),
+             Integer'Asm_Input ("a", byte)
+          ),
+          Clobber  => "memory",
+          Volatile => True);
+
       return dest;
    end memset;
 
