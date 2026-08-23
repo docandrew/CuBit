@@ -90,9 +90,9 @@ procedure main is
    LIST_VISIBLE : constant Natural := 4;
 
    PANEL_RECT : constant CuBit.UI.Rect :=
-      (x => 18, y => 18, w => bufferW - 36, h => bufferH - 36);
+      (x => 0, y => 0, w => bufferW, h => bufferH);
    HEADER_RECT : constant CuBit.UI.Rect :=
-      (x => 18, y => 18, w => bufferW - 36, h => 34);
+      (x => 0, y => 0, w => bufferW, h => 34);
 
    type Lab_Layout is record
       content : CuBit.UI.Rect := (others => 0);
@@ -291,7 +291,7 @@ procedure main is
          ret.menuBar := CuBit.UI.Layout.Dock_Top (frame, 24);
          ret.statusBar := CuBit.UI.Layout.Dock_Bottom (frame, 23);
       ret.content := CuBit.UI.Layout.Inset
-           (CuBit.UI.Layout.Fill (frame), 15, 24, 15, 20);
+           (CuBit.UI.Layout.Fill (frame), 22, 24, 18, 20);
       end;
       ret.tabPage :=
         (x => ret.content.x, y => ret.content.y + 30,
@@ -301,7 +301,7 @@ procedure main is
         (x => ret.content.x, y => ret.content.y + ret.content.h - 16,
          w => ret.content.w, h => 16);
 
-      l := CuBit.UI.Layout.Start (ret.tabPage, 18, 18);
+      l := CuBit.UI.Layout.Start (ret.tabPage, 28, 18);
       ret.buttonLabel := CuBit.UI.Layout.Take_Remaining (l, 18);
       CuBit.UI.Layout.New_Row (l, 1);
       ret.actionButton := CuBit.UI.Layout.Take (l, 108, 26);
@@ -332,7 +332,7 @@ procedure main is
             h => ret.radioProof.y + ret.radioProof.h - ret.radioFast.y),
            2);
 
-      l := CuBit.UI.Layout.Start (ret.tabPage, 18, 18);
+      l := CuBit.UI.Layout.Start (ret.tabPage, 28, 18);
       ret.tableLabel := CuBit.UI.Layout.Take_Remaining (l, 18);
       CuBit.UI.Layout.New_Row (l, 4);
       ret.dataSplit := CuBit.UI.Layout.Take (l, ret.tabPage.w - 28, 170);
@@ -350,29 +350,29 @@ procedure main is
         (x => ret.streamHeader.x, y => ret.streamRow2.y + 20,
          w => ret.streamHeader.w, h => 20);
 
-      l := CuBit.UI.Layout.Start (ret.tabPage, 18, 18);
+      l := CuBit.UI.Layout.Start (ret.tabPage, 28, 18);
       ret.listLabel := CuBit.UI.Layout.Take_Remaining (l, 18);
       CuBit.UI.Layout.New_Row (l, 4);
       ret.listBox := CuBit.UI.Layout.Take (l, 246, 118);
       ret.listScrollBar :=
-        (x => ret.listBox.x + ret.listBox.w - 16,
-         y => ret.listBox.y + 2,
+        (x => ret.listBox.x + ret.listBox.w - 18,
+         y => ret.listBox.y + 4,
          w => 14,
-         h => ret.listBox.h - 4);
+         h => ret.listBox.h - 8);
       ret.listSlot1 :=
-        (x => ret.listBox.x + 2, y => ret.listBox.y + 2,
-         w => ret.listBox.w - 20, h => 22);
+        (x => ret.listBox.x + 6, y => ret.listBox.y + 6,
+         w => ret.listBox.w - 28, h => 22);
       ret.listSlot2 :=
-        (x => ret.listBox.x + 2, y => ret.listSlot1.y + 22,
-         w => ret.listBox.w - 20, h => 22);
+        (x => ret.listBox.x + 6, y => ret.listSlot1.y + 22,
+         w => ret.listBox.w - 28, h => 22);
       ret.listSlot3 :=
-        (x => ret.listBox.x + 2, y => ret.listSlot2.y + 22,
-         w => ret.listBox.w - 20, h => 22);
+        (x => ret.listBox.x + 6, y => ret.listSlot2.y + 22,
+         w => ret.listBox.w - 28, h => 22);
       ret.listSlot4 :=
-        (x => ret.listBox.x + 2, y => ret.listSlot3.y + 22,
-         w => ret.listBox.w - 20, h => 22);
+        (x => ret.listBox.x + 6, y => ret.listSlot3.y + 22,
+         w => ret.listBox.w - 28, h => 22);
 
-      l := CuBit.UI.Layout.Start (ret.tabPage, 18, 18);
+      l := CuBit.UI.Layout.Start (ret.tabPage, 28, 18);
       ret.menuLabel := CuBit.UI.Layout.Take_Remaining (l, 18);
       CuBit.UI.Layout.New_Row (l, 4);
       ret.menuButton := CuBit.UI.Layout.Take (l, 132, 28);
@@ -472,7 +472,7 @@ procedure main is
       CuBit.UI.State.Enter_Scope (ui);
 
       CuBit.UI.Fill_Rect (c, (x => 0, y => 0, w => bufferW, h => bufferH),
-                          colors.desktop);
+                          colors.face);
       CuBit.UI.Fill_Rect (c, PANEL_RECT, colors.panel);
       CuBit.UI.Stroke_Rect (c, PANEL_RECT, colors.edge, colors.shadow);
       CuBit.UI.Fill_Rect (c, HEADER_RECT, colors.face);
@@ -583,9 +583,9 @@ procedure main is
             layout.dataSplit, tabDamage, colors,
             True, dataSplit, dataLeft, dataRight);
          CuBit.UI.Widgets.Group_Box
-           (c, dataLeft, colors, "Streams", streamContent, 8);
+           (c, dataLeft, colors, "Streams", streamContent, 12);
          CuBit.UI.Widgets.Group_Box
-           (c, dataRight, colors, "Inspector", detailContent, 8);
+           (c, dataRight, colors, "Inspector", detailContent, 12);
          streamFrame := CuBit.UI.Layout.Root (streamContent);
          detailFrame := CuBit.UI.Layout.Root (detailContent);
          streamHeader :=
@@ -639,7 +639,7 @@ procedure main is
       elsif activeTab = 3 then
          drawLabel (c, layout.listLabel.x, layout.listLabel.y, "List box");
          CuBit.UI.Widgets.Panel
-           (c, layout.listBox, colors, listContent, 2);
+           (c, layout.listBox, colors, listContent, 6);
          CuBit.UI.Lists.List_Item
            (c, ui, controls, CONTROL_LIST_DESKTOP,
             layout.listSlot1, layout.listBox, colors,

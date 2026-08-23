@@ -24,8 +24,8 @@ package body CuBit.UI.App is
 
    SURFACE_FLAG_WINDOW : constant Unsigned_64 := 2;
    PIXEL_FORMAT_BGRA8888 : constant Unsigned_64 := 1;
-   WINDOW_CHROME_W : constant Natural := 20;
-   WINDOW_CHROME_H : constant Natural := 44;
+   WINDOW_CHROME_W : constant Natural := 8;
+   WINDOW_CHROME_H : constant Natural := 34;
    PROTOCOL_VERSION : constant Unsigned_64 :=
       0 or Shift_Left (Unsigned_64'(1), 32);
 

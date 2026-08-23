@@ -82,6 +82,9 @@ procedure main is
    INPUT_POINTER_WHEEL : constant Unsigned_64 := 7;
    INPUT_CONFIGURE : constant Unsigned_64 := 8;
 
+   REQUEST_BUDGET_FRAME : constant Natural := 32;
+   REQUEST_BUDGET_IDLE  : constant Natural := 96;
+
    KEYMOD_SHIFT : constant Unsigned_64 := 1;
    KEYMOD_CTRL  : constant Unsigned_64 := 2;
    KEYMOD_ALT   : constant Unsigned_64 := 4;
@@ -370,6 +373,9 @@ procedure main is
 
    TITLE_HEIGHT : constant Natural := 24;
    BORDER_SIZE  : constant Natural := 6;
+   CLIENT_INSET_X : constant Natural := 4;
+   CLIENT_INSET_TOP : constant Natural := 30;
+   CLIENT_INSET_BOTTOM : constant Natural := 4;
    TASKBAR_H    : constant Natural := 36;
    LAUNCH_W     : constant Natural := 88;
    LAUNCH_H     : constant Natural := 24;
@@ -419,6 +425,7 @@ procedure main is
    statsPresentOps   : Unsigned_64 := 0;
    statsPresentMs    : Unsigned_64 := 0;
    statsDamagePixels : Unsigned_64 := 0;
+   inputTraceBudget  : Natural := 64;
 
    procedure printDec (val : Unsigned_64) is
       buf : String (1 .. 20);
@@ -501,6 +508,27 @@ procedure main is
       statsPresentMs := 0;
       statsDamagePixels := 0;
    end maybePrintStats;
+
+   procedure tracePointer
+      (label : String;
+       a, b, c : Unsigned_64 := 0)
+   is
+   begin
+      if inputTraceBudget = 0 then
+         return;
+      end if;
+
+      inputTraceBudget := inputTraceBudget - 1;
+      debugPrint ("desktop: ptr ");
+      debugPrint (label);
+      debugPrint (" ");
+      printDec (a);
+      debugPrint (" ");
+      printDec (b);
+      debugPrint (" ");
+      printDec (c);
+      debugPrint ("" & LF);
+   end tracePointer;
 
    function nowMs return Unsigned_64 is
    begin
@@ -862,12 +890,17 @@ procedure main is
 
    function clientRect (s : Surface) return Rect is
    begin
-      if s.w <= 20 or else s.h <= 44 then
+      if s.w <= CLIENT_INSET_X * 2 or else
+         s.h <= CLIENT_INSET_TOP + CLIENT_INSET_BOTTOM
+      then
          return (others => 0);
       end if;
 
-      return clampRect ((x => s.x + 10, y => s.y + 34,
-                         w => s.w - 20, h => s.h - 44));
+      return clampRect
+        ((x => s.x + CLIENT_INSET_X,
+          y => s.y + CLIENT_INSET_TOP,
+          w => s.w - CLIENT_INSET_X * 2,
+          h => s.h - CLIENT_INSET_TOP - CLIENT_INSET_BOTTOM));
    end clientRect;
 
    function unpackLo32 (x : Unsigned_64) return Natural is
@@ -1925,10 +1958,16 @@ procedure main is
                         C_MUTED, C_WIN);
          when others =>
             if s.bufferAttached then
-               if s.bufferW < w - 20 or else s.bufferH < h - 44 then
-                  fillRect (x + 10, y + 34, w - 20, h - 44, C_SHADOW);
-               end if;
-               drawClientBuffer (s, x + 10, y + 34, w - 20, h - 44);
+               declare
+                  c : constant Rect := clientRect (frame);
+               begin
+                  if not isEmpty (c) then
+                     if s.bufferW < c.w or else s.bufferH < c.h then
+                        fillRect (c.x, c.y, c.w, c.h, C_WIN);
+                     end if;
+                     drawClientBuffer (s, c.x, c.y, c.w, c.h);
+                  end if;
+               end;
             else
                drawUIText (x + 18, y + 44, "This is a real child surface.",
                            C_TEXT, C_WIN);
@@ -2208,6 +2247,8 @@ procedure main is
          frameDueMs := due;
       end if;
    end scheduleRedrawRect;
+
+   procedure clearInputForTarget (target : Unsigned_64);
 
    procedure reapDeadClientSurfaces (damage : in out Rect);
 
@@ -2502,6 +2543,15 @@ procedure main is
       if oldId = internalDemoWindow then
          internalDemoWindow := 0;
       end if;
+      if pointerSurfaceId = oldId then
+         pointerSurfaceId := 0;
+      end if;
+      if dragSurfaceId = oldId then
+         dragSurfaceId := 0;
+         dragMode := DRAG_NONE;
+         dragPreviewValid := False;
+      end if;
+      clearInputForTarget (oldId);
 
       surfaces (idx) := (others => <>);
 
@@ -2537,6 +2587,15 @@ procedure main is
             --  now-unmapped address.
             oldBounds := surfaceRect (surfaces (i));
             oldTask := taskButtonRect (i);
+            if pointerSurfaceId = surfaces (i).id then
+               pointerSurfaceId := 0;
+            end if;
+            if dragSurfaceId = surfaces (i).id then
+               dragSurfaceId := 0;
+               dragMode := DRAG_NONE;
+               dragPreviewValid := False;
+            end if;
+            clearInputForTarget (surfaces (i).id);
             if focusSurface = surfaces (i).id then
                focusSurface := 0;
             end if;
@@ -2809,6 +2868,19 @@ procedure main is
       inputEvents := (others => (others => <>));
    end clearInputQueue;
 
+   procedure clearInputForTarget (target : Unsigned_64) is
+   begin
+      if target = 0 then
+         return;
+      end if;
+
+      for i in inputEvents'Range loop
+         if inputEvents (i).valid and then inputEvents (i).target = target then
+            inputEvents (i).valid := False;
+         end if;
+      end loop;
+   end clearInputForTarget;
+
    function keyChar (code : Unsigned_8) return Character;
 
    function modifierState return Unsigned_64 is
@@ -2887,6 +2959,13 @@ procedure main is
                     target,
                     packU32Pair (localX, localY),
                     buttons);
+      if kind = INPUT_POINTER_DOWN or else kind = INPUT_POINTER_UP then
+         tracePointer
+           ((if kind = INPUT_POINTER_DOWN then "queue-down" else "queue-up"),
+            target,
+            Unsigned_64 (localX),
+            Unsigned_64 (localY));
+      end if;
    end queuePointer;
 
    procedure queuePointerIfClient
@@ -3381,6 +3460,15 @@ procedure main is
                                    badge  => 0);
                   replyMsg.words (0) := UI_ERR_DENIED;
                else
+                  if pointerSurfaceId = request.words (0) then
+                     pointerSurfaceId := 0;
+                  end if;
+                  if dragSurfaceId = request.words (0) then
+                     dragSurfaceId := 0;
+                     dragMode := DRAG_NONE;
+                     dragPreviewValid := False;
+                  end if;
+                  clearInputForTarget (request.words (0));
                   surfaces (SurfaceIndex (idx)) := (others => <>);
                   if focusSurface = request.words (0) then
                      focusSurface := 0;
@@ -3425,6 +3513,15 @@ procedure main is
          when OP_DESKTOP_BYE =>
             for i in surfaces'Range loop
                if surfaces (i).used and then surfaces (i).owner = from then
+                  if pointerSurfaceId = surfaces (i).id then
+                     pointerSurfaceId := 0;
+                  end if;
+                  if dragSurfaceId = surfaces (i).id then
+                     dragSurfaceId := 0;
+                     dragMode := DRAG_NONE;
+                     dragPreviewValid := False;
+                  end if;
+                  clearInputForTarget (surfaces (i).id);
                   surfaces (i) := (others => <>);
                end if;
             end loop;
@@ -4097,6 +4194,11 @@ procedure main is
          if not handledChromeClick and then idx >= 0 then
             clickedId := surfaces (SurfaceIndex (idx)).id;
             dragMode := hitMode (surfaces (SurfaceIndex (idx)), cursorX, cursorY);
+            tracePointer
+              ("hit-down",
+               clickedId,
+               Unsigned_64 (idx),
+               Unsigned_64 (dragMode));
 
             if dragMode = HIT_CLOSE then
                --  Window buttons are evaluated against the surface that was
@@ -4551,7 +4653,9 @@ begin
             --  completed client frame in the compositor. A small request
             --  budget keeps IPC responsive while preserving frame latency and
             --  prevents idle pollers from starving new window handshakes.
-            exit when requestsThisPass >= (if framePending then 8 else 32);
+            exit when requestsThisPass >=
+              (if framePending then REQUEST_BUDGET_FRAME
+               else REQUEST_BUDGET_IDLE);
          end loop;
 
          flushFrame;

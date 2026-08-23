@@ -519,6 +519,10 @@ package body CuBit.UI is
          w => 137, h => (if r.h > 6 then r.h - 6 else r.h));
       rightX : Natural := rightPane.x + 5;
       rightW : constant Natural := UI_Text_Width (right);
+      leftText : Rect;
+      rightText : Rect;
+      leftCanvas : Canvas;
+      rightCanvas : Canvas;
    begin
       Fill_Rect (c, r, colors.panel);
       Fill_Rect (c, (x => r.x, y => r.y, w => r.w, h => 1), colors.edge);
@@ -532,16 +536,30 @@ package body CuBit.UI is
 
       Fill_Rect (c, leftPane, colors.face);
       Stroke_Sunken (c, leftPane, colors);
-      Draw_UI_Text (c, leftPane.x + 5, Center_Text_Y (leftPane),
+      leftText :=
+        (x => leftPane.x + 7,
+         y => leftPane.y + 1,
+         w => (if leftPane.w > 14 then leftPane.w - 14 else 0),
+         h => (if leftPane.h > 2 then leftPane.h - 2 else leftPane.h));
+      leftCanvas := With_Clip (c, leftText);
+      Draw_UI_Text (leftCanvas, leftText.x, Center_Text_Y (leftPane),
                     left, colors.text, colors.face);
 
       if not Is_Empty (rightPane) then
          Fill_Rect (c, rightPane, colors.face);
          Stroke_Sunken (c, rightPane, colors);
-         if rightPane.w > rightW + 10 then
-            rightX := rightPane.x + rightPane.w - rightW - 5;
+         rightText :=
+           (x => rightPane.x + 7,
+            y => rightPane.y + 1,
+            w => (if rightPane.w > 14 then rightPane.w - 14 else 0),
+            h => (if rightPane.h > 2 then rightPane.h - 2 else rightPane.h));
+         rightCanvas := With_Clip (c, rightText);
+         if rightText.w > rightW then
+            rightX := rightText.x + rightText.w - rightW;
+         else
+            rightX := rightText.x;
          end if;
-         Draw_UI_Text (c, rightX, Center_Text_Y (rightPane),
+         Draw_UI_Text (rightCanvas, rightX, Center_Text_Y (rightPane),
                        right, colors.muted, colors.face);
       end if;
    end Draw_Status_Bar;
@@ -565,7 +583,7 @@ package body CuBit.UI is
    procedure Draw_Table_Header
       (c : Canvas; r : Rect; colors : Theme; c1, c2, c3 : String)
    is
-      col1 : constant Natural := r.x + 6;
+      col1 : constant Natural := r.x + 8;
       col2 : constant Natural := r.x + (r.w * 42) / 100;
       col3 : constant Natural := r.x + (r.w * 70) / 100;
       sep1 : constant Rect := (x => col2 - 5, y => r.y + 2, w => 1,
@@ -589,7 +607,7 @@ package body CuBit.UI is
    is
       bg : Color := colors.face;
       fg : Color := colors.text;
-      col1 : constant Natural := r.x + 6;
+      col1 : constant Natural := r.x + 8;
       col2 : constant Natural := r.x + (r.w * 42) / 100;
       col3 : constant Natural := r.x + (r.w * 70) / 100;
    begin
@@ -731,7 +749,7 @@ package body CuBit.UI is
        focused : Boolean; hot : Boolean)
    is
       face : Color := colors.shadow;
-      textX : constant Natural := r.x + 6;
+      textX : constant Natural := r.x + 8;
       textY : Natural := r.y;
       cursorX : Natural := textX + UI_Text_Width (text);
       cursor : Rect;
@@ -766,7 +784,7 @@ package body CuBit.UI is
        focused : Boolean; hot : Boolean)
    is
       face : Color := colors.shadow;
-      textX : Natural := r.x + 6;
+      textX : Natural := r.x + 8;
       textY : Natural := r.y;
       cursorX : Natural := textX;
       charW : Natural;
@@ -885,7 +903,7 @@ package body CuBit.UI is
       end if;
 
       Fill_Rect (c, r, bg);
-      Draw_UI_Text (c, r.x + 6, Center_Text_Y (r), label, fg, bg);
+      Draw_UI_Text (c, r.x + 8, Center_Text_Y (r), label, fg, bg);
    end Draw_List_Item;
 
    procedure Draw_Menu_Item
@@ -913,7 +931,7 @@ package body CuBit.UI is
       else
          Stroke_Rect (c, icon, colors.edge, colors.shadow);
       end if;
-      Draw_UI_Text (c, r.x + 26, r.y + 3, label, fg, bg);
+      Draw_UI_Text (c, r.x + 30, Center_Text_Y (r), label, fg, bg);
    end Draw_Menu_Item;
 
    procedure Draw_Horizontal_Slider

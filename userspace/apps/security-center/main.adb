@@ -23,6 +23,7 @@ with Security_Center_Form;
 
 procedure main is
    use ASCII;
+   use type CuBit.UI.Widgets.Tab_Title_Access;
 
    SYSINFO_NUM_CPUS  : constant Unsigned_64 := 1400;
    SYSINFO_MEM_FREE  : constant Unsigned_64 := 1600;
@@ -466,12 +467,12 @@ procedure main is
       if rootH < initialH then
          rootH := initialH;
       end if;
-      ret.root := (x => 14, y => 14, w => rootW - 28, h => rootH - 28);
+      ret.root := (x => 0, y => 0, w => rootW, h => rootH);
       frame := CuBit.UI.Layout.Begin_Dock (ret.root);
       ret.header := CuBit.UI.Layout.Dock_Top (frame, 60);
       ret.status := CuBit.UI.Layout.Dock_Bottom (frame, 24);
       ret.page := CuBit.UI.Layout.Inset
-        (CuBit.UI.Layout.Fill (frame), 0, 12, 0, 10);
+        (CuBit.UI.Layout.Fill (frame), 14, 12, 14, 10);
 
       if ret.page.w > 720 then
          sidebarW := 200;
@@ -497,6 +498,37 @@ procedure main is
    end computeLayout;
 
    layout : Dashboard_Layout := computeLayout (initialW, initialH);
+
+   function hitTabIndex (x, y : Natural) return Natural is
+      padding : constant Natural := 24;
+      stripH : constant Natural := Natural'Min (30, layout.tabs.h);
+      tabH : constant Natural :=
+         (if stripH > 4 then stripH - 4 else stripH);
+      tabY : constant Natural := layout.tabs.y + (stripH - tabH);
+      tabX : Natural := layout.tabs.x + 2;
+      tabW : Natural;
+      tabBounds : CuBit.UI.Rect;
+      index : Natural;
+   begin
+      for i in Security_Center_Form.TAB_LABELS'Range loop
+         if Security_Center_Form.TAB_LABELS (i) /= null and then
+            tabX < layout.tabs.x + layout.tabs.w
+         then
+            index := Natural (i - Security_Center_Form.TAB_LABELS'First) + 1;
+            tabW :=
+              CuBit.UI.UI_Text_Width
+                (Security_Center_Form.TAB_LABELS (i).all) + padding;
+            tabW := Natural'Min (tabW, layout.tabs.x + layout.tabs.w - tabX);
+            tabBounds := (x => tabX, y => tabY, w => tabW, h => tabH);
+            if CuBit.UI.Point_In_Rect (x, y, tabBounds) then
+               return index;
+            end if;
+            tabX := tabX + tabW;
+         end if;
+      end loop;
+
+      return 0;
+   end hitTabIndex;
 
    procedure drawText
       (c : CuBit.UI.Canvas;
@@ -1110,7 +1142,7 @@ procedure main is
       CuBit.UI.State.Begin_Frame (ui);
       CuBit.UI.State.Enter_Scope (ui);
 
-      CuBit.UI.Fill_Rect (c, CuBit.UI.App.Full_Rect (win), colors.desktop);
+      CuBit.UI.Fill_Rect (c, CuBit.UI.App.Full_Rect (win), colors.face);
       CuBit.UI.Fill_Rect (c, layout.root, colors.panel);
       CuBit.UI.Stroke_Rect (c, layout.root, colors.edge, colors.shadow);
 
@@ -1236,12 +1268,24 @@ procedure main is
       elsif ev.kind = CuBit.UI.App.INPUT_POINTER_UP then
          x := unpackLo32 (ev.payload0);
          y := unpackHi32 (ev.payload0);
+         layout := computeLayout (CuBit.UI.App.Width (win),
+                                  CuBit.UI.App.Height (win));
          hit := CuBit.UI.Controls.Hit (controls, x, y);
-         if hit >= CONTROL_TAB_BASE and then
-            hit < CONTROL_TAB_BASE + Security_Center_Form.TAB_LABELS'Length
-         then
-            activeTab := hit - CONTROL_TAB_BASE + 1;
-         end if;
+         declare
+            tab : constant Natural := hitTabIndex (x, y);
+         begin
+            if tab /= 0 then
+               activeTab := tab;
+            elsif CuBit.UI.Point_In_Rect (x, y, layout.refresh) then
+               refreshCount := refreshCount + 1;
+               capCacheValid := False;
+               requestSelectedStreams;
+            elsif hit >= CONTROL_TAB_BASE and then
+               hit < CONTROL_TAB_BASE + Security_Center_Form.TAB_LABELS'Length
+            then
+               activeTab := hit - CONTROL_TAB_BASE + 1;
+            end if;
+         end;
          CuBit.UI.State.Set_Pointer (ui, x, y, False, released => True);
          dirty := CuBit.UI.App.Full_Rect (win);
       end if;
