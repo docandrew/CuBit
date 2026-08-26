@@ -28,6 +28,8 @@ The suite currently includes:
   client from the NVMe image.
 - `bench-ipc`: boots a benchmark init profile that starts an IPC benchmark
   server and client, then emits compact timing summaries.
+- `ccl-vm`: runs the freestanding CCL bytecode VM and source interpreter inside
+  CuBit and checks their in-guest self-test markers.
 - `desktop-display`: boots a test init profile that starts `display.svc` and
   `desktop.svc`, then verifies the display backend status handshake.
 - `desktop-doom`: boots `display.svc`, `desktop.svc`, and `doom.elf` on

@@ -43,7 +43,7 @@ project Keyboard is
             "-mno-red-zone",
             "-fno-pic",
             --"-mcmodel=kernel",    -- all kernel code in top 2GiB of memory
-            --"-O2",
+            "-O2",
             "-mno-sse",             -- not supported (yet)
             "-mno-sse2"
         );

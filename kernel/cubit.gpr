@@ -50,6 +50,7 @@ project CuBit is
             "-fno-pic",
             "-mcmodel=kernel",      -- all kernel code in top 2GiB of memory
             "-O2",
+            "-mno-mmx",             -- kernel must not touch lazy userspace FPU state
             "-mno-sse",             -- not supported
             "-mno-sse2",
             "-I-"                   -- don't look for source files in the same folder

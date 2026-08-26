@@ -37,4 +37,12 @@ is
     ---------------------------------------------------------------------------
     procedure toAda (cstr : System.Address; s : in out String);
 
+    --  Compiler-generated string operations may lower to the conventional C
+    --  strlen symbol at higher optimization levels. Keep the implementation
+    --  inside the freestanding kernel rather than depending on a host libc.
+    function strlen (cstr : System.Address) return Natural with
+        Export,
+        Convention    => C,
+        External_Name => "strlen";
+
 end Strings;

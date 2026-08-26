@@ -25,7 +25,9 @@ library project kernel_runtime is
             "-mno-red-zone",
             "-mcmodel=kernel",
             "-fno-pic",
+            "-mno-mmx",
             "-mno-sse",
+            "-mno-sse2",
             "-I-"
         );
     end Compiler;

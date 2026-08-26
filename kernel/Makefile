@@ -81,8 +81,8 @@ clean:
 
 # Build DOOM and copy ELF into ISO directory
 .PHONY : doom
-doom:
-	$(MAKE) -C ../userspace/c -f Makefile.doomgeneric
+doom: user_runtime
+	$(ALR) $(MAKE) -C ../userspace/c -f Makefile.doomgeneric
 	cp ../userspace/c/doom_build/doom.elf isodir/boot/doom.elf
 
 .PHONY : sleep
@@ -129,6 +129,26 @@ bench-ipc-client: user_runtime
 		-o ../userspace/apps/bench-ipc-client/build/manifest.o
 	$(ALR) gprbuild -P ../userspace/apps/bench-ipc-client/bench_ipc_client.gpr
 	cp ../userspace/apps/bench-ipc-client/build/bench-ipc-client.app isodir/boot/bench-ipc-client.app
+
+# Build the freestanding CuBit Control Language VM self-test app.
+.PHONY : ccl-vm
+ccl-vm: user_runtime
+	mkdir -p ../userspace/ccl/apps/ccl-vm/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/ccl/apps/ccl-vm/manifest.c \
+		-o ../userspace/ccl/apps/ccl-vm/build/manifest.o
+	$(ALR) gprbuild -P ../userspace/ccl/apps/ccl-vm/ccl_vm.gpr
+	cp ../userspace/ccl/apps/ccl-vm/build/ccl-vm.app isodir/boot/ccl-vm.app
+
+# Test-only service used to exercise CCL's typed host-import IPC adapter.
+.PHONY : ccl-test-host
+ccl-test-host: user_runtime
+	mkdir -p ../userspace/ccl/services/test-host/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/ccl/services/test-host/manifest.c \
+		-o ../userspace/ccl/services/test-host/build/manifest.o
+	$(ALR) gprbuild -P ../userspace/ccl/services/test-host/ccl_test_host.gpr
+	cp ../userspace/ccl/services/test-host/build/ccl-test-host.svc isodir/boot/ccl-test-host.svc
 
 # Build userspace Ada runtime (needed by filesystem server)
 .PHONY : user_runtime
@@ -313,13 +333,17 @@ shell: user_runtime
 
 # Files that live on ext2 disk images (stage-2 content).
 # Disk images rebuild automatically when any of these change.
+DOOM_WAD ?= ../doom1.wad
+
 DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/sleep.app \
 	isodir/boot/wget.app isodir/boot/security-center.app \
+	isodir/boot/ccl-vm.app \
+	isodir/boot/ccl-test-host.svc \
 	isodir/boot/desktop-shell.app isodir/boot/ui-lab.app \
 	isodir/boot/ipctest-server.app isodir/boot/ipctest-client.app \
 	isodir/boot/bench-ipc-server.app isodir/boot/bench-ipc-client.app \
 	isodir/boot/logstore.svc isodir/boot/display.svc isodir/boot/desktop.svc \
-	../init.conf ../motd.txt ../doom1.wad
+	../init.conf ../userspace/motd.txt $(DOOM_WAD)
 
 # Binaries used by the graphical desktop session. Keep this as a separate
 # staging target so run-desktop can build/copy them into isodir first, then
@@ -330,10 +354,10 @@ desktop-session-content: virtio-gpu desktop display desktop-shell ui-lab securit
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.conf, shell.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
 ata_disk.img: $(DISK_CONTENTS)
-	dd if=/dev/zero of=ata_disk.img bs=1K count=8192
+	dd if=/dev/zero of=ata_disk.img bs=1K count=65536
 	mke2fs -t ext2 ata_disk.img
-	debugfs -w -R "write ../doom1.wad doom1.wad" ata_disk.img
-	debugfs -w -R "write ../motd.txt motd.txt" ata_disk.img
+	debugfs -w -R "write $(DOOM_WAD) doom1.wad" ata_disk.img
+	debugfs -w -R "write ../userspace/motd.txt motd.txt" ata_disk.img
 	debugfs -w -R "write ../init.conf init.conf" ata_disk.img
 	debugfs -w -R "write isodir/boot/shell.app shell.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" ata_disk.img
@@ -346,6 +370,8 @@ ata_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write isodir/boot/ipctest-client.app ipctest-client.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/bench-ipc-server.app bench-ipc-server.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/bench-ipc-client.app bench-ipc-client.app" ata_disk.img
+	debugfs -w -R "write isodir/boot/ccl-vm.app ccl-vm.app" ata_disk.img
+	debugfs -w -R "write isodir/boot/ccl-test-host.svc ccl-test-host.svc" ata_disk.img
 	debugfs -w -R "write isodir/boot/logstore.svc logstore.svc" ata_disk.img
 	debugfs -w -R "write isodir/boot/display.svc display.svc" ata_disk.img
 	debugfs -w -R "write isodir/boot/desktop.svc desktop.svc" ata_disk.img
@@ -356,10 +382,10 @@ ata_disk.img: $(DISK_CONTENTS)
 # Create ext2 NVMe disk image containing motd.txt, doom1.wad, doom.elf, init.conf, shell.app, wget.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
 nvme_disk.img: $(DISK_CONTENTS)
-	dd if=/dev/zero of=nvme_disk.img bs=1K count=16384
+	dd if=/dev/zero of=nvme_disk.img bs=1K count=65536
 	mke2fs -t ext2 nvme_disk.img
-	debugfs -w -R "write ../motd.txt motd.txt" nvme_disk.img
-	debugfs -w -R "write ../doom1.wad doom1.wad" nvme_disk.img
+	debugfs -w -R "write ../userspace/motd.txt motd.txt" nvme_disk.img
+	debugfs -w -R "write $(DOOM_WAD) doom1.wad" nvme_disk.img
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" nvme_disk.img
 	debugfs -w -R "write isodir/boot/sleep.app sleep.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/logstore.svc logstore.svc" nvme_disk.img
@@ -373,6 +399,8 @@ nvme_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write isodir/boot/ipctest-client.app ipctest-client.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/bench-ipc-server.app bench-ipc-server.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/bench-ipc-client.app bench-ipc-client.app" nvme_disk.img
+	debugfs -w -R "write isodir/boot/ccl-vm.app ccl-vm.app" nvme_disk.img
+	debugfs -w -R "write isodir/boot/ccl-test-host.svc ccl-test-host.svc" nvme_disk.img
 	debugfs -w -R "write isodir/boot/display.svc display.svc" nvme_disk.img
 	debugfs -w -R "write isodir/boot/desktop.svc desktop.svc" nvme_disk.img
 	dd if=/dev/zero of=/tmp/config.dat bs=8192 count=1
@@ -414,13 +442,14 @@ iso: cubit_kernel initrd
 
 # Build everything including DOOM, then create ISO and disk images
 .PHONY : world
-world: cubit_kernel doom sleep ipctest-server ipctest-client bench-ipc-server bench-ipc-client filesystem ata nvme virtio-net virtio-gpu netstack wget security-center desktop-shell ui-lab procmgr shell hda mixer ps2 config netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: cubit_kernel doom sleep ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host ccl-vm filesystem ata nvme virtio-net virtio-gpu netstack wget security-center desktop-shell ui-lab procmgr shell hda mixer ps2 config netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world
 	bash ../tests/headless/run.sh --test boot-shell-nvme
 	bash ../tests/headless/run.sh --test async-ipc
 	bash ../tests/headless/run.sh --test bench-ipc
+	bash ../tests/headless/run.sh --test ccl-vm
 	bash ../tests/headless/run.sh --test desktop-display
 	bash ../tests/headless/run.sh --test virtio-gpu
 	bash ../tests/headless/run.sh --test virtio-vga-primary
@@ -432,7 +461,7 @@ run: nvme_disk.img
 	sed -i 's/^set default=.*/set default=4/' isodir/boot/grub/grub.cfg
 	grub-mkrescue -o cubit_kernel.iso isodir
 	sed -i 's/^set default=.*/set default=0/' isodir/boot/grub/grub.cfg
-	qemu-system-x86_64 \
+	GDK_BACKEND=x11 qemu-system-x86_64 \
 		-machine q35 \
 		-cpu Broadwell \
 		-smp 4 \
@@ -464,7 +493,7 @@ run-desktop: desktop-session-content
 	sed -i 's/^set default=.*/set default=4/' isodir/boot/grub/grub.cfg
 	grub-mkrescue -o cubit_kernel.iso isodir
 	sed -i 's/^set default=.*/set default=0/' isodir/boot/grub/grub.cfg
-	qemu-system-x86_64 \
+	GDK_BACKEND=x11 qemu-system-x86_64 \
 		-machine q35 \
 		-cpu Broadwell \
 		-smp 4 \
@@ -508,7 +537,7 @@ run-desktop-fast:
 	debugfs -w -R "write isodir/boot/ui-lab.app ui-lab.app" desktop_disk.img
 	debugfs -w -R "write isodir/boot/security-center.app security-center.app" desktop_disk.img
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" desktop_disk.img
-	qemu-system-x86_64 \
+	GDK_BACKEND=x11 qemu-system-x86_64 \
 		-machine q35 \
 		-cpu Broadwell \
 		-smp 4 \
@@ -555,7 +584,7 @@ run-desktop-inspect:
 	debugfs -w -R "write isodir/boot/ui-lab.app ui-lab.app" desktop_disk.img
 	debugfs -w -R "write isodir/boot/security-center.app security-center.app" desktop_disk.img
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" desktop_disk.img
-	qemu-system-x86_64 \
+	GDK_BACKEND=x11 qemu-system-x86_64 \
 		-machine q35 \
 		-cpu Broadwell \
 		-smp 4 \
@@ -593,7 +622,7 @@ run-virtio-vga: nvme_disk.img
 	sed -i 's/^set default=.*/set default=4/' isodir/boot/grub/grub.cfg
 	grub-mkrescue -o cubit_kernel.iso isodir
 	sed -i 's/^set default=.*/set default=0/' isodir/boot/grub/grub.cfg
-	qemu-system-x86_64 \
+	GDK_BACKEND=x11 qemu-system-x86_64 \
 		-machine q35 \
 		-cpu Broadwell \
 		-smp 4 \

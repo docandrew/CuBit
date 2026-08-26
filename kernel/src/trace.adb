@@ -117,6 +117,8 @@ is
         enabled := False;
     end Disable;
 
+    function IsEnabled return Boolean is (enabled);
+
     procedure Emit
         (event : in EventKind;
          arg0  : in Unsigned_64 := 0;

@@ -131,10 +131,14 @@ package body Syscall is
         percpu : PerCPUData.PerCPUData with
             Import, Volatile, Address => PerCPUData.getPerCPUDataAddr;
 
-        retval : Unsigned_64 := 0;
-        startTSC : constant Unsigned_64 := x86.rdtsc;
+        retval     : Unsigned_64 := 0;
+        traceActive : constant Boolean := Trace.IsEnabled;
+        startTSC   : Unsigned_64 := 0;
     begin
-        Trace.Emit (Trace.EVENT_SYSCALL_ENTER, syscallNum, arg0);
+        if traceActive then
+            startTSC := x86.rdtsc;
+            Trace.Emit (Trace.EVENT_SYSCALL_ENTER, syscallNum, arg0);
+        end if;
 
         case syscallNum is
             when SYSCALL_EXIT =>
@@ -443,8 +447,10 @@ package body Syscall is
                 print ("  "); println (arg5);
         end case;
 
-        Trace.ObserveDuration (Trace.EVENT_SYSCALL_TIME,
-                               x86.rdtsc - startTSC);
+        if traceActive then
+            Trace.ObserveDuration (Trace.EVENT_SYSCALL_TIME,
+                                   x86.rdtsc - startTSC);
+        end if;
         return retval;
     end syscallHandler;
 

@@ -1,0 +1,45 @@
+{
+  "nodes": {
+    "doomgeneric": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1775993023,
+        "narHash": "sha256-PmPRPE7fOK6dGzb1BJdpt+Z78TOMhogR0YliPBJU5hU=",
+        "owner": "ozkl",
+        "repo": "doomgeneric",
+        "rev": "dcb7a8dbc7a16ce3dda29382ac9aae9d77d21284",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ozkl",
+        "repo": "doomgeneric",
+        "rev": "dcb7a8dbc7a16ce3dda29382ac9aae9d77d21284",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1787360063,
+        "narHash": "sha256-dt4WdcvsA8/RCe+VZZwqU0X+XMM3wBbGCWA0/sFWzGo=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "2c423e03bbafcff28bfadc6781a4a8257f205cb5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "doomgeneric": "doomgeneric",
+        "nixpkgs": "nixpkgs"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

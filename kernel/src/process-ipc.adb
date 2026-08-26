@@ -1529,16 +1529,6 @@ is
         effectiveMax : Natural;
         effectiveMin : Natural;
     begin
-        -- Initialize output (entries is user memory, needs STAC/CLAC)
-        x86.stac;
-        entries     := (others => NULL_COMPLETION);
-        x86.clac;
-        numReturned := 0;
-
-        if mypid = NO_PROCESS then
-            return;
-        end if;
-
         -- Clamp parameters
         if maxEntries > COMPLETION_QUEUE_SIZE then
             effectiveMax := COMPLETION_QUEUE_SIZE;
@@ -1550,6 +1540,21 @@ is
             effectiveMin := effectiveMax;
         else
             effectiveMin := minWait;
+        end if;
+
+        -- Initialize only the caller-requested extent. Assigning the complete
+        -- imported ring here used to overwrite 64 entries even when the
+        -- caller supplied maxEntries = 1.
+        x86.stac;
+        for i in CompletionIndex loop
+            exit when i >= effectiveMax;
+            entries (i) := NULL_COMPLETION;
+        end loop;
+        x86.clac;
+        numReturned := 0;
+
+        if mypid = NO_PROCESS then
+            return;
         end if;
 
         loop

@@ -168,6 +168,7 @@ package CuBit.Messages is
    DRIVER_DESKTOP  : constant Unsigned_64 := 15;
    DRIVER_DISPLAY  : constant Unsigned_64 := 16;
    DRIVER_GPU      : constant Unsigned_64 := 17;
+   DRIVER_CCL_TEST : constant Unsigned_64 := 18;
 
    --  Scheduler latency classes. Values match kernel Process.LatencyClass.
    LATENCY_BACKGROUND  : constant Unsigned_64 := 0;

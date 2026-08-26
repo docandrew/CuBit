@@ -75,6 +75,7 @@ package Sysinfo is
     DRIVER_DESKTOP  : constant DriverID := 15;
     DRIVER_DISPLAY  : constant DriverID := 16;
     DRIVER_GPU      : constant DriverID := 17;
+    DRIVER_CCL_TEST : constant DriverID := 18;
 
     -- List of processes registered as a particular driver.
     type DriverList is array (DriverID) of Process.ProcessID;

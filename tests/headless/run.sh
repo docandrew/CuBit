@@ -20,7 +20,7 @@ Usage: tests/headless/run.sh [options]
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, desktop-display, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, desktop-display, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
   --timeout SECONDS    QEMU runtime before timeout is treated as success
   --serial PATH        Serial log path (default: /tmp/cubit-headless-*.log)
   --pcap PATH          Packet capture path (default: /tmp/cubit-headless-*.pcap)
@@ -94,7 +94,7 @@ case "$TIMEOUT_SECONDS" in
 esac
 
 case "$TEST_NAME" in
-    boot-shell-nvme|async-ipc|bench-ipc|desktop-display|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
+    boot-shell-nvme|async-ipc|bench-ipc|ccl-vm|desktop-display|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -165,6 +165,9 @@ case "$TEST_NAME" in
         ;;
     bench-ipc)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-bench-ipc.conf"
+        ;;
+    ccl-vm)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-vm.conf"
         ;;
     desktop-display|desktop-virtio-vga)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-desktop-display.conf"
@@ -270,6 +273,20 @@ TRACE: hist=syscall_tsc
 TRACE: hist=run_tsc
 TRACE: hist=ready_latency_tsc
 TRACE: summary end
+"
+        ;;
+    ccl-vm)
+        required_markers="
+ccl-vm: starting
+ccl-test-host: registered
+ccl-vm: bytecode PASS
+ccl-vm: module PASS
+ccl-vm: source PASS
+ccl-test-host: import invoked
+ccl-vm: import IPC PASS
+ccl-vm: scheduler PASS
+ccl-vm: ownership PASS
+ccl-vm: all tests passed
 "
         ;;
     desktop-display)

@@ -36,6 +36,7 @@
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with System;
+with CuBit.Protocols;
 
 package CuBit.Streams is
 
@@ -51,6 +52,7 @@ package CuBit.Streams is
 
    --  IPC labels
    OP_STREAM_SUBSCRIBE   : constant Unsigned_32 := 16#0700#;
+   OP_STREAM_SUBSCRIBE_TYPED : constant Unsigned_32 := 16#0708#;
    OP_STREAM_UNSUBSCRIBE : constant Unsigned_32 := 16#0701#;
    OP_STREAM_NOTIFY      : constant Unsigned_32 := 16#0702#;
    OP_STREAM_WAKEUP      : constant Unsigned_32 := 16#0704#;
@@ -78,11 +80,28 @@ package CuBit.Streams is
                             pages     : Natural;
                             entryType : TypeTag);
 
+   --  Create a stream whose entries all conform to a stable wire schema.
+   --  Schema identity is retained by the producer and will be negotiated by
+   --  the typed subscription protocol; it is not an authority identifier.
+   procedure streamCreateTyped
+     (id        : StreamId;
+      pages     : Natural;
+      entryType : TypeTag;
+      schema    : CuBit.Protocols.Schema_Contract);
+
    --  Write raw bytes to a stream. Returns bytes actually written.
    function streamWrite (id        : StreamId;
                           data      : System.Address;
                           len       : Unsigned_32;
                           entryType : TypeTag) return Unsigned_32;
+
+   --  Fail closed if schema does not exactly match the stream declaration.
+   function streamWriteTyped
+     (id        : StreamId;
+      data      : System.Address;
+      len       : Unsigned_32;
+      entryType : TypeTag;
+      schema    : CuBit.Protocols.Schema_Contract) return Unsigned_32;
 
    --  Write a text line to a stream (convenience wrapper around streamWrite).
    procedure streamPrint (id  : StreamId;

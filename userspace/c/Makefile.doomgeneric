@@ -10,10 +10,11 @@ CC      = gcc
 LD      = ld
 AR      = ar
 AS      = gcc
-GNATCC  = $(HOME)/.local/share/alire/toolchains/gnat_native_15.2.1_4640d4b3/bin/gcc
+GNATCC ?= gcc
 
-# Paths (relative to userspace/c/)
-DG_DIR     = doom_src/doomgeneric
+# Paths (relative to userspace/c/). The Nix shell provides DOOMGENERIC_SRC;
+# retain the local-clone fallback for builds outside Nix.
+DG_DIR    ?= $(if $(DOOMGENERIC_SRC),$(DOOMGENERIC_SRC)/doomgeneric,doom_src/doomgeneric)
 BUILDDIR   = doom_build
 INCLUDE    = include
 RUNTIME    = ../runtime

@@ -378,6 +378,9 @@ procedure main is
                         return;
                      end if;
 
+                     --  Avoid count - 1 underflow for an empty identity
+                     --  section; userspace range checks are suppressed.
+                     if count > 0 then
                      for j in 0 .. Unsigned_16'(count - 1) loop
                         exit when pos + 3 > sh_offset + sh_size;
 
@@ -422,6 +425,7 @@ procedure main is
                                   Unsigned_64 (vLen);
                         end;
                      end loop;
+                     end if;
 
                      return;  -- only process first matching section
                   end;
@@ -490,6 +494,8 @@ procedure main is
                         return;
                      end if;
 
+                     --  Avoid count - 1 underflow for an empty stream list.
+                     if count > 0 then
                      for j in 0 .. Unsigned_16'(count - 1) loop
                         declare
                            entBase  : constant Unsigned_64 :=
@@ -507,6 +513,7 @@ procedure main is
                            debugPrint ("" & LF);
                         end;
                      end loop;
+                     end if;
 
                      return;
                   end;
@@ -606,6 +613,11 @@ procedure main is
                      printDec (Unsigned_32 (count));
                      debugPrint (" cap entries" & LF);
 
+                     --  Do not form count - 1 when the manifest is empty.
+                     --  With userspace range checks suppressed, underflow
+                     --  would scan unrelated ELF bytes as capability requests
+                     --  and could mint authority that was never declared.
+                     if count > 0 then
                      for j in 0 .. Unsigned_16'(count - 1) loop
                         entryBase := sh_offset + 8 +
                            Unsigned_64 (j) * 16;
@@ -740,6 +752,7 @@ procedure main is
                                  "procmgr: unknown req type" & LF);
                         end case;
                      end loop;
+                     end if;
 
                   end;
 
@@ -1426,6 +1439,34 @@ procedure main is
                                   2,
                                   7);
                debugPrint ("procmgr: minted ipctest ntf cap" & LF);
+            end if;
+         end;
+      end if;
+
+      --  Permit only the identity of the CCL host-import regression service
+      --  to register the test endpoint. The registration capability itself
+      --  remains kernel-enforced and is not inherited by its clients.
+      if pkgIdLen = 23 then
+         declare
+            CCL_TEST_HOST_ID : constant String := "com.cubit.ccl-test-host";
+            match : Boolean := True;
+            ignore : Unsigned_64;
+         begin
+            for c in 0 .. 22 loop
+               if pkgId (1 + c) /= CCL_TEST_HOST_ID (1 + c) then
+                  match := False;
+                  exit;
+               end if;
+            end loop;
+            if match then
+               ignore := syscall (SYSCALL_MINT_CAP,
+                                  newPID,
+                                  CAP_TYPE_NOTIFICATION,
+                                  DRIVER_CCL_TEST,
+                                  0,
+                                  2,
+                                  CAP_SLOT_SERVICE_REG);
+               debugPrint ("procmgr: minted ccl-test-host ntf cap" & LF);
             end if;
          end;
       end if;

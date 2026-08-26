@@ -20,6 +20,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Streams;
+with CuBit.Protocols;
 
 procedure main is
    use ASCII;
@@ -101,8 +102,9 @@ begin
    debugPrint ("wget: starting..." & LF);
 
    --  Create stdout stream (4 pages = 16KB ring buffer)
-   CuBit.Streams.streamCreate (
-      CuBit.Streams.STREAM_STDOUT, 4, CuBit.Streams.TYPE_TEXT_LINE);
+   CuBit.Streams.streamCreateTyped
+     (CuBit.Streams.STREAM_STDOUT, 4, CuBit.Streams.TYPE_TEXT_LINE,
+      CuBit.Protocols.TEXT_LINE_CONTRACT);
 
    CuBit.Streams.streamPrint (
       CuBit.Streams.STREAM_STDOUT, "wget: connecting..." & LF);

@@ -20,6 +20,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Config;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Streams;
+with CuBit.Protocols;
 with Font8x16;
 
 procedure main is
@@ -806,13 +807,19 @@ procedure main is
          --  Submit async subscription to child's stdout stream
          declare
             subMsg : constant Message := (
-               tag => (label  => CuBit.Streams.OP_STREAM_SUBSCRIBE,
-                       length => 1,
+               tag => (label  => CuBit.Streams.OP_STREAM_SUBSCRIBE_TYPED,
+                       length => 4,
                        flags  => 0,
                        badge  => 0),
                capBadge => 0,
-               words    => (0 => Unsigned_64 (CuBit.Streams.STREAM_STDOUT),
-                            others => 0));
+               words    =>
+                 (0 => Unsigned_64 (CuBit.Streams.STREAM_STDOUT),
+                  1 => Unsigned_64
+                    (CuBit.Protocols.TEXT_LINE_CONTRACT.Identity),
+                  2 => Unsigned_64
+                    (CuBit.Protocols.TEXT_LINE_CONTRACT.Version),
+                  3 => CuBit.Protocols.Wire_Descriptor
+                    (CuBit.Protocols.TEXT_LINE_CONTRACT)));
             ok : Boolean;
          begin
             ok := submit (foregroundPID, subMsg, STREAM_SUB_TOKEN);

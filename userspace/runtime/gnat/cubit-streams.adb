@@ -10,6 +10,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 
 package body CuBit.Streams is
+   use type CuBit.Protocols.Wire_Size_Kind;
 
    REPLY_OK  : constant Unsigned_32 := 16#F000#;
    REPLY_ERR : constant Unsigned_32 := 16#F001#;
@@ -29,6 +30,8 @@ package body CuBit.Streams is
       pages    : Natural      := 0;
       baseAddr : Unsigned_64  := 0;  -- start of ring buffer (header + data)
       capacity : Unsigned_32  := 0;  -- data area size in bytes
+      schema   : CuBit.Protocols.Schema_Contract :=
+        CuBit.Protocols.NO_SCHEMA_CONTRACT;
       grantIds : GrantIdArray := (others => 0);  -- per-subscriber grant IDs
    end record;
 
@@ -47,6 +50,8 @@ package body CuBit.Streams is
    function readU8 (addr : Unsigned_64) return Unsigned_8;
 
    function findStream (id : StreamId) return Integer;
+   function Typed_Request_Matches
+     (stream : StreamState; msg : Message) return Boolean;
    function alignUp8 (v : Unsigned_32) return Unsigned_32;
    function getMinCursor (base : Unsigned_64;
                            subCnt : Unsigned_8;
@@ -136,6 +141,28 @@ package body CuBit.Streams is
       return -1;
    end findStream;
 
+   function Typed_Request_Matches
+     (stream : StreamState; msg : Message) return Boolean
+   is
+   begin
+      if msg.tag.length < 4 or else
+        msg.words (2) >
+          Unsigned_64 (CuBit.Protocols.Protocol_Version'Last) or else
+        Shift_Right (msg.words (3), 32) > 1
+      then
+         return False;
+      end if;
+      return CuBit.Protocols.Compatible
+        (stream.schema,
+         (Identity => CuBit.Protocols.Schema_Id (msg.words (1)),
+          Version => CuBit.Protocols.Protocol_Version (msg.words (2)),
+          Sizing =>
+            (if Shift_Right (msg.words (3), 32) = 0 then
+                CuBit.Protocols.Fixed_Size
+             else CuBit.Protocols.Bounded_Size),
+          Wire_Size => Unsigned_32 (msg.words (3) and 16#FFFF_FFFF#)));
+   end Typed_Request_Matches;
+
    ---------------------------------------------------------------------------
    --  alignUp8 - round up to 8-byte boundary
    ---------------------------------------------------------------------------
@@ -195,13 +222,18 @@ package body CuBit.Streams is
          return False;
       end if;
 
-      if msg.tag.label = OP_STREAM_SUBSCRIBE then
+      if msg.tag.label = OP_STREAM_SUBSCRIBE or else
+        msg.tag.label = OP_STREAM_SUBSCRIBE_TYPED
+      then
          declare
             reqId : constant StreamId :=
                StreamId (msg.words (0) and 16#FFFF#);
             idx   : constant Integer := findStream (reqId);
          begin
-            if idx >= 0 then
+            if idx >= 0 and then
+              (msg.tag.label = OP_STREAM_SUBSCRIBE or else
+               Typed_Request_Matches (streamTab (idx), msg))
+            then
                declare
                   s       : StreamState renames streamTab (idx);
                   base    : constant Unsigned_64 := s.baseAddr;
@@ -426,9 +458,28 @@ package body CuBit.Streams is
             pages    => pages,
             baseAddr => base,
             capacity => cap,
+            schema   => CuBit.Protocols.NO_SCHEMA_CONTRACT,
             grantIds => (others => 0));
       end;
    end streamCreate;
+
+   procedure streamCreateTyped
+     (id        : StreamId;
+      pages     : Natural;
+      entryType : TypeTag;
+      schema    : CuBit.Protocols.Schema_Contract)
+   is
+      idx : Integer;
+   begin
+      if not CuBit.Protocols.Valid (schema) then
+         return;
+      end if;
+      streamCreate (id, pages, entryType);
+      idx := findStream (id);
+      if idx >= 0 then
+         streamTab (idx).schema := schema;
+      end if;
+   end streamCreateTyped;
 
    ---------------------------------------------------------------------------
    --  streamWrite
@@ -558,6 +609,27 @@ package body CuBit.Streams is
       end;
    end streamWrite;
 
+   function streamWriteTyped
+     (id        : StreamId;
+      data      : System.Address;
+      len       : Unsigned_32;
+      entryType : TypeTag;
+      schema    : CuBit.Protocols.Schema_Contract) return Unsigned_32
+   is
+      idx : constant Integer := findStream (id);
+   begin
+      if idx < 0 or else
+        not CuBit.Protocols.Compatible (streamTab (idx).schema, schema)
+        or else
+        (if schema.Sizing = CuBit.Protocols.Fixed_Size then
+            len /= schema.Wire_Size
+         else len > schema.Wire_Size)
+      then
+         return 0;
+      end if;
+      return streamWrite (id, data, len, entryType);
+   end streamWriteTyped;
+
    ---------------------------------------------------------------------------
    --  streamPrint
    ---------------------------------------------------------------------------
@@ -565,6 +637,7 @@ package body CuBit.Streams is
                            msg : String)
    is
       ignore : Unsigned_32;
+      idx    : constant Integer := findStream (id);
    begin
       if msg'Length = 0 then
          return;
@@ -578,8 +651,15 @@ package body CuBit.Streams is
          for i in 0 .. msg'Length - 1 loop
             buf (i) := Unsigned_8 (Character'Pos (msg (msg'First + i)));
          end loop;
-         ignore := streamWrite (id, buf'Address,
-            Unsigned_32 (msg'Length), TYPE_TEXT_LINE);
+         if idx >= 0 and then CuBit.Protocols.Valid (streamTab (idx).schema)
+         then
+            ignore := streamWriteTyped
+              (id, buf'Address, Unsigned_32 (msg'Length), TYPE_TEXT_LINE,
+               streamTab (idx).schema);
+         else
+            ignore := streamWrite
+              (id, buf'Address, Unsigned_32 (msg'Length), TYPE_TEXT_LINE);
+         end if;
       end;
    end streamPrint;
 

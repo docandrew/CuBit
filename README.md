@@ -40,10 +40,29 @@ and on Windows using WSL.
 This will build CuBit and create a Live-CD .iso file. The ISO can be mounted
 and run in VirtualBox, Bochs, or QEMU.
 
+Reproducible development shell
+------------------------------
+
+On a system with Nix and flakes enabled, enter the repository's development
+environment before building:
+
+    nix develop
+    make -C kernel world
+
+The shell provides Alire, image-building utilities, and QEMU. Alire manages
+the Ada compiler and `gprbuild` toolchain used to build CuBit.
+
+To boot the graphical desktop after building:
+
+    make -C kernel run-desktop
+
 Documentation (work in progress):
 ---------------------------------
 
 The documentation is being organized as [The CuBit Book](docs/README.md).
+
+Current design records include the [CCL design](docs/control-language.md) and
+the living [security and verification ledger](docs/security-hardening.md).
 
 |  Task                                |   Command   |
 |--------------------------------------|-------------|

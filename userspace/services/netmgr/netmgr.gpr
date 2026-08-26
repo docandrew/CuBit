@@ -32,6 +32,7 @@ project Netmgr is
     package Compiler is
         for Default_Switches ("Ada") use
         (
+            "-O2",
             "-fstack-usage",
             "-fomit-frame-pointer",
             "-mno-red-zone",

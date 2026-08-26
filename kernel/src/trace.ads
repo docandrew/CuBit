@@ -26,6 +26,9 @@ is
     -- enough to print or inspect it after a benchmark finishes.
     procedure Disable;
 
+    -- Let hot paths avoid timestamp reads entirely while tracing is disabled.
+    function IsEnabled return Boolean with Inline;
+
     -- Emit one compact event in the current CPU's ring. This routine must
     -- stay tiny: no allocation, no serial output, no blocking calls.
     procedure Emit

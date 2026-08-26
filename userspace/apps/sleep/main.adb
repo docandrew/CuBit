@@ -11,6 +11,7 @@
 with Interfaces; use Interfaces;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Protocols;
 with CuBit.Streams;
 
 procedure main is
@@ -21,8 +22,9 @@ procedure main is
 begin
    debugPrint ("sleep: starting" & LF);
 
-   CuBit.Streams.streamCreate (
-      CuBit.Streams.STREAM_STDOUT, 4, CuBit.Streams.TYPE_TEXT_LINE);
+   CuBit.Streams.streamCreateTyped
+     (CuBit.Streams.STREAM_STDOUT, 4, CuBit.Streams.TYPE_TEXT_LINE,
+      CuBit.Protocols.TEXT_LINE_CONTRACT);
 
    CuBit.Streams.streamPrint (
       CuBit.Streams.STREAM_STDOUT, "sleep: running..." & LF);
