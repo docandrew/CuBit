@@ -131,6 +131,25 @@ bench-ipc-client: user_runtime
 	cp ../userspace/apps/bench-ipc-client/build/bench-ipc-client.app isodir/boot/bench-ipc-client.app
 
 # Build the freestanding CuBit Control Language VM self-test app.
+.PHONY : ccl-run
+ccl-run:
+	$(ALR) gprbuild -P ../userspace/ccl/ccl_run.gpr -p
+
+.PHONY : ccl-ui-preview
+ccl-ui-preview:
+	$(ALR) gprbuild -P ../userspace/ccl/ccl_ui_preview.gpr -p
+	cd .. && userspace/ccl/build/ccl-ui-preview/ccl-ui-preview
+
+.PHONY : ui-editor-test
+ui-editor-test:
+	$(ALR) gprbuild -P ../userspace/lib/ui/tests/editor/editor_test.gpr -p
+	../userspace/lib/ui/tests/editor/build/main
+
+.PHONY : ccl-test-native
+ccl-test-native:
+	$(ALR) gprbuild -P ../userspace/ccl/ccl_native.gpr -p
+	../userspace/ccl/build/native/main
+
 .PHONY : ccl-vm
 ccl-vm: user_runtime
 	mkdir -p ../userspace/ccl/apps/ccl-vm/build

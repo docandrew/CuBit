@@ -19,6 +19,7 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Authority; use CuBit.Authority;
 
 procedure main is
    use ASCII;
@@ -45,6 +46,33 @@ procedure main is
    --  FS capability slot
    CAP_SLOT_FS_LOCAL     : constant Unsigned_64 := 1;
    CAP_SLOT_CONFIG_LOCAL : constant Unsigned_64 := 2;
+
+   --  Bounded launch-authority provenance ledger.  This records why procmgr
+   --  attempted or installed authority; live authority remains authoritative
+   --  in the kernel capability table.
+   MAX_AUTHORITY_RECORDS : constant := 512;
+
+   type Authority_Record is record
+      valid       : Boolean := False;
+      authorityId : Unsigned_32 := 0;
+      pid         : Unsigned_64 := 0;
+      slot        : Unsigned_8 := 0;
+      source      : Unsigned_8 := 0;
+      reason      : Unsigned_8 := 0;
+      capType     : Unsigned_8 := 0;
+      requested   : Boolean := False;
+      granted     : Boolean := False;
+      rights      : Unsigned_8 := 0;
+      objectRef   : Unsigned_64 := 0;
+      objectParam : Unsigned_64 := 0;
+   end record;
+
+   type Authority_Record_Array is
+      array (Natural range 0 .. MAX_AUTHORITY_RECORDS - 1) of Authority_Record;
+   authorityRecords : Authority_Record_Array;
+   nextAuthorityRecord : Natural := 0;
+   nextAuthorityId : Unsigned_32 := 1;
+   authorityInspectorPID : Unsigned_64 := 0;
 
    --  Service routing identifiers
    SERVICE_FS     : constant Unsigned_8 := 0;
@@ -98,6 +126,129 @@ procedure main is
       replyMsg.words := (0 => word0, others => 0);
       ignore := reply (dest, replyMsg);
    end sendReply;
+
+   procedure recordAuthority
+     (pid         : Unsigned_64;
+      slot        : Unsigned_64;
+      source      : Unsigned_8;
+      reason      : Unsigned_8;
+      capType     : Unsigned_64;
+      requested   : Boolean;
+      granted     : Boolean;
+      rights      : Unsigned_64;
+      objectRef   : Unsigned_64;
+      objectParam : Unsigned_64)
+   is
+      index : Natural := MAX_AUTHORITY_RECORDS;
+   begin
+      --  A slot has one launch-time explanation.  Replace an earlier record
+      --  when later launch policy intentionally writes the same slot.
+      for i in authorityRecords'Range loop
+         if authorityRecords (i).valid and then
+            authorityRecords (i).pid = pid and then
+            authorityRecords (i).slot = Unsigned_8 (slot and 16#FF#)
+         then
+            index := i;
+            exit;
+         end if;
+      end loop;
+
+      if index = MAX_AUTHORITY_RECORDS then
+         index := nextAuthorityRecord;
+         nextAuthorityRecord :=
+            (nextAuthorityRecord + 1) mod MAX_AUTHORITY_RECORDS;
+      end if;
+
+      authorityRecords (index) :=
+        (valid       => True,
+         authorityId => nextAuthorityId,
+         pid         => pid,
+         slot        => Unsigned_8 (slot and 16#FF#),
+         source      => source,
+         reason      => reason,
+         capType     => Unsigned_8 (capType and 16#FF#),
+         requested   => requested,
+         granted     => granted,
+         rights      => Unsigned_8 (rights and 16#1F#),
+         objectRef   => objectRef,
+         objectParam => objectParam);
+      if nextAuthorityId = Unsigned_32'Last then
+         nextAuthorityId := 1;
+      else
+         nextAuthorityId := nextAuthorityId + 1;
+      end if;
+   end recordAuthority;
+
+   procedure clearAuthorityForPID (pid : Unsigned_64) is
+   begin
+      for item of authorityRecords loop
+         if item.valid and then item.pid = pid then
+            item.valid := False;
+         end if;
+      end loop;
+   end clearAuthorityForPID;
+
+   procedure handleAuthorityQuery (sender : ProcessID; msg : Message) is
+      pid  : constant Unsigned_64 := msg.words (0);
+      slot : Unsigned_8 := 0;
+      response : Message := NULL_MESSAGE;
+      found : Boolean := False;
+      flags : Unsigned_64 := 0;
+      meta  : Unsigned_64;
+      ignore : Unsigned_64;
+   begin
+      --  Cross-process authority inspection is not implied by possession of a
+      --  general procmgr endpoint.  This temporary identity-based policy will
+      --  become a dedicated inspection capability when package identity is
+      --  authenticated.
+      if Unsigned_64 (sender) /= authorityInspectorPID then
+         response.tag := (label => REPLY_ERR, length => 0,
+                          flags => 0, badge => 0);
+         ignore := reply (sender, response);
+         return;
+      end if;
+
+      if msg.tag.length < 2 or else pid = 0 or else pid > 255 or else
+         msg.words (1) > 63
+      then
+         response.tag := (label => REPLY_ERR, length => 0,
+                          flags => 0, badge => 0);
+         ignore := reply (sender, response);
+         return;
+      end if;
+      slot := Unsigned_8 (msg.words (1));
+
+      for item of authorityRecords loop
+         if item.valid and then item.pid = pid and then item.slot = slot then
+            if item.requested then
+               flags := flags or Unsigned_64 (AUTH_FLAG_REQUESTED);
+            end if;
+            if item.granted then
+               flags := flags or Unsigned_64 (AUTH_FLAG_GRANTED);
+            end if;
+            meta := Unsigned_64 (item.authorityId) or
+              Shift_Left (Unsigned_64 (item.slot), 32) or
+              Shift_Left (Unsigned_64 (item.source), 40) or
+              Shift_Left (Unsigned_64 (item.reason), 48) or
+              Shift_Left (flags, 56);
+            response.tag := (label => REPLY_OK, length => 4,
+                             flags => 0, badge => 0);
+            response.words (0) := meta;
+            response.words (1) := Unsigned_64 (item.capType) or
+              Shift_Left (Unsigned_64 (item.rights), 8);
+            response.words (2) := item.objectRef;
+            response.words (3) := item.objectParam;
+            found := True;
+            exit;
+         end if;
+      end loop;
+
+      if not found then
+         response.tag := (label => REPLY_ERR, length => 0,
+                          flags => 0, badge => 0);
+      end if;
+      ignore := reply (sender, response);
+   end handleAuthorityQuery;
 
    ---------------------------------------------------------------------------
    --  ensureBuffer - grow elfBuf if needed for a file of the given size.
@@ -280,6 +431,35 @@ procedure main is
    CAP_SLOT_MOUSE_FOCUS   : constant Unsigned_64 := 16;
    CAP_SLOT_PROCESS_MGMT  : constant Unsigned_64 := 5;
    CAP_SLOT_SERVICE_REG   : constant Unsigned_64 := 7;
+
+   procedure mintRecorded
+     (childPID   : Unsigned_64;
+      capType    : Unsigned_64;
+      objectRef  : Unsigned_64;
+      objectParam : Unsigned_64;
+      rights     : Unsigned_64;
+      slot       : Unsigned_64;
+      source     : Unsigned_8;
+      reason     : Unsigned_8;
+      requested  : Boolean;
+      result     : out Unsigned_64)
+   is
+   begin
+      result := syscall (SYSCALL_MINT_CAP, childPID, capType, objectRef,
+                         objectParam, rights, slot);
+      recordAuthority
+        (pid         => childPID,
+         slot        => slot,
+         source      => source,
+         reason      => (if result = Unsigned_64'Last
+                         then AUTH_REASON_MINT_FAILED else reason),
+         capType     => capType,
+         requested   => requested,
+         granted     => result /= Unsigned_64'Last,
+         rights      => rights,
+         objectRef   => objectRef,
+         objectParam => objectParam);
+   end mintRecorded;
 
    ---------------------------------------------------------------------------
    --  readU16 - read a little-endian Unsigned_16 from elfBuf at byte offset
@@ -632,14 +812,11 @@ procedure main is
                         case reqType is
                            when REQ_FRAMEBUFFER =>
                               --  CAP_DEVICE_MEM, ref=0, param=0x1000_0000
-                              ignore := syscall (
-                                 SYSCALL_MINT_CAP,
-                                 childPID,
-                                 CAP_TYPE_DEVICE_MEM,
-                                 0,
-                                 16#1000_0000#,
-                                 rightsMask,
-                                 Unsigned_64 (slotNum));
+                              mintRecorded
+                                (childPID, CAP_TYPE_DEVICE_MEM, 0,
+                                 16#1000_0000#, rightsMask,
+                                 Unsigned_64 (slotNum), AUTH_SOURCE_MANIFEST,
+                                 AUTH_REASON_MANIFEST_REQUEST, True, ignore);
                               debugPrint ("procmgr: minted FB cap" & LF);
 
                            when REQ_IOPORT =>
@@ -657,14 +834,12 @@ procedure main is
                               debugPrint (" slot=");
                               printDec (Unsigned_32 (slotNum));
                               debugPrint ("" & LF);
-                              ignore := syscall (
-                                 SYSCALL_MINT_CAP,
-                                 childPID,
-                                 CAP_TYPE_IOPORT,
+                              mintRecorded
+                                (childPID, CAP_TYPE_IOPORT,
                                  Unsigned_64 (param0 and 16#FFFF#),
-                                 param1 and 16#FFFF#,
-                                 rightsMask,
-                                 Unsigned_64 (slotNum));
+                                 param1 and 16#FFFF#, rightsMask,
+                                 Unsigned_64 (slotNum), AUTH_SOURCE_MANIFEST,
+                                 AUTH_REASON_MANIFEST_REQUEST, True, ignore);
                               if ignore = Unsigned_64'Last then
                                  debugPrint ("procmgr: i/o port cap mint failed" & LF);
                               else
@@ -688,17 +863,21 @@ procedure main is
                                  end loop;
 
                                  if driverPID /= 0 then
-                                    ignore := syscall (
-                                       SYSCALL_MINT_CAP,
-                                       childPID,
-                                       CAP_TYPE_ENDPOINT,
-                                       driverPID,
-                                       0,
-                                       rightsMask,
-                                       Unsigned_64 (slotNum));
+                                    mintRecorded
+                                      (childPID, CAP_TYPE_ENDPOINT, driverPID,
+                                       0, rightsMask, Unsigned_64 (slotNum),
+                                       AUTH_SOURCE_MANIFEST,
+                                       AUTH_REASON_MANIFEST_REQUEST, True,
+                                       ignore);
                                     debugPrint (
                                        "procmgr: minted svc cap" & LF);
                                  else
+                                    recordAuthority
+                                      (childPID, Unsigned_64 (slotNum),
+                                       AUTH_SOURCE_MANIFEST,
+                                       AUTH_REASON_SERVICE_MISSING,
+                                       CAP_TYPE_ENDPOINT, True, False,
+                                       rightsMask, Unsigned_64 (param0), 0);
                                     debugPrint (
                                        "procmgr: driver not found" & LF);
                                  end if;
@@ -734,14 +913,11 @@ procedure main is
                                  param1 : constant Unsigned_64 :=
                                     readU64 (entryBase + 8);
                               begin
-                                 ignore := syscall (
-                                    SYSCALL_MINT_CAP,
-                                    childPID,
-                                    CAP_TYPE_RESOURCE,
-                                    Unsigned_64 (param0),
-                                    param1,
-                                    rightsMask,
-                                    Unsigned_64 (slotNum));
+                                 mintRecorded
+                                   (childPID, CAP_TYPE_RESOURCE,
+                                    Unsigned_64 (param0), param1, rightsMask,
+                                    Unsigned_64 (slotNum), AUTH_SOURCE_MANIFEST,
+                                    AUTH_REASON_MANIFEST_REQUEST, True, ignore);
                                  debugPrint (
                                     "procmgr: minted resource cap" &
                                     LF);
@@ -1276,6 +1452,31 @@ procedure main is
       printDec (Unsigned_32 (t1 - t0));
       debugPrint ("ms" & LF);
 
+      --  PIDs are reusable.  Never attribute records retained from an earlier
+      --  process generation to the new child.
+      clearAuthorityForPID (newPID);
+
+      --  SYSCALL_SPAWN installs these kernel bootstrap capabilities before
+      --  procmgr applies the ELF manifest.  Record their origin explicitly.
+      recordAuthority
+        (newPID, 0, AUTH_SOURCE_KERNEL_BOOTSTRAP,
+         AUTH_REASON_SELF_BOOTSTRAP, CAP_TYPE_ENDPOINT, False, True,
+         16#1F#, newPID, 0);
+      declare
+         fsPID : constant Unsigned_64 :=
+           getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_FS);
+      begin
+         recordAuthority
+           (newPID, 1, AUTH_SOURCE_KERNEL_BOOTSTRAP,
+            AUTH_REASON_FS_BOOTSTRAP, CAP_TYPE_ENDPOINT, False,
+            fsPID /= 0 and then fsPID /= Unsigned_64'Last,
+            3, fsPID, 0);
+      end;
+      recordAuthority
+        (newPID, 3, AUTH_SOURCE_KERNEL_BOOTSTRAP,
+         AUTH_REASON_SELF_BOOTSTRAP, CAP_TYPE_PROCESS, False, True,
+         16#1F#, newPID, 0);
+
       --  Parse .cubit.id section for package identity
       parseIdSection (elfSize, pkgId, pkgIdLen);
 
@@ -1297,29 +1498,20 @@ procedure main is
       declare
          ignore : Unsigned_64;
       begin
-         ignore := syscall (SYSCALL_MINT_CAP,
-                            newPID,
-                            CAP_TYPE_NOTIFICATION,
-                            DRIVER_KEYBOARD,  -- ref
-                            0,                -- param
-                            2,                -- rights = RIGHT_WRITE
-                            CAP_SLOT_KBD_FOCUS);
-         ignore := syscall (SYSCALL_MINT_CAP,
-                            newPID,
-                            CAP_TYPE_NOTIFICATION,
-                            DRIVER_MOUSE,     -- ref
-                            0,                -- param
-                            2,                -- rights = RIGHT_WRITE
-                            CAP_SLOT_MOUSE_FOCUS);
+         mintRecorded
+           (newPID, CAP_TYPE_NOTIFICATION, DRIVER_KEYBOARD, 0, 2,
+            CAP_SLOT_KBD_FOCUS, AUTH_SOURCE_COMPATIBILITY,
+            AUTH_REASON_INPUT_COMPAT, False, ignore);
+         mintRecorded
+           (newPID, CAP_TYPE_NOTIFICATION, DRIVER_MOUSE, 0, 2,
+            CAP_SLOT_MOUSE_FOCUS, AUTH_SOURCE_COMPATIBILITY,
+            AUTH_REASON_INPUT_COMPAT, False, ignore);
          --  Mint CAP_PROCESS(ref=0 wildcard, RIGHT_READ+RIGHT_WRITE)
          --  so spawned apps can kill child processes.
-         ignore := syscall (SYSCALL_MINT_CAP,
-                            newPID,
-                            CAP_TYPE_PROCESS,
-                            0,                -- ref = 0 (wildcard)
-                            0,                -- param
-                            3,                -- rights = READ+WRITE
-                            CAP_SLOT_PROCESS_MGMT);
+         mintRecorded
+           (newPID, CAP_TYPE_PROCESS, 0, 0, 3, CAP_SLOT_PROCESS_MGMT,
+            AUTH_SOURCE_COMPATIBILITY, AUTH_REASON_PROCESS_COMPAT,
+            False, ignore);
       end;
 
       --  Mint CAP_NOTIFICATION for logstore driver registration
@@ -1336,13 +1528,10 @@ procedure main is
                end if;
             end loop;
             if match then
-               ignore := syscall (SYSCALL_MINT_CAP,
-                                  newPID,
-                                  CAP_TYPE_NOTIFICATION,
-                                  DRIVER_LOGSTORE,  -- ref = 13
-                                  0,                -- param
-                                  2,                -- rights = RIGHT_WRITE
-                                  7);               -- slot 7
+               mintRecorded
+                 (newPID, CAP_TYPE_NOTIFICATION, DRIVER_LOGSTORE, 0, 2, 7,
+                  AUTH_SOURCE_IDENTITY_POLICY, AUTH_REASON_PACKAGE_ID,
+                  False, ignore);
                debugPrint ("procmgr: minted logstore ntf cap" & LF);
             end if;
          end;
@@ -1365,13 +1554,10 @@ procedure main is
                end if;
             end loop;
             if match then
-               ignore := syscall (SYSCALL_MINT_CAP,
-                                  newPID,
-                                  CAP_TYPE_NOTIFICATION,
-                                  DRIVER_DESKTOP,
-                                  0,
-                                  2,
-                                  CAP_SLOT_SERVICE_REG);
+               mintRecorded
+                 (newPID, CAP_TYPE_NOTIFICATION, DRIVER_DESKTOP, 0, 2,
+                  CAP_SLOT_SERVICE_REG, AUTH_SOURCE_IDENTITY_POLICY,
+                  AUTH_REASON_PACKAGE_ID, False, ignore);
                debugPrint ("procmgr: minted desktop ntf cap" & LF);
             end if;
          end;
@@ -1392,13 +1578,10 @@ procedure main is
                end if;
             end loop;
             if match then
-               ignore := syscall (SYSCALL_MINT_CAP,
-                                  newPID,
-                                  CAP_TYPE_NOTIFICATION,
-                                  DRIVER_DISPLAY,
-                                  0,
-                                  2,
-                                  CAP_SLOT_SERVICE_REG);
+               mintRecorded
+                 (newPID, CAP_TYPE_NOTIFICATION, DRIVER_DISPLAY, 0, 2,
+                  CAP_SLOT_SERVICE_REG, AUTH_SOURCE_IDENTITY_POLICY,
+                  AUTH_REASON_PACKAGE_ID, False, ignore);
                debugPrint ("procmgr: minted display ntf cap" & LF);
             end if;
          end;
@@ -1431,13 +1614,10 @@ procedure main is
             end if;
 
             if match then
-               ignore := syscall (SYSCALL_MINT_CAP,
-                                  newPID,
-                                  CAP_TYPE_NOTIFICATION,
-                                  DRIVER_IPCTEST,
-                                  0,
-                                  2,
-                                  7);
+               mintRecorded
+                 (newPID, CAP_TYPE_NOTIFICATION, DRIVER_IPCTEST, 0, 2, 7,
+                  AUTH_SOURCE_IDENTITY_POLICY, AUTH_REASON_PACKAGE_ID,
+                  False, ignore);
                debugPrint ("procmgr: minted ipctest ntf cap" & LF);
             end if;
          end;
@@ -1459,14 +1639,32 @@ procedure main is
                end if;
             end loop;
             if match then
-               ignore := syscall (SYSCALL_MINT_CAP,
-                                  newPID,
-                                  CAP_TYPE_NOTIFICATION,
-                                  DRIVER_CCL_TEST,
-                                  0,
-                                  2,
-                                  CAP_SLOT_SERVICE_REG);
+               mintRecorded
+                 (newPID, CAP_TYPE_NOTIFICATION, DRIVER_CCL_TEST, 0, 2,
+                  CAP_SLOT_SERVICE_REG, AUTH_SOURCE_IDENTITY_POLICY,
+                  AUTH_REASON_PACKAGE_ID, False, ignore);
                debugPrint ("procmgr: minted ccl-test-host ntf cap" & LF);
+            end if;
+         end;
+      end if;
+
+      --  Temporary service-level authorization for the Security Center's
+      --  cross-process launch-provenance queries.  This must migrate to an
+      --  authenticated package policy and a dedicated inspection capability.
+      if pkgIdLen = 25 then
+         declare
+            SECURITY_CENTER_ID : constant String :=
+              "com.cubit.security-center";
+            match : Boolean := True;
+         begin
+            for c in 0 .. 24 loop
+               if pkgId (1 + c) /= SECURITY_CENTER_ID (1 + c) then
+                  match := False;
+                  exit;
+               end if;
+            end loop;
+            if match then
+               authorityInspectorPID := newPID;
             end if;
          end;
       end if;
@@ -1497,13 +1695,10 @@ procedure main is
                   Unsigned_64 (cpuQuotaUs) or
                   Shift_Left (Unsigned_64 (cpuPeriodUs), 32);
             begin
-               ignore := syscall (SYSCALL_MINT_CAP,
-                  newPID,
-                  CAP_TYPE_RESOURCE,
-                  Unsigned_64 (maxFrames),
-                  param1,
-                  1,   -- rights = RIGHT_READ
-                  RESOURCE_CAP_SLOT);
+               mintRecorded
+                 (newPID, CAP_TYPE_RESOURCE, Unsigned_64 (maxFrames), param1,
+                  1, RESOURCE_CAP_SLOT, AUTH_SOURCE_CONFIG_POLICY,
+                  AUTH_REASON_CONFIG_QUOTA, False, ignore);
                debugPrint (
                   "procmgr: minted config resource cap" & LF);
             end;
@@ -1900,6 +2095,8 @@ begin
       case msg.tag.label is
          when OP_SPAWN =>
             handleSpawn (sender, msg);
+         when OP_AUTHORITY_QUERY =>
+            handleAuthorityQuery (sender, msg);
          when others =>
             sendReply (sender, REPLY_ERR, 0);
       end case;

@@ -10,6 +10,7 @@ with System;
 with System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Authority; use CuBit.Authority;
 with CuBit.UI;
 with CuBit.UI.App;
 with CuBit.UI.Controls;
@@ -84,6 +85,30 @@ procedure main is
    capCachePID : Unsigned_64 := Unsigned_64'Last;
    capCacheCount : Natural := 0;
    capCacheValid : Boolean := False;
+
+   type Authority_Info is record
+      valid       : Boolean := False;
+      authorityId : Unsigned_32 := 0;
+      source      : Unsigned_8 := 0;
+      reason      : Unsigned_8 := 0;
+      requested   : Boolean := False;
+      granted     : Boolean := False;
+      capType     : Unsigned_64 := 0;
+      rights      : Unsigned_64 := 0;
+      ref         : Unsigned_64 := 0;
+      param       : Unsigned_64 := 0;
+   end record;
+   NULL_AUTHORITY_INFO : constant Authority_Info :=
+     (valid => False, authorityId => 0, source => 0, reason => 0,
+      requested => False, granted => False, capType => 0, rights => 0,
+      ref => 0, param => 0);
+
+   type Authority_Cache_Array is
+      array (Natural range 0 .. MAX_CAP_SLOT) of Authority_Info;
+   authorityCache : Authority_Cache_Array;
+   authorityCachePID : Unsigned_64 := Unsigned_64'Last;
+   authorityCacheValid : Boolean := False;
+   authorityBackendReported : Boolean := False;
 
    type Dashboard_Layout is record
       root : CuBit.UI.Rect := (others => 0);
@@ -260,6 +285,107 @@ procedure main is
       capCacheValid := True;
    end refreshCapCache;
 
+   procedure refreshAuthorityCache (pid : Unsigned_64) is
+      msg : Message;
+      tag : MessageTag;
+      meta : Unsigned_64;
+      flags : Unsigned_64;
+      foundAny : Boolean := False;
+   begin
+      if authorityCacheValid and then authorityCachePID = pid then
+         return;
+      end if;
+
+      authorityCache := (others => NULL_AUTHORITY_INFO);
+      authorityCachePID := pid;
+
+      if pid /= 0 then
+         for slot in 0 .. MAX_CAP_SLOT loop
+            msg := NULL_MESSAGE;
+            msg.tag := (label => OP_AUTHORITY_QUERY, length => 2,
+                        flags => 0, badge => 0);
+            msg.words (0) := pid;
+            msg.words (1) := Unsigned_64 (slot);
+            tag := capCall (CAP_SLOT_PROCMGR, msg);
+            if tag.label = REPLY_OK and then tag.length = 4 then
+               foundAny := True;
+               meta := msg.words (0);
+               flags := Shift_Right (meta, 56) and 16#FF#;
+               authorityCache (slot) :=
+                 (valid       => True,
+                  authorityId => Unsigned_32 (meta and 16#FFFF_FFFF#),
+                  source      => Unsigned_8 (Shift_Right (meta, 40) and 16#FF#),
+                  reason      => Unsigned_8 (Shift_Right (meta, 48) and 16#FF#),
+                  requested   =>
+                    (flags and Unsigned_64 (AUTH_FLAG_REQUESTED)) /= 0,
+                  granted     =>
+                    (flags and Unsigned_64 (AUTH_FLAG_GRANTED)) /= 0,
+                  capType     => msg.words (1) and 16#FF#,
+                  rights      => Shift_Right (msg.words (1), 8) and 16#1F#,
+                  ref         => msg.words (2),
+                  param       => msg.words (3));
+            end if;
+         end loop;
+      end if;
+      authorityCacheValid := True;
+      if foundAny and then not authorityBackendReported then
+         debugPrint ("security-center: authority provenance ready" & LF);
+         authorityBackendReported := True;
+      end if;
+   end refreshAuthorityCache;
+
+   function authoritySourceName (source : Unsigned_8) return String is
+   begin
+      case source is
+         when AUTH_SOURCE_MANIFEST => return "ELF manifest";
+         when AUTH_SOURCE_KERNEL_BOOTSTRAP => return "kernel bootstrap";
+         when AUTH_SOURCE_COMPATIBILITY => return "compatibility rule";
+         when AUTH_SOURCE_IDENTITY_POLICY => return "package identity policy";
+         when AUTH_SOURCE_CONFIG_POLICY => return "configured quota";
+         when others => return "unknown source";
+      end case;
+   end authoritySourceName;
+
+   function authorityReasonName (reason : Unsigned_8) return String is
+   begin
+      case reason is
+         when AUTH_REASON_MANIFEST_REQUEST => return "manifest request";
+         when AUTH_REASON_SELF_BOOTSTRAP => return "self bootstrap";
+         when AUTH_REASON_FS_BOOTSTRAP => return "filesystem bootstrap";
+         when AUTH_REASON_INPUT_COMPAT =>
+            return "temporary input-focus compatibility";
+         when AUTH_REASON_PROCESS_COMPAT =>
+            return "temporary wildcard process compatibility";
+         when AUTH_REASON_PACKAGE_ID => return "package identity matched";
+         when AUTH_REASON_SERVICE_MISSING =>
+            return "requested service was unavailable";
+         when AUTH_REASON_MINT_FAILED => return "kernel rejected mint";
+         when AUTH_REASON_CONFIG_QUOTA => return "configured resource quota";
+         when others => return "no recorded reason";
+      end case;
+   end authorityReasonName;
+
+   function authorityState
+      (info : Authority_Info; effective : Boolean) return String
+   is
+   begin
+      if not info.valid then
+         if effective then
+            return "effective (untracked)";
+         end if;
+         return "not recorded";
+      elsif info.requested and then info.granted and then effective then
+         return "requested / granted / effective";
+      elsif info.requested and then not info.granted then
+         return "requested / denied";
+      elsif info.granted and then effective then
+         return "ambient / effective";
+      elsif info.granted then
+         return "granted / no longer effective";
+      end if;
+      return "recorded / not granted";
+   end authorityState;
+
    function rightsText (rights : Unsigned_64) return String is
       result : String (1 .. 5) := "-----";
    begin
@@ -402,6 +528,51 @@ procedure main is
       end if;
       return "-";
    end capSlotLabel;
+
+   function authorityCount (pid : Unsigned_64) return Natural is
+      count : Natural := 0;
+   begin
+      refreshCapCache (pid);
+      refreshAuthorityCache (pid);
+      for slot in 0 .. MAX_CAP_SLOT loop
+         if capCache (slot).capType /= CAP_NULL or else
+            authorityCache (slot).valid
+         then
+            count := count + 1;
+         end if;
+      end loop;
+      return count;
+   end authorityCount;
+
+   function authorityForRow
+     (pid : Unsigned_64;
+      row : Natural;
+      slotOut : out Natural;
+      cap : out Cap_Info;
+      info : out Authority_Info) return Boolean
+   is
+      seen : Natural := 0;
+   begin
+      refreshCapCache (pid);
+      refreshAuthorityCache (pid);
+      for slot in 0 .. MAX_CAP_SLOT loop
+         if capCache (slot).capType /= CAP_NULL or else
+            authorityCache (slot).valid
+         then
+            seen := seen + 1;
+            if seen = row then
+               slotOut := slot;
+               cap := capCache (slot);
+               info := authorityCache (slot);
+               return True;
+            end if;
+         end if;
+      end loop;
+      slotOut := 0;
+      cap := (others => 0);
+      info := NULL_AUTHORITY_INFO;
+      return False;
+   end authorityForRow;
 
    function streamName (id : Natural) return String is
    begin
@@ -849,6 +1020,10 @@ procedure main is
       actionsY : Natural;
       textW : Natural;
    begin
+      --  Prime launch provenance on the overview so inspection failures are
+      --  visible immediately rather than only after opening the Caps tab.
+      refreshAuthorityCache (pidForRow (selectedProcess));
+
       if layout.content.h < metricH + gap + actionsH + 150 then
          actionsH := 72;
       end if;
@@ -904,6 +1079,7 @@ procedure main is
       if result.activated then
          refreshCount := refreshCount + 1;
          capCacheValid := False;
+         authorityCacheValid := False;
       end if;
    end drawOverview;
 
@@ -979,7 +1155,7 @@ procedure main is
    is
       colors : constant CuBit.UI.Theme := CuBit.UI.Classic;
       pid : constant Unsigned_64 := pidForRow (selectedProcess);
-      totalCaps : constant Natural := capCount (pid);
+      totalCaps : constant Natural := authorityCount (pid);
       parent : constant CuBit.UI.Layout.Container :=
          CuBit.UI.Layout.Root (layout.content);
       table : constant CuBit.UI.Rect :=
@@ -991,6 +1167,10 @@ procedure main is
       rowId : CuBit.UI.Controls.Control_ID := CONTROL_GRANT_1 + 16;
       notes : CuBit.UI.Rect;
       content : CuBit.UI.Rect;
+      selectedSlot : Natural := 0;
+      selectedCap : Cap_Info;
+      selectedInfo : Authority_Info;
+      selectedFound : Boolean;
    begin
       if totalCaps = 0 then
          selectedGrant := 1;
@@ -1001,19 +1181,32 @@ procedure main is
       CuBit.UI.Widgets.Panel (c, table, colors, row, 8);
       CuBit.UI.Draw_Table_Header
         (c, (x => row.x, y => row.y, w => row.w, h => 22),
-         colors, "Slot", "Rights", "Object");
+         colors, "Authority", "State", "Source");
       rowY := row.y + 22;
       for id in 1 .. Natural'Min (8, totalCaps) loop
-         CuBit.UI.Tables.Row
-           (c, ui, controls, rowId,
-            (x => row.x, y => rowY, w => row.w, h => 24),
-            table, colors,
-            capSlotLabel (id),
-            grantRights (id),
-            grantPath (id),
-            id,
-            selectedGrant,
-            result);
+         declare
+            slot : Natural;
+            cap : Cap_Info;
+            info : Authority_Info;
+            found : constant Boolean :=
+              authorityForRow (pid, id, slot, cap, info);
+            pragma Unreferenced (found);
+            effective : constant Boolean := cap.capType /= CAP_NULL;
+            shownType : constant Unsigned_64 :=
+              (if effective then cap.capType else info.capType);
+         begin
+            CuBit.UI.Tables.Row
+              (c, ui, controls, rowId,
+               (x => row.x, y => rowY, w => row.w, h => 24),
+               table, colors,
+               "slot" & Natural'Image (slot) & " " & capTypeName (shownType),
+               authorityState (info, effective),
+               (if info.valid then authoritySourceName (info.source)
+                else "kernel state only"),
+               id,
+               selectedGrant,
+               result);
+         end;
          rowY := rowY + 24;
          rowId := rowId + 1;
       end loop;
@@ -1021,19 +1214,31 @@ procedure main is
       notes := CuBit.UI.Layout.Resolve
         (parent, (x => 0, y => 250, w => layout.content.w, h => 122));
       CuBit.UI.Widgets.Group_Box
-        (c, notes, colors, "Selected capability", content, 10);
+        (c, notes, colors, "Selected authority explanation", content, 10);
+      selectedFound := authorityForRow
+        (pid, selectedGrant, selectedSlot, selectedCap, selectedInfo);
       CuBit.UI.Widgets.Key_Value
         (c, (x => content.x, y => content.y, w => content.w, h => 22),
-         colors, "Slot", capSlotLabel (selectedGrant));
+         colors, "What",
+         (if selectedFound
+          then "slot" & Natural'Image (selectedSlot) & " " &
+               capTypeName ((if selectedCap.capType /= CAP_NULL
+                             then selectedCap.capType
+                             else selectedInfo.capType))
+          else "none"));
       CuBit.UI.Widgets.Key_Value
         (c, (x => content.x, y => content.y + 28, w => content.w, h => 22),
-         colors, "Object", grantPath (selectedGrant));
+         colors, "Why",
+         (if selectedInfo.valid then authorityReasonName (selectedInfo.reason)
+          else "no launch provenance recorded"));
       CuBit.UI.Widgets.Key_Value
         (c, (x => content.x, y => content.y + 56, w => content.w, h => 22),
-         colors, "Type", grantSource (selectedGrant), True);
+         colors, "Authority ID",
+         (if selectedInfo.valid
+          then Unsigned_32'Image (selectedInfo.authorityId) else "none"), True);
       drawText
         (c, (x => content.x, y => content.y + 88, w => content.w, h => 18),
-         "Live kernel slot inspection; manifest/session lineage can layer on top of this later.",
+         "Requested and granted come from procmgr; effective comes from the live kernel slot.",
          True);
    end drawCapabilities;
 
@@ -1279,6 +1484,7 @@ procedure main is
             elsif CuBit.UI.Point_In_Rect (x, y, layout.refresh) then
                refreshCount := refreshCount + 1;
                capCacheValid := False;
+               authorityCacheValid := False;
                requestSelectedStreams;
             elsif hit >= CONTROL_TAB_BASE and then
                hit < CONTROL_TAB_BASE + Security_Center_Form.TAB_LABELS'Length

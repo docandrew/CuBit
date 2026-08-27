@@ -29,6 +29,7 @@
               gnumake
               grub2
               qemu
+              SDL2
               xorriso
               yasm
               z3
@@ -37,6 +38,11 @@
             shellHook = ''
               export DOOMGENERIC_SRC="${doomgeneric}"
               export DOOM_WAD="${pkgs.freedoom}/share/games/doom/freedoom1.wad"
+              # Hosted developer tools built through Alire/GPRBuild do not
+              # automatically consume Nix's compiler and linker flags.
+              export C_INCLUDE_PATH="${pkgs.SDL2.dev}/include''${C_INCLUDE_PATH:+:$C_INCLUDE_PATH}"
+              export LIBRARY_PATH="${pkgs.SDL2}/lib''${LIBRARY_PATH:+:$LIBRARY_PATH}"
+              export LD_LIBRARY_PATH="${pkgs.SDL2}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
               echo "CuBit development shell"
               echo "  Build:  make -C kernel world"
               echo "  Test:   tests/headless/run.sh --test desktop-display"

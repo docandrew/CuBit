@@ -29,6 +29,11 @@ The initial naming conventions are:
 | `.ccl` | CCL source module |
 | `.cclb` | CCL bytecode module |
 
+The first `ccl-run` Workbench executable is implemented. It evaluates a source
+expression supplied as command-line arguments, or starts an interactive REPL
+when invoked without arguments. Both paths use the same checked, fuel-bounded
+`CCL.Language` interpreter as the native and CuBit tests.
+
 The BASIC-like interactive syntax and Lisp-like structured syntax are both CCL.
 They elaborate into the same typed core and do not identify separate languages.
 `CuBASIC` is the existing desktop prototype and historical predecessor of the
@@ -221,6 +226,38 @@ nix develop --command bash -lc \
   'cd kernel && alr exec -- gprbuild -P ../userspace/ccl/ccl_native.gpr -p'
 userspace/ccl/build/native/main
 ```
+
+The hosted Workbench runner can be built and used with:
+
+```text
+nix develop --command make -C kernel ccl-run
+userspace/ccl/build/ccl-run/ccl-run "(+ 20 22)"
+userspace/ccl/build/ccl-run/ccl-run
+```
+
+The **Linux Workbench** UI preview renders the planned REPL and monitor panes
+in an SDL window, through the same **shared** CuBit widget toolkit used by
+native desktop applications:
+
+```text
+nix develop --command make -C kernel ccl-ui-preview
+```
+
+Edit the expression in the REPL pane with normal text input and Backspace, then
+press Enter to evaluate it with the real fuel-bounded CCL interpreter. The
+field uses the shared bounded editor core: Left/Right, Ctrl+Left/Right,
+Shift-selection, Home/End, Delete, and Ctrl+A are supported. Click positions
+the cursor, Shift+click and pointer dragging extend the selection, and a double
+click selects a word; triple-click selects the whole single-line expression.
+Single-line fields deliberately support one cursor only; multicursor editing is
+reserved for the forthcoming rich multiline editor.
+Close the window with Escape or the window close button.
+SDL and its normal hosted event
+loop belong only to this Linux adapter. The window is resizable;
+SDL scales the fixed CuBit canvas while preserving its aspect ratio. The future
+**CuBit runtime**
+adapter will present the same canvas and receive events through typed CuBit IPC;
+it will not depend on SDL or ambient hosted file I/O.
 
 The core can also be compiled against CuBit's freestanding userspace runtime:
 

@@ -20,7 +20,7 @@ Usage: tests/headless/run.sh [options]
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, desktop-display, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, desktop-display, security-authority, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
   --timeout SECONDS    QEMU runtime before timeout is treated as success
   --serial PATH        Serial log path (default: /tmp/cubit-headless-*.log)
   --pcap PATH          Packet capture path (default: /tmp/cubit-headless-*.pcap)
@@ -94,7 +94,7 @@ case "$TIMEOUT_SECONDS" in
 esac
 
 case "$TEST_NAME" in
-    boot-shell-nvme|async-ipc|bench-ipc|ccl-vm|desktop-display|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
+    boot-shell-nvme|async-ipc|bench-ipc|ccl-vm|desktop-display|security-authority|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -171,6 +171,9 @@ case "$TEST_NAME" in
         ;;
     desktop-display|desktop-virtio-vga)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-desktop-display.conf"
+        ;;
+    security-authority)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-security-authority.conf"
         ;;
     desktop-doom)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-doom-desktop.conf"
@@ -295,6 +298,13 @@ display: gpu not primary, using linear-fb
 desktop: display backend=1 caps=3
 desktop: internal shell active
 shell: cwd=@nvme:0/
+"
+        ;;
+    security-authority)
+        required_markers="
+desktop: internal shell active
+security-center: starting
+security-center: authority provenance ready
 "
         ;;
     desktop-virtio-vga)

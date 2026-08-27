@@ -61,8 +61,13 @@ Documentation (work in progress):
 
 The documentation is being organized as [The CuBit Book](docs/README.md).
 
-Current design records include the [CCL design](docs/control-language.md) and
-the living [security and verification ledger](docs/security-hardening.md).
+Current design records include the [CCL design](docs/control-language.md), the
+[CCL package-management design](docs/ccl-packages.md), and the living
+[security and verification ledger](docs/security-hardening.md). The graphical
+[CuBit editor design](docs/editor.md) carries the DAGBuild and earlier editor
+work into a bounded, multicursor native application.
+User-visible defects and general engineering follow-ups are tracked in the
+[development backlog](docs/development-backlog.md).
 
 |  Task                                |   Command   |
 |--------------------------------------|-------------|
@@ -469,7 +474,7 @@ TODO: Usermode/Shell
 ```
 [-] Init model - should this look like UNIX? Something else?
 [ ] Security Model
-    [-] Codify it
+    [X] Codify it (`docs/security-model.md`)
     [ ] Prove it
     [ ] Implement it
 [-] IMGUI framework
