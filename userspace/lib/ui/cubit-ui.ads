@@ -39,6 +39,11 @@ package CuBit.UI is
       accent  : Color := 16#FFCC66#;
       good    : Color := 16#95E6CB#;
       danger  : Color := 16#F28779#;
+      field   : Color := 16#FFFFFF#;
+      selection : Color := 16#000080#;
+      selectionText : Color := 16#FFFFFF#;
+      highlight : Color := 16#FFFFFF#;
+      darkShadow : Color := 16#404040#;
    end record;
 
    Mirage : constant Theme :=
@@ -51,7 +56,12 @@ package CuBit.UI is
       muted   => 16#9AA5B5#,
       accent  => 16#FFCC66#,
       good    => 16#95E6CB#,
-      danger  => 16#F28779#);
+      danger  => 16#F28779#,
+      field => 16#343B4D#,
+      selection => 16#4D668F#,
+      selectionText => 16#FFFFFF#,
+      highlight => 16#596172#,
+      darkShadow => 16#151923#);
 
    Classic : constant Theme :=
      (desktop => CuBit.Theme.Desktop,
@@ -63,7 +73,29 @@ package CuBit.UI is
       muted   => CuBit.Theme.Muted,
       accent  => CuBit.Theme.Accent,
       good    => CuBit.Theme.Good,
-      danger  => CuBit.Theme.Danger);
+      danger  => CuBit.Theme.Danger,
+      field => CuBit.Theme.Face,
+      selection => CuBit.Theme.Accent,
+      selectionText => CuBit.Theme.White,
+      highlight => CuBit.Theme.White,
+      darkShadow => CuBit.Theme.Desktop);
+
+   CuBit_Classic : constant Theme :=
+     (desktop => 16#808080#,
+      panel => 16#C0C0C0#,
+      face => 16#C0C0C0#,
+      edge => 16#DFDFDF#,
+      shadow => 16#808080#,
+      text => 16#000000#,
+      muted => 16#404040#,
+      accent => 16#000080#,
+      good => 16#006000#,
+      danger => 16#A00000#,
+      field => 16#FFFFFF#,
+      selection => 16#000080#,
+      selectionText => 16#FFFFFF#,
+      highlight => 16#FFFFFF#,
+      darkShadow => 16#404040#);
 
    type Button_Style is (Button_Normal, Button_Hot, Button_Pressed,
                          Button_Disabled, Button_Active);
@@ -143,6 +175,10 @@ package CuBit.UI is
       (c : Canvas; r : Rect; colors : Theme; text : String;
        cursor, selectionStart, selectionEnd : Natural;
        focused : Boolean; hot : Boolean);
+   procedure Draw_Multiline_Text_Edit
+      (c : Canvas; r : Rect; colors : Theme; text : String;
+       firstLine, visibleLines, cursor, selectionStart, selectionEnd : Positive;
+       focused : Boolean; hot : Boolean);
    procedure Draw_Checkbox
       (c : Canvas; r : Rect; colors : Theme;
        checked : Boolean; hot : Boolean; active : Boolean);
@@ -164,7 +200,7 @@ package CuBit.UI is
    procedure Draw_Vertical_Scrollbar
       (c : Canvas; r : Rect; colors : Theme;
        minValue, maxValue, value : Natural;
-       hot : Boolean; active : Boolean);
+       hot : Boolean; active : Boolean; pageSize : Positive := 1);
 
    function Button
       (bounds : Rect; pointer : Pointer_State) return Widget_Result;

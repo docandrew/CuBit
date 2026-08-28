@@ -80,7 +80,8 @@ void *ccl_window_open(int width, int height)
     if (state->renderer == NULL)
         state->renderer = SDL_CreateRenderer(state->window, -1, SDL_RENDERER_SOFTWARE);
     if (state->renderer == NULL ||
-        SDL_RenderSetLogicalSize(state->renderer, width, height) != 0) goto fail;
+        SDL_RenderSetLogicalSize(state->renderer, width, height) != 0 ||
+        SDL_RenderSetIntegerScale(state->renderer, SDL_TRUE) != 0) goto fail;
     state->texture = SDL_CreateTexture(state->renderer, SDL_PIXELFORMAT_ARGB8888,
         SDL_TEXTUREACCESS_STREAMING, width, height);
     if (state->texture == NULL) goto fail;
@@ -102,9 +103,16 @@ int ccl_window_poll(void *handle, int *kind, unsigned int *character,
     while (SDL_PollEvent(&event) != 0) {
         if (event.type == SDL_QUIT ||
             (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)) {
+            if (state->debug_input)
+                fprintf(stderr, "close event type=%u key=%d\n",
+                        event.type,
+                        event.type == SDL_KEYDOWN ? event.key.keysym.sym : 0);
             *kind = 1; return 1;
         }
         if (event.type == SDL_TEXTINPUT && (unsigned char)event.text.text[0] < 128) {
+            if (state->debug_input)
+                fprintf(stderr, "text input byte=%u ('%c')\n",
+                        (unsigned char)event.text.text[0], event.text.text[0]);
             *kind = 2; *character = (unsigned char)event.text.text[0];
             *modifiers = 0; return 1;
         }
@@ -144,8 +152,16 @@ int ccl_window_poll(void *handle, int *kind, unsigned int *character,
                         event.button.x, event.button.y, *x, *y);
             *kind = 13; return 1;
         }
+        if (event.type == SDL_MOUSEWHEEL) {
+            *kind = event.wheel.y > 0 ? 18 : 19;
+            return 1;
+        }
         if (event.type != SDL_KEYDOWN) continue;
         mods = event.key.keysym.mod;
+        if (state->debug_input)
+            fprintf(stderr, "key down sym=%d scancode=%d modifiers=%u\n",
+                    event.key.keysym.sym, event.key.keysym.scancode,
+                    (unsigned int)mods);
         *modifiers = ((mods & KMOD_SHIFT) != 0 ? 1u : 0u) |
                      ((mods & KMOD_CTRL) != 0 ? 2u : 0u);
         if (event.key.keysym.sym == SDLK_BACKSPACE) { *kind = 3; return 1; }
@@ -156,6 +172,10 @@ int ccl_window_poll(void *handle, int *kind, unsigned int *character,
         if (event.key.keysym.sym == SDLK_HOME) { *kind = 7; return 1; }
         if (event.key.keysym.sym == SDLK_END) { *kind = 8; return 1; }
         if (event.key.keysym.sym == SDLK_DELETE) { *kind = 9; return 1; }
+        if (event.key.keysym.sym == SDLK_UP) { *kind = 16; return 1; }
+        if (event.key.keysym.sym == SDLK_DOWN) { *kind = 17; return 1; }
+        if (event.key.keysym.sym == SDLK_PAGEUP) { *kind = 20; return 1; }
+        if (event.key.keysym.sym == SDLK_PAGEDOWN) { *kind = 21; return 1; }
         if (event.key.keysym.sym == SDLK_a && (*modifiers & 2u) != 0) {
             *kind = 10; return 1;
         }
@@ -168,7 +188,10 @@ int ccl_window_present(void *handle, const uint32_t *pixels, int pitch)
     struct ccl_window *state = handle;
     if (SDL_UpdateTexture(state->texture, NULL, pixels, pitch) != 0 ||
         SDL_RenderClear(state->renderer) != 0 ||
-        SDL_RenderCopy(state->renderer, state->texture, NULL, NULL) != 0) return 1;
+        SDL_RenderCopy(state->renderer, state->texture, NULL, NULL) != 0) {
+        fprintf(stderr, "CCL Workbench presentation failed: %s\n", SDL_GetError());
+        return 1;
+    }
     if (state->screenshot_path != NULL) {
         int width;
         int height;

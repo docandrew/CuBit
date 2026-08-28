@@ -3,6 +3,7 @@ with CuBit.UI.Editor;
 with CuBit.UI.Editor.Cursors;
 with CuBit.UI.Editor.Documents;
 with CuBit.UI.Editor.Viewports;
+with CuBit.UI.Editor.Transactions;
 
 procedure Main is
    use CuBit.UI.Editor;
@@ -20,6 +21,7 @@ procedure Main is
    Position : CuBit.UI.Editor.Documents.Document_Position;
    Preferred : CuBit.UI.Editor.Documents.Display_Column;
    View : CuBit.UI.Editor.Viewports.Viewport;
+   Plan : CuBit.UI.Editor.Transactions.Edit_Plan;
 begin
    Initialize (State, "alpha beta", Accepted);
    pragma Assert (Accepted and then Cursor (State) = 11);
@@ -137,6 +139,25 @@ begin
    pragma Assert (CuBit.UI.Editor.Viewports.First_Line (View) = 6);
    CuBit.UI.Editor.Viewports.Scroll_Lines (View, -100, 8);
    pragma Assert (CuBit.UI.Editor.Viewports.First_Line (View) = 1);
+
+   CuBit.UI.Editor.Cursors.Initialize (Cursors, 2);
+   CuBit.UI.Editor.Cursors.Toggle_At (Cursors, 4, Toggle);
+   CuBit.UI.Editor.Cursors.Toggle_At (Cursors, 9, Toggle);
+   CuBit.UI.Editor.Cursors.Set_Element
+     (Cursors, 1, (Position => 2, Anchor => 5, Preferred_Column => 2));
+   CuBit.UI.Editor.Cursors.Set_Element
+     (Cursors, 2, (Position => 4, Anchor => 7, Preferred_Column => 4));
+   CuBit.UI.Editor.Transactions.Build (Cursors, 10, Plan);
+   pragma Assert
+     (CuBit.UI.Editor.Transactions.Length (Plan) = 2 and then
+      CuBit.UI.Editor.Transactions.Element (Plan, 1).First = 2 and then
+      CuBit.UI.Editor.Transactions.Element (Plan, 1).Last = 7 and then
+      CuBit.UI.Editor.Transactions.Element (Plan, 2).First = 9 and then
+      CuBit.UI.Editor.Transactions.Removed_Characters (Plan) = 5 and then
+      CuBit.UI.Editor.Transactions.Final_Length_Fits (Plan, 10, 2, 10) and then
+      not CuBit.UI.Editor.Transactions.Final_Length_Fits
+        (Plan, 10, 3, 10));
+
 
    Ada.Text_IO.Put_Line ("PASS: bounded one-based editor commands");
 end Main;

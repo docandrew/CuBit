@@ -5,6 +5,9 @@ with CCL.Language;
 with CCL.VM;
 with CuBit.UI;
 with CuBit.UI.Editor;
+with CuBit.UI.Editor.Cursors;
+with CuBit.UI.Editor.Documents;
+with CuBit.UI.Editor.Viewports;
 with CuBit.UI.Widgets;
 
 --  HOSTED/LINUX Workbench preview.  Rendering below uses the SHARED CuBit UI
@@ -15,6 +18,7 @@ procedure Main is
    use type System.Address;
    use type CCL.Language.Interpretation_Status;
    use type CCL.VM.Value_Kind;
+   use type CuBit.UI.Editor.Documents.Edit_Result;
 
    --  Compact native canvas: never downscale the toolkit's 11 px UI font.
    --  The hosted adapter scales this canvas upward when space permits.
@@ -28,12 +32,19 @@ procedure Main is
    Canvas : constant CuBit.UI.Canvas :=
      (addr => Pixels'Address, width => WIDTH, height => HEIGHT,
       pitch => WIDTH * 4, clipEnabled => False, clip => (others => 0));
-   Colors : constant CuBit.UI.Theme := CuBit.UI.Classic;
+   Colors : constant CuBit.UI.Theme := CuBit.UI.CuBit_Classic;
 
    Input       : CuBit.UI.Editor.Edit_State;
    Result_Text : String (1 .. 96) := [others => ' '];
    Result_Last : Natural := 5;
    Input_Bounds : CuBit.UI.Rect := (others => 0);
+   Source : CuBit.UI.Editor.Documents.Document (4_096);
+   Source_Cursors : CuBit.UI.Editor.Cursors.Cursor_Set;
+   Source_View : CuBit.UI.Editor.Viewports.Viewport;
+   Source_Bounds : CuBit.UI.Rect := (others => 0);
+   Source_Scrollbar : CuBit.UI.Rect := (others => 0);
+   type Focus_Target is (Repl_Field, Source_Editor);
+   Focus : Focus_Target := Source_Editor;
 
    function Window_Open (Width, Height : Interfaces.C.int) return System.Address
    with Import, Convention => C, External_Name => "ccl_window_open";
@@ -77,6 +88,215 @@ procedure Main is
       end if;
    end Submit;
 
+   function Source_Cursor return CuBit.UI.Editor.Cursors.Cursor_State is
+     (CuBit.UI.Editor.Cursors.Element
+        (Source_Cursors,
+         CuBit.UI.Editor.Cursors.Primary_Index (Source_Cursors)));
+
+   procedure Store_Source_Cursor
+     (Value : CuBit.UI.Editor.Cursors.Cursor_State)
+   is
+   begin
+      CuBit.UI.Editor.Cursors.Set_Element
+        (Source_Cursors,
+         CuBit.UI.Editor.Cursors.Primary_Index (Source_Cursors), Value);
+   end Store_Source_Cursor;
+
+   procedure Reveal_Source_Cursor is
+      State : constant CuBit.UI.Editor.Cursors.Cursor_State := Source_Cursor;
+      Line, Column : Positive;
+   begin
+      CuBit.UI.Editor.Documents.Position_To_Line_Column
+        (Source, State.Position, Line, Column);
+      CuBit.UI.Editor.Viewports.Ensure_Visible
+        (Source_View, Line, CuBit.UI.Editor.Documents.Line_Count (Source));
+   end Reveal_Source_Cursor;
+
+   procedure Place_Source_Cursor
+     (Position : CuBit.UI.Editor.Documents.Document_Position;
+      Extend_Selection : Boolean; Preserve_Column : Boolean := False)
+   is
+      State : CuBit.UI.Editor.Cursors.Cursor_State := Source_Cursor;
+      Line, Column : Positive;
+   begin
+      State.Position := Position;
+      if not Extend_Selection then State.Anchor := Position; end if;
+      if not Preserve_Column then
+         CuBit.UI.Editor.Documents.Position_To_Line_Column
+           (Source, Position, Line, Column);
+         State.Preferred_Column := Column;
+      end if;
+      Store_Source_Cursor (State);
+      Reveal_Source_Cursor;
+   end Place_Source_Cursor;
+
+   procedure Delete_Source_Selection (Changed : out Boolean) is
+      State : CuBit.UI.Editor.Cursors.Cursor_State := Source_Cursor;
+      First : constant CuBit.UI.Editor.Documents.Document_Position :=
+        CuBit.UI.Editor.Documents.Document_Position'Min
+          (State.Position, State.Anchor);
+      Last : constant CuBit.UI.Editor.Documents.Document_Position :=
+        CuBit.UI.Editor.Documents.Document_Position'Max
+          (State.Position, State.Anchor);
+   begin
+      Changed := First /= Last;
+      if Changed then
+         CuBit.UI.Editor.Documents.Delete (Source, First, Last - First);
+         State.Position := First;
+         State.Anchor := First;
+         Store_Source_Cursor (State);
+      end if;
+   end Delete_Source_Selection;
+
+   procedure Insert_Source (Text : String; Changed : out Boolean) is
+      State : CuBit.UI.Editor.Cursors.Cursor_State;
+      Removed : Boolean;
+      Result : CuBit.UI.Editor.Documents.Edit_Result;
+   begin
+      Delete_Source_Selection (Removed);
+      State := Source_Cursor;
+      CuBit.UI.Editor.Documents.Insert
+        (Source, State.Position, Text, Result);
+      Changed := Result = CuBit.UI.Editor.Documents.Applied and then
+        Text'Length > 0;
+      if Changed then
+         Place_Source_Cursor
+           (State.Position + Text'Length, Extend_Selection => False);
+      elsif Removed then
+         Reveal_Source_Cursor;
+      end if;
+   end Insert_Source;
+
+   procedure Backspace_Source (Changed : out Boolean) is
+      State : CuBit.UI.Editor.Cursors.Cursor_State;
+   begin
+      Delete_Source_Selection (Changed);
+      if not Changed then
+         State := Source_Cursor;
+         if State.Position > 1 then
+            CuBit.UI.Editor.Documents.Delete
+              (Source, State.Position - 1, 1);
+            Place_Source_Cursor
+              (State.Position - 1, Extend_Selection => False);
+            Changed := True;
+         end if;
+      else
+         Reveal_Source_Cursor;
+      end if;
+   end Backspace_Source;
+
+   procedure Delete_Source_Forward (Changed : out Boolean) is
+      State : CuBit.UI.Editor.Cursors.Cursor_State;
+   begin
+      Delete_Source_Selection (Changed);
+      if not Changed then
+         State := Source_Cursor;
+         if State.Position <= CuBit.UI.Editor.Documents.Length (Source) then
+            CuBit.UI.Editor.Documents.Delete (Source, State.Position, 1);
+            Changed := True;
+         end if;
+      end if;
+      Reveal_Source_Cursor;
+   end Delete_Source_Forward;
+
+   procedure Move_Source_Horizontal
+     (Right : Boolean; Extend_Selection : Boolean)
+   is
+      State : constant CuBit.UI.Editor.Cursors.Cursor_State := Source_Cursor;
+      Position : CuBit.UI.Editor.Documents.Document_Position := State.Position;
+   begin
+      if not Extend_Selection and then State.Position /= State.Anchor then
+         Position :=
+           (if Right then
+              CuBit.UI.Editor.Documents.Document_Position'Max
+                (State.Position, State.Anchor)
+            else
+              CuBit.UI.Editor.Documents.Document_Position'Min
+                (State.Position, State.Anchor));
+      elsif Right and then
+        Position <= CuBit.UI.Editor.Documents.Length (Source)
+      then
+         Position := Position + 1;
+      elsif not Right and then Position > 1 then
+         Position := Position - 1;
+      end if;
+      Place_Source_Cursor (Position, Extend_Selection);
+   end Move_Source_Horizontal;
+
+   procedure Move_Source_Vertical
+     (Direction : CuBit.UI.Editor.Documents.Vertical_Direction;
+      Extend_Selection : Boolean)
+   is
+      State : CuBit.UI.Editor.Cursors.Cursor_State := Source_Cursor;
+      Position : CuBit.UI.Editor.Documents.Document_Position;
+   begin
+      CuBit.UI.Editor.Documents.Move_Vertically
+        (Source, State.Position, State.Preferred_Column,
+         Direction, Position);
+      State.Position := Position;
+      if not Extend_Selection then State.Anchor := Position; end if;
+      Store_Source_Cursor (State);
+      Reveal_Source_Cursor;
+   end Move_Source_Vertical;
+
+   procedure Move_Source_Line_End
+     (To_End, Extend_Selection : Boolean)
+   is
+      State : constant CuBit.UI.Editor.Cursors.Cursor_State := Source_Cursor;
+      Line, Column : Positive;
+      Position : CuBit.UI.Editor.Documents.Document_Position;
+   begin
+      CuBit.UI.Editor.Documents.Position_To_Line_Column
+        (Source, State.Position, Line, Column);
+      Position := CuBit.UI.Editor.Documents.Line_Column_To_Position
+        (Source, Line,
+         (if To_End then
+            CuBit.UI.Editor.Documents.Line_Length (Source, Line) + 1
+          else 1));
+      Place_Source_Cursor (Position, Extend_Selection);
+   end Move_Source_Line_End;
+
+   procedure Select_All_Source is
+      State : CuBit.UI.Editor.Cursors.Cursor_State := Source_Cursor;
+   begin
+      State.Anchor := 1;
+      State.Position := CuBit.UI.Editor.Documents.Length (Source) + 1;
+      Store_Source_Cursor (State);
+      Reveal_Source_Cursor;
+   end Select_All_Source;
+
+   function Source_Position_At (Pixel_X, Pixel_Y : Natural)
+     return CuBit.UI.Editor.Documents.Document_Position
+   is
+      Line_Height : constant Natural := CuBit.UI.UI_Text_Height + 2;
+      Relative_Line : constant Natural :=
+        (if Pixel_Y <= Source_Bounds.y + 5 then 0
+         else (Pixel_Y - Source_Bounds.y - 5) / Line_Height);
+      Line : Positive := CuBit.UI.Editor.Viewports.First_Line (Source_View);
+      Column : Positive := 1;
+      Offset : constant Natural :=
+        (if Pixel_X <= Source_Bounds.x + 6 then 0
+         else Pixel_X - Source_Bounds.x - 6);
+      Draw_X : Natural := 0;
+      Width : Natural;
+      Position : CuBit.UI.Editor.Documents.Document_Position;
+      Text : constant String := CuBit.UI.Editor.Documents.Content (Source);
+   begin
+      Line := Positive'Min
+        (Line + Relative_Line, CuBit.UI.Editor.Documents.Line_Count (Source));
+      for Candidate in 1 .. CuBit.UI.Editor.Documents.Line_Length (Source, Line)
+      loop
+         Position := CuBit.UI.Editor.Documents.Line_Column_To_Position
+           (Source, Line, Candidate);
+         Width := CuBit.UI.UI_Text_Width (Text (Position .. Position));
+         exit when Offset < Draw_X + (Width + 1) / 2;
+         Draw_X := Draw_X + Width;
+         Column := Candidate + 1;
+      end loop;
+      return CuBit.UI.Editor.Documents.Line_Column_To_Position
+        (Source, Line, Column);
+   end Source_Position_At;
+
    function Position_At (Pixel_X : Natural)
      return CuBit.UI.Editor.Text_Position
    is
@@ -98,48 +318,90 @@ procedure Main is
       return CuBit.UI.Editor.Length (Input) + 1;
    end Position_At;
 
-   procedure Draw_Chart (Bounds : CuBit.UI.Rect) is
-      Samples : constant array (Natural range 0 .. 15) of Natural :=
-        [18, 25, 21, 34, 30, 42, 48, 39, 55, 63, 57, 70, 66, 79, 73, 86];
-      Inner : constant CuBit.UI.Rect :=
-        (x => Bounds.x + 12, y => Bounds.y + 12,
-         w => Bounds.w - 24, h => Bounds.h - 24);
-      Bar_W : constant Natural := Inner.w / Samples'Length;
-      Bar_H : Natural;
+   procedure Draw_Title_Controls is
+      type Icon_Rows is array (Natural range 0 .. 8) of String (1 .. 9);
+      --  Compact mask from CuBit's attributed Bluecurve window-icon atlas.
+      Close_Icon : constant Icon_Rows :=
+        [".........",
+         "..#...#..",
+         ".###.###.",
+         "..#####..",
+         "...###...",
+         "..#####..",
+         ".###.###.",
+         "..#...#..",
+         "........."];
+      Minimize : constant CuBit.UI.Rect :=
+        (x => WIDTH - 60, y => 3, w => 18, h => 17);
+      Maximize : constant CuBit.UI.Rect :=
+        (x => WIDTH - 40, y => 3, w => 18, h => 17);
+      Close : constant CuBit.UI.Rect :=
+        (x => WIDTH - 20, y => 3, w => 18, h => 17);
    begin
-      CuBit.UI.Fill_Rect (Canvas, Bounds, Colors.panel);
-      CuBit.UI.Stroke_Rect (Canvas, Bounds, Colors.edge, Colors.shadow);
-      for Index in Samples'Range loop
-         Bar_H := Samples (Index) * Inner.h / 100;
-         CuBit.UI.Fill_Rect
-           (Canvas,
-            (x => Inner.x + Index * Bar_W,
-             y => Inner.y + Inner.h - Bar_H,
-             w => Natural'Max (1, Bar_W - 3), h => Bar_H),
-            Colors.accent);
+      CuBit.UI.Draw_Button
+        (Canvas, Minimize, Colors, CuBit.UI.Button_Normal, "");
+      CuBit.UI.Fill_Rect
+        (Canvas, (x => Minimize.x + 5, y => Minimize.y + 11,
+                  w => 7, h => 2), Colors.text);
+      CuBit.UI.Draw_Button
+        (Canvas, Maximize, Colors, CuBit.UI.Button_Normal, "");
+      CuBit.UI.Stroke_Rect
+        (Canvas, (x => Maximize.x + 4, y => Maximize.y + 4,
+                  w => 10, h => 9), Colors.text, Colors.text);
+      CuBit.UI.Fill_Rect
+        (Canvas, (x => Maximize.x + 5, y => Maximize.y + 5,
+                  w => 8, h => 1), Colors.text);
+      CuBit.UI.Draw_Button
+        (Canvas, Close, Colors, CuBit.UI.Button_Normal, "");
+      for Icon_Y in Close_Icon'Range loop
+         for Icon_X in Close_Icon (Icon_Y)'Range loop
+            if Close_Icon (Icon_Y) (Icon_X) = '#' then
+               CuBit.UI.Set_Pixel
+                 (Canvas, Close.x + 3 + Icon_X, Close.y + 4 + Icon_Y,
+                  Colors.text);
+            end if;
+         end loop;
       end loop;
-   end Draw_Chart;
+   end Draw_Title_Controls;
 
    procedure Render is
       Content : CuBit.UI.Rect;
       Repl_Content : CuBit.UI.Rect;
-      Monitor_Content : CuBit.UI.Rect;
-      Card_W : constant Natural := 100;
+      Editor_Content : CuBit.UI.Rect;
+      Cursor_State : CuBit.UI.Editor.Cursors.Cursor_State;
+      First_Selection, Last_Selection : Positive;
       Prompt_W : constant Natural := CuBit.UI.UI_Text_Width ("ccl>");
    begin
       CuBit.UI.Fill_Rect
         (Canvas, (x => 0, y => 0, w => WIDTH, h => HEIGHT), Colors.desktop);
 
-      CuBit.UI.Draw_Menu_Bar
-        (Canvas, (x => 0, y => 0, w => WIDTH, h => 28), Colors);
+      CuBit.UI.Fill_Rect
+        (Canvas, (x => 0, y => 0, w => WIDTH, h => 22), Colors.accent);
       CuBit.UI.Draw_UI_Text
-        (Canvas, 10, 7, "CCL Workbench", Colors.text, Colors.panel);
-      CuBit.UI.Widgets.Badge
-        (Canvas, (x => WIDTH - 144, y => 3, w => 136, h => 22), Colors,
-         "deterministic data", CuBit.UI.Widgets.Badge_Good);
+        (Canvas, 6, 4, "CuBit CCL Workbench",
+         Colors.selectionText, Colors.accent);
+      Draw_Title_Controls;
+
+      CuBit.UI.Draw_Menu_Bar
+        (Canvas, (x => 0, y => 22, w => WIDTH, h => 22), Colors);
+      CuBit.UI.Draw_Menu_Title
+        (Canvas, (x => 3, y => 22, w => 34, h => 21), Colors,
+         False, False, "File");
+      CuBit.UI.Draw_Menu_Title
+        (Canvas, (x => 38, y => 22, w => 34, h => 21), Colors,
+         False, False, "Edit");
+      CuBit.UI.Draw_Menu_Title
+        (Canvas, (x => 73, y => 22, w => 38, h => 21), Colors,
+         False, False, "View");
+      CuBit.UI.Draw_Menu_Title
+        (Canvas, (x => 112, y => 22, w => 34, h => 21), Colors,
+         False, False, "Run");
+      CuBit.UI.Draw_Menu_Title
+        (Canvas, (x => 147, y => 22, w => 38, h => 21), Colors,
+         False, False, "Help");
 
       CuBit.UI.Widgets.Group_Box
-        (Canvas, (x => 8, y => 36, w => 220, h => 326), Colors,
+        (Canvas, (x => 8, y => 50, w => 220, h => 312), Colors,
          "CCL REPL", Repl_Content, 8);
       CuBit.UI.Draw_UI_Text
         (Canvas, Repl_Content.x, Repl_Content.y,
@@ -153,7 +415,7 @@ procedure Main is
          CuBit.UI.Editor.Cursor (Input) - 1,
          CuBit.UI.Editor.Selection_First (Input) - 1,
          CuBit.UI.Editor.Selection_Last (Input) - 1,
-         focused => True, hot => False);
+         focused => Focus = Repl_Field, hot => False);
       CuBit.UI.Draw_UI_Text
         (Canvas, Repl_Content.x, Repl_Content.y + 32,
          Result_Text (1 .. Result_Last), Colors.muted, Colors.face);
@@ -175,67 +437,71 @@ procedure Main is
          Colors, "Control", "not granted", True);
 
       CuBit.UI.Widgets.Group_Box
-        (Canvas, (x => 236, y => 36, w => 396, h => 326), Colors,
-         "Network monitor", Monitor_Content, 8);
-      CuBit.UI.Widgets.Metric_Card
-        (Canvas,
-         (x => Monitor_Content.x, y => Monitor_Content.y,
-          w => Card_W, h => 56),
-         Colors, "Interfaces", 2);
-      CuBit.UI.Widgets.Metric_Card
-        (Canvas,
-         (x => Monitor_Content.x + Card_W + 10, y => Monitor_Content.y,
-          w => Card_W, h => 56),
-         Colors, "Received MiB", 18);
-      CuBit.UI.Widgets.Metric_Card
-        (Canvas,
-         (x => Monitor_Content.x + (Card_W + 10) * 2,
-          y => Monitor_Content.y, w => Card_W, h => 56),
-         Colors, "Sent MiB", 4);
-
-      CuBit.UI.Widgets.Label
-        (Canvas,
-         (x => Monitor_Content.x, y => Monitor_Content.y + 68,
-          w => Monitor_Content.w, h => 24),
-         Colors, "Throughput samples", muted => True);
-      Draw_Chart
-        ((x => Monitor_Content.x, y => Monitor_Content.y + 92,
-          w => Monitor_Content.w, h => 80));
-
-      CuBit.UI.Draw_Table_Header
-        (Canvas,
-         (x => Monitor_Content.x, y => Monitor_Content.y + 182,
-          w => Monitor_Content.w, h => 24),
-         Colors, "Interface", "State", "Scope");
-      CuBit.UI.Draw_Table_Row
-        (Canvas,
-         (x => Monitor_Content.x, y => Monitor_Content.y + 206,
-          w => Monitor_Content.w, h => 28),
-         Colors, True, False, "virtio0", "online", "observe");
-      CuBit.UI.Draw_Table_Row
-        (Canvas,
-         (x => Monitor_Content.x, y => Monitor_Content.y + 234,
-          w => Monitor_Content.w, h => 28),
-         Colors, False, False, "loopback", "online", "observe");
-      CuBit.UI.Widgets.Badge
-        (Canvas,
-         (x => Monitor_Content.x,
-          y => Monitor_Content.y + Monitor_Content.h - 28,
-          w => 196, h => 28),
-         Colors, "Network.Control absent", CuBit.UI.Widgets.Badge_Neutral);
+        (Canvas, (x => 236, y => 50, w => 396, h => 312), Colors,
+         "CCL source - shared multiline editor", Editor_Content, 8);
+      CuBit.UI.Draw_UI_Text
+        (Canvas, Editor_Content.x, Editor_Content.y,
+         "Bounded document; wheel and Page Up/Down scroll",
+         Colors.muted, Colors.face);
+      Source_Bounds :=
+        (x => Editor_Content.x, y => Editor_Content.y + 24,
+         w => Editor_Content.w - 18, h => Editor_Content.h - 48);
+      Source_Scrollbar :=
+        (x => Source_Bounds.x + Source_Bounds.w + 2,
+         y => Source_Bounds.y, w => 16, h => Source_Bounds.h);
+      Cursor_State := Source_Cursor;
+      First_Selection := Positive'Min
+        (Cursor_State.Position, Cursor_State.Anchor);
+      Last_Selection := Positive'Max
+        (Cursor_State.Position, Cursor_State.Anchor);
+      CuBit.UI.Draw_Multiline_Text_Edit
+        (CuBit.UI.With_Clip (Canvas, Source_Bounds), Source_Bounds, Colors,
+         CuBit.UI.Editor.Documents.Content (Source),
+         CuBit.UI.Editor.Viewports.First_Line (Source_View),
+         CuBit.UI.Editor.Viewports.Line_Capacity (Source_View),
+         Cursor_State.Position, First_Selection, Last_Selection,
+         focused => Focus = Source_Editor, hot => False);
+      CuBit.UI.Draw_Vertical_Scrollbar
+        (Canvas, Source_Scrollbar, Colors, 1,
+         CuBit.UI.Editor.Documents.Line_Count (Source),
+         CuBit.UI.Editor.Viewports.First_Line (Source_View),
+         hot => False, active => False,
+         pageSize => CuBit.UI.Editor.Viewports.Line_Capacity (Source_View));
+      CuBit.UI.Draw_UI_Text
+        (Canvas, Editor_Content.x,
+         Editor_Content.y + Editor_Content.h - 18,
+         "SHARED core - Linux presentation adapter",
+         Colors.muted, Colors.face);
 
       CuBit.UI.Draw_Status_Bar
         (Canvas, (x => 0, y => HEIGHT - 26, w => WIDTH, h => 26), Colors,
-         "Monitor preview uses the CuBit widget toolkit",
-         "no live authority");
+         "Multiline editor uses the CuBit widget toolkit",
+         "bounded document • proved viewport");
    end Render;
 
 begin
    declare
       Accepted : Boolean;
+      Source_Result : CuBit.UI.Editor.Documents.Edit_Result;
    begin
       CuBit.UI.Editor.Initialize (Input, "(+ 20 22)", Accepted);
       if not Accepted then raise Program_Error; end if;
+      CuBit.UI.Editor.Documents.Initialize
+        (Source,
+         "; CCL Workbench scratch buffer" & ASCII.LF &
+         "let samples = (18 25 21 34 30 42 48)" & ASCII.LF &
+         "let peak = reduce max samples" & ASCII.LF &
+         ASCII.LF &
+         "; Authority remains explicit in values and launch arguments" &
+         ASCII.LF &
+         "observe network with authority network.observe" & ASCII.LF &
+         "show dashboard peak" & ASCII.LF,
+         Source_Result);
+      if Source_Result /= CuBit.UI.Editor.Documents.Applied then
+         raise Program_Error;
+      end if;
+      CuBit.UI.Editor.Cursors.Initialize (Source_Cursors, 1);
+      CuBit.UI.Editor.Viewports.Initialize (Source_View, 15);
    end;
    Result_Text (1 .. Result_Last) := "ready";
    declare
@@ -264,38 +530,80 @@ begin
                when 1 => Running := False;
                when 2 =>
                   if Code >= 32 and then Code <= 126 then
-                     CuBit.UI.Editor.Insert
-                       (Input, String'(1 => Character'Val (Code)), Changed);
+                     if Focus = Repl_Field then
+                        CuBit.UI.Editor.Insert
+                          (Input, String'(1 => Character'Val (Code)), Changed);
+                     else
+                        Insert_Source
+                          (String'(1 => Character'Val (Code)), Changed);
+                     end if;
                   end if;
-               when 3 => CuBit.UI.Editor.Backspace (Input, Changed);
-               when 4 => Submit;
+               when 3 =>
+                  if Focus = Repl_Field then
+                     CuBit.UI.Editor.Backspace (Input, Changed);
+                  else
+                     Backspace_Source (Changed);
+                  end if;
+               when 4 =>
+                  if Focus = Repl_Field then
+                     Submit;
+                  else
+                     Insert_Source (String'(1 => ASCII.LF), Changed);
+                  end if;
                when 5 | 6 =>
                   Extend := (Modifiers and 1) /= 0;
                   By_Word := (Modifiers and 2) /= 0;
-                  CuBit.UI.Editor.Move
-                    (Input,
-                     (if Kind = 5 then
-                        (if By_Word then CuBit.UI.Editor.Move_Word_Left
-                         else CuBit.UI.Editor.Move_Left)
-                      else
-                        (if By_Word then CuBit.UI.Editor.Move_Word_Right
-                         else CuBit.UI.Editor.Move_Right)),
-                     Extend);
+                  if Focus = Repl_Field then
+                     CuBit.UI.Editor.Move
+                       (Input,
+                        (if Kind = 5 then
+                           (if By_Word then CuBit.UI.Editor.Move_Word_Left
+                            else CuBit.UI.Editor.Move_Left)
+                         else
+                           (if By_Word then CuBit.UI.Editor.Move_Word_Right
+                            else CuBit.UI.Editor.Move_Right)),
+                        Extend);
+                  else
+                     Move_Source_Horizontal (Kind = 6, Extend);
+                  end if;
                when 7 =>
-                  CuBit.UI.Editor.Move
-                    (Input, CuBit.UI.Editor.Move_Start,
-                     (Modifiers and 1) /= 0);
+                  if Focus = Repl_Field then
+                     CuBit.UI.Editor.Move
+                       (Input, CuBit.UI.Editor.Move_Start,
+                        (Modifiers and 1) /= 0);
+                  else
+                     Move_Source_Line_End
+                       (To_End => False,
+                        Extend_Selection => (Modifiers and 1) /= 0);
+                  end if;
                when 8 =>
-                  CuBit.UI.Editor.Move
-                    (Input, CuBit.UI.Editor.Move_End,
-                     (Modifiers and 1) /= 0);
-               when 9 => CuBit.UI.Editor.Delete_Forward (Input, Changed);
-               when 10 => CuBit.UI.Editor.Select_All (Input);
+                  if Focus = Repl_Field then
+                     CuBit.UI.Editor.Move
+                       (Input, CuBit.UI.Editor.Move_End,
+                        (Modifiers and 1) /= 0);
+                  else
+                     Move_Source_Line_End
+                       (To_End => True,
+                        Extend_Selection => (Modifiers and 1) /= 0);
+                  end if;
+               when 9 =>
+                  if Focus = Repl_Field then
+                     CuBit.UI.Editor.Delete_Forward (Input, Changed);
+                  else
+                     Delete_Source_Forward (Changed);
+                  end if;
+               when 10 =>
+                  if Focus = Repl_Field then
+                     CuBit.UI.Editor.Select_All (Input);
+                  else
+                     Select_All_Source;
+                  end if;
                when 11 | 14 | 15 =>
                   if Mouse_X >= 0 and then Mouse_Y >= 0 and then
                     CuBit.UI.Point_In_Rect
                       (Natural (Mouse_X), Natural (Mouse_Y), Input_Bounds)
                   then
+                     Focus := Repl_Field;
                      if Kind = 15 then
                         CuBit.UI.Editor.Select_All (Input);
                      elsif Kind = 14 then
@@ -307,14 +615,98 @@ begin
                            (Modifiers and 1) /= 0);
                      end if;
                      Dragging := True;
+                  elsif Mouse_X >= 0 and then Mouse_Y >= 0 and then
+                    CuBit.UI.Point_In_Rect
+                      (Natural (Mouse_X), Natural (Mouse_Y), Source_Bounds)
+                  then
+                     Focus := Source_Editor;
+                     Place_Source_Cursor
+                       (Source_Position_At
+                          (Natural (Mouse_X), Natural (Mouse_Y)),
+                        Extend_Selection => (Modifiers and 1) /= 0);
+                     Dragging := True;
+                  elsif Mouse_X >= 0 and then Mouse_Y >= 0 and then
+                    CuBit.UI.Point_In_Rect
+                      (Natural (Mouse_X), Natural (Mouse_Y), Source_Scrollbar)
+                  then
+                     declare
+                        Lines : constant Positive :=
+                          CuBit.UI.Editor.Documents.Line_Count (Source);
+                        Page : constant Positive :=
+                          CuBit.UI.Editor.Viewports.Line_Capacity (Source_View);
+                        Extent : constant Natural := Source_Scrollbar.w;
+                        Maximum_First : constant Positive :=
+                          (if Page >= Lines then 1 else Lines - Page + 1);
+                        Track_Height : constant Natural :=
+                          (if Source_Scrollbar.h > Extent * 2 then
+                              Source_Scrollbar.h - Extent * 2
+                           else 1);
+                        Relative_Y : Natural;
+                        Target : Positive;
+                     begin
+                        if Natural (Mouse_Y) < Source_Scrollbar.y + Extent then
+                           CuBit.UI.Editor.Viewports.Scroll_Lines
+                             (Source_View, -1, Lines);
+                        elsif Natural (Mouse_Y) >=
+                          Source_Scrollbar.y + Source_Scrollbar.h - Extent
+                        then
+                           CuBit.UI.Editor.Viewports.Scroll_Lines
+                             (Source_View, 1, Lines);
+                        else
+                           Relative_Y :=
+                             Natural (Mouse_Y) - Source_Scrollbar.y - Extent;
+                           Target := 1 + Relative_Y * (Maximum_First - 1) /
+                             Natural'Max (1, Track_Height - 1);
+                           CuBit.UI.Editor.Viewports.Scroll_Lines
+                             (Source_View,
+                              Integer (Target) - Integer
+                                (CuBit.UI.Editor.Viewports.First_Line
+                                   (Source_View)),
+                              Lines);
+                        end if;
+                     end;
                   end if;
                when 12 =>
                   if Dragging and then Mouse_X >= 0 then
-                     CuBit.UI.Editor.Place_Cursor
-                       (Input, Position_At (Natural (Mouse_X)),
-                        Extend_Selection => True);
+                     if Focus = Repl_Field then
+                        CuBit.UI.Editor.Place_Cursor
+                          (Input, Position_At (Natural (Mouse_X)),
+                           Extend_Selection => True);
+                     elsif Mouse_Y >= 0 then
+                        Place_Source_Cursor
+                          (Source_Position_At
+                             (Natural (Mouse_X), Natural (Mouse_Y)),
+                           Extend_Selection => True);
+                     end if;
                   end if;
                when 13 => Dragging := False;
+               when 16 | 17 =>
+                  if Focus = Source_Editor then
+                     Move_Source_Vertical
+                       ((if Kind = 16 then
+                           CuBit.UI.Editor.Documents.Up
+                         else CuBit.UI.Editor.Documents.Down),
+                        Extend_Selection => (Modifiers and 1) /= 0);
+                  end if;
+               when 18 =>
+                  CuBit.UI.Editor.Viewports.Scroll_Lines
+                    (Source_View, -3,
+                     CuBit.UI.Editor.Documents.Line_Count (Source));
+               when 19 =>
+                  CuBit.UI.Editor.Viewports.Scroll_Lines
+                    (Source_View, 3,
+                     CuBit.UI.Editor.Documents.Line_Count (Source));
+               when 20 | 21 =>
+                  CuBit.UI.Editor.Viewports.Scroll_Lines
+                    (Source_View,
+                     (if Kind = 20 then
+                         -Integer
+                           (CuBit.UI.Editor.Viewports.Line_Capacity
+                              (Source_View))
+                      else Integer
+                        (CuBit.UI.Editor.Viewports.Line_Capacity
+                           (Source_View))),
+                     CuBit.UI.Editor.Documents.Line_Count (Source));
                when others => null;
             end case;
          end loop;

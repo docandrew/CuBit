@@ -186,12 +186,22 @@ package body CuBit.UI is
 
    procedure Stroke_Sunken (c : Canvas; r : Rect; colors : Theme) is
    begin
-      Stroke_Rect (c, r, colors.shadow, colors.edge);
+      Stroke_Rect (c, r, colors.darkShadow, colors.highlight);
+      if r.w > 3 and then r.h > 3 then
+         Stroke_Rect
+           (c, (x => r.x + 1, y => r.y + 1, w => r.w - 2, h => r.h - 2),
+            colors.shadow, colors.edge);
+      end if;
    end Stroke_Sunken;
 
    procedure Stroke_Raised (c : Canvas; r : Rect; colors : Theme) is
    begin
-      Stroke_Rect (c, r, colors.edge, colors.shadow);
+      Stroke_Rect (c, r, colors.highlight, colors.darkShadow);
+      if r.w > 3 and then r.h > 3 then
+         Stroke_Rect
+           (c, (x => r.x + 1, y => r.y + 1, w => r.w - 2, h => r.h - 2),
+            colors.edge, colors.shadow);
+      end if;
    end Stroke_Raised;
 
    function Center_Text_Y (r : Rect) return Natural is
@@ -538,9 +548,9 @@ package body CuBit.UI is
       Stroke_Sunken (c, leftPane, colors);
       leftText :=
         (x => leftPane.x + 7,
-         y => leftPane.y + 1,
+         y => leftPane.y + 2,
          w => (if leftPane.w > 14 then leftPane.w - 14 else 0),
-         h => (if leftPane.h > 2 then leftPane.h - 2 else leftPane.h));
+         h => (if leftPane.h > 4 then leftPane.h - 4 else 0));
       leftCanvas := With_Clip (c, leftText);
       Draw_UI_Text (leftCanvas, leftText.x, Center_Text_Y (leftPane),
                     left, colors.text, colors.face);
@@ -550,9 +560,9 @@ package body CuBit.UI is
          Stroke_Sunken (c, rightPane, colors);
          rightText :=
            (x => rightPane.x + 7,
-            y => rightPane.y + 1,
+            y => rightPane.y + 2,
             w => (if rightPane.w > 14 then rightPane.w - 14 else 0),
-            h => (if rightPane.h > 2 then rightPane.h - 2 else rightPane.h));
+            h => (if rightPane.h > 4 then rightPane.h - 4 else 0));
          rightCanvas := With_Clip (c, rightText);
          if rightText.w > rightW then
             rightX := rightText.x + rightText.w - rightW;
@@ -568,15 +578,22 @@ package body CuBit.UI is
       (c : Canvas; r : Rect; colors : Theme; title : String)
    is
       titleW : constant Natural := UI_Text_Width (title);
+      frameY : constant Natural := r.y + UI_Text_Height / 2;
+      frame : constant Rect :=
+        (x => r.x + 2, y => frameY,
+         w => (if r.w > 4 then r.w - 4 else 0),
+         h => (if r.h > UI_Text_Height / 2 + 2 then
+                  r.h - UI_Text_Height / 2 - 2
+               else 0));
       titleRect : constant Rect :=
         (x => r.x + 8, y => r.y, w => titleW + 8, h => UI_Text_Height);
    begin
-      Fill_Rect (c, r, colors.face);
-      Stroke_Sunken (c, r, colors);
+      Fill_Rect (c, r, colors.panel);
+      Stroke_Rect (c, frame, colors.shadow, colors.highlight);
       if title'Length > 0 then
-         Fill_Rect (c, titleRect, colors.face);
+         Fill_Rect (c, titleRect, colors.panel);
          Draw_UI_Text (c, titleRect.x + 4, titleRect.y,
-                       title, colors.muted, colors.face);
+                       title, colors.muted, colors.panel);
       end if;
    end Draw_Pane;
 
@@ -748,11 +765,15 @@ package body CuBit.UI is
       (c : Canvas; r : Rect; colors : Theme; text : String;
        focused : Boolean; hot : Boolean)
    is
-      face : Color := colors.shadow;
+      face : Color := colors.field;
       textX : constant Natural := r.x + 8;
       textY : Natural := r.y;
       cursorX : Natural := textX + UI_Text_Width (text);
       cursor : Rect;
+      textCanvas : constant Canvas := With_Clip
+        (c, (x => r.x + 3, y => r.y + 2,
+             w => (if r.w > 6 then r.w - 6 else 0),
+             h => (if r.h > 4 then r.h - 4 else 0)));
    begin
       if hot then
          face := colors.face;
@@ -767,14 +788,14 @@ package body CuBit.UI is
 
       textY := Center_Text_Y (r);
 
-      Draw_UI_Text (c, textX, textY, text, colors.text, face);
+      Draw_UI_Text (textCanvas, textX, textY, text, colors.text, face);
       if focused then
          if cursorX + 1 >= r.x + r.w then
             cursorX := r.x + r.w - 2;
          end if;
          cursor := (x => cursorX + 1, y => textY + 2,
                     w => 1, h => UI_Text_Height - 4);
-         Fill_Rect (c, cursor, colors.accent);
+         Fill_Rect (textCanvas, cursor, colors.accent);
       end if;
    end Draw_Text_Field;
 
@@ -783,7 +804,7 @@ package body CuBit.UI is
        cursor, selectionStart, selectionEnd : Natural;
        focused : Boolean; hot : Boolean)
    is
-      face : Color := colors.shadow;
+      face : Color := colors.field;
       textX : Natural := r.x + 8;
       textY : Natural := r.y;
       cursorX : Natural := textX;
@@ -791,6 +812,10 @@ package body CuBit.UI is
       fg : Color;
       bg : Color;
       caret : Rect;
+      textCanvas : constant Canvas := With_Clip
+        (c, (x => r.x + 3, y => r.y + 2,
+             w => (if r.w > 6 then r.w - 6 else 0),
+             h => (if r.h > 4 then r.h - 4 else 0)));
    begin
       if hot then
          face := colors.face;
@@ -810,8 +835,8 @@ package body CuBit.UI is
             Natural (i - text'First) >= selectionStart and then
             Natural (i - text'First) < selectionEnd
          then
-            fg := face;
-            bg := colors.text;
+            fg := colors.selectionText;
+            bg := colors.selection;
          else
             fg := colors.text;
             bg := face;
@@ -821,7 +846,7 @@ package body CuBit.UI is
             cursorX := textX;
          end if;
 
-         Draw_UI_Text (c, textX, textY, text (i .. i), fg, bg);
+         Draw_UI_Text (textCanvas, textX, textY, text (i .. i), fg, bg);
          charW := UI_Text_Width (text (i .. i));
          textX := textX + charW;
       end loop;
@@ -836,9 +861,91 @@ package body CuBit.UI is
          end if;
          caret := (x => cursorX + 1, y => textY + 2,
                    w => 1, h => UI_Text_Height - 4);
-         Fill_Rect (c, caret, colors.accent);
+         Fill_Rect (textCanvas, caret, colors.accent);
       end if;
    end Draw_Text_Edit_Field;
+
+   procedure Draw_Multiline_Text_Edit
+      (c : Canvas; r : Rect; colors : Theme; text : String;
+       firstLine, visibleLines, cursor, selectionStart, selectionEnd : Positive;
+       focused : Boolean; hot : Boolean)
+   is
+      face : Color := colors.field;
+      lineHeight : constant Natural := UI_Text_Height + 2;
+      line : Positive := 1;
+      textX : Natural := r.x + 6;
+      textY : Natural := r.y + 5;
+      charW : Natural;
+      fg : Color;
+      bg : Color;
+      absolutePosition : Positive := 1;
+      lastVisible : constant Natural := firstLine + visibleLines - 1;
+      caretX : Natural := r.x + 6;
+      caretY : Natural := r.y + 5;
+      caretVisible : Boolean := False;
+      textCanvas : constant Canvas := With_Clip
+        (c, (x => r.x + 3, y => r.y + 3,
+             w => (if r.w > 6 then r.w - 6 else 0),
+             h => (if r.h > 6 then r.h - 6 else 0)));
+
+      procedure Remember_Caret is
+      begin
+         caretX := textX;
+         caretY := textY;
+         caretVisible := True;
+      end Remember_Caret;
+   begin
+      if hot then face := colors.face; end if;
+      Fill_Rect (c, r, face);
+      if focused then
+         Stroke_Rect (c, r, colors.accent, colors.shadow);
+      else
+         Stroke_Sunken (c, r, colors);
+      end if;
+
+      for index in text'Range loop
+         if line >= firstLine and then line <= lastVisible then
+            textY := r.y + 5 + (line - firstLine) * lineHeight;
+            if absolutePosition = cursor then Remember_Caret; end if;
+            if text (index) /= ASCII.LF then
+               if absolutePosition >= selectionStart and then
+                 absolutePosition < selectionEnd
+               then
+                  fg := colors.selectionText;
+                  bg := colors.selection;
+               else
+                  fg := colors.text;
+                  bg := face;
+               end if;
+               Draw_UI_Text
+                 (textCanvas, textX, textY, text (index .. index), fg, bg);
+               charW := UI_Text_Width (text (index .. index));
+               textX := textX + charW;
+            end if;
+         end if;
+         if text (index) = ASCII.LF then
+            line := line + 1;
+            textX := r.x + 6;
+         end if;
+         absolutePosition := absolutePosition + 1;
+      end loop;
+
+      if absolutePosition = cursor and then
+        line >= firstLine and then line <= lastVisible
+      then
+         textY := r.y + 5 + (line - firstLine) * lineHeight;
+         Remember_Caret;
+      end if;
+
+      --  Paint the caret after glyph backgrounds and selection highlighting.
+      if focused and then caretVisible and then
+        caretX + 1 < r.x + r.w and then caretY < r.y + r.h
+      then
+         Fill_Rect
+           (textCanvas, (x => caretX, y => caretY + 1,
+                w => 1, h => UI_Text_Height), colors.accent);
+      end if;
+   end Draw_Multiline_Text_Edit;
 
    procedure Draw_Checkbox
       (c : Canvas; r : Rect; colors : Theme;
@@ -985,28 +1092,58 @@ package body CuBit.UI is
    procedure Draw_Vertical_Scrollbar
       (c : Canvas; r : Rect; colors : Theme;
        minValue, maxValue, value : Natural;
-       hot : Boolean; active : Boolean)
+       hot : Boolean; active : Boolean; pageSize : Positive := 1)
    is
-      track : constant Rect := (x => r.x + 5, y => r.y + 4,
-                                w => (if r.w > 10 then r.w - 10 else 0),
-                                h => (if r.h > 8 then r.h - 8 else 0));
+      buttonExtent : constant Natural := Natural'Min (r.w, r.h / 2);
+      upButton : constant Rect :=
+        (x => r.x, y => r.y, w => r.w, h => buttonExtent);
+      downButton : constant Rect :=
+        (x => r.x, y => r.y + r.h - buttonExtent,
+         w => r.w, h => buttonExtent);
+      track : constant Rect :=
+        (x => r.x, y => r.y + buttonExtent, w => r.w,
+         h => (if r.h > buttonExtent * 2 then r.h - buttonExtent * 2 else 0));
+      total : constant Natural :=
+        (if maxValue >= minValue then maxValue - minValue + 1 else 1);
+      shown : constant Natural := Natural'Min (pageSize, total);
+      maximumValue : constant Natural :=
+        (if shown >= total then minValue else maxValue - shown + 1);
       span : Natural := 1;
       pos  : Natural := 0;
-      knobY : Natural := r.y;
+      thumbHeight : Natural := 0;
+      travel : Natural := 0;
+      knobY : Natural := track.y;
       knob : Rect;
       knobColor : Color := colors.face;
+
+      procedure Draw_Arrow (Button : Rect; Points_Up : Boolean) is
+         centerX : constant Natural := Button.x + Button.w / 2;
+         centerY : constant Natural := Button.y + Button.h / 2;
+         arrowColor : constant Color :=
+           (if shown >= total then colors.shadow else colors.text);
+      begin
+         if Button.w < 8 or else Button.h < 8 then return; end if;
+         for Row in 0 .. 3 loop
+            Fill_Rect
+              (c,
+               (x => centerX - (if Points_Up then Row else 3 - Row),
+                y => centerY - 2 + Row,
+                w => 1 + 2 * (if Points_Up then Row else 3 - Row), h => 1),
+               arrowColor);
+         end loop;
+      end Draw_Arrow;
    begin
-      if maxValue > minValue then
-         span := maxValue - minValue;
+      if maximumValue > minValue then
+         span := maximumValue - minValue;
       end if;
       if value > minValue then
          pos := Natural'Min (value - minValue, span);
       end if;
       if not Is_Empty (track) then
-         knobY := track.y + (pos * track.h) / span;
-      end if;
-      if r.h > 18 and then knobY > r.y + r.h - 18 then
-         knobY := r.y + r.h - 18;
+         thumbHeight := Natural'Max (12, track.h * shown / total);
+         thumbHeight := Natural'Min (thumbHeight, track.h);
+         travel := track.h - thumbHeight;
+         knobY := track.y + (pos * travel) / span;
       end if;
 
       if active then
@@ -1015,17 +1152,25 @@ package body CuBit.UI is
          knobColor := colors.accent;
       end if;
 
-      Fill_Rect (c, r, colors.shadow);
-      Stroke_Rect (c, r, colors.edge, colors.shadow);
+      Fill_Rect (c, r, colors.panel);
       if not Is_Empty (track) then
-         Fill_Rect (c, track, colors.panel);
+         Fill_Rect (c, track, colors.edge);
+         Stroke_Sunken (c, track, colors);
       end if;
+      Fill_Rect (c, upButton, colors.panel);
+      Stroke_Raised (c, upButton, colors);
+      Draw_Arrow (upButton, True);
+      Fill_Rect (c, downButton, colors.panel);
+      Stroke_Raised (c, downButton, colors);
+      Draw_Arrow (downButton, False);
 
-      knob := (x => r.x + 3, y => knobY,
-               w => (if r.w > 6 then r.w - 6 else r.w),
-               h => 18);
-      Fill_Rect (c, knob, knobColor);
-      Stroke_Rect (c, knob, colors.edge, colors.shadow);
+      if shown < total then
+         knob := (x => r.x + 3, y => knobY,
+                  w => (if r.w > 6 then r.w - 6 else r.w),
+                  h => thumbHeight);
+         Fill_Rect (c, knob, knobColor);
+         Stroke_Raised (c, knob, colors);
+      end if;
    end Draw_Vertical_Scrollbar;
 
    function Button
