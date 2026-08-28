@@ -18,6 +18,8 @@ package body CuBit.UI.Editor.Documents with SPARK_Mode is
    end Initialize;
 
    function Length (Value : Document) return Natural is (Value.Last);
+   function Capacity_Of (Value : Document) return Document_Capacity is
+     (Value.Capacity);
    function Content (Value : Document) return String is
      (Value.Data (1 .. Value.Last));
 

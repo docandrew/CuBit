@@ -22,6 +22,17 @@ package body CuBit.UI.Editor.Viewports with SPARK_Mode is
       end if;
    end Last_Visible_Line;
 
+   procedure Set_Line_Capacity
+     (Value : in out Viewport; Visible_Lines, Document_Lines : Positive)
+   is
+      Maximum_First : constant Positive :=
+        (if Visible_Lines >= Document_Lines then 1
+         else Document_Lines - Visible_Lines + 1);
+   begin
+      Value.Visible := Visible_Lines;
+      Value.First := Positive'Min (Value.First, Maximum_First);
+   end Set_Line_Capacity;
+
    procedure Ensure_Visible
      (Value : in out Viewport; Line, Document_Lines : Line_Number)
    is

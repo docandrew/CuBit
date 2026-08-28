@@ -10,6 +10,9 @@ package CuBit.UI.Editor.Viewports with SPARK_Mode is
    function Last_Visible_Line
      (Value : Viewport; Document_Lines : Positive) return Line_Number;
 
+   procedure Set_Line_Capacity
+     (Value : in out Viewport; Visible_Lines, Document_Lines : Positive);
+
    procedure Ensure_Visible
      (Value : in out Viewport; Line, Document_Lines : Line_Number)
    with Pre => Line <= Document_Lines;

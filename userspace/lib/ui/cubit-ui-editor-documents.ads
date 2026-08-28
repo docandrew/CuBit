@@ -12,8 +12,14 @@ package CuBit.UI.Editor.Documents with SPARK_Mode is
 
    procedure Initialize
      (Value : out Document; Text : String; Result : out Edit_Result);
-   function Length (Value : Document) return Natural;
-   function Content (Value : Document) return String;
+   function Length (Value : Document) return Natural
+   with Post => Length'Result <= Value.Capacity;
+   function Capacity_Of (Value : Document) return Document_Capacity
+   with Post => Capacity_Of'Result = Value.Capacity;
+   function Content (Value : Document) return String
+   with Post =>
+     Content'Result'First = 1 and then
+     Content'Result'Length = Length (Value);
 
    procedure Insert
      (Value : in out Document; Position : Document_Position;

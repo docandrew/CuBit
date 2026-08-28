@@ -101,12 +101,9 @@ int ccl_window_poll(void *handle, int *kind, unsigned int *character,
     SDL_Keymod mods;
     if (state->frames_left == 0) { *kind = 1; return 1; }
     while (SDL_PollEvent(&event) != 0) {
-        if (event.type == SDL_QUIT ||
-            (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)) {
+        if (event.type == SDL_QUIT) {
             if (state->debug_input)
-                fprintf(stderr, "close event type=%u key=%d\n",
-                        event.type,
-                        event.type == SDL_KEYDOWN ? event.key.keysym.sym : 0);
+                fprintf(stderr, "close event type=%u\n", event.type);
             *kind = 1; return 1;
         }
         if (event.type == SDL_TEXTINPUT && (unsigned char)event.text.text[0] < 128) {
@@ -164,6 +161,7 @@ int ccl_window_poll(void *handle, int *kind, unsigned int *character,
                     (unsigned int)mods);
         *modifiers = ((mods & KMOD_SHIFT) != 0 ? 1u : 0u) |
                      ((mods & KMOD_CTRL) != 0 ? 2u : 0u);
+        if (event.key.keysym.sym == SDLK_ESCAPE) { *kind = 22; return 1; }
         if (event.key.keysym.sym == SDLK_BACKSPACE) { *kind = 3; return 1; }
         if (event.key.keysym.sym == SDLK_RETURN ||
             event.key.keysym.sym == SDLK_KP_ENTER) { *kind = 4; return 1; }

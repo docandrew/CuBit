@@ -179,6 +179,14 @@ package CuBit.UI is
       (c : Canvas; r : Rect; colors : Theme; text : String;
        firstLine, visibleLines, cursor, selectionStart, selectionEnd : Positive;
        focused : Boolean; hot : Boolean);
+   type Text_Cursor_State is record
+      cursor, selectionStart, selectionEnd : Positive;
+   end record;
+   type Text_Cursor_States is array (Positive range <>) of Text_Cursor_State;
+   procedure Draw_Multiline_Text_Edit_Multiple
+      (c : Canvas; r : Rect; colors : Theme; text : String;
+       firstLine, visibleLines : Positive; cursors : Text_Cursor_States;
+       focused : Boolean; hot : Boolean);
    procedure Draw_Checkbox
       (c : Canvas; r : Rect; colors : Theme;
        checked : Boolean; hot : Boolean; active : Boolean);
@@ -197,10 +205,14 @@ package CuBit.UI is
       (c : Canvas; r : Rect; colors : Theme;
        minValue, maxValue, value : Natural;
        hot : Boolean; active : Boolean);
+   type Scrollbar_Part is
+     (Scrollbar_None, Scrollbar_Decrement, Scrollbar_Thumb,
+      Scrollbar_Increment, Scrollbar_Track);
    procedure Draw_Vertical_Scrollbar
       (c : Canvas; r : Rect; colors : Theme;
        minValue, maxValue, value : Natural;
-       hot : Boolean; active : Boolean; pageSize : Positive := 1);
+       hot : Boolean; active : Boolean; pageSize : Positive := 1;
+       pressedPart : Scrollbar_Part := Scrollbar_Thumb);
 
    function Button
       (bounds : Rect; pointer : Pointer_State) return Widget_Result;

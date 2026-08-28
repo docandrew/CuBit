@@ -870,6 +870,17 @@ package body CuBit.UI is
        firstLine, visibleLines, cursor, selectionStart, selectionEnd : Positive;
        focused : Boolean; hot : Boolean)
    is
+   begin
+      Draw_Multiline_Text_Edit_Multiple
+        (c, r, colors, text, firstLine, visibleLines,
+         [(cursor, selectionStart, selectionEnd)], focused, hot);
+   end Draw_Multiline_Text_Edit;
+
+   procedure Draw_Multiline_Text_Edit_Multiple
+      (c : Canvas; r : Rect; colors : Theme; text : String;
+       firstLine, visibleLines : Positive; cursors : Text_Cursor_States;
+       focused : Boolean; hot : Boolean)
+   is
       face : Color := colors.field;
       lineHeight : constant Natural := UI_Text_Height + 2;
       line : Positive := 1;
@@ -880,20 +891,36 @@ package body CuBit.UI is
       bg : Color;
       absolutePosition : Positive := 1;
       lastVisible : constant Natural := firstLine + visibleLines - 1;
-      caretX : Natural := r.x + 6;
-      caretY : Natural := r.y + 5;
-      caretVisible : Boolean := False;
       textCanvas : constant Canvas := With_Clip
         (c, (x => r.x + 3, y => r.y + 3,
              w => (if r.w > 6 then r.w - 6 else 0),
              h => (if r.h > 6 then r.h - 6 else 0)));
 
-      procedure Remember_Caret is
+      function Selected (Position : Positive) return Boolean is
       begin
-         caretX := textX;
-         caretY := textY;
-         caretVisible := True;
-      end Remember_Caret;
+         for State of cursors loop
+            if Position >= State.selectionStart and then
+              Position < State.selectionEnd
+            then
+               return True;
+            end if;
+         end loop;
+         return False;
+      end Selected;
+
+      procedure Draw_Carets (Position : Positive) is
+      begin
+         if not focused then return; end if;
+         for State of cursors loop
+            if Position = State.cursor and then
+              textX + 1 < r.x + r.w and then textY < r.y + r.h
+            then
+               Fill_Rect
+                 (textCanvas, (x => textX, y => textY + 1,
+                    w => 1, h => UI_Text_Height), colors.accent);
+            end if;
+         end loop;
+      end Draw_Carets;
    begin
       if hot then face := colors.face; end if;
       Fill_Rect (c, r, face);
@@ -906,11 +933,8 @@ package body CuBit.UI is
       for index in text'Range loop
          if line >= firstLine and then line <= lastVisible then
             textY := r.y + 5 + (line - firstLine) * lineHeight;
-            if absolutePosition = cursor then Remember_Caret; end if;
             if text (index) /= ASCII.LF then
-               if absolutePosition >= selectionStart and then
-                 absolutePosition < selectionEnd
-               then
+               if Selected (absolutePosition) then
                   fg := colors.selectionText;
                   bg := colors.selection;
                else
@@ -920,6 +944,9 @@ package body CuBit.UI is
                Draw_UI_Text
                  (textCanvas, textX, textY, text (index .. index), fg, bg);
                charW := UI_Text_Width (text (index .. index));
+            end if;
+            Draw_Carets (absolutePosition);
+            if text (index) /= ASCII.LF then
                textX := textX + charW;
             end if;
          end if;
@@ -930,22 +957,11 @@ package body CuBit.UI is
          absolutePosition := absolutePosition + 1;
       end loop;
 
-      if absolutePosition = cursor and then
-        line >= firstLine and then line <= lastVisible
-      then
+      if line >= firstLine and then line <= lastVisible then
          textY := r.y + 5 + (line - firstLine) * lineHeight;
-         Remember_Caret;
+         Draw_Carets (absolutePosition);
       end if;
-
-      --  Paint the caret after glyph backgrounds and selection highlighting.
-      if focused and then caretVisible and then
-        caretX + 1 < r.x + r.w and then caretY < r.y + r.h
-      then
-         Fill_Rect
-           (textCanvas, (x => caretX, y => caretY + 1,
-                w => 1, h => UI_Text_Height), colors.accent);
-      end if;
-   end Draw_Multiline_Text_Edit;
+   end Draw_Multiline_Text_Edit_Multiple;
 
    procedure Draw_Checkbox
       (c : Canvas; r : Rect; colors : Theme;
@@ -1092,7 +1108,8 @@ package body CuBit.UI is
    procedure Draw_Vertical_Scrollbar
       (c : Canvas; r : Rect; colors : Theme;
        minValue, maxValue, value : Natural;
-       hot : Boolean; active : Boolean; pageSize : Positive := 1)
+       hot : Boolean; active : Boolean; pageSize : Positive := 1;
+       pressedPart : Scrollbar_Part := Scrollbar_Thumb)
    is
       buttonExtent : constant Natural := Natural'Min (r.w, r.h / 2);
       upButton : constant Rect :=
@@ -1100,9 +1117,13 @@ package body CuBit.UI is
       downButton : constant Rect :=
         (x => r.x, y => r.y + r.h - buttonExtent,
          w => r.w, h => buttonExtent);
-      track : constant Rect :=
+      trackFrame : constant Rect :=
         (x => r.x, y => r.y + buttonExtent, w => r.w,
          h => (if r.h > buttonExtent * 2 then r.h - buttonExtent * 2 else 0));
+      track : constant Rect :=
+        (x => trackFrame.x + 2, y => trackFrame.y + 2,
+         w => (if trackFrame.w > 4 then trackFrame.w - 4 else 0),
+         h => (if trackFrame.h > 4 then trackFrame.h - 4 else 0));
       total : constant Natural :=
         (if maxValue >= minValue then maxValue - minValue + 1 else 1);
       shown : constant Natural := Natural'Min (pageSize, total);
@@ -1116,9 +1137,12 @@ package body CuBit.UI is
       knob : Rect;
       knobColor : Color := colors.face;
 
-      procedure Draw_Arrow (Button : Rect; Points_Up : Boolean) is
-         centerX : constant Natural := Button.x + Button.w / 2;
-         centerY : constant Natural := Button.y + Button.h / 2;
+      procedure Draw_Arrow
+        (Button : Rect; Points_Up, Pressed : Boolean)
+      is
+         Offset : constant Natural := (if Pressed then 1 else 0);
+         centerX : constant Natural := Button.x + Button.w / 2 + Offset;
+         centerY : constant Natural := Button.y + Button.h / 2 + Offset;
          arrowColor : constant Color :=
            (if shown >= total then colors.shadow else colors.text);
       begin
@@ -1147,29 +1171,42 @@ package body CuBit.UI is
       end if;
 
       if active then
-         knobColor := colors.good;
+         knobColor := colors.edge;
       elsif hot then
          knobColor := colors.accent;
       end if;
 
       Fill_Rect (c, r, colors.panel);
-      if not Is_Empty (track) then
-         Fill_Rect (c, track, colors.edge);
-         Stroke_Sunken (c, track, colors);
+      if not Is_Empty (trackFrame) then
+         Fill_Rect (c, trackFrame, colors.edge);
+         Stroke_Sunken (c, trackFrame, colors);
       end if;
       Fill_Rect (c, upButton, colors.panel);
-      Stroke_Raised (c, upButton, colors);
-      Draw_Arrow (upButton, True);
+      if active and then pressedPart = Scrollbar_Decrement then
+         Stroke_Sunken (c, upButton, colors);
+      else
+         Stroke_Raised (c, upButton, colors);
+      end if;
+      Draw_Arrow
+        (upButton, True, active and then pressedPart = Scrollbar_Decrement);
       Fill_Rect (c, downButton, colors.panel);
-      Stroke_Raised (c, downButton, colors);
-      Draw_Arrow (downButton, False);
+      if active and then pressedPart = Scrollbar_Increment then
+         Stroke_Sunken (c, downButton, colors);
+      else
+         Stroke_Raised (c, downButton, colors);
+      end if;
+      Draw_Arrow
+        (downButton, False, active and then pressedPart = Scrollbar_Increment);
 
       if shown < total then
-         knob := (x => r.x + 3, y => knobY,
-                  w => (if r.w > 6 then r.w - 6 else r.w),
+         knob := (x => track.x, y => knobY, w => track.w,
                   h => thumbHeight);
          Fill_Rect (c, knob, knobColor);
-         Stroke_Raised (c, knob, colors);
+         if active and then pressedPart = Scrollbar_Thumb then
+            Stroke_Sunken (c, knob, colors);
+         else
+            Stroke_Raised (c, knob, colors);
+         end if;
       end if;
    end Draw_Vertical_Scrollbar;
 

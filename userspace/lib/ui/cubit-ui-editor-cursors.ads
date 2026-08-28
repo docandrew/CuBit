@@ -36,6 +36,8 @@ package CuBit.UI.Editor.Cursors with SPARK_Mode is
      (Cursors : in out Cursor_Set; Position : Cursor_Position;
       Result : out Toggle_Result);
 
+   procedure Coalesce (Cursors : in out Cursor_Set);
+
 private
    type Cursor_Array is array (Cursor_Index) of Cursor_State;
    type Cursor_Set is record

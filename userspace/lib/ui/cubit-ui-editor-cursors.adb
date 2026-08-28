@@ -75,4 +75,62 @@ package body CuBit.UI.Editor.Cursors with SPARK_Mode is
          Result := Cursor_Removed;
       end if;
    end Toggle_At;
+
+   procedure Coalesce (Cursors : in out Cursor_Set) is
+      Left_Index : Cursor_Index := 1;
+      Right_Index : Natural;
+      Left_First, Left_Last, Right_First, Right_Last : Cursor_Position;
+      Forward : Boolean;
+   begin
+      while Left_Index < Cursors.Last loop
+         pragma Loop_Invariant (Left_Index <= Cursors.Last);
+         pragma Loop_Invariant (Cursors.Primary <= Cursors.Last);
+         Right_Index := Left_Index + 1;
+         while Right_Index <= Cursors.Last loop
+            pragma Loop_Invariant (Left_Index < Right_Index);
+            pragma Loop_Invariant (Right_Index <= Cursors.Last + 1);
+            pragma Loop_Invariant (Cursors.Primary <= Cursors.Last);
+            Left_First := Cursor_Position'Min
+              (Cursors.Items (Left_Index).Position,
+               Cursors.Items (Left_Index).Anchor);
+            Left_Last := Cursor_Position'Max
+              (Cursors.Items (Left_Index).Position,
+               Cursors.Items (Left_Index).Anchor);
+            Right_First := Cursor_Position'Min
+              (Cursors.Items (Cursor_Index (Right_Index)).Position,
+               Cursors.Items (Cursor_Index (Right_Index)).Anchor);
+            Right_Last := Cursor_Position'Max
+              (Cursors.Items (Cursor_Index (Right_Index)).Position,
+               Cursors.Items (Cursor_Index (Right_Index)).Anchor);
+
+            if Left_First <= Right_Last and then
+              Right_First <= Left_Last
+            then
+               Forward := Cursors.Items (Left_Index).Position >=
+                 Cursors.Items (Left_Index).Anchor;
+               Left_First := Cursor_Position'Min (Left_First, Right_First);
+               Left_Last := Cursor_Position'Max (Left_Last, Right_Last);
+               Cursors.Items (Left_Index).Position :=
+                 (if Forward then Left_Last else Left_First);
+               Cursors.Items (Left_Index).Anchor :=
+                 (if Forward then Left_First else Left_Last);
+
+               for Index in Cursor_Index (Right_Index) .. Cursors.Last - 1 loop
+                  Cursors.Items (Index) := Cursors.Items (Index + 1);
+               end loop;
+               Cursors.Last := Cursors.Last - 1;
+               if Cursors.Primary = Right_Index then
+                  Cursors.Primary := Left_Index;
+               elsif Cursors.Primary > Right_Index then
+                  Cursors.Primary := Cursors.Primary - 1;
+               end if;
+               pragma Assert (Cursors.Primary <= Cursors.Last);
+            else
+               Right_Index := Right_Index + 1;
+            end if;
+         end loop;
+         exit when Left_Index = Cursors.Last;
+         Left_Index := Left_Index + 1;
+      end loop;
+   end Coalesce;
 end CuBit.UI.Editor.Cursors;

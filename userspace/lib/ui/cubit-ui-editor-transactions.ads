@@ -19,13 +19,19 @@ package CuBit.UI.Editor.Transactions with SPARK_Mode is
       Document_Length : CuBit.UI.Editor.Documents.Line_Character_Count)
       return Boolean;
 
+   function Is_Valid_For
+     (Plan : Edit_Plan;
+      Document_Length : CuBit.UI.Editor.Documents.Line_Character_Count)
+      return Boolean;
+
    procedure Build
      (Cursors : CuBit.UI.Editor.Cursors.Cursor_Set;
       Document_Length : CuBit.UI.Editor.Documents.Line_Character_Count;
       Plan : out Edit_Plan)
    with Pre =>
      Document_Length <= CuBit.UI.Editor.Documents.MAX_DOCUMENT_CAPACITY and then
-     Cursors_Within_Document (Cursors, Document_Length);
+     Cursors_Within_Document (Cursors, Document_Length),
+     Post => Is_Valid_For (Plan, Document_Length);
 
    function Length (Plan : Edit_Plan) return Edit_Count;
    function Element (Plan : Edit_Plan; Index : Edit_Index) return Edit_Range
@@ -38,6 +44,18 @@ package CuBit.UI.Editor.Transactions with SPARK_Mode is
    with Pre =>
      Document_Length <= Capacity and then
      Removed_Characters (Plan) <= Document_Length;
+
+   procedure Replace_All
+     (Value : in out CuBit.UI.Editor.Documents.Document;
+      Cursors : in out CuBit.UI.Editor.Cursors.Cursor_Set;
+      Text : String; Result : out CuBit.UI.Editor.Documents.Edit_Result)
+   with Pre =>
+     CuBit.UI.Editor.Documents.Length (Value) <=
+       CuBit.UI.Editor.Documents.MAX_DOCUMENT_CAPACITY and then
+     Cursors_Within_Document
+       (Cursors,
+        CuBit.UI.Editor.Documents.Line_Character_Count
+          (CuBit.UI.Editor.Documents.Length (Value)));
 
 private
    type Edit_Array is array (Edit_Index) of Edit_Range;

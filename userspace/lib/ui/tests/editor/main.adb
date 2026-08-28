@@ -4,11 +4,13 @@ with CuBit.UI.Editor.Cursors;
 with CuBit.UI.Editor.Documents;
 with CuBit.UI.Editor.Viewports;
 with CuBit.UI.Editor.Transactions;
+with CuBit.UI.Editor.Buffers;
 
 procedure Main is
    use CuBit.UI.Editor;
    use type CuBit.UI.Editor.Cursors.Toggle_Result;
    use type CuBit.UI.Editor.Documents.Edit_Result;
+   use type CuBit.UI.Editor.Buffers.Append_Result;
    State : Edit_State;
    Accepted : Boolean;
    Changed : Boolean;
@@ -22,6 +24,8 @@ procedure Main is
    Preferred : CuBit.UI.Editor.Documents.Display_Column;
    View : CuBit.UI.Editor.Viewports.Viewport;
    Plan : CuBit.UI.Editor.Transactions.Edit_Plan;
+   Buffer : CuBit.UI.Editor.Buffers.Candidate_Buffer (8);
+   Buffer_Result : CuBit.UI.Editor.Buffers.Append_Result;
 begin
    Initialize (State, "alpha beta", Accepted);
    pragma Assert (Accepted and then Cursor (State) = 11);
@@ -86,6 +90,18 @@ begin
       CuBit.UI.Editor.Cursors.Length (Cursors) =
         CuBit.UI.Editor.Cursors.MAX_CURSORS);
 
+   CuBit.UI.Editor.Cursors.Initialize (Cursors, 3);
+   CuBit.UI.Editor.Cursors.Toggle_At (Cursors, 5, Toggle);
+   CuBit.UI.Editor.Cursors.Set_Element
+     (Cursors, 1, (Position => 4, Anchor => 2, Preferred_Column => 4));
+   CuBit.UI.Editor.Cursors.Set_Element
+     (Cursors, 2, (Position => 6, Anchor => 4, Preferred_Column => 6));
+   CuBit.UI.Editor.Cursors.Coalesce (Cursors);
+   pragma Assert
+     (CuBit.UI.Editor.Cursors.Length (Cursors) = 1 and then
+      CuBit.UI.Editor.Cursors.Element (Cursors, 1).Position = 6 and then
+      CuBit.UI.Editor.Cursors.Element (Cursors, 1).Anchor = 2);
+
    CuBit.UI.Editor.Documents.Initialize
      (Doc, "one" & ASCII.LF & "two" & ASCII.LF, Edit);
    pragma Assert
@@ -137,6 +153,10 @@ begin
    pragma Assert (CuBit.UI.Editor.Viewports.First_Line (View) = 2);
    CuBit.UI.Editor.Viewports.Scroll_Lines (View, 100, 8);
    pragma Assert (CuBit.UI.Editor.Viewports.First_Line (View) = 6);
+   CuBit.UI.Editor.Viewports.Set_Line_Capacity (View, 4, 8);
+   pragma Assert
+     (CuBit.UI.Editor.Viewports.Line_Capacity (View) = 4 and then
+      CuBit.UI.Editor.Viewports.First_Line (View) = 5);
    CuBit.UI.Editor.Viewports.Scroll_Lines (View, -100, 8);
    pragma Assert (CuBit.UI.Editor.Viewports.First_Line (View) = 1);
 
@@ -157,6 +177,36 @@ begin
       CuBit.UI.Editor.Transactions.Final_Length_Fits (Plan, 10, 2, 10) and then
       not CuBit.UI.Editor.Transactions.Final_Length_Fits
         (Plan, 10, 3, 10));
+
+   CuBit.UI.Editor.Documents.Initialize (Doc, "abcdefghij", Edit);
+   pragma Assert (Edit = CuBit.UI.Editor.Documents.Applied);
+   CuBit.UI.Editor.Transactions.Replace_All (Doc, Cursors, "Z", Edit);
+   pragma Assert
+     (Edit = CuBit.UI.Editor.Documents.Applied and then
+      CuBit.UI.Editor.Documents.Content (Doc) = "aZghZij" and then
+      CuBit.UI.Editor.Cursors.Length (Cursors) = 2 and then
+      CuBit.UI.Editor.Cursors.Element (Cursors, 1).Position = 3 and then
+      CuBit.UI.Editor.Cursors.Element (Cursors, 2).Position = 6);
+
+   CuBit.UI.Editor.Transactions.Replace_All
+     (Doc, Cursors, String'(1 .. 64 => 'x'), Edit);
+   pragma Assert
+     (Edit = CuBit.UI.Editor.Documents.Capacity_Exceeded and then
+      CuBit.UI.Editor.Documents.Content (Doc) = "aZghZij" and then
+      CuBit.UI.Editor.Cursors.Length (Cursors) = 2 and then
+      CuBit.UI.Editor.Cursors.Element (Cursors, 1).Position = 3 and then
+      CuBit.UI.Editor.Cursors.Element (Cursors, 2).Position = 6);
+
+   CuBit.UI.Editor.Buffers.Initialize (Buffer);
+   CuBit.UI.Editor.Buffers.Append (Buffer, "abc", Buffer_Result);
+   pragma Assert
+     (Buffer_Result = CuBit.UI.Editor.Buffers.Appended and then
+      CuBit.UI.Editor.Buffers.Content (Buffer) = "abc" and then
+      CuBit.UI.Editor.Buffers.Remaining (Buffer) = 5);
+   CuBit.UI.Editor.Buffers.Append (Buffer, "defghi", Buffer_Result);
+   pragma Assert
+     (Buffer_Result = CuBit.UI.Editor.Buffers.Capacity_Exceeded and then
+      CuBit.UI.Editor.Buffers.Content (Buffer) = "abc");
 
 
    Ada.Text_IO.Put_Line ("PASS: bounded one-based editor commands");
