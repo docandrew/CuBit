@@ -6,8 +6,12 @@
     url = "github:ozkl/doomgeneric/dcb7a8dbc7a16ce3dda29382ac9aae9d77d21284";
     flake = false;
   };
+  inputs.stb = {
+    url = "github:nothings/stb/f58f558c120e9b32c217290b80bad1a0729fbb2c";
+    flake = false;
+  };
 
-  outputs = { self, nixpkgs, doomgeneric }:
+  outputs = { self, nixpkgs, doomgeneric, stb }:
     let
       supportedSystems = [ "x86_64-linux" ];
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
@@ -23,21 +27,29 @@
               cvc5
               cpio
               e2fsprogs
+              expat
               freedoom
+              gperf
               gnat15
               gnatprove
               gnumake
               grub2
+              libjpeg_turbo
+              libpng
+              perl
+              pkg-config
               qemu
               SDL2
               xorriso
               yasm
+              zlib
               z3
             ];
 
             shellHook = ''
               export DOOMGENERIC_SRC="${doomgeneric}"
               export DOOM_WAD="${pkgs.freedoom}/share/games/doom/freedoom1.wad"
+              export STB_SRC="${stb}"
               # Hosted developer tools built through Alire/GPRBuild do not
               # automatically consume Nix's compiler and linker flags.
               export C_INCLUDE_PATH="${pkgs.SDL2.dev}/include''${C_INCLUDE_PATH:+:$C_INCLUDE_PATH}"

@@ -64,6 +64,8 @@ procedure Main is
    with Import, Convention => C, External_Name => "ccl_window_present";
    procedure Window_Wait
    with Import, Convention => C, External_Name => "ccl_window_wait";
+   function Window_Ticks return Interfaces.Unsigned_64
+   with Import, Convention => C, External_Name => "ccl_window_ticks";
    procedure Window_Close (Handle : System.Address)
    with Import, Convention => C, External_Name => "ccl_window_close";
 
@@ -630,6 +632,9 @@ begin
       Dragging : Boolean := False;
       Dragging_Scrollbar : Boolean := False;
       Scrollbar_Grab_Offset : Natural := 0;
+      Next_Scrollbar_Repeat : Interfaces.Unsigned_64 := 0;
+      SCROLL_REPEAT_DELAY : constant Interfaces.Unsigned_64 := 350;
+      SCROLL_REPEAT_INTERVAL : constant Interfaces.Unsigned_64 := 60;
       Changed : Boolean;
       Extend : Boolean;
       By_Word : Boolean;
@@ -720,6 +725,7 @@ begin
                when 11 | 14 | 15 =>
                   Dragging_Scrollbar := False;
                   Source_Scrollbar_Pressed := CuBit.UI.Scrollbar_None;
+                  Next_Scrollbar_Repeat := 0;
                   if Mouse_X >= 0 and then Mouse_Y >= 0 and then
                     CuBit.UI.Point_In_Rect
                       (Natural (Mouse_X), Natural (Mouse_Y), Input_Bounds)
@@ -797,20 +803,34 @@ begin
                         elsif Natural (Mouse_Y) <
                           Source_Scrollbar.y + Extent
                         then
-                           Source_Scrollbar_Pressed :=
-                             CuBit.UI.Scrollbar_Decrement;
-                           CuBit.UI.Editor.Viewports.Scroll_Lines
-                             (Source_View, -1, Lines);
+                           if CuBit.UI.Editor.Viewports.First_Line
+                             (Source_View) > 1
+                           then
+                              Source_Scrollbar_Pressed :=
+                                CuBit.UI.Scrollbar_Decrement;
+                              Next_Scrollbar_Repeat :=
+                                Window_Ticks + SCROLL_REPEAT_DELAY;
+                              CuBit.UI.Editor.Viewports.Scroll_Lines
+                                (Source_View, -1, Lines);
+                           end if;
                         elsif Natural (Mouse_Y) >=
                           Source_Scrollbar.y + Source_Scrollbar.h - Extent
                         then
-                           Source_Scrollbar_Pressed :=
-                             CuBit.UI.Scrollbar_Increment;
-                           CuBit.UI.Editor.Viewports.Scroll_Lines
-                             (Source_View, 1, Lines);
+                           if CuBit.UI.Editor.Viewports.First_Line
+                             (Source_View) < Maximum_First
+                           then
+                              Source_Scrollbar_Pressed :=
+                                CuBit.UI.Scrollbar_Increment;
+                              Next_Scrollbar_Repeat :=
+                                Window_Ticks + SCROLL_REPEAT_DELAY;
+                              CuBit.UI.Editor.Viewports.Scroll_Lines
+                                (Source_View, 1, Lines);
+                           end if;
                         else
-                           Source_Scrollbar_Pressed :=
-                             CuBit.UI.Scrollbar_Track;
+                           if Maximum_First > 1 then
+                              Source_Scrollbar_Pressed :=
+                                CuBit.UI.Scrollbar_Track;
+                           end if;
                            Relative_Y :=
                              (if Natural (Mouse_Y) <= Track.y then 0
                               else Natural'Min
@@ -870,6 +890,7 @@ begin
                   Dragging := False;
                   Dragging_Scrollbar := False;
                   Source_Scrollbar_Pressed := CuBit.UI.Scrollbar_None;
+                  Next_Scrollbar_Repeat := 0;
                when 16 | 17 =>
                   if Focus = Source_Editor then
                      Move_Source_Vertical
@@ -906,6 +927,38 @@ begin
             end case;
          end loop;
          exit when not Running;
+         if (Source_Scrollbar_Pressed = CuBit.UI.Scrollbar_Decrement or else
+             Source_Scrollbar_Pressed = CuBit.UI.Scrollbar_Increment) and then
+           Window_Ticks >= Next_Scrollbar_Repeat
+         then
+            declare
+               Lines : constant Positive :=
+                 CuBit.UI.Editor.Documents.Line_Count (Source);
+               Maximum_First : constant Positive :=
+                 (if CuBit.UI.Editor.Viewports.Line_Capacity (Source_View) >=
+                    Lines
+                  then 1
+                  else Lines -
+                    CuBit.UI.Editor.Viewports.Line_Capacity (Source_View) + 1);
+               Moving_Up : constant Boolean :=
+                 Source_Scrollbar_Pressed = CuBit.UI.Scrollbar_Decrement;
+            begin
+               if (Moving_Up and then
+                   CuBit.UI.Editor.Viewports.First_Line (Source_View) > 1) or else
+                 (not Moving_Up and then
+                  CuBit.UI.Editor.Viewports.First_Line (Source_View) <
+                    Maximum_First)
+               then
+                  CuBit.UI.Editor.Viewports.Scroll_Lines
+                    (Source_View, (if Moving_Up then -1 else 1), Lines);
+                  Next_Scrollbar_Repeat :=
+                    Window_Ticks + SCROLL_REPEAT_INTERVAL;
+               else
+                  Source_Scrollbar_Pressed := CuBit.UI.Scrollbar_None;
+                  Next_Scrollbar_Repeat := 0;
+               end if;
+            end;
+         end if;
          Render;
          exit when Window_Present
            (Handle, Pixels'Address, Interfaces.C.int (WIDTH * 4)) /= 0;

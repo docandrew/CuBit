@@ -21,5 +21,6 @@
 #define PRIx64  "lx"
 #define PRIX32  "X"
 #define PRIX64  "lX"
+#define SCNx32  "x"
 
 #endif /* _INTTYPES_H */

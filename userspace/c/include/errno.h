@@ -14,6 +14,8 @@ extern int errno;
 #define EEXIST  17
 #define EISDIR  21
 #define EINVAL  22
+#define E2BIG   7
 #define ERANGE  34
+#define EILSEQ  84
 
 #endif /* _ERRNO_H */

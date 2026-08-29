@@ -1136,15 +1136,19 @@ package body CuBit.UI is
       knobY : Natural := track.y;
       knob : Rect;
       knobColor : Color := colors.face;
+      canDecrement : constant Boolean :=
+        shown < total and then value > minValue;
+      canIncrement : constant Boolean :=
+        shown < total and then value < maximumValue;
 
       procedure Draw_Arrow
-        (Button : Rect; Points_Up, Pressed : Boolean)
+        (Button : Rect; Points_Up, Enabled, Pressed : Boolean)
       is
          Offset : constant Natural := (if Pressed then 1 else 0);
          centerX : constant Natural := Button.x + Button.w / 2 + Offset;
          centerY : constant Natural := Button.y + Button.h / 2 + Offset;
          arrowColor : constant Color :=
-           (if shown >= total then colors.shadow else colors.text);
+           (if Enabled then colors.text else colors.shadow);
       begin
          if Button.w < 8 or else Button.h < 8 then return; end if;
          for Row in 0 .. 3 loop
@@ -1171,7 +1175,7 @@ package body CuBit.UI is
       end if;
 
       if active then
-         knobColor := colors.edge;
+         knobColor := Blend (colors.edge, colors.face, 64);
       elsif hot then
          knobColor := colors.accent;
       end if;
@@ -1182,31 +1186,35 @@ package body CuBit.UI is
          Stroke_Sunken (c, trackFrame, colors);
       end if;
       Fill_Rect (c, upButton, colors.panel);
-      if active and then pressedPart = Scrollbar_Decrement then
+      if active and then canDecrement and then
+        pressedPart = Scrollbar_Decrement
+      then
          Stroke_Sunken (c, upButton, colors);
       else
          Stroke_Raised (c, upButton, colors);
       end if;
       Draw_Arrow
-        (upButton, True, active and then pressedPart = Scrollbar_Decrement);
+        (upButton, True, canDecrement,
+         active and then canDecrement and then
+           pressedPart = Scrollbar_Decrement);
       Fill_Rect (c, downButton, colors.panel);
-      if active and then pressedPart = Scrollbar_Increment then
+      if active and then canIncrement and then
+        pressedPart = Scrollbar_Increment
+      then
          Stroke_Sunken (c, downButton, colors);
       else
          Stroke_Raised (c, downButton, colors);
       end if;
       Draw_Arrow
-        (downButton, False, active and then pressedPart = Scrollbar_Increment);
+        (downButton, False, canIncrement,
+         active and then canIncrement and then
+           pressedPart = Scrollbar_Increment);
 
       if shown < total then
          knob := (x => track.x, y => knobY, w => track.w,
                   h => thumbHeight);
          Fill_Rect (c, knob, knobColor);
-         if active and then pressedPart = Scrollbar_Thumb then
-            Stroke_Sunken (c, knob, colors);
-         else
-            Stroke_Raised (c, knob, colors);
-         end if;
+         Stroke_Raised (c, knob, colors);
       end if;
    end Draw_Vertical_Scrollbar;
 

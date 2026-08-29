@@ -215,6 +215,8 @@ int ccl_window_present(void *handle, const uint32_t *pixels, int pitch)
 
 void ccl_window_wait(void) { SDL_Delay(10); }
 
+uint64_t ccl_window_ticks(void) { return SDL_GetTicks64(); }
+
 void ccl_window_close(void *handle)
 {
     struct ccl_window *state = handle;

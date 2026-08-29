@@ -28,6 +28,13 @@ SECTIONS
         *(.data .data.*)
     }
 
+    .init_array : ALIGN(8)
+    {
+        __init_array_start = .;
+        KEEP(*(.init_array .init_array.*))
+        __init_array_end = .;
+    }
+
     __bss_start = .;
     .bss : ALIGN(4096)
     {

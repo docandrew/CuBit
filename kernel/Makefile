@@ -85,6 +85,11 @@ doom: user_runtime
 	$(ALR) $(MAKE) -C ../userspace/c -f Makefile.doomgeneric
 	cp ../userspace/c/doom_build/doom.elf isodir/boot/doom.elf
 
+.PHONY : netsurf
+netsurf:
+	../userspace/c/netsurf/build-freestanding-deps.sh
+	cp ../userspace/c/netsurf/build/freestanding/netsurf.app isodir/boot/netsurf.app
+
 .PHONY : sleep
 sleep: user_runtime
 	mkdir -p ../userspace/apps/sleep/build
@@ -354,7 +359,7 @@ shell: user_runtime
 # Disk images rebuild automatically when any of these change.
 DOOM_WAD ?= ../doom1.wad
 
-DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/sleep.app \
+DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/netsurf.app isodir/boot/sleep.app \
 	isodir/boot/wget.app isodir/boot/security-center.app \
 	isodir/boot/ccl-vm.app \
 	isodir/boot/ccl-test-host.svc \
@@ -368,7 +373,7 @@ DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/sleep.ap
 # staging target so run-desktop can build/copy them into isodir first, then
 # rebuild the ext2 disk image from those freshly staged files.
 .PHONY : desktop-session-content
-desktop-session-content: virtio-gpu desktop display desktop-shell ui-lab security-center doom
+desktop-session-content: virtio-gpu desktop display desktop-shell ui-lab security-center doom netsurf
 
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.conf, shell.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
@@ -380,6 +385,7 @@ ata_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write ../init.conf init.conf" ata_disk.img
 	debugfs -w -R "write isodir/boot/shell.app shell.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" ata_disk.img
+	debugfs -w -R "write isodir/boot/netsurf.app netsurf.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/sleep.app sleep.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/wget.app wget.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/security-center.app security-center.app" ata_disk.img
@@ -406,6 +412,7 @@ nvme_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write ../userspace/motd.txt motd.txt" nvme_disk.img
 	debugfs -w -R "write $(DOOM_WAD) doom1.wad" nvme_disk.img
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" nvme_disk.img
+	debugfs -w -R "write isodir/boot/netsurf.app netsurf.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/sleep.app sleep.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/logstore.svc logstore.svc" nvme_disk.img
 	debugfs -w -R "write ../init.conf init.conf" nvme_disk.img
@@ -461,7 +468,7 @@ iso: cubit_kernel initrd
 
 # Build everything including DOOM, then create ISO and disk images
 .PHONY : world
-world: cubit_kernel doom sleep ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host ccl-vm filesystem ata nvme virtio-net virtio-gpu netstack wget security-center desktop-shell ui-lab procmgr shell hda mixer ps2 config netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: cubit_kernel doom netsurf sleep ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host ccl-vm filesystem ata nvme virtio-net virtio-gpu netstack wget security-center desktop-shell ui-lab procmgr shell hda mixer ps2 config netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world
@@ -545,17 +552,21 @@ run-desktop-fast:
 	-debugfs -w -R "rm init.conf" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm desktop.svc" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm display.svc" desktop_disk.img >/dev/null 2>&1
+	-debugfs -w -R "rm netstack.svc" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm desktop-shell.app" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm ui-lab.app" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm security-center.app" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm doom.elf" desktop_disk.img >/dev/null 2>&1
+	-debugfs -w -R "rm netsurf.app" desktop_disk.img >/dev/null 2>&1
 	debugfs -w -R "write ../tests/headless/init-desktop-session.conf init.conf" desktop_disk.img
 	debugfs -w -R "write isodir/boot/desktop.svc desktop.svc" desktop_disk.img
 	debugfs -w -R "write isodir/boot/display.svc display.svc" desktop_disk.img
+	debugfs -w -R "write isodir/boot/netstack.svc netstack.svc" desktop_disk.img
 	debugfs -w -R "write isodir/boot/desktop-shell.app desktop-shell.app" desktop_disk.img
 	debugfs -w -R "write isodir/boot/ui-lab.app ui-lab.app" desktop_disk.img
 	debugfs -w -R "write isodir/boot/security-center.app security-center.app" desktop_disk.img
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" desktop_disk.img
+	debugfs -w -R "write isodir/boot/netsurf.app netsurf.app" desktop_disk.img
 	GDK_BACKEND=x11 qemu-system-x86_64 \
 		-machine q35 \
 		-cpu Broadwell \
@@ -592,17 +603,21 @@ run-desktop-inspect:
 	-debugfs -w -R "rm init.conf" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm desktop.svc" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm display.svc" desktop_disk.img >/dev/null 2>&1
+	-debugfs -w -R "rm netstack.svc" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm desktop-shell.app" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm ui-lab.app" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm security-center.app" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm doom.elf" desktop_disk.img >/dev/null 2>&1
+	-debugfs -w -R "rm netsurf.app" desktop_disk.img >/dev/null 2>&1
 	debugfs -w -R "write ../tests/headless/init-desktop-session.conf init.conf" desktop_disk.img
 	debugfs -w -R "write isodir/boot/desktop.svc desktop.svc" desktop_disk.img
 	debugfs -w -R "write isodir/boot/display.svc display.svc" desktop_disk.img
+	debugfs -w -R "write isodir/boot/netstack.svc netstack.svc" desktop_disk.img
 	debugfs -w -R "write isodir/boot/desktop-shell.app desktop-shell.app" desktop_disk.img
 	debugfs -w -R "write isodir/boot/ui-lab.app ui-lab.app" desktop_disk.img
 	debugfs -w -R "write isodir/boot/security-center.app security-center.app" desktop_disk.img
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" desktop_disk.img
+	debugfs -w -R "write isodir/boot/netsurf.app netsurf.app" desktop_disk.img
 	GDK_BACKEND=x11 qemu-system-x86_64 \
 		-machine q35 \
 		-cpu Broadwell \

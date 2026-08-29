@@ -28,7 +28,12 @@ char  *strncat(char *dest, const char *src, size_t n);
 char  *strchr(const char *s, int c);
 char  *strrchr(const char *s, int c);
 char  *strstr(const char *haystack, const char *needle);
+size_t strspn(const char *s, const char *accept);
+size_t strcspn(const char *s, const char *reject);
+char  *strpbrk(const char *s, const char *accept);
+char  *strtok(char *restrict s, const char *restrict delim);
 char  *strdup(const char *s);
+char  *strndup(const char *s, size_t n);
 char  *strerror(int errnum);
 
 #endif /* _STRING_H */

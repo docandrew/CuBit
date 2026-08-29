@@ -24,7 +24,7 @@ BUILDDIR = build
 CRT_OBJ = $(BUILDDIR)/crt0.o
 
 # Runtime library objects
-LIB_SRCS = cubit_syscalls.c cubit_mem.c cubit_time.c cubit_video.c cubit_input.c stdio.c string.c libc_stubs.c cubit_config.c cubit_streams.c
+LIB_SRCS = cubit_syscalls.c cubit_mem.c cubit_time.c cubit_video.c cubit_input.c stdio.c string.c iconv.c libc_stubs.c cubit_config.c cubit_streams.c
 LIB_OBJS = $(patsubst %.c,$(BUILDDIR)/%.o,$(LIB_SRCS))
 LIB      = $(BUILDDIR)/libcubit.a
 

@@ -11,8 +11,6 @@ project CuBit is
 
     for Runtime ("Ada") use "runtime";
 
-    for Library_Dir use "";
-
     for Excluded_Source_Files use ("init.asm");
 
     -- So gprbuild finds our .asm files

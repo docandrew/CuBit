@@ -14,5 +14,6 @@ int isprint(int c);
 int isupper(int c);
 int islower(int c);
 int isxdigit(int c);
+int isascii(int c);
 
 #endif /* _CTYPE_H */

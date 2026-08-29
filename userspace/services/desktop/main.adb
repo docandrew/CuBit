@@ -353,8 +353,9 @@ procedure main is
    LAUNCH_UI_LAB   : constant Natural := 2;
    LAUNCH_DOOM     : constant Natural := 3;
    LAUNCH_SECURITY : constant Natural := 4;
-   LAUNCH_FILES    : constant Natural := 5;
-   LAUNCH_POWER    : constant Natural := 6;
+   LAUNCH_BROWSER  : constant Natural := 5;
+   LAUNCH_FILES    : constant Natural := 6;
+   LAUNCH_POWER    : constant Natural := 7;
 
    DRAG_NONE        : constant Natural := 0;
    DRAG_MOVE        : constant Natural := 1;
@@ -380,7 +381,7 @@ procedure main is
    LAUNCH_W     : constant Natural := 88;
    LAUNCH_H     : constant Natural := 24;
    MENU_W       : constant Natural := 250;
-   MENU_H       : constant Natural := 252;
+   MENU_H       : constant Natural := 286;
    TASK_BUTTON_W : constant Natural := 156;
    TASK_BUTTON_H : constant Natural := 24;
    TASK_BUTTON_GAP : constant Natural := 6;
@@ -716,10 +717,12 @@ procedure main is
             y := menu.y + 110;
          when LAUNCH_SECURITY =>
             y := menu.y + 144;
-         when LAUNCH_FILES =>
+         when LAUNCH_BROWSER =>
             y := menu.y + 178;
+         when LAUNCH_FILES =>
+            y := menu.y + 212;
          when LAUNCH_POWER =>
-            y := menu.y + 218;
+            y := menu.y + 252;
          when others =>
             return (others => 0);
       end case;
@@ -735,7 +738,7 @@ procedure main is
       if isEmpty (menu) or else menu.w <= 24 then
          return (others => 0);
       end if;
-      y := menu.y + 210;
+      y := menu.y + 244;
       return clampRect ((x => menu.x + 12, y => y,
                          w => menu.w - 24, h => 1));
    end launchSeparatorRect;
@@ -789,6 +792,8 @@ procedure main is
          return LAUNCH_DOOM;
       elsif pointInRect (x, y, launchItemRect (LAUNCH_SECURITY)) then
          return LAUNCH_SECURITY;
+      elsif pointInRect (x, y, launchItemRect (LAUNCH_BROWSER)) then
+         return LAUNCH_BROWSER;
       elsif pointInRect (x, y, launchItemRect (LAUNCH_FILES)) then
          return LAUNCH_FILES;
       elsif pointInRect (x, y, launchItemRect (LAUNCH_POWER)) then
@@ -2059,13 +2064,14 @@ procedure main is
       drawLaunchItem (2, Desktop_Icons.UILab, "UI Lab", C_TEXT);
       drawLaunchItem (3, Desktop_Icons.Doom, "DOOM", C_TEXT);
       drawLaunchItem (4, Desktop_Icons.Security, "Security Center", C_TEXT);
-      drawLaunchItem (5, Desktop_Icons.Files, "Files", C_MUTED);
+      drawLaunchItem (5, Desktop_Icons.Files, "NetSurf", C_TEXT);
+      drawLaunchItem (6, Desktop_Icons.Files, "Files", C_MUTED);
       declare
          sep : constant Rect := launchSeparatorRect;
       begin
          fillRect (sep.x, sep.y, sep.w, sep.h, C_EDGE);
       end;
-      drawLaunchItem (6, Desktop_Icons.Power, "Power", C_MUTED);
+      drawLaunchItem (7, Desktop_Icons.Power, "Power", C_MUTED);
    end drawLaunchMenu;
 
    procedure drawDesktopShell is
@@ -4167,6 +4173,12 @@ procedure main is
                      ok : Boolean;
                   begin
                      trySpawnFromConsole ("security-center.app", ok);
+                  end;
+               when LAUNCH_BROWSER =>
+                  declare
+                     ok : Boolean;
+                  begin
+                     trySpawnFromConsole ("netsurf.app", ok);
                   end;
                when others =>
                   null;

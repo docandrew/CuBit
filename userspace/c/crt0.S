@@ -27,6 +27,20 @@ _start:
     rep     stosq
 .bss_done:
 
+    /* Run C constructors (libnsfb surface registration uses these). */
+    leaq    __init_array_start(%rip), %r12
+    leaq    __init_array_end(%rip), %r13
+.init_next:
+    cmpq    %r13, %r12
+    je      .init_done
+    movq    (%r12), %rax
+    addq    $8, %r12
+    testq   %rax, %rax
+    je      .init_next
+    call    *%rax
+    jmp     .init_next
+.init_done:
+
     /* Call main(argc=0, argv=NULL) */
     xorq    %rdi, %rdi      /* argc = 0 */
     xorq    %rsi, %rsi      /* argv = NULL */
@@ -40,3 +54,5 @@ _exit:
     movq    $0, %rax        /* SYSCALL_EXIT = 0 */
     syscall
     jmp     _exit           /* should never return */
+
+.section .note.GNU-stack,"",@progbits

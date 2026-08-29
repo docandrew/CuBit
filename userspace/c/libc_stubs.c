@@ -606,6 +606,19 @@ int strncasecmp(const char *s1, const char *s2, size_t n)
     return 0;
 }
 
+char *strcasestr(const char *haystack, const char *needle)
+{
+    size_t needle_length = strlen(needle);
+
+    if (needle_length == 0) return (char *)haystack;
+    while (*haystack != '\0') {
+        if (strncasecmp(haystack, needle, needle_length) == 0)
+            return (char *)haystack;
+        haystack++;
+    }
+    return NULL;
+}
+
 char *strerror(int errnum)
 {
     (void)errnum;
@@ -619,6 +632,13 @@ void perror(const char *s)
         cubit_write(STDOUT, ": ", 2);
     }
     cubit_write(STDOUT, "error\n", 6);
+}
+
+void setbuf(FILE *restrict stream, char *restrict buffer)
+{
+    /* CuBit stdio streams are currently unbuffered service operations. */
+    (void)stream;
+    (void)buffer;
 }
 
 /*---------------------------------------------------------------------------
@@ -677,6 +697,25 @@ int isxdigit(int c)
     return isdigit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
 }
 
+int isascii(int c)
+{
+    return (unsigned)c <= 0x7fU;
+}
+
+/* Deterministic libc PRNG. This is not a cryptographic entropy source. */
+static unsigned long cubit_rand_state = 1;
+
+void srand(unsigned seed)
+{
+    cubit_rand_state = seed == 0 ? 1UL : (unsigned long)seed;
+}
+
+int rand(void)
+{
+    cubit_rand_state = cubit_rand_state * 1103515245UL + 12345UL;
+    return (int)((cubit_rand_state >> 16) & 0x7fffffffUL);
+}
+
 /*---------------------------------------------------------------------------
  * exit / abort / atexit / system
  *---------------------------------------------------------------------------*/
@@ -713,23 +752,49 @@ int system(const char *command)
 }
 
 /*---------------------------------------------------------------------------
- * qsort - Simple insertion sort (sufficient for DOOM's small arrays)
+ * qsort / bsearch
  *---------------------------------------------------------------------------*/
 void qsort(void *base, size_t nmemb, size_t size,
             int (*compar)(const void *, const void *))
 {
     char *arr = (char *)base;
-    char tmp[256]; /* Enough for any DOOM struct */
-
+    if (arr == NULL || compar == NULL || size == 0) return;
     for (size_t i = 1; i < nmemb; i++) {
-        memcpy(tmp, arr + i * size, size);
         size_t j = i;
-        while (j > 0 && compar(arr + (j - 1) * size, tmp) > 0) {
-            memcpy(arr + j * size, arr + (j - 1) * size, size);
+        while (j > 0 &&
+               compar(arr + (j - 1) * size, arr + j * size) > 0) {
+            for (size_t byte = 0; byte < size; byte++) {
+                char tmp = arr[(j - 1) * size + byte];
+                arr[(j - 1) * size + byte] = arr[j * size + byte];
+                arr[j * size + byte] = tmp;
+            }
             j--;
         }
-        memcpy(arr + j * size, tmp, size);
     }
+}
+
+void *bsearch(const void *key, const void *base, size_t nmemb, size_t size,
+              int (*compar)(const void *, const void *))
+{
+    const char *items = (const char *)base;
+    size_t low = 0;
+    size_t high = nmemb;
+
+    if (key == NULL || items == NULL || compar == NULL || size == 0)
+        return NULL;
+
+    while (low < high) {
+        size_t middle = low + (high - low) / 2;
+        const void *item = items + middle * size;
+        int order = compar(key, item);
+        if (order < 0)
+            high = middle;
+        else if (order > 0)
+            low = middle + 1;
+        else
+            return (void *)item;
+    }
+    return NULL;
 }
 
 /*---------------------------------------------------------------------------
@@ -763,6 +828,58 @@ double atof(const char *nptr)
     return sign * result;
 }
 
+float strtof(const char *nptr, char **endptr)
+{
+    const char *s = nptr;
+    float result = 0.0f;
+    float sign = 1.0f;
+    bool converted = false;
+
+    while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') s++;
+    if (*s == '-') { sign = -1.0f; s++; }
+    else if (*s == '+') s++;
+
+    while (*s >= '0' && *s <= '9') {
+        converted = true;
+        result = result * 10.0f + (float)(*s++ - '0');
+    }
+    if (*s == '.') {
+        float place = 0.1f;
+        s++;
+        while (*s >= '0' && *s <= '9') {
+            converted = true;
+            result += (float)(*s++ - '0') * place;
+            place *= 0.1f;
+        }
+    }
+    if (converted && (*s == 'e' || *s == 'E')) {
+        const char *exponent_start = s++;
+        unsigned exponent = 0;
+        bool negative_exponent = false;
+        bool has_exponent = false;
+        unsigned applied;
+
+        if (*s == '-' || *s == '+') negative_exponent = (*s++ == '-');
+        while (*s >= '0' && *s <= '9') {
+            has_exponent = true;
+            if (exponent < 1000) exponent = exponent * 10 + (unsigned)(*s - '0');
+            s++;
+        }
+        if (!has_exponent) {
+            s = exponent_start;
+        } else {
+            /* More than 64 powers cannot improve useful finite precision. */
+            applied = exponent > 64 ? 64 : exponent;
+            while (applied-- != 0) {
+                result = negative_exponent ? result / 10.0f : result * 10.0f;
+            }
+        }
+    }
+
+    if (endptr != NULL) *endptr = (char *)(converted ? s : nptr);
+    return sign * result;
+}
+
 /*---------------------------------------------------------------------------
  * Math functions (minimal - DOOM barely uses floating point)
  *---------------------------------------------------------------------------*/
@@ -771,6 +888,24 @@ double atof(const char *nptr)
 double fabs(double x)
 {
     return x < 0 ? -x : x;
+}
+
+double ceil(double x)
+{
+    long long whole;
+
+    /* Avoid undefined out-of-range integer conversions.  At and beyond 2^53,
+     * finite doubles have no fractional component in any case. */
+    if (x != x || x >= 9007199254740992.0 || x <= -9007199254740992.0)
+        return x;
+    whole = (long long)x;
+    if (x > (double)whole) whole++;
+    return (double)whole;
+}
+
+float ceilf(float x)
+{
+    return (float)ceil((double)x);
 }
 
 /* Reduce angle to [-pi, pi] range */

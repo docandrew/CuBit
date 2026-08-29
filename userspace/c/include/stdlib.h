@@ -14,6 +14,10 @@ typedef long ssize_t;
 #define NULL ((void *)0)
 #endif
 
+#ifndef RAND_MAX
+#define RAND_MAX 2147483647
+#endif
+
 /* Memory */
 void *malloc(size_t size);
 void *calloc(size_t nmemb, size_t size);
@@ -31,13 +35,20 @@ int    atoi(const char *nptr);
 long   atol(const char *nptr);
 long   strtol(const char *nptr, char **endptr, int base);
 unsigned long strtoul(const char *nptr, char **endptr, int base);
+long long strtoll(const char *nptr, char **endptr, int base);
+unsigned long long strtoull(const char *nptr, char **endptr, int base);
 
 /* Math */
 int abs(int x);
+int rand(void);
+void srand(unsigned seed);
 double atof(const char *nptr);
+float strtof(const char *nptr, char **endptr);
 
 /* Sorting */
 void qsort(void *base, size_t nmemb, size_t size,
             int (*compar)(const void *, const void *));
+void *bsearch(const void *key, const void *base, size_t nmemb, size_t size,
+              int (*compar)(const void *, const void *));
 
 #endif /* _STDLIB_H */

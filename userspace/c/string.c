@@ -5,6 +5,8 @@
  * Freestanding implementations of standard string.h and string-like functions.
  */
 #include "cubit.h"
+#include <errno.h>
+#include <limits.h>
 
 void *memcpy(void *dest, const void *src, size_t n)
 {
@@ -206,11 +208,86 @@ char *strstr(const char *haystack, const char *needle)
     return NULL;
 }
 
+size_t strspn(const char *s, const char *accept)
+{
+    size_t count = 0;
+    while (s[count] != '\0') {
+        const char *a = accept;
+        while (*a != '\0' && *a != s[count]) a++;
+        if (*a == '\0') break;
+        count++;
+    }
+    return count;
+}
+
+size_t strcspn(const char *s, const char *reject)
+{
+    size_t count = 0;
+    while (s[count] != '\0') {
+        const char *r = reject;
+        while (*r != '\0' && *r != s[count]) r++;
+        if (*r != '\0') break;
+        count++;
+    }
+    return count;
+}
+
+char *strpbrk(const char *s, const char *accept)
+{
+    while (*s != '\0') {
+        const char *a = accept;
+        while (*a != '\0') {
+            if (*a++ == *s) return (char *)s;
+        }
+        s++;
+    }
+    return NULL;
+}
+
+char *strtok(char *restrict s, const char *restrict delim)
+{
+    static char *next;
+    char *token;
+
+    if (s == NULL) s = next;
+    if (s == NULL) return NULL;
+
+    s += strspn(s, delim);
+    if (*s == '\0') {
+        next = NULL;
+        return NULL;
+    }
+
+    token = s;
+    s += strcspn(s, delim);
+    if (*s == '\0') {
+        next = NULL;
+    } else {
+        *s = '\0';
+        next = s + 1;
+    }
+    return token;
+}
+
+char *strndup(const char *s, size_t n)
+{
+    size_t length = 0;
+    char *copy;
+    while (length < n && s[length] != '\0') length++;
+    copy = malloc(length + 1);
+    if (copy == NULL) return NULL;
+    memcpy(copy, s, length);
+    copy[length] = '\0';
+    return copy;
+}
+
 long strtol(const char *nptr, char **endptr, int base)
 {
     const char *s = nptr;
-    long result = 0;
+    unsigned long result = 0;
+    unsigned long limit;
     int negative = 0;
+    int any = 0;
 
     /* Skip whitespace */
     while (*s == ' ' || *s == '\t' || *s == '\n') s++;
@@ -219,12 +296,19 @@ long strtol(const char *nptr, char **endptr, int base)
     if (*s == '-') { negative = 1; s++; }
     else if (*s == '+') { s++; }
 
-    /* Auto-detect base */
+    if (base != 0 && (base < 2 || base > 36)) {
+        errno = EINVAL;
+        if (endptr) *endptr = (char *)nptr;
+        return 0;
+    }
+
+    /* Auto-detect base without consuming a lone leading zero. */
     if (base == 0) {
-        if (*s == '0') {
-            s++;
-            if (*s == 'x' || *s == 'X') { base = 16; s++; }
-            else { base = 8; }
+        if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
+            base = 16;
+            s += 2;
+        } else if (s[0] == '0') {
+            base = 8;
         } else {
             base = 10;
         }
@@ -240,17 +324,47 @@ long strtol(const char *nptr, char **endptr, int base)
         else break;
 
         if (digit >= base) break;
-        result = result * base + digit;
+        limit = negative ? (unsigned long)LONG_MAX + 1UL : (unsigned long)LONG_MAX;
+        if (result > (limit - (unsigned long)digit) / (unsigned long)base) {
+            errno = ERANGE;
+            while (1) {
+                char next = s[1];
+                int next_digit;
+                if (next >= '0' && next <= '9') next_digit = next - '0';
+                else if (next >= 'a' && next <= 'z') next_digit = next - 'a' + 10;
+                else if (next >= 'A' && next <= 'Z') next_digit = next - 'A' + 10;
+                else break;
+                if (next_digit >= base) break;
+                s++;
+            }
+            s++;
+            if (endptr) *endptr = (char *)s;
+            return negative ? LONG_MIN : LONG_MAX;
+        }
+        result = result * (unsigned long)base + (unsigned long)digit;
+        any = 1;
         s++;
     }
 
-    if (endptr) *endptr = (char *)s;
-    return negative ? -result : result;
+    if (endptr) *endptr = (char *)(any ? s : nptr);
+    if (negative && result == (unsigned long)LONG_MAX + 1UL) return LONG_MIN;
+    return negative ? -(long)result : (long)result;
 }
 
 unsigned long strtoul(const char *nptr, char **endptr, int base)
 {
     return (unsigned long)strtol(nptr, endptr, base);
+}
+
+long long strtoll(const char *nptr, char **endptr, int base)
+{
+    /* CuBit's x86-64 C ABI gives long and long long the same value range. */
+    return (long long)strtol(nptr, endptr, base);
+}
+
+unsigned long long strtoull(const char *nptr, char **endptr, int base)
+{
+    return (unsigned long long)strtoul(nptr, endptr, base);
 }
 
 int atoi(const char *nptr)

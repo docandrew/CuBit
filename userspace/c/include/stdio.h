@@ -12,6 +12,8 @@
 #define NULL ((void *)0)
 #endif
 
+#define EOF (-1)
+
 #ifndef _SIZE_T_DEFINED
 #define _SIZE_T_DEFINED
 typedef unsigned long size_t;
@@ -53,6 +55,7 @@ int sscanf(const char *str, const char *fmt, ...);
 int puts(const char *s);
 int putchar(int c);
 int fflush(FILE *stream);
+void setbuf(FILE *restrict stream, char *restrict buffer);
 char *fgets(char *s, int size, FILE *stream);
 int fputs(const char *s, FILE *stream);
 int feof(FILE *stream);

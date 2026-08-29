@@ -83,6 +83,13 @@ procedure main is
 
    --  TCP connection table (types in TCPSession package)
    tcpConns : TCPSession.ConnTable;
+   RX_BUFFER_SIZE : constant := 65_536;
+   type RX_Data is array (0 .. RX_BUFFER_SIZE - 1) of Unsigned_8;
+   type RX_Buffer is record
+      data : RX_Data;
+      len  : Natural range 0 .. RX_BUFFER_SIZE := 0;
+   end record;
+   rxBuffers : array (tcpConns'Range) of RX_Buffer;
    tcpISN   : Unsigned_32 := 16#CB17_0000#;
    nextEphemeralPort : Unsigned_16 := 49152;  -- incrementing ephemeral port
 
@@ -862,9 +869,35 @@ procedure main is
       flags   : Unsigned_16;
       ancount : Unsigned_16;
       off     : Natural;
-      lblLen  : Unsigned_8;
       rtype   : Unsigned_16;
       rdlen   : Unsigned_16;
+      foundA  : Boolean := False;
+
+      function skipDNSName (pos : in out Natural) return Boolean is
+         length : Unsigned_8;
+      begin
+         loop
+            if pos >= dnsLen then
+               return False;
+            end if;
+            length := Net.getU8 (dnsBuf, pos);
+            pos := pos + 1;
+            if length = 0 then
+               return True;
+            elsif (length and 16#C0#) = 16#C0# then
+               --  A compression pointer always occupies two bytes.  Its
+               --  target need not be followed to find the end of this name.
+               if pos >= dnsLen then
+                  return False;
+               end if;
+               pos := pos + 1;
+               return True;
+            elsif length > 63 or else Natural (length) > dnsLen - pos then
+               return False;
+            end if;
+            pos := pos + Natural (length);
+         end loop;
+      end skipDNSName;
    begin
       if dnsLen < 12 then
          return;
@@ -904,57 +937,37 @@ procedure main is
          return;
       end if;
 
-      --  Skip question section: scan past QNAME + QTYPE(2) + QCLASS(2)
+      --  Skip question section: QNAME + QTYPE(2) + QCLASS(2).
       off := 12;
-      loop
-         if off >= dnsLen then
+      if not skipDNSName (off) or else off > dnsLen - 4 then
+         return;
+      end if;
+      off := off + 4;
+
+      --  CNAME chains are common on real sites. Walk every answer RR and
+      --  select the first bounded IPv4 A record instead of assuming answer
+      --  zero is directly an A record.
+      for answer in 1 .. Natural (ancount) loop
+         if not skipDNSName (off) or else off > dnsLen - 10 then
             return;
          end if;
-         lblLen := Net.getU8 (dnsBuf, off);
-         off := off + 1;
-         exit when lblLen = 0;
-         --  Compression pointer (0xC0xx)
-         if (lblLen and 16#C0#) = 16#C0# then
-            off := off + 1;  -- skip second byte of pointer
+         rtype := Net.getU16BE (dnsBuf, off);
+         off := off + 8;   -- TYPE(2) + CLASS(2) + TTL(4)
+         rdlen := Net.getU16BE (dnsBuf, off);
+         off := off + 2;
+         if Natural (rdlen) > dnsLen - off then
+            return;
+         end if;
+         if rtype = 1 and rdlen = 4 then
+            Net.getIP (dnsBuf, off, resolvedIP);
+            foundA := True;
             exit;
          end if;
-         off := off + Natural (lblLen);
+         off := off + Natural (rdlen);
       end loop;
-      off := off + 4;  -- skip QTYPE + QCLASS
-
-      --  Parse first answer RR
-      if off + 12 > dnsLen then
-         return;
-      end if;
-
-      --  Skip NAME (handle compression pointer)
-      lblLen := Net.getU8 (dnsBuf, off);
-      if (lblLen and 16#C0#) = 16#C0# then
-         off := off + 2;
-      else
-         loop
-            if off >= dnsLen then
-               return;
-            end if;
-            lblLen := Net.getU8 (dnsBuf, off);
-            off := off + 1;
-            exit when lblLen = 0;
-            off := off + Natural (lblLen);
-         end loop;
-      end if;
-
-      if off + 10 > dnsLen then
-         return;
-      end if;
-
-      rtype := Net.getU16BE (dnsBuf, off);
-      off := off + 8;   -- skip TYPE(2) + CLASS(2) + TTL(4)
-      rdlen := Net.getU16BE (dnsBuf, off);
-      off := off + 2;
 
       --  A record: type=1, rdlen=4
-      if rtype = 1 and rdlen = 4 and off + 4 <= dnsLen then
-         Net.getIP (dnsBuf, off, resolvedIP);
+      if foundA then
          debugPrint ("DNS: response -> ");
          printIP (resolvedIP);
          debugPrint ("" & LF);
@@ -1191,6 +1204,7 @@ procedure main is
       if idx < 0 then
          return -1;
       end if;
+      rxBuffers (idx).len := 0;
 
       debugPrint ("TCP: SYN to ");
       printIP (dstIP);
@@ -1328,46 +1342,74 @@ procedure main is
       end loop;
    end completePendingConnect;
 
-   ---------------------------------------------------------------------------
-   --  completePendingRecv - copy data to app grant buffer, reply OK
-   ---------------------------------------------------------------------------
-   procedure completePendingRecv (connIdx : Natural;
-                                  pktBuf  : System.Address;
-                                  dataOff : Natural;
-                                  dataLen : Natural) is
+   function hasPendingRecv (connIdx : Natural) return Boolean is
    begin
       for i in pendingReqs'Range loop
          if pendingReqs (i).kind = PENDING_RECV and
             pendingReqs (i).connIdx = connIdx
          then
-            declare
-               copyLen : Natural := dataLen;
-            begin
-               if copyLen > pendingReqs (i).maxLen then
-                  copyLen := pendingReqs (i).maxLen;
-               end if;
-               declare
-                  src : array (0 .. copyLen - 1) of Unsigned_8
-                     with Import,
-                          Address => pktBuf +
-                             Storage_Offset (dataOff);
-                  dst : array (0 .. copyLen - 1) of Unsigned_8
-                     with Import,
-                          Address => pendingReqs (i).bufAddr +
-                             Storage_Offset (pendingReqs (i).bufOff);
-               begin
-                  for j in src'Range loop
-                     dst (j) := src (j);
-                  end loop;
-               end;
-               replyOKWord (pendingReqs (i).sender,
-                            Unsigned_64 (copyLen));
-            end;
+            return True;
+         end if;
+      end loop;
+      return False;
+   end hasPendingRecv;
+
+   procedure bufferReceived (connIdx : Natural;
+                             pktBuf  : System.Address;
+                             dataOff : Natural;
+                             dataLen : Natural) is
+      available : constant Natural := RX_BUFFER_SIZE - rxBuffers (connIdx).len;
+      copyLen   : constant Natural := Natural'Min (dataLen, available);
+   begin
+      if copyLen > 0 then
+         declare
+            src : array (0 .. copyLen - 1) of Unsigned_8
+               with Import, Address => pktBuf + Storage_Offset (dataOff);
+         begin
+            for j in src'Range loop
+               rxBuffers (connIdx).data (rxBuffers (connIdx).len + j) := src (j);
+            end loop;
+         end;
+         rxBuffers (connIdx).len := rxBuffers (connIdx).len + copyLen;
+      end if;
+   end bufferReceived;
+
+   procedure replyBuffered (snd : ProcessID; connIdx : Natural;
+                            bufAddr : System.Address; offset, maxLen : Natural) is
+      copyLen : constant Natural := Natural'Min (rxBuffers (connIdx).len, maxLen);
+   begin
+      if copyLen > 0 then
+         declare
+            dst : array (0 .. copyLen - 1) of Unsigned_8
+               with Import, Address => bufAddr + Storage_Offset (offset);
+         begin
+            for j in dst'Range loop
+               dst (j) := rxBuffers (connIdx).data (j);
+            end loop;
+         end;
+         for j in copyLen .. rxBuffers (connIdx).len - 1 loop
+            rxBuffers (connIdx).data (j - copyLen) := rxBuffers (connIdx).data (j);
+         end loop;
+         rxBuffers (connIdx).len := rxBuffers (connIdx).len - copyLen;
+      end if;
+      replyOKWord (snd, Unsigned_64 (copyLen));
+   end replyBuffered;
+
+   procedure completePendingBuffered (connIdx : Natural) is
+   begin
+      for i in pendingReqs'Range loop
+         if pendingReqs (i).kind = PENDING_RECV and
+            pendingReqs (i).connIdx = connIdx
+         then
+            replyBuffered (pendingReqs (i).sender, connIdx,
+                           pendingReqs (i).bufAddr,
+                           pendingReqs (i).bufOff,
+                           pendingReqs (i).maxLen);
             pendingReqs (i).kind := PENDING_NONE;
             return;
          end if;
       end loop;
-   end completePendingRecv;
+   end completePendingBuffered;
 
    ---------------------------------------------------------------------------
    --  completePendingRecvEOF - reply EOF to pending RECV for connIdx
@@ -1470,9 +1512,12 @@ procedure main is
                       res.actions (i).dataLen - 2);
                end if;
 
-               completePendingRecv (connIdx, pktBuf,
-                                    res.actions (i).dataOff,
-                                    res.actions (i).dataLen);
+               bufferReceived (connIdx, pktBuf,
+                               res.actions (i).dataOff,
+                               res.actions (i).dataLen);
+               if hasPendingRecv (connIdx) then
+                  completePendingBuffered (connIdx);
+               end if;
 
             when TCPSession.ACT_NOTIFY_CLOSED =>
                debugPrint ("TCP: connection closed" & LF);
@@ -2325,6 +2370,12 @@ procedure main is
          return;
       end if;
 
+      if rxBuffers (connHandle).len > 0 then
+         replyBuffered (snd, connHandle, appChannels (chIdx).bufAddr,
+                        offset, maxLen);
+         return;
+      end if;
+
       --  If connection already closed, reply EOF immediately
       if tcpConns (connHandle).state = TCPSession.TCP_CLOSED or
          tcpConns (connHandle).state = TCPSession.TCP_CLOSE_WAIT or
@@ -2614,6 +2665,12 @@ procedure main is
          maxLen > channels (chHandle).bufSize - offset
       then
          replyError (snd);
+         return;
+      end if;
+
+      if rxBuffers (channels (chHandle).connIdx).len > 0 then
+         replyBuffered (snd, channels (chHandle).connIdx,
+                        channels (chHandle).bufAddr, offset, maxLen);
          return;
       end if;
 

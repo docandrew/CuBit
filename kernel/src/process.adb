@@ -574,14 +574,24 @@ is
     begin
         Spinlocks.enterCriticalSection (lock);
 
-        if proctab(pid).state /= WAITINGFOREVENT and
-           proctab(pid).state /= WAITINGFORREPLY and
-           proctab(pid).state /= WAITINGFORCOMPLETION and
-           proctab(pid).state /= WAITINGFORNOTIFY then
+        if proctab(pid).state = WAITINGFOREVENT or else
+           proctab(pid).state = WAITINGFORREPLY or else
+           proctab(pid).state = WAITINGFORCOMPLETION or else
+           proctab(pid).state = WAITINGFORNOTIFY
+        then
+            ready (pid);
+        elsif proctab(pid).state = READY or else
+              proctab(pid).state = RUNNING
+        then
+            --  Notification producers commonly perform a lock-free state
+            --  observation before arriving here.  Another CPU may win the
+            --  wakeup race before we acquire Process.lock.  Notifications
+            --  are level-triggered by queued work/words, so that second wake
+            --  is already satisfied and must be idempotent.
+            null;
+        else
             raise ProcessException with "Process.notify: process not in a waiting state.";
         end if;
-
-        ready (pid);
 
         Spinlocks.exitCriticalSection (lock);
     end notify;

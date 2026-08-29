@@ -149,10 +149,52 @@ typedef long                ssize_t;
 #define CAP_SLOT_KEYBOARD       2
 #define CAP_SLOT_SELF_PROC      3
 #define CAP_SLOT_ATA            10
+#define CAP_SLOT_NET            11
 #define CAP_SLOT_MIXER          14
 #define CAP_SLOT_MIXER_NTF      15
 #define CAP_SLOT_CONFIG         20
 #define CAP_SLOT_DESKTOP        21
+
+/* Asynchronous capability IPC. Message layout matches CuBit.Messages. */
+#define CUBIT_NO_COMPLETION_TOKEN (~(uint64_t)0)
+#define CUBIT_COMPLETION_OK             0
+#define CUBIT_COMPLETION_TARGET_DIED    1
+#define CUBIT_COMPLETION_CANCELLED      2
+#define CUBIT_COMPLETION_QUEUE_OVERFLOW 3
+
+typedef struct {
+    uint32_t label;
+    uint8_t length;
+    uint8_t flags;
+    uint16_t badge;
+} cubit_async_message_tag_t;
+
+typedef struct {
+    cubit_async_message_tag_t tag;
+    uint64_t cap_badge;
+    uint64_t words[4];
+} cubit_async_message_t;
+
+typedef struct {
+    uint64_t request_id;
+    uint64_t token;
+    cubit_async_message_t message;
+    uint64_t from;
+    uint64_t status;
+    uint8_t valid;
+    uint8_t reserved[7];
+} cubit_completion_t;
+
+typedef char cubit_async_tag_size_must_be_8[
+    sizeof(cubit_async_message_tag_t) == 8 ? 1 : -1];
+typedef char cubit_async_message_size_must_be_48[
+    sizeof(cubit_async_message_t) == 48 ? 1 : -1];
+typedef char cubit_completion_size_must_be_88[
+    sizeof(cubit_completion_t) == 88 ? 1 : -1];
+
+int cubit_cap_submit(uint64_t cap_slot, const cubit_async_message_t *message,
+                     uint64_t token);
+int cubit_poll_completion(cubit_completion_t *completion);
 
 /* Capability minting (for process managers) */
 #define SYSCALL_MINT_CAP        72

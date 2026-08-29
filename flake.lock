@@ -36,7 +36,25 @@
     "root": {
       "inputs": {
         "doomgeneric": "doomgeneric",
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "stb": "stb"
+      }
+    },
+    "stb": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1748261287,
+        "narHash": "sha256-FGe6ffCqscwz+kgZcIwWsGaEM/9VnJp+d7bHUTl39DU=",
+        "owner": "nothings",
+        "repo": "stb",
+        "rev": "f58f558c120e9b32c217290b80bad1a0729fbb2c",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nothings",
+        "repo": "stb",
+        "rev": "f58f558c120e9b32c217290b80bad1a0729fbb2c",
+        "type": "github"
       }
     }
   },
