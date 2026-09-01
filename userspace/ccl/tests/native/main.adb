@@ -59,6 +59,93 @@ procedure Main is
       end if;
    end Test_Addition;
 
+   procedure Test_Debug_Stepping is
+      Candidate : Program;
+      Checked   : Validated_Program;
+      Error     : Validation_Error;
+      State     : Machine_State;
+      Outcome   : Execution_Result;
+      View      : Machine_Snapshot;
+   begin
+      Candidate.Length := 4;
+      Candidate.Code (0) := Ins (Push_Integer, 20);
+      Candidate.Code (1) := Ins (Push_Integer, 22);
+      Candidate.Code (2) := Ins (Add_Integer);
+      Candidate.Code (3) := Ins (Halt);
+      Verify (Candidate, Checked, Error);
+      Check (Error = Valid, "verify debug program");
+      if Error = Valid then
+         Initialize (Checked, 8, State);
+         Continue_Execution_For (Checked, State, 1, Outcome);
+         View := Snapshot (State);
+         Check
+           (Outcome.Status = Paused and then View.Instruction = 1 and then
+            View.Steps = 1 and then View.Fuel_Remaining = 7 and then
+            not View.Terminal,
+            "pause after one instruction");
+
+         Continue_Execution_For (Checked, State, 2, Outcome);
+         View := Snapshot (State);
+         Check
+           (Outcome.Status = Paused and then View.Instruction = 3 and then
+            View.Steps = 3 and then View.Fuel_Remaining = 5,
+            "resume bounded instruction slice");
+
+         Continue_Execution_For (Checked, State, 1, Outcome);
+         View := Snapshot (State);
+         Check
+           (Outcome.Status = Completed and then Outcome.Has_Value and then
+            Outcome.Result_Value.Integer = 42 and then View.Terminal,
+            "complete stepped program");
+
+         Initialize (Checked, 8, State);
+         Stop (State);
+         Continue_Execution_For (Checked, State, 1, Outcome);
+         View := Snapshot (State);
+         Check
+           (Outcome.Status = Stopped and then View.Terminal and then
+            View.Steps = 0 and then View.Fuel_Remaining = 8,
+            "stop without consuming another instruction");
+      end if;
+   end Test_Debug_Stepping;
+
+   procedure Test_Lexical_Local is
+      Candidate : Program;
+      Checked   : Validated_Program;
+      Error     : Validation_Error;
+      Outcome   : Execution_Result;
+   begin
+      Candidate.Length := 4;
+      Candidate.Types_Length := 1;
+      Candidate.Locals_Length := 1;
+      Candidate.Dynamic_Locals_Length := 1;
+      Candidate.Local_Kinds (0) := Integer_Value;
+      Candidate.Local_Types (0) := 0;
+      Candidate.Code (0) := Ins (Push_Integer, 42);
+      Candidate.Code (1) :=
+        (Op => Initialize_Local, Local => 0, others => <>);
+      Candidate.Code (2) := (Op => Copy_Local, Local => 0, others => <>);
+      Candidate.Code (3) := Ins (Halt);
+      Verify (Candidate, Checked, Error);
+      Check (Error = Valid, "verify lexical local initialization");
+      if Error = Valid then
+         Execute (Checked, 8, Outcome);
+         Check
+           (Outcome.Status = Completed and then Outcome.Has_Value and then
+            Outcome.Result_Value.Kind = Integer_Value and then
+            Outcome.Result_Value.Integer = 42,
+            "execute initialized lexical local");
+      end if;
+
+      Candidate.Code (0) := (Op => Copy_Local, Local => 0, others => <>);
+      Candidate.Code (1) := Ins (Halt);
+      Candidate.Length := 2;
+      Verify (Candidate, Checked, Error);
+      Check
+        (Error = Invalid_Ownership,
+         "reject lexical local use before initialization");
+   end Test_Lexical_Local;
+
    procedure Test_Branch is
       Candidate : Program;
       Checked   : Validated_Program;
@@ -213,19 +300,22 @@ procedure Main is
       CCL.Language.Interpret ("(+ true 4)", 16, Outcome);
       Check
         (Outcome.Status = CCL.Language.Type_Check_Failed and then
-         Outcome.Diagnostic = CCL.Language.Expected_Integer,
+         Outcome.Diagnostic = CCL.Language.Expected_Integer and then
+         Outcome.Diagnostic_Position = 1,
          "reject source operand type mismatch");
 
       CCL.Language.Interpret ("(if true 1 false)", 16, Outcome);
       Check
         (Outcome.Status = CCL.Language.Type_Check_Failed and then
-         Outcome.Diagnostic = CCL.Language.Branch_Type_Mismatch,
+         Outcome.Diagnostic = CCL.Language.Branch_Type_Mismatch and then
+         Outcome.Diagnostic_Position = 1,
          "reject mismatched conditional branches");
 
       CCL.Language.Interpret ("missing", 16, Outcome);
       Check
         (Outcome.Status = CCL.Language.Type_Check_Failed and then
-         Outcome.Diagnostic = CCL.Language.Unknown_Name,
+         Outcome.Diagnostic = CCL.Language.Unknown_Name and then
+         Outcome.Diagnostic_Position = 1,
          "reject unbound name");
 
       CCL.Language.Interpret ("(+ 1 2)", 2, Outcome);
@@ -245,7 +335,8 @@ procedure Main is
 
       CCL.Language.Interpret ("(+ 1)", 8, Outcome);
       Check
-        (Outcome.Status = CCL.Language.Parse_Failed,
+        (Outcome.Status = CCL.Language.Parse_Failed and then
+         Outcome.Diagnostic_Position = 5,
          "reject malformed source");
    end Test_Source_Language;
 
@@ -1054,6 +1145,8 @@ procedure Main is
    end Test_Import_Lifecycle;
 begin
    Test_Addition;
+   Test_Debug_Stepping;
+   Test_Lexical_Local;
    Test_Branch;
    Test_Rejections;
    Test_Runtime_Limits;

@@ -235,7 +235,7 @@ userspace/ccl/build/ccl-run/ccl-run "(+ 20 22)"
 userspace/ccl/build/ccl-run/ccl-run
 ```
 
-The **Linux Workbench** UI preview renders the planned REPL and monitor panes
+The **Linux Workbench** UI preview renders a source editor and execution panel
 in an SDL window, through the same **shared** CuBit widget toolkit used by
 native desktop applications:
 
@@ -243,14 +243,15 @@ native desktop applications:
 nix develop --command make -C kernel ccl-ui-preview
 ```
 
-Edit the expression in the REPL pane with normal text input and Backspace, then
-press Enter to evaluate it with the real fuel-bounded CCL interpreter. The
-field uses the shared bounded editor core: Left/Right, Ctrl+Left/Right,
-Shift-selection, Home/End, Delete, and Ctrl+A are supported. Click positions
-the cursor, Shift+click and pointer dragging extend the selection, and a double
-click selects a word; triple-click selects the whole single-line expression.
-Single-line fields deliberately support one cursor only; multicursor editing is
-reserved for the forthcoming rich multiline editor.
+The source pane uses the shared bounded editor core, including multicursor
+editing, selection, word movement, pointer dragging, and scrolling. Its bounded
+undo history restores the document and complete cursor/selection set
+transactionally. Use Ctrl+Z to undo and
+Ctrl+Y or Ctrl+Shift+Z to redo; adjacent typing and deletion operations are
+coalesced until cursor movement or another non-edit action breaks the sequence.
+Press F5 or Ctrl+Enter in the source editor to parse, type-check, and run the
+buffer with a fixed fuel budget. Results include remaining fuel; failures report
+a one-based source location and move the editor cursor to the erroneous form.
 Close the window with Escape or the window close button.
 SDL and its normal hosted event
 loop belong only to this Linux adapter. The window is resizable;

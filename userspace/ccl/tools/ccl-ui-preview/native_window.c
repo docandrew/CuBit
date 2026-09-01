@@ -92,7 +92,7 @@ fail:
     SDL_DestroyWindow(state->window); SDL_free(state); SDL_Quit(); return NULL;
 }
 
-/* Event kinds: 1 close, 2 ASCII text, 3 backspace, 4 submit. */
+/* Event kinds include 23 undo, 24 redo, and 25 run source. */
 int ccl_window_poll(void *handle, int *kind, unsigned int *character,
                     unsigned int *modifiers, int *x, int *y)
 {
@@ -124,7 +124,8 @@ int ccl_window_poll(void *handle, int *kind, unsigned int *character,
                         click_count);
             mods = SDL_GetModState();
             *modifiers = ((mods & KMOD_SHIFT) != 0 ? 1u : 0u) |
-                         ((mods & KMOD_CTRL) != 0 ? 2u : 0u);
+                         ((mods & KMOD_CTRL) != 0 ? 2u : 0u) |
+                         ((mods & KMOD_ALT) != 0 ? 4u : 0u);
             if (click_count == 3)
                 *kind = 15;
             else if (click_count == 2)
@@ -133,13 +134,13 @@ int ccl_window_poll(void *handle, int *kind, unsigned int *character,
                 *kind = 11;
             return 1;
         }
-        if (event.type == SDL_MOUSEMOTION &&
-            (event.motion.state & SDL_BUTTON_LMASK) != 0) {
+        if (event.type == SDL_MOUSEMOTION) {
             *x = event.motion.x; *y = event.motion.y;
             if (state->debug_input)
-                fprintf(stderr, "mouse drag window=%d,%d logical=%d,%d\n",
+                fprintf(stderr, "mouse motion window=%d,%d logical=%d,%d\n",
                         event.motion.x, event.motion.y, *x, *y);
-            *kind = 12; return 1;
+            *kind = (event.motion.state & SDL_BUTTON_LMASK) != 0 ? 12 : 26;
+            return 1;
         }
         if (event.type == SDL_MOUSEBUTTONUP &&
             event.button.button == SDL_BUTTON_LEFT) {
@@ -160,7 +161,20 @@ int ccl_window_poll(void *handle, int *kind, unsigned int *character,
                     event.key.keysym.sym, event.key.keysym.scancode,
                     (unsigned int)mods);
         *modifiers = ((mods & KMOD_SHIFT) != 0 ? 1u : 0u) |
-                     ((mods & KMOD_CTRL) != 0 ? 2u : 0u);
+                     ((mods & KMOD_CTRL) != 0 ? 2u : 0u) |
+                     ((mods & KMOD_ALT) != 0 ? 4u : 0u);
+        if (event.key.keysym.sym == SDLK_z && (*modifiers & 2u) != 0) {
+            *kind = (*modifiers & 1u) != 0 ? 24 : 23; return 1;
+        }
+        if (event.key.keysym.sym == SDLK_y && (*modifiers & 2u) != 0) {
+            *kind = 24; return 1;
+        }
+        if (event.key.keysym.sym == SDLK_F5 ||
+            ((event.key.keysym.sym == SDLK_RETURN ||
+              event.key.keysym.sym == SDLK_KP_ENTER) &&
+             (*modifiers & 2u) != 0)) {
+            *kind = 25; return 1;
+        }
         if (event.key.keysym.sym == SDLK_ESCAPE) { *kind = 22; return 1; }
         if (event.key.keysym.sym == SDLK_BACKSPACE) { *kind = 3; return 1; }
         if (event.key.keysym.sym == SDLK_RETURN ||

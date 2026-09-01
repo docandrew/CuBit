@@ -38,6 +38,8 @@ is
    type Interpretation_Result is record
       Status         : Interpretation_Status := Parse_Failed;
       Diagnostic     : Diagnostic_Code := No_Diagnostic;
+      --  One-based source position; zero means no source diagnostic.
+      Diagnostic_Position : Natural range 0 .. MAX_SOURCE_LENGTH + 1 := 0;
       Has_Value      : Boolean := False;
       Result_Value   : CCL.VM.Value := (others => <>);
       Fuel_Remaining : Natural := 0;

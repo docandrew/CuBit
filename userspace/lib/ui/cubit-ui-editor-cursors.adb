@@ -76,6 +76,34 @@ package body CuBit.UI.Editor.Cursors with SPARK_Mode is
       end if;
    end Toggle_At;
 
+   procedure Add_At
+     (Cursors : in out Cursor_Set; Position : Cursor_Position;
+      Preferred_Column : CuBit.UI.Editor.Documents.Display_Column;
+      Result : out Add_Result)
+   is
+   begin
+      for Index in 1 .. Cursors.Last loop
+         if Cursors.Items (Index).Position = Position and then
+           Cursors.Items (Index).Anchor = Position
+         then
+            Result := Cursor_Already_Present;
+            return;
+         end if;
+      end loop;
+
+      if Cursors.Last = MAX_CURSORS then
+         Result := Cursor_Limit_Reached;
+         return;
+      end if;
+
+      Cursors.Last := Cursors.Last + 1;
+      Cursors.Items (Cursors.Last) :=
+        (Position => Position, Anchor => Position,
+         Preferred_Column => Preferred_Column);
+      Cursors.Primary := Cursors.Last;
+      Result := Cursor_Added;
+   end Add_At;
+
    procedure Coalesce (Cursors : in out Cursor_Set) is
       Left_Index : Cursor_Index := 1;
       Right_Index : Natural;

@@ -9,6 +9,7 @@ is
    type Op_Code is
      (No_Ownership_Op,
       Halt,
+      Initialize_Local,
       Copy_Local,
       Move_Local,
       Drop_Local,
@@ -42,6 +43,7 @@ is
       Length        : Code_Length := 0;
       Code          : Instruction_Array := [others => (others => <>)];
       Locals_Length : Binding_Count := 0;
+      Dynamic_Locals_Length : Binding_Count := 0;
       Local_Types   : Local_Type_Array := [others => 0];
       Types         : Type_Table := [others => (others => <>)];
    end record;

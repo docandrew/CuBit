@@ -26,6 +26,7 @@ is
 
    type Node is record
       Kind          : Node_Kind := Invalid_Node;
+      Source_Position : Natural range 0 .. MAX_SOURCE_LENGTH + 1 := 0;
       Integer_Value : Integer_64 := 0;
       Boolean_Value : Boolean := False;
       Identifier    : Name;
@@ -114,6 +115,15 @@ is
       Cursor     : Natural := 0;
       Root       : Natural range 0 .. NO_NODE := NO_NODE;
       Diagnostic : Diagnostic_Code := No_Diagnostic;
+      Diagnostic_Position : Natural range 0 .. MAX_SOURCE_LENGTH + 1 := 0;
+      subtype Diagnostic_Source_Position is
+        Positive range 1 .. MAX_SOURCE_LENGTH + 1;
+
+      function To_Diagnostic_Position
+        (Offset : Natural) return Diagnostic_Source_Position
+      is
+        (if Offset >= MAX_SOURCE_LENGTH then MAX_SOURCE_LENGTH + 1
+         else Offset + 1);
 
       procedure Skip_Whitespace is
       begin
@@ -327,6 +337,7 @@ is
       is
          Item : Name;
          Ok   : Boolean;
+         Start : Natural := Cursor;
       begin
          Index := NO_NODE;
          if Diagnostic /= No_Diagnostic then
@@ -337,30 +348,45 @@ is
          end if;
 
          Skip_Whitespace;
+         Start := Cursor;
          if Cursor >= Source'Length then
             Diagnostic := Unexpected_End;
          elsif Source (Source'First + Cursor) = '(' then
             Cursor := Cursor + 1;
             Parse_List (Depth, Index);
+            if Index < Tree.Length then
+               Tree.Nodes (Node_Index (Index)).Source_Position :=
+                 To_Diagnostic_Position (Start);
+            end if;
          elsif Source (Source'First + Cursor) = '-' or else
            (Source (Source'First + Cursor) >= '0' and then
             Source (Source'First + Cursor) <= '9')
          then
             Parse_Integer (Index);
+            if Index < Tree.Length then
+               Tree.Nodes (Node_Index (Index)).Source_Position :=
+                 To_Diagnostic_Position (Start);
+            end if;
          elsif Is_Name_Character (Source (Source'First + Cursor)) then
             Read_Name (Item, Ok);
             if Ok and then Name_Is (Item, "true") then
                Add_Node ((Kind => Boolean_Literal, Boolean_Value => True,
+                          Source_Position => To_Diagnostic_Position (Start),
                           others => <>), Index);
             elsif Ok and then Name_Is (Item, "false") then
                Add_Node ((Kind => Boolean_Literal, Boolean_Value => False,
+                          Source_Position => To_Diagnostic_Position (Start),
                           others => <>), Index);
             elsif Ok then
                Add_Node ((Kind => Name_Reference, Identifier => Item,
+                          Source_Position => To_Diagnostic_Position (Start),
                           others => <>), Index);
             end if;
          else
             Diagnostic := Unexpected_Token;
+         end if;
+         if Diagnostic /= No_Diagnostic and then Diagnostic_Position = 0 then
+            Diagnostic_Position := To_Diagnostic_Position (Start);
          end if;
       end Parse_Expression;
 
@@ -462,6 +488,10 @@ is
                end if;
             when Invalid_Node => Diagnostic := Unexpected_Token;
          end case;
+         if Diagnostic /= No_Diagnostic and then Diagnostic_Position = 0 then
+            Diagnostic_Position :=
+              Tree.Nodes (Node_Index (Index)).Source_Position;
+         end if;
       end Check_Node;
 
       Value_Env : Value_Environment := [others => (others => <>)];
@@ -588,11 +618,13 @@ is
    begin
       Result :=
         (Status => Parse_Failed, Diagnostic => No_Diagnostic,
+         Diagnostic_Position => 0,
          Has_Value => False, Result_Value => (others => <>),
          Fuel_Remaining => Fuel);
 
       if Source'Length > MAX_SOURCE_LENGTH then
          Result.Diagnostic := Source_Too_Long;
+         Result.Diagnostic_Position := MAX_SOURCE_LENGTH + 1;
          return;
       end if;
 
@@ -603,6 +635,9 @@ is
       end if;
       if Diagnostic /= No_Diagnostic then
          Result.Diagnostic := Diagnostic;
+         Result.Diagnostic_Position :=
+           (if Diagnostic_Position > 0 then Diagnostic_Position
+            else To_Diagnostic_Position (Cursor));
          return;
       end if;
 
@@ -610,6 +645,7 @@ is
       if Diagnostic /= No_Diagnostic or else Root_Type = Invalid_Type then
          Result.Status := Type_Check_Failed;
          Result.Diagnostic := Diagnostic;
+         Result.Diagnostic_Position := Diagnostic_Position;
          return;
       end if;
 

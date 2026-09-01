@@ -4,9 +4,9 @@ with System;
 with CCL.Language;
 with CCL.VM;
 with CuBit.UI;
-with CuBit.UI.Editor;
 with CuBit.UI.Editor.Cursors;
 with CuBit.UI.Editor.Documents;
+with CuBit.UI.Editor_History;
 with CuBit.UI.Editor.Transactions;
 with CuBit.UI.Editor.Viewports;
 with CuBit.UI.Widgets;
@@ -21,12 +21,14 @@ procedure Main is
    use type CCL.VM.Value_Kind;
    use type CuBit.UI.Editor.Documents.Edit_Result;
    use type CuBit.UI.Editor.Cursors.Toggle_Result;
+   use type CuBit.UI.Editor.Cursors.Add_Result;
    use type CuBit.UI.Scrollbar_Part;
 
    --  Compact native canvas: never downscale the toolkit's 11 px UI font.
    --  The hosted adapter scales this canvas upward when space permits.
-   WIDTH  : constant Natural := 640;
+   WIDTH  : constant Natural := 900;
    HEIGHT : constant Natural := 400;
+   SOURCE_CAPACITY : constant := 4_096;
 
    type Pixel_Buffer is array (Natural range 0 .. WIDTH * HEIGHT - 1)
      of aliased Unsigned_32;
@@ -37,19 +39,87 @@ procedure Main is
       pitch => WIDTH * 4, clipEnabled => False, clip => (others => 0));
    Colors : constant CuBit.UI.Theme := CuBit.UI.CuBit_Classic;
 
-   Input       : CuBit.UI.Editor.Edit_State;
    Result_Text : String (1 .. 96) := [others => ' '];
    Result_Last : Natural := 5;
-   Input_Bounds : CuBit.UI.Rect := (others => 0);
-   Source : CuBit.UI.Editor.Documents.Document (4_096);
+   Last_Outcome : CCL.Language.Interpretation_Result;
+   Has_Run : Boolean := False;
+   Diagnostic_Line : Natural := 0;
+   Diagnostic_Column : Natural := 0;
+   Source : CuBit.UI.Editor.Documents.Document (SOURCE_CAPACITY);
    Source_Cursors : CuBit.UI.Editor.Cursors.Cursor_Set;
+   package Source_Histories is new CuBit.UI.Editor_History
+     (Capacity => SOURCE_CAPACITY, Depth => 32);
+   Source_History : Source_Histories.History;
    Source_View : CuBit.UI.Editor.Viewports.Viewport;
    Source_Bounds : CuBit.UI.Rect := (others => 0);
    Source_Scrollbar : CuBit.UI.Rect := (others => 0);
+   Open_Button_Bounds : constant CuBit.UI.Rect :=
+     (x => 5, y => 47, w => 27, h => 27);
+   Save_Button_Bounds : constant CuBit.UI.Rect :=
+     (x => 34, y => 47, w => 27, h => 27);
+   Compile_Button_Bounds : constant CuBit.UI.Rect :=
+     (x => 102, y => 47, w => 27, h => 27);
+   VM_Run_Button_Bounds : constant CuBit.UI.Rect :=
+     (x => 131, y => 47, w => 27, h => 27);
+   Pause_Button_Bounds : constant CuBit.UI.Rect :=
+     (x => 160, y => 47, w => 27, h => 27);
+   Stop_Button_Bounds : constant CuBit.UI.Rect :=
+     (x => 189, y => 47, w => 27, h => 27);
+   Step_Into_Button_Bounds : constant CuBit.UI.Rect :=
+     (x => 228, y => 47, w => 27, h => 27);
+   Step_Over_Button_Bounds : constant CuBit.UI.Rect :=
+     (x => 257, y => 47, w => 27, h => 27);
+   Run_Button_Bounds : CuBit.UI.Rect := (others => 0);
+   Run_Button_Pressed : Boolean := False;
+   Pointer_X, Pointer_Y : Natural := 0;
+   Pointer_Known : Boolean := False;
    Source_Scrollbar_Pressed : CuBit.UI.Scrollbar_Part :=
      CuBit.UI.Scrollbar_None;
-   type Focus_Target is (Repl_Field, Source_Editor);
-   Focus : Focus_Target := Source_Editor;
+
+   function Toolbar_Hint return String is
+   begin
+      if not Pointer_Known then
+         return "CCL Workbench";
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Open_Button_Bounds)
+      then
+         return "Open source - unavailable until filesystem handles are wired";
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Save_Button_Bounds)
+      then
+         return "Save source - unavailable until filesystem handles are wired";
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Compile_Button_Bounds)
+      then
+         return "Compile to verified CCLB - source compiler not wired yet";
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Run_Button_Bounds)
+      then
+         return "Interpret source directly (F5 or Ctrl+Enter)";
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, VM_Run_Button_Bounds)
+      then
+         return "Run verified CCLB - compile a bytecode artifact first";
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Pause_Button_Bounds)
+      then
+         return "Pause - available during resumable bytecode execution";
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Stop_Button_Bounds)
+      then
+         return "Stop - available during resumable bytecode execution";
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Step_Into_Button_Bounds)
+      then
+         return "Step Into - execute one bytecode instruction";
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Step_Over_Button_Bounds)
+      then
+         return "Step Over - same as Step Into until call frames exist";
+      else
+         return "CCL Workbench";
+      end if;
+   end Toolbar_Hint;
 
    function Window_Open (Width, Height : Interfaces.C.int) return System.Address
    with Import, Convention => C, External_Name => "ccl_window_open";
@@ -79,21 +149,53 @@ procedure Main is
       Result_Last := Length;
    end Set_Result;
 
-   procedure Submit is
-      Outcome : CCL.Language.Interpretation_Result;
+   procedure Invalidate_Run_Result is
    begin
-      if CuBit.UI.Editor.Length (Input) = 0 then return; end if;
-      CCL.Language.Interpret (CuBit.UI.Editor.Content (Input), 1_024, Outcome);
-      if Outcome.Status /= CCL.Language.Succeeded then
-         Set_Result ("error: " & CCL.Language.Diagnostic_Code'Image (Outcome.Diagnostic));
-      elsif not Outcome.Has_Value then
-         Set_Result ("ok");
-      elsif Outcome.Result_Value.Kind = CCL.VM.Integer_Value then
-         Set_Result (Integer_64'Image (Outcome.Result_Value.Integer));
+      Has_Run := False;
+      Diagnostic_Line := 0;
+      Diagnostic_Column := 0;
+      Set_Result ("source changed");
+   end Invalidate_Run_Result;
+
+   procedure Reveal_Source_Cursor;
+
+   procedure Run_Source is
+      Outcome : CCL.Language.Interpretation_Result;
+      Position : CuBit.UI.Editor.Documents.Document_Position;
+      Line, Column : Positive;
+      Text : constant String :=
+        CuBit.UI.Editor.Documents.Content (Source);
+   begin
+      CCL.Language.Interpret (Text, 4_096, Outcome);
+      Last_Outcome := Outcome;
+      Has_Run := True;
+      Diagnostic_Line := 0;
+      Diagnostic_Column := 0;
+      if Outcome.Status = CCL.Language.Succeeded then
+         if not Outcome.Has_Value then
+            Set_Result ("ok");
+         elsif Outcome.Result_Value.Kind = CCL.VM.Integer_Value then
+            Set_Result (Integer_64'Image (Outcome.Result_Value.Integer));
+         else
+            Set_Result
+              ((if Outcome.Result_Value.Boolean then "true" else "false"));
+         end if;
+      elsif Outcome.Diagnostic_Position > 0 then
+         Position := CuBit.UI.Editor.Documents.Document_Position'Min
+           (Outcome.Diagnostic_Position,
+            CuBit.UI.Editor.Documents.Length (Source) + 1);
+         CuBit.UI.Editor.Documents.Position_To_Line_Column
+           (Source, Position, Line, Column);
+         Diagnostic_Line := Line;
+         Diagnostic_Column := Column;
+         Source_Histories.Break_Sequence (Source_History);
+         CuBit.UI.Editor.Cursors.Initialize (Source_Cursors, Position);
+         Reveal_Source_Cursor;
+         Set_Result (CCL.Language.Diagnostic_Code'Image (Outcome.Diagnostic));
       else
-         Set_Result ((if Outcome.Result_Value.Boolean then "true" else "false"));
+         Set_Result (CCL.Language.Diagnostic_Code'Image (Outcome.Diagnostic));
       end if;
-   end Submit;
+   end Run_Source;
 
    function Source_Cursor return CuBit.UI.Editor.Cursors.Cursor_State is
      (CuBit.UI.Editor.Cursors.Element
@@ -118,18 +220,35 @@ procedure Main is
 
    procedure Reveal_Source_Cursor is
       State : CuBit.UI.Editor.Cursors.Cursor_State;
-      Position : CuBit.UI.Editor.Documents.Document_Position := 1;
       Line, Column : Positive;
+      First_Cursor_Line : Positive :=
+        CuBit.UI.Editor.Documents.Line_Count (Source);
+      Last_Cursor_Line : Positive := 1;
+      First_Visible : constant Positive :=
+        CuBit.UI.Editor.Viewports.First_Line (Source_View);
+      Visible_Lines : constant Positive :=
+        CuBit.UI.Editor.Viewports.Line_Capacity (Source_View);
+      Last_Visible : constant Positive := Positive'Min
+        (CuBit.UI.Editor.Documents.Line_Count (Source),
+         First_Visible + Visible_Lines - 1);
    begin
       for Index in 1 .. CuBit.UI.Editor.Cursors.Length (Source_Cursors) loop
          State := CuBit.UI.Editor.Cursors.Element (Source_Cursors, Index);
-         Position := CuBit.UI.Editor.Documents.Document_Position'Max
-           (Position, State.Position);
+         CuBit.UI.Editor.Documents.Position_To_Line_Column
+           (Source, State.Position, Line, Column);
+         First_Cursor_Line := Positive'Min (First_Cursor_Line, Line);
+         Last_Cursor_Line := Positive'Max (Last_Cursor_Line, Line);
       end loop;
-      CuBit.UI.Editor.Documents.Position_To_Line_Column
-        (Source, Position, Line, Column);
-      CuBit.UI.Editor.Viewports.Ensure_Visible
-        (Source_View, Line, CuBit.UI.Editor.Documents.Line_Count (Source));
+      if First_Cursor_Line < First_Visible then
+         CuBit.UI.Editor.Viewports.Scroll_Lines
+           (Source_View,
+            Integer (First_Cursor_Line) - Integer (First_Visible),
+            CuBit.UI.Editor.Documents.Line_Count (Source));
+      elsif Last_Cursor_Line > Last_Visible then
+         CuBit.UI.Editor.Viewports.Ensure_Visible
+           (Source_View, Last_Cursor_Line,
+            CuBit.UI.Editor.Documents.Line_Count (Source));
+      end if;
    end Reveal_Source_Cursor;
 
    procedure Place_Source_Cursor
@@ -139,6 +258,7 @@ procedure Main is
       State : CuBit.UI.Editor.Cursors.Cursor_State := Source_Cursor;
       Line, Column : Positive;
    begin
+      Source_Histories.Break_Sequence (Source_History);
       State.Position := Position;
       if not Extend_Selection then State.Anchor := Position; end if;
       if not Preserve_Column then
@@ -150,14 +270,32 @@ procedure Main is
       Reveal_Source_Cursor;
    end Place_Source_Cursor;
 
-   procedure Insert_Source (Text : String; Changed : out Boolean) is
+   procedure Insert_Source
+     (Text : String; Changed : out Boolean;
+      Operation : Source_Histories.Operation_Kind :=
+        Source_Histories.Insert_Characters)
+   is
       Result : CuBit.UI.Editor.Documents.Edit_Result;
+      Plan : CuBit.UI.Editor.Transactions.Edit_Plan;
+      Document_Length : constant Natural :=
+        CuBit.UI.Editor.Documents.Length (Source);
    begin
+      CuBit.UI.Editor.Transactions.Build
+        (Source_Cursors, Document_Length, Plan);
+      if Text'Length = 0 or else not CuBit.UI.Editor.Transactions.Final_Length_Fits
+        (Plan, Document_Length, Text'Length, SOURCE_CAPACITY)
+      then
+         Changed := False;
+         return;
+      end if;
+      Source_Histories.Save_Before_Edit
+        (Source_History, Source, Source_Cursors, Operation);
       CuBit.UI.Editor.Transactions.Replace_All
         (Source, Source_Cursors, Text, Result);
       Changed := Result = CuBit.UI.Editor.Documents.Applied and then
         Text'Length > 0;
       if Changed then
+         Invalidate_Run_Result;
          Reveal_Source_Cursor;
       end if;
    end Insert_Source;
@@ -169,13 +307,23 @@ procedure Main is
    begin
       for Index in 1 .. CuBit.UI.Editor.Cursors.Length (Source_Cursors) loop
          State := CuBit.UI.Editor.Cursors.Element (Source_Cursors, Index);
+         if State.Position /= State.Anchor or else State.Position > 1 then
+            Has_Deletion := True;
+         end if;
+      end loop;
+      if not Has_Deletion then
+         Changed := False;
+         return;
+      end if;
+      Source_Histories.Save_Before_Edit
+        (Source_History, Source, Source_Cursors,
+         Source_Histories.Delete_Backward);
+      for Index in 1 .. CuBit.UI.Editor.Cursors.Length (Source_Cursors) loop
+         State := CuBit.UI.Editor.Cursors.Element (Source_Cursors, Index);
          if State.Position = State.Anchor and then State.Position > 1 then
             State.Anchor := State.Position - 1;
             CuBit.UI.Editor.Cursors.Set_Element
               (Source_Cursors, Index, State);
-         end if;
-         if State.Position /= State.Anchor then
-            Has_Deletion := True;
          end if;
       end loop;
       CuBit.UI.Editor.Transactions.Replace_All
@@ -183,6 +331,7 @@ procedure Main is
       Changed := Has_Deletion and then
         Result = CuBit.UI.Editor.Documents.Applied;
       if Changed then
+         Invalidate_Run_Result;
          Reveal_Source_Cursor;
       end if;
    end Backspace_Source;
@@ -194,6 +343,21 @@ procedure Main is
    begin
       for Index in 1 .. CuBit.UI.Editor.Cursors.Length (Source_Cursors) loop
          State := CuBit.UI.Editor.Cursors.Element (Source_Cursors, Index);
+         if State.Position /= State.Anchor or else
+           State.Position <= CuBit.UI.Editor.Documents.Length (Source)
+         then
+            Has_Deletion := True;
+         end if;
+      end loop;
+      if not Has_Deletion then
+         Changed := False;
+         return;
+      end if;
+      Source_Histories.Save_Before_Edit
+        (Source_History, Source, Source_Cursors,
+         Source_Histories.Delete_Forward);
+      for Index in 1 .. CuBit.UI.Editor.Cursors.Length (Source_Cursors) loop
+         State := CuBit.UI.Editor.Cursors.Element (Source_Cursors, Index);
          if State.Position = State.Anchor and then
            State.Position <= CuBit.UI.Editor.Documents.Length (Source)
          then
@@ -201,15 +365,13 @@ procedure Main is
             CuBit.UI.Editor.Cursors.Set_Element
               (Source_Cursors, Index, State);
          end if;
-         if State.Position /= State.Anchor then
-            Has_Deletion := True;
-         end if;
       end loop;
       CuBit.UI.Editor.Transactions.Replace_All
         (Source, Source_Cursors, "", Result);
       Changed := Has_Deletion and then
         Result = CuBit.UI.Editor.Documents.Applied;
       if Changed then
+         Invalidate_Run_Result;
          Reveal_Source_Cursor;
       end if;
    end Delete_Source_Forward;
@@ -227,6 +389,7 @@ procedure Main is
          (Value >= 'A' and then Value <= 'Z') or else
          (Value >= '0' and then Value <= '9') or else Value = '_');
    begin
+      Source_Histories.Break_Sequence (Source_History);
       for Index in 1 .. CuBit.UI.Editor.Cursors.Length (Source_Cursors) loop
          State := CuBit.UI.Editor.Cursors.Element (Source_Cursors, Index);
          Position := State.Position;
@@ -283,6 +446,7 @@ procedure Main is
       State : CuBit.UI.Editor.Cursors.Cursor_State;
       Position : CuBit.UI.Editor.Documents.Document_Position;
    begin
+      Source_Histories.Break_Sequence (Source_History);
       for Index in 1 .. CuBit.UI.Editor.Cursors.Length (Source_Cursors) loop
          State := CuBit.UI.Editor.Cursors.Element (Source_Cursors, Index);
          CuBit.UI.Editor.Documents.Move_Vertically
@@ -296,26 +460,65 @@ procedure Main is
       Reveal_Source_Cursor;
    end Move_Source_Vertical;
 
+   procedure Add_Source_Cursor_Vertically
+     (Direction : CuBit.UI.Editor.Documents.Vertical_Direction)
+   is
+      State : constant CuBit.UI.Editor.Cursors.Cursor_State := Source_Cursor;
+      Position : CuBit.UI.Editor.Documents.Document_Position;
+      Result : CuBit.UI.Editor.Cursors.Add_Result;
+   begin
+      Source_Histories.Break_Sequence (Source_History);
+      CuBit.UI.Editor.Documents.Move_Vertically
+        (Source, State.Position, State.Preferred_Column,
+         Direction, Position);
+      if Position = State.Position then
+         return;
+      end if;
+
+      CuBit.UI.Editor.Cursors.Add_At
+        (Source_Cursors, Position, State.Preferred_Column, Result);
+      if Result = CuBit.UI.Editor.Cursors.Cursor_Limit_Reached then
+         Set_Result ("cursor limit reached");
+      end if;
+      Reveal_Source_Cursor;
+   end Add_Source_Cursor_Vertically;
+
    procedure Move_Source_Line_End
      (To_End, Extend_Selection : Boolean)
    is
-      State : constant CuBit.UI.Editor.Cursors.Cursor_State := Source_Cursor;
+      State : CuBit.UI.Editor.Cursors.Cursor_State;
       Line, Column : Positive;
       Position : CuBit.UI.Editor.Documents.Document_Position;
    begin
-      CuBit.UI.Editor.Documents.Position_To_Line_Column
-        (Source, State.Position, Line, Column);
-      Position := CuBit.UI.Editor.Documents.Line_Column_To_Position
-        (Source, Line,
-         (if To_End then
-            CuBit.UI.Editor.Documents.Line_Length (Source, Line) + 1
-          else 1));
-      Place_Source_Cursor (Position, Extend_Selection);
+      Source_Histories.Break_Sequence (Source_History);
+      for Index in 1 .. CuBit.UI.Editor.Cursors.Length (Source_Cursors) loop
+         State := CuBit.UI.Editor.Cursors.Element (Source_Cursors, Index);
+         CuBit.UI.Editor.Documents.Position_To_Line_Column
+           (Source, State.Position, Line, Column);
+         Position := CuBit.UI.Editor.Documents.Line_Column_To_Position
+           (Source, Line,
+            (if To_End then
+               CuBit.UI.Editor.Documents.Line_Length (Source, Line) + 1
+             else 1));
+         State.Position := Position;
+         if not Extend_Selection then
+            State.Anchor := Position;
+         end if;
+         State.Preferred_Column :=
+           (if To_End then
+              CuBit.UI.Editor.Documents.Line_Length (Source, Line) + 1
+            else 1);
+         CuBit.UI.Editor.Cursors.Set_Element
+           (Source_Cursors, Index, State);
+      end loop;
+      CuBit.UI.Editor.Cursors.Coalesce (Source_Cursors);
+      Reveal_Source_Cursor;
    end Move_Source_Line_End;
 
    procedure Select_All_Source is
       State : CuBit.UI.Editor.Cursors.Cursor_State := Source_Cursor;
    begin
+      Source_Histories.Break_Sequence (Source_History);
       State.Anchor := 1;
       State.Position := CuBit.UI.Editor.Documents.Length (Source) + 1;
       Store_Source_Cursor (State);
@@ -391,27 +594,6 @@ procedure Main is
          w => Track.w, h => Thumb_Height);
    end Source_Scrollbar_Metrics;
 
-   function Position_At (Pixel_X : Natural)
-     return CuBit.UI.Editor.Text_Position
-   is
-      Text : constant String := CuBit.UI.Editor.Content (Input);
-      Text_X : constant Natural := Input_Bounds.x + 8;
-      Offset : Natural;
-      Draw_X : Natural := 0;
-      Width : Natural;
-   begin
-      if Pixel_X <= Text_X then return 1; end if;
-      Offset := Pixel_X - Text_X;
-      for Index in Text'Range loop
-         Width := CuBit.UI.UI_Text_Width (Text (Index .. Index));
-         if Offset < Draw_X + (Width + 1) / 2 then
-            return CuBit.UI.Editor.Text_Position (Index);
-         end if;
-         Draw_X := Draw_X + Width;
-      end loop;
-      return CuBit.UI.Editor.Length (Input) + 1;
-   end Position_At;
-
    procedure Draw_Title_Controls is
       type Icon_Rows is array (Natural range 0 .. 8) of String (1 .. 9);
       --  Compact mask from CuBit's attributed Bluecurve window-icon atlas.
@@ -459,16 +641,15 @@ procedure Main is
    end Draw_Title_Controls;
 
    procedure Render is
-      Content : CuBit.UI.Rect;
-      Repl_Content : CuBit.UI.Rect;
+      Execution_Content : CuBit.UI.Rect;
       Editor_Content : CuBit.UI.Rect;
+      Bytecode_Content : CuBit.UI.Rect;
       Cursor_State : CuBit.UI.Editor.Cursors.Cursor_State;
       Cursor_Visuals : CuBit.UI.Text_Cursor_States
         (1 .. CuBit.UI.Editor.Cursors.MAX_CURSORS) :=
           [others => (cursor => 1, selectionStart => 1, selectionEnd => 1)];
       Cursor_Count : constant Positive :=
         CuBit.UI.Editor.Cursors.Length (Source_Cursors);
-      Prompt_W : constant Natural := CuBit.UI.UI_Text_Width ("ccl>");
    begin
       CuBit.UI.Fill_Rect
         (Canvas, (x => 0, y => 0, w => WIDTH, h => HEIGHT), Colors.desktop);
@@ -498,48 +679,92 @@ procedure Main is
         (Canvas, (x => 147, y => 22, w => 38, h => 21), Colors,
          False, False, "Help");
 
-      CuBit.UI.Widgets.Group_Box
-        (Canvas, (x => 8, y => 50, w => 220, h => 312), Colors,
-         "CCL REPL", Repl_Content, 8);
-      CuBit.UI.Draw_UI_Text
-        (Canvas, Repl_Content.x, Repl_Content.y,
-         "ccl>", Colors.text, Colors.face);
-      Input_Bounds :=
-        (x => Repl_Content.x + Prompt_W + 8, y => Repl_Content.y - 5,
-         w => Repl_Content.w - Prompt_W - 8, h => 25);
-      CuBit.UI.Draw_Text_Edit_Field
-        (CuBit.UI.With_Clip (Canvas, Input_Bounds), Input_Bounds,
-         Colors, CuBit.UI.Editor.Content (Input),
-         CuBit.UI.Editor.Cursor (Input) - 1,
-         CuBit.UI.Editor.Selection_First (Input) - 1,
-         CuBit.UI.Editor.Selection_Last (Input) - 1,
-         focused => Focus = Repl_Field, hot => False);
-      CuBit.UI.Draw_UI_Text
-        (Canvas, Repl_Content.x, Repl_Content.y + 32,
-         Result_Text (1 .. Result_Last), Colors.muted, Colors.face);
-      CuBit.UI.Widgets.Group_Box
-        (Canvas,
-         (x => Repl_Content.x, y => Repl_Content.y + 84,
-          w => Repl_Content.w, h => 132),
-         Colors, "Session authority", Content, 8);
-      CuBit.UI.Widgets.Key_Value
-        (Canvas, (x => Content.x, y => Content.y, w => Content.w, h => 24),
-         Colors, "Network", "observe only");
-      CuBit.UI.Widgets.Key_Value
-        (Canvas, (x => Content.x, y => Content.y + 30,
-                  w => Content.w, h => 24),
-         Colors, "UI", "surface 7");
-      CuBit.UI.Widgets.Key_Value
-        (Canvas, (x => Content.x, y => Content.y + 60,
-                  w => Content.w, h => 24),
-         Colors, "Control", "not granted", True);
+      CuBit.UI.Widgets.Toolbar
+        (Canvas, (x => 0, y => 44, w => WIDTH, h => 34), Colors);
+      CuBit.UI.Widgets.Toolbar_Button
+        (Canvas, Open_Button_Bounds, Colors,
+         CuBit.UI.Widgets.Open_Document, enabled => False);
+      CuBit.UI.Widgets.Toolbar_Button
+        (Canvas, Save_Button_Bounds, Colors,
+         CuBit.UI.Widgets.Save_Document, enabled => False);
+      CuBit.UI.Widgets.Toolbar_Separator
+        (Canvas, (x => 63, y => 47, w => 8, h => 27), Colors);
+      CuBit.UI.Widgets.Toolbar_Button
+        (Canvas, Compile_Button_Bounds, Colors,
+         CuBit.UI.Widgets.Compile_Program, enabled => False);
+      Run_Button_Bounds := (x => 73, y => 47, w => 27, h => 27);
+      CuBit.UI.Widgets.Toolbar_Button
+        (Canvas, Run_Button_Bounds, Colors, CuBit.UI.Widgets.Interpret_Source,
+         pressed => Run_Button_Pressed);
+      CuBit.UI.Widgets.Toolbar_Button
+        (Canvas, VM_Run_Button_Bounds, Colors, CuBit.UI.Widgets.Run_Program,
+         enabled => False);
+      CuBit.UI.Widgets.Toolbar_Button
+        (Canvas, Pause_Button_Bounds, Colors,
+         CuBit.UI.Widgets.Pause_Program, enabled => False);
+      CuBit.UI.Widgets.Toolbar_Button
+        (Canvas, Stop_Button_Bounds, Colors,
+         CuBit.UI.Widgets.Stop_Program, enabled => False);
+      CuBit.UI.Widgets.Toolbar_Separator
+        (Canvas, (x => 218, y => 47, w => 8, h => 27), Colors);
+      CuBit.UI.Widgets.Toolbar_Button
+        (Canvas, Step_Into_Button_Bounds, Colors,
+         CuBit.UI.Widgets.Step_Into, enabled => False);
+      CuBit.UI.Widgets.Toolbar_Button
+        (Canvas, Step_Over_Button_Bounds, Colors,
+         CuBit.UI.Widgets.Step_Over, enabled => False);
 
       CuBit.UI.Widgets.Group_Box
-        (Canvas, (x => 236, y => 50, w => 396, h => 312), Colors,
+        (Canvas, (x => 8, y => 82, w => 220, h => 280), Colors,
+         "Execution", Execution_Content, 8);
+      CuBit.UI.Draw_UI_Text
+        (Canvas, Execution_Content.x, Execution_Content.y,
+         "Debugger", Colors.text, Colors.face);
+      CuBit.UI.Draw_UI_Text
+        (Canvas, Execution_Content.x, Execution_Content.y + 22,
+         "F5 interprets source", Colors.muted, Colors.face);
+      declare
+         Status_Text : constant String :=
+           (if Has_Run then
+               CCL.Language.Interpretation_Status'Image (Last_Outcome.Status)
+            else "not run");
+         Fuel_Text : constant String :=
+           (if Has_Run then Natural'Image (Last_Outcome.Fuel_Remaining)
+            else "n/a");
+         Location_Text : constant String :=
+           (if Diagnostic_Line > 0 then
+               Natural'Image (Diagnostic_Line) & ":" &
+               Natural'Image (Diagnostic_Column)
+            else "n/a");
+      begin
+         CuBit.UI.Widgets.Key_Value
+           (Canvas,
+            (x => Execution_Content.x, y => Execution_Content.y + 56,
+             w => Execution_Content.w, h => 24),
+            Colors, "Status", Status_Text);
+         CuBit.UI.Widgets.Key_Value
+           (Canvas,
+            (x => Execution_Content.x, y => Execution_Content.y + 86,
+             w => Execution_Content.w, h => 24),
+            Colors, "Result", Result_Text (1 .. Result_Last));
+         CuBit.UI.Widgets.Key_Value
+           (Canvas,
+            (x => Execution_Content.x, y => Execution_Content.y + 116,
+             w => Execution_Content.w, h => 24),
+            Colors, "Fuel left", Fuel_Text);
+         CuBit.UI.Widgets.Key_Value
+           (Canvas,
+            (x => Execution_Content.x, y => Execution_Content.y + 146,
+             w => Execution_Content.w, h => 24),
+            Colors, "Location", Location_Text);
+      end;
+
+      CuBit.UI.Widgets.Group_Box
+        (Canvas, (x => 236, y => 82, w => 390, h => 280), Colors,
          "CCL source - shared multiline editor", Editor_Content, 8);
       CuBit.UI.Draw_UI_Text
         (Canvas, Editor_Content.x, Editor_Content.y,
-         "Bounded document; wheel and Page Up/Down scroll",
+         "F5 or Ctrl+Enter runs; bounded fuel and history",
          Colors.muted, Colors.face);
       Source_Bounds :=
         (x => Editor_Content.x, y => Editor_Content.y + 24,
@@ -574,7 +799,7 @@ procedure Main is
          CuBit.UI.Editor.Viewports.First_Line (Source_View),
          CuBit.UI.Editor.Viewports.Line_Capacity (Source_View),
          Cursor_Visuals (1 .. Cursor_Count),
-         focused => Focus = Source_Editor, hot => False);
+         focused => True, hot => False);
       CuBit.UI.Draw_Vertical_Scrollbar
         (Canvas, Source_Scrollbar, Colors, 1,
          CuBit.UI.Editor.Documents.Line_Count (Source),
@@ -589,34 +814,61 @@ procedure Main is
          "SHARED core - Linux presentation adapter",
          Colors.muted, Colors.face);
 
+      CuBit.UI.Widgets.Group_Box
+        (Canvas, (x => 634, y => 82, w => 258, h => 280), Colors,
+         "CCLB bytecode", Bytecode_Content, 8);
+      CuBit.UI.Draw_Table_Header
+        (Canvas,
+         (x => Bytecode_Content.x, y => Bytecode_Content.y,
+          w => Bytecode_Content.w, h => 24),
+         Colors, "PC", "Bytes", "Instruction");
+      CuBit.UI.Draw_UI_Text
+        (CuBit.UI.With_Clip
+           (Canvas,
+            (x => Bytecode_Content.x, y => Bytecode_Content.y + 34,
+             w => Bytecode_Content.w, h => 44)),
+         Bytecode_Content.x, Bytecode_Content.y + 34,
+         "No CCLB artifact", Colors.text, Colors.face);
+      CuBit.UI.Draw_UI_Text
+        (CuBit.UI.With_Clip
+           (Canvas,
+            (x => Bytecode_Content.x, y => Bytecode_Content.y + 54,
+             w => Bytecode_Content.w, h => 44)),
+         Bytecode_Content.x, Bytecode_Content.y + 54,
+         "Interpret mode does not emit bytecode",
+         Colors.muted, Colors.face);
+      CuBit.UI.Draw_UI_Text
+        (CuBit.UI.With_Clip
+           (Canvas,
+            (x => Bytecode_Content.x,
+             y => Bytecode_Content.y + Bytecode_Content.h - 42,
+             w => Bytecode_Content.w, h => 36)),
+         Bytecode_Content.x,
+         Bytecode_Content.y + Bytecode_Content.h - 42,
+         "Compile to populate this view", Colors.muted, Colors.face);
+
       CuBit.UI.Draw_Status_Bar
         (Canvas, (x => 0, y => HEIGHT - 26, w => WIDTH, h => 26), Colors,
-         "Multiline editor uses the CuBit widget toolkit",
+         Toolbar_Hint,
          "bounded document • proved viewport");
    end Render;
 
 begin
    declare
-      Accepted : Boolean;
       Source_Result : CuBit.UI.Editor.Documents.Edit_Result;
    begin
-      CuBit.UI.Editor.Initialize (Input, "(+ 20 22)", Accepted);
-      if not Accepted then raise Program_Error; end if;
       CuBit.UI.Editor.Documents.Initialize
         (Source,
-         "; CCL Workbench scratch buffer" & ASCII.LF &
-         "let samples = (18 25 21 34 30 42 48)" & ASCII.LF &
-         "let peak = reduce max samples" & ASCII.LF &
-         ASCII.LF &
-         "; Authority remains explicit in values and launch arguments" &
-         ASCII.LF &
-         "observe network with authority network.observe" & ASCII.LF &
-         "show dashboard peak" & ASCII.LF,
+         "(let ((answer (+ 20 22)))" & ASCII.LF &
+         "  (if (= answer 42)" & ASCII.LF &
+         "      (+ answer 6)" & ASCII.LF &
+         "      0))" & ASCII.LF,
          Source_Result);
       if Source_Result /= CuBit.UI.Editor.Documents.Applied then
          raise Program_Error;
       end if;
       CuBit.UI.Editor.Cursors.Initialize (Source_Cursors, 1);
+      Source_Histories.Initialize (Source_History);
       CuBit.UI.Editor.Viewports.Initialize (Source_View, 15);
    end;
    Result_Text (1 .. Result_Last) := "ready";
@@ -652,102 +904,50 @@ begin
                when 1 => Running := False;
                when 2 =>
                   if Code >= 32 and then Code <= 126 then
-                     if Focus = Repl_Field then
-                        CuBit.UI.Editor.Insert
-                          (Input, String'(1 => Character'Val (Code)), Changed);
-                     else
-                        Insert_Source
-                          (String'(1 => Character'Val (Code)), Changed);
-                     end if;
+                     Insert_Source
+                       (String'(1 => Character'Val (Code)), Changed);
                   end if;
                when 3 =>
-                  if Focus = Repl_Field then
-                     CuBit.UI.Editor.Backspace (Input, Changed);
-                  else
-                     Backspace_Source (Changed);
-                  end if;
+                  Backspace_Source (Changed);
                when 4 =>
-                  if Focus = Repl_Field then
-                     Submit;
-                  else
-                     Insert_Source (String'(1 => ASCII.LF), Changed);
-                  end if;
+                  Insert_Source
+                    (String'(1 => ASCII.LF), Changed,
+                     Source_Histories.Other_Edit);
                when 5 | 6 =>
                   Extend := (Modifiers and 1) /= 0;
                   By_Word := (Modifiers and 2) /= 0;
-                  if Focus = Repl_Field then
-                     CuBit.UI.Editor.Move
-                       (Input,
-                        (if Kind = 5 then
-                           (if By_Word then CuBit.UI.Editor.Move_Word_Left
-                            else CuBit.UI.Editor.Move_Left)
-                         else
-                           (if By_Word then CuBit.UI.Editor.Move_Word_Right
-                            else CuBit.UI.Editor.Move_Right)),
-                        Extend);
-                  else
-                     Move_Source_Horizontal
-                       (Right => Kind = 6, By_Word => By_Word,
-                        Extend_Selection => Extend);
-                  end if;
+                  Move_Source_Horizontal
+                    (Right => Kind = 6, By_Word => By_Word,
+                     Extend_Selection => Extend);
                when 7 =>
-                  if Focus = Repl_Field then
-                     CuBit.UI.Editor.Move
-                       (Input, CuBit.UI.Editor.Move_Start,
-                        (Modifiers and 1) /= 0);
-                  else
-                     Move_Source_Line_End
-                       (To_End => False,
-                        Extend_Selection => (Modifiers and 1) /= 0);
-                  end if;
+                  Move_Source_Line_End
+                    (To_End => False,
+                     Extend_Selection => (Modifiers and 1) /= 0);
                when 8 =>
-                  if Focus = Repl_Field then
-                     CuBit.UI.Editor.Move
-                       (Input, CuBit.UI.Editor.Move_End,
-                        (Modifiers and 1) /= 0);
-                  else
-                     Move_Source_Line_End
-                       (To_End => True,
-                        Extend_Selection => (Modifiers and 1) /= 0);
-                  end if;
+                  Move_Source_Line_End
+                    (To_End => True,
+                     Extend_Selection => (Modifiers and 1) /= 0);
                when 9 =>
-                  if Focus = Repl_Field then
-                     CuBit.UI.Editor.Delete_Forward (Input, Changed);
-                  else
-                     Delete_Source_Forward (Changed);
-                  end if;
+                  Delete_Source_Forward (Changed);
                when 10 =>
-                  if Focus = Repl_Field then
-                     CuBit.UI.Editor.Select_All (Input);
-                  else
-                     Select_All_Source;
-                  end if;
+                  Select_All_Source;
                when 11 | 14 | 15 =>
                   Dragging_Scrollbar := False;
                   Source_Scrollbar_Pressed := CuBit.UI.Scrollbar_None;
                   Next_Scrollbar_Repeat := 0;
                   if Mouse_X >= 0 and then Mouse_Y >= 0 and then
                     CuBit.UI.Point_In_Rect
-                      (Natural (Mouse_X), Natural (Mouse_Y), Input_Bounds)
+                      (Natural (Mouse_X), Natural (Mouse_Y),
+                       Run_Button_Bounds)
                   then
-                     Focus := Repl_Field;
-                     if Kind = 15 then
-                        CuBit.UI.Editor.Select_All (Input);
-                     elsif Kind = 14 then
-                        CuBit.UI.Editor.Select_Word_At
-                          (Input, Position_At (Natural (Mouse_X)));
-                     else
-                        CuBit.UI.Editor.Place_Cursor
-                          (Input, Position_At (Natural (Mouse_X)),
-                           (Modifiers and 1) /= 0);
-                     end if;
-                     Dragging := True;
+                     Run_Button_Pressed := True;
+                     Dragging := False;
                   elsif Mouse_X >= 0 and then Mouse_Y >= 0 and then
                     CuBit.UI.Point_In_Rect
                       (Natural (Mouse_X), Natural (Mouse_Y), Source_Bounds)
                   then
-                     Focus := Source_Editor;
                      if (Modifiers and 2) /= 0 then
+                        Source_Histories.Break_Sequence (Source_History);
                         CuBit.UI.Editor.Cursors.Toggle_At
                           (Source_Cursors,
                            Source_Position_At
@@ -875,11 +1075,7 @@ begin
                            CuBit.UI.Editor.Documents.Line_Count (Source));
                      end;
                   elsif Dragging and then Mouse_X >= 0 then
-                     if Focus = Repl_Field then
-                        CuBit.UI.Editor.Place_Cursor
-                          (Input, Position_At (Natural (Mouse_X)),
-                           Extend_Selection => True);
-                     elsif Mouse_Y >= 0 then
+                     if Mouse_Y >= 0 then
                         Place_Source_Cursor
                           (Source_Position_At
                              (Natural (Mouse_X), Natural (Mouse_Y)),
@@ -887,12 +1083,28 @@ begin
                      end if;
                   end if;
                when 13 =>
+                  if Run_Button_Pressed and then
+                    Mouse_X >= 0 and then Mouse_Y >= 0 and then
+                    CuBit.UI.Point_In_Rect
+                      (Natural (Mouse_X), Natural (Mouse_Y),
+                       Run_Button_Bounds)
+                  then
+                     Run_Source;
+                  end if;
+                  Run_Button_Pressed := False;
                   Dragging := False;
                   Dragging_Scrollbar := False;
                   Source_Scrollbar_Pressed := CuBit.UI.Scrollbar_None;
                   Next_Scrollbar_Repeat := 0;
                when 16 | 17 =>
-                  if Focus = Source_Editor then
+                  if (Modifiers and 6) = 6 or else
+                    (Modifiers and 3) = 3
+                  then
+                     Add_Source_Cursor_Vertically
+                       ((if Kind = 16 then
+                           CuBit.UI.Editor.Documents.Up
+                         else CuBit.UI.Editor.Documents.Down));
+                  else
                      Move_Source_Vertical
                        ((if Kind = 16 then
                            CuBit.UI.Editor.Documents.Up
@@ -919,9 +1131,32 @@ begin
                            (Source_View))),
                      CuBit.UI.Editor.Documents.Line_Count (Source));
                when 22 =>
-                  if Focus = Source_Editor then
-                     Collapse_Source_Cursors;
+                  Source_Histories.Break_Sequence (Source_History);
+                  Collapse_Source_Cursors;
+                  Reveal_Source_Cursor;
+               when 23 =>
+                  if Source_Histories.Can_Undo (Source_History)
+                  then
+                     Source_Histories.Undo
+                       (Source_History, Source, Source_Cursors);
+                     Invalidate_Run_Result;
                      Reveal_Source_Cursor;
+                  end if;
+               when 24 =>
+                  if Source_Histories.Can_Redo (Source_History)
+                  then
+                     Source_Histories.Redo
+                       (Source_History, Source, Source_Cursors);
+                     Invalidate_Run_Result;
+                     Reveal_Source_Cursor;
+                  end if;
+               when 25 =>
+                  Run_Source;
+               when 26 =>
+                  if Mouse_X >= 0 and then Mouse_Y >= 0 then
+                     Pointer_X := Natural (Mouse_X);
+                     Pointer_Y := Natural (Mouse_Y);
+                     Pointer_Known := True;
                   end if;
                when others => null;
             end case;

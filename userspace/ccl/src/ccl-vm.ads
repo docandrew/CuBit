@@ -67,7 +67,8 @@ is
       Return_Local_RO,
       Borrow_Local_RW,
       Return_Local_RW,
-      Apply_Local_Disposition);
+      Apply_Local_Disposition,
+      Initialize_Local);
 
    type Authority_Class is
      (No_Authority,
@@ -110,6 +111,7 @@ is
       Imports_Length : Import_Count := 0;
       Imports : Import_Array := [others => (others => <>)];
       Locals_Length : Local_Count := 0;
+      Dynamic_Locals_Length : Local_Count := 0;
       Types_Length : Type_Count := 0;
       Local_Types : Local_Type_Array := [others => 0];
       Local_Kinds : Local_Kind_Array := [others => Integer_Value];
@@ -144,6 +146,8 @@ is
 
    type Execution_Status is
      (Completed,
+      Paused,
+      Stopped,
       Fuel_Exhausted,
       Arithmetic_Overflow,
       Invalid_Bytecode,
@@ -202,6 +206,30 @@ is
      Post => Is_Well_Formed (Item, State) and then
        Fuel_Limit (State) = Fuel_Limit (State'Old) and then
        Result.Steps <= Fuel_Limit (State);
+
+   procedure Continue_Execution_For
+     (Item         : Validated_Program;
+      State        : in out Machine_State;
+      Instructions : Natural;
+      Result       : out Execution_Result)
+   with
+     Pre => Is_Valid (Item) and then Is_Well_Formed (Item, State),
+     Post => Is_Well_Formed (Item, State) and then
+       Fuel_Limit (State) = Fuel_Limit (State'Old) and then
+       Result.Steps <= Fuel_Limit (State);
+
+   type Machine_Snapshot is record
+      Instruction : Instruction_Index := 0;
+      Fuel_Remaining : Unsigned_32 := 0;
+      Steps : Unsigned_32 := 0;
+      Waiting : Boolean := False;
+      Terminal : Boolean := False;
+      Status : Execution_Status := No_Result;
+   end record;
+
+   function Snapshot (State : Machine_State) return Machine_Snapshot;
+
+   procedure Stop (State : in out Machine_State);
 
    procedure Complete_Host_Call
      (Item     : Validated_Program;

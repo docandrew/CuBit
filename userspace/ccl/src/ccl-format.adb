@@ -73,7 +73,8 @@ is
          when Copy_Local => 10, when Move_Local => 11,
          when Drop_Local => 12, when Borrow_Local_RO => 13,
          when Return_Local_RO => 14, when Borrow_Local_RW => 15,
-         when Return_Local_RW => 16, when Apply_Local_Disposition => 17);
+         when Return_Local_RW => 16, when Apply_Local_Disposition => 17,
+         when Initialize_Local => 18);
 
    function Kind_Number (Item : Value_Kind) return Unsigned_8 is
      (if Item = Integer_Value then 0 else 1);
@@ -176,7 +177,8 @@ is
          when Jump | Jump_If_False =>
            Item.Immediate = 0 and then Item.Import = 0,
          when Invoke_Import => Item.Immediate = 0 and then Item.Target = 0,
-         when Copy_Local | Move_Local | Drop_Local | Borrow_Local_RO |
+         when Initialize_Local | Copy_Local | Move_Local | Drop_Local |
+              Borrow_Local_RO |
               Return_Local_RO | Borrow_Local_RW | Return_Local_RW =>
            Item.Immediate = 0 and then Item.Target = 0 and then
            Item.Import = 0 and then Item.Verb = 0,
@@ -207,6 +209,9 @@ is
          return;
       elsif not Ownership_Metadata_Valid (Candidate) then
          Error := Invalid_Ownership_Metadata;
+      elsif Candidate.Dynamic_Locals_Length > 0 then
+         Error := Unsupported_Ownership_Metadata;
+         return;
       elsif not Imports_Supported_By_V2 (Candidate) then
          Error := Unsupported_Ownership_Metadata;
          return;

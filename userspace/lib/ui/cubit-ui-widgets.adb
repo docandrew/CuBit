@@ -196,6 +196,127 @@ package body CuBit.UI.Widgets is
       end if;
    end Key_Value;
 
+   procedure Toolbar
+      (c : CuBit.UI.Canvas;
+       bounds : CuBit.UI.Rect;
+       colors : CuBit.UI.Theme)
+   is
+   begin
+      CuBit.UI.Fill_Rect (c, bounds, colors.face);
+      if bounds.h > 0 then
+         CuBit.UI.Fill_Rect
+           (c, (x => bounds.x, y => bounds.y + bounds.h - 1,
+                w => bounds.w, h => 1), colors.shadow);
+      end if;
+   end Toolbar;
+
+   procedure Toolbar_Button
+      (c : CuBit.UI.Canvas;
+       bounds : CuBit.UI.Rect;
+       colors : CuBit.UI.Theme;
+       icon : Toolbar_Icon;
+       enabled : Boolean := True;
+       pressed : Boolean := False)
+   is
+      Style : constant CuBit.UI.Button_Style :=
+        (if not enabled then CuBit.UI.Button_Disabled
+         elsif pressed then CuBit.UI.Button_Pressed
+         else CuBit.UI.Button_Normal);
+      Ink : constant CuBit.UI.Color :=
+        (if not enabled then colors.muted
+         elsif icon = Run_Program then colors.good
+         elsif icon = Interpret_Source then colors.accent
+         elsif icon = Stop_Program then colors.danger
+         else colors.text);
+      X : constant Natural := bounds.x + (if pressed and enabled then 1 else 0);
+      Y : constant Natural := bounds.y + (if pressed and enabled then 1 else 0);
+   begin
+      CuBit.UI.Draw_Button (c, bounds, colors, Style, "");
+      case icon is
+         when Open_Document =>
+            CuBit.UI.Fill_Rect
+              (c, (x => X + 6, y => Y + 9, w => 13, h => 9), Ink);
+            CuBit.UI.Fill_Rect
+              (c, (x => X + 7, y => Y + 7, w => 6, h => 3), Ink);
+            CuBit.UI.Fill_Rect
+              (c, (x => X + 8, y => Y + 11, w => 11, h => 5), colors.face);
+         when Save_Document =>
+            CuBit.UI.Fill_Rect
+              (c, (x => X + 7, y => Y + 6, w => 12, h => 13), Ink);
+            CuBit.UI.Fill_Rect
+              (c, (x => X + 9, y => Y + 7, w => 7, h => 4), colors.face);
+            CuBit.UI.Fill_Rect
+              (c, (x => X + 10, y => Y + 14, w => 6, h => 4), colors.face);
+         when Compile_Program =>
+            CuBit.UI.Fill_Rect
+              (c, (x => X + 7, y => Y + 7, w => 5, h => 5), Ink);
+            CuBit.UI.Fill_Rect
+              (c, (x => X + 14, y => Y + 7, w => 5, h => 5), Ink);
+            CuBit.UI.Fill_Rect
+              (c, (x => X + 10, y => Y + 14, w => 6, h => 6), Ink);
+            CuBit.UI.Fill_Rect
+              (c, (x => X + 11, y => Y + 11, w => 4, h => 5), Ink);
+         when Interpret_Source =>
+            CuBit.UI.Fill_Rect
+              (c, (x => X + 12, y => Y + 5, w => 7, h => 3), Ink);
+            CuBit.UI.Fill_Rect
+              (c, (x => X + 10, y => Y + 8, w => 7, h => 5), Ink);
+            CuBit.UI.Fill_Rect
+              (c, (x => X + 8, y => Y + 12, w => 7, h => 3), Ink);
+            CuBit.UI.Fill_Rect
+              (c, (x => X + 8, y => Y + 15, w => 3, h => 6), Ink);
+         when Run_Program =>
+            for Row in 0 .. 10 loop
+               CuBit.UI.Fill_Rect
+                 (c, (x => X + 8, y => Y + 7 + Row,
+                      w => 1 + Natural'Min (Row, 10 - Row), h => 1), Ink);
+            end loop;
+         when Pause_Program =>
+            CuBit.UI.Fill_Rect
+              (c, (x => X + 8, y => Y + 7, w => 4, h => 11), Ink);
+            CuBit.UI.Fill_Rect
+              (c, (x => X + 15, y => Y + 7, w => 4, h => 11), Ink);
+         when Stop_Program =>
+            CuBit.UI.Fill_Rect
+              (c, (x => X + 8, y => Y + 7, w => 11, h => 11), Ink);
+         when Step_Into =>
+            CuBit.UI.Fill_Rect
+              (c, (x => X + 12, y => Y + 6, w => 3, h => 8), Ink);
+            CuBit.UI.Fill_Rect
+              (c, (x => X + 9, y => Y + 11, w => 9, h => 3), Ink);
+            CuBit.UI.Fill_Rect
+              (c, (x => X + 11, y => Y + 14, w => 5, h => 3), Ink);
+            CuBit.UI.Fill_Rect
+              (c, (x => X + 7, y => Y + 19, w => 13, h => 2), Ink);
+         when Step_Over =>
+            CuBit.UI.Stroke_Rect
+              (c, (x => X + 7, y => Y + 7, w => 11, h => 9), Ink, Ink);
+            CuBit.UI.Fill_Rect
+              (c, (x => X + 15, y => Y + 5, w => 3, h => 7), Ink);
+            CuBit.UI.Fill_Rect
+              (c, (x => X + 17, y => Y + 9, w => 3, h => 3), Ink);
+      end case;
+   end Toolbar_Button;
+
+   procedure Toolbar_Separator
+      (c : CuBit.UI.Canvas;
+       bounds : CuBit.UI.Rect;
+       colors : CuBit.UI.Theme)
+   is
+      Middle : constant Natural := bounds.x + bounds.w / 2;
+   begin
+      if bounds.w > 0 and then bounds.h > 8 then
+         CuBit.UI.Fill_Rect
+           (c, (x => Middle, y => bounds.y + 4, w => 1, h => bounds.h - 8),
+            colors.shadow);
+         if Middle + 1 < bounds.x + bounds.w then
+            CuBit.UI.Fill_Rect
+              (c, (x => Middle + 1, y => bounds.y + 4,
+                   w => 1, h => bounds.h - 8), colors.edge);
+         end if;
+      end if;
+   end Toolbar_Separator;
+
    procedure Metric_Card
       (c : CuBit.UI.Canvas;
        bounds : CuBit.UI.Rect;

@@ -27,8 +27,10 @@ procedure Main is
          when others =>
             Put_Line
               ("error: " & CCL.Language.Interpretation_Status'Image
-                 (Result.Status) & " / " &
-               CCL.Language.Diagnostic_Code'Image (Result.Diagnostic));
+               (Result.Status) & " / " &
+               CCL.Language.Diagnostic_Code'Image (Result.Diagnostic) &
+               (if Result.Diagnostic_Position = 0 then ""
+                else " at" & Natural'Image (Result.Diagnostic_Position)));
       end case;
    end Print_Result;
 

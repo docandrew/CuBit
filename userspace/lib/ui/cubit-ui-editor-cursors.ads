@@ -18,6 +18,8 @@ package CuBit.UI.Editor.Cursors with SPARK_Mode is
    type Cursor_Set is private;
    type Toggle_Result is
      (Cursor_Added, Cursor_Removed, Primary_Moved, Cursor_Limit_Reached);
+   type Add_Result is
+     (Cursor_Added, Cursor_Already_Present, Cursor_Limit_Reached);
 
    procedure Initialize
      (Cursors : out Cursor_Set; Position : Cursor_Position := 1);
@@ -35,6 +37,11 @@ package CuBit.UI.Editor.Cursors with SPARK_Mode is
    procedure Toggle_At
      (Cursors : in out Cursor_Set; Position : Cursor_Position;
       Result : out Toggle_Result);
+
+   procedure Add_At
+     (Cursors : in out Cursor_Set; Position : Cursor_Position;
+      Preferred_Column : CuBit.UI.Editor.Documents.Display_Column;
+      Result : out Add_Result);
 
    procedure Coalesce (Cursors : in out Cursor_Set);
 

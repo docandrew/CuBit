@@ -13,6 +13,9 @@ package CuBit.UI.Widgets is
    DENSE_PADDING   : constant Natural := 6;
 
    type Badge_Style is (Badge_Neutral, Badge_Good, Badge_Danger);
+   type Toolbar_Icon is
+     (Open_Document, Save_Document, Interpret_Source, Compile_Program,
+      Run_Program, Pause_Program, Stop_Program, Step_Into, Step_Over);
 
    subtype Tab_Title is String;
    type Tab_Title_Access is access constant Tab_Title;
@@ -54,6 +57,24 @@ package CuBit.UI.Widgets is
        key : String;
        value : String;
        mutedValue : Boolean := False);
+
+   procedure Toolbar
+      (c : CuBit.UI.Canvas;
+       bounds : CuBit.UI.Rect;
+       colors : CuBit.UI.Theme);
+
+   procedure Toolbar_Button
+      (c : CuBit.UI.Canvas;
+       bounds : CuBit.UI.Rect;
+       colors : CuBit.UI.Theme;
+       icon : Toolbar_Icon;
+       enabled : Boolean := True;
+       pressed : Boolean := False);
+
+   procedure Toolbar_Separator
+      (c : CuBit.UI.Canvas;
+       bounds : CuBit.UI.Rect;
+       colors : CuBit.UI.Theme);
 
    procedure Metric_Card
       (c : CuBit.UI.Canvas;

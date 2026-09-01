@@ -49,6 +49,7 @@ is
       Error   : Ownership_Error;
       Falls_Through : Boolean;
       Item : Instruction;
+      Initial_Locals_Length : Binding_Count;
    begin
       Result := (others => <>);
       if Candidate.Length = 0 then
@@ -56,9 +57,16 @@ is
          return;
       end if;
 
+      if Candidate.Dynamic_Locals_Length > Candidate.Locals_Length then
+         Result.Error := Invalid_Local;
+         return;
+      end if;
+      Initial_Locals_Length :=
+        Candidate.Locals_Length - Candidate.Dynamic_Locals_Length;
+
       Initialize (Initial);
-      if Candidate.Locals_Length > 0 then
-         for Local in 0 .. Candidate.Locals_Length - 1 loop
+      if Initial_Locals_Length > 0 then
+         for Local in 0 .. Initial_Locals_Length - 1 loop
             Declare_Binding
               (Initial, Local, Candidate.Local_Types (Local), Error);
             if Error /= Ownership_Valid then
@@ -99,6 +107,18 @@ is
                      Result.Ownership_Error := Error;
                   end if;
                   Falls_Through := False;
+               when Initialize_Local =>
+                  if Natural (Item.Local) < Initial_Locals_Length or else
+                    Candidate.Types (Candidate.Local_Types (Item.Local)).Mode /=
+                      Unrestricted
+                  then
+                     Result.Error := Ownership_Failure;
+                     Error := Binding_Already_Declared;
+                  else
+                     Declare_Binding
+                       (Current, Item.Local, Candidate.Local_Types (Item.Local),
+                        Error);
+                  end if;
                when Copy_Local =>
                   Copy_Value (Current, Candidate.Types, Item.Local, Error);
                when Move_Local =>

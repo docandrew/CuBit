@@ -104,6 +104,8 @@ is
 
       if Length = 0 then
          Error := Empty_Program;
+      elsif Candidate.Dynamic_Locals_Length > Candidate.Locals_Length then
+         Error := Invalid_Ownership;
       else
          States (0).Seen := True;
 
@@ -214,11 +216,24 @@ is
                   end if;
                end if;
 
+            when Initialize_Local =>
+               if Natural (Instruction.Local) >= Candidate.Locals_Length then
+                  Error := Invalid_Ownership;
+               else
+                  Pop_Kind
+                    (State, Candidate.Local_Kinds (Instruction.Local), Error);
+               end if;
+
             when Copy_Local | Move_Local | Drop_Local |
                  Borrow_Local_RO | Return_Local_RO |
                  Borrow_Local_RW | Return_Local_RW |
                  Apply_Local_Disposition =>
-               null;
+               if Natural (Instruction.Local) >= Candidate.Locals_Length then
+                  Error := Invalid_Ownership;
+               elsif Instruction.Op in Copy_Local | Move_Local then
+                  Push_Kind
+                    (State, Candidate.Local_Kinds (Instruction.Local), Error);
+               end if;
          end case;
 
          if Error = Valid and then Falls_Through then
@@ -235,6 +250,8 @@ is
          Ownership_Candidate.Length :=
            CCL.Ownership.Bytecode.Code_Length (Length);
          Ownership_Candidate.Locals_Length := Candidate.Locals_Length;
+         Ownership_Candidate.Dynamic_Locals_Length :=
+           Candidate.Dynamic_Locals_Length;
          if Candidate.Locals_Length > 0 then
             for Local in 0 .. Candidate.Locals_Length - 1 loop
                Ownership_Candidate.Local_Types (Local) :=
@@ -256,6 +273,10 @@ is
                     (Op => CCL.Ownership.Bytecode.Jump_If,
                      Target => CCL.Ownership.Bytecode.Code_Index
                        (Candidate.Code (PC).Target),
+                     others => <>),
+                  when Initialize_Local =>
+                    (Op => CCL.Ownership.Bytecode.Initialize_Local,
+                     Local => Candidate.Code (PC).Local,
                      others => <>),
                   when Copy_Local =>
                     (Op => CCL.Ownership.Bytecode.Copy_Local,
@@ -339,13 +360,15 @@ is
       Fuel  : Natural;
       State : out Machine_State)
    is
+      Initial_Locals_Length : constant Local_Count :=
+        Item.Content.Locals_Length - Item.Content.Dynamic_Locals_Length;
    begin
       pragma Assert (Is_Valid (Item));
       State := (others => <>);
       CCL.Execution_Budgets.Initialize (State.Execution_Budget, Fuel);
       CCL.Ownership.Initialize (State.Ownership);
       CCL.Imports.Initialize (State.Import_Lifecycle);
-      if Item.Content.Locals_Length > 0 then
+      if Initial_Locals_Length > 0 then
          State.Terminal := True;
          State.Terminal_Status := Invalid_Bytecode;
       end if;
@@ -360,13 +383,15 @@ is
       Accepted : out Boolean)
    is
       Error : CCL.Ownership.Ownership_Error;
+      Initial_Locals_Length : constant Local_Count :=
+        Item.Content.Locals_Length - Item.Content.Dynamic_Locals_Length;
    begin
       pragma Assert (Is_Valid (Item));
       State := (others => <>);
       CCL.Execution_Budgets.Initialize (State.Execution_Budget, Fuel);
       CCL.Ownership.Initialize (State.Ownership);
       CCL.Imports.Initialize (State.Import_Lifecycle);
-      Accepted := Count = Item.Content.Locals_Length;
+      Accepted := Count = Initial_Locals_Length;
       if Accepted and then Count > 0 then
          for Local in 0 .. Count - 1 loop
             if Values (Local).Kind /= Item.Content.Local_Kinds (Local) or else
@@ -396,9 +421,10 @@ is
       end if;
    end Initialize_With_Locals;
 
-   procedure Continue_Execution
+   procedure Continue_Execution_For
      (Item   : Validated_Program;
       State  : in out Machine_State;
+      Instructions : Natural;
       Result : out Execution_Result)
    is
       Stack : Runtime_Stacks.Stack;
@@ -417,6 +443,7 @@ is
       Budget_Result : CCL.Execution_Budgets.Consume_Result;
       Addition_Result : Integer_64;
       Addition_Overflowed : Boolean;
+      Slice_Remaining : Natural := Instructions;
    begin
       Stack := State.Stack;
       PC := State.PC;
@@ -446,9 +473,11 @@ is
          pragma Loop_Invariant
            (Fuel_Limit (State) = Fuel_Limit (State'Loop_Entry));
          exit when Done or else
+           Slice_Remaining = 0 or else
            not CCL.Execution_Budgets.Has_Fuel (State.Execution_Budget);
          CCL.Execution_Budgets.Consume
            (State.Execution_Budget, Budget_Result);
+         Slice_Remaining := Slice_Remaining - 1;
 
          if Budget_Result /= CCL.Execution_Budgets.Consumed or else
            Program_Length (PC) >= Item.Content.Length
@@ -733,6 +762,37 @@ is
                   Done := True;
                end;
 
+            when Initialize_Local =>
+               Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+               if Stack_Result /= Runtime_Stacks.Stack_Ok or else
+                 Natural (Item.Content.Code (PC).Local) >=
+                   Item.Content.Locals_Length or else
+                 Right_Value.Kind /= Item.Content.Local_Kinds
+                   (Item.Content.Code (PC).Local) or else
+                 Right_Value.Type_Tag /= Item.Content.Local_Types
+                   (Item.Content.Code (PC).Local) or else
+                 Program_Length (PC) + 1 >= Item.Content.Length
+               then
+                  Status := Invalid_Bytecode;
+                  State.Terminal := True;
+                  State.Terminal_Status := Invalid_Bytecode;
+                  Done := True;
+               else
+                  CCL.Ownership.Declare_Binding
+                    (State.Ownership, Item.Content.Code (PC).Local,
+                     Item.Content.Local_Types (Item.Content.Code (PC).Local),
+                     Own_Error);
+                  if Own_Error /= CCL.Ownership.Ownership_Valid then
+                     Status := Invalid_Bytecode;
+                     State.Terminal := True;
+                     State.Terminal_Status := Invalid_Bytecode;
+                     Done := True;
+                  else
+                     State.Locals (Item.Content.Code (PC).Local) := Right_Value;
+                     PC := PC + 1;
+                  end if;
+               end if;
+
             when Copy_Local | Move_Local | Drop_Local |
                  Borrow_Local_RO | Return_Local_RO |
                  Borrow_Local_RW | Return_Local_RW |
@@ -794,17 +854,36 @@ is
                      State.Terminal_Status := Invalid_Bytecode;
                      Done := True;
                   else
-                     PC := PC + 1;
+                     if Item.Content.Code (PC).Op in Copy_Local | Move_Local then
+                        Runtime_Stacks.Push
+                          (Stack,
+                           State.Locals (Item.Content.Code (PC).Local),
+                           Stack_Result);
+                        if Stack_Result /= Runtime_Stacks.Stack_Ok then
+                           Status := Invalid_Bytecode;
+                           State.Terminal := True;
+                           State.Terminal_Status := Invalid_Bytecode;
+                           Done := True;
+                        else
+                           PC := PC + 1;
+                        end if;
+                     else
+                        PC := PC + 1;
+                     end if;
                   end if;
                end if;
          end case;
          end if;
       end loop;
 
-      if not Done then
+      if not Done and then
+        not CCL.Execution_Budgets.Has_Fuel (State.Execution_Budget)
+      then
          Status := Fuel_Exhausted;
          State.Terminal := True;
          State.Terminal_Status := Fuel_Exhausted;
+      elsif not Done then
+         Status := Paused;
       end if;
 
       State.Stack := Stack;
@@ -833,7 +912,36 @@ is
            (if Waiting then
                Item.Content.Imports (State.Waiting_Import).Binding
             else 0));
+   end Continue_Execution_For;
+
+   procedure Continue_Execution
+     (Item   : Validated_Program;
+      State  : in out Machine_State;
+      Result : out Execution_Result)
+   is
+   begin
+      Continue_Execution_For
+        (Item, State,
+         Natural (CCL.Execution_Budgets.Remaining (State.Execution_Budget)),
+         Result);
    end Continue_Execution;
+
+   function Snapshot (State : Machine_State) return Machine_Snapshot is
+     ((Instruction => State.PC,
+       Fuel_Remaining =>
+         CCL.Execution_Budgets.Remaining (State.Execution_Budget),
+       Steps => CCL.Execution_Budgets.Steps (State.Execution_Budget),
+       Waiting => State.Waiting,
+       Terminal => State.Terminal,
+       Status => State.Terminal_Status));
+
+   procedure Stop (State : in out Machine_State) is
+   begin
+      if not State.Terminal then
+         State.Terminal := True;
+         State.Terminal_Status := Stopped;
+      end if;
+   end Stop;
 
    procedure Complete_Host_Call
      (Item     : Validated_Program;
