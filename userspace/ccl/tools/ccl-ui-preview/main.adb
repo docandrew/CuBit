@@ -2,6 +2,8 @@ with Interfaces; use Interfaces;
 with Interfaces.C;
 with System;
 with CCL.Language;
+with CCL.Compiler;
+with CCL.Debug_Maps;
 with CCL.VM;
 with CuBit.UI;
 with CuBit.UI.Editor.Cursors;
@@ -18,6 +20,13 @@ procedure Main is
    use type Interfaces.C.unsigned;
    use type System.Address;
    use type CCL.Language.Interpretation_Status;
+   use type CCL.Language.Analysis_Status;
+   use type CCL.Compiler.Compilation_Status;
+   use type CCL.Debug_Maps.Validation_Error;
+   use type CCL.VM.Validation_Error;
+   use type CCL.VM.Execution_Status;
+   use type CCL.VM.Instruction_Index;
+   use type CCL.VM.Program_Length;
    use type CCL.VM.Value_Kind;
    use type CuBit.UI.Editor.Documents.Edit_Result;
    use type CuBit.UI.Editor.Cursors.Toggle_Result;
@@ -29,6 +38,7 @@ procedure Main is
    WIDTH  : constant Natural := 900;
    HEIGHT : constant Natural := 400;
    SOURCE_CAPACITY : constant := 4_096;
+   BYTECODE_ROW_HEIGHT : constant Positive := CuBit.UI.UI_Text_Height + 3;
 
    type Pixel_Buffer is array (Natural range 0 .. WIDTH * HEIGHT - 1)
      of aliased Unsigned_32;
@@ -43,6 +53,26 @@ procedure Main is
    Result_Last : Natural := 5;
    Last_Outcome : CCL.Language.Interpretation_Result;
    Has_Run : Boolean := False;
+   Compiled_Artifact : CCL.Compiler.Compilation_Result;
+   Verified_Artifact : CCL.VM.Validated_Program;
+   Has_Compiled : Boolean := False;
+   Has_Verified : Boolean := False;
+   Last_VM_Outcome : CCL.VM.Execution_Result;
+   VM_Has_Run : Boolean := False;
+   VM_State : CCL.VM.Machine_State;
+   VM_Has_State : Boolean := False;
+   VM_Continuous : Boolean := False;
+   VM_Snapshot : CCL.VM.Machine_Snapshot;
+   Debug_Map_Valid : Boolean := False;
+   Active_Debug_Entry : CCL.Debug_Maps.Debug_Entry;
+   Has_Active_Debug_Entry : Boolean := False;
+   type Breakpoint_Array is
+     array (CCL.VM.Instruction_Index) of Boolean;
+   Breakpoints : Breakpoint_Array := [others => False];
+   Breakpoint_Paused : Boolean := False;
+   Ignore_Current_Breakpoint : Boolean := False;
+   VM_Step_Over_Active : Boolean := False;
+   Step_Over_End : CCL.VM.Program_Length := 0;
    Diagnostic_Line : Natural := 0;
    Diagnostic_Column : Natural := 0;
    Source : CuBit.UI.Editor.Documents.Document (SOURCE_CAPACITY);
@@ -53,6 +83,7 @@ procedure Main is
    Source_View : CuBit.UI.Editor.Viewports.Viewport;
    Source_Bounds : CuBit.UI.Rect := (others => 0);
    Source_Scrollbar : CuBit.UI.Rect := (others => 0);
+   Bytecode_Content : CuBit.UI.Rect := (others => 0);
    Open_Button_Bounds : constant CuBit.UI.Rect :=
      (x => 5, y => 47, w => 27, h => 27);
    Save_Button_Bounds : constant CuBit.UI.Rect :=
@@ -71,6 +102,12 @@ procedure Main is
      (x => 257, y => 47, w => 27, h => 27);
    Run_Button_Bounds : CuBit.UI.Rect := (others => 0);
    Run_Button_Pressed : Boolean := False;
+   Compile_Button_Pressed : Boolean := False;
+   VM_Run_Button_Pressed : Boolean := False;
+   Pause_Button_Pressed : Boolean := False;
+   Stop_Button_Pressed : Boolean := False;
+   Step_Into_Button_Pressed : Boolean := False;
+   Step_Over_Button_Pressed : Boolean := False;
    Pointer_X, Pointer_Y : Natural := 0;
    Pointer_Known : Boolean := False;
    Source_Scrollbar_Pressed : CuBit.UI.Scrollbar_Part :=
@@ -91,7 +128,7 @@ procedure Main is
       elsif CuBit.UI.Point_In_Rect
         (Pointer_X, Pointer_Y, Compile_Button_Bounds)
       then
-         return "Compile to verified CCLB - source compiler not wired yet";
+         return "Compile source to CCLB and verify the artifact";
       elsif CuBit.UI.Point_In_Rect
         (Pointer_X, Pointer_Y, Run_Button_Bounds)
       then
@@ -99,7 +136,9 @@ procedure Main is
       elsif CuBit.UI.Point_In_Rect
         (Pointer_X, Pointer_Y, VM_Run_Button_Bounds)
       then
-         return "Run verified CCLB - compile a bytecode artifact first";
+         return
+           (if Has_Verified then "Run the verified CCLB artifact"
+            else "Run verified CCLB - compile an artifact first");
       elsif CuBit.UI.Point_In_Rect
         (Pointer_X, Pointer_Y, Pause_Button_Bounds)
       then
@@ -115,7 +154,11 @@ procedure Main is
       elsif CuBit.UI.Point_In_Rect
         (Pointer_X, Pointer_Y, Step_Over_Button_Bounds)
       then
-         return "Step Over - same as Step Into until call frames exist";
+         return "Step Over - run until the active source expression exits";
+      elsif Has_Compiled and then CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Bytecode_Content)
+      then
+         return "Click a bytecode row to toggle a mapped breakpoint";
       else
          return "CCL Workbench";
       end if;
@@ -152,6 +195,17 @@ procedure Main is
    procedure Invalidate_Run_Result is
    begin
       Has_Run := False;
+      VM_Has_Run := False;
+      VM_Has_State := False;
+      VM_Continuous := False;
+      Has_Compiled := False;
+      Has_Verified := False;
+      Debug_Map_Valid := False;
+      Has_Active_Debug_Entry := False;
+      Breakpoints := [others => False];
+      Breakpoint_Paused := False;
+      Ignore_Current_Breakpoint := False;
+      VM_Step_Over_Active := False;
       Diagnostic_Line := 0;
       Diagnostic_Column := 0;
       Set_Result ("source changed");
@@ -166,6 +220,8 @@ procedure Main is
       Text : constant String :=
         CuBit.UI.Editor.Documents.Content (Source);
    begin
+      VM_Continuous := False;
+      VM_Has_Run := False;
       CCL.Language.Interpret (Text, 4_096, Outcome);
       Last_Outcome := Outcome;
       Has_Run := True;
@@ -196,6 +252,254 @@ procedure Main is
          Set_Result (CCL.Language.Diagnostic_Code'Image (Outcome.Diagnostic));
       end if;
    end Run_Source;
+
+   procedure Update_Active_Debug;
+
+   procedure Compile_Source is
+      Analysis : CCL.Language.Analysis_Result;
+      Error    : CCL.VM.Validation_Error;
+      Debug_Error : CCL.Debug_Maps.Validation_Error;
+      Position : CuBit.UI.Editor.Documents.Document_Position;
+      Line, Column : Positive;
+      Text : constant String :=
+        CuBit.UI.Editor.Documents.Content (Source);
+   begin
+      Has_Run := False;
+      VM_Has_Run := False;
+      VM_Has_State := False;
+      VM_Continuous := False;
+      Has_Compiled := False;
+      Has_Verified := False;
+      Debug_Map_Valid := False;
+      Has_Active_Debug_Entry := False;
+      Breakpoints := [others => False];
+      Breakpoint_Paused := False;
+      Ignore_Current_Breakpoint := False;
+      VM_Step_Over_Active := False;
+      Diagnostic_Line := 0;
+      Diagnostic_Column := 0;
+
+      CCL.Language.Analyze (Text, Analysis);
+      if CCL.Language.Analysis_Status_Of (Analysis) /=
+        CCL.Language.Analysis_Succeeded
+      then
+         if CCL.Language.Analysis_Diagnostic_Position (Analysis) > 0 then
+            Position := CuBit.UI.Editor.Documents.Document_Position'Min
+              (CCL.Language.Analysis_Diagnostic_Position (Analysis),
+               CuBit.UI.Editor.Documents.Length (Source) + 1);
+            CuBit.UI.Editor.Documents.Position_To_Line_Column
+              (Source, Position, Line, Column);
+            Diagnostic_Line := Line;
+            Diagnostic_Column := Column;
+            Source_Histories.Break_Sequence (Source_History);
+            CuBit.UI.Editor.Cursors.Initialize (Source_Cursors, Position);
+            Reveal_Source_Cursor;
+         end if;
+         Set_Result
+           ("analysis: " & CCL.Language.Diagnostic_Code'Image
+              (CCL.Language.Analysis_Diagnostic (Analysis)));
+         return;
+      end if;
+
+      CCL.Compiler.Compile (Analysis, Compiled_Artifact);
+      Has_Compiled :=
+        Compiled_Artifact.Status = CCL.Compiler.Compilation_Succeeded;
+      if not Has_Compiled then
+         if Compiled_Artifact.Source_Position > 0 then
+            Position := CuBit.UI.Editor.Documents.Document_Position'Min
+              (Compiled_Artifact.Source_Position,
+               CuBit.UI.Editor.Documents.Length (Source) + 1);
+            CuBit.UI.Editor.Documents.Position_To_Line_Column
+              (Source, Position, Line, Column);
+            Diagnostic_Line := Line;
+            Diagnostic_Column := Column;
+            Source_Histories.Break_Sequence (Source_History);
+            CuBit.UI.Editor.Cursors.Initialize (Source_Cursors, Position);
+            Reveal_Source_Cursor;
+         end if;
+         Set_Result
+           ("compile: " & CCL.Compiler.Compilation_Status'Image
+              (Compiled_Artifact.Status));
+         return;
+      end if;
+
+      CCL.VM.Verify
+        (Compiled_Artifact.Program, Verified_Artifact, Error);
+      Has_Verified := Error = CCL.VM.Valid;
+      CCL.Debug_Maps.Validate
+        (Compiled_Artifact.Debug, Compiled_Artifact.Program.Length,
+         Debug_Error);
+      Debug_Map_Valid := Debug_Error = CCL.Debug_Maps.Debug_Map_Valid;
+      if Has_Verified then
+         CCL.VM.Initialize (Verified_Artifact, 4_096, VM_State);
+         VM_Has_State := True;
+         VM_Snapshot := CCL.VM.Snapshot (VM_State);
+         Update_Active_Debug;
+         if Debug_Map_Valid then
+            Set_Result
+              ("compiled and verified:" &
+               CCL.VM.Program_Length'Image
+                 (Compiled_Artifact.Program.Length) & " instructions");
+         else
+            Set_Result ("VM valid; debug map rejected");
+         end if;
+      else
+         Set_Result
+           ("verification: " & CCL.VM.Validation_Error'Image (Error));
+      end if;
+   end Compile_Source;
+
+   procedure Update_Active_Debug is
+      Position : CuBit.UI.Editor.Documents.Document_Position;
+      Line, Column : Positive;
+   begin
+      Has_Active_Debug_Entry := False;
+      if not Debug_Map_Valid or else not VM_Has_State then
+         return;
+      end if;
+      CCL.Debug_Maps.Find_Innermost
+        (Compiled_Artifact.Debug, VM_Snapshot.Instruction,
+         Active_Debug_Entry, Has_Active_Debug_Entry);
+      if Has_Active_Debug_Entry and then
+        Active_Debug_Entry.Source_First > 0
+      then
+         Position := CuBit.UI.Editor.Documents.Document_Position'Min
+           (Active_Debug_Entry.Source_First,
+            CuBit.UI.Editor.Documents.Length (Source) + 1);
+         CuBit.UI.Editor.Documents.Position_To_Line_Column
+           (Source, Position, Line, Column);
+         CuBit.UI.Editor.Viewports.Ensure_Visible
+           (Source_View, Line,
+            CuBit.UI.Editor.Documents.Line_Count (Source));
+      end if;
+   end Update_Active_Debug;
+
+   procedure Update_VM_Result is
+   begin
+      VM_Has_Run := True;
+      Has_Run := False;
+      Diagnostic_Line := 0;
+      Diagnostic_Column := 0;
+      if Last_VM_Outcome.Status = CCL.VM.Completed and then
+        Last_VM_Outcome.Has_Value
+      then
+         if Last_VM_Outcome.Result_Value.Kind = CCL.VM.Integer_Value then
+            Set_Result
+              (Integer_64'Image (Last_VM_Outcome.Result_Value.Integer));
+         else
+            Set_Result
+              ((if Last_VM_Outcome.Result_Value.Boolean then
+                   "true"
+                else "false"));
+         end if;
+      elsif Last_VM_Outcome.Status = CCL.VM.Paused and then VM_Continuous then
+         Set_Result ("VM running");
+      else
+         Set_Result
+           ("VM: " & CCL.VM.Execution_Status'Image
+              (Last_VM_Outcome.Status));
+      end if;
+   end Update_VM_Result;
+
+   procedure Advance_Bytecode (Instructions : Natural) is
+   begin
+      if not Has_Verified or else not VM_Has_State then
+         return;
+      end if;
+      CCL.VM.Continue_Execution_For
+        (Verified_Artifact, VM_State, Instructions, Last_VM_Outcome);
+      VM_Snapshot := CCL.VM.Snapshot (VM_State);
+      Update_Active_Debug;
+      if VM_Snapshot.Terminal or else VM_Snapshot.Waiting then
+         VM_Continuous := False;
+      end if;
+      Update_VM_Result;
+   end Advance_Bytecode;
+
+   procedure Start_Bytecode is
+   begin
+      if not Has_Verified then
+         Set_Result ("compile and verify before VM run");
+         return;
+      end if;
+
+      if not VM_Has_State or else VM_Snapshot.Terminal then
+         CCL.VM.Initialize (Verified_Artifact, 4_096, VM_State);
+         VM_Has_State := True;
+         VM_Snapshot := CCL.VM.Snapshot (VM_State);
+         Update_Active_Debug;
+      end if;
+      VM_Continuous := True;
+      VM_Step_Over_Active := False;
+      Breakpoint_Paused := False;
+      Ignore_Current_Breakpoint := True;
+      Set_Result ("VM running");
+   end Start_Bytecode;
+
+   procedure Pause_Bytecode is
+   begin
+      if VM_Has_State and then not VM_Snapshot.Terminal then
+         VM_Continuous := False;
+         VM_Step_Over_Active := False;
+         Set_Result ("VM paused");
+      end if;
+   end Pause_Bytecode;
+
+   procedure Stop_Bytecode is
+   begin
+      if VM_Has_State and then not VM_Snapshot.Terminal then
+         CCL.VM.Stop (VM_State);
+         VM_Continuous := False;
+         VM_Step_Over_Active := False;
+         Advance_Bytecode (0);
+      end if;
+   end Stop_Bytecode;
+
+   procedure Step_Bytecode is
+   begin
+      if not Has_Verified then
+         Set_Result ("compile and verify before stepping");
+         return;
+      end if;
+      if not VM_Has_State then
+         CCL.VM.Initialize (Verified_Artifact, 4_096, VM_State);
+         VM_Has_State := True;
+         VM_Snapshot := CCL.VM.Snapshot (VM_State);
+         Update_Active_Debug;
+      end if;
+      if not VM_Snapshot.Terminal then
+         VM_Continuous := False;
+         VM_Step_Over_Active := False;
+         Breakpoint_Paused := False;
+         Advance_Bytecode (1);
+      end if;
+   end Step_Bytecode;
+
+   procedure Step_Over_Bytecode is
+      Position : CCL.VM.Program_Length;
+   begin
+      if not Has_Verified then
+         Set_Result ("compile and verify before stepping");
+         return;
+      elsif not VM_Has_State or else VM_Snapshot.Terminal then
+         Step_Bytecode;
+         return;
+      end if;
+
+      Position := CCL.VM.Program_Length (VM_Snapshot.Instruction);
+      if Has_Active_Debug_Entry and then
+        Active_Debug_Entry.End_PC > Position + 1
+      then
+         Step_Over_End := Active_Debug_Entry.End_PC;
+         VM_Step_Over_Active := True;
+         VM_Continuous := True;
+         Breakpoint_Paused := False;
+         Ignore_Current_Breakpoint := True;
+         Set_Result ("stepping over source expression");
+      else
+         Step_Bytecode;
+      end if;
+   end Step_Over_Bytecode;
 
    function Source_Cursor return CuBit.UI.Editor.Cursors.Cursor_State is
      (CuBit.UI.Editor.Cursors.Element
@@ -640,16 +944,49 @@ procedure Main is
       end loop;
    end Draw_Title_Controls;
 
+   function Hex_Digit (Value : Natural) return Character is
+     (if Value < 10 then Character'Val (Character'Pos ('0') + Value)
+      else Character'Val (Character'Pos ('A') + Value - 10));
+
+   function Op_Byte (Op : CCL.VM.Op_Code) return String is
+      Value : constant Natural := CCL.VM.Op_Code'Pos (Op);
+   begin
+      return String'(1 => Hex_Digit (Value / 16),
+                     2 => Hex_Digit (Value mod 16));
+   end Op_Byte;
+
+   function Instruction_Text (Item : CCL.VM.Instruction) return String is
+   begin
+      case Item.Op is
+         when CCL.VM.Push_Integer =>
+            return "PUSH_INTEGER" & Integer_64'Image (Item.Immediate);
+         when CCL.VM.Push_Boolean =>
+            return "PUSH_BOOLEAN " &
+              (if Item.Immediate = 0 then "false" else "true");
+         when CCL.VM.Jump | CCL.VM.Jump_If_False =>
+            return CCL.VM.Op_Code'Image (Item.Op) &
+              CCL.VM.Instruction_Index'Image (Item.Target);
+         when CCL.VM.Initialize_Local | CCL.VM.Copy_Local |
+              CCL.VM.Move_Local | CCL.VM.Drop_Local |
+              CCL.VM.Borrow_Local_RO | CCL.VM.Return_Local_RO |
+              CCL.VM.Borrow_Local_RW | CCL.VM.Return_Local_RW =>
+            return CCL.VM.Op_Code'Image (Item.Op) &
+              Natural'Image (Natural (Item.Local));
+         when others =>
+            return CCL.VM.Op_Code'Image (Item.Op);
+      end case;
+   end Instruction_Text;
+
    procedure Render is
       Execution_Content : CuBit.UI.Rect;
       Editor_Content : CuBit.UI.Rect;
-      Bytecode_Content : CuBit.UI.Rect;
       Cursor_State : CuBit.UI.Editor.Cursors.Cursor_State;
       Cursor_Visuals : CuBit.UI.Text_Cursor_States
         (1 .. CuBit.UI.Editor.Cursors.MAX_CURSORS) :=
           [others => (cursor => 1, selectionStart => 1, selectionEnd => 1)];
       Cursor_Count : constant Positive :=
         CuBit.UI.Editor.Cursors.Length (Source_Cursors);
+      Visual_Count : Positive := Cursor_Count;
    begin
       CuBit.UI.Fill_Rect
         (Canvas, (x => 0, y => 0, w => WIDTH, h => HEIGHT), Colors.desktop);
@@ -691,28 +1028,40 @@ procedure Main is
         (Canvas, (x => 63, y => 47, w => 8, h => 27), Colors);
       CuBit.UI.Widgets.Toolbar_Button
         (Canvas, Compile_Button_Bounds, Colors,
-         CuBit.UI.Widgets.Compile_Program, enabled => False);
+         CuBit.UI.Widgets.Compile_Program,
+         pressed => Compile_Button_Pressed);
       Run_Button_Bounds := (x => 73, y => 47, w => 27, h => 27);
       CuBit.UI.Widgets.Toolbar_Button
         (Canvas, Run_Button_Bounds, Colors, CuBit.UI.Widgets.Interpret_Source,
          pressed => Run_Button_Pressed);
       CuBit.UI.Widgets.Toolbar_Button
         (Canvas, VM_Run_Button_Bounds, Colors, CuBit.UI.Widgets.Run_Program,
-         enabled => False);
+         enabled => Has_Verified, pressed => VM_Run_Button_Pressed);
       CuBit.UI.Widgets.Toolbar_Button
         (Canvas, Pause_Button_Bounds, Colors,
-         CuBit.UI.Widgets.Pause_Program, enabled => False);
+         CuBit.UI.Widgets.Pause_Program,
+         enabled => VM_Has_State and then VM_Continuous and then
+           not VM_Snapshot.Terminal,
+         pressed => Pause_Button_Pressed);
       CuBit.UI.Widgets.Toolbar_Button
         (Canvas, Stop_Button_Bounds, Colors,
-         CuBit.UI.Widgets.Stop_Program, enabled => False);
+         CuBit.UI.Widgets.Stop_Program,
+         enabled => VM_Has_State and then not VM_Snapshot.Terminal,
+         pressed => Stop_Button_Pressed);
       CuBit.UI.Widgets.Toolbar_Separator
         (Canvas, (x => 218, y => 47, w => 8, h => 27), Colors);
       CuBit.UI.Widgets.Toolbar_Button
         (Canvas, Step_Into_Button_Bounds, Colors,
-         CuBit.UI.Widgets.Step_Into, enabled => False);
+         CuBit.UI.Widgets.Step_Into,
+         enabled => Has_Verified and then not VM_Continuous and then
+           (not VM_Has_State or else not VM_Snapshot.Terminal),
+         pressed => Step_Into_Button_Pressed);
       CuBit.UI.Widgets.Toolbar_Button
         (Canvas, Step_Over_Button_Bounds, Colors,
-         CuBit.UI.Widgets.Step_Over, enabled => False);
+         CuBit.UI.Widgets.Step_Over,
+         enabled => Has_Verified and then not VM_Continuous and then
+           (not VM_Has_State or else not VM_Snapshot.Terminal),
+         pressed => Step_Over_Button_Pressed);
 
       CuBit.UI.Widgets.Group_Box
         (Canvas, (x => 8, y => 82, w => 220, h => 280), Colors,
@@ -725,11 +1074,19 @@ procedure Main is
          "F5 interprets source", Colors.muted, Colors.face);
       declare
          Status_Text : constant String :=
-           (if Has_Run then
+           (if VM_Continuous then "running"
+            elsif Breakpoint_Paused then "breakpoint"
+            elsif VM_Has_Run then
+               CCL.VM.Execution_Status'Image (Last_VM_Outcome.Status)
+            elsif Has_Run then
                CCL.Language.Interpretation_Status'Image (Last_Outcome.Status)
+            elsif Has_Verified then "compiled + verified"
+            elsif Has_Compiled then "compiled; verification failed"
             else "not run");
          Fuel_Text : constant String :=
-           (if Has_Run then Natural'Image (Last_Outcome.Fuel_Remaining)
+           (if VM_Has_Run then
+               Unsigned_32'Image (Last_VM_Outcome.Fuel_Remaining)
+            elsif Has_Run then Natural'Image (Last_Outcome.Fuel_Remaining)
             else "n/a");
          Location_Text : constant String :=
            (if Diagnostic_Line > 0 then
@@ -793,12 +1150,38 @@ procedure Main is
             selectionEnd => Positive'Max
               (Cursor_State.Position, Cursor_State.Anchor));
       end loop;
+      if Has_Active_Debug_Entry and then
+        Visual_Count < CuBit.UI.Editor.Cursors.MAX_CURSORS and then
+        Active_Debug_Entry.Source_First > 0 and then
+        Active_Debug_Entry.Source_End > Active_Debug_Entry.Source_First
+      then
+         declare
+            Debug_First : constant
+              CuBit.UI.Editor.Documents.Document_Position :=
+                CuBit.UI.Editor.Documents.Document_Position'Min
+                  (Active_Debug_Entry.Source_First,
+                   CuBit.UI.Editor.Documents.Length (Source) + 1);
+            Debug_End : constant
+              CuBit.UI.Editor.Documents.Document_Position :=
+                CuBit.UI.Editor.Documents.Document_Position'Min
+                  (Active_Debug_Entry.Source_End,
+                   CuBit.UI.Editor.Documents.Length (Source) + 1);
+         begin
+            if Debug_End > Debug_First then
+               Visual_Count := Visual_Count + 1;
+               Cursor_Visuals (Visual_Count) :=
+                 (cursor => Debug_First,
+                  selectionStart => Debug_First,
+                  selectionEnd => Debug_End);
+            end if;
+         end;
+      end if;
       CuBit.UI.Draw_Multiline_Text_Edit_Multiple
         (CuBit.UI.With_Clip (Canvas, Source_Bounds), Source_Bounds, Colors,
          CuBit.UI.Editor.Documents.Content (Source),
          CuBit.UI.Editor.Viewports.First_Line (Source_View),
          CuBit.UI.Editor.Viewports.Line_Capacity (Source_View),
-         Cursor_Visuals (1 .. Cursor_Count),
+         Cursor_Visuals (1 .. Visual_Count),
          focused => True, hot => False);
       CuBit.UI.Draw_Vertical_Scrollbar
         (Canvas, Source_Scrollbar, Colors, 1,
@@ -822,30 +1205,72 @@ procedure Main is
          (x => Bytecode_Content.x, y => Bytecode_Content.y,
           w => Bytecode_Content.w, h => 24),
          Colors, "PC", "Bytes", "Instruction");
-      CuBit.UI.Draw_UI_Text
-        (CuBit.UI.With_Clip
-           (Canvas,
-            (x => Bytecode_Content.x, y => Bytecode_Content.y + 34,
-             w => Bytecode_Content.w, h => 44)),
-         Bytecode_Content.x, Bytecode_Content.y + 34,
-         "No CCLB artifact", Colors.text, Colors.face);
-      CuBit.UI.Draw_UI_Text
-        (CuBit.UI.With_Clip
-           (Canvas,
-            (x => Bytecode_Content.x, y => Bytecode_Content.y + 54,
-             w => Bytecode_Content.w, h => 44)),
-         Bytecode_Content.x, Bytecode_Content.y + 54,
-         "Interpret mode does not emit bytecode",
-         Colors.muted, Colors.face);
-      CuBit.UI.Draw_UI_Text
-        (CuBit.UI.With_Clip
-           (Canvas,
-            (x => Bytecode_Content.x,
-             y => Bytecode_Content.y + Bytecode_Content.h - 42,
-             w => Bytecode_Content.w, h => 36)),
-         Bytecode_Content.x,
-         Bytecode_Content.y + Bytecode_Content.h - 42,
-         "Compile to populate this view", Colors.muted, Colors.face);
+      if Has_Compiled then
+         declare
+            Row_Height : constant Positive := BYTECODE_ROW_HEIGHT;
+            Maximum_Rows : constant Natural :=
+              (Bytecode_Content.h - 54) / Row_Height;
+            Rows : constant Natural := Natural'Min
+              (Natural (Compiled_Artifact.Program.Length), Maximum_Rows);
+            Item : CCL.VM.Instruction;
+            PC   : CCL.VM.Instruction_Index;
+            Row_Y : Natural;
+            Listing_Clip : constant CuBit.UI.Canvas := CuBit.UI.With_Clip
+              (Canvas,
+               (x => Bytecode_Content.x, y => Bytecode_Content.y + 28,
+                w => Bytecode_Content.w,
+                h => Bytecode_Content.h - 52));
+         begin
+            if Rows > 0 then
+               for Row in 0 .. Rows - 1 loop
+                  PC := CCL.VM.Instruction_Index (Row);
+                  Item := Compiled_Artifact.Program.Code (PC);
+                  Row_Y := Bytecode_Content.y + 31 + Row * Row_Height;
+                  CuBit.UI.Draw_Table_Row
+                    (Listing_Clip,
+                     (x => Bytecode_Content.x, y => Row_Y,
+                      w => Bytecode_Content.w, h => Row_Height),
+                     Colors,
+                     selected => VM_Has_State and then
+                       VM_Snapshot.Instruction = PC,
+                     hot => False,
+                     c1 =>
+                       ((if Breakpoints (PC) then "*" else " ") &
+                        Natural'Image (Row)),
+                     c2 => Op_Byte (Item.Op),
+                     c3 => Instruction_Text (Item));
+               end loop;
+            end if;
+            CuBit.UI.Draw_UI_Text
+              (CuBit.UI.With_Clip
+                 (Canvas,
+                  (x => Bytecode_Content.x,
+                   y => Bytecode_Content.y + Bytecode_Content.h - 20,
+                   w => Bytecode_Content.w, h => 18)),
+               Bytecode_Content.x,
+               Bytecode_Content.y + Bytecode_Content.h - 20,
+               (if Has_Verified then "VM verifier: VALID"
+                else "VM verifier: REJECTED"),
+               (if Has_Verified then Colors.text else Colors.muted),
+               Colors.face);
+         end;
+      else
+         CuBit.UI.Draw_UI_Text
+           (CuBit.UI.With_Clip
+              (Canvas,
+               (x => Bytecode_Content.x, y => Bytecode_Content.y + 34,
+                w => Bytecode_Content.w, h => 44)),
+            Bytecode_Content.x, Bytecode_Content.y + 34,
+            "No CCLB artifact", Colors.text, Colors.face);
+         CuBit.UI.Draw_UI_Text
+           (CuBit.UI.With_Clip
+              (Canvas,
+               (x => Bytecode_Content.x, y => Bytecode_Content.y + 54,
+                w => Bytecode_Content.w, h => 44)),
+            Bytecode_Content.x, Bytecode_Content.y + 54,
+            "Interpret mode does not emit bytecode",
+            Colors.muted, Colors.face);
+      end if;
 
       CuBit.UI.Draw_Status_Bar
         (Canvas, (x => 0, y => HEIGHT - 26, w => WIDTH, h => 26), Colors,
@@ -936,6 +1361,75 @@ begin
                   Source_Scrollbar_Pressed := CuBit.UI.Scrollbar_None;
                   Next_Scrollbar_Repeat := 0;
                   if Mouse_X >= 0 and then Mouse_Y >= 0 and then
+                    CuBit.UI.Point_In_Rect
+                      (Natural (Mouse_X), Natural (Mouse_Y),
+                       Compile_Button_Bounds)
+                  then
+                     Compile_Button_Pressed := True;
+                     Dragging := False;
+                  elsif Has_Verified and then Mouse_X >= 0 and then
+                    Mouse_Y >= 0 and then CuBit.UI.Point_In_Rect
+                      (Natural (Mouse_X), Natural (Mouse_Y),
+                       VM_Run_Button_Bounds)
+                  then
+                     VM_Run_Button_Pressed := True;
+                     Dragging := False;
+                  elsif VM_Has_State and then VM_Continuous and then
+                    not VM_Snapshot.Terminal and then Mouse_X >= 0 and then
+                    Mouse_Y >= 0 and then CuBit.UI.Point_In_Rect
+                      (Natural (Mouse_X), Natural (Mouse_Y),
+                       Pause_Button_Bounds)
+                  then
+                     Pause_Button_Pressed := True;
+                     Dragging := False;
+                  elsif VM_Has_State and then not VM_Snapshot.Terminal and then
+                    Mouse_X >= 0 and then Mouse_Y >= 0 and then
+                    CuBit.UI.Point_In_Rect
+                      (Natural (Mouse_X), Natural (Mouse_Y), Stop_Button_Bounds)
+                  then
+                     Stop_Button_Pressed := True;
+                     Dragging := False;
+                  elsif Has_Verified and then not VM_Continuous and then
+                    (not VM_Has_State or else not VM_Snapshot.Terminal) and then
+                    Mouse_X >= 0 and then Mouse_Y >= 0 and then
+                    CuBit.UI.Point_In_Rect
+                      (Natural (Mouse_X), Natural (Mouse_Y),
+                       Step_Into_Button_Bounds)
+                  then
+                     Step_Into_Button_Pressed := True;
+                     Dragging := False;
+                  elsif Has_Verified and then not VM_Continuous and then
+                    (not VM_Has_State or else not VM_Snapshot.Terminal) and then
+                    Mouse_X >= 0 and then Mouse_Y >= 0 and then
+                    CuBit.UI.Point_In_Rect
+                      (Natural (Mouse_X), Natural (Mouse_Y),
+                       Step_Over_Button_Bounds)
+                  then
+                     Step_Over_Button_Pressed := True;
+                     Dragging := False;
+                  elsif Has_Compiled and then Mouse_X >= 0 and then
+                    Mouse_Y >= 0 and then CuBit.UI.Point_In_Rect
+                      (Natural (Mouse_X), Natural (Mouse_Y), Bytecode_Content)
+                    and then Natural (Mouse_Y) >= Bytecode_Content.y + 31
+                  then
+                     declare
+                        Row : constant Natural :=
+                          (Natural (Mouse_Y) - Bytecode_Content.y - 31) /
+                            BYTECODE_ROW_HEIGHT;
+                     begin
+                        if Row < Natural (Compiled_Artifact.Program.Length) then
+                           Breakpoints (CCL.VM.Instruction_Index (Row)) :=
+                             not Breakpoints (CCL.VM.Instruction_Index (Row));
+                           Set_Result
+                             ((if Breakpoints
+                                (CCL.VM.Instruction_Index (Row))
+                               then "breakpoint set at PC"
+                               else "breakpoint cleared at PC") &
+                              Natural'Image (Row));
+                        end if;
+                        Dragging := False;
+                     end;
+                  elsif Mouse_X >= 0 and then Mouse_Y >= 0 and then
                     CuBit.UI.Point_In_Rect
                       (Natural (Mouse_X), Natural (Mouse_Y),
                        Run_Button_Bounds)
@@ -1083,6 +1577,52 @@ begin
                      end if;
                   end if;
                when 13 =>
+                  if Compile_Button_Pressed and then
+                    Mouse_X >= 0 and then Mouse_Y >= 0 and then
+                    CuBit.UI.Point_In_Rect
+                      (Natural (Mouse_X), Natural (Mouse_Y),
+                       Compile_Button_Bounds)
+                  then
+                     Compile_Source;
+                  end if;
+                  if VM_Run_Button_Pressed and then Has_Verified and then
+                    Mouse_X >= 0 and then Mouse_Y >= 0 and then
+                    CuBit.UI.Point_In_Rect
+                      (Natural (Mouse_X), Natural (Mouse_Y),
+                       VM_Run_Button_Bounds)
+                  then
+                     Start_Bytecode;
+                  end if;
+                  if Pause_Button_Pressed and then
+                    Mouse_X >= 0 and then Mouse_Y >= 0 and then
+                    CuBit.UI.Point_In_Rect
+                      (Natural (Mouse_X), Natural (Mouse_Y), Pause_Button_Bounds)
+                  then
+                     Pause_Bytecode;
+                  end if;
+                  if Stop_Button_Pressed and then
+                    Mouse_X >= 0 and then Mouse_Y >= 0 and then
+                    CuBit.UI.Point_In_Rect
+                      (Natural (Mouse_X), Natural (Mouse_Y), Stop_Button_Bounds)
+                  then
+                     Stop_Bytecode;
+                  end if;
+                  if Step_Into_Button_Pressed and then
+                    Mouse_X >= 0 and then Mouse_Y >= 0 and then
+                    CuBit.UI.Point_In_Rect
+                      (Natural (Mouse_X), Natural (Mouse_Y),
+                       Step_Into_Button_Bounds)
+                  then
+                     Step_Bytecode;
+                  end if;
+                  if Step_Over_Button_Pressed and then
+                    Mouse_X >= 0 and then Mouse_Y >= 0 and then
+                    CuBit.UI.Point_In_Rect
+                      (Natural (Mouse_X), Natural (Mouse_Y),
+                       Step_Over_Button_Bounds)
+                  then
+                     Step_Over_Bytecode;
+                  end if;
                   if Run_Button_Pressed and then
                     Mouse_X >= 0 and then Mouse_Y >= 0 and then
                     CuBit.UI.Point_In_Rect
@@ -1091,6 +1631,12 @@ begin
                   then
                      Run_Source;
                   end if;
+                  Compile_Button_Pressed := False;
+                  VM_Run_Button_Pressed := False;
+                  Pause_Button_Pressed := False;
+                  Stop_Button_Pressed := False;
+                  Step_Into_Button_Pressed := False;
+                  Step_Over_Button_Pressed := False;
                   Run_Button_Pressed := False;
                   Dragging := False;
                   Dragging_Scrollbar := False;
@@ -1191,6 +1737,39 @@ begin
                else
                   Source_Scrollbar_Pressed := CuBit.UI.Scrollbar_None;
                   Next_Scrollbar_Repeat := 0;
+               end if;
+            end;
+         end if;
+         if VM_Continuous then
+            declare
+               Current_PC : constant CCL.VM.Instruction_Index :=
+                 VM_Snapshot.Instruction;
+            begin
+               if Breakpoints (Current_PC) and then
+                 not Ignore_Current_Breakpoint
+               then
+                  VM_Continuous := False;
+                  VM_Step_Over_Active := False;
+                  Breakpoint_Paused := True;
+                  Set_Result
+                    ("breakpoint at PC" &
+                     Natural'Image (Natural (Current_PC)));
+               else
+                  Ignore_Current_Breakpoint := False;
+                  Advance_Bytecode (1);
+                  if VM_Step_Over_Active and then
+                    (VM_Snapshot.Terminal or else VM_Snapshot.Waiting or else
+                     CCL.VM.Program_Length (VM_Snapshot.Instruction) >=
+                       Step_Over_End)
+                  then
+                     VM_Continuous := False;
+                     VM_Step_Over_Active := False;
+                     if not VM_Snapshot.Terminal and then
+                       not VM_Snapshot.Waiting
+                     then
+                        Set_Result ("step over complete");
+                     end if;
+                  end if;
                end if;
             end;
          end if;

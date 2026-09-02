@@ -252,6 +252,25 @@ coalesced until cursor movement or another non-edit action breaks the sequence.
 Press F5 or Ctrl+Enter in the source editor to parse, type-check, and run the
 buffer with a fixed fuel budget. Results include remaining fuel; failures report
 a one-based source location and move the editor cursor to the erroneous form.
+The blue Compile toolbar button instead analyzes the source, lowers it to CCLB,
+and admits the artifact through the independent VM verifier. A successful
+artifact enables the green VM Run button and populates the right-hand pane with
+program counters, opcode bytes, and assembly-style instructions. Any source
+edit immediately invalidates that artifact and disables VM Run; direct
+interpretation and verified bytecode execution remain visibly separate modes.
+VM Run retains a resumable machine state. Pause freezes it, Stop makes that
+state terminal, and Step Into or Step Over advances exactly one instruction
+(the two step modes are equivalent until CCLB gains call frames). The bytecode
+table highlights the machine snapshot's current program counter while running
+or stepping. Compiler-emitted, independently validated debug ranges also
+highlight the innermost active source expression and scroll it into view. Debug
+metadata remains optional and non-authoritative: rejecting it disables the
+source highlight without affecting VM admission.
+Clicking a disassembly row toggles a breakpoint marker. Continuous execution
+checks the current PC before dispatch, pauses before a marked instruction, and
+skips that same breakpoint once when resumed. Step Over uses the active debug
+range and runs until that source expression exits, another breakpoint is hit,
+the VM waits, or execution terminates.
 Close the window with Escape or the window close button.
 SDL and its normal hosted event
 loop belong only to this Linux adapter. The window is resizable;

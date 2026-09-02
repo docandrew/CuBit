@@ -3,46 +3,25 @@ with Interfaces; use Interfaces;
 package body CCL.Language with
    SPARK_Mode => On
 is
-   subtype Node_Index is Natural range 0 .. MAX_AST_NODES - 1;
-   NO_NODE : constant Natural := MAX_AST_NODES;
+   function Analysis_Status_Of
+     (Result : Analysis_Result) return Analysis_Status is (Result.Status);
 
-   type Name_Buffer is array (Positive range 1 .. MAX_NAME_LENGTH) of Character;
+   function Analysis_Diagnostic
+     (Result : Analysis_Result) return Diagnostic_Code is (Result.Diagnostic);
 
-   type Name is record
-      Length : Natural range 0 .. MAX_NAME_LENGTH := 0;
-      Data   : Name_Buffer := [others => ' '];
-   end record;
+   function Analysis_Diagnostic_Position
+     (Result : Analysis_Result) return Natural is
+     (Result.Diagnostic_Position);
 
-   type Node_Kind is
-     (Invalid_Node,
-      Integer_Literal,
-      Boolean_Literal,
-      Name_Reference,
-      Add_Form,
-      Equal_Form,
-      Not_Form,
-      If_Form,
-      Let_Form);
+   function Analysis_Node_Count
+     (Result : Analysis_Result) return Node_Count is (Result.Tree.Length);
 
-   type Node is record
-      Kind          : Node_Kind := Invalid_Node;
-      Source_Position : Natural range 0 .. MAX_SOURCE_LENGTH + 1 := 0;
-      Integer_Value : Integer_64 := 0;
-      Boolean_Value : Boolean := False;
-      Identifier    : Name;
-      First         : Natural range 0 .. NO_NODE := NO_NODE;
-      Second        : Natural range 0 .. NO_NODE := NO_NODE;
-      Third         : Natural range 0 .. NO_NODE := NO_NODE;
-   end record;
+   function Analysis_Root
+     (Result : Analysis_Result) return Node_Reference is (Result.Tree.Root);
 
-   type Node_Array is array (Node_Index) of Node;
-
-   type Syntax_Tree is record
-      Length : Natural range 0 .. MAX_AST_NODES := 0;
-      Nodes  : Node_Array := [others => (others => <>)];
-   end record;
-
-   type Static_Type is (Invalid_Type, Integer_Type, Boolean_Type);
+   function Analysis_Node
+     (Result : Analysis_Result;
+      Index  : Node_Index) return Node is (Result.Tree.Nodes (Index));
 
    type Type_Binding is record
       Identifier : Name;
@@ -88,15 +67,7 @@ is
       if Item.Length /= Text'Length or else Text'Length > MAX_NAME_LENGTH then
          return False;
       end if;
-
-      if Item.Length > 0 then
-         for Position in 1 .. Item.Length loop
-            if Item.Data (Position) /= Text (Text'First + Position - 1) then
-               return False;
-            end if;
-         end loop;
-      end if;
-      return True;
+      return Item.Data (1 .. Item.Length) = Text;
    end Name_Is;
 
    function Addition_Overflows (Left, Right : Integer_64) return Boolean is
@@ -106,14 +77,18 @@ is
          Left < Integer_64'First - Right
       else False);
 
-   procedure Interpret
+   procedure Process_Source
      (Source : String;
       Fuel   : Natural;
-      Result : out Interpretation_Result)
+      Analyze_Input : Boolean;
+      Evaluate : Boolean;
+      Result : out Interpretation_Result;
+      Tree   : in out Syntax_Tree)
+   with
+      Post => Result.Fuel_Remaining <= Fuel
    is
-      Tree       : Syntax_Tree;
       Cursor     : Natural := 0;
-      Root       : Natural range 0 .. NO_NODE := NO_NODE;
+      Root       : Node_Reference := NO_NODE;
       Diagnostic : Diagnostic_Code := No_Diagnostic;
       Diagnostic_Position : Natural range 0 .. MAX_SOURCE_LENGTH + 1 := 0;
       subtype Diagnostic_Source_Position is
@@ -160,7 +135,7 @@ is
 
       procedure Add_Node
         (Item  : Node;
-         Index : out Natural)
+         Index : out Node_Reference)
       is
       begin
          if Tree.Length = MAX_AST_NODES then
@@ -187,9 +162,9 @@ is
 
       procedure Parse_Expression
         (Depth : Natural;
-         Index : out Natural);
+         Index : out Node_Reference);
 
-      procedure Parse_Integer (Index : out Natural) is
+      procedure Parse_Integer (Index : out Node_Reference) is
          Negative  : Boolean := False;
          Magnitude : Unsigned_64 := 0;
          Digit     : Unsigned_64;
@@ -239,13 +214,16 @@ is
             Index);
       end Parse_Integer;
 
-      procedure Parse_List (Depth : Natural; Index : out Natural) is
+      procedure Parse_List
+        (Depth : Natural;
+         Index : out Node_Reference)
+      is
          Operator_Name : Name;
          Binding_Name  : Name;
          Ok            : Boolean;
-         A             : Natural range 0 .. NO_NODE := NO_NODE;
-         B             : Natural range 0 .. NO_NODE := NO_NODE;
-         C             : Natural range 0 .. NO_NODE := NO_NODE;
+         A             : Node_Reference := NO_NODE;
+         B             : Node_Reference := NO_NODE;
+         C             : Node_Reference := NO_NODE;
       begin
          Read_Name (Operator_Name, Ok);
          if not Ok then
@@ -333,7 +311,7 @@ is
 
       procedure Parse_Expression
         (Depth : Natural;
-         Index : out Natural)
+         Index : out Node_Reference)
       is
          Item : Name;
          Ok   : Boolean;
@@ -385,6 +363,12 @@ is
          else
             Diagnostic := Unexpected_Token;
          end if;
+         if Index < Tree.Length then
+            Tree.Nodes (Node_Index (Index)).Source_Position :=
+              To_Diagnostic_Position (Start);
+            Tree.Nodes (Node_Index (Index)).Source_End_Position :=
+              To_Diagnostic_Position (Cursor);
+         end if;
          if Diagnostic /= No_Diagnostic and then Diagnostic_Position = 0 then
             Diagnostic_Position := To_Diagnostic_Position (Start);
          end if;
@@ -402,6 +386,8 @@ is
          Right_Type : Static_Type := Invalid_Type;
          Third_Type : Static_Type := Invalid_Type;
          Found      : Boolean := False;
+         Entry_Environment_Length : constant Natural range 0 .. MAX_BINDINGS :=
+           Type_Env_Length;
       begin
          Kind := Invalid_Type;
          if Diagnostic /= No_Diagnostic then
@@ -484,10 +470,13 @@ is
                   Type_Env_Length := Type_Env_Length + 1;
                   Check_Node (Tree.Nodes (Node_Index (Index)).Second,
                               Depth + 1, Kind);
-                  Type_Env_Length := Type_Env_Length - 1;
+                  Type_Env_Length := Entry_Environment_Length;
                end if;
             when Invalid_Node => Diagnostic := Unexpected_Token;
          end case;
+         if Diagnostic = No_Diagnostic then
+            Tree.Nodes (Node_Index (Index)).Static_Kind := Kind;
+         end if;
          if Diagnostic /= No_Diagnostic and then Diagnostic_Position = 0 then
             Diagnostic_Position :=
               Tree.Nodes (Node_Index (Index)).Source_Position;
@@ -496,7 +485,8 @@ is
 
       Value_Env : Value_Environment := [others => (others => <>)];
       Value_Env_Length : Natural range 0 .. MAX_BINDINGS := 0;
-      Fuel_Left : Natural := Fuel;
+      subtype Remaining_Fuel is Natural range 0 .. Fuel;
+      Fuel_Left : Remaining_Fuel := Fuel;
       Eval_Status : Interpretation_Status := Succeeded;
 
       procedure Evaluate_Node
@@ -509,6 +499,8 @@ is
          Right : CCL.VM.Value := (others => <>);
          Good  : Boolean;
          Found : Boolean := False;
+         Entry_Environment_Length : constant Natural range 0 .. MAX_BINDINGS :=
+           Value_Env_Length;
       begin
          Item := (others => <>);
          Ok := False;
@@ -603,7 +595,7 @@ is
                   Value_Env_Length := Value_Env_Length + 1;
                   Evaluate_Node (Tree.Nodes (Node_Index (Index)).Second,
                                  Depth + 1, Item, Good);
-                  Value_Env_Length := Value_Env_Length - 1;
+                  Value_Env_Length := Entry_Environment_Length;
                else
                   Good := False;
                end if;
@@ -622,30 +614,41 @@ is
          Has_Value => False, Result_Value => (others => <>),
          Fuel_Remaining => Fuel);
 
-      if Source'Length > MAX_SOURCE_LENGTH then
-         Result.Diagnostic := Source_Too_Long;
-         Result.Diagnostic_Position := MAX_SOURCE_LENGTH + 1;
-         return;
+      if Analyze_Input then
+         Tree := (others => <>);
+         if Source'Length > MAX_SOURCE_LENGTH then
+            Result.Diagnostic := Source_Too_Long;
+            Result.Diagnostic_Position := MAX_SOURCE_LENGTH + 1;
+            return;
+         end if;
+
+         Parse_Expression (0, Root);
+         Tree.Root := Root;
+         Skip_Whitespace;
+         if Diagnostic = No_Diagnostic and then Cursor /= Source'Length then
+            Diagnostic := Trailing_Input;
+         end if;
+         if Diagnostic /= No_Diagnostic then
+            Result.Diagnostic := Diagnostic;
+            Result.Diagnostic_Position :=
+              (if Diagnostic_Position > 0 then Diagnostic_Position
+               else To_Diagnostic_Position (Cursor));
+            return;
+         end if;
+
+         Check_Node (Root, 0, Root_Type);
+         if Diagnostic /= No_Diagnostic or else Root_Type = Invalid_Type then
+            Result.Status := Type_Check_Failed;
+            Result.Diagnostic := Diagnostic;
+            Result.Diagnostic_Position := Diagnostic_Position;
+            return;
+         end if;
+      else
+         Root := Tree.Root;
       end if;
 
-      Parse_Expression (0, Root);
-      Skip_Whitespace;
-      if Diagnostic = No_Diagnostic and then Cursor /= Source'Length then
-         Diagnostic := Trailing_Input;
-      end if;
-      if Diagnostic /= No_Diagnostic then
-         Result.Diagnostic := Diagnostic;
-         Result.Diagnostic_Position :=
-           (if Diagnostic_Position > 0 then Diagnostic_Position
-            else To_Diagnostic_Position (Cursor));
-         return;
-      end if;
-
-      Check_Node (Root, 0, Root_Type);
-      if Diagnostic /= No_Diagnostic or else Root_Type = Invalid_Type then
-         Result.Status := Type_Check_Failed;
-         Result.Diagnostic := Diagnostic;
-         Result.Diagnostic_Position := Diagnostic_Position;
+      if not Evaluate then
+         Result.Status := Succeeded;
          return;
       end if;
 
@@ -656,5 +659,64 @@ is
          Result.Has_Value := True;
          Result.Result_Value := Value;
       end if;
+   end Process_Source;
+
+   procedure Analyze
+     (Source : String;
+      Result : out Analysis_Result)
+   is
+      Tree    : Syntax_Tree;
+      Outcome : Interpretation_Result;
+   begin
+      Process_Source
+        (Source   => Source,
+         Fuel     => 0,
+         Analyze_Input => True,
+         Evaluate => False,
+         Result   => Outcome,
+         Tree     => Tree);
+
+      Result :=
+        (Status =>
+           (case Outcome.Status is
+               when Succeeded => Analysis_Succeeded,
+               when Type_Check_Failed => Analysis_Type_Check_Failed,
+               when others => Analysis_Parse_Failed),
+         Diagnostic => Outcome.Diagnostic,
+         Diagnostic_Position => Outcome.Diagnostic_Position,
+         Tree => Tree);
+   end Analyze;
+
+   procedure Interpret
+     (Source : String;
+      Fuel   : Natural;
+      Result : out Interpretation_Result)
+   is
+      Analysis : Analysis_Result;
+      Tree     : Syntax_Tree;
+   begin
+      Analyze (Source, Analysis);
+      if Analysis.Status /= Analysis_Succeeded then
+         Result :=
+           (Status =>
+              (if Analysis.Status = Analysis_Type_Check_Failed then
+                  Type_Check_Failed
+               else Parse_Failed),
+            Diagnostic => Analysis.Diagnostic,
+            Diagnostic_Position => Analysis.Diagnostic_Position,
+            Has_Value => False,
+            Result_Value => (others => <>),
+            Fuel_Remaining => Fuel);
+         return;
+      end if;
+
+      Tree := Analysis.Tree;
+      Process_Source
+        (Source   => Source,
+         Fuel     => Fuel,
+         Analyze_Input => False,
+         Evaluate => True,
+         Result   => Result,
+         Tree     => Tree);
    end Interpret;
 end CCL.Language;

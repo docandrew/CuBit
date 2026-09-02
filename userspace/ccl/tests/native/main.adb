@@ -2,6 +2,8 @@ with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CCL.VM; use CCL.VM;
 with CCL.Language;
+with CCL.Compiler;
+with CCL.Debug_Maps;
 with CCL.Scheduler; use CCL.Scheduler;
 with CCL.Format; use CCL.Format;
 with CCL.Ownership; use CCL.Ownership;
@@ -11,6 +13,11 @@ with CCL.Imports;
 procedure Main is
    use type CCL.Language.Interpretation_Status;
    use type CCL.Language.Diagnostic_Code;
+   use type CCL.Language.Analysis_Status;
+   use type CCL.Language.Node_Kind;
+   use type CCL.Language.Static_Type;
+   use type CCL.Compiler.Compilation_Status;
+   use type CCL.Debug_Maps.Validation_Error;
 
    Failures : Natural := 0;
 
@@ -272,8 +279,40 @@ procedure Main is
    end Test_Runtime_Limits;
 
    procedure Test_Source_Language is
-      Outcome : CCL.Language.Interpretation_Result;
+      Outcome  : CCL.Language.Interpretation_Result;
+      Analysis : CCL.Language.Analysis_Result;
    begin
+      CCL.Language.Analyze ("(+ 20 22)", Analysis);
+      Check
+        (CCL.Language.Analysis_Status_Of (Analysis) =
+           CCL.Language.Analysis_Succeeded and then
+         CCL.Language.Analysis_Root (Analysis) <
+           CCL.Language.Analysis_Node_Count (Analysis) and then
+         CCL.Language.Analysis_Node
+           (Analysis,
+            CCL.Language.Node_Index
+              (CCL.Language.Analysis_Root (Analysis))).Kind =
+             CCL.Language.Add_Form and then
+         CCL.Language.Analysis_Node
+           (Analysis,
+            CCL.Language.Node_Index
+              (CCL.Language.Analysis_Root (Analysis))).Static_Kind =
+             CCL.Language.Integer_Type and then
+         CCL.Language.Analysis_Node
+           (Analysis,
+            CCL.Language.Node_Index
+              (CCL.Language.Analysis_Root (Analysis))).Source_Position = 1,
+         "analyze typed source tree");
+
+      CCL.Language.Analyze ("(+ true 4)", Analysis);
+      Check
+        (CCL.Language.Analysis_Status_Of (Analysis) =
+           CCL.Language.Analysis_Type_Check_Failed and then
+         CCL.Language.Analysis_Diagnostic (Analysis) =
+           CCL.Language.Expected_Integer and then
+         CCL.Language.Analysis_Diagnostic_Position (Analysis) = 1,
+         "report shared frontend type diagnostic");
+
       CCL.Language.Interpret ("(+ 20 22)", 16, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then
@@ -339,6 +378,110 @@ procedure Main is
          Outcome.Diagnostic_Position = 5,
          "reject malformed source");
    end Test_Source_Language;
+
+   procedure Test_Source_Compiler is
+      Analysis : CCL.Language.Analysis_Result;
+      Compiled : CCL.Compiler.Compilation_Result;
+      Checked  : Validated_Program;
+      Error    : Validation_Error;
+      Outcome  : Execution_Result;
+      Debug_Error : CCL.Debug_Maps.Validation_Error;
+      Debug_Match : CCL.Debug_Maps.Debug_Entry;
+      Debug_Found : Boolean;
+   begin
+      CCL.Language.Analyze ("(not (= (+ 20 22) 41))", Analysis);
+      CCL.Compiler.Compile (Analysis, Compiled);
+      Check
+        (Compiled.Status = CCL.Compiler.Compilation_Succeeded and then
+         Compiled.Program.Length = 7 and then
+         Compiled.Program.Code (0).Op = Push_Integer and then
+         Compiled.Program.Code (2).Op = Add_Integer and then
+         Compiled.Program.Code (4).Op = Equal_Integer and then
+         Compiled.Program.Code (5).Op = Not_Boolean and then
+         Compiled.Program.Code (6).Op = Halt,
+         "compile scalar typed tree to CCLB");
+      CCL.Debug_Maps.Validate
+        (Compiled.Debug, Compiled.Program.Length, Debug_Error);
+      CCL.Debug_Maps.Find_Innermost
+        (Compiled.Debug, 2, Debug_Match, Debug_Found);
+      Check
+        (Debug_Error = CCL.Debug_Maps.Debug_Map_Valid and then
+         Debug_Found and then Debug_Match.First_PC <= 2 and then
+         Debug_Match.End_PC > 2 and then
+         Debug_Match.Source_First > 0 and then
+         Debug_Match.Source_End > Debug_Match.Source_First,
+         "validate and resolve innermost CCL debug mapping");
+
+      Verify (Compiled.Program, Checked, Error);
+      Check (Error = Valid, "verify compiled scalar CCLB");
+      if Error = Valid then
+         Execute (Checked, 16, Outcome);
+         Check
+           (Outcome.Status = Completed and then
+            Outcome.Has_Value and then
+            Outcome.Result_Value.Kind = Boolean_Value and then
+            Outcome.Result_Value.Boolean,
+            "execute compiled scalar CCLB");
+      end if;
+
+      CCL.Language.Analyze ("(if false 1 (+ 20 22))", Analysis);
+      CCL.Compiler.Compile (Analysis, Compiled);
+      Check
+        (Compiled.Status = CCL.Compiler.Compilation_Succeeded and then
+         Compiled.Program.Length = 8 and then
+         Compiled.Program.Code (1).Op = Jump_If_False and then
+         Compiled.Program.Code (1).Target = 4 and then
+         Compiled.Program.Code (3).Op = Jump and then
+         Compiled.Program.Code (3).Target = 7,
+         "compile forward conditional branches");
+      Verify (Compiled.Program, Checked, Error);
+      Check (Error = Valid, "verify compiled conditional CCLB");
+      if Error = Valid then
+         Execute (Checked, 16, Outcome);
+         Check
+           (Outcome.Status = Completed and then
+            Outcome.Has_Value and then
+            Outcome.Result_Value.Kind = Integer_Value and then
+            Outcome.Result_Value.Integer = 42,
+            "execute compiled conditional CCLB");
+      end if;
+
+      CCL.Language.Analyze
+        ("(let ((answer 40)) " &
+         "(let ((answer (+ answer 2))) (if true answer 0)))",
+         Analysis);
+      CCL.Compiler.Compile (Analysis, Compiled);
+      Check
+        (Compiled.Status = CCL.Compiler.Compilation_Succeeded and then
+         Compiled.Program.Locals_Length = 2 and then
+         Compiled.Program.Dynamic_Locals_Length = 2,
+         "compile nested lexical locals and shadowing");
+      Verify (Compiled.Program, Checked, Error);
+      Check (Error = Valid, "verify compiled lexical-local CCLB");
+      if Error = Valid then
+         Execute (Checked, 32, Outcome);
+         Check
+           (Outcome.Status = Completed and then
+            Outcome.Has_Value and then
+            Outcome.Result_Value.Kind = Integer_Value and then
+            Outcome.Result_Value.Integer = 42,
+            "execute compiled lexical-local CCLB");
+      end if;
+
+      CCL.Language.Analyze
+        ("(if true (let ((branch-only 1)) branch-only) 2)", Analysis);
+      CCL.Compiler.Compile (Analysis, Compiled);
+      Check
+        (Compiled.Status = CCL.Compiler.Unsupported_Form and then
+         Compiled.Source_Position = 10,
+         "reject branch-local lifetime without ownership join semantics");
+
+      CCL.Language.Analyze ("(+ true 1)", Analysis);
+      CCL.Compiler.Compile (Analysis, Compiled);
+      Check
+        (Compiled.Status = CCL.Compiler.Analysis_Failed,
+         "refuse compilation after failed analysis");
+   end Test_Source_Compiler;
 
    procedure Test_Typed_Host_Import is
       Candidate : Program;
@@ -1151,6 +1294,7 @@ begin
    Test_Rejections;
    Test_Runtime_Limits;
    Test_Source_Language;
+   Test_Source_Compiler;
    Test_Typed_Host_Import;
    Test_Isolate_Scheduler;
    Test_Module_Format;
