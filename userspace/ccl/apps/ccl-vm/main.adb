@@ -164,6 +164,84 @@ begin
    end;
 
    declare
+      CLOCK_SLOT : constant CapabilitySlot := 25;
+      REPLY_OK : constant Unsigned_32 := 16#F000#;
+      State : Machine_State;
+      Request : Message := NULL_MESSAGE;
+      Completions : CompletionRing := [others => NULL_COMPLETION];
+      Completion_Count : Unsigned_64;
+      Submit_OK : Boolean;
+      IMPORT_TOKEN : constant Unsigned_64 := 16#CC10_0002#;
+      Response_Valid : Boolean;
+   begin
+      Candidate := (others => <>);
+      Candidate.Imports_Length := 1;
+      Candidate.Imports (0) :=
+        (Argument => Integer_Value,
+         Result => Integer_Value,
+         Authority => Observe_Authority,
+         Binding => Unsigned_32 (DRIVER_CLOCK), others => <>);
+      Candidate.Length := 3;
+      Candidate.Code (0) :=
+        (Op => Push_Integer, Immediate => 0, others => <>);
+      Candidate.Code (1) := (Op => Invoke_Import, Import => 0, others => <>);
+      Candidate.Code (2) := (Op => Halt, others => <>);
+
+      Verify (Candidate, Checked, Error);
+      if Error = Valid then
+         Initialize (Checked, 16, State);
+         Continue_Execution (Checked, State, VM_Result);
+      end if;
+
+      if Error /= Valid or else VM_Result.Status /= Waiting_For_Host or else
+        VM_Result.Requested_Authority /= Observe_Authority or else
+        VM_Result.Requested_Binding /= Unsigned_32 (DRIVER_CLOCK) or else
+        VM_Result.Request_Argument.Kind /= Integer_Value or else
+        VM_Result.Request_Argument.Integer /= 0
+      then
+         debugPrint ("ccl-vm: clock request FAIL" & LF);
+         All_Passed := False;
+      else
+         Request.tag :=
+           (label => CuBit.Protocols.CLOCK_OP_MONOTONIC_MS, length => 1,
+            flags => 0, badge => 0);
+         Request.words (0) := 0;
+         Submit_OK := capSubmit (CLOCK_SLOT, Request, IMPORT_TOKEN);
+         if Submit_OK then
+            Completion_Count :=
+              waitCompletion (Completions'Address, max => 1, min => 1);
+         else
+            Completion_Count := 0;
+         end if;
+         Response_Valid :=
+           Completion_Count = 1 and then Completions (0).valid and then
+           Completions (0).status = COMPLETION_OK and then
+           Completions (0).token = IMPORT_TOKEN and then
+           Completions (0).msg.tag.label = REPLY_OK and then
+           Completions (0).msg.tag.length = 1 and then
+           Completions (0).msg.words (0) <= Unsigned_64 (Integer_64'Last);
+         Complete_Host_Call
+           (Checked, State,
+            Integer_Constant
+              ((if Response_Valid then
+                   Integer_64 (Completions (0).msg.words (0))
+                else 0)),
+            Response_Valid);
+         Continue_Execution (Checked, State, VM_Result);
+
+         if VM_Result.Status = Completed and then VM_Result.Has_Value and then
+           VM_Result.Result_Value.Kind = Integer_Value and then
+           VM_Result.Result_Value.Integer >= 0
+         then
+            debugPrint ("ccl-vm: clock IPC PASS" & LF);
+         else
+            debugPrint ("ccl-vm: clock IPC FAIL" & LF);
+            All_Passed := False;
+         end if;
+      end if;
+   end;
+
+   declare
       IMPORT_SLOT : constant CapabilitySlot := 24;
       OP_INCREMENT : constant Unsigned_32 :=
         CuBit.Protocols.CCL_TEST_OP_INCREMENT;

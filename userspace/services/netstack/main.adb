@@ -197,7 +197,7 @@ procedure main is
       maxLen     : Natural := 0;
       txid       : Unsigned_16 := 0;
       dstPort    : Unsigned_16 := 0;
-      replySlot  : Unsigned_64 := 0;
+      replySlot  : CapabilitySlot := CapabilitySlot'First;
    end record;
 
    MAX_PENDING : constant := 8;
@@ -856,7 +856,9 @@ procedure main is
    function tcpConnect (dstIP   : Net.IPv4Address;
                         dstMAC  : Net.MACAddress;
                         dstPort : Unsigned_16) return Integer;
-   procedure replyError (to : ProcessID);
+   procedure replyError
+     (to   : ProcessID;
+      slot : CapabilitySlot := CapabilitySlot'Last);
 
    ---------------------------------------------------------------------------
    --  handleDNSResponse - parse DNS A-record response, extract IP
@@ -992,7 +994,7 @@ procedure main is
                      words    => (0 => ipPacked, others => 0));
                   ignore : Unsigned_64;
                begin
-                  ignore := reply (pendingReqs (i).sender, replyMsg);
+                  ignore := replyCap (pendingReqs (i).replySlot, replyMsg);
                end;
                pendingReqs (i).kind := PENDING_NONE;
                exit;
@@ -1016,7 +1018,8 @@ procedure main is
                                             pendingReqs (i).dstPort);
                      if connIdx < 0 then
                         channels (chIdx).kind := CHANNEL_NONE;
-                        replyError (pendingReqs (i).sender);
+                        replyError (pendingReqs (i).sender,
+                                    pendingReqs (i).replySlot);
                         pendingReqs (i).kind := PENDING_NONE;
                      else
                         channels (chIdx).connIdx := connIdx;
@@ -1027,7 +1030,8 @@ procedure main is
                         pendingReqs (i).connIdx := connIdx;
                      end if;
                   else
-                     replyError (pendingReqs (i).sender);
+                     replyError (pendingReqs (i).sender,
+                                 pendingReqs (i).replySlot);
                      pendingReqs (i).kind := PENDING_NONE;
                   end if;
                end;
@@ -1302,7 +1306,10 @@ procedure main is
    end sendTCPDNSQuery;
 
    --  Forward declaration for reply helper (defined later in file)
-   procedure replyOKWord (to : ProcessID; w0 : Unsigned_64);
+   procedure replyOKWord
+     (to   : ProcessID;
+      w0   : Unsigned_64;
+      slot : CapabilitySlot := CapabilitySlot'Last);
 
    ---------------------------------------------------------------------------
    --  completePendingConnect - complete a PENDING_CONNECT for connIdx
@@ -1316,11 +1323,13 @@ procedure main is
             if pendingReqs (i).channelIdx >= 0 then
                --  Channel API: reply with channel handle
                replyOKWord (pendingReqs (i).sender,
-                            Unsigned_64 (pendingReqs (i).channelIdx));
+                            Unsigned_64 (pendingReqs (i).channelIdx),
+                            pendingReqs (i).replySlot);
             else
                --  Legacy API: reply with raw connIdx
                replyOKWord (pendingReqs (i).sender,
-                            Unsigned_64 (connIdx));
+                            Unsigned_64 (connIdx),
+                            pendingReqs (i).replySlot);
             end if;
             pendingReqs (i).kind := PENDING_NONE;
             exit;
@@ -1335,7 +1344,8 @@ procedure main is
             pendingReqs (i).channelIdx >= 0
          then
             replyOKWord (pendingReqs (i).sender,
-                         Unsigned_64 (pendingReqs (i).channelIdx));
+                         Unsigned_64 (pendingReqs (i).channelIdx),
+                         pendingReqs (i).replySlot);
             pendingReqs (i).kind := PENDING_NONE;
             exit;
          end if;
@@ -1374,8 +1384,14 @@ procedure main is
       end if;
    end bufferReceived;
 
-   procedure replyBuffered (snd : ProcessID; connIdx : Natural;
-                            bufAddr : System.Address; offset, maxLen : Natural) is
+   procedure replyBuffered
+     (snd      : ProcessID;
+      connIdx  : Natural;
+      bufAddr  : System.Address;
+      offset   : Natural;
+      maxLen   : Natural;
+      slot     : CapabilitySlot := CapabilitySlot'Last)
+   is
       copyLen : constant Natural := Natural'Min (rxBuffers (connIdx).len, maxLen);
    begin
       if copyLen > 0 then
@@ -1392,7 +1408,7 @@ procedure main is
          end loop;
          rxBuffers (connIdx).len := rxBuffers (connIdx).len - copyLen;
       end if;
-      replyOKWord (snd, Unsigned_64 (copyLen));
+      replyOKWord (snd, Unsigned_64 (copyLen), slot);
    end replyBuffered;
 
    procedure completePendingBuffered (connIdx : Natural) is
@@ -1404,7 +1420,8 @@ procedure main is
             replyBuffered (pendingReqs (i).sender, connIdx,
                            pendingReqs (i).bufAddr,
                            pendingReqs (i).bufOff,
-                           pendingReqs (i).maxLen);
+                           pendingReqs (i).maxLen,
+                           pendingReqs (i).replySlot);
             pendingReqs (i).kind := PENDING_NONE;
             return;
          end if;
@@ -1430,7 +1447,7 @@ procedure main is
                   words    => (others => 0));
                ignore : Unsigned_64;
             begin
-               ignore := reply (pendingReqs (i).sender, eofMsg);
+               ignore := replyCap (pendingReqs (i).replySlot, eofMsg);
             end;
             pendingReqs (i).kind := PENDING_NONE;
          end if;
@@ -1448,7 +1465,8 @@ procedure main is
              pendingReqs (i).kind = PENDING_OPEN) and
             pendingReqs (i).connIdx = connIdx
          then
-            replyError (pendingReqs (i).sender);
+            replyError (pendingReqs (i).sender,
+                        pendingReqs (i).replySlot);
             pendingReqs (i).kind := PENDING_NONE;
          end if;
       end loop;
@@ -1798,8 +1816,8 @@ procedure main is
                                            3 => 0));
                            ignore : Unsigned_64;
                         begin
-                           ignore := reply (pendingReqs (i).sender,
-                                            replyMsg);
+                           ignore := replyCap
+                             (pendingReqs (i).replySlot, replyMsg);
                         end;
                         pendingReqs (i).kind := PENDING_NONE;
                         matched := True;
@@ -2123,15 +2141,20 @@ procedure main is
    --  addPending - store a pending request in the first free slot
    ---------------------------------------------------------------------------
    function addPending (req : PendingRequest) return Boolean is
-      ignore : Unsigned_64;
+      savedSlot : CapabilitySlot;
    begin
       for i in pendingReqs'Range loop
          if pendingReqs (i).kind = PENDING_NONE then
+            savedSlot := CapabilitySlot (16 + i);
+
+            --  Deferral is valid only if the kernel moved the current
+            --  one-use reply authority into our selected pending slot.
+            if saveReplyCap (Unsigned_64 (savedSlot)) /= 1 then
+               return False;
+            end if;
+
             pendingReqs (i) := req;
-            -- Save reply cap from slot 63 to slot 16+i so the next
-            -- receive() won't overwrite it.
-            pendingReqs (i).replySlot := Unsigned_64 (16 + i);
-            ignore := saveReplyCap (Unsigned_64 (16 + i));
+            pendingReqs (i).replySlot := savedSlot;
             return True;
          end if;
       end loop;
@@ -2144,7 +2167,10 @@ procedure main is
    ---------------------------------------------------------------------------
    --  replyError - send REPLY_ERR to a sender
    ---------------------------------------------------------------------------
-   procedure replyError (to : ProcessID) is
+   procedure replyError
+     (to   : ProcessID;
+      slot : CapabilitySlot := CapabilitySlot'Last)
+   is
       errMsg : constant Message :=
         (tag      => (label  => REPLY_ERR,
                       length => 0,
@@ -2154,13 +2180,18 @@ procedure main is
          words    => (others => 0));
       ignore : Unsigned_64;
    begin
-      ignore := reply (to, errMsg);
+      pragma Unreferenced (to);
+      ignore := replyCap (slot, errMsg);
    end replyError;
 
    ---------------------------------------------------------------------------
    --  replyOK - send REPLY_OK with word0 to a sender
    ---------------------------------------------------------------------------
-   procedure replyOKWord (to : ProcessID; w0 : Unsigned_64) is
+   procedure replyOKWord
+     (to   : ProcessID;
+      w0   : Unsigned_64;
+      slot : CapabilitySlot := CapabilitySlot'Last)
+   is
       okMsg : constant Message :=
         (tag      => (label  => REPLY_OK,
                       length => 1,
@@ -2170,7 +2201,8 @@ procedure main is
          words    => (0 => w0, others => 0));
       ignore : Unsigned_64;
    begin
-      ignore := reply (to, okMsg);
+      pragma Unreferenced (to);
+      ignore := replyCap (slot, okMsg);
    end replyOKWord;
 
    ---------------------------------------------------------------------------
@@ -2392,7 +2424,7 @@ procedure main is
                words    => (others => 0));
             ignore : Unsigned_64;
          begin
-            ignore := reply (snd, eofMsg);
+            ignore := replyCap (CapabilitySlot'Last, eofMsg);
          end;
          return;
       end if;
@@ -2444,7 +2476,7 @@ procedure main is
                   words    => (others => 0));
                ignore : Unsigned_64;
             begin
-               ignore := reply (pendingReqs (i).sender, eofMsg);
+               ignore := replyCap (pendingReqs (i).replySlot, eofMsg);
             end;
             pendingReqs (i).kind := PENDING_NONE;
             exit;
@@ -2694,7 +2726,7 @@ procedure main is
                   words    => (others => 0));
                ignore : Unsigned_64;
             begin
-               ignore := reply (snd, eofMsg);
+               ignore := replyCap (CapabilitySlot'Last, eofMsg);
             end;
             return;
          end if;
@@ -2750,7 +2782,7 @@ procedure main is
                      words    => (others => 0));
                   ignore : Unsigned_64;
                begin
-                  ignore := reply (pendingReqs (i).sender, eofMsg);
+                  ignore := replyCap (pendingReqs (i).replySlot, eofMsg);
                end;
                pendingReqs (i).kind := PENDING_NONE;
             end if;
@@ -2848,7 +2880,7 @@ procedure main is
                          others => 0));
          ignore : Unsigned_64;
       begin
-         ignore := reply (sender, replyMsg);
+         ignore := replyCap (CapabilitySlot'Last, replyMsg);
       end;
 
       debugPrint ("netstack: attached to driver pid=");
@@ -2966,7 +2998,8 @@ begin
                      if nowMs > sendTs and
                         nowMs - sendTs > PING_TIMEOUT_MS
                      then
-                        replyError (pendingReqs (i).sender);
+                        replyError (pendingReqs (i).sender,
+                                    pendingReqs (i).replySlot);
                         pendingReqs (i).kind := PENDING_NONE;
                      end if;
                   end;
@@ -3025,7 +3058,7 @@ begin
                      words    => (others => 0));
                   ignore : Unsigned_64;
                begin
-                  ignore := reply (sender, replyMsg);
+                  ignore := replyCap (CapabilitySlot'Last, replyMsg);
                end;
 
             --  Network management IPC (from netmgr)
@@ -3129,7 +3162,7 @@ begin
                                    Shift_Left (dnsSec, 32)));
                         ignore : Unsigned_64;
                      begin
-                        ignore := reply (sender, detailMsg);
+                        ignore := replyCap (CapabilitySlot'Last, detailMsg);
                      end;
                   else
                      replyError (sender);
@@ -3190,7 +3223,7 @@ begin
                                      3 => packed (3)));
                      ignore : Unsigned_64;
                   begin
-                     ignore := reply (sender, routeReply);
+                     ignore := replyCap (CapabilitySlot'Last, routeReply);
                   end;
                end;
 
@@ -3241,7 +3274,7 @@ begin
                                         others => 0));
                         ignore : Unsigned_64;
                      begin
-                        ignore := reply (sender, loopReply);
+                        ignore := replyCap (CapabilitySlot'Last, loopReply);
                      end;
                   else
                      routeLookup (dstIP, rIfIdx, nextHop);
@@ -3381,7 +3414,7 @@ begin
                      words    => (others => 0));
                   ignore : Unsigned_64;
                begin
-                  ignore := reply (sender, replyMsg);
+                  ignore := replyCap (CapabilitySlot'Last, replyMsg);
                end;
          end case;
       end if;

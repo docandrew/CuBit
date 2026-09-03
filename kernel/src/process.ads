@@ -157,7 +157,9 @@ is
         rip at 56 range 0..63;
     end record;
 
-    type FPUState is array (1..512) of Unsigned_8 with Convention => C;
+    type FPUState is array (1..512) of Unsigned_8 with
+        Convention => C,
+        Alignment  => 16;
 
     ---------------------------------------------------------------------------
     -- The ProcessKernelStack is a page of memory in the Kernel's
@@ -184,8 +186,8 @@ is
     KSTACK_CANARY : constant Unsigned_64 := 16#1BAD_CA11_D37EC7ED#;
 
     ---------------------------------------------------------------------------
-    -- @field fpuarea - 512 bytes reserved for FXSAVE (only if this process
-    --  uses FPU instructions.)
+    -- @field fpuarea - 16-byte-aligned, initialized 512-byte FXSAVE64 image
+    --  for eager user-process FP/SIMD isolation.
     -- @field canary - @TODO will be used to detect kernel stack overflow
     ---------------------------------------------------------------------------
     type ProcessKernelStack is
@@ -491,8 +493,8 @@ is
     -- @field channel         - resource process may be waiting on
     -- @field openDescriptors - list of descriptors for kernel resources
     -- @field workingDirectory - what pwd would tell you
-    -- @field fpu             - Set to address of the kernel stack FPU save area
-    --                          if this process uses FPU/MMX/SSE, null otherwise.
+    -- @field fpu             - Address of the initialized FPU/SSE state for a
+    --                          user process; null for scalar kernel threads.
     ---------------------------------------------------------------------------
     type Process is
     record
@@ -874,18 +876,6 @@ is
         with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
-    -- enableFPU
-    -- Turn on FPU state saving/restoring for this process.
-    ---------------------------------------------------------------------------
-    procedure enableFPU with SPARK_Mode => On;
-
-    ---------------------------------------------------------------------------
-    -- disableFPU
-    -- Set CR0.TS to trap FPU/SSE usage (#NM), enabling lazy context switch.
-    ---------------------------------------------------------------------------
-    procedure disableFPU with SPARK_Mode => On;
-
-    ---------------------------------------------------------------------------
     -- directSwitch
     -- Direct context switch from one process to another without going through
     -- the scheduler. Used by IPC fast path for send→receive and reply→sender.
@@ -896,17 +886,15 @@ is
 
     ---------------------------------------------------------------------------
     -- saveFPUState
-    -- If this process has previously used FPU/MMX/SSE instructions, this 
-    -- procedure will save the FPU state and then disable FPU/MMX/SSE.
-    --
-    -- If this process does not use the FPU, it's a no-op.
+    -- Save the complete FPU/MMX/SSE state of a user process before switching
+    -- away from it. Scalar kernel threads are a no-op.
     ---------------------------------------------------------------------------
     procedure saveFPUState (pid : ProcessID) with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- restoreFPUState
-    -- If this process has previously used FPU/MMX/SSE instructions, this
-    -- procedure will restore the FPU state. If not, it's a no-op.
+    -- Restore the complete, initialized FPU/MMX/SSE state before entering a
+    -- user process. Scalar kernel threads are a no-op.
     ---------------------------------------------------------------------------
     procedure restoreFPUState (pid : ProcessID) with SPARK_Mode => On;
 

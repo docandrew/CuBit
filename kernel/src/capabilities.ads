@@ -40,7 +40,8 @@ is
         CAP_PROCESS,        -- Process/thread control
         CAP_DEVICE_MEM,     -- Device memory (framebuffer, MMIO)
         CAP_REPLY,          -- One-use reply capability (kernel-minted)
-        CAP_RESOURCE        -- Resource quota (memory/CPU limits)
+        CAP_RESOURCE,       -- Resource quota (memory/CPU limits)
+        CAP_CSPACE          -- Capability-table administration
     );
 
     ---------------------------------------------------------------------------
@@ -111,6 +112,7 @@ is
     -- | DEVICE_MEM   | Base physical address | Size in bytes |
     -- | REPLY        | Sender PID           | (reserved)     |
     -- | RESOURCE     | maxFrames            | cpuQuota(lo32)|cpuPeriod(hi32)|
+    -- | CSPACE       | Target PID (0=all)   | (reserved)     |
     --
     -- Two plain fields instead of a variant record (README warns against
     -- variant records for overlays).
@@ -185,6 +187,48 @@ is
         (isValid (cap) and then isSubsetOf (required, cap.rights));
 
     ---------------------------------------------------------------------------
+    -- isOrdinarilyDerivable
+    -- Null slots carry no authority, and reply capabilities are consumed-or-
+    -- returned one-use authority. Neither may pass through ordinary copying,
+    -- derivation, or badge-minting paths.
+    ---------------------------------------------------------------------------
+    function isOrdinarilyDerivable (capType : CapabilityType)
+        return Boolean is
+        (capType /= CAP_NULL and then capType /= CAP_REPLY);
+
+    ---------------------------------------------------------------------------
+    -- isAttenuationOf
+    -- A derived capability denotes the same object, generation, and badge as
+    -- its parent and carries no rights absent from the parent.  This is the
+    -- ordinary-derivation non-amplification relation; badge-changing minting
+    -- is intentionally outside this relation.
+    ---------------------------------------------------------------------------
+    function isAttenuationOf (child  : Capability;
+                              parent : Capability) return Boolean is
+        (child.capType = parent.capType
+         and then child.object = parent.object
+         and then child.gen = parent.gen
+         and then child.capBadge = parent.capBadge
+         and then isSubsetOf (child.rights, parent.rights))
+        with Ghost;
+
+    ---------------------------------------------------------------------------
+    -- isMintOf
+    -- A minted capability is an attenuation of its parent except that its
+    -- badge is replaced by the explicitly requested badge.  Minting cannot
+    -- redirect the capability to another object or amplify its rights.
+    ---------------------------------------------------------------------------
+    function isMintOf (child    : Capability;
+                       parent   : Capability;
+                       newBadge : Badge) return Boolean is
+        (child.capType = parent.capType
+         and then child.object = parent.object
+         and then child.gen = parent.gen
+         and then child.capBadge = newBadge
+         and then isSubsetOf (child.rights, parent.rights))
+        with Ghost;
+
+    ---------------------------------------------------------------------------
     -- derive
     -- Create a new capability with rights reduced to the intersection of the
     -- parent's rights and the requested rights. The badge, object reference,
@@ -202,7 +246,10 @@ is
             object     => parent.object,
             gen        => parent.gen
         ))
-        with Pre => isSubsetOf (newRights, parent.rights);
+        with
+          Pre  => isOrdinarilyDerivable (parent.capType)
+                  and then isSubsetOf (newRights, parent.rights),
+          Post => isAttenuationOf (derive'Result, parent);
 
     ---------------------------------------------------------------------------
     -- mint
@@ -220,6 +267,9 @@ is
             object     => parent.object,
             gen        => parent.gen
         ))
-        with Pre => isSubsetOf (newRights, parent.rights);
+        with
+          Pre  => isOrdinarilyDerivable (parent.capType)
+                  and then isSubsetOf (newRights, parent.rights),
+          Post => isMintOf (mint'Result, parent, newBadge);
 
 end Capabilities;

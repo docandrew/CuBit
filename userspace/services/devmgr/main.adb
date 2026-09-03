@@ -65,11 +65,13 @@ procedure main is
    --  PCI config space offsets
    PCI_VENDOR_ID       : constant Unsigned_8 := 0;
    PCI_COMMAND         : constant Unsigned_8 := 4;
+   PCI_STATUS          : constant Unsigned_8 := 6;
    PCI_CLASS_DEVICE    : constant Unsigned_8 := 10;
    PCI_BASEADDR_0      : constant Unsigned_8 := 16;
    PCI_BASEADDR_1      : constant Unsigned_8 := 20;
    PCI_CAP_PTR         : constant Unsigned_8 := 52;
    PCI_INTERRUPT_LINE  : constant Unsigned_8 := 60;
+   PCI_CAP_ID_MSI      : constant Unsigned_8 := 5;
 
    --  VirtIO modern PCI capability types
    PCI_CAP_ID_VENDOR_SPECIFIC : constant Unsigned_8 := 9;
@@ -85,6 +87,7 @@ procedure main is
    CAP_IRQ          : constant Unsigned_64 := 5;
    CAP_PROCESS      : constant Unsigned_64 := 6;
    CAP_DEVICE_MEM   : constant Unsigned_64 := 7;
+   CAP_CSPACE       : constant Unsigned_64 := 10;
 
    --  Rights bitmask (must match kernel/src/capabilities.ads)
    RIGHT_READ    : constant Unsigned_64 := 1;
@@ -195,6 +198,24 @@ procedure main is
       data32 := pciReadConfig32 (bus, pSlot, func, offset);
       return Unsigned_8 (Shift_Right (data32, byteOff * 8) and 16#FF#);
    end pciReadConfig8;
+
+   procedure pciWriteConfig32 (bus    : Unsigned_8;
+                               pSlot  : Unsigned_8;
+                               func   : Unsigned_8;
+                               offset : Unsigned_8;
+                               value  : Unsigned_32)
+   is
+      addr   : Unsigned_32;
+      ignore : Unsigned_64;
+   begin
+      addr := 16#8000_0000# or
+              Shift_Left (Unsigned_32 (bus), 16) or
+              Shift_Left (Unsigned_32 (pSlot), 11) or
+              Shift_Left (Unsigned_32 (func), 8) or
+              Unsigned_32 (offset and 16#FC#);
+      ignore := portOutp32 (PCI_CONFIG_ADDR, addr);
+      ignore := portOutp32 (PCI_CONFIG_DATA, value);
+   end pciWriteConfig32;
 
    procedure pciWriteConfig16 (bus    : Unsigned_8;
                                pSlot  : Unsigned_8;
@@ -657,10 +678,13 @@ procedure main is
       pciCmd    : Unsigned_16;
       dmaPhys   : Unsigned_64;
       ret       : Unsigned_64;
+      msiCap    : Unsigned_8 := 0;
+      msiReady  : Boolean := False;
 
       DMA_ORDER : constant Unsigned_64 := 5;   --  32 pages = 128KB
       DMA_PAGES : constant Unsigned_64 := 32;
       DMA_SIZE  : constant Unsigned_64 := DMA_PAGES * 4096;
+      HDA_MSI_VECTOR : constant Unsigned_64 := 45;
    begin
       if not hdaDev.found or hdaPID = 0 then
          return;
@@ -685,8 +709,79 @@ procedure main is
       pciWriteConfig16 (hdaDev.bus, hdaDev.slot, hdaDev.func,
                         PCI_COMMAND, pciCmd or 16#0006#);
 
-      --  Enable IRQ routing
-      ret := enableIrq (irqVector, hdaPID, 0);
+      --  Prefer a dedicated MSI vector. Besides avoiding legacy PCI IRQ
+      --  sharing, MSI is edge-triggered and therefore fits a userspace driver:
+      --  the kernel may EOI immediately without a level line retriggering
+      --  before HDA has cleared its stream status.
+      if (pciReadConfig16 (hdaDev.bus, hdaDev.slot, hdaDev.func,
+                           PCI_STATUS) and 16#0010#) /= 0
+      then
+         msiCap := pciReadConfig8
+           (hdaDev.bus, hdaDev.slot, hdaDev.func, PCI_CAP_PTR) and 16#FC#;
+         for hop in 1 .. 48 loop
+            exit when msiCap < 16#40# or else msiCap > 16#F0#;
+            if pciReadConfig8
+                 (hdaDev.bus, hdaDev.slot, hdaDev.func, msiCap) =
+               PCI_CAP_ID_MSI
+            then
+               exit;
+            end if;
+            msiCap := pciReadConfig8
+              (hdaDev.bus, hdaDev.slot, hdaDev.func, msiCap + 1) and 16#FC#;
+         end loop;
+
+         if msiCap >= 16#40# and then msiCap <= 16#F0# and then
+            pciReadConfig8
+              (hdaDev.bus, hdaDev.slot, hdaDev.func, msiCap) = PCI_CAP_ID_MSI
+         then
+            setupMsi : declare
+               control : Unsigned_16 := pciReadConfig16
+                 (hdaDev.bus, hdaDev.slot, hdaDev.func, msiCap + 2);
+               dataOff : Unsigned_8;
+            begin
+               --  Destination APIC ID 0, fixed delivery, physical mode.
+               pciWriteConfig32
+                 (hdaDev.bus, hdaDev.slot, hdaDev.func, msiCap + 4,
+                  16#FEE0_0000#);
+               if (control and 16#0080#) /= 0 then
+                  pciWriteConfig32
+                    (hdaDev.bus, hdaDev.slot, hdaDev.func, msiCap + 8, 0);
+                  dataOff := msiCap + 12;
+               else
+                  dataOff := msiCap + 8;
+               end if;
+               pciWriteConfig16
+                 (hdaDev.bus, hdaDev.slot, hdaDev.func, dataOff,
+                  Unsigned_16 (HDA_MSI_VECTOR));
+
+               ret := enableIrq
+                 (HDA_MSI_VECTOR, hdaPID, 0, messageSignaled => True);
+               if ret /= reterr then
+                  --  One message only, then enable MSI. Disable the device's
+                  --  legacy INTx output so it cannot assert the shared PIRQ.
+                  control := (control and not 16#0070#) or 1;
+                  pciWriteConfig16
+                    (hdaDev.bus, hdaDev.slot, hdaDev.func,
+                     msiCap + 2, control);
+                  pciCmd := pciReadConfig16
+                    (hdaDev.bus, hdaDev.slot, hdaDev.func, PCI_COMMAND);
+                  pciWriteConfig16
+                    (hdaDev.bus, hdaDev.slot, hdaDev.func,
+                     PCI_COMMAND, pciCmd or 16#0400#);
+                  irqVector := HDA_MSI_VECTOR;
+                  msiReady := True;
+                  debugPrint ("devmgr: HDA using MSI" & LF);
+               end if;
+            end setupMsi;
+         end if;
+      end if;
+
+      if not msiReady then
+         --  Compatibility fallback. The long-term legacy-INTx path needs a
+         --  mask/ack/unmask protocol before it can offer the same latency.
+         ret := enableIrq (irqVector, hdaPID, 0);
+         debugPrint ("devmgr: HDA using legacy INTx fallback" & LF);
+      end if;
 
       --  Allocate DMA
       dmaPhys := allocDma (hdaPID, DMA_ORDER, DMA_VIRT_BASE);
@@ -1473,9 +1568,12 @@ begin
       procmgrPID := 0;
    end if;
    if procmgrPID /= 0 then
-      --  Grant CAP_PROCESS (READ+EXECUTE+GRANT) at slot 4
+      --  Process management and capability-space administration are separate
+      --  authorities. The latter is the explicit policy root used to install
+      --  manifest-admitted capabilities into newly spawned processes.
       mintCap (procmgrPID, CAP_PROCESS, 0, 0,
                RIGHT_READ or RIGHT_EXECUTE or RIGHT_GRANT, 4);
+      mintCap (procmgrPID, CAP_CSPACE, 0, 0, RIGHT_GRANT, 10);
 
       --  Grant FS endpoint at slot 1
       if filesystemPID /= 0 then

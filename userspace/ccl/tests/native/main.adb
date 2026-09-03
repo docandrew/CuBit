@@ -2,6 +2,7 @@ with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CCL.VM; use CCL.VM;
 with CCL.Language;
+with CCL.Catalog;
 with CCL.Compiler;
 with CCL.Debug_Maps;
 with CCL.Scheduler; use CCL.Scheduler;
@@ -17,7 +18,20 @@ procedure Main is
    use type CCL.Language.Node_Kind;
    use type CCL.Language.Static_Type;
    use type CCL.Compiler.Compilation_Status;
+   use type CCL.Catalog.Catalog_Error;
+   use type CCL.Catalog.Descriptor_Digest;
+   use type CCL.Catalog.Intern_Result;
+   use type CCL.Catalog.Grant_Result;
+   use type CCL.Catalog.Link_Result;
    use type CCL.Debug_Maps.Validation_Error;
+
+   TEST_INTERFACE_DIGEST : constant CCL.Catalog.Descriptor_Digest :=
+     [16#5445_5354_2D49_4643#,
+      16#0000_0000_0000_0001#,
+      16#0000_0000_0000_0002#,
+      16#0000_0000_0000_0003#];
+   TEST_INCREMENT_BINDING : constant Unsigned_32 := 42;
+   TEST_MONOTONIC_BINDING : constant Unsigned_32 := 43;
 
    Failures : Natural := 0;
 
@@ -38,6 +52,89 @@ procedure Main is
       Import    : Import_Index := 0) return Instruction
    is ((Op => Op, Immediate => Immediate, Target => Target, Import => Import,
         others => <>));
+
+   procedure Make_Test_Catalog
+     (Item  : out CCL.Catalog.Interface_Catalog;
+      Error : out CCL.Catalog.Catalog_Error)
+   is
+      Descriptor : CCL.Catalog.Interface_Descriptor;
+      Operation  : CCL.Catalog.Operation_Descriptor;
+   begin
+      CCL.Catalog.Initialize (Item);
+      CCL.Catalog.Define_Interface
+        ("test.service", 1, 0, TEST_INTERFACE_DIGEST, Descriptor, Error);
+      if Error = CCL.Catalog.Catalog_Valid then
+         CCL.Catalog.Define_Operation
+           ("increment", 1,
+            (Argument => Integer_Value,
+             Result => Integer_Value,
+             Authority => Observe_Authority,
+             others => <>),
+            Operation, Error);
+      end if;
+      if Error = CCL.Catalog.Catalog_Valid then
+         CCL.Catalog.Add_Operation (Descriptor, Operation, Error);
+      end if;
+      if Error = CCL.Catalog.Catalog_Valid then
+         CCL.Catalog.Define_Operation
+           ("monotonic", 0,
+            (Argument => Integer_Value,
+             Result => Integer_Value,
+             Authority => Observe_Authority,
+             others => <>),
+            Operation, Error);
+      end if;
+      if Error = CCL.Catalog.Catalog_Valid then
+         CCL.Catalog.Add_Operation (Descriptor, Operation, Error);
+      end if;
+      if Error = CCL.Catalog.Catalog_Valid then
+         CCL.Catalog.Publish (Item, Descriptor, Error);
+      end if;
+   end Make_Test_Catalog;
+
+   procedure Test_Interface_Catalog is
+      Catalog    : CCL.Catalog.Interface_Catalog;
+      Error      : CCL.Catalog.Catalog_Error;
+      Resolution : CCL.Catalog.Resolved_Operation;
+      Found      : Boolean;
+      Linkage    : CCL.Catalog.Linkage_Table;
+      Index      : Import_Index;
+      Interned   : CCL.Catalog.Intern_Result;
+   begin
+      Make_Test_Catalog (Catalog, Error);
+      Check
+        (Error = CCL.Catalog.Catalog_Valid and then
+         CCL.Catalog.Length (Catalog) = 1,
+         "publish bounded interface catalog");
+
+      CCL.Catalog.Resolve
+        (Catalog, "test.service.increment", Resolution, Found);
+      Check
+        (Found and then
+         Resolution.Interface_Digest = TEST_INTERFACE_DIGEST and then
+         Resolution.Interface_Major = 1 and then
+         Resolution.Operation = 0 and then
+         Resolution.Parameters = 1 and then
+         Resolution.Import.Binding = 0 and then
+         Resolution.Import.Authority = Observe_Authority,
+         "resolve qualified operation from pinned descriptor");
+
+      CCL.Catalog.Initialize (Linkage);
+      CCL.Catalog.Intern (Linkage, Resolution, Index, Interned);
+      Check
+        (Interned = CCL.Catalog.Linkage_Added and then Index = 0 and then
+         CCL.Catalog.Length (Linkage) = 1,
+         "intern resolved operation into compiler linkage");
+      CCL.Catalog.Intern (Linkage, Resolution, Index, Interned);
+      Check
+        (Interned = CCL.Catalog.Linkage_Existing and then Index = 0 and then
+         CCL.Catalog.Length (Linkage) = 1,
+         "deduplicate compiler linkage by descriptor identity");
+
+      CCL.Catalog.Resolve
+        (Catalog, "test.service.missing", Resolution, Found);
+      Check (not Found, "hide operations absent from catalog view");
+   end Test_Interface_Catalog;
 
    procedure Test_Addition is
       Candidate : Program;
@@ -73,6 +170,7 @@ procedure Main is
       State     : Machine_State;
       Outcome   : Execution_Result;
       View      : Machine_Snapshot;
+      Inspection : Inspection_Snapshot;
    begin
       Candidate.Length := 4;
       Candidate.Code (0) := Ins (Push_Integer, 20);
@@ -85,11 +183,18 @@ procedure Main is
          Initialize (Checked, 8, State);
          Continue_Execution_For (Checked, State, 1, Outcome);
          View := Snapshot (State);
+         Inspect (Checked, State, Inspection);
          Check
            (Outcome.Status = Paused and then View.Instruction = 1 and then
             View.Steps = 1 and then View.Fuel_Remaining = 7 and then
             not View.Terminal,
             "pause after one instruction");
+         Check
+           (Inspection.Stack_Length = 1 and then
+            Inspection.Stack (0).Kind = Integer_Value and then
+            Inspection.Stack (0).Integer = 20 and then
+            Inspection.Locals_Length = 0,
+            "inspect copied operand stack without mutating VM");
 
          Continue_Execution_For (Checked, State, 2, Outcome);
          View := Snapshot (State);
@@ -121,6 +226,8 @@ procedure Main is
       Checked   : Validated_Program;
       Error     : Validation_Error;
       Outcome   : Execution_Result;
+      State     : Machine_State;
+      Inspection : Inspection_Snapshot;
    begin
       Candidate.Length := 4;
       Candidate.Types_Length := 1;
@@ -136,6 +243,18 @@ procedure Main is
       Verify (Candidate, Checked, Error);
       Check (Error = Valid, "verify lexical local initialization");
       if Error = Valid then
+         Initialize (Checked, 8, State);
+         Continue_Execution_For (Checked, State, 2, Outcome);
+         Inspect (Checked, State, Inspection);
+         Check
+           (Inspection.Stack_Length = 0 and then
+            Inspection.Locals_Length = 1 and then
+            Inspection.Locals (0).Kind = Integer_Value and then
+            Inspection.Locals (0).Value.Integer = 42 and then
+            Inspection.Locals (0).Ownership_State = Available and then
+            Inspection.Locals (0).Read_Borrows = 0 and then
+            not Inspection.Locals (0).Write_Borrow,
+            "inspect initialized local and ownership state");
          Execute (Checked, 8, Outcome);
          Check
            (Outcome.Status = Completed and then Outcome.Has_Value and then
@@ -281,6 +400,8 @@ procedure Main is
    procedure Test_Source_Language is
       Outcome  : CCL.Language.Interpretation_Result;
       Analysis : CCL.Language.Analysis_Result;
+      Catalog  : CCL.Catalog.Interface_Catalog;
+      Catalog_Error : CCL.Catalog.Catalog_Error;
    begin
       CCL.Language.Analyze ("(+ 20 22)", Analysis);
       Check
@@ -336,6 +457,51 @@ procedure Main is
          Outcome.Result_Value.Integer = 20,
          "interpret conditional lazily");
 
+      Make_Test_Catalog (Catalog, Catalog_Error);
+      Check
+        (Catalog_Error = CCL.Catalog.Catalog_Valid,
+         "prepare visible source interface catalog");
+
+      CCL.Language.Analyze ("(test.service.increment 41)", Analysis);
+      Check
+        (CCL.Language.Analysis_Status_Of (Analysis) =
+           CCL.Language.Analysis_Parse_Failed and then
+         CCL.Language.Analysis_Diagnostic (Analysis) =
+           CCL.Language.Unknown_Form,
+         "default analysis has no ambient interface discovery");
+
+      CCL.Language.Analyze
+        ("(test.service.increment 41)", Catalog, Analysis);
+      Check
+        (CCL.Language.Analysis_Status_Of (Analysis) =
+           CCL.Language.Analysis_Succeeded and then
+         CCL.Language.Analysis_Node
+           (Analysis,
+            CCL.Language.Node_Index
+              (CCL.Language.Analysis_Root (Analysis))).Kind =
+           CCL.Language.Host_Import_Form and then
+         CCL.Language.Analysis_Node
+           (Analysis,
+            CCL.Language.Node_Index
+              (CCL.Language.Analysis_Root (Analysis))).Static_Kind =
+           CCL.Language.Integer_Type,
+         "analyze host form through explicit catalog view");
+      CCL.Language.Interpret
+        ("(test.service.increment 41)", 8, Catalog, Outcome);
+      Check
+        (Outcome.Status = CCL.Language.Host_Import_Required and then
+         not Outcome.Has_Value,
+         "direct interpreter cannot turn discovery into authority");
+
+      CCL.Language.Analyze
+        ("(test.service.increment true)", Catalog, Analysis);
+      Check
+        (CCL.Language.Analysis_Status_Of (Analysis) =
+           CCL.Language.Analysis_Type_Check_Failed and then
+         CCL.Language.Analysis_Diagnostic (Analysis) =
+           CCL.Language.Expected_Integer,
+         "type-check catalog operation argument");
+
       CCL.Language.Interpret ("(+ true 4)", 16, Outcome);
       Check
         (Outcome.Status = CCL.Language.Type_Check_Failed and then
@@ -382,9 +548,16 @@ procedure Main is
    procedure Test_Source_Compiler is
       Analysis : CCL.Language.Analysis_Result;
       Compiled : CCL.Compiler.Compilation_Result;
+      Catalog  : CCL.Catalog.Interface_Catalog;
+      Catalog_Error : CCL.Catalog.Catalog_Error;
+      Grants   : CCL.Catalog.Granted_Bindings;
+      Grant_Status : CCL.Catalog.Grant_Result;
+      Link_Status  : CCL.Catalog.Link_Result;
+      Tampered : CCL.VM.Program;
       Checked  : Validated_Program;
       Error    : Validation_Error;
       Outcome  : Execution_Result;
+      State    : Machine_State;
       Debug_Error : CCL.Debug_Maps.Validation_Error;
       Debug_Match : CCL.Debug_Maps.Debug_Entry;
       Debug_Found : Boolean;
@@ -475,6 +648,99 @@ procedure Main is
         (Compiled.Status = CCL.Compiler.Unsupported_Form and then
          Compiled.Source_Position = 10,
          "reject branch-local lifetime without ownership join semantics");
+
+      Make_Test_Catalog (Catalog, Catalog_Error);
+      Check
+        (Catalog_Error = CCL.Catalog.Catalog_Valid,
+         "prepare compiler interface catalog");
+      CCL.Language.Analyze
+        ("(test.service.increment 41)", Catalog, Analysis);
+      CCL.Compiler.Compile (Analysis, Compiled);
+      Check
+        (Compiled.Status = CCL.Compiler.Compilation_Succeeded and then
+         Compiled.Program.Length = 3 and then
+         Compiled.Program.Imports_Length = 1 and then
+         CCL.Catalog.Length (Compiled.Linkage) = 1 and then
+         CCL.Catalog.Element (Compiled.Linkage, 0).Interface_Digest =
+           TEST_INTERFACE_DIGEST and then
+         Compiled.Program.Imports (0).Argument = Integer_Value and then
+         Compiled.Program.Imports (0).Result = Integer_Value and then
+         Compiled.Program.Imports (0).Authority = Observe_Authority and then
+         Compiled.Program.Imports (0).Binding = 0 and then
+         Compiled.Program.Code (0).Op = Push_Integer and then
+         Compiled.Program.Code (0).Immediate = 41 and then
+         Compiled.Program.Code (1).Op = Invoke_Import and then
+         Compiled.Program.Code (2).Op = Halt,
+         "compile unresolved catalog operation with pinned linkage metadata");
+      CCL.Catalog.Initialize (Grants);
+      CCL.Catalog.Link_Program
+        (Grants, Compiled.Linkage, Compiled.Program, Link_Status);
+      Check
+        (Link_Status = CCL.Catalog.Authority_Not_Granted and then
+         Compiled.Program.Imports (0).Binding = 0,
+         "refuse to turn interface discovery into invocation authority");
+      CCL.Catalog.Install
+        (Grants, CCL.Catalog.Element (Compiled.Linkage, 0),
+         TEST_INCREMENT_BINDING, Grant_Status);
+      Check
+        (Grant_Status = CCL.Catalog.Grant_Added,
+         "install authorized runtime binding");
+      Tampered := Compiled.Program;
+      Tampered.Imports (0).Authority := Control_Authority;
+      CCL.Catalog.Link_Program
+        (Grants, Compiled.Linkage, Tampered, Link_Status);
+      Check
+        (Link_Status = CCL.Catalog.Import_Contract_Mismatch and then
+         Tampered.Imports (0).Binding = 0,
+         "reject substituted import contract without partial linking");
+      CCL.Catalog.Link_Program
+        (Grants, Compiled.Linkage, Compiled.Program, Link_Status);
+      Check
+        (Link_Status = CCL.Catalog.Link_Valid and then
+         Compiled.Program.Imports (0).Binding = TEST_INCREMENT_BINDING,
+         "link exact catalog operation to granted binding");
+      Verify (Compiled.Program, Checked, Error);
+      Check (Error = Valid, "verify compiled catalog import");
+      if Error = Valid then
+         Initialize (Checked, 8, State);
+         Continue_Execution (Checked, State, Outcome);
+         Check
+           (Outcome.Status = Waiting_For_Host and then
+            Outcome.Requested_Authority = Observe_Authority and then
+            Outcome.Requested_Binding = TEST_INCREMENT_BINDING and then
+            Outcome.Request_Argument.Kind = Integer_Value and then
+            Outcome.Request_Argument.Integer = 41,
+            "suspend compiled catalog import at typed host boundary");
+         Complete_Host_Call
+           (Checked, State, Integer_Constant (1_234), Accepted => True);
+         Continue_Execution (Checked, State, Outcome);
+         Check
+           (Outcome.Status = Completed and then Outcome.Has_Value and then
+            Outcome.Result_Value.Kind = Integer_Value and then
+            Outcome.Result_Value.Integer = 1_234,
+            "resume compiled catalog import with typed result");
+      end if;
+
+      CCL.Language.Analyze
+        ("(test.service.monotonic)", Catalog, Analysis);
+      CCL.Compiler.Compile (Analysis, Compiled);
+      Check
+        (Compiled.Status = CCL.Compiler.Compilation_Succeeded and then
+         Compiled.Program.Imports_Length = 1 and then
+         Compiled.Program.Imports (0).Binding = 0 and then
+         Compiled.Program.Code (0).Op = Push_Integer and then
+         Compiled.Program.Code (0).Immediate = 0,
+         "lower zero-parameter catalog operation through CCLB v2 sentinel");
+      CCL.Catalog.Install
+        (Grants, CCL.Catalog.Element (Compiled.Linkage, 0),
+         TEST_MONOTONIC_BINDING, Grant_Status);
+      CCL.Catalog.Link_Program
+        (Grants, Compiled.Linkage, Compiled.Program, Link_Status);
+      Check
+        (Grant_Status = CCL.Catalog.Grant_Added and then
+         Link_Status = CCL.Catalog.Link_Valid and then
+         Compiled.Program.Imports (0).Binding = TEST_MONOTONIC_BINDING,
+         "link zero-parameter operation only after authority admission");
 
       CCL.Language.Analyze ("(+ true 1)", Analysis);
       CCL.Compiler.Compile (Analysis, Compiled);
@@ -1287,6 +1553,7 @@ procedure Main is
          "borrow returns only on terminal completion");
    end Test_Import_Lifecycle;
 begin
+   Test_Interface_Catalog;
    Test_Addition;
    Test_Debug_Stepping;
    Test_Lexical_Local;

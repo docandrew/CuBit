@@ -59,7 +59,11 @@ source
   |
   | potentially fallible compiler
   v
-bytecode module
+unresolved bytecode + descriptor-pinned linkage
+  |
+  | trusted host intersects linkage with granted bindings
+  v
+linked bytecode module
   |
   | trusted verifier
   v
@@ -69,6 +73,14 @@ validated module
   v
 observable effects
 ```
+
+Interface discovery and invocation authority are separate. Analysis receives an
+explicit bounded catalog view; the default view is empty. Catalog operations
+contain immutable type/effect metadata and no runtime binding. Compilation
+records their descriptor digest, version, and operation ordinal while emitting
+an unresolved import. A trusted host links that import only when an exact
+operation contract has an already-authorized local binding. Failed admission
+does not partially link a program.
 
 The verifier, interpreter, bytecode decoder, bounded value representation, and
 host-import boundary are security-critical. Parsers, source compilers,
@@ -178,6 +190,14 @@ fuel-bounded and checks integer overflow.
 The canonical syntax is intentionally tiny. BASIC-like interactive syntax will
 later desugar to the same checked AST rather than introducing another evaluator.
 
+Unknown list operators are resolved only through a caller-supplied
+`CCL.Catalog.Interface_Catalog`. This keeps service names out of the parser,
+type checker, compiler, and VM. The Linux Workbench currently supplies the
+canonical `clock` descriptor as its first host interface, then separately maps
+that pinned operation to SDL's monotonic clock through a
+`Granted_Bindings` value. Merely receiving the catalog permits type checking and
+completion; it does not permit execution.
+
 The version 2 `.cclb` encoder and loader live in `src/ccl-format.ads` and
 `src/ccl-format.adb`; the byte layout is specified in
 [`docs/ccl-bytecode-format.md`](../../docs/ccl-bytecode-format.md). The format
@@ -262,7 +282,12 @@ VM Run retains a resumable machine state. Pause freezes it, Stop makes that
 state terminal, and Step Into or Step Over advances exactly one instruction
 (the two step modes are equivalent until CCLB gains call frames). The bytecode
 table highlights the machine snapshot's current program counter while running
-or stepping. Compiler-emitted, independently validated debug ranges also
+or stepping. The execution pane takes a bounded read-only VM inspection
+snapshot after every state transition. It shows the operand stack top-first
+and each visible local's value, availability, and ownership mode; the snapshot
+also carries type tags, borrow counts, pending-import state, and the remaining
+fuel for later inspector views. Inspection copies the private runtime state and
+cannot mutate it. Compiler-emitted, independently validated debug ranges also
 highlight the innermost active source expression and scroll it into view. Debug
 metadata remains optional and non-authoritative: rejecting it disables the
 source highlight without affecting VM admission.
@@ -290,6 +315,12 @@ GNATprove analysis is enabled through `ccl_core.gpr`. The core is entirely in
 `SPARK_Mode => On`; proof is still in progress, and outstanding verification
 conditions must be discharged rather than suppressed before this milestone is
 considered formally verified.
+
+The bounded interface catalog, granted-binding table, and transactional linker
+currently discharge all level-1 GNATprove checks. The catalog-aware language
+frontend and generic AST-to-CCLB lowering do as well. None of these units uses
+`pragma Assume` or disables SPARK. This does not erase the separately tracked
+obligations in the scheduler, VM execution loop, or v2 bytecode formatter.
 
 ### In-guest runtime
 

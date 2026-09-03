@@ -235,7 +235,7 @@ package body Modules is
         -- Map initrd into devmgr's address space (read-only)
         mapInitrd (devmgrPID, initrdAddr, initrdSize);
 
-        -- Slot 4: CAP_PROCESS (READ + EXECUTE + GRANT + WRITE)
+        -- Slot 4: process-management policy (not capability construction).
         Capabilities.Operations.insertCapAt (
             table => Process.proctab(devmgrPID).caps,
             slot  => 4,
@@ -244,6 +244,18 @@ package body Modules is
                                    Capabilities.RIGHT_EXECUTE => True,
                                    Capabilities.RIGHT_GRANT   => True,
                                    Capabilities.RIGHT_WRITE   => True,
+                                   others => False),
+                      capBadge => Capabilities.NO_BADGE,
+                      object   => (ref => 0, param => 0),
+                      gen      => Capabilities.INITIAL_GENERATION));
+
+        -- Slot 8: explicit capability-space policy root. This is the only
+        -- authority that permits SYSCALL_MINT_CAP; CAP_PROCESS/GRANT does not.
+        Capabilities.Operations.insertCapAt (
+            table => Process.proctab(devmgrPID).caps,
+            slot  => 8,
+            cap   => (capType  => Capabilities.CAP_CSPACE,
+                      rights   => (Capabilities.RIGHT_GRANT => True,
                                    others => False),
                       capBadge => Capabilities.NO_BADGE,
                       object   => (ref => 0, param => 0),

@@ -255,6 +255,14 @@ is
     end setCR0;
 
     ---------------------------------------------------------------------------
+    -- clearTaskSwitched
+    ---------------------------------------------------------------------------
+    procedure clearTaskSwitched is
+    begin
+        Asm ("clts", Volatile => True);
+    end clearTaskSwitched;
+
+    ---------------------------------------------------------------------------
     -- get CR2 register
     ---------------------------------------------------------------------------
     function getCR2 return Unsigned_64 is
@@ -517,7 +525,100 @@ is
     end rep_movsb;
 
     ---------------------------------------------------------------------------
-    -- FXSAVE Save floating point state
+    -- Word-at-a-time memory comparison with exact byte-order fallback.
+    ---------------------------------------------------------------------------
+    function compare_memory (left  : in System.Address;
+                             right : in System.Address;
+                             len   : in System.Storage_Elements.Storage_Count)
+        return Integer
+    is
+        type Byte is mod 2 ** 8 with Size => 8, Alignment => 1;
+        type Word is mod 2 ** 64 with Size => 64, Alignment => 1;
+        type Byte_Ptr is access all Byte;
+        type Word_Ptr is access all Word;
+        pragma No_Strict_Aliasing (Byte_Ptr);
+        pragma No_Strict_Aliasing (Word_Ptr);
+
+        function To_Byte is new Ada.Unchecked_Conversion
+            (System.Address, Byte_Ptr);
+        function To_Word is new Ada.Unchecked_Conversion
+            (System.Address, Word_Ptr);
+
+        BYTES_PER_WORD  : constant Storage_Count := 8;
+        WORDS_PER_BATCH : constant Storage_Count := 8;
+        BYTES_PER_BATCH : constant Storage_Count :=
+            BYTES_PER_WORD * WORDS_PER_BATCH;
+        leftCursor  : System.Address := left;
+        rightCursor : System.Address := right;
+        remaining   : Storage_Count := len;
+        leftByte, rightByte : Byte;
+
+        function wordDifference (offset : Storage_Count) return Word is
+            (To_Word(leftCursor + Storage_Offset(offset)).all xor
+             To_Word(rightCursor + Storage_Offset(offset)).all);
+        pragma Inline_Always(wordDifference);
+
+        function differingWordResult
+            (offset : Storage_Count;
+             difference : Word) return Integer
+        is
+            bitPosition : Word;
+            byteOffset  : Storage_Offset;
+        begin
+            -- Difference is nonzero at every call site, as required by BSF.
+            Asm("bsfq %1,%0",
+                Outputs => Word'Asm_Output("=r", bitPosition),
+                Inputs => Word'Asm_Input("r", difference),
+                Clobber => "cc");
+            byteOffset := Storage_Offset
+                (offset + Storage_Count(bitPosition / 8));
+            leftByte := To_Byte(leftCursor + byteOffset).all;
+            rightByte := To_Byte(rightCursor + byteOffset).all;
+            return Integer(leftByte) - Integer(rightByte);
+        end differingWordResult;
+        pragma Inline_Always(differingWordResult);
+
+        difference : Word;
+    begin
+        while remaining >= BYTES_PER_BATCH loop
+            for index in Storage_Count range 0 .. WORDS_PER_BATCH - 1 loop
+                pragma Loop_Optimize(Unroll);
+                difference := wordDifference(index * BYTES_PER_WORD);
+                if difference /= 0 then
+                    return differingWordResult
+                        (index * BYTES_PER_WORD, difference);
+                end if;
+            end loop;
+            leftCursor := leftCursor + Storage_Offset(BYTES_PER_BATCH);
+            rightCursor := rightCursor + Storage_Offset(BYTES_PER_BATCH);
+            remaining := remaining - BYTES_PER_BATCH;
+        end loop;
+
+        while remaining >= BYTES_PER_WORD loop
+            difference := wordDifference(0);
+            if difference /= 0 then
+                return differingWordResult(0, difference);
+            end if;
+            leftCursor := leftCursor + Storage_Offset(BYTES_PER_WORD);
+            rightCursor := rightCursor + Storage_Offset(BYTES_PER_WORD);
+            remaining := remaining - BYTES_PER_WORD;
+        end loop;
+
+        while remaining > 0 loop
+            leftByte := To_Byte(leftCursor).all;
+            rightByte := To_Byte(rightCursor).all;
+            if leftByte /= rightByte then
+                return Integer(leftByte) - Integer(rightByte);
+            end if;
+            leftCursor := leftCursor + 1;
+            rightCursor := rightCursor + 1;
+            remaining := remaining - 1;
+        end loop;
+        return 0;
+    end compare_memory;
+
+    ---------------------------------------------------------------------------
+    -- FXSAVE64 Save floating point state
     ---------------------------------------------------------------------------
     procedure fxsave (saveArea : System.Address) is
     begin
@@ -526,17 +627,17 @@ is
         --  using an "m" constraint on the Ada System.Address object would
         --  describe the stack slot holding the pointer, not the pointed-to
         --  FPU save buffer.
-        Asm("fxsave (%0)",
+        Asm("fxsave64 (%0)",
             Inputs => System.Address'Asm_Input("r", saveArea),
             Volatile => True);
     end fxsave;
 
     ---------------------------------------------------------------------------
-    -- FXRSTOR Restore floating point state
+    -- FXRSTOR64 Restore floating point state
     ---------------------------------------------------------------------------
     procedure fxrstor (saveArea : System.Address) is
     begin
-        Asm("fxrstor (%0)",
+        Asm("fxrstor64 (%0)",
             Inputs => System.Address'Asm_Input("r", saveArea),
             Volatile => True);
     end fxrstor;

@@ -41,8 +41,6 @@ package body Syscall.Admin is
         (Process.MessageTag, Unsigned_64);
     function u64ToTag is new Ada.Unchecked_Conversion
         (Unsigned_64, Process.MessageTag);
-    function u64ToRights is new Ada.Unchecked_Conversion
-        (Unsigned_8, Capabilities.CapabilityRights);
     function priToU16 is new Ada.Unchecked_Conversion
         (Integer_16, Unsigned_16);
 
@@ -71,6 +69,67 @@ package body Syscall.Admin is
         end loop;
         return False;
     end hasCapProcessFor;
+
+    ---------------------------------------------------------------------------
+    -- hasCspaceGrantFor
+    --
+    -- Installing authority into another process is a capability-space
+    -- administration operation. It must never be inferred from ordinary
+    -- CAP_PROCESS control. A scoped CAP_CSPACE is generation-bound to its
+    -- target; ref=0 is the explicit bootstrap policy root.
+    ---------------------------------------------------------------------------
+    function hasCspaceGrantFor
+      (callerPID : Process.ProcessID;
+       targetPID : Process.ProcessID) return Boolean
+    is
+        use type Capabilities.CapabilityType;
+        cap : Capabilities.Capability;
+    begin
+        for slot in Capabilities.CapabilitySlot loop
+            cap := Process.proctab(callerPID).caps(slot);
+            if cap.capType = Capabilities.CAP_CSPACE and then
+               cap.rights(Capabilities.RIGHT_GRANT) and then
+               (cap.object.ref = 0 or else
+                (cap.object.ref = Unsigned_64 (targetPID) and then
+                 cap.gen = Process.proctab(targetPID).capGeneration))
+            then
+                return True;
+            end if;
+        end loop;
+        return False;
+    end hasCspaceGrantFor;
+
+    ---------------------------------------------------------------------------
+    -- canDelegateCspace
+    --
+    -- A CAP_CSPACE may itself be delegated, but never with a wider target
+    -- scope or additional rights. This is the non-amplification rule for the
+    -- policy-root capability rather than a special case in userspace policy.
+    ---------------------------------------------------------------------------
+    function canDelegateCspace
+      (callerPID : Process.ProcessID;
+       targetPID : Process.ProcessID;
+       newRef    : Unsigned_64;
+       newRights : Capabilities.CapabilityRights) return Boolean
+    is
+        use type Capabilities.CapabilityType;
+        cap : Capabilities.Capability;
+    begin
+        for slot in Capabilities.CapabilitySlot loop
+            cap := Process.proctab(callerPID).caps(slot);
+            if cap.capType = Capabilities.CAP_CSPACE and then
+               cap.rights(Capabilities.RIGHT_GRANT) and then
+               (cap.object.ref = 0 or else
+                (cap.object.ref = Unsigned_64 (targetPID) and then
+                 cap.gen = Process.proctab(targetPID).capGeneration)) and then
+               Capabilities.isSubsetOf (newRights, cap.rights) and then
+               (cap.object.ref = 0 or else newRef = cap.object.ref)
+            then
+                return True;
+            end if;
+        end loop;
+        return False;
+    end canDelegateCspace;
 
 
     ---------------------------------------------------------------------------
@@ -112,7 +171,8 @@ package body Syscall.Admin is
             Process.IPC.notifySupervisor (
                 callerPID,
                 IPC_Labels.EVENT_CAP_FAULT,
-                SYSCALL_REGISTER_DRIVER,
+                Unsigned_64 (SyscallNumber'Enum_Rep (
+                    SYSCALL_REGISTER_DRIVER)),
                 arg0, 0);
             return;
         end if;
@@ -127,7 +187,7 @@ package body Syscall.Admin is
     ---------------------------------------------------------------------------
     procedure handlePortIO (callerPID  : Process.ProcessID;
                             syscallNum : SyscallNumber;
-                            arg0, arg1, arg2 : Unsigned_64;
+                            arg0, arg1 : Unsigned_64;
                             retval     : out Unsigned_64) with
         SPARK_Mode => Off
     is
@@ -141,7 +201,7 @@ package body Syscall.Admin is
             print ("PORTIO: denied pid=");
             print (Unsigned_16 (callerPID));
             print (" syscall=");
-            print (Unsigned_64 (syscallNum));
+            print (Unsigned_64 (SyscallNumber'Enum_Rep (syscallNum)));
             print (" port=");
             print (port and 16#FFFF#);
             print (" size=");
@@ -206,40 +266,6 @@ package body Syscall.Admin is
                 else
                     x86.out16 (x86.IOPort(arg0 and 16#FFFF#),
                                Unsigned_16(arg1 and 16#FFFF#));
-                    retval := 0;
-                end if;
-
-            when SYSCALL_INPS16 =>
-                Capabilities.Operations.checkPortAccess (
-                    Process.proctab(callerPID).caps,
-                    arg0 and 16#FFFF#, Unsigned_64(arg2) * 2, False,
-                    capAllowed);
-                if not capAllowed then
-                    logDenied (arg0, Unsigned_64(arg2) * 2, False);
-                    retval := reterr;
-                else
-                    x86.stac;
-                    x86.ins16 (x86.IOPort(arg0 and 16#FFFF#),
-                               Util.numToAddr(arg1),
-                               Unsigned_32(arg2));
-                    x86.clac;
-                    retval := 0;
-                end if;
-
-            when SYSCALL_OUTPS16 =>
-                Capabilities.Operations.checkPortAccess (
-                    Process.proctab(callerPID).caps,
-                    arg0 and 16#FFFF#, Unsigned_64(arg2) * 2, True,
-                    capAllowed);
-                if not capAllowed then
-                    logDenied (arg0, Unsigned_64(arg2) * 2, True);
-                    retval := reterr;
-                else
-                    x86.stac;
-                    x86.outs16 (x86.IOPort(arg0 and 16#FFFF#),
-                                Util.numToAddr(arg1),
-                                Unsigned_32(arg2));
-                    x86.clac;
                     retval := 0;
                 end if;
 
@@ -309,7 +335,8 @@ package body Syscall.Admin is
             Process.IPC.notifySupervisor (
                 callerPID,
                 IPC_Labels.EVENT_CAP_FAULT,
-                SYSCALL_VIRT_TO_PHYS,
+                Unsigned_64 (SyscallNumber'Enum_Rep (
+                    SYSCALL_VIRT_TO_PHYS)),
                 arg0, 0);
             retval := reterr;
         else
@@ -468,283 +495,6 @@ package body Syscall.Admin is
     end handleReplyWait;
 
     ---------------------------------------------------------------------------
-    -- handleControlAccess
-    ---------------------------------------------------------------------------
-    procedure handleControlAccess (callerPID : Process.ProcessID;
-                                   arg0, arg1, arg2, arg3,
-                                   arg4 : Unsigned_64;
-                                   retval : out Unsigned_64) with
-        SPARK_Mode => Off
-    is
-
-        subOp    : constant Unsigned_64 := arg0;
-        opStatus : Capabilities.Operations.OperationStatus;
-        slot     : Capabilities.CapabilitySlot;
-    begin
-        case subOp is
-            -- INSERT disabled: capability bypass vulnerability.
-            when 1 =>
-                println ("CONTROLACCESS_INSERT: denied (removed)");
-                retval := reterr;
-
-            -- DERIVE: arg1=source_slot, arg2=new_rights_bitmask,
-            --         arg3=dest_slot (0=auto)
-            when CONTROLACCESS_DERIVE =>
-                declare
-                    use type Capabilities.CapabilityType;
-                    srcCap    : Capabilities.Capability;
-                    newCap    : Capabilities.Capability;
-                    newRights : Capabilities.CapabilityRights;
-                begin
-                    if arg1 >
-                       Unsigned_64(Capabilities.CapabilitySlot'Last)
-                    then
-                        retval := reterr;
-                    else
-                        Capabilities.Operations.lookupCap (
-                            table  => Process.proctab(callerPID).caps,
-                            slot   =>
-                                Capabilities.CapabilitySlot(arg1),
-                            cap    => srcCap,
-                            status => opStatus);
-
-                        if opStatus /=
-                           Capabilities.Operations.OP_OK
-                        then
-                            retval := reterr;
-                        elsif srcCap.capType = Capabilities.CAP_REPLY
-                        then
-                            -- CAP_REPLY cannot be derived
-                            retval := reterr;
-                        else
-                            newRights := u64ToRights(
-                                Unsigned_8(arg2 and 16#FF#));
-
-                            if not Capabilities.isSubsetOf (
-                                newRights, srcCap.rights)
-                            then
-                                retval := reterr;
-                            else
-                                newCap := Capabilities.derive (
-                                    srcCap, newRights);
-
-                                if arg3 /= 0 and then
-                                   arg3 <= Unsigned_64(
-                                       Capabilities.CapabilitySlot'Last)
-                                then
-                                    Capabilities.Operations.insertCapAt (
-                                        table =>
-                                            Process.proctab(
-                                                callerPID).caps,
-                                        slot  =>
-                                            Capabilities.CapabilitySlot(
-                                                arg3),
-                                        cap   => newCap);
-                                    retval := arg3;
-                                else
-                                    Capabilities.Operations.insertCap (
-                                        table  =>
-                                            Process.proctab(
-                                                callerPID).caps,
-                                        cap    => newCap,
-                                        slot   => slot,
-                                        status => opStatus);
-                                    if opStatus =
-                                       Capabilities.Operations.OP_OK
-                                    then
-                                        retval := Unsigned_64(slot);
-                                    else
-                                        retval := reterr;
-                                    end if;
-                                end if;
-                            end if;
-                        end if;
-                    end if;
-                end;
-
-            -- MINT: arg1=source_slot, arg2=new_badge,
-            --       arg3=rights_bitmask, arg4=dest_slot (0=auto)
-            when CONTROLACCESS_MINT =>
-                declare
-                    use type Capabilities.CapabilityType;
-                    srcCap    : Capabilities.Capability;
-                    newCap    : Capabilities.Capability;
-                    newRights : Capabilities.CapabilityRights;
-                begin
-                    if arg1 >
-                       Unsigned_64(Capabilities.CapabilitySlot'Last)
-                    then
-                        retval := reterr;
-                    else
-                        Capabilities.Operations.lookupCap (
-                            table  => Process.proctab(callerPID).caps,
-                            slot   =>
-                                Capabilities.CapabilitySlot(arg1),
-                            cap    => srcCap,
-                            status => opStatus);
-
-                        if opStatus /=
-                           Capabilities.Operations.OP_OK
-                        then
-                            retval := reterr;
-                        elsif srcCap.capType = Capabilities.CAP_REPLY
-                        then
-                            -- CAP_REPLY cannot be minted
-                            retval := reterr;
-                        else
-                            newRights := u64ToRights(
-                                Unsigned_8(arg3 and 16#FF#));
-
-                            if not Capabilities.isSubsetOf (
-                                newRights, srcCap.rights)
-                            then
-                                retval := reterr;
-                            else
-                                newCap := Capabilities.mint (
-                                    srcCap, arg2, newRights);
-
-                                if arg4 /= 0 and then
-                                   arg4 <= Unsigned_64(
-                                       Capabilities.CapabilitySlot'Last)
-                                then
-                                    Capabilities.Operations.insertCapAt (
-                                        table =>
-                                            Process.proctab(
-                                                callerPID).caps,
-                                        slot  =>
-                                            Capabilities.CapabilitySlot(
-                                                arg4),
-                                        cap   => newCap);
-                                    retval := arg4;
-                                else
-                                    Capabilities.Operations.insertCap (
-                                        table  =>
-                                            Process.proctab(
-                                                callerPID).caps,
-                                        cap    => newCap,
-                                        slot   => slot,
-                                        status => opStatus);
-                                    if opStatus =
-                                       Capabilities.Operations.OP_OK
-                                    then
-                                        retval := Unsigned_64(slot);
-                                    else
-                                        retval := reterr;
-                                    end if;
-                                end if;
-                            end if;
-                        end if;
-                    end if;
-                end;
-
-            -- REMOVE: arg1=slot
-            when CONTROLACCESS_REMOVE =>
-                if arg1 >
-                   Unsigned_64(Capabilities.CapabilitySlot'Last)
-                then
-                    retval := reterr;
-                else
-                    Capabilities.Operations.removeCap (
-                        table  => Process.proctab(callerPID).caps,
-                        slot   => Capabilities.CapabilitySlot(arg1),
-                        status => opStatus);
-                    if opStatus = Capabilities.Operations.OP_OK then
-                        retval := Unsigned_64(arg1);
-                    else
-                        retval := reterr;
-                    end if;
-                end if;
-
-            -- REVOKE: arg1=slot (nullify capability)
-            when CONTROLACCESS_REVOKE =>
-                if arg1 >
-                   Unsigned_64(Capabilities.CapabilitySlot'Last)
-                then
-                    retval := reterr;
-                else
-                    Capabilities.Operations.removeCap (
-                        table  => Process.proctab(callerPID).caps,
-                        slot   => Capabilities.CapabilitySlot(arg1),
-                        status => opStatus);
-                    if opStatus = Capabilities.Operations.OP_OK then
-                        retval := Unsigned_64(arg1);
-                    else
-                        retval := reterr;
-                    end if;
-                end if;
-
-            -- REVOKE_ALL: bump generation counter (requires CAP_PROCESS/REVOKE)
-            when CONTROLACCESS_REVOKE_ALL =>
-                declare
-                    use type Capabilities.CapabilityType;
-                    hasRevoke : Boolean := False;
-                begin
-                    for s in Capabilities.CapabilitySlot loop
-                        if Process.proctab(callerPID).caps(s).capType =
-                           Capabilities.CAP_PROCESS and then
-                           Process.proctab(callerPID).caps(s).rights(
-                               Capabilities.RIGHT_REVOKE)
-                        then
-                            hasRevoke := True;
-                            exit;
-                        end if;
-                    end loop;
-
-                    if not hasRevoke then
-                        println ("REVOKE_ALL: denied, no CAP_PROCESS/REVOKE");
-                        retval := reterr;
-                    elsif Process.proctab(callerPID).capGeneration <
-                          Capabilities.Generation'Last
-                    then
-                        Process.proctab(callerPID).capGeneration :=
-                            Process.proctab(callerPID).capGeneration + 1;
-                        retval := Unsigned_64(
-                            Process.proctab(callerPID).capGeneration);
-                    else
-                        retval := reterr;
-                    end if;
-                end;
-
-            when others =>
-                retval := reterr;
-        end case;
-    end handleControlAccess;
-
-    ---------------------------------------------------------------------------
-    -- handleGetTicket
-    ---------------------------------------------------------------------------
-    procedure handleGetTicket (callerPID  : Process.ProcessID;
-                               arg0, arg1 : Unsigned_64;
-                               retval     : out Unsigned_64) with
-        SPARK_Mode => Off
-    is
-        cap      : Capabilities.Capability;
-        opStatus : Capabilities.Operations.OperationStatus;
-        userCap  : Capabilities.Capability with
-            Import, Address => Util.numToAddr(arg1);
-    begin
-        if arg0 > Unsigned_64(Capabilities.CapabilitySlot'Last) then
-            retval := 0;
-        else
-            Capabilities.Operations.lookupCap (
-                table  => Process.proctab(callerPID).caps,
-                slot   => Capabilities.CapabilitySlot(arg0),
-                cap    => cap,
-                status => opStatus);
-
-            if opStatus = Capabilities.Operations.OP_OK then
-                cap.gen := 0;
-                x86.stac;
-                userCap := cap;
-                x86.clac;
-                retval := 1;
-            else
-                retval := 0;
-            end if;
-        end if;
-    end handleGetTicket;
-
-    ---------------------------------------------------------------------------
     -- handleProclist
     ---------------------------------------------------------------------------
     procedure handleProclist (callerPID  : Process.ProcessID;
@@ -779,7 +529,7 @@ package body Syscall.Admin is
             Process.IPC.notifySupervisor (
                 callerPID,
                 IPC_Labels.EVENT_CAP_FAULT,
-                SYSCALL_PROCLIST,
+                Unsigned_64 (SyscallNumber'Enum_Rep (SYSCALL_PROCLIST)),
                 arg0, arg1);
             retval := reterr;
             return;
@@ -887,7 +637,8 @@ package body Syscall.Admin is
             Process.IPC.notifySupervisor (
                 callerPID,
                 IPC_Labels.EVENT_CAP_FAULT,
-                SYSCALL_INSPECT_CAP,
+                Unsigned_64 (SyscallNumber'Enum_Rep (
+                    SYSCALL_INSPECT_CAP)),
                 arg0, arg1);
             retval := reterr;
             return;
@@ -952,10 +703,9 @@ package body Syscall.Admin is
 
         targetPID := Process.ProcessID (arg0);
 
-        if not hasCapProcessFor (callerPID, targetPID,
-                                 Capabilities.RIGHT_GRANT)
+        if not hasCspaceGrantFor (callerPID, targetPID)
         then
-            println ("MINT_CAP: denied, no RIGHT_GRANT");
+            println ("MINT_CAP: denied, no capability-space grant");
             retval := reterr;
             return;
         elsif Process.proctab(targetPID).state = Process.INVALID then
@@ -975,10 +725,10 @@ package body Syscall.Admin is
             println ("MINT_CAP: invalid cap type");
             retval := reterr;
             return;
-        elsif arg1 = Unsigned_64 (Capabilities.CapabilityType'Pos (
-                  Capabilities.CAP_REPLY))
+        elsif not Capabilities.isOrdinarilyDerivable
+          (Capabilities.CapabilityType'Val (Natural (arg1)))
         then
-            println ("MINT_CAP: CAP_REPLY cannot be minted");
+            println ("MINT_CAP: capability type cannot be minted");
             retval := reterr;
             return;
         end if;
@@ -994,24 +744,47 @@ package body Syscall.Admin is
             Capabilities.RIGHT_GRANT   => (arg4 and 8) /= 0,
             Capabilities.RIGHT_REVOKE  => (arg4 and 16) /= 0);
 
-        -- For endpoint caps, gen must match the destination process's
-        -- capGeneration (arg2 = destPID), not the holder's. The gen
-        -- check in capCall/capSend compares cap.gen against the
-        -- destination's capGeneration to detect stale references.
+        -- Process-referencing capabilities are generation-bound to the
+        -- referenced object, not to the process receiving the capability.
+        -- Reject nonexistent references so a capability cannot spring into
+        -- validity later when that PID is first allocated or recycled.
         declare
             use type Capabilities.CapabilityType;
             capGen : Capabilities.Generation;
             ct     : constant Capabilities.CapabilityType :=
                 Capabilities.CapabilityType'Val (capTypePos);
+            objectPID : Process.ProcessID;
         begin
-            if ct = Capabilities.CAP_ENDPOINT and then
-               arg2 <= Unsigned_64(Process.ProcessID'Last) and then
-               arg2 > 0
+            if ct = Capabilities.CAP_CSPACE and then
+               not canDelegateCspace
+                 (callerPID, targetPID, arg2, newRights)
             then
-                capGen := Process.proctab(
-                    Process.ProcessID(arg2)).capGeneration;
+                println ("MINT_CAP: CSPACE delegation would amplify authority");
+                retval := reterr;
+                return;
+            end if;
+
+            if ct = Capabilities.CAP_ENDPOINT or else
+               ((ct = Capabilities.CAP_PROCESS or else
+                 ct = Capabilities.CAP_CSPACE) and then arg2 /= 0)
+            then
+                if arg2 > Unsigned_64 (Process.ProcessID'Last) or else
+                   arg2 = 0
+                then
+                    println ("MINT_CAP: invalid referenced PID");
+                    retval := reterr;
+                    return;
+                end if;
+
+                objectPID := Process.ProcessID (arg2);
+                if Process.proctab(objectPID).state = Process.INVALID then
+                    println ("MINT_CAP: referenced process not valid");
+                    retval := reterr;
+                    return;
+                end if;
+                capGen := Process.proctab(objectPID).capGeneration;
             else
-                capGen := Process.proctab(targetPID).capGeneration;
+                capGen := Capabilities.INITIAL_GENERATION;
             end if;
 
             newCap := (
@@ -1226,19 +999,24 @@ package body Syscall.Admin is
             println ("ENABLE_IRQ: denied, no RIGHT_GRANT");
             retval := reterr;
         else
-            Interrupts.enableDeviceIRQ (
-                InterruptNumbers.x86Interrupt (arg0),
-                Unsigned_32 (arg2));
-
             Capabilities.IRQ.registerIRQ (
                 vector => Natural (arg0),
                 pid    => arg1,
                 status => irqOk);
 
             if irqOk then
+                --  MSI/MSI-X sources target an IDT vector directly and must
+                --  not unmask the numerically corresponding IOAPIC input.
+                if (arg2 and 16#400#) = 0 then
+                    Interrupts.enableDeviceIRQ (
+                        InterruptNumbers.x86Interrupt (arg0),
+                        Unsigned_32 (arg2 and 16#FF#),
+                        levelTriggered => (arg2 and 16#100#) /= 0,
+                        activeLow      => (arg2 and 16#200#) /= 0);
+                end if;
                 retval := 0;
             else
-                println ("ENABLE_IRQ: IRQ already owned");
+                println ("ENABLE_IRQ: shared subscriber set full");
                 retval := reterr;
             end if;
         end if;
@@ -1321,46 +1099,6 @@ package body Syscall.Admin is
     end handleSetCpu;
 
     ---------------------------------------------------------------------------
-    -- handleSetSupervisor
-    ---------------------------------------------------------------------------
-    procedure handleSetSupervisor (callerPID  : Process.ProcessID;
-                                   arg0, arg1 : Unsigned_64;
-                                   retval     : out Unsigned_64) with
-        SPARK_Mode => Off
-    is
-        use type Capabilities.CapabilityType;
-        use type Process.ProcessState;
-
-
-        targetPID : Process.ProcessID;
-        newSvPID  : Process.ProcessID;
-    begin
-        if arg0 > Unsigned_64 (Process.ProcessID'Last) or
-           arg0 = 0
-        then
-            retval := reterr;
-            return;
-        elsif arg1 > Unsigned_64 (Process.ProcessID'Last) then
-            retval := reterr;
-            return;
-        end if;
-
-        targetPID := Process.ProcessID (arg0);
-        newSvPID  := Process.ProcessID (arg1);
-
-        if not hasCapProcessFor (callerPID, targetPID,
-                                 Capabilities.RIGHT_GRANT)
-        then
-            retval := reterr;
-        elsif Process.proctab(targetPID).state = Process.INVALID then
-            println ("SET_SUPERVISOR: target invalid");
-            retval := reterr;
-        else
-            Process.proctab(targetPID).svpid := newSvPID;
-            retval := 0;
-        end if;
-    end handleSetSupervisor;
-    ---------------------------------------------------------------------------
     -- handleSaveReplyCap
     -- Move CAP_REPLY from slot 63 to the specified destination slot.
     -- Used by servers that need to defer replies (e.g. netstack).
@@ -1373,7 +1111,7 @@ package body Syscall.Admin is
         use type Capabilities.CapabilityType;
 
         destSlot : Capabilities.CapabilitySlot;
-        cap      : Capabilities.Capability;
+        moved    : Boolean;
     begin
         -- Validate destination slot
         if arg0 > Unsigned_64(Capabilities.CapabilitySlot'Last) then
@@ -1389,18 +1127,16 @@ package body Syscall.Admin is
             return;
         end if;
 
-        -- Slot 63 must actually hold a CAP_REPLY
-        cap := Process.proctab(callerPID).caps(
-            Capabilities.REPLY_CAP_SLOT);
-        if cap.capType /= Capabilities.CAP_REPLY then
+        Capabilities.Operations.moveReplyCap
+          (table => Process.proctab(callerPID).caps,
+           dest  => destSlot,
+           moved => moved);
+
+        if not moved then
             retval := 0;
             return;
         end if;
 
-        -- Move: copy to dest, clear slot 63, set bitmap bit
-        Process.proctab(callerPID).caps(destSlot) := cap;
-        Process.proctab(callerPID).caps(Capabilities.REPLY_CAP_SLOT) :=
-            Capabilities.NULL_CAPABILITY;
         Process.proctab(callerPID).deferredReplyCaps :=
             Process.proctab(callerPID).deferredReplyCaps or
             Shift_Left (Unsigned_64'(1), destSlot);

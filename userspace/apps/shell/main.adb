@@ -3304,27 +3304,17 @@ procedure main is
    ---------------------------------------------------------------------------
    --  cmdLogs - query the log store service for recent log entries
    --  Uses async submit + Poll_Completion to get full reply message
-   --  (send() only returns the tag, not the reply words).
+   --  Completion delivery carries the full reply message.
    --  Logstore creates a temporary read-only grant to us, writes entries,
    --  then replies with the grant ID.
    ---------------------------------------------------------------------------
-   logstorePID : ProcessID := NO_PROCESS;
+   CAP_SLOT_LOGSTORE : constant CapabilitySlot := 23;
    LOG_QUERY_TOKEN : constant Unsigned_64 := 99;
 
    procedure cmdLogs is
       OP_LOG_QUERY : constant Unsigned_32 := 16#0800#;
       LOG_MAX_ENTRIES : constant := 50;
    begin
-      --  Lazy-discover logstore PID
-      if logstorePID = NO_PROCESS then
-         logstorePID := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_LOGSTORE);
-         if logstorePID = 0 or logstorePID = Unsigned_64'Last then
-            logstorePID := NO_PROCESS;
-            putStr ("logstore not running" & LF);
-            return;
-         end if;
-      end if;
-
       --  Submit async OP_LOG_QUERY
       declare
          qMsg : constant Message := (
@@ -3338,7 +3328,7 @@ procedure main is
                          others => 0));
          ok : Boolean;
       begin
-         ok := submit (logstorePID, qMsg, LOG_QUERY_TOKEN);
+         ok := capSubmit (CAP_SLOT_LOGSTORE, qMsg, LOG_QUERY_TOKEN);
          if not ok then
             putStr ("error: submit failed" & LF);
             return;

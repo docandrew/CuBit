@@ -922,7 +922,7 @@ is
    begin
       Continue_Execution_For
         (Item, State,
-         Natural (CCL.Execution_Budgets.Remaining (State.Execution_Budget)),
+         Natural (CCL.Execution_Budgets.Limit (State.Execution_Budget)),
          Result);
    end Continue_Execution;
 
@@ -934,6 +934,52 @@ is
        Waiting => State.Waiting,
        Terminal => State.Terminal,
        Status => State.Terminal_Status));
+
+   procedure Inspect
+     (Item   : Validated_Program;
+      State  : Machine_State;
+      Result : out Inspection_Snapshot)
+   is
+      Stack_Copy : Runtime_Stacks.Stack := State.Stack;
+      Stack_Value : Value;
+      Stack_Result : Runtime_Stacks.Operation_Result;
+      Local : CCL.Ownership.Binding_Id;
+      Type_Tag : CCL.Ownership.Type_Id;
+   begin
+      Result := (others => <>);
+      Result.Machine := Snapshot (State);
+      Result.Locals_Length := Item.Content.Locals_Length;
+      Result.Waiting_Import := State.Waiting_Import;
+      Result.Waiting_Result_Kind := State.Waiting_Result_Kind;
+      Result.Waiting_Argument := State.Waiting_Argument;
+      Result.Waiting_Owned := State.Waiting_Owned;
+      Result.Import_Phase := CCL.Imports.Phase (State.Import_Lifecycle);
+
+      for Position in Stack_Index loop
+         Runtime_Stacks.Pop (Stack_Copy, Stack_Value, Stack_Result);
+         exit when Stack_Result /= Runtime_Stacks.Stack_Ok;
+         Result.Stack (Position) := Stack_Value;
+         Result.Stack_Length := Stack_Depth (Natural (Position) + 1);
+      end loop;
+
+      if Item.Content.Locals_Length > 0 then
+         for Position in 0 .. Item.Content.Locals_Length - 1 loop
+            Local := CCL.Ownership.Binding_Id (Position);
+            Type_Tag := Item.Content.Local_Types (Local);
+            Result.Locals (Local) :=
+              (Value => State.Locals (Local),
+               Kind => Item.Content.Local_Kinds (Local),
+               Type_Tag => Type_Tag,
+               Mode => Item.Content.Types (Type_Tag).Mode,
+               Ownership_State =>
+                 CCL.Ownership.State (State.Ownership, Local),
+               Read_Borrows =>
+                 CCL.Ownership.Read_Borrows (State.Ownership, Local),
+               Write_Borrow =>
+                 CCL.Ownership.Has_Write_Borrow (State.Ownership, Local));
+         end loop;
+      end if;
+   end Inspect;
 
    procedure Stop (State : in out Machine_State) is
    begin

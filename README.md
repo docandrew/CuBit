@@ -63,7 +63,10 @@ The documentation is being organized as [The CuBit Book](docs/README.md).
 
 Current design records include the [CCL design](docs/control-language.md), the
 [CCL package-management design](docs/ccl-packages.md), and the living
-[security and verification ledger](docs/security-hardening.md). The graphical
+[security and verification ledger](docs/security-hardening.md). The
+[AI agent security design](docs/agent-security.md) applies CuBit's authority,
+approval, provenance, and information-flow model to bounded agent missions.
+The graphical
 [CuBit editor design](docs/editor.md) carries the DAGBuild and earlier editor
 work into a bounded, multicursor native application.
 User-visible defects and general engineering follow-ups are tracked in the

@@ -106,15 +106,62 @@ void *memset(void *s, int c, size_t n)
     return s;
 }
 
-int memcmp(const void *s1, const void *s2, size_t n)
+/*
+ * C-only programs need a freestanding fallback.  Mixed Ada/C programs use
+ * the equivalent strong implementation in the Ada runtime when it is linked.
+ * This is a general-purpose comparison, not a constant-time secret compare.
+ */
+__attribute__((weak)) int memcmp(const void *s1, const void *s2, size_t n)
 {
     const unsigned char *a = (const unsigned char *)s1;
     const unsigned char *b = (const unsigned char *)s2;
-    for (size_t i = 0; i < n; i++) {
-        if (a[i] != b[i]) {
-            return a[i] - b[i];
+
+    typedef uint64_t unaligned_word
+        __attribute__((aligned(1), may_alias));
+
+    while (n >= 8 * sizeof(unaligned_word)) {
+#pragma GCC unroll 8
+        for (size_t i = 0; i < 8; i++) {
+            const uint64_t difference =
+                ((const unaligned_word *)a)[i] ^
+                ((const unaligned_word *)b)[i];
+
+            if (difference != 0) {
+                const size_t byte = (size_t)__builtin_ctzll(difference) >> 3;
+                const size_t offset = i * sizeof(unaligned_word) + byte;
+                return a[offset] - b[offset];
+            }
         }
+
+        a += 8 * sizeof(unaligned_word);
+        b += 8 * sizeof(unaligned_word);
+        n -= 8 * sizeof(unaligned_word);
     }
+
+    while (n >= sizeof(unaligned_word)) {
+        const unaligned_word aw = *(const unaligned_word *)a;
+        const unaligned_word bw = *(const unaligned_word *)b;
+        const uint64_t difference = aw ^ bw;
+
+        if (difference != 0) {
+            const size_t byte = (size_t)__builtin_ctzll(difference) >> 3;
+            return a[byte] - b[byte];
+        }
+
+        a += sizeof(unaligned_word);
+        b += sizeof(unaligned_word);
+        n -= sizeof(unaligned_word);
+    }
+
+    while (n > 0) {
+        if (*a != *b) {
+            return *a - *b;
+        }
+        a++;
+        b++;
+        n--;
+    }
+
     return 0;
 }
 

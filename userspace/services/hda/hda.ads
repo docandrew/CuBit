@@ -163,26 +163,21 @@ package HDA is
    --    Page 0:    CORB (256 entries x 4 bytes = 1KB, padded to 4KB)
    --    Page 1:    RIRB (256 entries x 8 bytes = 2KB, padded to 4KB)
    --    Page 2:    BDL (32 entries x 16 bytes = 512 bytes, padded to 4KB)
-   --    Pages 3-4: Staging buffer 0 (8KB = 2 pages)
-   --    Pages 5-6: Staging buffer 1 (8KB = 2 pages, double-buffer)
-   --    Pages 7+:  PCM data buffers for BDL entries
+   --    Pages 3-6: Reserved for future controller-private state
+   --    Page 7:    Four 1KB PCM periods, granted directly to the mixer
    DMA_CORB_OFF     : constant Unsigned_64 := 0;
    DMA_RIRB_OFF     : constant Unsigned_64 := 16#1000#;
    DMA_BDL_OFF      : constant Unsigned_64 := 16#2000#;
-   DMA_STAGING0_OFF : constant Unsigned_64 := 16#3000#;
-   DMA_STAGING1_OFF : constant Unsigned_64 := 16#5000#;
    DMA_PCMBUF_OFF   : constant Unsigned_64 := 16#7000#;
 
    DMA_ORDER         : constant Unsigned_64 := 5;   --  32 pages = 128KB
    DMA_PAGES         : constant Unsigned_64 := 32;
 
-   --  PCM buffer size per BDL entry (1024 bytes = 256 samples stereo 16-bit)
+   --  PCM buffer size per BDL entry (1024 bytes = 256 frames stereo 16-bit)
    PCM_PERIOD_BYTES  : constant Unsigned_32 := 1024;
-   --  Number of BDL entries to use (double-buffered periods)
+   --  Number of cyclic playback periods.
    NUM_BDL_ENTRIES   : constant := 4;
-
-   --  Staging buffer size (must match mixer grant region = 2 pages = 8KB)
-   STAGING_SIZE      : constant Unsigned_32 := 8192;
+   PCM_BUFFER_PAGES  : constant := 1;
 
    ---------------------------------------------------------------------------
    --  CORB/RIRB entry types
@@ -234,13 +229,17 @@ package HDA is
    --  Stop playback stream DMA.
    procedure stopStream;
 
-   --  Fill a BDL buffer slot with PCM data from the staging area.
-   --  slotIdx: which BDL buffer (0..NUM_BDL_ENTRIES-1)
-   --  srcOff:  byte offset into staging buffer to copy from
-   --  numBytes: number of bytes to copy
-   procedure fillBuffer (slotIdx  : Natural;
-                         srcOff   : Unsigned_32;
-                         numBytes : Unsigned_32);
+   --  Clear every PCM period before playback begins.  The mixer subsequently
+   --  writes these DMA-visible periods directly through a restricted grant.
+   procedure clearOutputBuffers;
+
+   --  Acknowledge an HDA stream interrupt and identify the period which the
+   --  device has just finished consuming.  completed is False for an IRQ
+   --  which was not a playback buffer-completion interrupt.
+   procedure acknowledgePeriod
+     (slot      : out Natural;
+      position  : out Unsigned_32;
+      completed : out Boolean);
 
    --  Get the current stream position (LPIB) in bytes.
    function getPosition return Unsigned_32;
@@ -260,9 +259,6 @@ package HDA is
    --  Discovered codec info
    codecFound  : Boolean := False;
    codecVendor : Unsigned_32 := 0;
-
-   --  Staging buffer base address in grant region (set by OP_AUDIO_HW_INIT)
-   stagingBase : Unsigned_64 := GRANT_REGION_BASE;
 
    --  Discovered output path
    dacNID      : Unsigned_8 := 0;

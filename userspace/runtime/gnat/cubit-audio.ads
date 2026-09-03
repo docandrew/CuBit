@@ -51,6 +51,16 @@ package CuBit.Audio is
    type StreamHandle is private;
    NULL_STREAM : constant StreamHandle;
 
+   --  A contiguous, frame-aligned section of a stream's granted ring. A
+   --  reservation has at most two spans because it may wrap once.
+   type BufferSpan is record
+      address : System.Address := System.Null_Address;
+      frames  : Natural := 0;
+   end record;
+
+   type WriteReservation is private;
+   NULL_WRITE_RESERVATION : constant WriteReservation;
+
    ---------------------------------------------------------------------------
    --  open
    --  Open an audio stream to the mixer. Returns a handle for subsequent
@@ -77,6 +87,35 @@ package CuBit.Audio is
    function write (stream : StreamHandle;
                    buf    : System.Address;
                    frames : Natural) return Natural;
+
+   ---------------------------------------------------------------------------
+   --  reserveWrite / commitWrite / cancelWrite
+   --
+   --  Reserve writable frames in the shared ring without copying. A decoder
+   --  writes directly to firstSpan and then secondSpan, then commits a prefix
+   --  of the reservation. Commit publishes the new write pointer and consumes
+   --  the reservation; cancel returns it without publishing anything.
+   --
+   --  This is a single-producer protocol. A stale or copied reservation cannot
+   --  commit after another producer advances the stream.
+   ---------------------------------------------------------------------------
+   function reserveWrite
+     (stream    : StreamHandle;
+      maxFrames : Natural) return WriteReservation;
+
+   function isReservationValid
+     (reservation : WriteReservation) return Boolean;
+   function reservedFrames (reservation : WriteReservation) return Natural;
+   function firstSpan (reservation : WriteReservation) return BufferSpan;
+   function secondSpan (reservation : WriteReservation) return BufferSpan;
+
+   procedure commitWrite
+     (stream      : StreamHandle;
+      reservation : in out WriteReservation;
+      frames      : Natural;
+      committed   : out Boolean);
+
+   procedure cancelWrite (reservation : in out WriteReservation);
 
    ---------------------------------------------------------------------------
    --  read
@@ -151,5 +190,24 @@ private
    end record;
 
    NULL_STREAM : constant StreamHandle := (idx => 0, valid => False);
+
+   type WriteReservation is record
+      streamIdx     : StreamIndex := 0;
+      startWritePtr : Unsigned_32 := 0;
+      frameBytes    : Unsigned_32 := 0;
+      frameCount    : Natural := 0;
+      first         : BufferSpan;
+      second        : BufferSpan;
+      valid         : Boolean := False;
+   end record;
+
+   NULL_WRITE_RESERVATION : constant WriteReservation :=
+     (streamIdx     => 0,
+      startWritePtr => 0,
+      frameBytes    => 0,
+      frameCount    => 0,
+      first         => (address => System.Null_Address, frames => 0),
+      second        => (address => System.Null_Address, frames => 0),
+      valid         => False);
 
 end CuBit.Audio;

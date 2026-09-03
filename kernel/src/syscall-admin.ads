@@ -19,7 +19,7 @@ is
 
     procedure handlePortIO (callerPID  : Process.ProcessID;
                             syscallNum : SyscallNumber;
-                            arg0, arg1, arg2 : Unsigned_64;
+                            arg0, arg1 : Unsigned_64;
                             retval     : out Unsigned_64);
 
     procedure handleVirtToPhys (callerPID : Process.ProcessID;
@@ -40,15 +40,6 @@ is
                                retval     : out Unsigned_64);
 
     procedure handleReplyWait (arg0, arg1 : Unsigned_64;
-                               retval     : out Unsigned_64);
-
-    procedure handleControlAccess (callerPID : Process.ProcessID;
-                                   arg0, arg1, arg2, arg3,
-                                   arg4 : Unsigned_64;
-                                   retval : out Unsigned_64);
-
-    procedure handleGetTicket (callerPID  : Process.ProcessID;
-                               arg0, arg1 : Unsigned_64;
                                retval     : out Unsigned_64);
 
     procedure handleProclist (callerPID  : Process.ProcessID;
@@ -79,10 +70,6 @@ is
     procedure handleSetCpu (callerPID  : Process.ProcessID;
                             arg0, arg1 : Unsigned_64;
                             retval     : out Unsigned_64);
-
-    procedure handleSetSupervisor (callerPID  : Process.ProcessID;
-                                   arg0, arg1 : Unsigned_64;
-                                   retval     : out Unsigned_64);
 
     procedure handleSaveReplyCap (callerPID : Process.ProcessID;
                                    arg0      : Unsigned_64;

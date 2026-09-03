@@ -122,6 +122,27 @@ is
       Max_In_Flight => 1);
    CCL_TEST_OP_INCREMENT : constant Unsigned_32 := 16#0A00#;
 
+   --  Monotonic clock v1. The reserved request word is zero until CCL gains a
+   --  first-class Unit value. The response is milliseconds since kernel boot,
+   --  capped at Integer_64'Last so it has an exact CCL Integer representation.
+   CLOCK_INTERFACE : constant Interface_Id := 16#434C_4F43_4B00_0001#;
+   CLOCK_MONOTONIC_MS : constant Operation_Contract :=
+     (Interface_Identity => CLOCK_INTERFACE,
+      Operation => 16#0B00#,
+      Version => 1,
+      Transport => Inline_Message,
+      Request =>
+        (Identity => 16#4343_4C49_3634_0001#, Version => 1,
+         Sizing => Fixed_Size, Wire_Size => 8),
+      Response =>
+        (Identity => 16#4343_4C49_3634_0001#, Version => 1,
+         Sizing => Fixed_Size, Wire_Size => 8),
+      Argument_Mode => Copy_Value,
+      On_Success => (others => <>),
+      On_Failure => (others => <>),
+      Max_In_Flight => 1);
+   CLOCK_OP_MONOTONIC_MS : constant Unsigned_32 := 16#0B00#;
+
    TEXT_LINE_SCHEMA : constant Schema_Id := 16#4355_4249_5454_5801#;
    TEXT_LINE_CONTRACT : constant Schema_Contract :=
      (Identity => 16#4355_4249_5454_5801#,

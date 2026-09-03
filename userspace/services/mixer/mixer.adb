@@ -16,6 +16,24 @@ package body Mixer is
    function fromVolume is new Ada.Unchecked_Conversion (Volume, Unsigned_32);
    function toPan is new Ada.Unchecked_Conversion (Unsigned_32, Pan);
 
+   function readAtomicU32 (addr : Unsigned_64) return Unsigned_32 is
+      value : Unsigned_32
+         with Import,
+              Address => To_Address (Integer_Address (addr)),
+              Atomic;
+   begin
+      return value;
+   end readAtomicU32;
+
+   procedure writeAtomicU32 (addr : Unsigned_64; value : Unsigned_32) is
+      target : Unsigned_32
+         with Import,
+              Address => To_Address (Integer_Address (addr)),
+              Atomic;
+   begin
+      target := value;
+   end writeAtomicU32;
+
    function volToRaw (v : Volume) return Unsigned_32 is
    begin
       return fromVolume (v);
@@ -132,6 +150,26 @@ package body Mixer is
    end setPan;
 
    ---------------------------------------------------------------------------
+   --  hasRunningOutput
+   ---------------------------------------------------------------------------
+   function hasRunningOutput return Boolean is
+   begin
+      for i in streams'Range loop
+         if streams (i).active and then streams (i).direction = 0 and then
+            streams (i).ringAddr /= 0
+         then
+            if readAtomicU32
+                 (streams (i).ringAddr + 16#1C#) = STATE_RUNNING
+            then
+               return True;
+            end if;
+         end if;
+      end loop;
+
+      return False;
+   end hasRunningOutput;
+
+   ---------------------------------------------------------------------------
    --  readAndMix - read samples from one stream and accumulate into mix buffer
    ---------------------------------------------------------------------------
    function readAndMix (streamIdx : Natural;
@@ -141,11 +179,6 @@ package body Mixer is
       s         : StreamInfo renames streams (streamIdx);
       hdrAddr   : constant Unsigned_64 := s.ringAddr;
       dataAddr  : constant Unsigned_64 := s.ringAddr + Unsigned_64 (RING_HDR_SIZE);
-
-      hdrMem : RingHeader
-         with Import,
-              Address => To_Address (Integer_Address (hdrAddr)),
-              Volatile;
 
       type SampleArray is array (Natural range <>) of Integer_16
          with Convention => C;
@@ -165,13 +198,22 @@ package body Mixer is
       samp      : Sample;
       scaled    : MixSample;
    begin
-      if hdrMem.state /= STATE_RUNNING then
+      if readAtomicU32 (hdrAddr + 16#1C#) /= STATE_RUNNING then
          return 0;
       end if;
 
-      wp := hdrMem.writePtr;
-      rp := hdrMem.readPtr;
+      wp := readAtomicU32 (hdrAddr);
+      rp := readAtomicU32 (hdrAddr + 4);
       available := wp - rp;  --  Wrapping unsigned arithmetic
+
+      --  Header memory is writable by the untrusted producer. Validate the
+      --  complete S16LE ring invariant once before indexing shared samples.
+      if available > RING_DATA_SIZE or else wp mod 4 /= 0 or else rp mod 4 /= 0
+      then
+         writeAtomicU32
+           (hdrAddr + 16#18#, readAtomicU32 (hdrAddr + 16#18#) + 1);
+         return 0;
+      end if;
 
       --  Convert available bytes to frames (stereo 16-bit = 4 bytes/frame)
       avFrames := Natural (available) / 4;
@@ -179,7 +221,8 @@ package body Mixer is
 
       if toRead = 0 then
          --  Underrun
-         hdrMem.underruns := hdrMem.underruns + 1;
+         writeAtomicU32
+           (hdrAddr + 16#14#, readAtomicU32 (hdrAddr + 16#14#) + 1);
          return 0;
       end if;
 
@@ -202,24 +245,24 @@ package body Mixer is
       end loop;
 
       --  Advance read pointer
-      hdrMem.readPtr := rp + Unsigned_32 (toRead * 4);
+      writeAtomicU32 (hdrAddr + 4, rp + Unsigned_32 (toRead * 4));
 
       return toRead;
    end readAndMix;
 
    ---------------------------------------------------------------------------
-   --  mixPeriod - mix all active output streams, clamp, write to staging
+   --  mixPeriod - mix all active output streams into one HDA DMA period
    ---------------------------------------------------------------------------
    function mixPeriod (mixBuf     : in out MixBuffer;
-                       stagingOff : Unsigned_64;
+                       periodAddr : Unsigned_64;
                        maxFrames  : Natural) return Natural
    is
       type SampleArray is array (Natural range <>) of Integer_16
          with Convention => C;
 
-      staging : SampleArray (0 .. maxFrames * 2 - 1)
+      period : SampleArray (0 .. maxFrames * 2 - 1)
          with Import,
-              Address => To_Address (Integer_Address (stagingOff)),
+              Address => To_Address (Integer_Address (periodAddr)),
               Volatile;
 
       framesRead : Natural;
@@ -241,7 +284,7 @@ package body Mixer is
          end if;
       end loop;
 
-      --  Clamp 32-bit mix to 16-bit and always write full period to staging
+      --  Clamp 32-bit mix to 16-bit and always write the full DMA period
       --  so DMA never loops stale data (unread portion is silence from
       --  the cleared mixBuf).
       for i in 0 .. maxFrames * 2 - 1 loop
@@ -251,7 +294,7 @@ package body Mixer is
          elsif val < -32768 then
             val := -32768;
          end if;
-         staging (i) := Integer_16 (val);
+         period (i) := Integer_16 (val);
       end loop;
 
       return maxRead;

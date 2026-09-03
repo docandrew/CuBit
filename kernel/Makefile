@@ -66,6 +66,20 @@ cubit_kernel: build/libcubit.a build/init.bin
 prove:
 	$(ALR) gnatprove -Pcubit.gpr --mode=all --level=0 --no-axiom-guard
 
+# Focused proof gate for the capability-policy core.  This is intentionally
+# small enough to run on every CI boot test rather than only in full proofs.
+.PHONY : prove-capability-policy
+prove-capability-policy:
+	$(ALR) gnatprove -Pcubit.gpr -u capabilities-operations.adb \
+		--mode=all --level=1 --function-sandboxing=off
+	@cat build/gnatprove/gnatprove.out
+
+.PHONY : prove-capability-derive
+prove-capability-derive:
+	$(ALR) gnatprove -Pcubit.gpr -u capabilities.ads \
+		--mode=all --level=1 --function-sandboxing=off
+	@cat build/gnatprove/gnatprove.out
+
 .PHONY : clean
 clean:
 	$(ALR) gprclean -Pcubit.gpr
@@ -98,6 +112,15 @@ sleep: user_runtime
 		-o ../userspace/apps/sleep/build/manifest.o
 	$(ALR) gprbuild -P ../userspace/apps/sleep/sleep.gpr
 	cp ../userspace/apps/sleep/build/sleep.app isodir/boot/sleep.app
+
+.PHONY : capability-test
+capability-test: user_runtime
+	mkdir -p ../userspace/apps/capability-test/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/apps/capability-test/manifest.c \
+		-o ../userspace/apps/capability-test/build/manifest.o
+	$(ALR) gprbuild -P ../userspace/apps/capability-test/capability_test.gpr
+	cp ../userspace/apps/capability-test/build/capability-test.app isodir/boot/capability-test.app
 
 .PHONY : ipctest-server
 ipctest-server: user_runtime
@@ -174,9 +197,20 @@ ccl-test-host: user_runtime
 	$(ALR) gprbuild -P ../userspace/ccl/services/test-host/ccl_test_host.gpr
 	cp ../userspace/ccl/services/test-host/build/ccl-test-host.svc isodir/boot/ccl-test-host.svc
 
+# Capability-addressed monotonic clock service.
+.PHONY : clock
+clock: user_runtime
+	mkdir -p ../userspace/services/clock/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/services/clock/manifest.c \
+		-o ../userspace/services/clock/build/manifest.o
+	$(ALR) gprbuild -P ../userspace/services/clock/clock.gpr
+	cp ../userspace/services/clock/build/clock.svc isodir/boot/clock.svc
+
 # Build userspace Ada runtime (needed by filesystem server)
 .PHONY : user_runtime
 user_runtime:
+	$(ALR) $(MAKE) -C ../userspace/c build/crt0.o
 	mkdir -p ../userspace/runtime/build
 	mkdir -p ../userspace/runtime/adalib
 	$(ALR) gprbuild -P ../userspace/runtime/user_runtime.gpr
@@ -360,9 +394,11 @@ shell: user_runtime
 DOOM_WAD ?= ../doom1.wad
 
 DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/netsurf.app isodir/boot/sleep.app \
+	isodir/boot/capability-test.app \
 	isodir/boot/wget.app isodir/boot/security-center.app \
 	isodir/boot/ccl-vm.app \
 	isodir/boot/ccl-test-host.svc \
+	isodir/boot/clock.svc \
 	isodir/boot/desktop-shell.app isodir/boot/ui-lab.app \
 	isodir/boot/ipctest-server.app isodir/boot/ipctest-client.app \
 	isodir/boot/bench-ipc-server.app isodir/boot/bench-ipc-client.app \
@@ -387,6 +423,7 @@ ata_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" ata_disk.img
 	debugfs -w -R "write isodir/boot/netsurf.app netsurf.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/sleep.app sleep.app" ata_disk.img
+	debugfs -w -R "write isodir/boot/capability-test.app capability-test.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/wget.app wget.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/security-center.app security-center.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/desktop-shell.app desktop-shell.app" ata_disk.img
@@ -397,6 +434,7 @@ ata_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write isodir/boot/bench-ipc-client.app bench-ipc-client.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/ccl-vm.app ccl-vm.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/ccl-test-host.svc ccl-test-host.svc" ata_disk.img
+	debugfs -w -R "write isodir/boot/clock.svc clock.svc" ata_disk.img
 	debugfs -w -R "write isodir/boot/logstore.svc logstore.svc" ata_disk.img
 	debugfs -w -R "write isodir/boot/display.svc display.svc" ata_disk.img
 	debugfs -w -R "write isodir/boot/desktop.svc desktop.svc" ata_disk.img
@@ -414,6 +452,7 @@ nvme_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" nvme_disk.img
 	debugfs -w -R "write isodir/boot/netsurf.app netsurf.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/sleep.app sleep.app" nvme_disk.img
+	debugfs -w -R "write isodir/boot/capability-test.app capability-test.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/logstore.svc logstore.svc" nvme_disk.img
 	debugfs -w -R "write ../init.conf init.conf" nvme_disk.img
 	debugfs -w -R "write isodir/boot/shell.app shell.app" nvme_disk.img
@@ -427,6 +466,7 @@ nvme_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write isodir/boot/bench-ipc-client.app bench-ipc-client.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/ccl-vm.app ccl-vm.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/ccl-test-host.svc ccl-test-host.svc" nvme_disk.img
+	debugfs -w -R "write isodir/boot/clock.svc clock.svc" nvme_disk.img
 	debugfs -w -R "write isodir/boot/display.svc display.svc" nvme_disk.img
 	debugfs -w -R "write isodir/boot/desktop.svc desktop.svc" nvme_disk.img
 	dd if=/dev/zero of=/tmp/config.dat bs=8192 count=1
@@ -437,6 +477,30 @@ nvme_disk.img: $(DISK_CONTENTS)
 .PHONY : ata_disk nvme_disk
 ata_disk: ata_disk.img
 nvme_disk: nvme_disk.img
+
+# Minimal stage-2 disk for the authority non-amplification boot test.  Keeping
+# this separate from nvme_disk.img prevents CI from building desktop, browser,
+# and game payloads that the security test never launches.
+CAPABILITY_SECURITY_DISK := capability_security_disk.img
+
+$(CAPABILITY_SECURITY_DISK): capability-test ../tests/headless/init-capability-security.conf
+	dd if=/dev/zero of=$(CAPABILITY_SECURITY_DISK) bs=1K count=16384
+	mke2fs -t ext2 -F $(CAPABILITY_SECURITY_DISK)
+	debugfs -w -R "write ../tests/headless/init-capability-security.conf init.conf" $(CAPABILITY_SECURITY_DISK)
+	debugfs -w -R "write isodir/boot/capability-test.app capability-test.app" $(CAPABILITY_SECURITY_DISK)
+
+# Build the real kernel, normal stage-1 service graph, and only the stage-2
+# payload needed by the capability test.  The recipe creates the initrd after
+# all services have been staged so a parallel caller cannot capture a partial
+# archive.
+CAPABILITY_SECURITY_STAGE1 := filesystem ata nvme netstack virtio-net \
+	virtio-gpu hda mixer ps2 config netmgr procmgr devmgr
+
+.PHONY : capability-security-image
+capability-security-image: cubit_kernel $(CAPABILITY_SECURITY_STAGE1) $(CAPABILITY_SECURITY_DISK)
+	$(MAKE) initrd
+	cp cubit_kernel isodir/boot/
+	grub-mkrescue -o cubit_kernel.iso isodir
 
 # Create CPIO newc initrd image containing stage-1 service binaries.
 # The kernel parses this at boot and loads services from it.
@@ -468,7 +532,7 @@ iso: cubit_kernel initrd
 
 # Build everything including DOOM, then create ISO and disk images
 .PHONY : world
-world: cubit_kernel doom netsurf sleep ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host ccl-vm filesystem ata nvme virtio-net virtio-gpu netstack wget security-center desktop-shell ui-lab procmgr shell hda mixer ps2 config netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: cubit_kernel doom netsurf sleep capability-test ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock ccl-vm filesystem ata nvme virtio-net virtio-gpu netstack wget security-center desktop-shell ui-lab procmgr shell hda mixer ps2 config netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world
@@ -476,6 +540,7 @@ headless-test: world
 	bash ../tests/headless/run.sh --test async-ipc
 	bash ../tests/headless/run.sh --test bench-ipc
 	bash ../tests/headless/run.sh --test ccl-vm
+	bash ../tests/headless/run.sh --test capability-security
 	bash ../tests/headless/run.sh --test desktop-display
 	bash ../tests/headless/run.sh --test virtio-gpu
 	bash ../tests/headless/run.sh --test virtio-vga-primary

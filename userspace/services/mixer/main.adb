@@ -7,8 +7,9 @@
 --
 --  @description
 --  Central audio hub. Manages client stream grants, mixes PCM data from
---  multiple clients, and feeds the HDA driver.  Uses the ring buffer protocol
---  for zero-copy client communication and capCall for HDA driver interaction.
+--  multiple clients, and writes completed mixes directly into the isolated
+--  HDA PCM DMA grant.  Device-period notifications and client wakeups arrive
+--  through one-way capability IPC; control operations use capCall.
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -26,37 +27,35 @@ procedure main is
    OP_AUDIO_GET_VOL  : constant Unsigned_32 := 16#0503#;
    OP_AUDIO_SET_PAN  : constant Unsigned_32 := 16#0504#;
    OP_AUDIO_SET_FMT  : constant Unsigned_32 := 16#0505#;
-   OP_AUDIO_HW_FILL  : constant Unsigned_32 := 16#0513#;
+   OP_AUDIO_WAKE     : constant Unsigned_32 := 16#0506#;
+   OP_AUDIO_HW_INIT  : constant Unsigned_32 := 16#0510#;
+   OP_AUDIO_HW_START : constant Unsigned_32 := 16#0511#;
+   OP_AUDIO_HW_STOP  : constant Unsigned_32 := 16#0512#;
+   OP_AUDIO_HW_PERIOD : constant Unsigned_32 := 16#0516#;
    REPLY_OK           : constant Unsigned_32 := 16#F000#;
    REPLY_ERR          : constant Unsigned_32 := 16#F001#;
 
    --  Capability slots (assigned by devmgr)
    CAP_SLOT_HDA     : constant Unsigned_64 := 4;
-   CAP_SLOT_HDA_NTF : constant Unsigned_64 := 5;
-
-   STAGING_PAGES : constant := 2;
 
    msg         : Message;
    from        : ProcessID;
    ret         : Unsigned_64;
-   found       : Boolean;
    mixBuf      : Mixer.MixBuffer;
    mixFrames   : Natural;
-   fillMsg     : Message;
-   stagingAddr : Unsigned_64 := 0;
+   dmaRingAddr : Unsigned_64 := 0;
+   periodBytes : Unsigned_32 := 0;
+   periodCount : Natural := 0;
+   hdaReady    : Boolean := False;
+   hdaRunning  : Boolean := False;
+   lastPeriodSequence : Unsigned_64 := 0;
    statsStartMs : Unsigned_64 := 0;
    statsPeriods : Unsigned_64 := 0;
    statsActivePeriods : Unsigned_64 := 0;
    statsSilentPeriods : Unsigned_64 := 0;
+   statsMissedPeriods : Unsigned_64 := 0;
    statsUnderrunsLast : Unsigned_64 := 0;
-
-   --  Silence flush: after audio stops, send enough silent periods to
-   --  overwrite all BDL slots, then stop capCalling to save CPU.
-   silenceCount : Natural := 0;
-   SILENCE_FLUSH : constant Natural := 4;  --  NUM_BDL_ENTRIES
-
-   --  Mix timer: run at ~5ms intervals (~48kHz / 256 frames = 5.33ms)
-   MIX_INTERVAL_MS : constant Unsigned_64 := 5;
+   periodIRQObserved : Boolean := False;
 
    procedure printDec (val : Unsigned_64) is
       buf : String (1 .. 20);
@@ -124,6 +123,8 @@ procedure main is
       printDec (statsActivePeriods);
       debugPrint (" silent=");
       printDec (statsSilentPeriods);
+      debugPrint (" missed_periods=");
+      printDec (statsMissedPeriods);
       debugPrint (" underruns=");
       if underruns >= statsUnderrunsLast then
          printDec (underruns - statsUnderrunsLast);
@@ -136,11 +137,11 @@ procedure main is
       statsPeriods := 0;
       statsActivePeriods := 0;
       statsSilentPeriods := 0;
+      statsMissedPeriods := 0;
       statsUnderrunsLast := underruns;
    end maybePrintStats;
 
-   procedure sendReply (dest  : ProcessID;
-                        label : Unsigned_32;
+   procedure sendReply (label : Unsigned_32;
                         w0    : Unsigned_64 := 0;
                         w1    : Unsigned_64 := 0;
                         w2    : Unsigned_64 := 0;
@@ -148,7 +149,7 @@ procedure main is
    is
       ignore : Unsigned_64;
    begin
-      ignore := reply (dest,
+      ignore := replyCap (CapabilitySlot'Last,
          (tag => (label  => label,
                   length => 4,
                   flags  => 0,
@@ -157,12 +158,76 @@ procedure main is
           words => (0 => w0, 1 => w1, 2 => w2, 3 => w3)));
    end sendReply;
 
+   procedure mixIntoPeriod (slot : Natural) is
+      target : Unsigned_64;
+   begin
+      if not hdaReady or else slot >= periodCount then
+         return;
+      end if;
+
+      target := dmaRingAddr + Unsigned_64 (slot) * Unsigned_64 (periodBytes);
+      mixFrames := Mixer.mixPeriod (mixBuf, target, Mixer.MIX_FRAMES);
+      statsPeriods := statsPeriods + 1;
+      if mixFrames > 0 then
+         statsActivePeriods := statsActivePeriods + 1;
+      else
+         statsSilentPeriods := statsSilentPeriods + 1;
+      end if;
+   end mixIntoPeriod;
+
+   procedure startHardware is
+      ctlMsg : Message;
+   begin
+      if not hdaReady or else hdaRunning or else
+         not Mixer.hasRunningOutput
+      then
+         return;
+      end if;
+
+      --  Before the device starts, every period belongs to the mixer.  Prime
+      --  the complete cyclic buffer so the first sample can play immediately.
+      for slot in 0 .. periodCount - 1 loop
+         mixIntoPeriod (slot);
+      end loop;
+
+      ctlMsg :=
+        (tag => (label => OP_AUDIO_HW_START, length => 0,
+                 flags => 0, badge => 0),
+         capBadge => 0,
+         words => (others => 0));
+      ctlMsg.tag := capCall (CAP_SLOT_HDA, ctlMsg);
+      if ctlMsg.tag.label = REPLY_OK then
+         hdaRunning := True;
+         lastPeriodSequence := 0;
+      else
+         debugPrint ("mixer: HDA start failed" & LF);
+      end if;
+   end startHardware;
+
+   procedure stopHardware is
+      ctlMsg : Message;
+   begin
+      if not hdaReady or else not hdaRunning then
+         return;
+      end if;
+
+      ctlMsg :=
+        (tag => (label => OP_AUDIO_HW_STOP, length => 0,
+                 flags => 0, badge => 0),
+         capBadge => 0,
+         words => (others => 0));
+      ctlMsg.tag := capCall (CAP_SLOT_HDA, ctlMsg);
+      if ctlMsg.tag.label = REPLY_OK then
+         hdaRunning := False;
+      end if;
+   end stopHardware;
+
 begin
    debugPrint ("mixer: starting" & ASCII.LF);
 
    ret := setLatencyContract
       (LATENCY_REALTIME,
-       5_000,   --  Mixer wakes roughly every 5 ms.
+       5_000,   --  One 256-frame period is about 5.3 ms at 48 kHz.
        1_500);  --  Budget hint: mix and submit one short audio period.
    if ret = Unsigned_64'Last then
       debugPrint ("mixer: latency contract rejected" & ASCII.LF);
@@ -192,64 +257,36 @@ begin
       end if;
    end;
 
-   --  Allocate staging buffer and grant to HDA driver
+   --  Ask HDA to grant only its DMA-visible PCM period page to the mixer.
+   --  Descriptor, CORB/RIRB, and MMIO pages remain inaccessible here.
    declare
-      PAGE_SIZE : constant Unsigned_64 := 4096;
-      raw       : Unsigned_64;
-      aligned   : Unsigned_64;
-      gid       : Unsigned_64;
-      grantOK   : Boolean;
-      hdaPID    : Unsigned_64;
+      initMsg : Message;
+      gid     : Unsigned_64;
+      bytes   : Unsigned_64;
+      count   : Unsigned_64;
    begin
-      raw := syscall (SYSCALL_SBRK,
-         Unsigned_64 (STAGING_PAGES) * PAGE_SIZE + PAGE_SIZE);
+      initMsg :=
+        (tag => (label => OP_AUDIO_HW_INIT, length => 0,
+                 flags => 0, badge => 0),
+         capBadge => 0,
+         words => (others => 0));
+      initMsg.tag := capCall (CAP_SLOT_HDA, initMsg);
 
-      if raw /= Unsigned_64'Last then
-         aligned := (raw + PAGE_SIZE - 1) and not (PAGE_SIZE - 1);
-         stagingAddr := aligned;
-
-         --  Wait for HDA driver to register
-         hdaPID := 0;
-         for attempt in 1 .. 40 loop
-            hdaPID := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_HDA);
-            exit when hdaPID /= 0;
-            ret := syscall (SYSCALL_SLEEP, 50);
-         end loop;
-
-         if hdaPID /= 0 then
-            createGrant (
-               grantee   => ProcessID (hdaPID),
-               localAddr => To_Address (Integer_Address (stagingAddr)),
-               numPages  => STAGING_PAGES,
-               readWrite => False,
-               grantId   => gid,
-               success   => grantOK);
-
-            if grantOK then
-               --  Tell HDA where the staging buffer is mapped
-               declare
-                  OP_AUDIO_HW_INIT : constant Unsigned_32 := 16#0510#;
-                  initMsg : Message :=
-                     (tag => (label  => OP_AUDIO_HW_INIT,
-                              length => 1,
-                              flags  => 0,
-                              badge  => 0),
-                      capBadge => 0,
-                      words => (0 => gid, others => 0));
-               begin
-                  initMsg.tag := capCall (CAP_SLOT_HDA, initMsg);
-               end;
-               debugPrint ("mixer: staging granted to HDA" & ASCII.LF);
-            else
-               debugPrint ("mixer: staging grant failed" & ASCII.LF);
-               stagingAddr := 0;
-            end if;
-         else
-            debugPrint ("mixer: HDA driver not found" & ASCII.LF);
-            stagingAddr := 0;
-         end if;
+      gid := initMsg.words (0);
+      bytes := initMsg.words (1);
+      count := initMsg.words (2);
+      if initMsg.tag.label = REPLY_OK and then
+         bytes = Unsigned_64 (Mixer.MIX_FRAMES * 4) and then
+         count > 0 and then count <= 32 and then
+         bytes * count <= 4096
+      then
+         dmaRingAddr := 16#4000_0000_0000# + gid * (4096 * 4096);
+         periodBytes := Unsigned_32 (bytes);
+         periodCount := Natural (count);
+         hdaReady := True;
+         debugPrint ("mixer: direct HDA period grant ready" & LF);
       else
-         debugPrint ("mixer: sbrk failed for staging" & ASCII.LF);
+         debugPrint ("mixer: HDA period grant failed" & LF);
       end if;
    end;
 
@@ -271,15 +308,38 @@ begin
 
    debugPrint ("mixer: registered, entering service loop" & ASCII.LF);
 
-   --  Main loop: poll for IPC messages and periodically mix audio
+   --  Main loop: block for client control/wakeup messages or HDA completion
+   --  messages.  There is no timer polling and no synchronous per-period IPC.
    loop
-      --  Non-blocking service-request receive. Audio control messages are
-      --  client work; event/notification traffic must not be consumed here.
-      Poll_Service_Request (from, msg, found);
+      receive (from, msg);
 
-      if found then
+      if msg.tag.label = OP_AUDIO_HW_PERIOD then
+         if hdaRunning and then msg.words (0) < Unsigned_64 (periodCount) then
+            if not periodIRQObserved then
+               debugPrint ("mixer: HDA period IRQ active" & LF);
+               periodIRQObserved := True;
+            end if;
+            if lastPeriodSequence /= 0 and then
+               msg.words (1) > lastPeriodSequence + 1
+            then
+               statsMissedPeriods := statsMissedPeriods +
+                 (msg.words (1) - lastPeriodSequence - 1);
+            end if;
+            if msg.words (1) > lastPeriodSequence then
+               lastPeriodSequence := msg.words (1);
+               mixIntoPeriod (Natural (msg.words (0)));
+            end if;
+         end if;
+
+      elsif msg.tag.label = OP_AUDIO_WAKE then
+         if Mixer.hasRunningOutput then
+            startHardware;
+         else
+            stopHardware;
+         end if;
+
+      else
          from := ProcessID (msg.capBadge);
-
          case msg.tag.label is
             when OP_AUDIO_OPEN =>
                --  words(0) = sampleRate
@@ -299,13 +359,13 @@ begin
                                            channels, format, direction);
                   if idx >= 0 then
                      --  Reply: w0=streamIdx, w1=grantId, w2=hdrSz, w3=dataSz
-                     sendReply (from, REPLY_OK,
+                     sendReply (REPLY_OK,
                                 w0 => Unsigned_64 (idx),
                                 w1 => Mixer.streams (idx).grantId,
                                 w2 => Unsigned_64 (Mixer.RING_HDR_SIZE),
                                 w3 => Unsigned_64 (Mixer.RING_DATA_SIZE));
                   else
-                     sendReply (from, REPLY_ERR);
+                     sendReply (REPLY_ERR);
                   end if;
                end openStream;
 
@@ -316,14 +376,17 @@ begin
                      Natural (msg.words (0));
                begin
                   Mixer.closeStream (streamIdx);
-                  sendReply (from, REPLY_OK);
+                  sendReply (REPLY_OK);
+                  if not Mixer.hasRunningOutput then
+                     stopHardware;
+                  end if;
                end closeStream;
 
             when OP_AUDIO_SET_VOL =>
                --  words(0) = streamId, words(1) = volume 16.16
                Mixer.setVolume (Natural (msg.words (0)),
                                 Unsigned_32 (msg.words (1)));
-               sendReply (from, REPLY_OK);
+               sendReply (REPLY_OK);
 
             when OP_AUDIO_GET_VOL =>
                --  words(0) = streamId
@@ -333,11 +396,11 @@ begin
                   if idx <= Mixer.streams'Last and then
                      Mixer.streams (idx).active
                   then
-                     sendReply (from, REPLY_OK,
+                     sendReply (REPLY_OK,
                                 w0 => Unsigned_64 (Mixer.volToRaw (
                                    Mixer.streams (idx).vol)));
                   else
-                     sendReply (from, REPLY_ERR);
+                     sendReply (REPLY_ERR);
                   end if;
                end getVol;
 
@@ -345,57 +408,17 @@ begin
                --  words(0) = streamId, words(1) = pan 16.16
                Mixer.setPan (Natural (msg.words (0)),
                              Unsigned_32 (msg.words (1)));
-               sendReply (from, REPLY_OK);
+               sendReply (REPLY_OK);
 
             when OP_AUDIO_SET_FMT =>
                --  Format change not yet supported at runtime
-               sendReply (from, REPLY_ERR);
+               sendReply (REPLY_ERR);
 
             when others =>
-               sendReply (from, REPLY_ERR);
+               sendReply (REPLY_ERR);
          end case;
       end if;
 
-      --  Mix a period and send to HDA driver.
-      --  When audio stops, flush all BDL slots with silence then stop
-      --  capCalling to avoid starving other processes.
-      if stagingAddr /= 0 then
-         mixFrames := Mixer.mixPeriod (mixBuf, stagingAddr,
-                                        Mixer.MIX_FRAMES);
-         statsPeriods := statsPeriods + 1;
-
-         if mixFrames > 0 then
-            --  Active audio: always send, reset flush counter
-            statsActivePeriods := statsActivePeriods + 1;
-            silenceCount := 0;
-            fillMsg := (tag => (label  => OP_AUDIO_HW_FILL,
-                                length => 2,
-                                flags  => 0,
-                                badge  => 0),
-                        capBadge => 0,
-                        words => (0 => 0,
-                                  1 => Unsigned_64 (Mixer.MIX_FRAMES * 4),
-                                  others => 0));
-            fillMsg.tag := capCall (CAP_SLOT_HDA, fillMsg);
-         elsif silenceCount < SILENCE_FLUSH then
-            --  Flush remaining BDL slots with silence
-            statsSilentPeriods := statsSilentPeriods + 1;
-            silenceCount := silenceCount + 1;
-            fillMsg := (tag => (label  => OP_AUDIO_HW_FILL,
-                                length => 2,
-                                flags  => 0,
-                                badge  => 0),
-                        capBadge => 0,
-                        words => (0 => 0,
-                                  1 => Unsigned_64 (Mixer.MIX_FRAMES * 4),
-                                  others => 0));
-            fillMsg.tag := capCall (CAP_SLOT_HDA, fillMsg);
-         end if;
-      end if;
-
       maybePrintStats;
-
-      --  Sleep briefly to yield CPU when no audio is active
-      ret := syscall (SYSCALL_SLEEP, MIX_INTERVAL_MS);
    end loop;
 end main;

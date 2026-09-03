@@ -17,143 +17,114 @@ is
     ---------------------------------------------------------------------------
     -- System Calls
     ---------------------------------------------------------------------------
-    subtype SyscallNumber is Unsigned_64;
-    SYSCALL_EXIT          : constant SyscallNumber := 0;
-    SYSCALL_READ          : constant SyscallNumber := 1;
-    SYSCALL_CLOSE         : constant SyscallNumber := 2;
-    SYSCALL_EXECVE        : constant SyscallNumber := 3;
-    SYSCALL_FORK          : constant SyscallNumber := 4;
-    SYSCALL_FSTAT         : constant SyscallNumber := 5;
-    SYSCALL_GETPID        : constant SyscallNumber := 6;
-    SYSCALL_KILL          : constant SyscallNumber := 7;
-    SYSCALL_SBRK          : constant SyscallNumber := 8;
-    SYSCALL_TIMES         : constant SyscallNumber := 9;
-    SYSCALL_UNLINK        : constant SyscallNumber := 10;
-    SYSCALL_WAIT          : constant SyscallNumber := 11;
-    SYSCALL_WRITE         : constant SyscallNumber := 12;
-    SYSCALL_OPEN          : constant SyscallNumber := 13;
+    type SyscallNumber is (
+        SYSCALL_EXIT,
+        SYSCALL_GETPID,
+        SYSCALL_KILL,
+        SYSCALL_SBRK,
+        SYSCALL_WRITE,
+        SYSCALL_INFO,
+        SYSCALL_RECEIVE,
+        SYSCALL_REPLY,
+        SYSCALL_SEND_EVENT,
+        SYSCALL_RECEIVE_EVENT,
+        SYSCALL_POLL_ANY_IPC,
+        SYSCALL_SUBMIT,
+        SYSCALL_WAIT_COMPLETION,
+        SYSCALL_POLL_COMPLETION,
+        SYSCALL_RECEIVE_EVENT_NB,
+        SYSCALL_GETTIME,
+        SYSCALL_SLEEP,
+        SYSCALL_MAPFB,
+        SYSCALL_INP8,
+        SYSCALL_OUTP8,
+        SYSCALL_INP16,
+        SYSCALL_OUTP16,
+        SYSCALL_INP32,
+        SYSCALL_OUTP32,
+        SYSCALL_CAP_SEND,
+        SYSCALL_CAP_CALL,
+        SYSCALL_CAP_SUBMIT,
+        SYSCALL_NOTIFY,
+        SYSCALL_REPLY_WAIT,
+        SYSCALL_VIRT_TO_PHYS,
+        SYSCALL_SAVE_REPLY_CAP,
+        SYSCALL_REPLY_CAP,
+        SYSCALL_SPAWN,
+        SYSCALL_MAP_DEVICE,
+        SYSCALL_PROCLIST,
+        SYSCALL_MINT_CAP,
+        SYSCALL_RESUME,
+        SYSCALL_ALLOC_DMA,
+        SYSCALL_ENABLE_IRQ,
+        SYSCALL_MAP_INTO,
+        SYSCALL_SET_SYSINFO,
+        SYSCALL_SET_CPU,
+        SYSCALL_POLL_SERVICE_REQUEST,
+        SYSCALL_SET_LATENCY_CONTRACT,
+        SYSCALL_TRACE_RESET,
+        SYSCALL_TRACE_SUMMARY,
+        SYSCALL_INSPECT_CAP,
+        SYSCALL_GRANT,
+        SYSCALL_REVOKE,
+        SYSCALL_GRANT_VIA_CAP,
+        SYSCALL_SET_WELL_KNOWN,
+        SYSCALL_REGISTER_DRIVER)
+    with Size => Unsigned_64'Size;
 
-    SYSCALL_INFO          : constant SyscallNumber := 15;
-    SYSCALL_SEND          : constant SyscallNumber := 16;
-    SYSCALL_RECEIVE       : constant SyscallNumber := 17;
-    SYSCALL_REPLY         : constant SyscallNumber := 18;
-    SYSCALL_SEND_EVENT    : constant SyscallNumber := 19;
-    SYSCALL_RECEIVE_EVENT : constant SyscallNumber := 20;
-    SYSCALL_CALL          : constant SyscallNumber := 21;
-    SYSCALL_RECEIVE_NB    : constant SyscallNumber := 22;
-    SYSCALL_POLL_ANY_IPC  : constant SyscallNumber := 22;
-
-    -- Async I/O Syscalls
-    SYSCALL_SUBMIT          : constant SyscallNumber := 23;
-    SYSCALL_WAIT_COMPLETION : constant SyscallNumber := 24;
-    SYSCALL_POLL_COMPLETION : constant SyscallNumber := 25;
-    SYSCALL_RECEIVE_EVENT_NB : constant SyscallNumber := 26;
-
-    -- Typed IPC polling.
-    -- Service-request polling never consumes events/notifications. Mixed IPC
-    -- polling is available through SYSCALL_POLL_ANY_IPC above and should be
-    -- rare enough to look suspicious at review time.
-    SYSCALL_POLL_SERVICE_REQUEST : constant SyscallNumber := 80;
-
-    -- Time syscalls
-    SYSCALL_GETTIME         : constant SyscallNumber := 27;
-    SYSCALL_SLEEP           : constant SyscallNumber := 28;
-
-    -- Framebuffer syscall
-    SYSCALL_MAPFB           : constant SyscallNumber := 29;
-
-    -- Port I/O syscalls (for userspace drivers)
-    SYSCALL_INP8            : constant SyscallNumber := 30;
-    SYSCALL_OUTP8           : constant SyscallNumber := 31;
-    SYSCALL_INP16           : constant SyscallNumber := 32;
-    SYSCALL_OUTP16          : constant SyscallNumber := 33;
-    SYSCALL_INPS16          : constant SyscallNumber := 34;
-    SYSCALL_OUTPS16         : constant SyscallNumber := 35;
-    SYSCALL_INP32           : constant SyscallNumber := 36;
-    SYSCALL_OUTP32          : constant SyscallNumber := 37;
-
-    -- Virtual-to-physical address translation
-    SYSCALL_VIRT_TO_PHYS    : constant SyscallNumber := 50;
-
-    -- Move reply cap from slot 63 to another slot (for deferred replies)
-    SYSCALL_SAVE_REPLY_CAP  : constant SyscallNumber := 51;
-    SYSCALL_REPLY_CAP       : constant SyscallNumber := 52;
-
-    -- Process spawning
-    SYSCALL_SPAWN           : constant SyscallNumber := 60;
-
-    -- Device MMIO mapping (for userspace drivers)
-    SYSCALL_MAP_DEVICE      : constant SyscallNumber := 70;
-
-    -- Process listing (for ps command)
-    SYSCALL_PROCLIST        : constant SyscallNumber := 71;
-
-    -- Capability minting (for process managers)
-    SYSCALL_MINT_CAP        : constant SyscallNumber := 72;
-
-    -- Resume a suspended process
-    SYSCALL_RESUME          : constant SyscallNumber := 73;
-
-    -- Device manager syscalls
-    SYSCALL_ALLOC_DMA       : constant SyscallNumber := 74;
-    SYSCALL_ENABLE_IRQ      : constant SyscallNumber := 75;
-    SYSCALL_MAP_INTO        : constant SyscallNumber := 76;
-    SYSCALL_SET_SYSINFO     : constant SyscallNumber := 77;
-    SYSCALL_SET_CPU         : constant SyscallNumber := 78;
-    SYSCALL_SET_SUPERVISOR  : constant SyscallNumber := 79;
-
-    -- Scheduler latency contracts. arg0 = class, arg1 = period us,
-    -- arg2 = budget us, arg3 = reserved flags. This is process-local for now;
-    -- privileged cross-process scheduling policy belongs in procmgr later.
-    SYSCALL_SET_LATENCY_CONTRACT : constant SyscallNumber := 81;
-
-    -- Kernel trace controls. TRACE_RESET enables the low-overhead per-CPU
-    -- trace ring; TRACE_SUMMARY disables tracing and prints aggregate counts.
-    SYSCALL_TRACE_RESET      : constant SyscallNumber := 82;
-    SYSCALL_TRACE_SUMMARY    : constant SyscallNumber := 83;
-
-    -- Read-only capability inspection. arg0 = target PID, arg1 = cap slot,
-    -- arg2 = user buffer for a 48-byte packed capability summary. Requires
-    -- CAP_PROCESS + RIGHT_READ for the target process.
-    SYSCALL_INSPECT_CAP      : constant SyscallNumber := 84;
-
-    -- Capability-aware IPC syscalls
-    SYSCALL_CAP_SEND        : constant SyscallNumber := 40;
-    SYSCALL_CAP_CALL        : constant SyscallNumber := 41;
-    SYSCALL_CAP_SUBMIT      : constant SyscallNumber := 42;
-
-    -- Notification syscalls
-    SYSCALL_NOTIFY          : constant SyscallNumber := 43;
-    SYSCALL_NOTIFY_WAIT     : constant SyscallNumber := 44;
-    SYSCALL_NOTIFY_POLL     : constant SyscallNumber := 45;
-
-    -- Notification binding
-    SYSCALL_BIND_NOTIFICATION   : constant SyscallNumber := 46;
-    SYSCALL_UNBIND_NOTIFICATION : constant SyscallNumber := 47;
-
-    -- Atomic reply+receive
-    SYSCALL_REPLY_WAIT      : constant SyscallNumber := 48;
-
-    -- Access Controller Syscalls
-    SYSCALL_CONTROLACCESS : constant SyscallNumber := 100;
-    SYSCALL_GETTICKET     : constant SyscallNumber := 101;
-    SYSCALL_GRANT         : constant SyscallNumber := 102;
-    SYSCALL_REVOKE        : constant SyscallNumber := 103;
-
-    -- Service discovery syscalls
-    SYSCALL_GRANT_VIA_CAP   : constant SyscallNumber := 106;
-    SYSCALL_SET_WELL_KNOWN  : constant SyscallNumber := 107;
-
-    -- CONTROLACCESS sub-operation codes (passed in arg0)
-    -- CONTROLACCESS_INSERT (1) removed: capability bypass vulnerability.
-    CONTROLACCESS_DERIVE  : constant Unsigned_64 := 2;
-    CONTROLACCESS_MINT    : constant Unsigned_64 := 3;
-    CONTROLACCESS_REMOVE  : constant Unsigned_64 := 4;
-    CONTROLACCESS_REVOKE      : constant Unsigned_64 := 5;
-    CONTROLACCESS_REVOKE_ALL  : constant Unsigned_64 := 6;
-
-    -- Driver registration
-    SYSCALL_REGISTER_DRIVER : constant SyscallNumber := 2000;
+    for SyscallNumber use (
+        SYSCALL_EXIT                 => 0,
+        SYSCALL_GETPID               => 6,
+        SYSCALL_KILL                 => 7,
+        SYSCALL_SBRK                 => 8,
+        SYSCALL_WRITE                => 12,
+        SYSCALL_INFO                 => 15,
+        SYSCALL_RECEIVE              => 17,
+        SYSCALL_REPLY                => 18,
+        SYSCALL_SEND_EVENT           => 19,
+        SYSCALL_RECEIVE_EVENT        => 20,
+        SYSCALL_POLL_ANY_IPC         => 22,
+        SYSCALL_SUBMIT               => 23,
+        SYSCALL_WAIT_COMPLETION      => 24,
+        SYSCALL_POLL_COMPLETION      => 25,
+        SYSCALL_RECEIVE_EVENT_NB     => 26,
+        SYSCALL_GETTIME              => 27,
+        SYSCALL_SLEEP                => 28,
+        SYSCALL_MAPFB                => 29,
+        SYSCALL_INP8                 => 30,
+        SYSCALL_OUTP8                => 31,
+        SYSCALL_INP16                => 32,
+        SYSCALL_OUTP16               => 33,
+        SYSCALL_INP32                => 36,
+        SYSCALL_OUTP32               => 37,
+        SYSCALL_CAP_SEND             => 40,
+        SYSCALL_CAP_CALL             => 41,
+        SYSCALL_CAP_SUBMIT           => 42,
+        SYSCALL_NOTIFY               => 43,
+        SYSCALL_REPLY_WAIT           => 48,
+        SYSCALL_VIRT_TO_PHYS         => 50,
+        SYSCALL_SAVE_REPLY_CAP       => 51,
+        SYSCALL_REPLY_CAP            => 52,
+        SYSCALL_SPAWN                => 60,
+        SYSCALL_MAP_DEVICE           => 70,
+        SYSCALL_PROCLIST             => 71,
+        SYSCALL_MINT_CAP             => 72,
+        SYSCALL_RESUME               => 73,
+        SYSCALL_ALLOC_DMA            => 74,
+        SYSCALL_ENABLE_IRQ           => 75,
+        SYSCALL_MAP_INTO             => 76,
+        SYSCALL_SET_SYSINFO          => 77,
+        SYSCALL_SET_CPU              => 78,
+        SYSCALL_POLL_SERVICE_REQUEST => 80,
+        SYSCALL_SET_LATENCY_CONTRACT => 81,
+        SYSCALL_TRACE_RESET          => 82,
+        SYSCALL_TRACE_SUMMARY        => 83,
+        SYSCALL_INSPECT_CAP          => 84,
+        SYSCALL_GRANT                => 102,
+        SYSCALL_REVOKE               => 103,
+        SYSCALL_GRANT_VIA_CAP        => 106,
+        SYSCALL_SET_WELL_KNOWN       => 107,
+        SYSCALL_REGISTER_DRIVER      => 2000);
 
     ---------------------------------------------------------------------------
     -- syscallHandler
@@ -167,7 +138,7 @@ is
                              arg3,
                              arg4,
                              arg5,
-                             syscallNum : in Unsigned_64) return Unsigned_64
+                             syscallNumRaw : in Unsigned_64) return Unsigned_64
         with Export => True, Convention => C, External_Name => "syscallHandler";
 
     ---------------------------------------------------------------------------
@@ -177,18 +148,6 @@ is
         with Import => True, Convention => C, External_Name => "syscallReturn";
 
 private
-    ---------------------------------------------------------------------------
-    -- open syscall implementation. 
-    -- @param filename
-    -- @param flags
-    -- @param mode
-    -- @return a descriptor for the resource requested.
-    ---------------------------------------------------------------------------
-    function open (filenameLen : in Unsigned_64;
-                   filename    : in System.Address;
-                   flags       : in Unsigned_64;
-                   mode        : in Unsigned_64) return Unsigned_64;
-
     ---------------------------------------------------------------------------
     -- write syscall implementation
     -- @param fd - open descriptor
@@ -200,13 +159,4 @@ private
                     buf      : in System.Address;
                     count    : in Unsigned_64) return Unsigned_64;
 
-    ---------------------------------------------------------------------------
-    -- read syscall implementation
-    -- @param fd - open descriptor
-    -- @param buf - address of the user buffer to place the read bytes
-    -- @param count - number of bytes to read
-    ---------------------------------------------------------------------------
-    function read (fd        : in Descriptors.DescriptorNum;
-                   buf       : in System.Address;
-                   count     : in Unsigned_64) return Unsigned_64;
 end Syscall;

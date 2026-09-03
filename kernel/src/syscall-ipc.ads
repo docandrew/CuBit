@@ -40,11 +40,6 @@ is
     procedure handleReceive (arg0   : Unsigned_64;
                              retval : out Unsigned_64);
 
-    procedure handleSend (callerPID : Process.ProcessID;
-                          arg0, arg1, arg2, arg3,
-                          arg4, arg5 : Unsigned_64;
-                          retval     : out Unsigned_64);
-
     procedure handleReply (arg0, arg1, arg2, arg3,
                            arg4, arg5 : Unsigned_64;
                            retval     : out Unsigned_64);
@@ -61,18 +56,11 @@ is
                                arg4, arg5 : Unsigned_64;
                                retval     : out Unsigned_64);
 
-    procedure handleCall (callerPID  : Process.ProcessID;
-                          arg0, arg1 : Unsigned_64;
-                          retval     : out Unsigned_64);
-
     procedure handlePollServiceRequest (arg0   : Unsigned_64;
                                         retval : out Unsigned_64);
 
     procedure handlePollAnyIpc (arg0   : Unsigned_64;
                                 retval : out Unsigned_64);
-
-    procedure handleReceiveNB (arg0   : Unsigned_64;
-                               retval : out Unsigned_64);
 
     procedure handleSubmit (arg0, arg1, arg2, arg3,
                             arg4, arg5 : Unsigned_64;

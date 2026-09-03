@@ -26,9 +26,20 @@ package body ATA_PIO is
    procedure ins16 (port : Unsigned_16;
                     addr : System.Address;
                     count : Unsigned_32) is
-      ignore : Unsigned_64;
    begin
-      ignore := portInps16 (port, addr, count);
+      if count = 0 then
+         return;
+      end if;
+
+      declare
+         type Word_Array is array (Natural range <>) of Unsigned_16;
+         words : Word_Array (0 .. Natural (count) - 1)
+           with Import, Address => addr;
+      begin
+         for i in words'Range loop
+            words (i) := Unsigned_16 (portInp16 (port) and 16#FFFF#);
+         end loop;
+      end;
    end ins16;
 
    --  Wait for BSY to clear

@@ -151,16 +151,20 @@ package Mixer is
    --  0.0 = left, 0.5 = center, 1.0 = right.
    procedure setPan (streamIdx : Natural; p : Unsigned_32);
 
+   --  True when at least one output stream is both active and running.  This
+   --  lets the service stop HDA completely while all clients are idle.
+   function hasRunningOutput return Boolean;
+
    --  Read available samples from a stream's ring buffer and add to mixBuf.
    --  Returns number of frames actually read.
    function readAndMix (streamIdx : Natural;
                         mixBuf    : in out MixBuffer;
                         maxFrames : Natural) return Natural;
 
-   --  Mix all active output streams into mixBuf, clamp to S16LE, write
-   --  to the HDA staging buffer.  Returns number of frames mixed.
+   --  Mix all active output streams into mixBuf, clamp to S16LE, and write
+   --  directly to one HDA PCM DMA period.  Returns number of frames mixed.
    function mixPeriod (mixBuf     : in out MixBuffer;
-                       stagingOff : Unsigned_64;
+                       periodAddr : Unsigned_64;
                        maxFrames  : Natural) return Natural;
 
 end Mixer;

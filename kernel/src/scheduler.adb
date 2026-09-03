@@ -26,6 +26,8 @@ is
     procedure enter with
         SPARK_Mode => On
     is
+        use type Process.ProcessMode;
+        use type Process.ProcessState;
         perCPUAddr : constant System.Address := PerCPUData.getPerCPUDataAddr;
     begin
         -- Check kernel stack canary before context switch
@@ -42,6 +44,22 @@ is
                     "Kernel stack overflow detected (canary corrupted)";
             end if;
         end checkCanary;
+
+        -- Eagerly preserve user FP/SIMD state before leaving the process.
+        -- Kernel scheduler code is compiled without MMX/SSE, so no restore is
+        -- needed until immediately before the next user process runs.
+        saveFPU : declare
+            cpuData : PerCPUData.PerCPUData with
+                Import, Volatile, Address => perCPUAddr;
+            pid : constant Process.ProcessID := cpuData.currentPID;
+        begin
+            if pid /= Process.NO_PROCESS and then
+               Process.proctab(pid).state /= Process.INVALID and then
+               Process.proctab(pid).mode = Process.USER
+            then
+                Process.saveFPUState (pid);
+            end if;
+        end saveFPU;
 
         getCPUContext: declare
             cpuData : PerCPUData.PerCPUData with
@@ -117,9 +135,10 @@ is
 
             -- print ("Scheduler: Switching to context "); println (cpuData.currentContext);
 
-            -- Lazy FPU: arm trap if this process doesn't own the FPU
-            if cpuData.fpuOwner /= pid then
-                Process.disableFPU;
+            -- Restore initialized FP/SIMD state before any user instruction
+            -- can execute. Kernel threads are compiled without FP/SIMD.
+            if Process.proctab(pid).mode = Process.USER then
+                Process.restoreFPUState (pid);
             end if;
 
             if Process.proctab(pid).readyTSC /= 0 then

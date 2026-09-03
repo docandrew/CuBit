@@ -216,7 +216,7 @@ int cubit_stream_handle_subscription(void)
 {
     stream_msg_t msg;
     memset(&msg, 0, sizeof(msg));
-    long from = syscall1(SYSCALL_RECEIVE_NB, &msg);
+    long from = syscall1(SYSCALL_POLL_ANY_IPC, &msg);
     if (from == 0)
         return 0;
 

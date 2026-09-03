@@ -183,6 +183,9 @@ is
     function getCR0 return Unsigned_64;
     procedure setCR0 (cr0 : Unsigned_64);
 
+    -- Clear CR0.TS without a CR0 read/modify/write sequence.
+    procedure clearTaskSwitched;
+
     ---------------------------------------------------------------------------
     -- Get the current value of the CR2 register (used in page faults)
     ---------------------------------------------------------------------------
@@ -666,13 +669,20 @@ is
                          src : in System.Address;
                          len : in System.Storage_Elements.Storage_Count);
 
+    -- Compare exactly len bytes and return the exact difference between the
+    -- first differing pair of unsigned bytes.  Not constant-time.
+    function compare_memory (left  : in System.Address;
+                             right : in System.Address;
+                             len   : in System.Storage_Elements.Storage_Count)
+        return Integer with SPARK_Mode => Off;
+
     ---------------------------------------------------------------------------
-    -- FXSAVE Save floating point state
+    -- FXSAVE64 Save floating point state
     ---------------------------------------------------------------------------
     procedure fxsave (saveArea : System.Address);
 
     ---------------------------------------------------------------------------
-    -- FXRSTOR Restore floating point state
+    -- FXRSTOR64 Restore floating point state
     ---------------------------------------------------------------------------
     procedure fxrstor (saveArea : System.Address);
 

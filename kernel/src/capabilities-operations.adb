@@ -9,6 +9,78 @@ package body Capabilities.Operations with
 is
 
     ---------------------------------------------------------------------------
+    -- moveReplyCap
+    ---------------------------------------------------------------------------
+    procedure moveReplyCap (table : in out CapabilityTable;
+                            dest  : in     CapabilitySlot;
+                            moved :    out Boolean)
+    is
+    begin
+        if dest = REPLY_CAP_SLOT
+          or else table(REPLY_CAP_SLOT).capType /= CAP_REPLY
+          or else table(dest).capType /= CAP_NULL
+        then
+            moved := False;
+            return;
+        end if;
+
+        table(dest) := table(REPLY_CAP_SLOT);
+        table(REPLY_CAP_SLOT) := NULL_CAPABILITY;
+        moved := True;
+    end moveReplyCap;
+
+    ---------------------------------------------------------------------------
+    -- takeReplyCap
+    ---------------------------------------------------------------------------
+    procedure takeReplyCap (table : in out CapabilityTable;
+                            slot  : in     CapabilitySlot;
+                            cap   :    out Capability;
+                            taken :    out Boolean)
+    is
+    begin
+        if table(slot).capType /= CAP_REPLY then
+            cap := NULL_CAPABILITY;
+            taken := False;
+            return;
+        end if;
+
+        cap := table(slot);
+        table(slot) := NULL_CAPABILITY;
+        taken := True;
+    end takeReplyCap;
+
+    ---------------------------------------------------------------------------
+    -- proveReplyCapSingleUse
+    ---------------------------------------------------------------------------
+    procedure proveReplyCapSingleUse
+      (table       : in out CapabilityTable;
+       slot        : in     CapabilitySlot;
+       firstTaken  :    out Boolean;
+       secondTaken :    out Boolean)
+    is
+        firstCap  : Capability;
+        secondCap : Capability;
+    begin
+        takeReplyCap (table, slot, firstCap, firstTaken);
+        takeReplyCap (table, slot, secondCap, secondTaken);
+    end proveReplyCapSingleUse;
+
+    ---------------------------------------------------------------------------
+    -- advanceGeneration
+    ---------------------------------------------------------------------------
+    procedure advanceGeneration (current  : in out Generation;
+                                 reusable :    out Boolean)
+    is
+    begin
+        if current < Generation'Last then
+            current  := current + 1;
+            reusable := True;
+        else
+            reusable := False;
+        end if;
+    end advanceGeneration;
+
+    ---------------------------------------------------------------------------
     -- lookupCap
     ---------------------------------------------------------------------------
     procedure lookupCap (table  : in     CapabilityTable;
@@ -163,44 +235,68 @@ is
     end resolveEndpoint;
 
     ---------------------------------------------------------------------------
+    -- resolveCurrentEndpoint
+    ---------------------------------------------------------------------------
+    procedure resolveCurrentEndpoint
+      (table             : in     CapabilityTable;
+       slot              : in     CapabilitySlot;
+       rights            : in     CapabilityRights;
+       currentGeneration : in     Generation;
+       destPID           :    out Unsigned_64;
+       capBadge          :    out Badge;
+       status            :    out OperationStatus)
+    is
+    begin
+        resolveEndpoint
+          (table    => table,
+           slot     => slot,
+           rights   => rights,
+           destPID  => destPID,
+           capBadge => capBadge,
+           status   => status);
+
+        if status /= OP_OK then
+            return;
+        end if;
+
+        if table(slot).gen /= currentGeneration then
+            destPID  := 0;
+            capBadge := NO_BADGE;
+            status   := OP_STALE_GENERATION;
+        end if;
+    end resolveCurrentEndpoint;
+
+    ---------------------------------------------------------------------------
     -- grantInitialCaps
     ---------------------------------------------------------------------------
-    procedure grantInitialCaps (table : in out CapabilityTable;
+    procedure grantInitialCaps (table :    out CapabilityTable;
                                 pid   : in     Unsigned_64;
                                 gen   : in     Generation)
     is
     begin
-        -- Slot 0: Self endpoint (send + receive)
+        -- A process slot may be recycled. Re-establish the empty-table
+        -- invariant here rather than relying on every caller to have cleared
+        -- stale authority left by the previous occupant.
+        table := EMPTY_TABLE;
+
+        -- Slot 0: Self endpoint. Grant/revoke rights are intentionally absent;
+        -- this handle cannot be used as capability-construction authority.
         table(0) := (
             capType  => CAP_ENDPOINT,
-            rights   => ALL_RIGHTS,
+            rights   => READ_WRITE,
             capBadge => pid,
             object   => (ref => pid, param => 0),
             gen      => gen);
 
-        -- Slot 1: Filesystem server endpoint (from well-known registry)
-        if Config.wellKnownServices(Config.ROLE_FILESYSTEM).pid /=
-           Config.NO_PROCESS_ID
-        then
-            table(1) := (
-                capType  => CAP_ENDPOINT,
-                rights   => READ_WRITE,
-                capBadge => pid,
-                object   => (ref => Unsigned_64 (
-                                Config.wellKnownServices(
-                                    Config.ROLE_FILESYSTEM).pid),
-                             param => 0),
-                gen      => Generation (
-                                Config.wellKnownServices(
-                                    Config.ROLE_FILESYSTEM).gen));
-        end if;
+        -- Slot 1 is deliberately empty. Filesystem access must come from the
+        -- executable manifest and launcher policy, or explicit delegation.
 
-        -- Slot 2: Reserved (formerly kernel keyboard endpoint)
-
-        -- Slot 3: Self process control
+        -- Slot 3: Self inspection/termination only. In particular, EXECUTE,
+        -- GRANT, and REVOKE are absent, so a process cannot spawn or construct
+        -- authority merely because it can control its own lifecycle.
         table(3) := (
             capType  => CAP_PROCESS,
-            rights   => ALL_RIGHTS,
+            rights   => READ_WRITE,
             capBadge => NO_BADGE,
             object   => (ref => pid, param => 0),
             gen      => gen);

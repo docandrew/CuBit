@@ -544,36 +544,6 @@ package body Syscall.IPC is
     end handleReceive;
 
     ---------------------------------------------------------------------------
-    -- handleSend
-    ---------------------------------------------------------------------------
-    procedure handleSend (callerPID : Process.ProcessID;
-                          arg0, arg1, arg2, arg3,
-                          arg4, arg5 : Unsigned_64;
-                          retval     : out Unsigned_64) with
-        SPARK_Mode => Off
-    is
-
-
-
-
-        sendMsg  : constant Process.Message := (
-            tag      => u64ToTag (arg1),
-            capBadge => 0,
-            words    => (arg2, arg3, arg4, arg5));
-        replyTag : Process.MessageTag;
-    begin
-        if arg0 > Unsigned_64(Process.ProcessID'Last) then
-            retval := reterr;
-        else
-            replyTag := Process.IPC.send (
-                dest => Process.ProcessID(arg0),
-                msg  => sendMsg);
-            Process.proctab(callerPID).replyMsg := Process.NULL_MESSAGE;
-            retval := tagToU64 (replyTag);
-        end if;
-    end handleSend;
-
-    ---------------------------------------------------------------------------
     -- handleReply
     ---------------------------------------------------------------------------
     procedure handleReply (arg0, arg1, arg2, arg3,
@@ -709,7 +679,8 @@ package body Syscall.IPC is
             Process.IPC.notifySupervisor (
                 callerPID,
                 IPC_Labels.EVENT_CAP_FAULT,
-                SYSCALL_SEND_EVENT,
+                Unsigned_64 (SyscallNumber'Enum_Rep (
+                    SYSCALL_SEND_EVENT)),
                 arg0, 0);
             retval := reterr;
         else
@@ -719,47 +690,6 @@ package body Syscall.IPC is
             retval := 1;
         end if;
     end handleSendEvent;
-
-    ---------------------------------------------------------------------------
-    -- handleCall
-    ---------------------------------------------------------------------------
-    procedure handleCall (callerPID : Process.ProcessID;
-                          arg0, arg1 : Unsigned_64;
-                          retval     : out Unsigned_64) with
-        SPARK_Mode => Off
-    is
-
-
-
-        userMsg  : Process.Message
-            with Import, Address => Util.numToAddr(arg1);
-        replyTag : Process.MessageTag;
-    begin
-        if arg0 > Unsigned_64(Process.ProcessID'Last) then
-            retval := reterr;
-        else
-            -- Copy from user memory before blocking IPC call.
-            -- Context switch during send clears EFLAGS.AC (SMAP).
-            declare
-                localMsg : Process.Message;
-            begin
-                x86.stac;
-                localMsg := userMsg;
-                x86.clac;
-
-                replyTag := Process.IPC.send (
-                    dest => Process.ProcessID(arg0),
-                    msg  => localMsg);
-            end;
-
-            x86.stac;
-            userMsg := Process.proctab(callerPID).replyMsg;
-            x86.clac;
-            Process.proctab(callerPID).replyMsg :=
-                Process.NULL_MESSAGE;
-            retval := tagToU64 (replyTag);
-        end if;
-    end handleCall;
 
     ---------------------------------------------------------------------------
     -- handlePollServiceRequest
@@ -816,20 +746,6 @@ package body Syscall.IPC is
             retval := 0;
         end if;
     end handlePollAnyIpc;
-
-    ---------------------------------------------------------------------------
-    -- handleReceiveNB
-    --
-    -- Deprecated syscall-handler spelling kept while callers migrate. It maps
-    -- to the explicit mixed receive so old binaries preserve old behavior.
-    ---------------------------------------------------------------------------
-    procedure handleReceiveNB (arg0   : Unsigned_64;
-                               retval : out Unsigned_64) with
-        SPARK_Mode => Off
-    is
-    begin
-        handlePollAnyIpc (arg0, retval);
-    end handleReceiveNB;
 
     ---------------------------------------------------------------------------
     -- handleSubmit
@@ -985,7 +901,7 @@ package body Syscall.IPC is
             Process.IPC.notifySupervisor (
                 callerPID,
                 IPC_Labels.EVENT_CAP_FAULT,
-                SYSCALL_GRANT,
+                Unsigned_64 (SyscallNumber'Enum_Rep (SYSCALL_GRANT)),
                 arg0, arg1);
             retval := reterr;
         else
@@ -1113,7 +1029,7 @@ package body Syscall.IPC is
             Process.IPC.notifySupervisor (
                 callerPID,
                 IPC_Labels.EVENT_CAP_FAULT,
-                SYSCALL_INFO,
+                Unsigned_64 (SyscallNumber'Enum_Rep (SYSCALL_INFO)),
                 arg0, arg1);
             retval := reterr;
             return;

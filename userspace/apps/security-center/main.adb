@@ -46,6 +46,7 @@ procedure main is
    CAP_DEVICE_MEM   : constant Unsigned_64 := 7;
    CAP_REPLY        : constant Unsigned_64 := 8;
    CAP_RESOURCE     : constant Unsigned_64 := 9;
+   CAP_CSPACE       : constant Unsigned_64 := 10;
 
    initialW : constant Natural := 760;
    initialH : constant Natural := 520;
@@ -419,6 +420,7 @@ procedure main is
          when CAP_DEVICE_MEM   => return "device mem";
          when CAP_REPLY        => return "reply";
          when CAP_RESOURCE     => return "resource";
+         when CAP_CSPACE       => return "cap-space";
          when others           => return "null";
       end case;
    end capTypeName;

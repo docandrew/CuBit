@@ -125,6 +125,12 @@ is
    function Kind
      (Item : Environment; Binding : Binding_Id) return Type_Id;
 
+   function Read_Borrows
+     (Item : Environment; Binding : Binding_Id) return Borrow_Count;
+
+   function Has_Write_Borrow
+     (Item : Environment; Binding : Binding_Id) return Boolean;
+
    function Combine
      (Left, Right : Ownership_Mode) return Ownership_Mode;
 

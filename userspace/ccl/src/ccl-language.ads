@@ -1,4 +1,5 @@
 with Interfaces;
+with CCL.Catalog;
 with CCL.VM;
 
 package CCL.Language with
@@ -39,7 +40,8 @@ is
       Equal_Form,
       Not_Form,
       If_Form,
-      Let_Form);
+      Let_Form,
+      Host_Import_Form);
 
    type Static_Type is (Invalid_Type, Integer_Type, Boolean_Type);
 
@@ -54,6 +56,7 @@ is
       First           : Node_Reference := NO_NODE;
       Second          : Node_Reference := NO_NODE;
       Third           : Node_Reference := NO_NODE;
+      Host_Call       : CCL.Catalog.Resolved_Operation := (others => <>);
    end record;
 
    type Node_Array is array (Node_Index) of Node;
@@ -69,7 +72,8 @@ is
       Parse_Failed,
       Type_Check_Failed,
       Evaluation_Fuel_Exhausted,
-      Evaluation_Overflow);
+      Evaluation_Overflow,
+      Host_Import_Required);
 
    type Diagnostic_Code is
      (No_Diagnostic,
@@ -119,6 +123,11 @@ is
      (Source : String;
       Result : out Analysis_Result);
 
+   procedure Analyze
+     (Source             : String;
+      Visible_Interfaces : CCL.Catalog.Interface_Catalog;
+      Result             : out Analysis_Result);
+
    type Interpretation_Result is record
       Status         : Interpretation_Status := Parse_Failed;
       Diagnostic     : Diagnostic_Code := No_Diagnostic;
@@ -133,6 +142,14 @@ is
      (Source : String;
       Fuel   : Natural;
       Result : out Interpretation_Result)
+   with
+      Post => Result.Fuel_Remaining <= Fuel;
+
+   procedure Interpret
+     (Source             : String;
+      Fuel               : Natural;
+      Visible_Interfaces : CCL.Catalog.Interface_Catalog;
+      Result             : out Interpretation_Result)
    with
       Post => Result.Fuel_Remaining <= Fuel;
 

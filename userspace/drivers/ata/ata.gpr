@@ -50,4 +50,17 @@ project ATA is
         );
     end Binder;
 
+    -- Keep this auxiliary driver buildable with the current userspace ABI.
+    package Linker is
+        for Default_Switches ("Ada") use
+        (
+            "-nostdlib",
+            "-static",
+            "-no-pie",
+            "-lgnat-user",
+            "-T", "../../c/link.ld",
+            "../../c/build/crt0.o"
+        );
+    end Linker;
+
 end ATA;

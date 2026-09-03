@@ -1,52 +1,71 @@
-name: Build
+name: Build and capability security
 
-on: 
-    push:
-        branches:
-            - master
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: capability-security-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  capability-security:
+    name: Prove policy and boot adversarial guest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
 
-    build:
-        name: Build
-        runs-on: ubuntu-latest
-        container: jonfandrew/cubit-gnat:latest
-        steps:
+    steps:
+      - name: Check out repository
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
-            - name: Check out repo
-              uses: actions/checkout@v2
+      - name: Install Nix
+        # cachix/install-nix-action v31.11.1
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
 
-            - name: Build CuBit
-              id: build_id
-              run: make cubit_kernel
+      - name: Build focused capability-security image
+        run: nix develop --command make -C kernel capability-security-image
 
-            - name: Build CuBit ISO
-              run: make iso
-           
-            - name: Upload iso
-              uses: actions/upload-artifact@v2
-              with:
-                name: cubit_iso
-                path: cubit_kernel.iso
+      - name: Prove capability policy core
+        run: nix develop --command make -C kernel prove-capability-policy
 
-            - name: Build Documents
-              run: make docs
+      - name: Prove capability derivation attenuation
+        run: nix develop --command make -C kernel prove-capability-derive
 
-            - name: Upload gnatdoc
-              uses: actions/upload-artifact@v2
-              with:
-                name: gnatdoc
-                path: build/gnatdoc
+      - name: Boot adversarial guest under QEMU
+        run: >-
+          nix develop --command tests/headless/run.sh
+          --test capability-security
+          --disk kernel/capability_security_disk.img
+          --accel tcg,thread=multi
+          --timeout 30
+          --serial "${{ runner.temp }}/cubit-capability-security-serial.log"
+          --pcap "${{ runner.temp }}/cubit-capability-security-net.pcap"
+          --keep-logs
 
-            - name: Build Cross-Referenced Code HTML
-              run: make html
+      - name: Upload boot images
+        # actions/upload-artifact v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cubit-capability-security-images
+          path: |
+            kernel/cubit_kernel.iso
+            kernel/capability_security_disk.img
 
-            - name: Upload html
-              uses: actions/upload-artifact@v2
-              with:
-                name: gnathtml
-                path: build/gnathtml
-
-# TODO: Static-Site Generator w/ custom index.md containing links to the
-# gnatdoc and gnathtml pages as well as the README, figure out a gh-pages
-# deploy action that works for us.
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cubit-capability-security-diagnostics
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/cubit-capability-security-serial.log
+            ${{ runner.temp }}/cubit-capability-security-net.pcap

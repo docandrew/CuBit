@@ -19,20 +19,15 @@ package CuBit.Messages is
    --  Syscall Numbers
 
    SYSCALL_EXIT            : constant Unsigned_64 := 0;
-   SYSCALL_READ            : constant Unsigned_64 := 1;
-   SYSCALL_CLOSE           : constant Unsigned_64 := 2;
+   SYSCALL_GETPID          : constant Unsigned_64 := 6;
    SYSCALL_KILL            : constant Unsigned_64 := 7;
    SYSCALL_SBRK            : constant Unsigned_64 := 8;
    SYSCALL_WRITE           : constant Unsigned_64 := 12;
-   SYSCALL_OPEN            : constant Unsigned_64 := 13;
    SYSCALL_INFO            : constant Unsigned_64 := 15;
-   SYSCALL_SEND            : constant Unsigned_64 := 16;
    SYSCALL_RECEIVE         : constant Unsigned_64 := 17;
    SYSCALL_REPLY           : constant Unsigned_64 := 18;
    SYSCALL_SEND_EVENT      : constant Unsigned_64 := 19;
    SYSCALL_RECEIVE_EVENT   : constant Unsigned_64 := 20;
-   SYSCALL_CALL            : constant Unsigned_64 := 21;
-   SYSCALL_RECEIVE_NB      : constant Unsigned_64 := 22;
    SYSCALL_POLL_ANY_IPC    : constant Unsigned_64 := 22;
    SYSCALL_SUBMIT          : constant Unsigned_64 := 23;
    SYSCALL_WAIT_COMPLETION : constant Unsigned_64 := 24;
@@ -48,8 +43,6 @@ package CuBit.Messages is
    SYSCALL_OUTP8           : constant Unsigned_64 := 31;
    SYSCALL_INP16           : constant Unsigned_64 := 32;
    SYSCALL_OUTP16          : constant Unsigned_64 := 33;
-   SYSCALL_INPS16          : constant Unsigned_64 := 34;
-   SYSCALL_OUTPS16         : constant Unsigned_64 := 35;
    SYSCALL_INP32           : constant Unsigned_64 := 36;
    SYSCALL_OUTP32          : constant Unsigned_64 := 37;
 
@@ -70,7 +63,6 @@ package CuBit.Messages is
    SYSCALL_MAP_INTO        : constant Unsigned_64 := 76;
    SYSCALL_SET_SYSINFO     : constant Unsigned_64 := 77;
    SYSCALL_SET_CPU         : constant Unsigned_64 := 78;
-   SYSCALL_SET_SUPERVISOR  : constant Unsigned_64 := 79;
    SYSCALL_SET_LATENCY_CONTRACT : constant Unsigned_64 := 81;
    SYSCALL_TRACE_RESET     : constant Unsigned_64 := 82;
    SYSCALL_TRACE_SUMMARY   : constant Unsigned_64 := 83;
@@ -85,12 +77,6 @@ package CuBit.Messages is
 
    --  Notification IPC syscalls
    SYSCALL_NOTIFY          : constant Unsigned_64 := 43;
-   SYSCALL_NOTIFY_WAIT     : constant Unsigned_64 := 44;
-   SYSCALL_NOTIFY_POLL     : constant Unsigned_64 := 45;
-
-   --  Notification binding
-   SYSCALL_BIND_NOTIFICATION   : constant Unsigned_64 := 46;
-   SYSCALL_UNBIND_NOTIFICATION : constant Unsigned_64 := 47;
 
    --  Atomic reply+receive
    SYSCALL_REPLY_WAIT      : constant Unsigned_64 := 48;
@@ -98,10 +84,6 @@ package CuBit.Messages is
    --  Move reply cap from slot 63 to another slot (deferred replies)
    SYSCALL_SAVE_REPLY_CAP  : constant Unsigned_64 := 51;
    SYSCALL_REPLY_CAP       : constant Unsigned_64 := 52;
-
-   --  Access Controller syscalls
-   SYSCALL_CONTROLACCESS   : constant Unsigned_64 := 100;
-   SYSCALL_GETTICKET       : constant Unsigned_64 := 101;
 
    --  Service discovery syscalls
    SYSCALL_GRANT_VIA_CAP   : constant Unsigned_64 := 106;
@@ -169,6 +151,7 @@ package CuBit.Messages is
    DRIVER_DISPLAY  : constant Unsigned_64 := 16;
    DRIVER_GPU      : constant Unsigned_64 := 17;
    DRIVER_CCL_TEST : constant Unsigned_64 := 18;
+   DRIVER_CLOCK    : constant Unsigned_64 := 19;
 
    --  Scheduler latency classes. Values match kernel Process.LatencyClass.
    LATENCY_BACKGROUND  : constant Unsigned_64 := 0;
@@ -248,9 +231,6 @@ package CuBit.Messages is
 
    --  Multi-word IPC Wrappers
 
-   --  Synchronous send: block until reply. Returns the reply message tag.
-   function send (dest : ProcessID; msg : Message) return MessageTag;
-
    --  Blocking receive: returns sender PID in from, message in msg.
    procedure receive (from : out ProcessID; msg : out Message);
 
@@ -298,16 +278,6 @@ package CuBit.Messages is
    --  handles all IPC classes itself. Most services should call
    --  Poll_Service_Request, Poll_Event, and Poll_Completion separately.
    procedure Poll_Any_Ipc
-     (from  : out ProcessID;
-      msg   : out Message;
-      found : out Boolean);
-
-   --  receiveNB
-   --
-   --  Deprecated compatibility name for Poll_Any_Ipc. New code should not use
-   --  this spelling because it hides the fact that mixed IPC can consume input
-   --  events and other unsolicited traffic.
-   procedure receiveNB
      (from  : out ProcessID;
       msg   : out Message;
       found : out Boolean);
@@ -365,34 +335,13 @@ package CuBit.Messages is
    --  Signal a notification cap: OR badge into dest's notifyWord.
    procedure capNotify (slot : CapabilitySlot);
 
-   --  Block until notifyWord is non-zero, return and clear it.
-   function notifyWait return Unsigned_64;
-
-   --  Non-blocking poll: return notifyWord (0 if none), clear it.
-   function notifyPoll return Unsigned_64;
-
-   --  Bind a notification capability to the calling process. When blocked in
-   --  receive(), the process will also be woken by signals to this
-   --  notification.
-   procedure bindNotification (slot : CapabilitySlot);
-
-   --  Remove the notification binding from the calling process.
-   procedure unbindNotification;
-
    --  Send async event (non-blocking, intended for interrupt contexts).
    procedure sendEvent (dest : ProcessID; msg : Message);
 
-   --  Wait_Event
-   --
-   --  Blocking receive for unsolicited events. Events are things that happened
-   --  independently of a service request/reply exchange: keyboard/mouse input,
-   --  IRQ fanout, process lifecycle notices, and similar traffic.
-   --
-   --  Current legacy syscall returns the tag only; prefer Poll_Event when the
-   --  event payload words matter.
+   --  Blocking receive for unsolicited events. The current ABI returns only
+   --  the event tag; migrate this to the unified wait primitive.
    function Wait_Event return Message;
 
-   --  Blocking receive event.
    --  Compatibility spelling for Wait_Event.
    function receiveEvent return Message;
 
@@ -448,10 +397,6 @@ package CuBit.Messages is
    function portInp16 (port : Unsigned_16) return Unsigned_64;
    function portOutp16
      (port : Unsigned_16; val : Unsigned_16) return Unsigned_64;
-   function portInps16
-     (port  : Unsigned_16;
-      addr  : System.Address;
-      count : Unsigned_32) return Unsigned_64;
    function portInp32 (port : Unsigned_16) return Unsigned_64;
    function portOutp32
      (port : Unsigned_16; val : Unsigned_32) return Unsigned_64;
@@ -468,11 +413,16 @@ package CuBit.Messages is
       order     : Unsigned_64;
       virtBase  : Unsigned_64) return Unsigned_64;
 
-   --  Enable IOAPIC routing and register IRQ owner.
+   --  Enable IOAPIC routing and register an IRQ subscriber. PCI INTx callers
+   --  must request level-triggered, active-low routing; ISA-style sources use
+   --  the edge-triggered, active-high defaults.
    function enableIrq
      (vector    : Unsigned_64;
       ownerPID  : Unsigned_64;
-      targetCPU : Unsigned_64) return Unsigned_64;
+      targetCPU : Unsigned_64;
+      levelTriggered : Boolean := False;
+      activeLow      : Boolean := False;
+      messageSignaled : Boolean := False) return Unsigned_64;
 
    --  Map physical pages into a target process's address space.
    --  flags: 0=RW, 1=RO, 2=IO (uncacheable)
@@ -503,9 +453,6 @@ package CuBit.Messages is
       flags        : Unsigned_64 := 0) return Unsigned_64;
 
    --  Legacy/convenience wrappers
-
-   function sendMsg
-     (to : Unsigned_64; msg : Unsigned_64) return Unsigned_64;
 
    function recvMsg (from : out Unsigned_64) return Unsigned_64;
 

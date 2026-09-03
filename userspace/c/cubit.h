@@ -48,29 +48,17 @@ typedef long                ssize_t;
  * Syscall Numbers
  *---------------------------------------------------------------------------*/
 #define SYSCALL_EXIT            0
-#define SYSCALL_READ            1
-#define SYSCALL_CLOSE           2
-#define SYSCALL_EXECVE          3
-#define SYSCALL_FORK            4
-#define SYSCALL_FSTAT           5
 #define SYSCALL_GETPID          6
 #define SYSCALL_KILL            7
 #define SYSCALL_SBRK            8
-#define SYSCALL_TIMES           9
-#define SYSCALL_UNLINK          10
-#define SYSCALL_WAIT            11
 #define SYSCALL_WRITE           12
-#define SYSCALL_OPEN            13
 #define SYSCALL_INFO            15
 
 /* IPC - Synchronous */
-#define SYSCALL_SEND            16
 #define SYSCALL_RECEIVE         17
 #define SYSCALL_REPLY           18
 #define SYSCALL_SEND_EVENT      19
 #define SYSCALL_RECEIVE_EVENT   20
-#define SYSCALL_CALL            21
-#define SYSCALL_RECEIVE_NB      22
 #define SYSCALL_POLL_ANY_IPC    22
 
 /* IPC - Async */
@@ -93,8 +81,6 @@ typedef long                ssize_t;
 #define SYSCALL_OUTP8           31
 #define SYSCALL_INP16           32
 #define SYSCALL_OUTP16          33
-#define SYSCALL_INPS16          34
-#define SYSCALL_OUTPS16         35
 #define SYSCALL_INP32           36
 #define SYSCALL_OUTP32          37
 
@@ -112,15 +98,7 @@ typedef long                ssize_t;
 
 /* Notification IPC */
 #define SYSCALL_NOTIFY          43
-#define SYSCALL_NOTIFY_WAIT     44
-#define SYSCALL_NOTIFY_POLL     45
-#define SYSCALL_BIND_NOTIFICATION   46
-#define SYSCALL_UNBIND_NOTIFICATION 47
 #define SYSCALL_REPLY_WAIT      48
-
-/* Access Controller */
-#define SYSCALL_CONTROLACCESS   100
-#define SYSCALL_GETTICKET       101
 
 /* Grants */
 #define SYSCALL_GRANT           102
@@ -260,6 +238,7 @@ int cubit_poll_completion(cubit_completion_t *completion);
 #define CUBIT_REQ_IRQ          4
 #define CUBIT_REQ_DEVICE_MEM   5
 #define CUBIT_REQ_PROCESS      6
+#define CUBIT_REQ_NOTIFICATION 7
 #define CUBIT_REQ_STREAM       8
 #define CUBIT_REQ_RESOURCE     9
 

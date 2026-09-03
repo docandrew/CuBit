@@ -35,34 +35,21 @@ SEC_STACK_SIZE          equ 2048
 
 ; Syscall numbers (rax) - make sure this matches syscall.ads
 SYSCALL_EXIT            equ 0
-SYSCALL_READ            equ 1
-SYSCALL_CLOSE           equ 2
-SYSCALL_EXECVE          equ 3
-SYSCALL_FORK            equ 4
-SYSCALL_FSTAT           equ 5
 SYSCALL_GETPID          equ 6
 SYSCALL_KILL            equ 7
 SYSCALL_SBRK            equ 8
-SYSCALL_TIMES           equ 9
-SYSCALL_UNLINK          equ 10
-SYSCALL_WAIT            equ 11
 SYSCALL_WRITE           equ 12
-SYSCALL_OPEN            equ 13
 
 SYSCALL_INFO            equ 15
-SYSCALL_SEND            equ 16
 SYSCALL_RECEIVE         equ 17
 SYSCALL_REPLY           equ 18
 SYSCALL_SEND_EVENT      equ 19
 SYSCALL_RECEIVE_EVENT   equ 20
-SYSCALL_RECEIVE_NB      equ 22
 SYSCALL_POLL_ANY_IPC    equ 22
 SYSCALL_POLL_SERVICE_REQUEST equ 80
 SYSCALL_SET_LATENCY_CONTRACT equ 81
 SYSCALL_REPLY_CAP       equ 52
 
-SYSCALL_CONTROLACCESS   equ 100
-SYSCALL_GETTICKET       equ 101
 SYSCALL_GRANT           equ 102
 SYSCALL_REVOKE          equ 103
 

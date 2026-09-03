@@ -68,12 +68,23 @@ is
     ---------------------------------------------------------------------------
     -- enableIRQ
     ---------------------------------------------------------------------------
-    procedure enableIRQ (irq : in InterruptNumbers.x86Interrupt; cpu : in Unsigned_32) with
+    procedure enableIRQ (irq            : in InterruptNumbers.x86Interrupt;
+                         cpu            : in Unsigned_32;
+                         levelTriggered : in Boolean := False;
+                         activeLow      : in Boolean := False) with
         SPARK_Mode => On
     is
-        tableEntry : Unsigned_32 := Unsigned_32(2 * (irq - 32));
+        tableEntry : constant Unsigned_32 := Unsigned_32(2 * (irq - 32));
+        lowWord    : Unsigned_32 := Unsigned_32 (irq);
     begin
-        write(IOREDTBL_BASE + tableEntry,   Unsigned_32(irq));
+        if levelTriggered then
+            lowWord := lowWord or INT_LEVEL_TRIGGER;
+        end if;
+        if activeLow then
+            lowWord := lowWord or INT_ACTIVE_LOW;
+        end if;
+
+        write(IOREDTBL_BASE + tableEntry,   lowWord);
         write(IOREDTBL_BASE + tableEntry+1, Shift_Left(cpu, 24));
     end enableIRQ;
 

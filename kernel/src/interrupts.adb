@@ -105,6 +105,36 @@ is
     end eoi;
 
     ---------------------------------------------------------------------------
+    -- dispatchDeviceIRQ
+    --
+    -- Legacy PCI INTx is level-triggered and shareable. Deliver the event to
+    -- every process that was explicitly registered for this vector; each
+    -- driver is responsible for checking its own device status before
+    -- acknowledging it.
+    ---------------------------------------------------------------------------
+    procedure dispatchDeviceIRQ (vector : x86Interrupt) with
+        SPARK_Mode => On
+    is
+        dest : Interfaces.Unsigned_64;
+    begin
+        for index in Capabilities.IRQ.IRQOwnerIndex loop
+            dest := Capabilities.IRQ.getOwner (vector, index);
+            if dest > 0 and then
+               dest <= Interfaces.Unsigned_64 (Process.ProcessID'Last)
+            then
+                Process.IPC.sendEvent
+                  (Process.ProcessID (dest),
+                   (tag      => (label  => 1,
+                                  length => 0,
+                                  flags  => 0,
+                                  badge  => 0),
+                    capBadge => 0,
+                    words    => (others => 0)));
+            end if;
+        end loop;
+    end dispatchDeviceIRQ;
+
+    ---------------------------------------------------------------------------
     -- Interrupt Handler - called from interrupt_handlers.asm. Note that this
     --  function needs to know what (PIC, APIC, x2APIC) is generating these
     --  interrupts.
@@ -171,50 +201,12 @@ is
                 x86.halt;
 
             when NO_MATH_COPROCESSOR =>
-                -- Lazy FPU: save old owner's state, enable for current process,
-                -- restore current process's state if it used FPU before.
-                lazyFPU : declare
-                    perCPUAddr : constant System.Address :=
-                        PerCPUData.getPerCPUDataAddr;
-                begin
-                    lazyFPUBlock : declare
-                        cpuData    : PerCPUData.PerCPUData with
-                            Import, Volatile, Address => perCPUAddr;
-                        currentPID : constant Process.ProcessID :=
-                            cpuData.currentPID;
-                        oldOwner   : constant Process.ProcessID :=
-                            cpuData.fpuOwner;
-                        -- Snapshot BEFORE enableFPU sets fpuOwner
-                        hadFPU     : constant Boolean :=
-                            System."/=" (Process.proctab(currentPID).fpu,
-                                         System.Null_Address);
-                    begin
-                        if currentPID = Process.NO_PROCESS then
-                            raise KernelFPUException
-                                with "FPU used in kernel context";
-                        end if;
-
-                        if oldOwner = currentPID then
-                            -- Same process re-triggered #NM (CR0.TS was set
-                            -- by directSwitch or scheduler). FPU registers
-                            -- already have the correct state — just re-enable.
-                            Process.enableFPU;
-                        else
-                            -- Save old owner's FPU state if present
-                            if oldOwner /= Process.NO_PROCESS then
-                                Process.saveFPUState (oldOwner);
-                            end if;
-
-                            -- enableFPU clears CR0.TS, sets fpuOwner
-                            Process.enableFPU;
-
-                            -- Restore current process's state if used before
-                            if hadFPU then
-                                Process.restoreFPUState (currentPID);
-                            end if;
-                        end if;
-                    end lazyFPUBlock;
-                end lazyFPU;
+                -- FP/SIMD state is restored eagerly before entering userspace,
+                -- and kernel code is compiled without FP/SIMD. Reaching #NM
+                -- therefore means the isolation invariant was violated; never
+                -- recover by exposing whatever register state is still live.
+                raise KernelFPUException
+                    with "Unexpected #NM under eager FPU switching";
 
             when PAGE_FAULT =>
                 print ("Page Fault at ");
@@ -233,79 +225,19 @@ is
             when PS2KEYBOARD =>
                 -- println ("PS2 Interrupt");
                 eoi (PS2KEYBOARD);
-                irqDispatch : declare
-                    irqDest : constant Interfaces.Unsigned_64 :=
-                        Capabilities.IRQ.getOwner (PS2KEYBOARD);
-                begin
-                    if irqDest > 0 and then
-                       irqDest <= Interfaces.Unsigned_64(Process.ProcessID'Last)
-                    then
-                        Process.IPC.sendEvent (Process.ProcessID(irqDest),
-                            (tag      => (label  => 1,
-                                          length => 0,
-                                          flags  => 0,
-                                          badge  => 0),
-                             capBadge => 0,
-                             words    => (others => 0)));
-                    end if;
-                end irqDispatch;
+                dispatchDeviceIRQ (PS2KEYBOARD);
 
             when IDE1 =>
                 eoi (IDE1);
-                ide1Dispatch : declare
-                    dest : constant Interfaces.Unsigned_64 :=
-                        Capabilities.IRQ.getOwner (IDE1);
-                begin
-                    if dest > 0 and then
-                       dest <= Interfaces.Unsigned_64 (Process.ProcessID'Last)
-                    then
-                        Process.IPC.sendEvent (Process.ProcessID (dest),
-                            (tag      => (label  => 1,
-                                          length => 0,
-                                          flags  => 0,
-                                          badge  => 0),
-                             capBadge => 0,
-                             words    => (others => 0)));
-                    end if;
-                end ide1Dispatch;
+                dispatchDeviceIRQ (IDE1);
 
             when IDE2 =>
                 eoi (IDE2);
-                ide2Dispatch : declare
-                    dest : constant Interfaces.Unsigned_64 :=
-                        Capabilities.IRQ.getOwner (IDE2);
-                begin
-                    if dest > 0 and then
-                       dest <= Interfaces.Unsigned_64 (Process.ProcessID'Last)
-                    then
-                        Process.IPC.sendEvent (Process.ProcessID (dest),
-                            (tag      => (label  => 1,
-                                          length => 0,
-                                          flags  => 0,
-                                          badge  => 0),
-                             capBadge => 0,
-                             words    => (others => 0)));
-                    end if;
-                end ide2Dispatch;
+                dispatchDeviceIRQ (IDE2);
 
             when INVALID .. COPROCESSOR =>
                 eoi (interruptNumber);
-                pciDispatch : declare
-                    dest : constant Interfaces.Unsigned_64 :=
-                        Capabilities.IRQ.getOwner (interruptNumber);
-                begin
-                    if dest > 0 and then
-                       dest <= Interfaces.Unsigned_64 (Process.ProcessID'Last)
-                    then
-                        Process.IPC.sendEvent (Process.ProcessID (dest),
-                            (tag      => (label  => 1,
-                                          length => 0,
-                                          flags  => 0,
-                                          badge  => 0),
-                             capBadge => 0,
-                             words    => (others => 0)));
-                    end if;
-                end pciDispatch;
+                dispatchDeviceIRQ (interruptNumber);
 
             when RESCHEDULE =>
                 eoi (RESCHEDULE);
@@ -685,8 +617,11 @@ is
     --  If IOAPIC is available, route via IOAPIC.  Otherwise fall back to
     --  legacy 8259 PIC unmask.
     ---------------------------------------------------------------------------
-    procedure enableDeviceIRQ (vector : in InterruptNumbers.x86Interrupt;
-                               cpu    : in Unsigned_32) with
+    procedure enableDeviceIRQ
+      (vector         : in InterruptNumbers.x86Interrupt;
+       cpu            : in Unsigned_32;
+       levelTriggered : in Boolean := False;
+       activeLow      : in Boolean := False) with
         SPARK_Mode => Off   -- generic instantiation
     is
     begin
@@ -694,7 +629,8 @@ is
             enableIOAPIC : declare
                 package myIOAPIC is new ioapic (ioapicAddr);
             begin
-                myIOAPIC.enableIRQ (vector, cpu);
+                myIOAPIC.enableIRQ
+                  (vector, cpu, levelTriggered, activeLow);
             end enableIOAPIC;
         else
             --  No IOAPIC; unmask on legacy PIC instead

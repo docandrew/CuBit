@@ -195,7 +195,17 @@ is
         end if;
 
         if ok then
-            proctab(caller).caps(foundSlot) := Capabilities.NULL_CAPABILITY;
+            Capabilities.Operations.takeReplyCap
+              (table => proctab(caller).caps,
+               slot  => foundSlot,
+               cap   => cap,
+               taken => ok);
+
+            if not ok then
+                requestId := NO_REQUEST_ID;
+                return;
+            end if;
+
             proctab(caller).deferredReplyCaps :=
                 proctab(caller).deferredReplyCaps and
                 not Shift_Left (Unsigned_64'(1), foundSlot);
@@ -657,62 +667,17 @@ is
             if rtState /= INVALID then
                 if rtState = WAITINGFORREPLY then
                     validateRW : declare
-                        doReply   : Boolean := False;
-                        foundSlot : Capabilities.CapabilitySlot :=
-                            Capabilities.REPLY_CAP_SLOT;
-                        cap : Capabilities.Capability;
-                        remaining : Unsigned_64;
-                        bs  : Natural;
+                        doReply  : Boolean;
+                        requestId : Unsigned_64;
+                        pragma Unreferenced (requestId);
                     begin
-                        if proctab(mypid).mode /= USER then
-                            doReply := True;
-                        else
-                            cap := proctab(mypid).caps(
-                                Capabilities.REPLY_CAP_SLOT);
-                            if cap.capType =
-                                   Capabilities.CAP_REPLY
-                               and then cap.object.ref =
-                                   Unsigned_64(replyTo)
-                               and then cap.gen =
-                                   proctab(replyTo).capGeneration
-                            then
-                                doReply := True;
-                            else
-                                remaining := proctab(mypid)
-                                    .deferredReplyCaps;
-                                while remaining /= 0 loop
-                                    bs := Util.getFirstSetBit
-                                        (remaining);
-                                    cap := proctab(mypid).caps(bs);
-                                    if cap.capType =
-                                       Capabilities.CAP_REPLY
-                                       and then cap.object.ref =
-                                           Unsigned_64(replyTo)
-                                       and then cap.gen =
-                                           proctab(replyTo)
-                                               .capGeneration
-                                    then
-                                        doReply := True;
-                                        foundSlot := bs;
-                                        exit;
-                                    end if;
-                                    remaining :=
-                                        remaining and (remaining - 1);
-                                end loop;
-                            end if;
-                        end if;
+                        consumeReplyAuthority
+                          (caller    => mypid,
+                           replyTo   => replyTo,
+                           requestId => requestId,
+                           ok        => doReply);
 
                         if doReply then
-                            if proctab(mypid).mode = USER then
-                                proctab(mypid).caps(foundSlot) :=
-                                    Capabilities.NULL_CAPABILITY;
-                                proctab(mypid).deferredReplyCaps :=
-                                    proctab(mypid).deferredReplyCaps
-                                    and not Shift_Left
-                                        (Unsigned_64'(1),
-                                         foundSlot);
-                            end if;
-
                             proctab(replyTo).replyMsg := replyMsg;
                             if proctab(replyTo).cpu =
                                PerCPUData.getCPUNumber
@@ -1170,7 +1135,8 @@ is
     ---------------------------------------------------------------------------
     procedure sendEvent (dest : ProcessID; msg : Message)
         with SPARK_Mode => On is
-        ok : Boolean;
+        ok      : Boolean;
+        removed : ProcessID;
     begin
         -- Validate destination
         if dest = NO_PROCESS then
@@ -1190,7 +1156,17 @@ is
                       requestId => NO_REQUEST_ID),
                      ok);
 
-        if proctab(dest).state = WAITINGFOREVENT then
+        --  receive() is the intentional mixed-lane wait primitive: it may
+        --  consume events as well as requests. Wake both the event-specific
+        --  waiter and a process blocked in mixed receive, otherwise an IRQ can
+        --  remain queued forever while its driver sleeps in RECEIVING.
+        if proctab(dest).state = RECEIVING then
+            --  receive() placed the waiter in recvQueue. An event is not a
+            --  synchronous sender and therefore must explicitly remove that
+            --  queue membership before making the process runnable.
+            Queues.popItem (mailtab(dest).recvQueue, dest, removed);
+            notify (dest);
+        elsif proctab(dest).state = WAITINGFOREVENT then
             notify (dest);
         end if;
 
@@ -1359,10 +1335,18 @@ is
             return 0;
         end if;
 
-        requestId := cap.object.param;
+        -- Consume the exact one-use reply cap selected by userspace before
+        -- causing any externally visible completion.
+        Capabilities.Operations.takeReplyCap
+          (table => proctab(mypid).caps,
+           slot  => capSlot,
+           cap   => cap,
+           taken => ok);
+        if not ok then
+            return 0;
+        end if;
 
-        -- Consume the exact one-use reply cap selected by userspace.
-        proctab(mypid).caps(capSlot) := Capabilities.NULL_CAPABILITY;
+        requestId := cap.object.param;
         proctab(mypid).deferredReplyCaps :=
             proctab(mypid).deferredReplyCaps and
             not Shift_Left (Unsigned_64'(1), capSlot);
@@ -1863,37 +1847,39 @@ is
                       msg     : Message) return MessageTag
         with SPARK_Mode => On
     is
-        pid     : constant ProcessID := PerCPUData.getCurrentPID;
-        destPID : Unsigned_64;
-        badge   : Capabilities.Badge;
-        status  : Capabilities.Operations.OperationStatus;
-        stamped : Message := msg;
+        pid          : constant ProcessID := PerCPUData.getCurrentPID;
+        destPID      : Unsigned_64;
+        candidatePID : ProcessID;
+        badge        : Capabilities.Badge;
+        status       : Capabilities.Operations.OperationStatus;
+        stamped      : Message := msg;
     begin
-        Capabilities.Operations.resolveEndpoint (
-            table   => proctab(pid).caps,
-            slot    => capSlot,
-            rights  => Capabilities.READ_WRITE,
-            destPID => destPID,
-            capBadge => badge,
-            status  => status);
+        -- Validate the generic object reference before narrowing it to an
+        -- index into proctab, whose first valid process entry is 1.
+        destPID := proctab(pid).caps(capSlot).object.ref;
+        if destPID < Unsigned_64(ProctabType'First) or else
+           destPID > Unsigned_64(ProctabType'Last)
+        then
+            return NULL_TAG;
+        end if;
+
+        candidatePID := ProcessID(destPID);
+
+        Capabilities.Operations.resolveCurrentEndpoint
+          (table             => proctab(pid).caps,
+           slot              => capSlot,
+           rights            => Capabilities.READ_WRITE,
+           currentGeneration => proctab(candidatePID).capGeneration,
+           destPID           => destPID,
+           capBadge          => badge,
+           status            => status);
 
         if status /= Capabilities.Operations.OP_OK then
             return NULL_TAG;
         end if;
 
-        if destPID > Unsigned_64(ProcessID'Last) then
-            return NULL_TAG;
-        end if;
-
-        -- Generation check: stale cap if gen doesn't match target
-        if proctab(pid).caps(capSlot).gen /=
-           proctab(ProcessID(destPID)).capGeneration
-        then
-            return NULL_TAG;
-        end if;
-
         stamped.capBadge := badge;
-        return send (dest => ProcessID(destPID), msg => stamped);
+        return send (dest => candidatePID, msg => stamped);
     end capSend;
 
     ---------------------------------------------------------------------------
@@ -1903,37 +1889,37 @@ is
                       msg     : Message) return MessageTag
         with SPARK_Mode => On
     is
-        pid     : constant ProcessID := PerCPUData.getCurrentPID;
-        destPID : Unsigned_64;
-        badge   : Capabilities.Badge;
-        status  : Capabilities.Operations.OperationStatus;
-        stamped : Message := msg;
+        pid          : constant ProcessID := PerCPUData.getCurrentPID;
+        destPID      : Unsigned_64;
+        candidatePID : ProcessID;
+        badge        : Capabilities.Badge;
+        status       : Capabilities.Operations.OperationStatus;
+        stamped      : Message := msg;
     begin
-        Capabilities.Operations.resolveEndpoint (
-            table   => proctab(pid).caps,
-            slot    => capSlot,
-            rights  => Capabilities.READ_WRITE,
-            destPID => destPID,
-            capBadge => badge,
-            status  => status);
+        destPID := proctab(pid).caps(capSlot).object.ref;
+        if destPID < Unsigned_64(ProctabType'First) or else
+           destPID > Unsigned_64(ProctabType'Last)
+        then
+            return NULL_TAG;
+        end if;
+
+        candidatePID := ProcessID(destPID);
+
+        Capabilities.Operations.resolveCurrentEndpoint
+          (table             => proctab(pid).caps,
+           slot              => capSlot,
+           rights            => Capabilities.READ_WRITE,
+           currentGeneration => proctab(candidatePID).capGeneration,
+           destPID           => destPID,
+           capBadge          => badge,
+           status            => status);
 
         if status /= Capabilities.Operations.OP_OK then
             return NULL_TAG;
         end if;
 
-        if destPID > Unsigned_64(ProcessID'Last) then
-            return NULL_TAG;
-        end if;
-
-        -- Generation check: stale cap if gen doesn't match target
-        if proctab(pid).caps(capSlot).gen /=
-           proctab(ProcessID(destPID)).capGeneration
-        then
-            return NULL_TAG;
-        end if;
-
         stamped.capBadge := badge;
-        return send (dest => ProcessID(destPID), msg => stamped);
+        return send (dest => candidatePID, msg => stamped);
     end capCall;
 
     ---------------------------------------------------------------------------
@@ -1944,37 +1930,37 @@ is
                         token   : Unsigned_64) return Boolean
         with SPARK_Mode => On
     is
-        pid     : constant ProcessID := PerCPUData.getCurrentPID;
-        destPID : Unsigned_64;
-        badge   : Capabilities.Badge;
-        status  : Capabilities.Operations.OperationStatus;
-        stamped : Message := msg;
+        pid          : constant ProcessID := PerCPUData.getCurrentPID;
+        destPID      : Unsigned_64;
+        candidatePID : ProcessID;
+        badge        : Capabilities.Badge;
+        status       : Capabilities.Operations.OperationStatus;
+        stamped      : Message := msg;
     begin
-        Capabilities.Operations.resolveEndpoint (
-            table   => proctab(pid).caps,
-            slot    => capSlot,
-            rights  => Capabilities.READ_WRITE,
-            destPID => destPID,
-            capBadge => badge,
-            status  => status);
+        destPID := proctab(pid).caps(capSlot).object.ref;
+        if destPID < Unsigned_64(ProctabType'First) or else
+           destPID > Unsigned_64(ProctabType'Last)
+        then
+            return False;
+        end if;
+
+        candidatePID := ProcessID(destPID);
+
+        Capabilities.Operations.resolveCurrentEndpoint
+          (table             => proctab(pid).caps,
+           slot              => capSlot,
+           rights            => Capabilities.READ_WRITE,
+           currentGeneration => proctab(candidatePID).capGeneration,
+           destPID           => destPID,
+           capBadge          => badge,
+           status            => status);
 
         if status /= Capabilities.Operations.OP_OK then
             return False;
         end if;
 
-        if destPID > Unsigned_64(ProcessID'Last) then
-            return False;
-        end if;
-
-        -- Generation check: stale cap if gen doesn't match target
-        if proctab(pid).caps(capSlot).gen /=
-           proctab(ProcessID(destPID)).capGeneration
-        then
-            return False;
-        end if;
-
         stamped.capBadge := badge;
-        return submit (dest  => ProcessID(destPID),
+        return submit (dest  => candidatePID,
                        msg   => stamped,
                        token => token);
     end capSubmit;

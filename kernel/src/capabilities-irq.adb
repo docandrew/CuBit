@@ -16,12 +16,24 @@ is
                            status : out Boolean)
     is
     begin
-        if irqOwners(vector) = 0 then
-            irqOwners(vector) := pid;
-            status := True;
-        else
-            status := False;
-        end if;
+        status := False;
+
+        --  Make registration idempotent. This matters when a device manager
+        --  retries setup after a driver restart.
+        for index in IRQOwnerIndex loop
+            if irqOwners(vector)(index) = pid then
+                status := True;
+                return;
+            end if;
+        end loop;
+
+        for index in IRQOwnerIndex loop
+            if irqOwners(vector)(index) = 0 then
+                irqOwners(vector)(index) := pid;
+                status := True;
+                return;
+            end if;
+        end loop;
     end registerIRQ;
 
     ---------------------------------------------------------------------------
@@ -31,17 +43,20 @@ is
                              pid    : Unsigned_64)
     is
     begin
-        if irqOwners(vector) = pid then
-            irqOwners(vector) := 0;
-        end if;
+        for index in IRQOwnerIndex loop
+            if irqOwners(vector)(index) = pid then
+                irqOwners(vector)(index) := 0;
+            end if;
+        end loop;
     end unregisterIRQ;
 
     ---------------------------------------------------------------------------
     -- getOwner
     ---------------------------------------------------------------------------
-    function getOwner (vector : IRQVector) return Unsigned_64 is
+    function getOwner (vector : IRQVector;
+                       index  : IRQOwnerIndex) return Unsigned_64 is
     begin
-        return irqOwners(vector);
+        return irqOwners(vector)(index);
     end getOwner;
 
     ---------------------------------------------------------------------------
@@ -50,9 +65,11 @@ is
     procedure unregisterAllByPID (pid : Unsigned_64) is
     begin
         for v in IRQVector loop
-            if irqOwners(v) = pid then
-                irqOwners(v) := 0;
-            end if;
+            for index in IRQOwnerIndex loop
+                if irqOwners(v)(index) = pid then
+                    irqOwners(v)(index) := 0;
+                end if;
+            end loop;
         end loop;
     end unregisterAllByPID;
 

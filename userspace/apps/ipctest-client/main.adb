@@ -5,6 +5,7 @@
 --  request identity, token identity, and reply payload identity.
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
+with System.Machine_Code; use System.Machine_Code;
 
 with CuBit.Messages; use CuBit.Messages;
 
@@ -22,6 +23,8 @@ procedure main is
    OP_PRESSURE_HOLD  : constant Unsigned_32 := 16#0906#;
    OP_PRESSURE_RELEASE : constant Unsigned_32 := 16#0907#;
    OP_DIE            : constant Unsigned_32 := 16#0908#;
+   OP_OCCUPIED_HOLD  : constant Unsigned_32 := 16#0909#;
+   OP_OCCUPIED_PROBE : constant Unsigned_32 := 16#090A#;
    REPLY_OK          : constant Unsigned_32 := 16#F000#;
 
    REQUEST_COUNT : constant Natural := 3;
@@ -31,7 +34,10 @@ procedure main is
    PRESSURE_TOKEN_BASE : constant Unsigned_64 := 16#BEEF_0000#;
    RECOVERY_TOKEN : constant Unsigned_64 := 16#BEEF_F00D#;
    DEATH_TOKEN    : constant Unsigned_64 := 16#DEAD_D1ED#;
+   OCCUPIED_HOLD_TOKEN  : constant Unsigned_64 := 16#0CC0_0001#;
+   OCCUPIED_PROBE_TOKEN : constant Unsigned_64 := 16#0CC0_0002#;
    XOR_MAGIC     : constant Unsigned_64 := 16#C0B1_7000#;
+   FPU_SENTINEL  : constant Unsigned_64 := 16#C11E_17F0_CAFE_5AFE#;
 
    seen       : array (1 .. REQUEST_COUNT) of Boolean := (others => False);
    pressureSeen : array (1 .. PRESSURE_COUNT) of Boolean :=
@@ -43,6 +49,9 @@ procedure main is
    completion : CompletionEntry;
    ret        : Unsigned_64;
    firstReverseValue : Unsigned_64 := 0;
+   occupiedCompleted : Natural := 0;
+   occupiedHoldSeen  : Boolean := False;
+   occupiedProbeSeen : Boolean := False;
 
    procedure fail (reason : String) is
    begin
@@ -52,7 +61,32 @@ procedure main is
       ok := False;
    end fail;
 
+   procedure loadFPUProbe is
+   begin
+      --  The projects are compiled with -mno-sse/-mno-sse2, so XMM0 is
+      --  reserved exclusively for this context-isolation regression probe.
+      Asm ("movq %0, %%xmm0",
+           Inputs   => Unsigned_64'Asm_Input ("r", FPU_SENTINEL),
+           Volatile => True);
+   end loadFPUProbe;
+
+   function readFPUProbe return Unsigned_64 is
+      value : Unsigned_64;
+   begin
+      Asm ("movq %%xmm0, %0",
+           Outputs  => Unsigned_64'Asm_Output ("=r", value),
+           Volatile => True);
+      return value;
+   end readFPUProbe;
+
 begin
+   --  This must be the first explicit FP/SIMD access made by the process.
+   --  A zero result proves that the initialized process image was restored,
+   --  rather than exposing XMM state left by the previously running server.
+   if readFPUProbe /= 0 then
+      fail ("fpu-initial-isolation");
+   end if;
+
    debugPrint ("ipctest-client: starting" & LF);
 
    declare
@@ -133,6 +167,67 @@ begin
 
       if attempt = 300 then
          fail ("double-timeout");
+      end if;
+   end loop;
+
+   if ok then
+      declare
+         msg : Message := NULL_MESSAGE;
+      begin
+         msg.tag := (label  => OP_OCCUPIED_HOLD,
+                     length => 1,
+                     flags  => 0,
+                     badge  => 0);
+         msg.words (0) := 501;
+         submitOk := capSubmit
+           (CAP_SLOT_IPCTEST, msg, OCCUPIED_HOLD_TOKEN);
+         if not submitOk then
+            fail ("occupied-hold-submit");
+         end if;
+
+         msg.tag.label := OP_OCCUPIED_PROBE;
+         msg.words (0) := 502;
+         submitOk := capSubmit
+           (CAP_SLOT_IPCTEST, msg, OCCUPIED_PROBE_TOKEN);
+         if not submitOk then
+            fail ("occupied-probe-submit");
+         end if;
+      end;
+   end if;
+
+   for attempt in 1 .. 300 loop
+      exit when occupiedCompleted = 2 or not ok;
+
+      completion := NULL_COMPLETION;
+      ret := Poll_Completion (completion'Address);
+      if ret = 1 then
+         if completion.status /= COMPLETION_OK or else
+            completion.msg.tag.label /= REPLY_OK
+         then
+            fail ("occupied-completion-status");
+         elsif completion.token = OCCUPIED_HOLD_TOKEN then
+            if occupiedHoldSeen or else completion.msg.words (0) /= 501 then
+               fail ("occupied-held-authority");
+            else
+               occupiedHoldSeen := True;
+               occupiedCompleted := occupiedCompleted + 1;
+            end if;
+         elsif completion.token = OCCUPIED_PROBE_TOKEN then
+            if occupiedProbeSeen or else completion.msg.words (0) /= 502 then
+               fail ("occupied-current-authority");
+            else
+               occupiedProbeSeen := True;
+               occupiedCompleted := occupiedCompleted + 1;
+            end if;
+         else
+            fail ("occupied-token");
+         end if;
+      else
+         ret := syscall (SYSCALL_SLEEP, 10);
+      end if;
+
+      if attempt = 300 then
+         fail ("occupied-timeout");
       end if;
    end loop;
 
@@ -370,8 +465,11 @@ begin
                      length => 0,
                      flags  => 0,
                      badge  => 0);
+         loadFPUProbe;
          tag := capCall (CAP_SLOT_IPCTEST, msg);
-         if tag.label /= REPLY_OK then
+         if readFPUProbe /= FPU_SENTINEL then
+            fail ("fpu-direct-switch");
+         elsif tag.label /= REPLY_OK then
             fail ("status-label");
          elsif msg.words (0) /= 1 then
             fail ("oneway-reply-cap");

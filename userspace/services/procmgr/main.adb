@@ -403,6 +403,7 @@ procedure main is
    REQ_FRAMEBUFFER  : constant Unsigned_8 := 1;
    REQ_SERVICE      : constant Unsigned_8 := 2;
    REQ_IOPORT       : constant Unsigned_8 := 3;
+   REQ_NOTIFICATION : constant Unsigned_8 := 7;
    REQ_STREAM       : constant Unsigned_8 := 8;
    REQ_RESOURCE     : constant Unsigned_8 := 9;
 
@@ -426,10 +427,6 @@ procedure main is
    CAP_TYPE_DEVICE_MEM    : constant Unsigned_64 := 7;
    CAP_TYPE_RESOURCE      : constant Unsigned_64 := 9;
 
-   --  Well-known slots for input focus capabilities
-   CAP_SLOT_KBD_FOCUS     : constant Unsigned_64 := 13;
-   CAP_SLOT_MOUSE_FOCUS   : constant Unsigned_64 := 16;
-   CAP_SLOT_PROCESS_MGMT  : constant Unsigned_64 := 5;
    CAP_SLOT_SERVICE_REG   : constant Unsigned_64 := 7;
 
    procedure mintRecorded
@@ -882,6 +879,26 @@ procedure main is
                                        "procmgr: driver not found" & LF);
                                  end if;
                               end;
+
+                           when REQ_NOTIFICATION =>
+                              -- Registration/focus authority for one declared
+                              -- service role. This replaces the former ambient
+                              -- keyboard/mouse grants. Manifest admission is
+                              -- still subject to the policy layer.
+                              if param0 >= 1 and then param0 <= 17 then
+                                 mintRecorded
+                                   (childPID, CAP_TYPE_NOTIFICATION,
+                                    Unsigned_64 (param0), 0, rightsMask,
+                                    Unsigned_64 (slotNum),
+                                    AUTH_SOURCE_MANIFEST,
+                                    AUTH_REASON_MANIFEST_REQUEST, True,
+                                    ignore);
+                                 debugPrint (
+                                   "procmgr: minted notification cap" & LF);
+                              else
+                                 debugPrint (
+                                   "procmgr: invalid notification role" & LF);
+                              end if;
 
                            when REQ_STREAM =>
                               --  Fallback: only use .cubit.caps stream
@@ -1461,21 +1478,11 @@ procedure main is
       recordAuthority
         (newPID, 0, AUTH_SOURCE_KERNEL_BOOTSTRAP,
          AUTH_REASON_SELF_BOOTSTRAP, CAP_TYPE_ENDPOINT, False, True,
-         16#1F#, newPID, 0);
-      declare
-         fsPID : constant Unsigned_64 :=
-           getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_FS);
-      begin
-         recordAuthority
-           (newPID, 1, AUTH_SOURCE_KERNEL_BOOTSTRAP,
-            AUTH_REASON_FS_BOOTSTRAP, CAP_TYPE_ENDPOINT, False,
-            fsPID /= 0 and then fsPID /= Unsigned_64'Last,
-            3, fsPID, 0);
-      end;
+         3, newPID, 0);
       recordAuthority
         (newPID, 3, AUTH_SOURCE_KERNEL_BOOTSTRAP,
          AUTH_REASON_SELF_BOOTSTRAP, CAP_TYPE_PROCESS, False, True,
-         16#1F#, newPID, 0);
+         3, newPID, 0);
 
       --  Parse .cubit.id section for package identity
       parseIdSection (elfSize, pkgId, pkgIdLen);
@@ -1491,28 +1498,6 @@ procedure main is
       debugPrint ("procmgr: manifest took ");
       printDec (Unsigned_32 (t1 - t0));
       debugPrint ("ms" & LF);
-
-      --  Mint input focus capabilities (CAP_NOTIFICATION) so the child
-      --  can call registerDriver(DRIVER_KEYBOARD) and
-      --  registerDriver(DRIVER_MOUSE).
-      declare
-         ignore : Unsigned_64;
-      begin
-         mintRecorded
-           (newPID, CAP_TYPE_NOTIFICATION, DRIVER_KEYBOARD, 0, 2,
-            CAP_SLOT_KBD_FOCUS, AUTH_SOURCE_COMPATIBILITY,
-            AUTH_REASON_INPUT_COMPAT, False, ignore);
-         mintRecorded
-           (newPID, CAP_TYPE_NOTIFICATION, DRIVER_MOUSE, 0, 2,
-            CAP_SLOT_MOUSE_FOCUS, AUTH_SOURCE_COMPATIBILITY,
-            AUTH_REASON_INPUT_COMPAT, False, ignore);
-         --  Mint CAP_PROCESS(ref=0 wildcard, RIGHT_READ+RIGHT_WRITE)
-         --  so spawned apps can kill child processes.
-         mintRecorded
-           (newPID, CAP_TYPE_PROCESS, 0, 0, 3, CAP_SLOT_PROCESS_MGMT,
-            AUTH_SOURCE_COMPATIBILITY, AUTH_REASON_PROCESS_COMPAT,
-            False, ignore);
-      end;
 
       --  Mint CAP_NOTIFICATION for logstore driver registration
       if pkgIdLen = 18 then
@@ -1644,6 +1629,30 @@ procedure main is
                   CAP_SLOT_SERVICE_REG, AUTH_SOURCE_IDENTITY_POLICY,
                   AUTH_REASON_PACKAGE_ID, False, ignore);
                debugPrint ("procmgr: minted ccl-test-host ntf cap" & LF);
+            end if;
+         end;
+      end if;
+
+      --  The clock service alone may register the system clock endpoint.
+      --  Clients receive separate service handles through their manifests.
+      if pkgIdLen = 15 then
+         declare
+            CLOCK_ID : constant String := "com.cubit.clock";
+            match : Boolean := True;
+            ignore : Unsigned_64;
+         begin
+            for c in 0 .. 14 loop
+               if pkgId (1 + c) /= CLOCK_ID (1 + c) then
+                  match := False;
+                  exit;
+               end if;
+            end loop;
+            if match then
+               mintRecorded
+                 (newPID, CAP_TYPE_NOTIFICATION, DRIVER_CLOCK, 0, 2,
+                  CAP_SLOT_SERVICE_REG, AUTH_SOURCE_IDENTITY_POLICY,
+                  AUTH_REASON_PACKAGE_ID, False, ignore);
+               debugPrint ("procmgr: minted clock ntf cap" & LF);
             end if;
          end;
       end if;

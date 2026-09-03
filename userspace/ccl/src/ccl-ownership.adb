@@ -250,6 +250,14 @@ is
      (Item : Environment; Binding : Binding_Id) return Type_Id is
      (Item.Bindings (Binding).Kind);
 
+   function Read_Borrows
+     (Item : Environment; Binding : Binding_Id) return Borrow_Count is
+     (Item.Bindings (Binding).RO_Borrows);
+
+   function Has_Write_Borrow
+     (Item : Environment; Binding : Binding_Id) return Boolean is
+     (Item.Bindings (Binding).RW_Borrow);
+
    function Combine
      (Left, Right : Ownership_Mode) return Ownership_Mode is
      (if Left = Must_Handle or else Right = Must_Handle then Must_Handle

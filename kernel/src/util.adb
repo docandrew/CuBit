@@ -210,33 +210,16 @@ is
     end memset;
 
 
-    -- See if all elements are the same between two arrays
+    -- Compare memory without over-reading.  The architecture implementation
+    -- uses word-sized comparisons and returns the exact first byte difference.
+    -- This general-purpose ABI routine is intentionally not constant-time.
     function memcmp(s1  : System.Address;
                     s2  : System.Address;
                     len : Natural) return Integer
         with SPARK_Mode => Off
     is
-        mem1 : Storage_Array(1..Storage_Offset(len))
-            with Import, Volatile, Address => s1;
-        mem2 : Storage_Array(1..Storage_Offset(len))
-            with Import, Volatile, Address => s2;
-        diff : Integer;
     begin
-        if len = 0 then
-            return 0;
-        end if;
-
-        for i in 1..len loop
-            
-            diff := Integer(mem1(Storage_Offset(i)))
-                    - Integer(mem2(Storage_Offset(i)));
-
-            if diff /= 0 then
-                return diff;
-            end if;
-        end loop;
-
-        return 0;
+        return x86.compare_memory (s1, s2, Storage_Count(len));
     end memcmp;
 
     ---------------------------------------------------------------------------

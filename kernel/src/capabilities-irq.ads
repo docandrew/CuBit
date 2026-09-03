@@ -18,9 +18,17 @@ is
     subtype IRQVector is Natural range 0 .. 255;
 
     ---------------------------------------------------------------------------
+    --  Legacy PCI INTx lines may be shared by several devices.  Keep the
+    --  fan-out deliberately small and statically bounded: registration still
+    --  requires delegated CAP_IRQ authority, and every subscriber must
+    --  inspect and acknowledge only its own device.
+    MAX_OWNERS_PER_IRQ : constant := 8;
+    subtype IRQOwnerIndex is Natural range 0 .. MAX_OWNERS_PER_IRQ - 1;
+
     -- registerIRQ
-    -- Register a process as the owner of a given interrupt vector.
-    -- Fails if the vector already has an owner.
+    -- Register a process as an owner of a given interrupt vector. Repeated
+    -- registration by the same process is idempotent. Fails only when the
+    -- bounded owner set is full.
     ---------------------------------------------------------------------------
     procedure registerIRQ (vector : IRQVector;
                            pid    : Unsigned_64;
@@ -36,9 +44,10 @@ is
 
     ---------------------------------------------------------------------------
     -- getOwner
-    -- Return the PID that owns a given interrupt vector. 0 = no owner.
+    -- Return one authorized recipient for a vector. 0 = unused slot.
     ---------------------------------------------------------------------------
-    function getOwner (vector : IRQVector) return Unsigned_64;
+    function getOwner (vector : IRQVector;
+                       index  : IRQOwnerIndex) return Unsigned_64;
 
     ---------------------------------------------------------------------------
     -- unregisterAllByPID
@@ -49,8 +58,9 @@ is
 
 private
 
-    type IRQOwnerTable is array (IRQVector) of Unsigned_64;
+    type OwnerSlots is array (IRQOwnerIndex) of Unsigned_64;
+    type IRQOwnerMatrix is array (IRQVector) of OwnerSlots;
 
-    irqOwners : IRQOwnerTable := (others => 0);
+    irqOwners : IRQOwnerMatrix := (others => (others => 0));
 
 end Capabilities.IRQ;

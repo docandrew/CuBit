@@ -1,9 +1,11 @@
 with Interfaces; use Interfaces;
 with Interfaces.C;
 with System;
+with CCL.Catalog;
 with CCL.Language;
 with CCL.Compiler;
 with CCL.Debug_Maps;
+with CCL.Ownership;
 with CCL.VM;
 with CuBit.UI;
 with CuBit.UI.Editor.Cursors;
@@ -20,6 +22,9 @@ procedure Main is
    use type Interfaces.C.unsigned;
    use type System.Address;
    use type CCL.Language.Interpretation_Status;
+   use type CCL.Catalog.Catalog_Error;
+   use type CCL.Catalog.Grant_Result;
+   use type CCL.Catalog.Link_Result;
    use type CCL.Language.Analysis_Status;
    use type CCL.Compiler.Compilation_Status;
    use type CCL.Debug_Maps.Validation_Error;
@@ -27,7 +32,9 @@ procedure Main is
    use type CCL.VM.Execution_Status;
    use type CCL.VM.Instruction_Index;
    use type CCL.VM.Program_Length;
+   use type CCL.VM.Stack_Depth;
    use type CCL.VM.Value_Kind;
+   use type CCL.VM.Authority_Class;
    use type CuBit.UI.Editor.Documents.Edit_Result;
    use type CuBit.UI.Editor.Cursors.Toggle_Result;
    use type CuBit.UI.Editor.Cursors.Add_Result;
@@ -40,6 +47,16 @@ procedure Main is
    SOURCE_CAPACITY : constant := 4_096;
    BYTECODE_ROW_HEIGHT : constant Positive := CuBit.UI.UI_Text_Height + 3;
 
+   --  HOSTED/LINUX adapter binding.  This is deliberately not part of the
+   --  language, compiler, or VM: a CuBit linker will resolve the same pinned
+   --  interface operation to an authorized service endpoint.
+   CLOCK_HOST_BINDING : constant Unsigned_32 := 16#0001_0001#;
+   CLOCK_INTERFACE_DIGEST : constant CCL.Catalog.Descriptor_Digest :=
+     [16#7DEA_1745_99CE_1FB1#,
+      16#A09C_B4F8_1B3D_E54C#,
+      16#7E67_C846_742B_4022#,
+      16#F76C_6038_9B96_78D2#];
+
    type Pixel_Buffer is array (Natural range 0 .. WIDTH * HEIGHT - 1)
      of aliased Unsigned_32;
    Pixels : aliased Pixel_Buffer := [others => 0];
@@ -48,6 +65,8 @@ procedure Main is
      (addr => Pixels'Address, width => WIDTH, height => HEIGHT,
       pitch => WIDTH * 4, clipEnabled => False, clip => (others => 0));
    Colors : constant CuBit.UI.Theme := CuBit.UI.CuBit_Classic;
+   Visible_Interfaces : CCL.Catalog.Interface_Catalog;
+   Granted_Interfaces : CCL.Catalog.Granted_Bindings;
 
    Result_Text : String (1 .. 96) := [others => ' '];
    Result_Last : Natural := 5;
@@ -63,6 +82,8 @@ procedure Main is
    VM_Has_State : Boolean := False;
    VM_Continuous : Boolean := False;
    VM_Snapshot : CCL.VM.Machine_Snapshot;
+   VM_Inspection : CCL.VM.Inspection_Snapshot;
+   Has_VM_Inspection : Boolean := False;
    Debug_Map_Valid : Boolean := False;
    Active_Debug_Entry : CCL.Debug_Maps.Debug_Entry;
    Has_Active_Debug_Entry : Boolean := False;
@@ -197,6 +218,7 @@ procedure Main is
       Has_Run := False;
       VM_Has_Run := False;
       VM_Has_State := False;
+      Has_VM_Inspection := False;
       VM_Continuous := False;
       Has_Compiled := False;
       Has_Verified := False;
@@ -213,6 +235,48 @@ procedure Main is
 
    procedure Reveal_Source_Cursor;
 
+   procedure Initialize_Visible_Interfaces is
+      Descriptor : CCL.Catalog.Interface_Descriptor;
+      Operation  : CCL.Catalog.Operation_Descriptor;
+      Resolved   : CCL.Catalog.Resolved_Operation;
+      Error      : CCL.Catalog.Catalog_Error;
+      Grant      : CCL.Catalog.Grant_Result;
+      Found      : Boolean;
+   begin
+      CCL.Catalog.Initialize (Visible_Interfaces);
+      CCL.Catalog.Initialize (Granted_Interfaces);
+      CCL.Catalog.Define_Interface
+        ("clock", 1, 0, CLOCK_INTERFACE_DIGEST, Descriptor, Error);
+      if Error = CCL.Catalog.Catalog_Valid then
+         CCL.Catalog.Define_Operation
+           ("monotonic-ms", 0,
+            (Argument  => CCL.VM.Integer_Value,
+             Result    => CCL.VM.Integer_Value,
+             Authority => CCL.VM.Observe_Authority,
+             others    => <>),
+            Operation, Error);
+      end if;
+      if Error = CCL.Catalog.Catalog_Valid then
+         CCL.Catalog.Add_Operation (Descriptor, Operation, Error);
+      end if;
+      if Error = CCL.Catalog.Catalog_Valid then
+         CCL.Catalog.Publish (Visible_Interfaces, Descriptor, Error);
+      end if;
+      if Error /= CCL.Catalog.Catalog_Valid then
+         raise Program_Error with "invalid hosted CCL interface catalog";
+      end if;
+      CCL.Catalog.Resolve
+        (Visible_Interfaces, "clock.monotonic-ms", Resolved, Found);
+      if not Found then
+         raise Program_Error with "hosted clock interface not discoverable";
+      end if;
+      CCL.Catalog.Install
+        (Granted_Interfaces, Resolved, CLOCK_HOST_BINDING, Grant);
+      if Grant /= CCL.Catalog.Grant_Added then
+         raise Program_Error with "hosted clock authority not installed";
+      end if;
+   end Initialize_Visible_Interfaces;
+
    procedure Run_Source is
       Outcome : CCL.Language.Interpretation_Result;
       Position : CuBit.UI.Editor.Documents.Document_Position;
@@ -222,7 +286,7 @@ procedure Main is
    begin
       VM_Continuous := False;
       VM_Has_Run := False;
-      CCL.Language.Interpret (Text, 4_096, Outcome);
+      CCL.Language.Interpret (Text, 4_096, Visible_Interfaces, Outcome);
       Last_Outcome := Outcome;
       Has_Run := True;
       Diagnostic_Line := 0;
@@ -236,6 +300,8 @@ procedure Main is
             Set_Result
               ((if Outcome.Result_Value.Boolean then "true" else "false"));
          end if;
+      elsif Outcome.Status = CCL.Language.Host_Import_Required then
+         Set_Result ("host import requires compiled VM mode");
       elsif Outcome.Diagnostic_Position > 0 then
          Position := CuBit.UI.Editor.Documents.Document_Position'Min
            (Outcome.Diagnostic_Position,
@@ -254,10 +320,12 @@ procedure Main is
    end Run_Source;
 
    procedure Update_Active_Debug;
+   procedure Update_VM_Inspection;
 
    procedure Compile_Source is
       Analysis : CCL.Language.Analysis_Result;
       Error    : CCL.VM.Validation_Error;
+      Link_Error : CCL.Catalog.Link_Result;
       Debug_Error : CCL.Debug_Maps.Validation_Error;
       Position : CuBit.UI.Editor.Documents.Document_Position;
       Line, Column : Positive;
@@ -267,6 +335,7 @@ procedure Main is
       Has_Run := False;
       VM_Has_Run := False;
       VM_Has_State := False;
+      Has_VM_Inspection := False;
       VM_Continuous := False;
       Has_Compiled := False;
       Has_Verified := False;
@@ -279,7 +348,7 @@ procedure Main is
       Diagnostic_Line := 0;
       Diagnostic_Column := 0;
 
-      CCL.Language.Analyze (Text, Analysis);
+      CCL.Language.Analyze (Text, Visible_Interfaces, Analysis);
       if CCL.Language.Analysis_Status_Of (Analysis) /=
         CCL.Language.Analysis_Succeeded
       then
@@ -323,6 +392,16 @@ procedure Main is
          return;
       end if;
 
+      CCL.Catalog.Link_Program
+        (Granted_Interfaces, Compiled_Artifact.Linkage,
+         Compiled_Artifact.Program, Link_Error);
+      if Link_Error /= CCL.Catalog.Link_Valid then
+         Has_Compiled := False;
+         Set_Result
+           ("link: " & CCL.Catalog.Link_Result'Image (Link_Error));
+         return;
+      end if;
+
       CCL.VM.Verify
         (Compiled_Artifact.Program, Verified_Artifact, Error);
       Has_Verified := Error = CCL.VM.Valid;
@@ -335,6 +414,7 @@ procedure Main is
          VM_Has_State := True;
          VM_Snapshot := CCL.VM.Snapshot (VM_State);
          Update_Active_Debug;
+         Update_VM_Inspection;
          if Debug_Map_Valid then
             Set_Result
               ("compiled and verified:" &
@@ -374,6 +454,16 @@ procedure Main is
       end if;
    end Update_Active_Debug;
 
+   procedure Update_VM_Inspection is
+   begin
+      if Has_Verified and then VM_Has_State then
+         CCL.VM.Inspect (Verified_Artifact, VM_State, VM_Inspection);
+         Has_VM_Inspection := True;
+      else
+         Has_VM_Inspection := False;
+      end if;
+   end Update_VM_Inspection;
+
    procedure Update_VM_Result is
    begin
       VM_Has_Run := True;
@@ -408,8 +498,26 @@ procedure Main is
       end if;
       CCL.VM.Continue_Execution_For
         (Verified_Artifact, VM_State, Instructions, Last_VM_Outcome);
+      if Last_VM_Outcome.Status = CCL.VM.Waiting_For_Host and then
+        Last_VM_Outcome.Requested_Authority = CCL.VM.Observe_Authority and then
+        Last_VM_Outcome.Requested_Binding = CLOCK_HOST_BINDING
+      then
+         --  HOSTED/LINUX only: model the clock capability using SDL's
+         --  monotonic tick source. The CuBit runtime maps the same binding to
+         --  clock.svc IPC instead.
+         CCL.VM.Complete_Host_Call
+           (Verified_Artifact, VM_State,
+            CCL.VM.Integer_Constant
+              (Integer_64
+                 (Unsigned_64'Min
+                    (Window_Ticks, Unsigned_64 (Integer_64'Last)))),
+            True);
+         CCL.VM.Continue_Execution_For
+           (Verified_Artifact, VM_State, 0, Last_VM_Outcome);
+      end if;
       VM_Snapshot := CCL.VM.Snapshot (VM_State);
       Update_Active_Debug;
+      Update_VM_Inspection;
       if VM_Snapshot.Terminal or else VM_Snapshot.Waiting then
          VM_Continuous := False;
       end if;
@@ -428,6 +536,7 @@ procedure Main is
          VM_Has_State := True;
          VM_Snapshot := CCL.VM.Snapshot (VM_State);
          Update_Active_Debug;
+         Update_VM_Inspection;
       end if;
       VM_Continuous := True;
       VM_Step_Over_Active := False;
@@ -466,6 +575,7 @@ procedure Main is
          VM_Has_State := True;
          VM_Snapshot := CCL.VM.Snapshot (VM_State);
          Update_Active_Debug;
+         Update_VM_Inspection;
       end if;
       if not VM_Snapshot.Terminal then
          VM_Continuous := False;
@@ -977,6 +1087,30 @@ procedure Main is
       end case;
    end Instruction_Text;
 
+   function Value_Text (Item : CCL.VM.Value) return String is
+   begin
+      case Item.Kind is
+         when CCL.VM.Integer_Value =>
+            return "int" & Integer_64'Image (Item.Integer);
+         when CCL.VM.Boolean_Value =>
+            return "bool " & (if Item.Boolean then "true" else "false");
+      end case;
+   end Value_Text;
+
+   function Ownership_Mode_Text
+     (Mode : CCL.Ownership.Ownership_Mode) return String
+   is
+   begin
+      case Mode is
+         when CCL.Ownership.Unrestricted =>
+            return "unrestricted";
+         when CCL.Ownership.Move_Only =>
+            return "move-only";
+         when CCL.Ownership.Must_Handle =>
+            return "must-handle";
+      end case;
+   end Ownership_Mode_Text;
+
    procedure Render is
       Execution_Content : CuBit.UI.Rect;
       Editor_Content : CuBit.UI.Rect;
@@ -1066,13 +1200,9 @@ procedure Main is
       CuBit.UI.Widgets.Group_Box
         (Canvas, (x => 8, y => 82, w => 220, h => 280), Colors,
          "Execution", Execution_Content, 8);
-      CuBit.UI.Draw_UI_Text
-        (Canvas, Execution_Content.x, Execution_Content.y,
-         "Debugger", Colors.text, Colors.face);
-      CuBit.UI.Draw_UI_Text
-        (Canvas, Execution_Content.x, Execution_Content.y + 22,
-         "F5 interprets source", Colors.muted, Colors.face);
       declare
+         Execution_Canvas : constant CuBit.UI.Canvas :=
+           CuBit.UI.With_Clip (Canvas, Execution_Content);
          Status_Text : constant String :=
            (if VM_Continuous then "running"
             elsif Breakpoint_Paused then "breakpoint"
@@ -1092,28 +1222,112 @@ procedure Main is
            (if Diagnostic_Line > 0 then
                Natural'Image (Diagnostic_Line) & ":" &
                Natural'Image (Diagnostic_Column)
+            elsif VM_Has_State then
+               "PC" & Natural'Image (Natural (VM_Snapshot.Instruction))
             else "n/a");
       begin
-         CuBit.UI.Widgets.Key_Value
-           (Canvas,
-            (x => Execution_Content.x, y => Execution_Content.y + 56,
-             w => Execution_Content.w, h => 24),
-            Colors, "Status", Status_Text);
-         CuBit.UI.Widgets.Key_Value
-           (Canvas,
-            (x => Execution_Content.x, y => Execution_Content.y + 86,
-             w => Execution_Content.w, h => 24),
-            Colors, "Result", Result_Text (1 .. Result_Last));
-         CuBit.UI.Widgets.Key_Value
-           (Canvas,
-            (x => Execution_Content.x, y => Execution_Content.y + 116,
-             w => Execution_Content.w, h => 24),
-            Colors, "Fuel left", Fuel_Text);
-         CuBit.UI.Widgets.Key_Value
-           (Canvas,
-            (x => Execution_Content.x, y => Execution_Content.y + 146,
-             w => Execution_Content.w, h => 24),
-            Colors, "Location", Location_Text);
+         CuBit.UI.Draw_UI_Text
+           (Execution_Canvas, Execution_Content.x, Execution_Content.y,
+            "Debugger", Colors.text, Colors.face);
+         CuBit.UI.Draw_UI_Text
+           (Execution_Canvas, Execution_Content.x,
+            Execution_Content.y + 17,
+            "Status: " & Status_Text, Colors.text, Colors.face);
+         CuBit.UI.Draw_UI_Text
+           (Execution_Canvas, Execution_Content.x,
+            Execution_Content.y + 32,
+            "Result: " & Result_Text (1 .. Result_Last),
+            Colors.text, Colors.face);
+         CuBit.UI.Draw_UI_Text
+           (Execution_Canvas, Execution_Content.x,
+            Execution_Content.y + 47,
+            "Fuel: " & Fuel_Text & "   " & Location_Text,
+            Colors.text, Colors.face);
+         CuBit.UI.Fill_Rect
+           (Execution_Canvas,
+            (x => Execution_Content.x, y => Execution_Content.y + 64,
+             w => Execution_Content.w, h => 1),
+            Colors.shadow);
+         CuBit.UI.Draw_UI_Text
+           (Execution_Canvas, Execution_Content.x,
+            Execution_Content.y + 71,
+            "Operand stack (top first)", Colors.text, Colors.face);
+
+         if Has_VM_Inspection and then VM_Inspection.Stack_Length > 0 then
+            declare
+               Visible : constant Natural := Natural'Min
+                 (Natural (VM_Inspection.Stack_Length), 3);
+            begin
+               for Position in 0 .. Visible - 1 loop
+                  CuBit.UI.Draw_UI_Text
+                    (Execution_Canvas, Execution_Content.x + 5,
+                     Execution_Content.y + 87 + Position * 15,
+                     Natural'Image (Position) & ": " &
+                       Value_Text
+                         (VM_Inspection.Stack
+                            (CCL.VM.Stack_Index (Position))),
+                     Colors.text, Colors.face);
+               end loop;
+               if Natural (VM_Inspection.Stack_Length) > Visible then
+                  CuBit.UI.Draw_UI_Text
+                    (Execution_Canvas, Execution_Content.x + 5,
+                     Execution_Content.y + 87 + Visible * 15,
+                     "+" & Natural'Image
+                       (Natural (VM_Inspection.Stack_Length) - Visible) &
+                       " more",
+                     Colors.muted, Colors.face);
+               end if;
+            end;
+         else
+            CuBit.UI.Draw_UI_Text
+              (Execution_Canvas, Execution_Content.x + 5,
+               Execution_Content.y + 87,
+               "(empty)", Colors.muted, Colors.face);
+         end if;
+
+         CuBit.UI.Draw_UI_Text
+           (Execution_Canvas, Execution_Content.x,
+            Execution_Content.y + 140,
+            "Locals", Colors.text, Colors.face);
+         if Has_VM_Inspection and then VM_Inspection.Locals_Length > 0 then
+            declare
+               Visible : constant Natural := Natural'Min
+                 (Natural (VM_Inspection.Locals_Length), 2);
+               Local : CCL.Ownership.Binding_Id;
+            begin
+               for Position in 0 .. Visible - 1 loop
+                  Local := CCL.Ownership.Binding_Id (Position);
+                  CuBit.UI.Draw_UI_Text
+                    (Execution_Canvas, Execution_Content.x + 5,
+                     Execution_Content.y + 156 + Position * 34,
+                     "L" & Natural'Image (Position) & ": " &
+                       Value_Text (VM_Inspection.Locals (Local).Value),
+                     Colors.text, Colors.face);
+                  CuBit.UI.Draw_UI_Text
+                    (Execution_Canvas, Execution_Content.x + 12,
+                     Execution_Content.y + 171 + Position * 34,
+                     CCL.Ownership.Binding_State'Image
+                       (VM_Inspection.Locals (Local).Ownership_State) &
+                       " / " & Ownership_Mode_Text
+                         (VM_Inspection.Locals (Local).Mode),
+                     Colors.muted, Colors.face);
+               end loop;
+               if Natural (VM_Inspection.Locals_Length) > Visible then
+                  CuBit.UI.Draw_UI_Text
+                    (Execution_Canvas, Execution_Content.x + 5,
+                     Execution_Content.y + 224,
+                     "+" & Natural'Image
+                       (Natural (VM_Inspection.Locals_Length) - Visible) &
+                       " more locals",
+                     Colors.muted, Colors.face);
+               end if;
+            end;
+         else
+            CuBit.UI.Draw_UI_Text
+              (Execution_Canvas, Execution_Content.x + 5,
+               Execution_Content.y + 156,
+               "(none)", Colors.muted, Colors.face);
+         end if;
       end;
 
       CuBit.UI.Widgets.Group_Box
@@ -1279,6 +1493,7 @@ procedure Main is
    end Render;
 
 begin
+   Initialize_Visible_Interfaces;
    declare
       Source_Result : CuBit.UI.Editor.Documents.Edit_Result;
    begin

@@ -517,34 +517,53 @@ package body HDA is
    end stopStream;
 
    ---------------------------------------------------------------------------
-   --  fillBuffer - copy PCM data from staging area to a BDL buffer
+   --  clearOutputBuffers
    ---------------------------------------------------------------------------
-   procedure fillBuffer (slotIdx  : Natural;
-                         srcOff   : Unsigned_32;
-                         numBytes : Unsigned_32)
+   procedure clearOutputBuffers
    is
-      dstAddr : constant Unsigned_64 :=
-         DMA_VIRT_BASE + DMA_PCMBUF_OFF +
-         Unsigned_64 (slotIdx) * Unsigned_64 (PCM_PERIOD_BYTES);
-
-      srcAddr : constant Unsigned_64 :=
-         stagingBase + Unsigned_64 (srcOff);
-
       type ByteArray is array (Natural range <>) of Unsigned_8
          with Convention => C;
 
-      dst : ByteArray (0 .. Natural (numBytes) - 1)
-         with Import, Address => To_Address (Integer_Address (dstAddr)),
-              Volatile;
-
-      src : ByteArray (0 .. Natural (numBytes) - 1)
-         with Import, Address => To_Address (Integer_Address (srcAddr)),
+      pcm : ByteArray
+        (0 .. NUM_BDL_ENTRIES * Natural (PCM_PERIOD_BYTES) - 1)
+         with Import,
+              Address => To_Address
+                (Integer_Address (DMA_VIRT_BASE + DMA_PCMBUF_OFF)),
               Volatile;
    begin
-      for i in dst'Range loop
-         dst (i) := src (i);
+      for i in pcm'Range loop
+         pcm (i) := 0;
       end loop;
-   end fillBuffer;
+   end clearOutputBuffers;
+
+   ---------------------------------------------------------------------------
+   --  acknowledgePeriod
+   ---------------------------------------------------------------------------
+   procedure acknowledgePeriod
+     (slot      : out Natural;
+      position  : out Unsigned_32;
+      completed : out Boolean)
+   is
+      status   : Unsigned_8;
+      nextSlot : Natural;
+   begin
+      slot := 0;
+      position := readReg32 (outputStreamBase + SD_LPIB);
+      status := readReg8 (outputStreamBase + SD_STS);
+      completed := (status and SD_STS_BCIS) /= 0;
+
+      if not completed then
+         return;
+      end if;
+
+      --  HDA stream status bits are write-one-to-clear.
+      writeReg8 (outputStreamBase + SD_STS, status);
+
+      --  LPIB identifies the next byte the device will consume.  Therefore
+      --  the preceding BDL entry is exclusively available to the mixer.
+      nextSlot := Natural (position / PCM_PERIOD_BYTES) mod NUM_BDL_ENTRIES;
+      slot := (nextSlot + NUM_BDL_ENTRIES - 1) mod NUM_BDL_ENTRIES;
+   end acknowledgePeriod;
 
    ---------------------------------------------------------------------------
    --  getPosition

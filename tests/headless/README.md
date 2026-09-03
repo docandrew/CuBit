@@ -21,6 +21,24 @@ From `kernel/`:
 make headless-test
 ```
 
+The capability-policy gate has a smaller, CI-oriented build that does not
+compile desktop applications, NetSurf, or DOOM:
+
+```sh
+nix develop --command make -C kernel capability-security-image
+nix develop --command make -C kernel prove-capability-policy
+nix develop --command tests/headless/run.sh \
+  --test capability-security \
+  --disk kernel/capability_security_disk.img \
+  --accel tcg,thread=multi \
+  --timeout 30
+```
+
+The runner accepts `--disk PATH` so focused tests can use purpose-built disk
+images without modifying or rebuilding the normal `nvme_disk.img`.
+CI explicitly selects QEMU's multithreaded TCG accelerator, so the gate does
+not depend on nested virtualization or access to `/dev/kvm`.
+
 The suite currently includes:
 
 - `boot-shell-nvme`: boots the normal NVMe shell profile.
@@ -30,10 +48,16 @@ The suite currently includes:
   server and client, then emits compact timing summaries.
 - `ccl-vm`: runs the freestanding CCL bytecode VM and source interpreter inside
   CuBit and checks their in-guest self-test markers.
+- `capability-security`: boots an authorityless adversarial app and verifies
+  that it cannot acquire filesystem, input, process-management, or capability-
+  minting authority that was absent from its manifest-derived capability
+  space.
 - `desktop-display`: boots a test init profile that starts `display.svc` and
   `desktop.svc`, then verifies the display backend status handshake.
-- `desktop-doom`: boots `display.svc`, `desktop.svc`, and `doom.elf` on
-  primary `virtio-vga`, then captures compositor/display/audio telemetry.
+- `desktop-doom`: installs the current `doom.elf`, boots `display.svc`,
+  `desktop.svc`, and DOOM on primary `virtio-vga`, then uses QEMU's WAV audio
+  backend to require a real HDA period interrupt and capture
+  compositor/display/audio telemetry.
 - `virtio-gpu`: boots with QEMU's `virtio-gpu-pci` device and verifies the
   modern virtio-gpu command path reaches scanout presentation.
 - `virtio-vga-primary`: boots with primary QEMU `virtio-vga` under

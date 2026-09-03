@@ -9,7 +9,8 @@
 --  to detect the drive, then enters an IPC server loop handling
 --  OP_READ_BLOCK requests from clients (e.g., filesystem server).
 --
---  All hardware access is via portOutp8/portInp8/portInps16 syscalls,
+--  All hardware access is via capability-checked portOutp8/portInp8/portInp16
+--  syscalls,
 --  validated by IOPORT capabilities granted at load time.
 ------------------------------------------------------------------------------
 with Ada.Unchecked_Conversion;
@@ -189,7 +190,7 @@ procedure main is
       end if;
 
       --  Read 256 words of identify data via individual portInp16 calls.
-      --  rep insw (portInps16) doesn't work reliably from userspace.
+      --  The former bulk rep-insw syscall was not reliable from userspace.
       for i in buf'Range loop
          buf (i) := Unsigned_16 (portInp16 (REG_DATA) and 16#FFFF#);
       end loop;
@@ -243,9 +244,8 @@ procedure main is
          end if;
 
          --  Read 256 words (512 bytes) via individual portInp16 calls.
-         --  rep insw (portInps16) doesn't work reliably from userspace
-         --  because the kernel ins16 syscall writes to a user address
-         --  from ring 0 context.
+         --  The former bulk rep-insw syscall was not reliable from userspace,
+         --  because that implementation wrote to a user address from ring 0.
          declare
             type WordBuf is array (0 .. 255) of Unsigned_16
               with Pack;

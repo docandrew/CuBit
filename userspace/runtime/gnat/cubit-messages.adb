@@ -64,23 +64,6 @@ package body CuBit.Messages is
    function toNum is new Ada.Unchecked_Conversion
       (System.Address, Unsigned_64);
 
-   --  send
-   --  SEND: RDI=dest, RSI=tag, RDX=w0, R10=w1, R8=w2, R9=w3
-   --  Returns: reply tag in RAX
-
-   function send (dest : ProcessID; msg : Message) return MessageTag is
-      retTag : Unsigned_64;
-   begin
-      retTag := syscall (SYSCALL_SEND,
-                          dest,
-                          tagToU64 (msg.tag),
-                          msg.words (0),
-                          msg.words (1),
-                          msg.words (2),
-                          msg.words (3));
-      return u64ToTag (retTag);
-   end send;
-
    --  receive
    --  RECEIVE: RDI=pointer to Message struct
    --  Returns: RAX=sender PID
@@ -175,18 +158,6 @@ package body CuBit.Messages is
       from := ret;
       found := (ret /= 0);
    end Poll_Any_Ipc;
-
-   --  receiveNB
-   --  Deprecated compatibility spelling for Poll_Any_Ipc.
-
-   procedure receiveNB
-     (from  : out ProcessID;
-      msg   : out Message;
-      found : out Boolean)
-   is
-   begin
-      Poll_Any_Ipc (from, msg, found);
-   end receiveNB;
 
    --  submit
    --  SUBMIT: RDI=dest, RSI=tag, RDX=w0, R10=w1, R8=w2, R9=token
@@ -301,42 +272,6 @@ package body CuBit.Messages is
       ignore := syscall (SYSCALL_NOTIFY, slot);
    end capNotify;
 
-   --  notifyWait
-   --  NOTIFY_WAIT: no args
-   --  Returns: notifyWord value in RAX
-
-   function notifyWait return Unsigned_64 is
-   begin
-      return syscall (SYSCALL_NOTIFY_WAIT);
-   end notifyWait;
-
-   --  notifyPoll
-   --  NOTIFY_POLL: no args
-   --  Returns: notifyWord value in RAX (0 if none)
-
-   function notifyPoll return Unsigned_64 is
-   begin
-      return syscall (SYSCALL_NOTIFY_POLL);
-   end notifyPoll;
-
-   --  bindNotification
-   --  BIND_NOTIFICATION: RDI=notification capability slot
-
-   procedure bindNotification (slot : CapabilitySlot) is
-      ignore : Unsigned_64;
-   begin
-      ignore := syscall (SYSCALL_BIND_NOTIFICATION, slot);
-   end bindNotification;
-
-   --  unbindNotification
-   --  UNBIND_NOTIFICATION: no args
-
-   procedure unbindNotification is
-      ignore : Unsigned_64;
-   begin
-      ignore := syscall (SYSCALL_UNBIND_NOTIFICATION);
-   end unbindNotification;
-
    --  sendEvent
    --  SEND_EVENT: RDI=dest, RSI=tag, RDX=w0, R10=w1, R8=w2, R9=w3
 
@@ -353,8 +288,7 @@ package body CuBit.Messages is
    end sendEvent;
 
    --  Wait_Event
-   --  RECEIVE_EVENT: no args
-   --  Returns: event tag in RAX
+   --  RECEIVE_EVENT: no args; returns the event tag in RAX.
 
    function Wait_Event return Message is
       retTag : Unsigned_64;
@@ -474,13 +408,6 @@ package body CuBit.Messages is
 
    --  Legacy wrappers
 
-   function sendMsg (to : Unsigned_64; msg : Unsigned_64)
-      return Unsigned_64
-   is
-   begin
-      return syscall (SYSCALL_SEND, to, msg);
-   end sendMsg;
-
    function recvMsg (from : out Unsigned_64) return Unsigned_64 is
       retfrom : Unsigned_64;
       pragma Unreferenced (from);
@@ -552,18 +479,6 @@ package body CuBit.Messages is
       return syscall (SYSCALL_OUTP16, Unsigned_64 (port), Unsigned_64 (val));
    end portOutp16;
 
-   function portInps16
-     (port  : Unsigned_16;
-      addr  : System.Address;
-      count : Unsigned_32) return Unsigned_64
-   is
-   begin
-      return syscall (SYSCALL_INPS16,
-                      Unsigned_64 (port),
-                      toNum (addr),
-                      Unsigned_64 (count));
-   end portInps16;
-
    function portInp32 (port : Unsigned_16) return Unsigned_64 is
    begin
       return syscall (SYSCALL_INP32, Unsigned_64 (port));
@@ -595,10 +510,23 @@ package body CuBit.Messages is
    function enableIrq
      (vector    : Unsigned_64;
       ownerPID  : Unsigned_64;
-      targetCPU : Unsigned_64) return Unsigned_64
+      targetCPU : Unsigned_64;
+      levelTriggered : Boolean := False;
+      activeLow      : Boolean := False;
+      messageSignaled : Boolean := False) return Unsigned_64
    is
+      route : Unsigned_64 := targetCPU and 16#FF#;
    begin
-      return syscall (SYSCALL_ENABLE_IRQ, vector, ownerPID, targetCPU);
+      if levelTriggered then
+         route := route or 16#100#;
+      end if;
+      if activeLow then
+         route := route or 16#200#;
+      end if;
+      if messageSignaled then
+         route := route or 16#400#;
+      end if;
+      return syscall (SYSCALL_ENABLE_IRQ, vector, ownerPID, route);
    end enableIrq;
 
    function mapInto

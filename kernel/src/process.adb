@@ -13,7 +13,6 @@
 -- @TODO Model lock ordering in SPARK to get formal guarantees of correctness.
 -------------------------------------------------------------------------------
 with Ada.Unchecked_Conversion;
-with System.Machine_Code; use System.Machine_Code;
 
 with BuddyAllocator;
 with Capabilities.IRQ;
@@ -35,6 +34,26 @@ with x86;
 package body Process
     with SPARK_Mode => On
 is
+
+    ---------------------------------------------------------------------------
+    -- initializeFPUState
+    -- Construct the architectural reset state expected by FXRSTOR. Keeping a
+    -- valid image for every user process prevents first-use state inheritance.
+    ---------------------------------------------------------------------------
+    procedure initializeFPUState (state : out FPUState) with
+        SPARK_Mode => On
+    is
+    begin
+        state := (others => 0);
+
+        -- x87 control word 16#037F# at byte offset 0.
+        state(1) := 16#7F#;
+        state(2) := 16#03#;
+
+        -- MXCSR architectural reset value 16#0000_1F80# at byte offset 24.
+        state(25) := 16#80#;
+        state(26) := 16#1F#;
+    end initializeFPUState;
 
     ---------------------------------------------------------------------------
     -- setup
@@ -318,6 +337,8 @@ is
                                        ProcessKernelStack'Size / 8;
 
         -- Build the initial kernel stack.
+        initializeFPUState (proctab(pid).kernelStack.fpuarea);
+        proctab(pid).fpu := proctab(pid).kernelStack.fpuarea'Address;
         proctab(pid).kernelStack.filler := (others => 0);
 
         -- Since we use iretq to enter usermode initially, we need an "interrupt
@@ -577,7 +598,8 @@ is
         if proctab(pid).state = WAITINGFOREVENT or else
            proctab(pid).state = WAITINGFORREPLY or else
            proctab(pid).state = WAITINGFORCOMPLETION or else
-           proctab(pid).state = WAITINGFORNOTIFY
+           proctab(pid).state = WAITINGFORNOTIFY or else
+           proctab(pid).state = RECEIVING
         then
             ready (pid);
         elsif proctab(pid).state = READY or else
@@ -743,7 +765,8 @@ is
         -- recursively unmaps/deallocates process' full paging hierarchy
         procedure deleteP4 is new Virtmem.deleteP4 (BuddyAllocator.freeFrame);
 
-        ignore : ProcessID;
+        ignore      : ProcessID;
+        pidReusable : Boolean;
     begin
         print ("Process.killProcess: cleaning up pid "); println (Integer(pid));
 
@@ -962,10 +985,13 @@ is
         Capabilities.IRQ.unregisterAllByPID (Unsigned_64 (pid));
         Sysinfo.unregisterDriverByPID (pid);
 
-        -- Bump generation counter to invalidate caps held by others
-        if proctab(pid).capGeneration < Capabilities.Generation'Last then
-            proctab(pid).capGeneration := proctab(pid).capGeneration + 1;
-        end if;
+        -- Bump the generation counter to invalidate caps held by others.  A
+        -- PID whose generation space is exhausted must never be reused: doing
+        -- so would make terminal-generation capabilities valid for the new
+        -- process occupying that PID.
+        Capabilities.Operations.advanceGeneration
+          (current  => proctab(pid).capGeneration,
+           reusable => pidReusable);
 
         -- Clear capability table
         Capabilities.Operations.clearTable (proctab(pid).caps);
@@ -996,8 +1022,11 @@ is
             proctab(pid).kernelStack := null;
         end if;
 
-        -- Return PID to the free pool for reuse.
-        PIDTracker.freePID (pid);
+        -- Return the PID only when revocation produced a distinct generation.
+        -- Exhausted PIDs stay marked used and are permanently retired.
+        if pidReusable then
+            PIDTracker.freePID (pid);
+        end if;
 
         Spinlocks.exitCriticalSection (lock);
 
@@ -1104,18 +1133,14 @@ is
     procedure enableFPU with SPARK_Mode => On
     is
         pid : constant ProcessID := PerCPUData.getCurrentPID;
-        newCR0 : Unsigned_64 := x86.getCR0;
         perCPUAddr : constant System.Address := PerCPUData.getPerCPUDataAddr;
     begin
-        -- Clear CR0.TS so FPU/SSE instructions execute without #NM.
-        -- CR4.OSFXSR and CR4.OSXMMEXCPT are set globally in boot.asm.
-        Util.clearBit (newCR0, 3);  -- clear CR0.TS
+        -- Clear CR0.TS before eager FXRSTOR64. CR4.OSFXSR and
+        -- CR4.OSXMMEXCPT are set globally in boot.asm. CLTS avoids a full
+        -- CR0 read/modify/write sequence on every userspace transition.
+        x86.clearTaskSwitched;
 
-        proctab(pid).fpu := proctab(pid).kernelStack.all.fpuarea'Address;
-
-        x86.setCR0 (newCR0);
-
-        -- Track this process as the FPU owner on this CPU
+        -- Record which eagerly-restored state is live for diagnostics.
         setOwner : declare
             cpuData : PerCPUData.PerCPUData with
                 Import, Volatile, Address => perCPUAddr;
@@ -1123,22 +1148,6 @@ is
             cpuData.fpuOwner := pid;
         end setOwner;
     end enableFPU;
-
-    ---------------------------------------------------------------------------
-    -- disableFPU
-    -- Disable FPU across all processes. This will cause an exception when FPU
-    -- is used again.
-    ---------------------------------------------------------------------------
-    procedure disableFPU with SPARK_Mode => On
-    is
-        newCR0 : Unsigned_64 := x86.getCR0;
-    begin
-        -- Use CR0.TS (bit 3) to trap FPU/SSE usage. This generates #NM
-        -- for both x87 and SSE instructions, enabling lazy context switching.
-        -- CR4.OSFXSR stays set so SSE doesn't generate #UD.
-        Util.setBit (newCR0, 3);        -- set CR0.TS
-        x86.setCR0 (newCR0);
-    end disableFPU;
 
     ---------------------------------------------------------------------------
     -- directSwitch
@@ -1155,9 +1164,10 @@ is
             cpuData : PerCPUData.PerCPUData with
                 Import, Volatile, Address => perCPUAddr;
         begin
-            -- Lazy FPU: arm trap if different owner
-            if cpuData.fpuOwner /= toPID then
-                disableFPU;
+            -- The IPC fast path bypasses Scheduler.enter, so it must perform
+            -- the same eager state transition explicitly.
+            if proctab(fromPID).mode = USER then
+                saveFPUState (fromPID);
             end if;
 
             -- Update per-CPU state (what scheduler normally does)
@@ -1168,6 +1178,7 @@ is
             -- Switch address space if target is user process
             if proctab(toPID).mode = USER then
                 switchAddressSpace (toPID);
+                restoreFPUState (toPID);
             end if;
 
             proctab(toPID).state := RUNNING;
@@ -1186,15 +1197,17 @@ is
     ---------------------------------------------------------------------------
     procedure saveFPUState (pid : ProcessID) with SPARK_Mode => On
     is
+        perCPUAddr : constant System.Address := PerCPUData.getPerCPUDataAddr;
     begin
-        if proctab(pid).fpu /= System.Null_Address then
+        if proctab(pid).mode = USER then
             x86.fxsave (proctab(pid).fpu);
-
-            -- When saving the FPU state, disable the FPU so we can detect use when
-            -- the next process runs, and if used, set up the save area.
-            disableFPU;
+            clearLoadedState : declare
+                cpuData : PerCPUData.PerCPUData with
+                    Import, Volatile, Address => perCPUAddr;
+            begin
+                cpuData.fpuOwner := NO_PROCESS;
+            end clearLoadedState;
         end if;
-
     end saveFPUState;
 
     ---------------------------------------------------------------------------
@@ -1203,10 +1216,11 @@ is
     procedure restoreFPUState (pid : ProcessID) with SPARK_Mode => On
     is
     begin
-        -- If this process uses the FPU, go ahead and enable it.
-        if proctab(pid).fpu /= System.Null_Address then
-            x86.fxrstor (proctab(pid).fpu);
+        if proctab(pid).mode = USER then
+            -- FXRSTOR64 raises #NM while CR0.TS is set, so clear TS before
+            -- restoring the process' always-valid initial/saved state image.
             enableFPU;
+            x86.fxrstor (proctab(pid).fpu);
         end if;
     end restoreFPUState;
 

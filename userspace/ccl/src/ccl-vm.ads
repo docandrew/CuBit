@@ -229,6 +229,44 @@ is
 
    function Snapshot (State : Machine_State) return Machine_Snapshot;
 
+   type Stack_Snapshot_Array is array (Stack_Index) of Value;
+
+   type Local_Inspection is record
+      Value           : CCL.VM.Value := (others => <>);
+      Kind            : Value_Kind := Integer_Value;
+      Type_Tag        : CCL.Ownership.Type_Id := 0;
+      Mode            : CCL.Ownership.Ownership_Mode :=
+        CCL.Ownership.Unrestricted;
+      Ownership_State : CCL.Ownership.Binding_State :=
+        CCL.Ownership.Not_Declared;
+      Read_Borrows    : CCL.Ownership.Borrow_Count := 0;
+      Write_Borrow    : Boolean := False;
+   end record;
+
+   type Local_Inspection_Array is
+     array (CCL.Ownership.Binding_Id) of Local_Inspection;
+
+   type Inspection_Snapshot is record
+      Machine       : Machine_Snapshot;
+      Stack_Length  : Stack_Depth := 0;
+      --  Position zero is the current operand-stack top.
+      Stack         : Stack_Snapshot_Array := [others => (others => <>)];
+      Locals_Length : Local_Count := 0;
+      Locals        : Local_Inspection_Array := [others => (others => <>)];
+      Waiting_Import : Import_Index := 0;
+      Waiting_Result_Kind : Value_Kind := Integer_Value;
+      Waiting_Argument : Value := (others => <>);
+      Waiting_Owned : Boolean := False;
+      Import_Phase : CCL.Imports.Import_Phase := CCL.Imports.Import_Idle;
+   end record;
+
+   procedure Inspect
+     (Item   : Validated_Program;
+      State  : Machine_State;
+      Result : out Inspection_Snapshot)
+   with
+      Pre => Is_Valid (Item) and then Is_Well_Formed (Item, State);
+
    procedure Stop (State : in out Machine_State);
 
    procedure Complete_Host_Call
@@ -289,7 +327,8 @@ private
    end record;
 
    function Is_Valid (Item : Validated_Program) return Boolean is
-     (Item.Checked and then Item.Content.Length > 0);
+     (Item.Checked and then Item.Content.Length > 0 and then
+      Item.Content.Dynamic_Locals_Length <= Item.Content.Locals_Length);
 
    function Fuel_Limit (State : Machine_State) return Unsigned_32 is
      (CCL.Execution_Budgets.Limit (State.Execution_Budget));

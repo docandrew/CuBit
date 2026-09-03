@@ -174,8 +174,11 @@ is
     -- Enable an IRQ vector on the IOAPIC, routing to the specified CPU.
     -- Usable from modules.adb etc. after setIOAPICBaseAddress has been called.
     ---------------------------------------------------------------------------
-    procedure enableDeviceIRQ (vector : in InterruptNumbers.x86Interrupt;
-                               cpu    : in Unsigned_32);
+    procedure enableDeviceIRQ
+      (vector         : in InterruptNumbers.x86Interrupt;
+       cpu            : in Unsigned_32;
+       levelTriggered : in Boolean := False;
+       activeLow      : in Boolean := False);
 
     ---------------------------------------------------------------------------
     -- getLAPICTimerInterval / setLAPICTimerInterval

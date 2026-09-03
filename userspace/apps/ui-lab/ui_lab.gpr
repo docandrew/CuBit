@@ -24,6 +24,7 @@ project UI_Lab is
         for Default_Switches ("Ada") use
         (
             "-O2",
+            "-gnat2022",
             "-fstack-usage",
             "-fomit-frame-pointer",
             "-mno-red-zone",

@@ -3,6 +3,8 @@ with Interfaces; use Interfaces;
 package body CCL.Language with
    SPARK_Mode => On
 is
+   use type CCL.VM.Value_Kind;
+
    function Analysis_Status_Of
      (Result : Analysis_Result) return Analysis_Status is (Result.Status);
 
@@ -80,6 +82,7 @@ is
    procedure Process_Source
      (Source : String;
       Fuel   : Natural;
+      Visible_Interfaces : CCL.Catalog.Interface_Catalog;
       Analyze_Input : Boolean;
       Evaluate : Boolean;
       Result : out Interpretation_Result;
@@ -224,6 +227,8 @@ is
          A             : Node_Reference := NO_NODE;
          B             : Node_Reference := NO_NODE;
          C             : Node_Reference := NO_NODE;
+         Host_Call     : CCL.Catalog.Resolved_Operation;
+         Host_Found    : Boolean;
       begin
          Read_Name (Operator_Name, Ok);
          if not Ok then
@@ -304,8 +309,32 @@ is
                Index := NO_NODE;
             end if;
          else
-            Diagnostic := Unknown_Form;
-            Index := NO_NODE;
+            CCL.Catalog.Resolve
+              (Visible_Interfaces,
+               Operator_Name.Data (1 .. Operator_Name.Length),
+               Host_Call,
+               Host_Found);
+            if not Host_Found then
+               Diagnostic := Unknown_Form;
+               Index := NO_NODE;
+            else
+               if Host_Call.Parameters = 1 then
+                  Parse_Expression (Depth + 1, A);
+               end if;
+               if Diagnostic = No_Diagnostic then
+                  Expect (')', Ok);
+               end if;
+               if Diagnostic = No_Diagnostic and then Ok then
+                  Add_Node
+                    ((Kind => Host_Import_Form,
+                      First => A,
+                      Host_Call => Host_Call,
+                      others => <>),
+                     Index);
+               else
+                  Index := NO_NODE;
+               end if;
+            end if;
          end if;
       end Parse_List;
 
@@ -472,6 +501,35 @@ is
                               Depth + 1, Kind);
                   Type_Env_Length := Entry_Environment_Length;
                end if;
+            when Host_Import_Form =>
+               if Tree.Nodes (Node_Index (Index)).Host_Call.Parameters = 1
+               then
+                  Check_Node
+                    (Tree.Nodes (Node_Index (Index)).First,
+                     Depth + 1,
+                     Left_Type);
+                  if Diagnostic = No_Diagnostic and then
+                    ((Tree.Nodes (Node_Index (Index)).Host_Call.Import.Argument =
+                        CCL.VM.Integer_Value and then
+                      Left_Type /= Integer_Type) or else
+                     (Tree.Nodes (Node_Index (Index)).Host_Call.Import.Argument =
+                        CCL.VM.Boolean_Value and then
+                      Left_Type /= Boolean_Type))
+                  then
+                     Diagnostic :=
+                       (if Tree.Nodes (Node_Index (Index)).Host_Call.Import.Argument =
+                           CCL.VM.Integer_Value
+                        then Expected_Integer
+                        else Expected_Boolean);
+                  end if;
+               end if;
+               if Diagnostic = No_Diagnostic then
+                  Kind :=
+                    (if Tree.Nodes (Node_Index (Index)).Host_Call.Import.Result =
+                        CCL.VM.Integer_Value
+                     then Integer_Type
+                     else Boolean_Type);
+               end if;
             when Invalid_Node => Diagnostic := Unexpected_Token;
          end case;
          if Diagnostic = No_Diagnostic then
@@ -600,6 +658,12 @@ is
                   Good := False;
                end if;
                Ok := Good;
+            when Host_Import_Form =>
+               --  The direct evaluator deliberately has no host.  Catalog
+               --  visibility permits analysis; only a linked VM host can
+               --  satisfy the operation's declared authority requirement.
+               Eval_Status := Host_Import_Required;
+               Ok := False;
             when Invalid_Node => Ok := False;
          end case;
       end Evaluate_Node;
@@ -665,13 +729,25 @@ is
      (Source : String;
       Result : out Analysis_Result)
    is
+      Empty   : CCL.Catalog.Interface_Catalog;
+   begin
+      CCL.Catalog.Initialize (Empty);
+      Analyze (Source, Empty, Result);
+   end Analyze;
+
+   procedure Analyze
+     (Source             : String;
+      Visible_Interfaces : CCL.Catalog.Interface_Catalog;
+      Result             : out Analysis_Result)
+   is
       Tree    : Syntax_Tree;
       Outcome : Interpretation_Result;
    begin
       Process_Source
-        (Source   => Source,
-         Fuel     => 0,
-         Analyze_Input => True,
+         (Source   => Source,
+          Fuel     => 0,
+          Visible_Interfaces => Visible_Interfaces,
+          Analyze_Input => True,
          Evaluate => False,
          Result   => Outcome,
          Tree     => Tree);
@@ -692,10 +768,22 @@ is
       Fuel   : Natural;
       Result : out Interpretation_Result)
    is
+      Empty : CCL.Catalog.Interface_Catalog;
+   begin
+      CCL.Catalog.Initialize (Empty);
+      Interpret (Source, Fuel, Empty, Result);
+   end Interpret;
+
+   procedure Interpret
+     (Source             : String;
+      Fuel               : Natural;
+      Visible_Interfaces : CCL.Catalog.Interface_Catalog;
+      Result             : out Interpretation_Result)
+   is
       Analysis : Analysis_Result;
       Tree     : Syntax_Tree;
    begin
-      Analyze (Source, Analysis);
+      Analyze (Source, Visible_Interfaces, Analysis);
       if Analysis.Status /= Analysis_Succeeded then
          Result :=
            (Status =>
@@ -712,9 +800,10 @@ is
 
       Tree := Analysis.Tree;
       Process_Source
-        (Source   => Source,
-         Fuel     => Fuel,
-         Analyze_Input => False,
+         (Source   => Source,
+          Fuel     => Fuel,
+          Visible_Interfaces => Visible_Interfaces,
+          Analyze_Input => False,
          Evaluate => True,
          Result   => Result,
          Tree     => Tree);

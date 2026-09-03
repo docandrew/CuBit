@@ -10,9 +10,12 @@ TEST_NAME="boot-shell-nvme"
 TIMEOUT_SECONDS=25
 BUILD_WORLD=0
 KEEP_LOGS=0
+QEMU_ACCEL=""
 SERIAL_LOG=""
 NET_PCAP=""
+BASE_DISK=""
 TEMP_DISK=""
+TEMP_AUDIO=""
 
 usage() {
     cat <<'EOF'
@@ -20,8 +23,10 @@ Usage: tests/headless/run.sh [options]
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, desktop-display, security-authority, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, capability-security, desktop-display, security-authority, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
   --timeout SECONDS    QEMU runtime before timeout is treated as success
+  --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
+  --disk PATH          Base ext2 disk image (default: kernel/nvme_disk.img)
   --serial PATH        Serial log path (default: /tmp/cubit-headless-*.log)
   --pcap PATH          Packet capture path (default: /tmp/cubit-headless-*.pcap)
   --keep-logs          Leave logs in place after a passing run
@@ -52,6 +57,22 @@ while [ "$#" -gt 0 ]; do
                 exit 2
             fi
             TIMEOUT_SECONDS="$2"
+            shift 2
+            ;;
+        --accel)
+            if [ "$#" -lt 2 ]; then
+                echo "headless: --accel requires a value" >&2
+                exit 2
+            fi
+            QEMU_ACCEL="$2"
+            shift 2
+            ;;
+        --disk)
+            if [ "$#" -lt 2 ]; then
+                echo "headless: --disk requires a value" >&2
+                exit 2
+            fi
+            BASE_DISK="$2"
             shift 2
             ;;
         --serial)
@@ -94,7 +115,7 @@ case "$TIMEOUT_SECONDS" in
 esac
 
 case "$TEST_NAME" in
-    boot-shell-nvme|async-ipc|bench-ipc|ccl-vm|desktop-display|security-authority|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
+    boot-shell-nvme|async-ipc|bench-ipc|ccl-vm|capability-security|desktop-display|security-authority|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -140,6 +161,10 @@ cleanup() {
     if [ -n "$TEMP_DISK" ]; then
         rm -f "$TEMP_DISK"
     fi
+    if [ -n "$TEMP_AUDIO" ] && [ "$KEEP_LOGS" -eq 0 ] &&
+       [ "${HEADLESS_TEST_FAILED:-0}" -eq 0 ]; then
+        rm -f "$TEMP_AUDIO"
+    fi
     if [ "$KEEP_LOGS" -eq 0 ] && [ "${HEADLESS_TEST_FAILED:-0}" -eq 0 ]; then
         rm -f "$NET_PCAP"
     fi
@@ -152,12 +177,17 @@ if [ "$BUILD_WORLD" -eq 1 ]; then
     make -C "$KERNEL_DIR" world
 fi
 
-if [ ! -f "$KERNEL_DIR/nvme_disk.img" ]; then
-    echo "headless: missing kernel/nvme_disk.img; run make -C kernel world or pass --build" >&2
+if [ -z "$BASE_DISK" ]; then
+    BASE_DISK="$KERNEL_DIR/nvme_disk.img"
+fi
+
+if [ ! -f "$BASE_DISK" ]; then
+    echo "headless: missing disk image: $BASE_DISK" >&2
+    echo "headless: run make -C kernel world, pass --build, or select one with --disk" >&2
     exit 1
 fi
 
-DISK_IMAGE="$KERNEL_DIR/nvme_disk.img"
+DISK_IMAGE="$BASE_DISK"
 INIT_PROFILE=""
 case "$TEST_NAME" in
     async-ipc)
@@ -168,6 +198,9 @@ case "$TEST_NAME" in
         ;;
     ccl-vm)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-vm.conf"
+        ;;
+    capability-security)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-capability-security.conf"
         ;;
     desktop-display|desktop-virtio-vga)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-desktop-display.conf"
@@ -184,11 +217,23 @@ esac
 
 if [ -n "$INIT_PROFILE" ]; then
     TEMP_DISK="$(mktemp "${TMPDIR:-/tmp}/cubit-${TEST_NAME}-disk.XXXXXX.img")"
-    cp "$KERNEL_DIR/nvme_disk.img" "$TEMP_DISK"
+    cp "$BASE_DISK" "$TEMP_DISK"
     debugfs -w -R "rm init.conf" "$TEMP_DISK" >/dev/null 2>&1
     if ! debugfs -w -R "write $INIT_PROFILE init.conf" "$TEMP_DISK" >/dev/null 2>&1; then
         echo "headless: failed to install $TEST_NAME init.conf" >&2
         exit 1
+    fi
+    if [ "$TEST_NAME" = "desktop-doom" ]; then
+        DOOM_IMAGE="$KERNEL_DIR/isodir/boot/doom.elf"
+        if [ ! -f "$DOOM_IMAGE" ]; then
+            echo "headless: missing current DOOM image: $DOOM_IMAGE" >&2
+            exit 1
+        fi
+        debugfs -w -R "rm doom.elf" "$TEMP_DISK" >/dev/null 2>&1
+        if ! debugfs -w -R "write $DOOM_IMAGE doom.elf" "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to install current doom.elf" >&2
+            exit 1
+        fi
     fi
     DISK_IMAGE="$TEMP_DISK"
 fi
@@ -211,10 +256,22 @@ fi
 
 echo "headless: running $TEST_NAME for ${TIMEOUT_SECONDS}s"
 
+ACCEL_ARGS=()
+if [ -n "$QEMU_ACCEL" ]; then
+    ACCEL_ARGS=(-accel "$QEMU_ACCEL")
+fi
+
+AUDIO_ARGS=(-audiodev none,id=snd0)
+if [ "$TEST_NAME" = "desktop-doom" ]; then
+    TEMP_AUDIO="$(mktemp "${TMPDIR:-/tmp}/cubit-${TEST_NAME}-audio.XXXXXX.wav")"
+    AUDIO_ARGS=(-audiodev "wav,id=snd0,path=$TEMP_AUDIO")
+fi
+
 (
     cd "$KERNEL_DIR" || exit 1
     # shellcheck disable=SC2086
     "$TIMEOUT_BIN" "$TIMEOUT_SECONDS" "$QEMU_BIN" \
+        "${ACCEL_ARGS[@]}" \
         -machine q35 \
         -cpu Broadwell \
         -smp 4 \
@@ -228,7 +285,7 @@ echo "headless: running $TEST_NAME for ${TIMEOUT_SECONDS}s"
         $VIDEO_ARGS \
         -netdev user,id=net0 \
         -object "filter-dump,id=f0,netdev=net0,file=$NET_PCAP" \
-        -audiodev none,id=snd0 \
+        "${AUDIO_ARGS[@]}" \
         -device intel-hda \
         -device hda-output,audiodev=snd0 \
         -no-reboot
@@ -287,9 +344,26 @@ ccl-vm: module PASS
 ccl-vm: source PASS
 ccl-test-host: import invoked
 ccl-vm: import IPC PASS
+clock: registered
+clock: monotonic query
+ccl-vm: clock IPC PASS
 ccl-vm: scheduler PASS
 ccl-vm: ownership PASS
 ccl-vm: all tests passed
+"
+        ;;
+    capability-security)
+        required_markers="
+capability-test: getpid PASS
+capability-test: no ambient filesystem PASS
+capability-test: self process rights attenuated PASS
+capability-test: no ambient keyboard PASS
+capability-test: no ambient mouse PASS
+capability-test: no ambient process management PASS
+capability-test: self mint denied PASS
+capability-test: mint denial leaves slot empty PASS
+capability-test: ambient spawn denied PASS
+capability-test: all tests passed
 "
         ;;
     desktop-display)
@@ -324,6 +398,7 @@ I_InitGraphics: framebuffer
 desktop: stats
 display: stats
 mixer: stats
+mixer: HDA period IRQ active
 "
         ;;
     virtio-gpu)

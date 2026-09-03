@@ -78,8 +78,9 @@ is
         -- checked at interrupt return to trigger immediate preemption.
         needReschedule      : Boolean := False;
 
-        -- Lazy FPU: PID of the process whose FPU state is currently live
-        -- in the hardware registers. NO_PROCESS means no owner.
+        -- PID whose eagerly-restored FPU state is currently live in the
+        -- hardware registers. Used for diagnostics and invariant checking;
+        -- user transitions do not rely on lazy #NM restoration.
         fpuOwner            : Process.ProcessID := Process.NO_PROCESS;
     end record;
 

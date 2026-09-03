@@ -32,60 +32,6 @@ package body Syscall is
     end exitp;
 
     ---------------------------------------------------------------------------
-    -- read
-    -- @TODO
-    ---------------------------------------------------------------------------
-    function read (fd    : in Descriptors.DescriptorNum;
-                   buf   : in System.Address;
-                   count : in Unsigned_64) return Unsigned_64 with SPARK_Mode => On
-    is
-    begin
-        return 0;
-    end read;
-
-    ---------------------------------------------------------------------------
-    -- close
-    -- @TODO
-    ---------------------------------------------------------------------------
-    function close (fd : in Descriptors.DescriptorNum) return Unsigned_64 with SPARK_Mode => On
-    is
-    begin
-        return 0;
-    end close;
-
-    ---------------------------------------------------------------------------
-    -- execve
-    -- @TODO
-    ---------------------------------------------------------------------------
-    function execve (exename   : in System.Address;
-                     args      : in System.Address;
-                     env       : in System.Address) return Unsigned_64 with SPARK_Mode => On
-    is
-    begin
-        return 0;
-    end execve;
-
-    ---------------------------------------------------------------------------
-    -- fork
-    -- @Note Debatable whether CuBit will support this.
-    ---------------------------------------------------------------------------
-
-
-    ---------------------------------------------------------------------------
-    -- open
-    -- @TODO
-    ---------------------------------------------------------------------------
-    function open (filenameLen : in Unsigned_64;
-                   filename    : in System.Address;
-                   flags       : in Unsigned_64;
-                   mode        : in Unsigned_64) return Unsigned_64 with SPARK_Mode => On
-    is
-    begin
-        --return Filesystem.VFS.Paths.open (filenameLen, filename, flags, mode);
-        return 0;
-    end open;
-
-    ---------------------------------------------------------------------------
     -- write
     ---------------------------------------------------------------------------
     function write (fd    : in Descriptors.DescriptorNum;
@@ -114,6 +60,78 @@ package body Syscall is
         return bytesWritten;
     end write;
 
+    ---------------------------------------------------------------------------
+    -- decodeSyscall
+    --
+    -- The hardware ABI accepts an arbitrary 64-bit value from userspace. Do
+    -- not apply Enum_Val or an unchecked conversion to that untrusted value:
+    -- only explicitly represented operations enter the typed dispatcher.
+    ---------------------------------------------------------------------------
+    procedure decodeSyscall (raw    : in Unsigned_64;
+                             number : out SyscallNumber;
+                             valid  : out Boolean) with SPARK_Mode => On
+    is
+    begin
+        valid := True;
+        case raw is
+            when 0    => number := SYSCALL_EXIT;
+            when 6    => number := SYSCALL_GETPID;
+            when 7    => number := SYSCALL_KILL;
+            when 8    => number := SYSCALL_SBRK;
+            when 12   => number := SYSCALL_WRITE;
+            when 15   => number := SYSCALL_INFO;
+            when 17   => number := SYSCALL_RECEIVE;
+            when 18   => number := SYSCALL_REPLY;
+            when 19   => number := SYSCALL_SEND_EVENT;
+            when 20   => number := SYSCALL_RECEIVE_EVENT;
+            when 22   => number := SYSCALL_POLL_ANY_IPC;
+            when 23   => number := SYSCALL_SUBMIT;
+            when 24   => number := SYSCALL_WAIT_COMPLETION;
+            when 25   => number := SYSCALL_POLL_COMPLETION;
+            when 26   => number := SYSCALL_RECEIVE_EVENT_NB;
+            when 27   => number := SYSCALL_GETTIME;
+            when 28   => number := SYSCALL_SLEEP;
+            when 29   => number := SYSCALL_MAPFB;
+            when 30   => number := SYSCALL_INP8;
+            when 31   => number := SYSCALL_OUTP8;
+            when 32   => number := SYSCALL_INP16;
+            when 33   => number := SYSCALL_OUTP16;
+            when 36   => number := SYSCALL_INP32;
+            when 37   => number := SYSCALL_OUTP32;
+            when 40   => number := SYSCALL_CAP_SEND;
+            when 41   => number := SYSCALL_CAP_CALL;
+            when 42   => number := SYSCALL_CAP_SUBMIT;
+            when 43   => number := SYSCALL_NOTIFY;
+            when 48   => number := SYSCALL_REPLY_WAIT;
+            when 50   => number := SYSCALL_VIRT_TO_PHYS;
+            when 51   => number := SYSCALL_SAVE_REPLY_CAP;
+            when 52   => number := SYSCALL_REPLY_CAP;
+            when 60   => number := SYSCALL_SPAWN;
+            when 70   => number := SYSCALL_MAP_DEVICE;
+            when 71   => number := SYSCALL_PROCLIST;
+            when 72   => number := SYSCALL_MINT_CAP;
+            when 73   => number := SYSCALL_RESUME;
+            when 74   => number := SYSCALL_ALLOC_DMA;
+            when 75   => number := SYSCALL_ENABLE_IRQ;
+            when 76   => number := SYSCALL_MAP_INTO;
+            when 77   => number := SYSCALL_SET_SYSINFO;
+            when 78   => number := SYSCALL_SET_CPU;
+            when 80   => number := SYSCALL_POLL_SERVICE_REQUEST;
+            when 81   => number := SYSCALL_SET_LATENCY_CONTRACT;
+            when 82   => number := SYSCALL_TRACE_RESET;
+            when 83   => number := SYSCALL_TRACE_SUMMARY;
+            when 84   => number := SYSCALL_INSPECT_CAP;
+            when 102  => number := SYSCALL_GRANT;
+            when 103  => number := SYSCALL_REVOKE;
+            when 106  => number := SYSCALL_GRANT_VIA_CAP;
+            when 107  => number := SYSCALL_SET_WELL_KNOWN;
+            when 2000 => number := SYSCALL_REGISTER_DRIVER;
+            when others =>
+                number := SYSCALL_EXIT;
+                valid := False;
+        end case;
+    end decodeSyscall;
+
 
     ---------------------------------------------------------------------------
     -- syscallHandler — thin dispatcher
@@ -125,7 +143,7 @@ package body Syscall is
                              arg3,   -- rcx
                              arg4,   -- r8
                              arg5,   -- r9
-                             syscallNum : in Unsigned_64)   -- first on stack
+                             syscallNumRaw : in Unsigned_64)   -- first on stack
                              return Unsigned_64
     is
         percpu : PerCPUData.PerCPUData with
@@ -134,10 +152,23 @@ package body Syscall is
         retval     : Unsigned_64 := 0;
         traceActive : constant Boolean := Trace.IsEnabled;
         startTSC   : Unsigned_64 := 0;
+        syscallNum : SyscallNumber;
+        validSyscall : Boolean;
     begin
         if traceActive then
             startTSC := x86.rdtsc;
-            Trace.Emit (Trace.EVENT_SYSCALL_ENTER, syscallNum, arg0);
+            Trace.Emit (Trace.EVENT_SYSCALL_ENTER, syscallNumRaw, arg0);
+        end if;
+
+        decodeSyscall (syscallNumRaw, syscallNum, validSyscall);
+        if not validSyscall then
+            print ("Unknown syscall: "); printd (syscallNumRaw);
+            print (" from PID: "); println (percpu.currentPID);
+            if traceActive then
+                Trace.ObserveDuration (Trace.EVENT_SYSCALL_TIME,
+                                       x86.rdtsc - startTSC);
+            end if;
+            return 0;
         end if;
 
         case syscallNum is
@@ -148,15 +179,8 @@ package body Syscall is
                 Admin.handleKill (
                     percpu.currentPID, arg0, retval);
 
-            when SYSCALL_READ =>
-                retval := read (
-                    fd    => Descriptors.DescriptorNum(arg0),
-                    buf   => Util.numToAddr(arg1),
-                    count => arg2);
-
-            when SYSCALL_CLOSE =>
-                retval := close (
-                    fd => Descriptors.DescriptorNum(arg0));
+            when SYSCALL_GETPID =>
+                retval := Unsigned_64 (percpu.currentPID);
 
             when SYSCALL_WRITE =>
                 retval := write (
@@ -182,21 +206,8 @@ package body Syscall is
                 IPC.handleMapFB (
                     percpu.currentPID, retval);
 
-            when SYSCALL_OPEN =>
-                retval := open (
-                    filenameLen => arg0,
-                    filename    => Util.numToAddr(arg1),
-                    flags       => arg2,
-                    mode        => arg3);
-
             when SYSCALL_RECEIVE =>
                 IPC.handleReceive (arg0, retval);
-
-            when SYSCALL_SEND =>
-                IPC.handleSend (
-                    percpu.currentPID,
-                    arg0, arg1, arg2, arg3, arg4, arg5,
-                    retval);
 
             when SYSCALL_REPLY =>
                 IPC.handleReply (
@@ -224,11 +235,7 @@ package body Syscall is
                     percpu.currentPID,
                     arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
-            when SYSCALL_CALL =>
-                IPC.handleCall (
-                    percpu.currentPID, arg0, arg1, retval);
-
-            when SYSCALL_RECEIVE_NB =>
+            when SYSCALL_POLL_ANY_IPC =>
                 IPC.handlePollAnyIpc (arg0, retval);
 
             when SYSCALL_POLL_SERVICE_REQUEST =>
@@ -264,11 +271,10 @@ package body Syscall is
 
             when SYSCALL_INP8 | SYSCALL_OUTP8 |
                  SYSCALL_INP16 | SYSCALL_OUTP16 |
-                 SYSCALL_INPS16 | SYSCALL_OUTPS16 |
                  SYSCALL_INP32 | SYSCALL_OUTP32 =>
                 Admin.handlePortIO (
                     percpu.currentPID, syscallNum,
-                    arg0, arg1, arg2, retval);
+                    arg0, arg1, retval);
 
             when SYSCALL_VIRT_TO_PHYS =>
                 Admin.handleVirtToPhys (
@@ -306,40 +312,8 @@ package body Syscall is
                     end if;
                 end if;
 
-            when SYSCALL_NOTIFY_WAIT =>
-                retval := Process.IPC.notifyWait;
-
-            when SYSCALL_NOTIFY_POLL =>
-                retval := Process.IPC.notifyPoll;
-
-            when SYSCALL_BIND_NOTIFICATION =>
-                if arg0 > Unsigned_64(Capabilities.CapabilitySlot'Last) then
-                    retval := 0;
-                else
-                    if Process.IPC.bindNotification (
-                        capSlot => Capabilities.CapabilitySlot(arg0))
-                    then
-                        retval := 1;
-                    else
-                        retval := 0;
-                    end if;
-                end if;
-
-            when SYSCALL_UNBIND_NOTIFICATION =>
-                Process.IPC.unbindNotification;
-                retval := 1;
-
             when SYSCALL_REPLY_WAIT =>
                 Admin.handleReplyWait (arg0, arg1, retval);
-
-            when SYSCALL_CONTROLACCESS =>
-                Admin.handleControlAccess (
-                    percpu.currentPID,
-                    arg0, arg1, arg2, arg3, arg4, retval);
-
-            when SYSCALL_GETTICKET =>
-                Admin.handleGetTicket (
-                    percpu.currentPID, arg0, arg1, retval);
 
             when SYSCALL_SPAWN =>
                 IPC.handleSpawn (
@@ -388,10 +362,6 @@ package body Syscall is
                 Admin.handleSetCpu (
                     percpu.currentPID, arg0, arg1, retval);
 
-            when SYSCALL_SET_SUPERVISOR =>
-                Admin.handleSetSupervisor (
-                    percpu.currentPID, arg0, arg1, retval);
-
             when SYSCALL_SET_LATENCY_CONTRACT =>
                 -- Advisory process-local scheduler contract. We validate the
                 -- ABI at the syscall boundary, but deliberately do not grant
@@ -434,17 +404,6 @@ package body Syscall is
                 Admin.handleSetWellKnown (
                     percpu.currentPID, arg0, arg1, retval);
 
-            when others =>
-                print ("Syscall: "); printd (syscallNum);
-                print (" from PID: ");
-                println (percpu.currentPID);
-                println (" with args: ");
-                print ("  "); println (arg0);
-                print ("  "); println (arg1);
-                print ("  "); println (arg2);
-                print ("  "); println (arg3);
-                print ("  "); println (arg4);
-                print ("  "); println (arg5);
         end case;
 
         if traceActive then
