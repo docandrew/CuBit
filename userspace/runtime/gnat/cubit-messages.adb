@@ -96,7 +96,7 @@ package body CuBit.Messages is
      (slot : CapabilitySlot; msg : Message) return Unsigned_64
    is
    begin
-      return syscall (SYSCALL_REPLY_CAP,
+      return syscall (SYSCALL_REPLY_AND_CONSUME_REPLY_CAPABILITY,
                        slot,
                        tagToU64 (msg.tag),
                        msg.words (0),
@@ -144,8 +144,8 @@ package body CuBit.Messages is
    --  POLL_ANY_IPC: RDI=pointer to Message struct
    --  Returns: RAX=sender PID, or 0 if no mixed IPC was available.
    --
-   --  This preserves the old receiveNB behavior. It can consume events and
-   --  notifications, so call sites should look unusual on purpose.
+   --  This preserves the old mixed-receive behavior. It can consume events,
+   --  so call sites should look unusual on purpose.
    procedure Poll_Any_Ipc
      (from  : out ProcessID;
       msg   : out Message;
@@ -204,13 +204,6 @@ package body CuBit.Messages is
       return syscall (SYSCALL_POLL_COMPLETION, toNum (result));
    end Poll_Completion;
 
-   function pollCompletion
-     (result : System.Address) return Unsigned_64
-   is
-   begin
-      return Poll_Completion (result);
-   end pollCompletion;
-
    --  capSend
    --  CAP_SEND: RDI=cap_slot, RSI=tag, RDX=w0, R10=w1, R8=w2, R9=w3
    --  Returns: reply tag in RAX
@@ -220,7 +213,7 @@ package body CuBit.Messages is
    is
       retTag : Unsigned_64;
    begin
-      retTag := syscall (SYSCALL_CAP_SEND,
+      retTag := syscall (SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY,
                           slot,
                           tagToU64 (msg.tag),
                           msg.words (0),
@@ -239,7 +232,8 @@ package body CuBit.Messages is
    is
       retTag : Unsigned_64;
    begin
-      retTag := syscall (SYSCALL_CAP_CALL, slot, toNum (msg'Address));
+      retTag := syscall
+        (SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY, slot, toNum (msg'Address));
       return u64ToTag (retTag);
    end capCall;
 
@@ -253,7 +247,7 @@ package body CuBit.Messages is
    is
       ret : Unsigned_64;
    begin
-      ret := syscall (SYSCALL_CAP_SUBMIT,
+      ret := syscall (SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY,
                        slot,
                        tagToU64 (msg.tag),
                        msg.words (0),
@@ -262,15 +256,6 @@ package body CuBit.Messages is
                        token);
       return (ret = 1);
    end capSubmit;
-
-   --  capNotify
-   --  NOTIFY: RDI=cap_slot
-
-   procedure capNotify (slot : CapabilitySlot) is
-      ignore : Unsigned_64;
-   begin
-      ignore := syscall (SYSCALL_NOTIFY, slot);
-   end capNotify;
 
    --  sendEvent
    --  SEND_EVENT: RDI=dest, RSI=tag, RDX=w0, R10=w1, R8=w2, R9=w3
@@ -299,11 +284,6 @@ package body CuBit.Messages is
       return msg;
    end Wait_Event;
 
-   function receiveEvent return Message is
-   begin
-      return Wait_Event;
-   end receiveEvent;
-
    --  Poll_Event
    --  POLL_EVENT: RDI=pointer to Message struct
    --  Returns: RAX=1 if event found, 0 if not
@@ -315,11 +295,6 @@ package body CuBit.Messages is
       ret := syscall (SYSCALL_POLL_EVENT, toNum (msg'Address));
       return (ret = 1);
    end Poll_Event;
-
-   function receiveEventNB (msg : out Message) return Boolean is
-   begin
-      return Poll_Event (msg);
-   end receiveEventNB;
 
    --  createGrant
    --  GRANT: RDI=grantee, RSI=localAddr, RDX=numPages, R10=permission
@@ -340,7 +315,7 @@ package body CuBit.Messages is
          perm := 1;
       end if;
 
-      ret := syscall (SYSCALL_GRANT,
+      ret := syscall (SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID,
                        grantee,
                        toNum (localAddr),
                        Unsigned_64 (numPages),
@@ -360,7 +335,7 @@ package body CuBit.Messages is
    procedure revokeGrant (id : Unsigned_64) is
       ignore : Unsigned_64;
    begin
-      ignore := syscall (SYSCALL_REVOKE, id);
+      ignore := syscall (SYSCALL_REVOKE_SHARED_MEMORY_GRANT, id);
    end revokeGrant;
 
    function killProcess (pid : ProcessID) return Unsigned_64 is
@@ -384,7 +359,7 @@ package body CuBit.Messages is
       if readWrite then
          rwFlag := 1;
       end if;
-      ret := syscall (SYSCALL_GRANT_VIA_CAP,
+      ret := syscall (SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
                        slot,
                        toNum (localAddr),
                        Unsigned_64 (numPages),
@@ -450,7 +425,7 @@ package body CuBit.Messages is
 
    function saveReplyCap (destSlot : Unsigned_64) return Unsigned_64 is
    begin
-      return syscall (SYSCALL_SAVE_REPLY_CAP, destSlot);
+      return syscall (SYSCALL_MOVE_REPLY_CAPABILITY, destSlot);
    end saveReplyCap;
 
    --  Port I/O wrappers

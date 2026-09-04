@@ -385,6 +385,7 @@ is
         PT_SHLIB,   -- Reserved
         PT_PHDR,    -- Program header table
         PT_LOOS,    -- Env. specific use
+        PT_GNU_STACK, -- Required CuBit userspace stack declaration
         PT_HIOS,
         PT_LOPROC,  -- Proc. specific use
         PT_HIPROC
@@ -399,6 +400,7 @@ is
         PT_SHLIB    => 5,
         PT_PHDR     => 6,
         PT_LOOS     => 16#6000_0000#,
+        PT_GNU_STACK => 16#6474_E551#,
         PT_HIOS     => 16#6FFF_FFFF#,
         PT_LOPROC   => 16#7000_0000#,
         PT_HIPROC   => 16#7FFF_FFFF#

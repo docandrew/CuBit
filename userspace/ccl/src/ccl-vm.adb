@@ -17,6 +17,7 @@ is
    use type Abstract_Stacks.Stack;
    use type Runtime_Stacks.Operation_Result;
    use type CCL.Execution_Budgets.Consume_Result;
+   use type CCL.Checked_Arithmetic.Arithmetic_Error;
 
    type Abstract_State is record
       Seen  : Boolean := False;
@@ -133,6 +134,15 @@ is
                Push_Kind (State, Boolean_Value, Error);
 
             when Add_Integer =>
+               Pop_Kind (State, Integer_Value, Error);
+               if Error = Valid then
+                  Pop_Kind (State, Integer_Value, Error);
+               end if;
+               if Error = Valid then
+                  Push_Kind (State, Integer_Value, Error);
+               end if;
+
+            when Multiply_Integer | Divide_Integer | Modulo_Integer =>
                Pop_Kind (State, Integer_Value, Error);
                if Error = Valid then
                   Pop_Kind (State, Integer_Value, Error);
@@ -443,6 +453,8 @@ is
       Budget_Result : CCL.Execution_Budgets.Consume_Result;
       Addition_Result : Integer_64;
       Addition_Overflowed : Boolean;
+      Arithmetic_Result : Integer_64;
+      Arithmetic_Error : CCL.Checked_Arithmetic.Arithmetic_Error;
       Slice_Remaining : Natural := Instructions;
    begin
       Stack := State.Stack;
@@ -591,6 +603,78 @@ is
                         Done := True;
                      end if;
                   end if;
+                  end if;
+               end if;
+
+            when Multiply_Integer | Divide_Integer | Modulo_Integer =>
+               Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+               if Stack_Result /= Runtime_Stacks.Stack_Ok or else
+                 Right_Value.Kind /= Integer_Value or else
+                 Program_Length (PC) + 1 >= Item.Content.Length
+               then
+                  Status := Invalid_Bytecode;
+                  State.Terminal := True;
+                  State.Terminal_Status := Invalid_Bytecode;
+                  Done := True;
+               else
+                  Runtime_Stacks.Pop (Stack, Left_Value, Stack_Result);
+                  if Stack_Result /= Runtime_Stacks.Stack_Ok or else
+                    Left_Value.Kind /= Integer_Value
+                  then
+                     Status := Invalid_Bytecode;
+                     State.Terminal := True;
+                     State.Terminal_Status := Invalid_Bytecode;
+                     Done := True;
+                  else
+                     case Item.Content.Code (PC).Op is
+                        when Multiply_Integer =>
+                           CCL.Checked_Arithmetic.Multiply
+                             (Left_Value.Integer, Right_Value.Integer,
+                              Arithmetic_Result, Addition_Overflowed);
+                           Arithmetic_Error :=
+                             (if Addition_Overflowed then
+                                 CCL.Checked_Arithmetic.Arithmetic_Overflow
+                              else CCL.Checked_Arithmetic.Arithmetic_Ok);
+                        when Divide_Integer =>
+                           CCL.Checked_Arithmetic.Divide
+                             (Left_Value.Integer, Right_Value.Integer,
+                              Arithmetic_Result, Arithmetic_Error);
+                        when Modulo_Integer =>
+                           CCL.Checked_Arithmetic.Modulo
+                             (Left_Value.Integer, Right_Value.Integer,
+                              Arithmetic_Result, Arithmetic_Error);
+                        when others =>
+                           Arithmetic_Result := 0;
+                           Arithmetic_Error :=
+                             CCL.Checked_Arithmetic.Arithmetic_Overflow;
+                     end case;
+                     if Arithmetic_Error =
+                       CCL.Checked_Arithmetic.Arithmetic_Overflow
+                     then
+                        Status := Arithmetic_Overflow;
+                        State.Terminal := True;
+                        State.Terminal_Status := Arithmetic_Overflow;
+                        Done := True;
+                     elsif Arithmetic_Error =
+                       CCL.Checked_Arithmetic.Division_By_Zero
+                     then
+                        Status := Division_By_Zero;
+                        State.Terminal := True;
+                        State.Terminal_Status := Division_By_Zero;
+                        Done := True;
+                     else
+                        Runtime_Stacks.Push
+                          (Stack, Integer_Constant (Arithmetic_Result),
+                           Stack_Result);
+                        if Stack_Result = Runtime_Stacks.Stack_Ok then
+                           PC := PC + 1;
+                        else
+                           Status := Invalid_Bytecode;
+                           State.Terminal := True;
+                           State.Terminal_Status := Invalid_Bytecode;
+                           Done := True;
+                        end if;
+                     end if;
                   end if;
                end if;
 

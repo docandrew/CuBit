@@ -37,8 +37,9 @@ package CuBit.Messages is
    SYSCALL_GETTIME         : constant Unsigned_64 := 27;
    SYSCALL_SLEEP           : constant Unsigned_64 := 28;
    SYSCALL_POLL_SERVICE_REQUEST : constant Unsigned_64 := 80;
-   SYSCALL_GRANT           : constant Unsigned_64 := 102;
-   SYSCALL_REVOKE          : constant Unsigned_64 := 103;
+   SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID :
+      constant Unsigned_64 := 102;
+   SYSCALL_REVOKE_SHARED_MEMORY_GRANT : constant Unsigned_64 := 103;
    SYSCALL_INP8            : constant Unsigned_64 := 30;
    SYSCALL_OUTP8           : constant Unsigned_64 := 31;
    SYSCALL_INP16           : constant Unsigned_64 := 32;
@@ -54,7 +55,7 @@ package CuBit.Messages is
 
    SYSCALL_MAP_DEVICE      : constant Unsigned_64 := 70;
    SYSCALL_PROCLIST        : constant Unsigned_64 := 71;
-   SYSCALL_MINT_CAP        : constant Unsigned_64 := 72;
+   SYSCALL_POLICY_MINT_CAPABILITY : constant Unsigned_64 := 72;
    SYSCALL_RESUME          : constant Unsigned_64 := 73;
 
    --  Device manager syscalls
@@ -66,27 +67,28 @@ package CuBit.Messages is
    SYSCALL_SET_LATENCY_CONTRACT : constant Unsigned_64 := 81;
    SYSCALL_TRACE_RESET     : constant Unsigned_64 := 82;
    SYSCALL_TRACE_SUMMARY   : constant Unsigned_64 := 83;
-   SYSCALL_INSPECT_CAP     : constant Unsigned_64 := 84;
+   SYSCALL_INSPECT_CAPABILITY : constant Unsigned_64 := 84;
 
    SYSCALL_REGISTER_DRIVER : constant Unsigned_64 := 2000;
 
    --  Capability-aware IPC syscalls
-   SYSCALL_CAP_SEND        : constant Unsigned_64 := 40;
-   SYSCALL_CAP_CALL        : constant Unsigned_64 := 41;
-   SYSCALL_CAP_SUBMIT      : constant Unsigned_64 := 42;
-
-   --  Notification IPC syscalls
-   SYSCALL_NOTIFY          : constant Unsigned_64 := 43;
+   SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY        : constant Unsigned_64 := 40;
+   SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY        : constant Unsigned_64 := 41;
+   SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY      : constant Unsigned_64 := 42;
 
    --  Atomic reply+receive
    SYSCALL_REPLY_WAIT      : constant Unsigned_64 := 48;
 
    --  Move reply cap from slot 63 to another slot (deferred replies)
-   SYSCALL_SAVE_REPLY_CAP  : constant Unsigned_64 := 51;
-   SYSCALL_REPLY_CAP       : constant Unsigned_64 := 52;
+   SYSCALL_MOVE_REPLY_CAPABILITY : constant Unsigned_64 := 51;
+   SYSCALL_REPLY_AND_CONSUME_REPLY_CAPABILITY :
+      constant Unsigned_64 := 52;
 
-   --  Service discovery syscalls
-   SYSCALL_GRANT_VIA_CAP   : constant Unsigned_64 := 106;
+   --  Capability-directed shared-memory grant
+   SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY :
+      constant Unsigned_64 := 106;
+
+   --  Transitional service discovery syscall
    SYSCALL_SET_WELL_KNOWN  : constant Unsigned_64 := 107;
 
    --  Well-known service roles (must match kernel Config.ServiceRole)
@@ -107,8 +109,13 @@ package CuBit.Messages is
    CAP_SLOT_CONFIG    : constant Unsigned_64 := 20;
    CAP_SLOT_DESKTOP   : constant Unsigned_64 := 21;
    CAP_SLOT_DISPLAY   : constant Unsigned_64 := 22;
+   CAP_SLOT_CLOCK     : constant Unsigned_64 := 25;
 
    subtype CapabilitySlot is Unsigned_64 range 0 .. 63;
+
+   --  Maximum work accepted by one privileged MAP_INTO syscall.  Callers
+   --  map larger regions in bounded chunks so the kernel remains responsive.
+   MAX_MAP_INTO_PAGES_PER_CALL : constant Unsigned_64 := 1024;
 
    STDOUT : constant Unsigned_64 := 1;
 
@@ -260,9 +267,9 @@ package CuBit.Messages is
    --      minted for the request ID;
    --    * a one-way service message, with no reply cap minted.
    --
-   --  It never consumes keyboard/mouse input, device events, lifecycle events,
-   --  or notifications. Those belong to Poll_Event/Wait_Event or notification
-   --  APIs. If found is False, from is NO_PROCESS and msg is NULL_MESSAGE.
+   --  It never consumes keyboard/mouse input, device events, or lifecycle
+   --  events. Those belong to Poll_Event/Wait_Event. If found is False, from
+   --  is NO_PROCESS and msg is NULL_MESSAGE.
    procedure Poll_Service_Request
      (from  : out ProcessID;
       msg   : out Message;
@@ -272,7 +279,7 @@ package CuBit.Messages is
    --
    --  Non-blocking mixed receive. This is intentionally loud because it can
    --  consume any pending IPC class from the unified mailbox ring: service
-   --  requests, one-way messages, events, and notifications.
+   --  requests, one-way messages, and events.
    --
    --  Use this only when implementing a central dispatcher that deliberately
    --  handles all IPC classes itself. Most services should call
@@ -308,12 +315,6 @@ package CuBit.Messages is
    function Poll_Completion
      (result : System.Address) return Unsigned_64;
 
-   --  pollCompletion
-   --
-   --  Compatibility spelling for Poll_Completion.
-   function pollCompletion
-     (result : System.Address) return Unsigned_64;
-
    --  Capability-aware IPC wrappers
 
    --  Cap-aware synchronous send: resolve endpoint cap, stamp badge, send.
@@ -330,11 +331,6 @@ package CuBit.Messages is
       msg   : Message;
       token : Unsigned_64) return Boolean;
 
-   --  Notification IPC wrappers
-
-   --  Signal a notification cap: OR badge into dest's notifyWord.
-   procedure capNotify (slot : CapabilitySlot);
-
    --  Send async event (non-blocking, intended for interrupt contexts).
    procedure sendEvent (dest : ProcessID; msg : Message);
 
@@ -342,19 +338,12 @@ package CuBit.Messages is
    --  the event tag; migrate this to the unified wait primitive.
    function Wait_Event return Message;
 
-   --  Compatibility spelling for Wait_Event.
-   function receiveEvent return Message;
-
    --  Poll_Event
    --
    --  Non-blocking event receive. Returns True if an event was available and
    --  fills msg with the event payload. It never consumes service requests or
    --  completions.
    function Poll_Event (msg : out Message) return Boolean;
-
-   --  Non-blocking receive event. Returns True if an event was available.
-   --  Compatibility spelling for Poll_Event.
-   function receiveEventNB (msg : out Message) return Boolean;
 
    --  Create a shared memory grant.
    procedure createGrant

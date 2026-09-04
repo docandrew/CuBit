@@ -52,7 +52,9 @@ package CuBit.UI.App is
       (win : in out Window;
        width, height : Natural;
        flags : Unsigned_64;
-       ok : out Boolean);
+       ok : out Boolean;
+       maximum_width : Natural := 0;
+       maximum_height : Natural := 0);
 
    function Is_Open (win : Window) return Boolean;
    function Surface_ID (win : Window) return Unsigned_64;

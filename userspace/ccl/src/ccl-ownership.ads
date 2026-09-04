@@ -17,7 +17,13 @@ is
    subtype Borrow_Count is Natural range 0 .. MAX_RO_BORROWS;
 
    type Ownership_Mode is (Unrestricted, Move_Only, Must_Handle);
+   for Ownership_Mode use
+     (Unrestricted => 0, Move_Only => 1, Must_Handle => 2);
+   for Ownership_Mode'Size use 8;
    type Disposition_Effect is (Consume, Transfer, Transition);
+   for Disposition_Effect use
+     (Consume => 0, Transfer => 1, Transition => 2);
+   for Disposition_Effect'Size use 8;
 
    type Disposition is record
       Verb      : Disposition_Id := 0;

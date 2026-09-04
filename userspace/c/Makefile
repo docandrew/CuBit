@@ -16,7 +16,7 @@ CFLAGS  = -ffreestanding -nostdlib -nostartfiles -fno-builtin \
 
 ASFLAGS = -ffreestanding -nostdlib
 
-LDFLAGS = -nostdlib -static -T link.ld
+LDFLAGS = -nostdlib -static -z stack-size=16777216 -T link.ld
 
 BUILDDIR = build
 

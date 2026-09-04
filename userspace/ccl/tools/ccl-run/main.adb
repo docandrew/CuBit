@@ -18,6 +18,15 @@ procedure Main is
          when CCL.Language.Succeeded =>
             if not Result.Has_Value then
                Put_Line ("ok");
+            elsif Result.Has_Text then
+               if Result.Result_Text.Length = 0 then
+                  New_Line;
+               else
+                  Put_Line
+                    (Result.Result_Text.Data (1 .. Result.Result_Text.Length));
+               end if;
+            elsif Result.Has_Character then
+               Put_Line (String'(1 => Result.Result_Character));
             elsif Result.Result_Value.Kind = CCL.VM.Integer_Value then
                Put_Line (Integer_64'Image (Result.Result_Value.Integer));
             else

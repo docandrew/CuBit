@@ -7,11 +7,13 @@
 ------------------------------------------------------------------------------
 with System.Storage_Elements; use System.Storage_Elements;
 with Font8x16;
-with CuBit.UI.Fonts_Noto_Sans_11;
+with CuBit.UI.Fonts_IBM_Plex_Mono_11;
+with CuBit.UI.Fonts_IBM_Plex_Sans_11;
 
 package body CuBit.UI is
    use type System.Address;
-   package UI_Font renames CuBit.UI.Fonts_Noto_Sans_11;
+   package UI_Font renames CuBit.UI.Fonts_IBM_Plex_Sans_11;
+   package Code_Font renames CuBit.UI.Fonts_IBM_Plex_Mono_11;
 
    function Is_Empty (r : Rect) return Boolean is
    begin
@@ -300,6 +302,26 @@ package body CuBit.UI is
       return Shift_Left (r, 16) or Shift_Left (g, 8) or b;
    end Blend;
 
+   procedure Fill_Vertical_Gradient
+      (c : Canvas; r : Rect; topColor, bottomColor : Color)
+   is
+      alpha : Unsigned_8;
+   begin
+      if Is_Empty (r) then
+         return;
+      elsif r.h = 1 then
+         Fill_Rect (c, r, topColor);
+         return;
+      end if;
+
+      for row in 0 .. r.h - 1 loop
+         alpha := Unsigned_8 (row * 255 / (r.h - 1));
+         Fill_Rect
+           (c, (x => r.x, y => r.y + row, w => r.w, h => 1),
+            Blend (bottomColor, topColor, alpha));
+      end loop;
+   end Fill_Vertical_Gradient;
+
    function UI_Text_Width (text : String) return Natural is
       width : Natural := 0;
       code  : Natural;
@@ -403,6 +425,137 @@ package body CuBit.UI is
          end;
       end loop;
    end Draw_UI_Text;
+
+   procedure Draw_UI_Text_Transparent
+      (c : Canvas; x, y : Natural; text : String; fg : Color)
+   is
+      cx : Natural := x;
+      width : constant Natural := UI_Text_Width (text);
+      code : Natural;
+      glyphWidth : Natural;
+      clipped : Rect;
+      alpha : Unsigned_8;
+      offset : Storage_Offset;
+      srcX : Natural;
+      srcY : Natural;
+   begin
+      if c.clipEnabled and then
+        (text'Length = 0 or else
+         x >= c.clip.x + c.clip.w or else
+         x + width <= c.clip.x or else
+         y >= c.clip.y + c.clip.h or else
+         y + UI_Font.LINE_HEIGHT <= c.clip.y)
+      then
+         return;
+      end if;
+
+      for i in text'Range loop
+         exit when cx >= c.width;
+         code := Character'Pos (text (i));
+         if code < UI_Font.FIRST_GLYPH or else code > UI_Font.LAST_GLYPH then
+            code := Character'Pos ('?');
+         end if;
+         glyphWidth := UI_Font.Widths (code);
+         clipped := Clamp_Rect
+           (c, (x => cx, y => y, w => glyphWidth,
+                h => UI_Font.LINE_HEIGHT));
+         if c.addr /= System.Null_Address and then not Is_Empty (clipped) then
+            for yy in clipped.y .. clipped.y + clipped.h - 1 loop
+               srcY := yy - y;
+               for xx in clipped.x .. clipped.x + clipped.w - 1 loop
+                  srcX := xx - cx;
+                  alpha := UI_Font.Alpha (code) (srcY) (srcX);
+                  if alpha > 0 then
+                     offset := Storage_Offset (yy * c.pitch + xx * 4);
+                     declare
+                        pixel : Color with Import, Address => c.addr + offset;
+                     begin
+                        pixel :=
+                          (if alpha = 255 then fg
+                           else Blend (fg, pixel, alpha));
+                     end;
+                  end if;
+               end loop;
+            end loop;
+         end if;
+         cx := cx + glyphWidth;
+      end loop;
+   end Draw_UI_Text_Transparent;
+
+   function Code_Text_Width (text : String) return Natural is
+     (text'Length * Code_Font.GLYPH_WIDTH);
+
+   function Code_Text_Height return Natural is
+     (Code_Font.LINE_HEIGHT);
+
+   procedure Draw_Code_Glyph
+      (c : Canvas; x, y : Natural; ch : Character; fg, bg : Color)
+   is
+      code : Natural := Character'Pos (ch);
+      alpha : Unsigned_8;
+      clipped : Rect;
+      offset : Storage_Offset;
+      srcX : Natural;
+      srcY : Natural;
+   begin
+      if code < Code_Font.FIRST_GLYPH or else
+        code > Code_Font.LAST_GLYPH
+      then
+         code := Character'Pos ('?');
+      end if;
+      clipped := Clamp_Rect
+        (c, (x => x, y => y, w => Code_Font.GLYPH_WIDTH,
+             h => Code_Font.LINE_HEIGHT));
+      if c.addr = System.Null_Address or else Is_Empty (clipped) then
+         return;
+      end if;
+      Fill_Rect
+        (c, (x => x, y => y, w => Code_Font.GLYPH_WIDTH,
+             h => Code_Font.LINE_HEIGHT), bg);
+      for yy in clipped.y .. clipped.y + clipped.h - 1 loop
+         srcY := yy - y;
+         for xx in clipped.x .. clipped.x + clipped.w - 1 loop
+            srcX := xx - x;
+            alpha := Code_Font.Alpha (code) (srcY) (srcX);
+            if alpha > 0 then
+               offset := Storage_Offset (yy * c.pitch + xx * 4);
+               declare
+                  pixel : Color with Import, Address => c.addr + offset;
+               begin
+                  pixel :=
+                    (if alpha = 255 then fg else Blend (fg, bg, alpha));
+               end;
+            end if;
+         end loop;
+      end loop;
+   end Draw_Code_Glyph;
+
+   procedure Draw_Code_Text
+      (c : Canvas; x, y : Natural; text : String; fg, bg : Color)
+   is
+      cx : Natural := x;
+      width : constant Natural := Code_Text_Width (text);
+   begin
+      if c.clipEnabled and then
+        (text'Length = 0 or else
+         x >= c.clip.x + c.clip.w or else
+         x + width <= c.clip.x or else
+         y >= c.clip.y + c.clip.h or else
+         y + Code_Font.LINE_HEIGHT <= c.clip.y)
+      then
+         return;
+      end if;
+      for i in text'Range loop
+         exit when cx >= c.width;
+         if not c.clipEnabled or else
+           (cx < c.clip.x + c.clip.w and then
+            cx + Code_Font.GLYPH_WIDTH > c.clip.x)
+         then
+            Draw_Code_Glyph (c, cx, y, text (i), fg, bg);
+         end if;
+         cx := cx + Code_Font.GLYPH_WIDTH;
+      end loop;
+   end Draw_Code_Text;
 
    procedure Draw_Button_Frame
       (c : Canvas; r : Rect; colors : Theme; style : Button_Style)
@@ -597,51 +750,191 @@ package body CuBit.UI is
       end if;
    end Draw_Pane;
 
-   procedure Draw_Table_Header
-      (c : Canvas; r : Rect; colors : Theme; c1, c2, c3 : String)
+   procedure Draw_Table_Viewport
+      (c : Canvas; r : Rect; colors : Theme)
    is
-      col1 : constant Natural := r.x + 8;
-      col2 : constant Natural := r.x + (r.w * 42) / 100;
-      col3 : constant Natural := r.x + (r.w * 70) / 100;
-      sep1 : constant Rect := (x => col2 - 5, y => r.y + 2, w => 1,
-                               h => (if r.h > 4 then r.h - 4 else r.h));
-      sep2 : constant Rect := (x => col3 - 5, y => r.y + 2, w => 1,
-                               h => (if r.h > 4 then r.h - 4 else r.h));
+   begin
+      Fill_Rect (c, r, colors.field);
+      Stroke_Sunken (c, r, colors);
+   end Draw_Table_Viewport;
+
+   function Table_Interior (r : Rect) return Rect is
+      FRAME_WIDTH : constant Natural := 2;
+      FRAME_PAIR  : constant Natural := FRAME_WIDTH * 2;
+   begin
+      if r.w > FRAME_PAIR and then r.h > FRAME_PAIR then
+         return
+           (x => r.x + FRAME_WIDTH,
+            y => r.y + FRAME_WIDTH,
+            w => r.w - FRAME_PAIR,
+            h => r.h - FRAME_PAIR);
+      else
+         return (x => r.x, y => r.y, w => 0, h => 0);
+      end if;
+   end Table_Interior;
+
+   function Layout_Table (viewport : Rect) return Table_Regions is
+      interior : constant Rect := Table_Interior (viewport);
+      headerHeight : constant Natural :=
+        Natural'Min (Table_Header_Height, interior.h);
+   begin
+      return
+        (Header =>
+           (x => interior.x, y => interior.y,
+            w => interior.w, h => headerHeight),
+         Rows =>
+           (x => interior.x, y => interior.y + headerHeight,
+            w => interior.w, h => interior.h - headerHeight));
+   end Layout_Table;
+
+   procedure Draw_Table_Header
+      (c : Canvas; r : Rect; colors : Theme; c1, c2, c3 : String;
+       layout : Table_Column_Layout := Default_Table_Columns)
+   is
+      HEADER_FRAME_WIDTH : constant Natural := 2;
+      firstWidth : constant Natural := Natural'Min (layout.First_Width, r.w);
+      remaining : constant Natural := r.w - firstWidth;
+      secondWidth : constant Natural :=
+        Natural'Min (layout.Second_Width, remaining);
+      thirdWidth : constant Natural := remaining - secondWidth;
+      first : constant Rect :=
+        (x => r.x, y => r.y, w => firstWidth, h => r.h);
+      second : constant Rect :=
+        (x => r.x + firstWidth, y => r.y, w => secondWidth, h => r.h);
+      third : constant Rect :=
+        (x => second.x + secondWidth, y => r.y, w => thirdWidth, h => r.h);
+      labelBounds : constant Rect :=
+        (if r.h > HEADER_FRAME_WIDTH * 2 then
+           (x => r.x,
+            y => r.y + HEADER_FRAME_WIDTH,
+            w => r.w,
+            h => r.h - HEADER_FRAME_WIDTH * 2)
+         else r);
+      labelY : constant Natural := Center_Text_Y (labelBounds);
    begin
       Fill_Rect (c, r, colors.panel);
-      Stroke_Raised (c, r, colors);
-      Fill_Rect (c, sep1, colors.edge);
-      Fill_Rect (c, sep2, colors.edge);
-      Draw_UI_Text (c, col1, Center_Text_Y (r), c1, colors.muted, colors.panel);
-      Draw_UI_Text (c, col2, Center_Text_Y (r), c2, colors.muted, colors.panel);
-      Draw_UI_Text (c, col3, Center_Text_Y (r), c3, colors.muted, colors.panel);
+      if not Is_Empty (first) then Stroke_Raised (c, first, colors); end if;
+      if not Is_Empty (second) then Stroke_Raised (c, second, colors); end if;
+      if not Is_Empty (third) then Stroke_Raised (c, third, colors); end if;
+      Draw_UI_Text
+        (With_Clip (c, first), first.x + layout.Cell_Padding,
+         labelY, c1, colors.text, colors.panel);
+      Draw_UI_Text
+        (With_Clip (c, second), second.x + layout.Cell_Padding,
+         labelY, c2, colors.text, colors.panel);
+      Draw_UI_Text
+        (With_Clip (c, third), third.x + layout.Cell_Padding,
+         labelY, c3, colors.text, colors.panel);
    end Draw_Table_Header;
 
    procedure Draw_Table_Row
       (c : Canvas; r : Rect; colors : Theme;
        selected : Boolean; hot : Boolean;
-       c1, c2, c3 : String)
+       c1, c2, c3 : String;
+       layout : Table_Column_Layout := Default_Table_Columns;
+       textStyle : Table_Text_Style := Table_Interface_Text;
+       detail3 : String := "")
    is
-      bg : Color := colors.face;
+      bg : Color := colors.field;
       fg : Color := colors.text;
-      col1 : constant Natural := r.x + 8;
-      col2 : constant Natural := r.x + (r.w * 42) / 100;
-      col3 : constant Natural := r.x + (r.w * 70) / 100;
+      firstWidth : constant Natural := Natural'Min (layout.First_Width, r.w);
+      remaining : constant Natural := r.w - firstWidth;
+      secondWidth : constant Natural :=
+        Natural'Min (layout.Second_Width, remaining);
+      thirdWidth : constant Natural := remaining - secondWidth;
+      first : constant Rect :=
+        (x => r.x, y => r.y, w => firstWidth, h => r.h);
+      second : constant Rect :=
+        (x => r.x + firstWidth, y => r.y, w => secondWidth, h => r.h);
+      third : constant Rect :=
+        (x => second.x + secondWidth, y => r.y, w => thirdWidth, h => r.h);
+
+      procedure Draw_Cell
+        (cell : Rect; value : String; detail : String := "")
+      is
+         tc : constant Canvas := With_Clip (c, cell);
+         primaryY : constant Natural :=
+           (if detail'Length > 0 then cell.y + 1
+            elsif textStyle = Table_Code_Text and then
+              cell.h > Code_Text_Height
+            then cell.y + (cell.h - Code_Text_Height) / 2
+            else Center_Text_Y (cell));
+         detailForeground : constant Color :=
+           (if selected then colors.selectionText else colors.muted);
+      begin
+         if textStyle = Table_Code_Text then
+            Draw_Code_Text
+              (tc, cell.x + layout.Cell_Padding, primaryY, value, fg, bg);
+            if detail'Length > 0 then
+               Draw_Code_Text
+                 (tc, cell.x + layout.Cell_Padding,
+                  primaryY + Code_Text_Height, detail,
+                  detailForeground, bg);
+            end if;
+         else
+            Draw_UI_Text
+              (tc, cell.x + layout.Cell_Padding, primaryY,
+               value, fg, bg);
+            if detail'Length > 0 then
+               Draw_UI_Text
+                 (tc, cell.x + layout.Cell_Padding,
+                  primaryY + UI_Text_Height, detail,
+                  detailForeground, bg);
+            end if;
+         end if;
+      end Draw_Cell;
    begin
       if selected then
          bg := colors.accent;
-         fg := colors.face;
+         fg := colors.selectionText;
       elsif hot then
          bg := colors.panel;
       end if;
 
       Fill_Rect (c, r, bg);
       Fill_Rect (c, (x => r.x, y => r.y + r.h - 1, w => r.w, h => 1),
-                 colors.panel);
-      Draw_UI_Text (c, col1, Center_Text_Y (r), c1, fg, bg);
-      Draw_UI_Text (c, col2, Center_Text_Y (r), c2, fg, bg);
-      Draw_UI_Text (c, col3, Center_Text_Y (r), c3, fg, bg);
+                 colors.edge);
+      if firstWidth > 0 and then firstWidth < r.w then
+         Fill_Rect
+           (c, (x => r.x + firstWidth - 1, y => r.y, w => 1, h => r.h),
+            colors.edge);
+      end if;
+      if secondWidth > 0 and then firstWidth + secondWidth < r.w then
+         Fill_Rect
+           (c, (x => r.x + firstWidth + secondWidth - 1,
+                y => r.y, w => 1, h => r.h), colors.edge);
+      end if;
+      Draw_Cell (first, c1);
+      Draw_Cell (second, c2);
+      Draw_Cell (third, c3, detail3);
    end Draw_Table_Row;
+
+   procedure Draw_Vertical_Splitter
+      (c : Canvas; r : Rect; colors : Theme;
+       hot : Boolean; active : Boolean)
+   is
+      fill : constant Color :=
+        (if active then colors.shadow
+         elsif hot then colors.edge
+         else colors.desktop);
+      centerX : Natural;
+      gripY : Natural;
+   begin
+      if Is_Empty (r) then return; end if;
+      Fill_Rect (c, r, fill);
+      centerX := r.x + r.w / 2;
+      if r.h >= 30 then
+         gripY := r.y + r.h / 2 - 12;
+         for Index in 0 .. 4 loop
+            if centerX > 0 then
+               Set_Pixel (c, centerX - 1, gripY + Index * 5,
+                          colors.darkShadow);
+            end if;
+            Set_Pixel (c, centerX, gripY + Index * 5 + 1,
+                       colors.highlight);
+         end loop;
+      end if;
+   end Draw_Vertical_Splitter;
 
    procedure Draw_Tab_Strip
       (c : Canvas; r : Rect; colors : Theme)
@@ -868,22 +1161,39 @@ package body CuBit.UI is
    procedure Draw_Multiline_Text_Edit
       (c : Canvas; r : Rect; colors : Theme; text : String;
        firstLine, visibleLines, cursor, selectionStart, selectionEnd : Positive;
-       focused : Boolean; hot : Boolean)
+       focused : Boolean; hot : Boolean; firstColumn : Positive := 1)
    is
    begin
       Draw_Multiline_Text_Edit_Multiple
-        (c, r, colors, text, firstLine, visibleLines,
-         [(cursor, selectionStart, selectionEnd)], focused, hot);
+         (c, r, colors, text, firstLine, visibleLines,
+         [(cursor, selectionStart, selectionEnd)], focused, hot, firstColumn);
    end Draw_Multiline_Text_Edit;
 
    procedure Draw_Multiline_Text_Edit_Multiple
       (c : Canvas; r : Rect; colors : Theme; text : String;
        firstLine, visibleLines : Positive; cursors : Text_Cursor_States;
-       focused : Boolean; hot : Boolean)
+       focused : Boolean; hot : Boolean; firstColumn : Positive := 1)
+   is
+      Plain_Text : constant Text_Style_Spans :=
+        [(firstPosition => 1, lastPosition => 1,
+          foreground => colors.text,
+          decoration => No_Text_Decoration, decorationColor => 0)];
+   begin
+      Draw_Multiline_Text_Edit_Multiple_Styled
+        (c, r, colors, text, firstLine, visibleLines, cursors, Plain_Text,
+         focused, hot, firstColumn);
+   end Draw_Multiline_Text_Edit_Multiple;
+
+   procedure Draw_Multiline_Text_Edit_Multiple_Styled
+      (c : Canvas; r : Rect; colors : Theme; text : String;
+       firstLine, visibleLines : Positive; cursors : Text_Cursor_States;
+       styles : Text_Style_Spans;
+       focused : Boolean; hot : Boolean; firstColumn : Positive := 1)
    is
       face : Color := colors.field;
-      lineHeight : constant Natural := UI_Text_Height + 2;
+      lineHeight : constant Natural := Code_Text_Height + 2;
       line : Positive := 1;
+      column : Positive := 1;
       textX : Natural := r.x + 6;
       textY : Natural := r.y + 5;
       charW : Natural;
@@ -891,6 +1201,9 @@ package body CuBit.UI is
       bg : Color;
       absolutePosition : Positive := 1;
       lastVisible : constant Natural := firstLine + visibleLines - 1;
+      styleIndex : Positive := styles'First;
+      hasStyle : Boolean := styles'Length > 0;
+      previousStyleEnd : Natural := 0;
       textCanvas : constant Canvas := With_Clip
         (c, (x => r.x + 3, y => r.y + 3,
              w => (if r.w > 6 then r.w - 6 else 0),
@@ -908,6 +1221,37 @@ package body CuBit.UI is
          return False;
       end Selected;
 
+      function Foreground_At (Position : Positive) return Color is
+      begin
+         while hasStyle and then
+           Position > styles (styleIndex).lastPosition
+         loop
+            if styleIndex = styles'Last then
+               hasStyle := False;
+            else
+               styleIndex := styleIndex + 1;
+            end if;
+         end loop;
+         if hasStyle and then
+           Position >= styles (styleIndex).firstPosition and then
+           Position <= styles (styleIndex).lastPosition
+         then
+            return styles (styleIndex).foreground;
+         end if;
+         return colors.text;
+      end Foreground_At;
+
+      function Underlined_At (Position : Positive) return Boolean is
+        (hasStyle and then
+         Position >= styles (styleIndex).firstPosition and then
+         Position <= styles (styleIndex).lastPosition and then
+         styles (styleIndex).decoration = Text_Underline);
+
+      function Decoration_Color_At (Position : Positive) return Color is
+        (if Underlined_At (Position) then
+            styles (styleIndex).decorationColor
+         else 0);
+
       procedure Draw_Carets (Position : Positive) is
       begin
          if not focused then return; end if;
@@ -917,11 +1261,26 @@ package body CuBit.UI is
             then
                Fill_Rect
                  (textCanvas, (x => textX, y => textY + 1,
-                    w => 1, h => UI_Text_Height), colors.accent);
+                    w => 1, h => Code_Text_Height), colors.accent);
             end if;
          end loop;
       end Draw_Carets;
    begin
+      --  Reject the complete decoration set if it is not a valid ordered,
+      --  non-overlapping view of this document.  Decorations are optional;
+      --  malformed ones must never affect editor correctness or safety.
+      if hasStyle then
+         for Style of styles loop
+            if Style.firstPosition > Style.lastPosition or else
+              Style.lastPosition > text'Length or else
+              Style.firstPosition <= previousStyleEnd
+            then
+               hasStyle := False;
+               exit;
+            end if;
+            previousStyleEnd := Style.lastPosition;
+         end loop;
+      end if;
       if hot then face := colors.face; end if;
       Fill_Rect (c, r, face);
       if focused then
@@ -931,19 +1290,30 @@ package body CuBit.UI is
       end if;
 
       for index in text'Range loop
-         if line >= firstLine and then line <= lastVisible then
+         if line >= firstLine and then line <= lastVisible and then
+           column >= firstColumn
+         then
             textY := r.y + 5 + (line - firstLine) * lineHeight;
             if text (index) /= ASCII.LF then
                if Selected (absolutePosition) then
                   fg := colors.selectionText;
                   bg := colors.selection;
                else
-                  fg := colors.text;
+                  fg := Foreground_At (absolutePosition);
                   bg := face;
                end if;
-               Draw_UI_Text
+               Draw_Code_Text
                  (textCanvas, textX, textY, text (index .. index), fg, bg);
-               charW := UI_Text_Width (text (index .. index));
+               charW := Code_Text_Width (text (index .. index));
+               if not Selected (absolutePosition) and then
+                 Underlined_At (absolutePosition)
+               then
+                  Fill_Rect
+                    (textCanvas,
+                     (x => textX, y => textY + Code_Text_Height - 1,
+                      w => charW, h => 1),
+                     Decoration_Color_At (absolutePosition));
+               end if;
             end if;
             Draw_Carets (absolutePosition);
             if text (index) /= ASCII.LF then
@@ -952,16 +1322,21 @@ package body CuBit.UI is
          end if;
          if text (index) = ASCII.LF then
             line := line + 1;
+            column := 1;
             textX := r.x + 6;
+         else
+            column := column + 1;
          end if;
          absolutePosition := absolutePosition + 1;
       end loop;
 
-      if line >= firstLine and then line <= lastVisible then
+      if line >= firstLine and then line <= lastVisible and then
+        column >= firstColumn
+      then
          textY := r.y + 5 + (line - firstLine) * lineHeight;
          Draw_Carets (absolutePosition);
       end if;
-   end Draw_Multiline_Text_Edit_Multiple;
+   end Draw_Multiline_Text_Edit_Multiple_Styled;
 
    procedure Draw_Checkbox
       (c : Canvas; r : Rect; colors : Theme;
@@ -1217,6 +1592,120 @@ package body CuBit.UI is
          Stroke_Raised (c, knob, colors);
       end if;
    end Draw_Vertical_Scrollbar;
+
+   procedure Draw_Horizontal_Scrollbar
+      (c : Canvas; r : Rect; colors : Theme;
+       minValue, maxValue, value : Natural;
+       hot : Boolean; active : Boolean; pageSize : Positive := 1;
+       pressedPart : Scrollbar_Part := Scrollbar_Thumb)
+   is
+      buttonExtent : constant Natural := Natural'Min (r.h, r.w / 2);
+      leftButton : constant Rect :=
+        (x => r.x, y => r.y, w => buttonExtent, h => r.h);
+      rightButton : constant Rect :=
+        (x => r.x + r.w - buttonExtent, y => r.y,
+         w => buttonExtent, h => r.h);
+      trackFrame : constant Rect :=
+        (x => r.x + buttonExtent, y => r.y,
+         w => (if r.w > buttonExtent * 2 then r.w - buttonExtent * 2 else 0),
+         h => r.h);
+      track : constant Rect :=
+        (x => trackFrame.x + 2, y => trackFrame.y + 2,
+         w => (if trackFrame.w > 4 then trackFrame.w - 4 else 0),
+         h => (if trackFrame.h > 4 then trackFrame.h - 4 else 0));
+      total : constant Natural :=
+        (if maxValue >= minValue then maxValue - minValue + 1 else 1);
+      shown : constant Natural := Natural'Min (pageSize, total);
+      maximumValue : constant Natural :=
+        (if shown >= total then minValue else maxValue - shown + 1);
+      span : Natural := 1;
+      pos : Natural := 0;
+      thumbWidth : Natural := 0;
+      travel : Natural := 0;
+      knobX : Natural := track.x;
+      knob : Rect;
+      knobColor : Color := colors.face;
+      canDecrement : constant Boolean :=
+        shown < total and then value > minValue;
+      canIncrement : constant Boolean :=
+        shown < total and then value < maximumValue;
+
+      procedure Draw_Arrow
+        (Button : Rect; Points_Left, Enabled, Pressed : Boolean)
+      is
+         Offset : constant Natural := (if Pressed then 1 else 0);
+         centerX : constant Natural := Button.x + Button.w / 2 + Offset;
+         centerY : constant Natural := Button.y + Button.h / 2 + Offset;
+         arrowColor : constant Color :=
+           (if Enabled then colors.text else colors.shadow);
+      begin
+         if Button.w < 8 or else Button.h < 8 then return; end if;
+         for Column in 0 .. 3 loop
+            Fill_Rect
+              (c,
+               (x => (if Points_Left then centerX - 2 + Column
+                      else centerX + 2 - Column),
+                y => centerY - Column,
+                w => 1, h => 1 + 2 * Column),
+               arrowColor);
+         end loop;
+      end Draw_Arrow;
+   begin
+      if maximumValue > minValue then
+         span := maximumValue - minValue;
+      end if;
+      if value > minValue then
+         pos := Natural'Min (value - minValue, span);
+      end if;
+      if not Is_Empty (track) then
+         thumbWidth := Natural'Max (12, track.w * shown / total);
+         thumbWidth := Natural'Min (thumbWidth, track.w);
+         travel := track.w - thumbWidth;
+         knobX := track.x + (pos * travel) / span;
+      end if;
+
+      if active then
+         knobColor := Blend (colors.edge, colors.face, 64);
+      elsif hot then
+         knobColor := colors.accent;
+      end if;
+
+      Fill_Rect (c, r, colors.panel);
+      if not Is_Empty (trackFrame) then
+         Fill_Rect (c, trackFrame, colors.edge);
+         Stroke_Sunken (c, trackFrame, colors);
+      end if;
+      Fill_Rect (c, leftButton, colors.panel);
+      if active and then canDecrement and then
+        pressedPart = Scrollbar_Decrement
+      then
+         Stroke_Sunken (c, leftButton, colors);
+      else
+         Stroke_Raised (c, leftButton, colors);
+      end if;
+      Draw_Arrow
+        (leftButton, True, canDecrement,
+         active and then canDecrement and then
+           pressedPart = Scrollbar_Decrement);
+      Fill_Rect (c, rightButton, colors.panel);
+      if active and then canIncrement and then
+        pressedPart = Scrollbar_Increment
+      then
+         Stroke_Sunken (c, rightButton, colors);
+      else
+         Stroke_Raised (c, rightButton, colors);
+      end if;
+      Draw_Arrow
+        (rightButton, False, canIncrement,
+         active and then canIncrement and then
+           pressedPart = Scrollbar_Increment);
+
+      if shown < total then
+         knob := (x => knobX, y => track.y, w => thumbWidth, h => track.h);
+         Fill_Rect (c, knob, knobColor);
+         Stroke_Raised (c, knob, colors);
+      end if;
+   end Draw_Horizontal_Scrollbar;
 
    function Button
       (bounds : Rect; pointer : Pointer_State) return Widget_Result

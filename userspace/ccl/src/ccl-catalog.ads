@@ -126,6 +126,8 @@ is
 
    procedure Initialize (Item : out Granted_Bindings);
 
+   function Length (Item : Granted_Bindings) return CCL.VM.Import_Count;
+
    procedure Install
      (Item      : in out Granted_Bindings;
       Operation : Resolved_Operation;
@@ -211,6 +213,9 @@ private
      (Item.Count);
 
    function Length (Item : Linkage_Table) return CCL.VM.Import_Count is
+     (Item.Count);
+
+   function Length (Item : Granted_Bindings) return CCL.VM.Import_Count is
      (Item.Count);
 
    function Element

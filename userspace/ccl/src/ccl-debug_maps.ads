@@ -1,4 +1,5 @@
 with CCL.Language;
+with CCL.Ownership;
 with CCL.VM;
 
 package CCL.Debug_Maps with
@@ -27,6 +28,19 @@ is
       New_Entry : Debug_Entry;
       Result : out Add_Result);
 
+   procedure Set_Local_Name
+     (Item       : in out Debug_Map;
+      Local      : CCL.Ownership.Binding_Id;
+      Identifier : CCL.Language.Name);
+
+   function Has_Local_Name
+     (Item  : Debug_Map;
+      Local : CCL.Ownership.Binding_Id) return Boolean;
+
+   function Local_Name
+     (Item  : Debug_Map;
+      Local : CCL.Ownership.Binding_Id) return CCL.Language.Name;
+
    function Length (Item : Debug_Map) return Entry_Count;
 
    function Element
@@ -53,10 +67,16 @@ is
 
 private
    type Entry_Array is array (Entry_Index) of Debug_Entry;
+   type Local_Name_Array is
+     array (CCL.Ownership.Binding_Id) of CCL.Language.Name;
+   type Local_Name_Presence is
+     array (CCL.Ownership.Binding_Id) of Boolean;
 
    type Debug_Map is record
       Count   : Entry_Count := 0;
       Entries : Entry_Array := [others => (others => <>)];
+      Local_Names : Local_Name_Array := [others => (others => <>)];
+      Named_Locals : Local_Name_Presence := [others => False];
    end record;
 
    function Length (Item : Debug_Map) return Entry_Count is (Item.Count);
@@ -64,4 +84,14 @@ private
    function Element
      (Item  : Debug_Map;
       Index : Entry_Index) return Debug_Entry is (Item.Entries (Index));
+
+   function Has_Local_Name
+     (Item  : Debug_Map;
+      Local : CCL.Ownership.Binding_Id) return Boolean is
+     (Item.Named_Locals (Local));
+
+   function Local_Name
+     (Item  : Debug_Map;
+      Local : CCL.Ownership.Binding_Id) return CCL.Language.Name is
+     (Item.Local_Names (Local));
 end CCL.Debug_Maps;

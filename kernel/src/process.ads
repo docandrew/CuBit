@@ -68,10 +68,21 @@ is
     --  ASLR, and make the process' stack top some random negative offset
     --  from here.
     PROCESS_STACK_TOP_VIRT : constant System.Address := To_Address (16#0000_8000_0000_0000#);
-    STACK_SIZE             : constant Storage_Count := 16#1_000_000#;
 
-    MAX_STACK_FRAMES       : constant := STACK_SIZE / Virtmem.FRAME_SIZE;   -- 1 MiB stack
-    MAX_HEAP_FRAMES        : constant := STACK_SIZE / Virtmem.FRAME_SIZE;   -- 1 MiB heap
+    -- Every userspace ELF must declare its primary-stack reservation in its
+    -- PT_GNU_STACK program header.  These are loader policy limits, not a
+    -- runtime-adjustable limit analogous to a Unix ulimit.
+    MIN_USER_STACK_SIZE : constant Storage_Count := Virtmem.PAGE_SIZE;
+    MAX_USER_STACK_SIZE : constant Storage_Count := 256 * 1024 * 1024;
+    subtype UserStackSize is Storage_Count
+        range MIN_USER_STACK_SIZE .. MAX_USER_STACK_SIZE;
+
+    -- The bootstrap process is a raw binary embedded in the kernel rather
+    -- than an ELF, so its stack reservation is necessarily kernel-owned.
+    INIT_PROCESS_STACK_SIZE : constant UserStackSize := 16 * 1024 * 1024;
+
+    MAX_HEAP_FRAMES : constant Natural :=
+        Natural (16 * 1024 * 1024 / Virtmem.FRAME_SIZE);
 
     BAD_HEAP_ADDRESS       : constant System.Address := To_Address (16#DEAD_DEAD_DEAD_DEAD#);
     
@@ -79,7 +90,8 @@ is
     --
     -- @TODO this is fine for ZFP user runtime for now, but eventually we'll
     -- get rid of this in favor of the real GNAT runtime.
-    SECONDARY_STACK_START  : constant System.Address := PROCESS_STACK_TOP_VIRT - STACK_SIZE;
+    SECONDARY_STACK_START  : constant System.Address :=
+        PROCESS_STACK_TOP_VIRT - INIT_PROCESS_STACK_SIZE;
 
     subtype ProcessPriority is Integer range -1..100;
 
@@ -111,7 +123,6 @@ is
         RECEIVING,                  -- Queued for message receipt
         WAITINGFORREPLY,            -- Receiver got message, sender waiting for reply
         WAITINGFORCOMPLETION,       -- Blocked in waitCompletion()
-        WAITINGFORNOTIFY,           -- Blocked in notifyWait()
         SUSPENDED                   -- Suspended until a resume call.
     );
 
@@ -391,9 +402,9 @@ is
 
     ---------------------------------------------------------------------------
     -- Unified IPC Ring Buffer
-    -- Single ring for async requests, one-way messages, events, notifications,
-    -- and direct sync handoff. Each entry carries an explicit kind so receive
-    -- paths can avoid consuming unrelated traffic classes.
+    -- Single ring for async requests, one-way messages, events, and direct
+    -- sync handoff. Each entry carries an explicit kind so receive paths can
+    -- avoid consuming unrelated traffic classes.
     ---------------------------------------------------------------------------
     RING_SIZE : constant := 32;
     subtype RingIndex is Natural range 0 .. RING_SIZE - 1;
@@ -403,8 +414,7 @@ is
         RING_SYNC,
         RING_ASYNC_REQUEST,
         RING_ONEWAY,
-        RING_EVENT,
-        RING_NOTIFY
+        RING_EVENT
     );
 
     type RingEntry is record
@@ -442,15 +452,6 @@ is
 
         -- Unified ring buffer for async messages and events
         ring        : MessageRing;
-
-        -- Notification word: badge bits ORed in by capNotify()
-        notifyWord   : Unsigned_64 := 0;
-        notifyWaiter : Boolean     := False;
-
-        -- PID of the process that bound this notification via
-        -- bindNotification. capNotify checks this to wake a receiver
-        -- blocked in receive() with this notification bound.
-        boundReceiver : ProcessID  := NO_PROCESS;
 
         sendQueue   : ProcQueue;
         recvQueue   : ProcQueue;
@@ -535,6 +536,9 @@ is
 
         -- The bottom of the process' stack
         stackBottom         : System.Address;
+
+        -- Immutable primary-stack reservation declared by the executable.
+        stackSize           : UserStackSize := MIN_USER_STACK_SIZE;
         
         -- Heap
         heapEnd             : System.Address;
@@ -556,10 +560,6 @@ is
         nextRequestId       : Unsigned_64 := 1;
         grants              : GrantArray := (others => <>);
         dmaAllocs           : DMAAllocArray := (others => <>);
-
-        -- Bound notification: if non-zero, receive() checks this
-        -- notification's notifyWord before blocking.
-        boundNotification   : ProcessID := NO_PROCESS;
 
         caps                : Capabilities.CapabilityTable :=
                                   Capabilities.EMPTY_TABLE;
@@ -720,6 +720,7 @@ is
                      name         : in ProcessName;
                      priority     : in ProcessPriority;
                      procStack    : in System.Address;
+                     stackSize    : in UserStackSize;
                      thread       : in Boolean := False;
                      requestedPID : in ProcessID := NO_PROCESS) return ProcessID
         with SPARK_Mode => On;

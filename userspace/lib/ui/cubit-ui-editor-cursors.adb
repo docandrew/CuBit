@@ -82,9 +82,20 @@ package body CuBit.UI.Editor.Cursors with SPARK_Mode is
       Result : out Add_Result)
    is
    begin
+      Add_Selection
+        (Cursors, Position, Position, Preferred_Column, Result);
+   end Add_At;
+
+   procedure Add_Selection
+     (Cursors : in out Cursor_Set;
+      Anchor, Position : Cursor_Position;
+      Preferred_Column : CuBit.UI.Editor.Documents.Display_Column;
+      Result : out Add_Result)
+   is
+   begin
       for Index in 1 .. Cursors.Last loop
          if Cursors.Items (Index).Position = Position and then
-           Cursors.Items (Index).Anchor = Position
+           Cursors.Items (Index).Anchor = Anchor
          then
             Result := Cursor_Already_Present;
             return;
@@ -98,11 +109,11 @@ package body CuBit.UI.Editor.Cursors with SPARK_Mode is
 
       Cursors.Last := Cursors.Last + 1;
       Cursors.Items (Cursors.Last) :=
-        (Position => Position, Anchor => Position,
+        (Position => Position, Anchor => Anchor,
          Preferred_Column => Preferred_Column);
       Cursors.Primary := Cursors.Last;
       Result := Cursor_Added;
-   end Add_At;
+   end Add_Selection;
 
    procedure Coalesce (Cursors : in out Cursor_Set) is
       Left_Index : Cursor_Index := 1;

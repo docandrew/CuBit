@@ -104,6 +104,7 @@ package body Process.Loader is
             when PT_NOTE    => print ("NOTE");
             when PT_SHLIB   => print ("SHLIB");
             when PT_PHDR    => print ("PHDR");
+            when PT_GNU_STACK => print ("GNU_STACK");
             when others     => print ("Other");
         end case;
     end printSegmentType;
@@ -215,6 +216,7 @@ package body Process.Loader is
         SPARK_Mode => On
     is
         use type ELF.SegmentType;
+        use type ELF.SegmentFlags;
     begin
         if isValidELF (elfHeader) then
             println ("Process.Loader: Found compatible, executable ELF object, checking program header...");
@@ -233,20 +235,74 @@ package body Process.Loader is
                     with "ELF: phdr table exceeds image bounds";
             end if;
 
+            if elfHeader.e_phnum = 0 then
+                println ("Process.Loader: ELF is missing required PT_GNU_STACK declaration");
+                return NO_PROCESS;
+            end if;
+
             declare
                 segments : ELF.ProgramHeaderTable(0..elfHeader.e_phnum - 1)
                     with Import, Address => objStart + elfHeader.e_phoff;
 
-                pid      : ProcessID;
-                procName : ProcessName;
+                pid                : ProcessID;
+                procName           : ProcessName;
+                stackHeaderCount   : Natural := 0;
+                requestedStackSize : Storage_Count := 0;
             begin
                 Strings.toAda(strAddr, procName);
+
+                -- Stack geometry is executable metadata, not ambient process
+                -- state.  Require one unambiguous, non-executable declaration;
+                -- CuBit intentionally has no compatibility default or ulimit-
+                -- style runtime override.
+                for segment of segments loop
+                    if segment.p_type = ELF.PT_GNU_STACK then
+                        stackHeaderCount := stackHeaderCount + 1;
+
+                        if stackHeaderCount > 1 then
+                            println ("Process.Loader: ELF has multiple PT_GNU_STACK declarations");
+                            return NO_PROCESS;
+                        end if;
+
+                        if segment.p_filesz /= 0 then
+                            println ("Process.Loader: PT_GNU_STACK contains file data");
+                            return NO_PROCESS;
+                        end if;
+
+                        if (segment.p_flags and
+                            (ELF.PF_R or ELF.PF_W or ELF.PF_X)) /=
+                           (ELF.PF_R or ELF.PF_W)
+                        then
+                            println ("Process.Loader: PT_GNU_STACK is not read/write and non-executable");
+                            return NO_PROCESS;
+                        end if;
+
+                        if segment.p_memsz < MIN_USER_STACK_SIZE or else
+                           segment.p_memsz > MAX_USER_STACK_SIZE or else
+                           segment.p_memsz mod Virtmem.PAGE_SIZE /= 0
+                        then
+                            println ("Process.Loader: PT_GNU_STACK size violates stack policy");
+                            return NO_PROCESS;
+                        end if;
+
+                        requestedStackSize := segment.p_memsz;
+                    end if;
+                end loop;
+
+                if stackHeaderCount /= 1 then
+                    println ("Process.Loader: ELF is missing required PT_GNU_STACK declaration");
+                    return NO_PROCESS;
+                end if;
+
+                print ("Process.Loader: Stack reservation: ");
+                printdln (Unsigned_64 (requestedStackSize));
 
                 pid := create (procStart    => elfHeader.e_entry,
                                ppid         => ppid,
                                name         => procName,
                                priority     => priority,
                                procStack    => PROCESS_STACK_TOP_VIRT,
+                               stackSize    => UserStackSize (requestedStackSize),
                                requestedPID => requestedPID);
 
                 for segment of segments loop

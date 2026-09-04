@@ -4,7 +4,9 @@
  *
  * Places text at 0x400000 (standard for x86-64 executables).
  * Kernel ELF loader reads PT_LOAD segments and maps pages accordingly.
- * Stack is set up by the kernel at PROCESS_STACK_TOP_VIRT.
+ * The final link must supply -z stack-size=SIZE.  CuBit treats the resulting
+ * PT_GNU_STACK p_memsz as a required launch contract and does not invent a
+ * default when the header or size is absent.
  */
 
 ENTRY(_start)

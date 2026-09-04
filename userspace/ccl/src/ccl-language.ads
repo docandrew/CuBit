@@ -11,6 +11,7 @@ is
    MAX_NAME_LENGTH   : constant := 32;
    MAX_BINDINGS      : constant := 32;
    MAX_NESTING       : constant := 32;
+   MAX_TEXT_BYTES    : constant := MAX_SOURCE_LENGTH;
 
    --  Shared, bounded frontend representation.  Both direct interpretation
    --  and CCLB compilation consume this tree, so syntax and type semantics
@@ -35,15 +36,24 @@ is
      (Invalid_Node,
       Integer_Literal,
       Boolean_Literal,
+      String_Literal,
       Name_Reference,
       Add_Form,
+      Multiply_Form,
+      Divide_Form,
+      Modulo_Form,
       Equal_Form,
       Not_Form,
       If_Form,
       Let_Form,
+      String_Length_Form,
+      String_Index_Form,
+      String_Concat_Form,
+      To_String_Form,
       Host_Import_Form);
 
-   type Static_Type is (Invalid_Type, Integer_Type, Boolean_Type);
+   type Static_Type is
+     (Invalid_Type, Integer_Type, Boolean_Type, String_Type, Character_Type);
 
    type Node is record
       Kind            : Node_Kind := Invalid_Node;
@@ -52,6 +62,8 @@ is
       Source_End_Position : CCL.Language.Source_Position := 0;
       Integer_Value   : Interfaces.Integer_64 := 0;
       Boolean_Value   : Boolean := False;
+      Text_Offset     : Natural range 0 .. MAX_TEXT_BYTES := 0;
+      Text_Length     : Natural range 0 .. MAX_TEXT_BYTES := 0;
       Identifier      : Name;
       First           : Node_Reference := NO_NODE;
       Second          : Node_Reference := NO_NODE;
@@ -65,6 +77,9 @@ is
       Length : Node_Count := 0;
       Nodes  : Node_Array := [others => (others => <>)];
       Root   : Node_Reference := NO_NODE;
+      Text_Bytes_Used : Natural range 0 .. MAX_TEXT_BYTES := 0;
+      Text_Data : String (1 .. MAX_TEXT_BYTES) :=
+        [others => Character'Val (0)];
    end record;
 
    type Interpretation_Status is
@@ -73,6 +88,9 @@ is
       Type_Check_Failed,
       Evaluation_Fuel_Exhausted,
       Evaluation_Overflow,
+      Evaluation_Division_By_Zero,
+      Evaluation_Index_Error,
+      Evaluation_Text_Storage_Exhausted,
       Host_Import_Required);
 
    type Diagnostic_Code is
@@ -90,8 +108,18 @@ is
       Unknown_Name,
       Expected_Integer,
       Expected_Boolean,
+      Expected_String,
       Branch_Type_Mismatch,
-      Too_Many_Bindings);
+      Too_Many_Bindings,
+      Unterminated_String,
+      Invalid_String_Escape,
+      Text_Storage_Full);
+
+   type Text_Result is record
+      Length : Natural range 0 .. MAX_TEXT_BYTES := 0;
+      Data   : String (1 .. MAX_TEXT_BYTES) :=
+        [others => Character'Val (0)];
+   end record;
 
    type Analysis_Status is
      (Analysis_Succeeded,
@@ -134,7 +162,11 @@ is
       --  One-based source position; zero means no source diagnostic.
       Diagnostic_Position : Source_Position := 0;
       Has_Value      : Boolean := False;
+      Has_Text       : Boolean := False;
+      Has_Character  : Boolean := False;
       Result_Value   : CCL.VM.Value := (others => <>);
+      Result_Text    : Text_Result := (others => <>);
+      Result_Character : Character := Character'Val (0);
       Fuel_Remaining : Natural := 0;
    end record;
 

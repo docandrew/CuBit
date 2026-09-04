@@ -25,6 +25,8 @@ is
      array (CCL.Ownership.Binding_Id) of CCL.Ownership.Type_Id;
 
    type Value_Kind is (Integer_Value, Boolean_Value);
+   for Value_Kind use (Integer_Value => 0, Boolean_Value => 1);
+   for Value_Kind'Size use 8;
 
    type Value is record
       Kind    : Value_Kind := Integer_Value;
@@ -68,7 +70,34 @@ is
       Borrow_Local_RW,
       Return_Local_RW,
       Apply_Local_Disposition,
-      Initialize_Local);
+      Initialize_Local,
+      Multiply_Integer,
+      Divide_Integer,
+      Modulo_Integer);
+   for Op_Code use
+     (Halt                    => 0,
+      Push_Integer            => 1,
+      Push_Boolean            => 2,
+      Add_Integer             => 3,
+      Equal_Integer           => 4,
+      Not_Boolean             => 5,
+      Drop                    => 6,
+      Jump                    => 7,
+      Jump_If_False           => 8,
+      Invoke_Import           => 9,
+      Copy_Local              => 10,
+      Move_Local              => 11,
+      Drop_Local              => 12,
+      Borrow_Local_RO         => 13,
+      Return_Local_RO         => 14,
+      Borrow_Local_RW         => 15,
+      Return_Local_RW         => 16,
+      Apply_Local_Disposition => 17,
+      Initialize_Local        => 18,
+      Multiply_Integer        => 19,
+      Divide_Integer          => 20,
+      Modulo_Integer          => 21);
+   for Op_Code'Size use 8;
 
    type Authority_Class is
      (No_Authority,
@@ -76,6 +105,13 @@ is
       Control_Authority,
       Secret_Use_Authority,
       Network_Authority);
+   for Authority_Class use
+     (No_Authority         => 0,
+      Observe_Authority    => 1,
+      Control_Authority    => 2,
+      Secret_Use_Authority => 3,
+      Network_Authority    => 4);
+   for Authority_Class'Size use 8;
 
    type Import_Declaration is record
       Argument  : Value_Kind := Integer_Value;
@@ -150,6 +186,7 @@ is
       Stopped,
       Fuel_Exhausted,
       Arithmetic_Overflow,
+      Division_By_Zero,
       Invalid_Bytecode,
       Waiting_For_Host,
       Host_Call_Failed,

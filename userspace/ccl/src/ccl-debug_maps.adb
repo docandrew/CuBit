@@ -23,6 +23,16 @@ is
       end if;
    end Add;
 
+   procedure Set_Local_Name
+     (Item       : in out Debug_Map;
+      Local      : CCL.Ownership.Binding_Id;
+      Identifier : CCL.Language.Name)
+   is
+   begin
+      Item.Local_Names (Local) := Identifier;
+      Item.Named_Locals (Local) := True;
+   end Set_Local_Name;
+
    procedure Validate
      (Item           : Debug_Map;
       Program_Length : CCL.VM.Program_Length;

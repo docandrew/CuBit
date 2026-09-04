@@ -53,10 +53,12 @@ procedure main is
 
    --  PCI class codes
    CLASS_STORAGE_IDE   : constant Unsigned_16 := 16#0101#;
+   CLASS_STORAGE_SATA  : constant Unsigned_16 := 16#0106#;
    CLASS_STORAGE_NVME  : constant Unsigned_16 := 16#0108#;
    CLASS_NET_ETHERNET  : constant Unsigned_16 := 16#0200#;
    CLASS_MULTIMEDIA_HDA : constant Unsigned_16 := 16#0403#;
    CLASS_DISPLAY_VGA    : constant Unsigned_16 := 16#0300#;
+   CLASS_SERIAL_USB     : constant Unsigned_16 := 16#0C03#;
 
    --  PCI vendor ID for virtio devices
    VENDOR_VIRTIO       : constant Unsigned_16 := 16#1AF4#;
@@ -66,12 +68,17 @@ procedure main is
    PCI_VENDOR_ID       : constant Unsigned_8 := 0;
    PCI_COMMAND         : constant Unsigned_8 := 4;
    PCI_STATUS          : constant Unsigned_8 := 6;
+   PCI_PROG_IF         : constant Unsigned_8 := 9;
    PCI_CLASS_DEVICE    : constant Unsigned_8 := 10;
+   PCI_HEADER_TYPE     : constant Unsigned_8 := 14;
    PCI_BASEADDR_0      : constant Unsigned_8 := 16;
    PCI_BASEADDR_1      : constant Unsigned_8 := 20;
    PCI_CAP_PTR         : constant Unsigned_8 := 52;
    PCI_INTERRUPT_LINE  : constant Unsigned_8 := 60;
    PCI_CAP_ID_MSI      : constant Unsigned_8 := 5;
+   PCI_HEADER_MULTIFUNCTION : constant Unsigned_8 := 16#80#;
+   PCI_PROG_IF_AHCI         : constant Unsigned_8 := 16#01#;
+   PCI_PROG_IF_XHCI         : constant Unsigned_8 := 16#30#;
 
    --  VirtIO modern PCI capability types
    PCI_CAP_ID_VENDOR_SPECIFIC : constant Unsigned_8 := 9;
@@ -251,47 +258,122 @@ procedure main is
    -- PCI bus scan: find devices by class code
    ---------------------------------------------------------------------------
    procedure scanPCI is
+      procedure printHexNibble (value : Unsigned_8) is
+         hexCharacters : constant String := "0123456789ABCDEF";
+      begin
+         debugPrint
+           ("" & hexCharacters (Natural (value and 16#0F#) + 1));
+      end printHexNibble;
+
+      procedure printHex8 (value : Unsigned_8) is
+      begin
+         printHexNibble (Shift_Right (value, 4));
+         printHexNibble (value);
+      end printHex8;
+
+      procedure printHex16 (value : Unsigned_16) is
+      begin
+         printHex8 (Unsigned_8 (Shift_Right (value, 8)));
+         printHex8 (Unsigned_8 (value and 16#FF#));
+      end printHex16;
+
+      procedure observeFunction
+        (bus   : Unsigned_8;
+         pSlot : Unsigned_8;
+         func  : Unsigned_8)
+      is
+         vendorID  : constant Unsigned_16 :=
+           pciReadConfig16 (bus, pSlot, func, PCI_VENDOR_ID);
+         deviceID  : Unsigned_16;
+         classCode : Unsigned_16;
+         progIf    : Unsigned_8;
+         location  : constant PCIDeviceInfo :=
+           (found => True, bus => bus, slot => pSlot, func => func);
+      begin
+         if vendorID = 16#FFFF# then
+            return;
+         end if;
+
+         deviceID := pciReadConfig16 (bus, pSlot, func, 2);
+         classCode := Unsigned_16
+           (Shift_Right
+              (pciReadConfig32 (bus, pSlot, func, PCI_CLASS_DEVICE), 16)
+            and 16#FFFF#);
+         progIf := pciReadConfig8 (bus, pSlot, func, PCI_PROG_IF);
+
+         debugPrint ("devmgr: PCI ");
+         printHex8 (bus);
+         debugPrint (":");
+         printHex8 (pSlot);
+         debugPrint (".");
+         printHexNibble (func);
+         debugPrint (" vendor=");
+         printHex16 (vendorID);
+         debugPrint (" device=");
+         printHex16 (deviceID);
+         debugPrint (" class=");
+         printHex16 (classCode);
+         debugPrint (" prog-if=");
+         printHex8 (progIf);
+
+         if classCode = CLASS_STORAGE_NVME then
+            nvmeDev := location;
+            debugPrint (" NVMe");
+         elsif classCode = CLASS_STORAGE_IDE then
+            ataDev := location;
+            debugPrint (" IDE");
+         elsif classCode = CLASS_STORAGE_SATA and then
+               progIf = PCI_PROG_IF_AHCI
+         then
+            debugPrint (" AHCI (unclaimed)");
+         elsif classCode = CLASS_NET_ETHERNET then
+            if vendorID = VENDOR_VIRTIO then
+               netDev := location;
+               debugPrint (" virtio-net");
+            else
+               debugPrint (" Ethernet (unclaimed)");
+            end if;
+         elsif classCode = CLASS_MULTIMEDIA_HDA then
+            hdaDev := location;
+            debugPrint (" HDA");
+         elsif classCode = CLASS_SERIAL_USB and then
+               progIf = PCI_PROG_IF_XHCI
+         then
+            debugPrint (" xHCI (unclaimed)");
+         elsif vendorID = VENDOR_VIRTIO and then
+               (deviceID = DEVICE_VIRTIO_GPU or else
+                classCode = CLASS_DISPLAY_VGA)
+         then
+            gpuDev := location;
+            gpuIsPrimary := classCode = CLASS_DISPLAY_VGA;
+            debugPrint (" virtio-gpu");
+         end if;
+
+         debugPrint (LF & "");
+      end observeFunction;
+
       vendorID  : Unsigned_16;
-      deviceID  : Unsigned_16;
-      classCode : Unsigned_16;
+      lastFunc  : Unsigned_8;
    begin
-      for bus in Unsigned_8 range 0 .. 0 loop
+      --  PCI devices on real machines are not confined to bus zero or
+      --  function zero.  Probe every bus, and probe functions 1..7 only when
+      --  function zero advertises a multifunction device.  Configuration
+      --  reads for absent buses and slots return 0xFFFF.
+      for bus in Unsigned_8'Range loop
          for pSlot in Unsigned_8 range 0 .. 31 loop
             vendorID := pciReadConfig16 (bus, pSlot, 0, PCI_VENDOR_ID);
             if vendorID /= 16#FFFF# then
-               deviceID := pciReadConfig16 (bus, pSlot, 0, 2);
-               --  class(byte 11) << 8 | subclass(byte 10)
-               classCode := Unsigned_16 (
-                   Shift_Right (pciReadConfig32 (bus, pSlot, 0,
-                                                 PCI_CLASS_DEVICE), 16)
-                   and 16#FFFF#);
-
-               if classCode = CLASS_STORAGE_NVME then
-                  nvmeDev := (found => True, bus => bus,
-                              slot => pSlot, func => 0);
-                  debugPrint ("devmgr: found NVMe at PCI " & LF);
-               elsif classCode = CLASS_STORAGE_IDE then
-                  ataDev := (found => True, bus => bus,
-                             slot => pSlot, func => 0);
-                  debugPrint ("devmgr: found IDE at PCI" & LF);
-               elsif classCode = CLASS_NET_ETHERNET
-                     and vendorID = VENDOR_VIRTIO then
-                  netDev := (found => True, bus => bus,
-                             slot => pSlot, func => 0);
-                  debugPrint ("devmgr: found virtio-net at PCI" & LF);
-               elsif classCode = CLASS_MULTIMEDIA_HDA then
-                  hdaDev := (found => True, bus => bus,
-                             slot => pSlot, func => 0);
-                  debugPrint ("devmgr: found HDA at PCI" & LF);
-               elsif vendorID = VENDOR_VIRTIO and then
-                     (deviceID = DEVICE_VIRTIO_GPU or else
-                      classCode = CLASS_DISPLAY_VGA)
+               if (pciReadConfig8 (bus, pSlot, 0, PCI_HEADER_TYPE) and
+                   PCI_HEADER_MULTIFUNCTION) /= 0
                then
-                  gpuDev := (found => True, bus => bus,
-                             slot => pSlot, func => 0);
-                  gpuIsPrimary := classCode = CLASS_DISPLAY_VGA;
-                  debugPrint ("devmgr: found virtio-gpu at PCI" & LF);
+                  lastFunc := 7;
+               else
+                  lastFunc := 0;
                end if;
+
+               for func in Unsigned_8 range 0 .. lastFunc loop
+                  observeFunction (bus, pSlot, func);
+               end loop;
             end if;
          end loop;
       end loop;
@@ -346,7 +428,7 @@ procedure main is
    is
       ret : Unsigned_64;
    begin
-      ret := syscall (SYSCALL_MINT_CAP,
+      ret := syscall (SYSCALL_POLICY_MINT_CAPABILITY,
                       target, capType, objRef, objParam, rights, capSlot);
       if ret = reterr then
          debugPrint ("devmgr: mint_cap failed" & LF);
@@ -1046,8 +1128,27 @@ begin
       initrdPhys := virtToPhys (To_Address (Integer_Address (INITRD_BASE)));
       initrdPages := (initrdSize + 4095) / 4096;
 
-      ret := mapInto (filesystemPID, initrdPhys, INITRD_BASE,
-                      initrdPages, MAP_FLAG_RO);
+      --  MAP_INTO deliberately bounds each kernel entry.  A live image may
+      --  be larger than one request (the Workbench alone pushes it beyond
+      --  4 MiB), so map the complete archive in consecutive chunks.
+      declare
+         mappedPages : Unsigned_64 := 0;
+         pageCount   : Unsigned_64;
+      begin
+         ret := 0;
+         while mappedPages < initrdPages loop
+            pageCount := Unsigned_64'Min
+              (MAX_MAP_INTO_PAGES_PER_CALL, initrdPages - mappedPages);
+            ret := mapInto
+              (filesystemPID,
+               initrdPhys + mappedPages * 4096,
+               INITRD_BASE + mappedPages * 4096,
+               pageCount,
+               MAP_FLAG_RO);
+            exit when ret = reterr;
+            mappedPages := mappedPages + pageCount;
+         end loop;
+      end;
       if ret = reterr then
          debugPrint ("devmgr: initrd mapping into FS failed" & LF);
       end if;

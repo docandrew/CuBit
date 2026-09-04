@@ -5,8 +5,6 @@
 with Ada.Unchecked_Conversion;
 with System.Storage_Elements; use System.Storage_Elements;
 
-with Capabilities;
-with Descriptors;
 with PerCpuData;
 with Process;
 with Process.IPC;
@@ -98,18 +96,18 @@ package body Syscall is
             when 33   => number := SYSCALL_OUTP16;
             when 36   => number := SYSCALL_INP32;
             when 37   => number := SYSCALL_OUTP32;
-            when 40   => number := SYSCALL_CAP_SEND;
-            when 41   => number := SYSCALL_CAP_CALL;
-            when 42   => number := SYSCALL_CAP_SUBMIT;
-            when 43   => number := SYSCALL_NOTIFY;
+            when 40   => number := SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY;
+            when 41   => number := SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY;
+            when 42   => number := SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY;
             when 48   => number := SYSCALL_REPLY_WAIT;
             when 50   => number := SYSCALL_VIRT_TO_PHYS;
-            when 51   => number := SYSCALL_SAVE_REPLY_CAP;
-            when 52   => number := SYSCALL_REPLY_CAP;
+            when 51   => number := SYSCALL_MOVE_REPLY_CAPABILITY;
+            when 52   =>
+                number := SYSCALL_REPLY_AND_CONSUME_REPLY_CAPABILITY;
             when 60   => number := SYSCALL_SPAWN;
             when 70   => number := SYSCALL_MAP_DEVICE;
             when 71   => number := SYSCALL_PROCLIST;
-            when 72   => number := SYSCALL_MINT_CAP;
+            when 72   => number := SYSCALL_POLICY_MINT_CAPABILITY;
             when 73   => number := SYSCALL_RESUME;
             when 74   => number := SYSCALL_ALLOC_DMA;
             when 75   => number := SYSCALL_ENABLE_IRQ;
@@ -120,10 +118,14 @@ package body Syscall is
             when 81   => number := SYSCALL_SET_LATENCY_CONTRACT;
             when 82   => number := SYSCALL_TRACE_RESET;
             when 83   => number := SYSCALL_TRACE_SUMMARY;
-            when 84   => number := SYSCALL_INSPECT_CAP;
-            when 102  => number := SYSCALL_GRANT;
-            when 103  => number := SYSCALL_REVOKE;
-            when 106  => number := SYSCALL_GRANT_VIA_CAP;
+            when 84   => number := SYSCALL_INSPECT_CAPABILITY;
+            when 102  =>
+                number :=
+                    SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID;
+            when 103  => number := SYSCALL_REVOKE_SHARED_MEMORY_GRANT;
+            when 106  =>
+                number :=
+                    SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY;
             when 107  => number := SYSCALL_SET_WELL_KNOWN;
             when 2000 => number := SYSCALL_REGISTER_DRIVER;
             when others =>
@@ -213,7 +215,7 @@ package body Syscall is
                 IPC.handleReply (
                     arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
-            when SYSCALL_REPLY_CAP =>
+            when SYSCALL_REPLY_AND_CONSUME_REPLY_CAPABILITY =>
                 IPC.handleReplyCap (
                     arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
@@ -252,12 +254,12 @@ package body Syscall is
             when SYSCALL_POLL_COMPLETION =>
                 IPC.handlePollCompletion (arg0, retval);
 
-            when SYSCALL_GRANT =>
+            when SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID =>
                 IPC.handleGrant (
                     percpu.currentPID,
                     arg0, arg1, arg2, arg3, retval);
 
-            when SYSCALL_REVOKE =>
+            when SYSCALL_REVOKE_SHARED_MEMORY_GRANT =>
                 IPC.handleRevoke (
                     percpu.currentPID, arg0, retval);
 
@@ -280,37 +282,22 @@ package body Syscall is
                 Admin.handleVirtToPhys (
                     percpu.currentPID, arg0, retval);
 
-            when SYSCALL_SAVE_REPLY_CAP =>
+            when SYSCALL_MOVE_REPLY_CAPABILITY =>
                 Admin.handleSaveReplyCap (
                     percpu.currentPID, arg0, retval);
 
-            when SYSCALL_CAP_SEND =>
+            when SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY =>
                 Admin.handleCapSend (
                     percpu.currentPID,
                     arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
-            when SYSCALL_CAP_CALL =>
+            when SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY =>
                 Admin.handleCapCall (
                     percpu.currentPID, arg0, arg1, retval);
 
-            when SYSCALL_CAP_SUBMIT =>
+            when SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY =>
                 Admin.handleCapSubmit (
                     arg0, arg1, arg2, arg3, arg4, arg5, retval);
-
-            when SYSCALL_NOTIFY =>
-                if arg0 >
-                   Unsigned_64(Capabilities.CapabilitySlot'Last)
-                then
-                    retval := 0;
-                else
-                    if Process.IPC.capNotify (
-                        capSlot => Capabilities.CapabilitySlot(arg0))
-                    then
-                        retval := 1;
-                    else
-                        retval := 0;
-                    end if;
-                end if;
 
             when SYSCALL_REPLY_WAIT =>
                 Admin.handleReplyWait (arg0, arg1, retval);
@@ -328,11 +315,11 @@ package body Syscall is
                 Admin.handleProclist (
                     percpu.currentPID, arg0, arg1, retval);
 
-            when SYSCALL_INSPECT_CAP =>
+            when SYSCALL_INSPECT_CAPABILITY =>
                 Admin.handleInspectCap (
                     percpu.currentPID, arg0, arg1, arg2, retval);
 
-            when SYSCALL_MINT_CAP =>
+            when SYSCALL_POLICY_MINT_CAPABILITY =>
                 Admin.handleMintCap (
                     percpu.currentPID,
                     arg0, arg1, arg2, arg3, arg4, arg5, retval);
@@ -395,7 +382,7 @@ package body Syscall is
                 Trace.PrintSummary;
                 retval := 0;
 
-            when SYSCALL_GRANT_VIA_CAP =>
+            when SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY =>
                 IPC.handleGrantViaCap (
                     percpu.currentPID,
                     arg0, arg1, arg2, arg3, retval);

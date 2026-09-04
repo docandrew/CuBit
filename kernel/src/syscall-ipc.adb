@@ -34,6 +34,11 @@ use type Capabilities.Operations.OperationStatus;
 
 package body Syscall.IPC is
 
+    --  Bound one privileged mapping operation so a malformed request cannot
+    --  monopolize the kernel.  Larger regions are mapped by a sequence of
+    --  bounded calls.
+    MAX_MAP_INTO_PAGES_PER_CALL : constant Unsigned_64 := 1024;
+
     function toErr is
         new Ada.Unchecked_Conversion (Long_Integer, Unsigned_64);
     reterr : constant Unsigned_64 := toErr (-1);
@@ -345,8 +350,8 @@ package body Syscall.IPC is
 
         if arg0 > Unsigned_64 (Process.ProcessID'Last) or arg0 = 0 then
             return;
-        elsif arg3 > 1024 then
-            println ("MAP_INTO: too many pages");
+        elsif arg3 = 0 or else arg3 > MAX_MAP_INTO_PAGES_PER_CALL then
+            println ("MAP_INTO: invalid page count");
             return;
         end if;
 
@@ -517,6 +522,11 @@ package body Syscall.IPC is
             end loop;
 
             if ok then
+                --  The capability check above makes this the explicit
+                --  handoff from the early framebuffer console to its
+                --  userspace owner.  Stop mirroring diagnostics to video so
+                --  later service output cannot scribble over the desktop.
+                TextIO.disableVideo;
                 retval := Unsigned_64(FB_USER_BASE);
             else
                 retval := reterr;
@@ -901,7 +911,9 @@ package body Syscall.IPC is
             Process.IPC.notifySupervisor (
                 callerPID,
                 IPC_Labels.EVENT_CAP_FAULT,
-                Unsigned_64 (SyscallNumber'Enum_Rep (SYSCALL_GRANT)),
+                Unsigned_64
+                  (SyscallNumber'Enum_Rep
+                     (SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID)),
                 arg0, arg1);
             retval := reterr;
         else
@@ -982,12 +994,17 @@ package body Syscall.IPC is
             when Sysinfo.FB_WIDTH | Sysinfo.FB_HEIGHT |
                  Sysinfo.FB_PITCH | Sysinfo.FB_BPP |
                  Sysinfo.NUM_CPUS |
-                 Sysinfo.REGISTERED_DRIVER =>
+                 Sysinfo.REGISTERED_DRIVER |
+                 Sysinfo.MAGIC_RAMDISK_ADDRESS |
+                 Sysinfo.RAMDISK_SIZE =>
+                --  The ramdisk address is a fixed virtual address, not a
+                --  physical address.  Learning it conveys no access: only a
+                --  process into which the pages were explicitly mapped can
+                --  read them.
                 isPublic := True;
             when Sysinfo.NVME_BAR0 | Sysinfo.NVME_DMA_PHYS |
                  Sysinfo.HDA_BAR0 | Sysinfo.HDA_DMA_PHYS |
-                 Sysinfo.NET_IOBASE |
-                 Sysinfo.MAGIC_RAMDISK_ADDRESS =>
+                 Sysinfo.NET_IOBASE =>
                 isDeviceInfo := True;
             when others =>
                 null;
@@ -1058,7 +1075,8 @@ package body Syscall.IPC is
         ok : Boolean;
     begin
         if arg0 > Unsigned_64 (Capabilities.CapabilitySlot'Last) then
-            println ("GRANT_VIA_CAP: invalid slot");
+            println
+              ("CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY: invalid slot");
             retval := reterr;
             return;
         end if;
@@ -1067,13 +1085,17 @@ package body Syscall.IPC is
             Capabilities.CapabilitySlot (arg0));
 
         if cap.capType /= Capabilities.CAP_ENDPOINT then
-            println ("GRANT_VIA_CAP: slot is not CAP_ENDPOINT");
+            println
+              ("CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY: slot is not " &
+               "CAP_ENDPOINT");
             retval := reterr;
             return;
         end if;
 
         if not cap.rights(Capabilities.RIGHT_READ) then
-            println ("GRANT_VIA_CAP: no RIGHT_READ on endpoint");
+            println
+              ("CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY: no RIGHT_READ " &
+               "on endpoint");
             retval := reterr;
             return;
         end if;
@@ -1081,7 +1103,9 @@ package body Syscall.IPC is
         if cap.object.ref > Unsigned_64 (Process.ProcessID'Last) or
            cap.object.ref = 0
         then
-            println ("GRANT_VIA_CAP: invalid PID in cap");
+            println
+              ("CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY: invalid PID " &
+               "in capability");
             retval := reterr;
             return;
         end if;
@@ -1090,7 +1114,9 @@ package body Syscall.IPC is
 
         -- Validate generation (stale cap check)
         if cap.gen /= Process.proctab(granteePID).capGeneration then
-            println ("GRANT_VIA_CAP: stale capability");
+            println
+              ("CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY: stale " &
+               "capability");
             retval := reterr;
             return;
         end if;

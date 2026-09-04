@@ -6,10 +6,21 @@ is
    type Transfer_Mode is
      (Copy_Argument, Move_Argument, Borrowed_RO_Argument,
       Borrowed_RW_Argument);
+   for Transfer_Mode use
+     (Copy_Argument        => 0,
+      Move_Argument        => 1,
+      Borrowed_RO_Argument => 2,
+      Borrowed_RW_Argument => 3);
+   for Transfer_Mode'Size use 8;
 
    type Cancellation_Mode is
      (Not_Cancellable, Best_Effort_Cancellation,
       Guaranteed_Cancellation_Request);
+   for Cancellation_Mode use
+     (Not_Cancellable                 => 0,
+      Best_Effort_Cancellation        => 1,
+      Guaranteed_Cancellation_Request => 2);
+   for Cancellation_Mode'Size use 8;
 
    type Completion_Outcome is
      (Import_Succeeded, Import_Failed, Import_Cancelled);

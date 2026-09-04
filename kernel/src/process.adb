@@ -253,6 +253,7 @@ is
                      name         : in ProcessName;
                      priority     : in ProcessPriority;
                      procStack    : in System.Address;
+                     stackSize    : in UserStackSize;
                      thread       : in Boolean := False;
                      requestedPID : in ProcessID := NO_PROCESS) return ProcessID
         with SPARK_Mode => Off
@@ -303,7 +304,8 @@ is
              budgetUs => 0,
              flags    => 0);
         proctab(pid).stackTop     := procStack;
-        proctab(pid).stackBottom  := procStack - STACK_SIZE;
+        proctab(pid).stackBottom  := procStack - stackSize;
+        proctab(pid).stackSize    := stackSize;
 
         -- heap can't be calculated until the image segments are added to this
         -- process, so set to non-canonical address to start
@@ -331,7 +333,9 @@ is
             Mem_mgr.createGuardPage (proctab(pid).guardPage);
         end allocGuardedStack;
 
-        FrameLists.create (proctab(pid).frames, MAX_STACK_FRAMES + MAX_HEAP_FRAMES);
+        FrameLists.create
+            (proctab(pid).frames,
+             Natural (stackSize / Virtmem.FRAME_SIZE) + MAX_HEAP_FRAMES);
 
         proctab(pid).kernelStackTop := proctab(pid).kernelStack.all'Address +
                                        ProcessKernelStack'Size / 8;
@@ -598,7 +602,6 @@ is
         if proctab(pid).state = WAITINGFOREVENT or else
            proctab(pid).state = WAITINGFORREPLY or else
            proctab(pid).state = WAITINGFORCOMPLETION or else
-           proctab(pid).state = WAITINGFORNOTIFY or else
            proctab(pid).state = RECEIVING
         then
             ready (pid);
@@ -691,7 +694,8 @@ is
                        ppid        => 1,
                        name        => "init            ",
                        priority    => 3,
-                       procStack   => PROCESS_STACK_TOP_VIRT);
+                       procStack   => PROCESS_STACK_TOP_VIRT,
+                       stackSize   => INIT_PROCESS_STACK_SIZE);
 
         -- add page to process, copy the init image to it
         addPage (proc    => proctab(pid),
@@ -893,10 +897,7 @@ is
         end wakeWaiters;
 
         --  Clear stale mailbox state
-        mailtab(pid).ring         := (others => <>);
-        mailtab(pid).notifyWord   := 0;
-        mailtab(pid).notifyWaiter := False;
-        proctab(pid).boundNotification := NO_PROCESS;
+        mailtab(pid).ring := (others => <>);
 
         --  Clear completion queue and pending requests
         completionTab(pid) := (ring => (others => NULL_COMPLETION),

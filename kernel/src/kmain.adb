@@ -78,6 +78,17 @@ is
     mbInfo   : constant MultibootInfo := mbInfo_orig;
     ssPtr    : System.Secondary_Stack.SS_Stack_Ptr;
     memAreas : MemoryAreas.MemoryAreaArray(1..Multiboot.numAreas(mbInfo) + 1);
+
+    --  Keep the physical-screen boot display intentionally sparse.  The VGA
+    --  text renderer scrolls by moving and repainting the whole framebuffer,
+    --  which is painfully slow on firmware framebuffers (and under QEMU
+    --  emulation).  Detailed diagnostics continue to use the serial mirror.
+    procedure showBootStage (message : String) is
+    begin
+        TextIO.enableVideo;
+        println ("[ OK ] " & message, LT_GREEN, BLACK);
+        TextIO.disableVideo;
+    end showBootStage;
 begin
 
     if (config.serialMirror) then
@@ -147,8 +158,10 @@ begin
 
     TextIO.clear (BLACK);
 
-    -- Print minimal banner on screen, then switch to serial-only for the
-    -- verbose boot log. Video is re-enabled before starting userspace.
+    --  Show only a compact progress display on the firmware framebuffer.
+    --  Verbose output remains available through the serial mirror.  Each
+    --  milestone temporarily re-enables video without ever reaching the
+    --  expensive framebuffer-scroll path.
     println ("CuBitOS v0.0.1", LT_BLUE, BLACK);
     println ("Booting...");
     TextIO.disableVideo;
@@ -256,6 +269,7 @@ begin
             raise NoACPIException with "ACPI Setup Failed, MP tables for SMP data not implemented.";
         end if;
     end initACPI;
+    showBootStage ("ACPI tables loaded");
 
 
     initPIC: declare
@@ -389,6 +403,7 @@ begin
             end setupIOAPIC;
         end if;
     end initIOAPIC;
+    showBootStage ("Interrupt routing ready");
 
 
     initPCI: declare
@@ -410,6 +425,7 @@ begin
         mapBigIOArea (pciConfigArea);
         PCI.enumerateDevicesPCIe (Virtmem.P2Va (startAddr));
     end initPCI;
+    showBootStage ("PCI devices enumerated");
 
 
     -- @TODO not sure if it makes sense to map the entire configuration space here,
@@ -437,6 +453,7 @@ begin
 
         Modules.setup (mbInfo);
     end initModules;
+    showBootStage ("Live system image loaded");
 
     if acpi.numCPUs > 1 then
         initSMP: declare
@@ -456,6 +473,7 @@ begin
             end loop;
         end initSMP;
     end if;
+    showBootStage ("CPU initialization complete");
 
     println ("Starting idle service");
     Process.startKernelThread (procStart => Services.Idle.start'Address,
@@ -475,6 +493,7 @@ begin
 
     initScheduler: declare
     begin
+        showBootStage ("Starting userspace...");
         println("Starting scheduler on CPU 0");
         Scheduler.schedule(cpu0Data);
     end initScheduler;

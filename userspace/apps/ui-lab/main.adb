@@ -339,9 +339,10 @@ procedure main is
       ret.streamPane := ret.dataSplit;
       ret.streamHeader :=
         (x => ret.streamPane.x + 8, y => ret.streamPane.y + 18,
-         w => ret.streamPane.w - 16, h => 22);
+         w => ret.streamPane.w - 16, h => CuBit.UI.Table_Header_Height);
       ret.streamRow1 :=
-        (x => ret.streamHeader.x, y => ret.streamHeader.y + 22,
+        (x => ret.streamHeader.x,
+         y => ret.streamHeader.y + CuBit.UI.Table_Header_Height,
          w => ret.streamHeader.w, h => 20);
       ret.streamRow2 :=
         (x => ret.streamHeader.x, y => ret.streamRow1.y + 20,
@@ -590,16 +591,24 @@ procedure main is
          detailFrame := CuBit.UI.Layout.Root (detailContent);
          streamHeader :=
             CuBit.UI.Layout.Resolve
-              (streamFrame, (x => 0, y => 0, w => streamContent.w, h => 22));
+              (streamFrame,
+               (x => 0, y => 0, w => streamContent.w,
+                h => CuBit.UI.Table_Header_Height));
          streamRow1 :=
             CuBit.UI.Layout.Resolve
-              (streamFrame, (x => 0, y => 22, w => streamContent.w, h => 20));
+              (streamFrame,
+               (x => 0, y => CuBit.UI.Table_Header_Height,
+                w => streamContent.w, h => 20));
          streamRow2 :=
             CuBit.UI.Layout.Resolve
-              (streamFrame, (x => 0, y => 42, w => streamContent.w, h => 20));
+              (streamFrame,
+               (x => 0, y => CuBit.UI.Table_Header_Height + 20,
+                w => streamContent.w, h => 20));
          streamRow3 :=
             CuBit.UI.Layout.Resolve
-              (streamFrame, (x => 0, y => 62, w => streamContent.w, h => 20));
+              (streamFrame,
+               (x => 0, y => CuBit.UI.Table_Header_Height + 40,
+                w => streamContent.w, h => 20));
          CuBit.UI.Draw_Table_Header
            (c, streamHeader, colors, "Name", "Type", "State");
          CuBit.UI.Tables.Row

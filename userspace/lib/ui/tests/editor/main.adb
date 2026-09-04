@@ -3,14 +3,17 @@ with CuBit.UI.Editor;
 with CuBit.UI.Editor.Cursors;
 with CuBit.UI.Editor.Documents;
 with CuBit.UI.Editor.Viewports;
+with CuBit.UI.Editor.Search;
 with CuBit.UI.Editor.Transactions;
 with CuBit.UI.Editor.Buffers;
 
 procedure Main is
    use CuBit.UI.Editor;
    use type CuBit.UI.Editor.Cursors.Toggle_Result;
+   use type CuBit.UI.Editor.Cursors.Add_Result;
    use type CuBit.UI.Editor.Documents.Edit_Result;
    use type CuBit.UI.Editor.Buffers.Append_Result;
+   use type CuBit.UI.Editor.Search.Search_Status;
    State : Edit_State;
    Accepted : Boolean;
    Changed : Boolean;
@@ -26,6 +29,7 @@ procedure Main is
    Plan : CuBit.UI.Editor.Transactions.Edit_Plan;
    Buffer : CuBit.UI.Editor.Buffers.Candidate_Buffer (8);
    Buffer_Result : CuBit.UI.Editor.Buffers.Append_Result;
+   Search : CuBit.UI.Editor.Search.Search_Result;
 begin
    Initialize (State, "alpha beta", Accepted);
    pragma Assert (Accepted and then Cursor (State) = 11);
@@ -35,6 +39,7 @@ begin
    Move (State, Move_Word_Left, Extend_Selection => True);
    pragma Assert
      (Selection_First (State) = 1 and then Selection_Last (State) = 7);
+
    Insert (State, "X", Changed);
    pragma Assert (Changed and then Content (State) = "Xbeta");
 
@@ -66,6 +71,14 @@ begin
    pragma Assert
      (Selection_First (State) = 5 and then Selection_Last (State) = 8);
 
+   Initialize (State, "(answer (+ 20 22))", Accepted);
+   Place_Cursor (State, 2);
+   Move (State, Move_Word_Right, Extend_Selection => True);
+   pragma Assert
+     (Selection_First (State) = 2 and then Selection_Last (State) = 9);
+   Move (State, Move_Word_Right, Extend_Selection => True);
+   pragma Assert (Selection_Last (State) = 10);
+
    CuBit.UI.Editor.Cursors.Initialize (Cursors, 2);
    CuBit.UI.Editor.Cursors.Toggle_At (Cursors, 5, Toggle);
    pragma Assert
@@ -77,6 +90,24 @@ begin
      (Toggle = CuBit.UI.Editor.Cursors.Cursor_Removed and then
       CuBit.UI.Editor.Cursors.Length (Cursors) = 1 and then
       CuBit.UI.Editor.Cursors.Element (Cursors, 1).Position = 5);
+
+   declare
+      Added : CuBit.UI.Editor.Cursors.Add_Result;
+   begin
+      CuBit.UI.Editor.Cursors.Add_Selection
+        (Cursors, Anchor => 7, Position => 11, Preferred_Column => 11,
+         Result => Added);
+      pragma Assert
+        (Added = CuBit.UI.Editor.Cursors.Cursor_Added and then
+         CuBit.UI.Editor.Cursors.Element (Cursors, 2).Anchor = 7 and then
+         CuBit.UI.Editor.Cursors.Element (Cursors, 2).Position = 11);
+      CuBit.UI.Editor.Cursors.Add_Selection
+        (Cursors, Anchor => 7, Position => 11, Preferred_Column => 11,
+         Result => Added);
+      pragma Assert
+        (Added = CuBit.UI.Editor.Cursors.Cursor_Already_Present and then
+         CuBit.UI.Editor.Cursors.Length (Cursors) = 2);
+   end;
 
    CuBit.UI.Editor.Cursors.Initialize (Cursors, 1);
    for Position in 2 .. CuBit.UI.Editor.Cursors.MAX_CURSORS loop
@@ -160,6 +191,21 @@ begin
    CuBit.UI.Editor.Viewports.Scroll_Lines (View, -100, 8);
    pragma Assert (CuBit.UI.Editor.Viewports.First_Line (View) = 1);
 
+   CuBit.UI.Editor.Viewports.Set_Column_Capacity
+     (View, Visible_Columns => 8, Document_Columns => 24);
+   CuBit.UI.Editor.Viewports.Ensure_Column_Visible (View, 12, 24);
+   pragma Assert
+     (CuBit.UI.Editor.Viewports.First_Column (View) = 5 and then
+      CuBit.UI.Editor.Viewports.Column_Capacity (View) = 8);
+   CuBit.UI.Editor.Viewports.Ensure_Column_Visible (View, 3, 24);
+   pragma Assert (CuBit.UI.Editor.Viewports.First_Column (View) = 3);
+   CuBit.UI.Editor.Viewports.Scroll_Columns (View, 100, 24);
+   pragma Assert (CuBit.UI.Editor.Viewports.First_Column (View) = 17);
+   CuBit.UI.Editor.Viewports.Set_Column_Capacity (View, 12, 24);
+   pragma Assert (CuBit.UI.Editor.Viewports.First_Column (View) = 13);
+   CuBit.UI.Editor.Viewports.Scroll_Columns (View, -100, 24);
+   pragma Assert (CuBit.UI.Editor.Viewports.First_Column (View) = 1);
+
    CuBit.UI.Editor.Cursors.Initialize (Cursors, 2);
    CuBit.UI.Editor.Cursors.Toggle_At (Cursors, 4, Toggle);
    CuBit.UI.Editor.Cursors.Toggle_At (Cursors, 9, Toggle);
@@ -207,6 +253,23 @@ begin
    pragma Assert
      (Buffer_Result = CuBit.UI.Editor.Buffers.Capacity_Exceeded and then
       CuBit.UI.Editor.Buffers.Content (Buffer) = "abc");
+
+   CuBit.UI.Editor.Search.Find_Next
+     ("answer other answer", "answer", Start_At => 2, Wrap => False,
+      Whole_Word => True, Case_Sensitive => True, Result => Search);
+   pragma Assert
+     (Search.Status = CuBit.UI.Editor.Search.Match_Found and then
+      Search.First = 14 and then Search.Last = 20);
+   CuBit.UI.Editor.Search.Find_Next
+     ("answer other answer", "answer", Start_At => 20, Wrap => True,
+      Whole_Word => True, Case_Sensitive => True, Result => Search);
+   pragma Assert
+     (Search.Status = CuBit.UI.Editor.Search.Match_Found and then
+      Search.First = 1 and then Search.Last = 7);
+   CuBit.UI.Editor.Search.Find_Next
+     ("answering answer", "answer", Start_At => 1, Wrap => False,
+      Whole_Word => True, Case_Sensitive => True, Result => Search);
+   pragma Assert (Search.First = 11 and then Search.Last = 17);
 
 
    Ada.Text_IO.Put_Line ("PASS: bounded one-based editor commands");

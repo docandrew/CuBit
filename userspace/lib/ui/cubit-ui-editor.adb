@@ -4,6 +4,10 @@ package body CuBit.UI.Editor with SPARK_Mode is
       (Value >= 'A' and then Value <= 'Z') or else
       (Value >= '0' and then Value <= '9') or else Value = '_');
 
+   function Is_Whitespace (Value : Character) return Boolean is
+     (Value = ' ' or else Value = ASCII.HT or else
+      Value = ASCII.LF or else Value = ASCII.CR);
+
    function Content (State : Edit_State) return String is
      (State.Data (1 .. State.Last));
 
@@ -94,31 +98,56 @@ package body CuBit.UI.Editor with SPARK_Mode is
          when Move_End =>
             Target := State.Last + 1;
          when Move_Word_Left =>
-            while Target > 1 and then
-              not Is_Word_Character (State.Data (Target - 1))
-            loop
-               pragma Loop_Invariant (Target <= State.Last + 1);
-               Target := Target - 1;
-            end loop;
-            while Target > 1 and then
+            if Target > 1 and then
+              Is_Whitespace (State.Data (Target - 1))
+            then
+               while Target > 1 and then
+                 Is_Whitespace (State.Data (Target - 1))
+               loop
+                  pragma Loop_Invariant (Target <= State.Last + 1);
+                  Target := Target - 1;
+               end loop;
+            end if;
+            if Target > 1 and then
               Is_Word_Character (State.Data (Target - 1))
-            loop
-               pragma Loop_Invariant (Target <= State.Last + 1);
+            then
+               while Target > 1 and then
+                 Is_Word_Character (State.Data (Target - 1))
+               loop
+                  pragma Loop_Invariant (Target <= State.Last + 1);
+                  Target := Target - 1;
+               end loop;
+            elsif Target > 1 then
                Target := Target - 1;
-            end loop;
+            end if;
          when Move_Word_Right =>
-            while Target <= State.Last and then
+            if Target <= State.Last and then
               Is_Word_Character (State.Data (Target))
-            loop
-               pragma Loop_Invariant (Target <= State.Last + 1);
+            then
+               while Target <= State.Last and then
+                 Is_Word_Character (State.Data (Target))
+               loop
+                  pragma Loop_Invariant (Target <= State.Last + 1);
+                  Target := Target + 1;
+               end loop;
+               while Target <= State.Last and then
+                 Is_Whitespace (State.Data (Target))
+               loop
+                  pragma Loop_Invariant (Target <= State.Last + 1);
+                  Target := Target + 1;
+               end loop;
+            elsif Target <= State.Last and then
+              Is_Whitespace (State.Data (Target))
+            then
+               while Target <= State.Last and then
+                 Is_Whitespace (State.Data (Target))
+               loop
+                  pragma Loop_Invariant (Target <= State.Last + 1);
+                  Target := Target + 1;
+               end loop;
+            elsif Target <= State.Last then
                Target := Target + 1;
-            end loop;
-            while Target <= State.Last and then
-              not Is_Word_Character (State.Data (Target))
-            loop
-               pragma Loop_Invariant (Target <= State.Last + 1);
-               Target := Target + 1;
-            end loop;
+            end if;
       end case;
       State.Point := Target;
       if not Extend_Selection then State.Anchor := Target; end if;

@@ -228,7 +228,9 @@ package body CuBit.UI.App is
       (win : in out Window;
        width, height : Natural;
        flags : Unsigned_64;
-       ok : out Boolean)
+       ok : out Boolean;
+       maximum_width : Natural := 0;
+       maximum_height : Natural := 0)
    is
       hello : Message;
       info : Message;
@@ -249,6 +251,11 @@ package body CuBit.UI.App is
       if (flags and WINDOW_FLAG_FIXED_SIZE) /= 0 then
          maxW := minW;
          maxH := minH;
+      elsif maximum_width > 0 and then maximum_height > 0 then
+         maxW := Unsigned_64 (Natural'Max (width, maximum_width) +
+                              WINDOW_CHROME_W);
+         maxH := Unsigned_64 (Natural'Max (height, maximum_height) +
+                              WINDOW_CHROME_H);
       end if;
 
       hello := Call_Desktop (OP_DESKTOP_HELLO, PROTOCOL_VERSION, 0, 0, 0);

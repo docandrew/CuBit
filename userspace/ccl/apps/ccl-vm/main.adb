@@ -1,5 +1,8 @@
 with Interfaces; use Interfaces;
 
+with CCL.Catalog;
+with CCL.Compiler;
+with CCL.Interfaces.Clock;
 with CCL.Language;
 with CCL.Scheduler;
 with CCL.Format;
@@ -10,6 +13,11 @@ with CuBit.Messages; use CuBit.Messages;
 
 procedure Main is
    use ASCII;
+   use type CCL.Catalog.Catalog_Error;
+   use type CCL.Catalog.Grant_Result;
+   use type CCL.Catalog.Link_Result;
+   use type CCL.Compiler.Compilation_Status;
+   use type CCL.Language.Analysis_Status;
    use type CCL.Language.Interpretation_Status;
    use type CCL.Scheduler.Event_Kind;
    use type CCL.Format.Format_Error;
@@ -165,7 +173,20 @@ begin
 
    declare
       CLOCK_SLOT : constant CapabilitySlot := 25;
+      --  Opaque index in this host adapter's binding table. It is deliberately
+      --  unrelated to Clock's temporary system-wide driver registration ID.
+      CLOCK_HOST_BINDING : constant Unsigned_32 := 1;
       REPLY_OK : constant Unsigned_32 := 16#F000#;
+      Catalog : CCL.Catalog.Interface_Catalog;
+      Catalog_Error : CCL.Catalog.Catalog_Error;
+      Clock_Operation : CCL.Catalog.Resolved_Operation;
+      Found : Boolean;
+      Analysis : CCL.Language.Analysis_Result;
+      Compiled : CCL.Compiler.Compilation_Result;
+      Grants : CCL.Catalog.Granted_Bindings;
+      Grant_Status : CCL.Catalog.Grant_Result;
+      Link_Status : CCL.Catalog.Link_Result;
+      Pipeline_Valid : Boolean := False;
       State : Machine_State;
       Request : Message := NULL_MESSAGE;
       Completions : CompletionRing := [others => NULL_COMPLETION];
@@ -174,34 +195,60 @@ begin
       IMPORT_TOKEN : constant Unsigned_64 := 16#CC10_0002#;
       Response_Valid : Boolean;
    begin
-      Candidate := (others => <>);
-      Candidate.Imports_Length := 1;
-      Candidate.Imports (0) :=
-        (Argument => Integer_Value,
-         Result => Integer_Value,
-         Authority => Observe_Authority,
-         Binding => Unsigned_32 (DRIVER_CLOCK), others => <>);
-      Candidate.Length := 3;
-      Candidate.Code (0) :=
-        (Op => Push_Integer, Immediate => 0, others => <>);
-      Candidate.Code (1) := (Op => Invoke_Import, Import => 0, others => <>);
-      Candidate.Code (2) := (Op => Halt, others => <>);
+      --  Native CuBit path: make an explicitly visible descriptor catalog,
+      --  compile an unresolved source import, and only then link it to the
+      --  endpoint authority supplied in CLOCK_SLOT.  No Clock driver number
+      --  or capability slot enters the language, compiler, or bytecode ABI.
+      CCL.Catalog.Initialize (Catalog);
+      CCL.Catalog.Initialize (Grants);
+      CCL.Interfaces.Clock.Publish (Catalog, Catalog_Error);
+      if Catalog_Error = CCL.Catalog.Catalog_Valid then
+         CCL.Interfaces.Clock.Resolve_Monotonic_Ms
+           (Catalog, Clock_Operation, Found);
+      else
+         Found := False;
+      end if;
 
-      Verify (Candidate, Checked, Error);
-      if Error = Valid then
+      if Found then
+         CCL.Language.Analyze ("(clock.monotonic-ms)", Catalog, Analysis);
+         if CCL.Language.Analysis_Status_Of (Analysis) =
+           CCL.Language.Analysis_Succeeded
+         then
+            CCL.Compiler.Compile (Analysis, Compiled);
+            if Compiled.Status = CCL.Compiler.Compilation_Succeeded then
+               CCL.Catalog.Install
+                 (Grants, Clock_Operation, CLOCK_HOST_BINDING,
+                  Grant_Status);
+               if Grant_Status = CCL.Catalog.Grant_Added then
+                  CCL.Catalog.Link_Program
+                    (Grants, Compiled.Linkage, Compiled.Program, Link_Status);
+                  Pipeline_Valid := Link_Status = CCL.Catalog.Link_Valid;
+               end if;
+            end if;
+         end if;
+      end if;
+
+      if Pipeline_Valid then
+         Verify (Compiled.Program, Checked, Error);
+      else
+         Error := Empty_Program;
+      end if;
+      if Pipeline_Valid and then Error = Valid then
          Initialize (Checked, 16, State);
          Continue_Execution (Checked, State, VM_Result);
       end if;
 
-      if Error /= Valid or else VM_Result.Status /= Waiting_For_Host or else
+      if not Pipeline_Valid or else Error /= Valid or else
+        VM_Result.Status /= Waiting_For_Host or else
         VM_Result.Requested_Authority /= Observe_Authority or else
-        VM_Result.Requested_Binding /= Unsigned_32 (DRIVER_CLOCK) or else
+        VM_Result.Requested_Binding /= CLOCK_HOST_BINDING or else
         VM_Result.Request_Argument.Kind /= Integer_Value or else
         VM_Result.Request_Argument.Integer /= 0
       then
          debugPrint ("ccl-vm: clock request FAIL" & LF);
          All_Passed := False;
       else
+         debugPrint ("ccl-vm: clock source/link PASS" & LF);
          Request.tag :=
            (label => CuBit.Protocols.CLOCK_OP_MONOTONIC_MS, length => 1,
             flags => 0, badge => 0);

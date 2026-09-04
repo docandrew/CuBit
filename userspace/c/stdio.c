@@ -7,7 +7,7 @@
  *
  * Protocol:
  *   Client grants a shared buffer to the FS server, then sends
- *   OP_OPEN/OP_READ/OP_SEEK/OP_CLOSE messages via SYSCALL_CAP_CALL.
+ *   OP_OPEN/OP_READ/OP_SEEK/OP_CLOSE messages via SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY.
  *   The FS server reads/writes the grant buffer and replies with results.
  *
  * All file operations route through CAP_SLOT_FS. The FS server is the
@@ -16,7 +16,7 @@
  */
 #include "cubit.h"
 
-/* Grants now use SYSCALL_GRANT_VIA_CAP with CAP_SLOT_FS instead of a
+/* Grants now use SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY with CAP_SLOT_FS instead of a
  * hardcoded PID, so the FS server can run at any PID. */
 
 /* IPC operation labels (must match kernel/src/ipc_labels.ads) */
@@ -106,7 +106,7 @@ static void *alloc_grant_buf(void)
 /* Send an IPC call to the filesystem server and get the reply */
 static int fs_call(ipc_message_t *msg)
 {
-    long ret = syscall2(SYSCALL_CAP_CALL, CAP_SLOT_FS, msg);
+    long ret = syscall2(SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY, CAP_SLOT_FS, msg);
     if (ret == (long)(-1UL))
         return -1;
     return 0;
@@ -189,7 +189,7 @@ FILE *fopen(const char *path, const char *mode)
         return NULL;
 
     /* Create a read-write grant to the FS server via its cap slot */
-    long gid = syscall4(SYSCALL_GRANT_VIA_CAP, CAP_SLOT_FS,
+    long gid = syscall4(SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY, CAP_SLOT_FS,
                          f->grant_buf, GRANT_BUF_PAGES, GRANT_READWRITE);
     if (gid == (long)(-1UL)) {
         return NULL;
@@ -214,13 +214,13 @@ FILE *fopen(const char *path, const char *mode)
     msg.words[3] = 0;
 
     if (fs_call(&msg) < 0) {
-        syscall1(SYSCALL_REVOKE, f->grant_id);
+        syscall1(SYSCALL_REVOKE_SHARED_MEMORY_GRANT, f->grant_id);
         return NULL;
     }
 
     /* Check reply */
     if (msg.tag.label != REPLY_OK) {
-        syscall1(SYSCALL_REVOKE, f->grant_id);
+        syscall1(SYSCALL_REVOKE_SHARED_MEMORY_GRANT, f->grant_id);
         return NULL;
     }
 
@@ -413,7 +413,7 @@ int fclose(FILE *stream)
     fs_call(&msg);
 
     /* Revoke grant */
-    syscall1(SYSCALL_REVOKE, stream->grant_id);
+    syscall1(SYSCALL_REVOKE_SHARED_MEMORY_GRANT, stream->grant_id);
 
     stream->active = 0;
     return 0;

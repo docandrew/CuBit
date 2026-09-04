@@ -2,6 +2,21 @@
 
 This directory contains generated UI assets used by CuBit userspace apps.
 
+## IBM Plex Bitmap Fonts
+
+`cubit-ui-fonts_ibm_plex_sans_11.ads` and
+`cubit-ui-fonts_ibm_plex_mono_11.ads` were generated from IBM Plex Sans
+Regular and IBM Plex Mono Regular with `tools/generate_ui_font.py`. They
+contain rasterized ASCII glyphs 32..126 at 13 pixels in a 17-pixel line.
+CuBit does not parse or load the TTF files at runtime.
+
+Upstream source:
+
+https://github.com/IBM/plex
+
+IBM Plex is licensed under the SIL Open Font License 1.1. The complete
+copyright notice and license are in `licenses/IBM_PLEX_OFL.txt`.
+
 ## Noto Sans Bitmap Font
 
 `cubit-ui-fonts_noto_sans_11.ads` and
@@ -20,6 +35,16 @@ Copyright 2022 The Noto Project Authors
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 ```
+
+## Noto Sans Mono Bitmap Font
+
+`cubit-ui-fonts_noto_sans_mono_11.ads` was generated from Noto Sans Mono
+Regular with `tools/generate_ui_font.py`. It contains a fixed-width rendering
+of ASCII glyphs 32..126 for source editors, disassembly, logs, and other code
+surfaces. CuBit does not parse or load the TTF at runtime.
+
+Noto Sans Mono is part of the Noto project and is licensed under the SIL Open
+Font License 1.1.
 
 ## Bluecurve Icon Atlas
 

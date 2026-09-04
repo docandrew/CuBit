@@ -207,15 +207,14 @@ is
                     -- list, just save context.
                     Process.proctab(pid).context := cpuData.oldContext;
 
-                when WAITING | RECEIVING | SENDING | WAITINGFOREVENT | WAITINGFORREPLY |
-                     WAITINGFORCOMPLETION | WAITINGFORNOTIFY | SUSPENDED | SLEEPING =>
+                when WAITING | RECEIVING | SENDING | WAITINGFOREVENT |
+                     WAITINGFORREPLY | WAITINGFORCOMPLETION | SUSPENDED |
+                     SLEEPING =>
                     -- print ("Scheduler: process "); print (i);
                     -- print (" is blocked (waiting), saving context: ");
                     -- println (cpuData.oldContext);
                     Process.proctab(pid).context := cpuData.oldContext;
 
-                when others =>
-                    raise SchedulerException with "Scheduler: Process in unknown state.";
             end case;
 
         -- println ("Scheduler.schedule: releasing proctab lock");

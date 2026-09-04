@@ -249,7 +249,7 @@ static int desktop_call(uint32_t label,
     msg.words[2] = w2;
     msg.words[3] = w3;
 
-    if (syscall2(SYSCALL_CAP_CALL, CAP_SLOT_DESKTOP, &msg) == (long)(-1UL))
+    if (syscall2(SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY, CAP_SLOT_DESKTOP, &msg) == (long)(-1UL))
         return -1;
 
     if (reply)
@@ -268,7 +268,7 @@ static int desktop_submit(uint32_t label,
     tag.length = 3;
     memcpy(&tag_word, &tag, sizeof(tag_word));
 
-    return syscall6(SYSCALL_CAP_SUBMIT,
+    return syscall6(SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY,
                     CAP_SLOT_DESKTOP,
                     tag_word,
                     w0,
@@ -401,7 +401,7 @@ static int init_desktop_surface(void)
     desktop_buffer = (uint32_t *)align_up_page_uintptr((uintptr_t)raw);
     memset(desktop_buffer, 0, DOOM_BUFFER_BYTES);
 
-    grant = syscall4(SYSCALL_GRANT_VIA_CAP, CAP_SLOT_DESKTOP,
+    grant = syscall4(SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY, CAP_SLOT_DESKTOP,
                      desktop_buffer, pages, 0);
     if (grant == (long)(-1UL))
         return -1;

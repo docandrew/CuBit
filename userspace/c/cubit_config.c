@@ -73,7 +73,7 @@ static int ensure_config_init(void)
         return -1;
 
     /* Create read-write grant (1 page) */
-    long gid = syscall4(SYSCALL_GRANT, configPID,
+    long gid = syscall4(SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID, configPID,
                         cfg_grant_buf, CFG_GRANT_PAGES, 1 /* RW */);
     if (gid == (long)(-1UL))
         return -1;
@@ -88,7 +88,7 @@ static int ensure_config_init(void)
  */
 static int cfg_call(cfg_ipc_message_t *msg)
 {
-    long ret = syscall2(SYSCALL_CAP_CALL, CAP_SLOT_CONFIG, msg);
+    long ret = syscall2(SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY, CAP_SLOT_CONFIG, msg);
     if (ret == (long)(-1UL))
         return -1;
     return 0;

@@ -638,7 +638,7 @@ package body Syscall.Admin is
                 callerPID,
                 IPC_Labels.EVENT_CAP_FAULT,
                 Unsigned_64 (SyscallNumber'Enum_Rep (
-                    SYSCALL_INSPECT_CAP)),
+                    SYSCALL_INSPECT_CAPABILITY)),
                 arg0, arg1);
             retval := reterr;
             return;
@@ -696,7 +696,7 @@ package body Syscall.Admin is
         if arg0 > Unsigned_64 (Process.ProcessID'Last) or
            arg0 = 0
         then
-            println ("MINT_CAP: invalid target PID");
+            println ("POLICY_MINT_CAPABILITY: invalid target PID");
             retval := reterr;
             return;
         end if;
@@ -705,30 +705,32 @@ package body Syscall.Admin is
 
         if not hasCspaceGrantFor (callerPID, targetPID)
         then
-            println ("MINT_CAP: denied, no capability-space grant");
+            println
+              ("POLICY_MINT_CAPABILITY: denied, no capability-space grant");
             retval := reterr;
             return;
         elsif Process.proctab(targetPID).state = Process.INVALID then
-            println ("MINT_CAP: target not valid");
+            println ("POLICY_MINT_CAPABILITY: target not valid");
             retval := reterr;
             return;
         elsif arg5 >
               Unsigned_64 (Capabilities.CapabilitySlot'Last)
         then
-            println ("MINT_CAP: invalid slot");
+            println ("POLICY_MINT_CAPABILITY: invalid slot");
             retval := reterr;
             return;
         elsif arg1 >
               Unsigned_64 (Capabilities.CapabilityType'Pos (
                   Capabilities.CapabilityType'Last))
         then
-            println ("MINT_CAP: invalid cap type");
+            println ("POLICY_MINT_CAPABILITY: invalid capability type");
             retval := reterr;
             return;
         elsif not Capabilities.isOrdinarilyDerivable
           (Capabilities.CapabilityType'Val (Natural (arg1)))
         then
-            println ("MINT_CAP: capability type cannot be minted");
+            println
+              ("POLICY_MINT_CAPABILITY: capability type cannot be minted");
             retval := reterr;
             return;
         end if;
@@ -759,7 +761,9 @@ package body Syscall.Admin is
                not canDelegateCspace
                  (callerPID, targetPID, arg2, newRights)
             then
-                println ("MINT_CAP: CSPACE delegation would amplify authority");
+                println
+                  ("POLICY_MINT_CAPABILITY: CSPACE delegation would " &
+                   "amplify authority");
                 retval := reterr;
                 return;
             end if;
@@ -771,14 +775,16 @@ package body Syscall.Admin is
                 if arg2 > Unsigned_64 (Process.ProcessID'Last) or else
                    arg2 = 0
                 then
-                    println ("MINT_CAP: invalid referenced PID");
+                    println
+                      ("POLICY_MINT_CAPABILITY: invalid referenced PID");
                     retval := reterr;
                     return;
                 end if;
 
                 objectPID := Process.ProcessID (arg2);
                 if Process.proctab(objectPID).state = Process.INVALID then
-                    println ("MINT_CAP: referenced process not valid");
+                    println
+                      ("POLICY_MINT_CAPABILITY: referenced process not valid");
                     retval := reterr;
                     return;
                 end if;

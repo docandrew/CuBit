@@ -37,7 +37,7 @@ ADAFLAGS = -gnatA --RTS=$(RUNTIME) \
            -g -fomit-frame-pointer -mno-red-zone -fno-pic \
            -mno-sse -mno-sse2
 
-LDFLAGS = -nostdlib -static -T link.ld
+LDFLAGS = -nostdlib -static -z stack-size=16777216 -T link.ld
 
 # CuBit C runtime (CRT + lib)
 CRT_OBJ   = build/crt0.o

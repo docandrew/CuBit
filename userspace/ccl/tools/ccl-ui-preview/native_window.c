@@ -16,6 +16,8 @@ struct ccl_window {
     int click_origin_x;
     int click_origin_y;
     unsigned int click_count;
+    int canvas_width;
+    int canvas_height;
 };
 
 enum {
@@ -52,6 +54,7 @@ void *ccl_window_open(int width, int height)
     SDL_Rect display_bounds;
     int window_width = width;
     int window_height = height;
+    int have_display_bounds;
 
     SDL_SetMainReady();
     SDL_SetHint(SDL_HINT_VIDEO_HIGHDPI_DISABLED, "1");
@@ -64,12 +67,7 @@ void *ccl_window_open(int width, int height)
         state->screenshot_path = SDL_getenv("CCL_UI_SCREENSHOT");
         state->debug_input = SDL_getenv("CCL_UI_DEBUG_INPUT") != NULL;
     }
-    if (SDL_GetDisplayUsableBounds(0, &display_bounds) == 0) {
-        int scale_width = (display_bounds.w * 4 / 5) / width;
-        int scale_height = (display_bounds.h * 4 / 5) / height;
-        int scale = scale_width < scale_height ? scale_width : scale_height;
-        if (scale > 1) { window_width = width * scale; window_height = height * scale; }
-    }
+    have_display_bounds = SDL_GetDisplayUsableBounds(0, &display_bounds) == 0;
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
     state->window = SDL_CreateWindow("CCL Workbench - Linux preview",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, window_width,
@@ -79,12 +77,67 @@ void *ccl_window_open(int width, int height)
         SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (state->renderer == NULL)
         state->renderer = SDL_CreateRenderer(state->window, -1, SDL_RENDERER_SOFTWARE);
-    if (state->renderer == NULL ||
+    if (state->renderer == NULL) goto fail;
+    if (have_display_bounds) {
+        int output_width;
+        int output_height;
+        int current_width;
+        int current_height;
+        SDL_GetWindowSize(state->window, &current_width, &current_height);
+        if (current_width > 0 && current_height > 0 &&
+            SDL_GetRendererOutputSize(state->renderer, &output_width,
+                                      &output_height) == 0 &&
+            output_width > 0 && output_height > 0) {
+            /* Fractional desktop scaling otherwise leaves a sharp 1x canvas
+             * stranded in the upper-left of a larger drawable. Pick the
+             * largest integral canvas scale that fits the usable display,
+             * then compensate the SDL window size for the drawable ratio. */
+            int available_output_width =
+                display_bounds.w * output_width / current_width * 9 / 10;
+            int available_output_height =
+                display_bounds.h * output_height / current_height * 9 / 10;
+            int scale_width = available_output_width / width;
+            int scale_height = available_output_height / height;
+            int scale = scale_width < scale_height ? scale_width : scale_height;
+            if (scale < 1) scale = 1;
+            if (scale > 2) scale = 2;
+            window_width =
+                (width * scale * current_width + output_width / 2) /
+                output_width;
+            window_height =
+                (height * scale * current_height + output_height / 2) /
+                output_height;
+            SDL_SetWindowSize(state->window, window_width, window_height);
+            SDL_SetWindowPosition(state->window, SDL_WINDOWPOS_CENTERED,
+                                  SDL_WINDOWPOS_CENTERED);
+            SDL_SetWindowMinimumSize
+                (state->window,
+                 (width * current_width + output_width - 1) / output_width,
+                 (height * current_height + output_height - 1) /
+                    output_height);
+        }
+    }
+    {
+        const char *requested_width = SDL_getenv("CCL_UI_WINDOW_WIDTH");
+        const char *requested_height = SDL_getenv("CCL_UI_WINDOW_HEIGHT");
+        if (requested_width != NULL && requested_height != NULL) {
+            int test_width = SDL_atoi(requested_width);
+            int test_height = SDL_atoi(requested_height);
+            if (test_width > 0 && test_height > 0) {
+                SDL_SetWindowSize(state->window, test_width, test_height);
+                SDL_SetWindowPosition(state->window, SDL_WINDOWPOS_CENTERED,
+                                      SDL_WINDOWPOS_CENTERED);
+            }
+        }
+    }
+    if (
         SDL_RenderSetLogicalSize(state->renderer, width, height) != 0 ||
         SDL_RenderSetIntegerScale(state->renderer, SDL_TRUE) != 0) goto fail;
     state->texture = SDL_CreateTexture(state->renderer, SDL_PIXELFORMAT_ARGB8888,
         SDL_TEXTUREACCESS_STREAMING, width, height);
     if (state->texture == NULL) goto fail;
+    state->canvas_width = width;
+    state->canvas_height = height;
     SDL_StartTextInput();
     return state;
 fail:
@@ -92,7 +145,56 @@ fail:
     SDL_DestroyWindow(state->window); SDL_free(state); SDL_Quit(); return NULL;
 }
 
-/* Event kinds include 23 undo, 24 redo, and 25 run source. */
+int ccl_window_prepare_frame(void *handle, int minimum_width,
+                             int minimum_height, int maximum_width,
+                             int maximum_height, int *width, int *height)
+{
+    struct ccl_window *state = handle;
+    SDL_Texture *replacement;
+    int output_width;
+    int output_height;
+    int scale;
+    int canvas_width;
+    int canvas_height;
+
+    if (state == NULL || width == NULL || height == NULL ||
+        minimum_width < 1 || minimum_height < 1 ||
+        maximum_width < minimum_width || maximum_height < minimum_height ||
+        SDL_GetRendererOutputSize(state->renderer, &output_width,
+                                  &output_height) != 0)
+        return 1;
+
+    scale = output_width >= minimum_width * 2 &&
+            output_height >= minimum_height * 2 ? 2 : 1;
+    canvas_width = output_width / scale;
+    canvas_height = output_height / scale;
+    if (canvas_width > maximum_width) canvas_width = maximum_width;
+    if (canvas_height > maximum_height) canvas_height = maximum_height;
+    if (canvas_width < 1 || canvas_height < 1) return 1;
+
+    if (canvas_width != state->canvas_width ||
+        canvas_height != state->canvas_height) {
+        replacement = SDL_CreateTexture
+            (state->renderer, SDL_PIXELFORMAT_ARGB8888,
+             SDL_TEXTUREACCESS_STREAMING, canvas_width, canvas_height);
+        if (replacement == NULL) return 1;
+        SDL_DestroyTexture(state->texture);
+        state->texture = replacement;
+        state->canvas_width = canvas_width;
+        state->canvas_height = canvas_height;
+        if (SDL_RenderSetLogicalSize(state->renderer, canvas_width,
+                                     canvas_height) != 0 ||
+            SDL_RenderSetIntegerScale(state->renderer, SDL_TRUE) != 0)
+            return 1;
+    }
+    *width = canvas_width;
+    *height = canvas_height;
+    return 0;
+}
+
+/* Event kinds include 23 undo, 24 redo, 25 run source, 29 matching
+ * parenthesis, 30 select through matching parenthesis, and 31 add the next
+ * occurrence to the editor selection, 32 open find, and 33 find next. */
 int ccl_window_poll(void *handle, int *kind, unsigned int *character,
                     unsigned int *modifiers, int *x, int *y)
 {
@@ -151,7 +253,18 @@ int ccl_window_poll(void *handle, int *kind, unsigned int *character,
             *kind = 13; return 1;
         }
         if (event.type == SDL_MOUSEWHEEL) {
-            *kind = event.wheel.y > 0 ? 18 : 19;
+            mods = SDL_GetModState();
+            *modifiers = ((mods & KMOD_SHIFT) != 0 ? 1u : 0u) |
+                         ((mods & KMOD_CTRL) != 0 ? 2u : 0u) |
+                         ((mods & KMOD_ALT) != 0 ? 4u : 0u);
+            if (event.wheel.x != 0 || (*modifiers & 1u) != 0) {
+                if (event.wheel.x != 0)
+                    *kind = event.wheel.x > 0 ? 28 : 27;
+                else
+                    *kind = event.wheel.y > 0 ? 27 : 28;
+            } else {
+                *kind = event.wheel.y > 0 ? 18 : 19;
+            }
             return 1;
         }
         if (event.type != SDL_KEYDOWN) continue;
@@ -169,11 +282,26 @@ int ccl_window_poll(void *handle, int *kind, unsigned int *character,
         if (event.key.keysym.sym == SDLK_y && (*modifiers & 2u) != 0) {
             *kind = 24; return 1;
         }
+        if (event.key.keysym.sym == SDLK_d && (*modifiers & 2u) != 0) {
+            *kind = 31; return 1;
+        }
+        if (event.key.keysym.sym == SDLK_f && (*modifiers & 2u) != 0) {
+            *kind = 32; return 1;
+        }
+        if (event.key.keysym.sym == SDLK_F3) { *kind = 33; return 1; }
         if (event.key.keysym.sym == SDLK_F5 ||
             ((event.key.keysym.sym == SDLK_RETURN ||
               event.key.keysym.sym == SDLK_KP_ENTER) &&
              (*modifiers & 2u) != 0)) {
             *kind = 25; return 1;
+        }
+        if (event.key.keysym.sym == SDLK_RIGHTBRACKET &&
+            (*modifiers & 2u) != 0) {
+            *kind = (*modifiers & 1u) != 0 ? 30 : 29; return 1;
+        }
+        if (event.key.keysym.sym == SDLK_BACKSLASH &&
+            (*modifiers & 3u) == 3u) {
+            *kind = 29; return 1;
         }
         if (event.key.keysym.sym == SDLK_ESCAPE) { *kind = 22; return 1; }
         if (event.key.keysym.sym == SDLK_BACKSPACE) { *kind = 3; return 1; }
@@ -230,6 +358,14 @@ int ccl_window_present(void *handle, const uint32_t *pixels, int pitch)
 void ccl_window_wait(void) { SDL_Delay(10); }
 
 uint64_t ccl_window_ticks(void) { return SDL_GetTicks64(); }
+
+uint64_t ccl_window_clock_monotonic(int *success)
+{
+    if (success != NULL) *success = 1;
+    return SDL_GetTicks64();
+}
+
+int ccl_window_has_system_chrome(void) { return 0; }
 
 void ccl_window_close(void *handle)
 {

@@ -53,6 +53,7 @@ project Security_Center is
             "-nostdlib",
             "-static",
             "-no-pie",
+            "-Wl,-z,stack-size=16777216",
             "-lgnat-user",
             "-T", "../../c/link.ld",
             "../../c/build/crt0.o",

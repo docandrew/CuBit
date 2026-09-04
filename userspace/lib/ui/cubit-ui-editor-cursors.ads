@@ -43,6 +43,12 @@ package CuBit.UI.Editor.Cursors with SPARK_Mode is
       Preferred_Column : CuBit.UI.Editor.Documents.Display_Column;
       Result : out Add_Result);
 
+   procedure Add_Selection
+     (Cursors : in out Cursor_Set;
+      Anchor, Position : Cursor_Position;
+      Preferred_Column : CuBit.UI.Editor.Documents.Display_Column;
+      Result : out Add_Result);
+
    procedure Coalesce (Cursors : in out Cursor_Set);
 
 private

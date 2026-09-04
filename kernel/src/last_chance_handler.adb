@@ -54,6 +54,14 @@ is
         use System.Storage_Elements;    -- get "+" operator on System.Address
 
     begin
+        --  Normal boot hands the framebuffer to the display service and
+        --  disables kernel video logging.  A fatal kernel exception must take
+        --  the diagnostic surface back: real hardware may have no serial
+        --  console at all.  enableVideo is harmless before a driver is set.
+        TextIO.enableVideo;
+        TextIO.setCursor (0, 0);
+        println ("CUBIT KERNEL PANIC", LT_RED, BLACK);
+
         if line /= 0 then
             print ("EXCEPTION: ", RED, BLACK); 
             printz (msg); 

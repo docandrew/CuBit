@@ -20,7 +20,7 @@ The initial naming conventions are:
 | CuBit Control Language | Full language name |
 | CCL | Language and subsystem abbreviation |
 | CCL VM | Bytecode verifier and interpreter |
-| CCL Workbench | Linux-hosted development and test environment |
+| CCL Workbench | Shared graphical editor, compiler, and debugger for CuBit and Linux |
 | `cclc` | Workstation source compiler |
 | `ccl-run` | Hosted runner using deterministic or emulated CuBit imports |
 | `ccl-debug` | Planned AST and bytecode step debugger |
@@ -87,6 +87,17 @@ host-import boundary are security-critical. Parsers, source compilers,
 formatters, disassemblers, and presentation clients are not trusted to establish
 runtime safety.
 
+`CCL.Secondary_Stacks` now provides the first variable-sized value foundation.
+It is a bounded, allocation-free region with Ada-like value-carried string
+bounds, length-checked sliding copies, scoped marks, generation-checked
+descriptors, selective scrubbing of sensitive temporaries, and full scrubbing
+at execution teardown. It does not use the GNAT secondary stack or expose raw
+pointers. CCLB v3 remains scalar; string literals, function-result lowering,
+and a constant-pool encoding will enter together in a later bytecode version.
+GNATprove discharges every flow, run-time-check, functional-contract, and
+termination obligation for the representative 64-KiB/256-value SPARK proof
+instantiation, with no assumptions or justified checks.
+
 ## Planned layout
 
 ```text
@@ -108,7 +119,7 @@ userspace/ccl/
         ccl-disasm/         module inspection and diagnostics
     apps/
         ccl-vm/             CuBit host adapter and module runner
-        console/            desktop CCL client, editor, and renderer
+        ccl-workbench/      native desktop adapter and application manifest
 ```
 
 Directories should be introduced with their first implementation rather than
@@ -152,7 +163,7 @@ contains no allocation, exceptions, I/O, tasking, or platform-specific code.
 The current instruction set supports:
 
 * signed 64-bit integer and Boolean constants;
-* checked integer addition and integer equality;
+* checked integer addition, multiplication, division, modulo, and equality;
 * Boolean negation and stack discard;
 * forward conditional and unconditional branches; and
 * program termination with an optional typed result; and
@@ -179,16 +190,26 @@ The first canonical source interpreter is also implemented in
 (not false)
 (if false 10 20)
 (let ((answer (+ 20 22))) (= answer 42))
+(concat "elapsed: " "01:01:01")
+(at "clock" 2)
+(to-string (mod 3661 60))
 ```
 
 The reader builds into a fixed 128-node AST with bounded names, lexical
-bindings, and nesting depth. A separate static pass rejects unbound names,
-incorrect operands, non-Boolean conditions, and conditional branches with
-different result types before deterministic evaluation begins. Evaluation is
-fuel-bounded and checks integer overflow.
+bindings, decoded string-literal storage, and nesting depth. A separate static
+pass rejects unbound names, incorrect operands, non-Boolean conditions, and
+conditional branches with different result types before deterministic
+evaluation begins. Evaluation is fuel-bounded and checks arithmetic overflow,
+division by zero, actual string bounds, and secondary-region exhaustion.
+Strings and Characters currently execute only in direct interpretation; their
+compiler forms fail explicitly as unsupported because scalar CCLB v3 has no
+constant pool. Arithmetic lowers through the normal compiler and VM.
 
 The canonical syntax is intentionally tiny. BASIC-like interactive syntax will
 later desugar to the same checked AST rather than introducing another evaluator.
+The current reader treats `#` through the end of a line as a comment, including
+after an expression. This marker remains provisional until the source syntax is
+declared stable.
 
 Unknown list operators are resolved only through a caller-supplied
 `CCL.Catalog.Interface_Catalog`. This keeps service names out of the parser,
@@ -198,14 +219,31 @@ that pinned operation to SDL's monotonic clock through a
 `Granted_Bindings` value. Merely receiving the catalog permits type checking and
 completion; it does not permit execution.
 
-The version 2 `.cclb` encoder and loader live in `src/ccl-format.ads` and
+`CCL.Interfaces.Clock` is the first shared, generated-style descriptor binding.
+The Linux Workbench and native CuBit VM host publish the same immutable Clock
+contract. In CuBit, the test now analyzes and compiles
+`(clock.monotonic-ms)`, proves that the resulting import is still unresolved,
+links it only after installing the already-authorized Clock endpoint binding,
+and then invokes `clock.svc` through native asynchronous capability IPC. The
+remaining step toward genuine runtime discovery is a privileged catalog service
+that accepts service-published descriptors and returns authority-filtered
+views.
+
+`clock.svc` now carries the canonical text in a non-loadable
+`.cubit.interfaces` ELF section. The native host binding is an opaque local
+index mapped to its already-granted capability slot; it is no longer Clock's
+temporary global driver number. Thus even the linked CCLB artifact is insulated
+from driver registration IDs while descriptor admission is being built.
+
+The version 3 `.cclb` encoder and loader live in `src/ccl-format.ads` and
 `src/ccl-format.adb`; the byte layout is specified in
 [`docs/ccl-bytecode-format.md`](../../docs/ccl-bytecode-format.md). The format
 contains bounded resource requests, ownership types and dispositions, initial
-local declarations, typed import declarations, and fixed-width instructions.
-Its canonical decoder rejects trailing data, reserved bits, duplicate verbs,
-out-of-range type references, alternate operand encodings, invalid enum values,
-and malformed bytecode before returning the private validated-program type.
+and dynamic-local declarations, descriptor-pinned portable imports, and
+fixed-width instructions. Its canonical decoder rejects trailing data,
+reserved bits, duplicate verbs, out-of-range type references, alternate operand
+encodings, invalid enum representations, and malformed bytecode. Imported
+modules return an unlinked program plus linkage and require explicit admission.
 The same implementation is tested natively and in a freestanding CuBit process.
 
 The first executable ownership model lives in `src/ccl-ownership.ads` and
@@ -229,8 +267,9 @@ accepted ownership transition. Native and in-guest tests show a valid
 disposition executing and an illegal must-handle drop being rejected.
 
 The in-memory VM ABI carries ownership types, injected-local declarations,
-local/verb instruction operands, and ownership opcodes. Canonical `.cclb` v2
-serializes fixed-size type, disposition, and local-declaration tables and sends
+local/verb instruction operands, and ownership opcodes. Canonical `.cclb` v3
+serializes fixed-size type, disposition, local-declaration, and portable-import
+tables and sends
 the decoded program through both the ordinary and ownership bytecode verifiers.
 The current locals are abstract verifier/runtime state only and cannot perform a
 host operation. Nevertheless, instantiation already follows the future security
@@ -296,13 +335,20 @@ checks the current PC before dispatch, pauses before a marked instruction, and
 skips that same breakpoint once when resumed. Step Over uses the active debug
 range and runs until that source expression exits, another breakpoint is hit,
 the VM waits, or execution terminates.
-Close the window with Escape or the window close button.
-SDL and its normal hosted event
-loop belong only to this Linux adapter. The window is resizable;
-SDL scales the fixed CuBit canvas while preserving its aspect ratio. The future
-**CuBit runtime**
-adapter will present the same canvas and receive events through typed CuBit IPC;
-it will not depend on SDL or ambient hosted file I/O.
+Close the window with Escape or the window close button. The hosted window is
+structurally resizable: additional space expands the source editor and adds
+visible source and disassembly rows. Drag either dotted vertical splitter to
+resize the execution or disassembly pane, and drag the disassembly header
+boundaries to resize its columns. The hosted framebuffer remains explicitly
+bounded at 1280x720 logical pixels; larger drawable areas are letterboxed.
+SDL and its normal hosted event loop belong only to the Linux adapter. The
+**native CuBit Workbench** builds the same source, editor, compiler, verifier,
+VM, and renderer behind a small platform boundary. It presents through
+`desktop.svc`, receives composed text and pointer events from the desktop input
+protocol, and resolves CCL Clock requests through an explicitly manifested
+capability to `clock.svc`; it does not link SDL or use ambient hosted file I/O.
+Build it with `make -C kernel ccl-workbench`, or launch it from the desktop's
+Launch menu after `make -C kernel run-desktop`.
 
 The core can also be compiled against CuBit's freestanding userspace runtime:
 
@@ -320,7 +366,7 @@ The bounded interface catalog, granted-binding table, and transactional linker
 currently discharge all level-1 GNATprove checks. The catalog-aware language
 frontend and generic AST-to-CCLB lowering do as well. None of these units uses
 `pragma Assume` or disables SPARK. This does not erase the separately tracked
-obligations in the scheduler, VM execution loop, or v2 bytecode formatter.
+obligations in the scheduler, VM execution loop, or v3 bytecode formatter.
 
 ### In-guest runtime
 

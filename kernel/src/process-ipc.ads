@@ -111,8 +111,8 @@ is
     -- receiveServiceRequestNB
     -- Non-blocking receive for the service-request lane only.
     --
-    -- This procedure deliberately ignores events and notifications even though
-    -- they share the same underlying ring. It may return:
+    -- This procedure deliberately ignores events even though they share the
+    -- same underlying ring. It may return:
     --   * synchronous send/call requests, which mint a reply capability;
     --   * async requests submitted with a completion token, which mint a
     --     reply capability carrying the async request ID;
@@ -132,7 +132,7 @@ is
     -- Non-blocking mixed receive.
     --
     -- This is the explicit footgun. It may consume service requests, events,
-    -- notifications, and one-way messages from the unified ring. Callers must
+    -- and one-way messages from the unified ring. Callers must
     -- inspect the returned message and sender and perform their own dispatch.
     --
     -- Prefer receiveServiceRequestNB, receiveEventNB, or completion polling
@@ -141,18 +141,6 @@ is
     procedure receiveAnyIpcNB (from  : out ProcessID;
                                msg   : out Message;
                                found : out Boolean)
-        with SPARK_Mode => On;
-
-    ---------------------------------------------------------------------------
-    -- receiveNB
-    -- Deprecated compatibility spelling for receiveAnyIpcNB.
-    --
-    -- New code must not use this name. It hides whether the caller wants a
-    -- service request, an event, a notification, or mixed traffic.
-    ---------------------------------------------------------------------------
-    procedure receiveNB (from  : out ProcessID;
-                         msg   : out Message;
-                         found : out Boolean)
         with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
@@ -275,38 +263,6 @@ is
         with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
-    -- Notification Operations
-    ---------------------------------------------------------------------------
-
-    ---------------------------------------------------------------------------
-    -- capNotify
-    -- Resolve a CAP_NOTIFICATION at capSlot, OR the cap's badge into the
-    -- destination's notifyWord, wake the destination if it is blocked in
-    -- WAITINGFORNOTIFY.
-    -- @return True on success, False on capability error.
-    ---------------------------------------------------------------------------
-    function capNotify (capSlot : Capabilities.CapabilitySlot) return Boolean
-        with SPARK_Mode => On;
-
-    ---------------------------------------------------------------------------
-    -- notifyWait
-    -- Block until the caller's notifyWord is non-zero. Atomically read and
-    -- clear it.
-    -- @return the notification word value.
-    ---------------------------------------------------------------------------
-    function notifyWait return Unsigned_64
-        with SPARK_Mode => On;
-
-    ---------------------------------------------------------------------------
-    -- notifyPoll
-    -- Non-blocking check of the caller's notifyWord. If non-zero, read and
-    -- clear it.
-    -- @return the notification word value (0 if no notification pending).
-    ---------------------------------------------------------------------------
-    function notifyPoll return Unsigned_64
-        with SPARK_Mode => On;
-
-    ---------------------------------------------------------------------------
     -- Supervisor Notification
     ---------------------------------------------------------------------------
 
@@ -325,28 +281,6 @@ is
                                 detail0    : Unsigned_64;
                                 detail1    : Unsigned_64;
                                 detail2    : Unsigned_64)
-        with SPARK_Mode => On;
-
-    ---------------------------------------------------------------------------
-    -- Notification Binding
-    ---------------------------------------------------------------------------
-
-    ---------------------------------------------------------------------------
-    -- bindNotification
-    -- Bind a notification capability to the calling process. When blocked in
-    -- receive(), the process will also be woken by signals to this
-    -- notification.
-    -- @param capSlot - slot holding CAP_NOTIFICATION
-    ---------------------------------------------------------------------------
-    function bindNotification
-        (capSlot : Capabilities.CapabilitySlot) return Boolean
-        with SPARK_Mode => On;
-
-    ---------------------------------------------------------------------------
-    -- unbindNotification
-    -- Remove the notification binding from the calling process.
-    ---------------------------------------------------------------------------
-    procedure unbindNotification
         with SPARK_Mode => On;
 
 end Process.IPC;

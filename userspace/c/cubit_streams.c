@@ -253,7 +253,7 @@ int cubit_stream_handle_subscription(void)
 
         /* Page-align base_addr for grant (it should already be aligned
          * since sbrk returns page-aligned memory) */
-        long gid = syscall4(SYSCALL_GRANT, from, s->base_addr,
+        long gid = syscall4(SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID, from, s->base_addr,
                             s->pages, 0 /* read-only */);
         if (gid == (long)(-1UL)) {
             reply.tag.label = STREAM_REPLY_ERR;
@@ -320,7 +320,7 @@ int cubit_stream_handle_subscription(void)
 
         /* Revoke grant */
         if (s->grant_ids[slot] != 0) {
-            syscall1(SYSCALL_REVOKE, s->grant_ids[slot]);
+            syscall1(SYSCALL_REVOKE_SHARED_MEMORY_GRANT, s->grant_ids[slot]);
             s->grant_ids[slot] = 0;
         }
 

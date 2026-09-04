@@ -254,7 +254,7 @@ procedure main is
    begin
       cap := (others => 0);
       ret := syscall
-        (SYSCALL_INSPECT_CAP,
+        (SYSCALL_INSPECT_CAPABILITY,
          pid,
          Unsigned_64 (slot),
          addrToU64 (cap'Address));
@@ -1114,9 +1114,10 @@ procedure main is
 
       CuBit.UI.Widgets.Panel (c, table, colors, row, 8);
       CuBit.UI.Draw_Table_Header
-        (c, (x => row.x, y => row.y, w => row.w, h => 22),
+        (c, (x => row.x, y => row.y, w => row.w,
+             h => CuBit.UI.Table_Header_Height),
          colors, "Object", "Rights", "Capability");
-      rowY := row.y + 22;
+      rowY := row.y + CuBit.UI.Table_Header_Height;
       for id in 1 .. Natural'Min (6, totalCaps) loop
          CuBit.UI.Tables.Row
            (c, ui, controls, rowId,
@@ -1182,9 +1183,10 @@ procedure main is
 
       CuBit.UI.Widgets.Panel (c, table, colors, row, 8);
       CuBit.UI.Draw_Table_Header
-        (c, (x => row.x, y => row.y, w => row.w, h => 22),
+        (c, (x => row.x, y => row.y, w => row.w,
+             h => CuBit.UI.Table_Header_Height),
          colors, "Authority", "State", "Source");
-      rowY := row.y + 22;
+      rowY := row.y + CuBit.UI.Table_Header_Height;
       for id in 1 .. Natural'Min (8, totalCaps) loop
          declare
             slot : Natural;

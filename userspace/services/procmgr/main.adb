@@ -442,8 +442,9 @@ procedure main is
       result     : out Unsigned_64)
    is
    begin
-      result := syscall (SYSCALL_MINT_CAP, childPID, capType, objectRef,
-                         objectParam, rights, slot);
+      result := syscall
+        (SYSCALL_POLICY_MINT_CAPABILITY, childPID, capType, objectRef,
+         objectParam, rights, slot);
       recordAuthority
         (pid         => childPID,
          slot        => slot,
@@ -703,7 +704,7 @@ procedure main is
    ---------------------------------------------------------------------------
    --  parseAndGrantManifest
    --  Parse the .cubit.caps section from the ELF in elfBuf and mint
-   --  capabilities into the child process via SYSCALL_MINT_CAP.
+   --  capabilities into the child process via SYSCALL_POLICY_MINT_CAPABILITY.
    ---------------------------------------------------------------------------
    procedure parseAndGrantManifest
      (childPID      : Unsigned_64;

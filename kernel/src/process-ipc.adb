@@ -381,40 +381,6 @@ is
     end dequeueRingServiceRequest;
 
     ---------------------------------------------------------------------------
-    -- takeBoundNotification
-    -- If the caller has a bound notification with pending bits, synthesize a
-    -- receive message and clear the notification word. Caller must hold the
-    -- receiver mailbox lock.
-    ---------------------------------------------------------------------------
-    procedure takeBoundNotification (pid     : in  ProcessID;
-                                     found   : out Boolean;
-                                     msg     : out Message)
-        with SPARK_Mode => On
-    is
-    begin
-        found := False;
-        msg   := NULL_MESSAGE;
-
-        if proctab(pid).boundNotification /= NO_PROCESS then
-            checkBound : declare
-                bn : constant ProcessID := proctab(pid).boundNotification;
-            begin
-                if mailtab(bn).notifyWord /= 0 then
-                    msg := (tag      => (label  => 0,
-                                         length => 1,
-                                         flags  => 0,
-                                         badge  => 0),
-                            capBadge => 0,
-                            words    => (0 => mailtab(bn).notifyWord,
-                                         others => 0));
-                    mailtab(bn).notifyWord := 0;
-                    found := True;
-                end if;
-            end checkBound;
-        end if;
-    end takeBoundNotification;
-
-    ---------------------------------------------------------------------------
     -- receive
     --
     -- Check if a sender is already waiting in our sendQueue. If so, accept
@@ -430,8 +396,6 @@ is
         ignore   : ProcessID;
         re       : RingEntry;
         ok       : Boolean;
-        notifyMsg : Message;
-        notifyFound : Boolean;
     begin
         -- Validate our own state
         if mypid = NO_PROCESS then
@@ -494,19 +458,6 @@ is
             return;
         end if;
 
-        -- Check bound notification before blocking (seL4-style).
-        takeBoundNotification (mypid, notifyFound, notifyMsg);
-        if notifyFound then
-            from := NO_PROCESS;
-            msg  := notifyMsg;
-
-            proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
-                Capabilities.NULL_CAPABILITY;
-
-            Spinlocks.exitCriticalSection (mailtab(receiver).lock);
-            return;
-        end if;
-
         -- No message and no sender waiting. Block as a receiver.
         proctab(mypid).queueKey := receiver;
         Queues.enqueue (mailtab(receiver).recvQueue, mypid, ignore);
@@ -537,14 +488,8 @@ is
                 from := re.sender;
                 msg  := re.msg;
             else
-                takeBoundNotification (mypid, notifyFound, notifyMsg);
-                if notifyFound then
-                    from := NO_PROCESS;
-                    msg  := notifyMsg;
-                else
-                    from := NO_PROCESS;
-                    msg  := NULL_MESSAGE;
-                end if;
+                from := NO_PROCESS;
+                msg  := NULL_MESSAGE;
             end if;
         end if;
 
@@ -581,9 +526,6 @@ is
             Spinlocks.enterCriticalSection (mailtab(receiver).lock);
 
             dequeueRingKind (receiver, RING_EVENT, re, ok);
-            if not ok then
-                dequeueRingKind (receiver, RING_NOTIFY, re, ok);
-            end if;
 
             if ok then
                 Spinlocks.exitCriticalSection (mailtab(receiver).lock);
@@ -619,9 +561,6 @@ is
         Spinlocks.enterCriticalSection (mailtab(receiver).lock);
 
         dequeueRingKind (receiver, RING_EVENT, re, found);
-        if not found then
-            dequeueRingKind (receiver, RING_NOTIFY, re, found);
-        end if;
         if found then
             msg := re.msg;
         end if;
@@ -629,10 +568,6 @@ is
         Spinlocks.exitCriticalSection (mailtab(receiver).lock);
     end receiveEventNB;
 
-    ---------------------------------------------------------------------------
-    -- receiveNB
-    -- Non-blocking receive. Checks for a pending message or queued sender.
-    ---------------------------------------------------------------------------
     ---------------------------------------------------------------------------
     -- replyWait
     -- Fused reply+receive: reply to previous sender, then check for next
@@ -654,8 +589,6 @@ is
         rtState  : ProcessState;
         re       : RingEntry;
         ok       : Boolean;
-        notifyMsg : Message;
-        notifyFound : Boolean;
         directReply : Boolean := False;
     begin
         -----------------------------------------------------------------------
@@ -763,24 +696,6 @@ is
         end if;
 
         -- No message available — block as receiver
-        takeBoundNotification (mypid, notifyFound, notifyMsg);
-        if notifyFound then
-            if directReply then
-                notify (replyTo);
-                directReply := False;
-            end if;
-
-            from := NO_PROCESS;
-            msg  := notifyMsg;
-
-            proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
-                Capabilities.NULL_CAPABILITY;
-
-            Spinlocks.exitCriticalSection (mailtab(receiver).lock);
-            return;
-        end if;
-
-        -- No message available — block as receiver
         proctab(mypid).queueKey := receiver;
         Queues.enqueue (mailtab(receiver).recvQueue, mypid, ign);
         proctab(mypid).state := RECEIVING;
@@ -816,14 +731,8 @@ is
                 from := re.sender;
                 msg  := re.msg;
             else
-                takeBoundNotification (mypid, notifyFound, notifyMsg);
-                if notifyFound then
-                    from := NO_PROCESS;
-                    msg  := notifyMsg;
-                else
-                    from := NO_PROCESS;
-                    msg  := NULL_MESSAGE;
-                end if;
+                from := NO_PROCESS;
+                msg  := NULL_MESSAGE;
             end if;
         end if;
 
@@ -881,8 +790,8 @@ is
                  gen      => proctab(from).capGeneration);
         else
             -- Service-request polling is intentionally typed. The mailbox ring
-            -- may contain events and notifications, but this receive path must
-            -- leave them queued for receiveEventNB/notification APIs.
+            -- may contain events, but this receive path must leave them queued
+            -- for receiveEventNB.
             dequeueRingServiceRequest (receiver, re, found);
             if found then
                 from := re.sender;
@@ -915,9 +824,9 @@ is
 
     ---------------------------------------------------------------------------
     -- receiveAnyIpcNB
-    -- Non-blocking mixed receive. This is the historical receiveNB behavior:
-    -- it may consume service requests, one-way messages, events, and bound
-    -- notifications. Use only for intentionally mixed dispatch loops.
+    -- Non-blocking mixed receive across all mailbox traffic classes:
+    -- it may consume service requests, one-way messages, and events. Use only
+    -- for intentionally mixed dispatch loops.
     ---------------------------------------------------------------------------
     procedure receiveAnyIpcNB (from  : out ProcessID;
                                msg   : out Message;
@@ -928,8 +837,6 @@ is
         receiver : constant ProcessID := getReceiver (mypid);
         sender   : ProcessID;
         re       : RingEntry;
-        notifyMsg : Message;
-        notifyFound : Boolean;
     begin
         Spinlocks.enterCriticalSection (mailtab(receiver).lock);
 
@@ -956,7 +863,7 @@ is
                  gen      => proctab(from).capGeneration);
         else
             -- Explicitly broad: this removes the next ring entry regardless of
-            -- whether it is a request, event, or notification.
+            -- whether it is a request or event.
             dequeueRing (receiver, re, found);
             if found then
                 from := re.sender;
@@ -977,31 +884,13 @@ is
                         Capabilities.NULL_CAPABILITY;
                 end if;
             else
-                takeBoundNotification (mypid, notifyFound, notifyMsg);
-                if notifyFound then
-                    from  := NO_PROCESS;
-                    msg   := notifyMsg;
-                    found := True;
-                    proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
-                        Capabilities.NULL_CAPABILITY;
-                else
-                    from  := NO_PROCESS;
-                    msg   := NULL_MESSAGE;
-                end if;
+                from  := NO_PROCESS;
+                msg   := NULL_MESSAGE;
             end if;
         end if;
 
         Spinlocks.exitCriticalSection (mailtab(receiver).lock);
     end receiveAnyIpcNB;
-
-    procedure receiveNB (from  : out ProcessID;
-                         msg   : out Message;
-                         found : out Boolean) with
-        SPARK_Mode => On
-    is
-    begin
-        receiveAnyIpcNB (from, msg, found);
-    end receiveNB;
 
     ---------------------------------------------------------------------------
     -- send
@@ -1014,8 +903,8 @@ is
     --
     -- Path 2 (no receiver waiting):
     --   Deposit message, enqueue in sendQueue, set SENDING, yield once.
-    --   The receiver's receive()/receiveNB() will dequeue us and set our
-    --   state to WAITINGFORREPLY. Then reply() calls notify() which adds
+    --   The receiver's receive()/receiveAnyIpcNB() will dequeue us and set
+    --   our state to WAITINGFORREPLY. Then reply() calls notify() which adds
     --   us to the ready list. We resume with reply already delivered.
     ---------------------------------------------------------------------------
     function send (dest : ProcessID; msg : Message) return MessageTag
@@ -1964,221 +1853,5 @@ is
                        msg   => stamped,
                        token => token);
     end capSubmit;
-
-    ---------------------------------------------------------------------------
-    -- Notification Operations
-    ---------------------------------------------------------------------------
-
-    ---------------------------------------------------------------------------
-    -- capNotify
-    ---------------------------------------------------------------------------
-    function capNotify (capSlot : Capabilities.CapabilitySlot) return Boolean
-        with SPARK_Mode => On
-    is
-        pid     : constant ProcessID := PerCPUData.getCurrentPID;
-        cap     : Capabilities.Capability;
-        opStatus : Capabilities.Operations.OperationStatus;
-        destPID : Unsigned_64;
-    begin
-        Capabilities.Operations.lookupCap (
-            table  => proctab(pid).caps,
-            slot   => capSlot,
-            cap    => cap,
-            status => opStatus);
-
-        if opStatus /= Capabilities.Operations.OP_OK then
-            return False;
-        end if;
-
-        if cap.capType /= Capabilities.CAP_NOTIFICATION then
-            return False;
-        end if;
-
-        if not cap.rights(Capabilities.RIGHT_WRITE) then
-            return False;
-        end if;
-
-        destPID := cap.object.ref;
-
-        if destPID = 0 or else destPID > Unsigned_64(ProcessID'Last) then
-            return False;
-        end if;
-
-        -- Generation check
-        if cap.gen /= proctab(ProcessID(destPID)).capGeneration then
-            return False;
-        end if;
-
-        deliverBound : declare
-            notifPID : constant ProcessID := ProcessID(destPID);
-            recvPID  : ProcessID := NO_PROCESS;
-            recv     : ProcessID := NO_PROCESS;
-            shouldWakeReceive : Boolean := False;
-        begin
-            Spinlocks.enterCriticalSection (mailtab(notifPID).lock);
-
-            -- OR badge into notification word
-            mailtab(notifPID).notifyWord :=
-                mailtab(notifPID).notifyWord or cap.capBadge;
-
-            -- Wake if blocked in notifyWait
-            if mailtab(notifPID).notifyWaiter then
-                mailtab(notifPID).notifyWaiter := False;
-                notify (notifPID);
-            elsif mailtab(notifPID).boundReceiver /= NO_PROCESS then
-                recvPID := mailtab(notifPID).boundReceiver;
-                recv    := getReceiver (recvPID);
-                if proctab(recvPID).state = RECEIVING then
-                    shouldWakeReceive := True;
-                end if;
-            end if;
-
-            Spinlocks.exitCriticalSection (mailtab(notifPID).lock);
-
-            if shouldWakeReceive then
-                wakeRecv : declare
-                    ignore : ProcessID;
-                begin
-                    Spinlocks.enterCriticalSection (mailtab(recv).lock);
-                    if proctab(recvPID).state = RECEIVING then
-                        Queues.popItem (
-                            mailtab(recv).recvQueue, recvPID, ignore);
-                        notify (recvPID);
-                    end if;
-                    Spinlocks.exitCriticalSection (mailtab(recv).lock);
-                end wakeRecv;
-            end if;
-        end deliverBound;
-
-        return True;
-    end capNotify;
-
-    ---------------------------------------------------------------------------
-    -- notifyWait
-    ---------------------------------------------------------------------------
-    function notifyWait return Unsigned_64
-        with SPARK_Mode => On
-    is
-        mypid    : constant ProcessID := PerCPUData.getCurrentPID;
-        receiver : constant ProcessID := getReceiver (mypid);
-        result   : Unsigned_64;
-    begin
-        loop
-            Spinlocks.enterCriticalSection (mailtab(receiver).lock);
-
-            if mailtab(receiver).notifyWord /= 0 then
-                result := mailtab(receiver).notifyWord;
-                mailtab(receiver).notifyWord := 0;
-                mailtab(receiver).notifyWaiter := False;
-                Spinlocks.exitCriticalSection (mailtab(receiver).lock);
-                return result;
-            end if;
-
-            -- Block until notified
-            mailtab(receiver).notifyWaiter := True;
-            proctab(mypid).state := WAITINGFORNOTIFY;
-            Spinlocks.exitCriticalSection (mailtab(receiver).lock);
-
-            yield;
-        end loop;
-    end notifyWait;
-
-    ---------------------------------------------------------------------------
-    -- notifyPoll
-    ---------------------------------------------------------------------------
-    function notifyPoll return Unsigned_64
-        with SPARK_Mode => On
-    is
-        mypid    : constant ProcessID := PerCPUData.getCurrentPID;
-        receiver : constant ProcessID := getReceiver (mypid);
-        result   : Unsigned_64;
-    begin
-        Spinlocks.enterCriticalSection (mailtab(receiver).lock);
-
-        result := mailtab(receiver).notifyWord;
-        mailtab(receiver).notifyWord := 0;
-
-        Spinlocks.exitCriticalSection (mailtab(receiver).lock);
-
-        return result;
-    end notifyPoll;
-
-    ---------------------------------------------------------------------------
-    -- bindNotification
-    ---------------------------------------------------------------------------
-    function bindNotification
-        (capSlot : Capabilities.CapabilitySlot) return Boolean
-        with SPARK_Mode => On
-    is
-        mypid : constant ProcessID := PerCPUData.getCurrentPID;
-        cap   : Capabilities.Capability;
-        opStatus : Capabilities.Operations.OperationStatus;
-        notifPIDRaw : Unsigned_64;
-        notifPID : ProcessID;
-    begin
-        if mypid = NO_PROCESS then
-            return False;
-        end if;
-
-        Capabilities.Operations.lookupCap (
-            table  => proctab(mypid).caps,
-            slot   => capSlot,
-            cap    => cap,
-            status => opStatus);
-
-        if opStatus /= Capabilities.Operations.OP_OK then
-            return False;
-        end if;
-
-        if cap.capType /= Capabilities.CAP_NOTIFICATION then
-            return False;
-        end if;
-
-        if not cap.rights(Capabilities.RIGHT_READ) then
-            return False;
-        end if;
-
-        notifPIDRaw := cap.object.ref;
-        if notifPIDRaw = 0 or else
-           notifPIDRaw > Unsigned_64(ProcessID'Last)
-        then
-            return False;
-        end if;
-
-        notifPID := ProcessID(notifPIDRaw);
-
-        if cap.gen /= proctab(notifPID).capGeneration then
-            return False;
-        end if;
-
-        proctab(mypid).boundNotification := notifPID;
-        Spinlocks.enterCriticalSection (mailtab(notifPID).lock);
-        mailtab(notifPID).boundReceiver  := mypid;
-        Spinlocks.exitCriticalSection (mailtab(notifPID).lock);
-        return True;
-    end bindNotification;
-
-    ---------------------------------------------------------------------------
-    -- unbindNotification
-    ---------------------------------------------------------------------------
-    procedure unbindNotification
-        with SPARK_Mode => On
-    is
-        mypid : constant ProcessID := PerCPUData.getCurrentPID;
-        old   : ProcessID;
-    begin
-        if mypid = NO_PROCESS then
-            return;
-        end if;
-
-        old := proctab(mypid).boundNotification;
-        proctab(mypid).boundNotification := NO_PROCESS;
-
-        if old /= NO_PROCESS then
-            Spinlocks.enterCriticalSection (mailtab(old).lock);
-            mailtab(old).boundReceiver := NO_PROCESS;
-            Spinlocks.exitCriticalSection (mailtab(old).lock);
-        end if;
-    end unbindNotification;
 
 end Process.IPC;

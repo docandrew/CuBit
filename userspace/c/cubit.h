@@ -88,22 +88,20 @@ typedef long                ssize_t;
 #define SYSCALL_VIRT_TO_PHYS    50
 
 /* Move reply cap from slot 63 to another slot (deferred replies) */
-#define SYSCALL_SAVE_REPLY_CAP  51
-#define SYSCALL_REPLY_CAP       52
+#define SYSCALL_MOVE_REPLY_CAPABILITY  51
+#define SYSCALL_REPLY_AND_CONSUME_REPLY_CAPABILITY 52
 
 /* Capability-aware IPC */
-#define SYSCALL_CAP_SEND        40
-#define SYSCALL_CAP_CALL        41
-#define SYSCALL_CAP_SUBMIT      42
+#define SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY   40
+#define SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY   41
+#define SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY 42
 
-/* Notification IPC */
-#define SYSCALL_NOTIFY          43
 #define SYSCALL_REPLY_WAIT      48
 
-/* Grants */
-#define SYSCALL_GRANT           102
-#define SYSCALL_REVOKE          103
-#define SYSCALL_GRANT_VIA_CAP   106
+/* Shared-memory grants */
+#define SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID      102
+#define SYSCALL_REVOKE_SHARED_MEMORY_GRANT                     103
+#define SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY      106
 #define SYSCALL_SET_WELL_KNOWN  107
 
 /* Scheduler latency contracts */
@@ -175,7 +173,7 @@ int cubit_cap_submit(uint64_t cap_slot, const cubit_async_message_t *message,
 int cubit_poll_completion(cubit_completion_t *completion);
 
 /* Capability minting (for process managers) */
-#define SYSCALL_MINT_CAP        72
+#define SYSCALL_POLICY_MINT_CAPABILITY        72
 #define SYSCALL_RESUME          73
 
 /* Driver registration */

@@ -148,6 +148,20 @@ is
                   Fail (Malformed_Typed_Tree, Index, Item.Source_Position);
                end if;
 
+            when CCL.Language.Multiply_Form | CCL.Language.Divide_Form |
+                 CCL.Language.Modulo_Form =>
+               Emit_Node (Item.First, Depth + 1, In_Conditional_Branch);
+               Emit_Node (Item.Second, Depth + 1, In_Conditional_Branch);
+               if Item.Static_Kind /= CCL.Language.Integer_Type then
+                  Fail (Malformed_Typed_Tree, Index, Item.Source_Position);
+               elsif Item.Kind = CCL.Language.Multiply_Form then
+                  Emit (CCL.VM.Multiply_Integer);
+               elsif Item.Kind = CCL.Language.Divide_Form then
+                  Emit (CCL.VM.Divide_Integer);
+               else
+                  Emit (CCL.VM.Modulo_Integer);
+               end if;
+
             when CCL.Language.Not_Form =>
                Emit_Node (Item.First, Depth + 1, In_Conditional_Branch);
                if Item.Static_Kind = CCL.Language.Boolean_Type then
@@ -213,13 +227,19 @@ is
                     (case Initializer.Static_Kind is
                         when CCL.Language.Integer_Type => CCL.VM.Integer_Value,
                         when CCL.Language.Boolean_Type => CCL.VM.Boolean_Value,
-                        when CCL.Language.Invalid_Type => CCL.VM.Integer_Value);
-                  if Initializer.Static_Kind = CCL.Language.Invalid_Type then
+                        when others => CCL.VM.Integer_Value);
+                  if Initializer.Static_Kind in
+                    CCL.Language.String_Type | CCL.Language.Character_Type
+                  then
+                     Fail (Unsupported_Form, Index, Item.Source_Position);
+                  elsif Initializer.Static_Kind = CCL.Language.Invalid_Type then
                      Fail (Malformed_Typed_Tree, Index, Item.Source_Position);
                   else
                      Next_Local := Next_Local + 1;
                      Program.Locals_Length := Next_Local;
                      Program.Dynamic_Locals_Length := Next_Local;
+                     CCL.Debug_Maps.Set_Local_Name
+                       (Debug, Local, Item.Identifier);
                      Emit_Node
                        (Item.First, Depth + 1, In_Conditional_Branch);
                      Environment_Length := Entry_Environment_Length;
@@ -294,6 +314,16 @@ is
                         Import => Import_Position);
                   end if;
                end if;
+
+            when CCL.Language.String_Literal |
+                 CCL.Language.String_Length_Form |
+                 CCL.Language.String_Index_Form |
+                 CCL.Language.String_Concat_Form |
+                 CCL.Language.To_String_Form =>
+               --  The source semantics are implemented and exercised by the
+               --  direct interpreter.  CCLB v3 has no string constant pool or
+               --  variable-sized value kind, so lowering fails explicitly.
+               Fail (Unsupported_Form, Index, Item.Source_Position);
 
             when CCL.Language.Invalid_Node =>
                Fail (Malformed_Typed_Tree, Index, Item.Source_Position);

@@ -149,6 +149,11 @@ procedure main is
       Convention => C,
       External_Name => "memcpy";
 
+   type App_Kind is (APP_CLIENT, APP_CONSOLE, APP_SECURITY, APP_DOOM);
+   for App_Kind use
+     (APP_CLIENT => 0, APP_CONSOLE => 2, APP_SECURITY => 3, APP_DOOM => 4);
+   for App_Kind'Size use 8;
+
    type Surface is record
       used      : Boolean := False;
       owner     : ProcessID := NO_PROCESS;
@@ -161,7 +166,7 @@ procedure main is
       serial    : Unsigned_64 := 0;
       dirty     : Boolean := True;
       minimized : Boolean := False;
-      appKind   : Natural := 0;
+      appKind   : App_Kind := APP_CLIENT;
       maximized : Boolean := False;
       restoreX  : Natural := 0;
       restoreY  : Natural := 0;
@@ -203,7 +208,6 @@ procedure main is
    nextSurfaceId : Unsigned_64 := 1;
    focusSurface  : Unsigned_64 := 0;
    internalShellSurface : Unsigned_64 := 0;
-   internalDemoWindow   : Unsigned_64 := 0;
    nextInputSerial : Unsigned_64 := 1;
    inputOwned : Boolean := False;
 
@@ -342,30 +346,25 @@ procedure main is
       16#39# => Character'Pos (' '),
       others => 0);
 
-   APP_CLIENT   : constant Natural := 0;
-   APP_DEMO     : constant Natural := 1;
-   APP_CONSOLE  : constant Natural := 2;
-   APP_SECURITY : constant Natural := 3;
-   APP_DOOM     : constant Natural := 4;
+   type Launch_Action is
+     (LAUNCH_NONE, LAUNCH_CONSOLE, LAUNCH_WORKBENCH, LAUNCH_UI_LAB,
+      LAUNCH_DOOM, LAUNCH_SECURITY, LAUNCH_BROWSER, LAUNCH_FILES,
+      LAUNCH_POWER);
+   for Launch_Action use
+     (LAUNCH_NONE => 0, LAUNCH_CONSOLE => 1, LAUNCH_WORKBENCH => 2,
+      LAUNCH_UI_LAB => 3, LAUNCH_DOOM => 4, LAUNCH_SECURITY => 5,
+      LAUNCH_BROWSER => 6, LAUNCH_FILES => 7, LAUNCH_POWER => 8);
+   for Launch_Action'Size use 8;
 
-   LAUNCH_NONE     : constant Natural := 0;
-   LAUNCH_CONSOLE : constant Natural := 1;
-   LAUNCH_UI_LAB   : constant Natural := 2;
-   LAUNCH_DOOM     : constant Natural := 3;
-   LAUNCH_SECURITY : constant Natural := 4;
-   LAUNCH_BROWSER  : constant Natural := 5;
-   LAUNCH_FILES    : constant Natural := 6;
-   LAUNCH_POWER    : constant Natural := 7;
-
-   DRAG_NONE        : constant Natural := 0;
-   DRAG_MOVE        : constant Natural := 1;
-   DRAG_RESIZE_E    : constant Natural := 2;
-   DRAG_RESIZE_S    : constant Natural := 3;
-   DRAG_RESIZE_SE   : constant Natural := 4;
-   HIT_MINIMIZE     : constant Natural := 5;
-   HIT_CLOSE        : constant Natural := 6;
-   HIT_MAXIMIZE     : constant Natural := 7;
-   dragMode         : Natural := DRAG_NONE;
+   type Pointer_Action is
+     (DRAG_NONE, DRAG_MOVE, DRAG_RESIZE_E, DRAG_RESIZE_S, DRAG_RESIZE_SE,
+      HIT_MINIMIZE, HIT_CLOSE, HIT_MAXIMIZE);
+   for Pointer_Action use
+     (DRAG_NONE => 0, DRAG_MOVE => 1, DRAG_RESIZE_E => 2,
+      DRAG_RESIZE_S => 3, DRAG_RESIZE_SE => 4, HIT_MINIMIZE => 5,
+      HIT_CLOSE => 6, HIT_MAXIMIZE => 7);
+   for Pointer_Action'Size use 8;
+   dragMode         : Pointer_Action := DRAG_NONE;
    dragSurfaceId    : Unsigned_64 := 0;
    dragOffsetX      : Natural := 0;
    dragOffsetY      : Natural := 0;
@@ -381,7 +380,7 @@ procedure main is
    LAUNCH_W     : constant Natural := 88;
    LAUNCH_H     : constant Natural := 24;
    MENU_W       : constant Natural := 250;
-   MENU_H       : constant Natural := 286;
+   MENU_H       : constant Natural := 320;
    TASK_BUTTON_W : constant Natural := 156;
    TASK_BUTTON_H : constant Natural := 24;
    TASK_BUTTON_GAP : constant Natural := 6;
@@ -700,7 +699,7 @@ procedure main is
       return clampRect ((x => 6, y => y, w => MENU_W, h => MENU_H));
    end launchMenuRect;
 
-   function launchItemRect (action : Natural) return Rect is
+   function launchItemRect (action : Launch_Action) return Rect is
       menu : constant Rect := launchMenuRect;
       y    : Natural := menu.y + 34;
    begin
@@ -711,18 +710,20 @@ procedure main is
       case action is
          when LAUNCH_CONSOLE =>
             y := menu.y + 42;
-         when LAUNCH_UI_LAB =>
+         when LAUNCH_WORKBENCH =>
             y := menu.y + 76;
-         when LAUNCH_DOOM =>
+         when LAUNCH_UI_LAB =>
             y := menu.y + 110;
-         when LAUNCH_SECURITY =>
+         when LAUNCH_DOOM =>
             y := menu.y + 144;
-         when LAUNCH_BROWSER =>
+         when LAUNCH_SECURITY =>
             y := menu.y + 178;
-         when LAUNCH_FILES =>
+         when LAUNCH_BROWSER =>
             y := menu.y + 212;
+         when LAUNCH_FILES =>
+            y := menu.y + 246;
          when LAUNCH_POWER =>
-            y := menu.y + 252;
+            y := menu.y + 286;
          when others =>
             return (others => 0);
       end case;
@@ -738,7 +739,7 @@ procedure main is
       if isEmpty (menu) or else menu.w <= 24 then
          return (others => 0);
       end if;
-      y := menu.y + 244;
+      y := menu.y + 278;
       return clampRect ((x => menu.x + 12, y => y,
                          w => menu.w - 24, h => 1));
    end launchSeparatorRect;
@@ -782,10 +783,12 @@ procedure main is
          x < r.x + r.w and then y < r.y + r.h;
    end pointInRect;
 
-   function hitLaunchItem (x, y : Natural) return Natural is
+   function hitLaunchItem (x, y : Natural) return Launch_Action is
    begin
       if pointInRect (x, y, launchItemRect (LAUNCH_CONSOLE)) then
          return LAUNCH_CONSOLE;
+      elsif pointInRect (x, y, launchItemRect (LAUNCH_WORKBENCH)) then
+         return LAUNCH_WORKBENCH;
       elsif pointInRect (x, y, launchItemRect (LAUNCH_UI_LAB)) then
          return LAUNCH_UI_LAB;
       elsif pointInRect (x, y, launchItemRect (LAUNCH_DOOM)) then
@@ -1093,7 +1096,7 @@ procedure main is
       return -1;
    end hitSurface;
 
-   function hitMode (s : Surface; x, y : Natural) return Natural is
+   function hitMode (s : Surface; x, y : Natural) return Pointer_Action is
       onRight  : constant Boolean :=
          x + BORDER_SIZE >= s.x + s.w;
       onBottom : constant Boolean :=
@@ -1506,8 +1509,6 @@ procedure main is
             drawUIText (x, y, "Security Center", fg, bg);
          when APP_DOOM =>
             drawUIText (x, y, "DOOM", fg, bg);
-         when APP_DEMO =>
-            drawUIText (x, y, "Demo Window", fg, bg);
          when others =>
             drawUIText (x, y, "Application", fg, bg);
       end case;
@@ -1838,34 +1839,6 @@ procedure main is
       return False;
    end tryFastClientRedraw;
 
-   procedure drawSplash is
-      panelW : constant Natural := 560;
-      panelH : constant Natural := 170;
-      x      : Natural := 40;
-      y      : Natural := 40;
-   begin
-      if fbWidth > panelW then
-         x := (fbWidth - panelW) / 2;
-      end if;
-      if fbHeight > panelH then
-         y := (fbHeight - panelH) / 2;
-      end if;
-
-      fillRect (0, 0, fbWidth, fbHeight, C_BG);
-      fillRect (x, y, panelW, panelH, C_PANEL);
-      fillRect (x, y, panelW, 4, C_ACCENT);
-      drawUIText (x + 24, y + 28, "CuBit desktop.svc", C_TEXT, C_PANEL);
-      drawUIText (x + 24, y + 58,
-                  "display/input/session authority boundary",
-                  C_MUTED, C_PANEL);
-      drawUIText (x + 24, y + 94,
-                  "registered as DRIVER_DESKTOP / @desktop",
-                  C_GOOD, C_PANEL);
-      drawUIText (x + 24, y + 126,
-                  "Q or Esc exits this prototype owner",
-                  C_TEXT, C_PANEL);
-   end drawSplash;
-
    procedure drawWindow (s : Surface) is
       titleH : constant Natural := 24;
       minW   : constant Natural := 80;
@@ -2038,7 +2011,7 @@ procedure main is
       r : constant Rect := launchMenuRect;
 
       procedure drawLaunchItem
-         (action : Natural;
+         (action : Launch_Action;
           icon   : Desktop_Icons.Icon_ID;
           label  : String;
           fg     : Unsigned_32)
@@ -2060,18 +2033,26 @@ procedure main is
 
       drawIcon (Desktop_Icons.Start, r.x + 12, r.y + 10, C_PANEL);
       drawUIText (r.x + 44, r.y + 14, "CuBit", C_TEXT, C_PANEL);
-      drawLaunchItem (1, Desktop_Icons.Console, "CuBASIC", C_TEXT);
-      drawLaunchItem (2, Desktop_Icons.UILab, "UI Lab", C_TEXT);
-      drawLaunchItem (3, Desktop_Icons.Doom, "DOOM", C_TEXT);
-      drawLaunchItem (4, Desktop_Icons.Security, "Security Center", C_TEXT);
-      drawLaunchItem (5, Desktop_Icons.Files, "NetSurf", C_TEXT);
-      drawLaunchItem (6, Desktop_Icons.Files, "Files", C_MUTED);
+      drawLaunchItem
+        (LAUNCH_CONSOLE, Desktop_Icons.Console, "CuBASIC", C_TEXT);
+      drawLaunchItem
+        (LAUNCH_WORKBENCH, Desktop_Icons.UILab, "CCL Workbench", C_TEXT);
+      drawLaunchItem
+        (LAUNCH_UI_LAB, Desktop_Icons.UILab, "UI Lab", C_TEXT);
+      drawLaunchItem (LAUNCH_DOOM, Desktop_Icons.Doom, "DOOM", C_TEXT);
+      drawLaunchItem
+        (LAUNCH_SECURITY, Desktop_Icons.Security, "Security Center", C_TEXT);
+      drawLaunchItem
+        (LAUNCH_BROWSER, Desktop_Icons.Files, "NetSurf", C_TEXT);
+      drawLaunchItem
+        (LAUNCH_FILES, Desktop_Icons.Files, "Files", C_MUTED);
       declare
          sep : constant Rect := launchSeparatorRect;
       begin
          fillRect (sep.x, sep.y, sep.w, sep.h, C_EDGE);
       end;
-      drawLaunchItem (7, Desktop_Icons.Power, "Power", C_MUTED);
+      drawLaunchItem
+        (LAUNCH_POWER, Desktop_Icons.Power, "Power", C_MUTED);
    end drawLaunchMenu;
 
    procedure drawDesktopShell is
@@ -2087,10 +2068,6 @@ procedure main is
          (if launch.h > Desktop_UI_Font.LINE_HEIGHT
           then (launch.h - Desktop_UI_Font.LINE_HEIGHT) / 2
           else 0);
-      panelW   : constant Natural := 310;
-      panelH   : constant Natural := 150;
-      px       : Natural := 24;
-      py       : Natural := 24;
    begin
       if fbWidth = 0 or else fbHeight = 0 then
          return;
@@ -2114,25 +2091,6 @@ procedure main is
       drawIcon (Desktop_Icons.Start, launch.x + 5, launchIconY, C_BAR);
       drawUIText (launch.x + 34, launchTextY, "Launch", C_TEXT, C_BAR);
       drawTaskButtons;
-
-      if fbWidth > panelW + 48 and then fbHeight > panelH + TASKBAR_H + 48 then
-         px := (fbWidth - panelW) / 2;
-         py := (fbHeight - TASKBAR_H - panelH) / 2;
-      end if;
-
-      fillRect (px, py, panelW, panelH, C_BAR);
-      strokeRect (px, py, panelW, panelH, C_EDGE, C_SHADOW);
-      fillRect (px + 3, py + 3, panelW - 6, 22, C_BLUE);
-      drawUIText (px + 10, py + 6, "CuBit Desktop", C_WHITE, C_BLUE);
-      drawUIText (px + 18, py + 44, "desktop.svc owns the session",
-                  C_TEXT, C_BAR);
-      drawUIText (px + 18, py + 70, "Launch opens desktop windows",
-                  C_TEXT, C_BAR);
-      drawUIText (px + 18, py + 96, "Q or Esc exits desktop shell",
-                  C_TEXT, C_BAR);
-
-      drawUIText (16, 18, "System", C_WHITE, C_DESK);
-      drawUIText (16, 44, "Authority", C_WHITE, C_DESK);
 
       for i in surfaces'Range loop
          if surfaces (i).used and then
@@ -2160,7 +2118,7 @@ procedure main is
       if shellVisible then
          drawDesktopShell;
       else
-         drawSplash;
+         fillRect (0, 0, fbWidth, fbHeight, C_DESK);
       end if;
       drawDragOutline;
    end drawCurrentScene;
@@ -2542,13 +2500,10 @@ procedure main is
       button    : constant Rect := taskButtonRect (idx);
       ignore    : Unsigned_64;
    begin
-      --  Internal demo windows can disappear immediately. For client-owned
-      --  windows this is a temporary hard close. The protocol should later
+      --  Internal windows can disappear immediately. For client-owned windows
+      --  this is a temporary hard close. The protocol should later
       --  grow a close-request event so clients can save state or refuse, but
       --  removing only the surface leaves clients polling a dead object.
-      if oldId = internalDemoWindow then
-         internalDemoWindow := 0;
-      end if;
       if pointerSurfaceId = oldId then
          pointerSurfaceId := 0;
       end if;
@@ -2626,10 +2581,10 @@ procedure main is
       (flags : Unsigned_64;
        x, y  : Natural;
        w, h  : Natural;
-       appKind : Natural;
+       appKind : App_Kind;
        id    : out Unsigned_64);
 
-   procedure openInternalApp (appKind : Natural; damage : in out Rect) is
+   procedure openInternalApp (appKind : App_Kind; damage : in out Rect) is
       existing : Integer := -1;
       id       : Unsigned_64 := 0;
       winX     : Natural := 96;
@@ -2705,7 +2660,7 @@ procedure main is
       (flags : Unsigned_64;
        x, y  : Natural;
        w, h  : Natural;
-       appKind : Natural;
+       appKind : App_Kind;
        id    : out Unsigned_64)
    is
       slot : Integer := -1;
@@ -3987,7 +3942,7 @@ procedure main is
          when APP_CONSOLE =>
             handleConsoleKey (raw, damage);
             return True;
-         when APP_SECURITY | APP_DEMO =>
+         when APP_SECURITY =>
             return True;
          when others =>
             return False;
@@ -4081,7 +4036,7 @@ procedure main is
       sceneDamage : constant Boolean := leftDown or else leftWasDown;
       handledChromeClick : Boolean := False;
       taskIdx   : Integer;
-      launchAction : Natural;
+      launchAction : Launch_Action;
       clickedId : Unsigned_64;
       maxX      : Integer := 0;
       maxY      : Integer := 0;
@@ -4149,6 +4104,12 @@ procedure main is
             case launchAction is
                when LAUNCH_CONSOLE =>
                   openInternalApp (APP_CONSOLE, damage);
+               when LAUNCH_WORKBENCH =>
+                  declare
+                     ok : Boolean;
+                  begin
+                     trySpawnFromConsole ("ccl-workbench.app", ok);
+                  end;
                when LAUNCH_UI_LAB =>
                   declare
                      ok : Boolean;
@@ -4210,7 +4171,7 @@ procedure main is
               ("hit-down",
                clickedId,
                Unsigned_64 (idx),
-               Unsigned_64 (dragMode));
+               Unsigned_64 (Pointer_Action'Enum_Rep (dragMode)));
 
             if dragMode = HIT_CLOSE then
                --  Window buttons are evaluated against the surface that was
@@ -4554,10 +4515,6 @@ procedure main is
 
    procedure activateInternalSession (ok : out Boolean) is
       displayReady : Boolean := True;
-      demoX : Natural := 98;
-      demoY : Natural := 72;
-      demoW : Natural := 360;
-      demoH : Natural := 220;
    begin
       ok := False;
 
@@ -4572,20 +4529,6 @@ procedure main is
          createInternalSurface
            (SURFACE_FLAG_SHELL, 0, 0, fbWidth, fbHeight,
             APP_CLIENT, internalShellSurface);
-      end if;
-
-      if internalDemoWindow = 0 then
-         if demoX + demoW > fbWidth then
-            demoW := Natural'Max (MIN_WIN_W, fbWidth - demoX);
-         end if;
-         if demoY + demoH > fbHeight then
-            demoH := Natural'Max (MIN_WIN_H, fbHeight - demoY);
-         end if;
-
-         createInternalSurface
-           (SURFACE_FLAG_WINDOW, demoX, demoY, demoW, demoH,
-            APP_DEMO, internalDemoWindow);
-         focusSurface := internalDemoWindow;
       end if;
 
       if internalShellSurface = 0 then

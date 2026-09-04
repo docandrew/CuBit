@@ -92,6 +92,11 @@ clean:
 	-rm isodir/boot/cubit_kernel
 	-rm cubit_kernel
 	-rm cubit_kernel.iso
+	-rm cubit_laptop_live.iso
+	-rm laptop_sata_disk.img
+	-rm laptop_sata_run.img
+	-rm isodir/boot/laptop-live-initrd.img
+	-rm -rf laptop_live_staging laptop_live_isodir
 
 # Build DOOM and copy ELF into ISO directory
 .PHONY : doom
@@ -187,6 +192,16 @@ ccl-vm: user_runtime
 	$(ALR) gprbuild -P ../userspace/ccl/apps/ccl-vm/ccl_vm.gpr
 	cp ../userspace/ccl/apps/ccl-vm/build/ccl-vm.app isodir/boot/ccl-vm.app
 
+# Native CCL editor/compiler/debugger application.
+.PHONY : ccl-workbench
+ccl-workbench: user_runtime
+	mkdir -p ../userspace/ccl/apps/ccl-workbench/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/ccl/apps/ccl-workbench/manifest.c \
+		-o ../userspace/ccl/apps/ccl-workbench/build/manifest.o
+	$(ALR) gprbuild -P ../userspace/ccl/apps/ccl-workbench/ccl_workbench.gpr
+	cp ../userspace/ccl/apps/ccl-workbench/build/ccl-workbench.app isodir/boot/ccl-workbench.app
+
 # Test-only service used to exercise CCL's typed host-import IPC adapter.
 .PHONY : ccl-test-host
 ccl-test-host: user_runtime
@@ -199,13 +214,16 @@ ccl-test-host: user_runtime
 
 # Capability-addressed monotonic clock service.
 .PHONY : clock
-clock: user_runtime
+clock: user_runtime ../userspace/ccl/interfaces/clock.ccl-interface
 	mkdir -p ../userspace/services/clock/build
 	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
 		../userspace/services/clock/manifest.c \
 		-o ../userspace/services/clock/build/manifest.o
 	$(ALR) gprbuild -P ../userspace/services/clock/clock.gpr
-	cp ../userspace/services/clock/build/clock.svc isodir/boot/clock.svc
+	$(ALR) objcopy \
+		--add-section .cubit.interfaces=../userspace/ccl/interfaces/clock.ccl-interface \
+		--set-section-flags .cubit.interfaces=readonly,data \
+		../userspace/services/clock/build/clock.svc isodir/boot/clock.svc
 
 # Build userspace Ada runtime (needed by filesystem server)
 .PHONY : user_runtime
@@ -396,7 +414,7 @@ DOOM_WAD ?= ../doom1.wad
 DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/netsurf.app isodir/boot/sleep.app \
 	isodir/boot/capability-test.app \
 	isodir/boot/wget.app isodir/boot/security-center.app \
-	isodir/boot/ccl-vm.app \
+	isodir/boot/ccl-vm.app isodir/boot/ccl-workbench.app \
 	isodir/boot/ccl-test-host.svc \
 	isodir/boot/clock.svc \
 	isodir/boot/desktop-shell.app isodir/boot/ui-lab.app \
@@ -409,7 +427,7 @@ DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/netsurf.
 # staging target so run-desktop can build/copy them into isodir first, then
 # rebuild the ext2 disk image from those freshly staged files.
 .PHONY : desktop-session-content
-desktop-session-content: virtio-gpu desktop display desktop-shell ui-lab security-center doom netsurf
+desktop-session-content: virtio-gpu desktop display desktop-shell ui-lab security-center ccl-workbench clock doom netsurf
 
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.conf, shell.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
@@ -433,6 +451,7 @@ ata_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write isodir/boot/bench-ipc-server.app bench-ipc-server.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/bench-ipc-client.app bench-ipc-client.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/ccl-vm.app ccl-vm.app" ata_disk.img
+	debugfs -w -R "write isodir/boot/ccl-workbench.app ccl-workbench.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/ccl-test-host.svc ccl-test-host.svc" ata_disk.img
 	debugfs -w -R "write isodir/boot/clock.svc clock.svc" ata_disk.img
 	debugfs -w -R "write isodir/boot/logstore.svc logstore.svc" ata_disk.img
@@ -465,6 +484,7 @@ nvme_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write isodir/boot/bench-ipc-server.app bench-ipc-server.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/bench-ipc-client.app bench-ipc-client.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/ccl-vm.app ccl-vm.app" nvme_disk.img
+	debugfs -w -R "write isodir/boot/ccl-workbench.app ccl-workbench.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/ccl-test-host.svc ccl-test-host.svc" nvme_disk.img
 	debugfs -w -R "write isodir/boot/clock.svc clock.svc" nvme_disk.img
 	debugfs -w -R "write isodir/boot/display.svc display.svc" nvme_disk.img
@@ -526,13 +546,108 @@ initrd:
 	cd ramdisk_staging && ls | cpio -o -H newc > ../isodir/boot/initrd.img
 	rm -rf ramdisk_staging
 
+# Self-contained, read-only userspace image for real-hardware bring-up.  Keep
+# this separate from the normal two-stage image: the laptop must reach a
+# desktop and diagnostic UI before AHCI or any other block driver works.
+LAPTOP_LIVE_STAGE1 := filesystem ata nvme netstack virtio-net virtio-gpu hda \
+	mixer ps2 config netmgr procmgr devmgr
+LAPTOP_LIVE_STAGE2 := logstore clock display desktop ccl-workbench ui-lab \
+	security-center
+
+.PHONY : laptop-live-initrd
+laptop-live-initrd: $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2)
+	rm -rf laptop_live_staging
+	mkdir -p laptop_live_staging
+	cp isodir/boot/devmgr.svc laptop_live_staging/
+	cp isodir/boot/filesystem.svc laptop_live_staging/
+	cp isodir/boot/ata.drv laptop_live_staging/
+	cp isodir/boot/nvme.drv laptop_live_staging/
+	cp isodir/boot/netstack.svc laptop_live_staging/
+	cp isodir/boot/virtio-net.drv laptop_live_staging/
+	cp isodir/boot/virtio-gpu.drv laptop_live_staging/
+	cp isodir/boot/hda.drv laptop_live_staging/
+	cp isodir/boot/mixer.svc laptop_live_staging/
+	cp isodir/boot/ps2.drv laptop_live_staging/
+	cp isodir/boot/config.svc laptop_live_staging/
+	cp isodir/boot/netmgr.svc laptop_live_staging/
+	cp isodir/boot/procmgr.svc laptop_live_staging/
+	cp isodir/boot/logstore.svc laptop_live_staging/
+	cp isodir/boot/clock.svc laptop_live_staging/
+	cp isodir/boot/display.svc laptop_live_staging/
+	cp isodir/boot/desktop.svc laptop_live_staging/
+	cp isodir/boot/ccl-workbench.app laptop_live_staging/
+	cp isodir/boot/ui-lab.app laptop_live_staging/
+	cp isodir/boot/security-center.app laptop_live_staging/
+	cp ../tests/hardware/init-laptop-live.conf laptop_live_staging/init.conf
+	cp ../tests/hardware/system-live.conf laptop_live_staging/system.conf
+	cd laptop_live_staging && ls | cpio -o -H newc > ../isodir/boot/laptop-live-initrd.img
+	rm -rf laptop_live_staging
+
+# A blank SATA disk is attached to QEMU through Q35's ICH9 AHCI controller.
+# Runtime boots must use a copy so driver development cannot damage the base.
+laptop_sata_disk.img:
+	dd if=/dev/zero of=laptop_sata_disk.img bs=1M count=64
+	mke2fs -t ext2 -F laptop_sata_disk.img
+
+.PHONY : laptop-live-iso
+laptop-live-iso: cubit_kernel laptop-live-initrd
+	rm -rf laptop_live_isodir
+	cp -a isodir laptop_live_isodir
+	cp cubit_kernel laptop_live_isodir/boot/cubit_kernel
+	sed -i 's/^set default=.*/set default=7/' laptop_live_isodir/boot/grub/grub.cfg
+	grub-mkrescue -o cubit_laptop_live.iso laptop_live_isodir
+	rm -rf laptop_live_isodir
+
+# Q35 is not a cycle-accurate Sunrise Point model, but AHCI, xHCI, HDA, PCIe
+# bridges, and USB HID exercise the standardized interfaces needed by the
+# target laptop.  -nodefaults ensures input arrives only through xHCI rather
+# than silently falling back to QEMU's PS/2 devices.
+LAPTOP_RAM ?= 8G
+LAPTOP_CPU ?= Skylake-Client-v4
+LAPTOP_CPUS ?= 4
+.PHONY : run-laptop
+run-laptop: laptop-live-iso laptop_sata_disk.img
+	$(MAKE) run-laptop-fast
+
+# Reuse an already-built live ISO while iterating on QEMU behavior.  The
+# regular run-laptop target remains the safe, from-source entry point.
+.PHONY : run-laptop-fast
+run-laptop-fast:
+	test -f cubit_laptop_live.iso
+	test -f laptop_sata_disk.img
+	rm -f serial_output.log laptop_sata_run.img
+	cp laptop_sata_disk.img laptop_sata_run.img
+	GDK_BACKEND=x11 qemu-system-x86_64 \
+		-machine q35 \
+		-cpu $(LAPTOP_CPU) \
+		-smp $(LAPTOP_CPUS) \
+		-m $(LAPTOP_RAM) \
+		-nodefaults \
+		-drive file=cubit_laptop_live.iso,if=none,id=livecd,media=cdrom,format=raw,readonly=on \
+		-device ide-cd,drive=livecd,bus=ide.1 \
+		-drive file=laptop_sata_run.img,if=none,id=sata0,format=raw \
+		-device ide-hd,drive=sata0,bus=ide.0 \
+		-device VGA \
+		-device qemu-xhci,id=xhci \
+		-device usb-kbd,bus=xhci.0 \
+		-device usb-mouse,bus=xhci.0 \
+		-audiodev sdl,id=snd0 \
+		-device ich9-intel-hda \
+		-device hda-output,audiodev=snd0 \
+		-device pcie-root-port,id=net_root,bus=pcie.0 \
+		-netdev user,id=net0 \
+		-device e1000e,bus=net_root,netdev=net0 \
+		-serial file:serial_output.log \
+		-display gtk,zoom-to-fit=on \
+		-no-reboot
+
 iso: cubit_kernel initrd
 	cp cubit_kernel isodir/boot/
 	grub-mkrescue -o cubit_kernel.iso isodir
 
 # Build everything including DOOM, then create ISO and disk images
 .PHONY : world
-world: cubit_kernel doom netsurf sleep capability-test ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock ccl-vm filesystem ata nvme virtio-net virtio-gpu netstack wget security-center desktop-shell ui-lab procmgr shell hda mixer ps2 config netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: cubit_kernel doom netsurf sleep capability-test ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget security-center desktop-shell ui-lab procmgr shell hda mixer ps2 config netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world
@@ -540,6 +655,7 @@ headless-test: world
 	bash ../tests/headless/run.sh --test async-ipc
 	bash ../tests/headless/run.sh --test bench-ipc
 	bash ../tests/headless/run.sh --test ccl-vm
+	bash ../tests/headless/run.sh --test ccl-workbench
 	bash ../tests/headless/run.sh --test capability-security
 	bash ../tests/headless/run.sh --test desktop-display
 	bash ../tests/headless/run.sh --test virtio-gpu

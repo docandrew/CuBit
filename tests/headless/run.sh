@@ -23,7 +23,7 @@ Usage: tests/headless/run.sh [options]
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, capability-security, desktop-display, security-authority, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, capability-security, desktop-display, security-authority, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
   --timeout SECONDS    QEMU runtime before timeout is treated as success
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
   --disk PATH          Base ext2 disk image (default: kernel/nvme_disk.img)
@@ -115,7 +115,7 @@ case "$TIMEOUT_SECONDS" in
 esac
 
 case "$TEST_NAME" in
-    boot-shell-nvme|async-ipc|bench-ipc|ccl-vm|capability-security|desktop-display|security-authority|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
+    boot-shell-nvme|async-ipc|bench-ipc|ccl-vm|ccl-workbench|capability-security|desktop-display|security-authority|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -199,6 +199,9 @@ case "$TEST_NAME" in
     ccl-vm)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-vm.conf"
         ;;
+    ccl-workbench)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-workbench.conf"
+        ;;
     capability-security)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-capability-security.conf"
         ;;
@@ -234,6 +237,26 @@ if [ -n "$INIT_PROFILE" ]; then
             echo "headless: failed to install current doom.elf" >&2
             exit 1
         fi
+    fi
+    if [ "$TEST_NAME" = "ccl-vm" ] || [ "$TEST_NAME" = "ccl-workbench" ]; then
+        if [ "$TEST_NAME" = "ccl-vm" ]; then
+            CCL_IMAGES="ccl-vm.app ccl-test-host.svc clock.svc"
+        else
+            CCL_IMAGES="ccl-workbench.app clock.svc desktop.svc display.svc"
+        fi
+        for CCL_IMAGE_NAME in $CCL_IMAGES; do
+            CCL_IMAGE="$KERNEL_DIR/isodir/boot/$CCL_IMAGE_NAME"
+            if [ ! -f "$CCL_IMAGE" ]; then
+                echo "headless: missing current CCL image: $CCL_IMAGE" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $CCL_IMAGE_NAME" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $CCL_IMAGE $CCL_IMAGE_NAME" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $CCL_IMAGE_NAME" >&2
+                exit 1
+            fi
+        done
     fi
     DISK_IMAGE="$TEMP_DISK"
 fi
@@ -346,10 +369,19 @@ ccl-test-host: import invoked
 ccl-vm: import IPC PASS
 clock: registered
 clock: monotonic query
+ccl-vm: clock source/link PASS
 ccl-vm: clock IPC PASS
 ccl-vm: scheduler PASS
 ccl-vm: ownership PASS
 ccl-vm: all tests passed
+"
+        ;;
+    ccl-workbench)
+        required_markers="
+clock: registered
+desktop: display backend=1 caps=3
+ccl-workbench: native window ready
+ccl-workbench: first frame presented
 "
         ;;
     capability-security)

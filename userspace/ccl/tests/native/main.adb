@@ -3,6 +3,7 @@ with Interfaces; use Interfaces;
 with CCL.VM; use CCL.VM;
 with CCL.Language;
 with CCL.Catalog;
+with CCL.Interfaces.Clock;
 with CCL.Compiler;
 with CCL.Debug_Maps;
 with CCL.Scheduler; use CCL.Scheduler;
@@ -23,6 +24,7 @@ procedure Main is
    use type CCL.Catalog.Intern_Result;
    use type CCL.Catalog.Grant_Result;
    use type CCL.Catalog.Link_Result;
+   use type CCL.Imports.Transfer_Mode;
    use type CCL.Debug_Maps.Validation_Error;
 
    TEST_INTERFACE_DIGEST : constant CCL.Catalog.Descriptor_Digest :=
@@ -135,6 +137,46 @@ procedure Main is
         (Catalog, "test.service.missing", Resolution, Found);
       Check (not Found, "hide operations absent from catalog view");
    end Test_Interface_Catalog;
+
+   procedure Test_Clock_Interface is
+      Catalog    : CCL.Catalog.Interface_Catalog;
+      Error      : CCL.Catalog.Catalog_Error;
+      Resolution : CCL.Catalog.Resolved_Operation;
+      Found      : Boolean;
+      Grants     : CCL.Catalog.Granted_Bindings;
+      Grant      : CCL.Catalog.Grant_Result;
+   begin
+      CCL.Catalog.Initialize (Catalog);
+      CCL.Catalog.Initialize (Grants);
+      CCL.Interfaces.Clock.Resolve_Monotonic_Ms
+        (Catalog, Resolution, Found);
+      Check (not Found, "clock is absent without an explicit catalog view");
+
+      CCL.Interfaces.Clock.Publish (Catalog, Error);
+      CCL.Interfaces.Clock.Resolve_Monotonic_Ms
+        (Catalog, Resolution, Found);
+      Check
+        (Error = CCL.Catalog.Catalog_Valid and then Found and then
+         Resolution.Interface_Digest =
+           CCL.Interfaces.Clock.DESCRIPTOR_DIGEST and then
+         Resolution.Interface_Major = 1 and then
+         Resolution.Interface_Minor = 0 and then
+         Resolution.Operation = 0 and then
+         Resolution.Parameters = 0 and then
+         Resolution.Import.Binding = 0 and then
+         Resolution.Import.Authority = Observe_Authority,
+         "publish the canonical authority-free Clock descriptor");
+
+      Check
+        (CCL.Catalog.Length (Catalog) = 1 and then
+         CCL.Catalog.Length (Grants) = 0,
+         "keep visible Clock metadata separate from invocation grants");
+      CCL.Catalog.Install (Grants, Resolution, 1, Grant);
+      Check
+        (Grant = CCL.Catalog.Grant_Added and then
+         CCL.Catalog.Length (Grants) = 1,
+         "inspect bounded Clock grant count after trusted admission");
+   end Test_Clock_Interface;
 
    procedure Test_Addition is
       Candidate : Program;
@@ -442,6 +484,108 @@ procedure Main is
          Outcome.Result_Value.Integer = 42,
          "interpret integer expression");
 
+      CCL.Language.Interpret ("(* 6 7)", 16, Outcome);
+      Check
+        (Outcome.Status = CCL.Language.Succeeded and then
+         Outcome.Result_Value.Integer = 42,
+         "interpret checked integer multiplication");
+      CCL.Language.Interpret ("(/ 3661000 3600000)", 16, Outcome);
+      Check
+        (Outcome.Status = CCL.Language.Succeeded and then
+         Outcome.Result_Value.Integer = 1,
+         "interpret integer division");
+      CCL.Language.Interpret ("(mod 3661000 3600000)", 16, Outcome);
+      Check
+        (Outcome.Status = CCL.Language.Succeeded and then
+         Outcome.Result_Value.Integer = 61_000,
+         "interpret integer modulo");
+      CCL.Language.Interpret ("(/ 1 0)", 16, Outcome);
+      Check
+        (Outcome.Status = CCL.Language.Evaluation_Division_By_Zero,
+         "report typed division-by-zero failure");
+      CCL.Language.Interpret ("(* 9223372036854775807 2)", 16, Outcome);
+      Check
+        (Outcome.Status = CCL.Language.Evaluation_Overflow,
+         "trap multiplication overflow");
+
+      CCL.Language.Interpret ("""clock""", 8, Outcome);
+      Check
+        (Outcome.Status = CCL.Language.Succeeded and then
+         Outcome.Has_Value and then Outcome.Has_Text and then
+         Outcome.Result_Text.Length = 5 and then
+         Outcome.Result_Text.Data (1 .. 5) = "clock",
+         "interpret immutable string literal");
+      CCL.Language.Interpret ("(length ""clock"")", 8, Outcome);
+      Check
+        (Outcome.Status = CCL.Language.Succeeded and then
+         Outcome.Result_Value.Integer = 5,
+         "read string length");
+      CCL.Language.Interpret ("(at ""clock"" 2)", 8, Outcome);
+      Check
+        (Outcome.Status = CCL.Language.Succeeded and then
+         Outcome.Has_Character and then Outcome.Result_Character = 'l',
+         "index string from one");
+      CCL.Language.Interpret
+        ("(let ((left ""human"")) (concat left "" time""))", 24, Outcome);
+      Check
+        (Outcome.Status = CCL.Language.Succeeded and then
+         Outcome.Has_Text and then Outcome.Result_Text.Length = 10 and then
+         Outcome.Result_Text.Data (1 .. 10) = "human time",
+         "concatenate constrained string values");
+      CCL.Language.Interpret ("""line\nnext""", 8, Outcome);
+      Check
+        (Outcome.Status = CCL.Language.Succeeded and then
+         Outcome.Has_Text and then Outcome.Result_Text.Length = 9 and then
+         Outcome.Result_Text.Data (5) = ASCII.LF,
+         "decode bounded string escapes");
+      CCL.Language.Interpret ("(at ""clock"" 0)", 8, Outcome);
+      Check
+        (Outcome.Status = CCL.Language.Evaluation_Index_Error,
+         "reject string index outside actual bounds");
+      CCL.Language.Interpret ("(length 42)", 8, Outcome);
+      Check
+        (Outcome.Status = CCL.Language.Type_Check_Failed and then
+         Outcome.Diagnostic = CCL.Language.Expected_String,
+         "type-check string operation operand");
+      CCL.Language.Interpret
+        ("(to-string -9223372036854775808)", 8, Outcome);
+      Check
+        (Outcome.Status = CCL.Language.Succeeded and then
+         Outcome.Has_Text and then Outcome.Result_Text.Length = 20 and then
+         Outcome.Result_Text.Data (1 .. 20) = "-9223372036854775808",
+         "format full-range signed integer text");
+      CCL.Language.Interpret
+        ("(let ((ms 3661000)) " &
+         "(let ((h (/ ms 3600000))) " &
+         "(let ((m (/ (mod ms 3600000) 60000))) " &
+         "(let ((s (/ (mod ms 60000) 1000))) " &
+         "(concat " &
+         "(if (= (length (to-string h)) 1) " &
+         "(concat ""0"" (to-string h)) (to-string h)) " &
+         "(concat "":"" " &
+         "(concat (if (= (length (to-string m)) 1) " &
+         "(concat ""0"" (to-string m)) (to-string m)) " &
+         "(concat "":"" (if (= (length (to-string s)) 1) " &
+         "(concat ""0"" (to-string s)) (to-string s))))))))))",
+         256, Outcome);
+      Check
+        (Outcome.Status = CCL.Language.Succeeded and then
+         Outcome.Has_Text and then Outcome.Result_Text.Length = 8 and then
+         Outcome.Result_Text.Data (1 .. 8) = "01:01:01",
+         "express human-readable clock formatting with typed primitives");
+
+      CCL.Language.Interpret
+        ("# Whole-line comment" & ASCII.LF &
+         "(+ 20 # Comment between operands" & ASCII.LF &
+         "   22) # Trailing comment at end of input",
+         16, Outcome);
+      Check
+        (Outcome.Status = CCL.Language.Succeeded and then
+         Outcome.Has_Value and then
+         Outcome.Result_Value.Kind = Integer_Value and then
+         Outcome.Result_Value.Integer = 42,
+         "ignore hash line comments as source trivia");
+
       CCL.Language.Interpret
         ("(let ((answer (+ 20 22))) (= answer 42))", 32, Outcome);
       Check
@@ -561,6 +705,7 @@ procedure Main is
       Debug_Error : CCL.Debug_Maps.Validation_Error;
       Debug_Match : CCL.Debug_Maps.Debug_Entry;
       Debug_Found : Boolean;
+      Debug_Name  : CCL.Language.Name;
    begin
       CCL.Language.Analyze ("(not (= (+ 20 22) 41))", Analysis);
       CCL.Compiler.Compile (Analysis, Compiled);
@@ -597,6 +742,44 @@ procedure Main is
             "execute compiled scalar CCLB");
       end if;
 
+      CCL.Language.Analyze ("(+ (* 6 7) (mod 10 3))", Analysis);
+      CCL.Compiler.Compile (Analysis, Compiled);
+      Check
+        (Compiled.Status = CCL.Compiler.Compilation_Succeeded and then
+         Compiled.Program.Length = 8 and then
+         Compiled.Program.Code (2).Op = Multiply_Integer and then
+         Compiled.Program.Code (5).Op = Modulo_Integer and then
+         Compiled.Program.Code (6).Op = Add_Integer,
+         "compile extended arithmetic to CCLB v3");
+      Verify (Compiled.Program, Checked, Error);
+      if Error = Valid then
+         Execute (Checked, 16, Outcome);
+         Check
+           (Outcome.Status = Completed and then
+            Outcome.Result_Value.Integer = 43,
+            "execute compiled multiplication and modulo");
+      else
+         Check (False, "execute compiled multiplication and modulo");
+      end if;
+
+      CCL.Language.Analyze ("(/ 1 0)", Analysis);
+      CCL.Compiler.Compile (Analysis, Compiled);
+      Verify (Compiled.Program, Checked, Error);
+      if Error = Valid then
+         Execute (Checked, 8, Outcome);
+         Check
+           (Outcome.Status = Division_By_Zero,
+            "report compiled division-by-zero failure");
+      else
+         Check (False, "report compiled division-by-zero failure");
+      end if;
+
+      CCL.Language.Analyze ("(concat ""a"" ""b"")", Analysis);
+      CCL.Compiler.Compile (Analysis, Compiled);
+      Check
+        (Compiled.Status = CCL.Compiler.Unsupported_Form,
+         "keep strings out of scalar CCLB v3");
+
       CCL.Language.Analyze ("(if false 1 (+ 20 22))", Analysis);
       CCL.Compiler.Compile (Analysis, Compiled);
       Check
@@ -629,6 +812,12 @@ procedure Main is
          Compiled.Program.Locals_Length = 2 and then
          Compiled.Program.Dynamic_Locals_Length = 2,
          "compile nested lexical locals and shadowing");
+      Debug_Name := CCL.Debug_Maps.Local_Name (Compiled.Debug, 0);
+      Check
+        (CCL.Debug_Maps.Has_Local_Name (Compiled.Debug, 0) and then
+         Debug_Name.Length = 6 and then
+         Debug_Name.Data (1 .. Debug_Name.Length) = "answer",
+         "preserve source local names in compiler debug metadata");
       Verify (Compiled.Program, Checked, Error);
       Check (Error = Valid, "verify compiled lexical-local CCLB");
       if Error = Valid then
@@ -730,7 +919,7 @@ procedure Main is
          Compiled.Program.Imports (0).Binding = 0 and then
          Compiled.Program.Code (0).Op = Push_Integer and then
          Compiled.Program.Code (0).Immediate = 0,
-         "lower zero-parameter catalog operation through CCLB v2 sentinel");
+         "lower zero-parameter catalog operation through scalar ABI sentinel");
       CCL.Catalog.Install
         (Grants, CCL.Catalog.Element (Compiled.Linkage, 0),
          TEST_MONOTONIC_BINDING, Grant_Status);
@@ -886,6 +1075,7 @@ procedure Main is
 
    procedure Test_Module_Format is
       Candidate : Program;
+      Decoded_Candidate : Program;
       Decoded   : Validated_Program;
       Data      : Byte_Array;
       Data_2    : Byte_Array;
@@ -901,7 +1091,16 @@ procedure Main is
       Values    : Local_Value_Array := [others => (others => <>)];
       Accepted  : Boolean;
       SEND      : constant Disposition_Id := 1;
+      Linkage   : CCL.Catalog.Linkage_Table;
+      Decoded_Linkage : CCL.Catalog.Linkage_Table;
+      Resolution : CCL.Catalog.Resolved_Operation;
+      Link_Index : Import_Index;
+      Interned   : CCL.Catalog.Intern_Result;
+      Grants     : CCL.Catalog.Granted_Bindings;
+      Grant_Status : CCL.Catalog.Grant_Result;
+      Link_Status : CCL.Catalog.Link_Result;
    begin
+      CCL.Catalog.Initialize (Linkage);
       Candidate.Length := 4;
       Candidate.Code (0) := Ins (Push_Integer, -5);
       Candidate.Code (1) := Ins (Push_Integer, 47);
@@ -929,26 +1128,29 @@ procedure Main is
       end if;
 
       Data_2 := Data;
-      Data_2 (0) := 0;
+      Data_2 (MAGIC_OFFSET) := 0;
       Decode
         (Data_2, Length, Decoded, Decoded_Limits, Error, Validation);
       Check (Error = Bad_Magic, "reject bad module magic");
 
       Data_2 := Data;
-      Data_2 (28) := 1;
+      Data_2 (HEADER_RESERVED_OFFSET) := 1;
       Decode
         (Data_2, Length, Decoded, Decoded_Limits, Error, Validation);
       Check (Error = Bad_Reserved_Field, "reject nonzero module reserved field");
 
       Data_2 := Data;
-      Data_2 (32) := 99;
+      Data_2 (HEADER_SIZE + INSTRUCTION_OPCODE_OFFSET) := 99;
       Decode
         (Data_2, Length, Decoded, Decoded_Limits, Error, Validation);
       Check (Error = Invalid_Opcode, "reject invalid serialized opcode");
 
       Data_2 := Data;
-      Data_2 (32) := 3;
-      for I in 36 .. 43 loop
+      Data_2 (HEADER_SIZE + INSTRUCTION_OPCODE_OFFSET) :=
+        Unsigned_8 (Op_Code'Enum_Rep (Add_Integer));
+      for I in HEADER_SIZE + INSTRUCTION_IMMEDIATE_OFFSET ..
+        HEADER_SIZE + INSTRUCTION_IMMEDIATE_OFFSET + 7
+      loop
          Data_2 (I) := 0;
       end loop;
       Decode
@@ -958,16 +1160,17 @@ procedure Main is
          "verify decoded bytecode before execution");
 
       Data_2 := Data;
-      Data_2 (16) := 0;
-      Data_2 (17) := 0;
-      Data_2 (18) := 0;
-      Data_2 (19) := 0;
+      for I in FUEL_LIMIT_OFFSET .. FUEL_LIMIT_OFFSET + 3 loop
+         Data_2 (I) := 0;
+      end loop;
       Decode
         (Data_2, Length, Decoded, Decoded_Limits, Error, Validation);
       Check (Error = Invalid_Resource_Limit, "reject zero module fuel");
 
       Data_2 := Data;
-      Data_2 (68) := 1;
+      Data_2
+        (HEADER_SIZE + 2 * INSTRUCTION_SIZE +
+         INSTRUCTION_IMMEDIATE_OFFSET) := 1;
       Decode
         (Data_2, Length, Decoded, Decoded_Limits, Error, Validation);
       Check
@@ -978,25 +1181,79 @@ procedure Main is
       Candidate.Imports_Length := 1;
       Candidate.Imports (0) :=
         (Argument => Integer_Value, Result => Integer_Value,
-         Authority => Observe_Authority, Binding => 42, others => <>);
+         Authority => Observe_Authority, Binding => 0, others => <>);
       Candidate.Length := 3;
       Candidate.Code (0) := Ins (Push_Integer, 41);
       Candidate.Code (1) := Ins (Invoke_Import, Import => 0);
       Candidate.Code (2) := Ins (Halt);
-      Encode (Candidate, Limits, Data, Length, Error, Validation);
+      Resolution :=
+        (Interface_Digest => TEST_INTERFACE_DIGEST,
+         Interface_Major => 1,
+         Interface_Minor => 0,
+         Operation => 0,
+         Parameters => 1,
+         Import => Candidate.Imports (0));
+      CCL.Catalog.Intern (Linkage, Resolution, Link_Index, Interned);
+      Candidate.Imports (0).Binding := 42;
+      Encode
+        (Candidate, Linkage, Limits, Data_2, Length_2, Error, Validation);
+      Check
+        (Error = Runtime_Binding_In_Module and then Length_2 = 0,
+         "refuse to serialize a runtime-local import binding");
+      Candidate.Imports (0).Binding := 0;
+      Encode
+        (Candidate, Linkage, Limits, Data, Length, Error, Validation);
       if Error = Format_Valid then
+         Data_2 := Data;
+         Data_2 (HEADER_SIZE + IMPORT_TRANSFER_OFFSET) := 99;
          Decode
-           (Data, Length, Decoded, Decoded_Limits, Error, Validation);
+           (Data_2, Length, Decoded_Candidate, Decoded_Linkage,
+            Decoded_Limits, Error, Validation);
+         Check
+           (Error = Invalid_Transfer_Mode,
+            "reject invalid portable import transfer mode");
+
+         Data_2 := Data;
+         for I in HEADER_SIZE + IMPORT_DIGEST_OFFSET ..
+           HEADER_SIZE + IMPORT_SIZE - 1
+         loop
+            Data_2 (I) := 0;
+         end loop;
+         Decode
+           (Data_2, Length, Decoded_Candidate, Decoded_Linkage,
+            Decoded_Limits, Error, Validation);
+         Check
+           (Error = Invalid_Linkage,
+            "reject portable import without descriptor identity");
+
+         Decode
+           (Data, Length, Decoded_Candidate, Decoded_Linkage,
+            Decoded_Limits, Error, Validation);
       end if;
       if Error = Format_Valid then
-         Execute (Decoded, Decoded_Limits.Fuel, Outcome);
+         CCL.Catalog.Initialize (Grants);
+         CCL.Catalog.Install
+           (Grants, CCL.Catalog.Element (Decoded_Linkage, 0), 42,
+            Grant_Status);
+         CCL.Catalog.Link_Program
+           (Grants, Decoded_Linkage, Decoded_Candidate, Link_Status);
+         Verify (Decoded_Candidate, Decoded, Validation);
+         if Link_Status = CCL.Catalog.Link_Valid and then Validation = Valid
+         then
+            Execute (Decoded, Decoded_Limits.Fuel, Outcome);
+         end if;
       end if;
       Check
         (Error = Format_Valid and then
+         CCL.Catalog.Length (Decoded_Linkage) = 1 and then
+         CCL.Catalog.Element (Decoded_Linkage, 0).Interface_Digest =
+           TEST_INTERFACE_DIGEST and then
+         Grant_Status = CCL.Catalog.Grant_Added and then
+         Link_Status = CCL.Catalog.Link_Valid and then
          Outcome.Status = Waiting_For_Host and then
          Outcome.Requested_Authority = Observe_Authority and then
          Outcome.Requested_Binding = 42,
-         "round-trip typed module import");
+         "round-trip and explicitly link portable module import");
 
       Candidate := (others => <>);
       Candidate.Types_Length := 3;
@@ -1051,16 +1308,36 @@ procedure Main is
       Candidate.Imports_Length := 1;
       Candidate.Imports (0) :=
         (Argument => Integer_Value, Result => Integer_Value,
-         Authority => Control_Authority, Binding => 77,
+         Authority => Control_Authority, Binding => 0,
          Ownership_Argument => True, Local => 0,
          Transfer => CCL.Imports.Move_Argument,
          Cancellation => CCL.Imports.Not_Cancellable,
          Success_Verb => SEND, Failure_Verb => SEND,
          Cancel_Verb => 0);
-      Encode (Candidate, Limits, Data, Length, Error, Validation);
+      CCL.Catalog.Initialize (Linkage);
+      Resolution :=
+        (Interface_Digest => TEST_INTERFACE_DIGEST,
+         Interface_Major => 1,
+         Interface_Minor => 0,
+         Operation => 1,
+         Parameters => 1,
+         Import => Candidate.Imports (0));
+      CCL.Catalog.Intern (Linkage, Resolution, Link_Index, Interned);
+      Encode
+        (Candidate, Linkage, Limits, Data, Length, Error, Validation);
+      if Error = Format_Valid then
+         Decode
+           (Data, Length, Decoded_Candidate, Decoded_Linkage,
+            Decoded_Limits, Error, Validation);
+      end if;
       Check
-        (Error = Unsupported_Ownership_Metadata,
-         "v2 refuses to erase owned import metadata");
+        (Error = Format_Valid and then
+         CCL.Catalog.Length (Decoded_Linkage) = 1 and then
+         Decoded_Candidate.Imports (0).Ownership_Argument and then
+         Decoded_Candidate.Imports (0).Transfer =
+           CCL.Imports.Move_Argument and then
+         Decoded_Candidate.Imports (0).Success_Verb = SEND,
+         "v3 preserves owned import and portable linkage metadata");
    end Test_Module_Format;
 
    procedure Test_Ownership_Checker is
@@ -1554,6 +1831,7 @@ procedure Main is
    end Test_Import_Lifecycle;
 begin
    Test_Interface_Catalog;
+   Test_Clock_Interface;
    Test_Addition;
    Test_Debug_Stepping;
    Test_Lexical_Local;

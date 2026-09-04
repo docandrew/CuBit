@@ -415,7 +415,7 @@ int rename(const char *oldpath, const char *newpath)
     addr = (addr + 4095) & ~(uintptr_t)4095;
     void *buf = (void *)addr;
 
-    long gid = syscall4(SYSCALL_GRANT_VIA_CAP, CAP_SLOT_FS, buf, 8, 1);
+    long gid = syscall4(SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY, CAP_SLOT_FS, buf, 8, 1);
     if (gid == (long)(-1UL))
         return -1;
 
@@ -441,8 +441,8 @@ int rename(const char *oldpath, const char *newpath)
     msg.words[2] = newlen;
     msg.words[3] = 0;
 
-    long ret = syscall2(SYSCALL_CAP_CALL, CAP_SLOT_FS, &msg);
-    syscall1(SYSCALL_REVOKE, (uint64_t)gid);
+    long ret = syscall2(SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY, CAP_SLOT_FS, &msg);
+    syscall1(SYSCALL_REVOKE_SHARED_MEMORY_GRANT, (uint64_t)gid);
 
     if (ret == (long)(-1UL) || msg.tag.label != 0xF000)
         return -1;

@@ -250,7 +250,7 @@ package body Modules is
                       gen      => Capabilities.INITIAL_GENERATION));
 
         -- Slot 8: explicit capability-space policy root. This is the only
-        -- authority that permits SYSCALL_MINT_CAP; CAP_PROCESS/GRANT does not.
+        -- authority that permits SYSCALL_POLICY_MINT_CAPABILITY; CAP_PROCESS/GRANT does not.
         Capabilities.Operations.insertCapAt (
             table => Process.proctab(devmgrPID).caps,
             slot  => 8,
