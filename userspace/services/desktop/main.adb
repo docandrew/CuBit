@@ -38,6 +38,7 @@ procedure main is
    OP_SURFACE_RESIZE   : constant Unsigned_32 := 16#0813#;
    OP_SURFACE_ATTACH_BUFFER : constant Unsigned_32 := 16#0814#;
    OP_WINDOW_SET_LIMITS : constant Unsigned_32 := 16#0841#;
+   OP_WINDOW_SET_TITLE  : constant Unsigned_32 := 16#0842#;
    OP_STREAM_AVAILABLE  : constant Unsigned_32 := 16#0706#;
    OP_INPUT_POLL       : constant Unsigned_32 := 16#0821#;
 
@@ -150,6 +151,17 @@ procedure main is
    frameDueMs   : Unsigned_64 := 0;
    FRAME_INTERVAL_MS : constant Unsigned_64 := 16;
 
+   --  Relative input may arrive substantially faster than scanout.  Keep
+   --  consuming and dispatching every report, but bound software-cursor
+   --  presents so a 500/1000 Hz USB mouse cannot serialize the desktop on
+   --  synchronous display IPC.  A hardware cursor plane can eventually make
+   --  this interval unnecessary; four milliseconds still gives a 250 Hz
+   --  visual update budget on the framebuffer path.
+   cursorPresentPending : Boolean := False;
+   cursorPresentDueMs   : Unsigned_64 := 0;
+   lastCursorPresentMs  : Unsigned_64 := 0;
+   CURSOR_PRESENT_INTERVAL_MS : constant Unsigned_64 := 4;
+
    function memcpy
       (dest : System.Address;
        src  : System.Address;
@@ -159,9 +171,9 @@ procedure main is
       Convention => C,
       External_Name => "memcpy";
 
-   type App_Kind is (APP_CLIENT, APP_CONSOLE, APP_SECURITY, APP_DOOM);
+   type App_Kind is (APP_CLIENT, APP_CONSOLE, APP_DOOM);
    for App_Kind use
-     (APP_CLIENT => 0, APP_CONSOLE => 2, APP_SECURITY => 3, APP_DOOM => 4);
+     (APP_CLIENT => 0, APP_CONSOLE => 1, APP_DOOM => 2);
    for App_Kind'Size use 8;
 
    type Surface is record
@@ -187,6 +199,8 @@ procedure main is
       maxW      : Natural := 0;
       maxH      : Natural := 0;
       windowFlags : Unsigned_64 := WINDOW_FLAGS_DEFAULT;
+      title       : String (1 .. 23) := (others => ' ');
+      titleLen    : Natural range 0 .. 23 := 0;
       bufferAttached : Boolean := False;
       bufferGrant    : Unsigned_64 := 0;
       bufferAddr     : System.Address := System.Null_Address;
@@ -358,13 +372,12 @@ procedure main is
       others => 0);
 
    type Launch_Action is
-     (LAUNCH_NONE, LAUNCH_CONSOLE, LAUNCH_WORKBENCH, LAUNCH_UI_LAB,
-      LAUNCH_DOOM, LAUNCH_SECURITY, LAUNCH_BROWSER, LAUNCH_FILES,
-      LAUNCH_POWER);
+     (LAUNCH_NONE, LAUNCH_CONSOLE, LAUNCH_WORKBENCH, LAUNCH_DOOM,
+      LAUNCH_DEVICES, LAUNCH_BROWSER, LAUNCH_FILES, LAUNCH_POWER);
    for Launch_Action use
      (LAUNCH_NONE => 0, LAUNCH_CONSOLE => 1, LAUNCH_WORKBENCH => 2,
-      LAUNCH_UI_LAB => 3, LAUNCH_DOOM => 4, LAUNCH_SECURITY => 5,
-      LAUNCH_BROWSER => 6, LAUNCH_FILES => 7, LAUNCH_POWER => 8);
+      LAUNCH_DOOM => 3, LAUNCH_DEVICES => 4, LAUNCH_BROWSER => 5,
+      LAUNCH_FILES => 6, LAUNCH_POWER => 7);
    for Launch_Action'Size use 8;
 
    launchMenuSelection : Launch_Action := LAUNCH_CONSOLE;
@@ -378,19 +391,17 @@ procedure main is
          case current is
             when LAUNCH_CONSOLE   => return LAUNCH_BROWSER;
             when LAUNCH_WORKBENCH => return LAUNCH_CONSOLE;
-            when LAUNCH_UI_LAB    => return LAUNCH_WORKBENCH;
-            when LAUNCH_DOOM      => return LAUNCH_UI_LAB;
-            when LAUNCH_SECURITY  => return LAUNCH_DOOM;
-            when LAUNCH_BROWSER   => return LAUNCH_SECURITY;
+            when LAUNCH_DOOM      => return LAUNCH_WORKBENCH;
+            when LAUNCH_DEVICES   => return LAUNCH_DOOM;
+            when LAUNCH_BROWSER   => return LAUNCH_DEVICES;
             when others           => return LAUNCH_CONSOLE;
          end case;
       else
          case current is
             when LAUNCH_CONSOLE   => return LAUNCH_WORKBENCH;
-            when LAUNCH_WORKBENCH => return LAUNCH_UI_LAB;
-            when LAUNCH_UI_LAB    => return LAUNCH_DOOM;
-            when LAUNCH_DOOM      => return LAUNCH_SECURITY;
-            when LAUNCH_SECURITY  => return LAUNCH_BROWSER;
+            when LAUNCH_WORKBENCH => return LAUNCH_DOOM;
+            when LAUNCH_DOOM      => return LAUNCH_DEVICES;
+            when LAUNCH_DEVICES   => return LAUNCH_BROWSER;
             when LAUNCH_BROWSER   => return LAUNCH_CONSOLE;
             when others           => return LAUNCH_CONSOLE;
          end case;
@@ -421,7 +432,7 @@ procedure main is
    LAUNCH_W     : constant Natural := 88;
    LAUNCH_H     : constant Natural := 24;
    MENU_W       : constant Natural := 250;
-   MENU_H       : constant Natural := 320;
+   MENU_H       : constant Natural := 286;
    TASK_BUTTON_W : constant Natural := 156;
    TASK_BUTTON_H : constant Natural := 24;
    TASK_BUTTON_GAP : constant Natural := 6;
@@ -769,18 +780,16 @@ procedure main is
             y := menu.y + 42;
          when LAUNCH_WORKBENCH =>
             y := menu.y + 76;
-         when LAUNCH_UI_LAB =>
-            y := menu.y + 110;
          when LAUNCH_DOOM =>
+            y := menu.y + 110;
+         when LAUNCH_DEVICES =>
             y := menu.y + 144;
-         when LAUNCH_SECURITY =>
-            y := menu.y + 178;
          when LAUNCH_BROWSER =>
-            y := menu.y + 212;
+            y := menu.y + 178;
          when LAUNCH_FILES =>
-            y := menu.y + 246;
+            y := menu.y + 212;
          when LAUNCH_POWER =>
-            y := menu.y + 286;
+            y := menu.y + 252;
          when others =>
             return (others => 0);
       end case;
@@ -796,7 +805,7 @@ procedure main is
       if isEmpty (menu) or else menu.w <= 24 then
          return (others => 0);
       end if;
-      y := menu.y + 278;
+      y := menu.y + 244;
       return clampRect ((x => menu.x + 12, y => y,
                          w => menu.w - 24, h => 1));
    end launchSeparatorRect;
@@ -846,12 +855,10 @@ procedure main is
          return LAUNCH_CONSOLE;
       elsif pointInRect (x, y, launchItemRect (LAUNCH_WORKBENCH)) then
          return LAUNCH_WORKBENCH;
-      elsif pointInRect (x, y, launchItemRect (LAUNCH_UI_LAB)) then
-         return LAUNCH_UI_LAB;
       elsif pointInRect (x, y, launchItemRect (LAUNCH_DOOM)) then
          return LAUNCH_DOOM;
-      elsif pointInRect (x, y, launchItemRect (LAUNCH_SECURITY)) then
-         return LAUNCH_SECURITY;
+      elsif pointInRect (x, y, launchItemRect (LAUNCH_DEVICES)) then
+         return LAUNCH_DEVICES;
       elsif pointInRect (x, y, launchItemRect (LAUNCH_BROWSER)) then
          return LAUNCH_BROWSER;
       elsif pointInRect (x, y, launchItemRect (LAUNCH_FILES)) then
@@ -1571,12 +1578,14 @@ procedure main is
       case s.appKind is
          when APP_CONSOLE =>
             drawUIText (x, y, "CuBASIC Console", fg, bg);
-         when APP_SECURITY =>
-            drawUIText (x, y, "Security Center", fg, bg);
          when APP_DOOM =>
             drawUIText (x, y, "DOOM", fg, bg);
          when others =>
-            drawUIText (x, y, "Application", fg, bg);
+            if s.titleLen > 0 then
+               drawUIText (x, y, s.title (1 .. s.titleLen), fg, bg);
+            else
+               drawUIText (x, y, "Application", fg, bg);
+            end if;
       end case;
    end drawSurfaceTitle;
 
@@ -1837,10 +1846,25 @@ procedure main is
       end loop;
    end drawCursorOverlay;
 
-   procedure moveCursorOverlay (oldCursor : Rect) is
-      newCursor : constant Rect := cursorRect;
-      damage    : Rect := unionRect (oldCursor, newCursor);
+   procedure noteCursorPresented is
+      now : constant Unsigned_64 := nowMs;
    begin
+      cursorPresentPending := False;
+      cursorPresentDueMs := 0;
+      if now /= Unsigned_64'Last then
+         lastCursorPresentMs := now;
+      end if;
+   end noteCursorPresented;
+
+   procedure presentCursorOverlay is
+      newCursor : constant Rect := cursorRect;
+      oldCursor : Rect := newCursor;
+      damage    : Rect;
+   begin
+      if cursorSaveValid then
+         oldCursor := cursorSaveRect;
+      end if;
+      damage := unionRect (oldCursor, newCursor);
       restoreCursorOverlay;
       drawCursorOverlay;
       damage := inflateRect (damage, 1);
@@ -1850,7 +1874,43 @@ procedure main is
       --  the bounded event ring. display.svc still owns scanout, but copies
       --  this explicitly marked damage immediately.
       flushBackBufferRect (damage, PRESENT_IMMEDIATELY);
-   end moveCursorOverlay;
+      noteCursorPresented;
+   end presentCursorOverlay;
+
+   procedure scheduleCursorPresent is
+      now : constant Unsigned_64 := nowMs;
+      due : Unsigned_64;
+   begin
+      if now = Unsigned_64'Last or else lastCursorPresentMs = 0 or else
+         now < lastCursorPresentMs or else
+         now - lastCursorPresentMs >= CURSOR_PRESENT_INTERVAL_MS
+      then
+         presentCursorOverlay;
+         return;
+      end if;
+
+      due := lastCursorPresentMs + CURSOR_PRESENT_INTERVAL_MS;
+      if not cursorPresentPending or else cursorPresentDueMs = 0 or else
+         due < cursorPresentDueMs
+      then
+         cursorPresentPending := True;
+         cursorPresentDueMs := due;
+      end if;
+   end scheduleCursorPresent;
+
+   procedure flushCursorPresent is
+      now : constant Unsigned_64 := nowMs;
+   begin
+      if not cursorPresentPending then
+         return;
+      end if;
+
+      if now = Unsigned_64'Last or else cursorPresentDueMs = 0 or else
+         now < lastCursorPresentMs or else now >= cursorPresentDueMs
+      then
+         presentCursorOverlay;
+      end if;
+   end flushCursorPresent;
 
    function tryFastClientRedraw (dirty : Rect) return Boolean is
       r : constant Rect := clampRect (dirty);
@@ -1997,14 +2057,6 @@ procedure main is
          when APP_CONSOLE =>
             fillRect (x + 14, y + 40, w - 28, h - 56, C_SHADOW);
             drawConsoleText (x + 24, y + 50, C_SHADOW);
-         when APP_SECURITY =>
-            drawUIText (x + 18, y + 44, "Capability map", C_TEXT, C_WIN);
-            drawUIText (x + 18, y + 70, "Processes: procmgr, display, desktop",
-                        C_GOOD, C_WIN);
-            drawUIText (x + 18, y + 96, "Policy: least authority by default",
-                        C_TEXT, C_WIN);
-            drawUIText (x + 18, y + 122, "Live inspection hooks come next",
-                        C_MUTED, C_WIN);
          when others =>
             if s.bufferAttached then
                declare
@@ -2116,11 +2168,9 @@ procedure main is
         (LAUNCH_CONSOLE, Desktop_Icons.Console, "CuBASIC", C_TEXT);
       drawLaunchItem
         (LAUNCH_WORKBENCH, Desktop_Icons.UILab, "CCL Workbench", C_TEXT);
-      drawLaunchItem
-        (LAUNCH_UI_LAB, Desktop_Icons.UILab, "UI Lab", C_TEXT);
       drawLaunchItem (LAUNCH_DOOM, Desktop_Icons.Doom, "DOOM", C_TEXT);
       drawLaunchItem
-        (LAUNCH_SECURITY, Desktop_Icons.Security, "Security Center", C_TEXT);
+        (LAUNCH_DEVICES, Desktop_Icons.Files, "Devices", C_TEXT);
       drawLaunchItem
         (LAUNCH_BROWSER, Desktop_Icons.Files, "NetSurf", C_TEXT);
       drawLaunchItem
@@ -2326,6 +2376,7 @@ procedure main is
       else
          redrawRect (damage);
       end if;
+      noteCursorPresented;
       t1 := syscall (SYSCALL_GETTIME);
 
       statsFrames := statsFrames + 1;
@@ -2696,11 +2747,6 @@ procedure main is
             winY := 76;
             winW := 620;
             winH := 330;
-         when APP_SECURITY =>
-            winX := 132;
-            winY := 104;
-            winW := 480;
-            winH := 280;
          when others =>
             null;
       end case;
@@ -2779,6 +2825,8 @@ procedure main is
          maxW => 0,
          maxH => 0,
          windowFlags => WINDOW_FLAGS_DEFAULT,
+         title => (others => ' '),
+         titleLen => 0,
          bufferAttached => False,
          bufferGrant => 0,
          bufferAddr => System.Null_Address,
@@ -3216,6 +3264,8 @@ procedure main is
                      maxW => 0,
                      maxH => 0,
                      windowFlags => WINDOW_FLAGS_DEFAULT,
+                     title => (others => ' '),
+                     titleLen => 0,
                      bufferAttached => False,
                      bufferGrant => 0,
                      bufferAddr => System.Null_Address,
@@ -3376,6 +3426,47 @@ procedure main is
 
                   scheduleRedrawRect
                     (inflateRect (unionRect (oldBounds, newBounds), 4));
+               end if;
+            end;
+
+         when OP_WINDOW_SET_TITLE =>
+            declare
+               idx : constant Integer := findSurface (request.words (0));
+               requestedLength : constant Natural := Natural
+                 (Shift_Right (request.words (3), 56) and 16#FF#);
+               sourceWord : Unsigned_64;
+               byteIndex : Natural;
+            begin
+               replyMsg.tag :=
+                 (label => OP_WINDOW_SET_TITLE,
+                  length => 1, flags => 0, badge => 0);
+               if idx < 0 then
+                  replyMsg.words (0) := UI_ERR_BAD_OBJECT;
+               elsif surfaces (SurfaceIndex (idx)).owner /= from then
+                  replyMsg.words (0) := UI_ERR_DENIED;
+               elsif requestedLength > 23 then
+                  replyMsg.words (0) := UI_ERR_UNSUPPORTED;
+               else
+                  surfaces (SurfaceIndex (idx)).title := (others => ' ');
+                  surfaces (SurfaceIndex (idx)).titleLen := requestedLength;
+                  if requestedLength > 0 then
+                     for index in 0 .. requestedLength - 1 loop
+                        case index / 8 is
+                           when 0 => sourceWord := request.words (1);
+                           when 1 => sourceWord := request.words (2);
+                           when others => sourceWord := request.words (3);
+                        end case;
+                        byteIndex := index mod 8;
+                        surfaces (SurfaceIndex (idx)).title (index + 1) :=
+                          Character'Val
+                            (Shift_Right (sourceWord, byteIndex * 8) and 16#FF#);
+                     end loop;
+                  end if;
+                  surfaces (SurfaceIndex (idx)).dirty := True;
+                  replyMsg.words (0) := UI_OK;
+                  scheduleRedrawRect
+                    (inflateRect
+                       (surfaceRect (surfaces (SurfaceIndex (idx))), 2));
                end if;
             end;
 
@@ -4021,8 +4112,6 @@ procedure main is
          when APP_CONSOLE =>
             handleConsoleKey (raw, damage);
             return True;
-         when APP_SECURITY =>
-            return True;
          when others =>
             return False;
       end case;
@@ -4039,8 +4128,6 @@ procedure main is
             openInternalApp (APP_CONSOLE, damage);
          when LAUNCH_WORKBENCH =>
             trySpawnFromConsole ("ccl-workbench.app", ok);
-         when LAUNCH_UI_LAB =>
-            trySpawnFromConsole ("ui-lab.app", ok);
          when LAUNCH_DOOM =>
             if doomPid /= NO_PROCESS and then processAlive (doomPid) then
                setConsoleResult ("DOOM IS ALREADY RUNNING");
@@ -4050,8 +4137,8 @@ procedure main is
                   doomPid := lastSpawnedPid;
                end if;
             end if;
-         when LAUNCH_SECURITY =>
-            trySpawnFromConsole ("security-center.app", ok);
+         when LAUNCH_DEVICES =>
+            trySpawnFromConsole ("devices.app", ok);
          when LAUNCH_BROWSER =>
             trySpawnFromConsole ("netsurf.app", ok);
          when others =>
@@ -4349,7 +4436,7 @@ procedure main is
       if sceneDamage or else framePending then
          scheduleRedrawRect (inflateRect (damage, 2), defer => True);
       else
-         moveCursorOverlay (oldCursor);
+         scheduleCursorPresent;
       end if;
    end handleMouseMotion;
 
@@ -4731,10 +4818,11 @@ begin
          end loop;
 
          flushFrame;
+         flushCursorPresent;
          maybePrintStats;
 
          if not eventFound and then not found then
-            if not framePending then
+            if not framePending and then not cursorPresentPending then
                --  Idle input and service dispatch must be event-driven. The
                --  mixed receive primitive blocks on the unified mailbox and
                --  is woken directly by either an unsolicited device event or
@@ -4750,16 +4838,38 @@ begin
                declare
                   now : constant Unsigned_64 := nowMs;
                   sleepMs : Unsigned_64 := 1;
+                  nextDueMs : Unsigned_64 := 0;
                begin
                   if framePending and then now /= Unsigned_64'Last and then
                      frameDueMs /= 0 and then now < frameDueMs
                   then
-                     sleepMs := frameDueMs - now;
+                     nextDueMs := frameDueMs;
+                  elsif framePending then
+                     sleepMs := 0;
+                  end if;
+
+                  if cursorPresentPending and then now /= Unsigned_64'Last
+                    and then cursorPresentDueMs /= 0
+                    and then now < cursorPresentDueMs
+                    and then
+                      (nextDueMs = 0 or else cursorPresentDueMs < nextDueMs)
+                  then
+                     nextDueMs := cursorPresentDueMs;
+                  elsif cursorPresentPending and then
+                    (now = Unsigned_64'Last or else
+                     cursorPresentDueMs = 0 or else
+                     now >= cursorPresentDueMs)
+                  then
+                     sleepMs := 0;
+                  end if;
+
+                  if sleepMs > 0 and then nextDueMs /= 0 and then
+                     now /= Unsigned_64'Last
+                  then
+                     sleepMs := nextDueMs - now;
                      if sleepMs > 1 then
                         sleepMs := 1;
                      end if;
-                  elsif framePending then
-                     sleepMs := 0;
                   end if;
 
                   if sleepMs > 0 and then

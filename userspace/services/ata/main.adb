@@ -6,37 +6,27 @@
 --  Userspace ATA/IDE PIO driver.
 --
 --  Performs PIO reads on the primary ATA channel. Runs IDENTIFY at startup
---  to detect the drive, then enters an IPC server loop handling
---  OP_READ_BLOCK requests from clients (e.g., filesystem server).
+--  to detect the drive, then offers the shared Block.Device.V1 protocol.
 --
 --  All hardware access is via capability-checked portOutp8/portInp8/portInp16
 --  syscalls,
 --  validated by IOPORT capabilities granted at load time.
 ------------------------------------------------------------------------------
-with Ada.Unchecked_Conversion;
 with Interfaces; use Interfaces;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Block_Devices; use CuBit.Block_Devices;
+with CuBit.Memory_Grants;
 
 procedure main is
    use ASCII;
 
-   --  IPC operation labels (must match kernel/src/ipc_labels.ads)
-   OP_READ_BLOCK  : constant Unsigned_32 := 16#0210#;
-   OP_WRITE_BLOCK : constant Unsigned_32 := 16#0211#;
-   OP_IDENTIFY    : constant Unsigned_32 := 16#0212#;
-   REPLY_OK       : constant Unsigned_32 := 16#F000#;
-   REPLY_ERR      : constant Unsigned_32 := 16#F001#;
-
-   --  Grant region constants (must match kernel process.ads)
-   GRANT_REGION_BASE : constant Unsigned_64 := 16#0000_4000_0000_0000#;
-   GRANT_SLOT_SIZE   : constant Unsigned_64 := 4096 * 4096; -- 16 MiB
-
    --  ATA primary channel ports
    IO_BASE   : constant Unsigned_16 := 16#1F0#;
    CTRL_PORT : constant Unsigned_16 := 16#3F6#;
+
 
    --  Register offsets from IO_BASE
    REG_DATA       : constant Unsigned_16 := IO_BASE + 0;
@@ -67,10 +57,7 @@ procedure main is
 
    --  Drive detected flag
    drivePresent : Boolean := False;
-
-   --  Conversion helper
-   function toAddr is new Ada.Unchecked_Conversion
-     (Unsigned_64, System.Address);
+   driveBlockCount : Unsigned_64 := 0;
 
    ---------------------------------------------------------------------------
    --  outb / inb wrappers (call syscall port I/O)
@@ -195,9 +182,21 @@ procedure main is
          buf (i) := Unsigned_16 (portInp16 (REG_DATA) and 16#FFFF#);
       end loop;
 
+      --  This driver currently issues 28-bit PIO commands, so report only the
+      --  range it can actually address even if IDENTIFY advertises LBA48.
+      driveBlockCount := Unsigned_64 (buf (60)) or
+        Shift_Left (Unsigned_64 (buf (61)), 16);
+      if driveBlockCount > 16#1000_0000# then
+         driveBlockCount := 16#1000_0000#;
+      end if;
+      if driveBlockCount = 0 then
+         return False;
+      end if;
+
       debugPrint ("ATA: Drive detected on primary master." & LF);
       return True;
    end doIdentify;
+
 
    ---------------------------------------------------------------------------
    --  readSectors - PIO read of count sectors starting at LBA into addr
@@ -357,72 +356,135 @@ procedure main is
    ---------------------------------------------------------------------------
    --  handleReadBlock
    --  words(0) = LBA (sector number)
-   --  words(1) = grant_id (buffer to write data into)
+   --  words(1) = grant slot (buffer to write data into)
    --  words(2) = sector_count (number of sectors to read)
+   --  words(3) = grant generation
    ---------------------------------------------------------------------------
    procedure handleReadBlock (sender : ProcessID; msg : Message) is
-      lba       : constant Unsigned_32 := Unsigned_32 (msg.words (0));
-      grantId   : constant Unsigned_64 := msg.words (1);
-      sectorCt  : constant Unsigned_8  := Unsigned_8 (msg.words (2) and 16#FF#);
-      grantAddr : constant Unsigned_64 :=
-        GRANT_REGION_BASE + grantId * GRANT_SLOT_SIZE;
+      lba       : Unsigned_32 := 0;
+      sectorCt  : Unsigned_8 := 0;
+      grantAddr : System.Address := System.Null_Address;
+      resolved  : Boolean := False;
       bytesRead : Unsigned_64;
    begin
       if not drivePresent then
-         sendReply (sender, REPLY_ERR, 0);
+         sendReply (sender, REPLY_ERROR, 0);
          return;
       end if;
 
-      if sectorCt = 0 then
-         sendReply (sender, REPLY_ERR, 0);
+      if msg.tag.length /= 4 or else
+         msg.words (1) > CuBit.Memory_Grants.MAXIMUM_GLOBAL_SLOT or else
+         msg.words (3) = 0 or else
+         msg.words (3) > CuBit.Memory_Grants.MAXIMUM_GENERATION or else
+         msg.words (2) = 0 or else
+         msg.words (0) >= driveBlockCount or else
+         msg.words (0) > Unsigned_64 (Unsigned_32'Last) or else
+         msg.words (2) > 255 or else
+         msg.words (2) > driveBlockCount - msg.words (0)
+      then
+         sendReply (sender, REPLY_ERROR, 0);
          return;
       end if;
 
-      bytesRead := readSectors (lba, sectorCt, toAddr (grantAddr));
+      lba := Unsigned_32 (msg.words (0));
+      sectorCt := Unsigned_8 (msg.words (2));
+      CuBit.Memory_Grants.Resolve
+        (reference      =>
+           (slot => CuBit.Memory_Grants.Global_Grant_Slot (msg.words (1)),
+            generation =>
+              CuBit.Memory_Grants.Grant_Generation (msg.words (3))),
+         expectedOwner => sender,
+         byteOffset     => 0,
+         byteLength     => Unsigned_64 (sectorCt) * SECTOR_SIZE,
+         requiredAccess => CuBit.Memory_Grants.Write_Access,
+         mappedAddress  => grantAddr,
+         success        => resolved);
+      if not resolved then
+         sendReply (sender, REPLY_ERROR, 0);
+         return;
+      end if;
+
+      bytesRead := readSectors (lba, sectorCt, grantAddr);
       sendReply (sender, REPLY_OK, bytesRead);
    end handleReadBlock;
 
    ---------------------------------------------------------------------------
    --  handleWriteBlock
    --  words(0) = LBA (sector number)
-   --  words(1) = grant_id (buffer to read data from)
+   --  words(1) = grant slot (buffer to read data from)
    --  words(2) = sector_count (number of sectors to write)
+   --  words(3) = grant generation
    ---------------------------------------------------------------------------
    procedure handleWriteBlock (sender : ProcessID; msg : Message) is
-      lba          : constant Unsigned_32 := Unsigned_32 (msg.words (0));
-      grantId      : constant Unsigned_64 := msg.words (1);
-      sectorCt     : constant Unsigned_8  :=
-        Unsigned_8 (msg.words (2) and 16#FF#);
-      grantAddr    : constant Unsigned_64 :=
-        GRANT_REGION_BASE + grantId * GRANT_SLOT_SIZE;
+      lba          : Unsigned_32 := 0;
+      sectorCt     : Unsigned_8 := 0;
+      grantAddr    : System.Address := System.Null_Address;
+      resolved     : Boolean := False;
       bytesWritten : Unsigned_64;
    begin
       if not drivePresent then
-         sendReply (sender, REPLY_ERR, 0);
+         sendReply (sender, REPLY_ERROR, 0);
          return;
       end if;
 
-      if sectorCt = 0 then
-         sendReply (sender, REPLY_ERR, 0);
+      if msg.tag.length /= 4 or else
+         msg.words (1) > CuBit.Memory_Grants.MAXIMUM_GLOBAL_SLOT or else
+         msg.words (3) = 0 or else
+         msg.words (3) > CuBit.Memory_Grants.MAXIMUM_GENERATION or else
+         msg.words (2) = 0 or else
+         msg.words (0) >= driveBlockCount or else
+         msg.words (0) > Unsigned_64 (Unsigned_32'Last) or else
+         msg.words (2) > 255 or else
+         msg.words (2) > driveBlockCount - msg.words (0)
+      then
+         sendReply (sender, REPLY_ERROR, 0);
          return;
       end if;
 
-      bytesWritten := writeSectors (lba, sectorCt, toAddr (grantAddr));
+      lba := Unsigned_32 (msg.words (0));
+      sectorCt := Unsigned_8 (msg.words (2));
+      CuBit.Memory_Grants.Resolve
+        (reference      =>
+           (slot => CuBit.Memory_Grants.Global_Grant_Slot (msg.words (1)),
+            generation =>
+              CuBit.Memory_Grants.Grant_Generation (msg.words (3))),
+         expectedOwner => sender,
+         byteOffset     => 0,
+         byteLength     => Unsigned_64 (sectorCt) * SECTOR_SIZE,
+         requiredAccess => CuBit.Memory_Grants.Read_Access,
+         mappedAddress  => grantAddr,
+         success        => resolved);
+      if not resolved then
+         sendReply (sender, REPLY_ERROR, 0);
+         return;
+      end if;
+
+      bytesWritten := writeSectors (lba, sectorCt, grantAddr);
       sendReply (sender, REPLY_OK, bytesWritten);
    end handleWriteBlock;
 
    ---------------------------------------------------------------------------
-   --  handleIdentify
-   --  Reply with drive presence status
+   --  handleDescribe
+   --  Return Block.Device.V1 geometry and features.
    ---------------------------------------------------------------------------
-   procedure handleIdentify (sender : ProcessID) is
+   procedure handleDescribe (sender : ProcessID) is
+      replyMsg : Message;
+      ignore   : Unsigned_64;
    begin
       if drivePresent then
-         sendReply (sender, REPLY_OK, 1);
+         replyMsg.tag := (label => REPLY_OK, length => 4,
+                          flags => 0, badge => 0);
+         replyMsg.capBadge := 0;
+         replyMsg.words :=
+           (0 => driveBlockCount,
+            1 => Pack_Sizes (512, 512),
+            2 => 255,
+            3 => Pack_Properties (0, Fixed_Media));
+         ignore := reply (sender, replyMsg);
       else
-         sendReply (sender, REPLY_ERR, 0);
+         sendReply (sender, REPLY_ERROR, 0);
       end if;
-   end handleIdentify;
+   end handleDescribe;
 
    --  Main message loop variables
    sender : ProcessID;
@@ -464,14 +526,14 @@ begin
       receive (sender, msg);
 
       case msg.tag.label is
-         when OP_READ_BLOCK =>
+         when OP_READ_BLOCKS =>
             handleReadBlock (sender, msg);
-         when OP_WRITE_BLOCK =>
+         when OP_WRITE_BLOCKS =>
             handleWriteBlock (sender, msg);
-         when OP_IDENTIFY =>
-            handleIdentify (sender);
+         when OP_DESCRIBE_DEVICE =>
+            handleDescribe (sender);
          when others =>
-            sendReply (sender, REPLY_ERR, 0);
+            sendReply (sender, REPLY_ERROR, 0);
       end case;
    end loop;
 end main;

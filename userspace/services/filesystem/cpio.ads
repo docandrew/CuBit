@@ -46,6 +46,16 @@ package Cpio is
    ---------------------------------------------------------------------------
    function findFile (ar : Archive; name : String) return Natural;
 
+   --  Return the address and exact bound of an indexed file.  This provides
+   --  a bounded view of a trusted bootstrap image.  A writable consumer must
+   --  copy the image because the kernel maps the initrd read-only.
+   procedure fileView
+     (ar       : Archive;
+      fileIdx  : Natural;
+      base     : out System.Address;
+      size     : out Unsigned_64;
+      ok       : out Boolean);
+
    ---------------------------------------------------------------------------
    --  readData
    --  Direct memcpy from archive at dataOff + offset.

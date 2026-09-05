@@ -37,6 +37,7 @@ with Capabilities;
 with Config;
 with Descriptors;
 with LinkedLists;
+with Memory_Grants;
 limited with Process.Queues;
 with Spinlocks;
 with Stackframe;
@@ -370,35 +371,42 @@ is
     -- grantee's address space, enabling zero-copy I/O between client and
     -- server processes.
     ---------------------------------------------------------------------------
-    MAX_GRANTS_PER_PROCESS : constant := 16;
+    MAX_GRANTS_PER_PROCESS : constant := Memory_Grants.Grants_Per_Process;
     --  16 MiB per grant. Modern display buffers, media paths, and batched I/O
     --  need grants larger than the original 1 MiB filesystem-buffer ceiling.
     --  With 256 PIDs * 16 grants, this reserves a 64 GiB virtual grant
     --  aperture at GRANT_REGION_BASE, still below PROCESS_STACK_TOP_VIRT.
-    MAX_GRANT_PAGES        : constant := 4096;
+    MAX_GRANT_PAGES        : constant := Memory_Grants.Maximum_Page_Count;
 
     subtype GrantID is Natural range 0 .. MAX_GRANTS_PER_PROCESS - 1;
+    subtype StoredGrantPageCount is Natural range 0 .. MAX_GRANT_PAGES;
 
     type GrantPermission is (GRANT_READ, GRANT_READWRITE);
 
     type Grant is record
         active       : Boolean         := False;
+        reusable     : Boolean         := True;
+        generation   : Memory_Grants.Live_Grant_Generation :=
+          Memory_Grants.Initial_Generation;
         granterPID   : ProcessID       := NO_PROCESS;
         granteePID   : ProcessID       := NO_PROCESS;
         -- Granter's virtual address range
         granterAddr  : System.Address  := System.Null_Address;
         -- Where it was mapped in grantee's space
         granteeAddr  : System.Address  := System.Null_Address;
-        numPages     : Natural         := 0;
+        numPages     : StoredGrantPageCount := 0;
         permission   : GrantPermission := GRANT_READ;
     end record;
 
     type GrantArray is array (GrantID) of Grant;
 
     -- Grant virtual address region in lower-half user space
-    GRANT_REGION_BASE : constant Integer_Address := 16#0000_4000_0000_0000#;
+    GRANT_REGION_BASE : constant Integer_Address :=
+        Integer_Address (Memory_Grants.Received_Region_First);
     GRANT_SLOT_SIZE   : constant Integer_Address :=
         Integer_Address (MAX_GRANT_PAGES) * Integer_Address (Virtmem.PAGE_SIZE);
+    GRANT_REGION_END  : constant Integer_Address :=
+        Integer_Address (Memory_Grants.Received_Region_Limit);
 
     ---------------------------------------------------------------------------
     -- Unified IPC Ring Buffer

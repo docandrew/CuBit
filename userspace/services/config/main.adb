@@ -19,9 +19,12 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Memory_Grants;
+with CuBit.Filesystems;
 
 procedure main is
    use ASCII;
+   use type CuBit.Filesystems.Open_Options;
 
    --  IPC operation labels
    OP_CONFIG_GET    : constant Unsigned_32 := 16#0600#;
@@ -40,13 +43,6 @@ procedure main is
    GRANT_REGION_BASE : constant Unsigned_64 := 16#0000_4000_0000_0000#;
    GRANT_SLOT_SIZE   : constant Unsigned_64 := 4096 * 4096; -- 16 MiB
 
-   --  FS IPC labels (for persistence)
-   OP_OPEN  : constant Unsigned_32 := 16#0001#;
-   OP_CLOSE : constant Unsigned_32 := 16#0002#;
-   OP_READ  : constant Unsigned_32 := 16#0003#;
-   OP_WRITE : constant Unsigned_32 := 16#0004#;
-   OP_SEEK  : constant Unsigned_32 := 16#0006#;
-
    --  FS endpoint is at slot 1 (granted by devmgr)
    CAP_SLOT_FS_LOCAL : constant Unsigned_64 := 1;
 
@@ -54,7 +50,7 @@ procedure main is
 
    --  FS grant state for persistence
    fsGrantBuf  : System.Address := System.Null_Address;
-   fsGrantId   : Unsigned_64 := 0;
+   fsGrant     : CuBit.Memory_Grants.Grant_Reference;
    fsReady     : Boolean := False;
 
    --  Persistence backing store path (read from "config.store" key)
@@ -107,30 +103,20 @@ procedure main is
 
    aclProfiles : array (0 .. MAX_ACL_PROFILES - 1) of ACLProfile;
 
-   --  Admin tracking: first OP_SET_ACL sender auto-becomes primary admin
-   primaryAdmin : ProcessID   := NO_PROCESS;
-   procmgrAdmin : Unsigned_64 := 0;
-
-   --  Check if sender is an authorized admin (devmgr or procmgr)
+   --  Resolve administrative roles on each check. These operations are
+   --  control-plane traffic, and a live registry lookup avoids turning a
+   --  cached raw PID into authority if its original process dies.
    function isAdmin (sender : ProcessID) return Boolean is
+      devmgrAdmin : constant Unsigned_64 :=
+        getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DEVMGR);
+      procmgrAdmin : constant Unsigned_64 :=
+        getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_PROCMGR);
    begin
-      if primaryAdmin /= NO_PROCESS and then sender = primaryAdmin then
-         return True;
-      end if;
-
-      --  Lazy-discover procmgr PID via sysinfo
-      if procmgrAdmin = 0 then
-         procmgrAdmin := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_PROCMGR);
-         if procmgrAdmin = 0 or procmgrAdmin = Unsigned_64'Last then
-            procmgrAdmin := 0;
-         end if;
-      end if;
-
-      if procmgrAdmin /= 0 and then sender = procmgrAdmin then
-         return True;
-      end if;
-
-      return False;
+      return
+        (devmgrAdmin /= 0 and then devmgrAdmin /= Unsigned_64'Last and then
+         sender = devmgrAdmin) or else
+        (procmgrAdmin /= 0 and then procmgrAdmin /= Unsigned_64'Last and then
+         sender = procmgrAdmin);
    end isAdmin;
 
    --  Check if sender has access rights for the given key
@@ -223,11 +209,6 @@ procedure main is
       entryCount : constant Natural := Natural (msg.words (1));
       slotIdx    : Integer := -1;
    begin
-      --  Auto-register first sender as primary admin (devmgr)
-      if primaryAdmin = NO_PROCESS then
-         primaryAdmin := sender;
-      end if;
-
       if not isAdmin (sender) then
          sendReply (sender, REPLY_ACCESS_DENIED, 0);
          return;
@@ -678,18 +659,9 @@ procedure main is
    procedure ensureFsGrant is
       rawAddr : Unsigned_64;
       aligned : Unsigned_64;
-      fsPID   : Unsigned_64;
-      gid     : Unsigned_64;
       ok      : Boolean;
    begin
       if fsReady then
-         return;
-      end if;
-
-      --  Discover FS PID
-      fsPID := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_FS);
-      if fsPID = 0 or fsPID = Unsigned_64'Last then
-         debugPrint ("Config: FS not registered" & LF);
          return;
       end if;
 
@@ -705,12 +677,12 @@ procedure main is
       fsGrantBuf := To_Address (Integer_Address (aligned));
 
       --  Create grant to FS server (1 page RW)
-      createGrant
-        (grantee   => fsPID,
+      CuBit.Memory_Grants.Create_Via_Capability
+        (slot      => CAP_SLOT_FS_LOCAL,
          localAddr => fsGrantBuf,
          numPages  => 1,
          readWrite => True,
-         grantId   => gid,
+         reference => fsGrant,
          success   => ok);
 
       if not ok then
@@ -718,7 +690,6 @@ procedure main is
          return;
       end if;
 
-      fsGrantId := gid;
       fsReady := True;
       debugPrint ("Config: FS grant ready" & LF);
    end ensureFsGrant;
@@ -803,7 +774,7 @@ procedure main is
    ---------------------------------------------------------------------------
    procedure handleLoad (sender : ProcessID) is
       fsMsg     : Message;
-      fileHandle : Unsigned_64;
+      fileHandle : CuBit.Filesystems.File_Handle;
       fileSize   : Unsigned_64;
       bytesRead  : Unsigned_64;
    begin
@@ -851,15 +822,8 @@ procedure main is
          end loop;
       end;
 
-      fsMsg := (tag => (label  => OP_OPEN,
-                        length => 3,
-                        flags  => 0,
-                        badge  => 0),
-                capBadge => 0,
-                words => (0 => fsGrantId,
-                          1 => Unsigned_64 (storePathLen),
-                          2 => 0,
-                          others => 0));
+      fsMsg := CuBit.Filesystems.Open_Request
+        (fsGrant, CuBit.Filesystems.Nonempty_Path_Byte_Count (storePathLen));
       fsMsg.tag := capCall (CAP_SLOT_FS_LOCAL, fsMsg);
 
       if fsMsg.tag.label /= REPLY_OK then
@@ -868,7 +832,7 @@ procedure main is
          return;
       end if;
 
-      fileHandle := fsMsg.words (0);
+      fileHandle := CuBit.Filesystems.File_Handle (fsMsg.words (0));
       fileSize   := fsMsg.words (1);
 
       --  Clamp to grant buffer size
@@ -877,24 +841,14 @@ procedure main is
       end if;
 
       --  Read file contents into fsGrantBuf
-      fsMsg := (tag => (label  => OP_READ,
-                        length => 3,
-                        flags  => 0,
-                        badge  => 0),
-                capBadge => 0,
-                words => (0 => fileHandle,
-                          1 => fsGrantId,
-                          2 => fileSize,
-                          others => 0));
+      fsMsg := CuBit.Filesystems.Read_Request
+        (fileHandle, fsGrant, fileSize);
       fsMsg.tag := capCall (CAP_SLOT_FS_LOCAL, fsMsg);
 
       if fsMsg.tag.label /= REPLY_OK then
          debugPrint ("Config: load read failed" & LF);
          --  Close file before returning
-         fsMsg := (tag => (label => OP_CLOSE, length => 1,
-                           flags => 0, badge => 0),
-                   capBadge => 0,
-                   words => (0 => fileHandle, others => 0));
+         fsMsg := CuBit.Filesystems.Close_Request (fileHandle);
          fsMsg.tag := capCall (CAP_SLOT_FS_LOCAL, fsMsg);
          sendReply (sender, REPLY_OK, 0);
          return;
@@ -909,10 +863,7 @@ procedure main is
       end if;
 
       --  Close file
-      fsMsg := (tag => (label => OP_CLOSE, length => 1,
-                        flags => 0, badge => 0),
-                capBadge => 0,
-                words => (0 => fileHandle, others => 0));
+      fsMsg := CuBit.Filesystems.Close_Request (fileHandle);
       fsMsg.tag := capCall (CAP_SLOT_FS_LOCAL, fsMsg);
 
       sendReply (sender, REPLY_OK, 0);
@@ -924,7 +875,7 @@ procedure main is
    ---------------------------------------------------------------------------
    procedure handleSave (sender : ProcessID) is
       fsMsg     : Message;
-      fileHandle : Unsigned_64;
+      fileHandle : CuBit.Filesystems.File_Handle;
       writeOff   : Natural := 0;
    begin
       if not isAdmin (sender) then
@@ -973,15 +924,12 @@ procedure main is
          end loop;
       end;
 
-      fsMsg := (tag => (label  => OP_OPEN,
-                        length => 3,
-                        flags  => 0,
-                        badge  => 0),
-                capBadge => 0,
-                words => (0 => fsGrantId,
-                          1 => Unsigned_64 (storePathLen),
-                          2 => 0,
-                          others => 0));
+      fsMsg := CuBit.Filesystems.Open_Request
+        (fsGrant,
+         CuBit.Filesystems.Nonempty_Path_Byte_Count (storePathLen),
+         CuBit.Filesystems.OPEN_WRITE_ONLY or
+           CuBit.Filesystems.OPEN_CREATE or
+           CuBit.Filesystems.OPEN_TRUNCATE);
       fsMsg.tag := capCall (CAP_SLOT_FS_LOCAL, fsMsg);
 
       if fsMsg.tag.label /= REPLY_OK then
@@ -990,18 +938,11 @@ procedure main is
          return;
       end if;
 
-      fileHandle := fsMsg.words (0);
+      fileHandle := CuBit.Filesystems.File_Handle (fsMsg.words (0));
 
       --  Seek to beginning
-      fsMsg := (tag => (label  => OP_SEEK,
-                        length => 3,
-                        flags  => 0,
-                        badge  => 0),
-                capBadge => 0,
-                words => (0 => fileHandle,
-                          1 => 0,    --  offset 0
-                          2 => 0,    --  SEEK_SET
-                          others => 0));
+      fsMsg := CuBit.Filesystems.Seek_Request
+        (fileHandle, 0, CuBit.Filesystems.From_Start);
       fsMsg.tag := capCall (CAP_SLOT_FS_LOCAL, fsMsg);
 
       --  Serialize all active entries into the grant buffer, then write
@@ -1050,15 +991,8 @@ procedure main is
 
       --  Write the serialized data
       if writeOff > 0 then
-         fsMsg := (tag => (label  => OP_WRITE,
-                           length => 3,
-                           flags  => 0,
-                           badge  => 0),
-                   capBadge => 0,
-                   words => (0 => fileHandle,
-                             1 => fsGrantId,
-                             2 => Unsigned_64 (writeOff),
-                             others => 0));
+         fsMsg := CuBit.Filesystems.Write_Request
+           (fileHandle, fsGrant, Unsigned_64 (writeOff));
          fsMsg.tag := capCall (CAP_SLOT_FS_LOCAL, fsMsg);
 
          if fsMsg.tag.label /= REPLY_OK then
@@ -1069,10 +1003,7 @@ procedure main is
       end if;
 
       --  Close file
-      fsMsg := (tag => (label => OP_CLOSE, length => 1,
-                        flags => 0, badge => 0),
-                capBadge => 0,
-                words => (0 => fileHandle, others => 0));
+      fsMsg := CuBit.Filesystems.Close_Request (fileHandle);
       fsMsg.tag := capCall (CAP_SLOT_FS_LOCAL, fsMsg);
 
       sendReply (sender, REPLY_OK, 0);

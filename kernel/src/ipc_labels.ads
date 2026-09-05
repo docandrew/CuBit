@@ -47,9 +47,10 @@ is
     OP_IOCTL       : constant Unsigned_32 := 16#0200#;
 
     -- Block device operations
-    OP_READ_BLOCK  : constant Unsigned_32 := 16#0210#;
-    OP_WRITE_BLOCK : constant Unsigned_32 := 16#0211#;
-    OP_IDENTIFY    : constant Unsigned_32 := 16#0212#;
+    OP_READ_BLOCKS          : constant Unsigned_32 := 16#0210#;
+    OP_WRITE_BLOCKS         : constant Unsigned_32 := 16#0211#;
+    OP_DESCRIBE_BLOCK_DEVICE : constant Unsigned_32 := 16#0212#;
+    OP_FLUSH_BLOCK_DEVICE   : constant Unsigned_32 := 16#0213#;
 
     -- Memory operations (for future shared memory grants)
     OP_GRANT   : constant Unsigned_32 := 16#0300#;

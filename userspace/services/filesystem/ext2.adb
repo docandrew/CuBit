@@ -9,16 +9,11 @@
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Block_Devices; use CuBit.Block_Devices;
 
 package body Ext2 is
 
-   --  ATA sector size
-   ATA_SECTOR_SIZE : constant := 512;
-
-   --  IPC labels for block device operations
-   OP_READ_BLOCK  : constant Unsigned_32 := 16#0210#;
-   OP_WRITE_BLOCK : constant Unsigned_32 := 16#0211#;
-   REPLY_OK       : constant Unsigned_32 := 16#F000#;
+   use type System.Address;
 
    --  Indirect block cache (avoids re-reading same block per getDataBlock call)
    --  Sized for max 4KB ext2 blocks (1024 ptrs); 1KB blocks use first 256.
@@ -31,6 +26,11 @@ package body Ext2 is
    cachedDIndL2Num   : Unsigned_32 := 0;
    cachedDIndL2Buf   : array (0 .. 1023) of Unsigned_32;
 
+   cacheIdentityValid : Boolean := False;
+   cachedBackend       : BlockBackend := MEMORY;
+   cachedBase          : System.Address := System.Null_Address;
+   cachedCapSlot       : Unsigned_64 := 0;
+
    procedure invalidateBlockCache is
    begin
       cachedIndBlockNum := 0;
@@ -38,9 +38,24 @@ package body Ext2 is
       cachedDIndL2Num   := 0;
    end invalidateBlockCache;
 
+   procedure selectCacheIdentity (fs : Filesystem) is
+   begin
+      if not cacheIdentityValid or else
+         cachedBackend /= fs.backend or else
+         cachedBase /= fs.base or else
+         cachedCapSlot /= fs.device.endpointSlot
+      then
+         invalidateBlockCache;
+         cachedBackend := fs.backend;
+         cachedBase := fs.base;
+         cachedCapSlot := fs.device.endpointSlot;
+         cacheIdentityValid := True;
+      end if;
+   end selectCacheIdentity;
+
    --  Read bytes from the filesystem at a byte offset.
-   --  Dispatches on fs.backend: RAMDISK does direct memory copy,
-   --  ATA sends OP_READ_BLOCK IPC to the ATA driver.
+   --  Dispatches on fs.backend: MEMORY does a bounded direct copy; the other
+   --  path uses a generic Block.Device.V1 session.
    procedure readBytes
      (fs     : Filesystem;
       offset : Storage_Offset;
@@ -49,10 +64,33 @@ package body Ext2 is
    is
    begin
       case fs.backend is
-         when ATA | NVME =>
+         when MEMORY =>
+            if offset < 0 or else
+               Unsigned_64 (offset) > fs.imageSize or else
+               Unsigned_64 (len) > fs.imageSize - Unsigned_64 (offset)
+            then
+               declare
+                  dst : String (1 .. Natural (len))
+                    with Import, Address => dest;
+               begin
+                  dst := (others => Character'Val (0));
+               end;
+               return;
+            end if;
+
+            declare
+               src : String (1 .. Natural (len))
+                 with Import, Address => fs.base + offset;
+               dst : String (1 .. Natural (len))
+                 with Import, Address => dest;
+            begin
+               dst := src;
+            end;
+
+         when BLOCK_DEVICE =>
             --  Convert byte offset/len to multi-sector reads via IPC.
-            --  Read up to grantBufSize/sectorSize sectors per IPC call
-            --  into the grant buffer, then copy to dest.
+            --  Read up to the session transfer bound per IPC call into the
+            --  transitional grant buffer, then copy to dest.
             declare
                byteOff       : Unsigned_64 := Unsigned_64 (offset);
                remaining     : Unsigned_64 := Unsigned_64 (len);
@@ -61,35 +99,38 @@ package body Ext2 is
                secOff        : Unsigned_64;
                copyLen       : Unsigned_64;
                sectorsNeeded : Unsigned_64;
-               maxSectors    : constant Unsigned_64 :=
-                 Unsigned_64 (fs.grantBufSize) / ATA_SECTOR_SIZE;
+               deviceBlockSize : constant Unsigned_64 :=
+                 Unsigned_64 (fs.device.description.logicalBlockSize);
+               maxSectors    : constant Unsigned_64 := Unsigned_64'Min
+                 (Unsigned_64 (fs.device.grantBytes) / deviceBlockSize,
+                  Unsigned_64 (fs.device.description.maxTransferBlocks));
                msg           : Message;
                ignore        : MessageTag;
             begin
                while remaining > 0 loop
-                  lba    := byteOff / ATA_SECTOR_SIZE;
-                  secOff := byteOff mod ATA_SECTOR_SIZE;
+                  lba    := byteOff / deviceBlockSize;
+                  secOff := byteOff mod deviceBlockSize;
 
                   --  Calculate how many sectors to read in this batch
                   sectorsNeeded :=
-                    (remaining + secOff + ATA_SECTOR_SIZE - 1) /
-                    ATA_SECTOR_SIZE;
+                    (remaining + secOff + deviceBlockSize - 1) /
+                    deviceBlockSize;
                   if sectorsNeeded > maxSectors then
                      sectorsNeeded := maxSectors;
                   end if;
 
                   --  Read multiple sectors from driver
-                  msg.tag := (label  => OP_READ_BLOCK,
-                              length => 3,
+                  msg.tag := (label  => OP_READ_BLOCKS,
+                              length => 4,
                               flags  => 0,
                               badge  => 0);
                   msg.capBadge := 0;
                   msg.words := (0 => lba,
-                                1 => fs.ataGrantId,
+                                1 => fs.device.grant.slot,
                                 2 => sectorsNeeded,
-                                3 => 0);
+                                3 => fs.device.grant.generation);
 
-                  ignore := capCall (fs.ataCapSlot, msg);
+                  ignore := capCall (fs.device.endpointSlot, msg);
 
                   if msg.tag.label /= REPLY_OK then
                      debugPrint ("Ext2: read reply not OK." & ASCII.LF);
@@ -107,7 +148,7 @@ package body Ext2 is
 
                   --  Copy relevant portion from grant buffer to dest
                   copyLen :=
-                    sectorsNeeded * ATA_SECTOR_SIZE - secOff;
+                    sectorsNeeded * deviceBlockSize - secOff;
                   if copyLen > remaining then
                      copyLen := remaining;
                   end if;
@@ -115,7 +156,7 @@ package body Ext2 is
                   declare
                      srcSlice : String (1 .. Natural (copyLen))
                        with Import,
-                            Address => fs.ataGrantBuf +
+                            Address => fs.device.grantBuffer +
                               Storage_Offset (secOff);
                      dstSlice : String (1 .. Natural (copyLen))
                        with Import,
@@ -331,6 +372,8 @@ package body Ext2 is
    is
       ptrsPerBlock : constant Unsigned_32 := fs.blkSize / 4;
    begin
+      selectCacheIdentity (fs);
+
       --  Direct blocks (0..11)
       if logBlock < NUM_DIRECT_BLOCKS then
          return ino.directBlocks (Natural (logBlock));
@@ -489,8 +532,10 @@ package body Ext2 is
       pos       : Unsigned_64 := offset;
       bytesRead : Unsigned_64 := 0;
 
-      --  Max contiguous bytes per batch (matches grant buffer size)
-      maxContigBytes : constant Unsigned_64 := Unsigned_64 (fs.grantBufSize);
+      --  Maximum contiguous payload accepted by this block session.
+      maxContigBytes : constant Unsigned_64 :=
+        (if fs.backend = MEMORY then Unsigned_64 (fs.blkSize)
+         else Unsigned_64 (fs.device.grantBytes));
    begin
       if offset >= size then
          return 0;
@@ -585,7 +630,7 @@ package body Ext2 is
       return bytesRead;
    end readData;
 
-   --  (writeBytes uses fs.grantBufSize for sector limit)
+   --  writeBytes uses the session's described logical block and transfer bound.
 
    --  Write bytes to the filesystem at a raw byte offset.
    --  Handles non-aligned writes via read-modify-write of partial sectors.
@@ -596,8 +641,31 @@ package body Ext2 is
       len    : Storage_Count)
    is
    begin
+      if fs.backend = BLOCK_DEVICE and then
+         Is_Read_Only (fs.device.description)
+      then
+         return;
+      end if;
+
       case fs.backend is
-         when ATA | NVME =>
+         when MEMORY =>
+            if offset < 0 or else
+               Unsigned_64 (offset) > fs.imageSize or else
+               Unsigned_64 (len) > fs.imageSize - Unsigned_64 (offset)
+            then
+               return;
+            end if;
+
+            declare
+               dst : String (1 .. Natural (len))
+                 with Import, Address => fs.base + offset;
+               source : String (1 .. Natural (len))
+                 with Import, Address => src;
+            begin
+               dst := source;
+            end;
+
+         when BLOCK_DEVICE =>
             declare
                byteOff   : Unsigned_64 := Unsigned_64 (offset);
                remaining : Unsigned_64 := Unsigned_64 (len);
@@ -605,31 +673,33 @@ package body Ext2 is
                lba       : Unsigned_64;
                secOff    : Unsigned_64;
                copyLen   : Unsigned_64;
+               deviceBlockSize : constant Unsigned_64 :=
+                 Unsigned_64 (fs.device.description.logicalBlockSize);
                msg       : Message;
                ignore    : MessageTag;
             begin
                while remaining > 0 loop
-                  lba    := byteOff / ATA_SECTOR_SIZE;
-                  secOff := byteOff mod ATA_SECTOR_SIZE;
+                  lba    := byteOff / deviceBlockSize;
+                  secOff := byteOff mod deviceBlockSize;
 
-                  if secOff /= 0 or remaining < ATA_SECTOR_SIZE then
+                  if secOff /= 0 or remaining < deviceBlockSize then
                      --  Partial sector: read-modify-write
-                     copyLen := ATA_SECTOR_SIZE - secOff;
+                     copyLen := deviceBlockSize - secOff;
                      if copyLen > remaining then
                         copyLen := remaining;
                      end if;
 
                      --  Read the sector into grant buffer
-                     msg.tag := (label  => OP_READ_BLOCK,
-                                 length => 3,
+                     msg.tag := (label  => OP_READ_BLOCKS,
+                                 length => 4,
                                  flags  => 0,
                                  badge  => 0);
                      msg.capBadge := 0;
                      msg.words := (0 => lba,
-                                   1 => fs.ataGrantId,
+                                   1 => fs.device.grant.slot,
                                    2 => 1,
-                                   3 => 0);
-                     ignore := capCall (fs.ataCapSlot, msg);
+                                   3 => fs.device.grant.generation);
+                     ignore := capCall (fs.device.endpointSlot, msg);
 
                      if msg.tag.label /= REPLY_OK then
                         debugPrint
@@ -641,7 +711,7 @@ package body Ext2 is
                      declare
                         dstSlice : String (1 .. Natural (copyLen))
                           with Import,
-                               Address => fs.ataGrantBuf +
+                               Address => fs.device.grantBuffer +
                                  Storage_Offset (secOff);
                         srcSlice : String (1 .. Natural (copyLen))
                           with Import,
@@ -651,16 +721,16 @@ package body Ext2 is
                      end;
 
                      --  Write the modified sector back
-                     msg.tag := (label  => OP_WRITE_BLOCK,
-                                 length => 3,
+                     msg.tag := (label  => OP_WRITE_BLOCKS,
+                                 length => 4,
                                  flags  => 0,
                                  badge  => 0);
                      msg.capBadge := 0;
                      msg.words := (0 => lba,
-                                   1 => fs.ataGrantId,
+                                   1 => fs.device.grant.slot,
                                    2 => 1,
-                                   3 => 0);
-                     ignore := capCall (fs.ataCapSlot, msg);
+                                   3 => fs.device.grant.generation);
+                     ignore := capCall (fs.device.endpointSlot, msg);
 
                      if msg.tag.label /= REPLY_OK then
                         debugPrint
@@ -671,21 +741,25 @@ package body Ext2 is
                      --  Sector-aligned: batch write full sectors
                      declare
                         maxWriteSectors : constant Unsigned_64 :=
-                          Unsigned_64 (fs.grantBufSize) / ATA_SECTOR_SIZE;
+                          Unsigned_64'Min
+                            (Unsigned_64 (fs.device.grantBytes) /
+                               deviceBlockSize,
+                             Unsigned_64
+                               (fs.device.description.maxTransferBlocks));
                         sectorsNeeded : Unsigned_64 :=
-                          remaining / ATA_SECTOR_SIZE;
+                          remaining / deviceBlockSize;
                      begin
                         if sectorsNeeded > maxWriteSectors then
                            sectorsNeeded := maxWriteSectors;
                         end if;
 
                         copyLen :=
-                          sectorsNeeded * ATA_SECTOR_SIZE;
+                          sectorsNeeded * deviceBlockSize;
 
                         --  Copy source data into grant buffer
                         declare
                            dstSlice : String (1 .. Natural (copyLen))
-                             with Import, Address => fs.ataGrantBuf;
+                             with Import, Address => fs.device.grantBuffer;
                            srcSlice : String (1 .. Natural (copyLen))
                              with Import, Address => src + srcOff;
                         begin
@@ -693,16 +767,16 @@ package body Ext2 is
                         end;
 
                         --  Write sectors
-                        msg.tag := (label  => OP_WRITE_BLOCK,
-                                    length => 3,
+                        msg.tag := (label  => OP_WRITE_BLOCKS,
+                                    length => 4,
                                     flags  => 0,
                                     badge  => 0);
                         msg.capBadge := 0;
                         msg.words := (0 => lba,
-                                      1 => fs.ataGrantId,
+                                      1 => fs.device.grant.slot,
                                       2 => sectorsNeeded,
-                                      3 => 0);
-                        ignore := capCall (fs.ataCapSlot, msg);
+                                      3 => fs.device.grant.generation);
+                        ignore := capCall (fs.device.endpointSlot, msg);
 
                         if msg.tag.label /= REPLY_OK then
                            debugPrint
@@ -1331,7 +1405,7 @@ package body Ext2 is
                                 newBlk);
                dirIno.sizeLo := dirIno.sizeLo + fs.blkSize;
                dirIno.numDiskSectors := dirIno.numDiskSectors +
-                 Unsigned_32 (fs.blkSize / 512);
+                 fs.blkSize / 512;
                writeInode (fs, dirInodeNum, dirIno);
             end;
          end if;
@@ -1627,27 +1701,57 @@ package body Ext2 is
       writeInode (fs, inodeNum, ino);
    end truncateFile;
 
-   procedure initATA
+   procedure initBlockDevice
      (fs         : out Filesystem;
       capSlot    : Unsigned_64;
-      grantId    : Unsigned_64;
+      grant      : CuBit.Memory_Grants.Grant_Reference;
       grantBuf   : System.Address;
+      grantBytes : Unsigned_32;
       ok         : out Boolean)
    is
       sb : Superblock;
-
-      --  Temporary filesystem for reading superblock via ATA
+      description : Device_Description;
+      describeMsg : Message;
+      ignore      : MessageTag;
+      requiredBytes  : Unsigned_64;
+      requiredBlocks : Unsigned_64;
       tmpFs : Filesystem;
    begin
-      tmpFs.base        := System.Null_Address;
-      tmpFs.blkSize     := 0;
-      tmpFs.backend     := ATA;
-      tmpFs.ataCapSlot  := capSlot;
-      tmpFs.ataGrantId  := grantId;
-      tmpFs.ataGrantBuf := grantBuf;
+      ok := False;
+      if grantBuf = System.Null_Address or else grantBytes = 0 then
+         return;
+      end if;
 
-      --  Read superblock via ATA.  The first read may return stale data
-      --  if the grant mapping hasn't fully propagated yet, so retry once.
+      describeMsg :=
+        (tag      => (label => OP_DESCRIBE_DEVICE, length => 0,
+                      flags => 0, badge => 0),
+         capBadge => 0,
+         words    => (others => 0));
+      ignore := capCall (capSlot, describeMsg);
+      if describeMsg.tag.label /= REPLY_OK or else
+         describeMsg.tag.length /= 4 or else
+         not Decode_Description
+           (describeMsg.words (0), describeMsg.words (1),
+            describeMsg.words (2), describeMsg.words (3), description) or else
+         grantBytes < Unsigned_32 (description.logicalBlockSize)
+      then
+         debugPrint ("Ext2: invalid block-device description." & ASCII.LF);
+         return;
+      end if;
+
+      tmpFs.base      := System.Null_Address;
+      tmpFs.imageSize := 0;
+      tmpFs.blkSize   := 0;
+      tmpFs.backend   := BLOCK_DEVICE;
+      tmpFs.device :=
+        (endpointSlot => capSlot,
+         grant        => grant,
+         grantBuffer  => grantBuf,
+         grantBytes   => grantBytes,
+         description  => description);
+
+      --  A newly installed grant may need one retry while remote translation
+      --  invalidation completes.
       for attempt in 1 .. 2 loop
          readBytes (tmpFs, SUPERBLOCK_OFFSET, sb'Address,
                     Superblock'Size / 8);
@@ -1655,15 +1759,71 @@ package body Ext2 is
       end loop;
 
       if sb.signature /= EXT2_SIGNATURE then
-         debugPrint ("Ext2.initATA: bad ext2 signature." & ASCII.LF);
-         ok := False;
+         debugPrint ("Ext2: bad ext2 signature." & ASCII.LF);
          return;
       end if;
 
       fs := tmpFs;
       fs.sb      := sb;
       fs.blkSize := blockSize (sb);
+      requiredBytes := Unsigned_64 (sb.blockCount) * Unsigned_64 (fs.blkSize);
+      requiredBlocks :=
+        (requiredBytes + Unsigned_64 (description.logicalBlockSize) - 1) /
+        Unsigned_64 (description.logicalBlockSize);
+      if sb.blockCount = 0 or else requiredBlocks > description.blockCount then
+         debugPrint ("Ext2: filesystem exceeds block session." & ASCII.LF);
+         return;
+      end if;
+
       ok         := True;
-   end initATA;
+   end initBlockDevice;
+
+   procedure initMemory
+     (fs         : out Filesystem;
+      base       : System.Address;
+      imageSize  : Unsigned_64;
+      ok         : out Boolean)
+   is
+      sb : Superblock;
+      size : Unsigned_32;
+   begin
+      ok := False;
+
+      if base = System.Null_Address or else
+         imageSize < SUPERBLOCK_OFFSET + Superblock'Size / 8
+      then
+         return;
+      end if;
+
+      declare
+         source : Superblock
+           with Import, Address => base + SUPERBLOCK_OFFSET;
+      begin
+         sb := source;
+      end;
+
+      --  Ext2 supports larger shifts, but the current implementation and its
+      --  bounded block buffers intentionally support 1, 2, and 4 KiB blocks.
+      if sb.signature /= EXT2_SIGNATURE or else sb.blockShift > 2 then
+         return;
+      end if;
+
+      size := blockSize (sb);
+      if sb.blockCount = 0 or else
+         Unsigned_64 (sb.blockCount) > imageSize / Unsigned_64 (size)
+      then
+         return;
+      end if;
+
+      fs.base := base;
+      fs.imageSize := imageSize;
+      fs.sb := sb;
+      fs.blkSize := size;
+      fs.backend := MEMORY;
+      fs.device := (others => <>);
+      invalidateBlockCache;
+      cacheIdentityValid := False;
+      ok := True;
+   end initMemory;
 
 end Ext2;

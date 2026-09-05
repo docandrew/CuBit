@@ -53,8 +53,9 @@ icons from the Bluecurve repository:
 
 https://github.com/neeeeow/Bluecurve
 
-The generated atlas currently includes the Start menu, CuBASIC Console, UI Lab,
-DOOM, Security Center, Files, and Power icons. The source repository declares
+The generated atlas currently includes the Start menu, CuBASIC Console, legacy
+UI Lab and Security Center glyphs, DOOM, Files, and Power icons. The source
+repository declares
 GPL-3.0, and Fedora packages the Bluecurve icon theme as GPL-2.0-or-later.
 
 `userspace/services/desktop/desktop_window_icons.ads` was generated from the

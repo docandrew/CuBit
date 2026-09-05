@@ -72,8 +72,9 @@ typedef struct __attribute__((packed)) {
  */
 struct _FILE {
     int      active;        /* 1 if this entry is in use */
-    int      handle;        /* file handle from server */
-    uint64_t grant_id;      /* grant ID for data buffer */
+    uint64_t handle;        /* opaque generation-tagged handle from server */
+    uint64_t grant_id;      /* grant slot for data buffer */
+    uint64_t grant_generation;
     void    *grant_buf;     /* local address of grant buffer */
     uint64_t offset;        /* current file position */
     int      writable;      /* 1 if opened for writing */
@@ -124,13 +125,13 @@ static int flush_write_buf(FILE *f)
     /* Data is already in grant_buf at offset 0..wbuf_pos-1 */
     ipc_message_t msg;
     msg.tag.label  = OP_WRITE;
-    msg.tag.length = 3;
+    msg.tag.length = 4;
     msg.tag.flags  = 0;
     msg.tag.badge  = 0;
     msg.words[0] = (uint64_t)f->handle;
     msg.words[1] = f->grant_id;
     msg.words[2] = f->wbuf_pos;
-    msg.words[3] = 0;
+    msg.words[3] = f->grant_generation;
 
     if (fs_call(&msg) < 0)
         return -1;
@@ -195,6 +196,13 @@ FILE *fopen(const char *path, const char *mode)
         return NULL;
     }
     f->grant_id = (uint64_t)gid;
+    long generation = syscall1(
+        SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION, f->grant_id);
+    if (generation <= 0 || generation == (long)(-1UL)) {
+        syscall1(SYSCALL_REVOKE_SHARED_MEMORY_GRANT, f->grant_id);
+        return NULL;
+    }
+    f->grant_generation = (uint64_t)generation;
 
     /* Copy full path into grant buffer */
     size_t pathlen = strlen(path);
@@ -205,26 +213,28 @@ FILE *fopen(const char *path, const char *mode)
     /* Send OP_OPEN to FS server */
     ipc_message_t msg;
     msg.tag.label  = OP_OPEN;
-    msg.tag.length = 3;
+    msg.tag.length = 4;
     msg.tag.flags  = 0;
     msg.tag.badge  = 0;
     msg.words[0] = f->grant_id;    /* grant_id (where path is) */
     msg.words[1] = pathlen;        /* path length */
     msg.words[2] = flags;          /* open flags (O_CREAT, O_TRUNC, etc.) */
-    msg.words[3] = 0;
+    msg.words[3] = f->grant_generation;
 
     if (fs_call(&msg) < 0) {
-        syscall1(SYSCALL_REVOKE_SHARED_MEMORY_GRANT, f->grant_id);
+        syscall2(SYSCALL_REVOKE_SHARED_MEMORY_GRANT_REFERENCE,
+                 f->grant_id, f->grant_generation);
         return NULL;
     }
 
     /* Check reply */
     if (msg.tag.label != REPLY_OK) {
-        syscall1(SYSCALL_REVOKE_SHARED_MEMORY_GRANT, f->grant_id);
+        syscall2(SYSCALL_REVOKE_SHARED_MEMORY_GRANT_REFERENCE,
+                 f->grant_id, f->grant_generation);
         return NULL;
     }
 
-    f->handle = (int)msg.words[0];
+    f->handle = msg.words[0];
     f->offset = 0;
     f->active = 1;
     f->writable = writable;
@@ -259,13 +269,13 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream)
 
         ipc_message_t msg;
         msg.tag.label  = OP_READ;
-        msg.tag.length = 3;
+        msg.tag.length = 4;
         msg.tag.flags  = 0;
         msg.tag.badge  = 0;
         msg.words[0] = (uint64_t)stream->handle;
         msg.words[1] = stream->grant_id;
         msg.words[2] = chunk;
-        msg.words[3] = 0;
+        msg.words[3] = stream->grant_generation;
 
         if (fs_call(&msg) < 0)
             break;
@@ -413,7 +423,8 @@ int fclose(FILE *stream)
     fs_call(&msg);
 
     /* Revoke grant */
-    syscall1(SYSCALL_REVOKE_SHARED_MEMORY_GRANT, stream->grant_id);
+    syscall2(SYSCALL_REVOKE_SHARED_MEMORY_GRANT_REFERENCE,
+             stream->grant_id, stream->grant_generation);
 
     stream->active = 0;
     return 0;

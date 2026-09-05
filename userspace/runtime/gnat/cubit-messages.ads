@@ -90,6 +90,11 @@ package CuBit.Messages is
 
    --  Transitional service discovery syscall
    SYSCALL_SET_WELL_KNOWN  : constant Unsigned_64 := 107;
+   SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION :
+      constant Unsigned_64 := 108;
+   SYSCALL_RESOLVE_SHARED_MEMORY_GRANT : constant Unsigned_64 := 109;
+   SYSCALL_REVOKE_SHARED_MEMORY_GRANT_REFERENCE :
+      constant Unsigned_64 := 110;
 
    --  Well-known service roles (must match kernel Config.ServiceRole)
    ROLE_FILESYSTEM : constant Unsigned_64 := 1;

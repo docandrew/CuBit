@@ -419,6 +419,13 @@ int rename(const char *oldpath, const char *newpath)
     if (gid == (long)(-1UL))
         return -1;
 
+    long generation = syscall1(
+        SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION, (uint64_t)gid);
+    if (generation <= 0 || generation == (long)(-1UL)) {
+        syscall1(SYSCALL_REVOKE_SHARED_MEMORY_GRANT, (uint64_t)gid);
+        return -1;
+    }
+
     /* Pack both paths into the grant buffer: [oldpath][newpath] */
     memcpy(buf, oldpath, oldlen);
     memcpy((char *)buf + oldlen, newpath, newlen);
@@ -433,16 +440,17 @@ int rename(const char *oldpath, const char *newpath)
 
     rename_msg_t msg;
     msg.tag.label  = 0x0008;
-    msg.tag.length = 3;
+    msg.tag.length = 4;
     msg.tag.flags  = 0;
     msg.tag.badge  = 0;
     msg.words[0] = (uint64_t)gid;
     msg.words[1] = oldlen;
     msg.words[2] = newlen;
-    msg.words[3] = 0;
+    msg.words[3] = (uint64_t)generation;
 
     long ret = syscall2(SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY, CAP_SLOT_FS, &msg);
-    syscall1(SYSCALL_REVOKE_SHARED_MEMORY_GRANT, (uint64_t)gid);
+    syscall2(SYSCALL_REVOKE_SHARED_MEMORY_GRANT_REFERENCE,
+             (uint64_t)gid, (uint64_t)generation);
 
     if (ret == (long)(-1UL) || msg.tag.label != 0xF000)
         return -1;

@@ -197,6 +197,30 @@ package body Cpio is
       return ar.count;  --  not found
    end findFile;
 
+   procedure fileView
+     (ar       : Archive;
+      fileIdx  : Natural;
+      base     : out System.Address;
+      size     : out Unsigned_64;
+      ok       : out Boolean)
+   is
+   begin
+      if fileIdx >= ar.count or else
+         ar.files (fileIdx).dataOff > ar.size or else
+         ar.files (fileIdx).dataSize >
+           ar.size - ar.files (fileIdx).dataOff
+      then
+         base := System.Null_Address;
+         size := 0;
+         ok := False;
+         return;
+      end if;
+
+      base := ar.base + Storage_Offset (ar.files (fileIdx).dataOff);
+      size := ar.files (fileIdx).dataSize;
+      ok := True;
+   end fileView;
+
    ---------------------------------------------------------------------------
    --  readData
    ---------------------------------------------------------------------------

@@ -160,6 +160,8 @@ package body XHCI is
    hidEndpointDCI : Natural := 0;
    hidMaxPacket : Natural := 0;
    hidTransfersStarted : Boolean := False;
+   mouseDiagnostics : Boot_Mouse_Diagnostics;
+   diagnosticButtons : Unsigned_8 := 0;
 
    dcbaa : Address_Array (0 .. 255) with Import,
      Address => To_Address (Integer_Address (DMA_VIRT_BASE + DCBAA_OFFSET));
@@ -565,6 +567,18 @@ package body XHCI is
       hidEndpointDCI := 0;
       hidMaxPacket := 0;
       hidTransfersStarted := False;
+      mouseDiagnostics :=
+        (transferEvents    => 0,
+         decodedReports    => 0,
+         motionReports     => 0,
+         buttonTransitions => 0,
+         completionErrors  => 0,
+         shortReports      => 0,
+         unexpectedEvents  => 0,
+         lastReport        => 0,
+         lastLength        => 0,
+         lastCompletion    => 0);
+      diagnosticButtons := 0;
       barMappedBytes := 0;
 
       if barPhys = 0 or else barPages = 0 or else barPages > 256 or else
@@ -1175,6 +1189,11 @@ package body XHCI is
       Write32 (runtimeBase + RT_INTR0, INTR_IMAN, IMAN_IP or IMAN_IE);
    end Acknowledge_Runtime_Interrupt;
 
+   function Mouse_Diagnostics return Boot_Mouse_Diagnostics is
+   begin
+      return mouseDiagnostics;
+   end Mouse_Diagnostics;
+
    procedure Poll_Boot_Mouse
      (buttons : out Unsigned_8;
       deltaX  : out Integer;
@@ -1208,8 +1227,13 @@ package body XHCI is
 
       eventType := Shift_Right (event.control and TRB_TYPE_MASK, 10);
       if eventType /= TRB_TYPE_TRANSFER_EVENT then
+         mouseDiagnostics.unexpectedEvents :=
+           mouseDiagnostics.unexpectedEvents + 1;
          return;
       end if;
+
+      mouseDiagnostics.transferEvents :=
+        mouseDiagnostics.transferEvents + 1;
 
       eventSlot := Natural (Shift_Right (event.control, 24));
       eventEP := Natural (Shift_Right (event.control, 16) and 16#1F#);
@@ -1241,10 +1265,24 @@ package body XHCI is
       Queue_HID_Transfer;
       Ring_HID_Doorbell;
 
-      if (completion /= COMPLETION_SUCCESS and then
-          completion /= COMPLETION_SHORT_PACKET) or else
-         actualLength < 3
+      mouseDiagnostics.lastCompletion := Unsigned_8 (completion and 16#FF#);
+      mouseDiagnostics.lastLength :=
+        Unsigned_8
+          (Natural'Min (actualLength, Natural (Unsigned_8'Last)));
+      mouseDiagnostics.lastReport :=
+        Unsigned_32 (hidReports (reportOffset)) or
+        Shift_Left (Unsigned_32 (hidReports (reportOffset + 1)), 8) or
+        Shift_Left (Unsigned_32 (hidReports (reportOffset + 2)), 16) or
+        Shift_Left (Unsigned_32 (hidReports (reportOffset + 3)), 24);
+
+      if completion /= COMPLETION_SUCCESS and then
+         completion /= COMPLETION_SHORT_PACKET
       then
+         mouseDiagnostics.completionErrors :=
+           mouseDiagnostics.completionErrors + 1;
+         return;
+      elsif actualLength < 3 then
+         mouseDiagnostics.shortReports := mouseDiagnostics.shortReports + 1;
          return;
       end if;
 
@@ -1258,6 +1296,17 @@ package body XHCI is
          deltaY := Integer (hidReports (reportOffset + 2));
       else
          deltaY := Integer (hidReports (reportOffset + 2)) - 256;
+      end if;
+      mouseDiagnostics.decodedReports :=
+        mouseDiagnostics.decodedReports + 1;
+      if deltaX /= 0 or else deltaY /= 0 then
+         mouseDiagnostics.motionReports :=
+           mouseDiagnostics.motionReports + 1;
+      end if;
+      if buttons /= diagnosticButtons then
+         mouseDiagnostics.buttonTransitions :=
+           mouseDiagnostics.buttonTransitions + 1;
+         diagnosticButtons := buttons;
       end if;
       ready := True;
    end Poll_Boot_Mouse;

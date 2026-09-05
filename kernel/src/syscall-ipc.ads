@@ -37,6 +37,18 @@ is
     procedure handleMapFB (callerPID : Process.ProcessID;
                            retval    : out Unsigned_64);
 
+    procedure handleGetOwnedGrantGeneration
+      (arg0   : Unsigned_64;
+       retval : out Unsigned_64);
+
+    procedure handleResolveGrant
+      (arg0, arg1, arg2, arg3, arg4, arg5 : Unsigned_64;
+       retval : out Unsigned_64);
+
+    procedure handleRevokeGrantReference
+      (arg0, arg1 : Unsigned_64;
+       retval : out Unsigned_64);
+
     procedure handleReceive (arg0   : Unsigned_64;
                              retval : out Unsigned_64);
 

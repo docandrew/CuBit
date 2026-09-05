@@ -2,17 +2,15 @@
 --  CuBit
 --  Copyright (C) 2026 Jon Andrew
 --
---  @summary Bounded explainable-authority inspection protocol
+--  @summary Stable launch-authority provenance identifiers
 --
---  Launch provenance is reported by procmgr.  Effective capability state is
---  independently read from the kernel; consumers must not treat this protocol
---  as an enforcement oracle.
+--  These identifiers describe why procmgr requested or installed authority.
+--  A future inspection protocol will expose authenticated, bounded snapshots;
+--  these constants are not themselves an inspection or enforcement API.
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 
 package CuBit.Authority with SPARK_Mode => On is
-
-   OP_AUTHORITY_QUERY : constant Unsigned_32 := 16#0102#;
 
    AUTH_SOURCE_MANIFEST         : constant Unsigned_8 := 1;
    AUTH_SOURCE_KERNEL_BOOTSTRAP : constant Unsigned_8 := 2;
@@ -29,19 +27,5 @@ package CuBit.Authority with SPARK_Mode => On is
    AUTH_REASON_SERVICE_MISSING  : constant Unsigned_8 := 7;
    AUTH_REASON_MINT_FAILED      : constant Unsigned_8 := 8;
    AUTH_REASON_CONFIG_QUOTA     : constant Unsigned_8 := 9;
-
-   AUTH_FLAG_REQUESTED : constant Unsigned_8 := 1;
-   AUTH_FLAG_GRANTED   : constant Unsigned_8 := 2;
-
-   --  OP_AUTHORITY_QUERY request:
-   --    word 0: target PID
-   --    word 1: capability slot
-   --
-   --  REPLY_OK response:
-   --    word 0: authority_id[31:0], slot[39:32], source[47:40],
-   --            reason[55:48], flags[63:56]
-   --    word 1: capability_type[7:0], rights[15:8]
-   --    word 2: object reference
-   --    word 3: object parameter
 
 end CuBit.Authority;

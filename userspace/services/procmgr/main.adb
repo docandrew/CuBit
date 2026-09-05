@@ -20,15 +20,14 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Authority; use CuBit.Authority;
+with CuBit.Memory_Grants;
+with CuBit.Filesystems;
 
 procedure main is
    use ASCII;
 
    --  IPC label constants
    OP_SPAWN   : constant Unsigned_32 := 16#0100#;
-   OP_OPEN    : constant Unsigned_32 := 16#0001#;
-   OP_READ    : constant Unsigned_32 := 16#0003#;
-   OP_CLOSE   : constant Unsigned_32 := 16#0002#;
    REPLY_OK     : constant Unsigned_32 := 16#F000#;
    REPLY_ERR    : constant Unsigned_32 := 16#F001#;
    OP_SET_ACL   : constant Unsigned_32 := 16#0080#;
@@ -72,7 +71,6 @@ procedure main is
    authorityRecords : Authority_Record_Array;
    nextAuthorityRecord : Natural := 0;
    nextAuthorityId : Unsigned_32 := 1;
-   authorityInspectorPID : Unsigned_64 := 0;
 
    --  Service routing identifiers
    SERVICE_FS     : constant Unsigned_8 := 0;
@@ -82,7 +80,7 @@ procedure main is
    elfBuf : System.Address := System.Null_Address;
 
    --  Grant to FS server covering elfBuf
-   fsGrantId : Unsigned_64 := 0;
+   fsGrant : CuBit.Memory_Grants.Grant_Reference;
 
    --  Grant to config service covering elfBuf
    configGrantId : Unsigned_64 := 0;
@@ -188,78 +186,17 @@ procedure main is
       end loop;
    end clearAuthorityForPID;
 
-   procedure handleAuthorityQuery (sender : ProcessID; msg : Message) is
-      pid  : constant Unsigned_64 := msg.words (0);
-      slot : Unsigned_8 := 0;
-      response : Message := NULL_MESSAGE;
-      found : Boolean := False;
-      flags : Unsigned_64 := 0;
-      meta  : Unsigned_64;
-      ignore : Unsigned_64;
-   begin
-      --  Cross-process authority inspection is not implied by possession of a
-      --  general procmgr endpoint.  This temporary identity-based policy will
-      --  become a dedicated inspection capability when package identity is
-      --  authenticated.
-      if Unsigned_64 (sender) /= authorityInspectorPID then
-         response.tag := (label => REPLY_ERR, length => 0,
-                          flags => 0, badge => 0);
-         ignore := reply (sender, response);
-         return;
-      end if;
-
-      if msg.tag.length < 2 or else pid = 0 or else pid > 255 or else
-         msg.words (1) > 63
-      then
-         response.tag := (label => REPLY_ERR, length => 0,
-                          flags => 0, badge => 0);
-         ignore := reply (sender, response);
-         return;
-      end if;
-      slot := Unsigned_8 (msg.words (1));
-
-      for item of authorityRecords loop
-         if item.valid and then item.pid = pid and then item.slot = slot then
-            if item.requested then
-               flags := flags or Unsigned_64 (AUTH_FLAG_REQUESTED);
-            end if;
-            if item.granted then
-               flags := flags or Unsigned_64 (AUTH_FLAG_GRANTED);
-            end if;
-            meta := Unsigned_64 (item.authorityId) or
-              Shift_Left (Unsigned_64 (item.slot), 32) or
-              Shift_Left (Unsigned_64 (item.source), 40) or
-              Shift_Left (Unsigned_64 (item.reason), 48) or
-              Shift_Left (flags, 56);
-            response.tag := (label => REPLY_OK, length => 4,
-                             flags => 0, badge => 0);
-            response.words (0) := meta;
-            response.words (1) := Unsigned_64 (item.capType) or
-              Shift_Left (Unsigned_64 (item.rights), 8);
-            response.words (2) := item.objectRef;
-            response.words (3) := item.objectParam;
-            found := True;
-            exit;
-         end if;
-      end loop;
-
-      if not found then
-         response.tag := (label => REPLY_ERR, length => 0,
-                          flags => 0, badge => 0);
-      end if;
-      ignore := reply (sender, response);
-   end handleAuthorityQuery;
-
    ---------------------------------------------------------------------------
    --  ensureBuffer - grow elfBuf if needed for a file of the given size.
    --  Extends via sbrk (contiguous from previous heap end), then re-grants
    --  the enlarged buffer to the FS server.
    ---------------------------------------------------------------------------
    procedure ensureBuffer (needed : Unsigned_64) is
-      newPages : Natural;
-      extra    : Natural;
-      ret      : Unsigned_64;
-      ok       : Boolean;
+      newPages      : Natural;
+      extra         : Natural;
+      ret           : Unsigned_64;
+      ok            : Boolean;
+      candidateGrant : CuBit.Memory_Grants.Grant_Reference;
    begin
       if needed <= Unsigned_64 (bufCapacity) then
          return;
@@ -274,22 +211,29 @@ procedure main is
       printDec (Unsigned_32 (newPages));
       debugPrint (" pages" & LF);
 
-      ret := syscall (SYSCALL_SBRK, Unsigned_64 (extra) *
-                      Unsigned_64 (PAGE_SIZE));
-      if ret = Unsigned_64'Last then
-         debugPrint ("procmgr: sbrk grow failed" & LF);
-         return;
+      if extra > 0 then
+         ret := syscall (SYSCALL_SBRK, Unsigned_64 (extra) *
+                         Unsigned_64 (PAGE_SIZE));
+         if ret = Unsigned_64'Last then
+            debugPrint ("procmgr: sbrk grow failed" & LF);
+            return;
+         end if;
+
+         --  Track the allocation separately from the range currently lent to
+         --  the filesystem. If a later grant operation fails, a retry must
+         --  not extend the heap a second time.
+         bufPages := newPages;
       end if;
 
-      --  Revoke old grant and create a larger one
-      revokeGrant (fsGrantId);
-
-      createGrantViaCap (
+      --  Establish the replacement before disturbing the working reference.
+      --  Both grants may temporarily name the same owner pages, but only the
+      --  reference carried by a request can be resolved by filesystem.svc.
+      CuBit.Memory_Grants.Create_Via_Capability (
          slot      => CAP_SLOT_FS_LOCAL,
          localAddr => elfBuf,
          numPages  => newPages,
          readWrite => True,
-         grantId   => fsGrantId,
+         reference => candidateGrant,
          success   => ok);
 
       if not ok then
@@ -297,7 +241,17 @@ procedure main is
          return;
       end if;
 
-      bufPages    := newPages;
+      CuBit.Memory_Grants.Revoke (fsGrant, ok);
+      if not ok then
+         debugPrint ("procmgr: old grant revocation failed" & LF);
+         CuBit.Memory_Grants.Revoke (candidateGrant, ok);
+         if not ok then
+            debugPrint ("procmgr: replacement grant cleanup failed" & LF);
+         end if;
+         return;
+      end if;
+
+      fsGrant     := candidateGrant;
       bufCapacity := newPages * PAGE_SIZE;
    end ensureBuffer;
 
@@ -310,11 +264,18 @@ procedure main is
    is
       msg       : Message;
       tag       : MessageTag;
-      handle    : Unsigned_64;
+      handle    : CuBit.Filesystems.File_Handle;
       fileSize  : Unsigned_64;
       totalRead : Unsigned_64 := 0;
       chunkRead : Unsigned_64;
    begin
+      if name'Length = 0 or else
+         name'Length > CuBit.Filesystems.MAXIMUM_PATH_BYTES
+      then
+         debugPrint ("procmgr: invalid filesystem path length" & LF);
+         return 0;
+      end if;
+
       --  Write filename into elfBuf (grant buffer); overwritten by OP_READ
       declare
          grantBuf : array (0 .. name'Length - 1) of Unsigned_8 with
@@ -326,15 +287,8 @@ procedure main is
          end loop;
       end;
 
-      --  OP_OPEN: words(0)=grant_id, words(1)=path_length, words(2)=flags
-      msg := NULL_MESSAGE;
-      msg.tag := (label  => OP_OPEN,
-                  length => 3,
-                  flags  => 0,
-                  badge  => 0);
-      msg.words (0) := fsGrantId;
-      msg.words (1) := Unsigned_64 (name'Length);
-      msg.words (2) := 0;
+      msg := CuBit.Filesystems.Open_Request
+        (fsGrant, CuBit.Filesystems.Nonempty_Path_Byte_Count (name'Length));
       tag := capCall (CAP_SLOT_FS_LOCAL, msg);
 
       if tag.label /= REPLY_OK then
@@ -342,7 +296,7 @@ procedure main is
          return 0;
       end if;
 
-      handle   := msg.words (0);
+      handle   := CuBit.Filesystems.File_Handle (msg.words (0));
       fileSize := msg.words (1);
 
       --  Grow buffer if file is larger than current capacity
@@ -358,14 +312,8 @@ procedure main is
          begin
             exit when remaining = 0;
 
-            msg := NULL_MESSAGE;
-            msg.tag := (label  => OP_READ,
-                        length => 3,
-                        flags  => 0,
-                        badge  => 0);
-            msg.words (0) := handle;
-            msg.words (1) := fsGrantId;
-            msg.words (2) := remaining;
+            msg := CuBit.Filesystems.Read_Request
+              (handle, fsGrant, remaining);
             tag := capCall (CAP_SLOT_FS_LOCAL, msg);
          end;
 
@@ -381,12 +329,7 @@ procedure main is
       end loop;
 
       --  Close file handle
-      msg := NULL_MESSAGE;
-      msg.tag := (label  => OP_CLOSE,
-                  length => 1,
-                  flags  => 0,
-                  badge  => 0);
-      msg.words (0) := handle;
+      msg := CuBit.Filesystems.Close_Request (handle);
       tag := capCall (CAP_SLOT_FS_LOCAL, msg);
 
       return totalRead;
@@ -1226,8 +1169,8 @@ procedure main is
                                              badge  => 0);
                               aclMsg.words := (0 => childPID,
                                                1 => Unsigned_64 (fsCount),
-                                               2 => fsGrantId,
-                                               3 => 0);
+                                               2 => fsGrant.slot,
+                                               3 => fsGrant.generation);
                               aclTag := capCall (
                                  CAP_SLOT_FS_LOCAL, aclMsg);
                            end;
@@ -1658,27 +1601,6 @@ procedure main is
          end;
       end if;
 
-      --  Temporary service-level authorization for the Security Center's
-      --  cross-process launch-provenance queries.  This must migrate to an
-      --  authenticated package policy and a dedicated inspection capability.
-      if pkgIdLen = 25 then
-         declare
-            SECURITY_CENTER_ID : constant String :=
-              "com.cubit.security-center";
-            match : Boolean := True;
-         begin
-            for c in 0 .. 24 loop
-               if pkgId (1 + c) /= SECURITY_CENTER_ID (1 + c) then
-                  match := False;
-                  exit;
-               end if;
-            end loop;
-            if match then
-               authorityInspectorPID := newPID;
-            end if;
-         end;
-      end if;
-
       --  Parse .cubit.access and send ACLs to FS server (or wildcard)
       parseAndSendACL (newPID, elfSize,
                        sandboxMode, cwd, name);
@@ -2051,12 +1973,12 @@ begin
    declare
       ok : Boolean;
    begin
-      createGrantViaCap (
+      CuBit.Memory_Grants.Create_Via_Capability (
          slot      => CAP_SLOT_FS_LOCAL,
          localAddr => elfBuf,
          numPages  => INITIAL_BUF_PAGES,
          readWrite => True,
-         grantId   => fsGrantId,
+         reference => fsGrant,
          success   => ok);
 
       if not ok then
@@ -2105,8 +2027,6 @@ begin
       case msg.tag.label is
          when OP_SPAWN =>
             handleSpawn (sender, msg);
-         when OP_AUTHORITY_QUERY =>
-            handleAuthorityQuery (sender, msg);
          when others =>
             sendReply (sender, REPLY_ERR, 0);
       end case;

@@ -60,6 +60,26 @@ package XHCI is
       enabled     : out Boolean);
    procedure Acknowledge_Runtime_Interrupt;
 
+   --  Bounded, aggregate observability for the interrupt hot path.  The
+   --  driver can publish this at a low rate without printing per report or
+   --  perturbing input latency.  lastReport contains the first four bytes in
+   --  little-endian order so boot-protocol and unexpected report-ID layouts
+   --  are distinguishable during hardware bring-up.
+   type Boot_Mouse_Diagnostics is record
+      transferEvents    : Unsigned_64 := 0;
+      decodedReports    : Unsigned_64 := 0;
+      motionReports     : Unsigned_64 := 0;
+      buttonTransitions : Unsigned_64 := 0;
+      completionErrors  : Unsigned_64 := 0;
+      shortReports      : Unsigned_64 := 0;
+      unexpectedEvents  : Unsigned_64 := 0;
+      lastReport        : Unsigned_32 := 0;
+      lastLength        : Unsigned_8 := 0;
+      lastCompletion    : Unsigned_8 := 0;
+   end record;
+
+   function Mouse_Diagnostics return Boot_Mouse_Diagnostics;
+
    procedure Poll_Boot_Mouse
      (buttons : out Unsigned_8;
       deltaX  : out Integer;

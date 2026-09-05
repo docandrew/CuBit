@@ -127,6 +127,12 @@ package body Syscall is
                 number :=
                     SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY;
             when 107  => number := SYSCALL_SET_WELL_KNOWN;
+            when 108  =>
+                number :=
+                    SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION;
+            when 109  => number := SYSCALL_RESOLVE_SHARED_MEMORY_GRANT;
+            when 110  =>
+                number := SYSCALL_REVOKE_SHARED_MEMORY_GRANT_REFERENCE;
             when 2000 => number := SYSCALL_REGISTER_DRIVER;
             when others =>
                 number := SYSCALL_EXIT;
@@ -262,6 +268,16 @@ package body Syscall is
             when SYSCALL_REVOKE_SHARED_MEMORY_GRANT =>
                 IPC.handleRevoke (
                     percpu.currentPID, arg0, retval);
+
+            when SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION =>
+                IPC.handleGetOwnedGrantGeneration (arg0, retval);
+
+            when SYSCALL_RESOLVE_SHARED_MEMORY_GRANT =>
+                IPC.handleResolveGrant
+                  (arg0, arg1, arg2, arg3, arg4, arg5, retval);
+
+            when SYSCALL_REVOKE_SHARED_MEMORY_GRANT_REFERENCE =>
+                IPC.handleRevokeGrantReference (arg0, arg1, retval);
 
             when SYSCALL_INFO =>
                 IPC.handleInfo (

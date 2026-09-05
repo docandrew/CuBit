@@ -16,6 +16,7 @@
 --   4. sleepList.lock       (sleep queue)
 -------------------------------------------------------------------------------
 with Capabilities;
+with Memory_Grants;
 
 package Process.IPC with
     SPARK_Mode => On
@@ -189,10 +190,20 @@ is
     -- Shared Memory Grant Operations
     ---------------------------------------------------------------------------
 
+    --  True when any byte in a page range lies in the virtual aperture used
+    --  for received grants. Such pages are borrowed, not owned, and cannot be
+    --  passed onward through ordinary createGrant. Future zero-copy chains use
+    --  an explicit derived-loan operation with parent lifetime tracking.
+    function overlapsGrantRegion (localAddr : System.Address;
+                                  numPages  : Natural) return Boolean
+        with SPARK_Mode => On,
+             Global     => null;
+
     ---------------------------------------------------------------------------
     -- createGrant
     -- Map pages from the caller's address space into grantee's address space.
     -- The caller (granter) owns the grant and can revoke it later.
+    -- Borrowed pages in GRANT_REGION_BASE..GRANT_REGION_END are rejected.
     -- @param grantee   - PID of the process to grant access to
     -- @param localAddr - page-aligned virtual address in caller's space
     -- @param numPages  - number of 4K pages to grant
@@ -225,6 +236,46 @@ is
     ---------------------------------------------------------------------------
     procedure revokeAllGrants (pid : ProcessID)
         with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- revokeAllGrantsTo
+    -- Invalidate every grant whose grantee is the specified process. Called
+    -- during process death so an owner cannot retain metadata naming a PID
+    -- that may later be reused for an unrelated process.
+    ---------------------------------------------------------------------------
+    procedure revokeAllGrantsTo (pid : ProcessID)
+        with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- getOwnedGrantGeneration
+    -- Return the generation for an active grant slot owned by the caller.
+    ---------------------------------------------------------------------------
+    procedure getOwnedGrantGeneration
+      (slot       : Memory_Grants.Global_Slot;
+       generation : out Memory_Grants.Grant_Generation;
+       success    : out Boolean)
+      with SPARK_Mode => On;
+
+    ---------------------------------------------------------------------------
+    -- resolveGrant
+    -- Authoritatively validate a generation-tagged reference for the current
+    -- grantee and an authenticated expected owner, then return only the
+    -- requested in-bounds mapping. requiredWrite demands a read-write grant.
+    ---------------------------------------------------------------------------
+    procedure resolveGrant
+      (reference     : Memory_Grants.Reference;
+       expectedOwner : ProcessID;
+       byteOffset    : Unsigned_64;
+       byteLength    : Unsigned_64;
+       requiredWrite : Boolean;
+       mappedAddress : out System.Address;
+       success       : out Boolean)
+      with SPARK_Mode => On;
+
+    procedure revokeGrantReference
+      (reference : Memory_Grants.Reference;
+       success   : out Boolean)
+      with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
     -- Capability-Aware IPC

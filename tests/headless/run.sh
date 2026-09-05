@@ -23,7 +23,7 @@ Usage: tests/headless/run.sh [options]
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, capability-security, desktop-display, security-authority, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, capability-security, desktop-display, devices, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
   --timeout SECONDS    QEMU runtime before timeout is treated as success
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
   --disk PATH          Base ext2 disk image (default: kernel/nvme_disk.img)
@@ -115,7 +115,7 @@ case "$TIMEOUT_SECONDS" in
 esac
 
 case "$TEST_NAME" in
-    boot-shell-nvme|async-ipc|bench-ipc|ccl-vm|ccl-workbench|capability-security|desktop-display|security-authority|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
+    boot-shell-nvme|async-ipc|bench-ipc|ccl-vm|ccl-workbench|capability-security|desktop-display|devices|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -208,8 +208,8 @@ case "$TEST_NAME" in
     desktop-display|desktop-virtio-vga)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-desktop-display.conf"
         ;;
-    security-authority)
-        INIT_PROFILE="$ROOT_DIR/tests/headless/init-security-authority.conf"
+    devices)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-devices.conf"
         ;;
     desktop-doom)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-doom-desktop.conf"
@@ -254,6 +254,23 @@ if [ -n "$INIT_PROFILE" ]; then
             if ! debugfs -w -R "write $CCL_IMAGE $CCL_IMAGE_NAME" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $CCL_IMAGE_NAME" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "devices" ]; then
+        for DEVICE_TEST_IMAGE_NAME in devices.app desktop.svc; do
+            DEVICE_TEST_IMAGE="$KERNEL_DIR/isodir/boot/$DEVICE_TEST_IMAGE_NAME"
+            if [ ! -f "$DEVICE_TEST_IMAGE" ]; then
+                echo "headless: missing current Devices test image: $DEVICE_TEST_IMAGE" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $DEVICE_TEST_IMAGE_NAME" \
+              "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R \
+              "write $DEVICE_TEST_IMAGE $DEVICE_TEST_IMAGE_NAME" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $DEVICE_TEST_IMAGE_NAME" >&2
                 exit 1
             fi
         done
@@ -406,11 +423,12 @@ desktop: internal shell active
 shell: cwd=@nvme:0/
 "
         ;;
-    security-authority)
+    devices)
         required_markers="
-desktop: internal shell active
-security-center: starting
-security-center: authority provenance ready
+devmgr: startup complete, entering service loop
+devices: starting read-only hardware inspector
+devices: inventory snapshot ready
+devices: native window ready
 "
         ;;
     desktop-virtio-vga)

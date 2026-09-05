@@ -13,6 +13,7 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Devices;
 with Cpio;
 
 procedure main is
@@ -115,6 +116,42 @@ procedure main is
       slot     : Unsigned_8 := 0;
       func     : Unsigned_8 := 0;
    end record;
+
+   function Same_Location
+      (left, right : PCIDeviceInfo) return Boolean
+   is
+     (left.found and then right.found and then
+      left.bus = right.bus and then left.slot = right.slot and then
+      left.func = right.func);
+
+   type Inventory_Device is record
+      location  : PCIDeviceInfo;
+      vendorID  : Unsigned_16 := 0;
+      deviceID  : Unsigned_16 := 0;
+      classCode : Unsigned_16 := 0;
+      progIf    : Unsigned_8 := 0;
+      kind      : CuBit.Devices.Device_Kind := CuBit.Devices.Other_Device;
+   end record;
+   subtype Inventory_Index is
+     Positive range 1 .. CuBit.Devices.MAX_PCI_DEVICES;
+   type Inventory_Array is array (Inventory_Index) of Inventory_Device;
+   inventory : Inventory_Array := (others => (others => <>));
+   inventoryCount : Natural range 0 .. CuBit.Devices.MAX_PCI_DEVICES := 0;
+   inventoryOverflow : Boolean := False;
+
+   type XHCI_Diagnostic_Snapshot is record
+      valid             : Boolean := False;
+      decodedReports    : Unsigned_64 := 0;
+      motionReports     : Unsigned_64 := 0;
+      buttonTransitions : Unsigned_32 := 0;
+      completionErrors  : Unsigned_32 := 0;
+      lastReport        : Unsigned_32 := 0;
+      lastLength        : Unsigned_8 := 0;
+      lastCompletion    : Unsigned_8 := 0;
+      interruptMode     : CuBit.Devices.Interrupt_Mode :=
+        CuBit.Devices.Interrupt_Polling;
+   end record;
+   xhciDiagnostics : XHCI_Diagnostic_Snapshot;
 
    nvmeDev   : PCIDeviceInfo;
    ataDev    : PCIDeviceInfo;
@@ -292,6 +329,8 @@ procedure main is
          progIf    : Unsigned_8;
          location  : constant PCIDeviceInfo :=
            (found => True, bus => bus, slot => pSlot, func => func);
+         observedKind : CuBit.Devices.Device_Kind :=
+           CuBit.Devices.Other_Device;
       begin
          if vendorID = 16#FFFF# then
             return;
@@ -321,15 +360,19 @@ procedure main is
 
          if classCode = CLASS_STORAGE_NVME then
             nvmeDev := location;
+            observedKind := CuBit.Devices.Storage_Controller;
             debugPrint (" NVMe");
          elsif classCode = CLASS_STORAGE_IDE then
             ataDev := location;
+            observedKind := CuBit.Devices.Storage_Controller;
             debugPrint (" IDE");
          elsif classCode = CLASS_STORAGE_SATA and then
                progIf = PCI_PROG_IF_AHCI
          then
+            observedKind := CuBit.Devices.Storage_Controller;
             debugPrint (" AHCI (unclaimed)");
          elsif classCode = CLASS_NET_ETHERNET then
+            observedKind := CuBit.Devices.Network_Controller;
             if vendorID = VENDOR_VIRTIO then
                netDev := location;
                debugPrint (" virtio-net");
@@ -338,11 +381,13 @@ procedure main is
             end if;
          elsif classCode = CLASS_MULTIMEDIA_HDA then
             hdaDev := location;
+            observedKind := CuBit.Devices.Audio_Controller;
             debugPrint (" HDA");
          elsif classCode = CLASS_SERIAL_USB and then
                progIf = PCI_PROG_IF_XHCI
          then
             xhciDev := location;
+            observedKind := CuBit.Devices.USB_Controller;
             debugPrint (" xHCI");
          elsif vendorID = VENDOR_VIRTIO and then
                (deviceID = DEVICE_VIRTIO_GPU or else
@@ -350,7 +395,21 @@ procedure main is
          then
             gpuDev := location;
             gpuIsPrimary := classCode = CLASS_DISPLAY_VGA;
+            observedKind := CuBit.Devices.Display_Controller;
             debugPrint (" virtio-gpu");
+         end if;
+
+         if inventoryCount < inventory'Length then
+            inventoryCount := inventoryCount + 1;
+            inventory (inventoryCount) :=
+              (location  => location,
+               vendorID  => vendorID,
+               deviceID  => deviceID,
+               classCode => classCode,
+               progIf    => progIf,
+               kind      => observedKind);
+         else
+            inventoryOverflow := True;
          end if;
 
          debugPrint (LF & "");
@@ -2070,15 +2129,142 @@ begin
 
    loop
       receive (from, msg);
-      --  Reject unknown messages; devmgr has no runtime API yet
-      debugPrint ("devmgr: rejected unknown message" & LF);
-      ret := Unsigned_64 (reply (from,
-                                 (tag => (label  => REPLY_ERR,
-                                          length => 0,
-                                          flags  => 0,
-                                          badge  => 0),
-                                  capBadge => 0,
-                                  words => (others => 0))));
+      if msg.tag.label = CuBit.Devices.OP_INVENTORY_COUNT then
+         ret := Unsigned_64
+           (reply
+              (from,
+               (tag => (label  => CuBit.Devices.REPLY_OK,
+                        length => 2, flags => 0, badge => 0),
+                capBadge => 0,
+                words =>
+                  (0 => Unsigned_64 (inventoryCount),
+                   1 => (if inventoryOverflow then 1 else 0),
+                   others => 0))));
+      elsif msg.tag.label = CuBit.Devices.OP_INVENTORY_ITEM and then
+            msg.tag.length >= 1 and then msg.words (0) >= 1 and then
+            msg.words (0) <= Unsigned_64 (inventoryCount)
+      then
+         declare
+            item : Inventory_Device renames
+              inventory (Natural (msg.words (0)));
+            driverPID : Unsigned_64 := 0;
+            state : CuBit.Devices.Driver_State := CuBit.Devices.Unclaimed;
+            locationWord : Unsigned_64;
+            identityWord : Unsigned_64;
+         begin
+            case item.kind is
+               when CuBit.Devices.Storage_Controller =>
+                  if Same_Location (item.location, nvmeDev) then
+                     driverPID := nvmePID;
+                  elsif Same_Location (item.location, ataDev) then
+                     driverPID := ataPID;
+                  end if;
+               when CuBit.Devices.Network_Controller =>
+                  if Same_Location (item.location, netDev) then
+                     driverPID := virtioNetPID;
+                  end if;
+               when CuBit.Devices.Display_Controller =>
+                  if Same_Location (item.location, gpuDev) then
+                     driverPID := virtioGpuPID;
+                  end if;
+               when CuBit.Devices.Audio_Controller =>
+                  if Same_Location (item.location, hdaDev) then
+                     driverPID := hdaPID;
+                  end if;
+               when CuBit.Devices.USB_Controller =>
+                  if Same_Location (item.location, xhciDev) then
+                     driverPID := xhciPID;
+                  end if;
+               when CuBit.Devices.Other_Device =>
+                  null;
+            end case;
+            if driverPID /= 0 then
+               state := CuBit.Devices.Driver_Active;
+            end if;
+            locationWord := Unsigned_64 (item.location.bus) or
+              Shift_Left (Unsigned_64 (item.location.slot), 8) or
+              Shift_Left (Unsigned_64 (item.location.func), 16) or
+              Shift_Left
+                (Unsigned_64 (CuBit.Devices.Device_Kind'Enum_Rep (item.kind)),
+                 24) or
+              Shift_Left
+                (Unsigned_64 (CuBit.Devices.Driver_State'Enum_Rep (state)),
+                 32);
+            identityWord := Unsigned_64 (item.vendorID) or
+              Shift_Left (Unsigned_64 (item.deviceID), 16) or
+              Shift_Left (Unsigned_64 (item.classCode), 32) or
+              Shift_Left (Unsigned_64 (item.progIf), 48);
+            ret := Unsigned_64
+              (reply
+                 (from,
+                  (tag => (label => CuBit.Devices.REPLY_OK,
+                           length => 4, flags => 0, badge => 0),
+                   capBadge => 0,
+                   words =>
+                     (0 => locationWord, 1 => identityWord,
+                      2 => driverPID, 3 => 1))));
+         end;
+      elsif msg.tag.label = CuBit.Devices.OP_PUBLISH_XHCI_STATS and then
+            from = xhciPID and then msg.tag.length >= 3
+      then
+         xhciDiagnostics.valid := True;
+         xhciDiagnostics.decodedReports :=
+           msg.words (0) and 16#FFFF_FFFF#;
+         xhciDiagnostics.motionReports := Shift_Right (msg.words (0), 32);
+         xhciDiagnostics.buttonTransitions :=
+           Unsigned_32 (msg.words (1) and 16#FFFF_FFFF#);
+         xhciDiagnostics.completionErrors :=
+           Unsigned_32 (Shift_Right (msg.words (1), 32));
+         xhciDiagnostics.lastReport :=
+           Unsigned_32 (msg.words (2) and 16#FFFF_FFFF#);
+         xhciDiagnostics.lastLength :=
+           Unsigned_8 (Shift_Right (msg.words (2), 32) and 16#FF#);
+         xhciDiagnostics.lastCompletion :=
+           Unsigned_8 (Shift_Right (msg.words (2), 40) and 16#FF#);
+         case Shift_Right (msg.words (2), 48) and 16#FF# is
+            when 1 =>
+               xhciDiagnostics.interruptMode :=
+                 CuBit.Devices.Interrupt_MSI;
+            when 2 =>
+               xhciDiagnostics.interruptMode :=
+                 CuBit.Devices.Interrupt_MSIX;
+            when others =>
+               xhciDiagnostics.interruptMode :=
+                 CuBit.Devices.Interrupt_Polling;
+         end case;
+      elsif msg.tag.label = CuBit.Devices.OP_XHCI_DIAGNOSTICS then
+         ret := Unsigned_64
+           (reply
+              (from,
+               (tag =>
+                  (label => CuBit.Devices.REPLY_OK,
+                   length => 4, flags => 0, badge => 0),
+                capBadge => 0,
+                words =>
+                  (0 => xhciDiagnostics.decodedReports,
+                   1 => xhciDiagnostics.motionReports,
+                   2 => Unsigned_64 (xhciDiagnostics.buttonTransitions) or
+                     Shift_Left
+                       (Unsigned_64 (xhciDiagnostics.completionErrors), 32),
+                   3 => Unsigned_64 (xhciDiagnostics.lastReport) or
+                     Shift_Left
+                       (Unsigned_64 (xhciDiagnostics.lastLength), 32) or
+                     Shift_Left
+                       (Unsigned_64 (xhciDiagnostics.lastCompletion), 40) or
+                     Shift_Left
+                       (Unsigned_64
+                          (CuBit.Devices.Interrupt_Mode'Enum_Rep
+                             (xhciDiagnostics.interruptMode)), 48) or
+                     (if xhciDiagnostics.valid then 2**56 else 0)))));
+      else
+         debugPrint ("devmgr: rejected unknown message" & LF);
+         ret := Unsigned_64
+           (reply
+              (from,
+               (tag => (label => CuBit.Devices.REPLY_ERROR,
+                        length => 0, flags => 0, badge => 0),
+                capBadge => 0, words => (others => 0))));
+      end if;
    end loop;
 
 end main;

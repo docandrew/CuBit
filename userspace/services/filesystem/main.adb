@@ -14,49 +14,39 @@ with Interfaces; use Interfaces;
 with System; use System;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Memory_Grants;
+with CuBit.Filesystems; use CuBit.Filesystems;
 with Cpio;
 with Ext2;
 
 procedure main is
    use ASCII;
 
-   --  IPC operation labels (must match kernel/src/ipc_labels.ads)
-   OP_OPEN    : constant Unsigned_32 := 16#0001#;
-   OP_CLOSE   : constant Unsigned_32 := 16#0002#;
-   OP_READ    : constant Unsigned_32 := 16#0003#;
-   OP_WRITE   : constant Unsigned_32 := 16#0004#;
-   OP_SEEK    : constant Unsigned_32 := 16#0006#;
-   OP_READDIR : constant Unsigned_32 := 16#0007#;
-   OP_RENAME  : constant Unsigned_32 := 16#0008#;
-   REPLY_OK            : constant Unsigned_32 := 16#F000#;
-   REPLY_ERR           : constant Unsigned_32 := 16#F001#;
-   REPLY_ACCESS_DENIED : constant Unsigned_32 := 16#F007#;
-   OP_SET_ACL          : constant Unsigned_32 := 16#0080#;
-   OP_REVOKE_ACL       : constant Unsigned_32 := 16#0081#;
-
    --  Sysinfo query for ramdisk address
    --  (uses SYSINFO_RAMDISK_ADDRESS from CuBit.Messages)
 
-   --  Grant region constants (must match kernel process.ads)
-   GRANT_REGION_BASE : constant Unsigned_64 := 16#0000_4000_0000_0000#;
-   GRANT_SLOT_SIZE   : constant Unsigned_64 := 4096 * 4096; -- 16 MiB
-
    --  Maximum open files and path length
    MAX_OPEN_FILES : constant := 32;
-   MAX_PATH_LEN   : constant := 256;
 
    --  Backend kind for file handles
-   type BackendKind is (CPIO_RAMDISK, EXT2_ATA, EXT2_NVME);
+   type BackendKind is
+     (CPIO_RAMDISK, EXT2_MEMORY, EXT2_ATA, EXT2_NVME);
+
+   type SchemeKind is
+     (AUTOMATIC_SCHEME, MEMORY_SCHEME, ATA_SCHEME, NVME_SCHEME);
 
    --  File handle entry (tracks which backend each file uses)
    type FileEntry is record
       active      : Boolean      := False;
+      retired     : Boolean      := False;
+      generation  : Unsigned_32  := 1;
       backend     : BackendKind  := CPIO_RAMDISK;
       inodeNum    : Unsigned_32  := 0;      --  ext2 only
       ino         : Ext2.Inode;             --  ext2 only
       cpioFileIdx : Natural      := 0;      --  cpio only
       offset      : Unsigned_64  := 0;
       ownerPID    : ProcessID    := NO_PROCESS;
+      openRights  : Unsigned_8   := 0;
    end record;
 
    type FileTable is array (0 .. MAX_OPEN_FILES - 1) of FileEntry;
@@ -66,6 +56,10 @@ procedure main is
    cpioArchive : Cpio.Archive;
    cpioOk      : Boolean := False;
 
+   --  Optional writable Ext2 image carried in the trusted bootstrap archive.
+   memoryFs          : Ext2.Filesystem;
+   memoryInitialized : Boolean := False;
+
    --  ATA-backed filesystem context (lazy initialized)
    ataFs          : Ext2.Filesystem;
    ataInitialized : Boolean := False;
@@ -74,7 +68,7 @@ procedure main is
    --  ATA grant buffer (8 pages = 32KB for multi-sector bulk reads)
    ATA_GRANT_PAGES : constant := 8;
    ataGrantBuf     : System.Address := System.Null_Address;
-   ataGrantId      : Unsigned_64 := 0;
+   ataGrant        : CuBit.Memory_Grants.Grant_Reference;
 
    --  NVMe-backed filesystem context (lazy initialized)
    nvmeFs          : Ext2.Filesystem;
@@ -83,7 +77,7 @@ procedure main is
    --  NVMe grant buffer (128 pages = 512KB for large PRP transfers)
    NVME_GRANT_PAGES : constant := 128;
    nvmeGrantBuf     : System.Address := System.Null_Address;
-   nvmeGrantId      : Unsigned_64 := 0;
+   nvmeGrant        : CuBit.Memory_Grants.Grant_Reference;
 
    ---------------------------------------------------------------------------
    --  Per-process file ACL infrastructure
@@ -115,33 +109,25 @@ procedure main is
 
    aclProfiles : array (0 .. MAX_ACL_PROFILES - 1) of ACLProfile;
 
-   --  Admin tracking: first OP_SET_ACL sender auto-becomes primary admin
-   primaryAdmin   : ProcessID    := NO_PROCESS;
-   procmgrAdmin   : Unsigned_64  := 0;
-
-   --  Check if sender is an authorized admin (devmgr or procmgr)
+   --  Administrative identity comes only from the kernel's authenticated
+   --  service registry. Query it for each rare policy operation so a cached
+   --  raw PID cannot become authority after process death and PID reuse.
    function isAdmin (sender : ProcessID) return Boolean is
+      devmgrAdmin : constant Unsigned_64 :=
+        getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DEVMGR);
+      procmgrAdmin : constant Unsigned_64 :=
+        getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_PROCMGR);
    begin
-      if primaryAdmin /= NO_PROCESS and then sender = primaryAdmin then
-         return True;
-      end if;
-
-      --  Lazy-discover procmgr PID via sysinfo
-      if procmgrAdmin = 0 then
-         procmgrAdmin := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_PROCMGR);
-         if procmgrAdmin = 0 or procmgrAdmin = Unsigned_64'Last then
-            procmgrAdmin := 0;
-         end if;
-      end if;
-
-      if procmgrAdmin /= 0 and then sender = procmgrAdmin then
-         return True;
-      end if;
-
-      return False;
+      return
+        (devmgrAdmin /= 0 and then devmgrAdmin /= Unsigned_64'Last and then
+         sender = devmgrAdmin) or else
+        (procmgrAdmin /= 0 and then procmgrAdmin /= Unsigned_64'Last and then
+         sender = procmgrAdmin);
    end isAdmin;
 
-   --  Check if sender has access rights for the given path
+   --  Check if sender has access rights for the given path.  A scope prefix
+   --  must end at a path-component boundary: authority for "apps/foo" must
+   --  not also authorize "apps/foobar".
    function checkAccess
      (sender : ProcessID;
       path   : String;
@@ -178,7 +164,11 @@ procedure main is
                               exit;
                            end if;
                         end loop;
-                        if match then
+                        if match and then
+                          (path'Length = pLen or else
+                           aclProfiles (i).entries (j).prefix (pLen) = '/' or else
+                           path (path'First + pLen) = '/')
+                        then
                            return True;
                         end if;
                      end;
@@ -199,16 +189,117 @@ procedure main is
    function toAddr is new Ada.Unchecked_Conversion
      (Unsigned_64, System.Address);
 
-   --  Find a free file handle
-   function allocHandle return Integer is
+   --  File handles are opaque service objects.  The low word contains the
+   --  one-based table slot and the high word contains its generation.  A
+   --  closed handle therefore cannot become valid merely because its slot is
+   --  reused for a different file.
+   procedure allocHandle
+     (handle  : out Unsigned_64;
+      slot    : out Integer;
+      success : out Boolean)
+   is
    begin
       for i in files'Range loop
-         if not files (i).active then
-            return i;
+         if not files (i).active and then not files (i).retired then
+            slot := i;
+            handle := Shift_Left (Unsigned_64 (files (i).generation), 32) or
+              Unsigned_64 (i + 1);
+            success := True;
+            return;
          end if;
       end loop;
-      return -1;
+
+      handle := 0;
+      slot := -1;
+      success := False;
    end allocHandle;
+
+   function resolveHandle
+     (handle : Unsigned_64;
+      sender : ProcessID) return Integer
+   is
+      slotCode : constant Unsigned_64 := handle and 16#FFFF_FFFF#;
+      generation : constant Unsigned_32 :=
+        Unsigned_32 (Shift_Right (handle, 32));
+      slot : Integer;
+   begin
+      if slotCode = 0 or else slotCode > Unsigned_64 (MAX_OPEN_FILES) then
+         return -1;
+      end if;
+
+      slot := Integer (slotCode - 1);
+      if not files (slot).active or else
+         files (slot).retired or else
+         files (slot).generation /= generation or else
+         files (slot).ownerPID /= sender
+      then
+         return -1;
+      end if;
+
+      return slot;
+   end resolveHandle;
+
+   procedure releaseHandle (slot : Integer) is
+   begin
+      files (slot).active := False;
+      files (slot).ownerPID := NO_PROCESS;
+      files (slot).openRights := 0;
+      files (slot).offset := 0;
+
+      --  Never wrap a generation: retire the slot instead.  This makes stale
+      --  handle rejection unconditional rather than merely probabilistic.
+      if files (slot).generation = Unsigned_32'Last then
+         files (slot).retired := True;
+      else
+         files (slot).generation := files (slot).generation + 1;
+      end if;
+   end releaseHandle;
+
+   procedure releaseHandlesForOwner (owner : ProcessID) is
+   begin
+      for slot in files'Range loop
+         if files (slot).active and then files (slot).ownerPID = owner then
+            releaseHandle (slot);
+         end if;
+      end loop;
+   end releaseHandlesForOwner;
+
+   --  Decode an untrusted wire reference only after checking that both fields
+   --  fit the strongly typed userspace representation.  The kernel then
+   --  authenticates the owner, current grantee, generation, access, and full
+   --  byte range before returning an address.
+   procedure resolveClientMemory
+     (sender        : ProcessID;
+      rawSlot       : Unsigned_64;
+      rawGeneration : Unsigned_64;
+      byteLength    : Unsigned_64;
+      requiredAccess : CuBit.Memory_Grants.Required_Access;
+      address       : out System.Address;
+      success       : out Boolean)
+   is
+   begin
+      address := System.Null_Address;
+      success := False;
+      if rawSlot > CuBit.Memory_Grants.MAXIMUM_GLOBAL_SLOT or else
+         rawGeneration = 0 or else
+         rawGeneration > CuBit.Memory_Grants.MAXIMUM_GENERATION or else
+         byteLength = 0
+      then
+         return;
+      end if;
+
+      CuBit.Memory_Grants.Resolve
+        (reference      =>
+           (slot => CuBit.Memory_Grants.Global_Grant_Slot (rawSlot),
+            generation =>
+              CuBit.Memory_Grants.Grant_Generation (rawGeneration)),
+         expectedOwner => sender,
+         byteOffset     => 0,
+         byteLength     => byteLength,
+         requiredAccess => requiredAccess,
+         mappedAddress  => address,
+         success        => success);
+   end resolveClientMemory;
 
    --  Send a reply with the given label and word0 value
    procedure sendReply
@@ -230,26 +321,42 @@ procedure main is
    --  Handle OP_SET_ACL
    --  words(0) = target PID
    --  words(1) = entry count (0 = wildcard full access)
-   --  words(2) = grant_id (when count > 0)
-   --  words(3) = reserved
+   --  words(2) = grant slot (when count > 0)
+   --  words(3) = grant generation (when count > 0)
    procedure handleSetACL (sender : ProcessID; msg : Message) is
-      targetPID  : constant ProcessID := msg.words (0);
-      entryCount : constant Natural := Natural (msg.words (1));
-      slotIdx    : Integer := -1;
+      targetPID     : constant ProcessID := msg.words (0);
+      entryCountRaw : constant Unsigned_64 := msg.words (1);
+      entryCount    : Natural := 0;
+      slotIdx       : Integer := -1;
+      grantAddr     : System.Address := System.Null_Address;
+      grantOk       : Boolean := False;
    begin
-      --  Auto-register first sender as primary admin (devmgr)
-      if primaryAdmin = NO_PROCESS then
-         primaryAdmin := sender;
-      end if;
-
       if not isAdmin (sender) then
          sendReply (sender, REPLY_ACCESS_DENIED, 0);
          return;
       end if;
 
-      if entryCount > MAX_ACL_ENTRIES then
+      if entryCountRaw > Unsigned_64 (MAX_ACL_ENTRIES) then
          sendReply (sender, REPLY_ERR, 0);
          return;
+      end if;
+
+      entryCount := Natural (entryCountRaw);
+
+      if entryCount > 0 then
+         if msg.tag.length /= 4 then
+            sendReply (sender, REPLY_ERR, 0);
+            return;
+         end if;
+
+         resolveClientMemory
+           (sender, msg.words (2), msg.words (3),
+            Unsigned_64 (entryCount * 72),
+            CuBit.Memory_Grants.Read_Access, grantAddr, grantOk);
+         if not grantOk then
+            sendReply (sender, REPLY_ACCESS_DENIED, 0);
+            return;
+         end if;
       end if;
 
       --  Find existing profile or allocate a free slot
@@ -278,6 +385,7 @@ procedure main is
 
       aclProfiles (slotIdx).pid    := targetPID;
       aclProfiles (slotIdx).active := True;
+      releaseHandlesForOwner (targetPID);
 
       if entryCount = 0 then
          --  Wildcard: single entry with prefixLen=0, rights=all
@@ -289,11 +397,8 @@ procedure main is
          --  Each entry: 1 byte rights, 1 byte prefixLen, 6 reserved,
          --  64 bytes prefix = 72 bytes total
          declare
-            grantId   : constant Unsigned_64 := msg.words (2);
-            grantAddr : constant Unsigned_64 :=
-              GRANT_REGION_BASE + grantId * GRANT_SLOT_SIZE;
-            buf : array (0 .. Natural (entryCount) * 72 - 1) of Unsigned_8
-              with Import, Address => toAddr (grantAddr);
+            buf : array (0 .. entryCount * 72 - 1) of Unsigned_8
+              with Import, Address => grantAddr;
             base : Natural;
             pLen : Natural;
          begin
@@ -338,6 +443,8 @@ procedure main is
          end if;
       end loop;
 
+      releaseHandlesForOwner (targetPID);
+
       sendReply (sender, REPLY_OK, 0);
    end handleRevokeACL;
 
@@ -350,18 +457,15 @@ procedure main is
    --  Page size for grant buffer allocation
    FS_PAGE_SIZE : constant := 4096;
 
-   --  Check if path starts with "@ata:" or "@nvme:" prefix.
-   --  Returns True in the matching output and sets relStart to
-   --  the index after the prefix.
+   --  Parse an explicit backend selector and return the first path byte after
+   --  it.  An unqualified path uses the unified bootstrap/overlay namespace.
    procedure parseScheme
      (pathStr  : String;
-      isATA    : out Boolean;
-      isNVMe   : out Boolean;
+      scheme   : out SchemeKind;
       relStart : out Natural)
    is
    begin
-      isATA    := False;
-      isNVMe   := False;
+      scheme   := AUTOMATIC_SCHEME;
       relStart := pathStr'First;
 
       if pathStr'Length >= 6 and then
@@ -372,7 +476,7 @@ procedure main is
          pathStr (pathStr'First + 4) = 'e' and then
          pathStr (pathStr'First + 5) = ':'
       then
-         isNVMe   := True;
+         scheme   := NVME_SCHEME;
          relStart := pathStr'First + 6;
       elsif pathStr'Length >= 5 and then
          pathStr (pathStr'First)     = '@' and then
@@ -381,7 +485,16 @@ procedure main is
          pathStr (pathStr'First + 3) = 'a' and then
          pathStr (pathStr'First + 4) = ':'
       then
-         isATA    := True;
+         scheme   := ATA_SCHEME;
+         relStart := pathStr'First + 5;
+      elsif pathStr'Length >= 5 and then
+         pathStr (pathStr'First)     = '@' and then
+         pathStr (pathStr'First + 1) = 'm' and then
+         pathStr (pathStr'First + 2) = 'e' and then
+         pathStr (pathStr'First + 3) = 'm' and then
+         pathStr (pathStr'First + 4) = ':'
+      then
+         scheme   := MEMORY_SCHEME;
          relStart := pathStr'First + 5;
       end if;
    end parseScheme;
@@ -432,12 +545,12 @@ procedure main is
       end if;
 
       --  Create a grant to the ATA driver for data transfer
-      createGrant
-        (grantee   => ataDriverPID,
+      CuBit.Memory_Grants.Create_Via_Capability
+        (slot      => CAP_SLOT_ATA,
          localAddr => ataGrantBuf,
          numPages  => ATA_GRANT_PAGES,
          readWrite => True,
-         grantId   => ataGrantId,
+         reference => ataGrant,
          success   => grantOk);
 
       if not grantOk then
@@ -446,24 +559,26 @@ procedure main is
          return;
       end if;
 
-      debugPrint ("FS Server: ATA grant OK, grantId=" & LF);
+      debugPrint ("FS Server: ATA grant reference ready." & LF);
       debugPrint ("FS Server: Initializing ATA ext2 filesystem..." & LF);
 
-      Ext2.initATA (ataFs, CAP_SLOT_ATA, ataGrantId, ataGrantBuf, ok);
+      Ext2.initBlockDevice
+        (ataFs, CAP_SLOT_ATA, ataGrant, ataGrantBuf,
+         ATA_GRANT_PAGES * 4096, ok);
 
       if ok then
-         ataFs.grantBufSize := ATA_GRANT_PAGES * 4096;
          ataInitialized := True;
          debugPrint ("FS Server: ATA ext2 filesystem initialized." & LF);
       else
          ataInitFailed := True;
          debugPrint ("FS Server: ATA ext2 init failed (no ext2?)." & LF);
-         revokeGrant (ataGrantId);
+         CuBit.Memory_Grants.Revoke (ataGrant, grantOk);
       end if;
    end ensureATA;
 
-   --  Lazy-initialize the NVMe filesystem on first @nvme: open.
-   --  Uses same IPC protocol as ATA (OP_READ_BLOCK).
+   --  Lazy-initialize the second transitional block endpoint on first
+   --  @nvme: open. Both disk drivers now expose Block.Device.V1; the hardware
+   --  name and fixed endpoint slot remain boot-wiring debt in this unit only.
    procedure ensureNVMe (ok : out Boolean) is
       grantOk : Boolean;
    begin
@@ -502,12 +617,12 @@ procedure main is
       end if;
 
       --  Create a grant to the NVMe driver for data transfer
-      createGrant
-        (grantee   => nvmeDriverPID,
+      CuBit.Memory_Grants.Create_Via_Capability
+        (slot      => CAP_SLOT_NVME,
          localAddr => nvmeGrantBuf,
          numPages  => NVME_GRANT_PAGES,
          readWrite => True,
-         grantId   => nvmeGrantId,
+         reference => nvmeGrant,
          success   => grantOk);
 
       if not grantOk then
@@ -518,18 +633,16 @@ procedure main is
 
       debugPrint ("FS Server: NVMe grant OK, initializing ext2..." & LF);
 
-      --  Reuse initATA with NVMe cap slot (same IPC protocol)
-      Ext2.initATA (nvmeFs, CAP_SLOT_NVME, nvmeGrantId, nvmeGrantBuf, ok);
+      Ext2.initBlockDevice
+        (nvmeFs, CAP_SLOT_NVME, nvmeGrant, nvmeGrantBuf,
+         NVME_GRANT_PAGES * 4096, ok);
 
       if ok then
-         --  Override backend to NVME for readBytes dispatch
-         nvmeFs.backend := Ext2.NVME;
-         nvmeFs.grantBufSize := NVME_GRANT_PAGES * 4096;
          nvmeInitialized := True;
          debugPrint ("FS Server: NVMe ext2 filesystem initialized." & LF);
       else
          debugPrint ("FS Server: NVMe ext2 init failed." & LF);
-         revokeGrant (nvmeGrantId);
+         CuBit.Memory_Grants.Revoke (nvmeGrant, grantOk);
       end if;
    end ensureNVMe;
 
@@ -562,38 +675,45 @@ procedure main is
    end hasTraversal;
 
    --  Handle OP_OPEN
-   --  words(0) = grant_id (where path string is)
+   --  words(0) = grant slot (where path string is)
    --  words(1) = path_length
    --  words(2) = flags (unused for now)
-   --  Open flags (matching POSIX conventions)
-   O_WRONLY : constant Unsigned_64 := 1;
-   O_CREAT  : constant Unsigned_64 := 64;
-   O_TRUNC  : constant Unsigned_64 := 512;
-
+   --  words(3) = grant generation
    procedure handleOpen (sender : ProcessID; msg : Message) is
-      grantId   : constant Unsigned_64 := msg.words (0);
       pathLen   : constant Unsigned_64 := msg.words (1);
-      openFlags : constant Unsigned_64 := msg.words (2);
-      grantAddr : constant Unsigned_64 :=
-        GRANT_REGION_BASE + grantId * GRANT_SLOT_SIZE;
+      openFlags : constant Open_Options := Open_Options (msg.words (2));
+      grantAddr : System.Address := System.Null_Address;
+      grantOk   : Boolean := False;
 
       handle     : Integer;
+      handleId   : Unsigned_64;
+      allocated  : Boolean;
       inodeNum   : Unsigned_32 := 0;
-      isATA      : Boolean;
-      isNVMe     : Boolean;
+      scheme     : SchemeKind;
       relStart   : Natural;
       useBackend : BackendKind := CPIO_RAMDISK;
       cpioIdx    : Natural := 0;
    begin
-      if pathLen = 0 or pathLen > MAX_PATH_LEN then
+      if msg.tag.length /= 4 or else
+         pathLen = 0 or else pathLen > MAXIMUM_PATH_BYTES or else
+         not Valid_Open_Options (openFlags)
+      then
          sendReply (sender, REPLY_ERR, Unsigned_64'Last);
+         return;
+      end if;
+
+      resolveClientMemory
+        (sender, msg.words (0), msg.words (3), pathLen,
+         CuBit.Memory_Grants.Read_Access, grantAddr, grantOk);
+      if not grantOk then
+         sendReply (sender, REPLY_ACCESS_DENIED, Unsigned_64'Last);
          return;
       end if;
 
       --  Read path from grant buffer and parse scheme prefix
       declare
          pathStr : String (1 .. Natural (pathLen))
-           with Import, Address => toAddr (grantAddr);
+           with Import, Address => grantAddr;
 
          --  Helper: skip optional device selector "0/" after scheme prefix
          procedure skipSelector
@@ -620,12 +740,17 @@ procedure main is
          end if;
 
          declare
-            requiredRights : Unsigned_8 := ACL_READ;
+            requiredRights : Unsigned_8 := 0;
          begin
-            if (openFlags and O_CREAT) /= 0 then
-               requiredRights := requiredRights or ACL_WRITE or ACL_CREATE;
-            elsif (openFlags and O_WRONLY) /= 0 then
+            if Requests_Read (openFlags) then
+               requiredRights := requiredRights or ACL_READ;
+            end if;
+            if Requests_Write (openFlags) then
                requiredRights := requiredRights or ACL_WRITE;
+            end if;
+
+            if (openFlags and OPEN_CREATE) /= 0 then
+               requiredRights := requiredRights or ACL_WRITE or ACL_CREATE;
             end if;
 
             if not checkAccess (sender, pathStr, requiredRights) then
@@ -635,9 +760,30 @@ procedure main is
             end if;
          end;
 
-         parseScheme (pathStr, isATA, isNVMe, relStart);
+         parseScheme (pathStr, scheme, relStart);
 
-         if isNVMe then
+         if scheme = MEMORY_SCHEME then
+            if not memoryInitialized then
+               sendReply (sender, REPLY_ERR, Unsigned_64'Last);
+               return;
+            end if;
+
+            useBackend := EXT2_MEMORY;
+            declare
+               relPath : String renames
+                 pathStr (relStart .. Natural (pathLen));
+               skipIdx : Natural;
+            begin
+               skipSelector (relPath, skipIdx);
+               if skipIdx > relPath'Last then
+                  sendReply (sender, REPLY_ERR, Unsigned_64'Last);
+                  return;
+               end if;
+               inodeNum := Ext2.resolvePath
+                 (memoryFs, relPath (skipIdx .. relPath'Last));
+            end;
+
+         elsif scheme = NVME_SCHEME then
             useBackend := EXT2_NVME;
 
             --  Lazy-init NVMe filesystem
@@ -666,7 +812,7 @@ procedure main is
                  (nvmeFs, relPath (skipIdx .. relPath'Last));
             end;
 
-         elsif isATA then
+         elsif scheme = ATA_SCHEME then
             useBackend := EXT2_ATA;
 
             --  Lazy-init ATA filesystem
@@ -695,13 +841,19 @@ procedure main is
                  (ataFs, relPath (skipIdx .. relPath'Last));
             end;
          else
-            --  No scheme prefix: try CPIO ramdisk first, then disk.
+            --  No scheme prefix: immutable bootstrap first, then the writable
+            --  memory overlay, followed by persistent disks.
             if cpioOk then
                cpioIdx := Cpio.findFile (cpioArchive, pathStr);
                if cpioIdx < cpioArchive.count then
                   useBackend := CPIO_RAMDISK;
                   inodeNum := 1;
                end if;
+            end if;
+
+            if inodeNum = 0 and then memoryInitialized then
+               useBackend := EXT2_MEMORY;
+               inodeNum := Ext2.resolvePath (memoryFs, pathStr);
             end if;
 
             --  Fallback to disk if not found in ramdisk
@@ -736,13 +888,13 @@ procedure main is
       end;
 
       if inodeNum = 0 then
-         --  O_CREAT: create the file if it doesn't exist
-         if (openFlags and O_CREAT) /= 0 and
-            useBackend in EXT2_ATA | EXT2_NVME
+         --  OPEN_CREATE: create the file if it doesn't exist
+         if (openFlags and OPEN_CREATE) /= 0 and
+            useBackend in EXT2_MEMORY | EXT2_ATA | EXT2_NVME
          then
             declare
                pathStr : String (1 .. Natural (pathLen))
-                 with Import, Address => toAddr (grantAddr);
+                 with Import, Address => grantAddr;
 
                --  Strip scheme prefix (@ata:, @nvme:) and device selector
                --  (0/) to get the pure filesystem path.
@@ -793,7 +945,10 @@ procedure main is
                begin
                   --  Resolve parent directory (relative path only)
                   if dirEnd > 0 then
-                     if useBackend = EXT2_ATA then
+                     if useBackend = EXT2_MEMORY then
+                        dirInodeNum := Ext2.resolvePath
+                          (memoryFs, relPath (fileStart .. dirEnd - 1));
+                     elsif useBackend = EXT2_ATA then
                         dirInodeNum := Ext2.resolvePath
                           (ataFs, relPath (fileStart .. dirEnd - 1));
                      elsif useBackend = EXT2_NVME then
@@ -808,7 +963,12 @@ procedure main is
                      return;
                   end if;
 
-                  if useBackend = EXT2_ATA then
+                  if useBackend = EXT2_MEMORY then
+                     inodeNum := Ext2.createFile
+                       (memoryFs, dirInodeNum,
+                        relPath (nameFirst .. relPath'Last),
+                        Ext2.FILETYPE_REGULAR);
+                  elsif useBackend = EXT2_ATA then
                      inodeNum := Ext2.createFile
                        (ataFs, dirInodeNum,
                         relPath (nameFirst .. relPath'Last),
@@ -830,9 +990,11 @@ procedure main is
          end if;
       end if;
 
-      --  O_TRUNC: truncate existing file to zero length
-      if (openFlags and O_TRUNC) /= 0 and inodeNum /= 0 then
-         if useBackend = EXT2_ATA then
+      --  OPEN_TRUNCATE: truncate existing file to zero length
+      if (openFlags and OPEN_TRUNCATE) /= 0 and inodeNum /= 0 then
+         if useBackend = EXT2_MEMORY then
+            Ext2.truncateFile (memoryFs, inodeNum, 0);
+         elsif useBackend = EXT2_ATA then
             Ext2.truncateFile (ataFs, inodeNum, 0);
          elsif useBackend = EXT2_NVME then
             Ext2.truncateFile (nvmeFs, inodeNum, 0);
@@ -840,8 +1002,8 @@ procedure main is
       end if;
 
       --  Allocate file handle
-      handle := allocHandle;
-      if handle < 0 then
+      allocHandle (handleId, handle, allocated);
+      if not allocated then
          sendReply (sender, REPLY_ERR, Unsigned_64'Last);
          return;
       end if;
@@ -853,10 +1015,21 @@ procedure main is
       files (handle).ownerPID    := sender;
       files (handle).backend     := useBackend;
       files (handle).cpioFileIdx := cpioIdx;
+      files (handle).openRights := 0;
+      if Requests_Read (openFlags) then
+         files (handle).openRights :=
+           files (handle).openRights or ACL_READ;
+      end if;
+      if Requests_Write (openFlags) then
+         files (handle).openRights :=
+           files (handle).openRights or ACL_WRITE;
+      end if;
 
       case useBackend is
          when CPIO_RAMDISK =>
             null;  --  cpio files don't need inode
+         when EXT2_MEMORY =>
+            Ext2.readInode (memoryFs, inodeNum, files (handle).ino);
          when EXT2_ATA =>
             Ext2.readInode (ataFs, inodeNum, files (handle).ino);
          when EXT2_NVME =>
@@ -872,6 +1045,8 @@ procedure main is
          case useBackend is
             when CPIO_RAMDISK =>
                fsize := cpioArchive.files (cpioIdx).dataSize;
+            when EXT2_MEMORY =>
+               fsize := Ext2.fileSize (files (handle).ino);
             when EXT2_ATA =>
                fsize := Ext2.fileSize (files (handle).ino);
             when EXT2_NVME =>
@@ -882,7 +1057,7 @@ procedure main is
                           length => 2,
                           flags  => 0,
                           badge  => 0);
-         replyMsg.words := (0 => Unsigned_64 (handle),
+         replyMsg.words := (0 => handleId,
                             1 => fsize,
                             others => 0);
          ignore := reply (sender, replyMsg);
@@ -891,25 +1066,36 @@ procedure main is
 
    --  Handle OP_READ
    --  words(0) = file_handle
-   --  words(1) = grant_id (buffer to write data into)
+   --  words(1) = grant slot (buffer to write data into)
    --  words(2) = count (bytes to read)
+   --  words(3) = grant generation
    procedure handleRead (sender : ProcessID; msg : Message) is
-      handle    : constant Integer := Integer (msg.words (0));
-      grantId   : constant Unsigned_64 := msg.words (1);
+      handle    : constant Integer := resolveHandle (msg.words (0), sender);
       count     : constant Unsigned_64 := msg.words (2);
-      grantAddr : constant Unsigned_64 :=
-        GRANT_REGION_BASE + grantId * GRANT_SLOT_SIZE;
+      grantAddr : System.Address := System.Null_Address;
+      grantOk   : Boolean := False;
       bytesRead : Unsigned_64;
    begin
-      if handle < 0 or handle >= MAX_OPEN_FILES or
-         not files (handle).active
-      then
+      if msg.tag.length /= 4 or else handle < 0 then
          sendReply (sender, REPLY_ERR, 0);
          return;
       end if;
 
-      if files (handle).ownerPID /= sender then
-         sendReply (sender, REPLY_ERR, 0);
+      if (files (handle).openRights and ACL_READ) = 0 then
+         sendReply (sender, REPLY_ACCESS_DENIED, 0);
+         return;
+      end if;
+
+      if count = 0 then
+         sendReply (sender, REPLY_OK, 0);
+         return;
+      end if;
+
+      resolveClientMemory
+        (sender, msg.words (1), msg.words (3), count,
+         CuBit.Memory_Grants.Write_Access, grantAddr, grantOk);
+      if not grantOk then
+         sendReply (sender, REPLY_ACCESS_DENIED, 0);
          return;
       end if;
 
@@ -919,21 +1105,28 @@ procedure main is
               (cpioArchive,
                files (handle).cpioFileIdx,
                files (handle).offset,
-               toAddr (grantAddr),
+               grantAddr,
+               count);
+         when EXT2_MEMORY =>
+            bytesRead := Ext2.readData
+              (memoryFs,
+               files (handle).ino,
+               files (handle).offset,
+               grantAddr,
                count);
          when EXT2_ATA =>
             bytesRead := Ext2.readData
               (ataFs,
                files (handle).ino,
                files (handle).offset,
-               toAddr (grantAddr),
+               grantAddr,
                count);
          when EXT2_NVME =>
             bytesRead := Ext2.readData
               (nvmeFs,
                files (handle).ino,
                files (handle).offset,
-               toAddr (grantAddr),
+               grantAddr,
                count);
       end case;
 
@@ -943,25 +1136,36 @@ procedure main is
 
    --  Handle OP_WRITE
    --  words(0) = file_handle
-   --  words(1) = grant_id (buffer containing data to write)
+   --  words(1) = grant slot (buffer containing data to write)
    --  words(2) = count (bytes to write)
+   --  words(3) = grant generation
    procedure handleWrite (sender : ProcessID; msg : Message) is
-      handle       : constant Integer := Integer (msg.words (0));
-      grantId      : constant Unsigned_64 := msg.words (1);
+      handle       : constant Integer := resolveHandle (msg.words (0), sender);
       count        : constant Unsigned_64 := msg.words (2);
-      grantAddr    : constant Unsigned_64 :=
-        GRANT_REGION_BASE + grantId * GRANT_SLOT_SIZE;
+      grantAddr    : System.Address := System.Null_Address;
+      grantOk      : Boolean := False;
       bytesWritten : Unsigned_64;
    begin
-      if handle < 0 or handle >= MAX_OPEN_FILES or
-         not files (handle).active
-      then
+      if msg.tag.length /= 4 or else handle < 0 then
          sendReply (sender, REPLY_ERR, 0);
          return;
       end if;
 
-      if files (handle).ownerPID /= sender then
-         sendReply (sender, REPLY_ERR, 0);
+      if (files (handle).openRights and ACL_WRITE) = 0 then
+         sendReply (sender, REPLY_ACCESS_DENIED, 0);
+         return;
+      end if;
+
+      if count = 0 then
+         sendReply (sender, REPLY_OK, 0);
+         return;
+      end if;
+
+      resolveClientMemory
+        (sender, msg.words (1), msg.words (3), count,
+         CuBit.Memory_Grants.Read_Access, grantAddr, grantOk);
+      if not grantOk then
+         sendReply (sender, REPLY_ACCESS_DENIED, 0);
          return;
       end if;
 
@@ -970,13 +1174,21 @@ procedure main is
             --  CPIO ramdisk is read-only
             sendReply (sender, REPLY_ERR, 0);
             return;
+         when EXT2_MEMORY =>
+            bytesWritten := Ext2.writeData
+              (memoryFs,
+               files (handle).inodeNum,
+               files (handle).ino,
+               files (handle).offset,
+               grantAddr,
+               count);
          when EXT2_ATA =>
             bytesWritten := Ext2.writeData
               (ataFs,
                files (handle).inodeNum,
                files (handle).ino,
                files (handle).offset,
-               toAddr (grantAddr),
+               grantAddr,
                count);
          when EXT2_NVME =>
             bytesWritten := Ext2.writeData
@@ -984,7 +1196,7 @@ procedure main is
                files (handle).inodeNum,
                files (handle).ino,
                files (handle).offset,
-               toAddr (grantAddr),
+               grantAddr,
                count);
       end case;
 
@@ -997,20 +1209,13 @@ procedure main is
    --  words(1) = offset
    --  words(2) = whence (0=SET, 1=CUR, 2=END)
    procedure handleSeek (sender : ProcessID; msg : Message) is
-      handle  : constant Integer := Integer (msg.words (0));
+      handle  : constant Integer := resolveHandle (msg.words (0), sender);
       seekOff : constant Unsigned_64 := msg.words (1);
       whence  : constant Unsigned_64 := msg.words (2);
       newOff  : Unsigned_64;
       size    : Unsigned_64;
    begin
-      if handle < 0 or handle >= MAX_OPEN_FILES or
-         not files (handle).active
-      then
-         sendReply (sender, REPLY_ERR, Unsigned_64'Last);
-         return;
-      end if;
-
-      if files (handle).ownerPID /= sender then
+      if handle < 0 then
          sendReply (sender, REPLY_ERR, Unsigned_64'Last);
          return;
       end if;
@@ -1018,7 +1223,7 @@ procedure main is
       case files (handle).backend is
          when CPIO_RAMDISK =>
             size := cpioArchive.files (files (handle).cpioFileIdx).dataSize;
-         when EXT2_ATA | EXT2_NVME =>
+         when EXT2_MEMORY | EXT2_ATA | EXT2_NVME =>
             size := Ext2.fileSize (files (handle).ino);
       end case;
 
@@ -1041,61 +1246,75 @@ procedure main is
    --  Handle OP_CLOSE
    --  words(0) = file_handle
    procedure handleClose (sender : ProcessID; msg : Message) is
-      handle : constant Integer := Integer (msg.words (0));
+      handle : constant Integer := resolveHandle (msg.words (0), sender);
    begin
-      if handle < 0 or handle >= MAX_OPEN_FILES or
-         not files (handle).active
-      then
+      if handle < 0 then
          sendReply (sender, REPLY_ERR, 0);
          return;
       end if;
 
-      if files (handle).ownerPID /= sender then
-         sendReply (sender, REPLY_ERR, 0);
-         return;
-      end if;
-
-      files (handle).active := False;
+      releaseHandle (handle);
       sendReply (sender, REPLY_OK, 0);
    end handleClose;
 
    --  Handle OP_READDIR
-   --  words(0) = grant_id (path in grant buffer, results written there)
+   --  words(0) = grant slot (path in grant buffer, results written there)
    --  words(1) = path_length (0 = list root "/")
+   --  words(2) = grant buffer capacity in bytes
+   --  words(3) = grant generation
    procedure handleReaddir (sender : ProcessID; msg : Message) is
-      grantId   : constant Unsigned_64 := msg.words (0);
       pathLen   : constant Unsigned_64 := msg.words (1);
-      grantAddr : constant Unsigned_64 :=
-        GRANT_REGION_BASE + grantId * GRANT_SLOT_SIZE;
+      capacity  : constant Unsigned_64 := msg.words (2);
+      grantAddr : System.Address := System.Null_Address;
+      grantOk   : Boolean := False;
 
-      isATA       : Boolean;
-      isNVMe      : Boolean;
+      scheme      : SchemeKind;
       relStart    : Natural;
       dirInodeNum : Unsigned_32;
       dirIno      : Ext2.Inode;
       written     : Unsigned_64;
    begin
+      if msg.tag.length /= 4 or else capacity = 0 or else
+         pathLen > capacity
+      then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+
+      resolveClientMemory
+        (sender, msg.words (0), msg.words (3), capacity,
+         CuBit.Memory_Grants.Write_Access, grantAddr, grantOk);
+      if not grantOk then
+         sendReply (sender, REPLY_ACCESS_DENIED, 0);
+         return;
+      end if;
+
       if pathLen = 0 then
          --  No path means list root (ramdisk)
+         if not checkAccess (sender, "", ACL_READ) then
+            sendReply (sender, REPLY_ACCESS_DENIED, 0);
+            return;
+         end if;
+
          if not cpioOk then
             sendReply (sender, REPLY_ERR, 0);
             return;
          end if;
          written := Cpio.listFiles (cpioArchive,
-                                    toAddr (grantAddr),
-                                    GRANT_SLOT_SIZE);
+                                    grantAddr,
+                                    capacity);
          sendReply (sender, REPLY_OK, written);
          return;
       end if;
 
-      if pathLen > MAX_PATH_LEN then
+      if pathLen > MAXIMUM_PATH_BYTES then
          sendReply (sender, REPLY_ERR, 0);
          return;
       end if;
 
       declare
          pathStr : String (1 .. Natural (pathLen))
-           with Import, Address => toAddr (grantAddr);
+           with Import, Address => grantAddr;
 
          procedure resolveAndReadDir
            (theFs : Ext2.Filesystem;
@@ -1129,8 +1348,8 @@ procedure main is
 
             Ext2.readInode (theFs, dirInodeNum, dirIno);
             written := Ext2.readDir (theFs, dirIno,
-                                     toAddr (grantAddr),
-                                     GRANT_SLOT_SIZE);
+                                     grantAddr,
+                                     capacity);
          end resolveAndReadDir;
       begin
          if hasTraversal (pathStr) then
@@ -1143,9 +1362,18 @@ procedure main is
             return;
          end if;
 
-         parseScheme (pathStr, isATA, isNVMe, relStart);
+         parseScheme (pathStr, scheme, relStart);
 
-         if isNVMe then
+         if scheme = MEMORY_SCHEME then
+            if not memoryInitialized then
+               sendReply (sender, REPLY_ERR, 0);
+               return;
+            end if;
+
+            resolveAndReadDir (memoryFs,
+              pathStr (relStart .. Natural (pathLen)));
+
+         elsif scheme = NVME_SCHEME then
             declare
                ok : Boolean;
             begin
@@ -1159,7 +1387,7 @@ procedure main is
             resolveAndReadDir (nvmeFs,
               pathStr (relStart .. Natural (pathLen)));
 
-         elsif isATA then
+         elsif scheme = ATA_SCHEME then
             declare
                ok : Boolean;
             begin
@@ -1174,15 +1402,17 @@ procedure main is
               pathStr (relStart .. Natural (pathLen)));
 
          else
-            --  Ramdisk (cpio) - just list all files
+            --  The automatic root is the bootstrap namespace.  Writable
+            --  memory storage remains explicitly visible as @mem: so root
+            --  enumeration cannot silently merge colliding names.
             if not cpioOk then
                sendReply (sender, REPLY_ERR, 0);
                return;
             end if;
 
             written := Cpio.listFiles (cpioArchive,
-                                       toAddr (grantAddr),
-                                       GRANT_SLOT_SIZE);
+                                       grantAddr,
+                                       capacity);
          end if;
       end;
 
@@ -1202,21 +1432,31 @@ procedure main is
    pendingClients : array (0 .. MAX_PENDING_CLIENTS - 1) of PendingClient;
 
    --  Handle OP_RENAME
-   --  words(0) = grant_id (buffer with both paths)
+   --  words(0) = grant slot (buffer with both paths)
    --  words(1) = old_path_length
    --  words(2) = new_path_length
+   --  words(3) = grant generation
    --  Grant buffer layout: [old_path][new_path]
    procedure handleRename (sender : ProcessID; msg : Message) is
-      grantId    : constant Unsigned_64 := msg.words (0);
       oldPathLen : constant Unsigned_64 := msg.words (1);
       newPathLen : constant Unsigned_64 := msg.words (2);
-      grantAddr  : constant Unsigned_64 :=
-        GRANT_REGION_BASE + grantId * GRANT_SLOT_SIZE;
+      grantAddr  : System.Address := System.Null_Address;
+      grantOk    : Boolean := False;
    begin
-      if oldPathLen = 0 or newPathLen = 0 or
-         oldPathLen + newPathLen > MAX_PATH_LEN * 2
+      if msg.tag.length /= 4 or else
+         oldPathLen = 0 or else newPathLen = 0 or else
+         oldPathLen > MAXIMUM_PATH_BYTES or else
+         newPathLen > MAXIMUM_PATH_BYTES
       then
          sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+
+      resolveClientMemory
+        (sender, msg.words (0), msg.words (3), oldPathLen + newPathLen,
+         CuBit.Memory_Grants.Read_Access, grantAddr, grantOk);
+      if not grantOk then
+         sendReply (sender, REPLY_ACCESS_DENIED, 0);
          return;
       end if;
 
@@ -1224,20 +1464,31 @@ procedure main is
          totalLen : constant Natural :=
            Natural (oldPathLen + newPathLen);
          bothPaths : String (1 .. totalLen)
-           with Import, Address => toAddr (grantAddr);
+           with Import, Address => grantAddr;
          oldPath : String renames
            bothPaths (1 .. Natural (oldPathLen));
          newPath : String renames
            bothPaths (Natural (oldPathLen) + 1 .. totalLen);
 
-         oldIsATA, oldIsNVMe : Boolean;
-         newIsATA, newIsNVMe : Boolean;
+         oldScheme, newScheme : SchemeKind;
          oldRelStart, newRelStart : Natural;
       begin
-         parseScheme (oldPath, oldIsATA, oldIsNVMe, oldRelStart);
-         parseScheme (newPath, newIsATA, newIsNVMe, newRelStart);
+         if hasTraversal (oldPath) or else hasTraversal (newPath) then
+            sendReply (sender, REPLY_ERR, 0);
+            return;
+         end if;
 
-         if oldIsATA /= newIsATA or oldIsNVMe /= newIsNVMe then
+         if not checkAccess (sender, oldPath, ACL_WRITE) or else
+            not checkAccess (sender, newPath, ACL_WRITE)
+         then
+            sendReply (sender, REPLY_ACCESS_DENIED, 0);
+            return;
+         end if;
+
+         parseScheme (oldPath, oldScheme, oldRelStart);
+         parseScheme (newPath, newScheme, newRelStart);
+
+         if oldScheme /= newScheme then
             sendReply (sender, REPLY_ERR, 0);
             return;
          end if;
@@ -1261,7 +1512,27 @@ procedure main is
             oldSkip, newSkip : Natural;
             ok : Boolean;
          begin
-            if oldIsNVMe then
+            if oldScheme in MEMORY_SCHEME | AUTOMATIC_SCHEME and then
+               memoryInitialized
+            then
+               if not memoryInitialized then
+                  sendReply (sender, REPLY_ERR, 0);
+                  return;
+               end if;
+
+               skipSel (oldPath (oldRelStart .. oldPath'Last), oldSkip);
+               skipSel (newPath (newRelStart .. newPath'Last), newSkip);
+
+               declare
+                  oldRel : String renames
+                    oldPath (oldSkip .. oldPath'Last);
+                  newRel : String renames
+                    newPath (newSkip .. newPath'Last);
+               begin
+                  ok := Ext2.renameEntry
+                    (memoryFs, Ext2.ROOT_INODE, oldRel, newRel);
+               end;
+            elsif oldScheme = NVME_SCHEME then
                declare
                   okInit : Boolean;
                begin
@@ -1286,7 +1557,7 @@ procedure main is
                   ok := Ext2.renameEntry
                     (nvmeFs, Ext2.ROOT_INODE, oldRel, newRel);
                end;
-            elsif oldIsATA then
+            elsif oldScheme = ATA_SCHEME then
                declare
                   okInit : Boolean;
                begin
@@ -1344,6 +1615,45 @@ begin
       Cpio.init (cpioArchive, toAddr (rdAddr), rdSize, cpioOk);
       if not cpioOk then
          debugPrint ("FS Server: Invalid CPIO archive on ramdisk." & LF);
+      else
+         declare
+            imageIndex : constant Natural :=
+              Cpio.findFile (cpioArchive, "live-rw.ext2");
+            imageBase : System.Address;
+            imageSize : Unsigned_64;
+            viewOk : Boolean;
+            writableBase : Unsigned_64;
+         begin
+            if imageIndex < cpioArchive.count then
+               Cpio.fileView
+                 (cpioArchive, imageIndex, imageBase, imageSize, viewOk);
+               if viewOk then
+                  writableBase := syscall (SYSCALL_SBRK, imageSize);
+                  if writableBase /= Unsigned_64'Last then
+                     declare
+                        source : String (1 .. Natural (imageSize))
+                          with Import, Address => imageBase;
+                        destination : String (1 .. Natural (imageSize))
+                          with Import, Address => toAddr (writableBase);
+                     begin
+                        destination := source;
+                     end;
+
+                     Ext2.initMemory
+                       (memoryFs, toAddr (writableBase), imageSize,
+                        memoryInitialized);
+                  end if;
+               end if;
+
+               if memoryInitialized then
+                  debugPrint
+                    ("FS Server: Writable memory filesystem ready." & LF);
+               else
+                  debugPrint
+                    ("FS Server: Invalid writable memory filesystem." & LF);
+               end if;
+            end if;
+         end;
       end if;
    end if;
 

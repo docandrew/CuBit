@@ -285,15 +285,25 @@ wget: user_runtime
 	$(ALR) gprbuild -P ../userspace/apps/wget/wget.gpr
 	cp ../userspace/apps/wget/build/wget.app isodir/boot/wget.app
 
-# Build the graphical Security Center prototype
-.PHONY : security-center
-security-center: user_runtime
-	mkdir -p ../userspace/apps/security-center/build
+# Build the unified hardware inventory and diagnostics app
+.PHONY : devices
+devices: user_runtime
+	mkdir -p ../userspace/apps/devices/build
 	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/apps/security-center/manifest.c \
-		-o ../userspace/apps/security-center/build/manifest.o
-	$(ALR) gprbuild -P ../userspace/apps/security-center/security_center.gpr
-	cp ../userspace/apps/security-center/build/security-center.app isodir/boot/security-center.app
+		../userspace/apps/devices/manifest.c \
+		-o ../userspace/apps/devices/build/manifest.o
+	$(ALR) gprbuild -P ../userspace/apps/devices/devices.gpr
+	cp ../userspace/apps/devices/build/devices.app isodir/boot/devices.app
+
+# Build the live writable-storage diagnostic app.
+.PHONY : storage-check
+storage-check: user_runtime
+	mkdir -p ../userspace/apps/storage-check/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/apps/storage-check/manifest.c \
+		-o ../userspace/apps/storage-check/build/manifest.o
+	$(ALR) gprbuild -P ../userspace/apps/storage-check/storage_check.gpr
+	cp ../userspace/apps/storage-check/build/storage-check.app isodir/boot/storage-check.app
 
 # Build the first desktop shell client
 .PHONY : desktop-shell
@@ -304,16 +314,6 @@ desktop-shell: user_runtime
 		-o ../userspace/apps/desktop-shell/build/manifest.o
 	$(ALR) gprbuild -P ../userspace/apps/desktop-shell/desktop_shell.gpr
 	cp ../userspace/apps/desktop-shell/build/desktop-shell.app isodir/boot/desktop-shell.app
-
-# Build the UI primitive exercise app
-.PHONY : ui-lab
-ui-lab: user_runtime
-	mkdir -p ../userspace/apps/ui-lab/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/apps/ui-lab/manifest.c \
-		-o ../userspace/apps/ui-lab/build/manifest.o
-	$(ALR) gprbuild -P ../userspace/apps/ui-lab/ui_lab.gpr
-	cp ../userspace/apps/ui-lab/build/ui-lab.app isodir/boot/ui-lab.app
 
 # Build the userspace process manager service
 .PHONY : procmgr
@@ -420,11 +420,11 @@ DOOM_WAD ?= ../doom1.wad
 
 DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/netsurf.app isodir/boot/sleep.app \
 	isodir/boot/capability-test.app \
-	isodir/boot/wget.app isodir/boot/security-center.app \
+	isodir/boot/wget.app isodir/boot/devices.app \
 	isodir/boot/ccl-vm.app isodir/boot/ccl-workbench.app \
 	isodir/boot/ccl-test-host.svc \
 	isodir/boot/clock.svc \
-	isodir/boot/desktop-shell.app isodir/boot/ui-lab.app \
+	isodir/boot/desktop-shell.app \
 	isodir/boot/ipctest-server.app isodir/boot/ipctest-client.app \
 	isodir/boot/bench-ipc-server.app isodir/boot/bench-ipc-client.app \
 	isodir/boot/logstore.svc isodir/boot/display.svc isodir/boot/desktop.svc \
@@ -434,7 +434,7 @@ DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/netsurf.
 # staging target so run-desktop can build/copy them into isodir first, then
 # rebuild the ext2 disk image from those freshly staged files.
 .PHONY : desktop-session-content
-desktop-session-content: virtio-gpu desktop display desktop-shell ui-lab security-center ccl-workbench clock doom netsurf
+desktop-session-content: virtio-gpu desktop display desktop-shell devices ccl-workbench clock doom netsurf
 
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.conf, shell.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
@@ -450,9 +450,8 @@ ata_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write isodir/boot/sleep.app sleep.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/capability-test.app capability-test.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/wget.app wget.app" ata_disk.img
-	debugfs -w -R "write isodir/boot/security-center.app security-center.app" ata_disk.img
+	debugfs -w -R "write isodir/boot/devices.app devices.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/desktop-shell.app desktop-shell.app" ata_disk.img
-	debugfs -w -R "write isodir/boot/ui-lab.app ui-lab.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/ipctest-server.app ipctest-server.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/ipctest-client.app ipctest-client.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/bench-ipc-server.app bench-ipc-server.app" ata_disk.img
@@ -483,9 +482,8 @@ nvme_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write ../init.conf init.conf" nvme_disk.img
 	debugfs -w -R "write isodir/boot/shell.app shell.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/wget.app wget.app" nvme_disk.img
-	debugfs -w -R "write isodir/boot/security-center.app security-center.app" nvme_disk.img
+	debugfs -w -R "write isodir/boot/devices.app devices.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/desktop-shell.app desktop-shell.app" nvme_disk.img
-	debugfs -w -R "write isodir/boot/ui-lab.app ui-lab.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/ipctest-server.app ipctest-server.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/ipctest-client.app ipctest-client.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/bench-ipc-server.app bench-ipc-server.app" nvme_disk.img
@@ -559,11 +557,18 @@ initrd:
 # desktop and diagnostic UI before AHCI or any other block driver works.
 LAPTOP_LIVE_STAGE1 := filesystem ata nvme netstack virtio-net virtio-gpu hda \
 	mixer ps2 xhci config netmgr procmgr devmgr
-LAPTOP_LIVE_STAGE2 := logstore clock display desktop ccl-workbench ui-lab \
-	security-center doom
+LAPTOP_LIVE_STAGE2 := logstore clock display desktop ccl-workbench devices \
+	storage-check doom
+LAPTOP_LIVE_RW_DISK := laptop_live_rw.img
+
+$(LAPTOP_LIVE_RW_DISK):
+	dd if=/dev/zero of=$(LAPTOP_LIVE_RW_DISK) bs=1M count=8
+	mke2fs -t ext2 -F -m 0 $(LAPTOP_LIVE_RW_DISK)
+	debugfs -w -R "mkdir work" $(LAPTOP_LIVE_RW_DISK)
+	debugfs -w -R "mkdir tmp" $(LAPTOP_LIVE_RW_DISK)
 
 .PHONY : laptop-live-initrd
-laptop-live-initrd: $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2)
+laptop-live-initrd: $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) $(LAPTOP_LIVE_RW_DISK)
 	rm -rf laptop_live_staging
 	mkdir -p laptop_live_staging
 	cp isodir/boot/devmgr.svc laptop_live_staging/
@@ -585,10 +590,11 @@ laptop-live-initrd: $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2)
 	cp isodir/boot/display.svc laptop_live_staging/
 	cp isodir/boot/desktop.svc laptop_live_staging/
 	cp isodir/boot/ccl-workbench.app laptop_live_staging/
-	cp isodir/boot/ui-lab.app laptop_live_staging/
-	cp isodir/boot/security-center.app laptop_live_staging/
+	cp isodir/boot/devices.app laptop_live_staging/
+	cp isodir/boot/storage-check.app laptop_live_staging/
 	cp isodir/boot/doom.elf laptop_live_staging/
 	cp $(DOOM_WAD) laptop_live_staging/doom1.wad
+	cp $(LAPTOP_LIVE_RW_DISK) laptop_live_staging/live-rw.ext2
 	cp ../tests/hardware/init-laptop-live.conf laptop_live_staging/init.conf
 	cp ../tests/hardware/system-live.conf laptop_live_staging/system.conf
 	cd laptop_live_staging && ls | cpio -o -H newc > ../isodir/boot/laptop-live-initrd.img
@@ -688,7 +694,7 @@ iso: cubit_kernel initrd
 
 # Build everything including DOOM, then create ISO and disk images
 .PHONY : world
-world: cubit_kernel doom netsurf sleep capability-test ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget security-center desktop-shell ui-lab procmgr shell hda mixer ps2 xhci config netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: cubit_kernel doom netsurf sleep capability-test ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices desktop-shell procmgr shell hda mixer ps2 xhci config netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world
@@ -776,8 +782,7 @@ run-desktop-fast:
 	-debugfs -w -R "rm display.svc" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm netstack.svc" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm desktop-shell.app" desktop_disk.img >/dev/null 2>&1
-	-debugfs -w -R "rm ui-lab.app" desktop_disk.img >/dev/null 2>&1
-	-debugfs -w -R "rm security-center.app" desktop_disk.img >/dev/null 2>&1
+	-debugfs -w -R "rm devices.app" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm doom.elf" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm netsurf.app" desktop_disk.img >/dev/null 2>&1
 	debugfs -w -R "write ../tests/headless/init-desktop-session.conf init.conf" desktop_disk.img
@@ -785,8 +790,7 @@ run-desktop-fast:
 	debugfs -w -R "write isodir/boot/display.svc display.svc" desktop_disk.img
 	debugfs -w -R "write isodir/boot/netstack.svc netstack.svc" desktop_disk.img
 	debugfs -w -R "write isodir/boot/desktop-shell.app desktop-shell.app" desktop_disk.img
-	debugfs -w -R "write isodir/boot/ui-lab.app ui-lab.app" desktop_disk.img
-	debugfs -w -R "write isodir/boot/security-center.app security-center.app" desktop_disk.img
+	debugfs -w -R "write isodir/boot/devices.app devices.app" desktop_disk.img
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" desktop_disk.img
 	debugfs -w -R "write isodir/boot/netsurf.app netsurf.app" desktop_disk.img
 	GDK_BACKEND=x11 qemu-system-x86_64 \
@@ -827,8 +831,7 @@ run-desktop-inspect:
 	-debugfs -w -R "rm display.svc" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm netstack.svc" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm desktop-shell.app" desktop_disk.img >/dev/null 2>&1
-	-debugfs -w -R "rm ui-lab.app" desktop_disk.img >/dev/null 2>&1
-	-debugfs -w -R "rm security-center.app" desktop_disk.img >/dev/null 2>&1
+	-debugfs -w -R "rm devices.app" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm doom.elf" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm netsurf.app" desktop_disk.img >/dev/null 2>&1
 	debugfs -w -R "write ../tests/headless/init-desktop-session.conf init.conf" desktop_disk.img
@@ -836,8 +839,7 @@ run-desktop-inspect:
 	debugfs -w -R "write isodir/boot/display.svc display.svc" desktop_disk.img
 	debugfs -w -R "write isodir/boot/netstack.svc netstack.svc" desktop_disk.img
 	debugfs -w -R "write isodir/boot/desktop-shell.app desktop-shell.app" desktop_disk.img
-	debugfs -w -R "write isodir/boot/ui-lab.app ui-lab.app" desktop_disk.img
-	debugfs -w -R "write isodir/boot/security-center.app security-center.app" desktop_disk.img
+	debugfs -w -R "write isodir/boot/devices.app devices.app" desktop_disk.img
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" desktop_disk.img
 	debugfs -w -R "write isodir/boot/netsurf.app netsurf.app" desktop_disk.img
 	GDK_BACKEND=x11 qemu-system-x86_64 \

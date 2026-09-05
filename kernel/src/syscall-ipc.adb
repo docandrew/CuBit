@@ -17,6 +17,7 @@ with InterruptNumbers;
 with IPC_Labels;
 with ELF;
 with Interrupts;
+with Memory_Grants;
 with PerCpuData;
 with Process;
 with Process.IPC;
@@ -997,6 +998,75 @@ package body Syscall.IPC is
         Process.IPC.revokeGrant (id => Process.GrantID (slot));
         retval := 1;
     end handleRevoke;
+
+    procedure handleGetOwnedGrantGeneration
+      (arg0   : Unsigned_64;
+       retval : out Unsigned_64)
+    is
+        generation : Memory_Grants.Grant_Generation;
+        success : Boolean;
+    begin
+        if arg0 > Unsigned_64 (Memory_Grants.Global_Slot'Last) then
+            retval := reterr;
+            return;
+        end if;
+
+        Process.IPC.getOwnedGrantGeneration
+          (slot       => Memory_Grants.Global_Slot (arg0),
+           generation => generation,
+           success    => success);
+        retval := (if success then Unsigned_64 (generation) else reterr);
+    end handleGetOwnedGrantGeneration;
+
+    procedure handleResolveGrant
+      (arg0, arg1, arg2, arg3, arg4, arg5 : Unsigned_64;
+       retval : out Unsigned_64)
+    is
+        mappedAddress : System.Address;
+        success : Boolean;
+    begin
+        if arg0 > Unsigned_64 (Memory_Grants.Global_Slot'Last) or else
+           not Memory_Grants.Is_Valid_Generation_Field (arg1) or else
+           arg2 = 0 or else arg2 > Unsigned_64 (Process.ProcessID'Last) or else
+           arg5 > 1
+        then
+            retval := reterr;
+            return;
+        end if;
+
+        Process.IPC.resolveGrant
+          (reference =>
+             (slot       => Memory_Grants.Global_Slot (arg0),
+              generation => Memory_Grants.To_Live_Generation (arg1)),
+           expectedOwner => Process.ProcessID (arg2),
+           byteOffset    => arg3,
+           byteLength    => arg4,
+           requiredWrite => arg5 = 1,
+           mappedAddress => mappedAddress,
+           success       => success);
+        retval := (if success then Util.addrToNum (mappedAddress) else reterr);
+    end handleResolveGrant;
+
+    procedure handleRevokeGrantReference
+      (arg0, arg1 : Unsigned_64;
+       retval : out Unsigned_64)
+    is
+        success : Boolean;
+    begin
+        if arg0 > Unsigned_64 (Memory_Grants.Global_Slot'Last) or else
+           not Memory_Grants.Is_Valid_Generation_Field (arg1)
+        then
+            retval := 0;
+            return;
+        end if;
+
+        Process.IPC.revokeGrantReference
+          (reference =>
+             (slot       => Memory_Grants.Global_Slot (arg0),
+              generation => Memory_Grants.To_Live_Generation (arg1)),
+           success => success);
+        retval := (if success then 1 else 0);
+    end handleRevokeGrantReference;
 
     ---------------------------------------------------------------------------
     -- handleInfo

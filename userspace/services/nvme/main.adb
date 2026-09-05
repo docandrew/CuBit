@@ -6,36 +6,22 @@
 --  Userspace NVMe block device driver.
 --
 --  Maps the NVMe controller BAR0 MMIO via SYSCALL_MAP_DEVICE, initializes
---  the controller and I/O queues, then enters an IPC server loop handling
---  OP_READ_BLOCK / OP_IDENTIFY from clients (e.g., filesystem server).
+--  the controller and I/O queues, then offers the shared Block.Device.V1
+--  protocol to authorized clients.
 --
 --  DMA region is pre-mapped by the kernel at 0x7000_0000_0000 (1 MiB).
 --  BAR0 is mapped at 0x6000_0000_0000 (16KB) at startup.
 ------------------------------------------------------------------------------
-with Ada.Unchecked_Conversion;
 with Interfaces; use Interfaces;
 with System; use System;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Block_Devices; use CuBit.Block_Devices;
+with CuBit.Memory_Grants;
 with NVMe;
 
 procedure main is
    use ASCII;
-
-   --  IPC operation labels (must match kernel/src/ipc_labels.ads)
-   OP_READ_BLOCK  : constant Unsigned_32 := 16#0210#;
-   OP_WRITE_BLOCK : constant Unsigned_32 := 16#0211#;
-   OP_IDENTIFY    : constant Unsigned_32 := 16#0212#;
-   REPLY_OK       : constant Unsigned_32 := 16#F000#;
-   REPLY_ERR      : constant Unsigned_32 := 16#F001#;
-
-   --  Grant region constants (must match kernel process.ads)
-   GRANT_REGION_BASE : constant Unsigned_64 := 16#0000_4000_0000_0000#;
-   GRANT_SLOT_SIZE   : constant Unsigned_64 := 4096 * 4096; -- 16 MiB
-
-   --  Conversion helper
-   function toAddr is new Ada.Unchecked_Conversion
-     (Unsigned_64, System.Address);
 
    ---------------------------------------------------------------------------
    --  sendReply - send a reply message
@@ -59,62 +45,140 @@ procedure main is
    ---------------------------------------------------------------------------
    --  handleReadBlock
    --  words(0) = LBA (sector number)
-   --  words(1) = grant_id (buffer to write data into)
+   --  words(1) = grant slot (buffer to write data into)
    --  words(2) = sector_count (number of sectors to read)
+   --  words(3) = grant generation
    ---------------------------------------------------------------------------
    procedure handleReadBlock (sender : ProcessID; msg : Message) is
       lba       : constant Unsigned_64 := msg.words (0);
-      grantId   : constant Unsigned_64 := msg.words (1);
-      sectorCt  : constant Unsigned_32 := Unsigned_32 (msg.words (2) and 16#FFFF#);
-      grantAddr : constant Unsigned_64 :=
-        GRANT_REGION_BASE + grantId * GRANT_SLOT_SIZE;
+      sectorCt  : Unsigned_32 := 0;
+      grantAddr : System.Address := System.Null_Address;
+      resolved  : Boolean := False;
       bytesRead : Unsigned_64;
    begin
-      if sectorCt = 0 then
-         sendReply (sender, REPLY_ERR, 0);
+      if msg.tag.length /= 4 or else
+         msg.words (1) > CuBit.Memory_Grants.MAXIMUM_GLOBAL_SLOT or else
+         msg.words (3) = 0 or else
+         msg.words (3) > CuBit.Memory_Grants.MAXIMUM_GENERATION or else
+         msg.words (2) = 0 or else
+         msg.words (2) > Unsigned_64 (Unsigned_32'Last) or else
+         NVMe.nsSectorSize = 0 or else
+         lba >= NVMe.nsBlockCount or else
+         msg.words (2) > NVMe.nsBlockCount - lba
+      then
+         sendReply (sender, REPLY_ERROR, 0);
          return;
       end if;
 
-      bytesRead := NVMe.readBlocks (lba, sectorCt, toAddr (grantAddr));
+      sectorCt := Unsigned_32 (msg.words (2));
+      CuBit.Memory_Grants.Resolve
+        (reference      =>
+           (slot => CuBit.Memory_Grants.Global_Grant_Slot (msg.words (1)),
+            generation =>
+              CuBit.Memory_Grants.Grant_Generation (msg.words (3))),
+         expectedOwner => sender,
+         byteOffset     => 0,
+         byteLength     =>
+           Unsigned_64 (sectorCt) * Unsigned_64 (NVMe.nsSectorSize),
+         --  A device read writes the result into the caller's grant.
+         requiredAccess => CuBit.Memory_Grants.Write_Access,
+         mappedAddress  => grantAddr,
+         success        => resolved);
+      if not resolved then
+         sendReply (sender, REPLY_ERROR, 0);
+         return;
+      end if;
+
+      bytesRead := NVMe.readBlocks (lba, sectorCt, grantAddr);
       sendReply (sender, REPLY_OK, bytesRead);
    end handleReadBlock;
 
    ---------------------------------------------------------------------------
    --  handleWriteBlock
    --  words(0) = LBA (sector number)
-   --  words(1) = grant_id (buffer to read data from)
+   --  words(1) = grant slot (buffer to read data from)
    --  words(2) = sector_count (number of sectors to write)
+   --  words(3) = grant generation
    ---------------------------------------------------------------------------
    procedure handleWriteBlock (sender : ProcessID; msg : Message) is
       lba          : constant Unsigned_64 := msg.words (0);
-      grantId      : constant Unsigned_64 := msg.words (1);
-      sectorCt     : constant Unsigned_32 :=
-        Unsigned_32 (msg.words (2) and 16#FFFF#);
-      grantAddr    : constant Unsigned_64 :=
-        GRANT_REGION_BASE + grantId * GRANT_SLOT_SIZE;
+      sectorCt     : Unsigned_32 := 0;
+      grantAddr    : System.Address := System.Null_Address;
+      resolved     : Boolean := False;
       bytesWritten : Unsigned_64;
    begin
-      if sectorCt = 0 then
-         sendReply (sender, REPLY_ERR, 0);
+      if msg.tag.length /= 4 or else
+         msg.words (1) > CuBit.Memory_Grants.MAXIMUM_GLOBAL_SLOT or else
+         msg.words (3) = 0 or else
+         msg.words (3) > CuBit.Memory_Grants.MAXIMUM_GENERATION or else
+         msg.words (2) = 0 or else
+         msg.words (2) > Unsigned_64 (Unsigned_32'Last) or else
+         NVMe.nsSectorSize = 0 or else
+         lba >= NVMe.nsBlockCount or else
+         msg.words (2) > NVMe.nsBlockCount - lba
+      then
+         sendReply (sender, REPLY_ERROR, 0);
          return;
       end if;
 
-      bytesWritten := NVMe.writeBlocks (lba, sectorCt, toAddr (grantAddr));
+      sectorCt := Unsigned_32 (msg.words (2));
+      CuBit.Memory_Grants.Resolve
+        (reference      =>
+           (slot => CuBit.Memory_Grants.Global_Grant_Slot (msg.words (1)),
+            generation =>
+              CuBit.Memory_Grants.Grant_Generation (msg.words (3))),
+         expectedOwner => sender,
+         byteOffset     => 0,
+         byteLength     =>
+           Unsigned_64 (sectorCt) * Unsigned_64 (NVMe.nsSectorSize),
+         --  A device write reads source bytes from the caller's grant.
+         requiredAccess => CuBit.Memory_Grants.Read_Access,
+         mappedAddress  => grantAddr,
+         success        => resolved);
+      if not resolved then
+         sendReply (sender, REPLY_ERROR, 0);
+         return;
+      end if;
+
+      bytesWritten := NVMe.writeBlocks (lba, sectorCt, grantAddr);
       sendReply (sender, REPLY_OK, bytesWritten);
    end handleWriteBlock;
 
    ---------------------------------------------------------------------------
-   --  handleIdentify
-   --  Reply with disk size in sectors
+   --  handleDescribe
+   --  Return Block.Device.V1 geometry and features.
    ---------------------------------------------------------------------------
-   procedure handleIdentify (sender : ProcessID) is
+   procedure handleDescribe (sender : ProcessID) is
+      replyMsg : Message;
+      ignore   : Unsigned_64;
+      maxBlocks64 : Unsigned_64;
    begin
       if NVMe.nsBlockCount > 0 then
-         sendReply (sender, REPLY_OK, NVMe.nsBlockCount);
+         maxBlocks64 := NVMe.maxTransferBytes /
+           Unsigned_64 (NVMe.nsSectorSize);
+         if maxBlocks64 = 0 then
+            sendReply (sender, REPLY_ERROR, 0);
+            return;
+         end if;
+         if maxBlocks64 > Unsigned_64 (Unsigned_32'Last) then
+            maxBlocks64 := Unsigned_64 (Unsigned_32'Last);
+         end if;
+
+         replyMsg.tag := (label => REPLY_OK, length => 4,
+                          flags => 0, badge => 0);
+         replyMsg.capBadge := 0;
+         replyMsg.words :=
+           (0 => NVMe.nsBlockCount,
+            1 => Pack_Sizes
+              (Logical_Block_Size (NVMe.nsSectorSize),
+               Logical_Block_Size (NVMe.nsSectorSize)),
+            2 => maxBlocks64,
+            3 => Pack_Properties (0, Fixed_Media));
+         ignore := reply (sender, replyMsg);
       else
-         sendReply (sender, REPLY_ERR, 0);
+         sendReply (sender, REPLY_ERROR, 0);
       end if;
-   end handleIdentify;
+   end handleDescribe;
 
    --  Main message loop variables
    sender   : ProcessID;
@@ -186,14 +250,14 @@ begin
       receive (sender, msg);
 
       case msg.tag.label is
-         when OP_READ_BLOCK =>
+         when OP_READ_BLOCKS =>
             handleReadBlock (sender, msg);
-         when OP_WRITE_BLOCK =>
+         when OP_WRITE_BLOCKS =>
             handleWriteBlock (sender, msg);
-         when OP_IDENTIFY =>
-            handleIdentify (sender);
+         when OP_DESCRIBE_DEVICE =>
+            handleDescribe (sender);
          when others =>
-            sendReply (sender, REPLY_ERR, 0);
+            sendReply (sender, REPLY_ERROR, 0);
       end case;
    end loop;
 end main;

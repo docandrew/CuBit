@@ -281,14 +281,31 @@ is
         declare
             savedGen : constant Capabilities.Generation :=
                 proctab(pid).capGeneration;
+            type Grant_Generation_Array is array (GrantID) of
+              Memory_Grants.Live_Grant_Generation;
+            type Grant_Reuse_Array is array (GrantID) of Boolean;
+            savedGrantGenerations : Grant_Generation_Array;
+            savedGrantReuse       : Grant_Reuse_Array;
             ignore   : System.Address;
         begin
+            for slot in GrantID loop
+                savedGrantGenerations(slot) :=
+                  proctab(pid).grants(slot).generation;
+                savedGrantReuse(slot) := proctab(pid).grants(slot).reusable;
+            end loop;
+
             ignore := Util.memset (proctab(pid)'Address, 0, Process'Size / 8);
             if savedGen >= Capabilities.INITIAL_GENERATION then
                 proctab(pid).capGeneration := savedGen;
             else
                 proctab(pid).capGeneration := Capabilities.INITIAL_GENERATION;
             end if;
+
+            for slot in GrantID loop
+                proctab(pid).grants(slot).generation :=
+                  savedGrantGenerations(slot);
+                proctab(pid).grants(slot).reusable := savedGrantReuse(slot);
+            end loop;
         end;
 
         proctab(pid).pid          := pid;
@@ -921,6 +938,11 @@ is
 
         -- Revoke any shared memory grants this process had created
         IPC.revokeAllGrants (pid);
+
+        -- Invalidate grants received by this process before its PID can be
+        -- reused. The dying address space is no longer runnable, so the owner
+        -- records are the remaining security-relevant state.
+        IPC.revokeAllGrantsTo (pid);
 
         -- Clean pending requests targeting this process from all others
         cleanPending : declare

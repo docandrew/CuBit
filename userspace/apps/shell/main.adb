@@ -19,6 +19,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Config;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Memory_Grants;
 with CuBit.Streams;
 with CuBit.Protocols;
 with Font8x16;
@@ -137,7 +138,7 @@ procedure main is
 
    --  Filesystem communication
    fsBuf       : System.Address := System.Null_Address;
-   fsGrantId   : Unsigned_64 := 0;
+   fsGrant     : CuBit.Memory_Grants.Grant_Reference;
    fsReady     : Boolean := False;
    FS_BUF_PAGES : constant := 4;  -- 16KB
 
@@ -1004,15 +1005,16 @@ procedure main is
       declare
          resolvedLen : constant Natural := resolvePath (path);
       begin
-         --  OP_OPEN: words(0)=grantId, words(1)=pathLen
+         --  OP_OPEN: slot, path length, options, generation
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_OPEN,
-                     length => 3,
+                     length => 4,
                      flags  => 0,
                      badge  => 0);
-         msg.words (0) := fsGrantId;
+         msg.words (0) := fsGrant.slot;
          msg.words (1) := Unsigned_64 (resolvedLen);
          msg.words (2) := 0;
+         msg.words (3) := fsGrant.generation;
          tag := capCall (CAP_SLOT_FS, msg);
       end;
 
@@ -1027,12 +1029,13 @@ procedure main is
       loop
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_READ,
-                     length => 3,
+                     length => 4,
                      flags  => 0,
                      badge  => 0);
          msg.words (0) := handle;
-         msg.words (1) := fsGrantId;
+         msg.words (1) := fsGrant.slot;
          msg.words (2) := Unsigned_64 (FS_BUF_PAGES * 4096);
+         msg.words (3) := fsGrant.generation;
          tag := capCall (CAP_SLOT_FS, msg);
 
          if tag.label /= REPLY_OK then
@@ -1089,14 +1092,16 @@ procedure main is
       --  Resolve path against cwd into fsBuf
       resolvedLen := resolvePath (path);
 
-      --  OP_READDIR: words(0)=grantId, words(1)=pathLen
+      --  OP_READDIR: slot, path length, buffer capacity, generation
       msg := NULL_MESSAGE;
       msg.tag := (label  => OP_READDIR,
-                  length => 2,
+                  length => 4,
                   flags  => 0,
                   badge  => 0);
-      msg.words (0) := fsGrantId;
+      msg.words (0) := fsGrant.slot;
       msg.words (1) := Unsigned_64 (resolvedLen);
+      msg.words (2) := Unsigned_64 (FS_BUF_PAGES * 4096);
+      msg.words (3) := fsGrant.generation;
       tag := capCall (CAP_SLOT_FS, msg);
 
       if tag.label /= REPLY_OK then
@@ -1174,12 +1179,13 @@ procedure main is
          --  OP_OPEN with O_CREAT | O_TRUNC | O_WRONLY
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_OPEN,
-                     length => 3,
+                     length => 4,
                      flags  => 0,
                      badge  => 0);
-         msg.words (0) := fsGrantId;
+         msg.words (0) := fsGrant.slot;
          msg.words (1) := Unsigned_64 (resolvedLen);
          msg.words (2) := O_CREAT or O_TRUNC or O_WRONLY;
+         msg.words (3) := fsGrant.generation;
          tag := capCall (CAP_SLOT_FS, msg);
 
          if tag.label /= REPLY_OK then
@@ -1202,12 +1208,13 @@ procedure main is
          --  OP_WRITE
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_WRITE,
-                     length => 3,
+                     length => 4,
                      flags  => 0,
                      badge  => 0);
          msg.words (0) := handle;
-         msg.words (1) := fsGrantId;
+         msg.words (1) := fsGrant.slot;
          msg.words (2) := Unsigned_64 (text'Length);
+         msg.words (3) := fsGrant.generation;
          tag := capCall (CAP_SLOT_FS, msg);
 
          if tag.label /= REPLY_OK then
@@ -1668,10 +1675,11 @@ procedure main is
          --  OP_OPEN
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_OPEN,
-                     length => 3, flags => 0, badge => 0);
-         msg.words (0) := fsGrantId;
+                     length => 4, flags => 0, badge => 0);
+         msg.words (0) := fsGrant.slot;
          msg.words (1) := Unsigned_64 (resolvedLen);
          msg.words (2) := 0;
+         msg.words (3) := fsGrant.generation;
          tag := capCall (CAP_SLOT_FS, msg);
       end;
 
@@ -1686,10 +1694,11 @@ procedure main is
       loop
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_READ,
-                     length => 3, flags => 0, badge => 0);
+                     length => 4, flags => 0, badge => 0);
          msg.words (0) := handle;
-         msg.words (1) := fsGrantId;
+         msg.words (1) := fsGrant.slot;
          msg.words (2) := Unsigned_64 (FS_BUF_PAGES * 4096);
+         msg.words (3) := fsGrant.generation;
          tag := capCall (CAP_SLOT_FS, msg);
 
          exit when tag.label /= REPLY_OK;
@@ -1840,10 +1849,11 @@ procedure main is
             --  OP_OPEN
             msg := NULL_MESSAGE;
             msg.tag := (label  => OP_OPEN,
-                        length => 3, flags => 0, badge => 0);
-            msg.words (0) := fsGrantId;
+                        length => 4, flags => 0, badge => 0);
+            msg.words (0) := fsGrant.slot;
             msg.words (1) := Unsigned_64 (resolvedLen);
             msg.words (2) := 0;
+            msg.words (3) := fsGrant.generation;
             tag := capCall (CAP_SLOT_FS, msg);
          end;
 
@@ -1858,10 +1868,11 @@ procedure main is
          loop
             msg := NULL_MESSAGE;
             msg.tag := (label  => OP_READ,
-                        length => 3, flags => 0, badge => 0);
+                        length => 4, flags => 0, badge => 0);
             msg.words (0) := handle;
-            msg.words (1) := fsGrantId;
+            msg.words (1) := fsGrant.slot;
             msg.words (2) := Unsigned_64 (FS_BUF_PAGES * 4096);
+            msg.words (3) := fsGrant.generation;
             tag := capCall (CAP_SLOT_FS, msg);
 
             exit when tag.label /= REPLY_OK;
@@ -1928,10 +1939,11 @@ procedure main is
          --  OP_OPEN
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_OPEN,
-                     length => 3, flags => 0, badge => 0);
-         msg.words (0) := fsGrantId;
+                     length => 4, flags => 0, badge => 0);
+         msg.words (0) := fsGrant.slot;
          msg.words (1) := Unsigned_64 (resolvedLen);
          msg.words (2) := 0;
+         msg.words (3) := fsGrant.generation;
          tag := capCall (CAP_SLOT_FS, msg);
       end;
 
@@ -1946,10 +1958,11 @@ procedure main is
       loop
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_READ,
-                     length => 3, flags => 0, badge => 0);
+                     length => 4, flags => 0, badge => 0);
          msg.words (0) := handle;
-         msg.words (1) := fsGrantId;
+         msg.words (1) := fsGrant.slot;
          msg.words (2) := Unsigned_64 (FS_BUF_PAGES * 4096);
+         msg.words (3) := fsGrant.generation;
          tag := capCall (CAP_SLOT_FS, msg);
 
          exit when tag.label /= REPLY_OK;
@@ -2061,10 +2074,11 @@ procedure main is
       tag : MessageTag;
    begin
       msg.tag := (label  => OP_READ,
-                  length => 3, flags => 0, badge => 0);
+                  length => 4, flags => 0, badge => 0);
       msg.words (0) := handle;
-      msg.words (1) := fsGrantId;
+      msg.words (1) := fsGrant.slot;
       msg.words (2) := count;
+      msg.words (3) := fsGrant.generation;
       tag := capCall (CAP_SLOT_FS, msg);
       if tag.label /= REPLY_OK then
          return 0;
@@ -2108,10 +2122,11 @@ procedure main is
          --  OP_OPEN
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_OPEN,
-                     length => 3, flags => 0, badge => 0);
-         msg.words (0) := fsGrantId;
+                     length => 4, flags => 0, badge => 0);
+         msg.words (0) := fsGrant.slot;
          msg.words (1) := Unsigned_64 (resolvedLen);
          msg.words (2) := 0;
+         msg.words (3) := fsGrant.generation;
          tag := capCall (CAP_SLOT_FS, msg);
       end;
 
@@ -3624,6 +3639,27 @@ procedure main is
    end processKey;
 
    ---------------------------------------------------------------------------
+   --  claimLegacyInput - own raw input only without a desktop session
+   ---------------------------------------------------------------------------
+   procedure claimLegacyInput is
+      desktopPID : constant Unsigned_64 :=
+        getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DESKTOP);
+      ignore : Unsigned_64;
+   begin
+      --  DRIVER_KEYBOARD/DRIVER_MOUSE are still transitional single-owner
+      --  routes.  A legacy framebuffer shell must not overwrite an active
+      --  desktop session merely because it happened to start later.
+      if desktopPID /= 0 and then desktopPID /= Unsigned_64'Last then
+         debugPrint
+           ("shell: desktop owns input; raw registration skipped" & LF);
+         return;
+      end if;
+
+      ignore := registerDriver (DRIVER_KEYBOARD);
+      ignore := registerDriver (DRIVER_MOUSE);
+   end claimLegacyInput;
+
+   ---------------------------------------------------------------------------
    --  Initialization
    ---------------------------------------------------------------------------
    eventMsg : Message;
@@ -3631,13 +3667,9 @@ procedure main is
 begin
    debugPrint ("shell: starting..." & LF);
 
-   --  Register as keyboard and mouse driver to receive input events
-   declare
-      ignore : Unsigned_64;
-   begin
-      ignore := registerDriver (DRIVER_KEYBOARD);
-      ignore := registerDriver (DRIVER_MOUSE);
-   end;
+   --  Register as the raw-input consumer only for a console-only boot.  A
+   --  desktop session owns input routing once present.
+   claimLegacyInput;
 
    --  Map framebuffer
    declare
@@ -3744,12 +3776,12 @@ begin
       ret := syscall (SYSCALL_SBRK, Unsigned_64 (FS_BUF_PAGES * 4096));
       if ret /= Unsigned_64'Last then
          fsBuf := To_Address (Integer_Address (ret));
-         createGrantViaCap (
+         CuBit.Memory_Grants.Create_Via_Capability (
             slot      => CAP_SLOT_FS,
             localAddr => fsBuf,
             numPages  => FS_BUF_PAGES,
             readWrite => True,
-            grantId   => fsGrantId,
+            reference => fsGrant,
             success   => ok);
          if ok then
             fsReady := True;
@@ -3848,18 +3880,9 @@ begin
                --  be drained by the poll loop below (or after the
                --  foreground block, at the top of the main loop).
 
-               --  Reclaim keyboard and mouse focus
-               declare
-                  ret : Unsigned_64;
-               begin
-                  ret := registerDriver (DRIVER_KEYBOARD);
-                  debugPrint ("shell: registerDriver kbd=");
-                  printDec (Unsigned_32 (ret));
-                  ret := registerDriver (DRIVER_MOUSE);
-                  debugPrint (" mouse=");
-                  printDec (Unsigned_32 (ret));
-                  debugPrint ("" & LF);
-               end;
+               --  Reclaim raw input only in a console-only session.  Child
+               --  exit must not steal it from desktop.svc.
+               claimLegacyInput;
                --  Mark all lines dirty and redraw
                for row in 0 .. rows - 1 loop
                   dirty (row) := True;

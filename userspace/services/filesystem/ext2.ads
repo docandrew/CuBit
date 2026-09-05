@@ -9,6 +9,8 @@
 with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements;
+with CuBit.Block_Devices;
+with CuBit.Memory_Grants;
 
 package Ext2 is
    use System.Storage_Elements;
@@ -123,28 +125,35 @@ package Ext2 is
    --  Get file size (combining sizeLo and sizeHi)
    function fileSize (ino : Inode) return Unsigned_64;
 
-   --  Block backend for an Ext2 filesystem
-   --  NVME uses same IPC protocol as ATA (OP_READ_BLOCK), just different cap slot.
-   type BlockBackend is (ATA, NVME);
+   --  MEMORY accesses a bounded image directly.  Every hardware transport
+   --  uses the same typed block-device session; ext2 never switches on driver
+   --  kind.
+   type BlockBackend is (MEMORY, BLOCK_DEVICE);
 
    --  Context for an Ext2 filesystem
    type Filesystem is record
       base         : System.Address;     --  Base address (unused for disk)
+      imageSize    : Unsigned_64 := 0;   --  Memory image bound (zero for disk)
       sb           : Superblock;         --  Cached superblock
       blkSize      : Unsigned_32;        --  Block size in bytes
-      backend      : BlockBackend := ATA;
-      ataCapSlot   : Unsigned_64 := 0;   --  Cap slot for ATA/NVMe IPC
-      ataGrantId   : Unsigned_64 := 0;   --  Grant for data transfer
-      ataGrantBuf  : System.Address := System.Null_Address;
-      grantBufSize : Unsigned_32 := 32 * 1024;  --  Grant buffer size in bytes
+      backend      : BlockBackend := BLOCK_DEVICE;
+      device       : CuBit.Block_Devices.Device_Session;
    end record;
 
-   --  Initialize filesystem backed by ATA driver IPC
-   procedure initATA
+   --  Initialize an Ext2 filesystem in a bounded writable memory image.
+   procedure initMemory
+     (fs         : out Filesystem;
+      base       : System.Address;
+      imageSize  : Unsigned_64;
+      ok         : out Boolean);
+
+   --  Initialize a filesystem over any Block.Device.V1 endpoint.
+   procedure initBlockDevice
      (fs         : out Filesystem;
       capSlot    : Unsigned_64;
-      grantId    : Unsigned_64;
+      grant      : CuBit.Memory_Grants.Grant_Reference;
       grantBuf   : System.Address;
+      grantBytes : Unsigned_32;
       ok         : out Boolean);
 
    --  Read an inode by number
@@ -190,7 +199,7 @@ package Ext2 is
       count  : Unsigned_64) return Unsigned_64;
 
    --  Write bytes to the filesystem at a raw byte offset.
-   --  Uses OP_WRITE_BLOCK IPC to the block device driver.
+   --  Uses Block.Device.V1 IPC for hardware-backed sessions.
    --  Handles non-aligned writes via read-modify-write.
    procedure writeBytes
      (fs     : Filesystem;

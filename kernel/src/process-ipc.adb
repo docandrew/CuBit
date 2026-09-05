@@ -13,6 +13,7 @@ with BuddyAllocator;
 with Capabilities.Operations;
 with Config;
 with IPI;
+with Memory_Grants;
 with PerCPUData;
 with Process.Queues;
 with Util;
@@ -1494,6 +1495,40 @@ is
     -- Shared Memory Grant Operations
     ---------------------------------------------------------------------------
 
+    procedure invalidateGrant (value : in out Grant)
+        with SPARK_Mode => On
+    is
+        nextGeneration : Memory_Grants.Live_Grant_Generation :=
+          value.generation;
+        mayReuse : Boolean;
+    begin
+        Memory_Grants.Advance_Generation (nextGeneration, mayReuse);
+        value :=
+          (active      => False,
+           reusable    => mayReuse,
+           generation  => nextGeneration,
+           granterPID  => NO_PROCESS,
+           granteePID  => NO_PROCESS,
+           granterAddr => System.Null_Address,
+           granteeAddr => System.Null_Address,
+           numPages    => 0,
+           permission  => GRANT_READ);
+    end invalidateGrant;
+
+    function overlapsGrantRegion (localAddr : System.Address;
+                                  numPages  : Natural) return Boolean
+        with SPARK_Mode => On
+    is
+    begin
+        if numPages = 0 or else numPages > MAX_GRANT_PAGES then
+            return False;
+        end if;
+
+        return Memory_Grants.Overlaps_Received_Region
+          (Unsigned_64 (To_Integer (localAddr)),
+           Memory_Grants.Page_Count (numPages));
+    end overlapsGrantRegion;
+
     ---------------------------------------------------------------------------
     -- createGrant
     -- Map pages from caller's address space into grantee's address space.
@@ -1540,6 +1575,13 @@ is
             return;
         end if;
 
+        --  An ordinary grant may contain only pages owned in the caller's
+        --  normal address space. Re-granting a received mapping would lose its
+        --  parent lifetime and could amplify GRANT_READ into READWRITE.
+        if overlapsGrantRegion (localAddr, numPages) then
+            return;
+        end if;
+
         -- Check page alignment
         if (To_Integer (localAddr) and 16#FFF#) /= 0 then
             return;
@@ -1547,7 +1589,9 @@ is
 
         -- Find a free grant slot in owner's array
         for i in GrantID loop
-            if not proctab(owner).grants(i).active then
+            if not proctab(owner).grants(i).active and then
+               proctab(owner).grants(i).reusable
+            then
                 granterSlot := i;
                 slotFound   := True;
                 exit;
@@ -1624,6 +1668,8 @@ is
         -- Record grant metadata in owner's grant table
         proctab(owner).grants(granterSlot) := (
             active      => True,
+            reusable    => True,
+            generation  => proctab(owner).grants(granterSlot).generation,
             granterPID  => owner,
             granteePID  => grantee,
             granterAddr => localAddr,
@@ -1661,7 +1707,7 @@ is
 
         --  Don't unmap if grantee is already dead (page tables freed)
         if proctab(g.granteePID).state = INVALID then
-            g := (active => False, others => <>);
+            invalidateGrant (g);
             return;
         end if;
 
@@ -1691,7 +1737,7 @@ is
         end tlbShootdown;
 
         -- Mark grant slot as inactive
-        g := (active => False, others => <>);
+        invalidateGrant (g);
     end revokeGrant;
 
     ---------------------------------------------------------------------------
@@ -1724,10 +1770,132 @@ is
 
                 end if;
 
-                proctab(pid).grants(i) := (active => False, others => <>);
+                invalidateGrant (proctab(pid).grants(i));
             end if;
         end loop;
     end revokeAllGrants;
+
+    ---------------------------------------------------------------------------
+    -- revokeAllGrantsTo
+    -- The target process is already non-runnable when this is called. Its
+    -- address space will be destroyed, so no target-page-table mutation or
+    -- TLB shootdown is needed; only the authoritative owner records remain to
+    -- be invalidated before the PID can be reused.
+    ---------------------------------------------------------------------------
+    procedure revokeAllGrantsTo (pid : ProcessID)
+        with SPARK_Mode => On
+    is
+    begin
+        for owner in ProcessID loop
+            for slot in GrantID loop
+                if proctab(owner).grants(slot).active and then
+                   proctab(owner).grants(slot).granteePID = pid
+                then
+                    invalidateGrant (proctab(owner).grants(slot));
+                end if;
+            end loop;
+        end loop;
+    end revokeAllGrantsTo;
+
+    procedure getOwnedGrantGeneration
+      (slot       : Memory_Grants.Global_Slot;
+       generation : out Memory_Grants.Grant_Generation;
+       success    : out Boolean)
+      with SPARK_Mode => On
+    is
+        pid : constant ProcessID := PerCPUData.getCurrentPID;
+        owner : constant ProcessID :=
+          (if proctab(pid).isThread then proctab(pid).ppid else pid);
+        slotOwner : constant ProcessID := ProcessID
+          (Memory_Grants.Owner_Of (slot));
+        localSlot : constant GrantID := GrantID
+          (Memory_Grants.Local_Slot_Of (slot));
+        value : Grant renames proctab(slotOwner).grants(localSlot);
+    begin
+        generation := 0;
+        success := False;
+
+        if slotOwner /= owner or else not value.active or else
+           value.granterPID /= owner
+        then
+            return;
+        end if;
+
+        generation := value.generation;
+        success := True;
+    end getOwnedGrantGeneration;
+
+    procedure resolveGrant
+      (reference     : Memory_Grants.Reference;
+       expectedOwner : ProcessID;
+       byteOffset    : Unsigned_64;
+       byteLength    : Unsigned_64;
+       requiredWrite : Boolean;
+       mappedAddress : out System.Address;
+       success       : out Boolean)
+      with SPARK_Mode => On
+    is
+        pid : constant ProcessID := PerCPUData.getCurrentPID;
+        receiver : constant ProcessID :=
+          (if proctab(pid).isThread then proctab(pid).ppid else pid);
+        slotOwner : constant ProcessID := ProcessID
+          (Memory_Grants.Owner_Of (reference.slot));
+        localSlot : constant GrantID := GrantID
+          (Memory_Grants.Local_Slot_Of (reference.slot));
+        value : Grant renames proctab(slotOwner).grants(localSlot);
+        mappedBytes : Unsigned_64;
+    begin
+        mappedAddress := System.Null_Address;
+        success := False;
+
+        if expectedOwner = NO_PROCESS or else slotOwner /= expectedOwner or else
+           not value.active or else not value.reusable or else
+           value.granterPID /= expectedOwner or else
+           value.granteePID /= receiver or else
+           not Memory_Grants.Is_Current (reference, value.generation) or else
+           byteLength = 0 or else
+           (requiredWrite and then value.permission /= GRANT_READWRITE)
+        then
+            return;
+        end if;
+
+        mappedBytes := Unsigned_64 (value.numPages) * Memory_Grants.Page_Size;
+        if byteOffset >= mappedBytes or else
+           byteLength > mappedBytes - byteOffset
+        then
+            return;
+        end if;
+
+        mappedAddress := To_Address
+          (To_Integer (value.granteeAddr) + Integer_Address (byteOffset));
+        success := True;
+    end resolveGrant;
+
+    procedure revokeGrantReference
+      (reference : Memory_Grants.Reference;
+       success   : out Boolean)
+      with SPARK_Mode => On
+    is
+        pid : constant ProcessID := PerCPUData.getCurrentPID;
+        owner : constant ProcessID :=
+          (if proctab(pid).isThread then proctab(pid).ppid else pid);
+        slotOwner : constant ProcessID := ProcessID
+          (Memory_Grants.Owner_Of (reference.slot));
+        localSlot : constant GrantID := GrantID
+          (Memory_Grants.Local_Slot_Of (reference.slot));
+        value : Grant renames proctab(slotOwner).grants(localSlot);
+    begin
+        success := False;
+        if slotOwner /= owner or else not value.active or else
+           value.granterPID /= owner or else
+           not Memory_Grants.Is_Current (reference, value.generation)
+        then
+            return;
+        end if;
+
+        revokeGrant (localSlot);
+        success := True;
+    end revokeGrantReference;
 
     ---------------------------------------------------------------------------
     -- Capability-Aware IPC

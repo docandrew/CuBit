@@ -20,6 +20,7 @@ package body CuBit.UI.App is
    OP_SURFACE_PRESENT  : constant Unsigned_32 := 16#0812#;
    OP_SURFACE_ATTACH_BUFFER : constant Unsigned_32 := 16#0814#;
    OP_WINDOW_SET_LIMITS : constant Unsigned_32 := 16#0841#;
+   OP_WINDOW_SET_TITLE  : constant Unsigned_32 := 16#0842#;
    OP_INPUT_POLL       : constant Unsigned_32 := 16#0821#;
 
    SURFACE_FLAG_WINDOW : constant Unsigned_64 := 2;
@@ -230,7 +231,8 @@ package body CuBit.UI.App is
        flags : Unsigned_64;
        ok : out Boolean;
        maximum_width : Natural := 0;
-       maximum_height : Natural := 0)
+       maximum_height : Natural := 0;
+       title : String := "Application")
    is
       hello : Message;
       info : Message;
@@ -294,6 +296,8 @@ package body CuBit.UI.App is
          null;
       end if;
 
+      Set_Title (win, title);
+
       Ensure_Buffer (win, width, height, attached);
       if not attached then
          debugPrint ("ui-app: buffer attach failed" & LF);
@@ -303,6 +307,45 @@ package body CuBit.UI.App is
 
       ok := True;
    end Open;
+
+   procedure Set_Title (win : Window; title : String) is
+      --  Three inline IPC words leave 23 UTF-8/ASCII bytes plus an explicit
+      --  length byte. Longer titles are clipped deterministically for now;
+      --  a future string grant can lift the transport bound without changing
+      --  window ownership semantics.
+      MAX_INLINE_TITLE : constant Natural := 23;
+      titleLength : constant Natural := Natural'Min
+        (title'Length, MAX_INLINE_TITLE);
+      packed0, packed1, packed2 : Unsigned_64 := 0;
+      value : Unsigned_64;
+      byteIndex : Natural;
+   begin
+      if win.surfaceId = 0 then
+         return;
+      end if;
+      if titleLength > 0 then
+         for index in 0 .. titleLength - 1 loop
+            byteIndex := index mod 8;
+            value := Shift_Left
+              (Unsigned_64 (Character'Pos (title (title'First + index))),
+               byteIndex * 8);
+            case index / 8 is
+               when 0 => packed0 := packed0 or value;
+               when 1 => packed1 := packed1 or value;
+               when others => packed2 := packed2 or value;
+            end case;
+         end loop;
+      end if;
+      packed2 := packed2 or Shift_Left (Unsigned_64 (titleLength), 56);
+      declare
+         reply : constant Message := Call_Desktop
+           (OP_WINDOW_SET_TITLE, win.surfaceId, packed0, packed1, packed2);
+      begin
+         if reply.words (0) = 0 then
+            null;
+         end if;
+      end;
+   end Set_Title;
 
    procedure Poll_Input
       (win : in out Window;
@@ -363,12 +406,89 @@ package body CuBit.UI.App is
          0);
    end Present;
 
+   procedure Apply_Pointer_Event
+      (interaction : in out Pointer_Interaction;
+       ui : in out CuBit.UI.State.UI_State;
+       controls : CuBit.UI.Controls.Control_Map;
+       win : Window;
+       event : Input_Event;
+       dirty : in out CuBit.UI.Rect;
+       repaint : Pointer_Repaint_Policy := Repaint_Changed_Controls)
+   is
+      x, y : Natural;
+      hit : CuBit.UI.Controls.Control_ID;
+      down : Boolean;
+
+      procedure Mark (id : CuBit.UI.Controls.Control_ID) is
+      begin
+         CuBit.UI.Controls.Mark_Dirty (dirty, controls, id);
+      end Mark;
+
+      procedure Mark_Hover_Transition
+         (next : CuBit.UI.Controls.Control_ID)
+      is
+      begin
+         if next /= interaction.hovered then
+            Mark (interaction.hovered);
+            Mark (next);
+         end if;
+         interaction.hovered := next;
+      end Mark_Hover_Transition;
+   begin
+      if event.kind /= INPUT_POINTER_MOVE and then
+         event.kind /= INPUT_POINTER_DOWN and then
+         event.kind /= INPUT_POINTER_UP and then
+         event.kind /= INPUT_POINTER_WHEEL
+      then
+         return;
+      end if;
+
+      x := Natural (event.payload0 and 16#FFFF_FFFF#);
+      y := Natural (Shift_Right (event.payload0, 32));
+      hit := CuBit.UI.Controls.Hit (controls, x, y);
+
+      if event.kind = INPUT_POINTER_MOVE then
+         down := (event.payload1 and 1) /= 0;
+         CuBit.UI.State.Set_Pointer (ui, x, y, down);
+         if repaint = Repaint_Every_Motion then
+            dirty := CuBit.UI.Union_Rect (dirty, Full_Rect (win));
+            interaction.hovered := hit;
+         else
+            Mark_Hover_Transition (hit);
+            if down then
+               --  Captured controls declare their own drag-damage region.
+               --  A splitter can therefore invalidate a pane while an
+               --  ordinary button repaints only its face.
+               Mark (interaction.captured);
+            end if;
+         end if;
+      elsif event.kind = INPUT_POINTER_DOWN then
+         Mark_Hover_Transition (hit);
+         interaction.captured := hit;
+         CuBit.UI.State.Set_Pointer
+           (ui, x, y, True, pressed => True);
+         Mark (hit);
+      elsif event.kind = INPUT_POINTER_UP then
+         Mark (interaction.captured);
+         Mark_Hover_Transition (hit);
+         CuBit.UI.State.Set_Pointer
+           (ui, x, y, False, released => True);
+         interaction.captured := CuBit.UI.Controls.NO_CONTROL;
+      else
+         --  Wheel payload1 is a signed delta, not a button mask. Keep the
+         --  existing button state while updating hover for wheel-at-pointer.
+         CuBit.UI.State.Set_Pointer (ui, x, y, ui.pointer.down);
+         Mark_Hover_Transition (hit);
+      end if;
+   end Apply_Pointer_Event;
+
    procedure Run (win : in out Window)
    is
       running : Boolean := True;
       ignore : Unsigned_64;
       drainLimit : constant Natural := 32;
       dirtyBatchLimit : constant Natural := 4;
+      pointer : Pointer_Interaction;
    begin
       if not Is_Open (win) then
          return;
@@ -396,8 +516,18 @@ package body CuBit.UI.App is
                      dirtyEvents := dirtyEvents + 1;
                   end if;
 
+                  Apply_Pointer_Event
+                    (pointer, ui, controls, win, event, dirty,
+                     pointerRepaint);
                   Handle_Event (win, event, dirty, running);
                   exit when not running;
+                  --  Immediate-mode controls must observe a pressed frame
+                  --  before release. This also makes depressed feedback
+                  --  deterministic even when the input queue is busy.
+                  exit when
+                    (event.kind = INPUT_POINTER_DOWN or else
+                     event.kind = INPUT_POINTER_UP) and then
+                    not CuBit.UI.Is_Empty (dirty);
                   exit when not CuBit.UI.Is_Empty (dirty) and then
                             dirtyEvents >= dirtyBatchLimit;
                end;

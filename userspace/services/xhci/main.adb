@@ -7,6 +7,7 @@
 with Interfaces; use Interfaces;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Devices;
 with XHCI;
 
 procedure main is
@@ -34,6 +35,102 @@ procedure main is
    interruptDriven : Boolean := False;
    lastButtons : Unsigned_8 := 0;
    packed : Unsigned_64;
+   diagnostics : XHCI.Boot_Mouse_Diagnostics;
+   diagnosticsStartMs : Unsigned_64 := 0;
+   diagnosticsCountdown : Natural := 64;
+   CAP_SLOT_DEVMGR : constant CapabilitySlot := 15;
+
+   procedure Print_Decimal (value : Unsigned_64) is
+      text : String (1 .. 20);
+      first : Natural := text'Last;
+      remaining : Unsigned_64 := value;
+   begin
+      if remaining = 0 then
+         debugPrint ("0");
+         return;
+      end if;
+      while remaining > 0 loop
+         text (first) := Character'Val
+           (Character'Pos ('0') + Natural (remaining mod 10));
+         remaining := remaining / 10;
+         first := first - 1;
+      end loop;
+      debugPrint (text (first + 1 .. text'Last));
+   end Print_Decimal;
+
+   procedure Print_Hex32 (value : Unsigned_32) is
+      hexChars : constant String := "0123456789ABCDEF";
+      text : String (1 .. 8);
+   begin
+      for i in text'Range loop
+         text (i) := hexChars
+           (Natural (Shift_Right (value, (text'Last - i) * 4) and 16#F#) + 1);
+      end loop;
+      debugPrint (text);
+   end Print_Hex32;
+
+   procedure Maybe_Print_Diagnostics is
+      now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      publish : Message;
+   begin
+      if now = Unsigned_64'Last then
+         return;
+      elsif diagnosticsStartMs = 0 then
+         diagnosticsStartMs := now;
+         return;
+      elsif now < diagnosticsStartMs or else now - diagnosticsStartMs < 1000
+      then
+         return;
+      end if;
+
+      diagnostics := XHCI.Mouse_Diagnostics;
+      debugPrint ("xhci: stats events=");
+      Print_Decimal (diagnostics.transferEvents);
+      debugPrint (" reports=");
+      Print_Decimal (diagnostics.decodedReports);
+      debugPrint (" motion=");
+      Print_Decimal (diagnostics.motionReports);
+      debugPrint (" buttons=");
+      Print_Decimal (diagnostics.buttonTransitions);
+      debugPrint (" errors=");
+      Print_Decimal (diagnostics.completionErrors);
+      debugPrint (" short=");
+      Print_Decimal (diagnostics.shortReports);
+      debugPrint (" other=");
+      Print_Decimal (diagnostics.unexpectedEvents);
+      debugPrint (" raw=");
+      Print_Hex32 (diagnostics.lastReport);
+      debugPrint (" len=");
+      Print_Decimal (Unsigned_64 (diagnostics.lastLength));
+      debugPrint (" cc=");
+      Print_Decimal (Unsigned_64 (diagnostics.lastCompletion));
+      debugPrint (LF & "");
+      publish :=
+        (tag => (label => CuBit.Devices.OP_PUBLISH_XHCI_STATS,
+                 length => 3, flags => 0, badge => 0),
+         capBadge => 0,
+         words =>
+           (0 => (diagnostics.decodedReports and 16#FFFF_FFFF#) or
+              Shift_Left (diagnostics.motionReports and 16#FFFF_FFFF#, 32),
+            1 => (diagnostics.buttonTransitions and 16#FFFF_FFFF#) or
+              Shift_Left (diagnostics.completionErrors and 16#FFFF_FFFF#, 32),
+            2 => Unsigned_64 (diagnostics.lastReport) or
+              Shift_Left (Unsigned_64 (diagnostics.lastLength), 32) or
+              Shift_Left (Unsigned_64 (diagnostics.lastCompletion), 40) or
+              Shift_Left
+                (Unsigned_64
+                   (XHCI.Runtime_Interrupt_Mode'Enum_Rep (interruptMode)),
+                 48),
+            3 => 0));
+      --  Input diagnostics must never wait for devmgr. A full destination
+      --  ring merely loses this replaceable snapshot; the next one follows.
+      if not capSubmit
+        (CAP_SLOT_DEVMGR, publish, NO_COMPLETION_TOKEN)
+      then
+         null;
+      end if;
+      diagnosticsStartMs := now;
+   end Maybe_Print_Diagnostics;
 
    function Pack_Signed_12 (value : Integer) return Unsigned_64 is
    begin
@@ -214,6 +311,17 @@ begin
             XHCI.Acknowledge_Runtime_Interrupt;
          else
             ignore := syscall (SYSCALL_SLEEP, 1);
+         end if;
+      end if;
+      --  Keep time queries and formatted diagnostics out of the report hot
+      --  path.  At 125 Hz this checks roughly twice per second; at 1000 Hz it
+      --  checks often enough to retain one-second aggregate visibility.
+      if eventAvailable then
+         if diagnosticsCountdown = 0 then
+            Maybe_Print_Diagnostics;
+            diagnosticsCountdown := 64;
+         else
+            diagnosticsCountdown := diagnosticsCountdown - 1;
          end if;
       end if;
    end loop;

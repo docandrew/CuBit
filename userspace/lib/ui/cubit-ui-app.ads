@@ -9,6 +9,8 @@ with Interfaces; use Interfaces;
 with System;
 
 with CuBit.UI;
+with CuBit.UI.Controls;
+with CuBit.UI.State;
 
 package CuBit.UI.App is
    INPUT_NONE         : constant Unsigned_64 := 0;
@@ -46,6 +48,14 @@ package CuBit.UI.App is
       payload1 : Unsigned_64 := 0;
    end record;
 
+   --  Normal controls repaint only when their visual state can change.
+   --  Canvases and similar position-sensitive surfaces can explicitly opt in
+   --  to receiving a repaint for every pointer-motion event.
+   type Pointer_Repaint_Policy is
+     (Repaint_Changed_Controls, Repaint_Every_Motion);
+
+   type Pointer_Interaction is private;
+
    type Window is private;
 
    procedure Open
@@ -54,7 +64,10 @@ package CuBit.UI.App is
        flags : Unsigned_64;
        ok : out Boolean;
        maximum_width : Natural := 0;
-       maximum_height : Natural := 0);
+       maximum_height : Natural := 0;
+       title : String := "Application");
+
+   procedure Set_Title (win : Window; title : String);
 
    function Is_Open (win : Window) return Boolean;
    function Surface_ID (win : Window) return Unsigned_64;
@@ -73,7 +86,22 @@ package CuBit.UI.App is
    procedure Present
       (win : Window; damage : CuBit.UI.Rect);
 
+   procedure Apply_Pointer_Event
+      (interaction : in out Pointer_Interaction;
+       ui : in out CuBit.UI.State.UI_State;
+       controls : CuBit.UI.Controls.Control_Map;
+       win : Window;
+       event : Input_Event;
+       dirty : in out CuBit.UI.Rect;
+       repaint : Pointer_Repaint_Policy := Repaint_Changed_Controls);
+
    generic
+      --  Run owns pointer bookkeeping and minimal damage. Render rebuilds the
+      --  control map each frame through ordinary widget calls; Handle_Event
+      --  only needs application semantics such as navigation or data reloads.
+      ui : in out CuBit.UI.State.UI_State;
+      controls : in out CuBit.UI.Controls.Control_Map;
+      pointerRepaint : Pointer_Repaint_Policy := Repaint_Changed_Controls;
       with procedure Render
          (win : in out Window; damage : CuBit.UI.Rect);
       with procedure Handle_Event
@@ -86,6 +114,13 @@ package CuBit.UI.App is
    procedure Close (win : in out Window);
 
 private
+   type Pointer_Interaction is record
+      hovered  : CuBit.UI.Controls.Control_ID :=
+        CuBit.UI.Controls.NO_CONTROL;
+      captured : CuBit.UI.Controls.Control_ID :=
+        CuBit.UI.Controls.NO_CONTROL;
+   end record;
+
    type Window is record
       surfaceId : Unsigned_64 := 0;
       flags : Unsigned_64 := 0;
