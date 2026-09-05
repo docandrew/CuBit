@@ -8,3 +8,20 @@ src/build.ads
 *.o
 *.a
 *.elf
+
+# Kernel and live-image build artifacts
+/kernel/*.img
+/kernel/*.iso
+/kernel/*.log
+/kernel/*.pcap
+/kernel/src/build.ads
+/kernel/isodir/boot/*.app
+/kernel/isodir/boot/*.drv
+/kernel/isodir/boot/*.img
+/kernel/isodir/boot/*.svc
+
+# Local third-party source/build trees used by port experiments
+/userspace/c/doom_src/
+/userspace/c/netsurf/
+/userspace/c/netsurf_deps/
+/userspace/c/netsurf_src/
