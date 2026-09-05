@@ -670,6 +670,29 @@ package body Syscall.IPC is
             end loop;
         end if;
 
+        --  A read-only notification capability is narrowly scoped event
+        --  publication authority.  Its object is a service/driver class, and
+        --  it reaches only the process currently registered for that class.
+        --  The complementary RIGHT_WRITE authorizes registration itself.
+        if not hasCap then
+            for slot in Capabilities.CapabilitySlot loop
+                if Process.proctab(callerPID).caps(slot).capType =
+                   Capabilities.CAP_NOTIFICATION and then
+                   Process.proctab(callerPID).caps(slot).rights(
+                       Capabilities.RIGHT_READ) and then
+                   Process.proctab(callerPID).caps(slot).object.ref <=
+                       Unsigned_64 (Sysinfo.DriverID'Last) and then
+                   Sysinfo.getInfo
+                     (Sysinfo.REGISTERED_DRIVER,
+                      Process.proctab(callerPID).caps(slot).object.ref) =
+                       Unsigned_64 (destPID)
+                then
+                    hasCap := True;
+                    exit;
+                end if;
+            end loop;
+        end if;
+
         if not hasCap then
             for slot in Capabilities.CapabilitySlot loop
                 if Process.proctab(callerPID).caps(slot).capType =
@@ -990,6 +1013,11 @@ package body Syscall.IPC is
         isDeviceInfo : Boolean := False;
         hasCap       : Boolean := False;
     begin
+        if arg0 = Sysinfo.EVENT_DROPS_SELF then
+            retval := Process.proctab(callerPID).eventDrops;
+            return;
+        end if;
+
         case arg0 is
             when Sysinfo.FB_WIDTH | Sysinfo.FB_HEIGHT |
                  Sysinfo.FB_PITCH | Sysinfo.FB_BPP |

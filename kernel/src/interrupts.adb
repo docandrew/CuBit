@@ -235,6 +235,12 @@ is
                 eoi (IDE2);
                 dispatchDeviceIRQ (IDE2);
 
+            when DEVICE_MSI_FIRST =>
+                --  Dedicated PCI message-signaled vector. It is outside
+                --  the legacy PIC range so no physical IRQ line aliases it.
+                eoi (interruptNumber);
+                dispatchDeviceIRQ (interruptNumber);
+
             when INVALID .. COPROCESSOR =>
                 eoi (interruptNumber);
                 dispatchDeviceIRQ (interruptNumber);
@@ -568,6 +574,7 @@ is
         idt(45) := createIDTEntry(addrToNum(isr45'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
         idt(46) := createIDTEntry(addrToNum(isr46'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
         idt(47) := createIDTEntry(addrToNum(isr47'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(DEVICE_MSI_FIRST) := createIDTEntry(addrToNum(isr48'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
 
         -- Kernel Panic - don't want interrupts to happen here, because we're crashed.
         idt(127) := createIDTEntry(addrToNum(isr127'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);

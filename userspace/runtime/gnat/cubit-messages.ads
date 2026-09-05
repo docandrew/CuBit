@@ -137,6 +137,7 @@ package CuBit.Messages is
    SYSINFO_GPU_NOTIFY_MULT    : constant Unsigned_64 := 1706;
    SYSINFO_GPU_IS_PRIMARY     : constant Unsigned_64 := 1707;
    SYSINFO_NUM_CPUS           : constant Unsigned_64 := 1400;
+   SYSINFO_EVENT_DROPS_SELF   : constant Unsigned_64 := 1401;
    SYSINFO_REGISTERED_DRIVER  : constant Unsigned_64 := 2000;
 
    --  Driver IDs for SYSINFO_REGISTERED_DRIVER queries

@@ -49,6 +49,10 @@ package Sysinfo is
     -- CPU info
     NUM_CPUS              : constant QueryID := 1400;
 
+    -- Current-process IPC telemetry. This reveals only the caller's own
+    -- mailbox state and therefore conveys no cross-process authority.
+    EVENT_DROPS_SELF      : constant QueryID := 1401;
+
     -- Memory info
     MEM_FREE              : constant QueryID := 1600;
     MEM_TOTAL             : constant QueryID := 1601;

@@ -23,6 +23,7 @@ procedure main is
    SYSINFO_FB_HEIGHT : constant Unsigned_64 := 1101;
    SYSINFO_FB_PITCH  : constant Unsigned_64 := 1102;
    SYSINFO_FB_BPP    : constant Unsigned_64 := 1103;
+   SYSINFO_EVENT_DROPS_SELF : constant Unsigned_64 := 1401;
 
    EVENT_KEYBOARD : constant Unsigned_32 := 1;
    EVENT_MOUSE    : constant Unsigned_32 := 2;
@@ -43,6 +44,7 @@ procedure main is
    OP_DISPLAY_GET_INFO      : constant Unsigned_32 := 16#0900#;
    OP_DISPLAY_ATTACH_BUFFER : constant Unsigned_32 := 16#0901#;
    OP_DISPLAY_PRESENT_RECT  : constant Unsigned_32 := 16#0902#;
+   OP_DISPLAY_PRESENT_IMMEDIATE_RECT : constant Unsigned_32 := 16#0908#;
    OP_DISPLAY_CLEAR         : constant Unsigned_32 := 16#0903#;
    OP_DISPLAY_GET_STATUS    : constant Unsigned_32 := 16#0904#;
    OP_DISPLAY_ACQUIRE       : constant Unsigned_32 := 16#0905#;
@@ -89,6 +91,14 @@ procedure main is
    KEYMOD_CTRL  : constant Unsigned_64 := 2;
    KEYMOD_ALT   : constant Unsigned_64 := 4;
    KEYMOD_CAPS  : constant Unsigned_64 := 8;
+
+   KEY_ESCAPE         : constant Unsigned_8 := 16#01#;
+   KEY_ENTER          : constant Unsigned_8 := 16#1C#;
+   KEY_UP             : constant Unsigned_8 := 16#48#;
+   KEY_DOWN           : constant Unsigned_8 := 16#50#;
+   KEY_LEFT_SUPER     : constant Unsigned_8 := 16#5B#;
+   KEY_RIGHT_SUPER    : constant Unsigned_8 := 16#5C#;
+   KEY_EXTENDED_PREFIX : constant Unsigned_8 := 16#E0#;
 
    PROTOCOL_MAJOR : constant Unsigned_64 := 0;
    PROTOCOL_MINOR : constant Unsigned_64 := 1;
@@ -231,6 +241,7 @@ procedure main is
    lastButtons : Unsigned_64 := 0;
    pointerSurfaceId : Unsigned_64 := 0;
    launchMenuOpen : Boolean := False;
+   desktopExtendedPrefix : Boolean := False;
    desktopShiftDown : Boolean := False;
    desktopCtrlDown  : Boolean := False;
    desktopAltDown   : Boolean := False;
@@ -356,6 +367,36 @@ procedure main is
       LAUNCH_BROWSER => 6, LAUNCH_FILES => 7, LAUNCH_POWER => 8);
    for Launch_Action'Size use 8;
 
+   launchMenuSelection : Launch_Action := LAUNCH_CONSOLE;
+
+   function nextLaunchSelection
+      (current : Launch_Action;
+       upward  : Boolean) return Launch_Action
+   is
+   begin
+      if upward then
+         case current is
+            when LAUNCH_CONSOLE   => return LAUNCH_BROWSER;
+            when LAUNCH_WORKBENCH => return LAUNCH_CONSOLE;
+            when LAUNCH_UI_LAB    => return LAUNCH_WORKBENCH;
+            when LAUNCH_DOOM      => return LAUNCH_UI_LAB;
+            when LAUNCH_SECURITY  => return LAUNCH_DOOM;
+            when LAUNCH_BROWSER   => return LAUNCH_SECURITY;
+            when others           => return LAUNCH_CONSOLE;
+         end case;
+      else
+         case current is
+            when LAUNCH_CONSOLE   => return LAUNCH_WORKBENCH;
+            when LAUNCH_WORKBENCH => return LAUNCH_UI_LAB;
+            when LAUNCH_UI_LAB    => return LAUNCH_DOOM;
+            when LAUNCH_DOOM      => return LAUNCH_SECURITY;
+            when LAUNCH_SECURITY  => return LAUNCH_BROWSER;
+            when LAUNCH_BROWSER   => return LAUNCH_CONSOLE;
+            when others           => return LAUNCH_CONSOLE;
+         end case;
+      end if;
+   end nextLaunchSelection;
+
    type Pointer_Action is
      (DRAG_NONE, DRAG_MOVE, DRAG_RESIZE_E, DRAG_RESIZE_S, DRAG_RESIZE_SE,
       HIT_MINIMIZE, HIT_CLOSE, HIT_MAXIMIZE);
@@ -425,6 +466,7 @@ procedure main is
    statsPresentOps   : Unsigned_64 := 0;
    statsPresentMs    : Unsigned_64 := 0;
    statsDamagePixels : Unsigned_64 := 0;
+   lastEventDrops    : Unsigned_64 := 0;
    inputTraceBudget  : Natural := 64;
 
    procedure printDec (val : Unsigned_64) is
@@ -449,6 +491,9 @@ procedure main is
 
    procedure maybePrintStats is
       now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      eventDrops : constant Unsigned_64 :=
+         getInfo (SYSINFO_EVENT_DROPS_SELF);
+      eventDropsThisPeriod : Unsigned_64 := 0;
    begin
       if now = Unsigned_64'Last then
          return;
@@ -463,11 +508,23 @@ procedure main is
          return;
       end if;
 
+      if eventDrops /= Unsigned_64'Last then
+         if eventDrops >= lastEventDrops then
+            eventDropsThisPeriod := eventDrops - lastEventDrops;
+         else
+            --  Unsigned telemetry wrapped between observations.
+            eventDropsThisPeriod := eventDrops;
+         end if;
+         lastEventDrops := eventDrops;
+      end if;
+
       if statsFrames > 0 or else statsEvents > 0 then
          debugPrint ("desktop: stats ev=");
          printDec (statsEvents);
          debugPrint (" mouse=");
          printDec (statsMouseEvents);
+         debugPrint (" event_drop=");
+         printDec (eventDropsThisPeriod);
          debugPrint (" req=");
          printDec (statsRequests);
          debugPrint (" frames=");
@@ -1133,10 +1190,19 @@ procedure main is
       end if;
    end hitMode;
 
-   procedure flushBackBufferRect (dirty : Rect) is
+   type Present_Timing is (PRESENT_AT_VBLANK, PRESENT_IMMEDIATELY);
+
+   procedure flushBackBufferRect
+      (dirty  : Rect;
+       timing : Present_Timing := PRESENT_AT_VBLANK)
+   is
       r : constant Rect := clampRect (dirty);
       msg : Message :=
-        (tag      => (label  => OP_DISPLAY_PRESENT_RECT,
+        (tag      =>
+           (label  =>
+              (if timing = PRESENT_IMMEDIATELY
+               then OP_DISPLAY_PRESENT_IMMEDIATE_RECT
+               else OP_DISPLAY_PRESENT_RECT),
                       length => 4,
                       flags  => 0,
                       badge  => 0),
@@ -1778,7 +1844,12 @@ procedure main is
       restoreCursorOverlay;
       drawCursorOverlay;
       damage := inflateRect (damage, 1);
-      flushBackBufferRect (damage);
+      --  Cursor feedback is latency-critical and this damage is only a small
+      --  rectangle. Waiting for legacy VGA vertical blank for every input
+      --  packet serializes the input path at the refresh rate and can fill
+      --  the bounded event ring. display.svc still owns scanout, but copies
+      --  this explicitly marked damage immediately.
+      flushBackBufferRect (damage, PRESENT_IMMEDIATELY);
    end moveCursorOverlay;
 
    function tryFastClientRedraw (dirty : Rect) return Boolean is
@@ -2017,9 +2088,17 @@ procedure main is
           fg     : Unsigned_32)
       is
          item : constant Rect := launchItemRect (action);
+         selected : constant Boolean := launchMenuSelection = action;
+         bg : constant Unsigned_32 :=
+           (if selected then C_ACCENT else C_PANEL);
+         textColor : constant Unsigned_32 :=
+           (if selected then C_WHITE else fg);
       begin
-         drawIcon (icon, item.x + 8, item.y + 3, C_PANEL);
-         drawUIText (item.x + 40, item.y + 7, label, fg, C_PANEL);
+         if selected then
+            fillRect (item.x, item.y, item.w, item.h, bg);
+         end if;
+         drawIcon (icon, item.x + 8, item.y + 3, bg);
+         drawUIText (item.x + 40, item.y + 7, label, textColor, bg);
       end drawLaunchItem;
    begin
       if not launchMenuOpen or else isEmpty (r) then
@@ -2089,7 +2168,7 @@ procedure main is
          strokeRect (launch.x, launch.y, launch.w, launch.h, C_EDGE, C_SHADOW);
       end if;
       drawIcon (Desktop_Icons.Start, launch.x + 5, launchIconY, C_BAR);
-      drawUIText (launch.x + 34, launchTextY, "Launch", C_TEXT, C_BAR);
+      drawUIText (launch.x + 34, launchTextY, "Apps", C_TEXT, C_BAR);
       drawTaskButtons;
 
       for i in surfaces'Range loop
@@ -3949,6 +4028,37 @@ procedure main is
       end case;
    end handleInternalKey;
 
+   procedure performLaunchAction
+      (action : Launch_Action;
+       damage : in out Rect)
+   is
+      ok : Boolean;
+   begin
+      case action is
+         when LAUNCH_CONSOLE =>
+            openInternalApp (APP_CONSOLE, damage);
+         when LAUNCH_WORKBENCH =>
+            trySpawnFromConsole ("ccl-workbench.app", ok);
+         when LAUNCH_UI_LAB =>
+            trySpawnFromConsole ("ui-lab.app", ok);
+         when LAUNCH_DOOM =>
+            if doomPid /= NO_PROCESS and then processAlive (doomPid) then
+               setConsoleResult ("DOOM IS ALREADY RUNNING");
+            else
+               trySpawnFromConsole ("doom.elf", ok);
+               if ok then
+                  doomPid := lastSpawnedPid;
+               end if;
+            end if;
+         when LAUNCH_SECURITY =>
+            trySpawnFromConsole ("security-center.app", ok);
+         when LAUNCH_BROWSER =>
+            trySpawnFromConsole ("netsurf.app", ok);
+         when others =>
+            null;
+      end case;
+   end performLaunchAction;
+
    function clampPointerCoord (value, maxValue : Integer) return Natural is
    begin
       if value < 0 then
@@ -4091,6 +4201,9 @@ procedure main is
             pointInRect (cursorX, cursorY, launchButtonRect)
          then
             launchMenuOpen := not launchMenuOpen;
+            if launchMenuOpen then
+               launchMenuSelection := LAUNCH_CONSOLE;
+            end if;
             damage := unionRect
               (damage,
                inflateRect (unionRect (launchButtonRect, launchMenuRect), 4));
@@ -4101,49 +4214,7 @@ procedure main is
             launchAction := hitLaunchItem (cursorX, cursorY);
             launchMenuOpen := False;
             damage := unionRect (damage, inflateRect (launchMenuRect, 4));
-            case launchAction is
-               when LAUNCH_CONSOLE =>
-                  openInternalApp (APP_CONSOLE, damage);
-               when LAUNCH_WORKBENCH =>
-                  declare
-                     ok : Boolean;
-                  begin
-                     trySpawnFromConsole ("ccl-workbench.app", ok);
-                  end;
-               when LAUNCH_UI_LAB =>
-                  declare
-                     ok : Boolean;
-                  begin
-                     trySpawnFromConsole ("ui-lab.app", ok);
-                  end;
-               when LAUNCH_DOOM =>
-                  declare
-                     ok : Boolean;
-                  begin
-                     if doomPid /= NO_PROCESS and then processAlive (doomPid) then
-                        setConsoleResult ("DOOM IS ALREADY RUNNING");
-                     else
-                        trySpawnFromConsole ("doom.elf", ok);
-                        if ok then
-                           doomPid := lastSpawnedPid;
-                        end if;
-                     end if;
-                  end;
-               when LAUNCH_SECURITY =>
-                  declare
-                     ok : Boolean;
-                  begin
-                     trySpawnFromConsole ("security-center.app", ok);
-                  end;
-               when LAUNCH_BROWSER =>
-                  declare
-                     ok : Boolean;
-                  begin
-                     trySpawnFromConsole ("netsurf.app", ok);
-                  end;
-               when others =>
-                  null;
-            end case;
+            performLaunchAction (launchAction, damage);
             handledChromeClick := True;
          elsif launchMenuOpen then
             launchMenuOpen := False;
@@ -4290,34 +4361,80 @@ procedure main is
 
       if eventMsg.tag.label = EVENT_KEYBOARD then
          raw := Unsigned_8 (eventMsg.words (0) and 16#FF#);
-         if updateDesktopModifierKey (raw) then
-            null;
-         end if;
 
-         --  Once a shell/client surface has focus, keyboard events belong to
-         --  that surface. The service-level Q/Esc escape remains available
-         --  only before a client has connected, which keeps early bring-up
-         --  recoverable without stealing application quit keys.
-         if shouldCycleFocusKey (raw) then
+         --  Set-1 extended keys arrive as E0 followed by a normal press or
+         --  release byte. Preserve that context at the desktop boundary so
+         --  Super can remain a compositor shortcut even while an app owns
+         --  keyboard focus.
+         if raw = KEY_EXTENDED_PREFIX then
+            desktopExtendedPrefix := True;
+         else
             declare
-               damage : Rect := cursorRect;
+               extended : constant Boolean := desktopExtendedPrefix;
+               release  : constant Boolean := (raw and 16#80#) /= 0;
+               code     : constant Unsigned_8 := raw and 16#7F#;
+               damage   : Rect := cursorRect;
             begin
-               cycleFocus (damage);
-               scheduleRedrawRect (inflateRect (damage, 2));
-            end;
-         elsif focusSurface /= 0 then
-            declare
-               damage : Rect := cursorRect;
-            begin
-               if handleInternalKey (raw, damage) then
+               desktopExtendedPrefix := False;
+               if updateDesktopModifierKey (raw) then
+                  null;
+               end if;
+
+               if extended and then
+                  (code = KEY_LEFT_SUPER or else code = KEY_RIGHT_SUPER)
+               then
+                  if not release and then shellSurfaceVisible then
+                     launchMenuOpen := not launchMenuOpen;
+                     launchMenuSelection := LAUNCH_CONSOLE;
+                     damage := unionRect
+                       (damage,
+                        inflateRect
+                          (unionRect (launchButtonRect, launchMenuRect), 4));
+                     scheduleRedrawRect (inflateRect (damage, 2));
+                  end if;
+               elsif launchMenuOpen then
+                  --  The compositor owns keyboard input while its Apps menu
+                  --  is open. Swallow both presses and releases so the focused
+                  --  client cannot observe half of a key transition.
+                  if not release then
+                     if code = KEY_UP then
+                        launchMenuSelection :=
+                          nextLaunchSelection
+                            (launchMenuSelection, upward => True);
+                     elsif code = KEY_DOWN then
+                        launchMenuSelection :=
+                          nextLaunchSelection
+                            (launchMenuSelection, upward => False);
+                     elsif code = KEY_ENTER then
+                        launchMenuOpen := False;
+                        performLaunchAction (launchMenuSelection, damage);
+                     elsif code = KEY_ESCAPE then
+                        launchMenuOpen := False;
+                     end if;
+
+                     damage := unionRect
+                       (damage,
+                        inflateRect
+                          (unionRect (launchButtonRect, launchMenuRect), 4));
+                     scheduleRedrawRect (inflateRect (damage, 2));
+                  end if;
+               --  Once a shell/client surface has focus, keyboard events
+               --  belong to that surface. The service-level Q/Esc escape
+               --  remains available only before a client has connected.
+               elsif shouldCycleFocusKey (raw) then
+                  cycleFocus (damage);
                   scheduleRedrawRect (inflateRect (damage, 2));
-               else
-                  queueKey (raw);
+               elsif focusSurface /= 0 then
+                  if handleInternalKey (raw, damage) then
+                     scheduleRedrawRect (inflateRect (damage, 2));
+                  else
+                     queueKey (raw);
+                  end if;
+               elsif shouldExitKey (raw) then
+                  debugPrint ("desktop: exit key" & LF);
+                  running := False;
                end if;
             end;
-         elsif shouldExitKey (raw) then
-            debugPrint ("desktop: exit key" & LF);
-            running := False;
          end if;
       elsif eventMsg.tag.label = EVENT_MOUSE then
          statsMouseEvents := statsMouseEvents + 1;
@@ -4617,27 +4734,41 @@ begin
          maybePrintStats;
 
          if not eventFound and then not found then
-            declare
-               now : constant Unsigned_64 := nowMs;
-               sleepMs : Unsigned_64 := 2;
-            begin
-               if framePending and then now /= Unsigned_64'Last and then
-                  frameDueMs /= 0 and then now < frameDueMs
-               then
-                  sleepMs := frameDueMs - now;
-                  if sleepMs > 2 then
-                     sleepMs := 2;
+            if not framePending then
+               --  Idle input and service dispatch must be event-driven. The
+               --  mixed receive primitive blocks on the unified mailbox and
+               --  is woken directly by either an unsolicited device event or
+               --  a client request; polling with a fixed sleep added up to
+               --  two milliseconds before any useful work even began.
+               receive (from, msg);
+               if from = NO_PROCESS then
+                  handleEvent (msg, running);
+               else
+                  handleRequest (from, msg);
+               end if;
+            else
+               declare
+                  now : constant Unsigned_64 := nowMs;
+                  sleepMs : Unsigned_64 := 1;
+               begin
+                  if framePending and then now /= Unsigned_64'Last and then
+                     frameDueMs /= 0 and then now < frameDueMs
+                  then
+                     sleepMs := frameDueMs - now;
+                     if sleepMs > 1 then
+                        sleepMs := 1;
+                     end if;
+                  elsif framePending then
+                     sleepMs := 0;
                   end if;
-               elsif framePending then
-                  sleepMs := 0;
-               end if;
 
-               if sleepMs > 0 and then
-                  syscall (SYSCALL_SLEEP, sleepMs) = Unsigned_64'Last
-               then
-                  null;
-               end if;
-            end;
+                  if sleepMs > 0 and then
+                     syscall (SYSCALL_SLEEP, sleepMs) = Unsigned_64'Last
+                  then
+                     null;
+                  end if;
+               end;
+            end if;
          end if;
       end;
    end loop;

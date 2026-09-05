@@ -27,6 +27,7 @@ procedure main is
    OP_DISPLAY_ACQUIRE       : constant Unsigned_32 := 16#0905#;
    OP_DISPLAY_RELEASE       : constant Unsigned_32 := 16#0906#;
    OP_DISPLAY_MAP_BACKBUFFER : constant Unsigned_32 := 16#0907#;
+   OP_DISPLAY_PRESENT_IMMEDIATE_RECT : constant Unsigned_32 := 16#0908#;
 
    OP_GPU_ATTACH_BUFFER : constant Unsigned_32 := 16#0A01#;
    OP_GPU_PRESENT_RECT  : constant Unsigned_32 := 16#0A02#;
@@ -532,7 +533,7 @@ procedure main is
       return False;
    end flushGpuRect;
 
-   procedure flushPendingPresent is
+   procedure flushPendingPresent (waitForScanout : Boolean := True) is
       r : constant Rect := pendingRect;
       waitStart : Unsigned_64;
       copyStart : Unsigned_64;
@@ -555,17 +556,23 @@ procedure main is
       if directActive then
          copyStart := syscall (SYSCALL_GETTIME);
          if not flushGpuRect (r) then
-            waitForVBlank;
+            if waitForScanout then
+               waitForVBlank;
+            end if;
             presentRect (r.x, r.y, r.w, r.h);
          end if;
       elsif gpuActive then
          copyStart := syscall (SYSCALL_GETTIME);
          if not presentGpuRect (r) then
-            waitForVBlank;
+            if waitForScanout then
+               waitForVBlank;
+            end if;
             presentRect (r.x, r.y, r.w, r.h);
          end if;
       else
-         waitForVBlank;
+         if waitForScanout then
+            waitForVBlank;
+         end if;
          copyStart := syscall (SYSCALL_GETTIME);
          presentRect (r.x, r.y, r.w, r.h);
       end if;
@@ -743,8 +750,9 @@ procedure main is
                end;
             end if;
 
-         when OP_DISPLAY_PRESENT_RECT =>
-            replyMsg.tag := (label => OP_DISPLAY_PRESENT_RECT,
+         when OP_DISPLAY_PRESENT_RECT |
+              OP_DISPLAY_PRESENT_IMMEDIATE_RECT =>
+            replyMsg.tag := (label => request.tag.label,
                              length => 1, flags => 0, badge => 0);
             if not ownsDisplay (from) then
                replyMsg.words (0) := DISPLAY_ERR_DENIED;
@@ -761,7 +769,9 @@ procedure main is
                   --  single-buffer clients can safely draw their next frame.
                   --  Async packed presents remain queued for clients that have
                   --  their own buffering or can tolerate eventual scanout.
-                  flushPendingPresent;
+                  flushPendingPresent
+                    (waitForScanout =>
+                       request.tag.label = OP_DISPLAY_PRESENT_RECT);
                else
                   --  Packed async form used by capSubmit: word0 = x/y,
                   --  word1 = w/h. This keeps fire-and-forget present within

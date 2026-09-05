@@ -590,6 +590,12 @@ is
         -- latency without serial output in the hot path.
         readyTSC            : Unsigned_64 := 0;
 
+        -- Number of unsolicited events discarded because this process's
+        -- bounded mailbox ring was full. Event loss must be observable: a
+        -- latency-sensitive consumer cannot distinguish a quiet device from
+        -- an overloaded input path otherwise.
+        eventDrops          : Unsigned_64 := 0;
+
         -- Resource quota (populated from CAP_RESOURCE on resume)
         quota               : ResourceQuota;
 

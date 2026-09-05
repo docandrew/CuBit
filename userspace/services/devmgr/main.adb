@@ -76,6 +76,7 @@ procedure main is
    PCI_CAP_PTR         : constant Unsigned_8 := 52;
    PCI_INTERRUPT_LINE  : constant Unsigned_8 := 60;
    PCI_CAP_ID_MSI      : constant Unsigned_8 := 5;
+   PCI_CAP_ID_MSIX     : constant Unsigned_8 := 16#11#;
    PCI_HEADER_MULTIFUNCTION : constant Unsigned_8 := 16#80#;
    PCI_PROG_IF_AHCI         : constant Unsigned_8 := 16#01#;
    PCI_PROG_IF_XHCI         : constant Unsigned_8 := 16#30#;
@@ -119,6 +120,7 @@ procedure main is
    ataDev    : PCIDeviceInfo;
    netDev    : PCIDeviceInfo;
    hdaDev    : PCIDeviceInfo;
+   xhciDev   : PCIDeviceInfo;
    gpuDev    : PCIDeviceInfo;
    gpuIsPrimary : Boolean := False;
 
@@ -133,6 +135,7 @@ procedure main is
    hdaPID        : Unsigned_64 := 0;
    mixerPID      : Unsigned_64 := 0;
    ps2PID        : Unsigned_64 := 0;
+   xhciPID       : Unsigned_64 := 0;
    configPID     : Unsigned_64 := 0;
    netmgrPID     : Unsigned_64 := 0;
    virtioGpuPID  : Unsigned_64 := 0;
@@ -339,7 +342,8 @@ procedure main is
          elsif classCode = CLASS_SERIAL_USB and then
                progIf = PCI_PROG_IF_XHCI
          then
-            debugPrint (" xHCI (unclaimed)");
+            xhciDev := location;
+            debugPrint (" xHCI");
          elsif vendorID = VENDOR_VIRTIO and then
                (deviceID = DEVICE_VIRTIO_GPU or else
                 classCode = CLASS_DISPLAY_VGA)
@@ -484,7 +488,7 @@ procedure main is
       --  Storage/FS/input services pinned to CPU 0
       if strEq (name, "filesystem.svc") or strEq (name, "ata.drv") or
          strEq (name, "nvme.drv") or strEq (name, "procmgr.svc") or
-         strEq (name, "ps2.drv")
+         strEq (name, "ps2.drv") or strEq (name, "xhci.drv")
       then
          cpu := 0;
       --  Network services on CPU 1
@@ -1065,6 +1069,344 @@ procedure main is
    end setupPS2;
 
    ---------------------------------------------------------------------------
+   -- Probe a memory BAR's implemented size while its decode is disabled.
+   -- Returns zero for an I/O BAR or a malformed/unsupported result.
+   ---------------------------------------------------------------------------
+   function probeMemoryBAR0Size
+     (dev : PCIDeviceInfo) return Unsigned_64
+   is
+      command : constant Unsigned_16 :=
+        pciReadConfig16 (dev.bus, dev.slot, dev.func, PCI_COMMAND);
+      originalLo : constant Unsigned_32 :=
+        pciReadConfig32 (dev.bus, dev.slot, dev.func, PCI_BASEADDR_0);
+      originalHi : constant Unsigned_32 :=
+        pciReadConfig32 (dev.bus, dev.slot, dev.func, PCI_BASEADDR_1);
+      probeLo : Unsigned_32;
+      probeHi : Unsigned_32 := 0;
+      barMask : Unsigned_64;
+      size    : Unsigned_64;
+      is64Bit : constant Boolean := (originalLo and 16#6#) = 16#4#;
+   begin
+      if (originalLo and 1) /= 0 then
+         return 0;
+      end if;
+
+      pciWriteConfig16
+        (dev.bus, dev.slot, dev.func, PCI_COMMAND,
+         command and not Unsigned_16'(3));
+      pciWriteConfig32
+        (dev.bus, dev.slot, dev.func, PCI_BASEADDR_0, 16#FFFF_FFFF#);
+      if is64Bit then
+         pciWriteConfig32
+           (dev.bus, dev.slot, dev.func, PCI_BASEADDR_1, 16#FFFF_FFFF#);
+      end if;
+
+      probeLo := pciReadConfig32
+        (dev.bus, dev.slot, dev.func, PCI_BASEADDR_0);
+      if is64Bit then
+         probeHi := pciReadConfig32
+           (dev.bus, dev.slot, dev.func, PCI_BASEADDR_1);
+      end if;
+
+      --  Restore the BAR before re-enabling memory decoding.
+      if is64Bit then
+         pciWriteConfig32
+           (dev.bus, dev.slot, dev.func, PCI_BASEADDR_1, originalHi);
+      end if;
+      pciWriteConfig32
+        (dev.bus, dev.slot, dev.func, PCI_BASEADDR_0, originalLo);
+      pciWriteConfig16
+        (dev.bus, dev.slot, dev.func, PCI_COMMAND, command);
+
+      if is64Bit then
+         barMask := Shift_Left (Unsigned_64 (probeHi), 32) or
+                    Unsigned_64 (probeLo and 16#FFFF_FFF0#);
+         size := (not barMask) + 1;
+      else
+         barMask := Unsigned_64 (probeLo and 16#FFFF_FFF0#);
+         size := Unsigned_64 ((not Unsigned_32 (barMask)) + 1);
+      end if;
+
+      if size < 4096 or else size > 1024 * 1024 or else
+         (size and (size - 1)) /= 0
+      then
+         return 0;
+      end if;
+      return size;
+   end probeMemoryBAR0Size;
+
+   ---------------------------------------------------------------------------
+   -- Setup xHCI: grant the driver only its precisely sized BAR and a bounded
+   -- DMA arena, then send the physical configuration over a private endpoint.
+   ---------------------------------------------------------------------------
+   procedure setupXHCI is
+      type XHCI_Interrupt_Mode is
+        (XHCI_INTERRUPT_POLLING,
+         XHCI_INTERRUPT_MSI,
+         XHCI_INTERRUPT_MSIX);
+      for XHCI_Interrupt_Mode use
+        (XHCI_INTERRUPT_POLLING => 0,
+         XHCI_INTERRUPT_MSI     => 1,
+         XHCI_INTERRUPT_MSIX    => 2);
+
+      bar0Lo    : Unsigned_32;
+      bar0Hi    : Unsigned_32;
+      bar0Phys  : Unsigned_64;
+      barSize   : Unsigned_64;
+      barPages  : Unsigned_64;
+      pciCmd    : Unsigned_16;
+      dmaPhys   : Unsigned_64;
+      cfgMsg    : Message;
+      replyTag  : MessageTag;
+      msiCap    : Unsigned_8 := 0;
+      msixCap   : Unsigned_8 := 0;
+      interruptMode : XHCI_Interrupt_Mode := XHCI_INTERRUPT_POLLING;
+      msixTableOffset : Unsigned_64 := 0;
+      irqRet    : Unsigned_64;
+
+      DMA_ORDER : constant Unsigned_64 := 6;  --  64 pages = 256 KiB
+      DMA_SIZE  : constant Unsigned_64 := 64 * 4096;
+      DEVMGR_XHCI_SLOT : constant Unsigned_64 := 3;
+      OP_XHCI_CONFIGURE : constant Unsigned_32 := 16#0220#;
+      XHCI_MSI_VECTOR : constant Unsigned_64 := 48;
+   begin
+      if not xhciDev.found or else xhciPID = 0 then
+         return;
+      end if;
+
+      bar0Lo := pciReadConfig32
+        (xhciDev.bus, xhciDev.slot, xhciDev.func, PCI_BASEADDR_0);
+      bar0Hi := pciReadConfig32
+        (xhciDev.bus, xhciDev.slot, xhciDev.func, PCI_BASEADDR_1);
+
+      if (bar0Lo and 1) /= 0 then
+         debugPrint ("devmgr: xHCI BAR0 is not MMIO" & LF);
+         return;
+      elsif (bar0Lo and 16#6#) = 16#4# then
+         bar0Phys := Shift_Left (Unsigned_64 (bar0Hi), 32) or
+                     Unsigned_64 (bar0Lo and 16#FFFF_FFF0#);
+      else
+         bar0Phys := Unsigned_64 (bar0Lo and 16#FFFF_FFF0#);
+      end if;
+
+      barSize := probeMemoryBAR0Size (xhciDev);
+      if bar0Phys = 0 or else barSize = 0 then
+         debugPrint ("devmgr: xHCI BAR probe failed" & LF);
+         return;
+      end if;
+      barPages := (barSize + 4095) / 4096;
+
+      pciCmd := pciReadConfig16
+        (xhciDev.bus, xhciDev.slot, xhciDev.func, PCI_COMMAND);
+      pciWriteConfig16
+        (xhciDev.bus, xhciDev.slot, xhciDev.func,
+         PCI_COMMAND, pciCmd or 16#0006#);
+
+      --  xHCI is a latency-sensitive producer. Prefer an MSI outside the
+      --  legacy PIC range so its driver can block on event-ring changes
+      --  instead of polling on the millisecond system tick.
+      if (pciReadConfig16 (xhciDev.bus, xhciDev.slot, xhciDev.func,
+                           PCI_STATUS) and 16#0010#) /= 0
+      then
+         msiCap := pciReadConfig8
+           (xhciDev.bus, xhciDev.slot, xhciDev.func,
+            PCI_CAP_PTR) and 16#FC#;
+         for hop in 1 .. 48 loop
+            exit when msiCap < 16#40# or else msiCap > 16#F0#;
+            if pciReadConfig8
+                 (xhciDev.bus, xhciDev.slot, xhciDev.func, msiCap) =
+               PCI_CAP_ID_MSI
+            then
+               exit;
+            end if;
+            msiCap := pciReadConfig8
+              (xhciDev.bus, xhciDev.slot, xhciDev.func,
+               msiCap + 1) and 16#FC#;
+         end loop;
+
+         if msiCap >= 16#40# and then msiCap <= 16#F0# and then
+            pciReadConfig8
+              (xhciDev.bus, xhciDev.slot, xhciDev.func, msiCap) =
+               PCI_CAP_ID_MSI
+         then
+            setupMsi : declare
+               control : Unsigned_16 := pciReadConfig16
+                 (xhciDev.bus, xhciDev.slot, xhciDev.func, msiCap + 2);
+               dataOff : Unsigned_8;
+            begin
+               --  Destination APIC ID 0, fixed delivery, physical mode.
+               pciWriteConfig32
+                 (xhciDev.bus, xhciDev.slot, xhciDev.func, msiCap + 4,
+                  16#FEE0_0000#);
+               if (control and 16#0080#) /= 0 then
+                  pciWriteConfig32
+                    (xhciDev.bus, xhciDev.slot, xhciDev.func,
+                     msiCap + 8, 0);
+                  dataOff := msiCap + 12;
+               else
+                  dataOff := msiCap + 8;
+               end if;
+               pciWriteConfig16
+                 (xhciDev.bus, xhciDev.slot, xhciDev.func, dataOff,
+                  Unsigned_16 (XHCI_MSI_VECTOR));
+
+               irqRet := enableIrq
+                 (XHCI_MSI_VECTOR, xhciPID, 0,
+                  messageSignaled => True);
+               if irqRet /= reterr then
+                  --  Request one message and disable legacy INTx before MSI
+                  --  is enabled. xhci.drv enables the controller interrupter
+                  --  only after initialization has completed.
+                  control := (control and not 16#0070#) or 1;
+                  pciWriteConfig16
+                    (xhciDev.bus, xhciDev.slot, xhciDev.func,
+                     msiCap + 2, control);
+                  pciCmd := pciReadConfig16
+                    (xhciDev.bus, xhciDev.slot, xhciDev.func, PCI_COMMAND);
+                  pciWriteConfig16
+                    (xhciDev.bus, xhciDev.slot, xhciDev.func,
+                     PCI_COMMAND, pciCmd or 16#0400#);
+                  interruptMode := XHCI_INTERRUPT_MSI;
+                  debugPrint ("devmgr: xHCI using MSI" & LF);
+               end if;
+            end setupMsi;
+         end if;
+      end if;
+
+      --  Many xHCI implementations, including QEMU's controller, expose
+      --  MSI-X rather than MSI. Keep the PCI function masked until xhci.drv
+      --  has validated and populated the BAR0-resident table entry.
+      if interruptMode = XHCI_INTERRUPT_POLLING and then
+         (pciReadConfig16 (xhciDev.bus, xhciDev.slot, xhciDev.func,
+                           PCI_STATUS) and 16#0010#) /= 0
+      then
+         msixCap := pciReadConfig8
+           (xhciDev.bus, xhciDev.slot, xhciDev.func,
+            PCI_CAP_PTR) and 16#FC#;
+         for hop in 1 .. 48 loop
+            exit when msixCap < 16#40# or else msixCap > 16#F0#;
+            if pciReadConfig8
+                 (xhciDev.bus, xhciDev.slot, xhciDev.func, msixCap) =
+               PCI_CAP_ID_MSIX
+            then
+               exit;
+            end if;
+            msixCap := pciReadConfig8
+              (xhciDev.bus, xhciDev.slot, xhciDev.func,
+               msixCap + 1) and 16#FC#;
+         end loop;
+
+         if msixCap >= 16#40# and then msixCap <= 16#F0# and then
+            pciReadConfig8
+              (xhciDev.bus, xhciDev.slot, xhciDev.func, msixCap) =
+               PCI_CAP_ID_MSIX
+         then
+            setupMsix : declare
+               control : Unsigned_16 := pciReadConfig16
+                 (xhciDev.bus, xhciDev.slot, xhciDev.func, msixCap + 2);
+               tableInfo : constant Unsigned_32 := pciReadConfig32
+                 (xhciDev.bus, xhciDev.slot, xhciDev.func, msixCap + 4);
+               tableBIR : constant Unsigned_32 := tableInfo and 7;
+               tableOffset : constant Unsigned_64 :=
+                 Unsigned_64 (tableInfo and 16#FFFF_FFF8#);
+            begin
+               if tableBIR = 0 and then barSize >= 16 and then
+                  tableOffset mod 8 = 0 and then
+                  tableOffset <= barSize - 16
+               then
+                  irqRet := enableIrq
+                    (XHCI_MSI_VECTOR, xhciPID, 0,
+                     messageSignaled => True);
+                  if irqRet /= reterr then
+                     --  MSI-X Enable plus Function Mask. The entry itself is
+                     --  still inaccessible to devmgr by design; xhci.drv
+                     --  owns BAR0 and fills it before setup returns.
+                     control := control or 16#C000#;
+                     pciWriteConfig16
+                       (xhciDev.bus, xhciDev.slot, xhciDev.func,
+                        msixCap + 2, control);
+                     pciCmd := pciReadConfig16
+                       (xhciDev.bus, xhciDev.slot, xhciDev.func,
+                        PCI_COMMAND);
+                     pciWriteConfig16
+                       (xhciDev.bus, xhciDev.slot, xhciDev.func,
+                        PCI_COMMAND, pciCmd or 16#0400#);
+                     interruptMode := XHCI_INTERRUPT_MSIX;
+                     msixTableOffset := tableOffset;
+                     debugPrint ("devmgr: xHCI using MSI-X" & LF);
+                  end if;
+               end if;
+            end setupMsix;
+         end if;
+      end if;
+
+      if interruptMode = XHCI_INTERRUPT_POLLING then
+         debugPrint ("devmgr: xHCI using queued polling fallback" & LF);
+      end if;
+
+      dmaPhys := allocDma (xhciPID, DMA_ORDER, DMA_VIRT_BASE);
+      if dmaPhys = reterr then
+         debugPrint ("devmgr: xHCI DMA allocation failed" & LF);
+         return;
+      end if;
+
+      mintCap
+        (xhciPID, CAP_DEVICE_MEM, bar0Phys, barPages * 4096,
+         RIGHT_READ or RIGHT_WRITE, 4);
+      mintCap
+        (xhciPID, CAP_DEVICE_MEM, 0, DMA_SIZE,
+         RIGHT_READ or RIGHT_WRITE, 6);
+      if interruptMode /= XHCI_INTERRUPT_POLLING then
+         --  Slot 5: receive only the explicitly registered xHCI MSI.
+         mintCap
+           (xhciPID, CAP_IRQ, XHCI_MSI_VECTOR, 0, RIGHT_READ, 5);
+      end if;
+      --  Slot 7: may publish mouse-class events only to the currently
+      --  registered mouse consumer.  RIGHT_READ cannot register or replace
+      --  that consumer; desktop.svc holds the complementary RIGHT_WRITE.
+      mintCap
+        (xhciPID, CAP_NOTIFICATION, DRIVER_MOUSE, 0, RIGHT_READ, 7);
+
+      --  Slot 3 belongs to devmgr and reaches only this xHCI process.
+      grantEndpoint (myPID, xhciPID, DEVMGR_XHCI_SLOT, myPID);
+      assignCPU (xhciPID, "xhci.drv");
+      resumeProc (xhciPID);
+
+      cfgMsg :=
+        (tag => (label => OP_XHCI_CONFIGURE,
+                 length => 4, flags => 0, badge => 0),
+         capBadge => 0,
+         words =>
+           (0 => bar0Phys,
+            1 => barPages,
+            2 => dmaPhys,
+            3 =>
+              Unsigned_64 (XHCI_Interrupt_Mode'Enum_Rep (interruptMode)) or
+              Shift_Left (XHCI_MSI_VECTOR, 8) or
+              Shift_Left (msixTableOffset, 16)));
+      replyTag := capCall (DEVMGR_XHCI_SLOT, cfgMsg);
+      if replyTag.label = REPLY_OK then
+         if interruptMode = XHCI_INTERRUPT_MSIX then
+            --  The driver has installed and unmasked table entry zero. Drop
+            --  only the function mask; leave MSI-X itself enabled.
+            declare
+               control : Unsigned_16 := pciReadConfig16
+                 (xhciDev.bus, xhciDev.slot, xhciDev.func, msixCap + 2);
+            begin
+               control := control and not Unsigned_16 (16#4000#);
+               pciWriteConfig16
+                 (xhciDev.bus, xhciDev.slot, xhciDev.func,
+                  msixCap + 2, control);
+            end;
+         end if;
+         debugPrint ("devmgr: xHCI controller started" & LF);
+      else
+         debugPrint ("devmgr: xHCI controller rejected setup" & LF);
+         xhciPID := 0;
+      end if;
+   end setupXHCI;
+
+   ---------------------------------------------------------------------------
    -- Main entry point
    ---------------------------------------------------------------------------
 
@@ -1262,7 +1604,20 @@ begin
    end if;
 
    -----------------------------------------------------------------------
-   -- Phase 2c: Spawn config store service
+   -- Phase 2c: Spawn xHCI only when PCI discovery found a controller.
+   -----------------------------------------------------------------------
+   if xhciDev.found then
+      xhciPID := spawnFromCpio ("xhci.drv", 5);
+      if xhciPID = reterr then
+         xhciPID := 0;
+      end if;
+      if xhciPID /= 0 then
+         setupXHCI;
+      end if;
+   end if;
+
+   -----------------------------------------------------------------------
+   -- Phase 2d: Spawn config store service
    -----------------------------------------------------------------------
    configPID := spawnFromCpio ("config.svc", 5);
    if configPID = reterr then

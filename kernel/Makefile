@@ -343,6 +343,13 @@ ps2: user_runtime
 	$(ALR) gprbuild -P ../userspace/services/ps2/ps2.gpr
 	cp ../userspace/services/ps2/build/ps2.drv isodir/boot/ps2.drv
 
+# Build the userspace xHCI controller driver
+.PHONY : xhci
+xhci: user_runtime
+	mkdir -p ../userspace/services/xhci/build
+	$(ALR) gprbuild -P ../userspace/services/xhci/xhci.gpr
+	cp ../userspace/services/xhci/build/xhci.drv isodir/boot/xhci.drv
+
 # Build the userspace config store service
 .PHONY : config
 config: user_runtime
@@ -539,6 +546,7 @@ initrd:
 	-cp isodir/boot/hda.drv ramdisk_staging/
 	-cp isodir/boot/mixer.svc ramdisk_staging/
 	-cp isodir/boot/ps2.drv ramdisk_staging/
+	-cp isodir/boot/xhci.drv ramdisk_staging/
 	-cp isodir/boot/config.svc ramdisk_staging/
 	-cp isodir/boot/netmgr.svc ramdisk_staging/
 	-cp isodir/boot/procmgr.svc ramdisk_staging/
@@ -550,9 +558,9 @@ initrd:
 # this separate from the normal two-stage image: the laptop must reach a
 # desktop and diagnostic UI before AHCI or any other block driver works.
 LAPTOP_LIVE_STAGE1 := filesystem ata nvme netstack virtio-net virtio-gpu hda \
-	mixer ps2 config netmgr procmgr devmgr
+	mixer ps2 xhci config netmgr procmgr devmgr
 LAPTOP_LIVE_STAGE2 := logstore clock display desktop ccl-workbench ui-lab \
-	security-center
+	security-center doom
 
 .PHONY : laptop-live-initrd
 laptop-live-initrd: $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2)
@@ -568,6 +576,7 @@ laptop-live-initrd: $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2)
 	cp isodir/boot/hda.drv laptop_live_staging/
 	cp isodir/boot/mixer.svc laptop_live_staging/
 	cp isodir/boot/ps2.drv laptop_live_staging/
+	cp isodir/boot/xhci.drv laptop_live_staging/
 	cp isodir/boot/config.svc laptop_live_staging/
 	cp isodir/boot/netmgr.svc laptop_live_staging/
 	cp isodir/boot/procmgr.svc laptop_live_staging/
@@ -578,6 +587,8 @@ laptop-live-initrd: $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2)
 	cp isodir/boot/ccl-workbench.app laptop_live_staging/
 	cp isodir/boot/ui-lab.app laptop_live_staging/
 	cp isodir/boot/security-center.app laptop_live_staging/
+	cp isodir/boot/doom.elf laptop_live_staging/
+	cp $(DOOM_WAD) laptop_live_staging/doom1.wad
 	cp ../tests/hardware/init-laptop-live.conf laptop_live_staging/init.conf
 	cp ../tests/hardware/system-live.conf laptop_live_staging/system.conf
 	cd laptop_live_staging && ls | cpio -o -H newc > ../isodir/boot/laptop-live-initrd.img
@@ -598,13 +609,35 @@ laptop-live-iso: cubit_kernel laptop-live-initrd
 	grub-mkrescue -o cubit_laptop_live.iso laptop_live_isodir
 	rm -rf laptop_live_isodir
 
+# Refresh only the xHCI/devmgr binaries inside an already-built laptop image.
+# This keeps controller bring-up iterations short without weakening the normal
+# from-source laptop-live-iso target used for distributable artifacts.
+.PHONY : laptop-live-refresh-xhci
+laptop-live-refresh-xhci: xhci devmgr
+	test -f isodir/boot/laptop-live-initrd.img
+	rm -rf laptop_live_refresh
+	mkdir -p laptop_live_refresh
+	cd laptop_live_refresh && cpio -id -F ../isodir/boot/laptop-live-initrd.img
+	cp isodir/boot/xhci.drv laptop_live_refresh/xhci.drv
+	cp isodir/boot/devmgr.svc laptop_live_refresh/devmgr.svc
+	cd laptop_live_refresh && ls | cpio -o -H newc > ../isodir/boot/laptop-live-initrd.img
+	rm -rf laptop_live_refresh laptop_live_isodir
+	cp -a isodir laptop_live_isodir
+	cp cubit_kernel laptop_live_isodir/boot/cubit_kernel
+	sed -i 's/^set default=.*/set default=7/' laptop_live_isodir/boot/grub/grub.cfg
+	grub-mkrescue -o cubit_laptop_live.iso laptop_live_isodir
+	rm -rf laptop_live_isodir
+
 # Q35 is not a cycle-accurate Sunrise Point model, but AHCI, xHCI, HDA, PCIe
 # bridges, and USB HID exercise the standardized interfaces needed by the
-# target laptop.  -nodefaults ensures input arrives only through xHCI rather
-# than silently falling back to QEMU's PS/2 devices.
+# target laptop.  The first USB milestone intentionally enumerates one boot
+# mouse; retain Q35's built-in PS/2 keyboard until hubs/multiple devices and
+# the USB boot-keyboard protocol are implemented.
 LAPTOP_RAM ?= 8G
 LAPTOP_CPU ?= Skylake-Client-v4
 LAPTOP_CPUS ?= 4
+LAPTOP_INPUT_DEVICES ?= -device usb-mouse,bus=xhci.0
+LAPTOP_MONITOR ?= /tmp/cubit-laptop-monitor.sock
 .PHONY : run-laptop
 run-laptop: laptop-live-iso laptop_sata_disk.img
 	$(MAKE) run-laptop-fast
@@ -615,7 +648,7 @@ run-laptop: laptop-live-iso laptop_sata_disk.img
 run-laptop-fast:
 	test -f cubit_laptop_live.iso
 	test -f laptop_sata_disk.img
-	rm -f serial_output.log laptop_sata_run.img
+	rm -f serial_output.log laptop_sata_run.img $(LAPTOP_MONITOR)
 	cp laptop_sata_disk.img laptop_sata_run.img
 	GDK_BACKEND=x11 qemu-system-x86_64 \
 		-machine q35 \
@@ -629,8 +662,7 @@ run-laptop-fast:
 		-device ide-hd,drive=sata0,bus=ide.0 \
 		-device VGA \
 		-device qemu-xhci,id=xhci \
-		-device usb-kbd,bus=xhci.0 \
-		-device usb-mouse,bus=xhci.0 \
+		$(LAPTOP_INPUT_DEVICES) \
 		-audiodev sdl,id=snd0 \
 		-device ich9-intel-hda \
 		-device hda-output,audiodev=snd0 \
@@ -638,8 +670,17 @@ run-laptop-fast:
 		-netdev user,id=net0 \
 		-device e1000e,bus=net_root,netdev=net0 \
 		-serial file:serial_output.log \
+		-monitor unix:$(LAPTOP_MONITOR),server,nowait \
 		-display gtk,zoom-to-fit=on \
 		-no-reboot
+
+# Keep xHCI visible while using Q35's built-in i8042 controller for interactive
+# desktop testing before CuBit has a USB HID service.  Do not instantiate an
+# additional i8042 or USB HID device: either can become QEMU's selected pointer
+# while CuBit is listening to the platform controller's IRQ.
+.PHONY : run-laptop-interactive-fast
+run-laptop-interactive-fast:
+	$(MAKE) run-laptop-fast LAPTOP_INPUT_DEVICES=""
 
 iso: cubit_kernel initrd
 	cp cubit_kernel isodir/boot/
@@ -647,7 +688,7 @@ iso: cubit_kernel initrd
 
 # Build everything including DOOM, then create ISO and disk images
 .PHONY : world
-world: cubit_kernel doom netsurf sleep capability-test ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget security-center desktop-shell ui-lab procmgr shell hda mixer ps2 config netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: cubit_kernel doom netsurf sleep capability-test ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget security-center desktop-shell ui-lab procmgr shell hda mixer ps2 xhci config netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world

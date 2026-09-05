@@ -1045,6 +1045,10 @@ is
                       requestId => NO_REQUEST_ID),
                      ok);
 
+        if not ok then
+            proctab(dest).eventDrops := proctab(dest).eventDrops + 1;
+        end if;
+
         --  receive() is the intentional mixed-lane wait primitive: it may
         --  consume events as well as requests. Wake both the event-specific
         --  waiter and a process blocked in mixed receive, otherwise an IRQ can

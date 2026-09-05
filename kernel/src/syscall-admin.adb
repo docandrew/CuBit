@@ -159,7 +159,9 @@ package body Syscall.Admin is
                 if Process.proctab(callerPID).caps(slot).capType =
                    Capabilities.CAP_NOTIFICATION and then
                    Process.proctab(callerPID).caps(slot).object.ref =
-                   arg0
+                   arg0 and then
+                   Process.proctab(callerPID).caps(slot).rights(
+                       Capabilities.RIGHT_WRITE)
                 then
                     hasCap := True;
                     exit;
