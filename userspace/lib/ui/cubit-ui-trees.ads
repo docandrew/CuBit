@@ -7,7 +7,6 @@
 ------------------------------------------------------------------------------
 with CuBit.UI.Controls;
 with CuBit.UI.State;
-with Interfaces; use Interfaces;
 
 package CuBit.UI.Trees is
    TREE_ROW_HEIGHT : constant Positive := 24;

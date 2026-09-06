@@ -84,6 +84,7 @@ package XHCI is
      (buttons : out Unsigned_8;
       deltaX  : out Integer;
       deltaY  : out Integer;
+      deltaZ  : out Integer;
       ready   : out Boolean;
       eventAvailable : out Boolean);
 

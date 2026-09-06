@@ -19,9 +19,12 @@ package body CuBit.UI.App is
    OP_SURFACE_CREATE   : constant Unsigned_32 := 16#0810#;
    OP_SURFACE_PRESENT  : constant Unsigned_32 := 16#0812#;
    OP_SURFACE_ATTACH_BUFFER : constant Unsigned_32 := 16#0814#;
+   OP_SURFACE_SET_POINTER_CURSOR : constant Unsigned_32 := 16#0815#;
    OP_WINDOW_SET_LIMITS : constant Unsigned_32 := 16#0841#;
    OP_WINDOW_SET_TITLE  : constant Unsigned_32 := 16#0842#;
    OP_INPUT_POLL       : constant Unsigned_32 := 16#0821#;
+   OP_INPUT_WAIT       : constant Unsigned_32 := 16#0822#;
+   INPUT_REPLY_MORE_PENDING : constant Unsigned_8 := 1;
 
    SURFACE_FLAG_WINDOW : constant Unsigned_64 := 2;
    PIXEL_FORMAT_BGRA8888 : constant Unsigned_64 := 1;
@@ -347,8 +350,9 @@ package body CuBit.UI.App is
       end;
    end Set_Title;
 
-   procedure Poll_Input
+   procedure Receive_Input
       (win : in out Window;
+       operation : Unsigned_32;
        event : out Input_Event;
        found : out Boolean)
    is
@@ -360,7 +364,9 @@ package body CuBit.UI.App is
          return;
       end if;
 
-      reply := Call_Desktop (OP_INPUT_POLL, win.surfaceId, win.lastEvent, 0, 0);
+      reply := Call_Desktop (operation, win.surfaceId, win.lastEvent, 0, 0);
+      win.inputMayRemain :=
+        (reply.tag.flags and INPUT_REPLY_MORE_PENDING) /= 0;
       if reply.words (0) = INPUT_NONE then
          win.lastEvent := reply.words (1);
          return;
@@ -386,7 +392,57 @@ package body CuBit.UI.App is
          end;
       end if;
       found := True;
+   end Receive_Input;
+
+   procedure Poll_Input
+      (win : in out Window;
+       event : out Input_Event;
+       found : out Boolean)
+   is
+   begin
+      Receive_Input (win, OP_INPUT_POLL, event, found);
    end Poll_Input;
+
+   procedure Wait_Input
+      (win : in out Window;
+       event : out Input_Event;
+       found : out Boolean)
+   is
+   begin
+      Receive_Input (win, OP_INPUT_WAIT, event, found);
+   end Wait_Input;
+
+   function Input_May_Remain (win : Window) return Boolean is
+     (win.inputMayRemain);
+
+   function Pointer_Wheel_Delta (event : Input_Event) return Integer is
+      raw : constant Unsigned_32 :=
+        Unsigned_32 (event.payload1 and 16#FFFF_FFFF#);
+      negativeMagnitude : Unsigned_64;
+   begin
+      if raw <= Unsigned_32 (Integer'Last) then
+         return Integer (raw);
+      elsif raw = 16#8000_0000# then
+         return Integer'First;
+      end if;
+
+      negativeMagnitude := 16#1_0000_0000# - Unsigned_64 (raw);
+      return -Integer (negativeMagnitude);
+   end Pointer_Wheel_Delta;
+
+   procedure Set_Pointer_Cursor
+      (win : Window; cursor : CuBit.UI.Pointer_Cursor_Style)
+   is
+      reply : Message;
+   begin
+      if win.surfaceId = 0 then
+         return;
+      end if;
+      reply := Call_Desktop
+        (OP_SURFACE_SET_POINTER_CURSOR,
+         win.surfaceId,
+         Unsigned_64 (CuBit.UI.Pointer_Cursor_Style'Enum_Rep (cursor)));
+   end Set_Pointer_Cursor;
 
    procedure Present
       (win : Window; damage : CuBit.UI.Rect)
@@ -419,22 +475,52 @@ package body CuBit.UI.App is
       hit : CuBit.UI.Controls.Control_ID;
       down : Boolean;
 
-      procedure Mark (id : CuBit.UI.Controls.Control_ID) is
+      procedure Mark_Visual (id : CuBit.UI.Controls.Control_ID) is
       begin
-         CuBit.UI.Controls.Mark_Dirty (dirty, controls, id);
-      end Mark;
+         CuBit.UI.Controls.Mark_Visual_Dirty (dirty, controls, id);
+      end Mark_Visual;
+
+      procedure Mark_Action (id : CuBit.UI.Controls.Control_ID) is
+      begin
+         CuBit.UI.Controls.Mark_Action_Dirty (dirty, controls, id);
+      end Mark_Action;
 
       procedure Mark_Hover_Transition
          (next : CuBit.UI.Controls.Control_ID)
       is
       begin
          if next /= interaction.hovered then
-            Mark (interaction.hovered);
-            Mark (next);
+            Mark_Visual (interaction.hovered);
+            Mark_Visual (next);
          end if;
          interaction.hovered := next;
       end Mark_Hover_Transition;
+
+      procedure Update_Cursor
+         (control : CuBit.UI.Controls.Control_ID)
+      is
+         nextCursor : constant CuBit.UI.Pointer_Cursor_Style :=
+           CuBit.UI.Controls.Cursor (controls, control);
+      begin
+         if nextCursor /= interaction.cursor then
+            Set_Pointer_Cursor (win, nextCursor);
+            interaction.cursor := nextCursor;
+         end if;
+      end Update_Cursor;
    begin
+      if event.kind = INPUT_RESYNC then
+         x := Natural (event.payload0 and 16#FFFF_FFFF#);
+         y := Natural (Shift_Right (event.payload0, 32));
+         hit := CuBit.UI.Controls.Hit (controls, x, y);
+         down := (event.payload1 and 1) /= 0;
+         interaction.captured := CuBit.UI.Controls.NO_CONTROL;
+         interaction.hovered := hit;
+         CuBit.UI.State.Resynchronize_Pointer (ui, x, y, down);
+         Update_Cursor (hit);
+         dirty := CuBit.UI.Union_Rect (dirty, Full_Rect (win));
+         return;
+      end if;
+
       if event.kind /= INPUT_POINTER_MOVE and then
          event.kind /= INPUT_POINTER_DOWN and then
          event.kind /= INPUT_POINTER_UP and then
@@ -445,6 +531,26 @@ package body CuBit.UI.App is
 
       x := Natural (event.payload0 and 16#FFFF_FFFF#);
       y := Natural (Shift_Right (event.payload0, 32));
+
+      if not CuBit.UI.Controls.Is_Valid (controls) then
+         if interaction.controlsValid then
+            debugPrint
+              ("ui-app: invalid control map; input disabled" & LF);
+         end if;
+         interaction.controlsValid := False;
+         interaction.captured := CuBit.UI.Controls.NO_CONTROL;
+         interaction.hovered := CuBit.UI.Controls.NO_CONTROL;
+         CuBit.UI.State.Resynchronize_Pointer
+           (ui, x, y,
+            (if event.kind = INPUT_POINTER_MOVE
+             then (event.payload1 and 1) /= 0
+             else event.kind = INPUT_POINTER_DOWN));
+         ui.pointer.enabled := False;
+         Update_Cursor (CuBit.UI.Controls.NO_CONTROL);
+         dirty := CuBit.UI.Union_Rect (dirty, Full_Rect (win));
+         return;
+      end if;
+      interaction.controlsValid := True;
       hit := CuBit.UI.Controls.Hit (controls, x, y);
 
       if event.kind = INPUT_POINTER_MOVE then
@@ -453,65 +559,116 @@ package body CuBit.UI.App is
          if repaint = Repaint_Every_Motion then
             dirty := CuBit.UI.Union_Rect (dirty, Full_Rect (win));
             interaction.hovered := hit;
+            Update_Cursor
+              ((if down then interaction.captured else hit));
          else
             Mark_Hover_Transition (hit);
             if down then
-               --  Captured controls declare their own drag-damage region.
-               --  A splitter can therefore invalidate a pane while an
-               --  ordinary button repaints only its face.
-               Mark (interaction.captured);
+               if CuBit.UI.Controls.Has_Continuous_Action
+                    (controls, interaction.captured)
+               then
+                  --  Splitters, sliders, and scrollbar thumbs can change
+                  --  continuously while captured. Click controls cannot;
+                  --  repainting their containing view for held motion only
+                  --  adds latency and presentation traffic.
+                  Mark_Action (interaction.captured);
+               end if;
+               Update_Cursor (interaction.captured);
+            else
+               Update_Cursor (hit);
             end if;
          end if;
       elsif event.kind = INPUT_POINTER_DOWN then
          Mark_Hover_Transition (hit);
          interaction.captured := hit;
+         Update_Cursor (hit);
          CuBit.UI.State.Set_Pointer
            (ui, x, y, True, pressed => True);
-         Mark (hit);
+         --  Sliders, scrollbars, and splitters can change their value on the
+         --  pressed frame.  Their registered action region must therefore be
+         --  rendered immediately; buttons with local actions simply register
+         --  their own bounds.
+         if CuBit.UI.Controls.Has_Continuous_Action (controls, hit) then
+            Mark_Action (hit);
+         else
+            Mark_Visual (hit);
+         end if;
       elsif event.kind = INPUT_POINTER_UP then
-         Mark (interaction.captured);
+         if CuBit.UI.Controls.Has_Continuous_Action
+              (controls, interaction.captured)
+         then
+            Mark_Action (interaction.captured);
+         else
+            Mark_Visual (interaction.captured);
+         end if;
          Mark_Hover_Transition (hit);
          CuBit.UI.State.Set_Pointer
            (ui, x, y, False, released => True);
          interaction.captured := CuBit.UI.Controls.NO_CONTROL;
+         Update_Cursor (hit);
       else
          --  Wheel payload1 is a signed delta, not a button mask. Keep the
          --  existing button state while updating hover for wheel-at-pointer.
          CuBit.UI.State.Set_Pointer (ui, x, y, ui.pointer.down);
          Mark_Hover_Transition (hit);
+         Update_Cursor (hit);
       end if;
    end Apply_Pointer_Event;
 
    procedure Run (win : in out Window)
    is
       running : Boolean := True;
-      ignore : Unsigned_64;
       drainLimit : constant Natural := 32;
       dirtyBatchLimit : constant Natural := 4;
       pointer : Pointer_Interaction;
+      pendingEvent : Input_Event;
+      hasPendingEvent : Boolean := False;
    begin
       if not Is_Open (win) then
          return;
       end if;
 
       Render (win, Full_Rect (win));
+      if CuBit.UI.State.Followup_Render_Requested (ui) then
+         Render (win, Full_Rect (win));
+      end if;
       Present (win, Full_Rect (win));
 
       while running loop
          declare
             dirty : CuBit.UI.Rect := (others => 0);
-            sawInput : Boolean := False;
             dirtyEvents : Natural := 0;
          begin
             for i in 1 .. drainLimit loop
                declare
                   event : Input_Event;
                   found : Boolean;
+                  fromWait : constant Boolean := hasPendingEvent;
                begin
-                  Poll_Input (win, event, found);
+                  if hasPendingEvent then
+                     event := pendingEvent;
+                     found := True;
+                     hasPendingEvent := False;
+                  else
+                     Poll_Input (win, event, found);
+                  end if;
                   exit when not found;
 
-                  sawInput := True;
+                  --  Press/release/wheel events are ordering barriers for
+                  --  immediate-mode widgets.  Render accumulated motion while
+                  --  the prior button state is still active; otherwise a
+                  --  move followed by release in one drain batch makes a
+                  --  splitter lose its final position and visual update.
+                  if not CuBit.UI.Is_Empty (dirty) and then
+                    (event.kind = INPUT_POINTER_DOWN or else
+                     event.kind = INPUT_POINTER_UP or else
+                     event.kind = INPUT_POINTER_WHEEL)
+                  then
+                     pendingEvent := event;
+                     hasPendingEvent := True;
+                     exit;
+                  end if;
+
                   if not CuBit.UI.Is_Empty (dirty) then
                      dirtyEvents := dirtyEvents + 1;
                   end if;
@@ -521,6 +678,18 @@ package body CuBit.UI.App is
                      pointerRepaint);
                   Handle_Event (win, event, dirty, running);
                   exit when not running;
+                  --  Keyboard, wheel, configuration, and application-defined
+                  --  events may change which controls exist or where they are
+                  --  placed.  Rebuild the immediate-mode control map before
+                  --  dispatching another queued event against it. Pointer
+                  --  motion is the only event class safe to coalesce here.
+                  exit when event.kind /= INPUT_POINTER_MOVE and then
+                            not CuBit.UI.Is_Empty (dirty);
+                  --  A blocking wait reply tells us whether another event was
+                  --  already queued. If not, avoid an immediately-following
+                  --  empty poll and return to the atomic wait path. An event
+                  --  arriving after the reply will wake that wait normally.
+                  exit when fromWait and then not Input_May_Remain (win);
                   --  Immediate-mode controls must observe a pressed frame
                   --  before release. This also makes depressed feedback
                   --  deterministic even when the input queue is busy.
@@ -535,14 +704,29 @@ package body CuBit.UI.App is
 
             if not CuBit.UI.Is_Empty (dirty) then
                Render (win, dirty);
+               if CuBit.UI.State.Followup_Render_Requested (ui) then
+                  --  A grouped selection may be changed by an item rendered
+                  --  after the previously selected item. Repaint the stable
+                  --  post-action tree once before presentation so both old
+                  --  and new selection visuals cannot survive together.
+                  dirty := Full_Rect (win);
+                  Render (win, dirty);
+               end if;
                Present (win, dirty);
             end if;
 
-            if running then
-               if sawInput then
-                  ignore := syscall (SYSCALL_SLEEP, 1);
-               else
-                  ignore := syscall (SYSCALL_SLEEP, 10);
+            if running and then not hasPendingEvent then
+               --  Park on a deferred one-use reply capability. Reducing the
+               --  old polling interval would still add avoidable latency and
+               --  burn CPU; this wakes directly when input is queued. It is
+               --  also safe immediately after a drained batch: already-queued
+               --  input replies at once, while a later arrival resolves the
+               --  installed one-use waiter.
+               Wait_Input (win, pendingEvent, hasPendingEvent);
+               if not hasPendingEvent then
+                  --  INPUT_WAIT returns no event only if the surface is no
+                  --  longer owned by this process. Avoid a failed-wait spin.
+                  running := False;
                end if;
             end if;
          end;

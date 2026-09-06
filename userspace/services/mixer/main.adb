@@ -15,6 +15,7 @@ with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Memory_Grants; use CuBit.Memory_Grants;
 with Mixer;
 
 procedure main is
@@ -264,6 +265,10 @@ begin
       gid     : Unsigned_64;
       bytes   : Unsigned_64;
       count   : Unsigned_64;
+      generation : Unsigned_64;
+      grantReference : Grant_Reference := (slot => 0, generation => 1);
+      mappedAddress : System.Address := System.Null_Address;
+      acquired : Boolean := False;
    begin
       initMsg :=
         (tag => (label => OP_AUDIO_HW_INIT, length => 0,
@@ -275,16 +280,34 @@ begin
       gid := initMsg.words (0);
       bytes := initMsg.words (1);
       count := initMsg.words (2);
+      generation := initMsg.words (3);
       if initMsg.tag.label = REPLY_OK and then
+         gid <= MAXIMUM_GLOBAL_SLOT and then
+         generation >= 1 and then generation <= MAXIMUM_GENERATION and then
          bytes = Unsigned_64 (Mixer.MIX_FRAMES * 4) and then
          count > 0 and then count <= 32 and then
          bytes * count <= 4096
       then
-         dmaRingAddr := 16#4000_0000_0000# + gid * (4096 * 4096);
-         periodBytes := Unsigned_32 (bytes);
-         periodCount := Natural (count);
-         hdaReady := True;
-         debugPrint ("mixer: direct HDA period grant ready" & LF);
+         grantReference :=
+           (slot       => Global_Grant_Slot (gid),
+            generation => Grant_Generation (generation));
+         Acquire_Via_Capability
+           (slot           => CAP_SLOT_HDA,
+            reference      => grantReference,
+            byteOffset     => 0,
+            byteLength     => bytes * count,
+            requiredAccess => Write_Access,
+            mappedAddress  => mappedAddress,
+            success        => acquired);
+         if acquired then
+            dmaRingAddr := Unsigned_64 (To_Integer (mappedAddress));
+            periodBytes := Unsigned_32 (bytes);
+            periodCount := Natural (count);
+            hdaReady := True;
+            debugPrint ("mixer: acquired HDA period grant" & LF);
+         else
+            debugPrint ("mixer: HDA period grant acquisition failed" & LF);
+         end if;
       else
          debugPrint ("mixer: HDA period grant failed" & LF);
       end if;

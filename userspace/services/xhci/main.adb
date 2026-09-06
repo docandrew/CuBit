@@ -7,6 +7,7 @@
 with Interfaces; use Interfaces;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Input; use CuBit.Input;
 with CuBit.Devices;
 with XHCI;
 
@@ -26,6 +27,7 @@ procedure main is
    buttons : Unsigned_8;
    deltaX  : Integer;
    deltaY  : Integer;
+   deltaZ  : Integer;
    reportReady : Boolean;
    eventAvailable : Boolean;
    interruptMode : XHCI.Runtime_Interrupt_Mode := XHCI.INTERRUPT_POLLING;
@@ -34,7 +36,11 @@ procedure main is
    interruptEnabled : Boolean := False;
    interruptDriven : Boolean := False;
    lastButtons : Unsigned_8 := 0;
+   pointerSequence : Source_Sequence := 0;
+   pointerResyncPending : Boolean := False;
    packed : Unsigned_64;
+   accepted : Boolean;
+   inputReport : Source_Report;
    diagnostics : XHCI.Boot_Mouse_Diagnostics;
    diagnosticsStartMs : Unsigned_64 := 0;
    diagnosticsCountdown : Natural := 64;
@@ -282,22 +288,32 @@ begin
    --  this legacy driver lookup as the service boundary is split out.
    loop
       XHCI.Poll_Boot_Mouse
-        (buttons, deltaX, deltaY, reportReady, eventAvailable);
+        (buttons, deltaX, deltaY, deltaZ, reportReady, eventAvailable);
       if reportReady then
          mouseConsumer := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_MOUSE);
          if mouseConsumer /= 0 and then
-            (deltaX /= 0 or else deltaY /= 0 or else buttons /= lastButtons)
+            (deltaX /= 0 or else deltaY /= 0 or else deltaZ /= 0 or else
+             buttons /= lastButtons)
          then
             --  The desktop's existing event ABI uses PS/2 Y orientation
             --  (positive upward); USB HID uses positive downward.
             packed := Unsigned_64 (buttons) or
               Shift_Left (Pack_Signed_12 (deltaX), 8) or
-              Shift_Left (Pack_Signed_12 (-deltaY), 20);
-            sendEvent
-              (mouseConsumer,
-               (tag => (label => 2, length => 1, flags => 0, badge => 0),
-                capBadge => 0,
-                words => (0 => packed, others => 0)));
+              Shift_Left (Pack_Signed_12 (-deltaY), 20) or
+              Shift_Left (Unsigned_64 (deltaZ mod 256), 32);
+            pointerSequence := Next_Sequence (pointerSequence);
+            inputReport :=
+              (sourceBadge => 0,
+               sequence    => pointerSequence,
+               generation  => 1,
+               device      => RELATIVE_POINTER,
+               delivery    => ACCUMULABLE_DISPLACEMENT,
+               flags       => (RESYNCHRONIZE => pointerResyncPending),
+               payload     => packed,
+               snapshot    => Unsigned_64 (buttons));
+            accepted := trySendEvent
+              (mouseConsumer, Encode (inputReport));
+            pointerResyncPending := not accepted;
             lastButtons := buttons;
          end if;
       end if;

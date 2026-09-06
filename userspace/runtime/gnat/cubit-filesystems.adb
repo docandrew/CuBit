@@ -112,21 +112,47 @@ is
                       3 => 0));
    end Seek_Request;
 
-   function Read_Directory_Request
+   function Open_Directory_Request
      (loan       : CuBit.Memory_Grants.Grant_Reference;
-      pathLength : Path_Byte_Count;
-      capacity   : Unsigned_64) return CuBit.Messages.Message
+      pathLength : Path_Byte_Count) return CuBit.Messages.Message
    is
    begin
       return
-        (tag      => (label => OP_READDIR, length => 4,
+        (tag      => (label => OP_OPEN_DIRECTORY, length => 3,
                        flags => 0, badge => 0),
          capBadge => 0,
          words    => (0 => loan.slot,
                       1 => Unsigned_64 (pathLength),
-                      2 => capacity,
+                      2 => loan.generation,
+                      3 => 0));
+   end Open_Directory_Request;
+
+   function Read_Directory_Page_Request
+     (handle : Directory_Handle;
+      loan   : CuBit.Memory_Grants.Grant_Reference)
+      return CuBit.Messages.Message
+   is
+   begin
+      return
+        (tag      => (label => OP_READ_DIRECTORY_PAGE, length => 4,
+                       flags => 0, badge => 0),
+         capBadge => 0,
+         words    => (0 => Unsigned_64 (handle),
+                      1 => loan.slot,
+                      2 => Unsigned_64 (PROTOCOL_VERSION),
                       3 => loan.generation));
-   end Read_Directory_Request;
+   end Read_Directory_Page_Request;
+
+   function Close_Directory_Request
+     (handle : Directory_Handle) return CuBit.Messages.Message
+   is
+   begin
+      return
+        (tag      => (label => OP_CLOSE_DIRECTORY, length => 1,
+                       flags => 0, badge => 0),
+         capBadge => 0,
+         words    => (0 => Unsigned_64 (handle), others => 0));
+   end Close_Directory_Request;
 
    function Rename_Request
      (loan          : CuBit.Memory_Grants.Grant_Reference;

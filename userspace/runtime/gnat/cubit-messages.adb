@@ -73,6 +73,26 @@ package body CuBit.Messages is
       from := syscall (SYSCALL_RECEIVE, toNum (msg'Address));
    end receive;
 
+   procedure receiveUntil
+     (deadlineMs : Unsigned_64;
+      from       : out ProcessID;
+      msg        : out Message;
+      received   : out Boolean)
+   is
+      result : constant Unsigned_64 :=
+        syscall
+          (SYSCALL_RECEIVE_UNTIL_MONOTONIC_MILLISECOND,
+           toNum (msg'Address), deadlineMs);
+   begin
+      if result = Unsigned_64'Last then
+         from := 0;
+         received := False;
+      else
+         from := result;
+         received := True;
+      end if;
+   end receiveUntil;
+
    --  reply
    --  REPLY: RDI=dest, RSI=tag, RDX=w0, R10=w1, R8=w2, R9=w3
 
@@ -271,6 +291,17 @@ package body CuBit.Messages is
                           msg.words (2),
                           msg.words (3));
    end sendEvent;
+
+   function trySendEvent (dest : ProcessID; msg : Message) return Boolean is
+   begin
+      return syscall (SYSCALL_SEND_EVENT,
+                      dest,
+                      tagToU64 (msg.tag),
+                      msg.words (0),
+                      msg.words (1),
+                      msg.words (2),
+                      msg.words (3)) = 1;
+   end trySendEvent;
 
    --  Wait_Event
    --  RECEIVE_EVENT: no args; returns the event tag in RAX.

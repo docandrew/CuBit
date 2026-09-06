@@ -137,6 +137,18 @@ package CuBit.UI is
    type Button_Style is (Button_Normal, Button_Hot, Button_Pressed,
                          Button_Disabled, Button_Active);
 
+   --  Semantic pointer feedback.  These representation values are also used
+   --  by the desktop surface protocol; applications request a meaning rather
+   --  than supplying compositor-specific cursor pixels.
+   type Pointer_Cursor_Style is
+     (Pointer_Default, Pointer_Text, Pointer_Resize_Horizontal,
+      Pointer_Resize_Vertical, Pointer_Resize_Diagonal);
+   for Pointer_Cursor_Style use
+     (Pointer_Default => 0, Pointer_Text => 1,
+      Pointer_Resize_Horizontal => 2, Pointer_Resize_Vertical => 3,
+      Pointer_Resize_Diagonal => 4);
+   for Pointer_Cursor_Style'Size use 8;
+
    type Pointer_State is record
       x : Natural := 0;
       y : Natural := 0;
@@ -289,9 +301,47 @@ package CuBit.UI is
       (c : Canvas; r : Rect; colors : Theme;
        minValue, maxValue, value : Natural;
        hot : Boolean; active : Boolean);
+   type Horizontal_Slider_Layout is record
+      track         : Rect := (others => 0);
+      thumb         : Rect := (others => 0);
+      minimumThumbX : Natural := 0;
+      maximumThumbX : Natural := 0;
+   end record;
+   function Layout_Horizontal_Slider
+      (r : Rect;
+       minValue, maxValue, value : Natural) return Horizontal_Slider_Layout;
    type Scrollbar_Part is
      (Scrollbar_None, Scrollbar_Decrement, Scrollbar_Thumb,
       Scrollbar_Increment, Scrollbar_Track);
+   type Vertical_Scrollbar_Layout is record
+      decrementButton : Rect := (others => 0);
+      incrementButton : Rect := (others => 0);
+      trackFrame      : Rect := (others => 0);
+      track           : Rect := (others => 0);
+      thumb           : Rect := (others => 0);
+      maximumValue    : Natural := 0;
+   end record;
+   type Horizontal_Scrollbar_Layout is record
+      decrementButton : Rect := (others => 0);
+      incrementButton : Rect := (others => 0);
+      trackFrame      : Rect := (others => 0);
+      track           : Rect := (others => 0);
+      thumb           : Rect := (others => 0);
+      maximumValue    : Natural := 0;
+   end record;
+   function Layout_Vertical_Scrollbar
+      (r : Rect;
+       minValue, maxValue, value : Natural;
+       pageSize : Positive := 1) return Vertical_Scrollbar_Layout;
+   function Layout_Horizontal_Scrollbar
+      (r : Rect;
+       minValue, maxValue, value : Natural;
+       pageSize : Positive := 1) return Horizontal_Scrollbar_Layout;
+   procedure Apply_Wheel_Scroll
+       (value : in out Natural;
+       minValue, maxValue : Natural;
+       wheelDelta : Integer;
+       step : Positive := 3);
    procedure Draw_Vertical_Scrollbar
       (c : Canvas; r : Rect; colors : Theme;
        minValue, maxValue, value : Natural;

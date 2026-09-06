@@ -253,7 +253,21 @@ package CuBit.UI.Widgets is
        colors : CuBit.UI.Theme;
        minValue, maxValue : Natural;
        value : in out Natural;
-       result : out CuBit.UI.Widget_Result);
+       result : out CuBit.UI.Widget_Result;
+       pageSize : Positive := 1);
+
+   procedure Horizontal_Scrollbar
+      (c : CuBit.UI.Canvas;
+       st : in out CuBit.UI.State.UI_State;
+       controls : in out CuBit.UI.Controls.Control_Map;
+       id : CuBit.UI.Controls.Control_ID;
+       bounds : CuBit.UI.Rect;
+       damage : CuBit.UI.Rect;
+       colors : CuBit.UI.Theme;
+       minValue, maxValue : Natural;
+       value : in out Natural;
+       result : out CuBit.UI.Widget_Result;
+       pageSize : Positive := 1);
 
    procedure Text_Field
       (c : CuBit.UI.Canvas;

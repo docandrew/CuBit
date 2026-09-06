@@ -1,4 +1,7 @@
 with Ada.Text_IO;
+with CuBit.UI.Controls;
+with CuBit.UI.State;
+with CuBit.UI.Trees;
 with CuBit.UI.Editor;
 with CuBit.UI.Editor.Cursors;
 with CuBit.UI.Editor.Documents;
@@ -14,6 +17,8 @@ procedure Main is
    use type CuBit.UI.Editor.Documents.Edit_Result;
    use type CuBit.UI.Editor.Buffers.Append_Result;
    use type CuBit.UI.Editor.Search.Search_Status;
+   use type CuBit.UI.Scrollbar_Part;
+   use type CuBit.UI.Rect;
    State : Edit_State;
    Accepted : Boolean;
    Changed : Boolean;
@@ -30,7 +35,314 @@ procedure Main is
    Buffer : CuBit.UI.Editor.Buffers.Candidate_Buffer (8);
    Buffer_Result : CuBit.UI.Editor.Buffers.Append_Result;
    Search : CuBit.UI.Editor.Search.Search_Result;
+   Widget_State : CuBit.UI.State.UI_State;
+   Widget_Result : CuBit.UI.Widget_Result;
+   Widget_Bounds : constant CuBit.UI.Rect :=
+     (x => 10, y => 10, w => 20, h => 20);
+   Scrollbar_State : CuBit.UI.State.UI_State;
+   Scrollbar_Value : Natural := 0;
+   Scrollbar_Bounds : constant CuBit.UI.Rect :=
+     (x => 40, y => 10, w => 16, h => 180);
+   Scrollbar_Layout : CuBit.UI.Vertical_Scrollbar_Layout;
+   Horizontal_State : CuBit.UI.State.UI_State;
+   Horizontal_Value : Natural := 1;
+   Horizontal_Bounds : constant CuBit.UI.Rect :=
+     (x => 10, y => 210, w => 220, h => 16);
+   Horizontal_Layout : CuBit.UI.Horizontal_Scrollbar_Layout;
+   Slider_State : CuBit.UI.State.UI_State;
+   Slider_Value : Natural := 50;
+   Slider_Bounds : constant CuBit.UI.Rect :=
+     (x => 10, y => 300, w => 200, h => 20);
+   Slider_Layout : CuBit.UI.Horizontal_Slider_Layout;
+   Control_Map : CuBit.UI.Controls.Control_Map;
+   Tree_State : CuBit.UI.State.UI_State;
+   Tree_Controls : CuBit.UI.Controls.Control_Map;
+   Tree_Selected : Natural := 1;
+   Tree_Result : CuBit.UI.Widget_Result;
+   Null_Canvas : CuBit.UI.Canvas;
+   Tree_Damage : constant CuBit.UI.Rect :=
+     (x => 0, y => 0, w => 240, h => 80);
+   Tree_Row_One : constant CuBit.UI.Rect :=
+     (x => 0, y => 0, w => 240, h => 20);
+   Tree_Row_Two : constant CuBit.UI.Rect :=
+     (x => 0, y => 20, w => 240, h => 20);
+   Identity_State : CuBit.UI.State.UI_State;
+   Decoy_Result : CuBit.UI.Widget_Result;
+   Target_Result : CuBit.UI.Widget_Result;
+   Text_State : CuBit.UI.State.UI_State;
+   Short_Field : constant CuBit.UI.Rect :=
+     (x => 10, y => 240, w => 120, h => 24);
+   Long_Field : constant CuBit.UI.Rect :=
+     (x => 10, y => 270, w => 220, h => 24);
 begin
+   --  Held motion only invalidates controls that continuously manipulate a
+   --  value.  Ordinary rows and buttons must not repaint their containing
+   --  view for every input packet.
+   CuBit.UI.Controls.Clear (Control_Map);
+   CuBit.UI.Controls.Add
+     (Control_Map, 1, Widget_Bounds, Widget_Bounds);
+   CuBit.UI.Controls.Add
+     (Control_Map, 2, Scrollbar_Bounds, Scrollbar_Bounds,
+      continuousAction => True);
+   pragma Assert (not CuBit.UI.Controls.Has_Continuous_Action (Control_Map, 1));
+   pragma Assert (CuBit.UI.Controls.Has_Continuous_Action (Control_Map, 2));
+
+   --  Capture belongs to the control under the physical press. Merely moving
+   --  into a control while another region owns a held button must not begin a
+   --  drag transaction.
+   CuBit.UI.State.Set_Pointer
+     (Widget_State, 2, 2, True, pressed => True);
+   CuBit.UI.State.Begin_Frame (Widget_State);
+   Widget_Result := CuBit.UI.State.Button (Widget_State, Widget_Bounds);
+   pragma Assert (not Widget_Result.activated);
+   CuBit.UI.State.Finish_Frame (Widget_State);
+   pragma Assert (not Widget_Result.active);
+   CuBit.UI.State.Set_Pointer (Widget_State, 15, 15, True);
+   CuBit.UI.State.Begin_Frame (Widget_State);
+   Widget_Result := CuBit.UI.State.Button (Widget_State, Widget_Bounds);
+   pragma Assert
+     (not Widget_Result.active and then
+      not CuBit.UI.State.Is_Last_Widget_Captured (Widget_State));
+   CuBit.UI.State.Finish_Frame (Widget_State);
+   CuBit.UI.State.Set_Pointer
+     (Widget_State, 15, 15, False, released => True);
+   CuBit.UI.State.Begin_Frame (Widget_State);
+   Widget_Result := CuBit.UI.State.Button (Widget_State, Widget_Bounds);
+   pragma Assert (not Widget_Result.activated);
+   CuBit.UI.State.Finish_Frame (Widget_State);
+
+   CuBit.UI.State.Set_Pointer
+     (Widget_State, 15, 15, True, pressed => True);
+   CuBit.UI.State.Begin_Frame (Widget_State);
+   Widget_Result := CuBit.UI.State.Button (Widget_State, Widget_Bounds);
+   pragma Assert
+     (Widget_Result.active and then
+      CuBit.UI.State.Is_Last_Widget_Captured (Widget_State));
+   CuBit.UI.State.Finish_Frame (Widget_State);
+   CuBit.UI.State.Set_Pointer (Widget_State, 40, 15, True);
+   CuBit.UI.State.Begin_Frame (Widget_State);
+   Widget_Result := CuBit.UI.State.Button (Widget_State, Widget_Bounds);
+   pragma Assert
+     (not Widget_Result.active and then
+      CuBit.UI.State.Is_Last_Widget_Captured (Widget_State));
+   CuBit.UI.State.Finish_Frame (Widget_State);
+
+   --  Explicit IDs make capture independent of render order.  Inserting a
+   --  sibling while the pointer is held must not transfer the transaction.
+   CuBit.UI.State.Set_Pointer
+     (Identity_State, 15, 15, True, pressed => True);
+   CuBit.UI.State.Begin_Frame (Identity_State);
+   Target_Result := CuBit.UI.State.Button
+     (Identity_State, Widget_Bounds, CuBit.UI.State.Widget_ID'(20));
+   pragma Assert (Target_Result.active);
+   CuBit.UI.State.Finish_Frame (Identity_State);
+   CuBit.UI.State.Set_Pointer (Identity_State, 15, 15, True);
+   CuBit.UI.State.Begin_Frame (Identity_State);
+   Decoy_Result := CuBit.UI.State.Button
+     (Identity_State, Widget_Bounds, CuBit.UI.State.Widget_ID'(10));
+   Target_Result := CuBit.UI.State.Button
+     (Identity_State, Widget_Bounds, CuBit.UI.State.Widget_ID'(20));
+   pragma Assert (not Decoy_Result.active and then Target_Result.active);
+   CuBit.UI.State.Finish_Frame (Identity_State);
+   CuBit.UI.State.Set_Pointer
+     (Identity_State, 15, 15, False, released => True);
+   CuBit.UI.State.Begin_Frame (Identity_State);
+   Decoy_Result := CuBit.UI.State.Button
+     (Identity_State, Widget_Bounds, CuBit.UI.State.Widget_ID'(10));
+   Target_Result := CuBit.UI.State.Button
+     (Identity_State, Widget_Bounds, CuBit.UI.State.Widget_ID'(20));
+   pragma Assert
+     (not Decoy_Result.activated and then Target_Result.activated);
+   CuBit.UI.State.Finish_Frame (Identity_State);
+
+   --  Only the focused text field owns the shared caret and selection state.
+   --  Rendering a shorter sibling first must not clamp that caret.
+   CuBit.UI.State.Set_Pointer
+     (Text_State, Long_Field.x + 10, Long_Field.y + 4,
+      True, pressed => True);
+   CuBit.UI.State.Begin_Frame (Text_State);
+   Decoy_Result := CuBit.UI.State.Text_Field
+     (Text_State, Short_Field, "x", CuBit.UI.State.Widget_ID'(30));
+   pragma Assert (not Decoy_Result.active);
+   Target_Result := CuBit.UI.State.Text_Field
+     (Text_State, Long_Field, "0123456789",
+      CuBit.UI.State.Widget_ID'(31));
+   pragma Assert (Target_Result.active);
+   Text_State.textCursor := 8;
+   Text_State.textSelectionStart := 8;
+   Text_State.textSelectionEnd := 8;
+   Text_State.textSelectionAnchor := 8;
+   CuBit.UI.State.Finish_Frame (Text_State);
+   CuBit.UI.State.Set_Pointer
+     (Text_State, Long_Field.x + 10, Long_Field.y + 4, False,
+      released => True);
+   CuBit.UI.State.Begin_Frame (Text_State);
+   Decoy_Result := CuBit.UI.State.Text_Field
+     (Text_State, Short_Field, "x", CuBit.UI.State.Widget_ID'(30));
+   pragma Assert (Text_State.textCursor = 8);
+   Target_Result := CuBit.UI.State.Text_Field
+     (Text_State, Long_Field, "0123456789",
+      CuBit.UI.State.Widget_ID'(31));
+   pragma Assert (Text_State.textCursor = 8);
+   CuBit.UI.State.Finish_Frame (Text_State);
+
+   --  Interaction and drawing share one scrollbar layout: arrow clicks move
+   --  one row, the thumb retains its grab offset, and wheel steps clamp.
+   Scrollbar_Layout := CuBit.UI.Layout_Vertical_Scrollbar
+     (Scrollbar_Bounds, 0, 24, Scrollbar_Value, 17);
+   CuBit.UI.State.Set_Pointer
+     (Scrollbar_State,
+      Scrollbar_Layout.incrementButton.x + 2,
+      Scrollbar_Layout.incrementButton.y + 2,
+      True, pressed => True);
+   CuBit.UI.State.Begin_Frame (Scrollbar_State);
+   Widget_Result := CuBit.UI.State.Vertical_Scrollbar
+     (Scrollbar_State, Scrollbar_Bounds, Scrollbar_Value, 0, 24, 17);
+   pragma Assert
+     (Widget_Result.active and then Scrollbar_Value = 1 and then
+      CuBit.UI.State.Active_Scrollbar_Part (Scrollbar_State) =
+        CuBit.UI.Scrollbar_Increment);
+   CuBit.UI.State.Finish_Frame (Scrollbar_State);
+   CuBit.UI.State.Set_Pointer
+     (Scrollbar_State,
+      Scrollbar_Layout.incrementButton.x + 2,
+      Scrollbar_Layout.incrementButton.y + 2,
+      False, released => True);
+   CuBit.UI.State.Begin_Frame (Scrollbar_State);
+   Widget_Result := CuBit.UI.State.Vertical_Scrollbar
+     (Scrollbar_State, Scrollbar_Bounds, Scrollbar_Value, 0, 24, 17);
+   pragma Assert (not Widget_Result.active);
+   CuBit.UI.State.Finish_Frame (Scrollbar_State);
+
+   Scrollbar_Value := 0;
+   Scrollbar_Layout := CuBit.UI.Layout_Vertical_Scrollbar
+     (Scrollbar_Bounds, 0, 24, Scrollbar_Value, 17);
+   CuBit.UI.State.Set_Pointer
+     (Scrollbar_State,
+      Scrollbar_Layout.thumb.x + 1,
+      Scrollbar_Layout.thumb.y + Scrollbar_Layout.thumb.h / 2,
+      True, pressed => True);
+   CuBit.UI.State.Begin_Frame (Scrollbar_State);
+   Widget_Result := CuBit.UI.State.Vertical_Scrollbar
+     (Scrollbar_State, Scrollbar_Bounds, Scrollbar_Value, 0, 24, 17);
+   pragma Assert
+     (Widget_Result.active and then Scrollbar_Value = 0 and then
+      CuBit.UI.State.Active_Scrollbar_Part (Scrollbar_State) =
+        CuBit.UI.Scrollbar_Thumb);
+   CuBit.UI.State.Finish_Frame (Scrollbar_State);
+   CuBit.UI.State.Set_Pointer
+     (Scrollbar_State,
+      Scrollbar_Layout.thumb.x + 1,
+      Scrollbar_Layout.track.y + Scrollbar_Layout.track.h - 1,
+      True);
+   CuBit.UI.State.Begin_Frame (Scrollbar_State);
+   Widget_Result := CuBit.UI.State.Vertical_Scrollbar
+     (Scrollbar_State, Scrollbar_Bounds, Scrollbar_Value, 0, 24, 17);
+   pragma Assert (Widget_Result.active and then Scrollbar_Value = 8);
+   CuBit.UI.State.Finish_Frame (Scrollbar_State);
+
+   CuBit.UI.Apply_Wheel_Scroll (Scrollbar_Value, 0, 8, 1);
+   pragma Assert (Scrollbar_Value = 5);
+   CuBit.UI.Apply_Wheel_Scroll (Scrollbar_Value, 0, 8, -1);
+   pragma Assert (Scrollbar_Value = 8);
+
+   Horizontal_Layout := CuBit.UI.Layout_Horizontal_Scrollbar
+     (Horizontal_Bounds, 1, 40, Horizontal_Value, 12);
+   CuBit.UI.State.Set_Pointer
+     (Horizontal_State,
+      Horizontal_Layout.incrementButton.x + 2,
+      Horizontal_Layout.incrementButton.y + 2,
+      True, pressed => True);
+   CuBit.UI.State.Begin_Frame (Horizontal_State);
+   Widget_Result := CuBit.UI.State.Horizontal_Scrollbar
+     (Horizontal_State, Horizontal_Bounds, Horizontal_Value, 1, 40, 12);
+   pragma Assert
+     (Widget_Result.active and then Horizontal_Value = 2 and then
+      CuBit.UI.State.Active_Scrollbar_Part (Horizontal_State) =
+        CuBit.UI.Scrollbar_Increment);
+   CuBit.UI.State.Finish_Frame (Horizontal_State);
+
+   --  Slider rendering and dragging use identical thumb geometry and retain
+   --  the press offset rather than jumping under the pointer.
+   Slider_Layout := CuBit.UI.Layout_Horizontal_Slider
+     (Slider_Bounds, 0, 100, Slider_Value);
+   CuBit.UI.State.Set_Pointer
+     (Slider_State, Slider_Layout.thumb.x + 2, Slider_Layout.thumb.y + 2,
+      True, pressed => True);
+   CuBit.UI.State.Begin_Frame (Slider_State);
+   Widget_Result := CuBit.UI.State.Horizontal_Slider
+     (Slider_State, Slider_Bounds, Slider_Value, 0, 100);
+   pragma Assert (Widget_Result.active and then Slider_Value = 50);
+   CuBit.UI.State.Finish_Frame (Slider_State);
+   CuBit.UI.State.Set_Pointer
+     (Slider_State, Slider_Layout.maximumThumbX + 2,
+      Slider_Layout.thumb.y + 2, True);
+   CuBit.UI.State.Begin_Frame (Slider_State);
+   Widget_Result := CuBit.UI.State.Horizontal_Slider
+     (Slider_State, Slider_Bounds, Slider_Value, 0, 100);
+   pragma Assert (Widget_Result.active and then Slider_Value = 100);
+   CuBit.UI.State.Finish_Frame (Slider_State);
+
+   --  Registration and state evaluation use the same clipped bounds.
+   CuBit.UI.Controls.Clear (Control_Map);
+   CuBit.UI.Controls.Add
+     (Control_Map, 1, Widget_Bounds,
+      (x => 20, y => 10, w => 20, h => 20));
+   pragma Assert
+     (CuBit.UI.Controls.Is_Valid (Control_Map) and then
+      CuBit.UI.Controls.Bounds (Control_Map, 1) =
+        (x => 20, y => 10, w => 10, h => 20) and then
+      CuBit.UI.Controls.Hit (Control_Map, 15, 15) =
+        CuBit.UI.Controls.NO_CONTROL and then
+      CuBit.UI.Controls.Hit (Control_Map, 25, 15) = 1);
+
+   --  A duplicate live control ID invalidates the bounded map, and invalid
+   --  maps cannot return a hit or damage owner.
+   CuBit.UI.Controls.Add
+     (Control_Map, 1, Slider_Bounds, Slider_Bounds);
+   pragma Assert
+     (not CuBit.UI.Controls.Is_Valid (Control_Map) and then
+      CuBit.UI.Controls.Hit (Control_Map, 15, 15) =
+        CuBit.UI.Controls.NO_CONTROL);
+
+   --  Group selection changes request a stable follow-up render. Without it,
+   --  a previously selected row drawn before the clicked row remains painted.
+   CuBit.UI.State.Set_Pointer
+     (Tree_State, 10, 25, True, pressed => True);
+   CuBit.UI.State.Begin_Frame (Tree_State);
+   CuBit.UI.Controls.Clear (Tree_Controls);
+   CuBit.UI.Trees.Tree_Item
+     (Null_Canvas, Tree_State, Tree_Controls, 40, Tree_Row_One,
+      Tree_Damage, CuBit.UI.CuBit_Alloy, "one", 1, Tree_Selected,
+      result => Tree_Result);
+   pragma Assert (not Tree_Result.active);
+   CuBit.UI.Trees.Tree_Item
+     (Null_Canvas, Tree_State, Tree_Controls, 41, Tree_Row_Two,
+      Tree_Damage, CuBit.UI.CuBit_Alloy, "two", 2, Tree_Selected,
+      result => Tree_Result);
+   pragma Assert (Tree_Result.active and then Tree_Selected = 1);
+   CuBit.UI.State.Finish_Frame (Tree_State);
+   CuBit.UI.State.Set_Pointer
+     (Tree_State, 10, 25, False, released => True);
+   CuBit.UI.State.Begin_Frame (Tree_State);
+   CuBit.UI.Controls.Clear (Tree_Controls);
+   CuBit.UI.Trees.Tree_Item
+     (Null_Canvas, Tree_State, Tree_Controls, 40, Tree_Row_One,
+      Tree_Damage, CuBit.UI.CuBit_Alloy, "one", 1, Tree_Selected,
+      result => Tree_Result);
+   CuBit.UI.Trees.Tree_Item
+     (Null_Canvas, Tree_State, Tree_Controls, 41, Tree_Row_Two,
+      Tree_Damage, CuBit.UI.CuBit_Alloy, "two", 2, Tree_Selected,
+      result => Tree_Result);
+   pragma Assert
+     (Tree_Result.activated and then Tree_Selected = 2 and then
+      CuBit.UI.State.Followup_Render_Requested (Tree_State));
+   CuBit.UI.State.Finish_Frame (Tree_State);
+   CuBit.UI.State.Begin_Frame (Tree_State);
+   pragma Assert
+     (not CuBit.UI.State.Followup_Render_Requested (Tree_State));
+   CuBit.UI.State.Finish_Frame (Tree_State);
+
    Initialize (State, "alpha beta", Accepted);
    pragma Assert (Accepted and then Cursor (State) = 11);
 

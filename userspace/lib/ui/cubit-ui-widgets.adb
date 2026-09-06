@@ -17,39 +17,6 @@ package body CuBit.UI.Widgets is
       return CuBit.UI.With_Clip (c, parent);
    end Parent_Canvas;
 
-   function Intersect
-      (a, b : CuBit.UI.Rect) return CuBit.UI.Rect
-   is
-      x1 : Natural;
-      y1 : Natural;
-      x2 : Natural;
-      y2 : Natural;
-   begin
-      if CuBit.UI.Is_Empty (a) or else CuBit.UI.Is_Empty (b) then
-         return (others => 0);
-      end if;
-
-      x1 := Natural'Max (a.x, b.x);
-      y1 := Natural'Max (a.y, b.y);
-      x2 := Natural'Min (a.x + a.w, b.x + b.w);
-      y2 := Natural'Min (a.y + a.h, b.y + b.h);
-
-      if x1 >= x2 or else y1 >= y2 then
-         return (others => 0);
-      end if;
-      return (x => x1, y => y1, w => x2 - x1, h => y2 - y1);
-   end Intersect;
-
-   function State_Bounds
-      (bounds, parent : CuBit.UI.Rect) return CuBit.UI.Rect
-   is
-   begin
-      if CuBit.UI.Is_Empty (parent) then
-         return bounds;
-      end if;
-      return Intersect (bounds, parent);
-   end State_Bounds;
-
    procedure Label
       (c : CuBit.UI.Canvas;
        bounds : CuBit.UI.Rect;
@@ -359,6 +326,7 @@ package body CuBit.UI.Widgets is
       result : CuBit.UI.Widget_Result;
       light : CuBit.UI.Color := colors.edge;
       dark : CuBit.UI.Color := colors.shadow;
+      canResize : Boolean := False;
 
       procedure Assign_Rects is
       begin
@@ -395,18 +363,29 @@ package body CuBit.UI.Widgets is
                     else 0);
       end if;
 
-      if usable <= minFirst + minSecond then
+      if minFirst >= usable or else minSecond >= usable - minFirst then
          position := usable / 2;
       else
          maxPos := usable - minSecond;
          position := Clamp_Natural (position, minFirst, maxPos);
+         canResize := True;
       end if;
 
       Assign_Rects;
 
-      CuBit.UI.Controls.Add (controls, id, split, damage);
-      result := CuBit.UI.State.Button (st, split);
-      if result.active then
+      result := (others => False);
+      if canResize then
+         CuBit.UI.Controls.Add
+           (controls, id, split, damage,
+            (if vertical then CuBit.UI.Pointer_Resize_Horizontal
+             else CuBit.UI.Pointer_Resize_Vertical),
+            continuousAction => True);
+         result := CuBit.UI.State.Button
+           (st, CuBit.UI.Controls.Bounds (controls, id),
+            CuBit.UI.State.Widget_ID (id));
+      end if;
+      if canResize and then CuBit.UI.State.Is_Last_Widget_Captured (st) then
+         result.active := True;
          if vertical then
             if st.pointer.x > bounds.x then
                position := Clamp_Natural (st.pointer.x - bounds.x,
@@ -423,7 +402,7 @@ package body CuBit.UI.Widgets is
          Assign_Rects;
       end if;
 
-      if result.active then
+      if canResize and then CuBit.UI.State.Is_Last_Widget_Captured (st) then
          light := colors.shadow;
          dark := colors.edge;
       elsif result.hot then
@@ -472,7 +451,10 @@ package body CuBit.UI.Widgets is
 
       Vertical_Scrollbar
         (c, st, controls, id, scrollBar, damage, colors,
-         0, maxScroll, scrollY, result);
+         0,
+         (if contentHeight > 0 then contentHeight - 1 else 0),
+         scrollY, result,
+         pageSize => Positive'Max (1, viewport.h));
 
       contentOriginY := viewport.y;
       if scrollY < contentOriginY then
@@ -495,10 +477,11 @@ package body CuBit.UI.Widgets is
    is
       style : CuBit.UI.Button_Style;
       pc : constant CuBit.UI.Canvas := Parent_Canvas (c, damage);
-      hitBounds : constant CuBit.UI.Rect := State_Bounds (bounds, damage);
    begin
       CuBit.UI.Controls.Add (controls, id, bounds, damage);
-      result := CuBit.UI.State.Button (st, hitBounds);
+      result := CuBit.UI.State.Button
+        (st, CuBit.UI.Controls.Bounds (controls, id),
+         CuBit.UI.State.Widget_ID (id));
       style :=
          (if result.active then CuBit.UI.Button_Pressed
           elsif result.hot then CuBit.UI.Button_Hot
@@ -536,10 +519,11 @@ package body CuBit.UI.Widgets is
        result : out CuBit.UI.Widget_Result)
    is
       pc : constant CuBit.UI.Canvas := Parent_Canvas (c, damage);
-      hitBounds : constant CuBit.UI.Rect := State_Bounds (bounds, damage);
    begin
       CuBit.UI.Controls.Add (controls, id, bounds, damage);
-      result := CuBit.UI.State.Checkbox (st, hitBounds, checked);
+      result := CuBit.UI.State.Checkbox
+        (st, CuBit.UI.Controls.Bounds (controls, id), checked,
+         CuBit.UI.State.Widget_ID (id));
       CuBit.UI.Draw_Checkbox
         (pc, bounds, colors, checked, result.hot, result.active);
    end Checkbox;
@@ -558,12 +542,14 @@ package body CuBit.UI.Widgets is
        result : out CuBit.UI.Widget_Result)
    is
       pc : constant CuBit.UI.Canvas := Parent_Canvas (c, damage);
-      hitBounds : constant CuBit.UI.Rect := State_Bounds (bounds, damage);
    begin
       CuBit.UI.Controls.Add (controls, id, bounds, damage);
-      result := CuBit.UI.State.Button (st, hitBounds);
-      if result.activated then
+      result := CuBit.UI.State.Button
+        (st, CuBit.UI.Controls.Bounds (controls, id),
+         CuBit.UI.State.Widget_ID (id));
+      if result.activated and then value /= selectedValue then
          value := selectedValue;
+         CuBit.UI.State.Request_Followup_Render (st);
       end if;
       CuBit.UI.Draw_Radio_Button
         (pc, bounds, colors, value = selectedValue,
@@ -584,12 +570,14 @@ package body CuBit.UI.Widgets is
        result : out CuBit.UI.Widget_Result)
    is
       pc : constant CuBit.UI.Canvas := Parent_Canvas (c, damage);
-      hitBounds : constant CuBit.UI.Rect := State_Bounds (bounds, damage);
    begin
       CuBit.UI.Controls.Add (controls, id, bounds, damage);
-      result := CuBit.UI.State.Button (st, hitBounds);
-      if result.activated then
+      result := CuBit.UI.State.Button
+        (st, CuBit.UI.Controls.Bounds (controls, id),
+         CuBit.UI.State.Widget_ID (id));
+      if result.activated and then selectedIndex /= itemIndex then
          selectedIndex := itemIndex;
+         CuBit.UI.State.Request_Followup_Render (st);
       end if;
       CuBit.UI.Draw_List_Item
         (pc, bounds, colors, selectedIndex = itemIndex, result.hot, label);
@@ -608,11 +596,12 @@ package body CuBit.UI.Widgets is
        result : out CuBit.UI.Widget_Result)
    is
       pc : constant CuBit.UI.Canvas := Parent_Canvas (c, damage);
-      hitBounds : constant CuBit.UI.Rect := State_Bounds (bounds, damage);
    begin
       if enabled then
          CuBit.UI.Controls.Add (controls, id, bounds, damage);
-         result := CuBit.UI.State.Button (st, hitBounds);
+         result := CuBit.UI.State.Button
+           (st, CuBit.UI.Controls.Bounds (controls, id),
+            CuBit.UI.State.Widget_ID (id));
       else
          result := (others => False);
       end if;
@@ -633,10 +622,11 @@ package body CuBit.UI.Widgets is
        result : out CuBit.UI.Widget_Result)
    is
       pc : constant CuBit.UI.Canvas := Parent_Canvas (c, damage);
-      hitBounds : constant CuBit.UI.Rect := State_Bounds (bounds, damage);
    begin
       CuBit.UI.Controls.Add (controls, id, bounds, damage);
-      result := CuBit.UI.State.Button (st, hitBounds);
+      result := CuBit.UI.State.Button
+        (st, CuBit.UI.Controls.Bounds (controls, id),
+         CuBit.UI.State.Widget_ID (id));
       CuBit.UI.Draw_Menu_Title
         (pc, bounds, colors, result.hot, open or else result.active, label);
    end Menu_Title;
@@ -655,12 +645,14 @@ package body CuBit.UI.Widgets is
        result : out CuBit.UI.Widget_Result)
    is
       pc : constant CuBit.UI.Canvas := Parent_Canvas (c, damage);
-      hitBounds : constant CuBit.UI.Rect := State_Bounds (bounds, damage);
    begin
       CuBit.UI.Controls.Add (controls, id, bounds, damage);
-      result := CuBit.UI.State.Button (st, hitBounds);
-      if result.activated then
+      result := CuBit.UI.State.Button
+        (st, CuBit.UI.Controls.Bounds (controls, id),
+         CuBit.UI.State.Widget_ID (id));
+      if result.activated and then selectedIndex /= rowIndex then
          selectedIndex := rowIndex;
+         CuBit.UI.State.Request_Followup_Render (st);
       end if;
       CuBit.UI.Draw_Table_Row
         (pc, bounds, colors, selectedIndex = rowIndex, result.hot, c1, c2, c3);
@@ -680,12 +672,14 @@ package body CuBit.UI.Widgets is
        result : out CuBit.UI.Widget_Result)
    is
       pc : constant CuBit.UI.Canvas := Parent_Canvas (c, damage);
-      hitBounds : constant CuBit.UI.Rect := State_Bounds (bounds, damage);
    begin
       CuBit.UI.Controls.Add (controls, id, bounds, damage);
-      result := CuBit.UI.State.Button (st, hitBounds);
-      if result.activated then
+      result := CuBit.UI.State.Button
+        (st, CuBit.UI.Controls.Bounds (controls, id),
+         CuBit.UI.State.Widget_ID (id));
+      if result.activated and then selectedIndex /= tabIndex then
          selectedIndex := tabIndex;
+         CuBit.UI.State.Request_Followup_Render (st);
       end if;
       CuBit.UI.Draw_Tab
         (pc, bounds, colors, selectedIndex = tabIndex,
@@ -750,11 +744,13 @@ package body CuBit.UI.Widgets is
             CuBit.UI.Controls.Add (controls, id, tabBounds, damage);
             result :=
                CuBit.UI.State.Button
-                 (st, State_Bounds (tabBounds, damage));
+                 (st, CuBit.UI.Controls.Bounds (controls, id),
+                  CuBit.UI.State.Widget_ID (id));
             if result.activated then
                if selectedIndex /= index then
                   selectedIndex := index;
                   changed := True;
+                  CuBit.UI.State.Request_Followup_Render (st);
                end if;
             end if;
             CuBit.UI.Draw_Tab
@@ -779,12 +775,14 @@ package body CuBit.UI.Widgets is
        result : out CuBit.UI.Widget_Result)
    is
       pc : constant CuBit.UI.Canvas := Parent_Canvas (c, damage);
-      hitBounds : constant CuBit.UI.Rect := State_Bounds (bounds, damage);
    begin
-      CuBit.UI.Controls.Add (controls, id, bounds, damage);
+      CuBit.UI.Controls.Add
+        (controls, id, bounds, damage, continuousAction => True);
       result :=
          CuBit.UI.State.Horizontal_Slider
-           (st, hitBounds, value, minValue, maxValue);
+           (st, CuBit.UI.Controls.Bounds (controls, id),
+            value, minValue, maxValue,
+            CuBit.UI.State.Widget_ID (id));
       CuBit.UI.Draw_Horizontal_Slider
         (pc, bounds, colors, minValue, maxValue, value,
          result.hot, result.active);
@@ -800,19 +798,51 @@ package body CuBit.UI.Widgets is
        colors : CuBit.UI.Theme;
        minValue, maxValue : Natural;
        value : in out Natural;
-       result : out CuBit.UI.Widget_Result)
+       result : out CuBit.UI.Widget_Result;
+       pageSize : Positive := 1)
    is
       pc : constant CuBit.UI.Canvas := Parent_Canvas (c, damage);
-      hitBounds : constant CuBit.UI.Rect := State_Bounds (bounds, damage);
    begin
-      CuBit.UI.Controls.Add (controls, id, bounds, damage);
+      CuBit.UI.Controls.Add
+        (controls, id, bounds, damage, continuousAction => True);
       result :=
          CuBit.UI.State.Vertical_Scrollbar
-           (st, hitBounds, value, minValue, maxValue);
+           (st, CuBit.UI.Controls.Bounds (controls, id),
+            value, minValue, maxValue, pageSize,
+            CuBit.UI.State.Widget_ID (id));
       CuBit.UI.Draw_Vertical_Scrollbar
         (pc, bounds, colors, minValue, maxValue, value,
-         result.hot, result.active);
+         result.hot, result.active, pageSize,
+         CuBit.UI.State.Active_Scrollbar_Part (st));
    end Vertical_Scrollbar;
+
+   procedure Horizontal_Scrollbar
+      (c : CuBit.UI.Canvas;
+       st : in out CuBit.UI.State.UI_State;
+       controls : in out CuBit.UI.Controls.Control_Map;
+       id : CuBit.UI.Controls.Control_ID;
+       bounds : CuBit.UI.Rect;
+       damage : CuBit.UI.Rect;
+       colors : CuBit.UI.Theme;
+       minValue, maxValue : Natural;
+       value : in out Natural;
+       result : out CuBit.UI.Widget_Result;
+       pageSize : Positive := 1)
+   is
+      pc : constant CuBit.UI.Canvas := Parent_Canvas (c, damage);
+   begin
+      CuBit.UI.Controls.Add
+        (controls, id, bounds, damage, continuousAction => True);
+      result :=
+         CuBit.UI.State.Horizontal_Scrollbar
+           (st, CuBit.UI.Controls.Bounds (controls, id),
+            value, minValue, maxValue, pageSize,
+            CuBit.UI.State.Widget_ID (id));
+      CuBit.UI.Draw_Horizontal_Scrollbar
+        (pc, bounds, colors, minValue, maxValue, value,
+         result.hot, result.active, pageSize,
+         CuBit.UI.State.Active_Scrollbar_Part (st));
+   end Horizontal_Scrollbar;
 
    procedure Text_Field
       (c : CuBit.UI.Canvas;
@@ -826,10 +856,12 @@ package body CuBit.UI.Widgets is
        result : out CuBit.UI.Widget_Result)
    is
       pc : constant CuBit.UI.Canvas := Parent_Canvas (c, damage);
-      hitBounds : constant CuBit.UI.Rect := State_Bounds (bounds, damage);
    begin
-      CuBit.UI.Controls.Add (controls, id, bounds, damage);
-      result := CuBit.UI.State.Text_Field (st, hitBounds, text);
+      CuBit.UI.Controls.Add
+        (controls, id, bounds, damage, CuBit.UI.Pointer_Text);
+      result := CuBit.UI.State.Text_Field
+        (st, CuBit.UI.Controls.Bounds (controls, id), text,
+         CuBit.UI.State.Widget_ID (id));
       CuBit.UI.Draw_Text_Edit_Field
         (pc, bounds, colors, text,
          st.textCursor,

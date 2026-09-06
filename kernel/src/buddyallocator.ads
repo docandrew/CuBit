@@ -66,6 +66,7 @@
 --  address using Virtmem.V2P.
 -------------------------------------------------------------------------------
 with System.Storage_Elements; use System.Storage_Elements;
+with Interfaces; use Interfaces;
 
 with BootAllocator;
 with Config;
@@ -270,6 +271,43 @@ is
                     lock                    =>+ null,
                     x86.interruptsEnabled   =>+ null),
         Pre     => isValidBlock(0, To_Address(addr)) and BuddyAllocator.initialized;
+
+    ---------------------------------------------------------------------------
+    -- Frame lifetime pins
+    --
+    -- A pinned order-0 frame cannot return to the allocator.  freeFrame marks
+    -- it for deferred release, and the final unpin performs that release.
+    -- Shared-memory acquisitions use this to keep a dead owner's pages alive
+    -- until the borrower returns the acquisition.
+    ---------------------------------------------------------------------------
+    procedure pinFrame
+      (addr    : in Virtmem.PhysAddress;
+       success : out Boolean) with
+        SPARK_Mode => Off;
+
+    procedure unpinFrame
+      (addr    : in Virtmem.PhysAddress;
+       success : out Boolean) with
+        SPARK_Mode => Off;
+
+    -- Tag userspace-owned frames with their process.  This includes ordinary
+    -- order-0 pages and DMA allocations explicitly assigned to a userspace
+    -- driver; unowned MMIO can therefore never enter the generic grant path.
+    procedure claimUserFrame
+      (addr    : in Virtmem.PhysAddress;
+       owner   : in Unsigned_8;
+       success : out Boolean) with
+        SPARK_Mode => Off;
+
+    procedure releaseUserFrame
+      (addr  : in Virtmem.PhysAddress;
+       owner : in Unsigned_8) with
+        SPARK_Mode => Off;
+
+    function isUserFrameOwnedBy
+      (addr  : Virtmem.PhysAddress;
+       owner : Unsigned_8) return Boolean with
+        SPARK_Mode => Off;
 
     ---------------------------------------------------------------------------
     -- getTotalBytes

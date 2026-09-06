@@ -116,9 +116,12 @@ package body CuBit.UI.Trees is
       clipped : constant CuBit.UI.Canvas := CuBit.UI.With_Clip (c, bounds);
    begin
       CuBit.UI.Controls.Add (controls, id, bounds, damage);
-      result := CuBit.UI.State.Button (st, bounds);
-      if result.activated then
+      result := CuBit.UI.State.Button
+        (st, CuBit.UI.Controls.Bounds (controls, id),
+         CuBit.UI.State.Widget_ID (id));
+      if result.activated and then selectedIndex /= itemIndex then
          selectedIndex := itemIndex;
+         CuBit.UI.State.Request_Followup_Render (st);
       end if;
 
       if selectedIndex = itemIndex then

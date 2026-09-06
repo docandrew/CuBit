@@ -10,6 +10,7 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Input;
 with CuBit.Theme;
 with Desktop_Icons;
 with Desktop_UI_Font;
@@ -18,6 +19,8 @@ with Font8x16;
 
 procedure main is
    use ASCII;
+   use type CuBit.Input.Device_Class;
+   use type CuBit.Input.Delivery_Class;
 
    SYSINFO_FB_WIDTH  : constant Unsigned_64 := 1100;
    SYSINFO_FB_HEIGHT : constant Unsigned_64 := 1101;
@@ -37,10 +40,13 @@ procedure main is
    OP_SURFACE_PRESENT  : constant Unsigned_32 := 16#0812#;
    OP_SURFACE_RESIZE   : constant Unsigned_32 := 16#0813#;
    OP_SURFACE_ATTACH_BUFFER : constant Unsigned_32 := 16#0814#;
+   OP_SURFACE_SET_POINTER_CURSOR : constant Unsigned_32 := 16#0815#;
    OP_WINDOW_SET_LIMITS : constant Unsigned_32 := 16#0841#;
    OP_WINDOW_SET_TITLE  : constant Unsigned_32 := 16#0842#;
    OP_STREAM_AVAILABLE  : constant Unsigned_32 := 16#0706#;
    OP_INPUT_POLL       : constant Unsigned_32 := 16#0821#;
+   OP_INPUT_WAIT       : constant Unsigned_32 := 16#0822#;
+   INPUT_REPLY_MORE_PENDING : constant Unsigned_8 := 1;
 
    OP_DISPLAY_GET_INFO      : constant Unsigned_32 := 16#0900#;
    OP_DISPLAY_ATTACH_BUFFER : constant Unsigned_32 := 16#0901#;
@@ -84,6 +90,7 @@ procedure main is
    INPUT_TEXT      : constant Unsigned_64 := 6;
    INPUT_POINTER_WHEEL : constant Unsigned_64 := 7;
    INPUT_CONFIGURE : constant Unsigned_64 := 8;
+   INPUT_RESYNC    : constant Unsigned_64 := 9;
 
    REQUEST_BUDGET_FRAME : constant Natural := 32;
    REQUEST_BUDGET_IDLE  : constant Natural := 96;
@@ -176,6 +183,15 @@ procedure main is
      (APP_CLIENT => 0, APP_CONSOLE => 1, APP_DOOM => 2);
    for App_Kind'Size use 8;
 
+   type Pointer_Cursor_Style is
+     (POINTER_DEFAULT, POINTER_TEXT, POINTER_RESIZE_HORIZONTAL,
+      POINTER_RESIZE_VERTICAL, POINTER_RESIZE_DIAGONAL);
+   for Pointer_Cursor_Style use
+     (POINTER_DEFAULT => 0, POINTER_TEXT => 1,
+      POINTER_RESIZE_HORIZONTAL => 2, POINTER_RESIZE_VERTICAL => 3,
+      POINTER_RESIZE_DIAGONAL => 4);
+   for Pointer_Cursor_Style'Size use 8;
+
    type Surface is record
       used      : Boolean := False;
       owner     : ProcessID := NO_PROCESS;
@@ -208,6 +224,7 @@ procedure main is
       bufferH        : Natural := 0;
       bufferPitch    : Natural := 0;
       bufferFormat   : Unsigned_64 := 0;
+      pointerCursor  : Pointer_Cursor_Style := POINTER_DEFAULT;
    end record;
 
    MAX_SURFACES : constant Natural := 8;
@@ -232,7 +249,6 @@ procedure main is
    nextSurfaceId : Unsigned_64 := 1;
    focusSurface  : Unsigned_64 := 0;
    internalShellSurface : Unsigned_64 := 0;
-   nextInputSerial : Unsigned_64 := 1;
    inputOwned : Boolean := False;
 
    type PendingInput is record
@@ -244,15 +260,62 @@ procedure main is
       payload1 : Unsigned_64 := 0;
    end record;
 
-   INPUT_QUEUE_SIZE : constant Natural := 64;
+   INPUT_QUEUE_SIZE : constant Natural := 32;
    subtype InputQueueIndex is Natural range 0 .. INPUT_QUEUE_SIZE - 1;
    type PendingInputQueue is array (InputQueueIndex) of PendingInput;
 
-   inputEvents : PendingInputQueue;
+   type InputSnapshot is record
+      pointerPosition : Unsigned_64 := 0;
+      buttons         : Unsigned_64 := 0;
+      modifiers       : Unsigned_64 := 0;
+      generation      : Unsigned_64 := 0;
+   end record;
+
+   --  A client blocks in OP_INPUT_WAIT while desktop retains the kernel-minted
+   --  one-use reply capability. One slot per surface makes waiter ownership
+   --  explicit and prevents one client from consuming another client's wake.
+   INPUT_REPLY_SLOT_FIRST : constant CapabilitySlot := 32;
+   type InputWaiter is record
+      active      : Boolean := False;
+      owner       : ProcessID := NO_PROCESS;
+      target      : Unsigned_64 := 0;
+      afterSerial : Unsigned_64 := 0;
+      replySlot   : CapabilitySlot := INPUT_REPLY_SLOT_FIRST;
+   end record;
+
+   --  Input channels are keyed by stable surface ID, not z-order table index.
+   --  Raising a window reorders Surface records; it must not move a pending
+   --  reply capability or accidentally attach queued input to another window.
+   type SurfaceInputChannel is record
+      target   : Unsigned_64 := 0;
+      nextSerial : Unsigned_64 := 1;
+      events   : PendingInputQueue := (others => (others => <>));
+      snapshot : InputSnapshot;
+      waiter   : InputWaiter;
+   end record;
+   type SurfaceInputChannelTable is
+     array (SurfaceIndex) of SurfaceInputChannel;
+   inputChannels : SurfaceInputChannelTable;
+   inputQueueOverflows : Unsigned_64 := 0;
 
    cursorX : Natural := 80;
    cursorY : Natural := 80;
+   cursorStyle : Pointer_Cursor_Style := POINTER_DEFAULT;
    lastButtons : Unsigned_64 := 0;
+
+   MAX_INPUT_SOURCES : constant Natural := 8;
+   subtype InputSourceIndex is Natural range 0 .. MAX_INPUT_SOURCES - 1;
+   type InputSourceState is record
+      used       : Boolean := False;
+      badge      : Unsigned_64 := 0;
+      device     : CuBit.Input.Device_Class := CuBit.Input.KEYBOARD;
+      generation : CuBit.Input.Source_Generation := 0;
+      sequence   : CuBit.Input.Source_Sequence := 0;
+      buttons    : Unsigned_64 := 0;
+   end record;
+   type InputSourceTable is array (InputSourceIndex) of InputSourceState;
+   inputSources : InputSourceTable := (others => (others => <>));
+
    pointerSurfaceId : Unsigned_64 := 0;
    launchMenuOpen : Boolean := False;
    desktopExtendedPrefix : Boolean := False;
@@ -389,11 +452,12 @@ procedure main is
    begin
       if upward then
          case current is
-            when LAUNCH_CONSOLE   => return LAUNCH_BROWSER;
+            when LAUNCH_CONSOLE   => return LAUNCH_FILES;
             when LAUNCH_WORKBENCH => return LAUNCH_CONSOLE;
             when LAUNCH_DOOM      => return LAUNCH_WORKBENCH;
             when LAUNCH_DEVICES   => return LAUNCH_DOOM;
             when LAUNCH_BROWSER   => return LAUNCH_DEVICES;
+            when LAUNCH_FILES     => return LAUNCH_BROWSER;
             when others           => return LAUNCH_CONSOLE;
          end case;
       else
@@ -402,7 +466,8 @@ procedure main is
             when LAUNCH_WORKBENCH => return LAUNCH_DOOM;
             when LAUNCH_DOOM      => return LAUNCH_DEVICES;
             when LAUNCH_DEVICES   => return LAUNCH_BROWSER;
-            when LAUNCH_BROWSER   => return LAUNCH_CONSOLE;
+            when LAUNCH_BROWSER   => return LAUNCH_FILES;
+            when LAUNCH_FILES     => return LAUNCH_CONSOLE;
             when others           => return LAUNCH_CONSOLE;
          end case;
       end if;
@@ -465,7 +530,10 @@ procedure main is
 
    statsStartMs      : Unsigned_64 := 0;
    statsEvents       : Unsigned_64 := 0;
+   statsKeyboardEvents : Unsigned_64 := 0;
    statsMouseEvents  : Unsigned_64 := 0;
+   statsButtonTransitions : Unsigned_64 := 0;
+   statsWheelEvents  : Unsigned_64 := 0;
    statsRequests     : Unsigned_64 := 0;
    statsFrames       : Unsigned_64 := 0;
    statsFastFrames   : Unsigned_64 := 0;
@@ -477,7 +545,10 @@ procedure main is
    statsPresentOps   : Unsigned_64 := 0;
    statsPresentMs    : Unsigned_64 := 0;
    statsDamagePixels : Unsigned_64 := 0;
+   statsSourceGaps   : Unsigned_64 := 0;
+   statsSourceRejects : Unsigned_64 := 0;
    lastEventDrops    : Unsigned_64 := 0;
+   lastInputQueueOverflows : Unsigned_64 := 0;
    inputTraceBudget  : Natural := 64;
 
    procedure printDec (val : Unsigned_64) is
@@ -505,6 +576,7 @@ procedure main is
       eventDrops : constant Unsigned_64 :=
          getInfo (SYSINFO_EVENT_DROPS_SELF);
       eventDropsThisPeriod : Unsigned_64 := 0;
+      inputOverflowsThisPeriod : Unsigned_64 := 0;
    begin
       if now = Unsigned_64'Last then
          return;
@@ -529,13 +601,33 @@ procedure main is
          lastEventDrops := eventDrops;
       end if;
 
+      if inputQueueOverflows >= lastInputQueueOverflows then
+         inputOverflowsThisPeriod :=
+           inputQueueOverflows - lastInputQueueOverflows;
+      else
+         inputOverflowsThisPeriod := inputQueueOverflows;
+      end if;
+      lastInputQueueOverflows := inputQueueOverflows;
+
       if statsFrames > 0 or else statsEvents > 0 then
          debugPrint ("desktop: stats ev=");
          printDec (statsEvents);
+         debugPrint (" key=");
+         printDec (statsKeyboardEvents);
          debugPrint (" mouse=");
          printDec (statsMouseEvents);
+         debugPrint (" button=");
+         printDec (statsButtonTransitions);
+         debugPrint (" wheel=");
+         printDec (statsWheelEvents);
          debugPrint (" event_drop=");
          printDec (eventDropsThisPeriod);
+         debugPrint (" input_resync=");
+         printDec (inputOverflowsThisPeriod);
+         debugPrint (" source_gap=");
+         printDec (statsSourceGaps);
+         debugPrint (" source_reject=");
+         printDec (statsSourceRejects);
          debugPrint (" req=");
          printDec (statsRequests);
          debugPrint (" frames=");
@@ -558,12 +650,19 @@ procedure main is
          printDec (statsPresentMs);
          debugPrint (" px=");
          printDec (statsDamagePixels);
+         debugPrint (" cursor_x=");
+         printDec (Unsigned_64 (cursorX));
+         debugPrint (" cursor_y=");
+         printDec (Unsigned_64 (cursorY));
          debugPrint ("" & LF);
       end if;
 
       statsStartMs := now;
       statsEvents := 0;
+      statsKeyboardEvents := 0;
       statsMouseEvents := 0;
+      statsButtonTransitions := 0;
+      statsWheelEvents := 0;
       statsRequests := 0;
       statsFrames := 0;
       statsFastFrames := 0;
@@ -575,6 +674,8 @@ procedure main is
       statsPresentOps := 0;
       statsPresentMs := 0;
       statsDamagePixels := 0;
+      statsSourceGaps := 0;
+      statsSourceRejects := 0;
    end maybePrintStats;
 
    procedure tracePointer
@@ -688,14 +789,40 @@ procedure main is
          return False;
       end if;
 
-      --  Keep the cursor intentionally chunky while the compositor is still
-      --  using software damage tracking. A one-pixel cursor is easy to lose
-      --  on light UI chrome and makes partial-present bugs hard to see.
-      return
-         (yy >= 1 and then yy < 15 and then
-          xx >= 1 and then xx <= yy / 2 + 1) or else
-         (yy >= 10 and then yy < 18 and then
-          xx >= 4 and then xx <= 6);
+      case cursorStyle is
+         when POINTER_TEXT =>
+            return
+              (xx = 5 and then yy >= 2 and then yy <= 15) or else
+              (yy in 2 | 15 and then xx >= 2 and then xx <= 8);
+         when POINTER_RESIZE_HORIZONTAL =>
+            return
+              (yy = 8 and then xx >= 1 and then xx <= 10) or else
+              (xx = 1 and then yy >= 6 and then yy <= 10) or else
+              (xx = 2 and then yy in 7 | 9) or else
+              (xx = 10 and then yy >= 6 and then yy <= 10) or else
+              (xx = 9 and then yy in 7 | 9);
+         when POINTER_RESIZE_VERTICAL =>
+            return
+              (xx = 5 and then yy >= 1 and then yy <= 16) or else
+              (yy = 1 and then xx >= 3 and then xx <= 7) or else
+              (yy = 2 and then xx in 4 | 6) or else
+              (yy = 16 and then xx >= 3 and then xx <= 7) or else
+              (yy = 15 and then xx in 4 | 6);
+         when POINTER_RESIZE_DIAGONAL =>
+            return
+              (xx >= 2 and then xx <= 9 and then yy = xx + 2) or else
+              (xx = 2 and then yy >= 4 and then yy <= 8) or else
+              (yy = 4 and then xx >= 2 and then xx <= 6) or else
+              (xx = 9 and then yy >= 7 and then yy <= 11) or else
+              (yy = 11 and then xx >= 5 and then xx <= 9);
+         when POINTER_DEFAULT =>
+            --  Keep the arrow intentionally chunky while the compositor is
+            --  still using a software cursor plane.
+            return
+              (yy >= 1 and then yy < 15 and then
+               xx >= 1 and then xx <= yy / 2 + 1) or else
+              (yy >= 10 and then yy < 18 and then xx >= 4 and then xx <= 6);
+      end case;
    end Cursor_Core;
 
    function Cursor_Near_Core (xx, yy : Integer) return Boolean is
@@ -736,10 +863,38 @@ procedure main is
       return (x => r.x, y => r.y, w => x2 - r.x, h => y2 - r.y);
    end clampRect;
 
-   function cursorRect return Rect is
+   function cursorHotX return Natural is
    begin
-      return clampRect ((x => cursorX, y => cursorY,
-                         w => CURSOR_W, h => CURSOR_H));
+      return (if cursorStyle = POINTER_DEFAULT then 0 else 5);
+   end cursorHotX;
+
+   function cursorHotY return Natural is
+   begin
+      return (if cursorStyle = POINTER_DEFAULT then 0 else 8);
+   end cursorHotY;
+
+   function cursorOriginX return Integer is
+     (Integer (cursorX) - Integer (cursorHotX));
+
+   function cursorOriginY return Integer is
+     (Integer (cursorY) - Integer (cursorHotY));
+
+   function cursorRect return Rect is
+      originX : constant Integer := cursorOriginX;
+      originY : constant Integer := cursorOriginY;
+      left : constant Natural := Natural (Integer'Max (0, originX));
+      top : constant Natural := Natural (Integer'Max (0, originY));
+      right : constant Natural := Natural'Min
+        (fbWidth,
+         Natural (Integer'Max (0, originX + Integer (CURSOR_W))));
+      bottom : constant Natural := Natural'Min
+        (fbHeight,
+         Natural (Integer'Max (0, originY + Integer (CURSOR_H))));
+   begin
+      if right <= left or else bottom <= top then
+         return (others => 0);
+      end if;
+      return (x => left, y => top, w => right - left, h => bottom - top);
    end cursorRect;
 
    function taskbarY return Natural is
@@ -1196,6 +1351,33 @@ procedure main is
          return DRAG_NONE;
       end if;
    end hitMode;
+
+   function cursorStyleAtPointer return Pointer_Cursor_Style is
+      idx : constant Integer := hitSurface (cursorX, cursorY);
+      action : Pointer_Action := DRAG_NONE;
+   begin
+      if dragMode /= DRAG_NONE then
+         action := dragMode;
+      elsif idx >= 0 then
+         action := hitMode
+           (surfaces (SurfaceIndex (idx)), cursorX, cursorY);
+      end if;
+
+      case action is
+         when DRAG_RESIZE_E => return POINTER_RESIZE_HORIZONTAL;
+         when DRAG_RESIZE_S => return POINTER_RESIZE_VERTICAL;
+         when DRAG_RESIZE_SE => return POINTER_RESIZE_DIAGONAL;
+         when others => null;
+      end case;
+
+      if idx >= 0 and then
+        pointInRect
+          (cursorX, cursorY, clientRect (surfaces (SurfaceIndex (idx))))
+      then
+         return surfaces (SurfaceIndex (idx)).pointerCursor;
+      end if;
+      return POINTER_DEFAULT;
+   end cursorStyleAtPointer;
 
    type Present_Timing is (PRESENT_AT_VBLANK, PRESENT_IMMEDIATELY);
 
@@ -1816,6 +1998,9 @@ procedure main is
 
    procedure drawCursorOverlay is
       r : constant Rect := cursorRect;
+      originX : constant Integer := cursorOriginX;
+      originY : constant Integer := cursorOriginY;
+      shapeX, shapeY : Integer;
    begin
       if isEmpty (r) then
          return;
@@ -1837,9 +2022,11 @@ procedure main is
 
       for yy in 0 .. r.h - 1 loop
          for xx in 0 .. r.w - 1 loop
-            if Cursor_Core (xx, yy) then
+            shapeX := Integer (r.x + xx) - originX;
+            shapeY := Integer (r.y + yy) - originY;
+            if Cursor_Core (shapeX, shapeY) then
                writeBackPixel (r.x + xx, r.y + yy, C_WHITE);
-            elsif Cursor_Near_Core (xx, yy) then
+            elsif Cursor_Near_Core (shapeX, shapeY) then
                writeBackPixel (r.x + xx, r.y + yy, C_BLACK);
             end if;
          end loop;
@@ -2174,7 +2361,7 @@ procedure main is
       drawLaunchItem
         (LAUNCH_BROWSER, Desktop_Icons.Files, "NetSurf", C_TEXT);
       drawLaunchItem
-        (LAUNCH_FILES, Desktop_Icons.Files, "Files", C_MUTED);
+        (LAUNCH_FILES, Desktop_Icons.Files, "Files", C_TEXT);
       declare
          sep : constant Rect := launchSeparatorRect;
       begin
@@ -2833,7 +3020,8 @@ procedure main is
          bufferW => 0,
          bufferH => 0,
          bufferPitch => 0,
-         bufferFormat => 0);
+         bufferFormat => 0,
+         pointerCursor => POINTER_DEFAULT);
       id := nextSurfaceId;
       nextSurfaceId := nextSurfaceId + 1;
    end createInternalSurface;
@@ -2850,7 +3038,71 @@ procedure main is
        found : out Boolean;
        event : out PendingInput);
 
+   procedure completeInputWaiter (target : Unsigned_64);
+
    procedure clearInputQueue;
+
+   function findInputChannel (target : Unsigned_64) return Integer is
+   begin
+      for i in inputChannels'Range loop
+         if inputChannels (i).target = target and then target /= 0 then
+            return Integer (i);
+         end if;
+      end loop;
+      return -1;
+   end findInputChannel;
+
+   procedure ensureInputChannel
+      (target : Unsigned_64;
+       channelSlot : out Integer)
+   is
+      surfaceSlot : constant Integer := findSurface (target);
+      c : Rect;
+      localX : Natural := 0;
+      localY : Natural := 0;
+      mods : Unsigned_64 := 0;
+   begin
+      channelSlot := findInputChannel (target);
+      if channelSlot >= 0 or else target = 0 or else surfaceSlot < 0
+      then
+         return;
+      end if;
+
+      c := clientRect (surfaces (SurfaceIndex (surfaceSlot)));
+      if cursorX >= c.x then
+         localX := cursorX - c.x;
+      end if;
+      if cursorY >= c.y then
+         localY := cursorY - c.y;
+      end if;
+      if desktopShiftDown then
+         mods := mods or KEYMOD_SHIFT;
+      end if;
+      if desktopCtrlDown then
+         mods := mods or KEYMOD_CTRL;
+      end if;
+      if desktopAltDown then
+         mods := mods or KEYMOD_ALT;
+      end if;
+      if desktopCapsLockOn then
+         mods := mods or KEYMOD_CAPS;
+      end if;
+
+      for i in inputChannels'Range loop
+         if inputChannels (i).target = 0 then
+            inputChannels (i) :=
+              (target => target,
+               snapshot =>
+                 (pointerPosition => packU32Pair (localX, localY),
+                  buttons => lastButtons,
+                  modifiers => mods,
+                  generation => 0),
+               others => <>);
+            channelSlot := Integer (i);
+            return;
+         end if;
+      end loop;
+   end ensureInputChannel;
 
    procedure queueConfigure (surfaceId, w, h : Unsigned_64) is
    begin
@@ -2863,62 +3115,101 @@ procedure main is
        payload0 : Unsigned_64;
        payload1 : Unsigned_64)
    is
+      channelSlot : Integer;
       slot : Integer := -1;
-      oldest : Integer := -1;
-      oldestSerial : Unsigned_64 := Unsigned_64'Last;
+      newestForTarget : Integer := -1;
+      newestSerial : Unsigned_64 := 0;
    begin
-      if target = 0 then
+      ensureInputChannel (target, channelSlot);
+      if channelSlot < 0 then
          return;
       end if;
 
-      if kind = INPUT_POINTER_MOVE then
-         --  Pointer motion is stateful: an undelivered old coordinate is
-         --  strictly worse than the newest one for cursor/hover latency. Keep
-         --  the original serial so clients waiting after the previous event
-         --  still observe this move, but collapse bursts into one delivery.
-         for i in inputEvents'Range loop
-            if inputEvents (i).valid and then
-               inputEvents (i).target = target and then
-               inputEvents (i).kind = INPUT_POINTER_MOVE
+      declare
+         idx : constant SurfaceIndex := SurfaceIndex (channelSlot);
+         queue : PendingInputQueue renames inputChannels (idx).events;
+         snapshot : InputSnapshot renames inputChannels (idx).snapshot;
+      begin
+         --  Maintain recoverable state before attempting bounded delivery.
+         --  INPUT_RESYNC can therefore describe the state after the report
+         --  whose insertion discovered overflow.
+         if kind = INPUT_POINTER_MOVE or else
+            kind = INPUT_POINTER_DOWN or else
+            kind = INPUT_POINTER_UP
+         then
+            snapshot.pointerPosition := payload0;
+            snapshot.buttons := payload1 and 16#FFFF_FFFF#;
+         elsif kind = INPUT_POINTER_WHEEL then
+            snapshot.pointerPosition := payload0;
+            snapshot.buttons := Shift_Right (payload1, 32);
+         elsif kind = INPUT_KEY_DOWN or else kind = INPUT_KEY_UP then
+            snapshot.modifiers := payload1 and 16#FFFF_FFFF#;
+         end if;
+
+         if kind = INPUT_POINTER_MOVE then
+            --  Collapse motion only when it is the newest pending event for
+            --  this surface. Press, release, wheel, and key events are strict
+            --  ordering barriers.
+            for i in queue'Range loop
+               if queue (i).valid and then
+                  queue (i).serial > newestSerial
+               then
+                  newestForTarget := Integer (i);
+                  newestSerial := queue (i).serial;
+               end if;
+            end loop;
+
+            if newestForTarget >= 0 and then
+               queue (InputQueueIndex (newestForTarget)).kind =
+                 INPUT_POINTER_MOVE
             then
-               inputEvents (i).payload0 := payload0;
-               inputEvents (i).payload1 := payload1;
+               queue (InputQueueIndex (newestForTarget)).payload0 := payload0;
+               queue (InputQueueIndex (newestForTarget)).payload1 := payload1;
+               completeInputWaiter (target);
                return;
             end if;
-         end loop;
-      end if;
-
-      for i in inputEvents'Range loop
-         if not inputEvents (i).valid and then slot < 0 then
-            slot := Integer (i);
-         elsif inputEvents (i).valid and then
-            inputEvents (i).serial < oldestSerial
-         then
-            oldest := Integer (i);
-            oldestSerial := inputEvents (i).serial;
          end if;
-      end loop;
 
-      if slot < 0 then
-         --  Keep accepting fresh input rather than letting an unresponsive
-         --  client stall the compositor. With a 64-event queue this should be
-         --  rare, and dropping oldest preserves key releases much better than
-         --  overwriting the single pending event slot did.
-         slot := oldest;
-      end if;
+         for i in queue'Range loop
+            if not queue (i).valid and then slot < 0 then
+               slot := Integer (i);
+            end if;
+         end loop;
 
-      if slot < 0 then
-         return;
-      end if;
+         if slot < 0 then
+            --  Never silently replace an ordered transition. The application
+            --  is told that continuity was lost and receives authoritative
+            --  pointer/button/modifier state. A stalled surface cannot consume
+            --  another surface's queue capacity.
+            queue := (others => (others => <>));
+            snapshot.generation := snapshot.generation + 1;
+            inputQueueOverflows := inputQueueOverflows + 1;
+            slot := Integer (queue'First);
+            queue (queue'First) :=
+              (valid    => True,
+               serial   => inputChannels (idx).nextSerial,
+               kind     => INPUT_RESYNC,
+               target   => target,
+               payload0 => snapshot.pointerPosition,
+               payload1 =>
+                 (snapshot.buttons and 16#FFFF_FFFF#) or
+                 Shift_Left
+                   (snapshot.modifiers and 16#FFFF_FFFF#, 32));
+         else
+            queue (InputQueueIndex (slot)) :=
+              (valid    => True,
+               serial   => inputChannels (idx).nextSerial,
+               kind     => kind,
+               target   => target,
+               payload0 => payload0,
+               payload1 => payload1);
+         end if;
 
-      inputEvents (InputQueueIndex (slot)) :=
-        (valid    => True,
-         serial   => nextInputSerial,
-         kind     => kind,
-         target   => target,
-         payload0 => payload0,
-         payload1 => payload1);
-      nextInputSerial := nextInputSerial + 1;
+         inputChannels (idx).nextSerial :=
+           inputChannels (idx).nextSerial + 1;
+      end;
+
+      completeInputWaiter (target);
    end enqueueInput;
 
    procedure dequeueInput
@@ -2927,46 +3218,208 @@ procedure main is
        found : out Boolean;
        event : out PendingInput)
    is
+      channelSlot : constant Integer := findInputChannel (target);
       best : Integer := -1;
       bestSerial : Unsigned_64 := Unsigned_64'Last;
    begin
       found := False;
       event := (others => <>);
 
-      for i in inputEvents'Range loop
-         if inputEvents (i).valid and then
-            inputEvents (i).target = target and then
-            inputEvents (i).serial > afterSerial and then
-            inputEvents (i).serial < bestSerial
-         then
-            best := Integer (i);
-            bestSerial := inputEvents (i).serial;
-         end if;
-      end loop;
-
-      if best >= 0 then
-         event := inputEvents (InputQueueIndex (best));
-         inputEvents (InputQueueIndex (best)).valid := False;
-         found := True;
-      end if;
-   end dequeueInput;
-
-   procedure clearInputQueue is
-   begin
-      inputEvents := (others => (others => <>));
-   end clearInputQueue;
-
-   procedure clearInputForTarget (target : Unsigned_64) is
-   begin
-      if target = 0 then
+      if channelSlot < 0 then
          return;
       end if;
 
-      for i in inputEvents'Range loop
-         if inputEvents (i).valid and then inputEvents (i).target = target then
-            inputEvents (i).valid := False;
+      declare
+         queue : PendingInputQueue renames
+           inputChannels (SurfaceIndex (channelSlot)).events;
+      begin
+         for i in queue'Range loop
+            if queue (i).valid and then queue (i).serial <= afterSerial then
+               --  A retried wait may name an event already consumed through
+               --  another path. Stale entries can no longer be observed.
+               queue (i).valid := False;
+            elsif queue (i).valid and then
+               queue (i).serial < bestSerial
+            then
+               best := Integer (i);
+               bestSerial := queue (i).serial;
+            end if;
+         end loop;
+
+         if best >= 0 then
+            event := queue (InputQueueIndex (best));
+            queue (InputQueueIndex (best)).valid := False;
+            found := True;
+         end if;
+      end;
+   end dequeueInput;
+
+   function hasInputAfter
+     (target : Unsigned_64; afterSerial : Unsigned_64) return Boolean
+   is
+      channelSlot : constant Integer := findInputChannel (target);
+   begin
+      if channelSlot < 0 then
+         return False;
+      end if;
+
+      for item of inputChannels (SurfaceIndex (channelSlot)).events loop
+         if item.valid and then item.serial > afterSerial then
+            return True;
          end if;
       end loop;
+      return False;
+   end hasInputAfter;
+
+   procedure completeInputWaiter (target : Unsigned_64) is
+      channelSlot : constant Integer := findInputChannel (target);
+      event : PendingInput;
+      found : Boolean;
+      response : Message := NULL_MESSAGE;
+      ignore : Unsigned_64;
+   begin
+      if channelSlot < 0 or else
+         not inputChannels (SurfaceIndex (channelSlot)).waiter.active
+      then
+         return;
+      end if;
+
+      declare
+         waiter : InputWaiter renames
+           inputChannels (SurfaceIndex (channelSlot)).waiter;
+      begin
+         dequeueInput (target, waiter.afterSerial, found, event);
+         if not found then
+            return;
+         end if;
+
+         response.tag :=
+           (label => OP_INPUT_WAIT, length => 4,
+            flags =>
+              (if hasInputAfter (target, event.serial)
+               then INPUT_REPLY_MORE_PENDING else 0),
+            badge => 0);
+         response.words (0) := event.kind;
+         response.words (1) := event.serial;
+         response.words (2) := event.payload0;
+         response.words (3) := event.payload1;
+
+         --  Clear software ownership before consuming the one-use kernel
+         --  authority. A failed reply cannot leave an immortal waiter.
+         declare
+            slot : constant CapabilitySlot := waiter.replySlot;
+         begin
+            waiter := (replySlot => slot, others => <>);
+            ignore := replyCap (slot, response);
+         end;
+      end;
+   end completeInputWaiter;
+
+   --  A source-stream discontinuity invalidates transient ownership and every
+   --  queued transition derived from the old stream history. Publish one
+   --  authoritative state record per surface instead of attempting to guess
+   --  which lost press/release events should be replayed.
+   procedure forceInputResynchronization is
+      mods : Unsigned_64 := 0;
+   begin
+      pointerSurfaceId := 0;
+      dragSurfaceId := 0;
+      dragMode := DRAG_NONE;
+      dragPreviewValid := False;
+      desktopExtendedPrefix := False;
+
+      if desktopShiftDown then
+         mods := mods or KEYMOD_SHIFT;
+      end if;
+      if desktopCtrlDown then
+         mods := mods or KEYMOD_CTRL;
+      end if;
+      if desktopAltDown then
+         mods := mods or KEYMOD_ALT;
+      end if;
+      if desktopCapsLockOn then
+         mods := mods or KEYMOD_CAPS;
+      end if;
+
+      for i in inputChannels'Range loop
+         if inputChannels (i).target /= 0 then
+            declare
+               surfaceSlot : constant Integer :=
+                 findSurface (inputChannels (i).target);
+               localX : Natural := 0;
+               localY : Natural := 0;
+            begin
+               if surfaceSlot >= 0 then
+                  declare
+                     c : constant Rect :=
+                       clientRect (surfaces (SurfaceIndex (surfaceSlot)));
+                  begin
+                     if cursorX >= c.x then
+                        localX := cursorX - c.x;
+                     end if;
+                     if cursorY >= c.y then
+                        localY := cursorY - c.y;
+                     end if;
+                  end;
+               end if;
+
+               inputChannels (i).events := (others => (others => <>));
+               inputChannels (i).snapshot.pointerPosition :=
+                 packU32Pair (localX, localY);
+               inputChannels (i).snapshot.buttons := lastButtons;
+               inputChannels (i).snapshot.modifiers := mods;
+               inputChannels (i).snapshot.generation :=
+                 inputChannels (i).snapshot.generation + 1;
+               inputChannels (i).events (InputQueueIndex'First) :=
+                 (valid    => True,
+                  serial   => inputChannels (i).nextSerial,
+                  kind     => INPUT_RESYNC,
+                  target   => inputChannels (i).target,
+                  payload0 => inputChannels (i).snapshot.pointerPosition,
+                  payload1 =>
+                    (lastButtons and 16#FFFF_FFFF#) or
+                    Shift_Left (mods and 16#FFFF_FFFF#, 32));
+               inputChannels (i).nextSerial :=
+                 inputChannels (i).nextSerial + 1;
+               completeInputWaiter (inputChannels (i).target);
+            end;
+         end if;
+      end loop;
+   end forceInputResynchronization;
+
+   procedure clearInputQueue is
+   begin
+      inputChannels := (others => (others => <>));
+   end clearInputQueue;
+
+   procedure clearInputForTarget (target : Unsigned_64) is
+      channelSlot : constant Integer := findInputChannel (target);
+      response : Message := NULL_MESSAGE;
+      ignore : Unsigned_64;
+   begin
+      if target = 0 or else channelSlot < 0 then
+         return;
+      end if;
+
+      if inputChannels (SurfaceIndex (channelSlot)).waiter.active then
+         response.tag :=
+           (label => OP_INPUT_WAIT, length => 4, flags => 0, badge => 0);
+         response.words (0) := INPUT_RESYNC;
+         response.words (1) :=
+           inputChannels (SurfaceIndex (channelSlot)).nextSerial;
+         inputChannels (SurfaceIndex (channelSlot)).nextSerial :=
+           inputChannels (SurfaceIndex (channelSlot)).nextSerial + 1;
+         declare
+            slot : constant CapabilitySlot :=
+              inputChannels (SurfaceIndex (channelSlot)).waiter.replySlot;
+         begin
+            inputChannels (SurfaceIndex (channelSlot)).waiter :=
+              (replySlot => slot, others => <>);
+            ignore := replyCap (slot, response);
+         end;
+      end if;
+
+      inputChannels (SurfaceIndex (channelSlot)) := (others => <>);
    end clearInputForTarget;
 
    function keyChar (code : Unsigned_8) return Character;
@@ -3148,12 +3601,13 @@ procedure main is
    procedure handleRequest (from : ProcessID; request : Message) is
       replyMsg : Message := NULL_MESSAGE;
       ignore   : Unsigned_64;
+      replyNow : Boolean := True;
    begin
       statsRequests := statsRequests + 1;
       case request.tag.label is
          when OP_SURFACE_PRESENT =>
             statsPresentReq := statsPresentReq + 1;
-         when OP_INPUT_POLL =>
+         when OP_INPUT_POLL | OP_INPUT_WAIT =>
             statsInputReq := statsInputReq + 1;
          when others =>
             statsOtherReq := statsOtherReq + 1;
@@ -3272,7 +3726,8 @@ procedure main is
                      bufferW => 0,
                      bufferH => 0,
                      bufferPitch => 0,
-                     bufferFormat => 0);
+                     bufferFormat => 0,
+                     pointerCursor => POINTER_DEFAULT);
                   focusSurface := nextSurfaceId;
 
                   replyMsg.tag := (label  => OP_SURFACE_CREATE,
@@ -3350,6 +3805,36 @@ procedure main is
                                   Unsigned_64 (newH));
                   scheduleRedrawRect
                     (inflateRect (unionRect (oldBounds, newBounds), 4));
+               end if;
+            end;
+
+         when OP_SURFACE_SET_POINTER_CURSOR =>
+            declare
+               idx : constant Integer := findSurface (request.words (0));
+               requested : constant Unsigned_64 := request.words (1);
+               nextStyle : Pointer_Cursor_Style;
+            begin
+               replyMsg.tag :=
+                 (label => OP_SURFACE_SET_POINTER_CURSOR,
+                  length => 1, flags => 0, badge => 0);
+               if idx < 0 then
+                  replyMsg.words (0) := UI_ERR_BAD_OBJECT;
+               elsif surfaces (SurfaceIndex (idx)).owner /= from then
+                  replyMsg.words (0) := UI_ERR_DENIED;
+               elsif requested > Unsigned_64
+                 (Pointer_Cursor_Style'Enum_Rep
+                    (Pointer_Cursor_Style'Last))
+               then
+                  replyMsg.words (0) := UI_ERR_UNSUPPORTED;
+               else
+                  surfaces (SurfaceIndex (idx)).pointerCursor :=
+                    Pointer_Cursor_Style'Enum_Val (Integer (requested));
+                  nextStyle := cursorStyleAtPointer;
+                  if nextStyle /= cursorStyle then
+                     cursorStyle := nextStyle;
+                     scheduleCursorPresent;
+                  end if;
+                  replyMsg.words (0) := UI_OK;
                end if;
             end;
 
@@ -3617,24 +4102,62 @@ procedure main is
                end if;
             end;
 
-         when OP_INPUT_POLL =>
-            replyMsg.tag := (label  => OP_INPUT_POLL,
+         when OP_INPUT_POLL | OP_INPUT_WAIT =>
+            replyMsg.tag := (label  => request.tag.label,
                              length => 4,
                              flags  => 0,
                              badge  => 0);
             declare
                found : Boolean;
                event : PendingInput;
+               idx   : constant Integer := findSurface (request.words (0));
+               channelSlot : Integer := findInputChannel (request.words (0));
             begin
-               dequeueInput (request.words (0),
-                             request.words (1),
-                             found,
-                             event);
+               --  A surface identifier names an object; it does not confer
+               --  authority.  Only the creating process may consume the
+               --  input stream routed to that surface.
+               if idx >= 0 and then
+                 surfaces (SurfaceIndex (idx)).owner = from
+               then
+                  dequeueInput (request.words (0),
+                                request.words (1),
+                                found,
+                                event);
+               else
+                  found := False;
+               end if;
                if found then
+                  if hasInputAfter (request.words (0), event.serial) then
+                     replyMsg.tag.flags := INPUT_REPLY_MORE_PENDING;
+                  end if;
                   replyMsg.words (0) := event.kind;
                   replyMsg.words (1) := event.serial;
                   replyMsg.words (2) := event.payload0;
                   replyMsg.words (3) := event.payload1;
+               elsif request.tag.label = OP_INPUT_WAIT and then
+                 idx >= 0 and then
+                 surfaces (SurfaceIndex (idx)).owner = from and then
+                 channelSlot >= 0 and then
+                 not inputChannels
+                   (SurfaceIndex (channelSlot)).waiter.active
+               then
+                  declare
+                     slot : constant CapabilitySlot :=
+                       INPUT_REPLY_SLOT_FIRST + CapabilitySlot (channelSlot);
+                  begin
+                     if saveReplyCap (Unsigned_64 (slot)) = 1 then
+                        inputChannels (SurfaceIndex (channelSlot)).waiter :=
+                          (active      => True,
+                           owner       => from,
+                           target      => request.words (0),
+                           afterSerial => request.words (1),
+                           replySlot   => slot);
+                        replyNow := False;
+                     else
+                        replyMsg.words (0) := INPUT_RESYNC;
+                        replyMsg.words (1) := request.words (1);
+                     end if;
+                  end;
                else
                   replyMsg.words (0) := INPUT_NONE;
                   replyMsg.words (1) := request.words (1);
@@ -3678,7 +4201,9 @@ procedure main is
             replyMsg.words (0) := UI_ERR_UNSUPPORTED;
       end case;
 
-      ignore := reply (from, replyMsg);
+      if replyNow then
+         ignore := reply (from, replyMsg);
+      end if;
    end handleRequest;
 
    function shouldExitKey (raw : Unsigned_8) return Boolean is
@@ -4141,6 +4666,8 @@ procedure main is
             trySpawnFromConsole ("devices.app", ok);
          when LAUNCH_BROWSER =>
             trySpawnFromConsole ("netsurf.app", ok);
+         when LAUNCH_FILES =>
+            trySpawnFromConsole ("files.app", ok);
          when others =>
             null;
       end case;
@@ -4230,6 +4757,11 @@ procedure main is
       idx       : Integer;
       leftDown  : constant Boolean := (buttons and 1) /= 0;
       leftWasDown : constant Boolean := (lastButtons and 1) /= 0;
+      leftTransition : constant Boolean := leftDown /= leftWasDown;
+      pointerMoved : constant Boolean := dx /= 0 or else dy /= 0;
+      deliverMove : constant Boolean :=
+        not leftTransition and then
+        (pointerMoved or else buttons /= lastButtons);
       sceneDamage : constant Boolean := leftDown or else leftWasDown;
       handledChromeClick : Boolean := False;
       taskIdx   : Integer;
@@ -4239,11 +4771,15 @@ procedure main is
       maxY      : Integer := 0;
       wheelIdx  : Integer;
    begin
-      if fbWidth > CURSOR_W then
-         maxX := Integer (fbWidth - CURSOR_W);
+      if leftTransition then
+         statsButtonTransitions := statsButtonTransitions + 1;
       end if;
-      if fbHeight > CURSOR_H then
-         maxY := Integer (fbHeight - CURSOR_H);
+
+      if fbWidth > 0 then
+         maxX := Integer (fbWidth - 1);
+      end if;
+      if fbHeight > 0 then
+         maxY := Integer (fbHeight - 1);
       end if;
 
       --  PS/2 reports positive Y as upward motion; screen coordinates grow
@@ -4253,21 +4789,25 @@ procedure main is
       damage := unionRect (damage, cursorRect);
 
       if pointerSurfaceId /= 0 then
-         queuePointer (INPUT_POINTER_MOVE,
-                       pointerSurfaceId,
-                       cursorX,
-                       cursorY,
-                       buttons);
+         if deliverMove then
+            queuePointer (INPUT_POINTER_MOVE,
+                          pointerSurfaceId,
+                          cursorX,
+                          cursorY,
+                          buttons);
+         end if;
          if dz /= 0 then
             queuePointerWheel
               (pointerSurfaceId, cursorX, cursorY, buttons, dz);
          end if;
       elsif focusSurface /= 0 then
-         queuePointerIfClient (INPUT_POINTER_MOVE,
-                               focusSurface,
-                               cursorX,
-                               cursorY,
-                               buttons);
+         if deliverMove then
+            queuePointerIfClient (INPUT_POINTER_MOVE,
+                                  focusSurface,
+                                  cursorX,
+                                  cursorY,
+                                  buttons);
+         end if;
          if dz /= 0 then
             wheelIdx := hitSurface (cursorX, cursorY);
             if wheelIdx >= 0 then
@@ -4432,6 +4972,8 @@ procedure main is
          end if;
       end if;
 
+      cursorStyle := cursorStyleAtPointer;
+      damage := unionRect (damage, cursorRect);
       lastButtons := buttons;
       if sceneDamage or else framePending then
          scheduleRedrawRect (inflateRect (damage, 2), defer => True);
@@ -4440,14 +4982,137 @@ procedure main is
       end if;
    end handleMouseMotion;
 
+   procedure acceptSourceReport
+     (report        : CuBit.Input.Source_Report;
+      accepted      : out Boolean;
+      discontinuity : out Boolean;
+      seatButtons   : out Unsigned_64)
+   is
+      slot : Integer := -1;
+   begin
+      accepted := False;
+      discontinuity := False;
+      seatButtons := lastButtons;
+
+      for i in inputSources'Range loop
+         if inputSources (i).used and then
+            inputSources (i).badge = report.sourceBadge and then
+            inputSources (i).device = report.device
+         then
+            slot := Integer (i);
+            exit;
+         end if;
+      end loop;
+
+      if slot < 0 then
+         for i in inputSources'Range loop
+            if not inputSources (i).used then
+               slot := Integer (i);
+               exit;
+            end if;
+         end loop;
+      end if;
+
+      if slot < 0 or else
+         (report.device = CuBit.Input.KEYBOARD and then
+          report.delivery /= CuBit.Input.ORDERED_TRANSITION) or else
+         (report.device = CuBit.Input.RELATIVE_POINTER and then
+          report.delivery /= CuBit.Input.ACCUMULABLE_DISPLACEMENT)
+      then
+         statsSourceRejects := statsSourceRejects + 1;
+         return;
+      end if;
+
+      declare
+         source : InputSourceState renames
+           inputSources (InputSourceIndex (slot));
+      begin
+         --  Replaying a duplicate can synthesize a second key or button
+         --  transition, so duplicates are rejected rather than resynchronized.
+         if source.used and then
+            source.generation = report.generation and then
+            source.sequence = report.sequence
+         then
+            statsSourceRejects := statsSourceRejects + 1;
+            return;
+         end if;
+
+         discontinuity := report.flags (CuBit.Input.RESYNCHRONIZE) or else
+           (source.used and then
+             (source.generation /= report.generation or else
+              not CuBit.Input.Is_Immediate_Successor
+                (source.sequence, report.sequence)));
+
+         source.used := True;
+         source.badge := report.sourceBadge;
+         source.device := report.device;
+         source.generation := report.generation;
+         source.sequence := report.sequence;
+         if report.device = CuBit.Input.RELATIVE_POINTER then
+            source.buttons := report.snapshot and 16#FF#;
+         end if;
+      end;
+
+      seatButtons := 0;
+      for i in inputSources'Range loop
+         if inputSources (i).used and then
+            inputSources (i).device = CuBit.Input.RELATIVE_POINTER
+         then
+            seatButtons := seatButtons or inputSources (i).buttons;
+         end if;
+      end loop;
+
+      if discontinuity then
+         statsSourceGaps := statsSourceGaps + 1;
+      end if;
+      accepted := True;
+   end acceptSourceReport;
+
    procedure handleEvent (eventMsg : Message; running : in out Boolean) is
       raw : Unsigned_8;
       packed : Unsigned_64;
+      sourceReport : CuBit.Input.Source_Report :=
+        CuBit.Input.NULL_SOURCE_REPORT;
+      sourceValid : Boolean := False;
+      sourceAccepted : Boolean := False;
+      sourceDiscontinuity : Boolean := False;
+      seatButtons : Unsigned_64 := lastButtons;
    begin
       statsEvents := statsEvents + 1;
 
-      if eventMsg.tag.label = EVENT_KEYBOARD then
-         raw := Unsigned_8 (eventMsg.words (0) and 16#FF#);
+      if eventMsg.tag.label = CuBit.Input.OP_SOURCE_REPORT then
+         CuBit.Input.Decode (eventMsg, sourceReport, sourceValid);
+         if sourceValid then
+            acceptSourceReport
+              (sourceReport, sourceAccepted, sourceDiscontinuity,
+               seatButtons);
+         else
+            statsSourceRejects := statsSourceRejects + 1;
+         end if;
+
+         if not sourceAccepted then
+            return;
+         end if;
+      end if;
+
+      if eventMsg.tag.label = EVENT_KEYBOARD or else
+         (sourceAccepted and then
+          sourceReport.device = CuBit.Input.KEYBOARD)
+      then
+         statsKeyboardEvents := statsKeyboardEvents + 1;
+         raw := Unsigned_8
+           ((if sourceAccepted then sourceReport.payload
+             else eventMsg.words (0)) and 16#FF#);
+
+         if sourceAccepted and then sourceDiscontinuity then
+            --  Held modifiers are transient state. Never carry them across a
+            --  report gap; the future input service will install a complete
+            --  keyboard snapshot here instead.
+            desktopShiftDown := False;
+            desktopCtrlDown := False;
+            desktopAltDown := False;
+            desktopExtendedPrefix := False;
+         end if;
 
          --  Set-1 extended keys arrive as E0 followed by a normal press or
          --  release byte. Preserve that context at the desktop boundary so
@@ -4523,14 +5188,32 @@ procedure main is
                end if;
             end;
          end if;
-      elsif eventMsg.tag.label = EVENT_MOUSE then
+
+         if sourceAccepted and then sourceDiscontinuity then
+            forceInputResynchronization;
+         end if;
+      elsif eventMsg.tag.label = EVENT_MOUSE or else
+         (sourceAccepted and then
+          sourceReport.device = CuBit.Input.RELATIVE_POINTER)
+      then
          statsMouseEvents := statsMouseEvents + 1;
-         packed := eventMsg.words (0);
+         packed :=
+           (if sourceAccepted then sourceReport.payload
+            else eventMsg.words (0));
+         if signed8 (Shift_Right (packed, 32)) /= 0 then
+            statsWheelEvents := statsWheelEvents + 1;
+         end if;
          handleMouseMotion
-           (buttons => packed and 16#FF#,
+           (buttons =>
+              (if sourceAccepted then seatButtons
+               else packed and 16#FF#),
             dx      => signed12 (Shift_Right (packed, 8)),
             dy      => signed12 (Shift_Right (packed, 20)),
             dz      => signed8 (Shift_Right (packed, 32)));
+
+         if sourceAccepted and then sourceDiscontinuity then
+            forceInputResynchronization;
+         end if;
       elsif eventMsg.tag.label = OP_STREAM_AVAILABLE then
          rememberStreams
            (ProcessID (eventMsg.words (0) and 16#FFFF#),
@@ -4837,15 +5520,16 @@ begin
             else
                declare
                   now : constant Unsigned_64 := nowMs;
-                  sleepMs : Unsigned_64 := 1;
                   nextDueMs : Unsigned_64 := 0;
+                  mayWait : Boolean := now /= Unsigned_64'Last;
+                  received : Boolean;
                begin
                   if framePending and then now /= Unsigned_64'Last and then
                      frameDueMs /= 0 and then now < frameDueMs
                   then
                      nextDueMs := frameDueMs;
                   elsif framePending then
-                     sleepMs := 0;
+                     mayWait := False;
                   end if;
 
                   if cursorPresentPending and then now /= Unsigned_64'Last
@@ -4860,22 +5544,22 @@ begin
                      cursorPresentDueMs = 0 or else
                      now >= cursorPresentDueMs)
                   then
-                     sleepMs := 0;
+                     mayWait := False;
                   end if;
 
-                  if sleepMs > 0 and then nextDueMs /= 0 and then
-                     now /= Unsigned_64'Last
-                  then
-                     sleepMs := nextDueMs - now;
-                     if sleepMs > 1 then
-                        sleepMs := 1;
+                  if mayWait and then nextDueMs /= 0 then
+                     --  A single kernel wait races IPC publication against
+                     --  the absolute frame deadline atomically. Input wakes
+                     --  this process immediately; there is no millisecond
+                     --  sleep slice in the dispatch path.
+                     receiveUntil (nextDueMs, from, msg, received);
+                     if received then
+                        if from = NO_PROCESS then
+                           handleEvent (msg, running);
+                        else
+                           handleRequest (from, msg);
+                        end if;
                      end if;
-                  end if;
-
-                  if sleepMs > 0 and then
-                     syscall (SYSCALL_SLEEP, sleepMs) = Unsigned_64'Last
-                  then
-                     null;
                   end if;
                end;
             end if;

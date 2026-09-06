@@ -48,12 +48,30 @@ The suite currently includes:
   server and client, then emits compact timing summaries.
 - `ccl-vm`: runs the freestanding CCL bytecode VM and source interpreter inside
   CuBit and checks their in-guest self-test markers.
+- `ccl-workbench`: boots the native CCL Workbench and checks its first
+  presented frame.
 - `capability-security`: boots an authorityless adversarial app and verifies
   that it cannot acquire filesystem, input, process-management, or capability-
   minting authority that was absent from its manifest-derived capability
   space.
+- `storage-grants`: exercises generation-tagged acquire/use/return, access and
+  range denial, pending revocation, stale-reference rejection, and a writable
+  ext2 transfer.
+- `audio-grants`: verifies that the mixer acquires HDA's isolated PCM-period
+  grant through its endpoint capability.
+- `devices`: boots the read-only hardware inspector and checks its inventory
+  and native window.
+- `files`: boots the native filesystem browser, drags its first shared-table
+  column divider and sends a wheel notch through QEMU's real PS/2 input path,
+  then verifies the final width, viewport movement, and post-release keyboard
+  liveness.
 - `desktop-display`: boots a test init profile that starts `display.svc` and
-  `desktop.svc`, then verifies the display backend status handshake.
+  `desktop.svc`, verifies the display backend status handshake, and injects
+  QEMU i8042 keyboard and pointer input through the real PS/2 driver path.
+- `input-stream`: publishes authenticated, sequenced keyboard and relative-
+  pointer reports through the kernel event lane, forces one explicit recovery
+  boundary, and checks that motion over the CCL Workbench editor does not
+  regress into one full client-surface presentation per report.
 - `desktop-doom`: installs the current `doom.elf`, boots `display.svc`,
   `desktop.svc`, and DOOM on primary `virtio-vga`, then uses QEMU's WAV audio
   backend to require a real HDA period interrupt and capture
@@ -83,6 +101,24 @@ protection faults, or deadlock reports.
 - `desktop.svc` queried `OP_DISPLAY_GET_STATUS` and saw backend `1`,
   capability mask `3` (`copy-present | vblank-wait`).
 - the regular shell still starts with `@nvme:0/` as its working directory.
+- QEMU-injected PS/2 reports cross the hardware IRQ doorbell, `ps2.drv`, the
+  publication-capability check, typed source decoding, and desktop dispatch
+  with decoded key transitions, relative cursor movement away from its known
+  starting coordinate, a complete left-button press/release pair, and zero
+  rejected sources.
+
+The runner rebuilds every stage-1 service copied into `initrd.img`. This is a
+security property as well as build hygiene: a new publisher must never run
+beside an old policy service that did not grant the authority required by the
+new protocol.
+
+`input-stream` uses a test-only publisher with separate role-scoped keyboard
+and pointer publication authorities. It requires one intentional source gap,
+zero rejected normalized reports, a live Workbench frame, and at most twenty
+client surface-present requests while 128 paced motion reports cross the rich
+editor. It also bounds input requests so an isolated wake cannot regress into
+both a successful wait and an immediately-following empty poll. Compositor-owned
+software-cursor presents are not counted as client surface submissions.
 
 `virtio-gpu` waits for these milestones:
 

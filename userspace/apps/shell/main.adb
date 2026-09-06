@@ -18,6 +18,7 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Config;
+with CuBit.Filesystems;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Streams;
@@ -32,7 +33,6 @@ procedure main is
    OP_CLOSE   : constant Unsigned_32 := 16#0002#;
    OP_READ    : constant Unsigned_32 := 16#0003#;
    OP_WRITE   : constant Unsigned_32 := 16#0004#;
-   OP_READDIR : constant Unsigned_32 := 16#0007#;
 
    --  Open flags
    O_WRONLY   : constant Unsigned_64 := 1;
@@ -1083,6 +1083,7 @@ procedure main is
       msg : Message;
       tag : MessageTag;
       resolvedLen : Natural;
+      directory : CuBit.Filesystems.Directory_Handle;
    begin
       if not fsReady then
          putStr ("error: filesystem not available" & LF);
@@ -1092,35 +1093,66 @@ procedure main is
       --  Resolve path against cwd into fsBuf
       resolvedLen := resolvePath (path);
 
-      --  OP_READDIR: slot, path length, buffer capacity, generation
-      msg := NULL_MESSAGE;
-      msg.tag := (label  => OP_READDIR,
-                  length => 4,
-                  flags  => 0,
-                  badge  => 0);
-      msg.words (0) := fsGrant.slot;
-      msg.words (1) := Unsigned_64 (resolvedLen);
-      msg.words (2) := Unsigned_64 (FS_BUF_PAGES * 4096);
-      msg.words (3) := fsGrant.generation;
+      msg := CuBit.Filesystems.Open_Directory_Request
+        (fsGrant, CuBit.Filesystems.Path_Byte_Count (resolvedLen));
       tag := capCall (CAP_SLOT_FS, msg);
 
-      if tag.label /= REPLY_OK then
+      if tag.label /= CuBit.Filesystems.REPLY_OK then
          putStr ("ls: cannot list directory" & LF);
          return;
       end if;
+      directory := CuBit.Filesystems.Directory_Handle (msg.words (0));
 
-      declare
-         written : constant Unsigned_64 := msg.words (0);
-      begin
-         if written > 0 then
-            declare
-               data : String (1 .. Natural (written))
-                 with Import, Address => fsBuf;
-            begin
-               putStr (data);
-            end;
+      loop
+         msg := CuBit.Filesystems.Read_Directory_Page_Request
+           (directory, fsGrant);
+         tag := capCall (CAP_SLOT_FS, msg);
+         if tag.label /= CuBit.Filesystems.REPLY_OK then
+            putStr ("ls: directory read failed" & LF);
+            exit;
          end if;
-      end;
+
+         declare
+            header : CuBit.Filesystems.Directory_Page_Header
+              with Import, Address => fsBuf;
+            entries : CuBit.Filesystems.Directory_Entries
+              with Import,
+                   Address => fsBuf +
+                     CuBit.Filesystems.DIRECTORY_PAGE_HEADER_BYTES;
+         begin
+            if header.version /= CuBit.Filesystems.PROTOCOL_VERSION or else
+              header.headerBytes /=
+                CuBit.Filesystems.DIRECTORY_PAGE_HEADER_BYTES or else
+              header.entryBytes /= CuBit.Filesystems.DIRECTORY_ENTRY_BYTES or else
+              header.entryCount >
+                CuBit.Filesystems.MAXIMUM_DIRECTORY_PAGE_ENTRIES
+            then
+               putStr ("ls: malformed directory reply" & LF);
+               exit;
+            end if;
+
+            if header.entryCount > 0 then
+               for entryIndex in 0 .. Natural (header.entryCount) - 1 loop
+                  for nameIndex in 1 ..
+                    Natural (entries (entryIndex).nameLength)
+                  loop
+                     putChar (Character'Val
+                       (entries (entryIndex).name (nameIndex)));
+                  end loop;
+                  putChar (LF);
+               end loop;
+            end if;
+
+            exit when
+              (header.flags and CuBit.Filesystems.DIRECTORY_PAGE_END) /= 0;
+         end;
+      end loop;
+
+      msg := CuBit.Filesystems.Close_Directory_Request (directory);
+      tag := capCall (CAP_SLOT_FS, msg);
+      if tag.label /= CuBit.Filesystems.REPLY_OK then
+         putStr ("ls: directory close failed" & LF);
+      end if;
    end cmdLs;
 
    ---------------------------------------------------------------------------

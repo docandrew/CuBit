@@ -1120,6 +1120,14 @@ procedure main is
       --  Slot 7: CAP_IRQ for mouse (vector 44)
       mintCap (ps2PID, CAP_IRQ, 44, 0, RIGHT_READ, 7);
 
+      --  IRQ ownership is not publication authority. These two read-only
+      --  notification grants independently authorize the PS/2 driver to
+      --  publish only to the registered keyboard and mouse consumers.
+      mintCap (ps2PID, CAP_NOTIFICATION, DRIVER_KEYBOARD, 0,
+               RIGHT_READ, 8);
+      mintCap (ps2PID, CAP_NOTIFICATION, DRIVER_MOUSE, 0,
+               RIGHT_READ, 9);
+
       --  Register IRQ owners and enable IOAPIC routing
       ret := enableIrq (33, ps2PID, 0);
       ret := enableIrq (44, ps2PID, 0);

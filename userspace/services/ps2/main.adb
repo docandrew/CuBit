@@ -18,6 +18,7 @@ with Interfaces; use Interfaces;
 with System; use System;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Input; use CuBit.Input;
 
 procedure main is
    use ASCII;
@@ -36,6 +37,11 @@ procedure main is
    --  Consumer PIDs (looked up via sysinfo)
    kbdConsumer   : Unsigned_64 := 0;
    mouseConsumer : Unsigned_64 := 0;
+
+   keyboardSequence : Source_Sequence := 0;
+   pointerSequence  : Source_Sequence := 0;
+   keyboardResyncPending : Boolean := False;
+   pointerResyncPending  : Boolean := False;
 
    ---------------------------------------------------------------------------
    --  outb / inb wrappers
@@ -155,29 +161,22 @@ procedure main is
       mouseWrite (16#F2#);
       deviceID := mouseRead;
 
+      --  The protocol selected by the magic sequence determines the packet
+      --  length.  Record it before enabling streaming: querying the ID again
+      --  after F4 races with live motion bytes and can make a four-byte wheel
+      --  mouse look like a three-byte mouse, corrupting all later framing.
+      hasWheel := deviceID = 3 or else deviceID = 4;
+      packetLen := (if hasWheel then 4 else 3);
+
       --  Enable data reporting
       mouseWrite (16#F4#);
 
-      if deviceID = 3 then
+      if deviceID = 3 or else deviceID = 4 then
          debugPrint ("ps2: Intellimouse detected (wheel support)" & LF);
       else
          debugPrint ("ps2: Standard PS/2 mouse detected" & LF);
       end if;
    end initMouse;
-
-   ---------------------------------------------------------------------------
-   --  detectWheel - read device ID to determine wheel support
-   ---------------------------------------------------------------------------
-   procedure detectWheel is
-      deviceID : Unsigned_8;
-   begin
-      mouseWrite (16#F2#);
-      deviceID := mouseRead;
-      hasWheel := (deviceID = 3 or deviceID = 4);
-      if hasWheel then
-         packetLen := 4;
-      end if;
-   end detectWheel;
 
    ---------------------------------------------------------------------------
    --  flushPS2 - flush stale bytes from PS/2 output buffer
@@ -205,41 +204,49 @@ procedure main is
    ---------------------------------------------------------------------------
    --  handleKeyboard - read keyboard byte and forward to consumer
    ---------------------------------------------------------------------------
-   procedure handleKeyboard is
-      code : Unsigned_8;
+   procedure handleKeyboard (code : Unsigned_8) is
+      accepted : Boolean;
+      report   : Source_Report;
    begin
-      code := inb (DATA_PORT);
-
-      refreshConsumers;
-
       if kbdConsumer /= 0 then
-         sendEvent (kbdConsumer,
-            (tag      => (label  => 1,
-                          length => 1,
-                          flags  => 0,
-                          badge  => 0),
-             capBadge => 0,
-             words    => (0 => Unsigned_64 (code), others => 0)));
+         keyboardSequence := Next_Sequence (keyboardSequence);
+         report :=
+           (sourceBadge => 0,
+            sequence    => keyboardSequence,
+            generation  => 1,
+            device      => KEYBOARD,
+            delivery    => ORDERED_TRANSITION,
+            flags       =>
+              (RESYNCHRONIZE => keyboardResyncPending),
+            payload     => Unsigned_64 (code),
+            snapshot    => 0);
+         accepted := trySendEvent (kbdConsumer, Encode (report));
+         keyboardResyncPending := not accepted;
       end if;
    end handleKeyboard;
 
    ---------------------------------------------------------------------------
    --  handleMouse - accumulate mouse bytes into packet, forward when complete
    ---------------------------------------------------------------------------
-   procedure handleMouse is
-      code    : Unsigned_8;
+   procedure handleMouse (code : Unsigned_8) is
       buttons : Unsigned_64;
       dx      : Unsigned_64;
       dy      : Unsigned_64;
       dz      : Unsigned_64;
       flags   : Unsigned_64;
       packed  : Unsigned_64;
+      accepted : Boolean;
+      report   : Source_Report;
    begin
-      code := inb (DATA_PORT);
-
-      --  Sync check: byte 0 must have bit 3 set (always-1 bit in PS/2)
-      if byteIdx = 0 and (code and 8) = 0 then
-         return;
+      --  Sync check: byte 0 has an always-one bit.  Overflow reports cannot
+      --  express a trustworthy displacement, so discard them as well.  This
+      --  also lets the decoder recover cleanly if an unexpected fourth wheel
+      --  byte arrives after a protocol-negotiation failure: positive wheel
+      --  bytes fail the sync bit and negative ones carry both overflow bits.
+      if byteIdx = 0 then
+         if (code and 8) = 0 or else (code and 16#C0#) /= 0 then
+            return;
+         end if;
       end if;
 
       packetBuf (byteIdx) := code;
@@ -248,8 +255,6 @@ procedure main is
       if byteIdx >= packetLen then
          --  Complete packet received, decode and forward
          byteIdx := 0;
-
-         refreshConsumers;
 
          if mouseConsumer /= 0 then
             --  Pack mouse event into words(0):
@@ -271,7 +276,19 @@ procedure main is
             end if;
 
             if hasWheel then
-               dz := Unsigned_64 (packetBuf (3));
+               --  IntelliMouse encodes the wheel as a signed four-bit value.
+               --  Device ID 4 uses upper bits for buttons 4/5, so treating
+               --  the whole byte as signed would turn an extra-button state
+               --  into an enormous scroll delta.  PS/2 positive is toward
+               --  the user (down); CuBit's UI convention is positive away
+               --  from the user (up), so normalize direction at the driver
+               --  boundary.
+               dz := Unsigned_64 (packetBuf (3) and 16#0F#);
+               if dz in 1 .. 7 then
+                  dz := 256 - dz;
+               elsif dz >= 8 then
+                  dz := 16 - dz;
+               end if;
             else
                dz := 0;
             end if;
@@ -288,13 +305,18 @@ procedure main is
                or Shift_Left (dz and 16#FF#, 32)
                or Shift_Left (flags and 16#FF#, 40);
 
-            sendEvent (mouseConsumer,
-               (tag      => (label  => 2,
-                             length => 1,
-                             flags  => 0,
-                             badge  => 0),
-                capBadge => 0,
-                words    => (0 => packed, others => 0)));
+            pointerSequence := Next_Sequence (pointerSequence);
+            report :=
+              (sourceBadge => 0,
+               sequence    => pointerSequence,
+               generation  => 1,
+               device      => RELATIVE_POINTER,
+               delivery    => ACCUMULABLE_DISPLACEMENT,
+               flags       => (RESYNCHRONIZE => pointerResyncPending),
+               payload     => packed,
+               snapshot    => buttons);
+            accepted := trySendEvent (mouseConsumer, Encode (report));
+            pointerResyncPending := not accepted;
          end if;
       end if;
    end handleMouse;
@@ -302,17 +324,25 @@ procedure main is
    --  Main loop variables
    event  : Message;
    status : Unsigned_8;
+   code   : Unsigned_8;
    ignore : Unsigned_64;
+
+   --  An IRQ notification means "controller work may be pending", not
+   --  "consume exactly one byte". Work is drained in bounded decode batches;
+   --  if a batch fills, the controller is checked again before blocking so
+   --  coalesced IRQs cannot strand a partial mouse packet in port 0x60.
+   MAX_INPUT_BYTES_PER_BATCH : constant Positive := 64;
 
 begin
    debugPrint ("ps2: starting" & LF);
 
+   --  Discard firmware/bootloader residue before enabling live reports.  A
+   --  flush after F4 could consume only the first byte of a packet and leave
+   --  the streaming decoder permanently out of phase.
+   flushPS2;
+
    --  Initialize PS/2 mouse
    initMouse;
-   detectWheel;
-
-   --  Flush stale bytes from PS/2 output buffer
-   flushPS2;
 
    --  Signal devmgr that we are ready
    declare
@@ -341,18 +371,27 @@ begin
       --  Block until IRQ 33 or 44 fires
       event := Wait_Event;
 
-      --  Read PS/2 status register
-      status := inb (STATUS_PORT);
+      refreshConsumers;
 
-      --  Check if data is available (bit 0)
-      if (status and 16#01#) /= 0 then
-         if (status and 16#20#) = 0 then
-            --  Bit 5 clear: keyboard data
-            handleKeyboard;
-         else
-            --  Bit 5 set: mouse data
-            handleMouse;
-         end if;
-      end if;
+      loop
+         for i in 1 .. MAX_INPUT_BYTES_PER_BATCH loop
+            status := inb (STATUS_PORT);
+            exit when (status and 16#01#) = 0;
+
+            --  Read each byte exactly once, then route it according to the
+            --  auxiliary-data bit in the same status sample.
+            code := inb (DATA_PORT);
+            if (status and 16#20#) = 0 then
+               --  Bit 5 clear: keyboard data
+               handleKeyboard (code);
+            else
+               --  Bit 5 set: mouse data
+               handleMouse (code);
+            end if;
+         end loop;
+
+         status := inb (STATUS_PORT);
+         exit when (status and 16#01#) = 0;
+      end loop;
    end loop;
 end main;

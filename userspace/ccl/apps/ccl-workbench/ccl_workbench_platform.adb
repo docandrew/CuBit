@@ -51,6 +51,9 @@ package body CCL_Workbench_Platform is
    Click_Origin_X : Integer_64 := 0;
    Click_Origin_Y : Integer_64 := 0;
    Click_Count : Natural range 0 .. 3 := 0;
+   Pending_Event : CuBit.UI.App.Input_Event;
+   Pending_Found : Boolean := False;
+   Skip_Empty_Poll : Boolean := False;
 
    procedure Activate is
    begin
@@ -182,7 +185,17 @@ package body CCL_Workbench_Platform is
          return 0;
       end if;
 
-      CuBit.UI.App.Poll_Input (Native_Window, Event, Found);
+      if Pending_Found then
+         Event := Pending_Event;
+         Found := True;
+         Pending_Found := False;
+         Skip_Empty_Poll := not CuBit.UI.App.Input_May_Remain (Native_Window);
+      elsif Skip_Empty_Poll then
+         Skip_Empty_Poll := False;
+         return 0;
+      else
+         CuBit.UI.App.Poll_Input (Native_Window, Event, Found);
+      end if;
       if not Found then
          return 0;
       end if;
@@ -268,31 +281,44 @@ package body CCL_Workbench_Platform is
 
    function Window_Present
      (Handle, Pixels : System.Address;
-      Pitch : Integer_32) return Integer_32
+      Pitch, X, Y, Width, Height : Integer_32) return Integer_32
    with Export, Convention => C, External_Name => "ccl_window_present";
 
    function Window_Present
      (Handle, Pixels : System.Address;
-      Pitch : Integer_32) return Integer_32
+      Pitch, X, Y, Width, Height : Integer_32) return Integer_32
    is
       pragma Unreferenced (Handle);
       Target : constant CuBit.UI.Canvas := CuBit.UI.App.Canvas (Native_Window);
       Ignore : System.Address;
       Bytes_Per_Row : Storage_Count;
+      Damage : CuBit.UI.Rect;
    begin
       if not Native_Open or else Pixels = System.Null_Address or else
-        Pitch <= 0 or else Target.addr = System.Null_Address
+        Pitch <= 0 or else X < 0 or else Y < 0 or else Width <= 0 or else
+        Height <= 0 or else Target.addr = System.Null_Address
       then
          return 1;
       end if;
-      Bytes_Per_Row := Storage_Count (Target.width * 4);
-      for Row in 0 .. Target.height - 1 loop
+
+      Damage := CuBit.UI.Clamp_Rect
+        (Target,
+         (x => Natural (X), y => Natural (Y),
+          w => Natural (Width), h => Natural (Height)));
+      if CuBit.UI.Is_Empty (Damage) then
+         return 0;
+      end if;
+
+      Bytes_Per_Row := Storage_Count (Damage.w * 4);
+      for Row in Damage.y .. Damage.y + Damage.h - 1 loop
          Ignore := CuBit.String.memcpy
-           (Target.addr + Storage_Offset (Row * Target.pitch),
-            Pixels + Storage_Offset (Row * Natural (Pitch)),
+           (Target.addr + Storage_Offset
+              (Row * Target.pitch + Damage.x * 4),
+            Pixels + Storage_Offset
+              (Row * Natural (Pitch) + Damage.x * 4),
             Bytes_Per_Row);
       end loop;
-      CuBit.UI.App.Present (Native_Window, CuBit.UI.App.Full_Rect (Native_Window));
+      CuBit.UI.App.Present (Native_Window, Damage);
       if not First_Frame_Presented then
          debugPrint ("ccl-workbench: first frame presented" & ASCII.LF);
          First_Frame_Presented := True;
@@ -300,13 +326,46 @@ package body CCL_Workbench_Platform is
       return 0;
    end Window_Present;
 
-   procedure Window_Wait
+   procedure Window_Set_Cursor
+     (Handle : System.Address; Style : Integer_32)
+   with Export, Convention => C, External_Name => "ccl_window_set_cursor";
+
+   procedure Window_Set_Cursor
+     (Handle : System.Address; Style : Integer_32)
+   is
+      pragma Unreferenced (Handle);
+   begin
+      if Native_Open and then Style >= 0 and then
+        Style <= Integer_32
+          (CuBit.UI.Pointer_Cursor_Style'Enum_Rep
+             (CuBit.UI.Pointer_Cursor_Style'Last))
+      then
+         CuBit.UI.App.Set_Pointer_Cursor
+           (Native_Window,
+            CuBit.UI.Pointer_Cursor_Style'Enum_Val (Integer (Style)));
+      end if;
+   end Window_Set_Cursor;
+
+   procedure Window_Wait (May_Block : Integer_32)
    with Export, Convention => C, External_Name => "ccl_window_wait";
 
-   procedure Window_Wait is
+   procedure Window_Wait (May_Block : Integer_32) is
       Ignore : Unsigned_64;
    begin
-      Ignore := syscall (SYSCALL_SLEEP, 10);
+      if May_Block /= 0 and then Native_Open and then not Pending_Found then
+         --  Park on the compositor's deferred one-use reply capability. This
+         --  closes the old 10 ms polling latency without exposing a wakeup
+         --  handle another process can forge or redirect.
+         CuBit.UI.App.Wait_Input
+           (Native_Window, Pending_Event, Pending_Found);
+         if not Pending_Found then
+            Native_Open := False;
+         end if;
+      else
+         --  Continuous VM execution and scrollbar repeat have local timer
+         --  work. Yield briefly rather than blocking indefinitely.
+         Ignore := syscall (SYSCALL_SLEEP, 1);
+      end if;
    end Window_Wait;
 
    function Window_Ticks return Unsigned_64

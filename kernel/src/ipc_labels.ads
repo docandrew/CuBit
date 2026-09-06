@@ -21,18 +21,6 @@ with Interfaces; use Interfaces;
 package IPC_Labels with
     SPARK_Mode => On
 is
-    -- Filesystem operations
-    OP_OPEN    : constant Unsigned_32 := 16#0001#;
-    OP_CLOSE   : constant Unsigned_32 := 16#0002#;
-    OP_READ    : constant Unsigned_32 := 16#0003#;
-    OP_WRITE   : constant Unsigned_32 := 16#0004#;
-    OP_STAT    : constant Unsigned_32 := 16#0005#;
-    OP_SEEK    : constant Unsigned_32 := 16#0006#;
-    OP_READDIR    : constant Unsigned_32 := 16#0007#;
-    OP_SET_ACL    : constant Unsigned_32 := 16#0080#;
-    OP_REVOKE_ACL : constant Unsigned_32 := 16#0081#;
-    OP_QUERY_ACL  : constant Unsigned_32 := 16#0082#;
-
     -- Process operations
     OP_SPAWN   : constant Unsigned_32 := 16#0100#;
     OP_EXIT    : constant Unsigned_32 := 16#0101#;

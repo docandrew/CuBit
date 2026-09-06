@@ -1198,6 +1198,7 @@ package body XHCI is
      (buttons : out Unsigned_8;
       deltaX  : out Integer;
       deltaY  : out Integer;
+      deltaZ  : out Integer;
       ready   : out Boolean;
       eventAvailable : out Boolean)
    is
@@ -1219,6 +1220,7 @@ package body XHCI is
       buttons := 0;
       deltaX := 0;
       deltaY := 0;
+      deltaZ := 0;
       ready := False;
       eventAvailable := Poll_Event (event);
       if not eventAvailable then
@@ -1296,6 +1298,16 @@ package body XHCI is
          deltaY := Integer (hidReports (reportOffset + 2));
       else
          deltaY := Integer (hidReports (reportOffset + 2)) - 256;
+      end if;
+      --  The HID boot-mouse minimum is three bytes.  Wheel mice commonly
+      --  append one signed byte while retaining that prefix, so accept it
+      --  when present without requiring it from strict boot-only devices.
+      if actualLength >= 4 then
+         if hidReports (reportOffset + 3) < 128 then
+            deltaZ := Integer (hidReports (reportOffset + 3));
+         else
+            deltaZ := Integer (hidReports (reportOffset + 3)) - 256;
+         end if;
       end if;
       mouseDiagnostics.decodedReports :=
         mouseDiagnostics.decodedReports + 1;

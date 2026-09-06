@@ -54,7 +54,9 @@ procedure main is
       sectorCt  : Unsigned_32 := 0;
       grantAddr : System.Address := System.Null_Address;
       resolved  : Boolean := False;
+      returned  : Boolean := False;
       bytesRead : Unsigned_64;
+      expectedBytes : Unsigned_64;
    begin
       if msg.tag.length /= 4 or else
          msg.words (1) > CuBit.Memory_Grants.MAXIMUM_GLOBAL_SLOT or else
@@ -71,7 +73,9 @@ procedure main is
       end if;
 
       sectorCt := Unsigned_32 (msg.words (2));
-      CuBit.Memory_Grants.Resolve
+      expectedBytes :=
+        Unsigned_64 (sectorCt) * Unsigned_64 (NVMe.nsSectorSize);
+      CuBit.Memory_Grants.Acquire
         (reference      =>
            (slot => CuBit.Memory_Grants.Global_Grant_Slot (msg.words (1)),
             generation =>
@@ -90,7 +94,22 @@ procedure main is
       end if;
 
       bytesRead := NVMe.readBlocks (lba, sectorCt, grantAddr);
-      sendReply (sender, REPLY_OK, bytesRead);
+      CuBit.Memory_Grants.Return_Acquisition
+        ((slot => CuBit.Memory_Grants.Global_Grant_Slot (msg.words (1)),
+          generation =>
+            CuBit.Memory_Grants.Grant_Generation (msg.words (3))),
+         returned);
+      if not returned then
+         sendReply (sender, REPLY_ERROR, 0);
+         return;
+      end if;
+      if bytesRead = expectedBytes then
+         sendReply (sender, REPLY_OK, bytesRead);
+      else
+         --  A short controller transfer is an error.  The completed prefix
+         --  remains in word 0 for diagnostics and future recovery policy.
+         sendReply (sender, REPLY_ERROR, bytesRead);
+      end if;
    end handleReadBlock;
 
    ---------------------------------------------------------------------------
@@ -105,7 +124,9 @@ procedure main is
       sectorCt     : Unsigned_32 := 0;
       grantAddr    : System.Address := System.Null_Address;
       resolved     : Boolean := False;
+      returned     : Boolean := False;
       bytesWritten : Unsigned_64;
+      expectedBytes : Unsigned_64;
    begin
       if msg.tag.length /= 4 or else
          msg.words (1) > CuBit.Memory_Grants.MAXIMUM_GLOBAL_SLOT or else
@@ -122,7 +143,9 @@ procedure main is
       end if;
 
       sectorCt := Unsigned_32 (msg.words (2));
-      CuBit.Memory_Grants.Resolve
+      expectedBytes :=
+        Unsigned_64 (sectorCt) * Unsigned_64 (NVMe.nsSectorSize);
+      CuBit.Memory_Grants.Acquire
         (reference      =>
            (slot => CuBit.Memory_Grants.Global_Grant_Slot (msg.words (1)),
             generation =>
@@ -141,7 +164,21 @@ procedure main is
       end if;
 
       bytesWritten := NVMe.writeBlocks (lba, sectorCt, grantAddr);
-      sendReply (sender, REPLY_OK, bytesWritten);
+      CuBit.Memory_Grants.Return_Acquisition
+        ((slot => CuBit.Memory_Grants.Global_Grant_Slot (msg.words (1)),
+          generation =>
+            CuBit.Memory_Grants.Grant_Generation (msg.words (3))),
+         returned);
+      if not returned then
+         sendReply (sender, REPLY_ERROR, 0);
+         return;
+      end if;
+      if bytesWritten = expectedBytes then
+         sendReply (sender, REPLY_OK, bytesWritten);
+      else
+         --  Never turn a short controller transfer into protocol success.
+         sendReply (sender, REPLY_ERROR, bytesWritten);
+      end if;
    end handleWriteBlock;
 
    ---------------------------------------------------------------------------

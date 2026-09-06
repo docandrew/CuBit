@@ -41,7 +41,7 @@ package CuBit.Memory_Grants is
       reference : out Grant_Reference;
       success   : out Boolean);
 
-   procedure Resolve
+   procedure Acquire
      (reference     : Grant_Reference;
       expectedOwner : CuBit.Messages.ProcessID;
       byteOffset    : Unsigned_64;
@@ -49,6 +49,22 @@ package CuBit.Memory_Grants is
       requiredAccess : Required_Access;
       mappedAddress : out System.Address;
       success       : out Boolean);
+
+   --  Acquire from the service named by an endpoint capability.  The kernel
+   --  derives and generation-checks the expected grant owner from that
+   --  authority, avoiding a caller-supplied PID at service boundaries.
+   procedure Acquire_Via_Capability
+     (slot           : CuBit.Messages.CapabilitySlot;
+      reference      : Grant_Reference;
+      byteOffset     : Unsigned_64;
+      byteLength     : Unsigned_64;
+      requiredAccess : Required_Access;
+      mappedAddress  : out System.Address;
+      success        : out Boolean);
+
+   procedure Return_Acquisition
+     (reference : Grant_Reference;
+      success   : out Boolean);
 
    procedure Revoke
      (reference : Grant_Reference;

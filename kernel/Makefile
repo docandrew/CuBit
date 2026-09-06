@@ -80,6 +80,12 @@ prove-capability-derive:
 		--mode=all --level=1 --function-sandboxing=off
 	@cat build/gnatprove/gnatprove.out
 
+.PHONY : prove-memory-grants
+prove-memory-grants:
+	$(ALR) gnatprove -Pcubit.gpr -u memory_grants.adb \
+		--mode=all --level=1 --function-sandboxing=off
+	@cat build/gnatprove/gnatprove.out
+
 .PHONY : clean
 clean:
 	$(ALR) gprclean -Pcubit.gpr
@@ -126,6 +132,16 @@ capability-test: user_runtime
 		-o ../userspace/apps/capability-test/build/manifest.o
 	$(ALR) gprbuild -P ../userspace/apps/capability-test/capability_test.gpr
 	cp ../userspace/apps/capability-test/build/capability-test.app isodir/boot/capability-test.app
+
+# Deterministic typed input stream publisher used by the headless recovery gate.
+.PHONY : input-stress
+input-stress: user_runtime
+	mkdir -p ../userspace/apps/input-stress/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/apps/input-stress/manifest.c \
+		-o ../userspace/apps/input-stress/build/manifest.o
+	$(ALR) gprbuild -P ../userspace/apps/input-stress/input_stress.gpr
+	cp ../userspace/apps/input-stress/build/input-stress.app isodir/boot/input-stress.app
 
 .PHONY : ipctest-server
 ipctest-server: user_runtime
@@ -295,6 +311,16 @@ devices: user_runtime
 	$(ALR) gprbuild -P ../userspace/apps/devices/devices.gpr
 	cp ../userspace/apps/devices/build/devices.app isodir/boot/devices.app
 
+# Build the read-only, authority-scoped filesystem browser.
+.PHONY : files
+files: user_runtime
+	mkdir -p ../userspace/apps/files/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/apps/files/manifest.c \
+		-o ../userspace/apps/files/build/manifest.o
+	$(ALR) gprbuild -P ../userspace/apps/files/files.gpr
+	cp ../userspace/apps/files/build/files.app isodir/boot/files.app
+
 # Build the live writable-storage diagnostic app.
 .PHONY : storage-check
 storage-check: user_runtime
@@ -420,7 +446,7 @@ DOOM_WAD ?= ../doom1.wad
 
 DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/netsurf.app isodir/boot/sleep.app \
 	isodir/boot/capability-test.app \
-	isodir/boot/wget.app isodir/boot/devices.app \
+	isodir/boot/wget.app isodir/boot/devices.app isodir/boot/files.app \
 	isodir/boot/ccl-vm.app isodir/boot/ccl-workbench.app \
 	isodir/boot/ccl-test-host.svc \
 	isodir/boot/clock.svc \
@@ -430,11 +456,18 @@ DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/netsurf.
 	isodir/boot/logstore.svc isodir/boot/display.svc isodir/boot/desktop.svc \
 	../init.conf ../userspace/motd.txt $(DOOM_WAD)
 
+# Every stage-1 binary copied into initrd.img.  Keep this dependency list next
+# to the staging targets: copying an old service beside a newly rebuilt driver
+# can silently violate their capability/protocol contract.
+INITRD_SERVICES := filesystem ata nvme netstack virtio-net virtio-gpu hda \
+	mixer ps2 xhci config netmgr procmgr devmgr
+
 # Binaries used by the graphical desktop session. Keep this as a separate
 # staging target so run-desktop can build/copy them into isodir first, then
 # rebuild the ext2 disk image from those freshly staged files.
 .PHONY : desktop-session-content
-desktop-session-content: virtio-gpu desktop display desktop-shell devices ccl-workbench clock doom netsurf
+desktop-session-content: $(INITRD_SERVICES) desktop display logstore \
+	desktop-shell devices files ccl-workbench clock doom netsurf
 
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.conf, shell.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
@@ -451,6 +484,7 @@ ata_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write isodir/boot/capability-test.app capability-test.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/wget.app wget.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/devices.app devices.app" ata_disk.img
+	debugfs -w -R "write isodir/boot/files.app files.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/desktop-shell.app desktop-shell.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/ipctest-server.app ipctest-server.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/ipctest-client.app ipctest-client.app" ata_disk.img
@@ -463,9 +497,7 @@ ata_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write isodir/boot/logstore.svc logstore.svc" ata_disk.img
 	debugfs -w -R "write isodir/boot/display.svc display.svc" ata_disk.img
 	debugfs -w -R "write isodir/boot/desktop.svc desktop.svc" ata_disk.img
-	dd if=/dev/zero of=/tmp/config.dat bs=8192 count=1
-	debugfs -w -R "write /tmp/config.dat config.dat" ata_disk.img
-	rm -f /tmp/config.dat
+	debugfs -w -R "write ../userspace/motd.txt config.dat" ata_disk.img
 
 # Create ext2 NVMe disk image containing motd.txt, doom1.wad, doom.elf, init.conf, shell.app, wget.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
@@ -483,6 +515,7 @@ nvme_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write isodir/boot/shell.app shell.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/wget.app wget.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/devices.app devices.app" nvme_disk.img
+	debugfs -w -R "write isodir/boot/files.app files.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/desktop-shell.app desktop-shell.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/ipctest-server.app ipctest-server.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/ipctest-client.app ipctest-client.app" nvme_disk.img
@@ -494,9 +527,7 @@ nvme_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write isodir/boot/clock.svc clock.svc" nvme_disk.img
 	debugfs -w -R "write isodir/boot/display.svc display.svc" nvme_disk.img
 	debugfs -w -R "write isodir/boot/desktop.svc desktop.svc" nvme_disk.img
-	dd if=/dev/zero of=/tmp/config.dat bs=8192 count=1
-	debugfs -w -R "write /tmp/config.dat config.dat" nvme_disk.img
-	rm -f /tmp/config.dat
+	debugfs -w -R "write ../userspace/motd.txt config.dat" nvme_disk.img
 
 # Convenience aliases for manual rebuilds (e.g. make ata_disk)
 .PHONY : ata_disk nvme_disk
@@ -531,7 +562,7 @@ capability-security-image: cubit_kernel $(CAPABILITY_SECURITY_STAGE1) $(CAPABILI
 # The kernel parses this at boot and loads services from it.
 # Stage-2 content (shell.app, doom.elf, motd.txt, etc.) lives on disk.
 .PHONY : initrd
-initrd:
+initrd: $(INITRD_SERVICES)
 	@rm -rf ramdisk_staging
 	mkdir -p ramdisk_staging
 	-cp isodir/boot/devmgr.svc ramdisk_staging/
@@ -557,7 +588,7 @@ initrd:
 # desktop and diagnostic UI before AHCI or any other block driver works.
 LAPTOP_LIVE_STAGE1 := filesystem ata nvme netstack virtio-net virtio-gpu hda \
 	mixer ps2 xhci config netmgr procmgr devmgr
-LAPTOP_LIVE_STAGE2 := logstore clock display desktop ccl-workbench devices \
+LAPTOP_LIVE_STAGE2 := logstore clock display desktop ccl-workbench devices files \
 	storage-check doom
 LAPTOP_LIVE_RW_DISK := laptop_live_rw.img
 
@@ -591,6 +622,7 @@ laptop-live-initrd: $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) $(LAPTOP_LIVE_RW
 	cp isodir/boot/desktop.svc laptop_live_staging/
 	cp isodir/boot/ccl-workbench.app laptop_live_staging/
 	cp isodir/boot/devices.app laptop_live_staging/
+	cp isodir/boot/files.app laptop_live_staging/
 	cp isodir/boot/storage-check.app laptop_live_staging/
 	cp isodir/boot/doom.elf laptop_live_staging/
 	cp $(DOOM_WAD) laptop_live_staging/doom1.wad
@@ -694,7 +726,7 @@ iso: cubit_kernel initrd
 
 # Build everything including DOOM, then create ISO and disk images
 .PHONY : world
-world: cubit_kernel doom netsurf sleep capability-test ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices desktop-shell procmgr shell hda mixer ps2 xhci config netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: cubit_kernel doom netsurf sleep capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices files desktop-shell procmgr shell hda mixer ps2 xhci config netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world
@@ -704,7 +736,10 @@ headless-test: world
 	bash ../tests/headless/run.sh --test ccl-vm
 	bash ../tests/headless/run.sh --test ccl-workbench
 	bash ../tests/headless/run.sh --test capability-security
+	bash ../tests/headless/run.sh --test storage-grants
+	bash ../tests/headless/run.sh --test audio-grants
 	bash ../tests/headless/run.sh --test desktop-display
+	bash ../tests/headless/run.sh --test input-stream
 	bash ../tests/headless/run.sh --test virtio-gpu
 	bash ../tests/headless/run.sh --test virtio-vga-primary
 
@@ -737,9 +772,10 @@ run: nvme_disk.img
 # Run QEMU with an init profile that starts display.svc + desktop.svc.
 # This keeps GUI iteration out of the CuBASIC/CLI launch path.
 .PHONY : run-desktop
-run-desktop: desktop-session-content
+run-desktop: cubit_kernel desktop-session-content
 	$(MAKE) nvme_disk.img
 	$(MAKE) initrd
+	cp cubit_kernel isodir/boot/cubit_kernel
 	@rm -f serial_output.log net.pcap desktop_disk.img
 	cp nvme_disk.img desktop_disk.img
 	-debugfs -w -R "rm init.conf" desktop_disk.img >/dev/null 2>&1
@@ -783,6 +819,7 @@ run-desktop-fast:
 	-debugfs -w -R "rm netstack.svc" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm desktop-shell.app" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm devices.app" desktop_disk.img >/dev/null 2>&1
+	-debugfs -w -R "rm files.app" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm doom.elf" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm netsurf.app" desktop_disk.img >/dev/null 2>&1
 	debugfs -w -R "write ../tests/headless/init-desktop-session.conf init.conf" desktop_disk.img
@@ -791,6 +828,7 @@ run-desktop-fast:
 	debugfs -w -R "write isodir/boot/netstack.svc netstack.svc" desktop_disk.img
 	debugfs -w -R "write isodir/boot/desktop-shell.app desktop-shell.app" desktop_disk.img
 	debugfs -w -R "write isodir/boot/devices.app devices.app" desktop_disk.img
+	debugfs -w -R "write isodir/boot/files.app files.app" desktop_disk.img
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" desktop_disk.img
 	debugfs -w -R "write isodir/boot/netsurf.app netsurf.app" desktop_disk.img
 	GDK_BACKEND=x11 qemu-system-x86_64 \
@@ -832,6 +870,7 @@ run-desktop-inspect:
 	-debugfs -w -R "rm netstack.svc" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm desktop-shell.app" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm devices.app" desktop_disk.img >/dev/null 2>&1
+	-debugfs -w -R "rm files.app" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm doom.elf" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm netsurf.app" desktop_disk.img >/dev/null 2>&1
 	debugfs -w -R "write ../tests/headless/init-desktop-session.conf init.conf" desktop_disk.img
@@ -840,6 +879,7 @@ run-desktop-inspect:
 	debugfs -w -R "write isodir/boot/netstack.svc netstack.svc" desktop_disk.img
 	debugfs -w -R "write isodir/boot/desktop-shell.app desktop-shell.app" desktop_disk.img
 	debugfs -w -R "write isodir/boot/devices.app devices.app" desktop_disk.img
+	debugfs -w -R "write isodir/boot/files.app files.app" desktop_disk.img
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" desktop_disk.img
 	debugfs -w -R "write isodir/boot/netsurf.app netsurf.app" desktop_disk.img
 	GDK_BACKEND=x11 qemu-system-x86_64 \

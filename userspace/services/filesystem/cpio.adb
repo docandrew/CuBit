@@ -259,41 +259,4 @@ package body Cpio is
       return toRead;
    end readData;
 
-   ---------------------------------------------------------------------------
-   --  listFiles
-   ---------------------------------------------------------------------------
-   function listFiles
-     (ar       : Archive;
-      dest     : System.Address;
-      destSize : Unsigned_64) return Unsigned_64
-   is
-      written : Unsigned_64 := 0;
-      outBuf  : String (1 .. Natural (destSize))
-        with Import, Address => dest;
-   begin
-      for i in 0 .. ar.count - 1 loop
-         declare
-            nameLen : constant Natural := ar.files (i).nameLen;
-            arName  : String (1 .. nameLen)
-              with Import,
-                   Address => ar.base +
-                     Storage_Offset (ar.files (i).nameOff);
-         begin
-            --  Check room for name + newline
-            if written + Unsigned_64 (nameLen) + 1 > destSize then
-               return written;
-            end if;
-
-            for j in 1 .. nameLen loop
-               outBuf (Natural (written) + j) := arName (j);
-            end loop;
-            written := written + Unsigned_64 (nameLen);
-            outBuf (Natural (written) + 1) := ASCII.LF;
-            written := written + 1;
-         end;
-      end loop;
-
-      return written;
-   end listFiles;
-
 end Cpio;

@@ -10,6 +10,7 @@ with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements;
 with CuBit.Block_Devices;
+with CuBit.Filesystems;
 with CuBit.Memory_Grants;
 
 package Ext2 is
@@ -24,7 +25,8 @@ package Ext2 is
 
    --  File type nibble in inode typeAndPermissions (upper 4 bits of Unsigned_16)
    INODE_DIRECTORY    : constant Unsigned_8 := 16#4#;
-   INODE_REGULAR_FILE : constant Unsigned_8 := 16#A#;
+   INODE_REGULAR_FILE : constant Unsigned_8 := 16#8#;
+   INODE_SYMBOLIC_LINK : constant Unsigned_8 := 16#A#;
 
    --  Directory entry file types
    FILETYPE_REGULAR   : constant Unsigned_8 := 1;
@@ -130,6 +132,31 @@ package Ext2 is
    --  kind.
    type BlockBackend is (MEMORY, BLOCK_DEVICE);
 
+   --  File writes have an explicit terminal state.  In particular, a zero
+   --  byte result is not sufficient to distinguish an empty write from an
+   --  allocation, range, or transport failure.
+   type Write_Status is
+     (Write_Complete,
+      Write_Read_Only,
+      Write_Out_Of_Range,
+      Write_Device_Error,
+      Write_No_Space,
+      Write_File_Range_Unsupported);
+
+   type Read_Status is
+     (Read_Complete,
+      Read_Out_Of_Range,
+      Read_Device_Error,
+      Read_File_Range_Unsupported);
+
+   type Directory_Read_Status is
+     (Directory_Page_Complete,
+      Directory_End,
+      Directory_Malformed,
+      Directory_Device_Error,
+      Directory_Out_Of_Range,
+      Directory_Range_Unsupported);
+
    --  Context for an Ext2 filesystem
    type Filesystem is record
       base         : System.Address;     --  Base address (unused for disk)
@@ -181,22 +208,29 @@ package Ext2 is
      (fs   : Filesystem;
       path : String) return Unsigned_32;
 
-   --  Read directory entries into a buffer as newline-separated names.
-   --  Returns the number of bytes written to dest.
-   function readDir
+   --  Decode one bounded page of directory metadata. Cursor is an opaque
+   --  byte position returned by the preceding call (zero starts a scan).
+   --  Every ext2 record is validated before its variable-length name is
+   --  viewed, and cursor advances only across validated records.
+   procedure readDirectoryPage
      (fs       : Filesystem;
       dirIno   : Inode;
-      dest     : System.Address;
-      destSize : Unsigned_64) return Unsigned_64;
+      cursor       : Unsigned_64;
+      entries      : out CuBit.Filesystems.Directory_Entries;
+      entryCount   : out Natural;
+      nextCursor   : out Unsigned_64;
+      status       : out Directory_Read_Status);
 
-   --  Read file data from an inode starting at the given offset.
-   --  Returns the number of bytes actually read.
-   function readData
+   --  Read file data from an inode starting at the given offset.  End of file
+   --  is Read_Complete with a zero-byte result; failures are distinct.
+   procedure readData
      (fs     : Filesystem;
       ino    : Inode;
       offset : Unsigned_64;
       buf    : System.Address;
-      count  : Unsigned_64) return Unsigned_64;
+      count  : Unsigned_64;
+      bytesRead : out Unsigned_64;
+      status    : out Read_Status);
 
    --  Write bytes to the filesystem at a raw byte offset.
    --  Uses Block.Device.V1 IPC for hardware-backed sessions.
@@ -207,18 +241,19 @@ package Ext2 is
       src    : System.Address;
       len    : Storage_Count);
 
-   --  Write file data to an inode starting at the given offset.
-   --  Supports file growth: allocates new blocks as needed and updates
-   --  inode size. Returns the number of bytes actually written.
-   function writeData
+   --  Write file data to an inode starting at the given offset.  A failure
+   --  may follow a committed prefix, reported in bytesWritten.
+   procedure writeData
      (fs       : in out Filesystem;
       inodeNum : Unsigned_32;
       ino      : in out Inode;
       offset   : Unsigned_64;
       buf      : System.Address;
-      count    : Unsigned_64) return Unsigned_64;
+      count    : Unsigned_64;
+      bytesWritten : out Unsigned_64;
+      status       : out Write_Status);
 
-   --  Allocate a free block from block group 0.
+   --  Allocate a free block from any block group.
    --  Sets blockNum to the allocated block, ok to True on success.
    procedure allocateBlock
      (fs       : in out Filesystem;

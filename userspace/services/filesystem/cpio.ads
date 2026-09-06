@@ -68,14 +68,4 @@ package Cpio is
       buf     : System.Address;
       count   : Unsigned_64) return Unsigned_64;
 
-   ---------------------------------------------------------------------------
-   --  listFiles
-   --  Write newline-separated filenames into dest buffer.
-   --  Returns the number of bytes written.
-   ---------------------------------------------------------------------------
-   function listFiles
-     (ar       : Archive;
-      dest     : System.Address;
-      destSize : Unsigned_64) return Unsigned_64;
-
 end Cpio;

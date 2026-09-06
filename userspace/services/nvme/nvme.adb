@@ -16,6 +16,11 @@ with CuBit.Messages; use CuBit.Messages;
 
 package body NVMe is
 
+   ADMIN_SLEEP_POLLS      : constant Positive := 5_000;
+   CONTROLLER_SLEEP_POLLS : constant Positive := 10_000;
+   IO_SPIN_POLLS          : constant Positive := 65_536;
+   IO_SLEEP_POLLS         : constant Positive := 1_000;
+
    ---------------------------------------------------------------------------
    --  MMIO helpers: volatile reads/writes through the mapped BAR0
    ---------------------------------------------------------------------------
@@ -120,7 +125,7 @@ package body NVMe is
       ringSqDoorbell (0, adminSqTail);
 
       --  Poll completion queue
-      for attempt in 1 .. 1_000_000 loop
+      for attempt in 1 .. ADMIN_SLEEP_POLLS loop
          cqe := adminCq (adminCqHead);
          if (cqe.status and 1) = adminPhase then
             --  Advance CQ head
@@ -181,7 +186,7 @@ package body NVMe is
       writeReg32 (REG_CC, 0);
 
       --  4. Wait for CSTS.RDY = 0
-      for attempt in 1 .. 100_000 loop
+      for attempt in 1 .. CONTROLLER_SLEEP_POLLS loop
          csts := readReg32 (REG_CSTS);
          exit when (csts and CSTS_RDY) = 0;
          ignore := syscall (SYSCALL_SLEEP, 1);
@@ -211,7 +216,7 @@ package body NVMe is
 
       --  9. Wait for CSTS.RDY = 1
       debugPrint ("NVMe: Waiting for controller ready..." & ASCII.LF);
-      for attempt in 1 .. 100_000 loop
+      for attempt in 1 .. CONTROLLER_SLEEP_POLLS loop
          csts := readReg32 (REG_CSTS);
          exit when (csts and CSTS_RDY) /= 0;
          ignore := syscall (SYSCALL_SLEEP, 1);
@@ -391,7 +396,7 @@ package body NVMe is
       ignore : Unsigned_64;
    begin
       --  Spin-poll: NVMe typically completes in microseconds
-      for spin in 1 .. 65536 loop
+      for spin in 1 .. IO_SPIN_POLLS loop
          cqe := ioCq (ioCqHead);
          if (cqe.status and 1) = ioPhase then
             found := True;
@@ -401,7 +406,7 @@ package body NVMe is
 
       --  Fallback: sleep-poll for slow completions
       if not found then
-         for attempt in 1 .. 1_000_000 loop
+         for attempt in 1 .. IO_SLEEP_POLLS loop
             cqe := ioCq (ioCqHead);
             if (cqe.status and 1) = ioPhase then
                found := True;

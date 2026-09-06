@@ -16,12 +16,15 @@ with IPI;
 with Memory_Grants;
 with PerCPUData;
 with Process.Queues;
+with Time;
 with Util;
 with Virtmem;
 with x86;
 
 use type Capabilities.CapabilityType;
 use type Capabilities.Operations.OperationStatus;
+use type Memory_Grants.Return_Result;
+use type Memory_Grants.Revocation_Result;
 
 package body Process.IPC with
     SPARK_Mode => On
@@ -218,6 +221,36 @@ is
     ---------------------------------------------------------------------------
 
     ---------------------------------------------------------------------------
+    -- takeIRQDoorbell
+    -- Consume the persistent device-work notification for owner. The caller
+    -- holds mailtab(owner).lock. The message deliberately matches the legacy
+    -- IRQ event payload while transport no longer depends on ring capacity.
+    ---------------------------------------------------------------------------
+    procedure takeIRQDoorbell (owner   : in  ProcessID;
+                               item    : out RingEntry;
+                               success : out Boolean)
+        with SPARK_Mode => On
+    is
+    begin
+        if not proctab(owner).irqNotificationPending then
+            item := NULL_RING_ENTRY;
+            success := False;
+            return;
+        end if;
+
+        proctab(owner).irqNotificationPending := False;
+        item :=
+          (msg       =>
+             (tag      => (label => 1, length => 0, flags => 0, badge => 0),
+              capBadge => 0,
+              words    => (others => 0)),
+           sender    => NO_PROCESS,
+           kind      => RING_EVENT,
+           requestId => NO_REQUEST_ID);
+        success := True;
+    end takeIRQDoorbell;
+
+    ---------------------------------------------------------------------------
     -- enqueueRing
     -- Push an entry into a mailbox's unified ring buffer.
     -- Caller must hold mailtab(owner).lock.
@@ -381,15 +414,13 @@ is
         success := False;
     end dequeueRingServiceRequest;
 
-    ---------------------------------------------------------------------------
-    -- receive
-    --
-    -- Check if a sender is already waiting in our sendQueue. If so, accept
-    -- the message immediately and move the sender to WAITINGFORREPLY.
-    -- Otherwise, enqueue ourselves as a receiver and block.
-    ---------------------------------------------------------------------------
-    procedure receive (from : out ProcessID; msg : out Message) with
-        SPARK_Mode => On
+    procedure receiveInternal
+        (hasDeadline : in  Boolean;
+         deadlineMs  : in  Unsigned_64;
+         from        : out ProcessID;
+         msg         : out Message;
+         received    : out Boolean)
+        with SPARK_Mode => On
     is
         mypid    : constant ProcessID := PerCPUData.getCurrentPID;
         receiver : constant ProcessID := getReceiver (mypid);
@@ -402,6 +433,7 @@ is
         if mypid = NO_PROCESS then
             from := NO_PROCESS;
             msg  := NULL_MESSAGE;
+            received := False;
             return;
         end if;
 
@@ -430,11 +462,17 @@ is
                  gen      => proctab(from).capGeneration);
 
             Spinlocks.exitCriticalSection (mailtab(receiver).lock);
+            received := True;
             return;
         end if;
 
-        -- Check unified ring (submit messages, events, send Path 1).
-        dequeueRing (receiver, re, ok);
+        -- Device IRQs are persistent doorbells outside the lossy message
+        -- ring. Prefer one bounded device drain before ordinary queued work.
+        takeIRQDoorbell (receiver, re, ok);
+        if not ok then
+            -- Check unified ring (submit messages, events, send Path 1).
+            dequeueRing (receiver, re, ok);
+        end if;
         if ok then
             from := re.sender;
             msg  := re.msg;
@@ -456,11 +494,23 @@ is
             end if;
 
             Spinlocks.exitCriticalSection (mailtab(receiver).lock);
+            received := True;
+            return;
+        end if;
+
+        if hasDeadline and then Time.msTicks >= deadlineMs then
+            from := NO_PROCESS;
+            msg := NULL_MESSAGE;
+            received := False;
+            Spinlocks.exitCriticalSection (mailtab(receiver).lock);
             return;
         end if;
 
         -- No message and no sender waiting. Block as a receiver.
         proctab(mypid).queueKey := receiver;
+        proctab(mypid).receiveDeadlineMs := deadlineMs;
+        proctab(mypid).receiveDeadlineReceiver := receiver;
+        proctab(mypid).receiveDeadlineActive := hasDeadline;
         Queues.enqueue (mailtab(receiver).recvQueue, mypid, ignore);
         proctab(mypid).state := RECEIVING;
 
@@ -470,6 +520,9 @@ is
 
         -- Woken by send/submit/sendEvent. Check sendQueue first.
         Spinlocks.enterCriticalSection (mailtab(receiver).lock);
+        proctab(mypid).receiveDeadlineActive := False;
+        proctab(mypid).receiveDeadlineMs := 0;
+        proctab(mypid).receiveDeadlineReceiver := NO_PROCESS;
 
         if not Queues.isEmpty (mailtab(receiver).sendQueue) then
             Queues.dequeue (mailtab(receiver).sendQueue, sender);
@@ -483,8 +536,11 @@ is
 
             proctab(sender).state := WAITINGFORREPLY;
         else
-            -- Woken by submit/sendEvent/send Path 1 — dequeue from ring.
-            dequeueRing (receiver, re, ok);
+            -- Woken by an IRQ doorbell, submit, sendEvent, or send Path 1.
+            takeIRQDoorbell (receiver, re, ok);
+            if not ok then
+                dequeueRing (receiver, re, ok);
+            end if;
             if ok then
                 from := re.sender;
                 msg  := re.msg;
@@ -510,8 +566,79 @@ is
                 Capabilities.NULL_CAPABILITY;
         end if;
 
+        received := from /= NO_PROCESS or else ok;
         Spinlocks.exitCriticalSection (mailtab(receiver).lock);
+    end receiveInternal;
+
+    ---------------------------------------------------------------------------
+    -- receive
+    --
+    -- Check if a sender is already waiting in our sendQueue. If so, accept
+    -- the message immediately and move the sender to WAITINGFORREPLY.
+    -- Otherwise, enqueue ourselves as a receiver and block.
+    ---------------------------------------------------------------------------
+    procedure receive (from : out ProcessID; msg : out Message) with
+        SPARK_Mode => On
+    is
+        received : Boolean;
+    begin
+        receiveInternal (False, 0, from, msg, received);
     end receive;
+
+    ---------------------------------------------------------------------------
+    -- receiveUntil
+    ---------------------------------------------------------------------------
+    procedure receiveUntil
+        (deadlineMs : in  Unsigned_64;
+         from       : out ProcessID;
+         msg        : out Message;
+         received   : out Boolean)
+        with SPARK_Mode => On
+    is
+    begin
+        receiveInternal (True, deadlineMs, from, msg, received);
+    end receiveUntil;
+
+    ---------------------------------------------------------------------------
+    -- expireReceiveDeadlines
+    --
+    -- Timed receivers stay only on their mailbox queue. The deadline fields
+    -- use an atomic active flag as a lock-free hint for this bounded scan; all
+    -- decisions are repeated while holding the mailbox and process locks that
+    -- serialize receive, publication, and teardown.
+    ---------------------------------------------------------------------------
+    procedure expireReceiveDeadlines (nowMs : Unsigned_64) with
+        SPARK_Mode => On
+    is
+        receiver : ProcessID;
+        removed  : ProcessID;
+    begin
+        for pid in proctab'Range loop
+            if proctab(pid).receiveDeadlineActive and then
+               proctab(pid).receiveDeadlineMs <= nowMs
+            then
+                receiver := proctab(pid).receiveDeadlineReceiver;
+                if receiver /= NO_PROCESS then
+                    Spinlocks.enterCriticalSection (mailtab(receiver).lock);
+                    Spinlocks.enterCriticalSection (lock);
+                    if proctab(pid).state = RECEIVING and then
+                       proctab(pid).receiveDeadlineActive and then
+                       proctab(pid).receiveDeadlineReceiver = receiver and then
+                       proctab(pid).receiveDeadlineMs <= nowMs
+                    then
+                        Queues.popItem
+                          (mailtab(receiver).recvQueue, pid, removed);
+                        if removed = pid then
+                            proctab(pid).receiveDeadlineActive := False;
+                            ready (pid);
+                        end if;
+                    end if;
+                    Spinlocks.exitCriticalSection (lock);
+                    Spinlocks.exitCriticalSection (mailtab(receiver).lock);
+                end if;
+            end if;
+        end loop;
+    end expireReceiveDeadlines;
 
     ---------------------------------------------------------------------------
     -- receiveEvent
@@ -526,7 +653,10 @@ is
         loop
             Spinlocks.enterCriticalSection (mailtab(receiver).lock);
 
-            dequeueRingKind (receiver, RING_EVENT, re, ok);
+            takeIRQDoorbell (receiver, re, ok);
+            if not ok then
+                dequeueRingKind (receiver, RING_EVENT, re, ok);
+            end if;
 
             if ok then
                 Spinlocks.exitCriticalSection (mailtab(receiver).lock);
@@ -561,7 +691,10 @@ is
 
         Spinlocks.enterCriticalSection (mailtab(receiver).lock);
 
-        dequeueRingKind (receiver, RING_EVENT, re, found);
+        takeIRQDoorbell (receiver, re, found);
+        if not found then
+            dequeueRingKind (receiver, RING_EVENT, re, found);
+        end if;
         if found then
             msg := re.msg;
         end if;
@@ -666,8 +799,11 @@ is
             return;
         end if;
 
-        -- Check unified ring (submit, events, send Path 1).
-        dequeueRing (receiver, re, ok);
+        takeIRQDoorbell (receiver, re, ok);
+        if not ok then
+            -- Check unified ring (submit, events, send Path 1).
+            dequeueRing (receiver, re, ok);
+        end if;
         if ok then
             if directReply then
                 notify (replyTo);
@@ -727,7 +863,10 @@ is
 
             proctab(sender).state := WAITINGFORREPLY;
         else
-            dequeueRing (receiver, re, ok);
+            takeIRQDoorbell (receiver, re, ok);
+            if not ok then
+                dequeueRing (receiver, re, ok);
+            end if;
             if ok then
                 from := re.sender;
                 msg  := re.msg;
@@ -864,8 +1003,12 @@ is
                  gen      => proctab(from).capGeneration);
         else
             -- Explicitly broad: this removes the next ring entry regardless of
-            -- whether it is a request or event.
-            dequeueRing (receiver, re, found);
+            -- whether it is a request or event. Persistent device work is
+            -- checked first so it cannot sit behind a full ordinary ring.
+            takeIRQDoorbell (receiver, re, found);
+            if not found then
+                dequeueRing (receiver, re, found);
+            end if;
             if found then
                 from := re.sender;
                 msg  := re.msg;
@@ -1023,11 +1166,14 @@ is
     -- Non-blocking send for interrupt context. Does not block the caller.
     -- Pushes to the event ring buffer; drops if full.
     ---------------------------------------------------------------------------
-    procedure sendEvent (dest : ProcessID; msg : Message)
+    procedure trySendEvent (dest     : ProcessID;
+                            msg      : Message;
+                            accepted : out Boolean)
         with SPARK_Mode => On is
-        ok      : Boolean;
         removed : ProcessID;
     begin
+        accepted := False;
+
         -- Validate destination
         if dest = NO_PROCESS then
             return;
@@ -1044,16 +1190,15 @@ is
                       sender    => NO_PROCESS,
                       kind      => RING_EVENT,
                       requestId => NO_REQUEST_ID),
-                     ok);
+                     accepted);
 
-        if not ok then
+        if not accepted then
             proctab(dest).eventDrops := proctab(dest).eventDrops + 1;
         end if;
 
         --  receive() is the intentional mixed-lane wait primitive: it may
-        --  consume events as well as requests. Wake both the event-specific
-        --  waiter and a process blocked in mixed receive, otherwise an IRQ can
-        --  remain queued forever while its driver sleeps in RECEIVING.
+        --  consume events as well as requests. Wake both event-specific and
+        --  mixed waiters whenever unsolicited work is published.
         if proctab(dest).state = RECEIVING then
             --  receive() placed the waiter in recvQueue. An event is not a
             --  synchronous sender and therefore must explicitly remove that
@@ -1065,7 +1210,43 @@ is
         end if;
 
         Spinlocks.exitCriticalSection (mailtab(dest).lock);
+    end trySendEvent;
+
+    procedure sendEvent (dest : ProcessID; msg : Message)
+        with SPARK_Mode => On
+    is
+        accepted : Boolean;
+    begin
+        trySendEvent (dest, msg, accepted);
     end sendEvent;
+
+    ---------------------------------------------------------------------------
+    -- notifyIRQ
+    -- Publish a persistent, coalescing device-work doorbell. Drivers drain
+    -- their authoritative controller/ring state after observing it, so one
+    -- bit is sufficient regardless of how many interrupts arrived meanwhile.
+    ---------------------------------------------------------------------------
+    procedure notifyIRQ (dest : ProcessID)
+        with SPARK_Mode => On
+    is
+        removed : ProcessID;
+    begin
+        if dest = NO_PROCESS or else proctab(dest).state = INVALID then
+            return;
+        end if;
+
+        Spinlocks.enterCriticalSection (mailtab(dest).lock);
+        proctab(dest).irqNotificationPending := True;
+
+        if proctab(dest).state = RECEIVING then
+            Queues.popItem (mailtab(dest).recvQueue, dest, removed);
+            notify (dest);
+        elsif proctab(dest).state = WAITINGFOREVENT then
+            notify (dest);
+        end if;
+
+        Spinlocks.exitCriticalSection (mailtab(dest).lock);
+    end notifyIRQ;
 
     ---------------------------------------------------------------------------
     -- notifySupervisor
@@ -1504,7 +1685,7 @@ is
     begin
         Memory_Grants.Advance_Generation (nextGeneration, mayReuse);
         value :=
-          (active      => False,
+          (lifecycle   => Memory_Grants.Inactive_Lifecycle,
            reusable    => mayReuse,
            generation  => nextGeneration,
            granterPID  => NO_PROCESS,
@@ -1587,9 +1768,21 @@ is
             return;
         end if;
 
+        Spinlocks.enterCriticalSection (grantLock);
+
+        -- Recheck lifecycle state under the grant lock.  A concurrent kill
+        -- may have invalidated either endpoint after the early validation.
+        if proctab(owner).state = INVALID or else
+           proctab(grantee).state = INVALID
+        then
+            Spinlocks.exitCriticalSection (grantLock);
+            return;
+        end if;
+
         -- Find a free grant slot in owner's array
         for i in GrantID loop
-            if not proctab(owner).grants(i).active and then
+            if not Memory_Grants.Is_Active
+              (proctab(owner).grants(i).lifecycle) and then
                proctab(owner).grants(i).reusable
             then
                 granterSlot := i;
@@ -1599,6 +1792,7 @@ is
         end loop;
 
         if not slotFound then
+            Spinlocks.exitCriticalSection (grantLock);
             return;
         end if;
 
@@ -1623,16 +1817,43 @@ is
 
             if physAddr = 0 then
                 -- Page not mapped in granter's space — roll back
-                for j in 0 .. i - 1 loop
-                    granteeVirt := GRANT_REGION_BASE +
-                        Integer_Address (globalId) * GRANT_SLOT_SIZE +
-                        Integer_Address (j) * Integer_Address (Virtmem.PAGE_SIZE);
+                if i > 0 then
+                    for j in 0 .. i - 1 loop
+                        granteeVirt := GRANT_REGION_BASE +
+                            Integer_Address (globalId) * GRANT_SLOT_SIZE +
+                            Integer_Address (j) *
+                              Integer_Address (Virtmem.PAGE_SIZE);
 
-                    Virtmem.unmapPage (
-                        virt => granteeVirt,
-                        myP4 => addrtab(proctab(grantee).pgTable),
-                        success => ok);
-                end loop;
+                        Virtmem.unmapPage
+                          (virt => granteeVirt,
+                           myP4 => addrtab(proctab(grantee).pgTable),
+                           success => ok);
+                    end loop;
+                end if;
+                Spinlocks.exitCriticalSection (grantLock);
+                return;
+            end if;
+
+            -- Ordinary grants may name only order-0 user frames owned by the
+            -- granter.  Device/DMA mappings have different lifetimes and need
+            -- a future explicit grant operation rather than being smuggled
+            -- through the generic memory-loan path.
+            if not BuddyAllocator.isUserFrameOwnedBy
+              (physAddr, Unsigned_8 (owner))
+            then
+                if i > 0 then
+                    for j in 0 .. i - 1 loop
+                        granteeVirt := GRANT_REGION_BASE +
+                            Integer_Address (globalId) * GRANT_SLOT_SIZE +
+                            Integer_Address (j) *
+                              Integer_Address (Virtmem.PAGE_SIZE);
+                        Virtmem.unmapPage
+                          (virt => granteeVirt,
+                           myP4 => addrtab(proctab(grantee).pgTable),
+                           success => ok);
+                    end loop;
+                end if;
+                Spinlocks.exitCriticalSection (grantLock);
                 return;
             end if;
 
@@ -1651,23 +1872,27 @@ is
 
             if not ok then
                 -- Roll back previously mapped pages
-                for j in 0 .. i - 1 loop
-                    granteeVirt := GRANT_REGION_BASE +
-                        Integer_Address (globalId) * GRANT_SLOT_SIZE +
-                        Integer_Address (j) * Integer_Address (Virtmem.PAGE_SIZE);
+                if i > 0 then
+                    for j in 0 .. i - 1 loop
+                        granteeVirt := GRANT_REGION_BASE +
+                            Integer_Address (globalId) * GRANT_SLOT_SIZE +
+                            Integer_Address (j) *
+                              Integer_Address (Virtmem.PAGE_SIZE);
 
-                    Virtmem.unmapPage (
-                        virt => granteeVirt,
-                        myP4 => addrtab(proctab(grantee).pgTable),
-                        success => ok);
-                end loop;
+                        Virtmem.unmapPage
+                          (virt => granteeVirt,
+                           myP4 => addrtab(proctab(grantee).pgTable),
+                           success => ok);
+                    end loop;
+                end if;
+                Spinlocks.exitCriticalSection (grantLock);
                 return;
             end if;
         end loop;
 
         -- Record grant metadata in owner's grant table
         proctab(owner).grants(granterSlot) := (
-            active      => True,
+            lifecycle   => Memory_Grants.Available_Lifecycle,
             reusable    => True,
             generation  => proctab(owner).grants(granterSlot).generation,
             granterPID  => owner,
@@ -1684,48 +1909,94 @@ is
         --  and revocation.
         id      := globalId;
         success := True;
+        Spinlocks.exitCriticalSection (grantLock);
     end createGrant;
 
-    ---------------------------------------------------------------------------
-    -- revokeGrant
-    -- Unmap granted pages from grantee's address space.
-    ---------------------------------------------------------------------------
-    procedure revokeGrant (id : GrantID)
+    procedure pinGrantPages (g : Grant; success : out Boolean)
+        with SPARK_Mode => Off
+    is
+        phys   : Virtmem.PhysAddress;
+        ok     : Boolean;
+        pinned : Natural := 0;
+    begin
+        success := False;
+        for i in 0 .. g.numPages - 1 loop
+            phys := Virtmem.tableWalk
+              (virt => To_Integer (g.granteeAddr) +
+                       Integer_Address (i) *
+                         Integer_Address (Virtmem.PAGE_SIZE),
+               myP4 => addrtab(proctab(g.granteePID).pgTable));
+            if phys = 0 then
+                exit;
+            end if;
+            BuddyAllocator.pinFrame (phys, ok);
+            if not ok then
+                exit;
+            end if;
+            pinned := pinned + 1;
+        end loop;
+
+        if pinned = g.numPages then
+            success := True;
+            return;
+        end if;
+
+        if pinned > 0 then
+            for i in 0 .. pinned - 1 loop
+                phys := Virtmem.tableWalk
+                  (virt => To_Integer (g.granteeAddr) +
+                           Integer_Address (i) *
+                             Integer_Address (Virtmem.PAGE_SIZE),
+                   myP4 => addrtab(proctab(g.granteePID).pgTable));
+                BuddyAllocator.unpinFrame (phys, ok);
+            end loop;
+        end if;
+    end pinGrantPages;
+
+    procedure unpinGrantPages (g : Grant)
+        with SPARK_Mode => Off
+    is
+        phys : Virtmem.PhysAddress;
+        ok   : Boolean;
+    begin
+        for i in 0 .. g.numPages - 1 loop
+            phys := Virtmem.tableWalk
+              (virt => To_Integer (g.granteeAddr) +
+                       Integer_Address (i) *
+                         Integer_Address (Virtmem.PAGE_SIZE),
+               myP4 => addrtab(proctab(g.granteePID).pgTable));
+            if phys = 0 then
+                raise ProcessException with
+                  "Acquired grant lost its mapped backing frame";
+            end if;
+            BuddyAllocator.unpinFrame (phys, ok);
+            if not ok then
+                raise ProcessException with
+                  "Acquired grant returned an unpinned frame";
+            end if;
+        end loop;
+    end unpinGrantPages;
+
+    procedure unmapGrantPages (g : Grant)
         with SPARK_Mode => On
     is
-        pid   : constant ProcessID := PerCPUData.getCurrentPID;
-        -- Threads share parent's grant table
-        owner : constant ProcessID :=
-            (if proctab(pid).isThread then proctab(pid).ppid else pid);
         granteeVirt : Integer_Address;
-        ok    : Boolean;
-        g     : Grant renames proctab(owner).grants(id);
+        ok : Boolean;
     begin
-        if not g.active then
-            return;
-        end if;
-
-        --  Don't unmap if grantee is already dead (page tables freed)
         if proctab(g.granteePID).state = INVALID then
-            invalidateGrant (g);
             return;
         end if;
 
-        -- Unmap each page from grantee's address space
         for i in 0 .. g.numPages - 1 loop
             granteeVirt := To_Integer (g.granteeAddr) +
                 Integer_Address (i) * Integer_Address (Virtmem.PAGE_SIZE);
-
-            Virtmem.unmapPage (
-                virt    => granteeVirt,
-                myP4    => addrtab(proctab(g.granteePID).pgTable),
-                success => ok);
+            Virtmem.unmapPage
+              (virt    => granteeVirt,
+               myP4    => addrtab(proctab(g.granteePID).pgTable),
+               success => ok);
         end loop;
 
-        -- Invalidate TLB for grantee. If grantee is on this CPU,
-        -- flush locally. If on another CPU, set the global TLB flush
-        -- flag and send reschedule IPI to trigger remote flush.
-        tlbShootdown : declare
+        declare
             granteeCPU : constant Natural := proctab(g.granteePID).cpu;
         begin
             if granteeCPU = PerCPUData.getCPUNumber then
@@ -1734,10 +2005,40 @@ is
                 tlbFlushPending(granteeCPU) := True;
                 IPI.sendReschedule (granteeCPU);
             end if;
-        end tlbShootdown;
+        end;
+    end unmapGrantPages;
 
-        -- Mark grant slot as inactive
+    procedure revokeGrantLocked (g : in out Grant)
+        with SPARK_Mode => On
+    is
+        result : Memory_Grants.Revocation_Result;
+    begin
+        if not Memory_Grants.Is_Active (g.lifecycle) then
+            return;
+        end if;
+
+        Memory_Grants.Request_Revocation (g.lifecycle, result);
+        if result = Memory_Grants.Revocation_Pending then
+            return;
+        end if;
+
+        unmapGrantPages (g);
         invalidateGrant (g);
+    end revokeGrantLocked;
+
+    ---------------------------------------------------------------------------
+    -- revokeGrant
+    ---------------------------------------------------------------------------
+    procedure revokeGrant (id : GrantID)
+        with SPARK_Mode => On
+    is
+        pid   : constant ProcessID := PerCPUData.getCurrentPID;
+        owner : constant ProcessID :=
+            (if proctab(pid).isThread then proctab(pid).ppid else pid);
+    begin
+        Spinlocks.enterCriticalSection (grantLock);
+        revokeGrantLocked (proctab(owner).grants(id));
+        Spinlocks.exitCriticalSection (grantLock);
     end revokeGrant;
 
     ---------------------------------------------------------------------------
@@ -1748,32 +2049,16 @@ is
     procedure revokeAllGrants (pid : ProcessID)
         with SPARK_Mode => On
     is
-        g : Grant;
-        granteeVirt : Integer_Address;
-        ok : Boolean;
     begin
+        Spinlocks.enterCriticalSection (grantLock);
         for i in GrantID loop
-            g := proctab(pid).grants(i);
-
-            if g.active then
-                -- Only unmap if grantee is still valid
-                if proctab(g.granteePID).state /= INVALID then
-                    for j in 0 .. g.numPages - 1 loop
-                        granteeVirt := To_Integer (g.granteeAddr) +
-                            Integer_Address (j) * Integer_Address (Virtmem.PAGE_SIZE);
-
-                        Virtmem.unmapPage (
-                            virt    => granteeVirt,
-                            myP4    => addrtab(proctab(g.granteePID).pgTable),
-                            success => ok);
-                    end loop;
-
-                end if;
-
-                invalidateGrant (proctab(pid).grants(i));
-            end if;
+            revokeGrantLocked (proctab(pid).grants(i));
         end loop;
+        Spinlocks.exitCriticalSection (grantLock);
     end revokeAllGrants;
+
+    procedure completeOwnerPIDIfReady (owner : ProcessID)
+        with SPARK_Mode => Off;
 
     ---------------------------------------------------------------------------
     -- revokeAllGrantsTo
@@ -1786,15 +2071,29 @@ is
         with SPARK_Mode => On
     is
     begin
-        for owner in ProcessID loop
+        Spinlocks.enterCriticalSection (grantLock);
+        for owner in ProcessID range ProcessID'First + 1 .. ProcessID'Last loop
             for slot in GrantID loop
-                if proctab(owner).grants(slot).active and then
+                if Memory_Grants.Is_Active
+                  (proctab(owner).grants(slot).lifecycle) and then
                    proctab(owner).grants(slot).granteePID = pid
                 then
-                    invalidateGrant (proctab(owner).grants(slot));
+                    declare
+                        hadAcquisitions : Boolean;
+                    begin
+                        Memory_Grants.Force_Close
+                          (proctab(owner).grants(slot).lifecycle,
+                           hadAcquisitions);
+                        if hadAcquisitions then
+                            unpinGrantPages (proctab(owner).grants(slot));
+                        end if;
+                        invalidateGrant (proctab(owner).grants(slot));
+                    end;
                 end if;
             end loop;
+            completeOwnerPIDIfReady (owner);
         end loop;
+        Spinlocks.exitCriticalSection (grantLock);
     end revokeAllGrantsTo;
 
     procedure getOwnedGrantGeneration
@@ -1815,17 +2114,22 @@ is
         generation := 0;
         success := False;
 
-        if slotOwner /= owner or else not value.active or else
+        Spinlocks.enterCriticalSection (grantLock);
+
+        if slotOwner /= owner or else
+           not Memory_Grants.Is_Active (value.lifecycle) or else
            value.granterPID /= owner
         then
+            Spinlocks.exitCriticalSection (grantLock);
             return;
         end if;
 
         generation := value.generation;
         success := True;
+        Spinlocks.exitCriticalSection (grantLock);
     end getOwnedGrantGeneration;
 
-    procedure resolveGrant
+    procedure acquireGrant
       (reference     : Memory_Grants.Reference;
        expectedOwner : ProcessID;
        byteOffset    : Unsigned_64;
@@ -1844,18 +2148,23 @@ is
           (Memory_Grants.Local_Slot_Of (reference.slot));
         value : Grant renames proctab(slotOwner).grants(localSlot);
         mappedBytes : Unsigned_64;
+        pinned : Boolean;
     begin
         mappedAddress := System.Null_Address;
         success := False;
 
+        Spinlocks.enterCriticalSection (grantLock);
+
         if expectedOwner = NO_PROCESS or else slotOwner /= expectedOwner or else
-           not value.active or else not value.reusable or else
+           not Memory_Grants.Can_Acquire (value.lifecycle) or else
+           not value.reusable or else
            value.granterPID /= expectedOwner or else
            value.granteePID /= receiver or else
            not Memory_Grants.Is_Current (reference, value.generation) or else
            byteLength = 0 or else
            (requiredWrite and then value.permission /= GRANT_READWRITE)
         then
+            Spinlocks.exitCriticalSection (grantLock);
             return;
         end if;
 
@@ -1863,13 +2172,125 @@ is
         if byteOffset >= mappedBytes or else
            byteLength > mappedBytes - byteOffset
         then
+            Spinlocks.exitCriticalSection (grantLock);
             return;
         end if;
+
+        if Memory_Grants.Acquisition_Total (value.lifecycle) = 0 then
+            pinGrantPages (value, pinned);
+            if not pinned then
+                Spinlocks.exitCriticalSection (grantLock);
+                return;
+            end if;
+        end if;
+
+        Memory_Grants.Record_Acquire (value.lifecycle);
 
         mappedAddress := To_Address
           (To_Integer (value.granteeAddr) + Integer_Address (byteOffset));
         success := True;
-    end resolveGrant;
+        Spinlocks.exitCriticalSection (grantLock);
+    end acquireGrant;
+
+    procedure releaseDMAAllocations (pid : ProcessID)
+      with SPARK_Mode => Off
+    is
+    begin
+        for d in DMAAllocArray'Range loop
+            if proctab(pid).dmaAllocs(d).active then
+                declare
+                    allocation : DMAAlloc renames proctab(pid).dmaAllocs(d);
+                    pages : constant Natural := 2 ** Natural (allocation.order);
+                begin
+                    for page in 0 .. pages - 1 loop
+                        BuddyAllocator.releaseUserFrame
+                          (allocation.physAddr +
+                             Virtmem.PhysAddress (page * Virtmem.PAGE_SIZE),
+                           Unsigned_8 (pid));
+                    end loop;
+                    BuddyAllocator.free
+                      (allocation.order, Virtmem.P2Va (allocation.physAddr));
+                    allocation.active := False;
+                end;
+            end if;
+        end loop;
+    end releaseDMAAllocations;
+
+    procedure completeOwnerPIDIfReady (owner : ProcessID)
+        with SPARK_Mode => Off
+    is
+        activeGrant : Boolean := False;
+    begin
+        if not proctab(owner).grantTeardownPending or else
+           not proctab(owner).grantTeardownReady
+        then
+            return;
+        end if;
+
+        for slot in GrantID loop
+            if Memory_Grants.Is_Active
+              (proctab(owner).grants(slot).lifecycle)
+            then
+                activeGrant := True;
+                exit;
+            end if;
+        end loop;
+
+        if not activeGrant then
+            -- DMA blocks were deliberately retained while any acquisition
+            -- could still pin a page within them.  The final return has now
+            -- unpinned every such page, so whole buddy blocks are safe to
+            -- release at their original order.
+            releaseDMAAllocations (owner);
+            if proctab(owner).pidReusableAfterGrants then
+                PIDTracker.freePID (owner);
+            end if;
+            proctab(owner).grantTeardownPending := False;
+            proctab(owner).grantTeardownReady := False;
+            proctab(owner).pidReusableAfterGrants := False;
+        end if;
+    end completeOwnerPIDIfReady;
+
+    procedure returnGrant
+      (reference : Memory_Grants.Reference;
+       success   : out Boolean)
+      with SPARK_Mode => On
+    is
+        pid : constant ProcessID := PerCPUData.getCurrentPID;
+        receiver : constant ProcessID :=
+          (if proctab(pid).isThread then proctab(pid).ppid else pid);
+        slotOwner : constant ProcessID := ProcessID
+          (Memory_Grants.Owner_Of (reference.slot));
+        localSlot : constant GrantID := GrantID
+          (Memory_Grants.Local_Slot_Of (reference.slot));
+        value : Grant renames proctab(slotOwner).grants(localSlot);
+        result : Memory_Grants.Return_Result;
+    begin
+        success := False;
+        Spinlocks.enterCriticalSection (grantLock);
+
+        if not Memory_Grants.Is_Active (value.lifecycle) or else
+           value.granteePID /= receiver or else
+           not Memory_Grants.Is_Current (reference, value.generation) or else
+           Memory_Grants.Acquisition_Total (value.lifecycle) = 0
+        then
+            Spinlocks.exitCriticalSection (grantLock);
+            return;
+        end if;
+
+        Memory_Grants.Record_Return (value.lifecycle, result);
+        if Memory_Grants.Acquisition_Total (value.lifecycle) = 0 then
+            unpinGrantPages (value);
+            if result = Memory_Grants.Revocation_Completed_On_Return then
+                unmapGrantPages (value);
+                invalidateGrant (value);
+                completeOwnerPIDIfReady (slotOwner);
+            end if;
+        end if;
+
+        success := True;
+        Spinlocks.exitCriticalSection (grantLock);
+    end returnGrant;
 
     procedure revokeGrantReference
       (reference : Memory_Grants.Reference;
@@ -1886,16 +2307,58 @@ is
         value : Grant renames proctab(slotOwner).grants(localSlot);
     begin
         success := False;
-        if slotOwner /= owner or else not value.active or else
+        Spinlocks.enterCriticalSection (grantLock);
+        if slotOwner /= owner or else
+           not Memory_Grants.Is_Active (value.lifecycle) or else
            value.granterPID /= owner or else
            not Memory_Grants.Is_Current (reference, value.generation)
         then
+            Spinlocks.exitCriticalSection (grantLock);
             return;
         end if;
 
-        revokeGrant (localSlot);
+        revokeGrantLocked (value);
         success := True;
+        Spinlocks.exitCriticalSection (grantLock);
     end revokeGrantReference;
+
+    procedure prepareGrantProtectedTeardown
+      (pid         : ProcessID;
+       pidReusable : Boolean;
+       deferred    : out Boolean)
+      with SPARK_Mode => On
+    is
+    begin
+        deferred := False;
+        Spinlocks.enterCriticalSection (grantLock);
+        for slot in GrantID loop
+            if Memory_Grants.Is_Active
+              (proctab(pid).grants(slot).lifecycle)
+            then
+                deferred := True;
+                exit;
+            end if;
+        end loop;
+
+        if deferred then
+            proctab(pid).grantTeardownPending := True;
+            proctab(pid).grantTeardownReady := False;
+            proctab(pid).pidReusableAfterGrants := pidReusable;
+        end if;
+        Spinlocks.exitCriticalSection (grantLock);
+    end prepareGrantProtectedTeardown;
+
+    procedure finishGrantProtectedTeardown (pid : ProcessID)
+      with SPARK_Mode => On
+    is
+    begin
+        Spinlocks.enterCriticalSection (grantLock);
+        if proctab(pid).grantTeardownPending then
+            proctab(pid).grantTeardownReady := True;
+            completeOwnerPIDIfReady (pid);
+        end if;
+        Spinlocks.exitCriticalSection (grantLock);
+    end finishGrantProtectedTeardown;
 
     ---------------------------------------------------------------------------
     -- Capability-Aware IPC

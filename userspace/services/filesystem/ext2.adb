@@ -10,6 +10,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
+with CuBit.Filesystems;
 
 package body Ext2 is
 
@@ -30,6 +31,24 @@ package body Ext2 is
    cachedBackend       : BlockBackend := MEMORY;
    cachedBase          : System.Address := System.Null_Address;
    cachedCapSlot       : Unsigned_64 := 0;
+
+   NULL_INODE : constant Inode :=
+     (typeAndPermissions => 0,
+      uid => 0, sizeLo => 0,
+      accessedTime => 0, creationTime => 0,
+      modifiedTime => 0, deletedTime => 0,
+      gid => 0, numHardLinks => 0,
+      numDiskSectors => 0, flags => 0,
+      osSpecific1 => 0,
+      directBlocks => (others => 0),
+      singleIndirectBlock => 0,
+      doubleIndirectBlock => 0,
+      tripleIndirectBlock => 0,
+      generationNumber => 0,
+      fileACL => 0, sizeHi_DirACL => 0,
+      fragmentBlockAddr => 0,
+      osSpecific2A => 0, osSpecific2B => 0,
+      osSpecific2C => 0);
 
    procedure invalidateBlockCache is
    begin
@@ -60,21 +79,18 @@ package body Ext2 is
      (fs     : Filesystem;
       offset : Storage_Offset;
       dest   : System.Address;
-      len    : Storage_Count)
+      len    : Storage_Count;
+      status : out Read_Status)
    is
    begin
+      status := Read_Device_Error;
       case fs.backend is
          when MEMORY =>
             if offset < 0 or else
                Unsigned_64 (offset) > fs.imageSize or else
                Unsigned_64 (len) > fs.imageSize - Unsigned_64 (offset)
             then
-               declare
-                  dst : String (1 .. Natural (len))
-                    with Import, Address => dest;
-               begin
-                  dst := (others => Character'Val (0));
-               end;
+               status := Read_Out_Of_Range;
                return;
             end if;
 
@@ -86,8 +102,14 @@ package body Ext2 is
             begin
                dst := src;
             end;
+            status := Read_Complete;
 
          when BLOCK_DEVICE =>
+            if offset < 0 then
+               status := Read_Out_Of_Range;
+               return;
+            end if;
+
             --  Convert byte offset/len to multi-sector reads via IPC.
             --  Read up to the session transfer bound per IPC call into the
             --  transitional grant buffer, then copy to dest.
@@ -111,12 +133,24 @@ package body Ext2 is
                   lba    := byteOff / deviceBlockSize;
                   secOff := byteOff mod deviceBlockSize;
 
+                  if lba >= fs.device.description.blockCount then
+                     status := Read_Out_Of_Range;
+                     return;
+                  end if;
+
                   --  Calculate how many sectors to read in this batch
                   sectorsNeeded :=
                     (remaining + secOff + deviceBlockSize - 1) /
                     deviceBlockSize;
                   if sectorsNeeded > maxSectors then
                      sectorsNeeded := maxSectors;
+                  end if;
+
+                  if sectorsNeeded = 0 or else
+                     sectorsNeeded > fs.device.description.blockCount - lba
+                  then
+                     status := Read_Out_Of_Range;
+                     return;
                   end if;
 
                   --  Read multiple sectors from driver
@@ -132,17 +166,11 @@ package body Ext2 is
 
                   ignore := capCall (fs.device.endpointSlot, msg);
 
-                  if msg.tag.label /= REPLY_OK then
+                  if msg.tag.label /= REPLY_OK or else
+                     msg.tag.length /= 1 or else
+                     msg.words (0) /= sectorsNeeded * deviceBlockSize
+                  then
                      debugPrint ("Ext2: read reply not OK." & ASCII.LF);
-                     --  Read failed; zero-fill remaining
-                     declare
-                        dstBuf : String (1 .. Natural (len))
-                          with Import, Address => dest;
-                     begin
-                        for i in Natural (dstOff) + 1 .. Natural (len) loop
-                           dstBuf (i) := Character'Val (0);
-                        end loop;
-                     end;
                      return;
                   end if;
 
@@ -169,8 +197,31 @@ package body Ext2 is
                   dstOff    := dstOff + Storage_Offset (copyLen);
                   remaining := remaining - copyLen;
                end loop;
+               status := Read_Complete;
             end;
       end case;
+   end readBytes;
+
+   --  Metadata readers still use a value-only API.  Fail closed by clearing
+   --  the whole destination if transport validation fails; file-data reads
+   --  use the checked overload directly and surface the failure to clients.
+   procedure readBytes
+     (fs     : Filesystem;
+      offset : Storage_Offset;
+      dest   : System.Address;
+      len    : Storage_Count)
+   is
+      readStatus : Read_Status;
+   begin
+      readBytes (fs, offset, dest, len, readStatus);
+      if readStatus /= Read_Complete then
+         declare
+            dst : String (1 .. Natural (len))
+              with Import, Address => dest;
+         begin
+            dst := (others => Character'Val (0));
+         end;
+      end if;
    end readBytes;
 
    --  Read a full block from the ramdisk
@@ -185,10 +236,62 @@ package body Ext2 is
       readBytes (fs, offset, dest, Storage_Count (fs.blkSize));
    end readBlock;
 
+   procedure readBlock
+     (fs       : Filesystem;
+      blockNum : Unsigned_32;
+      dest     : System.Address;
+      status   : out Read_Status)
+   is
+   begin
+      if blockNum >= fs.sb.blockCount then
+         status := Read_Out_Of_Range;
+         return;
+      end if;
+
+      readBytes
+        (fs,
+         Storage_Offset (blockNum) * Storage_Offset (fs.blkSize),
+         dest, Storage_Count (fs.blkSize), status);
+   end readBlock;
+
    function blockSize (sb : Superblock) return Unsigned_32 is
    begin
       return Shift_Left (Unsigned_32'(1024), Natural (sb.blockShift));
    end blockSize;
+
+   --  Validate the geometry assumptions used by the bounded ext2
+   --  implementation.  Doing this once at mount keeps malformed on-disk
+   --  values from becoming divisors, array bounds, or bitmap indices in the
+   --  I/O path.
+   function supportedSuperblock (sb : Superblock) return Boolean is
+      size : Unsigned_32;
+      inodeBytes : Unsigned_32;
+      allocatableBlocks : Unsigned_32;
+   begin
+      if sb.signature /= EXT2_SIGNATURE or else
+         sb.blockShift > 2 or else
+         sb.blockCount = 0 or else
+         sb.blockCount <= sb.firstDataBlock or else
+         sb.inodeCount = 0 or else
+         sb.blocksPerBlockGroup = 0 or else
+         sb.inodesPerBlockGroup = 0
+      then
+         return False;
+      end if;
+
+      size := blockSize (sb);
+      inodeBytes :=
+        (if sb.majorVersion >= 1 then Unsigned_32 (sb.inodeSize) else 128);
+      allocatableBlocks := sb.blockCount - sb.firstDataBlock;
+
+      return inodeBytes >= Inode'Size / 8 and then
+        inodeBytes <= size and then
+        inodeBytes mod 4 = 0 and then
+        sb.blocksPerBlockGroup <= size * 8 and then
+        sb.inodesPerBlockGroup <= size * 8 and then
+        sb.freeBlocks <= allocatableBlocks and then
+        sb.freeInodes <= sb.inodeCount;
+   end supportedSuperblock;
 
    function inodeType (ino : Inode) return Unsigned_8 is
    begin
@@ -224,8 +327,20 @@ package body Ext2 is
       --  Compute byte offset of the inode within the inode table
       inodeTableByteOffset : Storage_Offset;
       inoSize : Unsigned_32;
+      readStatus : Read_Status;
    begin
-      readBytes (fs, bgdtOffset, bgd'Address, BlockGroupDescriptor'Size / 8);
+      if inodeNum = 0 or else inodeNum > fs.sb.inodeCount then
+         ino := NULL_INODE;
+         return;
+      end if;
+
+      readBytes
+        (fs, bgdtOffset, bgd'Address, BlockGroupDescriptor'Size / 8,
+         readStatus);
+      if readStatus /= Read_Complete then
+         ino := NULL_INODE;
+         return;
+      end if;
 
       --  Use inodeSize from superblock if major version >= 1
       if fs.sb.majorVersion >= 1 then
@@ -238,7 +353,11 @@ package body Ext2 is
         Storage_Offset (bgd.inodeTableAddr) * Storage_Offset (fs.blkSize) +
         Storage_Offset (inodeIndex) * Storage_Offset (inoSize);
 
-      readBytes (fs, inodeTableByteOffset, ino'Address, Inode'Size / 8);
+      readBytes
+        (fs, inodeTableByteOffset, ino'Address, Inode'Size / 8, readStatus);
+      if readStatus /= Read_Complete then
+         ino := NULL_INODE;
+      end if;
    end readInode;
 
    function lookupInDir
@@ -246,70 +365,50 @@ package body Ext2 is
       dirIno  : Inode;
       name    : String) return Unsigned_32
    is
-      size : constant Unsigned_64 := fileSize (dirIno);
-      bytesRead : Unsigned_64 := 0;
-      --  Use a stack buffer for one block
-      blockBuf : String (1 .. Natural (fs.blkSize))
-        with Alignment => 8;
-      blockIdx : Natural := 0;
+      entries   : CuBit.Filesystems.Directory_Entries;
+      cursor    : Unsigned_64 := 0;
+      nextCursor : Unsigned_64;
+      count     : Natural;
+      status    : Directory_Read_Status;
    begin
-      --  Walk through each data block of the directory
-      while bytesRead < size and blockIdx < NUM_DIRECT_BLOCKS loop
-         declare
-            blkNum : constant Unsigned_32 :=
-              dirIno.directBlocks (blockIdx);
-            offset : Storage_Offset := 0;
-         begin
-            if blkNum = 0 then
-               exit;
-            end if;
+      loop
+         readDirectoryPage
+           (fs, dirIno, cursor, entries, count, nextCursor, status);
 
-            readBlock (fs, blkNum, blockBuf'Address);
+         if status not in Directory_Page_Complete | Directory_End then
+            return 0;
+         end if;
 
-            --  Parse directory entries within this block
-            while offset < Storage_Offset (fs.blkSize) and
-                  bytesRead < size
-            loop
+         if count > 0 then
+            for index in 0 .. count - 1 loop
                declare
-                  dent : DirectoryEntry
-                    with Import,
-                         Address => blockBuf'Address + offset;
+                  matches : Boolean :=
+                    Natural (entries (index).nameLength) = name'Length;
                begin
-                  if dent.inode /= 0 and
-                     Natural (dent.nameLength) = name'Length
-                  then
-                     declare
-                        entryName : String (1 .. Natural (dent.nameLength))
-                          with Import,
-                               Address => blockBuf'Address + offset +
-                                          (DirectoryEntry'Size / 8);
-                        match : Boolean := True;
-                     begin
-                        for i in 1 .. name'Length loop
-                           if entryName (i) /=
-                              name (name'First + i - 1)
-                           then
-                              match := False;
-                              exit;
-                           end if;
-                        end loop;
-
-                        if match then
-                           return dent.inode;
+                  if matches then
+                     for characterIndex in 1 .. name'Length loop
+                        if Character'Val
+                          (entries (index).name (characterIndex)) /=
+                          name (name'First + characterIndex - 1)
+                        then
+                           matches := False;
+                           exit;
                         end if;
-                     end;
+                     end loop;
                   end if;
 
-                  bytesRead := bytesRead + Unsigned_64 (dent.length);
-                  offset := offset + Storage_Offset (dent.length);
-
-                  --  Guard against malformed entry
-                  exit when dent.length = 0;
+                  if matches then
+                     return Unsigned_32 (entries (index).objectHint);
+                  end if;
                end;
             end loop;
-         end;
+         end if;
 
-         blockIdx := blockIdx + 1;
+         exit when status = Directory_End;
+         if nextCursor <= cursor then
+            return 0;
+         end if;
+         cursor := nextCursor;
       end loop;
 
       return 0;  --  Not found
@@ -436,109 +535,262 @@ package body Ext2 is
       return 0;  --  Beyond supported range
    end getDataBlock;
 
-   function readDir
-     (fs       : Filesystem;
-      dirIno   : Inode;
-      dest     : System.Address;
-      destSize : Unsigned_64) return Unsigned_64
+   procedure readDirectoryPage
+     (fs          : Filesystem;
+      dirIno      : Inode;
+      cursor      : Unsigned_64;
+      entries     : out CuBit.Filesystems.Directory_Entries;
+      entryCount  : out Natural;
+      nextCursor  : out Unsigned_64;
+      status      : out Directory_Read_Status)
    is
+      use CuBit.Filesystems;
       size : constant Unsigned_64 := fileSize (dirIno);
-      bytesScanned : Unsigned_64 := 0;
-      written      : Unsigned_64 := 0;
       blockBuf : String (1 .. Natural (fs.blkSize))
         with Alignment => 8;
-      blockIdx : Natural := 0;
+      scanCursor : Unsigned_64 := cursor;
+      loadedLogicalBlock : Unsigned_64 := Unsigned_64'Last;
 
-      outBuf : String (1 .. Natural (destSize))
-        with Import, Address => dest;
+      procedure locateDirectoryBlock
+        (logicalBlock : Unsigned_64;
+         physicalBlock : out Unsigned_32;
+         result : out Directory_Read_Status)
+      is
+         pointersPerBlock : constant Unsigned_32 := fs.blkSize / 4;
+         pointerStatus : Read_Status;
+         pointerBlock : array (0 .. 1023) of Unsigned_32
+           with Alignment => 8;
+         secondPointerBlock : array (0 .. 1023) of Unsigned_32
+           with Alignment => 8;
+         logical32 : Unsigned_32;
+      begin
+         physicalBlock := 0;
+         result := Directory_Malformed;
+         if logicalBlock > Unsigned_64 (Unsigned_32'Last) then
+            result := Directory_Range_Unsupported;
+            return;
+         end if;
+         logical32 := Unsigned_32 (logicalBlock);
+
+         if logical32 < Unsigned_32 (NUM_DIRECT_BLOCKS) then
+            physicalBlock := dirIno.directBlocks (Natural (logical32));
+         elsif logical32 - Unsigned_32 (NUM_DIRECT_BLOCKS) <
+           pointersPerBlock
+         then
+            if dirIno.singleIndirectBlock = 0 then
+               return;
+            end if;
+            readBlock
+              (fs, dirIno.singleIndirectBlock, pointerBlock'Address,
+               pointerStatus);
+            if pointerStatus /= Read_Complete then
+               result :=
+                 (if pointerStatus = Read_Out_Of_Range then
+                     Directory_Out_Of_Range else Directory_Device_Error);
+               return;
+            end if;
+            physicalBlock := pointerBlock
+              (Natural (logical32 - Unsigned_32 (NUM_DIRECT_BLOCKS)));
+         else
+            declare
+               doubleIndex : constant Unsigned_32 :=
+                 logical32 - Unsigned_32 (NUM_DIRECT_BLOCKS) -
+                 pointersPerBlock;
+               firstIndex : constant Unsigned_32 :=
+                 doubleIndex / pointersPerBlock;
+               secondIndex : constant Unsigned_32 :=
+                 doubleIndex mod pointersPerBlock;
+            begin
+               if firstIndex >= pointersPerBlock then
+                  result := Directory_Range_Unsupported;
+                  return;
+               end if;
+               if dirIno.doubleIndirectBlock = 0 then
+                  return;
+               end if;
+               readBlock
+                 (fs, dirIno.doubleIndirectBlock, pointerBlock'Address,
+                  pointerStatus);
+               if pointerStatus /= Read_Complete then
+                  result :=
+                    (if pointerStatus = Read_Out_Of_Range then
+                        Directory_Out_Of_Range else Directory_Device_Error);
+                  return;
+               end if;
+               if pointerBlock (Natural (firstIndex)) = 0 then
+                  return;
+               end if;
+               readBlock
+                 (fs, pointerBlock (Natural (firstIndex)),
+                  secondPointerBlock'Address, pointerStatus);
+               if pointerStatus /= Read_Complete then
+                  result :=
+                    (if pointerStatus = Read_Out_Of_Range then
+                        Directory_Out_Of_Range else Directory_Device_Error);
+                  return;
+               end if;
+               physicalBlock := secondPointerBlock (Natural (secondIndex));
+            end;
+         end if;
+
+         if physicalBlock = 0 or else physicalBlock >= fs.sb.blockCount then
+            result := Directory_Malformed;
+         else
+            result := Directory_Page_Complete;
+         end if;
+      end locateDirectoryBlock;
    begin
-      while bytesScanned < size and blockIdx < NUM_DIRECT_BLOCKS loop
+      entries := (others =>
+        (objectHint => 0, sizeBytes => 0, nameLength => 0,
+         kind => DIRECTORY_KIND_UNKNOWN, flags => 0, reserved => 0,
+         name => (others => 0)));
+      entryCount := 0;
+      nextCursor := cursor;
+      status := Directory_Malformed;
+
+      if inodeType (dirIno) /= INODE_DIRECTORY or else cursor > size then
+         return;
+      end if;
+
+      while scanCursor < size loop
          declare
-            blkNum : constant Unsigned_32 :=
-              dirIno.directBlocks (blockIdx);
-            offset : Storage_Offset := 0;
+            logicalBlock : constant Unsigned_64 :=
+              scanCursor / Unsigned_64 (fs.blkSize);
+            blockOffset : constant Unsigned_64 :=
+              scanCursor mod Unsigned_64 (fs.blkSize);
+            blockRemaining : constant Unsigned_64 :=
+              Unsigned_64 (fs.blkSize) - blockOffset;
+            fileRemaining : constant Unsigned_64 := size - scanCursor;
+            physicalBlock : Unsigned_32;
+            locateStatus : Directory_Read_Status;
          begin
-            if blkNum = 0 then
-               exit;
+            if blockRemaining < DirectoryEntry'Size / 8 or else
+               fileRemaining < DirectoryEntry'Size / 8
+            then
+               status := Directory_Malformed;
+               return;
             end if;
 
-            readBlock (fs, blkNum, blockBuf'Address);
-
-            while offset < Storage_Offset (fs.blkSize) and
-                  bytesScanned < size
-            loop
+            if loadedLogicalBlock /= logicalBlock then
+               locateDirectoryBlock
+                 (logicalBlock, physicalBlock, locateStatus);
+               if locateStatus /= Directory_Page_Complete then
+                  status := locateStatus;
+                  return;
+               end if;
                declare
-                  dent : DirectoryEntry
-                    with Import,
-                         Address => blockBuf'Address + offset;
+                  blockStatus : Read_Status;
                begin
-                  if dent.inode /= 0 and dent.nameLength > 0 then
-                     declare
-                        nameLen : constant Natural :=
-                          Natural (dent.nameLength);
-                        entryName : String (1 .. nameLen)
-                          with Import,
-                               Address => blockBuf'Address + offset +
-                                          (DirectoryEntry'Size / 8);
-                     begin
-                        --  Skip "." and ".." entries
-                        if not (nameLen = 1 and then
-                                entryName (1) = '.') and then
-                           not (nameLen = 2 and then
-                                entryName (1) = '.' and then
-                                entryName (2) = '.')
-                        then
-                           --  Check room for name + newline
-                           if written + Unsigned_64 (nameLen) + 1 <=
-                              destSize
-                           then
-                              for i in 1 .. nameLen loop
-                                 outBuf (Natural (written) + i) :=
-                                   entryName (i);
-                              end loop;
-                              written := written + Unsigned_64 (nameLen);
-                              outBuf (Natural (written) + 1) := ASCII.LF;
-                              written := written + 1;
-                           else
-                              --  No more room
-                              return written;
-                           end if;
-                        end if;
-                     end;
+                  readBlock
+                    (fs, physicalBlock, blockBuf'Address, blockStatus);
+                  if blockStatus /= Read_Complete then
+                     status :=
+                       (if blockStatus = Read_Out_Of_Range then
+                           Directory_Out_Of_Range else
+                           Directory_Device_Error);
+                     return;
                   end if;
-
-                  bytesScanned := bytesScanned +
-                    Unsigned_64 (dent.length);
-                  offset := offset + Storage_Offset (dent.length);
-                  exit when dent.length = 0;
                end;
-            end loop;
+               loadedLogicalBlock := logicalBlock;
+            end if;
+
+            declare
+               dent : DirectoryEntry
+                 with Import,
+                      Address => blockBuf'Address +
+                        Storage_Offset (blockOffset);
+               recordLength : constant Unsigned_64 :=
+                 Unsigned_64 (dent.length);
+               nameLength : constant Natural := Natural (dent.nameLength);
+            begin
+               if recordLength < DirectoryEntry'Size / 8 or else
+                  recordLength mod 4 /= 0 or else
+                  recordLength > blockRemaining or else
+                  recordLength > fileRemaining or else
+                  Unsigned_64 (nameLength) >
+                    recordLength - DirectoryEntry'Size / 8 or else
+                  dent.inode > fs.sb.inodeCount
+               then
+                  status := Directory_Malformed;
+                  return;
+               end if;
+
+               if dent.inode /= 0 and then nameLength > 0 then
+                  declare
+                     entryName : String (1 .. nameLength)
+                       with Import,
+                            Address => blockBuf'Address +
+                              Storage_Offset (blockOffset) +
+                              (DirectoryEntry'Size / 8);
+                     isDot : constant Boolean :=
+                       (nameLength = 1 and then entryName (1) = '.') or else
+                       (nameLength = 2 and then entryName (1) = '.' and then
+                        entryName (2) = '.');
+                  begin
+                     if not isDot then
+                        if entryCount = MAXIMUM_DIRECTORY_PAGE_ENTRIES then
+                           nextCursor := scanCursor;
+                           status := Directory_Page_Complete;
+                           return;
+                        end if;
+
+                        entries (entryCount).objectHint :=
+                          Unsigned_64 (dent.inode);
+                        entries (entryCount).nameLength :=
+                          Unsigned_16 (nameLength);
+                        entries (entryCount).kind :=
+                          (case dent.fileType is
+                              when FILETYPE_REGULAR => DIRECTORY_KIND_FILE,
+                              when FILETYPE_DIRECTORY =>
+                                DIRECTORY_KIND_DIRECTORY,
+                              when 7 => DIRECTORY_KIND_SYMLINK,
+                              when others => DIRECTORY_KIND_UNKNOWN);
+                        for index in 1 .. nameLength loop
+                           entries (entryCount).name (index) :=
+                             Unsigned_8 (Character'Pos (entryName (index)));
+                        end loop;
+                        entryCount := entryCount + 1;
+                     end if;
+                  end;
+               end if;
+
+               scanCursor := scanCursor + recordLength;
+            end;
          end;
-         blockIdx := blockIdx + 1;
       end loop;
 
-      return written;
-   end readDir;
+      nextCursor := scanCursor;
+      status := Directory_End;
+   end readDirectoryPage;
 
-   function readData
+   procedure readData
      (fs     : Filesystem;
       ino    : Inode;
       offset : Unsigned_64;
       buf    : System.Address;
-      count  : Unsigned_64) return Unsigned_64
+      count  : Unsigned_64;
+      bytesRead : out Unsigned_64;
+      status    : out Read_Status)
    is
       size : constant Unsigned_64 := fileSize (ino);
       remaining : Unsigned_64;
       pos       : Unsigned_64 := offset;
-      bytesRead : Unsigned_64 := 0;
+      completed : Unsigned_64 := 0;
+      terminalStatus : Read_Status := Read_Complete;
+      ptrsPerBlock : constant Unsigned_64 := Unsigned_64 (fs.blkSize / 4);
+      maximumLogicalBlocks : constant Unsigned_64 :=
+        Unsigned_64 (NUM_DIRECT_BLOCKS) + ptrsPerBlock +
+          ptrsPerBlock * ptrsPerBlock;
 
       --  Maximum contiguous payload accepted by this block session.
       maxContigBytes : constant Unsigned_64 :=
         (if fs.backend = MEMORY then Unsigned_64 (fs.blkSize)
          else Unsigned_64 (fs.device.grantBytes));
    begin
+      bytesRead := 0;
+      status := Read_Complete;
       if offset >= size then
-         return 0;
+         return;
       end if;
 
       remaining := size - offset;
@@ -552,14 +804,23 @@ package body Ext2 is
 
       while remaining > 0 loop
          declare
-            logBlock    : constant Unsigned_32 :=
-              Unsigned_32 (pos / Unsigned_64 (fs.blkSize));
+            logicalIndex : constant Unsigned_64 :=
+              pos / Unsigned_64 (fs.blkSize);
             blockOffset : constant Unsigned_32 :=
               Unsigned_32 (pos mod Unsigned_64 (fs.blkSize));
-            physBlock   : constant Unsigned_32 :=
-              getDataBlock (fs, ino, logBlock);
+            physBlock   : Unsigned_32;
             canRead     : Unsigned_64;
          begin
+            if logicalIndex >= maximumLogicalBlocks then
+               terminalStatus := Read_File_Range_Unsupported;
+               exit;
+            end if;
+
+            declare
+               logBlock : constant Unsigned_32 := Unsigned_32 (logicalIndex);
+            begin
+               physBlock := getDataBlock (fs, ino, logBlock);
+
             if physBlock = 0 then
                --  Sparse block (hole) — fill with zeros
                canRead := Unsigned_64 (fs.blkSize - blockOffset);
@@ -568,7 +829,7 @@ package body Ext2 is
                end if;
                declare
                   dst : String (1 .. Natural (canRead))
-                    with Import, Address => buf + Storage_Offset (bytesRead);
+                    with Import, Address => buf + Storage_Offset (completed);
                begin
                   for i in dst'Range loop
                      dst (i) := Character'Val (0);
@@ -595,6 +856,9 @@ package body Ext2 is
                         exit when Unsigned_64 (contigBlocks) *
                           Unsigned_64 (fs.blkSize) >= remaining;
 
+                        exit when logicalIndex + Unsigned_64 (contigBlocks) >=
+                          maximumLogicalBlocks;
+
                         nextPhys := getDataBlock
                           (fs, ino, logBlock + contigBlocks);
 
@@ -612,22 +876,34 @@ package body Ext2 is
                      canRead := remaining;
                   end if;
 
-                  readBytes (fs,
-                             Storage_Offset (physBlock) *
-                               Storage_Offset (fs.blkSize) +
-                               Storage_Offset (blockOffset),
-                             buf + Storage_Offset (bytesRead),
-                             Storage_Count (canRead));
+                  declare
+                     readStatus : Read_Status;
+                  begin
+                     readBytes
+                       (fs,
+                        Storage_Offset (physBlock) *
+                          Storage_Offset (fs.blkSize) +
+                          Storage_Offset (blockOffset),
+                        buf + Storage_Offset (completed),
+                        Storage_Count (canRead),
+                        readStatus);
+                     if readStatus /= Read_Complete then
+                        terminalStatus := readStatus;
+                        exit;
+                     end if;
+                  end;
                end;
             end if;
+            end;
 
-            bytesRead := bytesRead + canRead;
+            completed := completed + canRead;
             pos       := pos + canRead;
             remaining := remaining - canRead;
          end;
       end loop;
 
-      return bytesRead;
+      bytesRead := completed;
+      status := terminalStatus;
    end readData;
 
    --  writeBytes uses the session's described logical block and transfer bound.
@@ -638,12 +914,16 @@ package body Ext2 is
      (fs     : Filesystem;
       offset : Storage_Offset;
       src    : System.Address;
-      len    : Storage_Count)
+      len    : Storage_Count;
+      status : out Write_Status)
    is
    begin
+      status := Write_Device_Error;
+
       if fs.backend = BLOCK_DEVICE and then
          Is_Read_Only (fs.device.description)
       then
+         status := Write_Read_Only;
          return;
       end if;
 
@@ -653,6 +933,7 @@ package body Ext2 is
                Unsigned_64 (offset) > fs.imageSize or else
                Unsigned_64 (len) > fs.imageSize - Unsigned_64 (offset)
             then
+               status := Write_Out_Of_Range;
                return;
             end if;
 
@@ -664,8 +945,14 @@ package body Ext2 is
             begin
                dst := source;
             end;
+            status := Write_Complete;
 
          when BLOCK_DEVICE =>
+            if offset < 0 then
+               status := Write_Out_Of_Range;
+               return;
+            end if;
+
             declare
                byteOff   : Unsigned_64 := Unsigned_64 (offset);
                remaining : Unsigned_64 := Unsigned_64 (len);
@@ -681,6 +968,11 @@ package body Ext2 is
                while remaining > 0 loop
                   lba    := byteOff / deviceBlockSize;
                   secOff := byteOff mod deviceBlockSize;
+
+                  if lba >= fs.device.description.blockCount then
+                     status := Write_Out_Of_Range;
+                     return;
+                  end if;
 
                   if secOff /= 0 or remaining < deviceBlockSize then
                      --  Partial sector: read-modify-write
@@ -701,7 +993,10 @@ package body Ext2 is
                                    3 => fs.device.grant.generation);
                      ignore := capCall (fs.device.endpointSlot, msg);
 
-                     if msg.tag.label /= REPLY_OK then
+                     if msg.tag.label /= REPLY_OK or else
+                        msg.tag.length /= 1 or else
+                        msg.words (0) /= deviceBlockSize
+                     then
                         debugPrint
                           ("Ext2: write RMW read failed." & ASCII.LF);
                         return;
@@ -732,7 +1027,10 @@ package body Ext2 is
                                    3 => fs.device.grant.generation);
                      ignore := capCall (fs.device.endpointSlot, msg);
 
-                     if msg.tag.label /= REPLY_OK then
+                     if msg.tag.label /= REPLY_OK or else
+                        msg.tag.length /= 1 or else
+                        msg.words (0) /= deviceBlockSize
+                     then
                         debugPrint
                           ("Ext2: write RMW write failed." & ASCII.LF);
                         return;
@@ -751,6 +1049,14 @@ package body Ext2 is
                      begin
                         if sectorsNeeded > maxWriteSectors then
                            sectorsNeeded := maxWriteSectors;
+                        end if;
+
+                        if sectorsNeeded = 0 or else
+                           sectorsNeeded >
+                             fs.device.description.blockCount - lba
+                        then
+                           status := Write_Out_Of_Range;
+                           return;
                         end if;
 
                         copyLen :=
@@ -778,7 +1084,10 @@ package body Ext2 is
                                       3 => fs.device.grant.generation);
                         ignore := capCall (fs.device.endpointSlot, msg);
 
-                        if msg.tag.label /= REPLY_OK then
+                        if msg.tag.label /= REPLY_OK or else
+                           msg.tag.length /= 1 or else
+                           msg.words (0) /= copyLen
+                        then
                            debugPrint
                              ("Ext2: batch write failed." & ASCII.LF);
                            return;
@@ -790,15 +1099,31 @@ package body Ext2 is
                   srcOff    := srcOff + Storage_Offset (copyLen);
                   remaining := remaining - copyLen;
                end loop;
+               status := Write_Complete;
             end;
       end case;
+   end writeBytes;
+
+   --  Transitional wrapper for metadata operations whose public APIs do not
+   --  yet expose an I/O result.  File-data writes use the checked overload
+   --  below and never report an unchecked transport completion as success.
+   procedure writeBytes
+     (fs     : Filesystem;
+      offset : Storage_Offset;
+      src    : System.Address;
+      len    : Storage_Count)
+   is
+      ignoredStatus : Write_Status;
+   begin
+      writeBytes (fs, offset, src, len, ignoredStatus);
    end writeBytes;
 
    --  Write an inode back to disk (mirror of readInode)
    procedure writeInode
      (fs       : Filesystem;
       inodeNum : Unsigned_32;
-      ino      : Inode)
+      ino      : Inode;
+      status   : out Write_Status)
    is
       blockGroup : constant Unsigned_32 :=
         (inodeNum - 1) / fs.sb.inodesPerBlockGroup;
@@ -814,8 +1139,17 @@ package body Ext2 is
 
       inodeTableByteOffset : Storage_Offset;
       inoSize : Unsigned_32;
+      readStatus : Read_Status;
    begin
-      readBytes (fs, bgdtOffset, bgd'Address, BlockGroupDescriptor'Size / 8);
+      readBytes
+        (fs, bgdtOffset, bgd'Address, BlockGroupDescriptor'Size / 8,
+         readStatus);
+      if readStatus /= Read_Complete then
+         status :=
+           (if readStatus = Read_Out_Of_Range then Write_Out_Of_Range
+            else Write_Device_Error);
+         return;
+      end if;
 
       if fs.sb.majorVersion >= 1 then
          inoSize := Unsigned_32 (fs.sb.inodeSize);
@@ -827,110 +1161,266 @@ package body Ext2 is
         Storage_Offset (bgd.inodeTableAddr) * Storage_Offset (fs.blkSize) +
         Storage_Offset (inodeIndex) * Storage_Offset (inoSize);
 
-      writeBytes (fs, inodeTableByteOffset, ino'Address, Inode'Size / 8);
+      writeBytes
+        (fs, inodeTableByteOffset, ino'Address, Inode'Size / 8, status);
+   end writeInode;
+
+   procedure writeInode
+     (fs       : Filesystem;
+      inodeNum : Unsigned_32;
+      ino      : Inode)
+   is
+      ignoredStatus : Write_Status;
+   begin
+      writeInode (fs, inodeNum, ino, ignoredStatus);
    end writeInode;
 
    --  Write the superblock back to disk
-   procedure writeSuperblock (fs : Filesystem) is
+   procedure writeSuperblock
+     (fs : Filesystem;
+      status : out Write_Status)
+   is
    begin
       writeBytes (fs, SUPERBLOCK_OFFSET, fs.sb'Address,
-                  Superblock'Size / 8);
+                  Superblock'Size / 8, status);
+   end writeSuperblock;
+
+   procedure writeSuperblock (fs : Filesystem) is
+      ignoredStatus : Write_Status;
+   begin
+      writeSuperblock (fs, ignoredStatus);
    end writeSuperblock;
 
    --  Write a block group descriptor back to disk
    procedure writeBGD
      (fs         : Filesystem;
       blockGroup : Unsigned_32;
-      bgd        : BlockGroupDescriptor)
+      bgd        : BlockGroupDescriptor;
+      status     : out Write_Status)
    is
       bgdtOffset : constant Storage_Offset :=
         Storage_Offset ((fs.sb.firstDataBlock + 1) * fs.blkSize) +
         Storage_Offset (blockGroup) * (BlockGroupDescriptor'Size / 8);
    begin
       writeBytes (fs, bgdtOffset, bgd'Address,
-                  BlockGroupDescriptor'Size / 8);
+                  BlockGroupDescriptor'Size / 8, status);
+   end writeBGD;
+
+   procedure writeBGD
+     (fs         : Filesystem;
+      blockGroup : Unsigned_32;
+      bgd        : BlockGroupDescriptor)
+   is
+      ignoredStatus : Write_Status;
+   begin
+      writeBGD (fs, blockGroup, bgd, ignoredStatus);
    end writeBGD;
 
    --  Read block group descriptor for a given block group
    procedure readBGD
      (fs         : Filesystem;
       blockGroup : Unsigned_32;
-      bgd        : out BlockGroupDescriptor)
+      bgd        : out BlockGroupDescriptor;
+      status     : out Read_Status)
    is
       bgdtOffset : constant Storage_Offset :=
         Storage_Offset ((fs.sb.firstDataBlock + 1) * fs.blkSize) +
         Storage_Offset (blockGroup) * (BlockGroupDescriptor'Size / 8);
    begin
       readBytes (fs, bgdtOffset, bgd'Address,
-                 BlockGroupDescriptor'Size / 8);
+                 BlockGroupDescriptor'Size / 8, status);
    end readBGD;
 
-   --  Allocate a free block from block group 0
+   procedure readBGD
+     (fs         : Filesystem;
+      blockGroup : Unsigned_32;
+      bgd        : out BlockGroupDescriptor)
+   is
+      ignoredStatus : Read_Status;
+   begin
+      readBGD (fs, blockGroup, bgd, ignoredStatus);
+      if ignoredStatus /= Read_Complete then
+         bgd :=
+           (blockBitmapAddr => 0,
+            inodeBitmapAddr => 0,
+            inodeTableAddr  => 0,
+            numFreeBlocks   => 0,
+            numFreeInodes   => 0,
+            numDirectories  => 0,
+            padding         => 0,
+            reserved        => 0);
+      end if;
+   end readBGD;
+
+   --  Allocate a free block from the first group which has one.  Block bitmap
+   --  bits are relative to their group, not to firstDataBlock globally.
    procedure allocateBlock
      (fs       : in out Filesystem;
       blockNum : out Unsigned_32;
-      ok       : out Boolean)
+      status   : out Write_Status)
    is
       bgd : BlockGroupDescriptor;
+      updatedBGD : BlockGroupDescriptor;
       bitmapBuf : array (0 .. 4095) of Unsigned_8 with Alignment => 8;
       bitmapBytes : constant Unsigned_32 :=
         (fs.sb.blocksPerBlockGroup + 7) / 8;
       readSize : Unsigned_32;
+      groupCount : Unsigned_32;
+      allocatableBlocks : Unsigned_32;
+      groupFirst : Unsigned_32;
+      validBlocks : Unsigned_32;
+      candidate : Unsigned_32;
+      originalByte : Unsigned_8;
+      readStatus : Read_Status;
+      writeStatus : Write_Status;
+      rollbackStatus : Write_Status;
+      sawAdvertisedSpace : Boolean := False;
    begin
       blockNum := 0;
-      ok := False;
+      status := Write_No_Space;
 
-      readBGD (fs, 0, bgd);
-
-      if bgd.numFreeBlocks = 0 then
+      if fs.sb.blocksPerBlockGroup = 0 or else
+         fs.sb.blockCount <= fs.sb.firstDataBlock
+      then
+         status := Write_Device_Error;
          return;
       end if;
+
+      if fs.sb.freeBlocks = 0 then
+         return;
+      end if;
+
+      allocatableBlocks := fs.sb.blockCount - fs.sb.firstDataBlock;
+      groupCount := 1 +
+        (allocatableBlocks - 1) / fs.sb.blocksPerBlockGroup;
 
       readSize := bitmapBytes;
       if readSize > bitmapBuf'Length then
          readSize := Unsigned_32 (bitmapBuf'Length);
       end if;
 
-      readBytes (fs,
-                 Storage_Offset (bgd.blockBitmapAddr) *
-                   Storage_Offset (fs.blkSize),
-                 bitmapBuf'Address,
-                 Storage_Count (readSize));
+      if readSize = 0 then
+         return;
+      end if;
 
-      --  Scan for first free bit
-      for byteIdx in 0 .. Natural (readSize) - 1 loop
-         if bitmapBuf (byteIdx) /= 16#FF# then
-            for bitIdx in 0 .. 7 loop
-               if (bitmapBuf (byteIdx) and
-                   Shift_Left (Unsigned_8'(1), bitIdx)) = 0
-               then
-                  blockNum := Unsigned_32 (byteIdx * 8 + bitIdx) +
-                    fs.sb.firstDataBlock;
+      for group in Unsigned_32 range 0 .. groupCount - 1 loop
+         readBGD (fs, group, bgd, readStatus);
+         if readStatus /= Read_Complete then
+            status :=
+              (if readStatus = Read_Out_Of_Range then Write_Out_Of_Range
+               else Write_Device_Error);
+            return;
+         end if;
 
-                  --  Set the bit
-                  bitmapBuf (byteIdx) := bitmapBuf (byteIdx) or
-                    Shift_Left (Unsigned_8'(1), bitIdx);
+         if bgd.numFreeBlocks /= 0 then
+            sawAdvertisedSpace := True;
+            groupFirst := fs.sb.firstDataBlock +
+              group * fs.sb.blocksPerBlockGroup;
+            validBlocks := Unsigned_32'Min
+              (fs.sb.blocksPerBlockGroup,
+               fs.sb.blockCount - groupFirst);
 
-                  --  Write bitmap back
-                  writeBytes (fs,
+            readBytes
+              (fs,
+               Storage_Offset (bgd.blockBitmapAddr) *
+                 Storage_Offset (fs.blkSize),
+               bitmapBuf'Address,
+               Storage_Count (readSize),
+               readStatus);
+            if readStatus /= Read_Complete then
+               status :=
+                 (if readStatus = Read_Out_Of_Range then Write_Out_Of_Range
+                  else Write_Device_Error);
+               return;
+            end if;
+
+            for byteIdx in 0 .. Natural (readSize) - 1 loop
+               if bitmapBuf (byteIdx) /= 16#FF# then
+                  for bitIdx in 0 .. 7 loop
+                     candidate := Unsigned_32 (byteIdx * 8 + bitIdx);
+                     if candidate < validBlocks and then
+                        (bitmapBuf (byteIdx) and
+                         Shift_Left (Unsigned_8'(1), bitIdx)) = 0
+                     then
+                        originalByte := bitmapBuf (byteIdx);
+                        bitmapBuf (byteIdx) := bitmapBuf (byteIdx) or
+                          Shift_Left (Unsigned_8'(1), bitIdx);
+
+                        writeBytes
+                          (fs,
+                           Storage_Offset (bgd.blockBitmapAddr) *
+                           Storage_Offset (fs.blkSize),
+                           bitmapBuf'Address,
+                           Storage_Count (readSize),
+                           writeStatus);
+                        if writeStatus /= Write_Complete then
+                           status := writeStatus;
+                           return;
+                        end if;
+
+                        updatedBGD := bgd;
+                        updatedBGD.numFreeBlocks :=
+                          updatedBGD.numFreeBlocks - 1;
+                        writeBGD (fs, group, updatedBGD, writeStatus);
+                        if writeStatus /= Write_Complete then
+                           --  Best-effort rollback of the bitmap reservation.
+                           bitmapBuf (byteIdx) := originalByte;
+                           writeBytes
+                             (fs,
                               Storage_Offset (bgd.blockBitmapAddr) *
                                 Storage_Offset (fs.blkSize),
                               bitmapBuf'Address,
-                              Storage_Count (readSize));
+                              Storage_Count (readSize),
+                              rollbackStatus);
+                           status := writeStatus;
+                           return;
+                        end if;
 
-                  --  Update counts
-                  bgd.numFreeBlocks := bgd.numFreeBlocks - 1;
-                  writeBGD (fs, 0, bgd);
+                        fs.sb.freeBlocks := fs.sb.freeBlocks - 1;
+                        writeSuperblock (fs, writeStatus);
+                        if writeStatus /= Write_Complete then
+                           --  Restore the in-memory count and attempt to put
+                           --  both earlier metadata writes back as well.
+                           fs.sb.freeBlocks := fs.sb.freeBlocks + 1;
+                           writeBGD (fs, group, bgd, rollbackStatus);
+                           bitmapBuf (byteIdx) := originalByte;
+                           writeBytes
+                             (fs,
+                              Storage_Offset (bgd.blockBitmapAddr) *
+                                Storage_Offset (fs.blkSize),
+                              bitmapBuf'Address,
+                              Storage_Count (readSize),
+                              rollbackStatus);
+                           status := writeStatus;
+                           return;
+                        end if;
 
-                  fs.sb.freeBlocks := fs.sb.freeBlocks - 1;
-                  writeSuperblock (fs);
-
-                  ok := True;
-                  return;
+                        blockNum := groupFirst + candidate;
+                        status := Write_Complete;
+                        return;
+                     end if;
+                  end loop;
                end if;
             end loop;
          end if;
       end loop;
+
+      --  Free-space counters that advertise an unavailable block indicate
+      --  inconsistent metadata, not a normal no-space condition.
+      if sawAdvertisedSpace then
+         status := Write_Device_Error;
+      end if;
+   end allocateBlock;
+
+   procedure allocateBlock
+     (fs       : in out Filesystem;
+      blockNum : out Unsigned_32;
+      ok       : out Boolean)
+   is
+      status : Write_Status;
+   begin
+      allocateBlock (fs, blockNum, status);
+      ok := status = Write_Complete;
    end allocateBlock;
 
    --  Free a previously allocated block
@@ -939,19 +1429,53 @@ package body Ext2 is
       blockNum : Unsigned_32)
    is
       bgd : BlockGroupDescriptor;
-      relBlock : constant Unsigned_32 := blockNum - fs.sb.firstDataBlock;
-      byteIdx  : constant Natural := Natural (relBlock / 8);
-      bitIdx   : constant Natural := Natural (relBlock mod 8);
+      relBlock : Unsigned_32;
+      blockGroup : Unsigned_32;
+      groupRelativeBlock : Unsigned_32;
+      byteIdx  : Natural;
+      bitIdx   : Natural;
       bitmapBuf : array (0 .. 4095) of Unsigned_8 with Alignment => 8;
       bitmapBytes : constant Unsigned_32 :=
         (fs.sb.blocksPerBlockGroup + 7) / 8;
       readSize : Unsigned_32;
+      groupFirst : Unsigned_32;
+      validBlocks : Unsigned_32;
+      allocatableBlocks : Unsigned_32;
    begin
-      readBGD (fs, 0, bgd);
+      if fs.sb.blocksPerBlockGroup = 0 or else
+         blockNum < fs.sb.firstDataBlock or else
+         blockNum >= fs.sb.blockCount
+      then
+         return;
+      end if;
+
+      relBlock := blockNum - fs.sb.firstDataBlock;
+      blockGroup := relBlock / fs.sb.blocksPerBlockGroup;
+      groupRelativeBlock := relBlock mod fs.sb.blocksPerBlockGroup;
+      byteIdx := Natural (groupRelativeBlock / 8);
+      bitIdx := Natural (groupRelativeBlock mod 8);
+
+      readBGD (fs, blockGroup, bgd);
+
+      groupFirst := fs.sb.firstDataBlock +
+        blockGroup * fs.sb.blocksPerBlockGroup;
+      validBlocks := Unsigned_32'Min
+        (fs.sb.blocksPerBlockGroup, fs.sb.blockCount - groupFirst);
+      allocatableBlocks := fs.sb.blockCount - fs.sb.firstDataBlock;
+
+      if Unsigned_32 (bgd.numFreeBlocks) >= validBlocks or else
+         fs.sb.freeBlocks >= allocatableBlocks
+      then
+         return;
+      end if;
 
       readSize := bitmapBytes;
       if readSize > Unsigned_32 (bitmapBuf'Length) then
          readSize := Unsigned_32 (bitmapBuf'Length);
+      end if;
+
+      if byteIdx >= Natural (readSize) then
+         return;
       end if;
 
       readBytes (fs,
@@ -960,7 +1484,13 @@ package body Ext2 is
                  bitmapBuf'Address,
                  Storage_Count (readSize));
 
-      --  Clear the bit
+      --  A duplicate or corrupt free must not inflate allocator counts.
+      if (bitmapBuf (byteIdx) and
+          Shift_Left (Unsigned_8'(1), bitIdx)) = 0
+      then
+         return;
+      end if;
+
       bitmapBuf (byteIdx) := bitmapBuf (byteIdx) and
         not Shift_Left (Unsigned_8'(1), bitIdx);
 
@@ -971,104 +1501,202 @@ package body Ext2 is
                   Storage_Count (readSize));
 
       bgd.numFreeBlocks := bgd.numFreeBlocks + 1;
-      writeBGD (fs, 0, bgd);
+      writeBGD (fs, blockGroup, bgd);
 
       fs.sb.freeBlocks := fs.sb.freeBlocks + 1;
       writeSuperblock (fs);
    end freeBlock;
 
-   --  Allocate a free inode from block group 0
+   --  Allocate a free inode from any block group.
    procedure allocateInode
      (fs       : in out Filesystem;
       inodeNum : out Unsigned_32;
-      ok       : out Boolean)
+      status   : out Write_Status)
    is
       bgd : BlockGroupDescriptor;
+      updatedBGD : BlockGroupDescriptor;
       bitmapBuf : array (0 .. 4095) of Unsigned_8 with Alignment => 8;
       bitmapBytes : constant Unsigned_32 :=
         (fs.sb.inodesPerBlockGroup + 7) / 8;
       readSize : Unsigned_32;
+      groupCount : Unsigned_32;
+      groupFirst : Unsigned_32;
+      validInodes : Unsigned_32;
+      candidate : Unsigned_32;
+      candidateInode : Unsigned_32;
+      firstUsable : Unsigned_32;
+      originalByte : Unsigned_8;
+      readStatus : Read_Status;
+      writeStatus : Write_Status;
+      rollbackStatus : Write_Status;
+      sawAdvertisedSpace : Boolean := False;
+      blankIno : constant Inode :=
+        (typeAndPermissions => 0,
+         uid => 0, sizeLo => 0,
+         accessedTime => 0, creationTime => 0,
+         modifiedTime => 0, deletedTime => 0,
+         gid => 0, numHardLinks => 0,
+         numDiskSectors => 0, flags => 0,
+         osSpecific1 => 0,
+         directBlocks => (others => 0),
+         singleIndirectBlock => 0,
+         doubleIndirectBlock => 0,
+         tripleIndirectBlock => 0,
+         generationNumber => 0,
+         fileACL => 0, sizeHi_DirACL => 0,
+         fragmentBlockAddr => 0,
+         osSpecific2A => 0, osSpecific2B => 0,
+         osSpecific2C => 0);
    begin
       inodeNum := 0;
-      ok := False;
+      status := Write_No_Space;
 
-      readBGD (fs, 0, bgd);
-
-      if bgd.numFreeInodes = 0 then
+      if fs.sb.inodesPerBlockGroup = 0 or else fs.sb.inodeCount = 0 then
+         status := Write_Device_Error;
          return;
       end if;
+
+      if fs.sb.freeInodes = 0 then
+         return;
+      end if;
+
+      groupCount := 1 +
+        (fs.sb.inodeCount - 1) / fs.sb.inodesPerBlockGroup;
+      firstUsable :=
+        (if fs.sb.majorVersion >= 1 and then
+            fs.sb.firstNonReservedInode > 0
+         then fs.sb.firstNonReservedInode
+         else 11);
 
       readSize := bitmapBytes;
       if readSize > Unsigned_32 (bitmapBuf'Length) then
          readSize := Unsigned_32 (bitmapBuf'Length);
       end if;
 
-      readBytes (fs,
-                 Storage_Offset (bgd.inodeBitmapAddr) *
-                   Storage_Offset (fs.blkSize),
-                 bitmapBuf'Address,
-                 Storage_Count (readSize));
+      for group in Unsigned_32 range 0 .. groupCount - 1 loop
+         readBGD (fs, group, bgd, readStatus);
+         if readStatus /= Read_Complete then
+            status :=
+              (if readStatus = Read_Out_Of_Range then Write_Out_Of_Range
+               else Write_Device_Error);
+            return;
+         end if;
 
-      for byteIdx in 0 .. Natural (readSize) - 1 loop
-         if bitmapBuf (byteIdx) /= 16#FF# then
-            for bitIdx in 0 .. 7 loop
-               if (bitmapBuf (byteIdx) and
-                   Shift_Left (Unsigned_8'(1), bitIdx)) = 0
-               then
-                  --  Inode numbers are 1-based
-                  inodeNum := Unsigned_32 (byteIdx * 8 + bitIdx) + 1;
+         if bgd.numFreeInodes /= 0 then
+            sawAdvertisedSpace := True;
+            groupFirst := group * fs.sb.inodesPerBlockGroup;
+            validInodes := Unsigned_32'Min
+              (fs.sb.inodesPerBlockGroup,
+               fs.sb.inodeCount - groupFirst);
 
-                  --  Skip reserved inodes (1..10 in standard ext2)
-                  if inodeNum < 11 then
-                     goto Continue_Scan;
-                  end if;
+            readBytes
+              (fs,
+               Storage_Offset (bgd.inodeBitmapAddr) *
+                 Storage_Offset (fs.blkSize),
+               bitmapBuf'Address,
+               Storage_Count (readSize),
+               readStatus);
+            if readStatus /= Read_Complete then
+               status :=
+                 (if readStatus = Read_Out_Of_Range then Write_Out_Of_Range
+                  else Write_Device_Error);
+               return;
+            end if;
 
-                  bitmapBuf (byteIdx) := bitmapBuf (byteIdx) or
-                    Shift_Left (Unsigned_8'(1), bitIdx);
+            for byteIdx in 0 .. Natural (readSize) - 1 loop
+               if bitmapBuf (byteIdx) /= 16#FF# then
+                  for bitIdx in 0 .. 7 loop
+                     candidate := Unsigned_32 (byteIdx * 8 + bitIdx);
+                     if candidate < validInodes and then
+                        (bitmapBuf (byteIdx) and
+                         Shift_Left (Unsigned_8'(1), bitIdx)) = 0
+                     then
+                        candidateInode := groupFirst + candidate + 1;
+                        if candidateInode < firstUsable then
+                           goto Continue_Inode_Bit;
+                        end if;
 
-                  writeBytes (fs,
+                        originalByte := bitmapBuf (byteIdx);
+                        bitmapBuf (byteIdx) := bitmapBuf (byteIdx) or
+                          Shift_Left (Unsigned_8'(1), bitIdx);
+                        writeBytes
+                          (fs,
+                           Storage_Offset (bgd.inodeBitmapAddr) *
+                             Storage_Offset (fs.blkSize),
+                           bitmapBuf'Address,
+                           Storage_Count (readSize),
+                           writeStatus);
+                        if writeStatus /= Write_Complete then
+                           status := writeStatus;
+                           return;
+                        end if;
+
+                        updatedBGD := bgd;
+                        updatedBGD.numFreeInodes :=
+                          updatedBGD.numFreeInodes - 1;
+                        writeBGD (fs, group, updatedBGD, writeStatus);
+                        if writeStatus /= Write_Complete then
+                           bitmapBuf (byteIdx) := originalByte;
+                           writeBytes
+                             (fs,
                               Storage_Offset (bgd.inodeBitmapAddr) *
                                 Storage_Offset (fs.blkSize),
                               bitmapBuf'Address,
-                              Storage_Count (readSize));
+                              Storage_Count (readSize),
+                              rollbackStatus);
+                           status := writeStatus;
+                           return;
+                        end if;
 
-                  bgd.numFreeInodes := bgd.numFreeInodes - 1;
-                  writeBGD (fs, 0, bgd);
+                        fs.sb.freeInodes := fs.sb.freeInodes - 1;
+                        writeSuperblock (fs, writeStatus);
+                        if writeStatus = Write_Complete then
+                           writeInode
+                             (fs, candidateInode, blankIno, writeStatus);
+                        end if;
 
-                  fs.sb.freeInodes := fs.sb.freeInodes - 1;
-                  writeSuperblock (fs);
+                        if writeStatus /= Write_Complete then
+                           fs.sb.freeInodes := fs.sb.freeInodes + 1;
+                           writeSuperblock (fs, rollbackStatus);
+                           writeBGD (fs, group, bgd, rollbackStatus);
+                           bitmapBuf (byteIdx) := originalByte;
+                           writeBytes
+                             (fs,
+                              Storage_Offset (bgd.inodeBitmapAddr) *
+                                Storage_Offset (fs.blkSize),
+                              bitmapBuf'Address,
+                              Storage_Count (readSize),
+                              rollbackStatus);
+                           status := writeStatus;
+                           return;
+                        end if;
 
-                  --  Initialize blank inode on disk
-                  declare
-                     blankIno : Inode;
-                  begin
-                     blankIno := (typeAndPermissions => 0,
-                                  uid => 0, sizeLo => 0,
-                                  accessedTime => 0, creationTime => 0,
-                                  modifiedTime => 0, deletedTime => 0,
-                                  gid => 0, numHardLinks => 0,
-                                  numDiskSectors => 0, flags => 0,
-                                  osSpecific1 => 0,
-                                  directBlocks => (others => 0),
-                                  singleIndirectBlock => 0,
-                                  doubleIndirectBlock => 0,
-                                  tripleIndirectBlock => 0,
-                                  generationNumber => 0,
-                                  fileACL => 0, sizeHi_DirACL => 0,
-                                  fragmentBlockAddr => 0,
-                                  osSpecific2A => 0, osSpecific2B => 0,
-                                  osSpecific2C => 0);
-                     writeInode (fs, inodeNum, blankIno);
-                  end;
+                        inodeNum := candidateInode;
+                        status := Write_Complete;
+                        return;
+                     end if;
 
-                  ok := True;
-                  return;
-
-                  <<Continue_Scan>>
+                     <<Continue_Inode_Bit>>
+                  end loop;
                end if;
             end loop;
          end if;
       end loop;
+
+      if sawAdvertisedSpace then
+         status := Write_Device_Error;
+      end if;
+   end allocateInode;
+
+   procedure allocateInode
+     (fs       : in out Filesystem;
+      inodeNum : out Unsigned_32;
+      ok       : out Boolean)
+   is
+      status : Write_Status;
+   begin
+      allocateInode (fs, inodeNum, status);
+      ok := status = Write_Complete;
    end allocateInode;
 
    --  Free a previously allocated inode
@@ -1077,41 +1705,118 @@ package body Ext2 is
       inodeNum : Unsigned_32)
    is
       bgd : BlockGroupDescriptor;
-      relInode : constant Unsigned_32 := inodeNum - 1;
-      byteIdx  : constant Natural := Natural (relInode / 8);
-      bitIdx   : constant Natural := Natural (relInode mod 8);
+      updatedBGD : BlockGroupDescriptor;
+      relInode : Unsigned_32;
+      blockGroup : Unsigned_32;
+      groupRelativeInode : Unsigned_32;
+      byteIdx  : Natural;
+      bitIdx   : Natural;
       bitmapBuf : array (0 .. 4095) of Unsigned_8 with Alignment => 8;
       bitmapBytes : constant Unsigned_32 :=
-        (fs.sb.inodesPerBlockGroup + 7) / 8;
+         (fs.sb.inodesPerBlockGroup + 7) / 8;
       readSize : Unsigned_32;
+      validInodes : Unsigned_32;
+      groupFirst : Unsigned_32;
+      originalByte : Unsigned_8;
+      readStatus : Read_Status;
+      writeStatus : Write_Status;
+      rollbackStatus : Write_Status;
    begin
-      readBGD (fs, 0, bgd);
+      if fs.sb.inodesPerBlockGroup = 0 or else
+         inodeNum = 0 or else inodeNum > fs.sb.inodeCount
+      then
+         return;
+      end if;
+
+      relInode := inodeNum - 1;
+      blockGroup := relInode / fs.sb.inodesPerBlockGroup;
+      groupRelativeInode := relInode mod fs.sb.inodesPerBlockGroup;
+      byteIdx := Natural (groupRelativeInode / 8);
+      bitIdx := Natural (groupRelativeInode mod 8);
+
+      readBGD (fs, blockGroup, bgd, readStatus);
+      if readStatus /= Read_Complete then
+         return;
+      end if;
+
+      groupFirst := blockGroup * fs.sb.inodesPerBlockGroup;
+      validInodes := Unsigned_32'Min
+        (fs.sb.inodesPerBlockGroup, fs.sb.inodeCount - groupFirst);
+      if Unsigned_32 (bgd.numFreeInodes) >= validInodes or else
+         fs.sb.freeInodes >= fs.sb.inodeCount
+      then
+         return;
+      end if;
 
       readSize := bitmapBytes;
       if readSize > Unsigned_32 (bitmapBuf'Length) then
          readSize := Unsigned_32 (bitmapBuf'Length);
       end if;
 
-      readBytes (fs,
-                 Storage_Offset (bgd.inodeBitmapAddr) *
-                   Storage_Offset (fs.blkSize),
-                 bitmapBuf'Address,
-                 Storage_Count (readSize));
+      if byteIdx >= Natural (readSize) then
+         return;
+      end if;
 
+      readBytes
+        (fs,
+         Storage_Offset (bgd.inodeBitmapAddr) * Storage_Offset (fs.blkSize),
+         bitmapBuf'Address,
+         Storage_Count (readSize),
+         readStatus);
+      if readStatus /= Read_Complete then
+         return;
+      end if;
+
+      --  A duplicate free must not inflate either free-inode counter.
+      if (bitmapBuf (byteIdx) and
+          Shift_Left (Unsigned_8'(1), bitIdx)) = 0
+      then
+         return;
+      end if;
+
+      originalByte := bitmapBuf (byteIdx);
       bitmapBuf (byteIdx) := bitmapBuf (byteIdx) and
         not Shift_Left (Unsigned_8'(1), bitIdx);
 
-      writeBytes (fs,
-                  Storage_Offset (bgd.inodeBitmapAddr) *
-                    Storage_Offset (fs.blkSize),
-                  bitmapBuf'Address,
-                  Storage_Count (readSize));
+      writeBytes
+        (fs,
+         Storage_Offset (bgd.inodeBitmapAddr) * Storage_Offset (fs.blkSize),
+         bitmapBuf'Address,
+         Storage_Count (readSize),
+         writeStatus);
+      if writeStatus /= Write_Complete then
+         return;
+      end if;
 
-      bgd.numFreeInodes := bgd.numFreeInodes + 1;
-      writeBGD (fs, 0, bgd);
+      updatedBGD := bgd;
+      updatedBGD.numFreeInodes := updatedBGD.numFreeInodes + 1;
+      writeBGD (fs, blockGroup, updatedBGD, writeStatus);
+      if writeStatus /= Write_Complete then
+         bitmapBuf (byteIdx) := originalByte;
+         writeBytes
+           (fs,
+            Storage_Offset (bgd.inodeBitmapAddr) *
+              Storage_Offset (fs.blkSize),
+            bitmapBuf'Address,
+            Storage_Count (readSize),
+            rollbackStatus);
+         return;
+      end if;
 
       fs.sb.freeInodes := fs.sb.freeInodes + 1;
-      writeSuperblock (fs);
+      writeSuperblock (fs, writeStatus);
+      if writeStatus /= Write_Complete then
+         fs.sb.freeInodes := fs.sb.freeInodes - 1;
+         writeBGD (fs, blockGroup, bgd, rollbackStatus);
+         bitmapBuf (byteIdx) := originalByte;
+         writeBytes
+           (fs,
+            Storage_Offset (bgd.inodeBitmapAddr) *
+              Storage_Offset (fs.blkSize),
+            bitmapBuf'Address,
+            Storage_Count (readSize),
+            rollbackStatus);
+      end if;
    end freeInode;
 
    --  Set a block pointer in an inode (direct or single indirect).
@@ -1120,30 +1825,34 @@ package body Ext2 is
      (fs       : in out Filesystem;
       ino      : in out Inode;
       logBlock : Unsigned_32;
-      physBlk  : Unsigned_32)
+      physBlk  : Unsigned_32;
+      status   : out Write_Status)
    is
       ptrsPerBlock : constant Unsigned_32 := fs.blkSize / 4;
    begin
+      status := Write_File_Range_Unsupported;
       if logBlock < NUM_DIRECT_BLOCKS then
          ino.directBlocks (Natural (logBlock)) := physBlk;
+         status := Write_Complete;
       elsif logBlock - Unsigned_32 (NUM_DIRECT_BLOCKS) < ptrsPerBlock then
          --  Single indirect
          declare
             indirectIdx : constant Unsigned_32 :=
               logBlock - Unsigned_32 (NUM_DIRECT_BLOCKS);
             indBuf : array (0 .. 1023) of Unsigned_32 with Alignment => 8;
+            createdIndirect : Boolean := False;
          begin
             if ino.singleIndirectBlock = 0 then
                --  Allocate the indirect block itself
                declare
                   newBlk : Unsigned_32;
-                  allocOk : Boolean;
                begin
-                  allocateBlock (fs, newBlk, allocOk);
-                  if not allocOk then
+                  allocateBlock (fs, newBlk, status);
+                  if status /= Write_Complete then
                      return;
                   end if;
                   ino.singleIndirectBlock := newBlk;
+                  createdIndirect := True;
                   --  Zero-fill the new indirect block
                   indBuf := (others => 0);
                end;
@@ -1158,8 +1867,15 @@ package body Ext2 is
                    Storage_Offset (fs.blkSize);
             begin
                writeBytes (fs, blkOffset, indBuf'Address,
-                           Storage_Count (fs.blkSize));
+                           Storage_Count (fs.blkSize), status);
             end;
+            if status /= Write_Complete then
+               if createdIndirect then
+                  freeBlock (fs, ino.singleIndirectBlock);
+                  ino.singleIndirectBlock := 0;
+               end if;
+               return;
+            end if;
             invalidateBlockCache;
          end;
       end if;
@@ -1168,53 +1884,119 @@ package body Ext2 is
 
    --  Write file data to an inode starting at the given offset.
    --  Supports file growth via block allocation.
-   function writeData
+   procedure writeData
      (fs       : in out Filesystem;
       inodeNum : Unsigned_32;
       ino      : in out Inode;
       offset   : Unsigned_64;
       buf      : System.Address;
-      count    : Unsigned_64) return Unsigned_64
+      count    : Unsigned_64;
+      bytesWritten : out Unsigned_64;
+      status       : out Write_Status)
    is
       remaining : Unsigned_64 := count;
       pos       : Unsigned_64 := offset;
       written   : Unsigned_64 := 0;
+      terminalStatus : Write_Status := Write_Complete;
    begin
+      bytesWritten := 0;
+      status := Write_Complete;
+
+      --  Keep all subsequent position arithmetic inside Unsigned_64.
+      if count > Unsigned_64'Last - offset then
+         status := Write_Out_Of_Range;
+         return;
+      end if;
+
       while remaining > 0 loop
          declare
-            logBlock    : constant Unsigned_32 :=
-              Unsigned_32 (pos / Unsigned_64 (fs.blkSize));
+            logicalIndex : constant Unsigned_64 :=
+              pos / Unsigned_64 (fs.blkSize);
             blockOffset : constant Unsigned_32 :=
               Unsigned_32 (pos mod Unsigned_64 (fs.blkSize));
-            physBlock   : Unsigned_32 :=
-              getDataBlock (fs, ino, logBlock);
+            physBlock   : Unsigned_32;
+            pointerStatus : Write_Status;
+            dataStatus    : Write_Status;
             canWrite    : Unsigned_64 :=
               Unsigned_64 (fs.blkSize - blockOffset);
          begin
-            if physBlock = 0 then
-               --  Need to allocate a new block
-               declare
-                  allocOk : Boolean;
-               begin
-                  allocateBlock (fs, physBlock, allocOk);
-                  if not allocOk then
-                     --  Out of space
+            if logicalIndex >=
+              Unsigned_64 (NUM_DIRECT_BLOCKS) +
+                Unsigned_64 (fs.blkSize / 4)
+            then
+               terminalStatus := Write_File_Range_Unsupported;
+               exit;
+            end if;
+
+            declare
+               logBlock : constant Unsigned_32 :=
+                 Unsigned_32 (logicalIndex);
+            begin
+               physBlock := getDataBlock (fs, ino, logBlock);
+
+               if canWrite > remaining then
+                  canWrite := remaining;
+               end if;
+
+               if physBlock = 0 then
+                  --  Initialize a fresh data block before publishing its
+                  --  inode pointer.  Besides failure ordering, this prevents
+                  --  bytes from a previously freed block becoming visible
+                  --  through a partial first write.
+                  declare
+                     blockBuf : String (1 .. Natural (fs.blkSize)) :=
+                       (others => Character'Val (0));
+                     source   : String (1 .. Natural (canWrite))
+                       with Import,
+                            Address => buf + Storage_Offset (written);
+                     firstByte : constant Natural :=
+                       Natural (blockOffset) + 1;
+                     lastByte  : constant Natural :=
+                       Natural (blockOffset) + Natural (canWrite);
+                  begin
+                     allocateBlock (fs, physBlock, dataStatus);
+                     if dataStatus /= Write_Complete then
+                        terminalStatus := dataStatus;
+                        exit;
+                     end if;
+
+                     blockBuf (firstByte .. lastByte) := source;
+                     writeBytes
+                       (fs,
+                        Storage_Offset (physBlock) *
+                          Storage_Offset (fs.blkSize),
+                        blockBuf'Address,
+                        Storage_Count (fs.blkSize),
+                        dataStatus);
+                     if dataStatus /= Write_Complete then
+                        freeBlock (fs, physBlock);
+                        terminalStatus := dataStatus;
+                        exit;
+                     end if;
+
+                     setBlockPointer
+                       (fs, ino, logBlock, physBlock, pointerStatus);
+                     if pointerStatus /= Write_Complete then
+                        freeBlock (fs, physBlock);
+                        terminalStatus := pointerStatus;
+                        exit;
+                     end if;
+                  end;
+               else
+                  writeBytes
+                    (fs,
+                     Storage_Offset (physBlock) *
+                       Storage_Offset (fs.blkSize) +
+                       Storage_Offset (blockOffset),
+                     buf + Storage_Offset (written),
+                     Storage_Count (canWrite),
+                     dataStatus);
+                  if dataStatus /= Write_Complete then
+                     terminalStatus := dataStatus;
                      exit;
                   end if;
-                  setBlockPointer (fs, ino, logBlock, physBlock);
-               end;
-            end if;
-
-            if canWrite > remaining then
-               canWrite := remaining;
-            end if;
-
-            writeBytes (fs,
-                        Storage_Offset (physBlock) *
-                          Storage_Offset (fs.blkSize) +
-                          Storage_Offset (blockOffset),
-                        buf + Storage_Offset (written),
-                        Storage_Count (canWrite));
+               end if;
+            end;
 
             written   := written + canWrite;
             pos       := pos + canWrite;
@@ -1238,10 +2020,22 @@ package body Ext2 is
          end if;
       end;
 
-      --  Write updated inode back to disk
-      writeInode (fs, inodeNum, ino);
+      if written > 0 then
+         --  Publish new pointers and size only after their data blocks have
+         --  completed.  A metadata write failure supersedes the earlier
+         --  terminal state because the committed extent is then uncertain.
+         declare
+            inodeStatus : Write_Status;
+         begin
+            writeInode (fs, inodeNum, ino, inodeStatus);
+            if inodeStatus /= Write_Complete then
+               terminalStatus := inodeStatus;
+            end if;
+         end;
+      end if;
 
-      return written;
+      bytesWritten := written;
+      status := terminalStatus;
    end writeData;
 
    --  Add a directory entry pointing to an existing inode.
@@ -1401,8 +2195,17 @@ package body Ext2 is
                               Storage_Count (fs.blkSize));
                end;
 
-               setBlockPointer (fs, dirIno, Unsigned_32 (blockIdx),
-                                newBlk);
+               declare
+                  pointerStatus : Write_Status;
+               begin
+                  setBlockPointer
+                    (fs, dirIno, Unsigned_32 (blockIdx), newBlk,
+                     pointerStatus);
+                  if pointerStatus /= Write_Complete then
+                     freeBlock (fs, newBlk);
+                     return False;
+                  end if;
+               end;
                dirIno.sizeLo := dirIno.sizeLo + fs.blkSize;
                dirIno.numDiskSectors := dirIno.numDiskSectors +
                  fs.blkSize / 512;
@@ -1758,8 +2561,8 @@ package body Ext2 is
          exit when sb.signature = EXT2_SIGNATURE;
       end loop;
 
-      if sb.signature /= EXT2_SIGNATURE then
-         debugPrint ("Ext2: bad ext2 signature." & ASCII.LF);
+      if not supportedSuperblock (sb) then
+         debugPrint ("Ext2: unsupported or invalid geometry." & ASCII.LF);
          return;
       end if;
 
@@ -1802,9 +2605,9 @@ package body Ext2 is
          sb := source;
       end;
 
-      --  Ext2 supports larger shifts, but the current implementation and its
-      --  bounded block buffers intentionally support 1, 2, and 4 KiB blocks.
-      if sb.signature /= EXT2_SIGNATURE or else sb.blockShift > 2 then
+      --  Ext2 supports additional layouts, but the bounded implementation
+      --  intentionally accepts only the geometry validated above.
+      if not supportedSuperblock (sb) then
          return;
       end if;
 

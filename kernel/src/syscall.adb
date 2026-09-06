@@ -82,6 +82,8 @@ package body Syscall is
             when 18   => number := SYSCALL_REPLY;
             when 19   => number := SYSCALL_SEND_EVENT;
             when 20   => number := SYSCALL_RECEIVE_EVENT;
+            when 21   =>
+                number := SYSCALL_RECEIVE_UNTIL_MONOTONIC_MILLISECOND;
             when 22   => number := SYSCALL_POLL_ANY_IPC;
             when 23   => number := SYSCALL_SUBMIT;
             when 24   => number := SYSCALL_WAIT_COMPLETION;
@@ -130,9 +132,13 @@ package body Syscall is
             when 108  =>
                 number :=
                     SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION;
-            when 109  => number := SYSCALL_RESOLVE_SHARED_MEMORY_GRANT;
+            when 109  => number := SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT;
             when 110  =>
                 number := SYSCALL_REVOKE_SHARED_MEMORY_GRANT_REFERENCE;
+            when 111  =>
+                number := SYSCALL_RETURN_SHARED_MEMORY_GRANT_ACQUISITION;
+            when 112  =>
+                number := SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT_VIA_CAPABILITY;
             when 2000 => number := SYSCALL_REGISTER_DRIVER;
             when others =>
                 number := SYSCALL_EXIT;
@@ -217,6 +223,9 @@ package body Syscall is
             when SYSCALL_RECEIVE =>
                 IPC.handleReceive (arg0, retval);
 
+            when SYSCALL_RECEIVE_UNTIL_MONOTONIC_MILLISECOND =>
+                IPC.handleReceiveUntil (arg0, arg1, retval);
+
             when SYSCALL_REPLY =>
                 IPC.handleReply (
                     arg0, arg1, arg2, arg3, arg4, arg5, retval);
@@ -272,12 +281,20 @@ package body Syscall is
             when SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION =>
                 IPC.handleGetOwnedGrantGeneration (arg0, retval);
 
-            when SYSCALL_RESOLVE_SHARED_MEMORY_GRANT =>
-                IPC.handleResolveGrant
+            when SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT =>
+                IPC.handleAcquireGrant
                   (arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
             when SYSCALL_REVOKE_SHARED_MEMORY_GRANT_REFERENCE =>
                 IPC.handleRevokeGrantReference (arg0, arg1, retval);
+
+            when SYSCALL_RETURN_SHARED_MEMORY_GRANT_ACQUISITION =>
+                IPC.handleReturnGrant (arg0, arg1, retval);
+
+            when SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT_VIA_CAPABILITY =>
+                IPC.handleAcquireGrantViaCap
+                  (percpu.currentPID,
+                   arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
             when SYSCALL_INFO =>
                 IPC.handleInfo (

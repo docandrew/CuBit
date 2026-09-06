@@ -183,13 +183,25 @@ package body CuBit.UI.State is
       st.scopeXOffset := 0;
       st.scopeYOffset := 0;
       st.scopeError := False;
+      st.followupRenderRequested := False;
    end Begin_Frame;
+
+   procedure Request_Followup_Render (st : in out UI_State) is
+   begin
+      st.followupRenderRequested := True;
+   end Request_Followup_Render;
+
+   function Followup_Render_Requested (st : UI_State) return Boolean is
+     (st.followupRenderRequested);
 
    procedure Finish_Frame (st : in out UI_State) is
    begin
       if not st.pointer.down then
          st.activeItem := NO_ITEM;
          st.activeScope := NO_SCOPE;
+         st.scrollbarPart := CuBit.UI.Scrollbar_None;
+         st.scrollbarGrabOffset := 0;
+         st.sliderGrabOffset := 0;
       elsif st.activeItem = NO_ITEM then
          st.activeItem := INVALID_ITEM;
          st.activeScope := NO_SCOPE;
@@ -224,6 +236,15 @@ package body CuBit.UI.State is
    is
    begin
       if pressed then
+         --  A physical press begins a new capture transaction.  Do not let a
+         --  lost or reordered release leave an older widget permanently
+         --  active; the widget under this press will claim the empty slot
+         --  when the frame is evaluated.
+         st.activeItem := NO_ITEM;
+         st.activeScope := NO_SCOPE;
+         st.scrollbarPart := CuBit.UI.Scrollbar_None;
+         st.scrollbarGrabOffset := 0;
+         st.sliderGrabOffset := 0;
          st.textDoubleClick :=
             st.lastClickFrame /= 0 and then
             st.frameCounter <= st.lastClickFrame + DOUBLE_CLICK_FRAMES and then
@@ -242,6 +263,24 @@ package body CuBit.UI.State is
                      pressed => pressed, released => released,
                      enabled => enabled);
    end Set_Pointer;
+
+   procedure Resynchronize_Pointer
+      (st : in out UI_State;
+       x, y : Natural;
+       down : Boolean)
+   is
+   begin
+      st.activeItem := NO_ITEM;
+      st.activeScope := NO_SCOPE;
+      st.scrollbarPart := CuBit.UI.Scrollbar_None;
+      st.scrollbarGrabOffset := 0;
+      st.sliderGrabOffset := 0;
+      st.textDoubleClick := False;
+      st.textWordSelect := False;
+      st.pointer :=
+        (x => x, y => y, down => down,
+         pressed => False, released => False, enabled => True);
+   end Resynchronize_Pointer;
 
    procedure Enter_Scope
       (st : in out UI_State;
@@ -301,6 +340,22 @@ package body CuBit.UI.State is
       return id;
    end Next_ID;
 
+   function Resolve_ID
+      (st : in out UI_State; requested : Widget_ID) return Widget_ID
+   is
+   begin
+      if requested = NO_ITEM or else requested = INVALID_ITEM then
+         return Next_ID (st);
+      end if;
+
+      --  Public controls already have stable application-assigned IDs.  Use
+      --  those IDs for capture and focus as well as damage lookup so adding,
+      --  removing, or reordering a sibling cannot transfer an interaction.
+      st.lastWidget := requested;
+      st.lastScope := st.currentScope;
+      return requested;
+   end Resolve_ID;
+
    function Offset_Rect
       (st : UI_State; bounds : CuBit.UI.Rect) return CuBit.UI.Rect
    is
@@ -322,10 +377,12 @@ package body CuBit.UI.State is
    end Region_Hit;
 
    function Button
-      (st : in out UI_State; bounds : CuBit.UI.Rect)
+      (st : in out UI_State;
+       bounds : CuBit.UI.Rect;
+       widgetID : Widget_ID := NO_ITEM)
       return CuBit.UI.Widget_Result
    is
-      id : constant Widget_ID := Next_ID (st);
+      id : constant Widget_ID := Resolve_ID (st, widgetID);
       scope : constant Scope_ID := st.currentScope;
       hit : constant Boolean := st.pointer.enabled and then Region_Hit (st, bounds);
    begin
@@ -333,7 +390,7 @@ package body CuBit.UI.State is
          st.hotItem := id;
          st.hotScope := scope;
 
-         if st.activeItem = NO_ITEM and then st.pointer.down then
+         if st.activeItem = NO_ITEM and then st.pointer.pressed then
             st.activeItem := id;
             st.activeScope := scope;
          end if;
@@ -358,6 +415,11 @@ package body CuBit.UI.State is
                       st.activeScope = scope);
    end Button;
 
+   function Is_Last_Widget_Captured (st : UI_State) return Boolean is
+     (st.pointer.down and then
+      st.activeItem = st.lastWidget and then
+      st.activeScope = st.lastScope);
+
    function Is_Last_Widget_Focused (st : UI_State) return Boolean is
    begin
       return st.keyboardItem = st.lastWidget and then
@@ -374,10 +436,13 @@ package body CuBit.UI.State is
    end Clear_Keyboard_Focus;
 
    function Text_Field
-      (st : in out UI_State; bounds : CuBit.UI.Rect; text : String)
+      (st : in out UI_State;
+       bounds : CuBit.UI.Rect;
+       text : String;
+       widgetID : Widget_ID := NO_ITEM)
       return CuBit.UI.Widget_Result
    is
-      id : constant Widget_ID := Next_ID (st);
+      id : constant Widget_ID := Resolve_ID (st, widgetID);
       scope : constant Scope_ID := st.currentScope;
       r : constant CuBit.UI.Rect := Offset_Rect (st, bounds);
       hit : constant Boolean :=
@@ -385,12 +450,11 @@ package body CuBit.UI.State is
       focused : Boolean;
       idx : Natural;
    begin
-      Clamp_Text_State (st, text'Length);
       if hit then
          st.hotItem := id;
          st.hotScope := scope;
 
-         if st.activeItem = NO_ITEM and then st.pointer.down then
+         if st.activeItem = NO_ITEM and then st.pointer.pressed then
             st.activeItem := id;
             st.activeScope := scope;
          end if;
@@ -420,6 +484,10 @@ package body CuBit.UI.State is
 
       focused := st.keyboardItem = id and then st.keyboardScope = scope;
       if focused then
+         --  Caret and selection state belongs to the focused field.  An
+         --  unrelated field (especially a shorter one rendered earlier in
+         --  the frame) must never clamp or otherwise mutate it.
+         Clamp_Text_State (st, text'Length);
          st.keyboardHeartbeat := True;
          if st.pointer.down and then
             st.activeItem = id and then st.activeScope = scope and then
@@ -432,8 +500,6 @@ package body CuBit.UI.State is
                Set_Cursor (st, idx, text'Length, True);
             end if;
          end if;
-      else
-         Set_Cursor (st, st.textCursor, text'Length, False);
       end if;
 
       return
@@ -572,9 +638,11 @@ package body CuBit.UI.State is
    function Checkbox
       (st : in out UI_State;
        bounds : CuBit.UI.Rect;
-       checked : in out Boolean) return CuBit.UI.Widget_Result
+       checked : in out Boolean;
+       widgetID : Widget_ID := NO_ITEM) return CuBit.UI.Widget_Result
    is
-      result : constant CuBit.UI.Widget_Result := Button (st, bounds);
+      result : constant CuBit.UI.Widget_Result :=
+        Button (st, bounds, widgetID);
    begin
       if result.activated then
          checked := not checked;
@@ -586,37 +654,56 @@ package body CuBit.UI.State is
       (st : in out UI_State;
        bounds : CuBit.UI.Rect;
        value : in out Natural;
-       minValue, maxValue : Natural) return CuBit.UI.Widget_Result
+       minValue, maxValue : Natural;
+       widgetID : Widget_ID := NO_ITEM) return CuBit.UI.Widget_Result
    is
-      id : constant Widget_ID := Next_ID (st);
+      id : constant Widget_ID := Resolve_ID (st, widgetID);
       scope : constant Scope_ID := st.currentScope;
       r : constant CuBit.UI.Rect := Offset_Rect (st, bounds);
+      layout : CuBit.UI.Horizontal_Slider_Layout;
       hit : constant Boolean :=
          st.pointer.enabled and then
          CuBit.UI.Point_In_Rect (st.pointer.x, st.pointer.y, r);
       active : Boolean := False;
       span : Natural := 0;
-      relativeX : Natural := 0;
+      travel : Natural := 0;
+      desiredX : Natural := 0;
    begin
       if hit then
          st.hotItem := id;
          st.hotScope := scope;
 
-         if st.activeItem = NO_ITEM and then st.pointer.down then
+         if st.activeItem = NO_ITEM and then st.pointer.pressed then
             st.activeItem := id;
             st.activeScope := scope;
+            layout := CuBit.UI.Layout_Horizontal_Slider
+              (r, minValue, maxValue, value);
+            if CuBit.UI.Point_In_Rect
+              (st.pointer.x, st.pointer.y, layout.thumb)
+            then
+               st.sliderGrabOffset := st.pointer.x - layout.thumb.x;
+            else
+               st.sliderGrabOffset := layout.thumb.w / 2;
+            end if;
          end if;
       end if;
 
       active := st.pointer.down and then
                 st.activeItem = id and then st.activeScope = scope;
       if active and then st.pointer.down and then maxValue > minValue then
+         layout := CuBit.UI.Layout_Horizontal_Slider
+           (r, minValue, maxValue, value);
          span := maxValue - minValue;
-         if st.pointer.x > r.x then
-            relativeX := Natural'Min (st.pointer.x - r.x, r.w);
+         travel := layout.maximumThumbX - layout.minimumThumbX;
+         if st.pointer.x > st.sliderGrabOffset then
+            desiredX := st.pointer.x - st.sliderGrabOffset;
          end if;
-         if r.w > 0 then
-            value := minValue + (relativeX * span) / r.w;
+         desiredX := Natural'Max
+           (layout.minimumThumbX,
+            Natural'Min (desiredX, layout.maximumThumbX));
+         if travel > 0 then
+            value := minValue +
+              ((desiredX - layout.minimumThumbX) * span) / travel;
          end if;
       end if;
 
@@ -638,37 +725,189 @@ package body CuBit.UI.State is
       (st : in out UI_State;
        bounds : CuBit.UI.Rect;
        value : in out Natural;
-       minValue, maxValue : Natural) return CuBit.UI.Widget_Result
+       minValue, maxValue : Natural;
+       pageSize : Positive := 1;
+       widgetID : Widget_ID := NO_ITEM) return CuBit.UI.Widget_Result
    is
-      id : constant Widget_ID := Next_ID (st);
+      id : constant Widget_ID := Resolve_ID (st, widgetID);
       scope : constant Scope_ID := st.currentScope;
       r : constant CuBit.UI.Rect := Offset_Rect (st, bounds);
+      layout : constant CuBit.UI.Vertical_Scrollbar_Layout :=
+        CuBit.UI.Layout_Vertical_Scrollbar
+          (r, minValue, maxValue, value, pageSize);
       hit : constant Boolean :=
          st.pointer.enabled and then
          CuBit.UI.Point_In_Rect (st.pointer.x, st.pointer.y, r);
       active : Boolean := False;
       span : Natural := 0;
+      travel : Natural := 0;
       relativeY : Natural := 0;
+      pageStep : constant Natural := pageSize;
    begin
       if hit then
          st.hotItem := id;
          st.hotScope := scope;
 
-         if st.activeItem = NO_ITEM and then st.pointer.down then
+         if st.activeItem = NO_ITEM and then st.pointer.pressed then
             st.activeItem := id;
             st.activeScope := scope;
+            if CuBit.UI.Point_In_Rect
+              (st.pointer.x, st.pointer.y, layout.decrementButton)
+            then
+               st.scrollbarPart := CuBit.UI.Scrollbar_Decrement;
+               if value > minValue then
+                  value := value - 1;
+               end if;
+            elsif CuBit.UI.Point_In_Rect
+              (st.pointer.x, st.pointer.y, layout.incrementButton)
+            then
+               st.scrollbarPart := CuBit.UI.Scrollbar_Increment;
+               if value < layout.maximumValue then
+                  value := value + 1;
+               end if;
+            elsif CuBit.UI.Point_In_Rect
+              (st.pointer.x, st.pointer.y, layout.thumb)
+            then
+               st.scrollbarPart := CuBit.UI.Scrollbar_Thumb;
+               st.scrollbarGrabOffset := st.pointer.y - layout.thumb.y;
+            elsif CuBit.UI.Point_In_Rect
+              (st.pointer.x, st.pointer.y, layout.track)
+            then
+               st.scrollbarPart := CuBit.UI.Scrollbar_Track;
+               if not CuBit.UI.Is_Empty (layout.thumb) and then
+                 st.pointer.y < layout.thumb.y
+               then
+                  if value - minValue > pageStep then
+                     value := value - pageStep;
+                  else
+                     value := minValue;
+                  end if;
+               elsif value < layout.maximumValue then
+                  value := Natural'Min
+                    (layout.maximumValue, value + pageStep);
+               end if;
+            end if;
          end if;
       end if;
 
       active := st.pointer.down and then
                 st.activeItem = id and then st.activeScope = scope;
-      if active and then st.pointer.down and then maxValue > minValue then
-         span := maxValue - minValue;
-         if st.pointer.y > r.y then
-            relativeY := Natural'Min (st.pointer.y - r.y, r.h);
+      if active and then st.pointer.down and then not st.pointer.pressed and then
+        st.scrollbarPart = CuBit.UI.Scrollbar_Thumb and then
+        layout.maximumValue > minValue and then
+        not CuBit.UI.Is_Empty (layout.thumb)
+      then
+         span := layout.maximumValue - minValue;
+         travel := layout.track.h - layout.thumb.h;
+         if st.pointer.y > layout.track.y + st.scrollbarGrabOffset then
+            relativeY := Natural'Min
+              (st.pointer.y - layout.track.y - st.scrollbarGrabOffset,
+               travel);
          end if;
-         if r.h > 0 then
-            value := minValue + (relativeY * span) / r.h;
+         if travel > 0 then
+            value := minValue + (relativeY * span) / travel;
+         end if;
+      end if;
+
+      if st.keyboardItem = NO_ITEM then
+         st.keyboardItem := id;
+         st.keyboardScope := scope;
+      end if;
+      if st.keyboardItem = id and then st.keyboardScope = scope then
+         st.keyboardHeartbeat := True;
+      end if;
+
+      return
+        (hot       => hit,
+         active    => active,
+        activated => hit and then st.pointer.released and then active);
+   end Vertical_Scrollbar;
+
+   function Horizontal_Scrollbar
+      (st : in out UI_State;
+       bounds : CuBit.UI.Rect;
+       value : in out Natural;
+       minValue, maxValue : Natural;
+       pageSize : Positive := 1;
+       widgetID : Widget_ID := NO_ITEM) return CuBit.UI.Widget_Result
+   is
+      id : constant Widget_ID := Resolve_ID (st, widgetID);
+      scope : constant Scope_ID := st.currentScope;
+      r : constant CuBit.UI.Rect := Offset_Rect (st, bounds);
+      layout : constant CuBit.UI.Horizontal_Scrollbar_Layout :=
+        CuBit.UI.Layout_Horizontal_Scrollbar
+          (r, minValue, maxValue, value, pageSize);
+      hit : constant Boolean :=
+         st.pointer.enabled and then
+         CuBit.UI.Point_In_Rect (st.pointer.x, st.pointer.y, r);
+      active : Boolean := False;
+      span : Natural := 0;
+      travel : Natural := 0;
+      relativeX : Natural := 0;
+      pageStep : constant Natural := pageSize;
+   begin
+      if hit then
+         st.hotItem := id;
+         st.hotScope := scope;
+
+         if st.activeItem = NO_ITEM and then st.pointer.pressed then
+            st.activeItem := id;
+            st.activeScope := scope;
+            if CuBit.UI.Point_In_Rect
+              (st.pointer.x, st.pointer.y, layout.decrementButton)
+            then
+               st.scrollbarPart := CuBit.UI.Scrollbar_Decrement;
+               if value > minValue then
+                  value := value - 1;
+               end if;
+            elsif CuBit.UI.Point_In_Rect
+              (st.pointer.x, st.pointer.y, layout.incrementButton)
+            then
+               st.scrollbarPart := CuBit.UI.Scrollbar_Increment;
+               if value < layout.maximumValue then
+                  value := value + 1;
+               end if;
+            elsif CuBit.UI.Point_In_Rect
+              (st.pointer.x, st.pointer.y, layout.thumb)
+            then
+               st.scrollbarPart := CuBit.UI.Scrollbar_Thumb;
+               st.scrollbarGrabOffset := st.pointer.x - layout.thumb.x;
+            elsif CuBit.UI.Point_In_Rect
+              (st.pointer.x, st.pointer.y, layout.track)
+            then
+               st.scrollbarPart := CuBit.UI.Scrollbar_Track;
+               if not CuBit.UI.Is_Empty (layout.thumb) and then
+                 st.pointer.x < layout.thumb.x
+               then
+                  if value - minValue > pageStep then
+                     value := value - pageStep;
+                  else
+                     value := minValue;
+                  end if;
+               elsif value < layout.maximumValue then
+                  value := Natural'Min
+                    (layout.maximumValue, value + pageStep);
+               end if;
+            end if;
+         end if;
+      end if;
+
+      active := st.pointer.down and then
+                st.activeItem = id and then st.activeScope = scope;
+      if active and then st.pointer.down and then not st.pointer.pressed and then
+        st.scrollbarPart = CuBit.UI.Scrollbar_Thumb and then
+        layout.maximumValue > minValue and then
+        not CuBit.UI.Is_Empty (layout.thumb)
+      then
+         span := layout.maximumValue - minValue;
+         travel := layout.track.w - layout.thumb.w;
+         if st.pointer.x > layout.track.x + st.scrollbarGrabOffset then
+            relativeX := Natural'Min
+              (st.pointer.x - layout.track.x - st.scrollbarGrabOffset,
+               travel);
+         end if;
+         if travel > 0 then
+            value := minValue + (relativeX * span) / travel;
          end if;
       end if;
 
@@ -684,5 +923,9 @@ package body CuBit.UI.State is
         (hot       => hit,
          active    => active,
          activated => hit and then st.pointer.released and then active);
-   end Vertical_Scrollbar;
+   end Horizontal_Scrollbar;
+
+   function Active_Scrollbar_Part
+      (st : UI_State) return CuBit.UI.Scrollbar_Part
+   is (st.scrollbarPart);
 end CuBit.UI.State;

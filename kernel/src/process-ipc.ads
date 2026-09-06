@@ -43,12 +43,41 @@ is
     procedure sendEvent (dest : ProcessID; msg : Message)
         with SPARK_Mode => On;
 
+    --  Non-blocking event publication with explicit backpressure. accepted is
+    --  False when the destination is unavailable or its bounded event lane is
+    --  full. Producers of stateful streams use this result to mark their next
+    --  accepted report as a resynchronization snapshot.
+    procedure trySendEvent (dest     : ProcessID;
+                            msg      : Message;
+                            accepted : out Boolean)
+        with SPARK_Mode => On;
+
+    -- Publish a coalescible, persistent device-work doorbell. Unlike
+    -- sendEvent, this cannot be lost because a mailbox ring is full.
+    procedure notifyIRQ (dest : ProcessID)
+        with SPARK_Mode => On;
+
     ---------------------------------------------------------------------------
     -- receive
     -- Receive a message from one's mailbox. Block if no message available.
     -- On return, from contains the sender PID and msg contains the message.
     ---------------------------------------------------------------------------
     procedure receive (from : out ProcessID; msg : out Message)
+        with SPARK_Mode => On;
+
+    --  Block until any IPC arrives or the absolute monotonic millisecond
+    --  deadline is reached. Unlike a userspace sleep/poll loop, publication
+    --  wakes the receiver immediately. received is False only on timeout.
+    procedure receiveUntil
+        (deadlineMs : in  Unsigned_64;
+         from       : out ProcessID;
+         msg        : out Message;
+         received   : out Boolean)
+        with SPARK_Mode => On;
+
+    --  Called once per monotonic millisecond by the BSP timer. Timed receivers
+    --  are removed from their one mailbox queue and made runnable when due.
+    procedure expireReceiveDeadlines (nowMs : Unsigned_64)
         with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
@@ -257,12 +286,11 @@ is
       with SPARK_Mode => On;
 
     ---------------------------------------------------------------------------
-    -- resolveGrant
-    -- Authoritatively validate a generation-tagged reference for the current
-    -- grantee and an authenticated expected owner, then return only the
-    -- requested in-bounds mapping. requiredWrite demands a read-write grant.
+    -- acquireGrant
+    -- Authoritatively validate and pin a generation-tagged grant for the
+    -- current grantee.  The mapping remains valid until returnGrant.
     ---------------------------------------------------------------------------
-    procedure resolveGrant
+    procedure acquireGrant
       (reference     : Memory_Grants.Reference;
        expectedOwner : ProcessID;
        byteOffset    : Unsigned_64;
@@ -272,10 +300,31 @@ is
        success       : out Boolean)
       with SPARK_Mode => On;
 
+    procedure returnGrant
+      (reference : Memory_Grants.Reference;
+       success   : out Boolean)
+      with SPARK_Mode => On;
+
     procedure revokeGrantReference
       (reference : Memory_Grants.Reference;
        success   : out Boolean)
       with SPARK_Mode => On;
+
+    -- Called by process teardown.  When acquired grants remain, retain the
+    -- PID until teardown is complete and the final acquisition is returned.
+    procedure prepareGrantProtectedTeardown
+      (pid         : ProcessID;
+       pidReusable : Boolean;
+       deferred    : out Boolean)
+      with SPARK_Mode => On;
+
+    procedure finishGrantProtectedTeardown (pid : ProcessID)
+      with SPARK_Mode => On;
+
+    -- Release DMA blocks owned by a process.  Teardown calls this immediately
+    -- when no grant is acquired, or after the final acquisition is returned.
+    procedure releaseDMAAllocations (pid : ProcessID)
+      with SPARK_Mode => Off;
 
     ---------------------------------------------------------------------------
     -- Capability-Aware IPC

@@ -236,6 +236,9 @@ package body Syscall.IPC is
         dmaPhys   : Virtmem.PhysAddress;
         virtBase  : Virtmem.VirtAddress;
         ok        : Boolean;
+        claimedPages : Natural := 0;
+        mappedPages  : Natural := 0;
+        tracked      : Boolean := False;
 
         procedure mapPage is new Virtmem.mapPage
             (BuddyAllocator.allocFrame);
@@ -289,6 +292,29 @@ package body Syscall.IPC is
         declare
             numPages : constant Natural := 2 ** Natural (order);
         begin
+            -- DMA is still userspace-owned memory.  Tag every frame to the
+            -- driver so it may grant a deliberately selected subrange while
+            -- raw MMIO, which has no owner tag, remains ungrantable.
+            for i in 0 .. numPages - 1 loop
+                BuddyAllocator.claimUserFrame
+                  (dmaPhys + Virtmem.PhysAddress (i * Virtmem.PAGE_SIZE),
+                   Unsigned_8 (targetPID), ok);
+                if not ok then
+                    if claimedPages > 0 then
+                        for page in 0 .. claimedPages - 1 loop
+                            BuddyAllocator.releaseUserFrame
+                              (dmaPhys + Virtmem.PhysAddress
+                                 (page * Virtmem.PAGE_SIZE),
+                               Unsigned_8 (targetPID));
+                        end loop;
+                    end if;
+                    BuddyAllocator.free (order, dmaAddr);
+                    println ("ALLOC_DMA: ownership tagging failed");
+                    return;
+                end if;
+                claimedPages := claimedPages + 1;
+            end loop;
+
             for i in 0 .. numPages - 1 loop
                 mapPage (
                     phys    => dmaPhys +
@@ -302,8 +328,25 @@ package body Syscall.IPC is
                 if not ok then
                     print ("ALLOC_DMA: map fail pg ");
                     println (i);
+                    if mappedPages > 0 then
+                        for page in 0 .. mappedPages - 1 loop
+                            Virtmem.unmapPage
+                              (virt => virtBase + Virtmem.VirtAddress
+                               (page * Virtmem.PAGE_SIZE),
+                               myP4 => Process.addrtab (targetPID),
+                               success => ok);
+                        end loop;
+                    end if;
+                    for page in 0 .. numPages - 1 loop
+                        BuddyAllocator.releaseUserFrame
+                          (dmaPhys + Virtmem.PhysAddress
+                             (page * Virtmem.PAGE_SIZE),
+                           Unsigned_8 (targetPID));
+                    end loop;
+                    BuddyAllocator.free (order, dmaAddr);
                     return;
                 end if;
+                mappedPages := mappedPages + 1;
             end loop;
 
             --  Track DMA allocation for cleanup on kill()
@@ -313,9 +356,27 @@ package body Syscall.IPC is
                         (active   => True,
                          physAddr => dmaPhys,
                          order    => order);
+                    tracked := True;
                     exit trackDMA;
                 end if;
             end loop trackDMA;
+
+            if not tracked then
+                for page in 0 .. numPages - 1 loop
+                    Virtmem.unmapPage
+                      (virt => virtBase + Virtmem.VirtAddress
+                         (page * Virtmem.PAGE_SIZE),
+                       myP4 => Process.addrtab (targetPID),
+                       success => ok);
+                    BuddyAllocator.releaseUserFrame
+                      (dmaPhys + Virtmem.PhysAddress
+                         (page * Virtmem.PAGE_SIZE),
+                       Unsigned_8 (targetPID));
+                end loop;
+                BuddyAllocator.free (order, dmaAddr);
+                println ("ALLOC_DMA: allocation table full");
+                return;
+            end if;
 
             retval := Unsigned_64 (dmaPhys);
         end;
@@ -555,6 +616,33 @@ package body Syscall.IPC is
     end handleReceive;
 
     ---------------------------------------------------------------------------
+    -- handleReceiveUntil
+    -- arg0 points to the userspace Message, arg1 is an absolute monotonic-ms
+    -- deadline. Unsigned_64'Last is returned on timeout; PID zero remains the
+    -- valid sender marker for an unsolicited event.
+    ---------------------------------------------------------------------------
+    procedure handleReceiveUntil (arg0, arg1 : Unsigned_64;
+                                  retval     : out Unsigned_64) with
+        SPARK_Mode => Off
+    is
+        from     : Process.ProcessID;
+        recvMsg  : Process.Message;
+        received : Boolean;
+        userMsg  : Process.Message with
+            Import, Address => Util.numToAddr(arg0);
+    begin
+        Process.IPC.receiveUntil (arg1, from, recvMsg, received);
+        x86.stac;
+        userMsg := recvMsg;
+        x86.clac;
+        if received then
+            retval := Unsigned_64(from);
+        else
+            retval := Unsigned_64'Last;
+        end if;
+    end handleReceiveUntil;
+
+    ---------------------------------------------------------------------------
     -- handleReply
     ---------------------------------------------------------------------------
     procedure handleReply (arg0, arg1, arg2, arg3,
@@ -640,6 +728,13 @@ package body Syscall.IPC is
 
         destPID : Process.ProcessID;
         hasCap  : Boolean := False;
+        accepted : Boolean;
+        authorityBadge : Capabilities.Badge := Capabilities.NO_BADGE;
+        resolvedPID : Unsigned_64;
+        resolvedBadge : Capabilities.Badge;
+        resolveStatus : Capabilities.Operations.OperationStatus;
+        publishRights : constant Capabilities.CapabilityRights :=
+          (Capabilities.RIGHT_WRITE => True, others => False);
         eventMsg : Process.Message;
     begin
         if arg0 > Unsigned_64(Process.ProcessID'Last) then
@@ -656,19 +751,6 @@ package body Syscall.IPC is
         -- Kernel-mode threads are exempt
         if Process.proctab(callerPID).mode = Process.KERNEL then
             hasCap := True;
-        end if;
-
-        -- CAP_IRQ holders are hardware drivers that
-        -- forward events to consumers by definition.
-        if not hasCap then
-            for slot in Capabilities.CapabilitySlot loop
-                if Process.proctab(callerPID).caps(slot).capType =
-                   Capabilities.CAP_IRQ
-                then
-                    hasCap := True;
-                    exit;
-                end if;
-            end loop;
         end if;
 
         --  A read-only notification capability is narrowly scoped event
@@ -689,6 +771,8 @@ package body Syscall.IPC is
                        Unsigned_64 (destPID)
                 then
                     hasCap := True;
+                    authorityBadge :=
+                      Process.proctab(callerPID).caps(slot).capBadge;
                     exit;
                 end if;
             end loop;
@@ -699,12 +783,24 @@ package body Syscall.IPC is
                 if Process.proctab(callerPID).caps(slot).capType =
                    Capabilities.CAP_ENDPOINT and then
                    Process.proctab(callerPID).caps(slot).object.ref =
-                   Unsigned_64 (destPID) and then
-                   Process.proctab(callerPID).caps(slot).rights(
-                       Capabilities.RIGHT_WRITE)
+                   Unsigned_64 (destPID)
                 then
-                    hasCap := True;
-                    exit;
+                    Capabilities.Operations.resolveCurrentEndpoint
+                      (table => Process.proctab(callerPID).caps,
+                       slot => slot,
+                       rights => publishRights,
+                       currentGeneration =>
+                         Process.proctab(destPID).capGeneration,
+                       destPID => resolvedPID,
+                       capBadge => resolvedBadge,
+                       status => resolveStatus);
+                    if resolveStatus = Capabilities.Operations.OP_OK and then
+                       resolvedPID = Unsigned_64 (destPID)
+                    then
+                       hasCap := True;
+                       authorityBadge := resolvedBadge;
+                       exit;
+                    end if;
                 end if;
             end loop;
         end if;
@@ -718,10 +814,15 @@ package body Syscall.IPC is
                 arg0, 0);
             retval := reterr;
         else
-            Process.IPC.sendEvent (
+            --  The receiver learns which granted authority published the
+            --  event. A userspace payload cannot forge this badge because the
+            --  kernel overwrites it after resolving the caller's capability.
+            eventMsg.capBadge := authorityBadge;
+            Process.IPC.trySendEvent (
                 dest => destPID,
-                msg  => eventMsg);
-            retval := 1;
+                msg  => eventMsg,
+                accepted => accepted);
+            retval := (if accepted then 1 else 0);
         end if;
     end handleSendEvent;
 
@@ -988,8 +1089,9 @@ package body Syscall.IPC is
             return;
         end if;
 
-        if not Process.proctab(callerPID).grants(
-                  Process.GrantID (slot)).active
+        if not Memory_Grants.Is_Active
+          (Process.proctab(callerPID).grants
+             (Process.GrantID (slot)).lifecycle)
         then
             retval := 0;
             return;
@@ -1018,7 +1120,7 @@ package body Syscall.IPC is
         retval := (if success then Unsigned_64 (generation) else reterr);
     end handleGetOwnedGrantGeneration;
 
-    procedure handleResolveGrant
+    procedure handleAcquireGrant
       (arg0, arg1, arg2, arg3, arg4, arg5 : Unsigned_64;
        retval : out Unsigned_64)
     is
@@ -1034,7 +1136,7 @@ package body Syscall.IPC is
             return;
         end if;
 
-        Process.IPC.resolveGrant
+        Process.IPC.acquireGrant
           (reference =>
              (slot       => Memory_Grants.Global_Slot (arg0),
               generation => Memory_Grants.To_Live_Generation (arg1)),
@@ -1045,7 +1147,78 @@ package body Syscall.IPC is
            mappedAddress => mappedAddress,
            success       => success);
         retval := (if success then Util.addrToNum (mappedAddress) else reterr);
-    end handleResolveGrant;
+    end handleAcquireGrant;
+
+    procedure handleAcquireGrantViaCap
+      (callerPID : Process.ProcessID;
+       arg0, arg1, arg2, arg3, arg4, arg5 : Unsigned_64;
+       retval : out Unsigned_64)
+    is
+        use type Capabilities.CapabilityType;
+        cap : Capabilities.Capability;
+        ownerPID : Process.ProcessID;
+        mappedAddress : System.Address;
+        success : Boolean;
+    begin
+        if arg0 > Unsigned_64 (Capabilities.CapabilitySlot'Last) or else
+           arg1 > Unsigned_64 (Memory_Grants.Global_Slot'Last) or else
+           not Memory_Grants.Is_Valid_Generation_Field (arg2) or else
+           arg5 > 1
+        then
+            retval := reterr;
+            return;
+        end if;
+
+        cap := Process.proctab(callerPID).caps
+          (Capabilities.CapabilitySlot (arg0));
+        if cap.capType /= Capabilities.CAP_ENDPOINT or else
+           not cap.rights (Capabilities.RIGHT_READ) or else
+           cap.object.ref = 0 or else
+           cap.object.ref > Unsigned_64 (Process.ProcessID'Last)
+        then
+            retval := reterr;
+            return;
+        end if;
+
+        ownerPID := Process.ProcessID (cap.object.ref);
+        if cap.gen /= Process.proctab(ownerPID).capGeneration then
+            retval := reterr;
+            return;
+        end if;
+
+        Process.IPC.acquireGrant
+          (reference =>
+             (slot       => Memory_Grants.Global_Slot (arg1),
+              generation => Memory_Grants.To_Live_Generation (arg2)),
+           expectedOwner => ownerPID,
+           byteOffset    => arg3,
+           byteLength    => arg4,
+           requiredWrite => arg5 = 1,
+           mappedAddress => mappedAddress,
+           success       => success);
+        retval := (if success then Util.addrToNum (mappedAddress) else reterr);
+    end handleAcquireGrantViaCap;
+
+    procedure handleReturnGrant
+      (arg0, arg1 : Unsigned_64;
+       retval : out Unsigned_64)
+    is
+        success : Boolean;
+    begin
+        if arg0 > Unsigned_64 (Memory_Grants.Global_Slot'Last) or else
+           not Memory_Grants.Is_Valid_Generation_Field (arg1)
+        then
+            retval := 0;
+            return;
+        end if;
+
+        Process.IPC.returnGrant
+          (reference =>
+             (slot       => Memory_Grants.Global_Slot (arg0),
+              generation => Memory_Grants.To_Live_Generation (arg1)),
+           success => success);
+        retval := (if success then 1 else 0);
+    end handleReturnGrant;
 
     procedure handleRevokeGrantReference
       (arg0, arg1 : Unsigned_64;
@@ -1236,6 +1409,7 @@ package body Syscall.IPC is
         if ok then
             retval := Unsigned_64(gid);
         else
+            println ("CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY: create failed");
             retval := reterr;
         end if;
     end handleGrantViaCap;

@@ -21,9 +21,12 @@ package body CuBit.UI.Lists is
    is
    begin
       CuBit.UI.Controls.Add (controls, id, bounds, damage);
-      result := CuBit.UI.State.Button (st, bounds);
-      if result.activated then
+      result := CuBit.UI.State.Button
+        (st, CuBit.UI.Controls.Bounds (controls, id),
+         CuBit.UI.State.Widget_ID (id));
+      if result.activated and then selectedIndex /= itemIndex then
          selectedIndex := itemIndex;
+         CuBit.UI.State.Request_Followup_Render (st);
       end if;
       CuBit.UI.Draw_List_Item
         (c, bounds, colors, selectedIndex = itemIndex, result.hot, label);

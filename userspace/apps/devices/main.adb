@@ -679,7 +679,6 @@ procedure main is
          maxScroll := visibleKeyCount - visibleRows;
       end if;
       treeScroll := Natural'Min (treeScroll, maxScroll);
-      Ensure_Selected_Visible (visibleRows);
       Item (NODE_COMPUTER, "This computer", 0, True, computerExpanded,
             CuBit.UI.Trees.Computer_Icon);
       if computerExpanded then
@@ -750,30 +749,48 @@ procedure main is
       maxScroll : Natural := 0;
       visibleRows : Natural := 1;
       hit : CuBit.UI.Controls.Control_ID;
+      selectionMoved : Boolean := False;
+      oldScroll : Natural;
    begin
       if event.kind = CuBit.UI.App.INPUT_KEY_DOWN then
          if event.payload0 = CuBit.UI.App.KEY_ESC then
             running := False;
          elsif event.payload0 = KEY_F5 then
             Load_Inventory;
+            dirty := CuBit.UI.App.Full_Rect (win);
          elsif treeFocused and then event.payload0 = KEY_UP then
             Move_Selection (False);
+            selectionMoved := True;
          elsif treeFocused and then event.payload0 = KEY_DOWN then
             Move_Selection (True);
+            selectionMoved := True;
          elsif treeFocused and then event.payload0 = KEY_RIGHT then
             Expand_Selected;
+            selectionMoved := True;
          elsif treeFocused and then event.payload0 = KEY_LEFT then
             Collapse_Or_Select_Parent;
+            selectionMoved := True;
          elsif treeFocused and then event.payload0 = KEY_HOME then
             Rebuild_Visible_Keys;
             if visibleKeyCount > 0 then selectedNode := visibleKeys (1); end if;
+            selectionMoved := True;
          elsif treeFocused and then event.payload0 = KEY_END then
             Rebuild_Visible_Keys;
             if visibleKeyCount > 0 then
                selectedNode := visibleKeys (visibleKeyCount);
             end if;
+            selectionMoved := True;
          end if;
-         dirty := CuBit.UI.App.Full_Rect (win);
+         if selectionMoved then
+            Rebuild_Visible_Keys;
+            if lastTreeBounds.h > 8 then
+               visibleRows := Natural'Max
+                 (1, (lastTreeBounds.h - 8) /
+                    CuBit.UI.Trees.TREE_ROW_HEIGHT);
+            end if;
+            Ensure_Selected_Visible (visibleRows);
+            dirty := CuBit.UI.App.Full_Rect (win);
+         end if;
       elsif event.kind = CuBit.UI.App.INPUT_CONFIGURE then
          dirty := CuBit.UI.App.Full_Rect (win);
       elsif event.kind = CuBit.UI.App.INPUT_POINTER_DOWN then
@@ -798,22 +815,25 @@ procedure main is
          end if;
       elsif event.kind = CuBit.UI.App.INPUT_POINTER_WHEEL and then treeFocused
       then
-         wheel := Integer (Integer_32
-           (Unsigned_32 (event.payload1 and 16#FFFF_FFFF#)));
+         wheel := CuBit.UI.App.Pointer_Wheel_Delta (event);
          Rebuild_Visible_Keys;
          if lastTreeBounds.h > 8 then
-            visibleRows := (lastTreeBounds.h - 8) /
-              CuBit.UI.Trees.TREE_ROW_HEIGHT;
+            visibleRows := Natural'Max
+              (1, (lastTreeBounds.h - 8) /
+                 CuBit.UI.Trees.TREE_ROW_HEIGHT);
          end if;
          if visibleKeyCount > visibleRows then
             maxScroll := visibleKeyCount - visibleRows;
          end if;
+         oldScroll := treeScroll;
          if wheel > 0 then
             if treeScroll > 0 then treeScroll := treeScroll - 1; end if;
          elsif wheel < 0 then
             treeScroll := Natural'Min (treeScroll + 1, maxScroll);
          end if;
-         dirty := CuBit.UI.App.Full_Rect (win);
+         if treeScroll /= oldScroll then
+            dirty := CuBit.UI.Union_Rect (dirty, lastTreeBounds);
+         end if;
       end if;
    end Handle_Event;
 

@@ -169,6 +169,8 @@ is
     procedure addStackPage (proc : in out Process) is
         newFrame : Virtmem.PhysAddress;
         ok : Boolean;
+        claimed : Boolean;
+        frameOwner : ProcessID;
         MapException : exception;
 
         procedure mapPage is new Virtmem.mapPage (BuddyAllocator.allocFrame);
@@ -181,9 +183,18 @@ is
         end if;
         
         if proc.isThread then
+            frameOwner := proc.ppid;
             FrameLists.insertFront (proctab(proc.ppid).frames, newFrame);
         else
+            frameOwner := proc.pid;
             FrameLists.insertFront (proc.frames, newFrame);
+        end if;
+
+        BuddyAllocator.claimUserFrame
+          (newFrame, Unsigned_8 (frameOwner), claimed);
+        if not claimed then
+            raise ProcessException with
+              "Unable to establish stack-frame ownership";
         end if;
 
         -- Map the frame just below the thread's current stack.
@@ -214,6 +225,8 @@ is
                        flags   : in Unsigned_64 := Virtmem.PG_USERDATA) is
         newFrame : Virtmem.PhysAddress;
         ok : Boolean;
+        claimed : Boolean;
+        frameOwner : ProcessID;
         MapException : exception;
     
         procedure mapPage is new Virtmem.mapPage (BuddyAllocator.allocFrame);
@@ -228,9 +241,18 @@ is
         storage := Virtmem.P2Va (newFrame);
 
         if proc.isThread then
+            frameOwner := proc.ppid;
             FrameLists.insertFront (proctab(proc.ppid).frames, newFrame);
         else
+            frameOwner := proc.pid;
             FrameLists.insertFront (proc.frames, newFrame);
+        end if;
+
+        BuddyAllocator.claimUserFrame
+          (newFrame, Unsigned_8 (frameOwner), claimed);
+        if not claimed then
+            raise ProcessException with
+              "Unable to establish user-frame ownership";
         end if;
 
         mapPage (phys    => newFrame,
@@ -788,6 +810,7 @@ is
 
         ignore      : ProcessID;
         pidReusable : Boolean;
+        grantDeferred : Boolean := False;
     begin
         print ("Process.killProcess: cleaning up pid "); println (Integer(pid));
 
@@ -829,6 +852,10 @@ is
 
         -- println ("Process.kill: acquiring proctab lock");
         Spinlocks.enterCriticalSection (lock);
+
+        --  Disarm a timed receive before unlinking it. The timer's atomic
+        --  hint check will then leave mailbox teardown as the sole remover.
+        proctab(pid).receiveDeadlineActive := False;
 
         -- Remove this process from whatever list it was on (if any)
           case proctab(pid).state is
@@ -923,6 +950,10 @@ is
             (others => (NO_PROCESS, NO_REQUEST_ID, 0));
         proctab(pid).numPending := 0;
         proctab(pid).nextRequestId := 1;
+        proctab(pid).irqNotificationPending := False;
+        proctab(pid).receiveDeadlineActive := False;
+        proctab(pid).receiveDeadlineMs := 0;
+        proctab(pid).receiveDeadlineReceiver := NO_PROCESS;
 
         -- Clear FPU ownership if killed process owns the FPU
         clearFPU : declare
@@ -994,16 +1025,6 @@ is
             end loop;
         end cleanPending;
 
-        --  Free DMA allocations tracked for this process
-        for d in DMAAllocArray'Range loop
-            if proctab(pid).dmaAllocs(d).active then
-                BuddyAllocator.free (
-                    proctab(pid).dmaAllocs(d).order,
-                    Virtmem.P2Va (proctab(pid).dmaAllocs(d).physAddr));
-                proctab(pid).dmaAllocs(d).active := False;
-            end if;
-        end loop;
-
         --  Unregister IRQ and sysinfo driver registrations
         Capabilities.IRQ.unregisterAllByPID (Unsigned_64 (pid));
         Sysinfo.unregisterDriverByPID (pid);
@@ -1015,6 +1036,22 @@ is
         Capabilities.Operations.advanceGeneration
           (current  => proctab(pid).capGeneration,
            reusable => pidReusable);
+
+        -- An acquisition pins its backing frames.  Retain this dead process's
+        -- PID (and therefore its authoritative grant records) until every
+        -- borrower has returned.  The address space itself can still be torn
+        -- down now; BuddyAllocator defers freeing the pinned data frames.
+        IPC.prepareGrantProtectedTeardown
+          (pid         => pid,
+           pidReusable => pidReusable,
+           deferred    => grantDeferred);
+
+        -- Whole DMA allocations must be freed at their original buddy order.
+        -- If a grant acquisition pins any constituent frame, retain all DMA
+        -- blocks until the final borrower returns it.
+        if not grantDeferred then
+            IPC.releaseDMAAllocations (pid);
+        end if;
 
         -- Clear capability table
         Capabilities.Operations.clearTable (proctab(pid).caps);
@@ -1047,8 +1084,10 @@ is
 
         -- Return the PID only when revocation produced a distinct generation.
         -- Exhausted PIDs stay marked used and are permanently retired.
-        if pidReusable then
+        if pidReusable and then not grantDeferred then
             PIDTracker.freePID (pid);
+        elsif grantDeferred then
+            IPC.finishGrantProtectedTeardown (pid);
         end if;
 
         Spinlocks.exitCriticalSection (lock);

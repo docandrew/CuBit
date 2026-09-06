@@ -14,6 +14,7 @@ with Util;
 package body BuddyAllocator
     with SPARK_Mode => On
 is
+    use type System.Address;
 
     ---------------------------------------------------------------------------
     -- Buddy-pair XOR bitmap for safe coalesce checks.
@@ -25,6 +26,14 @@ is
     bitmapBase     : System.Address := System.Null_Address;
     maxBitmapPFN   : Unsigned_64 := 0;
     orderBitOffset : array (Order) of Unsigned_64 := (others => 0);
+
+    -- One byte per physical frame.  Bits 0..6 are the pin count and bit 7
+    -- records a freeFrame deferred until the final pin is returned.
+    pinStateBase    : System.Address := System.Null_Address;
+    frameOwnerBase  : System.Address := System.Null_Address;
+    maxPinPFN       : Unsigned_64 := 0;
+    PIN_COUNT_MASK  : constant Unsigned_8 := 16#7F#;
+    PIN_DEFERRED    : constant Unsigned_8 := 16#80#;
 
     ---------------------------------------------------------------------------
     -- Address Arithmetic (don't tell!)
@@ -131,6 +140,32 @@ is
         print(Natural(totalBytes));
         println(" bytes");
     end allocBitmap;
+
+    procedure allocPinState with
+        SPARK_Mode => Off
+    is
+        stateBytes : constant Storage_Count :=
+          Storage_Count (Unsigned_64 (Virtmem.MAX_PHYS_USABLE) /
+                         Unsigned_64 (Virtmem.FRAME_SIZE) + 1);
+        numFrames  : constant Positive := Positive
+          ((stateBytes + Virtmem.FRAME_SIZE - 1) / Virtmem.FRAME_SIZE);
+        pinPhys    : Virtmem.PhysAddress;
+        ownerPhys  : Virtmem.PhysAddress;
+        ignore     : System.Address;
+    begin
+        BootAllocator.allocFrames (numFrames, pinPhys);
+        BootAllocator.allocFrames (numFrames, ownerPhys);
+        pinStateBase := Virtmem.P2Va (pinPhys);
+        frameOwnerBase := Virtmem.P2Va (ownerPhys);
+        maxPinPFN := Unsigned_64 (Virtmem.MAX_PHYS_USABLE) /
+          Unsigned_64 (Virtmem.FRAME_SIZE);
+        ignore := Util.memset (pinStateBase, 0, stateBytes);
+        ignore := Util.memset (frameOwnerBase, 0, stateBytes);
+
+        print ("Frame pin state: ");
+        print (Natural (stateBytes));
+        println (" bytes");
+    end allocPinState;
 
     ---------------------------------------------------------------------------
     -- toggleBit - Toggle the XOR bit for the buddy pair containing addr
@@ -442,6 +477,9 @@ is
 
         -- Allocate XOR bitmap for safe buddy-pair coalesce checks.
         allocBitmap;
+        -- Allocate lifetime metadata before releasing boot-managed frames to
+        -- the buddy lists, so the metadata can never itself be allocated.
+        allocPinState;
 
         eachArea:
         for area of areas loop
@@ -601,14 +639,12 @@ is
     ---------------------------------------------------------------------------
     -- free
     ---------------------------------------------------------------------------
-    procedure free (ord : in Order; addr : in System.Address) with
-        SPARK_Mode => Off  -- lock calls change Global contract
+    procedure freeLocked (ord : in Order; addr : in System.Address) with
+        SPARK_Mode => Off
     is
         curOrd   : Order := ord;
         freeAddr : Integer_Address := To_Integer(addr);
     begin
-        Spinlocks.enterCriticalSection (lock);
-
         -- "bubble up" free blocks as long as each order's buddy is free
         -- and we aren't at max order
         coalesce: while curOrd < Order'Last loop
@@ -635,6 +671,14 @@ is
 
         -- add us to front of the respective free list
         addToFreeList (curOrd, To_Address(freeAddr));
+    end freeLocked;
+
+    procedure free (ord : in Order; addr : in System.Address) with
+        SPARK_Mode => Off  -- lock calls change Global contract
+    is
+    begin
+        Spinlocks.enterCriticalSection (lock);
+        freeLocked (ord, addr);
 
         Spinlocks.exitCriticalSection (lock);
     end free;
@@ -645,9 +689,180 @@ is
     procedure freeFrame (addr : in Virtmem.PhysAddress) with
         SPARK_Mode => Off
     is
+        pfn : constant Unsigned_64 := Unsigned_64 (Virtmem.addrToPFN (addr));
     begin
-        free (0, Virtmem.P2Va (addr));
+        Spinlocks.enterCriticalSection (lock);
+        if pinStateBase /= System.Null_Address and then pfn <= maxPinPFN then
+            declare
+                state : Unsigned_8 with
+                    Import,
+                    Volatile,
+                    Address => pinStateBase + Storage_Offset (pfn);
+                owner : Unsigned_8 with
+                    Import,
+                    Volatile,
+                    Address => frameOwnerBase + Storage_Offset (pfn);
+            begin
+                owner := 0;
+                if (state and PIN_COUNT_MASK) /= 0 then
+                    state := state or PIN_DEFERRED;
+                    Spinlocks.exitCriticalSection (lock);
+                    return;
+                end if;
+            end;
+        end if;
+
+        freeLocked (0, Virtmem.P2Va (addr));
+        Spinlocks.exitCriticalSection (lock);
     end freeFrame;
+
+    procedure pinFrame
+      (addr    : in Virtmem.PhysAddress;
+       success : out Boolean) with
+        SPARK_Mode => Off
+    is
+        pfn : constant Unsigned_64 := Unsigned_64 (Virtmem.addrToPFN (addr));
+    begin
+        success := False;
+        if pinStateBase = System.Null_Address or else pfn > maxPinPFN or else
+           addr mod Virtmem.FRAME_SIZE /= 0
+        then
+            return;
+        end if;
+
+        Spinlocks.enterCriticalSection (lock);
+        declare
+            state : Unsigned_8 with
+                Import,
+                Volatile,
+                Address => pinStateBase + Storage_Offset (pfn);
+            count : constant Unsigned_8 := state and PIN_COUNT_MASK;
+        begin
+            if (state and PIN_DEFERRED) = 0 and then count < PIN_COUNT_MASK then
+                state := state + 1;
+                success := True;
+            end if;
+        end;
+        Spinlocks.exitCriticalSection (lock);
+    end pinFrame;
+
+    procedure unpinFrame
+      (addr    : in Virtmem.PhysAddress;
+       success : out Boolean) with
+        SPARK_Mode => Off
+    is
+        pfn : constant Unsigned_64 := Unsigned_64 (Virtmem.addrToPFN (addr));
+    begin
+        success := False;
+        if pinStateBase = System.Null_Address or else pfn > maxPinPFN or else
+           addr mod Virtmem.FRAME_SIZE /= 0
+        then
+            return;
+        end if;
+
+        Spinlocks.enterCriticalSection (lock);
+        declare
+            state : Unsigned_8 with
+                Import,
+                Volatile,
+                Address => pinStateBase + Storage_Offset (pfn);
+            count : constant Unsigned_8 := state and PIN_COUNT_MASK;
+        begin
+            if count /= 0 then
+                state := state - 1;
+                success := True;
+                if count = 1 and then (state and PIN_DEFERRED) /= 0 then
+                    state := 0;
+                    freeLocked (0, Virtmem.P2Va (addr));
+                end if;
+            end if;
+        end;
+        Spinlocks.exitCriticalSection (lock);
+    end unpinFrame;
+
+    procedure claimUserFrame
+      (addr    : in Virtmem.PhysAddress;
+       owner   : in Unsigned_8;
+       success : out Boolean) with
+        SPARK_Mode => Off
+    is
+        pfn : constant Unsigned_64 := Unsigned_64 (Virtmem.addrToPFN (addr));
+    begin
+        success := False;
+        if owner = 0 or else frameOwnerBase = System.Null_Address or else
+           pfn > maxPinPFN or else addr mod Virtmem.FRAME_SIZE /= 0
+        then
+            return;
+        end if;
+
+        Spinlocks.enterCriticalSection (lock);
+        declare
+            currentOwner : Unsigned_8 with
+                Import,
+                Volatile,
+                Address => frameOwnerBase + Storage_Offset (pfn);
+        begin
+            if currentOwner = 0 then
+                currentOwner := owner;
+                success := True;
+            end if;
+        end;
+        Spinlocks.exitCriticalSection (lock);
+    end claimUserFrame;
+
+    procedure releaseUserFrame
+      (addr  : in Virtmem.PhysAddress;
+       owner : in Unsigned_8) with
+        SPARK_Mode => Off
+    is
+        pfn : constant Unsigned_64 := Unsigned_64 (Virtmem.addrToPFN (addr));
+    begin
+        if owner = 0 or else frameOwnerBase = System.Null_Address or else
+           pfn > maxPinPFN or else addr mod Virtmem.FRAME_SIZE /= 0
+        then
+            return;
+        end if;
+
+        Spinlocks.enterCriticalSection (lock);
+        declare
+            currentOwner : Unsigned_8 with
+                Import,
+                Volatile,
+                Address => frameOwnerBase + Storage_Offset (pfn);
+        begin
+            if currentOwner = owner then
+                currentOwner := 0;
+            end if;
+        end;
+        Spinlocks.exitCriticalSection (lock);
+    end releaseUserFrame;
+
+    function isUserFrameOwnedBy
+      (addr  : Virtmem.PhysAddress;
+       owner : Unsigned_8) return Boolean with
+        SPARK_Mode => Off
+    is
+        pfn : constant Unsigned_64 := Unsigned_64 (Virtmem.addrToPFN (addr));
+        result : Boolean := False;
+    begin
+        if owner = 0 or else frameOwnerBase = System.Null_Address or else
+           pfn > maxPinPFN or else addr mod Virtmem.FRAME_SIZE /= 0
+        then
+            return False;
+        end if;
+
+        Spinlocks.enterCriticalSection (lock);
+        declare
+            currentOwner : Unsigned_8 with
+                Import,
+                Volatile,
+                Address => frameOwnerBase + Storage_Offset (pfn);
+        begin
+            result := currentOwner = owner;
+        end;
+        Spinlocks.exitCriticalSection (lock);
+        return result;
+    end isUserFrameOwnedBy;
 
     ---------------------------------------------------------------------------
     -- getFreeBytes

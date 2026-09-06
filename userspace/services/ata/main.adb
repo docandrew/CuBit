@@ -54,6 +54,7 @@ procedure main is
 
    --  Sector size
    SECTOR_SIZE    : constant := 512;
+   ATA_POLL_LIMIT : constant Positive := 100_000;
 
    --  Drive detected flag
    drivePresent : Boolean := False;
@@ -82,7 +83,7 @@ procedure main is
    function waitBSY return Boolean is
       st : Unsigned_8;
    begin
-      for i in 1 .. 100_000 loop
+      for i in 1 .. ATA_POLL_LIMIT loop
          st := inb (REG_STATUS);
          if st = STATUS_FLOAT then
             return False;
@@ -101,14 +102,16 @@ procedure main is
    function waitDRQ return Boolean is
       st : Unsigned_8;
    begin
-      loop
+      for attempt in 1 .. ATA_POLL_LIMIT loop
          st := inb (REG_STATUS);
-         if (st and STATUS_ERR) /= 0 then
+         if st = STATUS_FLOAT or else (st and STATUS_ERR) /= 0 then
             return False;
          end if;
-         exit when (st and STATUS_DRQ) /= 0;
+         if (st and STATUS_DRQ) /= 0 then
+            return True;
+         end if;
       end loop;
-      return True;
+      return False;
    end waitDRQ;
 
    ---------------------------------------------------------------------------
@@ -325,10 +328,12 @@ procedure main is
          end;
       end loop;
 
-      --  Flush the write cache
+      --  Wait for command completion. This is not a durability flush; the
+      --  device does not advertise FEATURE_FLUSH yet.
       ata400nsDelay;
-      if not waitBSY then
-         debugPrint ("ATA: BSY timeout after write." & LF);
+      if not waitBSY or else (inb (REG_STATUS) and STATUS_ERR) /= 0 then
+         debugPrint ("ATA: command failed after write." & LF);
+         return 0;
       end if;
 
       return Unsigned_64 (Natural (count) * SECTOR_SIZE);
@@ -365,7 +370,9 @@ procedure main is
       sectorCt  : Unsigned_8 := 0;
       grantAddr : System.Address := System.Null_Address;
       resolved  : Boolean := False;
+      returned  : Boolean := False;
       bytesRead : Unsigned_64;
+      expectedBytes : Unsigned_64;
    begin
       if not drivePresent then
          sendReply (sender, REPLY_ERROR, 0);
@@ -388,7 +395,8 @@ procedure main is
 
       lba := Unsigned_32 (msg.words (0));
       sectorCt := Unsigned_8 (msg.words (2));
-      CuBit.Memory_Grants.Resolve
+      expectedBytes := Unsigned_64 (sectorCt) * SECTOR_SIZE;
+      CuBit.Memory_Grants.Acquire
         (reference      =>
            (slot => CuBit.Memory_Grants.Global_Grant_Slot (msg.words (1)),
             generation =>
@@ -405,7 +413,20 @@ procedure main is
       end if;
 
       bytesRead := readSectors (lba, sectorCt, grantAddr);
-      sendReply (sender, REPLY_OK, bytesRead);
+      CuBit.Memory_Grants.Return_Acquisition
+        ((slot => CuBit.Memory_Grants.Global_Grant_Slot (msg.words (1)),
+          generation =>
+            CuBit.Memory_Grants.Grant_Generation (msg.words (3))),
+         returned);
+      if not returned then
+         sendReply (sender, REPLY_ERROR, 0);
+         return;
+      end if;
+      if bytesRead = expectedBytes then
+         sendReply (sender, REPLY_OK, bytesRead);
+      else
+         sendReply (sender, REPLY_ERROR, bytesRead);
+      end if;
    end handleReadBlock;
 
    ---------------------------------------------------------------------------
@@ -420,7 +441,9 @@ procedure main is
       sectorCt     : Unsigned_8 := 0;
       grantAddr    : System.Address := System.Null_Address;
       resolved     : Boolean := False;
+      returned     : Boolean := False;
       bytesWritten : Unsigned_64;
+      expectedBytes : Unsigned_64;
    begin
       if not drivePresent then
          sendReply (sender, REPLY_ERROR, 0);
@@ -443,7 +466,8 @@ procedure main is
 
       lba := Unsigned_32 (msg.words (0));
       sectorCt := Unsigned_8 (msg.words (2));
-      CuBit.Memory_Grants.Resolve
+      expectedBytes := Unsigned_64 (sectorCt) * SECTOR_SIZE;
+      CuBit.Memory_Grants.Acquire
         (reference      =>
            (slot => CuBit.Memory_Grants.Global_Grant_Slot (msg.words (1)),
             generation =>
@@ -460,7 +484,20 @@ procedure main is
       end if;
 
       bytesWritten := writeSectors (lba, sectorCt, grantAddr);
-      sendReply (sender, REPLY_OK, bytesWritten);
+      CuBit.Memory_Grants.Return_Acquisition
+        ((slot => CuBit.Memory_Grants.Global_Grant_Slot (msg.words (1)),
+          generation =>
+            CuBit.Memory_Grants.Grant_Generation (msg.words (3))),
+         returned);
+      if not returned then
+         sendReply (sender, REPLY_ERROR, 0);
+         return;
+      end if;
+      if bytesWritten = expectedBytes then
+         sendReply (sender, REPLY_OK, bytesWritten);
+      else
+         sendReply (sender, REPLY_ERROR, bytesWritten);
+      end if;
    end handleWriteBlock;
 
    ---------------------------------------------------------------------------

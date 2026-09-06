@@ -99,4 +99,95 @@ is
       (parentPages : Page_Count;
        childOffset : Page_Offset;
        childPages  : Page_Count) return Boolean;
+
+    --  A grant's usable lifetime is represented as one state machine rather
+    --  than independent active/pending/count fields.  Revocation completes
+    --  immediately when there is no borrower, otherwise it prevents new
+    --  acquisitions until the final return.
+    Maximum_Acquisition_Count : constant Natural := 127;
+    subtype Acquisition_Count is
+      Natural range 0 .. Maximum_Acquisition_Count;
+
+    type Lifecycle is private;
+    Inactive_Lifecycle  : constant Lifecycle;
+    Available_Lifecycle : constant Lifecycle;
+
+    function Is_Valid (value : Lifecycle) return Boolean;
+    function Is_Active (value : Lifecycle) return Boolean;
+    function Is_Available (value : Lifecycle) return Boolean;
+    function Is_Revocation_Pending (value : Lifecycle) return Boolean;
+    function Acquisition_Total
+      (value : Lifecycle) return Acquisition_Count;
+    function Can_Acquire (value : Lifecycle) return Boolean;
+
+    procedure Record_Acquire (value : in out Lifecycle)
+      with Pre  => Is_Valid (value) and then Can_Acquire (value),
+           Post => Is_Valid (value) and then Is_Available (value) and then
+             Acquisition_Total (value) =
+               Acquisition_Total (value'Old) + 1;
+
+    type Revocation_Result is
+      (Revocation_Rejected, Revocation_Pending, Revocation_Completed);
+
+    procedure Request_Revocation
+      (value  : in out Lifecycle;
+       result : out Revocation_Result)
+      with Pre  => Is_Valid (value),
+           Post => Is_Valid (value) and then
+             (if not Is_Active (value'Old) then
+                  result = Revocation_Rejected and then value = value'Old
+              elsif Acquisition_Total (value'Old) = 0 then
+                  result = Revocation_Completed and then
+                  not Is_Active (value)
+              else
+                  result = Revocation_Pending and then
+                  Is_Revocation_Pending (value) and then
+                  Acquisition_Total (value) =
+                    Acquisition_Total (value'Old));
+
+    type Return_Result is
+      (Return_Rejected, Acquisition_Returned, Revocation_Completed_On_Return);
+
+    procedure Record_Return
+      (value  : in out Lifecycle;
+       result : out Return_Result)
+      with Pre  => Is_Valid (value),
+           Post => Is_Valid (value) and then
+             (if Acquisition_Total (value'Old) = 0 then
+                  result = Return_Rejected and then value = value'Old
+              elsif Is_Revocation_Pending (value'Old) and then
+                    Acquisition_Total (value'Old) = 1
+              then
+                  result = Revocation_Completed_On_Return and then
+                  not Is_Active (value)
+              else
+                  result = Acquisition_Returned and then
+                  Is_Active (value) and then
+                  Acquisition_Total (value) =
+                    Acquisition_Total (value'Old) - 1);
+
+    procedure Force_Close
+      (value            : in out Lifecycle;
+       had_acquisitions : out Boolean)
+      with Pre  => Is_Valid (value),
+           Post => Is_Valid (value) and then not Is_Active (value) and then
+             had_acquisitions =
+               (Acquisition_Total (value'Old) /= 0);
+
+private
+    type Lifecycle_State is
+      (Inactive, Available, Revocation_Requested);
+    for Lifecycle_State use
+      (Inactive => 0, Available => 1, Revocation_Requested => 2);
+    for Lifecycle_State'Size use 8;
+
+    type Lifecycle is record
+        state        : Lifecycle_State := Inactive;
+        acquisitions : Acquisition_Count := 0;
+    end record;
+
+    Inactive_Lifecycle : constant Lifecycle :=
+      (state => Inactive, acquisitions => 0);
+    Available_Lifecycle : constant Lifecycle :=
+      (state => Available, acquisitions => 0);
 end Memory_Grants;

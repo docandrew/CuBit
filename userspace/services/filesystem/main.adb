@@ -12,6 +12,7 @@
 with Ada.Unchecked_Conversion;
 with Interfaces; use Interfaces;
 with System; use System;
+with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
@@ -35,6 +36,8 @@ procedure main is
    type SchemeKind is
      (AUTOMATIC_SCHEME, MEMORY_SCHEME, ATA_SCHEME, NVME_SCHEME);
 
+   type Open_Object_Kind is (FILE_OBJECT, DIRECTORY_OBJECT);
+
    --  File handle entry (tracks which backend each file uses)
    type FileEntry is record
       active      : Boolean      := False;
@@ -47,6 +50,7 @@ procedure main is
       offset      : Unsigned_64  := 0;
       ownerPID    : ProcessID    := NO_PROCESS;
       openRights  : Unsigned_8   := 0;
+      objectKind  : Open_Object_Kind := FILE_OBJECT;
    end record;
 
    type FileTable is array (0 .. MAX_OPEN_FILES - 1) of FileEntry;
@@ -216,7 +220,8 @@ procedure main is
 
    function resolveHandle
      (handle : Unsigned_64;
-      sender : ProcessID) return Integer
+      sender : ProcessID;
+      expectedKind : Open_Object_Kind) return Integer
    is
       slotCode : constant Unsigned_64 := handle and 16#FFFF_FFFF#;
       generation : constant Unsigned_32 :=
@@ -231,7 +236,8 @@ procedure main is
       if not files (slot).active or else
          files (slot).retired or else
          files (slot).generation /= generation or else
-         files (slot).ownerPID /= sender
+         files (slot).ownerPID /= sender or else
+         files (slot).objectKind /= expectedKind
       then
          return -1;
       end if;
@@ -245,6 +251,7 @@ procedure main is
       files (slot).ownerPID := NO_PROCESS;
       files (slot).openRights := 0;
       files (slot).offset := 0;
+      files (slot).objectKind := FILE_OBJECT;
 
       --  Never wrap a generation: retire the slot instead.  This makes stale
       --  handle rejection unconditional rather than merely probabilistic.
@@ -268,7 +275,7 @@ procedure main is
    --  fit the strongly typed userspace representation.  The kernel then
    --  authenticates the owner, current grantee, generation, access, and full
    --  byte range before returning an address.
-   procedure resolveClientMemory
+   procedure acquireClientMemory
      (sender        : ProcessID;
       rawSlot       : Unsigned_64;
       rawGeneration : Unsigned_64;
@@ -288,7 +295,7 @@ procedure main is
          return;
       end if;
 
-      CuBit.Memory_Grants.Resolve
+      CuBit.Memory_Grants.Acquire
         (reference      =>
            (slot => CuBit.Memory_Grants.Global_Grant_Slot (rawSlot),
             generation =>
@@ -299,7 +306,20 @@ procedure main is
          requiredAccess => requiredAccess,
          mappedAddress  => address,
          success        => success);
-   end resolveClientMemory;
+   end acquireClientMemory;
+
+   procedure returnClientMemory
+     (rawSlot       : Unsigned_64;
+      rawGeneration : Unsigned_64;
+      success       : out Boolean)
+   is
+   begin
+      CuBit.Memory_Grants.Return_Acquisition
+        ((slot => CuBit.Memory_Grants.Global_Grant_Slot (rawSlot),
+          generation =>
+            CuBit.Memory_Grants.Grant_Generation (rawGeneration)),
+         success);
+   end returnClientMemory;
 
    --  Send a reply with the given label and word0 value
    procedure sendReply
@@ -330,6 +350,7 @@ procedure main is
       slotIdx       : Integer := -1;
       grantAddr     : System.Address := System.Null_Address;
       grantOk       : Boolean := False;
+      returned      : Boolean := False;
    begin
       if not isAdmin (sender) then
          sendReply (sender, REPLY_ACCESS_DENIED, 0);
@@ -342,22 +363,6 @@ procedure main is
       end if;
 
       entryCount := Natural (entryCountRaw);
-
-      if entryCount > 0 then
-         if msg.tag.length /= 4 then
-            sendReply (sender, REPLY_ERR, 0);
-            return;
-         end if;
-
-         resolveClientMemory
-           (sender, msg.words (2), msg.words (3),
-            Unsigned_64 (entryCount * 72),
-            CuBit.Memory_Grants.Read_Access, grantAddr, grantOk);
-         if not grantOk then
-            sendReply (sender, REPLY_ACCESS_DENIED, 0);
-            return;
-         end if;
-      end if;
 
       --  Find existing profile or allocate a free slot
       for i in aclProfiles'Range loop
@@ -381,6 +386,22 @@ procedure main is
       if slotIdx < 0 then
          sendReply (sender, REPLY_ERR, 0);
          return;
+      end if;
+
+      if entryCount > 0 then
+         if msg.tag.length /= 4 then
+            sendReply (sender, REPLY_ERR, 0);
+            return;
+         end if;
+
+         acquireClientMemory
+           (sender, msg.words (2), msg.words (3),
+            Unsigned_64 (entryCount * 72),
+            CuBit.Memory_Grants.Read_Access, grantAddr, grantOk);
+         if not grantOk then
+            sendReply (sender, REPLY_ACCESS_DENIED, 0);
+            return;
+         end if;
       end if;
 
       aclProfiles (slotIdx).pid    := targetPID;
@@ -417,6 +438,12 @@ procedure main is
                end loop;
             end loop;
          end;
+         returnClientMemory
+           (msg.words (2), msg.words (3), returned);
+         if not returned then
+            sendReply (sender, REPLY_ERR, 0);
+            return;
+         end if;
       end if;
 
       debugPrint ("FS Server: ACL set for PID" & LF);
@@ -684,6 +711,8 @@ procedure main is
       openFlags : constant Open_Options := Open_Options (msg.words (2));
       grantAddr : System.Address := System.Null_Address;
       grantOk   : Boolean := False;
+      returned  : Boolean := False;
+      pathBuffer : String (1 .. Natural (MAXIMUM_PATH_BYTES));
 
       handle     : Integer;
       handleId   : Unsigned_64;
@@ -702,7 +731,7 @@ procedure main is
          return;
       end if;
 
-      resolveClientMemory
+      acquireClientMemory
         (sender, msg.words (0), msg.words (3), pathLen,
          CuBit.Memory_Grants.Read_Access, grantAddr, grantOk);
       if not grantOk then
@@ -710,10 +739,21 @@ procedure main is
          return;
       end if;
 
+      declare
+         grantedPath : String (1 .. Natural (pathLen))
+           with Import, Address => grantAddr;
+      begin
+         pathBuffer (1 .. Natural (pathLen)) := grantedPath;
+      end;
+      returnClientMemory (msg.words (0), msg.words (3), returned);
+      if not returned then
+         sendReply (sender, REPLY_ERR, Unsigned_64'Last);
+         return;
+      end if;
+
       --  Read path from grant buffer and parse scheme prefix
       declare
-         pathStr : String (1 .. Natural (pathLen))
-           with Import, Address => grantAddr;
+         pathStr : String renames pathBuffer (1 .. Natural (pathLen));
 
          --  Helper: skip optional device selector "0/" after scheme prefix
          procedure skipSelector
@@ -776,11 +816,11 @@ procedure main is
             begin
                skipSelector (relPath, skipIdx);
                if skipIdx > relPath'Last then
-                  sendReply (sender, REPLY_ERR, Unsigned_64'Last);
-                  return;
+                  inodeNum := Ext2.ROOT_INODE;
+               else
+                  inodeNum := Ext2.resolvePath
+                    (memoryFs, relPath (skipIdx .. relPath'Last));
                end if;
-               inodeNum := Ext2.resolvePath
-                 (memoryFs, relPath (skipIdx .. relPath'Last));
             end;
 
          elsif scheme = NVME_SCHEME then
@@ -805,11 +845,11 @@ procedure main is
             begin
                skipSelector (relPath, skipIdx);
                if skipIdx > relPath'Last then
-                  sendReply (sender, REPLY_ERR, Unsigned_64'Last);
-                  return;
+                  inodeNum := Ext2.ROOT_INODE;
+               else
+                  inodeNum := Ext2.resolvePath
+                    (nvmeFs, relPath (skipIdx .. relPath'Last));
                end if;
-               inodeNum := Ext2.resolvePath
-                 (nvmeFs, relPath (skipIdx .. relPath'Last));
             end;
 
          elsif scheme = ATA_SCHEME then
@@ -834,11 +874,11 @@ procedure main is
             begin
                skipSelector (relPath, skipIdx);
                if skipIdx > relPath'Last then
-                  sendReply (sender, REPLY_ERR, Unsigned_64'Last);
-                  return;
+                  inodeNum := Ext2.ROOT_INODE;
+               else
+                  inodeNum := Ext2.resolvePath
+                    (ataFs, relPath (skipIdx .. relPath'Last));
                end if;
-               inodeNum := Ext2.resolvePath
-                 (ataFs, relPath (skipIdx .. relPath'Last));
             end;
          else
             --  No scheme prefix: immutable bootstrap first, then the writable
@@ -893,8 +933,8 @@ procedure main is
             useBackend in EXT2_MEMORY | EXT2_ATA | EXT2_NVME
          then
             declare
-               pathStr : String (1 .. Natural (pathLen))
-                 with Import, Address => grantAddr;
+               pathStr : String renames
+                 pathBuffer (1 .. Natural (pathLen));
 
                --  Strip scheme prefix (@ata:, @nvme:) and device selector
                --  (0/) to get the pure filesystem path.
@@ -990,6 +1030,28 @@ procedure main is
          end if;
       end if;
 
+      --  A file handle must never be an alternate spelling of directory
+      --  authority. Directories are opened only through OP_OPEN_DIRECTORY.
+      if useBackend /= CPIO_RAMDISK then
+         declare
+            objectInode : Ext2.Inode;
+         begin
+            case useBackend is
+               when EXT2_MEMORY =>
+                  Ext2.readInode (memoryFs, inodeNum, objectInode);
+               when EXT2_ATA =>
+                  Ext2.readInode (ataFs, inodeNum, objectInode);
+               when EXT2_NVME =>
+                  Ext2.readInode (nvmeFs, inodeNum, objectInode);
+               when CPIO_RAMDISK => null;
+            end case;
+            if Ext2.inodeType (objectInode) = Ext2.INODE_DIRECTORY then
+               sendReply (sender, REPLY_WRONG_OBJECT_TYPE, 0);
+               return;
+            end if;
+         end;
+      end if;
+
       --  OPEN_TRUNCATE: truncate existing file to zero length
       if (openFlags and OPEN_TRUNCATE) /= 0 and inodeNum /= 0 then
          if useBackend = EXT2_MEMORY then
@@ -1016,6 +1078,7 @@ procedure main is
       files (handle).backend     := useBackend;
       files (handle).cpioFileIdx := cpioIdx;
       files (handle).openRights := 0;
+      files (handle).objectKind := FILE_OBJECT;
       if Requests_Read (openFlags) then
          files (handle).openRights :=
            files (handle).openRights or ACL_READ;
@@ -1070,11 +1133,30 @@ procedure main is
    --  words(2) = count (bytes to read)
    --  words(3) = grant generation
    procedure handleRead (sender : ProcessID; msg : Message) is
-      handle    : constant Integer := resolveHandle (msg.words (0), sender);
+      handle    : constant Integer :=
+        resolveHandle (msg.words (0), sender, FILE_OBJECT);
       count     : constant Unsigned_64 := msg.words (2);
       grantAddr : System.Address := System.Null_Address;
       grantOk   : Boolean := False;
       bytesRead : Unsigned_64;
+      readStatus : Ext2.Read_Status := Ext2.Read_Complete;
+      returned  : Boolean := False;
+
+      function replyForRead
+        (status : Ext2.Read_Status) return Unsigned_32
+      is
+      begin
+         case status is
+            when Ext2.Read_Complete =>
+               return REPLY_OK;
+            when Ext2.Read_Out_Of_Range =>
+               return REPLY_OUT_OF_RANGE;
+            when Ext2.Read_Device_Error =>
+               return REPLY_IO_ERROR;
+            when Ext2.Read_File_Range_Unsupported =>
+               return REPLY_FILE_RANGE_UNSUPPORTED;
+         end case;
+      end replyForRead;
    begin
       if msg.tag.length /= 4 or else handle < 0 then
          sendReply (sender, REPLY_ERR, 0);
@@ -1091,10 +1173,11 @@ procedure main is
          return;
       end if;
 
-      resolveClientMemory
+      acquireClientMemory
         (sender, msg.words (1), msg.words (3), count,
          CuBit.Memory_Grants.Write_Access, grantAddr, grantOk);
       if not grantOk then
+         debugPrint ("FS: read grant acquisition denied" & LF);
          sendReply (sender, REPLY_ACCESS_DENIED, 0);
          return;
       end if;
@@ -1107,31 +1190,46 @@ procedure main is
                files (handle).offset,
                grantAddr,
                count);
+            readStatus := Ext2.Read_Complete;
          when EXT2_MEMORY =>
-            bytesRead := Ext2.readData
+            Ext2.readData
               (memoryFs,
                files (handle).ino,
                files (handle).offset,
                grantAddr,
-               count);
+               count,
+               bytesRead,
+               readStatus);
          when EXT2_ATA =>
-            bytesRead := Ext2.readData
+            Ext2.readData
               (ataFs,
                files (handle).ino,
                files (handle).offset,
                grantAddr,
-               count);
+               count,
+               bytesRead,
+               readStatus);
          when EXT2_NVME =>
-            bytesRead := Ext2.readData
+            Ext2.readData
               (nvmeFs,
                files (handle).ino,
                files (handle).offset,
                grantAddr,
-               count);
+               count,
+               bytesRead,
+               readStatus);
       end case;
 
       files (handle).offset := files (handle).offset + bytesRead;
-      sendReply (sender, REPLY_OK, bytesRead);
+
+      returnClientMemory (msg.words (1), msg.words (3), returned);
+      if not returned then
+         debugPrint ("FS: read grant return failed" & LF);
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+
+      sendReply (sender, replyForRead (readStatus), bytesRead);
    end handleRead;
 
    --  Handle OP_WRITE
@@ -1140,11 +1238,34 @@ procedure main is
    --  words(2) = count (bytes to write)
    --  words(3) = grant generation
    procedure handleWrite (sender : ProcessID; msg : Message) is
-      handle       : constant Integer := resolveHandle (msg.words (0), sender);
+      handle       : constant Integer :=
+        resolveHandle (msg.words (0), sender, FILE_OBJECT);
       count        : constant Unsigned_64 := msg.words (2);
       grantAddr    : System.Address := System.Null_Address;
       grantOk      : Boolean := False;
       bytesWritten : Unsigned_64;
+      writeStatus  : Ext2.Write_Status := Ext2.Write_Complete;
+      returned     : Boolean := False;
+
+      function replyForWrite
+        (status : Ext2.Write_Status) return Unsigned_32
+      is
+      begin
+         case status is
+            when Ext2.Write_Complete =>
+               return REPLY_OK;
+            when Ext2.Write_Read_Only =>
+               return REPLY_READ_ONLY;
+            when Ext2.Write_Out_Of_Range =>
+               return REPLY_OUT_OF_RANGE;
+            when Ext2.Write_Device_Error =>
+               return REPLY_IO_ERROR;
+            when Ext2.Write_No_Space =>
+               return REPLY_NO_SPACE;
+            when Ext2.Write_File_Range_Unsupported =>
+               return REPLY_FILE_RANGE_UNSUPPORTED;
+         end case;
+      end replyForWrite;
    begin
       if msg.tag.length /= 4 or else handle < 0 then
          sendReply (sender, REPLY_ERR, 0);
@@ -1161,47 +1282,69 @@ procedure main is
          return;
       end if;
 
-      resolveClientMemory
+      if files (handle).backend = CPIO_RAMDISK then
+         -- CPIO bootstrap storage is immutable; reject before acquiring the
+         -- caller's memory so every successful acquisition has one exit.
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+
+      acquireClientMemory
         (sender, msg.words (1), msg.words (3), count,
          CuBit.Memory_Grants.Read_Access, grantAddr, grantOk);
       if not grantOk then
+         debugPrint ("FS: write grant acquisition denied" & LF);
          sendReply (sender, REPLY_ACCESS_DENIED, 0);
          return;
       end if;
 
       case files (handle).backend is
          when CPIO_RAMDISK =>
-            --  CPIO ramdisk is read-only
-            sendReply (sender, REPLY_ERR, 0);
-            return;
+            bytesWritten := 0; -- Rejected above.
          when EXT2_MEMORY =>
-            bytesWritten := Ext2.writeData
+            Ext2.writeData
               (memoryFs,
                files (handle).inodeNum,
                files (handle).ino,
                files (handle).offset,
                grantAddr,
-               count);
+               count,
+               bytesWritten,
+               writeStatus);
          when EXT2_ATA =>
-            bytesWritten := Ext2.writeData
+            Ext2.writeData
               (ataFs,
                files (handle).inodeNum,
                files (handle).ino,
                files (handle).offset,
                grantAddr,
-               count);
+               count,
+               bytesWritten,
+               writeStatus);
          when EXT2_NVME =>
-            bytesWritten := Ext2.writeData
+            Ext2.writeData
               (nvmeFs,
                files (handle).inodeNum,
                files (handle).ino,
                files (handle).offset,
                grantAddr,
-               count);
+               count,
+               bytesWritten,
+               writeStatus);
       end case;
 
+      --  The completed prefix is part of the file even when a later block
+      --  fails.  Keep the handle synchronized with that committed progress.
       files (handle).offset := files (handle).offset + bytesWritten;
-      sendReply (sender, REPLY_OK, bytesWritten);
+
+      returnClientMemory (msg.words (1), msg.words (3), returned);
+      if not returned then
+         debugPrint ("FS: write grant return failed" & LF);
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+
+      sendReply (sender, replyForWrite (writeStatus), bytesWritten);
    end handleWrite;
 
    --  Handle OP_SEEK
@@ -1209,7 +1352,8 @@ procedure main is
    --  words(1) = offset
    --  words(2) = whence (0=SET, 1=CUR, 2=END)
    procedure handleSeek (sender : ProcessID; msg : Message) is
-      handle  : constant Integer := resolveHandle (msg.words (0), sender);
+      handle  : constant Integer :=
+        resolveHandle (msg.words (0), sender, FILE_OBJECT);
       seekOff : constant Unsigned_64 := msg.words (1);
       whence  : constant Unsigned_64 := msg.words (2);
       newOff  : Unsigned_64;
@@ -1246,7 +1390,8 @@ procedure main is
    --  Handle OP_CLOSE
    --  words(0) = file_handle
    procedure handleClose (sender : ProcessID; msg : Message) is
-      handle : constant Integer := resolveHandle (msg.words (0), sender);
+      handle : constant Integer :=
+        resolveHandle (msg.words (0), sender, FILE_OBJECT);
    begin
       if handle < 0 then
          sendReply (sender, REPLY_ERR, 0);
@@ -1257,167 +1402,339 @@ procedure main is
       sendReply (sender, REPLY_OK, 0);
    end handleClose;
 
-   --  Handle OP_READDIR
-   --  words(0) = grant slot (path in grant buffer, results written there)
-   --  words(1) = path_length (0 = list root "/")
-   --  words(2) = grant buffer capacity in bytes
-   --  words(3) = grant generation
-   procedure handleReaddir (sender : ProcessID; msg : Message) is
-      pathLen   : constant Unsigned_64 := msg.words (1);
-      capacity  : constant Unsigned_64 := msg.words (2);
+   --  Open a directory by bootstrap path.  The returned object is a distinct
+   --  PID-bound directory handle; subsequent enumeration carries no path.
+   procedure handleOpenDirectory (sender : ProcessID; msg : Message) is
+      pathLen : constant Unsigned_64 := msg.words (1);
       grantAddr : System.Address := System.Null_Address;
-      grantOk   : Boolean := False;
+      grantOk : Boolean := False;
+      returned : Boolean := False;
+      pathBuffer : String (1 .. Natural (MAXIMUM_PATH_BYTES));
+      scheme : SchemeKind := AUTOMATIC_SCHEME;
+      relStart : Natural := 1;
+      backend : BackendKind := CPIO_RAMDISK;
+      inodeNum : Unsigned_32 := 0;
+      dirIno : Ext2.Inode;
+      handleSlot : Integer;
+      handleId : Unsigned_64;
+      allocated : Boolean;
 
-      scheme      : SchemeKind;
-      relStart    : Natural;
-      dirInodeNum : Unsigned_32;
-      dirIno      : Ext2.Inode;
-      written     : Unsigned_64;
+      procedure resolveExt2Directory
+        (theFs : Ext2.Filesystem;
+         path : String)
+      is
+         first : Natural := path'First;
+      begin
+         if path'Length > 0 and then path (path'First) in '0' .. '9' then
+            first := path'First + 1;
+            if first <= path'Last and then path (first) = '/' then
+               first := first + 1;
+            end if;
+         end if;
+
+         if first > path'Last then
+            inodeNum := Ext2.ROOT_INODE;
+         else
+            inodeNum := Ext2.resolvePath (theFs, path (first .. path'Last));
+         end if;
+      end resolveExt2Directory;
    begin
-      if msg.tag.length /= 4 or else capacity = 0 or else
-         pathLen > capacity
-      then
+      if msg.tag.length /= 3 or else pathLen > MAXIMUM_PATH_BYTES then
          sendReply (sender, REPLY_ERR, 0);
          return;
       end if;
 
-      resolveClientMemory
-        (sender, msg.words (0), msg.words (3), capacity,
-         CuBit.Memory_Grants.Write_Access, grantAddr, grantOk);
-      if not grantOk then
-         sendReply (sender, REPLY_ACCESS_DENIED, 0);
-         return;
-      end if;
-
-      if pathLen = 0 then
-         --  No path means list root (ramdisk)
-         if not checkAccess (sender, "", ACL_READ) then
+      if pathLen > 0 then
+         acquireClientMemory
+           (sender, msg.words (0), msg.words (2), pathLen,
+            CuBit.Memory_Grants.Read_Access, grantAddr, grantOk);
+         if not grantOk then
             sendReply (sender, REPLY_ACCESS_DENIED, 0);
             return;
          end if;
-
-         if not cpioOk then
+         declare
+            grantedPath : String (1 .. Natural (pathLen))
+              with Import, Address => grantAddr;
+         begin
+            pathBuffer (1 .. Natural (pathLen)) := grantedPath;
+         end;
+         returnClientMemory (msg.words (0), msg.words (2), returned);
+         if not returned then
             sendReply (sender, REPLY_ERR, 0);
             return;
          end if;
-         written := Cpio.listFiles (cpioArchive,
-                                    grantAddr,
-                                    capacity);
-         sendReply (sender, REPLY_OK, written);
-         return;
-      end if;
-
-      if pathLen > MAXIMUM_PATH_BYTES then
-         sendReply (sender, REPLY_ERR, 0);
-         return;
       end if;
 
       declare
-         pathStr : String (1 .. Natural (pathLen))
-           with Import, Address => grantAddr;
-
-         procedure resolveAndReadDir
-           (theFs : Ext2.Filesystem;
-            relPath : String)
-         is
-            skipIdx : Natural := relPath'First;
-         begin
-            --  Skip optional device selector (e.g., "0/")
-            if relPath'Length > 0 and then
-               relPath (relPath'First) in '0' .. '9'
-            then
-               skipIdx := relPath'First + 1;
-               if skipIdx <= relPath'Last and then
-                  relPath (skipIdx) = '/'
-               then
-                  skipIdx := skipIdx + 1;
-               end if;
-            end if;
-
-            if skipIdx > relPath'Last then
-               dirInodeNum := Ext2.ROOT_INODE;
-            else
-               dirInodeNum := Ext2.resolvePath
-                 (theFs, relPath (skipIdx .. relPath'Last));
-            end if;
-
-            if dirInodeNum = 0 then
+         path : String renames pathBuffer (1 .. Natural (pathLen));
+         onlySeparators : Boolean := True;
+      begin
+         if pathLen > 0 then
+            if hasTraversal (path) then
                sendReply (sender, REPLY_ERR, 0);
                return;
             end if;
-
-            Ext2.readInode (theFs, dirInodeNum, dirIno);
-            written := Ext2.readDir (theFs, dirIno,
-                                     grantAddr,
-                                     capacity);
-         end resolveAndReadDir;
-      begin
-         if hasTraversal (pathStr) then
-            sendReply (sender, REPLY_ERR, 0);
-            return;
-         end if;
-
-         if not checkAccess (sender, pathStr, ACL_READ) then
+            if not checkAccess (sender, path, ACL_READ) then
+               sendReply (sender, REPLY_ACCESS_DENIED, 0);
+               return;
+            end if;
+            parseScheme (path, scheme, relStart);
+            for index in path'Range loop
+               if path (index) /= '/' then
+                  onlySeparators := False;
+                  exit;
+               end if;
+            end loop;
+         elsif not checkAccess (sender, "", ACL_READ) then
             sendReply (sender, REPLY_ACCESS_DENIED, 0);
             return;
          end if;
 
-         parseScheme (pathStr, scheme, relStart);
-
-         if scheme = MEMORY_SCHEME then
+         if pathLen = 0 or else
+           (scheme = AUTOMATIC_SCHEME and then onlySeparators)
+         then
+            if not cpioOk then
+               sendReply (sender, REPLY_ERR, 0);
+               return;
+            end if;
+            backend := CPIO_RAMDISK;
+            inodeNum := 1;
+         elsif scheme = MEMORY_SCHEME then
             if not memoryInitialized then
                sendReply (sender, REPLY_ERR, 0);
                return;
             end if;
-
-            resolveAndReadDir (memoryFs,
-              pathStr (relStart .. Natural (pathLen)));
-
-         elsif scheme = NVME_SCHEME then
-            declare
-               ok : Boolean;
-            begin
-               ensureNVMe (ok);
-               if not ok then
-                  sendReply (sender, REPLY_ERR, 0);
-                  return;
-               end if;
-            end;
-
-            resolveAndReadDir (nvmeFs,
-              pathStr (relStart .. Natural (pathLen)));
-
+            backend := EXT2_MEMORY;
+            resolveExt2Directory
+              (memoryFs, path (relStart .. path'Last));
          elsif scheme = ATA_SCHEME then
             declare
                ok : Boolean;
             begin
                ensureATA (ok);
                if not ok then
-                  sendReply (sender, REPLY_ERR, 0);
+                  sendReply (sender, REPLY_IO_ERROR, 0);
                   return;
                end if;
             end;
-
-            resolveAndReadDir (ataFs,
-              pathStr (relStart .. Natural (pathLen)));
-
+            backend := EXT2_ATA;
+            resolveExt2Directory (ataFs, path (relStart .. path'Last));
+         elsif scheme = NVME_SCHEME then
+            declare
+               ok : Boolean;
+            begin
+               ensureNVMe (ok);
+               if not ok then
+                  sendReply (sender, REPLY_IO_ERROR, 0);
+                  return;
+               end if;
+            end;
+            backend := EXT2_NVME;
+            resolveExt2Directory (nvmeFs, path (relStart .. path'Last));
          else
-            --  The automatic root is the bootstrap namespace.  Writable
-            --  memory storage remains explicitly visible as @mem: so root
-            --  enumeration cannot silently merge colliding names.
-            if not cpioOk then
-               sendReply (sender, REPLY_ERR, 0);
-               return;
-            end if;
-
-            written := Cpio.listFiles (cpioArchive,
-                                       grantAddr,
-                                       capacity);
+            sendReply (sender, REPLY_WRONG_OBJECT_TYPE, 0);
+            return;
          end if;
       end;
 
-      sendReply (sender, REPLY_OK, written);
-   end handleReaddir;
+      if inodeNum = 0 then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+
+      if backend /= CPIO_RAMDISK then
+         case backend is
+            when EXT2_MEMORY => Ext2.readInode (memoryFs, inodeNum, dirIno);
+            when EXT2_ATA => Ext2.readInode (ataFs, inodeNum, dirIno);
+            when EXT2_NVME => Ext2.readInode (nvmeFs, inodeNum, dirIno);
+            when CPIO_RAMDISK => null;
+         end case;
+         if Ext2.inodeType (dirIno) /= Ext2.INODE_DIRECTORY then
+            sendReply (sender, REPLY_WRONG_OBJECT_TYPE, 0);
+            return;
+         end if;
+      end if;
+
+      allocHandle (handleId, handleSlot, allocated);
+      if not allocated then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+      files (handleSlot).active := True;
+      files (handleSlot).backend := backend;
+      files (handleSlot).inodeNum := inodeNum;
+      if backend /= CPIO_RAMDISK then
+         files (handleSlot).ino := dirIno;
+      end if;
+      files (handleSlot).offset := 0;
+      files (handleSlot).ownerPID := sender;
+      files (handleSlot).openRights := ACL_READ;
+      files (handleSlot).objectKind := DIRECTORY_OBJECT;
+
+      declare
+         replyMsg : Message := NULL_MESSAGE;
+         ignored : Unsigned_64;
+      begin
+         replyMsg.tag :=
+           (label => REPLY_OK, length => 2, flags => 0, badge => 0);
+         replyMsg.words (0) := handleId;
+         replyMsg.words (1) :=
+           (if backend = CPIO_RAMDISK then 0 else
+              Unsigned_64 (dirIno.generationNumber));
+         ignored := reply (sender, replyMsg);
+      end;
+   end handleOpenDirectory;
+
+   --  Return one Directory.Page.V1 into a fixed one-page writable grant.
+   procedure handleReadDirectoryPage (sender : ProcessID; msg : Message) is
+      handle : constant Integer :=
+        resolveHandle (msg.words (0), sender, DIRECTORY_OBJECT);
+      grantAddr : System.Address := System.Null_Address;
+      grantOk : Boolean := False;
+      returned : Boolean := False;
+      entryCount : Natural := 0;
+      nextCursor : Unsigned_64 := 0;
+      atEnd : Boolean := False;
+      readStatus : Ext2.Directory_Read_Status := Ext2.Directory_Malformed;
+      replyLabel : Unsigned_32 := REPLY_OK;
+   begin
+      if msg.tag.length /= 4 or else
+         msg.words (2) /= Unsigned_64 (PROTOCOL_VERSION) or else handle < 0
+      then
+         sendReply
+           (sender, (if handle < 0 then REPLY_WRONG_OBJECT_TYPE else
+              REPLY_ERR), 0);
+         return;
+      end if;
+
+      acquireClientMemory
+        (sender, msg.words (1), msg.words (3), DIRECTORY_PAGE_BYTES,
+         CuBit.Memory_Grants.Write_Access, grantAddr, grantOk);
+      if not grantOk then
+         sendReply (sender, REPLY_ACCESS_DENIED, 0);
+         return;
+      end if;
+
+      declare
+         rawPage : String (1 .. DIRECTORY_PAGE_BYTES)
+           with Import, Address => grantAddr;
+         header : Directory_Page_Header
+           with Import, Address => grantAddr;
+         pageEntries : Directory_Entries
+           with Import,
+                Address => grantAddr + DIRECTORY_PAGE_HEADER_BYTES;
+      begin
+         rawPage := (others => Character'Val (0));
+
+         if files (handle).backend = CPIO_RAMDISK then
+            if files (handle).offset > Unsigned_64 (cpioArchive.count) then
+               replyLabel := REPLY_MALFORMED_FILESYSTEM;
+            else
+               nextCursor := files (handle).offset;
+               while nextCursor < Unsigned_64 (cpioArchive.count) and then
+                 entryCount < MAXIMUM_DIRECTORY_PAGE_ENTRIES
+               loop
+                  declare
+                     archiveIndex : constant Natural := Natural (nextCursor);
+                     nameLength : constant Natural :=
+                       cpioArchive.files (archiveIndex).nameLen;
+                  begin
+                     if nameLength = 0 or else
+                       nameLength > MAXIMUM_DIRECTORY_NAME_BYTES
+                     then
+                        replyLabel := REPLY_MALFORMED_FILESYSTEM;
+                        exit;
+                     end if;
+                     declare
+                        archiveName : String (1 .. nameLength)
+                          with Import,
+                               Address => cpioArchive.base + Storage_Offset
+                                 (cpioArchive.files (archiveIndex).nameOff);
+                     begin
+                        pageEntries (entryCount).objectHint := nextCursor + 1;
+                        pageEntries (entryCount).sizeBytes :=
+                          cpioArchive.files (archiveIndex).dataSize;
+                        pageEntries (entryCount).nameLength :=
+                          Unsigned_16 (nameLength);
+                        pageEntries (entryCount).kind := DIRECTORY_KIND_FILE;
+                        pageEntries (entryCount).flags :=
+                          DIRECTORY_ENTRY_SIZE_VALID;
+                        for index in 1 .. nameLength loop
+                           pageEntries (entryCount).name (index) :=
+                             Unsigned_8 (Character'Pos (archiveName (index)));
+                        end loop;
+                     end;
+                     entryCount := entryCount + 1;
+                     nextCursor := nextCursor + 1;
+                  end;
+               end loop;
+               atEnd := nextCursor = Unsigned_64 (cpioArchive.count);
+            end if;
+         else
+            case files (handle).backend is
+               when EXT2_MEMORY =>
+                  Ext2.readDirectoryPage
+                    (memoryFs, files (handle).ino, files (handle).offset,
+                     pageEntries, entryCount, nextCursor, readStatus);
+               when EXT2_ATA =>
+                  Ext2.readDirectoryPage
+                    (ataFs, files (handle).ino, files (handle).offset,
+                     pageEntries, entryCount, nextCursor, readStatus);
+               when EXT2_NVME =>
+                  Ext2.readDirectoryPage
+                    (nvmeFs, files (handle).ino, files (handle).offset,
+                     pageEntries, entryCount, nextCursor, readStatus);
+               when CPIO_RAMDISK => null;
+            end case;
+
+            case readStatus is
+               when Ext2.Directory_Page_Complete => null;
+               when Ext2.Directory_End => atEnd := True;
+               when Ext2.Directory_Malformed =>
+                  replyLabel := REPLY_MALFORMED_FILESYSTEM;
+               when Ext2.Directory_Device_Error =>
+                  replyLabel := REPLY_IO_ERROR;
+               when Ext2.Directory_Out_Of_Range =>
+                  replyLabel := REPLY_OUT_OF_RANGE;
+               when Ext2.Directory_Range_Unsupported =>
+                  replyLabel := REPLY_FILE_RANGE_UNSUPPORTED;
+            end case;
+         end if;
+
+         header.version := PROTOCOL_VERSION;
+         header.headerBytes := DIRECTORY_PAGE_HEADER_BYTES;
+         header.entryBytes := DIRECTORY_ENTRY_BYTES;
+         header.entryCount := Unsigned_16 (entryCount);
+         header.flags := (if atEnd then DIRECTORY_PAGE_END else 0);
+         header.reserved := 0;
+         header.nextCursor := nextCursor;
+         header.snapshot :=
+           (if files (handle).backend = CPIO_RAMDISK then 0 else
+              Unsigned_64 (files (handle).ino.generationNumber));
+      end;
+
+      returnClientMemory (msg.words (1), msg.words (3), returned);
+      if not returned then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+      if replyLabel = REPLY_OK then
+         files (handle).offset := nextCursor;
+      end if;
+      sendReply (sender, replyLabel, Unsigned_64 (entryCount));
+   end handleReadDirectoryPage;
+
+   procedure handleCloseDirectory (sender : ProcessID; msg : Message) is
+      handle : constant Integer :=
+        resolveHandle (msg.words (0), sender, DIRECTORY_OBJECT);
+   begin
+      if msg.tag.length /= 1 or else handle < 0 then
+         sendReply (sender, REPLY_WRONG_OBJECT_TYPE, 0);
+         return;
+      end if;
+      releaseHandle (handle);
+      sendReply (sender, REPLY_OK, 0);
+   end handleCloseDirectory;
 
    --  Deferred reply table for async I/O (Phase 3 foundation)
    MAX_PENDING_CLIENTS : constant := 8;
@@ -1442,6 +1759,9 @@ procedure main is
       newPathLen : constant Unsigned_64 := msg.words (2);
       grantAddr  : System.Address := System.Null_Address;
       grantOk    : Boolean := False;
+      returned   : Boolean := False;
+      pathBuffer : String
+        (1 .. 2 * Natural (MAXIMUM_PATH_BYTES));
    begin
       if msg.tag.length /= 4 or else
          oldPathLen = 0 or else newPathLen = 0 or else
@@ -1452,7 +1772,7 @@ procedure main is
          return;
       end if;
 
-      resolveClientMemory
+      acquireClientMemory
         (sender, msg.words (0), msg.words (3), oldPathLen + newPathLen,
          CuBit.Memory_Grants.Read_Access, grantAddr, grantOk);
       if not grantOk then
@@ -1461,10 +1781,22 @@ procedure main is
       end if;
 
       declare
+         totalLen : constant Natural := Natural (oldPathLen + newPathLen);
+         grantedPaths : String (1 .. totalLen)
+           with Import, Address => grantAddr;
+      begin
+         pathBuffer (1 .. totalLen) := grantedPaths;
+      end;
+      returnClientMemory (msg.words (0), msg.words (3), returned);
+      if not returned then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+
+      declare
          totalLen : constant Natural :=
            Natural (oldPathLen + newPathLen);
-         bothPaths : String (1 .. totalLen)
-           with Import, Address => grantAddr;
+         bothPaths : String renames pathBuffer (1 .. totalLen);
          oldPath : String renames
            bothPaths (1 .. Natural (oldPathLen));
          newPath : String renames
@@ -1697,8 +2029,12 @@ begin
             handleSeek (sender, msg);
          when OP_CLOSE =>
             handleClose (sender, msg);
-         when OP_READDIR =>
-            handleReaddir (sender, msg);
+         when OP_OPEN_DIRECTORY =>
+            handleOpenDirectory (sender, msg);
+         when OP_READ_DIRECTORY_PAGE =>
+            handleReadDirectoryPage (sender, msg);
+         when OP_CLOSE_DIRECTORY =>
+            handleCloseDirectory (sender, msg);
          when OP_SET_ACL =>
             handleSetACL (sender, msg);
          when OP_REVOKE_ACL =>

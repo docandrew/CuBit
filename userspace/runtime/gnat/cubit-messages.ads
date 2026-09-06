@@ -28,6 +28,8 @@ package CuBit.Messages is
    SYSCALL_REPLY           : constant Unsigned_64 := 18;
    SYSCALL_SEND_EVENT      : constant Unsigned_64 := 19;
    SYSCALL_RECEIVE_EVENT   : constant Unsigned_64 := 20;
+   SYSCALL_RECEIVE_UNTIL_MONOTONIC_MILLISECOND :
+      constant Unsigned_64 := 21;
    SYSCALL_POLL_ANY_IPC    : constant Unsigned_64 := 22;
    SYSCALL_SUBMIT          : constant Unsigned_64 := 23;
    SYSCALL_WAIT_COMPLETION : constant Unsigned_64 := 24;
@@ -92,9 +94,13 @@ package CuBit.Messages is
    SYSCALL_SET_WELL_KNOWN  : constant Unsigned_64 := 107;
    SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION :
       constant Unsigned_64 := 108;
-   SYSCALL_RESOLVE_SHARED_MEMORY_GRANT : constant Unsigned_64 := 109;
+   SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT : constant Unsigned_64 := 109;
    SYSCALL_REVOKE_SHARED_MEMORY_GRANT_REFERENCE :
       constant Unsigned_64 := 110;
+   SYSCALL_RETURN_SHARED_MEMORY_GRANT_ACQUISITION :
+      constant Unsigned_64 := 111;
+   SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT_VIA_CAPABILITY :
+      constant Unsigned_64 := 112;
 
    --  Well-known service roles (must match kernel Config.ServiceRole)
    ROLE_FILESYSTEM : constant Unsigned_64 := 1;
@@ -247,6 +253,15 @@ package CuBit.Messages is
    --  Blocking receive: returns sender PID in from, message in msg.
    procedure receive (from : out ProcessID; msg : out Message);
 
+   --  Wait for any IPC until an absolute monotonic-millisecond deadline.
+   --  received is False on deadline expiry; input publication wakes this
+   --  immediately and does not wait for a polling interval.
+   procedure receiveUntil
+     (deadlineMs : Unsigned_64;
+      from       : out ProcessID;
+      msg        : out Message;
+      received   : out Boolean);
+
    --  Reply to a sender (unblocks them).
    function reply
      (replyTo : ProcessID; msg : Message) return Unsigned_64;
@@ -339,6 +354,11 @@ package CuBit.Messages is
 
    --  Send async event (non-blocking, intended for interrupt contexts).
    procedure sendEvent (dest : ProcessID; msg : Message);
+
+   --  Send an async event and report bounded-queue backpressure. The kernel
+   --  replaces msg.capBadge with the badge of the capability authorizing the
+   --  publication; caller-supplied badges are never trusted.
+   function trySendEvent (dest : ProcessID; msg : Message) return Boolean;
 
    --  Blocking receive for unsolicited events. The current ABI returns only
    --  the event tag; migrate this to the unified wait primitive.

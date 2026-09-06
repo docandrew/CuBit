@@ -22,6 +22,7 @@ package CuBit.UI.App is
    INPUT_TEXT         : constant Unsigned_64 := 6;
    INPUT_POINTER_WHEEL : constant Unsigned_64 := 7;
    INPUT_CONFIGURE    : constant Unsigned_64 := 8;
+   INPUT_RESYNC       : constant Unsigned_64 := 9;
 
    KEY_ESC : constant Unsigned_64 := 16#01#;
    KEY_Q   : constant Unsigned_64 := 16#10#;
@@ -83,6 +84,28 @@ package CuBit.UI.App is
        event : out Input_Event;
        found : out Boolean);
 
+   --  Block without polling until the compositor can return the next event.
+   --  The compositor retains a one-use reply capability while this call is
+   --  parked, so a wake cannot be forged or redirected to another client.
+   procedure Wait_Input
+      (win : in out Window;
+       event : out Input_Event;
+       found : out Boolean);
+
+   --  True only when the compositor explicitly reported another queued event
+   --  with the last input reply. It is a drain hint, never authority or an
+   --  assertion that a later event cannot arrive.
+   function Input_May_Remain (win : Window) return Boolean;
+
+   --  Wheel deltas use a signed 32-bit wire field in payload1. Decode it
+   --  without a range-checked modular-to-signed conversion in each app.
+   function Pointer_Wheel_Delta (event : Input_Event) return Integer;
+
+   --  Request compositor-owned pointer feedback for this surface.  Widget
+   --  applications normally get this automatically from Apply_Pointer_Event.
+   procedure Set_Pointer_Cursor
+      (win : Window; cursor : CuBit.UI.Pointer_Cursor_Style);
+
    procedure Present
       (win : Window; damage : CuBit.UI.Rect);
 
@@ -119,6 +142,8 @@ private
         CuBit.UI.Controls.NO_CONTROL;
       captured : CuBit.UI.Controls.Control_ID :=
         CuBit.UI.Controls.NO_CONTROL;
+      cursor   : CuBit.UI.Pointer_Cursor_Style := CuBit.UI.Pointer_Default;
+      controlsValid : Boolean := True;
    end record;
 
    type Window is record
@@ -131,6 +156,7 @@ private
       height : Natural := 0;
       pitch : Natural := 0;
       lastEvent : Unsigned_64 := 0;
+      inputMayRemain : Boolean := False;
       sentBye : Boolean := False;
    end record;
 end CuBit.UI.App;

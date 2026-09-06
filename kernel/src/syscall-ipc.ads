@@ -41,8 +41,17 @@ is
       (arg0   : Unsigned_64;
        retval : out Unsigned_64);
 
-    procedure handleResolveGrant
+    procedure handleAcquireGrant
       (arg0, arg1, arg2, arg3, arg4, arg5 : Unsigned_64;
+       retval : out Unsigned_64);
+
+    procedure handleAcquireGrantViaCap
+      (callerPID : Process.ProcessID;
+       arg0, arg1, arg2, arg3, arg4, arg5 : Unsigned_64;
+       retval : out Unsigned_64);
+
+    procedure handleReturnGrant
+      (arg0, arg1 : Unsigned_64;
        retval : out Unsigned_64);
 
     procedure handleRevokeGrantReference
@@ -51,6 +60,9 @@ is
 
     procedure handleReceive (arg0   : Unsigned_64;
                              retval : out Unsigned_64);
+
+    procedure handleReceiveUntil (arg0, arg1 : Unsigned_64;
+                                  retval     : out Unsigned_64);
 
     procedure handleReply (arg0, arg1, arg2, arg3,
                            arg4, arg5 : Unsigned_64;

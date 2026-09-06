@@ -122,14 +122,7 @@ is
             if dest > 0 and then
                dest <= Interfaces.Unsigned_64 (Process.ProcessID'Last)
             then
-                Process.IPC.sendEvent
-                  (Process.ProcessID (dest),
-                   (tag      => (label  => 1,
-                                  length => 0,
-                                  flags  => 0,
-                                  badge  => 0),
-                    capBadge => 0,
-                    words    => (others => 0)));
+                Process.IPC.notifyIRQ (Process.ProcessID (dest));
             end if;
         end loop;
     end dispatchDeviceIRQ;

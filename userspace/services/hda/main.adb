@@ -14,6 +14,7 @@ with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Memory_Grants; use CuBit.Memory_Grants;
 with HDA;
 
 procedure main is
@@ -37,7 +38,7 @@ procedure main is
    from : ProcessID;
    ret  : Unsigned_64;
    buffersGranted : Boolean := False;
-   buffersGrantId : Unsigned_64 := 0;
+   buffersGrant : Grant_Reference := (slot => 0, generation => 1);
    streamRunning  : Boolean := False;
    periodSequence : Unsigned_64 := 0;
 
@@ -143,14 +144,14 @@ begin
       case msg.tag.label is
          when OP_AUDIO_HW_INIT =>
             if not buffersGranted then
-               createGrantViaCap
+               Create_Via_Capability
                  (slot      => CAP_SLOT_MIXER,
                   localAddr => To_Address
                     (Integer_Address
                        (HDA.DMA_VIRT_BASE + HDA.DMA_PCMBUF_OFF)),
                   numPages  => HDA.PCM_BUFFER_PAGES,
                   readWrite => True,
-                  grantId   => buffersGrantId,
+                  reference => buffersGrant,
                   success   => buffersGranted);
             end if;
 
@@ -158,11 +159,12 @@ begin
                HDA.clearOutputBuffers;
                sendReply
                  (REPLY_OK,
-                  w0 => buffersGrantId,
+                  w0 => Unsigned_64 (buffersGrant.slot),
                   w1 => Unsigned_64 (HDA.PCM_PERIOD_BYTES),
                   w2 => Unsigned_64 (HDA.NUM_BDL_ENTRIES),
-                  w3 => 48_000);
+                  w3 => Unsigned_64 (buffersGrant.generation));
             else
+               debugPrint ("hda: PCM grant creation failed" & LF);
                sendReply (REPLY_ERR);
             end if;
 

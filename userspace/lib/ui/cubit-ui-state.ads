@@ -52,11 +52,21 @@ package CuBit.UI.State is
 
       lastWidget : Widget_ID := NO_ITEM;
       lastScope  : Scope_ID := NO_SCOPE;
+      scrollbarPart : CuBit.UI.Scrollbar_Part := CuBit.UI.Scrollbar_None;
+      scrollbarGrabOffset : Natural := 0;
+      sliderGrabOffset : Natural := 0;
+      followupRenderRequested : Boolean := False;
       scopeError : Boolean := False;
    end record;
 
    procedure Begin_Frame (st : in out UI_State);
    procedure Finish_Frame (st : in out UI_State);
+
+   --  Selection controls can change shared group state after an earlier item
+   --  in that group was already painted. The application harness consumes
+   --  this request by performing one stable follow-up render before present.
+   procedure Request_Followup_Render (st : in out UI_State);
+   function Followup_Render_Requested (st : UI_State) return Boolean;
 
    procedure Set_Pointer
       (st : in out UI_State;
@@ -65,6 +75,14 @@ package CuBit.UI.State is
       pressed : Boolean := False;
       released : Boolean := False;
       enabled : Boolean := True);
+
+   --  Install authoritative pointer state after a detectable input-stream
+   --  discontinuity. Any widget capture or multi-click transaction is
+   --  cancelled; the snapshot is state, not a synthetic press.
+   procedure Resynchronize_Pointer
+      (st : in out UI_State;
+       x, y : Natural;
+       down : Boolean);
 
    procedure Enter_Scope
       (st : in out UI_State;
@@ -85,15 +103,24 @@ package CuBit.UI.State is
       (st : UI_State; bounds : CuBit.UI.Rect) return Boolean;
 
    function Button
-      (st : in out UI_State; bounds : CuBit.UI.Rect)
+      (st : in out UI_State;
+       bounds : CuBit.UI.Rect;
+       widgetID : Widget_ID := NO_ITEM)
       return CuBit.UI.Widget_Result;
+
+   --  True after the most recently evaluated widget captured a pointer-down,
+   --  even when a drag has moved outside its original hit rectangle.
+   function Is_Last_Widget_Captured (st : UI_State) return Boolean;
 
    function Is_Last_Widget_Focused (st : UI_State) return Boolean;
 
    procedure Clear_Keyboard_Focus (st : in out UI_State);
 
    function Text_Field
-      (st : in out UI_State; bounds : CuBit.UI.Rect; text : String)
+      (st : in out UI_State;
+       bounds : CuBit.UI.Rect;
+       text : String;
+       widgetID : Widget_ID := NO_ITEM)
       return CuBit.UI.Widget_Result;
 
    function Text_Field_Key
@@ -112,17 +139,32 @@ package CuBit.UI.State is
    function Checkbox
       (st : in out UI_State;
        bounds : CuBit.UI.Rect;
-       checked : in out Boolean) return CuBit.UI.Widget_Result;
+       checked : in out Boolean;
+       widgetID : Widget_ID := NO_ITEM) return CuBit.UI.Widget_Result;
 
    function Horizontal_Slider
       (st : in out UI_State;
        bounds : CuBit.UI.Rect;
        value : in out Natural;
-       minValue, maxValue : Natural) return CuBit.UI.Widget_Result;
+       minValue, maxValue : Natural;
+       widgetID : Widget_ID := NO_ITEM) return CuBit.UI.Widget_Result;
 
    function Vertical_Scrollbar
       (st : in out UI_State;
        bounds : CuBit.UI.Rect;
        value : in out Natural;
-       minValue, maxValue : Natural) return CuBit.UI.Widget_Result;
+       minValue, maxValue : Natural;
+       pageSize : Positive := 1;
+       widgetID : Widget_ID := NO_ITEM) return CuBit.UI.Widget_Result;
+
+   function Horizontal_Scrollbar
+      (st : in out UI_State;
+       bounds : CuBit.UI.Rect;
+       value : in out Natural;
+       minValue, maxValue : Natural;
+       pageSize : Positive := 1;
+       widgetID : Widget_ID := NO_ITEM) return CuBit.UI.Widget_Result;
+
+   function Active_Scrollbar_Part
+      (st : UI_State) return CuBit.UI.Scrollbar_Part;
 end CuBit.UI.State;

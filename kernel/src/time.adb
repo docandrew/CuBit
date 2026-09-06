@@ -8,6 +8,7 @@ with Config;
 with cpuid;
 with PerCPUData;
 with Process;
+with Process.IPC;
 with Process.Queues;
 with x86;
 
@@ -100,6 +101,7 @@ is
         if cpuNum = 0 then
             Time.msTicks := Time.msTicks + 1;
             Process.Queues.clockTick;
+            Process.IPC.expireReceiveDeadlines (Time.msTicks);
         end if;
 
         -- CPU quota enforcement (before normal quantum check)

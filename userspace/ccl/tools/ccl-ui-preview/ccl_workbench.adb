@@ -9,6 +9,7 @@ with CCL.Ownership;
 with CCL.VM;
 with CCL_Workbench_Platform;
 with CuBit.UI;
+with CuBit.UI.Controls;
 with CuBit.UI.Editor;
 with CuBit.UI.Editor.Cursors;
 with CuBit.UI.Editor.Documents;
@@ -17,6 +18,7 @@ with CuBit.UI.Editor.Search;
 with CuBit.UI.Editor.Transactions;
 with CuBit.UI.Editor.Viewports;
 with CuBit.UI.Layout;
+with CuBit.UI.State;
 with CuBit.UI.Widgets;
 
 --  Shared CCL Workbench. Rendering uses the CuBit UI canvas; the selected
@@ -67,8 +69,11 @@ package body CCL_Workbench is
    SPLITTER_WIDTH : constant Natural := 8;
    MINIMUM_TABLE_COLUMN_WIDTH : constant Natural := 30;
    MINIMUM_INSTRUCTION_COLUMN_WIDTH : constant Natural := 80;
+   MINIMUM_OWNERSHIP_COLUMN_WIDTH : constant Natural := 60;
    Bytecode_Columns : CuBit.UI.Table_Column_Layout :=
      (First_Width => 42, Second_Width => 50, Cell_Padding => 5);
+   Locals_Columns : CuBit.UI.Table_Column_Layout :=
+     (First_Width => 54, Second_Width => 44, Cell_Padding => 2);
 
    --  HOSTED/LINUX adapter binding.  This is deliberately not part of the
    --  language, compiler, or VM: a CuBit linker will resolve the same pinned
@@ -133,18 +138,30 @@ package body CCL_Workbench is
    Source_Bounds : CuBit.UI.Rect := (others => 0);
    Source_Scrollbar : CuBit.UI.Rect := (others => 0);
    Source_Horizontal_Scrollbar : CuBit.UI.Rect := (others => 0);
+   Workbench_UI : CuBit.UI.State.UI_State;
+   Workbench_Controls : CuBit.UI.Controls.Control_Map;
+   CONTROL_SOURCE_VERTICAL_SCROLLBAR : constant
+     CuBit.UI.Controls.Control_ID := 1;
+   CONTROL_SOURCE_HORIZONTAL_SCROLLBAR : constant
+     CuBit.UI.Controls.Control_ID := 2;
    Bytecode_Content : CuBit.UI.Rect := (others => 0);
    Bytecode_Table : CuBit.UI.Table_Regions :=
+     (Header => (others => 0), Rows => (others => 0));
+   Locals_Table : CuBit.UI.Rect := (others => 0);
+   Locals_Table_Regions : CuBit.UI.Table_Regions :=
      (Header => (others => 0), Rows => (others => 0));
    Inspector_Splitter : CuBit.UI.Rect := (others => 0);
    Disassembly_Splitter : CuBit.UI.Rect := (others => 0);
    First_Column_Divider : CuBit.UI.Rect := (others => 0);
    Second_Column_Divider : CuBit.UI.Rect := (others => 0);
+   First_Local_Column_Divider : CuBit.UI.Rect := (others => 0);
+   Second_Local_Column_Divider : CuBit.UI.Rect := (others => 0);
    Inspector_Width : Natural := 220;
    Disassembly_Width : Natural := 258;
    type Resize_Target is
      (No_Resize, Inspector_Pane, Disassembly_Pane,
-      First_Table_Column, Second_Table_Column);
+      First_Table_Column, Second_Table_Column,
+      First_Local_Table_Column, Second_Local_Table_Column);
    Active_Resize : Resize_Target := No_Resize;
    Open_Button_Bounds : constant CuBit.UI.Rect :=
      (x => 5, y => CLIENT_TITLE_HEIGHT + 25, w => 27, h => 27);
@@ -172,10 +189,94 @@ package body CCL_Workbench is
    Step_Over_Button_Pressed : Boolean := False;
    Pointer_X, Pointer_Y : Natural := 0;
    Pointer_Known : Boolean := False;
-   Source_Scrollbar_Pressed : CuBit.UI.Scrollbar_Part :=
-     CuBit.UI.Scrollbar_None;
-   Source_Horizontal_Scrollbar_Pressed : CuBit.UI.Scrollbar_Part :=
-     CuBit.UI.Scrollbar_None;
+
+   --  Pointer motion only changes Workbench pixels when it crosses one of
+   --  these semantic regions.  Keeping this state independent of raw pointer
+   --  coordinates prevents an editor-sized repaint for every mouse report.
+   type Hover_Target is
+     (Hover_None, Hover_Open, Hover_Save, Hover_Compile, Hover_Interpret,
+      Hover_VM_Run, Hover_Pause, Hover_Stop, Hover_Step_Into,
+      Hover_Step_Over, Hover_Inspector_Splitter,
+      Hover_Disassembly_Splitter, Hover_First_Column,
+      Hover_Second_Column, Hover_First_Local_Column,
+      Hover_Second_Local_Column, Hover_Bytecode, Hover_Source);
+
+   function Current_Hover_Target return Hover_Target is
+   begin
+      if not Pointer_Known then
+         return Hover_None;
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Open_Button_Bounds)
+      then
+         return Hover_Open;
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Save_Button_Bounds)
+      then
+         return Hover_Save;
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Compile_Button_Bounds)
+      then
+         return Hover_Compile;
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Run_Button_Bounds)
+      then
+         return Hover_Interpret;
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, VM_Run_Button_Bounds)
+      then
+         return Hover_VM_Run;
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Pause_Button_Bounds)
+      then
+         return Hover_Pause;
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Stop_Button_Bounds)
+      then
+         return Hover_Stop;
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Step_Into_Button_Bounds)
+      then
+         return Hover_Step_Into;
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Step_Over_Button_Bounds)
+      then
+         return Hover_Step_Over;
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Inspector_Splitter)
+      then
+         return Hover_Inspector_Splitter;
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Disassembly_Splitter)
+      then
+         return Hover_Disassembly_Splitter;
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, First_Column_Divider)
+      then
+         return Hover_First_Column;
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Second_Column_Divider)
+      then
+         return Hover_Second_Column;
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, First_Local_Column_Divider)
+      then
+         return Hover_First_Local_Column;
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Second_Local_Column_Divider)
+      then
+         return Hover_Second_Local_Column;
+      elsif Has_Compiled and then CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Bytecode_Content)
+      then
+         return Hover_Bytecode;
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Source_Bounds)
+      then
+         return Hover_Source;
+      else
+         return Hover_None;
+      end if;
+   end Current_Hover_Target;
 
    function Toolbar_Hint return String is
    begin
@@ -233,6 +334,12 @@ package body CCL_Workbench is
           (Pointer_X, Pointer_Y, Second_Column_Divider)
       then
          return "Drag to resize the disassembly columns";
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, First_Local_Column_Divider) or else
+        CuBit.UI.Point_In_Rect
+          (Pointer_X, Pointer_Y, Second_Local_Column_Divider)
+      then
+         return "Drag to resize the locals columns";
       elsif Has_Compiled and then CuBit.UI.Point_In_Rect
         (Pointer_X, Pointer_Y, Bytecode_Content)
       then
@@ -257,9 +364,12 @@ package body CCL_Workbench is
    with Import, Convention => C, External_Name => "ccl_window_prepare_frame";
    function Window_Present
      (Handle, Pixels : System.Address;
-      Pitch : Integer_32) return Integer_32
+      Pitch, X, Y, Width, Height : Integer_32) return Integer_32
    with Import, Convention => C, External_Name => "ccl_window_present";
-   procedure Window_Wait
+   procedure Window_Set_Cursor
+     (Handle : System.Address; Style : Integer_32)
+   with Import, Convention => C, External_Name => "ccl_window_set_cursor";
+   procedure Window_Wait (May_Block : Integer_32)
    with Import, Convention => C, External_Name => "ccl_window_wait";
    function Window_Ticks return Interfaces.Unsigned_64
    with Import, Convention => C, External_Name => "ccl_window_ticks";
@@ -1552,81 +1662,6 @@ package body CCL_Workbench is
         (Source, Line, Column);
    end Source_Position_At;
 
-   procedure Source_Scrollbar_Metrics
-     (Track, Thumb : out CuBit.UI.Rect; Maximum_First : out Positive)
-   is
-      Lines : constant Positive :=
-        CuBit.UI.Editor.Documents.Line_Count (Source);
-      Page : constant Positive :=
-        CuBit.UI.Editor.Viewports.Line_Capacity (Source_View);
-      Extent : constant Natural := Natural'Min
-        (Source_Scrollbar.w, Source_Scrollbar.h / 2);
-      Track_Frame : constant CuBit.UI.Rect :=
-        (x => Source_Scrollbar.x, y => Source_Scrollbar.y + Extent,
-         w => Source_Scrollbar.w,
-         h => (if Source_Scrollbar.h > Extent * 2 then
-                  Source_Scrollbar.h - Extent * 2 else 0));
-      Total : constant Natural := Lines;
-      Shown : constant Natural := Natural'Min (Page, Total);
-      Thumb_Height : Natural;
-      Travel : Natural;
-      Position : Natural;
-   begin
-      Track :=
-        (x => Track_Frame.x + 2, y => Track_Frame.y + 2,
-         w => (if Track_Frame.w > 4 then Track_Frame.w - 4 else 0),
-         h => (if Track_Frame.h > 4 then Track_Frame.h - 4 else 0));
-      Maximum_First := (if Shown >= Total then 1 else Lines - Shown + 1);
-      Thumb_Height := Natural'Min
-        (Track.h, Natural'Max (12, Track.h * Shown / Total));
-      Travel := Track.h - Thumb_Height;
-      Position := CuBit.UI.Editor.Viewports.First_Line (Source_View) - 1;
-      Thumb :=
-        (x => Track.x,
-         y => Track.y +
-           (if Maximum_First = 1 then 0
-            else Position * Travel / (Maximum_First - 1)),
-         w => Track.w, h => Thumb_Height);
-   end Source_Scrollbar_Metrics;
-
-   procedure Source_Horizontal_Scrollbar_Metrics
-     (Track, Thumb : out CuBit.UI.Rect; Maximum_First : out Positive)
-   is
-      Columns : constant Positive := Maximum_Source_Columns;
-      Page : constant Positive :=
-        CuBit.UI.Editor.Viewports.Column_Capacity (Source_View);
-      Extent : constant Natural := Natural'Min
-        (Source_Horizontal_Scrollbar.h,
-         Source_Horizontal_Scrollbar.w / 2);
-      Track_Frame : constant CuBit.UI.Rect :=
-        (x => Source_Horizontal_Scrollbar.x + Extent,
-         y => Source_Horizontal_Scrollbar.y,
-         w => (if Source_Horizontal_Scrollbar.w > Extent * 2 then
-                  Source_Horizontal_Scrollbar.w - Extent * 2 else 0),
-         h => Source_Horizontal_Scrollbar.h);
-      Total : constant Natural := Columns;
-      Shown : constant Natural := Natural'Min (Page, Total);
-      Thumb_Width : Natural;
-      Travel : Natural;
-      Position : Natural;
-   begin
-      Track :=
-        (x => Track_Frame.x + 2, y => Track_Frame.y + 2,
-         w => (if Track_Frame.w > 4 then Track_Frame.w - 4 else 0),
-         h => (if Track_Frame.h > 4 then Track_Frame.h - 4 else 0));
-      Maximum_First :=
-        (if Shown >= Total then 1 else Columns - Shown + 1);
-      Thumb_Width := Natural'Min
-        (Track.w, Natural'Max (12, Track.w * Shown / Total));
-      Travel := Track.w - Thumb_Width;
-      Position := CuBit.UI.Editor.Viewports.First_Column (Source_View) - 1;
-      Thumb :=
-        (x => Track.x +
-           (if Maximum_First = 1 then 0
-            else Position * Travel / (Maximum_First - 1)),
-         y => Track.y, w => Thumb_Width, h => Track.h);
-   end Source_Horizontal_Scrollbar_Metrics;
-
    procedure Draw_Title_Controls is
       type Icon_Rows is array (Natural range 0 .. 8) of String (1 .. 9);
       --  Compact mask from CuBit's attributed Bluecurve window-icon atlas.
@@ -1771,6 +1806,8 @@ package body CCL_Workbench is
         CuBit.UI.Editor.Cursors.Length (Source_Cursors);
       Visual_Count : Positive := Cursor_Count;
    begin
+      CuBit.UI.State.Begin_Frame (Workbench_UI);
+      CuBit.UI.Controls.Clear (Workbench_Controls);
       Build_Source_Styles (CuBit.UI.Editor.Documents.Content (Source));
       Inspector_Width := Natural'Max
         (MINIMUM_INSPECTOR_WIDTH,
@@ -1931,7 +1968,8 @@ package body CCL_Workbench is
          CATALOG_TABLE_GAP : constant Natural := 6;
          Catalog_Y : constant Natural :=
            Execution_Content.y + Execution_Content.h - CATALOG_TEXT_HEIGHT;
-         Locals_Table : constant CuBit.UI.Rect :=
+      begin
+         Locals_Table :=
            (x => Execution_Content.x,
             y => Execution_Content.y + LOCALS_TOP_OFFSET,
             w => Execution_Content.w,
@@ -1941,11 +1979,41 @@ package body CCL_Workbench is
                   then Execution_Content.h - LOCALS_TOP_OFFSET -
                     CATALOG_TEXT_HEIGHT - CATALOG_TABLE_GAP
                   else 0));
-         Locals_Regions : constant CuBit.UI.Table_Regions :=
-           CuBit.UI.Layout_Table (Locals_Table);
-         Locals_Columns : constant CuBit.UI.Table_Column_Layout :=
-           (First_Width => 54, Second_Width => 44, Cell_Padding => 2);
-      begin
+         Locals_Table_Regions := CuBit.UI.Layout_Table (Locals_Table);
+         if Locals_Table_Regions.Header.w >=
+           MINIMUM_TABLE_COLUMN_WIDTH * 2 +
+             MINIMUM_OWNERSHIP_COLUMN_WIDTH
+         then
+            Locals_Columns.First_Width := Natural'Max
+              (MINIMUM_TABLE_COLUMN_WIDTH,
+               Natural'Min
+                 (Locals_Columns.First_Width,
+                  Locals_Table_Regions.Header.w -
+                    MINIMUM_TABLE_COLUMN_WIDTH -
+                    MINIMUM_OWNERSHIP_COLUMN_WIDTH));
+            Locals_Columns.Second_Width := Natural'Max
+              (MINIMUM_TABLE_COLUMN_WIDTH,
+               Natural'Min
+                 (Locals_Columns.Second_Width,
+                  Locals_Table_Regions.Header.w -
+                    Locals_Columns.First_Width -
+                    MINIMUM_OWNERSHIP_COLUMN_WIDTH));
+            First_Local_Column_Divider :=
+              (x => Locals_Table_Regions.Header.x +
+                    Locals_Columns.First_Width - 3,
+               y => Locals_Table_Regions.Header.y, w => 6,
+               h => CuBit.UI.Table_Header_Height);
+            Second_Local_Column_Divider :=
+              (x => Locals_Table_Regions.Header.x +
+                    Locals_Columns.First_Width +
+                    Locals_Columns.Second_Width - 3,
+               y => Locals_Table_Regions.Header.y, w => 6,
+               h => CuBit.UI.Table_Header_Height);
+         else
+            First_Local_Column_Divider := (others => 0);
+            Second_Local_Column_Divider := (others => 0);
+         end if;
+
          CuBit.UI.Draw_UI_Text
            (Execution_Canvas, Execution_Content.x,
             Execution_Content.y + STATUS_TOP_OFFSET,
@@ -2013,15 +2081,15 @@ package body CCL_Workbench is
          CuBit.UI.Draw_Table_Viewport
            (Execution_Canvas, Locals_Table, Colors);
          CuBit.UI.Draw_Table_Header
-           (Execution_Canvas, Locals_Regions.Header,
+           (Execution_Canvas, Locals_Table_Regions.Header,
             Colors, "Local", "Value", "Ownership", Locals_Columns);
          if Has_VM_Inspection and then VM_Inspection.Locals_Length > 0 and then
-           Locals_Regions.Rows.h > 0
+           Locals_Table_Regions.Rows.h > 0
          then
             declare
                Visible : constant Natural := Natural'Min
                  (Natural (VM_Inspection.Locals_Length),
-                  Locals_Regions.Rows.h / LOCALS_ROW_HEIGHT);
+                  Locals_Table_Regions.Rows.h / LOCALS_ROW_HEIGHT);
                Local : CCL.Ownership.Binding_Id;
             begin
                if Visible > 0 then
@@ -2029,10 +2097,11 @@ package body CCL_Workbench is
                      Local := CCL.Ownership.Binding_Id (Position);
                      CuBit.UI.Draw_Table_Row
                        (Execution_Canvas,
-                        (x => Locals_Regions.Rows.x,
-                         y => Locals_Regions.Rows.y +
+                        (x => Locals_Table_Regions.Rows.x,
+                         y => Locals_Table_Regions.Rows.y +
                            Position * LOCALS_ROW_HEIGHT,
-                         w => Locals_Regions.Rows.w, h => LOCALS_ROW_HEIGHT),
+                         w => Locals_Table_Regions.Rows.w,
+                         h => LOCALS_ROW_HEIGHT),
                         Colors, selected => False, hot => False,
                         c1 => Local_Name_Text (Local),
                         c2 => Value_Text
@@ -2046,15 +2115,15 @@ package body CCL_Workbench is
                   end loop;
                else
                   CuBit.UI.Draw_UI_Text
-                    (Execution_Canvas, Locals_Regions.Rows.x + 6,
-                     Locals_Regions.Rows.y + 3,
+                    (Execution_Canvas, Locals_Table_Regions.Rows.x + 6,
+                     Locals_Table_Regions.Rows.y + 3,
                      "resize to inspect locals", Colors.muted, Colors.field);
                end if;
             end;
          else
             CuBit.UI.Draw_UI_Text
-              (Execution_Canvas, Locals_Regions.Rows.x + 6,
-               Locals_Regions.Rows.y + 3,
+              (Execution_Canvas, Locals_Table_Regions.Rows.x + 6,
+               Locals_Table_Regions.Rows.y + 3,
                "(none)", Colors.muted, Colors.field);
          end if;
 
@@ -2133,6 +2202,43 @@ package body CCL_Workbench is
         (x => Source_Bounds.x,
          y => Source_Bounds.y + Source_Bounds.h + 2,
          w => Source_Bounds.w, h => 16);
+      declare
+         First_Line : constant Positive :=
+           CuBit.UI.Editor.Viewports.First_Line (Source_View);
+         First_Column : constant Positive :=
+           CuBit.UI.Editor.Viewports.First_Column (Source_View);
+         Line_Value : Natural := First_Line;
+         Column_Value : Natural := First_Column;
+         Vertical_Result, Horizontal_Result : CuBit.UI.Widget_Result;
+      begin
+         CuBit.UI.Widgets.Vertical_Scrollbar
+           (Canvas, Workbench_UI, Workbench_Controls,
+            CONTROL_SOURCE_VERTICAL_SCROLLBAR, Source_Scrollbar,
+            Source_Scrollbar, Colors, 1,
+            CuBit.UI.Editor.Documents.Line_Count (Source), Line_Value,
+            Vertical_Result,
+            pageSize =>
+              CuBit.UI.Editor.Viewports.Line_Capacity (Source_View));
+         CuBit.UI.Widgets.Horizontal_Scrollbar
+           (Canvas, Workbench_UI, Workbench_Controls,
+            CONTROL_SOURCE_HORIZONTAL_SCROLLBAR,
+            Source_Horizontal_Scrollbar, Source_Horizontal_Scrollbar,
+            Colors, 1, Maximum_Source_Columns, Column_Value,
+            Horizontal_Result,
+            pageSize =>
+              CuBit.UI.Editor.Viewports.Column_Capacity (Source_View));
+         if Line_Value /= First_Line then
+            CuBit.UI.Editor.Viewports.Scroll_Lines
+              (Source_View, Integer (Line_Value) - Integer (First_Line),
+               CuBit.UI.Editor.Documents.Line_Count (Source));
+         end if;
+         if Column_Value /= First_Column then
+            CuBit.UI.Editor.Viewports.Scroll_Columns
+              (Source_View, Integer (Column_Value) - Integer (First_Column),
+               Maximum_Source_Columns);
+         end if;
+         pragma Unreferenced (Vertical_Result, Horizontal_Result);
+      end;
       for Index in 1 .. Cursor_Count loop
          Cursor_State :=
            CuBit.UI.Editor.Cursors.Element (Source_Cursors, Index);
@@ -2191,23 +2297,6 @@ package body CCL_Workbench is
             firstColumn =>
               CuBit.UI.Editor.Viewports.First_Column (Source_View));
       end if;
-      CuBit.UI.Draw_Vertical_Scrollbar
-        (Canvas, Source_Scrollbar, Colors, 1,
-         CuBit.UI.Editor.Documents.Line_Count (Source),
-         CuBit.UI.Editor.Viewports.First_Line (Source_View),
-         hot => False,
-         active => Source_Scrollbar_Pressed /= CuBit.UI.Scrollbar_None,
-         pageSize => CuBit.UI.Editor.Viewports.Line_Capacity (Source_View),
-         pressedPart => Source_Scrollbar_Pressed);
-      CuBit.UI.Draw_Horizontal_Scrollbar
-        (Canvas, Source_Horizontal_Scrollbar, Colors, 1,
-         Maximum_Source_Columns,
-         CuBit.UI.Editor.Viewports.First_Column (Source_View),
-         hot => False,
-         active => Source_Horizontal_Scrollbar_Pressed /=
-           CuBit.UI.Scrollbar_None,
-         pageSize => CuBit.UI.Editor.Viewports.Column_Capacity (Source_View),
-         pressedPart => Source_Horizontal_Scrollbar_Pressed);
       CuBit.UI.Widgets.Group_Box
         (Canvas, Disassembly_Bounds, Colors,
          "Disassembly", Bytecode_Content, 8);
@@ -2332,7 +2421,32 @@ package body CCL_Workbench is
          (x => 0, y => Canvas.height - 26, w => Canvas.width, h => 26), Colors,
          Toolbar_Hint,
          "bounded document • proved viewport");
+      CuBit.UI.State.Finish_Frame (Workbench_UI);
    end Render;
+
+   --  The only visual effects of uncaptured pointer motion are the splitter
+   --  hot state and status-bar hint.  The compositor owns the actual cursor,
+   --  so moving through a text area does not dirty the editor at all.
+   procedure Render_Pointer_Feedback is
+   begin
+      CuBit.UI.Draw_Vertical_Splitter
+        (Canvas, Inspector_Splitter, Colors,
+         hot => Pointer_Known and then
+           CuBit.UI.Point_In_Rect
+             (Pointer_X, Pointer_Y, Inspector_Splitter),
+         active => Active_Resize = Inspector_Pane);
+      CuBit.UI.Draw_Vertical_Splitter
+        (Canvas, Disassembly_Splitter, Colors,
+         hot => Pointer_Known and then
+           CuBit.UI.Point_In_Rect
+             (Pointer_X, Pointer_Y, Disassembly_Splitter),
+         active => Active_Resize = Disassembly_Pane);
+      CuBit.UI.Draw_Status_Bar
+        (Canvas,
+         (x => 0, y => Canvas.height - 26, w => Canvas.width, h => 26), Colors,
+         Toolbar_Hint,
+         "bounded document • proved viewport");
+   end Render_Pointer_Feedback;
 
 procedure Run is
 begin
@@ -2397,15 +2511,15 @@ begin
       Surface_Height : aliased Integer_32 := Integer_32 (HEIGHT);
       Running : Boolean := Handle /= System.Null_Address;
       Dragging : Boolean := False;
-      Dragging_Scrollbar : Boolean := False;
-      Dragging_Horizontal_Scrollbar : Boolean := False;
-      Scrollbar_Grab_Offset : Natural := 0;
-      Horizontal_Scrollbar_Grab_Offset : Natural := 0;
+      type Scrollbar_Axis is
+        (No_Scrollbar, Vertical_Scrollbar, Horizontal_Scrollbar);
+      Active_Source_Scrollbar : Scrollbar_Axis := No_Scrollbar;
       Next_Scrollbar_Repeat : Interfaces.Unsigned_64 := 0;
-      Next_Horizontal_Scrollbar_Repeat : Interfaces.Unsigned_64 := 0;
+      Last_Pointer_Cursor : Integer_32 := -1;
       SCROLL_REPEAT_DELAY : constant Interfaces.Unsigned_64 := 350;
       SCROLL_REPEAT_INTERVAL : constant Interfaces.Unsigned_64 := 60;
       Needs_Render : Boolean := True;
+      Needs_Pointer_Feedback : Boolean := False;
       Changed : Boolean;
       Extend : Boolean;
       By_Word : Boolean;
@@ -2421,6 +2535,42 @@ begin
             return Natural'Max (Minimum, Natural'Min (Value, Maximum));
          end if;
       end Clamp_Width;
+
+      function Desired_Pointer_Cursor return Integer_32 is
+      begin
+         if Active_Resize /= No_Resize then
+            return Integer_32
+              (CuBit.UI.Pointer_Cursor_Style'Enum_Rep
+                 (CuBit.UI.Pointer_Resize_Horizontal));
+         elsif Pointer_Known and then
+           (CuBit.UI.Point_In_Rect
+              (Pointer_X, Pointer_Y, Inspector_Splitter) or else
+            CuBit.UI.Point_In_Rect
+              (Pointer_X, Pointer_Y, Disassembly_Splitter) or else
+            CuBit.UI.Point_In_Rect
+              (Pointer_X, Pointer_Y, First_Column_Divider) or else
+            CuBit.UI.Point_In_Rect
+              (Pointer_X, Pointer_Y, Second_Column_Divider) or else
+            CuBit.UI.Point_In_Rect
+              (Pointer_X, Pointer_Y, First_Local_Column_Divider) or else
+            CuBit.UI.Point_In_Rect
+              (Pointer_X, Pointer_Y, Second_Local_Column_Divider))
+         then
+            return Integer_32
+              (CuBit.UI.Pointer_Cursor_Style'Enum_Rep
+                 (CuBit.UI.Pointer_Resize_Horizontal));
+         elsif Pointer_Known and then
+           CuBit.UI.Point_In_Rect (Pointer_X, Pointer_Y, Source_Bounds)
+         then
+            return Integer_32
+              (CuBit.UI.Pointer_Cursor_Style'Enum_Rep
+                 (CuBit.UI.Pointer_Text));
+         else
+            return Integer_32
+              (CuBit.UI.Pointer_Cursor_Style'Enum_Rep
+                 (CuBit.UI.Pointer_Default));
+         end if;
+      end Desired_Pointer_Cursor;
 
       procedure Prepare_Surface is
          Old_Width : constant Natural := Canvas.width;
@@ -2451,7 +2601,32 @@ begin
              (Handle, Kind'Access, Code'Access, Modifiers'Access,
               Mouse_X'Access, Mouse_Y'Access) /= 0
          loop
-            Needs_Render := True;
+            --  All semantic input other than free pointer motion may update
+            --  application state. Plain motion is handled below by comparing
+            --  semantic hover regions.
+            if Kind /= 26 then
+               Needs_Render := True;
+            end if;
+            if Mouse_X >= 0 and then Mouse_Y >= 0 then
+               Pointer_X := Natural (Mouse_X);
+               Pointer_Y := Natural (Mouse_Y);
+               Pointer_Known := True;
+               if Kind = 11 or else Kind = 14 or else Kind = 15 then
+                  CuBit.UI.State.Set_Pointer
+                    (Workbench_UI, Pointer_X, Pointer_Y, True,
+                     pressed => True);
+               elsif Kind = 12 then
+                  CuBit.UI.State.Set_Pointer
+                    (Workbench_UI, Pointer_X, Pointer_Y, True);
+               elsif Kind = 13 then
+                  CuBit.UI.State.Set_Pointer
+                    (Workbench_UI, Pointer_X, Pointer_Y, False,
+                     released => True);
+               elsif Kind = 26 then
+                  CuBit.UI.State.Set_Pointer
+                    (Workbench_UI, Pointer_X, Pointer_Y, False);
+               end if;
+            end if;
             case Kind is
                when 1 => Running := False;
                when 2 =>
@@ -2526,13 +2701,8 @@ begin
                      Select_All_Source;
                   end if;
                when 11 | 14 | 15 =>
-                  Dragging_Scrollbar := False;
-                  Dragging_Horizontal_Scrollbar := False;
-                  Source_Scrollbar_Pressed := CuBit.UI.Scrollbar_None;
-                  Source_Horizontal_Scrollbar_Pressed :=
-                    CuBit.UI.Scrollbar_None;
+                  Active_Source_Scrollbar := No_Scrollbar;
                   Next_Scrollbar_Repeat := 0;
-                  Next_Horizontal_Scrollbar_Repeat := 0;
                   if Mouse_X >= 0 and then Mouse_Y >= 0 and then
                     CuBit.UI.Point_In_Rect
                       (Natural (Mouse_X), Natural (Mouse_Y),
@@ -2560,6 +2730,20 @@ begin
                        Second_Column_Divider)
                   then
                      Active_Resize := Second_Table_Column;
+                     Dragging := False;
+                  elsif Mouse_X >= 0 and then Mouse_Y >= 0 and then
+                    CuBit.UI.Point_In_Rect
+                      (Natural (Mouse_X), Natural (Mouse_Y),
+                       First_Local_Column_Divider)
+                  then
+                     Active_Resize := First_Local_Table_Column;
+                     Dragging := False;
+                  elsif Mouse_X >= 0 and then Mouse_Y >= 0 and then
+                    CuBit.UI.Point_In_Rect
+                      (Natural (Mouse_X), Natural (Mouse_Y),
+                       Second_Local_Column_Divider)
+                  then
+                     Active_Resize := Second_Local_Table_Column;
                      Dragging := False;
                   elsif Mouse_X >= 0 and then Mouse_Y >= 0 and then
                     CuBit.UI.Point_In_Rect
@@ -2675,144 +2859,15 @@ begin
                     CuBit.UI.Point_In_Rect
                       (Natural (Mouse_X), Natural (Mouse_Y), Source_Scrollbar)
                   then
-                     declare
-                        Lines : constant Positive :=
-                          CuBit.UI.Editor.Documents.Line_Count (Source);
-                        Extent : constant Natural := Source_Scrollbar.w;
-                        Track, Thumb : CuBit.UI.Rect;
-                        Maximum_First : Positive;
-                        Relative_Y : Natural;
-                        Target : Positive;
-                     begin
-                        Source_Scrollbar_Metrics
-                          (Track, Thumb, Maximum_First);
-                        Dragging := False;
-                        if Maximum_First > 1 and then
-                          CuBit.UI.Point_In_Rect
-                            (Natural (Mouse_X), Natural (Mouse_Y), Thumb)
-                        then
-                           Dragging_Scrollbar := True;
-                           Source_Scrollbar_Pressed :=
-                             CuBit.UI.Scrollbar_Thumb;
-                           Scrollbar_Grab_Offset :=
-                             Natural (Mouse_Y) - Thumb.y;
-                        elsif Natural (Mouse_Y) <
-                          Source_Scrollbar.y + Extent
-                        then
-                           if CuBit.UI.Editor.Viewports.First_Line
-                             (Source_View) > 1
-                           then
-                              Source_Scrollbar_Pressed :=
-                                CuBit.UI.Scrollbar_Decrement;
-                              Next_Scrollbar_Repeat :=
-                                Window_Ticks + SCROLL_REPEAT_DELAY;
-                              CuBit.UI.Editor.Viewports.Scroll_Lines
-                                (Source_View, -1, Lines);
-                           end if;
-                        elsif Natural (Mouse_Y) >=
-                          Source_Scrollbar.y + Source_Scrollbar.h - Extent
-                        then
-                           if CuBit.UI.Editor.Viewports.First_Line
-                             (Source_View) < Maximum_First
-                           then
-                              Source_Scrollbar_Pressed :=
-                                CuBit.UI.Scrollbar_Increment;
-                              Next_Scrollbar_Repeat :=
-                                Window_Ticks + SCROLL_REPEAT_DELAY;
-                              CuBit.UI.Editor.Viewports.Scroll_Lines
-                                (Source_View, 1, Lines);
-                           end if;
-                        else
-                           if Maximum_First > 1 then
-                              Source_Scrollbar_Pressed :=
-                                CuBit.UI.Scrollbar_Track;
-                           end if;
-                           Relative_Y :=
-                             (if Natural (Mouse_Y) <= Track.y then 0
-                              else Natural'Min
-                                (Natural (Mouse_Y) - Track.y, Track.h - 1));
-                           Target := 1 + Relative_Y * (Maximum_First - 1) /
-                             Natural'Max (1, Track.h - 1);
-                           CuBit.UI.Editor.Viewports.Scroll_Lines
-                             (Source_View,
-                              Integer (Target) - Integer
-                                (CuBit.UI.Editor.Viewports.First_Line
-                                   (Source_View)),
-                              Lines);
-                        end if;
-                     end;
+                     Active_Source_Scrollbar := Vertical_Scrollbar;
+                     Dragging := False;
                   elsif Mouse_X >= 0 and then Mouse_Y >= 0 and then
                     CuBit.UI.Point_In_Rect
                       (Natural (Mouse_X), Natural (Mouse_Y),
                        Source_Horizontal_Scrollbar)
                   then
-                     declare
-                        Columns : constant Positive := Maximum_Source_Columns;
-                        Extent : constant Natural :=
-                          Source_Horizontal_Scrollbar.h;
-                        Track, Thumb : CuBit.UI.Rect;
-                        Maximum_First : Positive;
-                        Relative_X : Natural;
-                        Target : Positive;
-                     begin
-                        Source_Horizontal_Scrollbar_Metrics
-                          (Track, Thumb, Maximum_First);
-                        Dragging := False;
-                        if Maximum_First > 1 and then
-                          CuBit.UI.Point_In_Rect
-                            (Natural (Mouse_X), Natural (Mouse_Y), Thumb)
-                        then
-                           Dragging_Horizontal_Scrollbar := True;
-                           Source_Horizontal_Scrollbar_Pressed :=
-                             CuBit.UI.Scrollbar_Thumb;
-                           Horizontal_Scrollbar_Grab_Offset :=
-                             Natural (Mouse_X) - Thumb.x;
-                        elsif Natural (Mouse_X) <
-                          Source_Horizontal_Scrollbar.x + Extent
-                        then
-                           if CuBit.UI.Editor.Viewports.First_Column
-                             (Source_View) > 1
-                           then
-                              Source_Horizontal_Scrollbar_Pressed :=
-                                CuBit.UI.Scrollbar_Decrement;
-                              Next_Horizontal_Scrollbar_Repeat :=
-                                Window_Ticks + SCROLL_REPEAT_DELAY;
-                              CuBit.UI.Editor.Viewports.Scroll_Columns
-                                (Source_View, -1, Columns);
-                           end if;
-                        elsif Natural (Mouse_X) >=
-                          Source_Horizontal_Scrollbar.x +
-                            Source_Horizontal_Scrollbar.w - Extent
-                        then
-                           if CuBit.UI.Editor.Viewports.First_Column
-                             (Source_View) < Maximum_First
-                           then
-                              Source_Horizontal_Scrollbar_Pressed :=
-                                CuBit.UI.Scrollbar_Increment;
-                              Next_Horizontal_Scrollbar_Repeat :=
-                                Window_Ticks + SCROLL_REPEAT_DELAY;
-                              CuBit.UI.Editor.Viewports.Scroll_Columns
-                                (Source_View, 1, Columns);
-                           end if;
-                        else
-                           if Maximum_First > 1 then
-                              Source_Horizontal_Scrollbar_Pressed :=
-                                CuBit.UI.Scrollbar_Track;
-                           end if;
-                           Relative_X :=
-                             (if Natural (Mouse_X) <= Track.x then 0
-                              else Natural'Min
-                                (Natural (Mouse_X) - Track.x, Track.w - 1));
-                           Target := 1 + Relative_X * (Maximum_First - 1) /
-                             Natural'Max (1, Track.w - 1);
-                           CuBit.UI.Editor.Viewports.Scroll_Columns
-                             (Source_View,
-                              Integer (Target) - Integer
-                                (CuBit.UI.Editor.Viewports.First_Column
-                                   (Source_View)),
-                              Columns);
-                        end if;
-                     end;
+                     Active_Source_Scrollbar := Horizontal_Scrollbar;
+                     Dragging := False;
                   end if;
                when 12 =>
                   if Active_Resize /= No_Resize and then Mouse_X >= 0 then
@@ -2868,66 +2923,39 @@ begin
                                    Bytecode_Columns.First_Width);
                               Bytecode_Columns.Second_Width := Clamp_Width
                                 (Desired, MINIMUM_TABLE_COLUMN_WIDTH, Maximum);
+                           when First_Local_Table_Column =>
+                              Maximum :=
+                                Locals_Table_Regions.Header.w -
+                                Locals_Columns.Second_Width -
+                                MINIMUM_OWNERSHIP_COLUMN_WIDTH;
+                              Desired :=
+                                (if Pointer <=
+                                   Locals_Table_Regions.Header.x
+                                 then 0
+                                 else Pointer -
+                                   Locals_Table_Regions.Header.x);
+                              Locals_Columns.First_Width := Clamp_Width
+                                (Desired, MINIMUM_TABLE_COLUMN_WIDTH, Maximum);
+                           when Second_Local_Table_Column =>
+                              Maximum :=
+                                Locals_Table_Regions.Header.w -
+                                Locals_Columns.First_Width -
+                                MINIMUM_OWNERSHIP_COLUMN_WIDTH;
+                              Desired :=
+                                (if Pointer <=
+                                   Locals_Table_Regions.Header.x +
+                                     Locals_Columns.First_Width
+                                 then 0
+                                 else Pointer -
+                                   Locals_Table_Regions.Header.x -
+                                   Locals_Columns.First_Width);
+                              Locals_Columns.Second_Width := Clamp_Width
+                                (Desired, MINIMUM_TABLE_COLUMN_WIDTH, Maximum);
                            when No_Resize => null;
                         end case;
                      end;
-                  elsif Dragging_Scrollbar and then Mouse_Y >= 0 then
-                     declare
-                        Track, Thumb : CuBit.UI.Rect;
-                        Maximum_First : Positive;
-                        Travel, Relative_Y : Natural;
-                        Pointer_Y : constant Natural := Natural (Mouse_Y);
-                        Target : Positive;
-                     begin
-                        Source_Scrollbar_Metrics
-                          (Track, Thumb, Maximum_First);
-                        Travel := Track.h - Thumb.h;
-                        if Pointer_Y <= Track.y + Scrollbar_Grab_Offset then
-                           Relative_Y := 0;
-                        else
-                           Relative_Y := Natural'Min
-                             (Pointer_Y - Track.y - Scrollbar_Grab_Offset,
-                              Travel);
-                        end if;
-                        Target := 1 + Relative_Y * (Maximum_First - 1) /
-                          Natural'Max (1, Travel);
-                        CuBit.UI.Editor.Viewports.Scroll_Lines
-                          (Source_View,
-                           Integer (Target) - Integer
-                             (CuBit.UI.Editor.Viewports.First_Line
-                                (Source_View)),
-                           CuBit.UI.Editor.Documents.Line_Count (Source));
-                     end;
-                  elsif Dragging_Horizontal_Scrollbar and then Mouse_X >= 0 then
-                     declare
-                        Track, Thumb : CuBit.UI.Rect;
-                        Maximum_First : Positive;
-                        Travel, Relative_X : Natural;
-                        Pointer_X : constant Natural := Natural (Mouse_X);
-                        Target : Positive;
-                     begin
-                        Source_Horizontal_Scrollbar_Metrics
-                          (Track, Thumb, Maximum_First);
-                        Travel := Track.w - Thumb.w;
-                        if Pointer_X <=
-                          Track.x + Horizontal_Scrollbar_Grab_Offset
-                        then
-                           Relative_X := 0;
-                        else
-                           Relative_X := Natural'Min
-                             (Pointer_X - Track.x -
-                                Horizontal_Scrollbar_Grab_Offset,
-                              Travel);
-                        end if;
-                        Target := 1 + Relative_X * (Maximum_First - 1) /
-                          Natural'Max (1, Travel);
-                        CuBit.UI.Editor.Viewports.Scroll_Columns
-                          (Source_View,
-                           Integer (Target) - Integer
-                             (CuBit.UI.Editor.Viewports.First_Column
-                                (Source_View)),
-                           Maximum_Source_Columns);
-                     end;
+                  elsif Active_Source_Scrollbar /= No_Scrollbar then
+                     null;
                   elsif Dragging and then Mouse_X >= 0 then
                      if Mouse_Y >= 0 then
                         Place_Source_Cursor
@@ -3000,13 +3028,8 @@ begin
                   Run_Button_Pressed := False;
                   Active_Resize := No_Resize;
                   Dragging := False;
-                  Dragging_Scrollbar := False;
-                  Dragging_Horizontal_Scrollbar := False;
-                  Source_Scrollbar_Pressed := CuBit.UI.Scrollbar_None;
-                  Source_Horizontal_Scrollbar_Pressed :=
-                    CuBit.UI.Scrollbar_None;
+                  Active_Source_Scrollbar := No_Scrollbar;
                   Next_Scrollbar_Repeat := 0;
-                  Next_Horizontal_Scrollbar_Repeat := 0;
                when 16 | 17 =>
                   if (Modifiers and 6) = 6 or else
                     (Modifiers and 3) = 3
@@ -3091,83 +3114,95 @@ begin
                when 25 =>
                   Run_Source;
                when 26 =>
-                  if Mouse_X >= 0 and then Mouse_Y >= 0 then
-                     Pointer_X := Natural (Mouse_X);
-                     Pointer_Y := Natural (Mouse_Y);
-                     Pointer_Known := True;
-                  end if;
+                  declare
+                     Previous : constant Hover_Target :=
+                       Current_Hover_Target;
+                  begin
+                     if Mouse_X >= 0 and then Mouse_Y >= 0 then
+                        Pointer_X := Natural (Mouse_X);
+                        Pointer_Y := Natural (Mouse_Y);
+                        Pointer_Known := True;
+                     end if;
+                     if Current_Hover_Target /= Previous then
+                        Needs_Pointer_Feedback := True;
+                     end if;
+                  end;
                when others => null;
             end case;
+            --  Immediate-mode controls must observe every pointer edge and
+            --  captured drag position before a later event can overwrite it.
+            exit when Kind = 11 or else Kind = 12 or else Kind = 13 or else
+              Kind = 14 or else Kind = 15;
          end loop;
          exit when not Running;
-         if (Source_Scrollbar_Pressed = CuBit.UI.Scrollbar_Decrement or else
-             Source_Scrollbar_Pressed = CuBit.UI.Scrollbar_Increment) and then
+         declare
+            Desired : constant Integer_32 := Desired_Pointer_Cursor;
+         begin
+            if Desired /= Last_Pointer_Cursor then
+               Window_Set_Cursor (Handle, Desired);
+               Last_Pointer_Cursor := Desired;
+            end if;
+         end;
+         if Active_Source_Scrollbar /= No_Scrollbar and then
+           (CuBit.UI.State.Active_Scrollbar_Part (Workbench_UI) =
+              CuBit.UI.Scrollbar_Decrement or else
+            CuBit.UI.State.Active_Scrollbar_Part (Workbench_UI) =
+              CuBit.UI.Scrollbar_Increment) and then
+           Next_Scrollbar_Repeat /= 0 and then
            Window_Ticks >= Next_Scrollbar_Repeat
          then
             Needs_Render := True;
             declare
-               Lines : constant Positive :=
-                 CuBit.UI.Editor.Documents.Line_Count (Source);
-               Maximum_First : constant Positive :=
-                 (if CuBit.UI.Editor.Viewports.Line_Capacity (Source_View) >=
-                    Lines
-                  then 1
-                  else Lines -
-                    CuBit.UI.Editor.Viewports.Line_Capacity (Source_View) + 1);
-               Moving_Up : constant Boolean :=
-                 Source_Scrollbar_Pressed = CuBit.UI.Scrollbar_Decrement;
+               Moving_Back : constant Boolean :=
+                 CuBit.UI.State.Active_Scrollbar_Part (Workbench_UI) =
+                   CuBit.UI.Scrollbar_Decrement;
+               Old_Value, New_Value, Maximum_Value : Natural;
             begin
-               if (Moving_Up and then
-                   CuBit.UI.Editor.Viewports.First_Line (Source_View) > 1) or else
-                 (not Moving_Up and then
-                  CuBit.UI.Editor.Viewports.First_Line (Source_View) <
-                    Maximum_First)
-               then
-                  CuBit.UI.Editor.Viewports.Scroll_Lines
-                    (Source_View, (if Moving_Up then -1 else 1), Lines);
+               if Active_Source_Scrollbar = Vertical_Scrollbar then
+                  Old_Value :=
+                    CuBit.UI.Editor.Viewports.First_Line (Source_View);
+                  Maximum_Value := Natural'Max
+                    (1, CuBit.UI.Editor.Documents.Line_Count (Source) -
+                       Natural'Min
+                         (CuBit.UI.Editor.Documents.Line_Count (Source),
+                          CuBit.UI.Editor.Viewports.Line_Capacity
+                            (Source_View)) + 1);
+                  New_Value := Old_Value;
+                  CuBit.UI.Apply_Wheel_Scroll
+                    (New_Value, 1, Maximum_Value,
+                     (if Moving_Back then 1 else -1), 1);
+                  if New_Value /= Old_Value then
+                     CuBit.UI.Editor.Viewports.Scroll_Lines
+                       (Source_View,
+                        Integer (New_Value) - Integer (Old_Value),
+                        CuBit.UI.Editor.Documents.Line_Count (Source));
+                  end if;
+               else
+                  Old_Value :=
+                    CuBit.UI.Editor.Viewports.First_Column (Source_View);
+                  Maximum_Value := Natural'Max
+                    (1, Maximum_Source_Columns -
+                       Natural'Min
+                         (Maximum_Source_Columns,
+                          CuBit.UI.Editor.Viewports.Column_Capacity
+                            (Source_View)) + 1);
+                  New_Value := Old_Value;
+                  CuBit.UI.Apply_Wheel_Scroll
+                    (New_Value, 1, Maximum_Value,
+                     (if Moving_Back then 1 else -1), 1);
+                  if New_Value /= Old_Value then
+                     CuBit.UI.Editor.Viewports.Scroll_Columns
+                       (Source_View,
+                        Integer (New_Value) - Integer (Old_Value),
+                        Maximum_Source_Columns);
+                  end if;
+               end if;
+               if New_Value /= Old_Value then
                   Next_Scrollbar_Repeat :=
                     Window_Ticks + SCROLL_REPEAT_INTERVAL;
                else
-                  Source_Scrollbar_Pressed := CuBit.UI.Scrollbar_None;
+                  Active_Source_Scrollbar := No_Scrollbar;
                   Next_Scrollbar_Repeat := 0;
-               end if;
-            end;
-         end if;
-         if (Source_Horizontal_Scrollbar_Pressed =
-               CuBit.UI.Scrollbar_Decrement or else
-             Source_Horizontal_Scrollbar_Pressed =
-               CuBit.UI.Scrollbar_Increment) and then
-           Window_Ticks >= Next_Horizontal_Scrollbar_Repeat
-         then
-            Needs_Render := True;
-            declare
-               Columns : constant Positive := Maximum_Source_Columns;
-               Maximum_First : constant Positive :=
-                 (if CuBit.UI.Editor.Viewports.Column_Capacity (Source_View) >=
-                    Columns
-                  then 1
-                  else Columns -
-                    CuBit.UI.Editor.Viewports.Column_Capacity (Source_View) +
-                      1);
-               Moving_Left : constant Boolean :=
-                 Source_Horizontal_Scrollbar_Pressed =
-                   CuBit.UI.Scrollbar_Decrement;
-            begin
-               if (Moving_Left and then
-                   CuBit.UI.Editor.Viewports.First_Column (Source_View) > 1) or
-                 else
-                 (not Moving_Left and then
-                  CuBit.UI.Editor.Viewports.First_Column (Source_View) <
-                    Maximum_First)
-               then
-                  CuBit.UI.Editor.Viewports.Scroll_Columns
-                    (Source_View, (if Moving_Left then -1 else 1), Columns);
-                  Next_Horizontal_Scrollbar_Repeat :=
-                    Window_Ticks + SCROLL_REPEAT_INTERVAL;
-               else
-                  Source_Horizontal_Scrollbar_Pressed :=
-                    CuBit.UI.Scrollbar_None;
-                  Next_Horizontal_Scrollbar_Repeat := 0;
                end if;
             end;
          end if;
@@ -3211,10 +3246,50 @@ begin
             Render;
             exit when Window_Present
               (Handle, Pixels'Address,
-               Integer_32 (MAXIMUM_WIDTH * 4)) /= 0;
+               Integer_32 (MAXIMUM_WIDTH * 4), 0, 0,
+               Integer_32 (Canvas.width), Integer_32 (Canvas.height)) /= 0;
             Needs_Render := False;
+            Needs_Pointer_Feedback := False;
+         elsif Needs_Pointer_Feedback then
+            Render_Pointer_Feedback;
+            --  These are disjoint small regions. Presenting them separately
+            --  avoids turning their bounding union into nearly a full frame.
+            exit when Window_Present
+              (Handle, Pixels'Address, Integer_32 (MAXIMUM_WIDTH * 4),
+               Integer_32 (Inspector_Splitter.x),
+               Integer_32 (Inspector_Splitter.y),
+               Integer_32 (Inspector_Splitter.w),
+               Integer_32 (Inspector_Splitter.h)) /= 0;
+            exit when Window_Present
+              (Handle, Pixels'Address, Integer_32 (MAXIMUM_WIDTH * 4),
+               Integer_32 (Disassembly_Splitter.x),
+               Integer_32 (Disassembly_Splitter.y),
+               Integer_32 (Disassembly_Splitter.w),
+               Integer_32 (Disassembly_Splitter.h)) /= 0;
+            exit when Window_Present
+              (Handle, Pixels'Address, Integer_32 (MAXIMUM_WIDTH * 4),
+               0, Integer_32 (Canvas.height - 26),
+               Integer_32 (Canvas.width), 26) /= 0;
+            Needs_Pointer_Feedback := False;
          end if;
-         Window_Wait;
+         if Active_Source_Scrollbar /= No_Scrollbar and then
+           Next_Scrollbar_Repeat = 0 and then
+           (CuBit.UI.State.Active_Scrollbar_Part (Workbench_UI) =
+              CuBit.UI.Scrollbar_Decrement or else
+            CuBit.UI.State.Active_Scrollbar_Part (Workbench_UI) =
+              CuBit.UI.Scrollbar_Increment)
+         then
+            Next_Scrollbar_Repeat :=
+              Window_Ticks + SCROLL_REPEAT_DELAY;
+         end if;
+         Window_Wait
+           ((if not VM_Continuous and then
+                not (Active_Source_Scrollbar /= No_Scrollbar and then
+                     (CuBit.UI.State.Active_Scrollbar_Part (Workbench_UI) =
+                        CuBit.UI.Scrollbar_Decrement or else
+                      CuBit.UI.State.Active_Scrollbar_Part (Workbench_UI) =
+                        CuBit.UI.Scrollbar_Increment))
+             then 1 else 0));
       end loop;
       Window_Close (Handle);
    end;

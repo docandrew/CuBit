@@ -1432,34 +1432,60 @@ package body CuBit.UI is
       Draw_UI_Text (c, r.x + 30, Center_Text_Y (r), label, fg, bg);
    end Draw_Menu_Item;
 
-   procedure Draw_Horizontal_Slider
-      (c : Canvas; r : Rect; colors : Theme;
-       minValue, maxValue, value : Natural;
-       hot : Boolean; active : Boolean)
+   function Layout_Horizontal_Slider
+      (r : Rect;
+       minValue, maxValue, value : Natural) return Horizontal_Slider_Layout
    is
-      trackY : constant Natural := r.y + r.h / 2 - 2;
-      track : constant Rect := (x => r.x + 6, y => trackY,
-                                w => (if r.w > 12 then r.w - 12 else 0),
-                                h => 4);
+      result : Horizontal_Slider_Layout;
+      thumbWidth : constant Natural := Natural'Min (10, r.w);
+      thumbHeight : constant Natural :=
+        (if r.h > 6 then r.h - 6 else r.h);
+      inset : constant Natural :=
+        (if r.w > thumbWidth + 2 then 1 else 0);
       span : Natural := 1;
       pos  : Natural := 0;
-      knobX : Natural := r.x;
-      knob : Rect;
-      fillColor : Color := colors.accent;
+      travel : Natural := 0;
+      trackY : Natural := r.y;
    begin
+      result.minimumThumbX := r.x + inset;
+      result.maximumThumbX := result.minimumThumbX;
+      if r.w >= thumbWidth + inset then
+         result.maximumThumbX := r.x + r.w - thumbWidth - inset;
+      end if;
+      travel := result.maximumThumbX - result.minimumThumbX;
       if maxValue > minValue then
          span := maxValue - minValue;
       end if;
       if value > minValue then
          pos := Natural'Min (value - minValue, span);
       end if;
-      if not Is_Empty (track) then
-         knobX := track.x + (pos * track.w) / span;
+      result.thumb :=
+        (x => result.minimumThumbX + (pos * travel) / span,
+         y => r.y + (if r.h > thumbHeight then (r.h - thumbHeight) / 2 else 0),
+         w => thumbWidth,
+         h => thumbHeight);
+      if r.h >= 4 then
+         trackY := r.y + (r.h - 4) / 2;
       end if;
-      if r.w > 10 and then knobX > r.x + r.w - 10 then
-         knobX := r.x + r.w - 10;
+      if thumbWidth > 0 then
+         result.track :=
+           (x => result.minimumThumbX + thumbWidth / 2,
+            y => trackY,
+            w => travel + 1,
+            h => Natural'Min (4, r.h));
       end if;
+      return result;
+   end Layout_Horizontal_Slider;
 
+   procedure Draw_Horizontal_Slider
+      (c : Canvas; r : Rect; colors : Theme;
+       minValue, maxValue, value : Natural;
+       hot : Boolean; active : Boolean)
+   is
+      layout : constant Horizontal_Slider_Layout :=
+        Layout_Horizontal_Slider (r, minValue, maxValue, value);
+      fillColor : Color := colors.accent;
+   begin
       if active then
          fillColor := colors.good;
       elsif hot then
@@ -1467,18 +1493,144 @@ package body CuBit.UI is
       end if;
 
       Fill_Rect (c, r, colors.panel);
-      if not Is_Empty (track) then
-         Fill_Rect (c, track, colors.shadow);
-         Fill_Rect (c, (x => track.x, y => track.y,
-                        w => knobX - track.x + 5, h => track.h),
+      if not Is_Empty (layout.track) then
+         Fill_Rect (c, layout.track, colors.shadow);
+         Fill_Rect (c, (x => layout.track.x, y => layout.track.y,
+                        w => layout.thumb.x + layout.thumb.w / 2 -
+                          layout.track.x + 1,
+                        h => layout.track.h),
                     fillColor);
       end if;
-
-      knob := (x => knobX, y => r.y + 3, w => 10,
-               h => (if r.h > 6 then r.h - 6 else r.h));
-      Fill_Rect (c, knob, colors.face);
-      Stroke_Rect (c, knob, colors.edge, colors.shadow);
+      Fill_Rect (c, layout.thumb, colors.face);
+      Stroke_Rect (c, layout.thumb, colors.edge, colors.shadow);
    end Draw_Horizontal_Slider;
+
+   function Layout_Vertical_Scrollbar
+      (r : Rect;
+       minValue, maxValue, value : Natural;
+       pageSize : Positive := 1) return Vertical_Scrollbar_Layout
+   is
+      buttonExtent : constant Natural := Natural'Min (r.w, r.h / 2);
+      result : Vertical_Scrollbar_Layout;
+      total : constant Natural :=
+        (if maxValue >= minValue then maxValue - minValue + 1 else 1);
+      shown : constant Natural := Natural'Min (pageSize, total);
+      span : Natural := 1;
+      pos : Natural := 0;
+      thumbHeight : Natural := 0;
+      travel : Natural := 0;
+   begin
+      result.decrementButton :=
+        (x => r.x, y => r.y, w => r.w, h => buttonExtent);
+      result.incrementButton :=
+        (x => r.x, y => r.y + r.h - buttonExtent,
+         w => r.w, h => buttonExtent);
+      result.trackFrame :=
+        (x => r.x, y => r.y + buttonExtent, w => r.w,
+         h => (if r.h > buttonExtent * 2
+               then r.h - buttonExtent * 2 else 0));
+      result.track :=
+        (x => result.trackFrame.x + 2,
+         y => result.trackFrame.y + 2,
+         w => (if result.trackFrame.w > 4
+               then result.trackFrame.w - 4 else 0),
+         h => (if result.trackFrame.h > 4
+               then result.trackFrame.h - 4 else 0));
+      result.maximumValue :=
+        (if shown >= total then minValue else maxValue - shown + 1);
+
+      if result.maximumValue > minValue then
+         span := result.maximumValue - minValue;
+      end if;
+      if value > minValue then
+         pos := Natural'Min (value - minValue, span);
+      end if;
+      if not Is_Empty (result.track) and then shown < total then
+         thumbHeight := Natural'Max (12, result.track.h * shown / total);
+         thumbHeight := Natural'Min (thumbHeight, result.track.h);
+         travel := result.track.h - thumbHeight;
+         result.thumb :=
+           (x => result.track.x,
+            y => result.track.y + (pos * travel) / span,
+            w => result.track.w, h => thumbHeight);
+      end if;
+      return result;
+   end Layout_Vertical_Scrollbar;
+
+   function Layout_Horizontal_Scrollbar
+      (r : Rect;
+       minValue, maxValue, value : Natural;
+       pageSize : Positive := 1) return Horizontal_Scrollbar_Layout
+   is
+      buttonExtent : constant Natural := Natural'Min (r.h, r.w / 2);
+      result : Horizontal_Scrollbar_Layout;
+      total : constant Natural :=
+        (if maxValue >= minValue then maxValue - minValue + 1 else 1);
+      shown : constant Natural := Natural'Min (pageSize, total);
+      span : Natural := 1;
+      pos : Natural := 0;
+      thumbWidth : Natural := 0;
+      travel : Natural := 0;
+   begin
+      result.decrementButton :=
+        (x => r.x, y => r.y, w => buttonExtent, h => r.h);
+      result.incrementButton :=
+        (x => r.x + r.w - buttonExtent, y => r.y,
+         w => buttonExtent, h => r.h);
+      result.trackFrame :=
+        (x => r.x + buttonExtent, y => r.y,
+         w => (if r.w > buttonExtent * 2
+               then r.w - buttonExtent * 2 else 0),
+         h => r.h);
+      result.track :=
+        (x => result.trackFrame.x + 2,
+         y => result.trackFrame.y + 2,
+         w => (if result.trackFrame.w > 4
+               then result.trackFrame.w - 4 else 0),
+         h => (if result.trackFrame.h > 4
+               then result.trackFrame.h - 4 else 0));
+      result.maximumValue :=
+        (if shown >= total then minValue else maxValue - shown + 1);
+
+      if result.maximumValue > minValue then
+         span := result.maximumValue - minValue;
+      end if;
+      if value > minValue then
+         pos := Natural'Min (value - minValue, span);
+      end if;
+      if not Is_Empty (result.track) and then shown < total then
+         thumbWidth := Natural'Max (12, result.track.w * shown / total);
+         thumbWidth := Natural'Min (thumbWidth, result.track.w);
+         travel := result.track.w - thumbWidth;
+         result.thumb :=
+           (x => result.track.x + (pos * travel) / span,
+            y => result.track.y,
+            w => thumbWidth, h => result.track.h);
+      end if;
+      return result;
+   end Layout_Horizontal_Scrollbar;
+
+   procedure Apply_Wheel_Scroll
+      (value : in out Natural;
+       minValue, maxValue : Natural;
+       wheelDelta : Integer;
+       step : Positive := 3)
+   is
+   begin
+      if maxValue <= minValue then
+         value := minValue;
+      elsif value < minValue then
+         value := minValue;
+      elsif value > maxValue then
+         value := maxValue;
+      elsif wheelDelta > 0 then
+         value :=
+           (if value - minValue > step then value - step else minValue);
+      elsif wheelDelta < 0 then
+         value :=
+           (if maxValue - value > step then value + step else maxValue);
+      end if;
+   end Apply_Wheel_Scroll;
 
    procedure Draw_Vertical_Scrollbar
       (c : Canvas; r : Rect; colors : Theme;
@@ -1486,35 +1638,17 @@ package body CuBit.UI is
        hot : Boolean; active : Boolean; pageSize : Positive := 1;
        pressedPart : Scrollbar_Part := Scrollbar_Thumb)
    is
-      buttonExtent : constant Natural := Natural'Min (r.w, r.h / 2);
-      upButton : constant Rect :=
-        (x => r.x, y => r.y, w => r.w, h => buttonExtent);
-      downButton : constant Rect :=
-        (x => r.x, y => r.y + r.h - buttonExtent,
-         w => r.w, h => buttonExtent);
-      trackFrame : constant Rect :=
-        (x => r.x, y => r.y + buttonExtent, w => r.w,
-         h => (if r.h > buttonExtent * 2 then r.h - buttonExtent * 2 else 0));
-      track : constant Rect :=
-        (x => trackFrame.x + 2, y => trackFrame.y + 2,
-         w => (if trackFrame.w > 4 then trackFrame.w - 4 else 0),
-         h => (if trackFrame.h > 4 then trackFrame.h - 4 else 0));
+      layout : constant Vertical_Scrollbar_Layout :=
+        Layout_Vertical_Scrollbar
+          (r, minValue, maxValue, value, pageSize);
       total : constant Natural :=
         (if maxValue >= minValue then maxValue - minValue + 1 else 1);
       shown : constant Natural := Natural'Min (pageSize, total);
-      maximumValue : constant Natural :=
-        (if shown >= total then minValue else maxValue - shown + 1);
-      span : Natural := 1;
-      pos  : Natural := 0;
-      thumbHeight : Natural := 0;
-      travel : Natural := 0;
-      knobY : Natural := track.y;
-      knob : Rect;
       knobColor : Color := colors.face;
       canDecrement : constant Boolean :=
         shown < total and then value > minValue;
       canIncrement : constant Boolean :=
-        shown < total and then value < maximumValue;
+        shown < total and then value < layout.maximumValue;
 
       procedure Draw_Arrow
         (Button : Rect; Points_Up, Enabled, Pressed : Boolean)
@@ -1536,19 +1670,6 @@ package body CuBit.UI is
          end loop;
       end Draw_Arrow;
    begin
-      if maximumValue > minValue then
-         span := maximumValue - minValue;
-      end if;
-      if value > minValue then
-         pos := Natural'Min (value - minValue, span);
-      end if;
-      if not Is_Empty (track) then
-         thumbHeight := Natural'Max (12, track.h * shown / total);
-         thumbHeight := Natural'Min (thumbHeight, track.h);
-         travel := track.h - thumbHeight;
-         knobY := track.y + (pos * travel) / span;
-      end if;
-
       if active then
          knobColor := Blend (colors.edge, colors.face, 64);
       elsif hot then
@@ -1556,40 +1677,38 @@ package body CuBit.UI is
       end if;
 
       Fill_Rect (c, r, colors.panel);
-      if not Is_Empty (trackFrame) then
-         Fill_Rect (c, trackFrame, colors.edge);
-         Stroke_Sunken (c, trackFrame, colors);
+      if not Is_Empty (layout.trackFrame) then
+         Fill_Rect (c, layout.trackFrame, colors.edge);
+         Stroke_Sunken (c, layout.trackFrame, colors);
       end if;
-      Fill_Rect (c, upButton, colors.panel);
+      Fill_Rect (c, layout.decrementButton, colors.panel);
       if active and then canDecrement and then
         pressedPart = Scrollbar_Decrement
       then
-         Stroke_Sunken (c, upButton, colors);
+         Stroke_Sunken (c, layout.decrementButton, colors);
       else
-         Stroke_Raised (c, upButton, colors);
+         Stroke_Raised (c, layout.decrementButton, colors);
       end if;
       Draw_Arrow
-        (upButton, True, canDecrement,
+        (layout.decrementButton, True, canDecrement,
          active and then canDecrement and then
            pressedPart = Scrollbar_Decrement);
-      Fill_Rect (c, downButton, colors.panel);
+      Fill_Rect (c, layout.incrementButton, colors.panel);
       if active and then canIncrement and then
         pressedPart = Scrollbar_Increment
       then
-         Stroke_Sunken (c, downButton, colors);
+         Stroke_Sunken (c, layout.incrementButton, colors);
       else
-         Stroke_Raised (c, downButton, colors);
+         Stroke_Raised (c, layout.incrementButton, colors);
       end if;
       Draw_Arrow
-        (downButton, False, canIncrement,
+        (layout.incrementButton, False, canIncrement,
          active and then canIncrement and then
            pressedPart = Scrollbar_Increment);
 
-      if shown < total then
-         knob := (x => track.x, y => knobY, w => track.w,
-                  h => thumbHeight);
-         Fill_Rect (c, knob, knobColor);
-         Stroke_Raised (c, knob, colors);
+      if not Is_Empty (layout.thumb) then
+         Fill_Rect (c, layout.thumb, knobColor);
+         Stroke_Raised (c, layout.thumb, colors);
       end if;
    end Draw_Vertical_Scrollbar;
 
@@ -1599,36 +1718,17 @@ package body CuBit.UI is
        hot : Boolean; active : Boolean; pageSize : Positive := 1;
        pressedPart : Scrollbar_Part := Scrollbar_Thumb)
    is
-      buttonExtent : constant Natural := Natural'Min (r.h, r.w / 2);
-      leftButton : constant Rect :=
-        (x => r.x, y => r.y, w => buttonExtent, h => r.h);
-      rightButton : constant Rect :=
-        (x => r.x + r.w - buttonExtent, y => r.y,
-         w => buttonExtent, h => r.h);
-      trackFrame : constant Rect :=
-        (x => r.x + buttonExtent, y => r.y,
-         w => (if r.w > buttonExtent * 2 then r.w - buttonExtent * 2 else 0),
-         h => r.h);
-      track : constant Rect :=
-        (x => trackFrame.x + 2, y => trackFrame.y + 2,
-         w => (if trackFrame.w > 4 then trackFrame.w - 4 else 0),
-         h => (if trackFrame.h > 4 then trackFrame.h - 4 else 0));
+      layout : constant Horizontal_Scrollbar_Layout :=
+        Layout_Horizontal_Scrollbar
+          (r, minValue, maxValue, value, pageSize);
       total : constant Natural :=
         (if maxValue >= minValue then maxValue - minValue + 1 else 1);
       shown : constant Natural := Natural'Min (pageSize, total);
-      maximumValue : constant Natural :=
-        (if shown >= total then minValue else maxValue - shown + 1);
-      span : Natural := 1;
-      pos : Natural := 0;
-      thumbWidth : Natural := 0;
-      travel : Natural := 0;
-      knobX : Natural := track.x;
-      knob : Rect;
       knobColor : Color := colors.face;
       canDecrement : constant Boolean :=
         shown < total and then value > minValue;
       canIncrement : constant Boolean :=
-        shown < total and then value < maximumValue;
+        shown < total and then value < layout.maximumValue;
 
       procedure Draw_Arrow
         (Button : Rect; Points_Left, Enabled, Pressed : Boolean)
@@ -1651,19 +1751,6 @@ package body CuBit.UI is
          end loop;
       end Draw_Arrow;
    begin
-      if maximumValue > minValue then
-         span := maximumValue - minValue;
-      end if;
-      if value > minValue then
-         pos := Natural'Min (value - minValue, span);
-      end if;
-      if not Is_Empty (track) then
-         thumbWidth := Natural'Max (12, track.w * shown / total);
-         thumbWidth := Natural'Min (thumbWidth, track.w);
-         travel := track.w - thumbWidth;
-         knobX := track.x + (pos * travel) / span;
-      end if;
-
       if active then
          knobColor := Blend (colors.edge, colors.face, 64);
       elsif hot then
@@ -1671,39 +1758,38 @@ package body CuBit.UI is
       end if;
 
       Fill_Rect (c, r, colors.panel);
-      if not Is_Empty (trackFrame) then
-         Fill_Rect (c, trackFrame, colors.edge);
-         Stroke_Sunken (c, trackFrame, colors);
+      if not Is_Empty (layout.trackFrame) then
+         Fill_Rect (c, layout.trackFrame, colors.edge);
+         Stroke_Sunken (c, layout.trackFrame, colors);
       end if;
-      Fill_Rect (c, leftButton, colors.panel);
+      Fill_Rect (c, layout.decrementButton, colors.panel);
       if active and then canDecrement and then
         pressedPart = Scrollbar_Decrement
       then
-         Stroke_Sunken (c, leftButton, colors);
+         Stroke_Sunken (c, layout.decrementButton, colors);
       else
-         Stroke_Raised (c, leftButton, colors);
+         Stroke_Raised (c, layout.decrementButton, colors);
       end if;
       Draw_Arrow
-        (leftButton, True, canDecrement,
+        (layout.decrementButton, True, canDecrement,
          active and then canDecrement and then
            pressedPart = Scrollbar_Decrement);
-      Fill_Rect (c, rightButton, colors.panel);
+      Fill_Rect (c, layout.incrementButton, colors.panel);
       if active and then canIncrement and then
         pressedPart = Scrollbar_Increment
       then
-         Stroke_Sunken (c, rightButton, colors);
+         Stroke_Sunken (c, layout.incrementButton, colors);
       else
-         Stroke_Raised (c, rightButton, colors);
+         Stroke_Raised (c, layout.incrementButton, colors);
       end if;
       Draw_Arrow
-        (rightButton, False, canIncrement,
+        (layout.incrementButton, False, canIncrement,
          active and then canIncrement and then
            pressedPart = Scrollbar_Increment);
 
-      if shown < total then
-         knob := (x => knobX, y => track.y, w => thumbWidth, h => track.h);
-         Fill_Rect (c, knob, knobColor);
-         Stroke_Raised (c, knob, colors);
+      if not Is_Empty (layout.thumb) then
+         Fill_Rect (c, layout.thumb, knobColor);
+         Stroke_Raised (c, layout.thumb, colors);
       end if;
    end Draw_Horizontal_Scrollbar;
 

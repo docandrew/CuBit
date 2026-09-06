@@ -250,7 +250,7 @@ is
     -- carries the tag plus 4 data words, fitting in 5 registers total.
     ---------------------------------------------------------------------------
     type MessageTag is record
-        label  : Unsigned_32;   -- Operation code (OP_OPEN, OP_READ, etc.)
+        label  : Unsigned_32;   -- Protocol-defined operation code
         length : Unsigned_8;    -- Number of valid words (0-4)
         flags  : Unsigned_8;    -- Reserved for future (grant, capability, etc.)
         badge  : Unsigned_16;   -- Sender badge / endpoint ID
@@ -384,7 +384,8 @@ is
     type GrantPermission is (GRANT_READ, GRANT_READWRITE);
 
     type Grant is record
-        active       : Boolean         := False;
+        lifecycle    : Memory_Grants.Lifecycle :=
+          Memory_Grants.Inactive_Lifecycle;
         reusable     : Boolean         := True;
         generation   : Memory_Grants.Live_Grant_Generation :=
           Memory_Grants.Initial_Generation;
@@ -567,6 +568,11 @@ is
         numPending          : Natural := 0;
         nextRequestId       : Unsigned_64 := 1;
         grants              : GrantArray := (others => <>);
+        -- Process teardown retains the PID while an acquired grant still
+        -- names this owner.  The final return completes PID retirement.
+        grantTeardownPending : Boolean := False;
+        grantTeardownReady : Boolean := False;
+        pidReusableAfterGrants : Boolean := False;
         dmaAllocs           : DMAAllocArray := (others => <>);
 
         caps                : Capabilities.CapabilityTable :=
@@ -604,6 +610,20 @@ is
         -- an overloaded input path otherwise.
         eventDrops          : Unsigned_64 := 0;
 
+        -- Device IRQ delivery is a persistent doorbell, not a counted event.
+        -- Multiple interrupts may coalesce while the driver is runnable; the
+        -- bit is cleared only when the driver observes it and then drains its
+        -- authoritative device/controller state.
+        irqNotificationPending : Boolean := False;
+
+        --  A timed IPC receive remains on exactly one mailbox receive queue;
+        --  its deadline is separate metadata rather than a second intrusive
+        --  queue membership.  This permits an event or request to wake it
+        --  immediately while the timer provides a bounded deadline wake.
+        receiveDeadlineActive   : Boolean := False with Atomic;
+        receiveDeadlineMs       : Unsigned_64 := 0;
+        receiveDeadlineReceiver : ProcessID := NO_PROCESS;
+
         -- Resource quota (populated from CAP_RESOURCE on resume)
         quota               : ResourceQuota;
 
@@ -616,6 +636,10 @@ is
     -- Lock for protecting the proctab
     lockname : aliased String := "Proctab";
     lock : Spinlocks.Spinlock := (name => lockname'Access, others => <>);
+
+    grantLockName : aliased String := "grants";
+    grantLock : Spinlocks.Spinlock :=
+        (name => grantLockName'Access, others => <>);
 
     ---------------------------------------------------------------------------
     -- TLB flush request array. Set by revokeGrant when a grantee on a

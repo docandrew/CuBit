@@ -23,6 +23,8 @@ package body CuBit.Memory_Grants is
       reference := (slot => 0, generation => 1);
       success := False;
       if rawSlot > MAXIMUM_GLOBAL_SLOT then
+         CuBit.Messages.debugPrint
+           ("memory-grants: creation returned invalid global slot" & ASCII.LF);
          return;
       end if;
 
@@ -32,6 +34,8 @@ package body CuBit.Memory_Grants is
       if rawGeneration = Unsigned_64'Last or else
          rawGeneration = 0 or else rawGeneration > MAXIMUM_GENERATION
       then
+         CuBit.Messages.debugPrint
+           ("memory-grants: owner generation lookup failed" & ASCII.LF);
          CuBit.Messages.revokeGrant (rawSlot);
          return;
       end if;
@@ -56,6 +60,8 @@ package body CuBit.Memory_Grants is
       CuBit.Messages.createGrant
         (grantee, localAddr, numPages, readWrite, rawSlot, created);
       if not created then
+         CuBit.Messages.debugPrint
+           ("memory-grants: create-for-process syscall failed" & ASCII.LF);
          reference := (slot => 0, generation => 1);
          success := False;
          return;
@@ -77,6 +83,8 @@ package body CuBit.Memory_Grants is
       CuBit.Messages.createGrantViaCap
         (slot, localAddr, numPages, readWrite, rawSlot, created);
       if not created then
+         CuBit.Messages.debugPrint
+           ("memory-grants: create-via-capability syscall failed" & ASCII.LF);
          reference := (slot => 0, generation => 1);
          success := False;
          return;
@@ -84,7 +92,7 @@ package body CuBit.Memory_Grants is
       Finish_Creation (rawSlot, reference, success);
    end Create_Via_Capability;
 
-   procedure Resolve
+   procedure Acquire
      (reference     : Grant_Reference;
       expectedOwner : CuBit.Messages.ProcessID;
       byteOffset    : Unsigned_64;
@@ -94,7 +102,7 @@ package body CuBit.Memory_Grants is
       success       : out Boolean)
    is
       rawAddress : constant Unsigned_64 := CuBit.Messages.syscall
-        (CuBit.Messages.SYSCALL_RESOLVE_SHARED_MEMORY_GRANT,
+        (CuBit.Messages.SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT,
          reference.slot,
          reference.generation,
          expectedOwner,
@@ -109,7 +117,46 @@ package body CuBit.Memory_Grants is
          mappedAddress := To_Address (rawAddress);
          success := True;
       end if;
-   end Resolve;
+   end Acquire;
+
+   procedure Acquire_Via_Capability
+     (slot           : CuBit.Messages.CapabilitySlot;
+      reference      : Grant_Reference;
+      byteOffset     : Unsigned_64;
+      byteLength     : Unsigned_64;
+      requiredAccess : Required_Access;
+      mappedAddress  : out System.Address;
+      success        : out Boolean)
+   is
+      rawAddress : constant Unsigned_64 := CuBit.Messages.syscall
+        (CuBit.Messages.SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
+         slot,
+         reference.slot,
+         reference.generation,
+         byteOffset,
+         byteLength,
+         Required_Access'Enum_Rep (requiredAccess));
+   begin
+      if rawAddress = Unsigned_64'Last then
+         mappedAddress := System.Null_Address;
+         success := False;
+      else
+         mappedAddress := To_Address (rawAddress);
+         success := True;
+      end if;
+   end Acquire_Via_Capability;
+
+   procedure Return_Acquisition
+     (reference : Grant_Reference;
+      success   : out Boolean)
+   is
+      result : constant Unsigned_64 := CuBit.Messages.syscall
+        (CuBit.Messages.SYSCALL_RETURN_SHARED_MEMORY_GRANT_ACQUISITION,
+         reference.slot,
+         reference.generation);
+   begin
+      success := result = 1;
+   end Return_Acquisition;
 
    procedure Revoke
      (reference : Grant_Reference;

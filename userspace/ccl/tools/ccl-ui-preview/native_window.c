@@ -18,6 +18,8 @@ struct ccl_window {
     unsigned int click_count;
     int canvas_width;
     int canvas_height;
+    SDL_Cursor *cursors[5];
+    int pointer_cursor;
 };
 
 enum {
@@ -323,10 +325,22 @@ int ccl_window_poll(void *handle, int *kind, unsigned int *character,
     return 0;
 }
 
-int ccl_window_present(void *handle, const uint32_t *pixels, int pitch)
+int ccl_window_present(void *handle, const uint32_t *pixels, int pitch,
+                       int x, int y, int width, int height)
 {
     struct ccl_window *state = handle;
-    if (SDL_UpdateTexture(state->texture, NULL, pixels, pitch) != 0 ||
+    SDL_Rect damage;
+    const uint8_t *source;
+    if (state == NULL || pixels == NULL || pitch <= 0 || x < 0 || y < 0 ||
+        width <= 0 || height <= 0 || x >= state->canvas_width ||
+        y >= state->canvas_height)
+        return 1;
+    if (width > state->canvas_width - x) width = state->canvas_width - x;
+    if (height > state->canvas_height - y) height = state->canvas_height - y;
+    damage.x = x; damage.y = y; damage.w = width; damage.h = height;
+    source = (const uint8_t *)pixels + (size_t)y * (size_t)pitch +
+             (size_t)x * sizeof(uint32_t);
+    if (SDL_UpdateTexture(state->texture, &damage, source, pitch) != 0 ||
         SDL_RenderClear(state->renderer) != 0 ||
         SDL_RenderCopy(state->renderer, state->texture, NULL, NULL) != 0) {
         fprintf(stderr, "CCL Workbench presentation failed: %s\n", SDL_GetError());
@@ -355,7 +369,36 @@ int ccl_window_present(void *handle, const uint32_t *pixels, int pitch)
     return 0;
 }
 
-void ccl_window_wait(void) { SDL_Delay(10); }
+void ccl_window_set_cursor(void *handle, int style)
+{
+    struct ccl_window *state = handle;
+    static const SDL_SystemCursor system_cursors[5] = {
+        SDL_SYSTEM_CURSOR_ARROW,
+        SDL_SYSTEM_CURSOR_IBEAM,
+        SDL_SYSTEM_CURSOR_SIZEWE,
+        SDL_SYSTEM_CURSOR_SIZENS,
+        SDL_SYSTEM_CURSOR_SIZENWSE
+    };
+    if (state == NULL || style < 0 || style >= 5 ||
+        style == state->pointer_cursor)
+        return;
+    if (state->cursors[style] == NULL)
+        state->cursors[style] = SDL_CreateSystemCursor(system_cursors[style]);
+    if (state->cursors[style] != NULL) {
+        SDL_SetCursor(state->cursors[style]);
+        state->pointer_cursor = style;
+    }
+}
+
+void ccl_window_wait(int may_block)
+{
+    SDL_Event event;
+    if (may_block != 0) {
+        if (SDL_WaitEvent(&event) != 0) SDL_PushEvent(&event);
+    } else {
+        SDL_Delay(1);
+    }
+}
 
 uint64_t ccl_window_ticks(void) { return SDL_GetTicks64(); }
 
@@ -370,6 +413,8 @@ int ccl_window_has_system_chrome(void) { return 0; }
 void ccl_window_close(void *handle)
 {
     struct ccl_window *state = handle;
+    int i;
+    for (i = 0; i < 5; ++i) SDL_FreeCursor(state->cursors[i]);
     SDL_StopTextInput(); SDL_DestroyTexture(state->texture);
     SDL_DestroyRenderer(state->renderer); SDL_DestroyWindow(state->window);
     SDL_free(state); SDL_Quit();

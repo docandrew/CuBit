@@ -29,6 +29,7 @@ procedure Main is
      (System.Address, Unsigned_64);
 
    PID    : Unsigned_64;
+   Process_Manager_PID : Unsigned_64;
    Result : Unsigned_64;
    Passed : Boolean := True;
 
@@ -75,6 +76,14 @@ begin
    Check_Empty_Slot (KBD_SLOT, "no ambient keyboard");
    Check_Empty_Slot (MOUSE_SLOT, "no ambient mouse");
    Check_Empty_Slot (PROCESS_SLOT, "no ambient process management");
+
+   --  An endpoint/notification grant, not hardware IRQ ownership or a
+   --  caller-spelled PID, is required to publish an unsolicited event.
+   Process_Manager_PID :=
+     getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_PROCMGR);
+   Result := syscall
+     (SYSCALL_SEND_EVENT, Process_Manager_PID, 0, 0, 0, 0, 0);
+   Check (Result = ERROR_RESULT, "ambient event publication denied");
 
    Result := syscall
      (SYSCALL_POLICY_MINT_CAPABILITY, PID, CAP_ENDPOINT, PID, 0, RIGHT_RW,
