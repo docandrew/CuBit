@@ -172,6 +172,13 @@ package CuBit.UI is
    function With_Clip (c : Canvas; clip : Rect) return Canvas;
 
    procedure Set_Pixel (c : Canvas; x, y : Natural; fill : Color);
+
+   --  Row, column order; straight-alpha ARGB pixels. Clipped to the canvas.
+   --  Disabled artwork is desaturated and faded over the existing background.
+   type ARGB_Bitmap is array (Natural range <>, Natural range <>) of Color;
+   procedure Draw_Bitmap
+     (c : Canvas; x, y : Natural; pixels : ARGB_Bitmap;
+      enabled : Boolean := True);
    procedure Fill_Rect (c : Canvas; r : Rect; fill : Color);
    procedure Fill_Vertical_Gradient
       (c : Canvas; r : Rect; topColor, bottomColor : Color);

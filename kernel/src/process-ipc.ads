@@ -10,17 +10,23 @@
 -- 4 64-bit data words, for a total of 48 bytes.
 --
 -- IPC lock ordering (acquire in this order, never reverse):
---   1. mailtab(pid).lock    (per-mailbox, also protects completionTab(pid))
+--   1. mailtab(pid).lock    (ring, completionTab and pendingRequests)
+--      Two-mailbox publication acquires distinct PIDs in ascending order.
 --   2. Process.lock         (global process table)
 --   3. individual process queue locks (ready, sleep, send, receive)
 -- Queue locks are leaves: release the sleep lock before acquiring a ready
 -- lock. See docs/kernel-locking.md for allocator/grant dependencies and the
--- remaining process-lifetime / mailbox teardown synchronization obligations.
+-- process-lifetime / mailbox teardown protocol in kernel-process-retirement.md.
 -------------------------------------------------------------------------------
 with Capabilities;
 with Memory_Grants;
 
 package Process.IPC is
+    -- Victim is closed, off CPU and exclusively claimed by the reaper.
+    -- Acquires each mailbox before Process.lock, never the reverse.
+    procedure retireMailboxes (pid : ProcessID);
+    procedure sendRetirementEvent
+      (dest : ProcessID; generation : Capabilities.Generation; msg : Message);
 
     ---------------------------------------------------------------------------
     -- send
@@ -31,7 +37,8 @@ package Process.IPC is
     -- The caller blocks in WAITINGFORREPLY until the receiver calls reply().
     -- @return the reply message tag.
     ---------------------------------------------------------------------------
-    function send (dest : ProcessID; msg : Message) return MessageTag;
+    function send (dest : ProcessID; msg : Message;
+                   expectedGeneration : Capabilities.Generation := 0) return MessageTag;
 
     ---------------------------------------------------------------------------
     -- sendEvent
@@ -47,7 +54,8 @@ package Process.IPC is
     --  accepted report as a resynchronization snapshot.
     procedure trySendEvent (dest     : ProcessID;
                             msg      : Message;
-                            accepted : out Boolean);
+                            accepted : out Boolean;
+                            expectedGeneration : Capabilities.Generation := 0);
 
     -- Publish a coalescible, persistent device-work doorbell. Unlike
     -- sendEvent, this cannot be lost because a mailbox ring is full.
@@ -112,9 +120,10 @@ package Process.IPC is
 
     ---------------------------------------------------------------------------
     -- replyWait
-    -- Atomic reply+receive in one syscall (seL4 ReplyRecv pattern).
+    -- Reply then receive in one syscall; each operation has its own
+    -- mailbox-locked publication boundary (not one atomic transaction).
     -- Replies to replyTo, then blocks receiving the next message.
-    -- Halves syscall overhead for receive-dispatch-reply server loops.
+    -- Avoids a second userspace syscall entry for server loops.
     -- @param replyTo  - PID to reply to
     -- @param replyMsg - message to send as reply
     -- @param from     - out: sender PID of next received message
@@ -173,7 +182,8 @@ package Process.IPC is
     ---------------------------------------------------------------------------
     function submit (dest  : ProcessID;
                      msg   : Message;
-                     token : Unsigned_64) return Boolean;
+                     token : Unsigned_64;
+                     expectedGeneration : Capabilities.Generation := 0) return Boolean;
 
     ---------------------------------------------------------------------------
     -- waitCompletion
@@ -227,7 +237,8 @@ package Process.IPC is
                            numPages  : in  Natural;
                            perm      : in  GrantPermission;
                            id        : out Natural;
-                           success   : out Boolean);
+                           success   : out Boolean;
+                           expectedGeneration : Capabilities.Generation := 0);
 
     ---------------------------------------------------------------------------
     -- revokeGrant

@@ -52,6 +52,7 @@ cubit_kernel: build/libcubit.a build/init.bin
 		$$1 !~ /:kmain$$/ && \
 		$$1 !~ /:[Cc]reatekernelthread$$/ && \
 		$$1 !~ /:[Ss]tartkernelthread$$/ && \
+		$$1 !~ /:[Ss]tart[Rr]eaper$$/ && \
 		$$1 !~ /:[Aa]penter$$/ { \
 		printf "STACK OVERFLOW RISK: %s uses %s bytes (max %d)\n", $$1, $$2, $(MAX_STACK_USAGE); \
 		fail=1 } \
@@ -89,6 +90,12 @@ prove-lock-ownership:
 		--subdirs=proof-lock-ownership --mode=all --level=1 -j2
 	@cat build/proof-lock-ownership/gnatprove/gnatprove.out
 
+.PHONY : prove-process-lifetime
+prove-process-lifetime:
+	$(ALR) gnatprove -Pcubit.gpr -u process_lifetime.adb \
+		--subdirs=proof-process-lifetime --mode=all --level=1 -j2
+	@cat build/proof-process-lifetime/gnatprove/gnatprove.out
+
 .PHONY : prove-frame-pins
 prove-frame-pins:
 	$(ALR) gnatprove -Pcubit.gpr -u frame_pins.adb \
@@ -110,6 +117,27 @@ test-reclamation-state:
 test-locking:
 	$(ALR) gprbuild -p -P../tests/kernel-locking/locking_tests.gpr
 	timeout 30 ../tests/kernel-locking/build/main
+
+.PHONY : test-filesystem-policy
+test-filesystem-policy:
+	$(ALR) gprbuild -p -P../userspace/runtime/tests/directory-paths/paths_tests.gpr
+	../userspace/runtime/tests/directory-paths/build/main
+	$(ALR) gprbuild -p -P../userspace/runtime/tests/file-access/access_tests.gpr
+	../userspace/runtime/tests/file-access/build/main
+	$(ALR) gprbuild -p -P../tests/filesystem-rename/rename_tests.gpr
+	../tests/filesystem-rename/build/main
+
+.PHONY : prove-filesystem-policy
+prove-filesystem-policy:
+	$(ALR) gnatprove -P../userspace/runtime/tests/directory-paths/paths_tests.gpr \
+		-u cubit-directory_paths.adb --level=2 --report=all --checks-as-errors=on -j2
+	$(ALR) gnatprove -P../userspace/runtime/tests/file-access/access_tests.gpr \
+		-u cubit-file_access.adb --level=2 --report=all --checks-as-errors=on -j2
+	@cat ../userspace/runtime/tests/directory-paths/build/gnatprove/gnatprove.out
+	@cat ../userspace/runtime/tests/file-access/build/gnatprove/gnatprove.out
+	$(ALR) gnatprove -P../tests/filesystem-rename/rename_tests.gpr \
+		-u directory_blocks.adb --level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/filesystem-rename/build/gnatprove/gnatprove.out
 
 # Focused proof gate for the capability-policy core.  This is intentionally
 # small enough to run on every CI boot test rather than only in full proofs.
@@ -233,6 +261,16 @@ ccl-run:
 ccl-ui-preview:
 	$(ALR) gprbuild -P ../userspace/ccl/ccl_ui_preview.gpr -p
 	cd .. && userspace/ccl/build/ccl-ui-preview/ccl-ui-preview
+
+.PHONY : ccl-workspace-test ccl-workspace-prove
+ccl-workspace-test:
+	$(ALR) gprbuild -p -P ../tests/ccl-workspace/workspace_tests.gpr
+	../tests/ccl-workspace/build/main
+
+ccl-workspace-prove:
+	$(ALR) gnatprove -P ../tests/ccl-workspace/workspace_tests.gpr \
+		-u ccl_workspace_names.adb --level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/ccl-workspace/build/gnatprove/gnatprove.out
 
 .PHONY : ui-editor-test
 ui-editor-test:
@@ -368,13 +406,22 @@ files: user_runtime
 
 # Build the live writable-storage diagnostic app.
 .PHONY : storage-check
-storage-check: user_runtime
+storage-check: user_runtime filesystem-scope-check
 	mkdir -p ../userspace/apps/storage-check/build
 	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
 		../userspace/apps/storage-check/manifest.c \
 		-o ../userspace/apps/storage-check/build/manifest.o
 	$(ALR) gprbuild -P ../userspace/apps/storage-check/storage_check.gpr
 	cp ../userspace/apps/storage-check/build/storage-check.app isodir/boot/storage-check.app
+
+.PHONY : filesystem-scope-check
+filesystem-scope-check: user_runtime
+	mkdir -p ../userspace/apps/filesystem-scope-check/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/apps/filesystem-scope-check/manifest.c \
+		-o ../userspace/apps/filesystem-scope-check/build/manifest.o
+	$(ALR) gprbuild -P ../userspace/apps/filesystem-scope-check/filesystem_scope_check.gpr
+	cp ../userspace/apps/filesystem-scope-check/build/filesystem-scope-check.app isodir/boot/filesystem-scope-check.app
 
 # Build the first desktop shell client
 .PHONY : desktop-shell
@@ -549,6 +596,7 @@ ata_disk.img: $(DISK_CONTENTS)
 nvme_disk.img: $(DISK_CONTENTS)
 	dd if=/dev/zero of=nvme_disk.img bs=1K count=65536
 	mke2fs -t ext2 nvme_disk.img
+	debugfs -w -R "mkdir work" nvme_disk.img
 	debugfs -w -R "write ../userspace/motd.txt motd.txt" nvme_disk.img
 	debugfs -w -R "write $(DOOM_WAD) doom1.wad" nvme_disk.img
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" nvme_disk.img
@@ -825,6 +873,7 @@ run-desktop: cubit_kernel desktop-session-content
 	cp cubit_kernel isodir/boot/cubit_kernel
 	@rm -f serial_output.log net.pcap desktop_disk.img
 	cp nvme_disk.img desktop_disk.img
+	debugfs -w -R "mkdir work" desktop_disk.img
 	-debugfs -w -R "rm init.conf" desktop_disk.img >/dev/null 2>&1
 	debugfs -w -R "write ../tests/headless/init-desktop-session.conf init.conf" desktop_disk.img
 	sed -i 's/^set default=.*/set default=4/' isodir/boot/grub/grub.cfg

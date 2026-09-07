@@ -1,0 +1,12 @@
+project Dialog_Tests is
+   for Source_Dirs use
+     (".", "../../userspace/ccl/src", "../../userspace/ccl/tools/ccl-ui-preview/host",
+      "../../userspace/lib/ui", "../../userspace/lib/theme");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa");
+      for Switches ("main.adb") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Dialog_Tests;

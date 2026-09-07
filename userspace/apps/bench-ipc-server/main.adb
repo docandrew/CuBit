@@ -14,6 +14,7 @@ procedure main is
 
    OP_BENCH_ECHO : constant Unsigned_32 := 16#0910#;
    OP_BENCH_DIE  : constant Unsigned_32 := 16#0911#;
+   OP_BENCH_HOLD : constant Unsigned_32 := 16#0912#;
    REPLY_OK      : constant Unsigned_32 := 16#F000#;
    XOR_MAGIC     : constant Unsigned_64 := 16#C0B1_7000_BE11#;
 
@@ -56,6 +57,10 @@ begin
          end;
       elsif msg.tag.label = OP_BENCH_DIE then
          ret := syscall (SYSCALL_EXIT);
+      elsif msg.tag.label = OP_BENCH_HOLD then
+         -- Deliberately abandon this async reply authority. The kernel must
+         -- still deliver TARGET_DIED for the pending request when we exit.
+         receive (from, msg);
       else
          declare
             replyMsg : Message := NULL_MESSAGE;

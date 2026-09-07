@@ -291,6 +291,15 @@ int ccl_window_poll(void *handle, int *kind, unsigned int *character,
             *kind = 32; return 1;
         }
         if (event.key.keysym.sym == SDLK_F3) { *kind = 33; return 1; }
+        /* Shared CCL_Workbench_Platform event numbers. */
+        if (event.key.keysym.sym == SDLK_TAB) { *kind = 36; return 1; }
+        if (event.key.keysym.sym == SDLK_F6) { *kind = 37; return 1; }
+        if (event.key.keysym.sym == SDLK_o && (*modifiers & 2u) != 0) {
+            *kind = 34; return 1;
+        }
+        if (event.key.keysym.sym == SDLK_s && (*modifiers & 2u) != 0) {
+            *kind = 35; return 1;
+        }
         if (event.key.keysym.sym == SDLK_F5 ||
             ((event.key.keysym.sym == SDLK_RETURN ||
               event.key.keysym.sym == SDLK_KP_ENTER) &&

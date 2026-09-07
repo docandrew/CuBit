@@ -267,6 +267,146 @@ procedure main is
          return msg.tag.label = REPLY_OK and foundConfig and foundCreated;
       end directoryContainsExpectedFiles;
 
+      function exerciseDirectoryNavigation return Boolean is
+         root, child, reopened : Directory_Handle;
+         firstCursor : Unsigned_64;
+         header : Directory_Page_Header
+           with Import, Address => To_Address (Integer_Address (aligned));
+
+         procedure Put_Name (name : String) is
+            view : String (name'Range)
+              with Import, Address => To_Address (Integer_Address (aligned));
+         begin
+            view := name;
+         end Put_Name;
+
+         function Child_Request
+           (parent : Directory_Handle; name : String) return Message
+         is
+         begin
+            Put_Name (name);
+            return Open_Child_Directory_Request
+              (parent, grantRef, name'Length);
+         end Child_Request;
+
+         function Reject_Name (name : String) return Boolean is
+         begin
+            msg := Child_Request (root, name);
+            msg.tag := capCall (CAP_SLOT_FS, msg);
+            return msg.tag.label /= REPLY_OK;
+         end Reject_Name;
+      begin
+         Put_Name ("@nvme:0/");
+         msg := Open_Directory_Request (grantRef, 8);
+         msg.tag := capCall (CAP_SLOT_FS, msg);
+         if msg.tag.label /= REPLY_OK then
+            return False;
+         end if;
+         root := Directory_Handle (msg.words (0));
+         msg := Read_Directory_Page_Request (root, grantRef);
+         msg.tag := capCall (CAP_SLOT_FS, msg);
+         if msg.tag.label /= REPLY_OK then
+            return False;
+         end if;
+         firstCursor := header.nextCursor;
+         msg := Rewind_Directory_Request (root);
+         msg.tag := capCall (CAP_SLOT_FS, msg);
+         if msg.tag.label /= REPLY_OK then
+            return False;
+         end if;
+         msg := Read_Directory_Page_Request (root, grantRef);
+         msg.tag := capCall (CAP_SLOT_FS, msg);
+         if msg.tag.label /= REPLY_OK or else header.nextCursor /= firstCursor then
+            return False;
+         end if;
+
+         if not Reject_Name (".") or else not Reject_Name ("..") or else
+           not Reject_Name ("../config.dat") or else
+           not Reject_Name ("lost+found/child") or else
+           not Reject_Name ("@mem:0/") or else
+           not Reject_Name ("lost+found" & Character'Val (0)) or else
+           not Reject_Name ("config.dat") or else
+           not Reject_Name ("nav-link")
+         then
+            debugPrint ("DIRECTORY-NAVIGATION-CHECK: name escape accepted" & LF);
+            return False;
+         end if;
+         msg := Child_Request (root, "lost+found");
+         msg.words (1) := 0;
+         msg.tag := capCall (CAP_SLOT_FS, msg);
+         if msg.tag.label /= REPLY_ERR then
+            return False;
+         end if;
+         msg := Child_Request (root, "lost+found");
+         msg.words (1) := 256;
+         msg.tag := capCall (CAP_SLOT_FS, msg);
+         if msg.tag.label /= REPLY_ERR then
+            return False;
+         end if;
+         msg := Child_Request (root, "lost+found");
+         msg.words (3) := staleGeneration;
+         msg.tag := capCall (CAP_SLOT_FS, msg);
+         if msg.tag.label /= REPLY_ACCESS_DENIED then
+            return False;
+         end if;
+         msg := Read_Request (File_Handle (root), grantRef, 1);
+         msg.tag := capCall (CAP_SLOT_FS, msg);
+         if msg.tag.label = REPLY_OK then
+            return False;
+         end if;
+
+         --  Repeated visits must release slots and reject stale generations.
+         for visit in 1 .. 64 loop
+            msg := Child_Request (root, "lost+found");
+            msg.tag := capCall (CAP_SLOT_FS, msg);
+            if msg.tag.label /= REPLY_OK then
+               return False;
+            end if;
+            child := Directory_Handle (msg.words (0));
+            msg := Read_Directory_Page_Request (child, grantRef);
+            msg.tag := capCall (CAP_SLOT_FS, msg);
+            if msg.tag.label /= REPLY_OK then
+               return False;
+            end if;
+            msg := Close_Directory_Request (child);
+            msg.tag := capCall (CAP_SLOT_FS, msg);
+            if msg.tag.label /= REPLY_OK then
+               return False;
+            end if;
+            msg := Child_Request (root, "lost+found");
+            msg.tag := capCall (CAP_SLOT_FS, msg);
+            if msg.tag.label /= REPLY_OK then
+               return False;
+            end if;
+            reopened := Directory_Handle (msg.words (0));
+            if child = reopened then
+               return False;
+            end if;
+            msg := Rewind_Directory_Request (child);
+            msg.tag := capCall (CAP_SLOT_FS, msg);
+            if msg.tag.label /= REPLY_WRONG_OBJECT_TYPE then
+               return False;
+            end if;
+            msg := Child_Request (child, "lost+found");
+            msg.tag := capCall (CAP_SLOT_FS, msg);
+            if msg.tag.label /= REPLY_WRONG_OBJECT_TYPE then
+               return False;
+            end if;
+            msg := Close_Directory_Request (reopened);
+            msg.tag := capCall (CAP_SLOT_FS, msg);
+            if msg.tag.label /= REPLY_OK then
+               return False;
+            end if;
+         end loop;
+         msg := Close_Directory_Request (root);
+         msg.tag := capCall (CAP_SLOT_FS, msg);
+         if msg.tag.label /= REPLY_OK then
+            return False;
+         end if;
+         debugPrint ("DIRECTORY-NAVIGATION-CHECK: PASS" & LF);
+         return True;
+      end exerciseDirectoryNavigation;
+
       function rejectsMalformedDirectory return Boolean is
          corruptPath : constant String := "@nvme:0/corrupt-dir";
          directory : Directory_Handle;
@@ -288,6 +428,19 @@ procedure main is
          end if;
          directory := Directory_Handle (msg.words (0));
 
+         declare
+            nameBuffer : String (1 .. 5)
+              with Import, Address => To_Address (Integer_Address (aligned));
+         begin
+            nameBuffer := "child";
+         end;
+         msg := Open_Child_Directory_Request (directory, grantRef, 5);
+         msg.tag := capCall (CAP_SLOT_FS, msg);
+         if msg.tag.label /= REPLY_MALFORMED_FILESYSTEM then
+            debugPrint ("STORAGE-CHECK: malformed child lookup misreported" & LF);
+            return False;
+         end if;
+
          msg := Read_Directory_Page_Request (directory, grantRef);
          msg.tag := capCall (CAP_SLOT_FS, msg);
          closeMessage := Close_Directory_Request (directory);
@@ -299,9 +452,151 @@ procedure main is
               ("STORAGE-CHECK: malformed directory was not rejected" & LF);
             return False;
          end if;
+         declare
+            procedure Check_Metadata_Rename
+              (parent : String; expected : Unsigned_32) is
+               oldPath : constant String := parent & "/old";
+               newPath : constant String := parent & "/new";
+               view : String (1 .. oldPath'Length + newPath'Length)
+                 with Import, Address => To_Address (Integer_Address (aligned));
+            begin
+               view := oldPath & newPath;
+               msg := Rename_Request (grantRef, oldPath'Length, newPath'Length);
+               msg.tag := capCall (CAP_SLOT_FS, msg);
+               if msg.tag.label /= expected then
+                  debugPrint ("STORAGE-CHECK: metadata rename misreported" & LF);
+               end if;
+            end Check_Metadata_Rename;
+         begin
+            Check_Metadata_Rename (corruptPath, REPLY_MALFORMED_FILESYSTEM);
+            if msg.tag.label /= REPLY_MALFORMED_FILESYSTEM then
+               return False;
+            end if;
+            Check_Metadata_Rename
+              ("@nvme:0/indexed-dir", REPLY_FILE_RANGE_UNSUPPORTED);
+            if msg.tag.label /= REPLY_FILE_RANGE_UNSUPPORTED then
+               return False;
+            end if;
+         end;
          debugPrint ("MALFORMED-DIRECTORY-CHECK: PASS" & LF);
          return True;
       end rejectsMalformedDirectory;
+
+      function exerciseRename return Boolean is
+         renamed : constant String := "@nvme:0/cubit-renamed-longer.dat";
+         nested : constant String := "@nvme:0/lost+found/rename-before.dat";
+         nestedAfter : constant String := "@nvme:0/lost+found/rename-after.dat";
+
+         procedure Put (value : String) is
+            view : String (value'Range)
+              with Import, Address => To_Address (Integer_Address (aligned));
+         begin
+            view := value;
+         end Put;
+
+         function Rename_Is
+           (before, after : String; expected : Unsigned_32) return Boolean is
+         begin
+            Put (before & after);
+            msg := Rename_Request (grantRef, before'Length, after'Length);
+            msg.tag := capCall (CAP_SLOT_FS, msg);
+            if msg.tag.label /= expected then
+               debugPrint ("RENAME-CHECK: unexpected reply for " & before &
+                 " -> " & after & ":" & Unsigned_32'Image (msg.tag.label) & LF);
+               return False;
+            end if;
+            return True;
+         end Rename_Is;
+
+         function Has_Payload (name : String) return Boolean is
+            file : File_Handle;
+            good : Boolean;
+            bytes : String (PAYLOAD'Range)
+              with Import, Address => To_Address (Integer_Address (aligned));
+         begin
+            Put (name);
+            msg := Open_Request (grantRef, name'Length);
+            msg.tag := capCall (CAP_SLOT_FS, msg);
+            if msg.tag.label /= REPLY_OK then
+               return False;
+            end if;
+            file := File_Handle (msg.words (0));
+            msg := Read_Request (file, grantRef, PAYLOAD'Length);
+            msg.tag := capCall (CAP_SLOT_FS, msg);
+            good := msg.tag.label = REPLY_OK and then
+              msg.words (0) = PAYLOAD'Length and then bytes = PAYLOAD;
+            msg := Close_Request (file);
+            msg.tag := capCall (CAP_SLOT_FS, msg);
+            return good and then msg.tag.label = REPLY_OK;
+         end Has_Payload;
+      begin
+         Put (CREATE_PATH);
+         msg := Open_Request
+           (grantRef, CREATE_PATH'Length, OPEN_READ_WRITE or OPEN_CREATE or OPEN_EXCLUSIVE);
+         msg.tag := capCall (CAP_SLOT_FS, msg);
+         if msg.tag.label /= REPLY_ALREADY_EXISTS or else not Has_Payload (CREATE_PATH) then
+            debugPrint ("STORAGE-CHECK: exclusive create reused existing file" & LF);
+            return False;
+         end if;
+         if not Rename_Is (CREATE_PATH, PATH, REPLY_ALREADY_EXISTS) or else
+           not Has_Payload (CREATE_PATH) or else not Has_Payload (PATH) or else
+           not Rename_Is (CREATE_PATH, CREATE_PATH, REPLY_OK) or else
+           not Rename_Is (CREATE_PATH, renamed, REPLY_OK) or else
+           not Has_Payload (renamed) or else
+           not Rename_Is (CREATE_PATH, renamed, REPLY_NOT_FOUND) or else
+           not Rename_Is (renamed, nested, REPLY_FILE_RANGE_UNSUPPORTED) or else
+           not Has_Payload (renamed) or else
+           not Rename_Is
+             (renamed, "@nvme:1/elsewhere.dat", REPLY_ACCESS_DENIED) or else
+           not Rename_Is (renamed, "@nvme:0/..", REPLY_ERR) or else
+           not Has_Payload (renamed) or else
+           not Rename_Is (renamed, CREATE_PATH, REPLY_OK)
+         then
+            return False;
+         end if;
+
+         --  Existing handles refer to the inode, not its former name. Also
+         --  exercise parent resolution: the original path-only shim treated
+         --  the entire relative path as a root directory entry name.
+         Put (nested);
+         msg := Open_Request
+           (grantRef, nested'Length, OPEN_READ_WRITE or OPEN_CREATE or OPEN_EXCLUSIVE);
+         msg.tag := capCall (CAP_SLOT_FS, msg);
+         if msg.tag.label /= REPLY_OK then
+            return False;
+         end if;
+         handle := File_Handle (msg.words (0));
+         Put (PAYLOAD);
+         msg := Write_Request (handle, grantRef, PAYLOAD'Length);
+         msg.tag := capCall (CAP_SLOT_FS, msg);
+         if msg.tag.label /= REPLY_OK or else
+           not Rename_Is (nested, nestedAfter, REPLY_OK)
+         then
+            return False;
+         end if;
+         msg := Seek_Request (handle, 0, From_Start);
+         msg.tag := capCall (CAP_SLOT_FS, msg);
+         if msg.tag.label /= REPLY_OK then
+            return False;
+         end if;
+         msg := Read_Request (handle, grantRef, PAYLOAD'Length);
+         msg.tag := capCall (CAP_SLOT_FS, msg);
+         declare
+            bytes : String (PAYLOAD'Range)
+              with Import, Address => To_Address (Integer_Address (aligned));
+         begin
+            if msg.tag.label /= REPLY_OK or else bytes /= PAYLOAD then
+               return False;
+            end if;
+         end;
+         msg := Close_Request (handle);
+         msg.tag := capCall (CAP_SLOT_FS, msg);
+         if msg.tag.label /= REPLY_OK or else not Has_Payload (nestedAfter) then
+            return False;
+         end if;
+         debugPrint ("RENAME-CHECK: PASS" & LF);
+         return True;
+      end exerciseRename;
    begin
       --  Possessing a normal filesystem endpoint does not convey policy
       --  administration. In particular, an application cannot grant itself
@@ -540,7 +835,9 @@ procedure main is
          return False;
       end if;
 
-      return directoryContainsExpectedFiles and then rejectsMalformedDirectory;
+      return directoryContainsExpectedFiles and then
+        exerciseDirectoryNavigation and then rejectsMalformedDirectory and then
+        exerciseRename;
    end exerciseStorage;
 
 begin

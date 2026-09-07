@@ -497,6 +497,7 @@ begin
 
     initScheduler: declare
     begin
+        Process.startReaper;
         showBootStage ("Starting userspace...");
         println("Starting scheduler on CPU 0");
         Scheduler.schedule(cpu0Data);

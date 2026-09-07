@@ -38,6 +38,7 @@ with Config;
 with Descriptors;
 with LinkedLists;
 with Memory_Grants;
+with Process_Lifetime;
 limited with Process.Queues;
 with Spinlocks;
 with Stackframe;
@@ -224,8 +225,8 @@ package Process is
     type ProcQueue is
     record
         lock : Spinlocks.Spinlock;
-        head : ProcessID;
-        tail : ProcessID;
+        head : ProcessID := NO_PROCESS;
+        tail : ProcessID := NO_PROCESS;
     end record;
 
     -- Per-CPU ready lists. Each CPU dequeues from its own list.
@@ -456,6 +457,7 @@ package Process is
     ---------------------------------------------------------------------------
     type Mailbox is record
         lock        : Spinlocks.spinlock;
+        closed      : Boolean := True;
 
         -- Unified ring buffer for async messages and events
         ring        : MessageRing;
@@ -515,9 +517,13 @@ package Process is
         pid                 : ProcessID;        -- Index into the proctab
         ppid                : ProcessID;        -- Parent process ID
         svpid               : ProcessID := NO_PROCESS;  -- Supervisor PID
+        parentGeneration    : Capabilities.Generation := 0;
 
         name                : ProcessName;
-        state               : ProcessState := SUSPENDED;
+        state               : ProcessState := INVALID;
+        lifetime            : Process_Lifetime.State :=
+                                Process_Lifetime.Initial_State with Atomic;
+        admitted            : Boolean := False with Atomic;
         mode                : ProcessMode;
 
         priority            : ProcessPriority;
@@ -864,11 +870,21 @@ package Process is
 
     ---------------------------------------------------------------------------
     -- killProcess
-    -- Clean up and free all resources for the given process, but do NOT
-    -- enter the scheduler. Used for killing another process where the
-    -- caller needs to continue executing.
+    -- Close mailbox admission and request termination. True means accepted,
+    -- not yet reclaimed. The worker waits for CPU acknowledgement, then frees
+    -- resources on its own stack. A nonzero generation binds the request to
+    -- a specific PID incarnation (required for capability-authorized callers).
     ---------------------------------------------------------------------------
-    procedure killProcess (pid : in ProcessID);
+    function killProcess (pid : ProcessID;
+                          expectedGeneration : Capabilities.Generation := 0)
+                          return Boolean;
+    procedure startReaper;
+    procedure publish (pid : ProcessID);
+    -- Caller holds Process.lock. Execution presence spans IPC state changes.
+    procedure noteContextStarted (pid : ProcessID);
+    procedure noteContextStopped (pid : ProcessID);
+    -- Called at a completed syscall / user interrupt return boundary.
+    procedure checkTermination;
 
     ---------------------------------------------------------------------------
     -- kill

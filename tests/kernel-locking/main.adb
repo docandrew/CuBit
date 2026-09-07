@@ -6,6 +6,7 @@ with PerCPUData;
 with TLB_Shootdown;
 with Process;
 with Process.Queues;
+with Process_Lifetime;
 
 procedure Main is
     Shared, Nested : Spinlocks.Spinlock;
@@ -72,14 +73,104 @@ procedure Main is
         pragma Assert (Removed = 2);
         Process.Queues.popBack (Process.readyList, Removed);
         pragma Assert (Removed = Process.NO_PROCESS);
+        Spinlocks.enterCriticalSection (Process.lock);
+        Process.Queues.insertDelta (Process.sleepList, 1, 3, Ignored);
+        Process.Queues.insertDelta (Process.sleepList, 2, 7, Ignored);
+        Process.Queues.insertDelta (Process.sleepList, 3, 11, Ignored);
+        Process.Queues.detach (Process.sleepList, 2, Process.Queues.Delta_Queue);
+        pragma Assert (Process.proctab(3).queueKey = 8);
+        Process.Queues.detach (Process.sleepList, 1, Process.Queues.Delta_Queue);
+        pragma Assert (Process.proctab(3).queueKey = 11);
+        Process.Queues.detach (Process.sleepList, 2, Process.Queues.Delta_Queue);
+        Process.Queues.detach (Process.sleepList, 3, Process.Queues.Delta_Queue);
+        pragma Assert (Process.Queues.isEmpty (Process.sleepList));
+        Spinlocks.exitCriticalSection (Process.lock);
         Process.Queues.popFront (Process.readyList, Removed);
         pragma Assert (Removed = Process.NO_PROCESS);
         pragma Assert (PerCPUData.Depth = 0);
         Ada.Text_IO.Put_Line
           ("SLEEP-QUEUE-CHECK: PASS (timer/IPC wake serialization, delta preservation, queue endpoints)");
     end Check_Queues;
+
+    procedure Check_Lifetime is
+        use Process_Lifetime;
+        Life : Process_Lifetime.State := Initial_State;
+        CPU_Present : Boolean := False;
+        Reaped : Natural := 0;
+        Rounds : constant := 10_000;
+        Deadline : constant Time := Clock + Seconds (10);
+    begin
+        declare
+            task type Participant (Role : Natural);
+            task body Participant is
+                OK, Done : Boolean;
+            begin
+                PerCPUData.Set_CPU (Role);
+                loop
+                    Spinlocks.enterCriticalSection (Shared);
+                    Done := Reaped = Rounds or Failed;
+                    if not Done then
+                        case Role is
+                            when 0 =>
+                                if Can_Run (Life) then
+                                    Enter_CPU (Life, OK);
+                                    pragma Assert (OK and not CPU_Present);
+                                    CPU_Present := True;
+                                elsif Closing (Life) and Executing (Life) then
+                                    -- Model the adapter's acknowledgement only
+                                    -- after leaving the old stack/address space.
+                                    CPU_Present := False;
+                                    Leave_CPU (Life, OK);
+                                    pragma Assert (OK);
+                                end if;
+                            when 1 =>
+                                if Executing (Life) then
+                                    Request_Stop (Life);
+                                    pragma Assert (not Can_Reap (Life));
+                                    Claim_Reap (Life, OK);
+                                    pragma Assert (not OK);
+                                end if;
+                            when others =>
+                                if Can_Reap (Life) then
+                                    pragma Assert (not CPU_Present);
+                                    Claim_Reap (Life, OK);
+                                    pragma Assert (OK);
+                                    Claim_Reap (Life, OK);
+                                    pragma Assert (not OK);
+                                    Finish_Reap (Life, OK);
+                                    pragma Assert (OK and Retired (Life));
+                                    Enter_CPU (Life, OK);
+                                    pragma Assert (not OK);
+                                    Reaped := Reaped + 1;
+                                    Life := Initial_State; -- Fresh PID incarnation
+                                end if;
+                        end case;
+                    end if;
+                    if Clock >= Deadline then Failed := True; end if;
+                    Spinlocks.exitCriticalSection (Shared);
+                    exit when Done or Failed;
+                    delay 0.0;
+                end loop;
+            exception
+                when others =>
+                    Failed := True;
+                    if Spinlocks.ownedBy (Shared, Role) then
+                        Spinlocks.exitCriticalSection (Shared);
+                    end if;
+            end Participant;
+            CPU : Participant (0);
+            Stopper : Participant (1);
+            Reaper : Participant (2);
+        begin
+            null;
+        end;
+        pragma Assert (not Failed and Reaped = Rounds and not CPU_Present);
+        Ada.Text_IO.Put_Line
+          ("PROCESS-LIFETIME-CHECK: PASS (10000 concurrent stop/acknowledge/reap/reuse rounds)");
+    end Check_Lifetime;
 begin
     Check_Policy;
+    Check_Lifetime;
 
     -- A real lock held by CPU 4 makes all workers exercise the contention path
     -- before their concurrent increment test. Only CLI/GS/TLB/trace are mocked.

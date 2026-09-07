@@ -35,6 +35,59 @@ with x86;
 -- Ada implementation: custom storage, address overlays or live context state.
 -- Only separately annotated SPARK policy/state routines carry proof obligations.
 package body Process is
+    ReaperPID : ProcessID := NO_PROCESS;
+    procedure retirementWorker with No_Return;
+    procedure reclaimProcess (pid : ProcessID);
+
+    procedure wakeReaper is
+    begin
+        if ReaperPID /= NO_PROCESS and then proctab(ReaperPID).state = SUSPENDED then
+            ready (ReaperPID);
+        end if;
+    end wakeReaper;
+
+    procedure publish (pid : ProcessID) is
+    begin
+        Spinlocks.enterCriticalSection (mailtab(pid).lock);
+        Spinlocks.enterCriticalSection (lock);
+        proctab(pid).admitted := True;
+        mailtab(pid).closed := False;
+        Spinlocks.exitCriticalSection (lock);
+        Spinlocks.exitCriticalSection (mailtab(pid).lock);
+    end publish;
+
+    procedure noteContextStarted (pid : ProcessID) is
+        OK : Boolean;
+    begin
+        Process_Lifetime.Enter_CPU (proctab(pid).lifetime, OK);
+        if not OK then
+            raise ProcessException with "Dispatch of executing or retiring process";
+        end if;
+    end noteContextStarted;
+
+    procedure noteContextStopped (pid : ProcessID) is
+        OK : Boolean;
+    begin
+        Process_Lifetime.Leave_CPU (proctab(pid).lifetime, OK);
+        if not OK then
+            raise ProcessException with "Context stop without execution presence";
+        end if;
+        if Process_Lifetime.Can_Reap (proctab(pid).lifetime) then
+            wakeReaper;
+        end if;
+    end noteContextStopped;
+
+    procedure checkTermination is
+        pid : constant ProcessID := PerCPUData.getCurrentPID;
+    begin
+        if pid /= NO_PROCESS and then
+           Process_Lifetime.Closing (proctab(pid).lifetime)
+        then
+            Spinlocks.enterCriticalSection (lock);
+            Scheduler.enter;
+            raise ProcessException with "Retired context resumed";
+        end if;
+    end checkTermination;
 
     ---------------------------------------------------------------------------
     -- initializeFPUState
@@ -94,10 +147,14 @@ package body Process is
     is
         proc : Process;
     begin
-        PIDTracker.allocSpecificPID (pid);
-
-        proc.pid      := pid;
-        proc.ppid     := pid;       -- For IPC, we want this to have its own mailbox.
+        if pid = NO_PROCESS then
+            PIDTracker.allocPID (proc.pid);
+        else
+            PIDTracker.allocSpecificPID (pid);
+            proc.pid := pid;
+        end if;
+        proc.ppid     := proc.pid;
+        proc.admitted := True;
         proc.name     := name;
         proc.mode     := KERNEL;
         proc.state    := SUSPENDED;
@@ -162,6 +219,18 @@ package body Process is
             raise ProcessException with "Process.startKernelThread: failed createKernelThread";
         end if;
     end startKernelThread;
+
+    -- Boot-only, like startKernelThread: uses the bootstrap stack for PCB
+    -- construction, never the kernel stack of a retiring application.
+    procedure startReaper is
+        proc : Process := createKernelThread
+          (retirementWorker'Address, "Reaper          ", NO_PROCESS, 5);
+    begin
+        proc.cpu := 0;
+        ReaperPID := proc.pid;
+        addToProctab (proc);
+        resume (proc.pid);
+    end startReaper;
 
     ---------------------------------------------------------------------------
     -- addStackPage
@@ -287,6 +356,12 @@ package body Process is
 
         procedure zeroize is new Virtmem.zeroize (Virtmem.P4);
     begin
+        if thread then
+            -- This dormant path never set isThread and has no live syscall
+            -- consumer. Do not admit shared address spaces without lifetime
+            -- accounting for every executing member.
+            raise ProcessException with "Shared-address-space thread creation unsupported";
+        end if;
         if requestedPID /= NO_PROCESS then
             PIDTracker.allocSpecificPID (requestedPID);
             pid := requestedPID;
@@ -320,6 +395,8 @@ package body Process is
             end loop;
 
             ignore := Util.memset (proctab(pid)'Address, 0, Process'Size / 8);
+            proctab(pid).lifetime := Process_Lifetime.Initial_State;
+            proctab(pid).admitted := False;
             if savedGen >= Capabilities.INITIAL_GENERATION then
                 proctab(pid).capGeneration := savedGen;
             else
@@ -336,6 +413,9 @@ package body Process is
         proctab(pid).pid          := pid;
         proctab(pid).ppid         := ppid;
         proctab(pid).svpid        := ppid;
+        if ppid /= NO_PROCESS then
+            proctab(pid).parentGeneration := proctab(ppid).capGeneration;
+        end if;
         proctab(pid).name         := name;
         proctab(pid).mode         := USER;
         proctab(pid).state        := SUSPENDED;
@@ -421,6 +501,10 @@ package body Process is
             );
 
             proctab(pid).mail := pid;
+            Spinlocks.enterCriticalSection (mailtab(pid).lock);
+            mailtab(pid).closed := True;
+            mailtab(pid).ring := (others => <>);
+            Spinlocks.exitCriticalSection (mailtab(pid).lock);
 
             -- Grant initial capabilities for well-known services
             Capabilities.Operations.grantInitialCaps (
@@ -472,6 +556,11 @@ package body Process is
         targetCPU : constant Natural := proctab(pid).cpu;
         currentPID : constant ProcessID := PerCPUData.getCurrentPID;
     begin
+        if proctab(pid).state = INVALID or else
+           Process_Lifetime.Closing (proctab(pid).lifetime)
+        then
+            return; -- A queued notification cannot restart a retiring task.
+        end if;
         proctab(pid).readyTSC := x86.rdtsc;
         proctab(pid).state := READY;
         Queues.insert (cpuReadyLists(targetCPU), pid,
@@ -614,6 +703,10 @@ package body Process is
         -- println ("Process.resume: acquiring proctab lock");
         Spinlocks.enterCriticalSection (lock);
 
+        if Process_Lifetime.Closing (proctab(pid).lifetime) then
+            Spinlocks.exitCriticalSection (lock);
+            return;
+        end if;
         if proctab(pid).state /= SUSPENDED then
             raise ProcessException with "Process.resume: Attempting to resume non-suspended process.";
         end if;
@@ -633,6 +726,10 @@ package body Process is
     begin
         Spinlocks.enterCriticalSection (lock);
 
+        if Process_Lifetime.Closing (proctab(pid).lifetime) then
+            Spinlocks.exitCriticalSection (lock);
+            return;
+        end if;
         if proctab(pid).state = WAITINGFOREVENT or else
            proctab(pid).state = WAITINGFORREPLY or else
            proctab(pid).state = WAITINGFORCOMPLETION or else
@@ -765,6 +862,7 @@ package body Process is
                                initBinaryStart'Address,
                                initSize);
 
+        publish (pid);
         resume (pid);
 
     end createFirstProcess;
@@ -795,251 +893,88 @@ package body Process is
     end switchAddressSpace;
 
     ---------------------------------------------------------------------------
-    -- removeFromMailQueue
-    -- If a process is blocked in the SENDING or RECEIVING states, this
-    -- procedure will identify the appropriate mailbox it is waiting on, and
-    -- remove it from the list.
-    ---------------------------------------------------------------------------
-    procedure removeFromMailQueue (pid : in ProcessID)
-    is
-        mailbox : constant ProcessID    := proctab(pid).queueKey;
-        state   : constant ProcessState := proctab(pid).state;
-        ignore  : ProcessID;
-    begin
-        if state = SENDING then
-            Queues.popItem (mailtab(mailbox).sendQueue, pid, ignore);
-        elsif state = RECEIVING then
-            Queues.popItem (mailtab(mailbox).recvQueue, pid, ignore);
-        else
-            raise ProcessException with "Process.removeFromMailQueue called on non-SENDING/RECEIVING process.";
-        end if;
-    end removeFromMailQueue;
-
-    ---------------------------------------------------------------------------
     -- killProcess
     ---------------------------------------------------------------------------
-    procedure killProcess (pid : in ProcessID)
-    is
-        -- recursively unmaps/deallocates process' full paging hierarchy
-        procedure deleteP4 is new Virtmem.deleteP4 (BuddyAllocator.freeFrame);
-
-        ignore      : ProcessID;
-        pidReusable : Boolean;
-        grantDeferred : Boolean := False;
+    function killProcess (pid : ProcessID;
+                          expectedGeneration : Capabilities.Generation := 0)
+                          return Boolean is
+        accepted : Boolean := False;
     begin
-        print ("Process.killProcess: cleaning up pid "); println (Integer(pid));
-
-        -- Back to kernel addressing.
-        Mem_mgr.switchAddressSpace;
-
-        --  Notify parent (who requested the spawn) that child has exited.
-        --  Must happen BEFORE acquiring Process.lock because sendEvent
-        --  acquires mailtab.lock then calls notify() which acquires
-        --  Process.lock — doing it inside would reverse lock ordering.
-        if proctab(pid).ppid /= NO_PROCESS then
-            notifyParent : declare
-                exitMsg : Message := NULL_MESSAGE;
-            begin
-                exitMsg.tag := (label  => IPC_Labels.EVENT_CHILD_EXIT,
-                                length => 1,
-                                flags  => 0,
-                                badge  => 0);
-                exitMsg.words (0) := Unsigned_64 (pid);
-                IPC.sendEvent (proctab(pid).ppid, exitMsg);
-            end notifyParent;
-        end if;
-
-        --  Also notify supervisor if different from parent
-        if proctab(pid).svpid /= NO_PROCESS and then
-           proctab(pid).svpid /= proctab(pid).ppid
-        then
-            notifySupervisor : declare
-                exitMsg : Message := NULL_MESSAGE;
-            begin
-                exitMsg.tag := (label  => IPC_Labels.EVENT_CHILD_EXIT,
-                                length => 1,
-                                flags  => 0,
-                                badge  => 0);
-                exitMsg.words (0) := Unsigned_64 (pid);
-                IPC.sendEvent (proctab(pid).svpid, exitMsg);
-            end notifySupervisor;
-        end if;
-
-        -- println ("Process.kill: acquiring proctab lock");
+        if pid = NO_PROCESS then return False; end if;
+        -- Close admission and request stop in the same mailbox/process order
+        -- used by producers. No resources are reclaimed by this caller.
+        Spinlocks.enterCriticalSection (mailtab(pid).lock);
         Spinlocks.enterCriticalSection (lock);
+        if proctab(pid).admitted and then proctab(pid).mode = USER and then
+           proctab(pid).state /= INVALID and then
+           (expectedGeneration = 0 or else
+            expectedGeneration = proctab(pid).capGeneration)
+        then
+            mailtab(pid).closed := True;
+            Process_Lifetime.Request_Stop (proctab(pid).lifetime);
+            proctab(pid).receiveDeadlineActive := False;
+            wakeReaper;
+            IPI.broadcastReschedule;
+            accepted := True;
+        end if;
+        Spinlocks.exitCriticalSection (lock);
+        Spinlocks.exitCriticalSection (mailtab(pid).lock);
+        return accepted;
+    end killProcess;
 
-        --  Disarm a timed receive before unlinking it. The timer's atomic
-        --  hint check will then leave mailbox teardown as the sole remover.
-        proctab(pid).receiveDeadlineActive := False;
-
-        -- Remove this process from whatever list it was on (if any)
-          case proctab(pid).state is
-            when READY =>
-                Queues.popItem (cpuReadyLists(proctab(pid).cpu), pid, ignore);
-
-            when SLEEPING =>
-                Queues.popItem (sleepList, pid, ignore);
-
-            when SENDING | RECEIVING =>
-                removeFromMailQueue (pid);
-
-            when others =>
-                null;
-        end case;
-
-        proctab(pid).state := INVALID;
-
-        --  Wake processes blocked on our mailbox (sendQueue / recvQueue)
-        drainMailQueues : declare
-            stuckPID : ProcessID;
-        begin
-            --  Drain sendQueue: processes waiting to SEND to dying process
-            loop
-                exit when Queues.isEmpty (mailtab(pid).sendQueue);
-                Queues.dequeue (mailtab(pid).sendQueue, stuckPID);
-                proctab(stuckPID).replyMsg := NULL_MESSAGE;
-                ready (stuckPID);
-            end loop;
-
-            --  Drain recvQueue: processes waiting to RECEIVE from dying process
-            loop
-                exit when Queues.isEmpty (mailtab(pid).recvQueue);
-                Queues.dequeue (mailtab(pid).recvQueue, stuckPID);
-                proctab(stuckPID).replyMsg := NULL_MESSAGE;
-                ready (stuckPID);
-            end loop;
-
-            --  Wake senders in the ring that are WAITINGFORREPLY
-            --  (from send() Path 1, never dequeued by receive())
-            drainRingSenders : declare
-                r   : MessageRing renames mailtab(pid).ring;
-                idx : RingIndex;
-                s   : ProcessID;
-            begin
-                for i in 0 .. r.count - 1 loop
-                    idx := (r.tail + i) mod RING_SIZE;
-                    s   := r.entries(idx).sender;
-                    if s /= NO_PROCESS
-                       and then proctab(s).state = WAITINGFORREPLY
-                    then
-                        proctab(s).replyMsg := NULL_MESSAGE;
-                        ready (s);
-                    end if;
-                end loop;
-            end drainRingSenders;
-        end drainMailQueues;
-
-        --  Wake processes waiting for reply from dying process (CAP_REPLY scan)
-        wakeWaiters : declare
-            use type Capabilities.CapabilityType;
-            cap : Capabilities.Capability;
-        begin
-            for s in Capabilities.CapabilitySlot loop
-                cap := proctab(pid).caps(s);
-                if cap.capType = Capabilities.CAP_REPLY and then
-                   cap.object.ref > 0 and then
-                   cap.object.ref <= Unsigned_64 (ProcessID'Last)
+    procedure retirementWorker is
+        victim : ProcessID;
+        claimed : Boolean;
+    begin
+        loop
+            victim := NO_PROCESS;
+            Spinlocks.enterCriticalSection (lock);
+            for p in ProctabType'Range loop
+                if proctab(p).admitted and then
+                   Process_Lifetime.Can_Reap (proctab(p).lifetime)
                 then
-                    declare
-                        senderPID : constant ProcessID :=
-                            ProcessID (cap.object.ref);
-                    begin
-                        if proctab(senderPID).state = WAITINGFORREPLY and then
-                           cap.gen = proctab(senderPID).capGeneration
-                        then
-                            proctab(senderPID).replyMsg := NULL_MESSAGE;
-                            ready (senderPID);
-                        end if;
-                    end;
+                    Process_Lifetime.Claim_Reap (proctab(p).lifetime, claimed);
+                    if not claimed then
+                        raise ProcessException with "Retirement claim lost under process lock";
+                    end if;
+                    -- Admission was closed before this claim. INVALID rejects
+                    -- administrative operations; PID storage remains reserved.
+                    proctab(p).state := INVALID;
+                    Queues.detach (cpuReadyLists(proctab(p).cpu), p);
+                    Queues.detach (sleepList, p, Queues.Delta_Queue);
+                    victim := p;
+                    exit;
                 end if;
             end loop;
-        end wakeWaiters;
-
-        --  Clear stale mailbox state
-        mailtab(pid).ring := (others => <>);
-
-        --  Clear completion queue and pending requests
-        completionTab(pid) := (ring => (others => NULL_COMPLETION),
-                               head => 0, tail => 0, count => 0);
-        proctab(pid).pendingRequests :=
-            (others => (NO_PROCESS, NO_REQUEST_ID, 0));
-        proctab(pid).numPending := 0;
-        proctab(pid).nextRequestId := 1;
-        proctab(pid).irqNotificationPending := False;
-        proctab(pid).receiveDeadlineActive := False;
-        proctab(pid).receiveDeadlineMs := 0;
-        proctab(pid).receiveDeadlineReceiver := NO_PROCESS;
-
-        -- Clear FPU ownership if killed process owns the FPU
-        clearFPU : declare
-            perCPUAddr : constant System.Address :=
-                PerCPUData.getPerCPUDataAddr;
-            cpuData : PerCPUData.PerCPUData with
-                Import, Volatile, Address => perCPUAddr;
-        begin
-            if cpuData.fpuOwner = pid then
-                cpuData.fpuOwner := NO_PROCESS;
+            if victim = NO_PROCESS then
+                -- No polling and no lost wakeup: request/CPU-stop uses this
+                -- same process lock to ready the suspended worker.
+                proctab(ReaperPID).state := SUSPENDED;
+                Scheduler.enter;
+                Spinlocks.exitCriticalSection (lock);
+            else
+                Spinlocks.exitCriticalSection (lock);
+                reclaimProcess (victim);
+                yield;
             end if;
-        end clearFPU;
+        end loop;
+    end retirementWorker;
 
-        -- Revoke any shared memory grants this process had created
+    procedure reclaimProcess (pid : ProcessID) is
+        procedure deleteP4 is new Virtmem.deleteP4 (BuddyAllocator.freeFrame);
+        pidReusable, finished : Boolean;
+        grantDeferred : Boolean := False;
+        parent : constant ProcessID := proctab(pid).ppid;
+        parentGen : constant Capabilities.Generation :=
+            proctab(pid).parentGeneration;
+        exitMsg : Message := NULL_MESSAGE;
+    begin
+        print ("Process.reclaimProcess: stopped PID "); println (Integer(pid));
+        -- Worker owns its own stack and runs on kernel page tables. The
+        -- victim's execution presence is zero; cleanup holds no global lock.
+        IPC.retireMailboxes (pid);
         IPC.revokeAllGrants (pid);
-
-        -- Invalidate grants received by this process before its PID can be
-        -- reused. The dying address space is no longer runnable, so the owner
-        -- records are the remaining security-relevant state.
         IPC.revokeAllGrantsTo (pid);
-
-        -- Clean pending requests targeting this process from all others
-        cleanPending : declare
-        begin
-            for p in ProcessID'First + 1 .. ProcessID'Last loop
-                if proctab(p).state /= INVALID and p /= pid then
-                    declare
-                        writeIdx : Natural := 0;
-                        cq       : CompletionQueue renames completionTab(p);
-                    begin
-                        for r in 0 .. proctab(p).numPending - 1 loop
-                            if proctab(p).pendingRequests(r).dest /= pid then
-                                if writeIdx /= r then
-                                    proctab(p).pendingRequests(writeIdx) :=
-                                        proctab(p).pendingRequests(r);
-                                end if;
-                                writeIdx := writeIdx + 1;
-                            else
-                                if cq.count < COMPLETION_QUEUE_SIZE then
-                                    cq.ring(cq.tail) :=
-                                        (requestId =>
-                                            proctab(p).pendingRequests(r)
-                                                .requestId,
-                                         token =>
-                                            proctab(p).pendingRequests(r)
-                                                .token,
-                                         msg       => NULL_MESSAGE,
-                                         from      => pid,
-                                         status    => COMPLETION_TARGET_DIED,
-                                         valid     => True);
-                                    cq.tail := (cq.tail + 1) mod
-                                        COMPLETION_QUEUE_SIZE;
-                                    cq.count := cq.count + 1;
-                                    if proctab(p).state =
-                                        WAITINGFORCOMPLETION
-                                    then
-                                        ready (p);
-                                    end if;
-                                end if;
-                            end if;
-                        end loop;
-                        proctab(p).numPending := writeIdx;
-                        for r in writeIdx .. MAX_PENDING_ASYNC - 1 loop
-                            proctab(p).pendingRequests(r) :=
-                                (NO_PROCESS, NO_REQUEST_ID, 0);
-                        end loop;
-                    end;
-                end if;
-            end loop;
-        end cleanPending;
-
         --  Unregister IRQ and sysinfo driver registrations
         Capabilities.IRQ.unregisterAllByPID (Unsigned_64 (pid));
         Sysinfo.unregisterDriverByPID (pid);
@@ -1073,11 +1008,10 @@ package body Process is
 
         if proctab(pid).mode = USER and not proctab(pid).isThread then
 
-            loop
+            while proctab(pid).frames.length > 0 loop
                 BuddyAllocator.freeFrame (FrameLists.front(proctab(pid).frames));
                 FrameLists.popFront (proctab(pid).frames);
 
-                exit when proctab(pid).frames.length = 0;
             end loop;
 
             FrameLists.delete (proctab(pid).frames);
@@ -1097,28 +1031,31 @@ package body Process is
             proctab(pid).kernelStack := null;
         end if;
 
-        -- Return the PID only when revocation produced a distinct generation.
-        -- Exhausted PIDs stay marked used and are permanently retired.
-        if pidReusable and then not grantDeferred then
-            PIDTracker.freePID (pid);
-        elsif grantDeferred then
-            IPC.finishGrantProtectedTeardown (pid);
-        end if;
 
+        -- Retire before either immediate or grant-deferred PID publication.
+        -- No access to proctab(pid) is allowed after publishing the PID free.
+        Spinlocks.enterCriticalSection (lock);
+        Process_Lifetime.Finish_Reap (proctab(pid).lifetime, finished);
+        if not finished then
+            raise ProcessException with "Reclamation without exclusive retirement claim";
+        end if;
+        proctab(pid).admitted := False;
+        if grantDeferred then
+            IPC.finishGrantProtectedTeardown (pid);
+        elsif pidReusable then
+            PIDTracker.freePID (pid);
+        end if;
         Spinlocks.exitCriticalSection (lock);
 
-        -- Restore the caller's address space. killProcess switched to kernel
-        -- page tables (line 709) for safe teardown of the target's pages.
-        -- If we're killing another process (not self), we need to switch back
-        -- so the caller can resume in userspace.
-        declare
-            callerPID : constant ProcessID := PerCPUData.getCurrentPID;
-        begin
-            if callerPID /= pid and callerPID /= NO_PROCESS then
-                switchAddressSpace (callerPID);
-            end if;
-        end;
-    end killProcess;
+        -- Report completed retirement, not merely a requested stop. Bind the
+        -- notification to the original parent's generation, never a reused PID.
+        if parent /= NO_PROCESS and then parentGen /= 0 then
+            exitMsg.tag := (label => IPC_Labels.EVENT_CHILD_EXIT,
+                            length => 1, flags => 0, badge => 0);
+            exitMsg.words(0) := Unsigned_64(pid);
+            IPC.sendRetirementEvent (parent, parentGen, exitMsg);
+        end if;
+    end reclaimProcess;
 
     ---------------------------------------------------------------------------
     -- kill
@@ -1126,9 +1063,11 @@ package body Process is
     procedure kill (pid : in ProcessID)
     is
     begin
-        killProcess (pid);
+        if not killProcess (pid) then
+            raise ProcessException with "Self termination request denied";
+        end if;
 
-        -- killProcess released the lock, but Scheduler.enter expects it
+        -- The stop request released the lock, but Scheduler.enter expects it
         -- held (the next process resuming from yield will release it).
         Spinlocks.enterCriticalSection (lock);
 
@@ -1256,6 +1195,11 @@ package body Process is
             end if;
 
             proctab(toPID).state := RUNNING;
+
+            -- The lock is transferred with the stack. No reaper can observe
+            -- Leave_CPU until asm_switch_to has stopped using fromPID's stack.
+            noteContextStopped (fromPID);
+            noteContextStarted (toPID);
 
             -- asm_switch_to saves fromPID's RSP and loads toPID's RSP.
             -- Target resumes in yield() which releases Process.lock.

@@ -325,6 +325,7 @@ package body Process.Loader is
                 print ("Process.Loader: Loaded module "); print (procName);
                 print (" w/ process ID "); println (pid);
 
+                publish (pid);
                 return pid;
             end;
         end if;

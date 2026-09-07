@@ -182,6 +182,7 @@ package body Syscall is
                 Trace.ObserveDuration (Trace.EVENT_SYSCALL_TIME,
                                        x86.rdtsc - startTSC);
             end if;
+            Process.checkTermination;
             return 0;
         end if;
 
@@ -430,6 +431,7 @@ package body Syscall is
             Trace.ObserveDuration (Trace.EVENT_SYSCALL_TIME,
                                    x86.rdtsc - startTSC);
         end if;
+        Process.checkTermination;
         return retval;
     end syscallHandler;
 

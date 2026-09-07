@@ -27,7 +27,7 @@ Usage: tests/headless/run.sh [options]
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, capability-security, storage-grants, audio-grants, desktop-display, input-stream, devices, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, capability-security, storage-grants, audio-grants, desktop-display, input-stream, devices, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
   --timeout SECONDS    QEMU runtime before timeout is treated as success
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
   --disk PATH          Base ext2 disk image (default: kernel/nvme_disk.img)
@@ -119,7 +119,7 @@ case "$TIMEOUT_SECONDS" in
 esac
 
 case "$TEST_NAME" in
-    boot-shell-nvme|async-ipc|bench-ipc|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|capability-security|storage-grants|audio-grants|desktop-display|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
+    boot-shell-nvme|async-ipc|bench-ipc|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|capability-security|storage-grants|audio-grants|desktop-display|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -216,7 +216,7 @@ case "$TEST_NAME" in
     ccl-vm)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-vm.conf"
         ;;
-    ccl-workbench|ccl-workbench-virtio-vga)
+    ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-workbench.conf"
         ;;
     capability-security)
@@ -270,6 +270,7 @@ if [ -n "$INIT_PROFILE" ]; then
     if [ "$TEST_NAME" = "desktop-display" ] ||
        [ "$TEST_NAME" = "ccl-workbench" ] ||
        [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
+       [ "$TEST_NAME" = "ccl-workspace" ] ||
        [ "$TEST_NAME" = "input-stream" ] ||
        [ "$TEST_NAME" = "devices" ] ||
        [ "$TEST_NAME" = "files" ] ||
@@ -293,11 +294,13 @@ if [ -n "$INIT_PROFILE" ]; then
         done
     fi
     if [ "$TEST_NAME" = "ccl-vm" ] || [ "$TEST_NAME" = "ccl-workbench" ] ||
-       [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ]; then
+       [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
+       [ "$TEST_NAME" = "ccl-workspace" ]; then
         if [ "$TEST_NAME" = "ccl-vm" ]; then
             CCL_IMAGES="ccl-vm.app ccl-test-host.svc clock.svc"
         else
             CCL_IMAGES="ccl-workbench.app clock.svc desktop.svc display.svc"
+            debugfs -w -R "mkdir work" "$TEMP_DISK" >/dev/null 2>&1
         fi
         for CCL_IMAGE_NAME in $CCL_IMAGES; do
             CCL_IMAGE="$KERNEL_DIR/isodir/boot/$CCL_IMAGE_NAME"
@@ -331,6 +334,7 @@ if [ -n "$INIT_PROFILE" ]; then
         done
     fi
     if [ "$TEST_NAME" = "files" ]; then
+        debugfs -w -R "mkdir lost+found/nested" "$TEMP_DISK" >/dev/null 2>&1
         for FILES_TEST_IMAGE_NAME in files.app desktop.svc; do
             FILES_TEST_IMAGE="$KERNEL_DIR/isodir/boot/$FILES_TEST_IMAGE_NAME"
             if [ ! -f "$FILES_TEST_IMAGE" ]; then
@@ -343,6 +347,21 @@ if [ -n "$INIT_PROFILE" ]; then
               "write $FILES_TEST_IMAGE $FILES_TEST_IMAGE_NAME" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $FILES_TEST_IMAGE_NAME" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "bench-ipc" ]; then
+        for BENCH_IMAGE_NAME in bench-ipc-client.app bench-ipc-server.app; do
+            BENCH_IMAGE="$KERNEL_DIR/isodir/boot/$BENCH_IMAGE_NAME"
+            if [ ! -f "$BENCH_IMAGE" ]; then
+                echo "headless: missing current benchmark image: $BENCH_IMAGE" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $BENCH_IMAGE_NAME" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $BENCH_IMAGE $BENCH_IMAGE_NAME" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $BENCH_IMAGE_NAME" >&2
                 exit 1
             fi
         done
@@ -381,6 +400,7 @@ if [ -n "$INIT_PROFILE" ]; then
         done
     fi
     if [ "$TEST_NAME" = "storage-grants" ]; then
+        debugfs -w -R "symlink nav-link lost+found" "$TEMP_DISK" >/dev/null 2>&1
         STORAGE_TEST_IMAGE="$KERNEL_DIR/isodir/boot/storage-check.app"
         if [ ! -f "$STORAGE_TEST_IMAGE" ]; then
             echo "headless: missing current storage-check image: $STORAGE_TEST_IMAGE" >&2
@@ -393,12 +413,38 @@ if [ -n "$INIT_PROFILE" ]; then
             echo "headless: failed to install storage-check.app" >&2
             exit 1
         fi
+        SCOPE_TEST_IMAGE="$KERNEL_DIR/isodir/boot/filesystem-scope-check.app"
+        if [ ! -f "$SCOPE_TEST_IMAGE" ]; then
+            echo "headless: build storage-check before running storage-grants" >&2
+            exit 1
+        fi
+        debugfs -w -R "rm filesystem-scope-check.app" "$TEMP_DISK" >/dev/null 2>&1
+        if ! debugfs -w -R \
+          "write $SCOPE_TEST_IMAGE filesystem-scope-check.app" \
+          "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to install filesystem scope check" >&2
+            exit 1
+        fi
         # Install an intentionally sparse file. The storage diagnostic writes
         # its first data block, exercising ext2 allocation outside group 0 as
         # well as the shared-memory transfer.
         TEMP_STORAGE_FIXTURE="$(mktemp \
           "${TMPDIR:-/tmp}/cubit-storage-sparse.XXXXXX")"
         truncate -s 8192 "$TEMP_STORAGE_FIXTURE"
+        for SCOPE_DIR in scope-allowed scope-allowed/nested scope-allowed-other scope-work; do
+            debugfs -w -R "mkdir $SCOPE_DIR" "$TEMP_DISK" >/dev/null 2>&1
+        done
+        for SCOPE_FILE in scope-allowed/readme scope-allowed-other/readme; do
+            if ! debugfs -w -R "write $TEMP_STORAGE_FIXTURE $SCOPE_FILE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install scoped file fixture" >&2
+                exit 1
+            fi
+        done
+        # CuBit authority, not ext2 uid/gid/mode, decides app access. Keep the
+        # regular-file type nibble and clear all legacy permission bits.
+        debugfs -w -R "set_inode_field scope-allowed/readme mode 0100000" \
+          "$TEMP_DISK" >/dev/null 2>&1
         debugfs -w -R "rm config.dat" "$TEMP_DISK" >/dev/null 2>&1
         if ! debugfs -w -R \
           "write $TEMP_STORAGE_FIXTURE config.dat" \
@@ -410,6 +456,12 @@ if [ -n "$INIT_PROFILE" ]; then
         # ext2 dirent's record-length field. The service must reject the page
         # without reading a variable-length name or advancing its cursor.
         debugfs -w -R "mkdir corrupt-dir" "$TEMP_DISK" >/dev/null 2>&1
+        # The rename path must not treat an indexed directory as plain ext2
+        # records and leave its name index inconsistent. This is deliberately
+        # a flagged fixture, not a claim to generate a valid HTree here.
+        debugfs -w -R "mkdir indexed-dir" "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "set_inode_field indexed-dir flags 0x1000" \
+          "$TEMP_DISK" >/dev/null 2>&1
         CORRUPT_DIR_BLOCK="$(debugfs -R "stat corrupt-dir" "$TEMP_DISK" 2>/dev/null | sed -n 's/.*(0):\([0-9][0-9]*\).*/\1/p' | head -n 1)"
         if [ -z "$CORRUPT_DIR_BLOCK" ]; then
             echo "headless: could not locate corrupt directory block" >&2
@@ -428,11 +480,15 @@ fi
 rm -f "$SERIAL_LOG" "$NET_PCAP"
 
 sed -i 's/^set default=.*/set default=4/' "$GRUB_CFG"
-# Focused runs often follow `make cubit_kernel` rather than `make iso`.
-# Always stage that freshly built kernel and regenerate the stage-1 archive
+# Focused runs must not silently exercise a kernel predating source edits.
+# Compile/check the kernel, stage it, and regenerate the stage-1 archive
 # from the currently staged services before rebuilding the test ISO. Without
 # this, a focused driver build can appear to pass while QEMU boots an older
 # copy from initrd.img.
+if ! make -C "$KERNEL_DIR" cubit_kernel >/dev/null; then
+    echo "headless: kernel build failed" >&2
+    exit 1
+fi
 cp "$KERNEL_DIR/cubit_kernel" "$KERNEL_DIR/isodir/boot/cubit_kernel"
 if ! make -C "$KERNEL_DIR" initrd >/dev/null; then
     echo "headless: failed to refresh stage-1 initrd" >&2
@@ -446,6 +502,7 @@ cp "$GRUB_BAK" "$GRUB_CFG"
 
 VIDEO_ARGS="-device virtio-gpu-pci"
 if [ "$TEST_NAME" = "virtio-vga-primary" ] ||
+   [ "$TEST_NAME" = "ccl-workspace" ] ||
    [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
    [ "$TEST_NAME" = "desktop-virtio-vga" ] ||
    [ "$TEST_NAME" = "desktop-doom" ]; then
@@ -468,6 +525,7 @@ fi
 MONITOR_ARGS=()
 QMP_ARGS=()
 if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] ||
+   [ "$TEST_NAME" = "ccl-workspace" ] ||
    [ "$TEST_NAME" = "desktop-doom" ]; then
     if ! command -v nc >/dev/null 2>&1; then
         echo "headless: desktop input regression requires nc" >&2
@@ -534,6 +592,113 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] ||
                 printf 'sendkey up 500\n'
                 sleep 1
                 printf 'sendkey ctrl 500\n'
+            } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+        elif [ "$TEST_NAME" = "ccl-workspace" ]; then
+            workbench_ready=0
+            for ((attempt = 0; attempt < 150; attempt++)); do
+                if grep -F "ccl-workbench: first frame presented" "$SERIAL_LOG" >/dev/null; then
+                    workbench_ready=1
+                    break
+                fi
+                sleep 0.1
+            done
+            if [ "$workbench_ready" -ne 1 ]; then
+                echo "headless: Workbench input target did not appear" >&2
+                exit 1
+            fi
+            {
+                printf 'sendkey ctrl-a\n'
+                sleep 0.2
+                printf 'sendkey backspace\n'
+                sleep 0.2
+                printf 'sendkey 4\n'
+                sleep 0.2
+                printf 'sendkey 1\n'
+                sleep 0.2
+                printf 'sendkey ctrl-s\n'
+                sleep 0.5
+                printf 'sendkey ret\n'
+                sleep 0.7
+                printf 'sendkey ctrl-a\n'
+                sleep 0.2
+                printf 'sendkey backspace\n'
+                sleep 0.2
+                printf 'sendkey 4\n'
+                sleep 0.2
+                printf 'sendkey 2\n'
+                sleep 0.2
+                # Unsaved changes must prevent Open from restoring revision 1.
+                printf 'sendkey ctrl-o\n'
+                sleep 0.4
+                printf 'sendkey ctrl-s\n'
+                sleep 0.5
+                printf 'sendkey ret\n'
+                sleep 0.7
+                printf 'sendkey ctrl-o\n'
+                sleep 0.5
+                printf 'sendkey down\n'
+                sleep 0.2
+                printf 'sendkey ret\n'
+                sleep 0.5
+                # Save the loaded source under a human-chosen name.
+                printf 'sendkey ctrl-s\n'
+                sleep 0.5
+                for key in c l o c k dot c c l; do
+                    printf 'sendkey %s\n' "$key"
+                    sleep 0.15
+                done
+                printf 'sendkey ret\n'
+                sleep 0.6
+                # Choosing an existing file in Save must not overwrite it.
+                printf 'sendkey ctrl-s\n'
+                sleep 0.5
+                printf 'sendkey up\n'
+                sleep 0.2
+                printf 'sendkey ret\n'
+                sleep 0.4
+                printf 'sendkey esc\n'
+                sleep 0.2
+                printf 'sendkey f5\n'
+                sleep 0.5
+                printf 'sendkey f6\n'
+                sleep 0.3
+                printf 'sendkey 4\n'
+                sleep 0.15
+                printf 'sendkey 2\n'
+                sleep 0.15
+                printf 'sendkey ret\n'
+                sleep 0.3
+                printf 'sendkey up\n'
+                sleep 0.15
+                printf 'sendkey down\n'
+                sleep 0.15
+                printf 'sendkey f6\n'
+                sleep 0.3
+                # Exercise composed punctuation through the real desktop text
+                # path, then verify the exact saved bytes (including quotes).
+                printf 'sendkey ctrl-a\n'
+                sleep 0.2
+                printf 'sendkey backspace\n'
+                sleep 0.2
+                for key in shift-apostrophe h e l l o shift-1 shift-1 shift-apostrophe; do
+                    printf 'sendkey %s\n' "$key"
+                    sleep 0.15
+                done
+                printf 'sendkey ctrl-s\n'
+                sleep 0.5
+                for key in q u o t e d dot c c l; do
+                    printf 'sendkey %s\n' "$key"
+                    sleep 0.15
+                done
+                printf 'sendkey ret\n'
+                sleep 0.7
+                printf 'sendkey f6\n'
+                sleep 0.3
+                for key in shift-apostrophe h e l l o shift-1 shift-1 shift-apostrophe; do
+                    printf 'sendkey %s\n' "$key"
+                    sleep 0.15
+                done
+                printf 'sendkey ret\n'
             } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
         elif [ "$TEST_NAME" = "files" ]; then
             # Files is the first native client of the shared resizable table
@@ -624,6 +789,24 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] ||
             sleep 0.2
             printf 'sendkey f5\n' | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
             sleep 0.2
+            {
+                # Root's first visible object is lost+found. Enter traverses
+                # owned directory handles; Backspace never resolves '..'.
+                printf 'sendkey home\n'
+                sleep 0.3
+                printf 'sendkey ret\n'
+                sleep 0.4
+                printf 'sendkey home\n'
+                sleep 0.2
+                printf 'sendkey ret\n'
+                sleep 0.4
+                printf 'sendkey f5\n'
+                sleep 0.3
+                printf 'sendkey backspace\n'
+                sleep 0.4
+                printf 'sendkey backspace\n'
+                sleep 0.4
+            } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
             {
                 # Finish by dragging the Files title bar. This exercises live
                 # compositor movement while a client surface is attached and
@@ -725,6 +908,7 @@ bench-ipc-client: starting
 BENCH: ipc sync
 BENCH: ipc async
 BENCH: PASS ipc
+IPC-RETIREMENT-CHECK: PASS
 TRACE: summary begin
 TRACE: event=syscall_enter
 TRACE: event=schedule_run
@@ -772,6 +956,20 @@ ccl-workbench: native window ready
 ccl-workbench: first frame presented
 "
         ;;
+    ccl-workspace)
+        required_markers="
+clock: registered
+desktop: display backend=3 caps=13
+ccl-workbench: native window ready
+ccl-workbench: first frame presented
+ccl-workbench: workspace saved ccl-0001.ccl
+ccl-workbench: workspace saved ccl-0002.ccl
+ccl-workbench: workspace opened ccl-0002.ccl
+ccl-workbench: workspace saved clock.ccl
+ccl-workbench: workspace saved quoted.ccl
+ccl-workbench: REPL completed
+"
+        ;;
     capability-security)
         required_markers="
 capability-test: getpid PASS
@@ -792,6 +990,9 @@ capability-test: all tests passed
 GRANT-REFERENCE-CHECK: PASS
 GRANT-RECLAMATION-CHECK: PASS
 MALFORMED-DIRECTORY-CHECK: PASS
+RENAME-CHECK: PASS
+DIRECTORY-NAVIGATION-CHECK: PASS
+FILESYSTEM-SCOPE-CHECK: PASS
 STORAGE-CHECK: PASS
 "
         ;;
@@ -839,6 +1040,10 @@ files: scrollbar thumb drag row=
 files: wheel scroll row=
 files: refresh click activated
 files: refresh input received
+files: entered /lost+found
+files: entered /lost+found/nested
+files: returned /lost+found
+files: returned /
 desktop: retained move path active
 "
         ;;
@@ -979,6 +1184,7 @@ if [ "$TEST_NAME" = "files" ]; then
 fi
 
 if { [ "$TEST_NAME" = "desktop-virtio-vga" ] ||
+     [ "$TEST_NAME" = "ccl-workspace" ] ||
      [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
      [ "$TEST_NAME" = "desktop-doom" ] ||
      [ "$TEST_NAME" = "virtio-vga-primary" ]; } &&
@@ -996,6 +1202,17 @@ if grep -Ei "$FAULT_SIGNATURE" "$SERIAL_LOG" >/dev/null 2>&1; then
     exit 1
 fi
 
+if [ "$TEST_NAME" = "ccl-workspace" ]; then
+    first_source="$(debugfs -R 'cat work/ccl-0001.ccl' "$TEMP_DISK" 2>/dev/null)"
+    second_source="$(debugfs -R 'cat work/ccl-0002.ccl' "$TEMP_DISK" 2>/dev/null)"
+    named_source="$(debugfs -R 'cat work/clock.ccl' "$TEMP_DISK" 2>/dev/null)"
+    quoted_source="$(debugfs -R 'cat work/quoted.ccl' "$TEMP_DISK" 2>/dev/null)"
+    if [ "$first_source" != "41" ] || [ "$second_source" != "42" ] ||
+       [ "$named_source" != "42" ] || [ "$quoted_source" != '"hello!!"' ]; then
+        echo "headless: saved source revisions were not preserved correctly" >&2
+        exit 1
+    fi
+fi
 HEADLESS_TEST_FAILED=0
 echo "headless: PASS $TEST_NAME"
 echo "headless: serial log: $SERIAL_LOG"

@@ -6,11 +6,16 @@
 --  Ext2 filesystem operations for userspace ramdisk server.
 --  Reads directly from a memory-mapped ramdisk image (no disk I/O).
 ------------------------------------------------------------------------------
+pragma Ada_2022;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
 with CuBit.Filesystems;
+with CuBit.Directory_Paths;
+with CuBit.File_Access;
+with Directory_Blocks;
+with Directory_Commit;
 
 package body Ext2 is
 
@@ -40,7 +45,7 @@ package body Ext2 is
       gid => 0, numHardLinks => 0,
       numDiskSectors => 0, flags => 0,
       osSpecific1 => 0,
-      directBlocks => (others => 0),
+      directBlocks => [others => 0],
       singleIndirectBlock => 0,
       doubleIndirectBlock => 0,
       tripleIndirectBlock => 0,
@@ -159,10 +164,10 @@ package body Ext2 is
                               flags  => 0,
                               badge  => 0);
                   msg.capBadge := 0;
-                  msg.words := (0 => lba,
+                  msg.words := [0 => lba,
                                 1 => fs.device.grant.slot,
                                 2 => sectorsNeeded,
-                                3 => fs.device.grant.generation);
+                                3 => fs.device.grant.generation];
 
                   ignore := capCall (fs.device.endpointSlot, msg);
 
@@ -219,7 +224,7 @@ package body Ext2 is
             dst : String (1 .. Natural (len))
               with Import, Address => dest;
          begin
-            dst := (others => Character'Val (0));
+            dst := [others => Character'Val (0)];
          end;
       end if;
    end readBytes;
@@ -305,78 +310,91 @@ package body Ext2 is
    end fileSize;
 
    procedure readInode
-     (fs       : Filesystem;
-      inodeNum : Unsigned_32;
-      ino      : out Inode)
+     (fs : Filesystem; inodeNum : Unsigned_32;
+      ino : out Inode; status : out Read_Status)
    is
-      --  Determine which block group this inode is in
-      blockGroup : constant Unsigned_32 :=
-        (inodeNum - 1) / fs.sb.inodesPerBlockGroup;
-
-      --  Index within that block group's inode table
-      inodeIndex : constant Unsigned_32 :=
-        (inodeNum - 1) mod fs.sb.inodesPerBlockGroup;
-
-      --  Read the block group descriptor
-      bgdtOffset : constant Storage_Offset :=
-        Storage_Offset ((fs.sb.firstDataBlock + 1) * fs.blkSize) +
-        Storage_Offset (blockGroup) * (BlockGroupDescriptor'Size / 8);
-
+      blockGroup, inodeIndex : Unsigned_32;
+      bgdtOffset, inodeTableByteOffset : Storage_Offset;
       bgd : BlockGroupDescriptor;
-
-      --  Compute byte offset of the inode within the inode table
-      inodeTableByteOffset : Storage_Offset;
       inoSize : Unsigned_32;
-      readStatus : Read_Status;
    begin
+      ino := NULL_INODE;
+      status := Read_Out_Of_Range;
       if inodeNum = 0 or else inodeNum > fs.sb.inodeCount then
-         ino := NULL_INODE;
          return;
       end if;
-
+      blockGroup := (inodeNum - 1) / fs.sb.inodesPerBlockGroup;
+      inodeIndex := (inodeNum - 1) mod fs.sb.inodesPerBlockGroup;
+      --  Widen before multiplying filesystem block numbers into byte offsets.
+      bgdtOffset :=
+        (Storage_Offset (fs.sb.firstDataBlock) + 1) *
+          Storage_Offset (fs.blkSize) +
+        Storage_Offset (blockGroup) * (BlockGroupDescriptor'Size / 8);
       readBytes
-        (fs, bgdtOffset, bgd'Address, BlockGroupDescriptor'Size / 8,
-         readStatus);
-      if readStatus /= Read_Complete then
-         ino := NULL_INODE;
+        (fs, bgdtOffset, bgd'Address, BlockGroupDescriptor'Size / 8, status);
+      if status /= Read_Complete then
          return;
       end if;
-
-      --  Use inodeSize from superblock if major version >= 1
-      if fs.sb.majorVersion >= 1 then
-         inoSize := Unsigned_32 (fs.sb.inodeSize);
-      else
-         inoSize := 128;
+      if bgd.inodeTableAddr = 0 or else
+        bgd.inodeTableAddr >= fs.sb.blockCount
+      then
+         status := Read_Out_Of_Range;
+         return;
       end if;
-
+      inoSize := (if fs.sb.majorVersion >= 1 then
+                    Unsigned_32 (fs.sb.inodeSize) else 128);
       inodeTableByteOffset :=
         Storage_Offset (bgd.inodeTableAddr) * Storage_Offset (fs.blkSize) +
         Storage_Offset (inodeIndex) * Storage_Offset (inoSize);
-
+      if inodeTableByteOffset >
+        Storage_Offset (fs.sb.blockCount) * Storage_Offset (fs.blkSize) -
+          Inode'Size / 8
+      then
+         status := Read_Out_Of_Range;
+         return;
+      end if;
       readBytes
-        (fs, inodeTableByteOffset, ino'Address, Inode'Size / 8, readStatus);
-      if readStatus /= Read_Complete then
+        (fs, inodeTableByteOffset, ino'Address, Inode'Size / 8, status);
+      if status /= Read_Complete then
          ino := NULL_INODE;
       end if;
    end readInode;
 
-   function lookupInDir
+   procedure readInode
+     (fs : Filesystem; inodeNum : Unsigned_32; ino : out Inode)
+   is
+      status : Read_Status;
+   begin
+      readInode (fs, inodeNum, ino, status);
+   end readInode;
+
+   procedure lookupInDir
      (fs      : Filesystem;
       dirIno  : Inode;
-      name    : String) return Unsigned_32
+      name : String;
+      inodeNum : out Unsigned_32;
+      status : out Directory_Lookup_Status)
    is
       entries   : CuBit.Filesystems.Directory_Entries;
       cursor    : Unsigned_64 := 0;
       nextCursor : Unsigned_64;
       count     : Natural;
-      status    : Directory_Read_Status;
+      pageStatus : Directory_Read_Status;
    begin
+      inodeNum := 0;
+      status := Lookup_Not_Found;
       loop
          readDirectoryPage
-           (fs, dirIno, cursor, entries, count, nextCursor, status);
+           (fs, dirIno, cursor, entries, count, nextCursor, pageStatus);
 
-         if status not in Directory_Page_Complete | Directory_End then
-            return 0;
+         if pageStatus not in Directory_Page_Complete | Directory_End then
+            status := (case pageStatus is
+              when Directory_Malformed => Lookup_Malformed,
+              when Directory_Device_Error => Lookup_Device_Error,
+              when Directory_Out_Of_Range => Lookup_Out_Of_Range,
+              when Directory_Range_Unsupported => Lookup_Range_Unsupported,
+              when others => Lookup_Not_Found);
+            return;
          end if;
 
          if count > 0 then
@@ -398,20 +416,34 @@ package body Ext2 is
                   end if;
 
                   if matches then
-                     return Unsigned_32 (entries (index).objectHint);
+                     inodeNum := Unsigned_32 (entries (index).objectHint);
+                     status := Lookup_Found;
+                     return;
                   end if;
                end;
             end loop;
          end if;
 
-         exit when status = Directory_End;
+         exit when pageStatus = Directory_End;
          if nextCursor <= cursor then
-            return 0;
+            status := Lookup_Malformed;
+            return;
          end if;
          cursor := nextCursor;
       end loop;
 
-      return 0;  --  Not found
+      status := Lookup_Not_Found;
+   end lookupInDir;
+
+
+   function lookupInDir
+     (fs : Filesystem; dirIno : Inode; name : String) return Unsigned_32
+   is
+      inodeNum : Unsigned_32;
+      status : Directory_Lookup_Status;
+   begin
+      lookupInDir (fs, dirIno, name, inodeNum, status);
+      return inodeNum;
    end lookupInDir;
 
    function resolvePath
@@ -460,6 +492,52 @@ package body Ext2 is
       end loop;
 
       return currentInode;
+   end resolvePath;
+
+   procedure resolvePath
+     (fs : Filesystem; path : String; inodeNum : out Unsigned_32;
+      status : out Directory_Lookup_Status)
+   is
+      current : Unsigned_32 := ROOT_INODE;
+      ino : Inode;
+      readStatus : Read_Status;
+      first : Natural := path'First;
+      last : Natural;
+   begin
+      inodeNum := 0;
+      status := Lookup_Malformed;
+      if path'Length > CuBit.Directory_Paths.Maximum_Bytes or else
+        not CuBit.File_Access.Valid_Path (path)
+      then
+         return;
+      end if;
+      while first <= path'Last loop
+         if path (first) = '/' then
+            first := first + 1;
+         else
+            last := first;
+            while last < path'Last and then path (last + 1) /= '/' loop
+               last := last + 1;
+            end loop;
+            if not CuBit.Directory_Paths.Valid_Child_Name (path (first .. last)) then
+               status := Lookup_Malformed;
+               return;
+            end if;
+            readInode (fs, current, ino, readStatus);
+            if readStatus /= Read_Complete then
+               status := (if readStatus = Read_Out_Of_Range then
+                            Lookup_Out_Of_Range else Lookup_Device_Error);
+               return;
+            end if;
+            lookupInDir (fs, ino, path (first .. last), current, status);
+            if status /= Lookup_Found then
+               return;
+            end if;
+            first := last + 1;
+         end if;
+      end loop;
+      inodeNum := current;
+      status := Lookup_Found;
    end resolvePath;
 
    --  Get the block number for a given logical block index in a file.
@@ -640,10 +718,10 @@ package body Ext2 is
          end if;
       end locateDirectoryBlock;
    begin
-      entries := (others =>
+      entries := [others =>
         (objectHint => 0, sizeBytes => 0, nameLength => 0,
          kind => DIRECTORY_KIND_UNKNOWN, flags => 0, reserved => 0,
-         name => (others => 0)));
+         name => [others => 0])];
       entryCount := 0;
       nextCursor := cursor;
       status := Directory_Malformed;
@@ -920,6 +998,11 @@ package body Ext2 is
    begin
       status := Write_Device_Error;
 
+      if fs.writeQuarantined then
+         status := Write_Read_Only;
+         return;
+      end if;
+
       if fs.backend = BLOCK_DEVICE and then
          Is_Read_Only (fs.device.description)
       then
@@ -987,10 +1070,10 @@ package body Ext2 is
                                  flags  => 0,
                                  badge  => 0);
                      msg.capBadge := 0;
-                     msg.words := (0 => lba,
+                     msg.words := [0 => lba,
                                    1 => fs.device.grant.slot,
                                    2 => 1,
-                                   3 => fs.device.grant.generation);
+                                   3 => fs.device.grant.generation];
                      ignore := capCall (fs.device.endpointSlot, msg);
 
                      if msg.tag.label /= REPLY_OK or else
@@ -1021,10 +1104,10 @@ package body Ext2 is
                                  flags  => 0,
                                  badge  => 0);
                      msg.capBadge := 0;
-                     msg.words := (0 => lba,
+                     msg.words := [0 => lba,
                                    1 => fs.device.grant.slot,
                                    2 => 1,
-                                   3 => fs.device.grant.generation);
+                                   3 => fs.device.grant.generation];
                      ignore := capCall (fs.device.endpointSlot, msg);
 
                      if msg.tag.label /= REPLY_OK or else
@@ -1078,10 +1161,10 @@ package body Ext2 is
                                     flags  => 0,
                                     badge  => 0);
                         msg.capBadge := 0;
-                        msg.words := (0 => lba,
+                        msg.words := [0 => lba,
                                       1 => fs.device.grant.slot,
                                       2 => sectorsNeeded,
-                                      3 => fs.device.grant.generation);
+                                      3 => fs.device.grant.generation];
                         ignore := capCall (fs.device.endpointSlot, msg);
 
                         if msg.tag.label /= REPLY_OK or else
@@ -1538,7 +1621,7 @@ package body Ext2 is
          gid => 0, numHardLinks => 0,
          numDiskSectors => 0, flags => 0,
          osSpecific1 => 0,
-         directBlocks => (others => 0),
+         directBlocks => [others => 0],
          singleIndirectBlock => 0,
          doubleIndirectBlock => 0,
          tripleIndirectBlock => 0,
@@ -1854,7 +1937,7 @@ package body Ext2 is
                   ino.singleIndirectBlock := newBlk;
                   createdIndirect := True;
                   --  Zero-fill the new indirect block
-                  indBuf := (others => 0);
+                  indBuf := [others => 0];
                end;
             else
                readBlock (fs, ino.singleIndirectBlock, indBuf'Address);
@@ -2337,37 +2420,202 @@ package body Ext2 is
       return 0;
    end removeDirectoryEntry;
 
-   --  Rename a file within the same directory.
-   function renameEntry
-     (fs          : in out Filesystem;
-      dirInodeNum : Unsigned_32;
-      oldName     : String;
-      newName     : String) return Boolean
+   procedure renameEntry
+     (fs : in out Filesystem; dirInodeNum : Unsigned_32;
+      oldName, newName : String; status : out Rename_Status)
    is
-      removedInode : Unsigned_32;
-      oldIno       : Inode;
-      ft           : Unsigned_8;
-      inoType      : Unsigned_8;
+      dirIno : Inode;
+      readStatus : Read_Status;
+      lookupStatus : Directory_Lookup_Status;
+      identity : Unsigned_32;
+      original : Directory_Blocks.Block_Data := [others => 0];
+      candidate : Directory_Blocks.Block_Data;
+      prepareStatus : Directory_Blocks.Prepare_Result;
+      blockNumber : Unsigned_32 := 0;
+
+      function Lookup_Failure
+        (result : Directory_Lookup_Status) return Rename_Status is
+      begin
+         case result is
+            when Lookup_Malformed => return Rename_Malformed;
+            when Lookup_Device_Error => return Rename_IO_Error;
+            when Lookup_Out_Of_Range => return Rename_Out_Of_Range;
+            when Lookup_Range_Unsupported => return Rename_Range_Unsupported;
+            when others => return Rename_Source_Not_Found;
+         end case;
+      end Lookup_Failure;
+
+      procedure Write_Block
+        (data : Directory_Blocks.Block_Data;
+         size : Directory_Blocks.Block_Length; success : out Boolean)
+      is
+         writeStatus : Write_Status;
+      begin
+         writeBytes
+           (fs, Storage_Offset (blockNumber) * Storage_Offset (fs.blkSize),
+            data'Address, Storage_Count (size), writeStatus);
+         success := writeStatus = Write_Complete;
+      end Write_Block;
+      package Committer is new Directory_Commit (Write_Block);
+      result : Committer.Commit_Result;
    begin
-      --  Look up the old entry to get its inode and file type
-      removedInode := removeDirectoryEntry (fs, dirInodeNum, oldName);
-      if removedInode = 0 then
-         return False;
+      status := Rename_Invalid_Name;
+      if not CuBit.Directory_Paths.Valid_Child_Name (oldName) or else
+        not CuBit.Directory_Paths.Valid_Child_Name (newName)
+      then
+         return;
+      end if;
+      if fs.writeQuarantined or else
+        (fs.backend = BLOCK_DEVICE and then Is_Read_Only (fs.device.description))
+      then
+         status := Rename_Read_Only;
+         return;
+      end if;
+      readInode (fs, dirInodeNum, dirIno, readStatus);
+      if readStatus /= Read_Complete then
+         status := (if readStatus = Read_Out_Of_Range then
+                       Rename_Out_Of_Range else Rename_IO_Error);
+         return;
+      elsif inodeType (dirIno) /= INODE_DIRECTORY then
+         status := Rename_Malformed;
+         return;
+      elsif dirIno.flags /= 0 then
+         --  Only plain directory records are supported for mutation. In
+         --  particular, changing a name without updating a hash index would
+         --  make that name unreachable to an index-aware filesystem reader.
+         --  Other inode flags may also require semantics we do not implement.
+         status := Rename_Range_Unsupported;
+         return;
       end if;
 
-      --  Determine file type from the inode, convert to dir entry type.
-      --  inodeType returns upper nibble (0x4=dir, 0x8=regular, 0xA=symlink)
-      --  but dir entries use different codes (2=dir, 1=regular, 7=symlink).
-      readInode (fs, removedInode, oldIno);
-      inoType := inodeType (oldIno);
-      case inoType is
-         when 16#4# => ft := FILETYPE_DIRECTORY;
-         when others => ft := FILETYPE_REGULAR;
-      end case;
+      --  Preflight the whole directory, not just the source block: another
+      --  block may already contain the requested destination.
+      lookupInDir (fs, dirIno, oldName, identity, lookupStatus);
+      if lookupStatus /= Lookup_Found then
+         status := Lookup_Failure (lookupStatus);
+         return;
+      end if;
+      if oldName = newName then
+         status := Rename_Complete;
+         return;
+      end if;
+      lookupInDir (fs, dirIno, newName, identity, lookupStatus);
+      if lookupStatus = Lookup_Found then
+         status := Rename_Destination_Exists;
+         return;
+      elsif lookupStatus /= Lookup_Not_Found then
+         status := Lookup_Failure (lookupStatus);
+         return;
+      end if;
+      if dirIno.sizeLo = 0 or else dirIno.sizeLo mod fs.blkSize /= 0 then
+         status := Rename_Malformed;
+         return;
+      elsif Unsigned_64 (dirIno.sizeLo) >
+        Unsigned_64 (NUM_DIRECT_BLOCKS) * Unsigned_64 (fs.blkSize)
+      then
+         status := Rename_Range_Unsupported;
+         return;
+      end if;
 
-      --  Add new entry pointing to the same inode
-      return addDirectoryEntry (fs, dirInodeNum, removedInode, newName, ft);
+      for index in 0 .. Natural (dirIno.sizeLo / fs.blkSize) - 1 loop
+         blockNumber := dirIno.directBlocks (index);
+         if blockNumber = 0 then
+            status := Rename_Malformed;
+            return;
+         end if;
+         readBlock (fs, blockNumber, original'Address, readStatus);
+         if readStatus /= Read_Complete then
+            status := (if readStatus = Read_Out_Of_Range then
+                          Rename_Out_Of_Range else Rename_IO_Error);
+            return;
+         end if;
+         candidate := original;
+         Directory_Blocks.Prepare_Rename
+           (candidate, Directory_Blocks.Block_Length (fs.blkSize),
+            fs.sb.inodeCount, oldName, newName, prepareStatus);
+         case prepareStatus is
+            when Directory_Blocks.Prepared =>
+               Committer.Commit
+                 (original, candidate,
+                  Directory_Blocks.Block_Length (fs.blkSize), result);
+               case result is
+                  when Committer.Committed => status := Rename_Complete;
+                  when Committer.Original_Restored => status := Rename_IO_Error;
+                  when Committer.Recovery_Required =>
+                     fs.writeQuarantined := True;
+                     status := Rename_Recovery_Required;
+               end case;
+               return;
+            when Directory_Blocks.Source_Not_Found => null;
+            when Directory_Blocks.Destination_Exists =>
+               status := Rename_Destination_Exists;
+               return;
+            when Directory_Blocks.Insufficient_Space =>
+               status := Rename_Range_Unsupported;
+               return;
+            when Directory_Blocks.Invalid_Name =>
+               status := Rename_Invalid_Name;
+               return;
+            when Directory_Blocks.Malformed_Block =>
+               status := Rename_Malformed;
+               return;
+            when Directory_Blocks.Unchanged =>
+               status := Rename_Complete;
+               return;
+         end case;
+      end loop;
+      status := Rename_Source_Not_Found;
    end renameEntry;
+
+   procedure renamePath
+     (fs : in out Filesystem; oldPath, newPath : String;
+      status : out Rename_Status)
+   is
+      function Leaf_Start (path : String) return Integer is
+      begin
+         for index in reverse path'Range loop
+            if path (index) = '/' then
+               return index + 1;
+            end if;
+         end loop;
+         return path'First;
+      end Leaf_Start;
+      directory : Unsigned_32 := ROOT_INODE;
+   begin
+      status := Rename_Invalid_Name;
+      if not CuBit.File_Access.Valid_Path (oldPath) or else
+        not CuBit.File_Access.Valid_Path (newPath) or else
+        oldPath'Length = 0 or else newPath'Length = 0 or else
+        oldPath (oldPath'Last) = '/' or else newPath (newPath'Last) = '/'
+      then
+         return;
+      end if;
+      declare
+         oldStart : constant Integer := Leaf_Start (oldPath);
+         newStart : constant Integer := Leaf_Start (newPath);
+         oldParent : constant String :=
+           (if oldStart = oldPath'First then ""
+            else oldPath (oldPath'First .. oldStart - 2));
+         newParent : constant String :=
+           (if newStart = newPath'First then ""
+            else newPath (newPath'First .. newStart - 2));
+      begin
+         if oldParent /= newParent then
+            status := Rename_Range_Unsupported;
+            return;
+         end if;
+         if oldParent'Length > 0 then
+            directory := resolvePath (fs, oldParent);
+            if directory = 0 then
+               status := Rename_Source_Not_Found;
+               return;
+            end if;
+         end if;
+         renameEntry
+           (fs, directory, oldPath (oldStart .. oldPath'Last),
+            newPath (newStart .. newPath'Last), status);
+      end;
+   end renamePath;
 
    --  Create a new file in a directory
    function createFile
@@ -2521,6 +2769,7 @@ package body Ext2 is
       tmpFs : Filesystem;
    begin
       ok := False;
+      fs.writeQuarantined := False;
       if grantBuf = System.Null_Address or else grantBytes = 0 then
          return;
       end if;
@@ -2529,7 +2778,7 @@ package body Ext2 is
         (tag      => (label => OP_DESCRIBE_DEVICE, length => 0,
                       flags => 0, badge => 0),
          capBadge => 0,
-         words    => (others => 0));
+         words    => [others => 0]);
       ignore := capCall (capSlot, describeMsg);
       if describeMsg.tag.label /= REPLY_OK or else
          describeMsg.tag.length /= 4 or else
@@ -2591,6 +2840,7 @@ package body Ext2 is
       size : Unsigned_32;
    begin
       ok := False;
+      fs.writeQuarantined := False;
 
       if base = System.Null_Address or else
          imageSize < SUPERBLOCK_OFFSET + Superblock'Size / 8

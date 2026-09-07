@@ -10,8 +10,14 @@ with CuBit.Protocols;
 with CuBit.String;
 with CuBit.UI;
 with CuBit.UI.App;
+with CCL_Workspace;
 
 package body CCL_Workbench_Platform is
+
+   procedure REPL_Completed is
+   begin
+      CuBit.Messages.debugPrint ("ccl-workbench: REPL completed" & ASCII.LF);
+   end REPL_Completed;
 
    MINIMUM_WIDTH  : constant Natural := 900;
    MINIMUM_HEIGHT : constant Natural := 400;
@@ -20,16 +26,20 @@ package body CCL_Workbench_Platform is
    REPLY_OK : constant Unsigned_32 := 16#F000#;
 
    KEY_BACKSPACE : constant Unsigned_64 := 16#0E#;
+   KEY_TAB       : constant Unsigned_64 := 16#0F#;
    KEY_ENTER     : constant Unsigned_64 := 16#1C#;
    KEY_A         : constant Unsigned_64 := 16#1E#;
    KEY_D         : constant Unsigned_64 := 16#20#;
    KEY_F         : constant Unsigned_64 := 16#21#;
+   KEY_O         : constant Unsigned_64 := 16#18#;
+   KEY_S         : constant Unsigned_64 := 16#1F#;
    KEY_Y         : constant Unsigned_64 := 16#15#;
    KEY_Z         : constant Unsigned_64 := 16#2C#;
    KEY_RIGHT_BRACKET : constant Unsigned_64 := 16#1B#;
    KEY_BACKSLASH : constant Unsigned_64 := 16#2B#;
    KEY_F3        : constant Unsigned_64 := 16#3D#;
    KEY_F5        : constant Unsigned_64 := 16#3F#;
+   KEY_F6        : constant Unsigned_64 := 16#40#;
    KEY_HOME      : constant Unsigned_64 := 16#47#;
    KEY_UP        : constant Unsigned_64 := 16#48#;
    KEY_PAGE_UP   : constant Unsigned_64 := 16#49#;
@@ -238,7 +248,11 @@ package body CCL_Workbench_Platform is
             Mods := Event.payload1;
             Current_Modifiers := Mods;
             Modifiers.all := Unsigned_32 (Mods and 7);
-            if Key = KEY_Z and then (Mods and 2) /= 0 then
+            if Key = KEY_O and then (Mods and 2) /= 0 then
+               Kind.all := Open_Source_Event;
+            elsif Key = KEY_S and then (Mods and 2) /= 0 then
+               Kind.all := Save_Source_Event;
+            elsif Key = KEY_Z and then (Mods and 2) /= 0 then
                Kind.all := (if (Mods and 1) /= 0 then 24 else 23);
             elsif Key = KEY_Y and then (Mods and 2) /= 0 then
                Kind.all := 24;
@@ -248,6 +262,8 @@ package body CCL_Workbench_Platform is
                Kind.all := 32;
             elsif Key = KEY_F3 then
                Kind.all := 33;
+            elsif Key = KEY_F6 then
+               Kind.all := Toggle_REPL_Event;
             elsif Key = KEY_F5 or else
               (Key = KEY_ENTER and then (Mods and 2) /= 0)
             then
@@ -257,6 +273,7 @@ package body CCL_Workbench_Platform is
             elsif Key = KEY_BACKSLASH and then (Mods and 3) = 3 then
                Kind.all := 29;
             elsif Key = CuBit.UI.App.KEY_ESC then Kind.all := 22;
+            elsif Key = KEY_TAB then Kind.all := Tab_Event;
             elsif Key = KEY_BACKSPACE then Kind.all := 3;
             elsif Key = KEY_ENTER then Kind.all := 4;
             elsif Key = KEY_LEFT then Kind.all := 5;
@@ -407,6 +424,7 @@ package body CCL_Workbench_Platform is
       pragma Unreferenced (Handle);
    begin
       if Native_Open then
+         CCL_Workspace.Shutdown;
          CuBit.UI.App.Close (Native_Window);
          Native_Open := False;
       end if;

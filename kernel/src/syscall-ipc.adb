@@ -22,6 +22,8 @@ with PerCpuData;
 with Process;
 with Process.IPC;
 with Process.Loader;
+with Spinlocks;
+with Process_Lifetime;
 with Sysinfo;
 with TextIO; use TextIO;
 with Util;
@@ -433,58 +435,72 @@ package body Syscall.IPC is
         end if;
 
         targetPID := Process.ProcessID (arg0);
+        declare
+            procedure performLocked is
+            begin
+                if not Process.proctab(targetPID).admitted or else
+                   Process_Lifetime.Closing (Process.proctab(targetPID).lifetime) then
+                    retval := reterr;
+                    return;
+                end if;
 
-        -- Check CAP_PROCESS with RIGHT_GRANT matching target (ref=0 wildcard)
-        for slot in Capabilities.CapabilitySlot loop
-            if Process.proctab(callerPID).caps(slot).capType =
-               Capabilities.CAP_PROCESS and then
-               Process.proctab(callerPID).caps(slot).rights(
-                   Capabilities.RIGHT_GRANT) and then
-               (Process.proctab(callerPID).caps(slot).object.ref = 0 or
-                (Process.proctab(callerPID).caps(slot).gen =
-                     Process.proctab(targetPID).capGeneration and then
-                 Process.proctab(callerPID).caps(slot).object.ref =
-                     Unsigned_64 (targetPID)))
-            then
-                hasCap := True;
-                exit;
-            end if;
-        end loop;
+                -- Check CAP_PROCESS with RIGHT_GRANT matching target (ref=0 wildcard)
+                for slot in Capabilities.CapabilitySlot loop
+                    if Process.proctab(callerPID).caps(slot).capType =
+                       Capabilities.CAP_PROCESS and then
+                       Process.proctab(callerPID).caps(slot).rights(
+                           Capabilities.RIGHT_GRANT) and then
+                       (Process.proctab(callerPID).caps(slot).object.ref = 0 or
+                        (Process.proctab(callerPID).caps(slot).gen =
+                             Process.proctab(targetPID).capGeneration and then
+                         Process.proctab(callerPID).caps(slot).object.ref =
+                             Unsigned_64 (targetPID)))
+                    then
+                        hasCap := True;
+                        exit;
+                    end if;
+                end loop;
 
-        if not hasCap then
-            println ("MAP_INTO: denied, no RIGHT_GRANT");
-            return;
-        elsif Process.proctab(targetPID).state = Process.INVALID then
-            println ("MAP_INTO: target not valid");
-            return;
-        end if;
+                if not hasCap then
+                    println ("MAP_INTO: denied, no RIGHT_GRANT");
+                    return;
+                elsif Process.proctab(targetPID).state = Process.INVALID then
+                    println ("MAP_INTO: target not valid");
+                    return;
+                end if;
 
-        case arg4 is
-            when 0 => pgFlags := Virtmem.PG_USERDATA;
-            when 1 => pgFlags := Virtmem.PG_USERDATARO;
-            when 2 => pgFlags := Virtmem.PG_USERIO;
-            when others => pgFlags := Virtmem.PG_USERDATA;
-        end case;
+                case arg4 is
+                    when 0 => pgFlags := Virtmem.PG_USERDATA;
+                    when 1 => pgFlags := Virtmem.PG_USERDATARO;
+                    when 2 => pgFlags := Virtmem.PG_USERIO;
+                    when others => pgFlags := Virtmem.PG_USERDATA;
+                end case;
 
-        ok := True;
-        for i in 0 .. Natural (arg3) - 1 loop
-            mapPage (
-                phys    => Virtmem.PhysAddress (arg1) +
-                    Virtmem.PhysAddress (i * Virtmem.PAGE_SIZE),
-                virt    => Virtmem.VirtAddress (arg2) +
-                    Virtmem.VirtAddress (i * Virtmem.PAGE_SIZE),
-                flags   => pgFlags,
-                myP4    => Process.addrtab (targetPID),
-                success => ok);
+                ok := True;
+                for i in 0 .. Natural (arg3) - 1 loop
+                    mapPage (
+                        phys    => Virtmem.PhysAddress (arg1) +
+                            Virtmem.PhysAddress (i * Virtmem.PAGE_SIZE),
+                        virt    => Virtmem.VirtAddress (arg2) +
+                            Virtmem.VirtAddress (i * Virtmem.PAGE_SIZE),
+                        flags   => pgFlags,
+                        myP4    => Process.addrtab (targetPID),
+                        success => ok);
 
-            if not ok then
-                print ("MAP_INTO: map fail page ");
-                println (i);
-                return;
-            end if;
-        end loop;
+                    if not ok then
+                        print ("MAP_INTO: map fail page ");
+                        println (i);
+                        return;
+                    end if;
+                end loop;
 
-        retval := 0;
+                retval := 0;
+            end performLocked;
+        begin
+            Spinlocks.enterCriticalSection (Process.mailtab(targetPID).lock);
+            performLocked;
+            Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
+        end;
     end handleMapInto;
 
     ---------------------------------------------------------------------------
@@ -742,6 +758,7 @@ package body Syscall.IPC is
 
 
         destPID : Process.ProcessID;
+        generation : Capabilities.Generation;
         hasCap  : Boolean := False;
         accepted : Boolean;
         authorityBadge : Capabilities.Badge := Capabilities.NO_BADGE;
@@ -752,12 +769,13 @@ package body Syscall.IPC is
           (Capabilities.RIGHT_WRITE => True, others => False);
         eventMsg : Process.Message;
     begin
-        if arg0 > Unsigned_64(Process.ProcessID'Last) then
+        if arg0 = 0 or else arg0 > Unsigned_64(Process.ProcessID'Last) then
             retval := reterr;
             return;
         end if;
 
         destPID := Process.ProcessID (arg0);
+        generation := Process.proctab(destPID).capGeneration;
         eventMsg := (
             tag      => u64ToTag (arg1),
             capBadge => 0,
@@ -836,7 +854,8 @@ package body Syscall.IPC is
             Process.IPC.trySendEvent (
                 dest => destPID,
                 msg  => eventMsg,
-                accepted => accepted);
+                accepted => accepted,
+                expectedGeneration => generation);
             retval := (if accepted then 1 else 0);
         end if;
     end handleSendEvent;
@@ -998,17 +1017,19 @@ package body Syscall.IPC is
 
 
         granteePID : Process.ProcessID;
+        generation : Capabilities.Generation;
         hasCap : Boolean := False;
         gid : Natural;
         perm : Process.GrantPermission;
         ok : Boolean;
     begin
-        if arg0 > Unsigned_64(Process.ProcessID'Last) then
+        if arg0 = 0 or else arg0 > Unsigned_64(Process.ProcessID'Last) then
             retval := reterr;
             return;
         end if;
 
         granteePID := Process.ProcessID (arg0);
+        generation := Process.proctab(granteePID).capGeneration;
 
         -- Kernel-mode threads exempt
         if Process.proctab(callerPID).mode = Process.KERNEL then
@@ -1021,7 +1042,8 @@ package body Syscall.IPC is
                    Process.proctab(callerPID).caps(slot).capType =
                    Capabilities.CAP_REPLY) and then
                    Process.proctab(callerPID).caps(slot).object.ref =
-                   Unsigned_64 (granteePID)
+                   Unsigned_64 (granteePID) and then
+                   Process.proctab(callerPID).caps(slot).gen = generation
                 then
                     hasCap := True;
                     exit;
@@ -1038,6 +1060,8 @@ package body Syscall.IPC is
                    Capabilities.CAP_ENDPOINT and then
                    Process.proctab(granteePID).caps(slot).object.ref =
                    Unsigned_64 (callerPID) and then
+                   Process.proctab(granteePID).caps(slot).gen =
+                     Process.proctab(callerPID).capGeneration and then
                    Process.proctab(granteePID).caps(slot).rights(
                        Capabilities.RIGHT_GRANT)
                 then
@@ -1069,7 +1093,8 @@ package body Syscall.IPC is
                 numPages  => Natural(arg2),
                 perm      => perm,
                 id        => gid,
-                success   => ok);
+                success   => ok,
+                expectedGeneration => generation);
 
             if ok then
                 retval := Unsigned_64(gid);
@@ -1419,7 +1444,8 @@ package body Syscall.IPC is
             numPages  => Natural(arg2),
             perm      => perm,
             id        => gid,
-            success   => ok);
+            success   => ok,
+                expectedGeneration => cap.gen);
 
         if ok then
             retval := Unsigned_64(gid);

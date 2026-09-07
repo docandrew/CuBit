@@ -47,13 +47,30 @@ jobs:
         run: nix develop --command make -C kernel prove-interrupt-state
 
       - name: Prove spinlock ownership policy and exercise concurrent adapter
-        run: nix develop --command make -C kernel prove-lock-ownership test-locking
+        run: nix develop --command make -C kernel prove-lock-ownership prove-process-lifetime test-locking
 
       - name: Prove frame pins and TLB reclamation authorization
         run: nix develop --command make -C kernel prove-frame-pins prove-tlb-reclamation
 
+      - name: Test and prove bounded filesystem policy decisions
+        run: nix develop --command make -C kernel test-filesystem-policy prove-filesystem-policy
+
       - name: Exercise production reclamation state transitions
         run: nix develop --command make -C kernel test-reclamation-state
+
+      - name: Build scoped filesystem diagnostics
+        run: nix develop --command make -C kernel storage-check
+
+      - name: Boot scoped filesystem regressions under QEMU
+        run: >-
+          nix develop --command tests/headless/run.sh
+          --test storage-grants
+          --disk kernel/capability_security_disk.img
+          --accel tcg,thread=multi
+          --timeout 40
+          --serial "${{ runner.temp }}/cubit-filesystem-scope-serial.log"
+          --pcap "${{ runner.temp }}/cubit-filesystem-scope-net.pcap"
+          --keep-logs
 
       - name: Boot adversarial guest under QEMU
         run: >-
@@ -84,6 +101,10 @@ jobs:
           path: |
             ${{ runner.temp }}/cubit-capability-security-serial.log
             ${{ runner.temp }}/cubit-capability-security-net.pcap
+            ${{ runner.temp }}/cubit-filesystem-scope-serial.log
+            ${{ runner.temp }}/cubit-filesystem-scope-net.pcap
+            userspace/runtime/tests/directory-paths/build/gnatprove/gnatprove.out
+            userspace/runtime/tests/file-access/build/gnatprove/gnatprove.out
             kernel/build/spark-legality/gnatprove/gnatprove.out
             kernel/build/proof-interrupt-state/gnatprove/gnatprove.out
             kernel/build/proof-lock-ownership/gnatprove/gnatprove.out

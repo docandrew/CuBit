@@ -20,6 +20,8 @@ with Interrupts;
 with PerCpuData;
 with Process;
 with Process.IPC;
+with Spinlocks;
+with Process_Lifetime;
 with Sysinfo;
 with TextIO; use TextIO;
 with Time;
@@ -630,12 +632,17 @@ package body Syscall.Admin is
         targetPID := Process.ProcessID (arg0);
         slot := Capabilities.CapabilitySlot (arg1);
 
-        if Process.proctab(targetPID).state = Process.INVALID then
+        Spinlocks.enterCriticalSection (Process.mailtab(targetPID).lock);
+        if not Process.proctab(targetPID).admitted or else
+           Process_Lifetime.Closing (Process.proctab(targetPID).lifetime)
+        then
+            Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
             retval := reterr;
             return;
         elsif not hasCapProcessFor (callerPID, targetPID,
                                     Capabilities.RIGHT_READ)
         then
+            Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
             Process.IPC.notifySupervisor (
                 callerPID,
                 IPC_Labels.EVENT_CAP_FAULT,
@@ -647,6 +654,7 @@ package body Syscall.Admin is
         end if;
 
         cap := Process.proctab(targetPID).caps(slot);
+        Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
         if cap.rights(Capabilities.RIGHT_READ) then
             rights := rights or 1;
         end if;
@@ -704,112 +712,122 @@ package body Syscall.Admin is
         end if;
 
         targetPID := Process.ProcessID (arg0);
-
-        if not hasCspaceGrantFor (callerPID, targetPID)
-        then
-            println
-              ("POLICY_MINT_CAPABILITY: denied, no capability-space grant");
-            retval := reterr;
-            return;
-        elsif Process.proctab(targetPID).state = Process.INVALID then
-            println ("POLICY_MINT_CAPABILITY: target not valid");
-            retval := reterr;
-            return;
-        elsif arg5 >
-              Unsigned_64 (Capabilities.CapabilitySlot'Last)
-        then
-            println ("POLICY_MINT_CAPABILITY: invalid slot");
-            retval := reterr;
-            return;
-        elsif arg1 >
-              Unsigned_64 (Capabilities.CapabilityType'Pos (
-                  Capabilities.CapabilityType'Last))
-        then
-            println ("POLICY_MINT_CAPABILITY: invalid capability type");
-            retval := reterr;
-            return;
-        elsif not Capabilities.isOrdinarilyDerivable
-          (Capabilities.CapabilityType'Val (Natural (arg1)))
-        then
-            println
-              ("POLICY_MINT_CAPABILITY: capability type cannot be minted");
-            retval := reterr;
-            return;
-        end if;
-
-        targetSlot := Capabilities.CapabilitySlot (arg5);
-        capTypePos := Natural (arg1);
-
-        -- Build rights from bitmask
-        newRights := (
-            Capabilities.RIGHT_READ    => (arg4 and 1) /= 0,
-            Capabilities.RIGHT_WRITE   => (arg4 and 2) /= 0,
-            Capabilities.RIGHT_EXECUTE => (arg4 and 4) /= 0,
-            Capabilities.RIGHT_GRANT   => (arg4 and 8) /= 0,
-            Capabilities.RIGHT_REVOKE  => (arg4 and 16) /= 0);
-
-        -- Process-referencing capabilities are generation-bound to the
-        -- referenced object, not to the process receiving the capability.
-        -- Reject nonexistent references so a capability cannot spring into
-        -- validity later when that PID is first allocated or recycled.
         declare
-            use type Capabilities.CapabilityType;
-            capGen : Capabilities.Generation;
-            ct     : constant Capabilities.CapabilityType :=
-                Capabilities.CapabilityType'Val (capTypePos);
-            objectPID : Process.ProcessID;
-        begin
-            if ct = Capabilities.CAP_CSPACE and then
-               not canDelegateCspace
-                 (callerPID, targetPID, arg2, newRights)
-            then
-                println
-                  ("POLICY_MINT_CAPABILITY: CSPACE delegation would " &
-                   "amplify authority");
-                retval := reterr;
-                return;
-            end if;
+            procedure performLocked is
+            begin
+                if not Process.proctab(targetPID).admitted or else
+                   Process_Lifetime.Closing (Process.proctab(targetPID).lifetime) then
+                    retval := reterr;
+                    return;
+                end if;
 
-            if ct = Capabilities.CAP_ENDPOINT or else
-               ((ct = Capabilities.CAP_PROCESS or else
-                 ct = Capabilities.CAP_CSPACE) and then arg2 /= 0)
-            then
-                if arg2 > Unsigned_64 (Process.ProcessID'Last) or else
-                   arg2 = 0
+                if not hasCspaceGrantFor (callerPID, targetPID)
                 then
                     println
-                      ("POLICY_MINT_CAPABILITY: invalid referenced PID");
+                      ("POLICY_MINT_CAPABILITY: denied, no capability-space grant");
                     retval := reterr;
                     return;
-                end if;
-
-                objectPID := Process.ProcessID (arg2);
-                if Process.proctab(objectPID).state = Process.INVALID then
+                elsif arg5 >
+                      Unsigned_64 (Capabilities.CapabilitySlot'Last)
+                then
+                    println ("POLICY_MINT_CAPABILITY: invalid slot");
+                    retval := reterr;
+                    return;
+                elsif arg1 >
+                      Unsigned_64 (Capabilities.CapabilityType'Pos (
+                          Capabilities.CapabilityType'Last))
+                then
+                    println ("POLICY_MINT_CAPABILITY: invalid capability type");
+                    retval := reterr;
+                    return;
+                elsif not Capabilities.isOrdinarilyDerivable
+                  (Capabilities.CapabilityType'Val (Natural (arg1)))
+                then
                     println
-                      ("POLICY_MINT_CAPABILITY: referenced process not valid");
+                      ("POLICY_MINT_CAPABILITY: capability type cannot be minted");
                     retval := reterr;
                     return;
                 end if;
-                capGen := Process.proctab(objectPID).capGeneration;
-            else
-                capGen := Capabilities.INITIAL_GENERATION;
-            end if;
 
-            newCap := (
-                capType  => ct,
-                rights   => newRights,
-                capBadge => Unsigned_64 (targetPID),
-                object   => (ref   => arg2,
-                             param => arg3),
-                gen      => capGen);
+                targetSlot := Capabilities.CapabilitySlot (arg5);
+                capTypePos := Natural (arg1);
+
+                -- Build rights from bitmask
+                newRights := (
+                    Capabilities.RIGHT_READ    => (arg4 and 1) /= 0,
+                    Capabilities.RIGHT_WRITE   => (arg4 and 2) /= 0,
+                    Capabilities.RIGHT_EXECUTE => (arg4 and 4) /= 0,
+                    Capabilities.RIGHT_GRANT   => (arg4 and 8) /= 0,
+                    Capabilities.RIGHT_REVOKE  => (arg4 and 16) /= 0);
+
+                -- Process-referencing capabilities are generation-bound to the
+                -- referenced object, not to the process receiving the capability.
+                -- Reject nonexistent references so a capability cannot spring into
+                -- validity later when that PID is first allocated or recycled.
+                declare
+                    use type Capabilities.CapabilityType;
+                    capGen : Capabilities.Generation;
+                    ct     : constant Capabilities.CapabilityType :=
+                        Capabilities.CapabilityType'Val (capTypePos);
+                    objectPID : Process.ProcessID;
+                begin
+                    if ct = Capabilities.CAP_CSPACE and then
+                       not canDelegateCspace
+                         (callerPID, targetPID, arg2, newRights)
+                    then
+                        println
+                          ("POLICY_MINT_CAPABILITY: CSPACE delegation would " &
+                           "amplify authority");
+                        retval := reterr;
+                        return;
+                    end if;
+
+                    if ct = Capabilities.CAP_ENDPOINT or else
+                       ((ct = Capabilities.CAP_PROCESS or else
+                         ct = Capabilities.CAP_CSPACE) and then arg2 /= 0)
+                    then
+                        if arg2 > Unsigned_64 (Process.ProcessID'Last) or else
+                           arg2 = 0
+                        then
+                            println
+                              ("POLICY_MINT_CAPABILITY: invalid referenced PID");
+                            retval := reterr;
+                            return;
+                        end if;
+
+                        objectPID := Process.ProcessID (arg2);
+                        if Process.proctab(objectPID).state = Process.INVALID then
+                            println
+                              ("POLICY_MINT_CAPABILITY: referenced process not valid");
+                            retval := reterr;
+                            return;
+                        end if;
+                        capGen := Process.proctab(objectPID).capGeneration;
+                    else
+                        capGen := Capabilities.INITIAL_GENERATION;
+                    end if;
+
+                    newCap := (
+                        capType  => ct,
+                        rights   => newRights,
+                        capBadge => Unsigned_64 (targetPID),
+                        object   => (ref   => arg2,
+                                     param => arg3),
+                        gen      => capGen);
+                end;
+
+                Capabilities.Operations.insertCapAt (
+                    table => Process.proctab(targetPID).caps,
+                    slot  => targetSlot,
+                    cap   => newCap);
+
+                retval := 0;
+            end performLocked;
+        begin
+            Spinlocks.enterCriticalSection (Process.mailtab(targetPID).lock);
+            performLocked;
+            Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
         end;
-
-        Capabilities.Operations.insertCapAt (
-            table => Process.proctab(targetPID).caps,
-            slot  => targetSlot,
-            cap   => newCap);
-
-        retval := 0;
     end handleMintCap;
 
     ---------------------------------------------------------------------------
@@ -835,45 +853,59 @@ package body Syscall.Admin is
         end if;
 
         targetPID := Process.ProcessID (arg0);
-
-        if not hasCapProcessFor (callerPID, targetPID,
-                                 Capabilities.RIGHT_EXECUTE)
-        then
-            println ("RESUME: denied, no RIGHT_EXECUTE");
-            retval := reterr;
-        elsif Process.proctab(targetPID).state /= Process.SUSPENDED then
-            println ("RESUME: target not suspended");
-            retval := reterr;
-        else
-            -- Scan child's cap table for CAP_RESOURCE and populate quota
-            for slot in Capabilities.CapabilitySlot loop
-                if Process.proctab(targetPID).caps(slot).capType =
-                   Capabilities.CAP_RESOURCE
-                then
-                    declare
-                        cap : Capabilities.Capability renames
-                            Process.proctab(targetPID).caps(slot);
-                        q   : Process.ResourceQuota renames
-                            Process.proctab(targetPID).quota;
-                    begin
-                        q.maxFrames :=
-                            Natural (cap.object.ref);
-                        q.cpuQuotaUs :=
-                            Unsigned_32 (cap.object.param and 16#FFFF_FFFF#);
-                        q.cpuPeriodUs :=
-                            Unsigned_32 (Shift_Right (cap.object.param, 32));
-                        q.cpuUsedTicks    := 0;
-                        q.periodStartTick := Time.msTicks;
-                    end;
-                    exit;
+        declare
+            procedure performLocked is
+            begin
+                if not Process.proctab(targetPID).admitted or else
+                   Process_Lifetime.Closing (Process.proctab(targetPID).lifetime) then
+                    retval := reterr;
+                    return;
                 end if;
-            end loop;
 
-            Process.resume (targetPID);
-            print ("RESUME: resumed PID ");
-            println (Integer (targetPID));
-            retval := 0;
-        end if;
+                if not hasCapProcessFor (callerPID, targetPID,
+                                         Capabilities.RIGHT_EXECUTE)
+                then
+                    println ("RESUME: denied, no RIGHT_EXECUTE");
+                    retval := reterr;
+                elsif Process.proctab(targetPID).state /= Process.SUSPENDED then
+                    println ("RESUME: target not suspended");
+                    retval := reterr;
+                else
+                    -- Scan child's cap table for CAP_RESOURCE and populate quota
+                    for slot in Capabilities.CapabilitySlot loop
+                        if Process.proctab(targetPID).caps(slot).capType =
+                           Capabilities.CAP_RESOURCE
+                        then
+                            declare
+                                cap : Capabilities.Capability renames
+                                    Process.proctab(targetPID).caps(slot);
+                                q   : Process.ResourceQuota renames
+                                    Process.proctab(targetPID).quota;
+                            begin
+                                q.maxFrames :=
+                                    Natural (cap.object.ref);
+                                q.cpuQuotaUs :=
+                                    Unsigned_32 (cap.object.param and 16#FFFF_FFFF#);
+                                q.cpuPeriodUs :=
+                                    Unsigned_32 (Shift_Right (cap.object.param, 32));
+                                q.cpuUsedTicks    := 0;
+                                q.periodStartTick := Time.msTicks;
+                            end;
+                            exit;
+                        end if;
+                    end loop;
+
+                    Process.resume (targetPID);
+                    print ("RESUME: resumed PID ");
+                    println (Integer (targetPID));
+                    retval := 0;
+                end if;
+            end performLocked;
+        begin
+            Spinlocks.enterCriticalSection (Process.mailtab(targetPID).lock);
+            performLocked;
+            Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
+        end;
     end handleResume;
 
     ---------------------------------------------------------------------------
@@ -887,6 +919,7 @@ package body Syscall.Admin is
         use type Process.ProcessState;
 
         targetPID : Process.ProcessID;
+        generation : Capabilities.Generation;
     begin
         if arg0 > Unsigned_64 (Process.ProcessID'Last) or
            arg0 = 0
@@ -897,6 +930,8 @@ package body Syscall.Admin is
         end if;
 
         targetPID := Process.ProcessID (arg0);
+
+        generation := Process.proctab(targetPID).capGeneration;
 
         if Process.proctab(targetPID).state = Process.INVALID then
             println ("KILL: target not active");
@@ -919,10 +954,13 @@ package body Syscall.Admin is
             retval := 0;
         else
             -- Kill another process: terminate and continue
-            Process.killProcess (targetPID);
-            print ("KILL: terminated PID ");
-            println (Integer (targetPID));
-            retval := 0;
+            if Process.killProcess (targetPID, generation) then
+                print ("KILL: stop requested for PID ");
+                println (Integer (targetPID));
+                retval := 0;
+            else
+                retval := reterr;
+            end if;
         end if;
     end handleKill;
 
@@ -954,24 +992,38 @@ package body Syscall.Admin is
         end if;
 
         targetPID := Process.ProcessID (arg1);
+        declare
+            procedure performLocked is
+            begin
+                if not Process.proctab(targetPID).admitted or else
+                   Process_Lifetime.Closing (Process.proctab(targetPID).lifetime) then
+                    retval := reterr;
+                    return;
+                end if;
 
-        if not hasCapProcessFor (callerPID, targetPID,
-                                 Capabilities.RIGHT_GRANT)
-        then
-            println ("SET_WELL_KNOWN: denied, no RIGHT_GRANT");
-            retval := reterr;
-            return;
-        end if;
+                if not hasCapProcessFor (callerPID, targetPID,
+                                         Capabilities.RIGHT_GRANT)
+                then
+                    println ("SET_WELL_KNOWN: denied, no RIGHT_GRANT");
+                    retval := reterr;
+                    return;
+                end if;
 
-        Config.wellKnownServices (Config.ServiceRole (arg0)) :=
-            (pid => Natural (targetPID),
-             gen => Process.proctab(targetPID).capGeneration);
+                Config.wellKnownServices (Config.ServiceRole (arg0)) :=
+                    (pid => Natural (targetPID),
+                     gen => Process.proctab(targetPID).capGeneration);
 
-        print ("SET_WELL_KNOWN: role ");
-        print (Integer (arg0));
-        print (" => PID ");
-        println (Integer (targetPID));
-        retval := 0;
+                print ("SET_WELL_KNOWN: role ");
+                print (Integer (arg0));
+                print (" => PID ");
+                println (Integer (targetPID));
+                retval := 0;
+            end performLocked;
+        begin
+            Spinlocks.enterCriticalSection (Process.mailtab(targetPID).lock);
+            performLocked;
+            Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
+        end;
     end handleSetWellKnown;
 
     ---------------------------------------------------------------------------
@@ -986,6 +1038,7 @@ package body Syscall.Admin is
 
 
         irqOk  : Boolean;
+        targetPID : Process.ProcessID;
     begin
         -- Validate args before cap check (arg1 is the owner PID)
         if arg0 > 255 then
@@ -1000,34 +1053,44 @@ package body Syscall.Admin is
             return;
         end if;
 
-        if not hasCapProcessFor (callerPID,
-                                 Process.ProcessID (arg1),
-                                 Capabilities.RIGHT_GRANT)
+        targetPID := Process.ProcessID (arg1);
+        Spinlocks.enterCriticalSection (Process.mailtab(targetPID).lock);
+        if not Process.proctab(targetPID).admitted or else
+           Process_Lifetime.Closing (Process.proctab(targetPID).lifetime)
         then
-            println ("ENABLE_IRQ: denied, no RIGHT_GRANT");
             retval := reterr;
         else
-            Capabilities.IRQ.registerIRQ (
-                vector => Natural (arg0),
-                pid    => arg1,
-                status => irqOk);
-
-            if irqOk then
-                --  MSI/MSI-X sources target an IDT vector directly and must
-                --  not unmask the numerically corresponding IOAPIC input.
-                if (arg2 and 16#400#) = 0 then
-                    Interrupts.enableDeviceIRQ (
-                        InterruptNumbers.x86Interrupt (arg0),
-                        Unsigned_32 (arg2 and 16#FF#),
-                        levelTriggered => (arg2 and 16#100#) /= 0,
-                        activeLow      => (arg2 and 16#200#) /= 0);
-                end if;
-                retval := 0;
-            else
-                println ("ENABLE_IRQ: shared subscriber set full");
+            if not hasCapProcessFor (callerPID,
+                                     Process.ProcessID (arg1),
+                                     Capabilities.RIGHT_GRANT)
+            then
+                println ("ENABLE_IRQ: denied, no RIGHT_GRANT");
                 retval := reterr;
+            else
+                Capabilities.IRQ.registerIRQ (
+                    vector => Natural (arg0),
+                    pid    => arg1,
+                    status => irqOk);
+
+                if irqOk then
+                    --  MSI/MSI-X sources target an IDT vector directly and must
+                    --  not unmask the numerically corresponding IOAPIC input.
+                    if (arg2 and 16#400#) = 0 then
+                        Interrupts.enableDeviceIRQ (
+                            InterruptNumbers.x86Interrupt (arg0),
+                            Unsigned_32 (arg2 and 16#FF#),
+                            levelTriggered => (arg2 and 16#100#) /= 0,
+                            activeLow      => (arg2 and 16#200#) /= 0);
+                    end if;
+                    retval := 0;
+                else
+                    println ("ENABLE_IRQ: shared subscriber set full");
+                    retval := reterr;
+                end if;
             end if;
+
         end if;
+        Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
     end handleEnableIrq;
 
     ---------------------------------------------------------------------------
@@ -1091,19 +1154,34 @@ package body Syscall.Admin is
         end if;
 
         targetPID := Process.ProcessID (arg0);
+        declare
+            procedure performLocked is
+            begin
+                if not Process.proctab(targetPID).admitted or else
+                   Process_Lifetime.Closing (Process.proctab(targetPID).lifetime) then
+                    retval := reterr;
+                    return;
+                end if;
 
-        if not hasCapProcessFor (callerPID, targetPID,
-                                 Capabilities.RIGHT_GRANT)
-        then
-            println ("SET_CPU: denied, no RIGHT_GRANT");
-            retval := reterr;
-        elsif Process.proctab(targetPID).state = Process.INVALID then
-            println ("SET_CPU: target not valid");
-            retval := reterr;
-        else
-            Process.proctab(targetPID).cpu := Natural (arg1);
-            retval := 0;
-        end if;
+                if not hasCapProcessFor (callerPID, targetPID,
+                                         Capabilities.RIGHT_GRANT)
+                then
+                    println ("SET_CPU: denied, no RIGHT_GRANT");
+                    retval := reterr;
+                elsif Process.proctab(targetPID).state /= Process.SUSPENDED or else
+                      Process_Lifetime.Executing (Process.proctab(targetPID).lifetime) then
+                    println ("SET_CPU: target must be stopped and suspended");
+                    retval := reterr;
+                else
+                    Process.proctab(targetPID).cpu := Natural (arg1);
+                    retval := 0;
+                end if;
+            end performLocked;
+        begin
+            Spinlocks.enterCriticalSection (Process.mailtab(targetPID).lock);
+            performLocked;
+            Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
+        end;
     end handleSetCpu;
 
     ---------------------------------------------------------------------------

@@ -36,6 +36,11 @@ package Process.Queues is
     -- ---------------------------------------------------------------------------
     procedure popItem (q : in out ProcQueue; pid : ProcessID;
                        result : out ProcessID);
+    type Removal_Kind is (Ordinary_Queue, Delta_Queue);
+    -- Caller holds Process.lock; selecting/removing membership is one
+    -- queue-locked operation. Delta removal preserves successors' deadlines.
+    procedure detach (q : in out ProcQueue; pid : ProcessID;
+                      kind : Removal_Kind := Ordinary_Queue);
 
     ---------------------------------------------------------------------------
     -- enqueue

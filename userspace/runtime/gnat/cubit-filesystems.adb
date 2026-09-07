@@ -7,7 +7,7 @@ package body CuBit.Filesystems with
 is
    OPEN_ACCESS_MASK : constant Open_Options := 3;
    SUPPORTED_OPEN_OPTIONS : constant Open_Options :=
-     OPEN_ACCESS_MASK or OPEN_CREATE or OPEN_TRUNCATE;
+     OPEN_ACCESS_MASK or OPEN_CREATE or OPEN_TRUNCATE or OPEN_EXCLUSIVE;
 
    function Grant_Message
      (label      : Unsigned_32;
@@ -36,6 +36,9 @@ is
    begin
       return (options and not SUPPORTED_OPEN_OPTIONS) = 0 and then
         accessMode /= OPEN_ACCESS_MASK and then
+        ((options and OPEN_EXCLUSIVE) = 0 or else
+         ((options and OPEN_CREATE) /= 0 and then
+          (options and OPEN_TRUNCATE) = 0)) and then
         ((options and OPEN_TRUNCATE) = 0 or else
          accessMode in OPEN_WRITE_ONLY | OPEN_READ_WRITE);
    end Valid_Open_Options;
@@ -153,6 +156,32 @@ is
          capBadge => 0,
          words    => (0 => Unsigned_64 (handle), others => 0));
    end Close_Directory_Request;
+
+   function Open_Child_Directory_Request
+     (parent : Directory_Handle;
+      loan : CuBit.Memory_Grants.Grant_Reference;
+      nameLength : Nonempty_Path_Byte_Count) return CuBit.Messages.Message
+   is
+   begin
+      return
+        (tag => (label => OP_OPEN_CHILD_DIRECTORY, length => 4,
+                 flags => 0, badge => 0),
+         capBadge => 0,
+         words => (0 => Unsigned_64 (parent),
+                   1 => Unsigned_64 (nameLength),
+                   2 => loan.slot, 3 => loan.generation));
+   end Open_Child_Directory_Request;
+
+   function Rewind_Directory_Request
+     (handle : Directory_Handle) return CuBit.Messages.Message
+   is
+   begin
+      return
+        (tag => (label => OP_REWIND_DIRECTORY, length => 1,
+                 flags => 0, badge => 0),
+         capBadge => 0,
+         words => (0 => Unsigned_64 (handle), others => 0));
+   end Rewind_Directory_Request;
 
    function Rename_Request
      (loan          : CuBit.Memory_Grants.Grant_Reference;

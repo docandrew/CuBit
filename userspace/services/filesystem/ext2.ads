@@ -157,6 +157,16 @@ package Ext2 is
       Directory_Out_Of_Range,
       Directory_Range_Unsupported);
 
+   type Directory_Lookup_Status is
+     (Lookup_Found, Lookup_Not_Found, Lookup_Malformed,
+      Lookup_Device_Error, Lookup_Out_Of_Range, Lookup_Range_Unsupported);
+
+   type Rename_Status is
+     (Rename_Complete, Rename_Source_Not_Found, Rename_Destination_Exists,
+      Rename_Invalid_Name, Rename_Malformed, Rename_Range_Unsupported,
+      Rename_Read_Only, Rename_Out_Of_Range, Rename_IO_Error,
+      Rename_Recovery_Required);
+
    --  Context for an Ext2 filesystem
    type Filesystem is record
       base         : System.Address;     --  Base address (unused for disk)
@@ -165,6 +175,8 @@ package Ext2 is
       blkSize      : Unsigned_32;        --  Block size in bytes
       backend      : BlockBackend := BLOCK_DEVICE;
       device       : CuBit.Block_Devices.Device_Session;
+      --  Uncertain metadata after failed rollback requires offline recovery.
+      writeQuarantined : Boolean := False;
    end record;
 
    --  Initialize an Ext2 filesystem in a bounded writable memory image.
@@ -189,6 +201,10 @@ package Ext2 is
       inodeNum : Unsigned_32;
       ino    : out Inode);
 
+   procedure readInode
+     (fs : Filesystem; inodeNum : Unsigned_32;
+      ino : out Inode; status : out Read_Status);
+
    --  Write an inode back to disk
    procedure writeInode
      (fs       : Filesystem;
@@ -202,11 +218,20 @@ package Ext2 is
       dirIno  : Inode;
       name    : String) return Unsigned_32;
 
+   procedure lookupInDir
+     (fs : Filesystem; dirIno : Inode; name : String;
+      inodeNum : out Unsigned_32; status : out Directory_Lookup_Status);
+
    --  Resolve a full path (e.g., "/DOOM1.WAD") to an inode number.
    --  Returns 0 if not found.
    function resolvePath
      (fs   : Filesystem;
       path : String) return Unsigned_32;
+
+   --  Creation must distinguish a missing name from unreadable metadata.
+   procedure resolvePath
+     (fs : Filesystem; path : String; inodeNum : out Unsigned_32;
+      status : out Directory_Lookup_Status);
 
    --  Decode one bounded page of directory metadata. Cursor is an opaque
    --  byte position returned by the preceding call (zero starts a scan).
@@ -307,12 +332,16 @@ package Ext2 is
       dirInodeNum : Unsigned_32;
       name        : String) return Unsigned_32;
 
-   --  Rename a file within the same directory.
-   function renameEntry
-     (fs          : in out Filesystem;
-      dirInodeNum : Unsigned_32;
-      oldName     : String;
-      newName     : String) return Boolean;
+   --  Non-overwriting rename within one directory. The replacement is prepared
+   --  in memory and must fit in the source directory block. Multi-block moves
+   --  and replacement of existing destinations need a separate transaction API.
+   procedure renameEntry
+     (fs : in out Filesystem; dirInodeNum : Unsigned_32;
+      oldName, newName : String; status : out Rename_Status);
+
+   procedure renamePath
+     (fs : in out Filesystem; oldPath, newPath : String;
+      status : out Rename_Status);
 
    --  Write the superblock back to disk
    procedure writeSuperblock (fs : Filesystem);

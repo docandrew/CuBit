@@ -7,5 +7,11 @@
 --  Activate makes the selected platform body's exported implementation part
 --  of the executable.
 package CCL_Workbench_Platform is
+   Open_Source_Event : constant := 34;
+   Save_Source_Event : constant := 35;
+   Tab_Event : constant := 36;
+   Toggle_REPL_Event : constant := 37;
    procedure Activate;
+   --  Optional lifecycle diagnostic. Never logs submitted source or values.
+   procedure REPL_Completed;
 end CCL_Workbench_Platform;

@@ -50,13 +50,29 @@ The suite currently includes:
   CuBit and checks their in-guest self-test markers.
 - `ccl-workbench`: boots the native CCL Workbench and checks its first
   presented frame.
+- `ccl-workspace`: drives native Open/Save dialogs through QEMU, verifies
+  dirty-source protection, selected-file reopening, and overwrite rejection.
+  Checks two revision files plus chosen `clock.ccl` and `quoted.ccl` names on
+  the temporary test disk. The latter must contain the exact quoted string
+  entered through QEMU's keyboard, exercising desktop Shift/text composition.
+  Also submits expressions in the REPL. Allow 50 seconds for the expanded
+  interaction sequence. Requires a base image
+  whose `work` folder has no pre-existing CCL revision files.
 - `capability-security`: boots an authorityless adversarial app and verifies
   that it cannot acquire filesystem, input, process-management, or capability-
   minting authority that was absent from its manifest-derived capability
   space.
 - `storage-grants`: exercises generation-tagged acquire/use/return, access and
   range denial, pending revocation, stale-reference rejection, and a writable
-  ext2 transfer.
+  ext2 transfer. Also checks child-directory navigation, stale directory handles,
+  malformed lookup/page results, and an independently manifest-scoped client:
+  read-only versus read/write/create scopes, sibling-prefix denial, rejection of
+  self-grant attempts, and independence from ext2 user/group/world mode bits.
+  Rename checks cover collision preservation, nested paths, open-handle
+  continuity, and rejection of unsupported moves/selectors. Hosted
+  `make -C kernel test-filesystem-policy prove-filesystem-policy` also exercises
+  directory preparation and injected write/restoration failures, and proves
+  the bounded preparation helper. Rename is not yet a crash-safe replacement.
 - `audio-grants`: verifies that the mixer acquires HDA's isolated PCM-period
   grant through its endpoint capability.
 - `devices`: boots the read-only hardware inspector and checks its inventory
@@ -64,7 +80,8 @@ The suite currently includes:
 - `files`: boots the native filesystem browser, drags its first shared-table
   column divider and sends a wheel notch through QEMU's real PS/2 input path,
   then verifies the final width, viewport movement, and post-release keyboard
-  liveness.
+  liveness. It also enters `lost+found/nested`, refreshes in that folder, and
+  navigates Back through retained directory handles.
 - `desktop-display`: boots a test init profile that starts `display.svc` and
   `desktop.svc`, verifies the display backend status handshake, and injects
   QEMU i8042 keyboard and pointer input through the real PS/2 driver path.

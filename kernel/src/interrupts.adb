@@ -307,6 +307,10 @@ is
             end if;
         end checkPreempt;
 
+        if (frame.cs and 3) /= 0 then
+            Process.checkTermination;
+        end if;
+
         -- if we return from this interrupt, put page tables back the way they were.
         -- TODO: check cs to see if we were in user code?
         Virtmem.setActiveP4 (oldCR3);

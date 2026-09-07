@@ -3,6 +3,7 @@ project Locking_Tests is
     for Source_Dirs use (".", "fixture", "../../kernel/src");
     for Source_Files use ("main.adb", "spinlocks.ads", "spinlocks.adb",
                          "locks.ads", "locks.adb",
+                         "process_lifetime.ads", "process_lifetime.adb",
                          "process.ads", "process.adb",
                          "process-queues.ads", "process-queues.adb",
                          "textio.ads");

@@ -22,6 +22,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Authority; use CuBit.Authority;
 with CuBit.Memory_Grants;
 with CuBit.Filesystems;
+with CuBit.File_Access;
 
 procedure main is
    use ASCII;
@@ -914,7 +915,7 @@ procedure main is
    ---------------------------------------------------------------------------
    --  parseAndSendACL
    --  Parse .cubit.access section from the ELF in elfBuf and send
-   --  OP_SET_ACL to the FS server. Falls back to wildcard if no section.
+   --  OP_SET_ACL to the FS server. Missing/malformed sections grant nothing.
    --  sandboxOverride / cwd / binaryName enable RUN_FOLDER / APP_FOLDER
    --  prefix rewriting for wildcard FS entries.
    ---------------------------------------------------------------------------
@@ -930,7 +931,7 @@ procedure main is
       e_shnum     : Unsigned_16;
    begin
       if elfSize < 64 then
-         goto Send_Wildcard;
+         goto No_Access_Policy;
       end if;
 
       e_shoff     := readU64 (40);
@@ -938,11 +939,13 @@ procedure main is
       e_shnum     := readU16 (60);
 
       if e_shentsize /= 64 or e_shoff = 0 or e_shnum = 0 then
-         goto Send_Wildcard;
+         goto No_Access_Policy;
       end if;
 
-      if e_shoff + Unsigned_64 (e_shnum) * 64 > elfSize then
-         goto Send_Wildcard;
+      if e_shoff > elfSize or else
+        Unsigned_64 (e_shnum) > (elfSize - e_shoff) / 64
+      then
+         goto No_Access_Policy;
       end if;
 
       --  Scan section headers for .cubit.access (PROGBITS with CACC magic)
@@ -960,7 +963,8 @@ procedure main is
 
                --  Need at least 16 bytes for access header
                if sh_size >= 16 and then
-                  sh_offset + sh_size <= elfSize and then
+                  sh_offset <= elfSize and then
+                  sh_size <= elfSize - sh_offset and then
                   readU32 (sh_offset) = ACCESS_MAGIC
                then
                   declare
@@ -971,17 +975,17 @@ procedure main is
                   begin
                      if version /= 1 then
                         debugPrint ("procmgr: unknown access v" & LF);
-                        goto Send_Wildcard;
+                        goto No_Access_Policy;
                      end if;
 
                      if count = 0 or count > MAX_ACL then
-                        goto Send_Wildcard;
+                        goto No_Access_Policy;
                      end if;
 
                      --  Validate entries fit: 16 + 80*count
                      if sh_size < 16 + Unsigned_64 (count) * 80 then
                         debugPrint ("procmgr: access truncated" & LF);
-                        goto Send_Wildcard;
+                        goto No_Access_Policy;
                      end if;
 
                      debugPrint ("procmgr: access has ");
@@ -997,9 +1001,9 @@ procedure main is
                            (others => ' ');
                         sandboxPrefixLen : Natural := 0;
                      begin
-                        --  Clamp to valid range
+                        --  An invalid sandbox cannot mean unrestricted.
                         if manifestSandbox > SANDBOX_APP_FOLDER then
-                           manifestSandbox := SANDBOX_NONE;
+                           goto No_Access_Policy;
                         end if;
 
                         --  Most restrictive wins (higher = more
@@ -1015,7 +1019,7 @@ procedure main is
                            --  Use cwd from spawner
                            sandboxPrefixLen := cwd'Length;
                            if sandboxPrefixLen > 64 then
-                              sandboxPrefixLen := 64;
+                              goto No_Access_Policy;
                            end if;
                            for c in 0 .. sandboxPrefixLen - 1 loop
                               sandboxPrefix (1 + c) :=
@@ -1036,7 +1040,7 @@ procedure main is
                               end loop;
                               sandboxPrefixLen := lastSlash;
                               if sandboxPrefixLen > 64 then
-                                 sandboxPrefixLen := 64;
+                                 goto No_Access_Policy;
                               end if;
                               for c in 0 ..
                                  sandboxPrefixLen - 1
@@ -1046,6 +1050,12 @@ procedure main is
                                        binaryName'First + c);
                               end loop;
                            end;
+                        end if;
+
+                        if effectiveSandbox /= SANDBOX_NONE and then
+                          sandboxPrefixLen = 0
+                        then
+                           goto No_Access_Policy;
                         end if;
 
                         if effectiveSandbox /= SANDBOX_NONE
@@ -1086,8 +1096,11 @@ procedure main is
                               readU8 (entBase + 2);
                            pLen := Natural (locals (j).prefixLen);
                            if pLen > 64 then
-                              pLen := 64;
-                              locals (j).prefixLen := 64;
+                              goto No_Access_Policy;
+                           end if;
+                           if locals (j).service not in SERVICE_FS | SERVICE_CONFIG
+                           then
+                              goto No_Access_Policy;
                            end if;
                            for c in 0 .. pLen - 1 loop
                               locals (j).prefix (1 + c) :=
@@ -1095,6 +1108,13 @@ procedure main is
                                     Natural (readU8 (entBase + 8 +
                                        Unsigned_64 (c))));
                            end loop;
+                           if locals (j).service = SERVICE_FS and then
+                             (not CuBit.File_Access.Valid_Rights (locals (j).rights)
+                              or else not CuBit.File_Access.Valid_Path
+                                (locals (j).prefix (1 .. pLen)))
+                           then
+                              goto No_Access_Policy;
+                           end if;
                         end loop;
 
                         --  Sandbox rewrite: set prefix on wildcard FS
@@ -1227,7 +1247,7 @@ procedure main is
                            end;
                         end if;
 
-                        return;  -- done, skip wildcard
+                        return;  -- policy dispatched
                      end;
                      end;  -- sandbox declare
                   end;
@@ -1236,11 +1256,11 @@ procedure main is
          end;
       end loop;
 
-   <<Send_Wildcard>>
+   <<No_Access_Policy>>
       --  No .cubit.access section: deny-by-default.
       --  FS server denies access for processes with no ACL profile,
       --  so we simply don't send OP_SET_ACL.
-      debugPrint ("procmgr: no .cubit.access, deny-by-default" & LF);
+      debugPrint ("procmgr: absent/invalid .cubit.access, deny-by-default" & LF);
    end parseAndSendACL;
 
    ---------------------------------------------------------------------------
@@ -1601,7 +1621,28 @@ procedure main is
          end;
       end if;
 
-      --  Parse .cubit.access and send ACLs to FS server (or wildcard)
+      --  A recycled PID must not inherit the previous occupant's service
+      --  policy or open handles, including when this ELF has no access section.
+      --  The child is still suspended: failure to establish default-deny is
+      --  a launch failure, not a reason to resume with unknown authority.
+      declare
+         resetMessage : Message := NULL_MESSAGE;
+         resetTag : MessageTag;
+         ignored : Unsigned_64;
+      begin
+         resetMessage.tag :=
+           (label => CuBit.Filesystems.OP_REVOKE_ACL, length => 1,
+            flags => 0, badge => 0);
+         resetMessage.words (0) := newPID;
+         resetTag := capCall (CAP_SLOT_FS_LOCAL, resetMessage);
+         if resetTag.label /= CuBit.Filesystems.REPLY_OK then
+            debugPrint ("procmgr: filesystem policy reset failed" & LF);
+            ignored := syscall (SYSCALL_KILL, newPID);
+            return 0;
+         end if;
+      end;
+
+      --  Parse .cubit.access and install only its validated scopes.
       parseAndSendACL (newPID, elfSize,
                        sandboxMode, cwd, name);
 

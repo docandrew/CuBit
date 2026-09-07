@@ -63,6 +63,32 @@ Bluecurve Metacity window control PNGs in `themes/Bluecurve/metacity-1`. The
 generated atlas currently includes Close, Minimize, Maximize, Restore, and Menu
 icons.
 
+## Bluecurve Toolbar Atlas
+
+`cubit-ui-widgets-bluecurve.ads` is generated from the unmodified 16x16 SVGs
+vendored in `assets/bluecurve`, from `icons/icon-set/Bluecurve/16x16` at
+`neeeeow/Bluecurve` commit `013ba225e78d9767b274ac6f16a67cb19f0673c6`.
+These are rasterized at their original size with librsvg, with no runtime
+SVG loader. The upstream GPL-3.0 license is included in
+`licenses/BLUECURVE_GPL-3.0.txt`.
+
+The shared toolbar uses `stock-open`, `stock-save`, `stock-execute` (interpret),
+`icon-development` (compile), `stock-media-play`, `stock-media-pause`,
+`stock-media-stop`, `stock-go-down` (step into), and `stock-redo` (step over).
+All are from `actions/`, except `icon-development`, from `apps/`.
+The step icons are stock directional artwork, not upstream debugger-specific
+icons. Existing tooltips and shortcuts retain their debugger meaning.
+
+Regenerate with:
+
+```sh
+nix develop -c sh -c 'python3 tools/generate_toolbar_atlas.py > userspace/lib/ui/cubit-ui-widgets-bluecurve.ads'
+```
+
+The renderer preserves transparency, centers icons within the existing button
+geometry, shifts pressed icons by one pixel, and desaturates/fades disabled
+icons. This applies to native CuBit and the Linux preview.
+
 ## Bluecurve Cursor Atlas
 
 `userspace/services/desktop/desktop_cursors.ads` was generated from the nominal

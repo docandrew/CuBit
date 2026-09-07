@@ -5,6 +5,8 @@
 --  @summary
 --  Stateful widgets that draw themselves and register hit/damage metadata
 ------------------------------------------------------------------------------
+with CuBit.UI.Widgets.Bluecurve;
+
 package body CuBit.UI.Widgets is
    function Parent_Canvas
       (c : CuBit.UI.Canvas;
@@ -189,80 +191,16 @@ package body CuBit.UI.Widgets is
         (if not enabled then CuBit.UI.Button_Disabled
          elsif pressed then CuBit.UI.Button_Pressed
          else CuBit.UI.Button_Normal);
-      Ink : constant CuBit.UI.Color :=
-        (if not enabled then colors.muted
-         elsif icon = Run_Program then colors.good
-         elsif icon = Interpret_Source then colors.accent
-         elsif icon = Stop_Program then colors.danger
-         else colors.text);
-      X : constant Natural := bounds.x + (if pressed and enabled then 1 else 0);
-      Y : constant Natural := bounds.y + (if pressed and enabled then 1 else 0);
+      Content : constant CuBit.UI.Rect := Inner_Rect (bounds, 2, 2, 2, 2);
+      Icon_Canvas : constant CuBit.UI.Canvas := CuBit.UI.With_Clip (c, Content);
+      Offset : constant Natural := (if pressed and enabled then 1 else 0);
+      X : constant Natural := Content.x +
+        Natural'Max (0, Integer (Content.w) - Bluecurve.Icon_Size) / 2 + Offset;
+      Y : constant Natural := Content.y +
+        Natural'Max (0, Integer (Content.h) - Bluecurve.Icon_Size) / 2 + Offset;
    begin
       CuBit.UI.Draw_Button (c, bounds, colors, Style, "");
-      case icon is
-         when Open_Document =>
-            CuBit.UI.Fill_Rect
-              (c, (x => X + 6, y => Y + 9, w => 13, h => 9), Ink);
-            CuBit.UI.Fill_Rect
-              (c, (x => X + 7, y => Y + 7, w => 6, h => 3), Ink);
-            CuBit.UI.Fill_Rect
-              (c, (x => X + 8, y => Y + 11, w => 11, h => 5), colors.face);
-         when Save_Document =>
-            CuBit.UI.Fill_Rect
-              (c, (x => X + 7, y => Y + 6, w => 12, h => 13), Ink);
-            CuBit.UI.Fill_Rect
-              (c, (x => X + 9, y => Y + 7, w => 7, h => 4), colors.face);
-            CuBit.UI.Fill_Rect
-              (c, (x => X + 10, y => Y + 14, w => 6, h => 4), colors.face);
-         when Compile_Program =>
-            CuBit.UI.Fill_Rect
-              (c, (x => X + 7, y => Y + 7, w => 5, h => 5), Ink);
-            CuBit.UI.Fill_Rect
-              (c, (x => X + 14, y => Y + 7, w => 5, h => 5), Ink);
-            CuBit.UI.Fill_Rect
-              (c, (x => X + 10, y => Y + 14, w => 6, h => 6), Ink);
-            CuBit.UI.Fill_Rect
-              (c, (x => X + 11, y => Y + 11, w => 4, h => 5), Ink);
-         when Interpret_Source =>
-            CuBit.UI.Fill_Rect
-              (c, (x => X + 12, y => Y + 5, w => 7, h => 3), Ink);
-            CuBit.UI.Fill_Rect
-              (c, (x => X + 10, y => Y + 8, w => 7, h => 5), Ink);
-            CuBit.UI.Fill_Rect
-              (c, (x => X + 8, y => Y + 12, w => 7, h => 3), Ink);
-            CuBit.UI.Fill_Rect
-              (c, (x => X + 8, y => Y + 15, w => 3, h => 6), Ink);
-         when Run_Program =>
-            for Row in 0 .. 10 loop
-               CuBit.UI.Fill_Rect
-                 (c, (x => X + 8, y => Y + 7 + Row,
-                      w => 1 + Natural'Min (Row, 10 - Row), h => 1), Ink);
-            end loop;
-         when Pause_Program =>
-            CuBit.UI.Fill_Rect
-              (c, (x => X + 8, y => Y + 7, w => 4, h => 11), Ink);
-            CuBit.UI.Fill_Rect
-              (c, (x => X + 15, y => Y + 7, w => 4, h => 11), Ink);
-         when Stop_Program =>
-            CuBit.UI.Fill_Rect
-              (c, (x => X + 8, y => Y + 7, w => 11, h => 11), Ink);
-         when Step_Into =>
-            CuBit.UI.Fill_Rect
-              (c, (x => X + 12, y => Y + 6, w => 3, h => 8), Ink);
-            CuBit.UI.Fill_Rect
-              (c, (x => X + 9, y => Y + 11, w => 9, h => 3), Ink);
-            CuBit.UI.Fill_Rect
-              (c, (x => X + 11, y => Y + 14, w => 5, h => 3), Ink);
-            CuBit.UI.Fill_Rect
-              (c, (x => X + 7, y => Y + 19, w => 13, h => 2), Ink);
-         when Step_Over =>
-            CuBit.UI.Stroke_Rect
-              (c, (x => X + 7, y => Y + 7, w => 11, h => 9), Ink, Ink);
-            CuBit.UI.Fill_Rect
-              (c, (x => X + 15, y => Y + 5, w => 3, h => 7), Ink);
-            CuBit.UI.Fill_Rect
-              (c, (x => X + 17, y => Y + 9, w => 3, h => 3), Ink);
-      end case;
+      CuBit.UI.Draw_Bitmap (Icon_Canvas, X, Y, Bluecurve.Pixels (icon), enabled);
    end Toolbar_Button;
 
    procedure Toolbar_Separator

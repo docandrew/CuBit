@@ -7,6 +7,7 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Filesystems; use CuBit.Filesystems;
+with CuBit.Directory_Paths;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.UI;
@@ -32,10 +33,12 @@ procedure main is
    CONTROL_SCROLLBAR : constant CuBit.UI.Controls.Control_ID := 2;
    CONTROL_FIRST_COLUMN : constant CuBit.UI.Controls.Control_ID := 3;
    CONTROL_SECOND_COLUMN : constant CuBit.UI.Controls.Control_ID := 4;
+   CONTROL_BACK : constant CuBit.UI.Controls.Control_ID := 5;
+   CONTROL_OPEN : constant CuBit.UI.Controls.Control_ID := 6;
    CONTROL_ROW_FIRST : constant CuBit.UI.Controls.Control_ID := 100;
 
    type Local_Item is record
-      name : String (1 .. MAXIMUM_DIRECTORY_NAME_BYTES);
+      name : String (1 .. MAXIMUM_DIRECTORY_NAME_BYTES) := [others => ' '];
       nameLength : Natural range 0 .. MAXIMUM_DIRECTORY_NAME_BYTES := 0;
       kind : Unsigned_8 := DIRECTORY_KIND_UNKNOWN;
       flags : Unsigned_8 := 0;
@@ -51,8 +54,22 @@ procedure main is
    selectedItem : Natural range 0 .. MAXIMUM_ITEMS := 0;
    scrollRow : Natural := 0;
    lastListBounds : CuBit.UI.Rect := (others => 0);
-   sourceName : String (1 .. 16) := (others => ' ');
+   sourceName : String (1 .. 16) := [others => ' '];
    sourceNameLength : Natural range 0 .. sourceName'Length := 0;
+   --  Back retains an already-authorized object; it never resolves '..'.
+   --  Bound retained handles, and close every abandoned child on navigation.
+   MAXIMUM_NAVIGATION_DEPTH : constant := 16;
+   type Navigation_Entry is record
+      handle : Directory_Handle := INVALID_DIRECTORY_HANDLE;
+      displayPath : CuBit.Directory_Paths.Path;
+      selected : Natural range 0 .. MAXIMUM_ITEMS := 0;
+      scroll : Natural := 0;
+   end record;
+   navigation : array (1 .. MAXIMUM_NAVIGATION_DEPTH) of Navigation_Entry;
+   depth : Natural range 0 .. MAXIMUM_NAVIGATION_DEPTH := 0;
+   type Browser_Status is
+     (Ready, No_Root, Open_Failed, Read_Failed, Navigation_Limit);
+   browserStatus : Browser_Status := No_Root;
    loadSucceeded : Boolean := False;
    listTruncated : Boolean := False;
    rawBuffer : Unsigned_64 := 0;
@@ -77,6 +94,8 @@ procedure main is
    KEY_END : constant Unsigned_64 := 16#4F#;
    KEY_PAGE_DOWN : constant Unsigned_64 := 16#51#;
    KEY_F5 : constant Unsigned_64 := 16#3F#;
+   KEY_ENTER : constant Unsigned_64 := 16#1C#;
+   KEY_BACKSPACE : constant Unsigned_64 := 16#0E#;
 
    function Decimal (value : Unsigned_64) return String is
       raw : constant String := Unsigned_64'Image (value);
@@ -112,34 +131,35 @@ procedure main is
    procedure Set_Source_Name (value : String) is
    begin
       sourceNameLength := Natural'Min (value'Length, sourceName'Length);
-      sourceName := (others => ' ');
+      sourceName := [others => ' '];
       for index in 1 .. sourceNameLength loop
          sourceName (index) := value (value'First + index - 1);
       end loop;
    end Set_Source_Name;
 
-   procedure Load_From (path : String; success : out Boolean) is
-      msg : Message;
+   procedure Close_Handle (handle : Directory_Handle) is
+      msg : Message := Close_Directory_Request (handle);
       tag : MessageTag;
-      directory : Directory_Handle;
+   begin
+      tag := capCall (CAP_SLOT_FILESYSTEM, msg);
+   end Close_Handle;
+
+   procedure Load_Handle
+     (directory : Directory_Handle; success : out Boolean)
+   is
+      msg : Message := Rewind_Directory_Request (directory);
+      tag : MessageTag;
       previousCursor : Unsigned_64 := 0;
       pageValid : Boolean;
+      candidateItems : Item_Array;
+      candidateCount : Natural range 0 .. MAXIMUM_ITEMS := 0;
+      candidateTruncated : Boolean := False;
    begin
       success := False;
-      declare
-         pathView : String (path'Range)
-           with Import, Address => To_Address (Integer_Address (pageAddress));
-      begin
-         pathView := path;
-      end;
-
-      msg := Open_Directory_Request (pageGrant, path'Length);
       tag := capCall (CAP_SLOT_FILESYSTEM, msg);
       if tag.label /= REPLY_OK then
          return;
       end if;
-      directory := Directory_Handle (msg.words (0));
-
       loop
          msg := Read_Directory_Page_Request (directory, pageGrant);
          tag := capCall (CAP_SLOT_FILESYSTEM, msg);
@@ -172,19 +192,19 @@ procedure main is
                   then
                      pageValid := False;
                      exit;
-                  elsif itemCount = MAXIMUM_ITEMS then
-                     listTruncated := True;
+                  elsif candidateCount = MAXIMUM_ITEMS then
+                     candidateTruncated := True;
                      exit;
                   else
-                     itemCount := itemCount + 1;
-                     items (itemCount).nameLength :=
+                     candidateCount := candidateCount + 1;
+                     candidateItems (candidateCount).nameLength :=
                        Natural (pageItems (pageIndex).nameLength);
-                     items (itemCount).kind := pageItems (pageIndex).kind;
-                     items (itemCount).flags := pageItems (pageIndex).flags;
-                     items (itemCount).sizeBytes :=
+                     candidateItems (candidateCount).kind := pageItems (pageIndex).kind;
+                     candidateItems (candidateCount).flags := pageItems (pageIndex).flags;
+                     candidateItems (candidateCount).sizeBytes :=
                        pageItems (pageIndex).sizeBytes;
-                     for nameIndex in 1 .. items (itemCount).nameLength loop
-                        items (itemCount).name (nameIndex) := Character'Val
+                     for nameIndex in 1 .. candidateItems (candidateCount).nameLength loop
+                        candidateItems (candidateCount).name (nameIndex) := Character'Val
                           (pageItems (pageIndex).name (nameIndex));
                      end loop;
                   end if;
@@ -203,7 +223,7 @@ procedure main is
             end if;
             previousCursor := header.nextCursor;
 
-            if listTruncated or else
+            if candidateTruncated or else
               (header.flags and DIRECTORY_PAGE_END) /= 0
             then
                success := True;
@@ -212,39 +232,149 @@ procedure main is
          end;
       end loop;
 
-      msg := Close_Directory_Request (directory);
+      if success then
+         --  Publish only a complete, validated (possibly bounded) listing.
+         items := candidateItems;
+         itemCount := candidateCount;
+         listTruncated := candidateTruncated;
+         selectedItem := 0;
+         scrollRow := 0;
+         loadSucceeded := True;
+         browserStatus := Ready;
+      end if;
+   end Load_Handle;
+
+   procedure Open_Root (path : String; success : out Boolean) is
+      msg : Message;
+      tag : MessageTag;
+      directory : Directory_Handle;
+      pathOK : Boolean;
+   begin
+      declare
+         pathView : String (path'Range)
+           with Import, Address => To_Address (Integer_Address (pageAddress));
+      begin
+         pathView := path;
+      end;
+      msg := Open_Directory_Request (pageGrant, path'Length);
       tag := capCall (CAP_SLOT_FILESYSTEM, msg);
-      success := success and then tag.label = REPLY_OK;
-   end Load_From;
+      success := tag.label = REPLY_OK;
+      if not success then
+         return;
+      end if;
+      directory := Directory_Handle (msg.words (0));
+      Load_Handle (directory, success);
+      if success then
+         depth := 1;
+         navigation (depth).handle := directory;
+         CuBit.Directory_Paths.Set_Root
+           ("/", navigation (depth).displayPath, pathOK);
+      else
+         Close_Handle (directory);
+      end if;
+   end Open_Root;
 
    procedure Load_Directory is
       loaded : Boolean;
    begin
-      itemCount := 0;
-      selectedItem := 0;
-      scrollRow := 0;
-      listTruncated := False;
-      loadSucceeded := False;
       if not pageGrantReady then
          return;
       end if;
-
-      Load_From ("@nvme:0/", loaded);
-      if loaded then
-         Set_Source_Name ("NVMe volume 0");
-         loadSucceeded := True;
+      if depth > 0 then
+         Load_Handle (navigation (depth).handle, loaded);
+         if not loaded then
+            browserStatus := Read_Failed;
+         end if;
          return;
       end if;
-
-      itemCount := 0;
-      Load_From ("@mem:0/", loaded);
+      Open_Root ("@nvme:0/", loaded);
+      if loaded then
+         Set_Source_Name ("NVMe volume 0");
+         return;
+      end if;
+      Open_Root ("@mem:0/", loaded);
       if loaded then
          Set_Source_Name ("Live workspace");
-         loadSucceeded := True;
       else
          Set_Source_Name ("Unavailable");
+         browserStatus := No_Root;
       end if;
    end Load_Directory;
+
+   function Can_Open_Selected return Boolean is
+     (depth > 0 and then selectedItem > 0 and then
+      items (selectedItem).kind = DIRECTORY_KIND_DIRECTORY);
+
+   procedure Open_Selected is
+      msg : Message;
+      tag : MessageTag;
+      child : Directory_Handle;
+      childPath : CuBit.Directory_Paths.Path;
+      loaded : Boolean;
+   begin
+      if not Can_Open_Selected then
+         return;
+      end if;
+      if depth = MAXIMUM_NAVIGATION_DEPTH then
+         browserStatus := Navigation_Limit;
+         return;
+      end if;
+      declare
+         name : constant String :=
+           items (selectedItem).name (1 .. items (selectedItem).nameLength);
+         nameView : String (name'Range)
+           with Import, Address => To_Address (Integer_Address (pageAddress));
+      begin
+         CuBit.Directory_Paths.Append_Child
+           (navigation (depth).displayPath, name, childPath, loaded);
+         if not loaded then
+            browserStatus := Open_Failed;
+            return;
+         end if;
+         nameView := name;
+         msg := Open_Child_Directory_Request
+           (navigation (depth).handle, pageGrant, name'Length);
+      end;
+      tag := capCall (CAP_SLOT_FILESYSTEM, msg);
+      if tag.label /= REPLY_OK then
+         browserStatus := Open_Failed;
+         return;
+      end if;
+      child := Directory_Handle (msg.words (0));
+      navigation (depth).selected := selectedItem;
+      navigation (depth).scroll := scrollRow;
+      Load_Handle (child, loaded);
+      if not loaded then
+         Close_Handle (child);
+         browserStatus := Read_Failed;
+         return;
+      end if;
+      depth := depth + 1;
+      navigation (depth) :=
+        (handle => child, displayPath => childPath, others => <>);
+      debugPrint ("files: entered " &
+        CuBit.Directory_Paths.Value (childPath) & LF);
+   end Open_Selected;
+
+   procedure Go_Back is
+      loaded : Boolean;
+   begin
+      if depth <= 1 then
+         return;
+      end if;
+      Load_Handle (navigation (depth - 1).handle, loaded);
+      if not loaded then
+         browserStatus := Read_Failed;
+         return;
+      end if;
+      Close_Handle (navigation (depth).handle);
+      navigation (depth) := (others => <>);
+      depth := depth - 1;
+      selectedItem := Natural'Min (navigation (depth).selected, itemCount);
+      scrollRow := navigation (depth).scroll;
+      debugPrint ("files: returned " &
+        CuBit.Directory_Paths.Value (navigation (depth).displayPath) & LF);
+   end Go_Back;
 
    procedure Ensure_Selected_Visible (visibleRows : Natural) is
    begin
@@ -269,7 +399,9 @@ procedure main is
       regions : CuBit.UI.Table_Regions;
       rowBounds : CuBit.UI.Rect;
       scrollBounds : CuBit.UI.Rect;
-      refreshResult, rowResult, scrollResult : CuBit.UI.Widget_Result;
+      refreshResult, rowResult, scrollResult, navigationResult :
+        CuBit.UI.Widget_Result;
+      backBounds, openBounds : CuBit.UI.Rect;
       visibleRows : Natural;
       maximumScroll : Natural := 0;
       previousScroll : Natural;
@@ -286,11 +418,33 @@ procedure main is
          (c, ui, controls, CONTROL_REFRESH,
          (x => toolbar.x + 7, y => toolbar.y + 6, w => 82, h => 26),
          toolbar, colors, "Refresh", refreshResult, retainedInput => True);
+      backBounds :=
+        (x => toolbar.x + 96, y => toolbar.y + 6, w => 64, h => 26);
+      openBounds :=
+        (x => toolbar.x + 167, y => toolbar.y + 6, w => 64, h => 26);
+      if depth > 1 then
+         CuBit.UI.Widgets.Button
+           (c, ui, controls, CONTROL_BACK, backBounds, toolbar, colors,
+            "Back", navigationResult, retainedInput => True);
+      else
+         CuBit.UI.Widgets.Disabled_Button (c, backBounds, colors, "Back");
+      end if;
+      if Can_Open_Selected then
+         CuBit.UI.Widgets.Button
+           (c, ui, controls, CONTROL_OPEN, openBounds, toolbar, colors,
+            "Open", navigationResult, retainedInput => True);
+      else
+         CuBit.UI.Widgets.Disabled_Button (c, openBounds, colors, "Open");
+      end if;
       CuBit.UI.Labels.Label
-        (c, (x => toolbar.x + 105, y => toolbar.y + 9,
-             w => toolbar.w - 220, h => 20), colors,
+        (c, (x => toolbar.x + 244, y => toolbar.y + 9,
+             w => (if toolbar.w > 359 then toolbar.w - 359 else 0),
+             h => 20), colors,
          (if sourceNameLength = 0 then "No filesystem root" else
-            sourceName (1 .. sourceNameLength)), muted => True);
+            sourceName (1 .. sourceNameLength) &
+              (if depth = 0 then "" else "  " &
+                 CuBit.Directory_Paths.Value (navigation (depth).displayPath))),
+         muted => True);
       CuBit.UI.Widgets.Badge
         (c, (x => toolbar.x + toolbar.w - 105, y => toolbar.y + 8,
              w => 96, h => 21), colors, "Read only",
@@ -378,12 +532,17 @@ procedure main is
 
       CuBit.UI.Draw_Status_Bar
         (c, status, colors,
-         (if loadSucceeded then
+         (if browserStatus = Open_Failed then "Folder could not be opened."
+          elsif browserStatus = Read_Failed then
+            "Refresh failed; showing the previous listing."
+          elsif browserStatus = Navigation_Limit then
+            "Navigation limit reached; go Back to release a folder handle."
+          elsif loadSucceeded then
             Decimal (Unsigned_64 (itemCount)) &
               (if itemCount = 1 then " object" else " objects")
           else "No granted filesystem root is available."),
          (if listTruncated then "list truncated" else
-            "explicit read authority"));
+            "Enter: open   Backspace: back"));
       CuBit.UI.State.Finish_Frame (ui);
       if not firstFrameLogged then
          debugPrint ("files: first frame presented" & LF);
@@ -411,7 +570,13 @@ procedure main is
          elsif event.payload0 = KEY_F5 then
             Load_Directory;
             debugPrint ("files: refresh input received" & LF);
-            dirty := CuBit.UI.Union_Rect (dirty, lastListBounds);
+            dirty := CuBit.UI.App.Full_Rect (win);
+         elsif event.payload0 = KEY_ENTER then
+            Open_Selected;
+            dirty := CuBit.UI.App.Full_Rect (win);
+         elsif event.payload0 = KEY_BACKSPACE then
+            Go_Back;
+            dirty := CuBit.UI.App.Full_Rect (win);
          elsif event.payload0 = KEY_UP and then selectedItem > 1 then
             selectedItem := selectedItem - 1;
             selectionMoved := True;
@@ -440,7 +605,7 @@ procedure main is
          if selectionMoved then
             visibleRows := Natural'Max (1, lastListBounds.h / ROW_HEIGHT);
             Ensure_Selected_Visible (visibleRows);
-            dirty := CuBit.UI.Union_Rect (dirty, lastListBounds);
+            dirty := CuBit.UI.App.Full_Rect (win);
          end if;
       elsif event.kind = CuBit.UI.App.INPUT_CONFIGURE then
          dirty := CuBit.UI.App.Full_Rect (win);
@@ -476,6 +641,16 @@ procedure main is
             debugPrint ("files: refresh click activated" & LF);
             Load_Directory;
             dirty := CuBit.UI.App.Full_Rect (win);
+         elsif hit = CONTROL_BACK and then
+           CuBit.UI.Controls.Take_Activated (controls, hit)
+         then
+            Go_Back;
+            dirty := CuBit.UI.App.Full_Rect (win);
+         elsif hit = CONTROL_OPEN and then
+           CuBit.UI.Controls.Take_Activated (controls, hit)
+         then
+            Open_Selected;
+            dirty := CuBit.UI.App.Full_Rect (win);
          elsif hit >= CONTROL_ROW_FIRST and then
            CuBit.UI.Controls.Take_Activated (controls, hit)
          then
@@ -485,7 +660,7 @@ procedure main is
             begin
                if itemIndex <= itemCount then
                   selectedItem := itemIndex;
-                  dirty := CuBit.UI.Union_Rect (dirty, lastListBounds);
+                  dirty := CuBit.UI.App.Full_Rect (win);
                end if;
             end;
          end if;
@@ -553,6 +728,9 @@ begin
    end;
    Run_UI (win);
    CuBit.UI.App.Close (win);
+   for index in 1 .. depth loop
+      Close_Handle (navigation (index).handle);
+   end loop;
    if pageGrantReady then
       CuBit.Memory_Grants.Revoke (pageGrant, pageGrantReady);
    end if;

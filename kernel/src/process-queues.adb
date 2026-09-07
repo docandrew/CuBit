@@ -114,6 +114,29 @@ package body Process.Queues is
         Spinlocks.exitCriticalSection (q.lock);
     end popItem;
 
+    procedure detach (q : in out ProcQueue; pid : ProcessID;
+                      kind : Removal_Kind := Ordinary_Queue) is
+        current, ignored, following : ProcessID;
+    begin
+        Spinlocks.enterCriticalSection (q.lock);
+        current := q.head;
+        while current /= NO_PROCESS loop
+            if current = pid then
+                following := proctab(pid).next;
+                if kind = Delta_Queue and then following /= NO_PROCESS then
+                    proctab(following).queueKey :=
+                        proctab(following).queueKey + proctab(pid).queueKey;
+                end if;
+                popItemNoLock (q, pid, ignored);
+                proctab(pid).next := NO_PROCESS;
+                proctab(pid).prev := NO_PROCESS;
+                exit;
+            end if;
+            current := proctab(current).next;
+        end loop;
+        Spinlocks.exitCriticalSection (q.lock);
+    end detach;
+
     ---------------------------------------------------------------------------
     -- enqueue - add to the back of the list while holding the list's lock
     ---------------------------------------------------------------------------

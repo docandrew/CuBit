@@ -8,6 +8,11 @@ with CCL.Debug_Maps;
 with CCL.Ownership;
 with CCL.VM;
 with CCL_Workbench_Platform;
+with CCL_Workspace;
+with CCL.Sessions;
+with CCL_REPL_View;
+with CuBit.File_Selection;
+with CuBit.UI.File_Dialogs;
 with CuBit.UI;
 with CuBit.UI.Controls;
 with CuBit.UI.Editor;
@@ -44,6 +49,9 @@ package body CCL_Workbench is
    use type CuBit.UI.Editor.Cursors.Add_Result;
    use type CuBit.UI.Editor.Search.Search_Status;
    use type CuBit.UI.Scrollbar_Part;
+   use type CCL_Workspace.Storage_Result;
+   use type CuBit.UI.File_Dialogs.Dialog_Mode;
+   use type CuBit.UI.File_Dialogs.Dialog_Action;
 
    --  Compact native canvas: never downscale the toolkit's 11 px UI font.
    --  The hosted adapter scales this canvas upward when space permits.
@@ -51,7 +59,7 @@ package body CCL_Workbench is
    HEIGHT : constant Natural := 400;
    MAXIMUM_WIDTH  : constant Natural := 1_280;
    MAXIMUM_HEIGHT : constant Natural := 720;
-   SOURCE_CAPACITY : constant := 4_096;
+   SOURCE_CAPACITY : constant := CCL_Workspace.Maximum_Source_Bytes;
    MAX_SOURCE_STYLE_SPANS : constant Positive := SOURCE_CAPACITY;
    BYTECODE_ROW_HEIGHT : constant Positive := CuBit.UI.Code_Text_Height + 3;
    WORKSPACE_MARGIN : constant Natural := 8;
@@ -95,6 +103,12 @@ package body CCL_Workbench is
    Result_Text : String (1 .. 96) := [others => ' '];
    Result_Last : Natural := 5;
    Last_Outcome : CCL.Language.Interpretation_Result;
+   Source_Session : CCL.Sessions.Session;
+   REPL : CCL_REPL_View.View_State;
+   REPL_Visible : Boolean := False;
+   REPL_Bounds : CuBit.UI.Rect;
+   REPL_Toggle : CuBit.UI.Rect;
+   REPL_Toggle_Pressed : Boolean := False;
    Has_Run : Boolean := False;
    Compiled_Artifact : CCL.Compiler.Compilation_Result;
    Verified_Artifact : CCL.VM.Validated_Program;
@@ -121,6 +135,11 @@ package body CCL_Workbench is
    Diagnostic_Line : Natural := 0;
    Diagnostic_Column : Natural := 0;
    Source : CuBit.UI.Editor.Documents.Document (SOURCE_CAPACITY);
+   Saved_Source : CCL_Workspace.Source_Buffer := [others => ' '];
+   Saved_Length : CCL_Workspace.Source_Length := 0;
+   File_Dialog : CuBit.UI.File_Dialogs.Dialog_State;
+   Dialog_Background_Dirty : Boolean := False;
+   Current_Filename : CuBit.File_Selection.File_Name;
    Find_Query : CuBit.UI.Editor.Edit_State;
    Find_Active : Boolean := False;
    Source_Styles : CuBit.UI.Text_Style_Spans
@@ -181,6 +200,8 @@ package body CCL_Workbench is
      (x => 257, y => CLIENT_TITLE_HEIGHT + 25, w => 27, h => 27);
    Run_Button_Bounds : CuBit.UI.Rect := (others => 0);
    Run_Button_Pressed : Boolean := False;
+   Open_Button_Pressed : Boolean := False;
+   Save_Button_Pressed : Boolean := False;
    Compile_Button_Pressed : Boolean := False;
    VM_Run_Button_Pressed : Boolean := False;
    Pause_Button_Pressed : Boolean := False;
@@ -285,11 +306,15 @@ package body CCL_Workbench is
       elsif CuBit.UI.Point_In_Rect
         (Pointer_X, Pointer_Y, Open_Button_Bounds)
       then
-         return "Open source - unavailable until filesystem handles are wired";
+         return (if CCL_Workspace.Supported then
+                   "Open a CCL file in the authorized workspace (Ctrl+O)"
+                 else "Open: native CuBit workspace only; Linux preview has no storage adapter");
       elsif CuBit.UI.Point_In_Rect
         (Pointer_X, Pointer_Y, Save_Button_Bounds)
       then
-         return "Save source - unavailable until filesystem handles are wired";
+         return (if CCL_Workspace.Supported then
+                   "Save CCL source as a new file (Ctrl+S); never overwrite"
+                 else "Save: native CuBit workspace only; Linux preview has no storage adapter");
       elsif CuBit.UI.Point_In_Rect
         (Pointer_X, Pointer_Y, Compile_Button_Bounds)
       then
@@ -412,6 +437,100 @@ package body CCL_Workbench is
 
    procedure Reveal_Source_Cursor;
 
+   procedure Show_Source_Dialog (Mode : CuBit.UI.File_Dialogs.Dialog_Mode) is
+      Files : CuBit.File_Selection.File_List;
+      Suggested : CuBit.File_Selection.File_Name;
+      Result : CCL_Workspace.Storage_Result;
+   begin
+      if VM_Has_State and then not VM_Snapshot.Terminal then
+         Set_Result ("stop the debugger before opening the workspace");
+         return;
+      end if;
+      if Mode = CuBit.UI.File_Dialogs.Open_File then
+         if CuBit.UI.Editor.Documents.Content (Source) /= Saved_Source (1 .. Saved_Length) then
+            Set_Result ("unsaved changes: save a new file before opening (Ctrl+S)");
+            return;
+         end if;
+      end if;
+      CCL_Workspace.List_Files (Files, Result);
+      if Result /= CCL_Workspace.Succeeded then
+         Set_Result ("workspace: " & CCL_Workspace.Storage_Result'Image (Result));
+         return;
+      end if;
+      if Mode = CuBit.UI.File_Dialogs.Save_New_File then
+         CCL_Workspace.Suggest_Name (Suggested, Result);
+         --  Exhausted automatic numbering does not prohibit a user-chosen name.
+         if Result /= CCL_Workspace.Succeeded then Suggested := (others => <>); end if;
+      end if;
+      CuBit.UI.File_Dialogs.Show
+        (File_Dialog, Mode, Files, CCL_Workspace.Location, CuBit.File_Selection.Value (Suggested));
+      Dialog_Background_Dirty := True;
+   end Show_Source_Dialog;
+
+   procedure Save_Source is
+   begin
+      Show_Source_Dialog (CuBit.UI.File_Dialogs.Save_New_File);
+   end Save_Source;
+
+   procedure Open_Source is
+   begin
+      Show_Source_Dialog (CuBit.UI.File_Dialogs.Open_File);
+   end Open_Source;
+
+   procedure Apply_File_Selection is
+      Name : constant String := CuBit.UI.File_Dialogs.Filename (File_Dialog);
+      Text : CCL_Workspace.Source_Buffer;
+      Length : CCL_Workspace.Source_Length;
+      Result : CCL_Workspace.Storage_Result;
+      Edit : CuBit.UI.Editor.Documents.Edit_Result;
+      Candidate : CuBit.UI.Editor.Documents.Document (SOURCE_CAPACITY);
+      Accepted : Boolean;
+   begin
+      if CuBit.UI.File_Dialogs.Mode (File_Dialog) = CuBit.UI.File_Dialogs.Save_New_File then
+         declare
+            Content : constant String := CuBit.UI.Editor.Documents.Content (Source);
+         begin
+            CCL_Workspace.Save_New (Name, Content, Result);
+            if Result = CCL_Workspace.Succeeded then
+               Saved_Length := Content'Length;
+               Saved_Source (1 .. Saved_Length) := Content;
+            end if;
+         end;
+      else
+         CCL_Workspace.Load (Name, Text, Length, Result);
+         if Result = CCL_Workspace.Succeeded then
+            CuBit.UI.Editor.Documents.Initialize (Candidate, Text (1 .. Length), Edit);
+            if Edit /= CuBit.UI.Editor.Documents.Applied then
+               Result := CCL_Workspace.Limit_Reached;
+            else
+               Source := Candidate;
+               Saved_Source := Text;
+               Saved_Length := Length;
+               CuBit.UI.Editor.Cursors.Initialize (Source_Cursors, 1);
+               Source_Histories.Initialize (Source_History);
+               Find_Active := False;
+               Invalidate_Run_Result;
+               Reveal_Source_Cursor;
+            end if;
+         end if;
+      end if;
+      if Result = CCL_Workspace.Succeeded then
+         CuBit.File_Selection.Set (Current_Filename, Name, Accepted);
+         REPL_Visible := False;
+         Set_Result
+           ((if CuBit.UI.File_Dialogs.Mode (File_Dialog) = CuBit.UI.File_Dialogs.Save_New_File
+             then "saved " else "opened ") & Name & " in " & CCL_Workspace.Location);
+         CuBit.UI.File_Dialogs.Close (File_Dialog);
+      else
+         CuBit.UI.File_Dialogs.Set_Error (File_Dialog,
+           (case Result is
+               when CCL_Workspace.Conflict => "Name already exists or has a pending save; choose another.",
+               when CCL_Workspace.Invalid_Name => "Use a .ccl filename, at most 64 characters, with no path.",
+               when CCL_Workspace.Not_Found => "File no longer exists. Cancel and reopen to refresh the list.",
+               when others => CCL_Workspace.Storage_Result'Image (Result) & "; editor unchanged"));
+      end if;
+   end Apply_File_Selection;
+
    procedure Initialize_Visible_Interfaces is
       Resolved   : CCL.Catalog.Resolved_Operation;
       Error      : CCL.Catalog.Catalog_Error;
@@ -445,7 +564,8 @@ package body CCL_Workbench is
    begin
       VM_Continuous := False;
       VM_Has_Run := False;
-      CCL.Language.Interpret (Text, 4_096, Visible_Interfaces, Outcome);
+      REPL_Visible := False;
+      CCL.Sessions.Submit (Source_Session, Text, CCL.Sessions.Default_Fuel, Outcome);
       Last_Outcome := Outcome;
       Has_Run := True;
       Diagnostic_Line := 0;
@@ -481,9 +601,9 @@ package body CCL_Workbench is
          Source_Histories.Break_Sequence (Source_History);
          CuBit.UI.Editor.Cursors.Initialize (Source_Cursors, Position);
          Reveal_Source_Cursor;
-         Set_Result (CCL.Language.Diagnostic_Code'Image (Outcome.Diagnostic));
+         Set_Result (CCL.Sessions.Result_Image (Outcome));
       else
-         Set_Result (CCL.Language.Diagnostic_Code'Image (Outcome.Diagnostic));
+         Set_Result (CCL.Sessions.Result_Image (Outcome));
       end if;
    end Run_Source;
 
@@ -1873,10 +1993,12 @@ package body CCL_Workbench is
                   w => Canvas.width, h => 34), Colors);
       CuBit.UI.Widgets.Toolbar_Button
         (Canvas, Open_Button_Bounds, Colors,
-         CuBit.UI.Widgets.Open_Document, enabled => False);
+         CuBit.UI.Widgets.Open_Document, enabled => CCL_Workspace.Supported,
+         pressed => Open_Button_Pressed);
       CuBit.UI.Widgets.Toolbar_Button
         (Canvas, Save_Button_Bounds, Colors,
-         CuBit.UI.Widgets.Save_Document, enabled => False);
+         CuBit.UI.Widgets.Save_Document, enabled => CCL_Workspace.Supported,
+         pressed => Save_Button_Pressed);
       CuBit.UI.Widgets.Toolbar_Separator
         (Canvas, (x => 63, y => CLIENT_TITLE_HEIGHT + 25,
                   w => 8, h => 27), Colors);
@@ -1921,7 +2043,7 @@ package body CCL_Workbench is
 
       CuBit.UI.Widgets.Group_Box
         (Canvas, Inspector_Bounds, Colors,
-         "Execution", Execution_Content, 8);
+         (if REPL_Visible then "Source execution" else "Execution"), Execution_Content, 8);
       declare
          Execution_Canvas : constant CuBit.UI.Canvas :=
            CuBit.UI.With_Clip (Canvas, Execution_Content);
@@ -2146,10 +2268,27 @@ package body CCL_Workbench is
 
       CuBit.UI.Widgets.Group_Box
         (Canvas, Source_Pane_Bounds, Colors,
-         "Source", Editor_Content, 8);
+         (if REPL_Visible then "REPL" else "Source"), Editor_Content, 8);
+      REPL_Toggle := (Editor_Content.x + Editor_Content.w - 86,
+        Editor_Content.y, 86, 22);
+      REPL_Bounds := (Editor_Content.x, Editor_Content.y + 27,
+        Editor_Content.w, (if Editor_Content.h > 27 then Editor_Content.h - 27 else 0));
+      CuBit.UI.Draw_Button (Canvas, REPL_Toggle, Colors,
+        (if REPL_Toggle_Pressed then CuBit.UI.Button_Pressed else CuBit.UI.Button_Normal),
+        (if REPL_Visible then "Source [F6]" else "REPL [F6]"));
+      if REPL_Visible then
+         CuBit.UI.Widgets.Label (Canvas,
+           (Editor_Content.x, Editor_Content.y, Editor_Content.w - 94, 22), Colors,
+           "CCL session");
+         CCL_REPL_View.Draw (REPL, Canvas, REPL_Bounds, Colors);
+      else
       CuBit.UI.Draw_UI_Text
-        (Canvas, Editor_Content.x, Editor_Content.y,
-         "untitled.ccl  |  F5 interpret  |  Compile for VM",
+        (CuBit.UI.With_Clip (Canvas,
+           (Editor_Content.x, Editor_Content.y, Editor_Content.w - 94, 22)),
+         Editor_Content.x, Editor_Content.y,
+         (if Current_Filename.Length = 0 then "untitled.ccl"
+          else CuBit.File_Selection.Value (Current_Filename)) &
+           "  |  F5 interpret  |  Compile for VM",
          Colors.muted, Colors.face);
       if Find_Active then
          CuBit.UI.Draw_UI_Text
@@ -2297,6 +2436,7 @@ package body CCL_Workbench is
             firstColumn =>
               CuBit.UI.Editor.Viewports.First_Column (Source_View));
       end if;
+      end if; -- Source editor / REPL share this pane, not their mutable state.
       CuBit.UI.Widgets.Group_Box
         (Canvas, Disassembly_Bounds, Colors,
          "Disassembly", Bytecode_Content, 8);
@@ -2422,6 +2562,8 @@ package body CCL_Workbench is
          Toolbar_Hint,
          "bounded document • proved viewport");
       CuBit.UI.State.Finish_Frame (Workbench_UI);
+      CuBit.UI.File_Dialogs.Draw (Canvas, File_Dialog, Colors);
+      Dialog_Background_Dirty := False;
    end Render;
 
    --  The only visual effects of uncaptured pointer motion are the splitter
@@ -2452,6 +2594,8 @@ procedure Run is
 begin
    CCL_Workbench_Platform.Activate;
    Initialize_Visible_Interfaces;
+   CCL.Sessions.Initialize (Source_Session, Visible_Interfaces);
+   CCL_REPL_View.Initialize (REPL, Visible_Interfaces);
    declare
       Source_Result : CuBit.UI.Editor.Documents.Edit_Result;
       Find_Accepted : Boolean;
@@ -2493,6 +2637,8 @@ begin
       CuBit.UI.Editor.Cursors.Initialize (Source_Cursors, 1);
       Source_Histories.Initialize (Source_History);
       CuBit.UI.Editor.Viewports.Initialize (Source_View, 15);
+      Saved_Length := CuBit.UI.Editor.Documents.Length (Source);
+      Saved_Source (1 .. Saved_Length) := CuBit.UI.Editor.Documents.Content (Source);
       CuBit.UI.Editor.Initialize (Find_Query, "", Find_Accepted);
       if not Find_Accepted then
          raise Program_Error;
@@ -2520,6 +2666,10 @@ begin
       SCROLL_REPEAT_INTERVAL : constant Interfaces.Unsigned_64 := 60;
       Needs_Render : Boolean := True;
       Needs_Pointer_Feedback : Boolean := False;
+      Previous_Hover : Hover_Target := Hover_None;
+      REPL_Only_Render : Boolean := False;
+      REPL_Full_Render : Boolean := False;
+      REPL_Pointer_Down : Boolean := False;
       Changed : Boolean;
       Extend : Boolean;
       By_Word : Boolean;
@@ -2538,7 +2688,15 @@ begin
 
       function Desired_Pointer_Cursor return Integer_32 is
       begin
-         if Active_Resize /= No_Resize then
+         if CuBit.UI.File_Dialogs.Is_Open (File_Dialog) then
+            return Integer_32 (CuBit.UI.Pointer_Cursor_Style'Enum_Rep
+              (CuBit.UI.Pointer_Default));
+         elsif REPL_Visible and then Pointer_Known and then
+           CuBit.UI.Point_In_Rect (Pointer_X, Pointer_Y, REPL_Bounds)
+         then
+            return Integer_32 (CuBit.UI.Pointer_Cursor_Style'Enum_Rep
+              (CuBit.UI.Pointer_Default));
+         elsif Active_Resize /= No_Resize then
             return Integer_32
               (CuBit.UI.Pointer_Cursor_Style'Enum_Rep
                  (CuBit.UI.Pointer_Resize_Horizontal));
@@ -2588,9 +2746,73 @@ begin
             Canvas.height := Natural (Surface_Height);
             if Canvas.width /= Old_Width or else Canvas.height /= Old_Height then
                Needs_Render := True;
+               Dialog_Background_Dirty := True;
+               REPL_Full_Render := True;
             end if;
          end if;
       end Prepare_Surface;
+
+      procedure Handle_File_Dialog is
+         use CuBit.UI.File_Dialogs;
+         Action : Dialog_Action;
+         Event : Dialog_Event;
+      begin
+         Event.Kind :=
+           (case Kind is
+               when 2 => Text_Input, when 3 => Backspace, when 4 => Enter,
+               when 5 => Left, when 6 => Right, when 7 => Home, when 8 => End_Key,
+               when 9 => Delete, when 10 => Select_All, when 11 | 15 => Pointer_Down,
+               when 12 => Pointer_Drag, when 13 => Pointer_Up, when 14 => Double_Click,
+               when 16 => Up, when 17 => Down, when 18 => Wheel_Up, when 19 => Wheel_Down,
+               when 20 => Page_Up, when 21 => Page_Down, when 22 => Escape,
+               when CCL_Workbench_Platform.Tab_Event => Tab,
+               when others => No_Event);
+         if Code <= 127 then Event.Character_Value := Character'Val (Code); end if;
+         Event.X := Pointer_X;
+         Event.Y := Pointer_Y;
+         Event.Shift := (Modifiers and 1) /= 0;
+         Event.Control := (Modifiers and 2) /= 0;
+         CuBit.UI.File_Dialogs.Handle
+           (File_Dialog, Event, Canvas.width, Canvas.height, Action);
+         if Action = Submit then Apply_File_Selection; end if;
+         if not Is_Open (File_Dialog) then
+            CuBit.UI.State.Resynchronize_Pointer (Workbench_UI, Pointer_X, Pointer_Y, False);
+         end if;
+      end Handle_File_Dialog;
+
+      procedure Handle_REPL is
+         use CCL_REPL_View;
+         Event : View_Event;
+         Submitted : Boolean;
+      begin
+         Event.Kind :=
+           (case Kind is
+               when 2 => Text_Input, when 3 => Backspace, when 4 | 25 => Submit,
+               when 5 => Left, when 6 => Right, when 7 => Home, when 8 => End_Key,
+               when 9 => Delete, when 10 => Select_All, when 11 | 14 | 15 => Pointer_Down,
+               when 12 => Pointer_Drag, when 13 => Pointer_Up,
+               when 16 => Previous, when 17 => Next, when 18 => Wheel_Up, when 19 => Wheel_Down,
+               when others => No_Event);
+         if Code <= 127 then Event.Character_Value := Character'Val (Code); end if;
+         Event.X := Pointer_X; Event.Y := Pointer_Y;
+         Event.Shift := (Modifiers and 1) /= 0;
+         Event.Control := (Modifiers and 2) /= 0;
+         CCL_REPL_View.Handle (REPL, Event, REPL_Bounds, Submitted);
+         if Submitted then CCL_Workbench_Platform.REPL_Completed; end if;
+      end Handle_REPL;
+
+      procedure Toggle_REPL is
+      begin
+         CCL_REPL_View.Deactivate (REPL);
+         REPL_Visible := not REPL_Visible;
+         REPL_Full_Render := True;
+         REPL_Pointer_Down := False;
+         Dragging := False;
+         Active_Resize := No_Resize;
+         Active_Source_Scrollbar := No_Scrollbar;
+         Next_Scrollbar_Repeat := 0;
+         CuBit.UI.State.Resynchronize_Pointer (Workbench_UI, Pointer_X, Pointer_Y, False);
+      end Toggle_REPL;
    begin
       if not Running then raise Program_Error; end if;
       Prepare_Surface;
@@ -2601,17 +2823,21 @@ begin
              (Handle, Kind'Access, Code'Access, Modifiers'Access,
               Mouse_X'Access, Mouse_Y'Access) /= 0
          loop
+            Previous_Hover := Current_Hover_Target;
             --  All semantic input other than free pointer motion may update
             --  application state. Plain motion is handled below by comparing
             --  semantic hover regions.
             if Kind /= 26 then
                Needs_Render := True;
+               REPL_Only_Render := False;
             end if;
             if Mouse_X >= 0 and then Mouse_Y >= 0 then
                Pointer_X := Natural (Mouse_X);
                Pointer_Y := Natural (Mouse_Y);
                Pointer_Known := True;
-               if Kind = 11 or else Kind = 14 or else Kind = 15 then
+               if CuBit.UI.File_Dialogs.Is_Open (File_Dialog) or else REPL_Visible then
+                  null; -- Modal input must never reach the background widgets.
+               elsif Kind = 11 or else Kind = 14 or else Kind = 15 then
                   CuBit.UI.State.Set_Pointer
                     (Workbench_UI, Pointer_X, Pointer_Y, True,
                      pressed => True);
@@ -2627,6 +2853,31 @@ begin
                     (Workbench_UI, Pointer_X, Pointer_Y, False);
                end if;
             end if;
+            if CuBit.UI.File_Dialogs.Is_Open (File_Dialog) and then Kind /= 1 then
+               Handle_File_Dialog;
+            elsif Kind = CCL_Workbench_Platform.Toggle_REPL_Event then
+               Toggle_REPL;
+            elsif Kind in 11 | 14 | 15 and then
+              CuBit.UI.Point_In_Rect (Pointer_X, Pointer_Y, REPL_Toggle)
+            then
+               REPL_Toggle_Pressed := True;
+            elsif Kind = 13 and then REPL_Toggle_Pressed then
+               if CuBit.UI.Point_In_Rect (Pointer_X, Pointer_Y, REPL_Toggle) then Toggle_REPL; end if;
+               REPL_Toggle_Pressed := False;
+            elsif REPL_Visible and then Kind = 22 then
+               Toggle_REPL;
+            elsif REPL_Visible and then
+              (Kind in 2 .. 10 | 16 .. 21 | 23 .. 25 | 27 .. 33 | 36 or else
+               (Kind in 11 | 14 | 15 and then
+                CuBit.UI.Point_In_Rect (Pointer_X, Pointer_Y, REPL_Bounds)) or else
+               (Kind in 12 .. 13 and then REPL_Pointer_Down))
+            then
+               if Kind in 11 | 14 | 15 then REPL_Pointer_Down := True;
+               elsif Kind = 13 then REPL_Pointer_Down := False;
+               end if;
+               Handle_REPL;
+               REPL_Only_Render := True;
+            else
             case Kind is
                when 1 => Running := False;
                when 2 =>
@@ -2744,6 +2995,20 @@ begin
                        Second_Local_Column_Divider)
                   then
                      Active_Resize := Second_Local_Table_Column;
+                     Dragging := False;
+                  elsif Mouse_X >= 0 and then Mouse_Y >= 0 and then
+                    CuBit.UI.Point_In_Rect
+                      (Natural (Mouse_X), Natural (Mouse_Y),
+                       Open_Button_Bounds) and then CCL_Workspace.Supported
+                  then
+                     Open_Button_Pressed := True;
+                     Dragging := False;
+                  elsif Mouse_X >= 0 and then Mouse_Y >= 0 and then
+                    CuBit.UI.Point_In_Rect
+                      (Natural (Mouse_X), Natural (Mouse_Y),
+                       Save_Button_Bounds) and then CCL_Workspace.Supported
+                  then
+                     Save_Button_Pressed := True;
                      Dragging := False;
                   elsif Mouse_X >= 0 and then Mouse_Y >= 0 and then
                     CuBit.UI.Point_In_Rect
@@ -2965,6 +3230,18 @@ begin
                      end if;
                   end if;
                when 13 =>
+                  if Open_Button_Pressed and then Mouse_X >= 0 and then Mouse_Y >= 0 and then
+                    CuBit.UI.Point_In_Rect (Natural (Mouse_X), Natural (Mouse_Y), Open_Button_Bounds)
+                  then
+                     Open_Source;
+                  end if;
+                  if Save_Button_Pressed and then Mouse_X >= 0 and then Mouse_Y >= 0 and then
+                    CuBit.UI.Point_In_Rect (Natural (Mouse_X), Natural (Mouse_Y), Save_Button_Bounds)
+                  then
+                     Save_Source;
+                  end if;
+                  Open_Button_Pressed := False;
+                  Save_Button_Pressed := False;
                   if Compile_Button_Pressed and then
                     Mouse_X >= 0 and then Mouse_Y >= 0 and then
                     CuBit.UI.Point_In_Rect
@@ -3111,24 +3388,20 @@ begin
                      Invalidate_Run_Result;
                      Reveal_Source_Cursor;
                   end if;
+               when CCL_Workbench_Platform.Open_Source_Event =>
+                  Open_Source;
+               when CCL_Workbench_Platform.Save_Source_Event =>
+                  Save_Source;
                when 25 =>
                   Run_Source;
                when 26 =>
-                  declare
-                     Previous : constant Hover_Target :=
-                       Current_Hover_Target;
-                  begin
-                     if Mouse_X >= 0 and then Mouse_Y >= 0 then
-                        Pointer_X := Natural (Mouse_X);
-                        Pointer_Y := Natural (Mouse_Y);
-                        Pointer_Known := True;
-                     end if;
-                     if Current_Hover_Target /= Previous then
-                        Needs_Pointer_Feedback := True;
-                     end if;
-                  end;
+                  if Current_Hover_Target /= Previous_Hover then
+                     Needs_Pointer_Feedback := True;
+                  end if;
                when others => null;
             end case;
+            end if;
+            exit when REPL_Only_Render;
             --  Immediate-mode controls must observe every pointer edge and
             --  captured drag position before a later event can overwrite it.
             exit when Kind = 11 or else Kind = 12 or else Kind = 13 or else
@@ -3206,7 +3479,7 @@ begin
                end if;
             end;
          end if;
-         if VM_Continuous then
+         if VM_Continuous and then not CuBit.UI.File_Dialogs.Is_Open (File_Dialog) then
             Needs_Render := True;
             declare
                Current_PC : constant CCL.VM.Instruction_Index :=
@@ -3243,12 +3516,31 @@ begin
          Prepare_Surface;
          exit when not Running;
          if Needs_Render then
-            Render;
-            exit when Window_Present
-              (Handle, Pixels'Address,
-               Integer_32 (MAXIMUM_WIDTH * 4), 0, 0,
-               Integer_32 (Canvas.width), Integer_32 (Canvas.height)) /= 0;
+            declare
+               Damage : CuBit.UI.Rect := (0, 0, Canvas.width, Canvas.height);
+            begin
+               if REPL_Visible and then REPL_Only_Render and then
+                 not REPL_Full_Render and then
+                 not CuBit.UI.File_Dialogs.Is_Open (File_Dialog)
+               then
+                  CCL_REPL_View.Draw (REPL, Canvas, REPL_Bounds, Colors);
+                  Damage := REPL_Bounds;
+               elsif CuBit.UI.File_Dialogs.Is_Open (File_Dialog) and then
+                 not Dialog_Background_Dirty
+               then
+                  CuBit.UI.File_Dialogs.Draw (Canvas, File_Dialog, Colors);
+                  Damage := CuBit.UI.File_Dialogs.Bounds (Canvas.width, Canvas.height);
+               else
+                  Render;
+               end if;
+               exit when Window_Present
+                 (Handle, Pixels'Address, Integer_32 (MAXIMUM_WIDTH * 4),
+                  Integer_32 (Damage.x), Integer_32 (Damage.y),
+                  Integer_32 (Damage.w), Integer_32 (Damage.h)) /= 0;
+            end;
             Needs_Render := False;
+            REPL_Only_Render := False;
+            REPL_Full_Render := False;
             Needs_Pointer_Feedback := False;
          elsif Needs_Pointer_Feedback then
             Render_Pointer_Feedback;

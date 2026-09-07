@@ -17,11 +17,14 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Filesystems; use CuBit.Filesystems;
+with CuBit.Directory_Paths;
+with CuBit.File_Access;
 with Cpio;
 with Ext2;
 
 procedure main is
    use ASCII;
+   use type Ext2.Read_Status;
 
    --  Sysinfo query for ramdisk address
    --  (uses SYSINFO_RAMDISK_ADDRESS from CuBit.Messages)
@@ -51,6 +54,7 @@ procedure main is
       ownerPID    : ProcessID    := NO_PROCESS;
       openRights  : Unsigned_8   := 0;
       objectKind  : Open_Object_Kind := FILE_OBJECT;
+      directoryPath : CuBit.Directory_Paths.Path;
    end record;
 
    type FileTable is array (0 .. MAX_OPEN_FILES - 1) of FileEntry;
@@ -91,24 +95,13 @@ procedure main is
    ACL_WRITE  : constant Unsigned_8 := 2;
    ACL_CREATE : constant Unsigned_8 := 8;
 
-   MAX_ACL_PREFIX : constant := 64;
-   MAX_ACL_ENTRIES : constant := 16;
+   MAX_ACL_ENTRIES : constant := CuBit.File_Access.Maximum_Entries;
    MAX_ACL_PROFILES : constant := 32;
-
-   type ACLEntry is record
-      prefix    : String (1 .. MAX_ACL_PREFIX);
-      prefixLen : Natural    := 0;  --  0 = wildcard (matches everything)
-      rights    : Unsigned_8 := 0;
-   end record;
-
-   type ACLEntryArray is
-     array (0 .. MAX_ACL_ENTRIES - 1) of ACLEntry;
 
    type ACLProfile is record
       pid    : ProcessID := NO_PROCESS;
       active : Boolean   := False;
-      count  : Natural   := 0;
-      entries : ACLEntryArray;
+      policy : CuBit.File_Access.Policy;
    end record;
 
    aclProfiles : array (0 .. MAX_ACL_PROFILES - 1) of ACLProfile;
@@ -134,58 +127,16 @@ procedure main is
    --  not also authorize "apps/foobar".
    function checkAccess
      (sender : ProcessID;
-      path   : String;
+      path : String;
       rights : Unsigned_8) return Boolean
    is
    begin
-      for i in aclProfiles'Range loop
-         if aclProfiles (i).active and then
-            aclProfiles (i).pid = sender
-         then
-            --  Profile found; scan entries for prefix match
-            for j in 0 .. aclProfiles (i).count - 1 loop
-               if (aclProfiles (i).entries (j).rights and rights) = rights
-               then
-                  --  Wildcard entry matches everything
-                  if aclProfiles (i).entries (j).prefixLen = 0 then
-                     return True;
-                  end if;
-
-                  --  Prefix match
-                  if path'Length >=
-                     aclProfiles (i).entries (j).prefixLen
-                  then
-                     declare
-                        pLen : constant Natural :=
-                          aclProfiles (i).entries (j).prefixLen;
-                        match : Boolean := True;
-                     begin
-                        for k in 0 .. pLen - 1 loop
-                           if path (path'First + k) /=
-                              aclProfiles (i).entries (j).prefix (1 + k)
-                           then
-                              match := False;
-                              exit;
-                           end if;
-                        end loop;
-                        if match and then
-                          (path'Length = pLen or else
-                           aclProfiles (i).entries (j).prefix (pLen) = '/' or else
-                           path (path'First + pLen) = '/')
-                        then
-                           return True;
-                        end if;
-                     end;
-                  end if;
-               end if;
-            end loop;
-
-            --  Profile found but no matching entry
-            return False;
+      for profile of aclProfiles loop
+         if profile.active and then profile.pid = sender then
+            return CuBit.File_Access.Allows
+              (profile.policy, path, CuBit.File_Access.Rights_From_Wire (rights));
          end if;
       end loop;
-
-      --  No profile found: default deny
       return False;
    end checkAccess;
 
@@ -351,13 +302,17 @@ procedure main is
       grantAddr     : System.Address := System.Null_Address;
       grantOk       : Boolean := False;
       returned      : Boolean := False;
+      candidate     : CuBit.File_Access.Policy;
+      decoded       : Boolean := False;
    begin
       if not isAdmin (sender) then
          sendReply (sender, REPLY_ACCESS_DENIED, 0);
          return;
       end if;
 
-      if entryCountRaw > Unsigned_64 (MAX_ACL_ENTRIES) then
+      if msg.tag.length /= 4 or else targetPID = NO_PROCESS or else
+        entryCountRaw > Unsigned_64 (MAX_ACL_ENTRIES)
+      then
          sendReply (sender, REPLY_ERR, 0);
          return;
       end if;
@@ -389,11 +344,6 @@ procedure main is
       end if;
 
       if entryCount > 0 then
-         if msg.tag.length /= 4 then
-            sendReply (sender, REPLY_ERR, 0);
-            return;
-         end if;
-
          acquireClientMemory
            (sender, msg.words (2), msg.words (3),
             Unsigned_64 (entryCount * 72),
@@ -404,48 +354,31 @@ procedure main is
          end if;
       end if;
 
-      aclProfiles (slotIdx).pid    := targetPID;
-      aclProfiles (slotIdx).active := True;
-      releaseHandlesForOwner (targetPID);
-
       if entryCount = 0 then
-         --  Wildcard: single entry with prefixLen=0, rights=all
-         aclProfiles (slotIdx).count := 1;
-         aclProfiles (slotIdx).entries (0).prefixLen := 0;
-         aclProfiles (slotIdx).entries (0).rights := 16#FF#;
+         --  Existing trusted bootstrap operation, not the default Policy.
+         CuBit.File_Access.Allow_All_For_Bootstrap (candidate);
       else
-         --  Read entries from grant buffer
-         --  Each entry: 1 byte rights, 1 byte prefixLen, 6 reserved,
-         --  64 bytes prefix = 72 bytes total
          declare
-            buf : array (0 .. entryCount * 72 - 1) of Unsigned_8
+            buf : CuBit.File_Access.Wire_Bytes (1 .. entryCount * 72)
               with Import, Address => grantAddr;
-            base : Natural;
-            pLen : Natural;
+            snapshot : constant CuBit.File_Access.Wire_Bytes := buf;
          begin
-            aclProfiles (slotIdx).count := entryCount;
-            for e in 0 .. entryCount - 1 loop
-               base := e * 72;
-               aclProfiles (slotIdx).entries (e).rights := buf (base);
-               pLen := Natural (buf (base + 1));
-               if pLen > MAX_ACL_PREFIX then
-                  pLen := MAX_ACL_PREFIX;
-               end if;
-               aclProfiles (slotIdx).entries (e).prefixLen := pLen;
-               for c in 0 .. pLen - 1 loop
-                  aclProfiles (slotIdx).entries (e).prefix (1 + c) :=
-                    Character'Val (buf (base + 8 + c));
-               end loop;
-            end loop;
+            CuBit.File_Access.Decode (snapshot, candidate, decoded);
          end;
          returnClientMemory
            (msg.words (2), msg.words (3), returned);
-         if not returned then
+         if not returned or else not decoded then
             sendReply (sender, REPLY_ERR, 0);
             return;
          end if;
       end if;
 
+      --  Publish one validated policy. Invalid requests above neither change
+      --  the old policy nor revoke its handles. The service serializes updates.
+      releaseHandlesForOwner (targetPID);
+      aclProfiles (slotIdx).pid := targetPID;
+      aclProfiles (slotIdx).policy := candidate;
+      aclProfiles (slotIdx).active := True;
       debugPrint ("FS Server: ACL set for PID" & LF);
       sendReply (sender, REPLY_OK, 0);
    end handleSetACL;
@@ -466,7 +399,7 @@ procedure main is
          then
             aclProfiles (i).active := False;
             aclProfiles (i).pid    := NO_PROCESS;
-            aclProfiles (i).count  := 0;
+            CuBit.File_Access.Clear (aclProfiles (i).policy);
          end if;
       end loop;
 
@@ -927,6 +860,51 @@ procedure main is
          end if;
       end;
 
+      if (openFlags and OPEN_EXCLUSIVE) /= 0 then
+         --  Lookup and creation execute in one request in this single-threaded
+         --  service. A future concurrent dispatcher must preserve that
+         --  serialization; a client-side exists-then-create is not equivalent.
+         if useBackend = CPIO_RAMDISK then
+            sendReply (sender, REPLY_READ_ONLY, 0);
+            return;
+         end if;
+         declare
+            first : Natural := relStart;
+            lookup : Ext2.Directory_Lookup_Status;
+            use type Ext2.Directory_Lookup_Status;
+         begin
+            if scheme /= AUTOMATIC_SCHEME and then first <= Natural (pathLen)
+              and then pathBuffer (first) in '0' .. '9'
+            then
+               if Natural (pathLen) - first < 1 or else
+                 pathBuffer (first .. first + 1) /= "0/"
+               then
+                  sendReply (sender, REPLY_FILE_RANGE_UNSUPPORTED, 0);
+                  return;
+               end if;
+               first := first + 2;
+            end if;
+            case useBackend is
+               when EXT2_MEMORY =>
+                  Ext2.resolvePath (memoryFs, pathBuffer (first .. Natural (pathLen)), inodeNum, lookup);
+               when EXT2_NVME =>
+                  Ext2.resolvePath (nvmeFs, pathBuffer (first .. Natural (pathLen)), inodeNum, lookup);
+               when EXT2_ATA =>
+                  Ext2.resolvePath (ataFs, pathBuffer (first .. Natural (pathLen)), inodeNum, lookup);
+               when CPIO_RAMDISK => lookup := Ext2.Lookup_Malformed;
+            end case;
+            if lookup = Ext2.Lookup_Found then
+               sendReply (sender, REPLY_ALREADY_EXISTS, 0);
+               return;
+            elsif lookup /= Ext2.Lookup_Not_Found then
+               sendReply (sender,
+                 (if lookup = Ext2.Lookup_Malformed then REPLY_MALFORMED_FILESYSTEM
+                  else REPLY_IO_ERROR), 0);
+               return;
+            end if;
+         end;
+      end if;
+
       if inodeNum = 0 then
          --  OPEN_CREATE: create the file if it doesn't exist
          if (openFlags and OPEN_CREATE) /= 0 and
@@ -945,7 +923,7 @@ procedure main is
                nameFirst : Natural;
             begin
                --  Skip device selector (e.g. "0/")
-               if relPath'Length > 0 and then
+               if scheme /= AUTOMATIC_SCHEME and then relPath'Length > 0 and then
                   relPath (relPath'First) in '0' .. '9'
                then
                   fileStart := relPath'First + 1;
@@ -1570,6 +1548,9 @@ procedure main is
       files (handleSlot).ownerPID := sender;
       files (handleSlot).openRights := ACL_READ;
       files (handleSlot).objectKind := DIRECTORY_OBJECT;
+      CuBit.Directory_Paths.Set_Root
+        (pathBuffer (1 .. Natural (pathLen)),
+         files (handleSlot).directoryPath, allocated);
 
       declare
          replyMsg : Message := NULL_MESSAGE;
@@ -1584,6 +1565,177 @@ procedure main is
          ignored := reply (sender, replyMsg);
       end;
    end handleOpenDirectory;
+
+   function Read_Reply_Label (status : Ext2.Read_Status) return Unsigned_32 is
+   begin
+      case status is
+         when Ext2.Read_Complete => return REPLY_OK;
+         when Ext2.Read_Out_Of_Range => return REPLY_OUT_OF_RANGE;
+         when Ext2.Read_Device_Error => return REPLY_IO_ERROR;
+         when Ext2.Read_File_Range_Unsupported =>
+            return REPLY_FILE_RANGE_UNSUPPORTED;
+      end case;
+   end Read_Reply_Label;
+
+   procedure handleOpenChildDirectory (sender : ProcessID; msg : Message) is
+      parent : constant Integer :=
+        resolveHandle (msg.words (0), sender, DIRECTORY_OBJECT);
+      nameLength : constant Unsigned_64 := msg.words (1);
+      nameBuffer : String (1 .. MAXIMUM_DIRECTORY_NAME_BYTES);
+      childPath : CuBit.Directory_Paths.Path;
+      address : System.Address;
+      ok : Boolean;
+      inodeNum : Unsigned_32 := 0;
+      ino : Ext2.Inode;
+      slot : Integer;
+      identity : Unsigned_64;
+      lookupReply : Unsigned_32 := REPLY_ERR;
+
+      procedure Lookup (fs : Ext2.Filesystem) is
+         parentInode : Ext2.Inode;
+         readStatus : Ext2.Read_Status;
+         lookupStatus : Ext2.Directory_Lookup_Status;
+      begin
+         --  Refresh metadata: directory contents may have grown since open.
+         Ext2.readInode (fs, files (parent).inodeNum, parentInode, readStatus);
+         if readStatus /= Ext2.Read_Complete then
+            lookupReply := Read_Reply_Label (readStatus);
+            return;
+         elsif Ext2.inodeType (parentInode) /= Ext2.INODE_DIRECTORY then
+            lookupReply := REPLY_WRONG_OBJECT_TYPE;
+            return;
+         end if;
+         Ext2.lookupInDir
+           (fs, parentInode, nameBuffer (1 .. Natural (nameLength)),
+            inodeNum, lookupStatus);
+         case lookupStatus is
+            when Ext2.Lookup_Found =>
+               Ext2.readInode (fs, inodeNum, ino, readStatus);
+               lookupReply := Read_Reply_Label (readStatus);
+               if readStatus /= Ext2.Read_Complete then
+                  inodeNum := 0;
+               end if;
+            when Ext2.Lookup_Not_Found => lookupReply := REPLY_ERR;
+            when Ext2.Lookup_Malformed =>
+               lookupReply := REPLY_MALFORMED_FILESYSTEM;
+            when Ext2.Lookup_Device_Error => lookupReply := REPLY_IO_ERROR;
+            when Ext2.Lookup_Out_Of_Range => lookupReply := REPLY_OUT_OF_RANGE;
+            when Ext2.Lookup_Range_Unsupported =>
+               lookupReply := REPLY_FILE_RANGE_UNSUPPORTED;
+         end case;
+      end Lookup;
+   begin
+      if msg.tag.length /= 4 or else
+        nameLength not in 1 .. MAXIMUM_DIRECTORY_NAME_BYTES
+      then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      elsif parent < 0 then
+         sendReply (sender, REPLY_WRONG_OBJECT_TYPE, 0);
+         return;
+      elsif (files (parent).openRights and ACL_READ) = 0 then
+         sendReply (sender, REPLY_ACCESS_DENIED, 0);
+         return;
+      end if;
+
+      acquireClientMemory
+        (sender, msg.words (2), msg.words (3), nameLength,
+         CuBit.Memory_Grants.Read_Access, address, ok);
+      if not ok then
+         sendReply (sender, REPLY_ACCESS_DENIED, 0);
+         return;
+      end if;
+      declare
+         name : String (1 .. Natural (nameLength))
+           with Import, Address => address;
+      begin
+         nameBuffer (name'Range) := name;
+      end;
+      returnClientMemory (msg.words (2), msg.words (3), ok);
+      if not ok then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+      CuBit.Directory_Paths.Append_Child
+        (files (parent).directoryPath,
+         nameBuffer (1 .. Natural (nameLength)), childPath, ok);
+      if not ok then
+         sendReply (sender, REPLY_OUT_OF_RANGE, 0);
+         return;
+      elsif not checkAccess
+        (sender, CuBit.Directory_Paths.Value (childPath), ACL_READ)
+      then
+         sendReply (sender, REPLY_ACCESS_DENIED, 0);
+         return;
+      end if;
+
+      case files (parent).backend is
+         when EXT2_MEMORY => Lookup (memoryFs);
+         when EXT2_ATA => Lookup (ataFs);
+         when EXT2_NVME => Lookup (nvmeFs);
+         when CPIO_RAMDISK =>
+            --  The bootstrap archive exposes flat names, not directory objects.
+            sendReply (sender, REPLY_WRONG_OBJECT_TYPE, 0);
+            return;
+      end case;
+      if inodeNum = 0 then
+         sendReply (sender, lookupReply, 0);
+         return;
+      elsif Ext2.inodeType (ino) /= Ext2.INODE_DIRECTORY then
+         --  Do not follow symlinks or trust the directory entry's kind hint.
+         sendReply (sender, REPLY_WRONG_OBJECT_TYPE, 0);
+         return;
+      end if;
+      allocHandle (identity, slot, ok);
+      if not ok then
+         sendReply (sender, REPLY_NO_SPACE, 0);
+         return;
+      end if;
+      files (slot).backend := files (parent).backend;
+      files (slot).inodeNum := inodeNum;
+      files (slot).ino := ino;
+      files (slot).offset := 0;
+      files (slot).ownerPID := sender;
+      files (slot).openRights := ACL_READ;
+      files (slot).objectKind := DIRECTORY_OBJECT;
+      files (slot).directoryPath := childPath;
+      files (slot).active := True;
+      sendReply (sender, REPLY_OK, identity);
+   end handleOpenChildDirectory;
+
+   procedure handleRewindDirectory (sender : ProcessID; msg : Message) is
+      handle : constant Integer :=
+        resolveHandle (msg.words (0), sender, DIRECTORY_OBJECT);
+      candidate : Ext2.Inode;
+      status : Ext2.Read_Status := Ext2.Read_Complete;
+   begin
+      if msg.tag.length /= 1 or else handle < 0 then
+         sendReply (sender, REPLY_WRONG_OBJECT_TYPE, 0);
+         return;
+      end if;
+      case files (handle).backend is
+         when EXT2_MEMORY =>
+            Ext2.readInode (memoryFs, files (handle).inodeNum, candidate, status);
+         when EXT2_ATA =>
+            Ext2.readInode (ataFs, files (handle).inodeNum, candidate, status);
+         when EXT2_NVME =>
+            Ext2.readInode (nvmeFs, files (handle).inodeNum, candidate, status);
+         when CPIO_RAMDISK => null;
+      end case;
+      if status /= Ext2.Read_Complete then
+         sendReply (sender, Read_Reply_Label (status), 0);
+         return;
+      end if;
+      if files (handle).backend /= CPIO_RAMDISK then
+         if Ext2.inodeType (candidate) /= Ext2.INODE_DIRECTORY then
+            sendReply (sender, REPLY_WRONG_OBJECT_TYPE, 0);
+            return;
+         end if;
+         files (handle).ino := candidate;
+      end if;
+      files (handle).offset := 0;
+      sendReply (sender, REPLY_OK, 0);
+   end handleRewindDirectory;
 
    --  Return one Directory.Page.V1 into a fixed one-page writable grant.
    procedure handleReadDirectoryPage (sender : ProcessID; msg : Message) is
@@ -1829,40 +1981,42 @@ procedure main is
             procedure skipSel (path : String; idx : out Natural) is
             begin
                idx := path'First;
-               if path'Length > 0 and then
+               if oldScheme /= AUTOMATIC_SCHEME and then path'Length > 0 and then
                   path (path'First) in '0' .. '9'
                then
-                  idx := path'First + 1;
-                  if idx <= path'Last and then
-                     path (idx) = '/'
+                  --  Only device zero exists in each current backend. Never
+                  --  silently turn a different selector into that device, or
+                  --  strip the first digit of an unqualified filename.
+                  if path'Length < 2 or else
+                    path (path'First .. path'First + 1) /= "0/"
                   then
-                     idx := idx + 1;
+                     idx := 0;
+                  else
+                     idx := path'First + 2;
                   end if;
                end if;
             end skipSel;
 
             oldSkip, newSkip : Natural;
-            ok : Boolean;
+            status : Ext2.Rename_Status;
          begin
+            skipSel (oldPath (oldRelStart .. oldPath'Last), oldSkip);
+            skipSel (newPath (newRelStart .. newPath'Last), newSkip);
+            if oldSkip = 0 or else newSkip = 0 then
+               sendReply (sender, REPLY_FILE_RANGE_UNSUPPORTED, 0);
+               return;
+            end if;
             if oldScheme in MEMORY_SCHEME | AUTOMATIC_SCHEME and then
                memoryInitialized
             then
-               if not memoryInitialized then
-                  sendReply (sender, REPLY_ERR, 0);
-                  return;
-               end if;
-
-               skipSel (oldPath (oldRelStart .. oldPath'Last), oldSkip);
-               skipSel (newPath (newRelStart .. newPath'Last), newSkip);
-
                declare
                   oldRel : String renames
                     oldPath (oldSkip .. oldPath'Last);
                   newRel : String renames
                     newPath (newSkip .. newPath'Last);
                begin
-                  ok := Ext2.renameEntry
-                    (memoryFs, Ext2.ROOT_INODE, oldRel, newRel);
+                  Ext2.renamePath
+                    (memoryFs, oldRel, newRel, status);
                end;
             elsif oldScheme = NVME_SCHEME then
                declare
@@ -1875,19 +2029,14 @@ procedure main is
                   end if;
                end;
 
-               skipSel (oldPath (oldRelStart .. oldPath'Last),
-                        oldSkip);
-               skipSel (newPath (newRelStart .. newPath'Last),
-                        newSkip);
-
                declare
                   oldRel : String renames
                     oldPath (oldSkip .. oldPath'Last);
                   newRel : String renames
                     newPath (newSkip .. newPath'Last);
                begin
-                  ok := Ext2.renameEntry
-                    (nvmeFs, Ext2.ROOT_INODE, oldRel, newRel);
+                  Ext2.renamePath
+                    (nvmeFs, oldRel, newRel, status);
                end;
             elsif oldScheme = ATA_SCHEME then
                declare
@@ -1900,29 +2049,39 @@ procedure main is
                   end if;
                end;
 
-               skipSel (oldPath (oldRelStart .. oldPath'Last),
-                        oldSkip);
-               skipSel (newPath (newRelStart .. newPath'Last),
-                        newSkip);
-
                declare
                   oldRel : String renames
                     oldPath (oldSkip .. oldPath'Last);
                   newRel : String renames
                     newPath (newSkip .. newPath'Last);
                begin
-                  ok := Ext2.renameEntry
-                    (ataFs, Ext2.ROOT_INODE, oldRel, newRel);
+                  Ext2.renamePath
+                    (ataFs, oldRel, newRel, status);
                end;
             else
-               ok := False;
+               status := Ext2.Rename_Read_Only;
             end if;
 
-            if ok then
-               sendReply (sender, REPLY_OK, 0);
-            else
-               sendReply (sender, REPLY_ERR, 0);
-            end if;
+            declare
+               label : Unsigned_32;
+            begin
+               case status is
+                  when Ext2.Rename_Complete => label := REPLY_OK;
+                  when Ext2.Rename_Source_Not_Found => label := REPLY_NOT_FOUND;
+                  when Ext2.Rename_Destination_Exists => label := REPLY_ALREADY_EXISTS;
+                  when Ext2.Rename_Invalid_Name => label := REPLY_ERR;
+                  when Ext2.Rename_Malformed => label := REPLY_MALFORMED_FILESYSTEM;
+                  when Ext2.Rename_Range_Unsupported =>
+                     label := REPLY_FILE_RANGE_UNSUPPORTED;
+                  when Ext2.Rename_Read_Only => label := REPLY_READ_ONLY;
+                  when Ext2.Rename_Out_Of_Range => label := REPLY_OUT_OF_RANGE;
+                  when Ext2.Rename_IO_Error => label := REPLY_IO_ERROR;
+                  when Ext2.Rename_Recovery_Required =>
+                     label := REPLY_RECOVERY_REQUIRED;
+                     debugPrint ("FS Server: rename rollback failed; volume write-quarantined" & LF);
+               end case;
+               sendReply (sender, label, 0);
+            end;
          end;
       end;
    end handleRename;
@@ -2035,6 +2194,10 @@ begin
             handleReadDirectoryPage (sender, msg);
          when OP_CLOSE_DIRECTORY =>
             handleCloseDirectory (sender, msg);
+         when OP_OPEN_CHILD_DIRECTORY =>
+            handleOpenChildDirectory (sender, msg);
+         when OP_REWIND_DIRECTORY =>
+            handleRewindDirectory (sender, msg);
          when OP_SET_ACL =>
             handleSetACL (sender, msg);
          when OP_REVOKE_ACL =>

@@ -37,6 +37,7 @@
               ibm-plex
               libjpeg_turbo
               libpng
+              librsvg
               perl
               pkg-config
               python3Packages.pillow

@@ -14,6 +14,7 @@ procedure main is
    CAP_SLOT_BENCH : constant CapabilitySlot := 18;
    OP_BENCH_ECHO  : constant Unsigned_32 := 16#0910#;
    OP_BENCH_DIE   : constant Unsigned_32 := 16#0911#;
+   OP_BENCH_HOLD  : constant Unsigned_32 := 16#0912#;
    REPLY_OK       : constant Unsigned_32 := 16#F000#;
    XOR_MAGIC      : constant Unsigned_64 := 16#C0B1_7000_BE11#;
 
@@ -214,6 +215,69 @@ procedure main is
       debugPrint (LF & "");
    end runAsync;
 
+   procedure runRetirement is
+      msg : Message;
+      entryResult : aliased CompletionEntry;
+      ignored : Unsigned_64;
+      tag : MessageTag;
+      died : Natural := 0;
+      seen : array (1 .. 64) of Boolean := (others => False);
+      deadline : Unsigned_64;
+   begin
+      -- Leave completed results unread, filling 63 of the 64 reservations.
+      for i in 1 .. 63 loop
+         msg := echoMsg (Unsigned_64(i));
+         deadline := nowMs + 2_000;
+         while not capSubmit (CAP_SLOT_BENCH, msg, Unsigned_64(i)) loop
+            if nowMs >= deadline then fail ("saturation-submit"); return; end if;
+            ignored := syscall (SYSCALL_SLEEP, 1);
+         end loop;
+         ignored := syscall (SYSCALL_SLEEP, 1);
+      end loop;
+      msg := NULL_MESSAGE;
+      msg.tag.label := OP_BENCH_HOLD;
+      if not capSubmit (CAP_SLOT_BENCH, msg, 64) then
+         fail ("last-completion-reservation"); return;
+      end if;
+      msg := echoMsg (65);
+      if capSubmit (CAP_SLOT_BENCH, msg, 65) then
+         fail ("completion-overcommit"); return;
+      end if;
+      -- Exit with both a blocked synchronous caller and an outstanding async
+      -- request. Both must complete; the death result occupies the last slot.
+      msg := NULL_MESSAGE;
+      msg.tag.label := OP_BENCH_DIE;
+      tag := capCall (CAP_SLOT_BENCH, msg);
+      if tag.label /= 0 then fail ("sync-target-exit"); return; end if;
+      deadline := nowMs + 2_000;
+      for i in 1 .. 64 loop
+         loop
+            exit when Poll_Completion (entryResult'Address) = 1;
+            if nowMs >= deadline then fail ("lost-exit-completion"); return; end if;
+            ignored := syscall (SYSCALL_SLEEP, 1);
+         end loop;
+         if entryResult.token not in 1 .. 64 then
+            fail ("completion-token-range"); return;
+         end if;
+         if seen(Natural(entryResult.token)) then
+            fail ("duplicate-completion"); return;
+         end if;
+         seen(Natural(entryResult.token)) := True;
+         if entryResult.token = 64 then
+            if entryResult.status /= COMPLETION_TARGET_DIED then
+               fail ("missing-target-died"); return;
+            end if;
+            died := died + 1;
+         elsif entryResult.status /= COMPLETION_OK then
+            fail ("lost-completed-reply"); return;
+         end if;
+      end loop;
+      if died /= 1 or else capSubmit (CAP_SLOT_BENCH, msg, 65) then
+         fail ("retired-endpoint-admission"); return;
+      end if;
+      debugPrint ("IPC-RETIREMENT-CHECK: PASS" & LF);
+   end runRetirement;
+
 begin
    debugPrint ("bench-ipc-client: starting" & LF);
    declare
@@ -237,16 +301,7 @@ begin
       ignored := syscall (SYSCALL_TRACE_SUMMARY);
    end;
 
-   declare
-      msg : Message := NULL_MESSAGE;
-      ignore : MessageTag;
-   begin
-      msg.tag := (label  => OP_BENCH_DIE,
-                  length => 0,
-                  flags  => 0,
-                  badge  => 0);
-      ignore := capCall (CAP_SLOT_BENCH, msg);
-   end;
+   if ok then runRetirement; end if;
 
    declare
       ret : Unsigned_64;

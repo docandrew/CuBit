@@ -10,6 +10,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with Mem_mgr;
 with Process.Queues;
+with Process_Lifetime;
 with TextIO; use TextIO;
 with Trace;
 with x86;
@@ -106,7 +107,11 @@ package body Scheduler is
             -- println ("Scheduler - Ready List: ");
             -- Process.Queues.print (Process.cpuReadyLists(cpuData.cpuNum));
 
-            Process.Queues.dequeue (Process.cpuReadyLists(cpuData.cpuNum), pid);
+            loop
+                Process.Queues.dequeue (Process.cpuReadyLists(cpuData.cpuNum), pid);
+                exit when pid = NO_PROCESS or else
+                  not Process_Lifetime.Closing (proctab(pid).lifetime);
+            end loop;
 
             -- print ("Scheduler: running "); print (Process.proctab(pid).name); print(" pid "); println (Integer(pid));
 
@@ -115,6 +120,7 @@ package body Scheduler is
             end if;
 
             Process.proctab(pid).state  := RUNNING;
+            Process.noteContextStarted (pid);
 
             cpuData.currentPID          := pid;
             cpuData.currentContext      := Process.proctab(pid).context; -- save this address so we can switch back
@@ -171,7 +177,13 @@ package body Scheduler is
                 Mem_mgr.switchAddressSpace;
             end if;
 
+            -- We are now on the scheduler stack and kernel page tables.
+            -- Process.lock prevents the reaper observing this acknowledgement
+            -- until the context handoff has completely finished.
+            Process.noteContextStopped (pid);
+
             -- Update the process' context pointer.
+            if not Process_Lifetime.Closing (proctab(pid).lifetime) then
             case Process.proctab(pid).state is
 
                 when INVALID =>
@@ -211,6 +223,7 @@ package body Scheduler is
                     Process.proctab(pid).context := cpuData.oldContext;
 
             end case;
+            end if;
 
         -- println ("Scheduler.schedule: releasing proctab lock");
         exitCriticalSection (Process.lock);

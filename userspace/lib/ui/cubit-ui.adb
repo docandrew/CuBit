@@ -302,6 +302,48 @@ package body CuBit.UI is
       return Shift_Left (r, 16) or Shift_Left (g, 8) or b;
    end Blend;
 
+   procedure Draw_Bitmap
+     (c : Canvas; x, y : Natural; pixels : ARGB_Bitmap;
+      enabled : Boolean := True)
+   is
+      clipped : constant Rect := Clamp_Rect
+        (c, (x => x, y => y, w => pixels'Length (2), h => pixels'Length (1)));
+      source : Color;
+      alpha : Unsigned_8;
+      gray : Unsigned_32;
+   begin
+      if c.addr = System.Null_Address or else Is_Empty (clipped) then
+         return;
+      end if;
+
+      for row in clipped.y .. clipped.y + clipped.h - 1 loop
+         for col in clipped.x .. clipped.x + clipped.w - 1 loop
+            source := pixels
+              (pixels'First (1) + (row - y), pixels'First (2) + (col - x));
+            alpha := Unsigned_8 (Shift_Right (source, 24));
+            if alpha /= 0 then
+               if not enabled then
+                  gray :=
+                    (77 * (Shift_Right (source, 16) and 16#FF#) +
+                     150 * (Shift_Right (source, 8) and 16#FF#) +
+                     29 * (source and 16#FF#) + 128) / 256;
+                  source := Shift_Left (gray, 16) or Shift_Left (gray, 8) or gray;
+                  alpha := Unsigned_8 (Unsigned_32 (alpha) * 112 / 255);
+               end if;
+               declare
+                  offset : constant Storage_Offset :=
+                    Storage_Offset (row * c.pitch + col * 4);
+                  destination : Color with Import, Address => c.addr + offset;
+               begin
+                  destination :=
+                    (if alpha = 255 then source and 16#00FF_FFFF#
+                     else Blend (source, destination, alpha));
+               end;
+            end if;
+         end loop;
+      end loop;
+   end Draw_Bitmap;
+
    procedure Fill_Vertical_Gradient
       (c : Canvas; r : Rect; topColor, bottomColor : Color)
    is
