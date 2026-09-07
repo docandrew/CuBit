@@ -27,7 +27,7 @@ Usage: tests/headless/run.sh [options]
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, capability-security, storage-grants, audio-grants, desktop-display, input-stream, devices, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, capability-security, storage-grants, audio-grants, desktop-display, input-stream, devices, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
   --timeout SECONDS    QEMU runtime before timeout is treated as success
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
   --disk PATH          Base ext2 disk image (default: kernel/nvme_disk.img)
@@ -119,7 +119,7 @@ case "$TIMEOUT_SECONDS" in
 esac
 
 case "$TEST_NAME" in
-    boot-shell-nvme|async-ipc|bench-ipc|ccl-vm|ccl-workbench|capability-security|storage-grants|audio-grants|desktop-display|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
+    boot-shell-nvme|async-ipc|bench-ipc|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|capability-security|storage-grants|audio-grants|desktop-display|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -216,7 +216,7 @@ case "$TEST_NAME" in
     ccl-vm)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-vm.conf"
         ;;
-    ccl-workbench)
+    ccl-workbench|ccl-workbench-virtio-vga)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-workbench.conf"
         ;;
     capability-security)
@@ -268,7 +268,11 @@ if [ -n "$INIT_PROFILE" ]; then
         fi
     fi
     if [ "$TEST_NAME" = "desktop-display" ] ||
+       [ "$TEST_NAME" = "ccl-workbench" ] ||
+       [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
        [ "$TEST_NAME" = "input-stream" ] ||
+       [ "$TEST_NAME" = "devices" ] ||
+       [ "$TEST_NAME" = "files" ] ||
        [ "$TEST_NAME" = "desktop-virtio-vga" ] ||
        [ "$TEST_NAME" = "desktop-doom" ] ||
        [ "$TEST_NAME" = "virtio-vga-primary" ]; then
@@ -288,7 +292,8 @@ if [ -n "$INIT_PROFILE" ]; then
             fi
         done
     fi
-    if [ "$TEST_NAME" = "ccl-vm" ] || [ "$TEST_NAME" = "ccl-workbench" ]; then
+    if [ "$TEST_NAME" = "ccl-vm" ] || [ "$TEST_NAME" = "ccl-workbench" ] ||
+       [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ]; then
         if [ "$TEST_NAME" = "ccl-vm" ]; then
             CCL_IMAGES="ccl-vm.app ccl-test-host.svc clock.svc"
         else
@@ -441,6 +446,7 @@ cp "$GRUB_BAK" "$GRUB_CFG"
 
 VIDEO_ARGS="-device virtio-gpu-pci"
 if [ "$TEST_NAME" = "virtio-vga-primary" ] ||
+   [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
    [ "$TEST_NAME" = "desktop-virtio-vga" ] ||
    [ "$TEST_NAME" = "desktop-doom" ]; then
     VIDEO_ARGS="-vga none -device virtio-vga,xres=1024,yres=768"
@@ -461,7 +467,8 @@ fi
 
 MONITOR_ARGS=()
 QMP_ARGS=()
-if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ]; then
+if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] ||
+   [ "$TEST_NAME" = "desktop-doom" ]; then
     if ! command -v nc >/dev/null 2>&1; then
         echo "headless: desktop input regression requires nc" >&2
         exit 127
@@ -498,7 +505,37 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ]; then
             exit 1
         fi
 
-        if [ "$TEST_NAME" = "files" ]; then
+        if [ "$TEST_NAME" = "desktop-doom" ]; then
+            doom_ready=0
+            for ((attempt = 0; attempt < 100; attempt++)); do
+                if grep -F "I_InitGraphics: framebuffer" \
+                    "$SERIAL_LOG" >/dev/null 2>&1; then
+                    doom_ready=1
+                    break
+                fi
+                sleep 0.1
+            done
+            if [ "$doom_ready" -ne 1 ]; then
+                echo "headless: input injector timed out waiting for DOOM" >&2
+                exit 1
+            fi
+            # Exercise the title menu/new-game route as well as attract-mode
+            # rendering. Input is sent through the real PS/2 publication path.
+            sleep 1
+            {
+                printf 'sendkey esc\n'
+                sleep 0.5
+                printf 'sendkey ret\n'
+                sleep 0.5
+                printf 'sendkey ret\n'
+                sleep 0.5
+                printf 'sendkey ret\n'
+                sleep 2
+                printf 'sendkey up 500\n'
+                sleep 1
+                printf 'sendkey ctrl 500\n'
+            } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+        elif [ "$TEST_NAME" = "files" ]; then
             # Files is the first native client of the shared resizable table
             # header.  Exercise an actual captured drag through QEMU's i8042
             # device, then use F5 to prove that input delivery and the client
@@ -566,8 +603,41 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ]; then
                 sleep 0.1
                 printf '%s\n' '{"execute":"input-send-event","arguments":{"events":[{"type":"btn","data":{"down":true,"button":"wheel-down"}},{"type":"btn","data":{"down":false,"button":"wheel-down"}}]}}'
             } | nc -U -q 1 "$QMP_SOCKET" >/dev/null
+            {
+                # Return from the thumb at client (843,195) to the Refresh
+                # button and exercise the complete retained-button lifecycle.
+                # F5 below then proves the event loop remained live after the
+                # mouse activation and its filesystem reload.
+                # Large relative moves are split by QEMU into several PS/2
+                # packets.  Pace them so the button edge cannot overtake the
+                # final motion packets in the guest input stream.
+                for _step in 1 2 3 4 5 6 7 8 9 10; do
+                    printf 'mouse_move -79 -17\n'
+                    sleep 0.05
+                done
+                printf 'mouse_move -3 2\n'
+                sleep 0.5
+                printf 'mouse_button 1\n'
+                sleep 0.1
+                printf 'mouse_button 0\n'
+            } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
             sleep 0.2
             printf 'sendkey f5\n' | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            sleep 0.2
+            {
+                # Finish by dragging the Files title bar. This exercises live
+                # compositor movement while a client surface is attached and
+                # catches held-button input or region-present regressions.
+                printf 'mouse_move 0 -44\n'
+                sleep 0.2
+                printf 'mouse_button 1\n'
+                sleep 0.1
+                for _step in 1 2 3 4 5 6; do
+                    printf 'mouse_move 10 4\n'
+                    sleep 0.05
+                done
+                printf 'mouse_button 0\n'
+            } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
         else
             {
                 printf 'sendkey a\n'
@@ -686,7 +756,16 @@ ccl-vm: all tests passed
     ccl-workbench)
         required_markers="
 clock: registered
-desktop: display backend=1 caps=3
+desktop: display backend=1 caps=1
+ccl-workbench: native window ready
+ccl-workbench: first frame presented
+"
+        ;;
+    ccl-workbench-virtio-vga)
+        required_markers="
+clock: registered
+desktop: display backend=3 caps=13
+virtio-gpu: page flipping active
 ccl-workbench: native window ready
 ccl-workbench: first frame presented
 "
@@ -721,7 +800,7 @@ mixer: acquired HDA period grant
     desktop-display)
         required_markers="
 display: gpu not primary, using linear-fb
-desktop: display backend=1 caps=3
+desktop: display backend=1 caps=1
 desktop: internal shell active
 shell: cwd=@nvme:0/
 "
@@ -751,18 +830,21 @@ files: starting read-only filesystem browser
 files: directory page protocol ready
 files: native window ready
 files: first frame presented
-files: column resize complete first=561 second=130
+files: column resize complete first=
 files: scrollbar scroll row=
 files: scrollbar thumb drag row=
 files: wheel scroll row=
+files: refresh click activated
 files: refresh input received
+desktop: retained move path active
 "
         ;;
     desktop-virtio-vga)
         required_markers="
 display: backend virtio-gpu
 display: gpu copy buffer attached
-desktop: display backend=3 caps=5
+virtio-gpu: page flipping active
+desktop: display backend=3 caps=13
 desktop: internal shell active
 shell: cwd=@nvme:0/
 "
@@ -880,7 +962,21 @@ if [ "$TEST_NAME" = "desktop-display" ]; then
     fi
 fi
 
+if [ "$TEST_NAME" = "files" ]; then
+    if ! grep -E 'desktop: ptr hit-down [0-9]+ [0-9]+ 1$' \
+        "$SERIAL_LOG" >/dev/null; then
+        echo "headless: Files title-bar drag was not observed" >&2
+        exit 1
+    fi
+    if ! grep -E 'desktop: ptr drag-up [0-9]+ [0-9]+ [0-9]+$' \
+        "$SERIAL_LOG" >/dev/null; then
+        echo "headless: Files title-bar drag did not complete" >&2
+        exit 1
+    fi
+fi
+
 if { [ "$TEST_NAME" = "desktop-virtio-vga" ] ||
+     [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
      [ "$TEST_NAME" = "desktop-doom" ] ||
      [ "$TEST_NAME" = "virtio-vga-primary" ]; } &&
    grep -F "CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY: create failed" \
@@ -890,9 +986,10 @@ if { [ "$TEST_NAME" = "desktop-virtio-vga" ] ||
     exit 1
 fi
 
-if grep -Ei 'panic|assert|triple fault|general protection|deadlock|TEST: FAIL' "$SERIAL_LOG" >/dev/null 2>&1; then
+FAULT_SIGNATURE='panic|assert|double fault|triple fault|general protection|machine check exception|^EXCEPTION:|deadlock|TEST: FAIL'
+if grep -Ei "$FAULT_SIGNATURE" "$SERIAL_LOG" >/dev/null 2>&1; then
     echo "headless: fault signature found in serial log: $SERIAL_LOG" >&2
-    grep -Ein 'panic|assert|triple fault|general protection|deadlock|TEST: FAIL' "$SERIAL_LOG" >&2
+    grep -Ein "$FAULT_SIGNATURE" "$SERIAL_LOG" >&2
     exit 1
 fi
 

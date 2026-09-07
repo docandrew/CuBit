@@ -103,22 +103,18 @@ package body CuBit.UI.App is
    function Canvas
       (win : Window; clip : CuBit.UI.Rect) return CuBit.UI.Canvas
    is
-      base : constant CuBit.UI.Canvas := Canvas (win);
+      result : CuBit.UI.Canvas := Canvas (win);
    begin
       if CuBit.UI.Is_Empty (clip) then
-         return base;
+         return result;
       elsif clip.x = 0 and then clip.y = 0 and then
             clip.w = win.width and then clip.h = win.height
       then
-         return base;
+         return result;
       else
-         return
-           (addr        => win.bufferAddr,
-            width       => win.width,
-            height      => win.height,
-            pitch       => win.pitch,
-            clipEnabled => True,
-            clip        => CuBit.UI.Clamp_Rect (base, clip));
+         result.clip := CuBit.UI.Clamp_Rect (result, clip);
+         result.clipEnabled := True;
+         return result;
       end if;
    end Canvas;
 
@@ -465,7 +461,7 @@ package body CuBit.UI.App is
    procedure Apply_Pointer_Event
       (interaction : in out Pointer_Interaction;
        ui : in out CuBit.UI.State.UI_State;
-       controls : CuBit.UI.Controls.Control_Map;
+       controls : in out CuBit.UI.Controls.Control_Map;
        win : Window;
        event : Input_Event;
        dirty : in out CuBit.UI.Rect;
@@ -474,6 +470,8 @@ package body CuBit.UI.App is
       x, y : Natural;
       hit : CuBit.UI.Controls.Control_ID;
       down : Boolean;
+      retainedChanged : Boolean := False;
+      retainedHandled : Boolean := False;
 
       procedure Mark_Visual (id : CuBit.UI.Controls.Control_ID) is
       begin
@@ -513,6 +511,10 @@ package body CuBit.UI.App is
          y := Natural (Shift_Right (event.payload0, 32));
          hit := CuBit.UI.Controls.Hit (controls, x, y);
          down := (event.payload1 and 1) /= 0;
+         CuBit.UI.Controls.Dispatch_Pointer
+           (controls, interaction.captured,
+            CuBit.UI.Controls.Pointer_Cancel, x, y,
+            retainedChanged, retainedHandled);
          interaction.captured := CuBit.UI.Controls.NO_CONTROL;
          interaction.hovered := hit;
          CuBit.UI.State.Resynchronize_Pointer (ui, x, y, down);
@@ -556,6 +558,12 @@ package body CuBit.UI.App is
       if event.kind = INPUT_POINTER_MOVE then
          down := (event.payload1 and 1) /= 0;
          CuBit.UI.State.Set_Pointer (ui, x, y, down);
+         if down then
+            CuBit.UI.Controls.Dispatch_Pointer
+              (controls, interaction.captured,
+               CuBit.UI.Controls.Pointer_Move, x, y,
+               retainedChanged, retainedHandled);
+         end if;
          if repaint = Repaint_Every_Motion then
             dirty := CuBit.UI.Union_Rect (dirty, Full_Rect (win));
             interaction.hovered := hit;
@@ -564,7 +572,11 @@ package body CuBit.UI.App is
          else
             Mark_Hover_Transition (hit);
             if down then
-               if CuBit.UI.Controls.Has_Continuous_Action
+               if retainedHandled then
+                  if retainedChanged then
+                     Mark_Action (interaction.captured);
+                  end if;
+               elsif CuBit.UI.Controls.Has_Continuous_Action
                     (controls, interaction.captured)
                then
                   --  Splitters, sliders, and scrollbar thumbs can change
@@ -579,22 +591,44 @@ package body CuBit.UI.App is
             end if;
          end if;
       elsif event.kind = INPUT_POINTER_DOWN then
+         if interaction.captured /= CuBit.UI.Controls.NO_CONTROL then
+            CuBit.UI.Controls.Dispatch_Pointer
+              (controls, interaction.captured,
+               CuBit.UI.Controls.Pointer_Cancel, x, y,
+               retainedChanged, retainedHandled);
+            Mark_Visual (interaction.captured);
+         end if;
          Mark_Hover_Transition (hit);
          interaction.captured := hit;
          Update_Cursor (hit);
          CuBit.UI.State.Set_Pointer
            (ui, x, y, True, pressed => True);
+         CuBit.UI.Controls.Dispatch_Pointer
+           (controls, hit, CuBit.UI.Controls.Pointer_Press, x, y,
+            retainedChanged, retainedHandled);
          --  Sliders, scrollbars, and splitters can change their value on the
          --  pressed frame.  Their registered action region must therefore be
          --  rendered immediately; buttons with local actions simply register
          --  their own bounds.
-         if CuBit.UI.Controls.Has_Continuous_Action (controls, hit) then
+         if retainedHandled and then retainedChanged then
+            Mark_Action (hit);
+         elsif retainedHandled then
+            Mark_Visual (hit);
+         elsif CuBit.UI.Controls.Has_Continuous_Action (controls, hit) then
             Mark_Action (hit);
          else
             Mark_Visual (hit);
          end if;
       elsif event.kind = INPUT_POINTER_UP then
-         if CuBit.UI.Controls.Has_Continuous_Action
+         CuBit.UI.Controls.Dispatch_Pointer
+           (controls, interaction.captured,
+            CuBit.UI.Controls.Pointer_Release, x, y,
+            retainedChanged, retainedHandled);
+         if retainedHandled and then retainedChanged then
+            Mark_Action (interaction.captured);
+         elsif retainedHandled then
+            Mark_Visual (interaction.captured);
+         elsif CuBit.UI.Controls.Has_Continuous_Action
               (controls, interaction.captured)
          then
             Mark_Action (interaction.captured);

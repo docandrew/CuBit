@@ -318,7 +318,8 @@ package body CuBit.UI.Widgets is
        second : out CuBit.UI.Rect;
        splitterSize : Natural := 6;
        minFirst : Natural := 96;
-       minSecond : Natural := 96)
+       minSecond : Natural := 96;
+       retainedInput : Boolean := False)
    is
       usable : Natural;
       maxPos : Natural;
@@ -327,6 +328,8 @@ package body CuBit.UI.Widgets is
       light : CuBit.UI.Color := colors.edge;
       dark : CuBit.UI.Color := colors.shadow;
       canResize : Boolean := False;
+      retainedValue : Natural;
+      retainedAvailable : Boolean;
 
       procedure Assign_Rects is
       begin
@@ -374,7 +377,24 @@ package body CuBit.UI.Widgets is
       Assign_Rects;
 
       result := (others => False);
-      if canResize then
+      if canResize and then retainedInput and then vertical then
+         CuBit.UI.Controls.Add_Horizontal_Drag
+           (controls, id, split, damage, position,
+            minFirst, maxPos, bounds.x);
+         CuBit.UI.Controls.Take_Value
+           (controls, id, retainedValue, retainedAvailable);
+         if retainedAvailable then
+            position := retainedValue;
+            Assign_Rects;
+         end if;
+         result :=
+            (hot => st.pointer.enabled and then
+              CuBit.UI.Point_In_Rect
+                (st.pointer.x, st.pointer.y,
+                 CuBit.UI.Controls.Bounds (controls, id)),
+            active => CuBit.UI.Controls.Is_Active (controls, id),
+            activated => False);
+      elsif canResize then
          CuBit.UI.Controls.Add
            (controls, id, split, damage,
             (if vertical then CuBit.UI.Pointer_Resize_Horizontal
@@ -384,7 +404,9 @@ package body CuBit.UI.Widgets is
            (st, CuBit.UI.Controls.Bounds (controls, id),
             CuBit.UI.State.Widget_ID (id));
       end if;
-      if canResize and then CuBit.UI.State.Is_Last_Widget_Captured (st) then
+      if canResize and then not (retainedInput and then vertical) and then
+        CuBit.UI.State.Is_Last_Widget_Captured (st)
+      then
          result.active := True;
          if vertical then
             if st.pointer.x > bounds.x then
@@ -402,7 +424,7 @@ package body CuBit.UI.Widgets is
          Assign_Rects;
       end if;
 
-      if canResize and then CuBit.UI.State.Is_Last_Widget_Captured (st) then
+      if canResize and then result.active then
          light := colors.shadow;
          dark := colors.edge;
       elsif result.hot then
@@ -473,22 +495,44 @@ package body CuBit.UI.Widgets is
        damage : CuBit.UI.Rect;
        colors : CuBit.UI.Theme;
        label : String;
-       result : out CuBit.UI.Widget_Result)
+       result : out CuBit.UI.Widget_Result;
+       retainedInput : Boolean := False)
    is
       style : CuBit.UI.Button_Style;
       pc : constant CuBit.UI.Canvas := Parent_Canvas (c, damage);
    begin
-      CuBit.UI.Controls.Add (controls, id, bounds, damage);
-      result := CuBit.UI.State.Button
-        (st, CuBit.UI.Controls.Bounds (controls, id),
-         CuBit.UI.State.Widget_ID (id));
+      if retainedInput then
+         CuBit.UI.Controls.Add_Button (controls, id, bounds, damage);
+         result :=
+           (hot => st.pointer.enabled and then
+              CuBit.UI.Point_In_Rect
+                (st.pointer.x, st.pointer.y,
+                 CuBit.UI.Controls.Bounds (controls, id)),
+            active => CuBit.UI.Controls.Is_Active (controls, id) and then
+              st.pointer.enabled and then
+              CuBit.UI.Point_In_Rect
+                (st.pointer.x, st.pointer.y,
+                 CuBit.UI.Controls.Bounds (controls, id)),
+            activated => False);
+      else
+         CuBit.UI.Controls.Add (controls, id, bounds, damage);
+         result := CuBit.UI.State.Button
+           (st, CuBit.UI.Controls.Bounds (controls, id),
+            CuBit.UI.State.Widget_ID (id));
+      end if;
       style :=
          (if result.active then CuBit.UI.Button_Pressed
           elsif result.hot then CuBit.UI.Button_Hot
           else CuBit.UI.Button_Normal);
       CuBit.UI.Draw_Button (pc, bounds, colors, style, label);
 
-      if CuBit.UI.State.Is_Last_Widget_Focused (st) then
+      --  Retained buttons do not participate in the legacy per-frame
+      --  last-widget focus protocol. A fresh UI_State has both keyboardItem
+      --  and lastWidget set to NO_ITEM, which otherwise leaves a misleading
+      --  focus outline around every retained button.
+      if not retainedInput and then
+        CuBit.UI.State.Is_Last_Widget_Focused (st)
+      then
          CuBit.UI.Stroke_Rect
            (pc, CuBit.UI.Inflate_Rect (bounds, 1),
             colors.accent,
@@ -799,21 +843,44 @@ package body CuBit.UI.Widgets is
        minValue, maxValue : Natural;
        value : in out Natural;
        result : out CuBit.UI.Widget_Result;
-       pageSize : Positive := 1)
+       pageSize : Positive := 1;
+       retainedInput : Boolean := False)
    is
       pc : constant CuBit.UI.Canvas := Parent_Canvas (c, damage);
+      retainedValue : Natural;
+      available : Boolean;
    begin
-      CuBit.UI.Controls.Add
-        (controls, id, bounds, damage, continuousAction => True);
-      result :=
-         CuBit.UI.State.Vertical_Scrollbar
-           (st, CuBit.UI.Controls.Bounds (controls, id),
-            value, minValue, maxValue, pageSize,
-            CuBit.UI.State.Widget_ID (id));
+      if retainedInput then
+         CuBit.UI.Controls.Add_Vertical_Scrollbar
+           (controls, id, bounds, damage, value,
+            minValue, maxValue, pageSize);
+         CuBit.UI.Controls.Take_Value
+           (controls, id, retainedValue, available);
+         if available then
+            value := retainedValue;
+         end if;
+         result :=
+           (hot => st.pointer.enabled and then
+              CuBit.UI.Point_In_Rect
+                (st.pointer.x, st.pointer.y,
+                 CuBit.UI.Controls.Bounds (controls, id)),
+            active => CuBit.UI.Controls.Is_Active (controls, id),
+            activated => False);
+      else
+         CuBit.UI.Controls.Add
+           (controls, id, bounds, damage, continuousAction => True);
+         result :=
+            CuBit.UI.State.Vertical_Scrollbar
+              (st, CuBit.UI.Controls.Bounds (controls, id),
+               value, minValue, maxValue, pageSize,
+               CuBit.UI.State.Widget_ID (id));
+      end if;
       CuBit.UI.Draw_Vertical_Scrollbar
         (pc, bounds, colors, minValue, maxValue, value,
          result.hot, result.active, pageSize,
-         CuBit.UI.State.Active_Scrollbar_Part (st));
+         (if retainedInput then
+             CuBit.UI.Controls.Active_Scrollbar_Part (controls, id)
+          else CuBit.UI.State.Active_Scrollbar_Part (st)));
    end Vertical_Scrollbar;
 
    procedure Horizontal_Scrollbar

@@ -1,7 +1,9 @@
 -- Compiler Restrictions
 -- Prevent code from being generated that our OS can't handle!
--- We suppress all runtime checks. We use SPARK to prove at compile-time that
--- our code is free of these types of errors.
+-- Legacy release policy: these checks (and, via -gnatp, other runtime checks)
+-- are suppressed. Only selected SPARK cores are currently proved; this is NOT
+-- evidence that the rest of the kernel is free of runtime errors. See
+-- docs/kernel-interrupt-handoff.md for the current assurance boundary.
 --pragma Discard_Names;
 pragma Normalize_Scalars;
 

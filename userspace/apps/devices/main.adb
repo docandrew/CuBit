@@ -622,10 +622,7 @@ procedure main is
               (c, ui, controls, CONTROL_TREE_FIRST + drawnRows,
                row, row, colors, label, key, selectedNode,
                depth, expanded, hasChildren, icon, treeFocused,
-               lastSibling, ancestors, itemResult);
-            if itemResult.activated and then hasChildren then
-               Toggle_Selected;
-            end if;
+               lastSibling, ancestors, itemResult, retainedInput => True);
             drawnRows := drawnRows + 1;
          end if;
       end Item;
@@ -639,9 +636,9 @@ procedure main is
       workspace := (x => 8, y => 52, w => full.w - 16, h => full.h - 88);
       CuBit.UI.Widgets.Toolbar (c, toolbar, colors);
       CuBit.UI.Widgets.Button
-        (c, ui, controls, CONTROL_REFRESH,
+         (c, ui, controls, CONTROL_REFRESH,
          (x => toolbar.x + 7, y => toolbar.y + 6, w => 82, h => 26),
-         toolbar, colors, "Refresh", refreshResult);
+         toolbar, colors, "Refresh", refreshResult, retainedInput => True);
       CuBit.UI.Labels.Label
         (c, (x => toolbar.x + 105, y => toolbar.y + 9,
              w => toolbar.w - 220, h => 20), colors,
@@ -655,7 +652,8 @@ procedure main is
         (c, ui, controls, CONTROL_SPLITTER, workspace, workspace, colors,
          vertical => True, position => splitPosition,
          first => treePane, second => detailPane,
-         splitterSize => 7, minFirst => 245, minSecond => 320);
+         splitterSize => 7, minFirst => 245, minSecond => 320,
+         retainedInput => True);
       CuBit.UI.Widgets.Group_Box
         (c, treePane, colors, "Hardware", treeContent, 8);
       CuBit.UI.Trees.View_Frame
@@ -723,7 +721,8 @@ procedure main is
       if maxScroll > 0 then
          CuBit.UI.Widgets.Vertical_Scrollbar
            (c, ui, controls, CONTROL_SCROLLBAR, scrollBounds, treeContent,
-            colors, 0, maxScroll, treeScroll, scrollResult);
+            colors, 0, maxScroll, treeScroll, scrollResult,
+            retainedInput => True);
       end if;
       Draw_Details (c, detailPane);
 
@@ -804,14 +803,27 @@ procedure main is
          x := Natural (event.payload0 and 16#FFFF_FFFF#);
          y := Natural (Shift_Right (event.payload0, 32));
          hit := CuBit.UI.Controls.Hit (controls, x, y);
-         if hit = CONTROL_REFRESH then
+         if hit = CONTROL_REFRESH and then
+           CuBit.UI.Controls.Take_Activated (controls, hit)
+         then
             Load_Inventory;
             dirty := CuBit.UI.App.Full_Rect (win);
-         elsif hit >= CONTROL_TREE_FIRST then
-            --  Selection updates the details pane and disclosure can reflow
-            --  every following row, so this semantic tree action is broader
-            --  than ordinary hover damage.
-            dirty := CuBit.UI.App.Full_Rect (win);
+         elsif hit >= CONTROL_TREE_FIRST and then
+           CuBit.UI.Controls.Take_Activated (controls, hit)
+         then
+            declare
+               ordinal : constant Natural :=
+                 treeScroll + (hit - CONTROL_TREE_FIRST) + 1;
+            begin
+               Rebuild_Visible_Keys;
+               if ordinal <= visibleKeyCount then
+                  selectedNode := visibleKeys (ordinal);
+                  --  Leaf nodes make this a no-op; expandable nodes retain
+                  --  the existing one-click selection/disclosure behavior.
+                  Toggle_Selected;
+                  dirty := CuBit.UI.App.Full_Rect (win);
+               end if;
+            end;
          end if;
       elsif event.kind = CuBit.UI.App.INPUT_POINTER_WHEEL and then treeFocused
       then

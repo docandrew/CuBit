@@ -12,6 +12,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Input;
 with CuBit.Theme;
+with Desktop_Cursors;
 with Desktop_Icons;
 with Desktop_UI_Font;
 with Desktop_Window_Icons;
@@ -52,6 +53,8 @@ procedure main is
    OP_DISPLAY_ATTACH_BUFFER : constant Unsigned_32 := 16#0901#;
    OP_DISPLAY_PRESENT_RECT  : constant Unsigned_32 := 16#0902#;
    OP_DISPLAY_PRESENT_IMMEDIATE_RECT : constant Unsigned_32 := 16#0908#;
+   OP_DISPLAY_PRESENT_REGION : constant Unsigned_32 := 16#0909#;
+   OP_DISPLAY_PRESENT_IMMEDIATE_REGION : constant Unsigned_32 := 16#090A#;
    OP_DISPLAY_CLEAR         : constant Unsigned_32 := 16#0903#;
    OP_DISPLAY_GET_STATUS    : constant Unsigned_32 := 16#0904#;
    OP_DISPLAY_ACQUIRE       : constant Unsigned_32 := 16#0905#;
@@ -117,7 +120,9 @@ procedure main is
    SCALE_1_0_16_16       : constant Unsigned_64 := 16#0001_0000#;
    GRANT_REGION_BASE : constant Unsigned_64 := 16#0000_4000_0000_0000#;
    GRANT_SLOT_SIZE   : constant Unsigned_64 := 4096 * 4096; -- 16 MiB
-   DISPLAY_CAP_DIRECT_BACKBUFFER : constant Unsigned_64 := 16#0008#;
+   --  Reserved for a future explicitly loaned display buffer.  Page flipping
+   --  is a display-backend detail and occupies 0x0008 in the public protocol.
+   DISPLAY_CAP_DIRECT_BACKBUFFER : constant Unsigned_64 := 16#0010#;
    PS_BUF_SIZE : constant Unsigned_64 := 8192;
    PS_ENTRY_SIZE : constant Storage_Offset := 32;
 
@@ -127,6 +132,10 @@ procedure main is
    fbBpp    : Natural := 0;
    backBufferAddr : System.Address := System.Null_Address;
    backBufferGrant : Unsigned_64 := 0;
+   dragBaseBufferAddr : System.Address := System.Null_Address;
+   dragBaseReady : Boolean := False;
+   dragCacheAnnounced : Boolean := False;
+   compositionExcludedSurface : Unsigned_64 := 0;
    spawnGrantAddr : System.Address := System.Null_Address;
    spawnGrantId   : Unsigned_64 := 0;
    spawnGrantReady : Boolean := False;
@@ -487,12 +496,23 @@ procedure main is
    dragOffsetY      : Natural := 0;
    dragPreviewValid : Boolean := False;
    dragPreviewRect  : Rect;
+   --  The preview visible in the last completed compositor frame can lag the
+   --  latest pointer report.  Keep it separately so a burst of reports only
+   --  erases the outline that was actually scanned out, not every
+   --  intermediate position in the burst.
+   dragPresentedValid : Boolean := False;
+   dragPresentedRect  : Rect;
 
    TITLE_HEIGHT : constant Natural := 24;
    BORDER_SIZE  : constant Natural := 6;
    CLIENT_INSET_X : constant Natural := 4;
    CLIENT_INSET_TOP : constant Natural := 30;
    CLIENT_INSET_BOTTOM : constant Natural := 4;
+   DROP_SHADOW_DEPTH : constant Positive := 3;
+   --  Compositor decorations extend beyond the client-visible window
+   --  geometry. Damage retains one extra pixel beyond the shadow so every
+   --  pixel painted by the old geometry is restored during movement.
+   WINDOW_VISUAL_MARGIN : constant Natural := DROP_SHADOW_DEPTH + 1;
    TASKBAR_H    : constant Natural := 36;
    LAUNCH_W     : constant Natural := 88;
    LAUNCH_H     : constant Natural := 24;
@@ -501,9 +521,9 @@ procedure main is
    TASK_BUTTON_W : constant Natural := 156;
    TASK_BUTTON_H : constant Natural := 24;
    TASK_BUTTON_GAP : constant Natural := 6;
-   CURSOR_W     : constant Natural := 12;
-   CURSOR_H     : constant Natural := 18;
-   CURSOR_PIXELS : constant Natural := CURSOR_W * CURSOR_H;
+   CURSOR_SAVE_STRIDE : constant Positive := Desktop_Cursors.MAX_WIDTH;
+   CURSOR_PIXELS : constant Positive :=
+      Desktop_Cursors.MAX_WIDTH * Desktop_Cursors.MAX_HEIGHT;
    MIN_WIN_W    : constant Natural := 120;
    MIN_WIN_H    : constant Natural := 80;
 
@@ -781,62 +801,27 @@ procedure main is
       end;
    end writeBackPixel;
 
-   function Cursor_Core (xx, yy : Integer) return Boolean is
+   function cursorAsset return Desktop_Cursors.Cursor_ID is
    begin
-      if xx < 0 or else yy < 0 or else
-         xx >= Integer (CURSOR_W) or else yy >= Integer (CURSOR_H)
-      then
-         return False;
-      end if;
-
       case cursorStyle is
-         when POINTER_TEXT =>
-            return
-              (xx = 5 and then yy >= 2 and then yy <= 15) or else
-              (yy in 2 | 15 and then xx >= 2 and then xx <= 8);
-         when POINTER_RESIZE_HORIZONTAL =>
-            return
-              (yy = 8 and then xx >= 1 and then xx <= 10) or else
-              (xx = 1 and then yy >= 6 and then yy <= 10) or else
-              (xx = 2 and then yy in 7 | 9) or else
-              (xx = 10 and then yy >= 6 and then yy <= 10) or else
-              (xx = 9 and then yy in 7 | 9);
-         when POINTER_RESIZE_VERTICAL =>
-            return
-              (xx = 5 and then yy >= 1 and then yy <= 16) or else
-              (yy = 1 and then xx >= 3 and then xx <= 7) or else
-              (yy = 2 and then xx in 4 | 6) or else
-              (yy = 16 and then xx >= 3 and then xx <= 7) or else
-              (yy = 15 and then xx in 4 | 6);
-         when POINTER_RESIZE_DIAGONAL =>
-            return
-              (xx >= 2 and then xx <= 9 and then yy = xx + 2) or else
-              (xx = 2 and then yy >= 4 and then yy <= 8) or else
-              (yy = 4 and then xx >= 2 and then xx <= 6) or else
-              (xx = 9 and then yy >= 7 and then yy <= 11) or else
-              (yy = 11 and then xx >= 5 and then xx <= 9);
          when POINTER_DEFAULT =>
-            --  Keep the arrow intentionally chunky while the compositor is
-            --  still using a software cursor plane.
-            return
-              (yy >= 1 and then yy < 15 and then
-               xx >= 1 and then xx <= yy / 2 + 1) or else
-              (yy >= 10 and then yy < 18 and then xx >= 4 and then xx <= 6);
+            return Desktop_Cursors.Arrow;
+         when POINTER_TEXT =>
+            return Desktop_Cursors.Text;
+         when POINTER_RESIZE_HORIZONTAL =>
+            return Desktop_Cursors.Horizontal_Resize;
+         when POINTER_RESIZE_VERTICAL =>
+            return Desktop_Cursors.Vertical_Resize;
+         when POINTER_RESIZE_DIAGONAL =>
+            return Desktop_Cursors.Diagonal_Resize;
       end case;
-   end Cursor_Core;
+   end cursorAsset;
 
-   function Cursor_Near_Core (xx, yy : Integer) return Boolean is
-   begin
-      for oy in -1 .. 1 loop
-         for ox in -1 .. 1 loop
-            if Cursor_Core (xx + ox, yy + oy) then
-               return True;
-            end if;
-         end loop;
-      end loop;
+   function cursorWidth return Positive is
+     (Desktop_Cursors.Metadata (cursorAsset).Width);
 
-      return False;
-   end Cursor_Near_Core;
+   function cursorHeight return Positive is
+     (Desktop_Cursors.Metadata (cursorAsset).Height);
 
    function isEmpty (r : Rect) return Boolean is
    begin
@@ -865,12 +850,12 @@ procedure main is
 
    function cursorHotX return Natural is
    begin
-      return (if cursorStyle = POINTER_DEFAULT then 0 else 5);
+      return Desktop_Cursors.Metadata (cursorAsset).Hotspot_X;
    end cursorHotX;
 
    function cursorHotY return Natural is
    begin
-      return (if cursorStyle = POINTER_DEFAULT then 0 else 8);
+      return Desktop_Cursors.Metadata (cursorAsset).Hotspot_Y;
    end cursorHotY;
 
    function cursorOriginX return Integer is
@@ -886,10 +871,10 @@ procedure main is
       top : constant Natural := Natural (Integer'Max (0, originY));
       right : constant Natural := Natural'Min
         (fbWidth,
-         Natural (Integer'Max (0, originX + Integer (CURSOR_W))));
+         Natural (Integer'Max (0, originX + Integer (cursorWidth))));
       bottom : constant Natural := Natural'Min
         (fbHeight,
-         Natural (Integer'Max (0, originY + Integer (CURSOR_H))));
+         Natural (Integer'Max (0, originY + Integer (cursorHeight))));
    begin
       if right <= left or else bottom <= top then
          return (others => 0);
@@ -1114,6 +1099,11 @@ procedure main is
    begin
       return clampRect ((x => s.x, y => s.y, w => s.w, h => s.h));
    end surfaceRect;
+
+   function windowVisualRect (r : Rect) return Rect is
+   begin
+      return inflateRect (r, WINDOW_VISUAL_MARGIN);
+   end windowVisualRect;
 
    function clientRect (s : Surface) return Rect is
    begin
@@ -1516,6 +1506,33 @@ procedure main is
       end loop;
    end fillRect;
 
+   procedure drawDappledShadow (x, y, w, h : Natural) is
+   begin
+      if w = 0 or else h = 0 then
+         return;
+      end if;
+
+      --  A screen-anchored checker leaves half of the underlying scene
+      --  visible. Besides looking lighter than a solid slab, keeping parity
+      --  anchored to absolute coordinates prevents the pattern itself from
+      --  crawling as a window moves.
+      for yy in y + DROP_SHADOW_DEPTH .. y + h + DROP_SHADOW_DEPTH - 1 loop
+         for xx in x + w .. x + w + DROP_SHADOW_DEPTH - 1 loop
+            if (xx + yy) mod 2 = 0 then
+               putPixel (xx, yy, C_BLACK);
+            end if;
+         end loop;
+      end loop;
+
+      for yy in y + h .. y + h + DROP_SHADOW_DEPTH - 1 loop
+         for xx in x + DROP_SHADOW_DEPTH .. x + w - 1 loop
+            if (xx + yy) mod 2 = 0 then
+               putPixel (xx, yy, C_BLACK);
+            end if;
+         end loop;
+      end loop;
+   end drawDappledShadow;
+
    procedure strokeRect
       (x, y, w, h : Natural; light : Unsigned_32; dark : Unsigned_32)
    is
@@ -1634,6 +1651,36 @@ procedure main is
          return blendPixel (src, bg, alpha);
       end if;
    end iconPixelOver;
+
+   function premultipliedPixelOver
+      (srcARGB : Unsigned_32;
+       bg      : Unsigned_32) return Unsigned_32
+   is
+      alpha : constant Natural :=
+         Natural (Shift_Right (srcARGB, 24) and 16#FF#);
+      inv   : constant Natural := 255 - alpha;
+      sr    : constant Natural :=
+         Natural (Shift_Right (srcARGB, 16) and 16#FF#);
+      sg    : constant Natural :=
+         Natural (Shift_Right (srcARGB, 8) and 16#FF#);
+      sb    : constant Natural := Natural (srcARGB and 16#FF#);
+      dr    : constant Natural := Natural (Shift_Right (bg, 16) and 16#FF#);
+      dg    : constant Natural := Natural (Shift_Right (bg, 8) and 16#FF#);
+      db    : constant Natural := Natural (bg and 16#FF#);
+      rr    : constant Natural := sr + (dr * inv + 127) / 255;
+      rg    : constant Natural := sg + (dg * inv + 127) / 255;
+      rb    : constant Natural := sb + (db * inv + 127) / 255;
+   begin
+      if alpha = 0 then
+         return bg;
+      elsif alpha = 255 then
+         return srcARGB and 16#00FF_FFFF#;
+      else
+         return Shift_Left (Unsigned_32 (Natural'Min (rr, 255)), 16) or
+                Shift_Left (Unsigned_32 (Natural'Min (rg, 255)), 8) or
+                Unsigned_32 (Natural'Min (rb, 255));
+      end if;
+   end premultipliedPixelOver;
 
    procedure drawIcon
       (id : Desktop_Icons.Icon_ID;
@@ -1989,7 +2036,7 @@ procedure main is
             writeBackPixel
               (cursorSaveRect.x + xx,
                cursorSaveRect.y + yy,
-               cursorSave (yy * CURSOR_W + xx));
+               cursorSave (yy * CURSOR_SAVE_STRIDE + xx));
          end loop;
       end loop;
 
@@ -2000,7 +2047,12 @@ procedure main is
       r : constant Rect := cursorRect;
       originX : constant Integer := cursorOriginX;
       originY : constant Integer := cursorOriginY;
+      asset : constant Desktop_Cursors.Cursor_ID := cursorAsset;
+      metadata : constant Desktop_Cursors.Cursor_Metadata :=
+         Desktop_Cursors.Metadata (asset);
       shapeX, shapeY : Integer;
+      pixel : Unsigned_32;
+      background : Unsigned_32;
    begin
       if isEmpty (r) then
          return;
@@ -2012,7 +2064,7 @@ procedure main is
       --  full compositor scene.
       for yy in 0 .. r.h - 1 loop
          for xx in 0 .. r.w - 1 loop
-            cursorSave (yy * CURSOR_W + xx) :=
+            cursorSave (yy * CURSOR_SAVE_STRIDE + xx) :=
                readBackPixel (r.x + xx, r.y + yy);
          end loop;
       end loop;
@@ -2024,10 +2076,19 @@ procedure main is
          for xx in 0 .. r.w - 1 loop
             shapeX := Integer (r.x + xx) - originX;
             shapeY := Integer (r.y + yy) - originY;
-            if Cursor_Core (shapeX, shapeY) then
-               writeBackPixel (r.x + xx, r.y + yy, C_WHITE);
-            elsif Cursor_Near_Core (shapeX, shapeY) then
-               writeBackPixel (r.x + xx, r.y + yy, C_BLACK);
+            if shapeX >= 0 and then shapeY >= 0 and then
+              shapeX < Integer (metadata.Width) and then
+              shapeY < Integer (metadata.Height)
+            then
+               pixel := Desktop_Cursors.Pixels
+                 (metadata.Offset + Natural (shapeY) * metadata.Width +
+                    Natural (shapeX));
+               if Shift_Right (pixel, 24) /= 0 then
+                  background := cursorSave (yy * CURSOR_SAVE_STRIDE + xx);
+                  writeBackPixel
+                    (r.x + xx, r.y + yy,
+                     premultipliedPixelOver (pixel, background));
+               end if;
             end if;
          end loop;
       end loop;
@@ -2198,7 +2259,7 @@ procedure main is
       frame.w := w;
       frame.h := h;
 
-      fillRect (x + 3, y + 3, w, h, C_SHADOW);
+      drawDappledShadow (x, y, w, h);
       fillRect (x, y, w, h, C_WIN);
       strokeRect (x, y, w, h, C_EDGE, C_SHADOW);
       fillRect (x + 3, y + 3, w - 6, titleH, titleColor);
@@ -2344,7 +2405,7 @@ procedure main is
          return;
       end if;
 
-      fillRect (r.x + 3, r.y + 3, r.w, r.h, C_SHADOW);
+      drawDappledShadow (r.x, r.y, r.w, r.h);
       fillRect (r.x, r.y, r.w, r.h, C_PANEL);
       strokeRect (r.x, r.y, r.w, r.h, C_EDGE, C_SHADOW);
       fillRect (r.x, r.y, 4, r.h, C_ACCENT);
@@ -2411,6 +2472,7 @@ procedure main is
       for i in surfaces'Range loop
          if surfaces (i).used and then
             not surfaces (i).minimized and then
+            surfaces (i).id /= compositionExcludedSurface and then
             (surfaces (i).flags and SURFACE_FLAG_WINDOW) /= 0
          then
             drawWindow (surfaces (i));
@@ -2485,6 +2547,248 @@ procedure main is
       clipEnabled := False;
    end redrawRect;
 
+   function findSurface (id : Unsigned_64) return Integer;
+
+   procedure prepareMoveBase (surfaceId : Unsigned_64) is
+      savedBuffer : constant System.Address := backBufferAddr;
+      savedClipEnabled : constant Boolean := clipEnabled;
+      savedClip : constant Rect := clipRect;
+      savedDrawing : constant Boolean := drawingBackBuffer;
+      savedExcluded : constant Unsigned_64 := compositionExcludedSurface;
+   begin
+      dragBaseReady := False;
+      if dragBaseBufferAddr = System.Null_Address or else
+        backBufferAddr = System.Null_Address or else surfaceId = 0
+      then
+         return;
+      end if;
+
+      --  Build the stable scene underneath the moving top-level surface once
+      --  at drag start. Subsequent pointer reports restore pixels from this
+      --  retained layer and draw only the moving window; they never traverse
+      --  and repaint the complete desktop scene.
+      restoreCursorOverlay;
+      backBufferAddr := dragBaseBufferAddr;
+      drawingBackBuffer := True;
+      clipEnabled := False;
+      compositionExcludedSurface := surfaceId;
+      drawCurrentScene;
+
+      backBufferAddr := savedBuffer;
+      drawingBackBuffer := savedDrawing;
+      clipEnabled := savedClipEnabled;
+      clipRect := savedClip;
+      compositionExcludedSurface := savedExcluded;
+      dragBaseReady := True;
+      if not dragCacheAnnounced then
+         debugPrint ("desktop: retained move path active" & LF);
+         dragCacheAnnounced := True;
+      end if;
+   end prepareMoveBase;
+
+   procedure redrawCachedMove
+     (dirty : Rect;
+      pixelCount : out Unsigned_64;
+      handled : out Boolean)
+   is
+      idx : constant Integer := findSurface (dragSurfaceId);
+      r : Rect := dirty;
+      ignore : System.Address;
+   begin
+      pixelCount := 0;
+      handled := False;
+      if dragMode /= DRAG_MOVE or else not dragBaseReady or else
+        dragBaseBufferAddr = System.Null_Address or else idx < 0
+      then
+         return;
+      end if;
+
+      if dragPresentedValid then
+         r := unionRect (r, windowVisualRect (dragPresentedRect));
+      end if;
+      r := clampRect
+        (unionRect (r, windowVisualRect (dragPreviewRect)));
+      if isEmpty (r) then
+         handled := True;
+         return;
+      end if;
+
+      restoreCursorOverlay;
+      for row in r.y .. r.y + r.h - 1 loop
+         ignore := memcpy
+           (backBufferAddr + Storage_Offset (row * fbPitch + r.x * 4),
+            dragBaseBufferAddr +
+              Storage_Offset (row * fbPitch + r.x * 4),
+            Storage_Count (r.w * 4));
+      end loop;
+
+      clipRect := r;
+      clipEnabled := True;
+      drawingBackBuffer := backBufferReady;
+      drawWindow (surfaces (SurfaceIndex (idx)));
+      clipEnabled := False;
+      drawCursorOverlay;
+      drawingBackBuffer := False;
+      flushBackBufferRect (unionRect (r, cursorRect));
+
+      pixelCount := Unsigned_64 (r.w) * Unsigned_64 (r.h);
+      handled := True;
+   end redrawCachedMove;
+
+   procedure redrawDragFrame
+      (dirty : Rect;
+       pixelCount : out Unsigned_64)
+   is
+      MAX_RECTS : constant Positive := 12;
+      OUTLINE_THICKNESS : constant Positive := 4;
+      subtype Damage_Index is Positive range 1 .. MAX_RECTS;
+      type Damage_Array is array (Damage_Index) of Rect;
+      regions : Damage_Array;
+      count : Natural range 0 .. MAX_RECTS := 0;
+      cachedHandled : Boolean;
+
+      procedure Add (candidate : Rect) is
+         r : constant Rect := clampRect (candidate);
+      begin
+         if isEmpty (r) then
+            return;
+         end if;
+
+         --  One ordinary damage rectangle plus four old and four new outline
+         --  strips fit by construction.  Retaining separate strips avoids
+         --  turning a hollow wireframe into a window-sized bounding repaint.
+         if count < MAX_RECTS then
+            count := count + 1;
+            regions (Damage_Index (count)) := r;
+         else
+            regions (Damage_Index'First) :=
+              unionRect (regions (Damage_Index'First), r);
+         end if;
+      end Add;
+
+      procedure Add_Outline (bounds : Rect) is
+         r : constant Rect := clampRect (bounds);
+         edgeW : Natural;
+         edgeH : Natural;
+      begin
+         if isEmpty (r) then
+            return;
+         end if;
+         edgeW := Natural'Min (OUTLINE_THICKNESS, r.w);
+         edgeH := Natural'Min (OUTLINE_THICKNESS, r.h);
+         Add ((x => r.x, y => r.y, w => r.w, h => edgeH));
+         Add ((x => r.x, y => r.y + r.h - edgeH,
+               w => r.w, h => edgeH));
+         Add ((x => r.x, y => r.y, w => edgeW, h => r.h));
+         Add ((x => r.x + r.w - edgeW, y => r.y,
+               w => edgeW, h => r.h));
+      end Add_Outline;
+
+      function Pack_Rect (r : Rect) return Unsigned_64 is
+      begin
+         return
+           Unsigned_64 (r.x) or
+           Shift_Left (Unsigned_64 (r.y), 16) or
+           Shift_Left (Unsigned_64 (r.w), 32) or
+           Shift_Left (Unsigned_64 (r.h), 48);
+      end Pack_Rect;
+
+      procedure Present_Regions is
+         first : Natural := 1;
+         batchCount : Natural;
+         request : Message := NULL_MESSAGE;
+         t0, t1 : Unsigned_64;
+      begin
+         --  The packed display protocol supports framebuffer coordinates up
+         --  to 65535 and four rectangles per IPC message. This is deliberately
+         --  a scanout protocol limit, not a UI-coordinate limitation.
+         if fbWidth > 16#FFFF# or else fbHeight > 16#FFFF# then
+            for i in Damage_Index'First .. Damage_Index (count) loop
+               flushBackBufferRect
+                 (regions (i),
+                  (if i = Damage_Index'First
+                   then PRESENT_AT_VBLANK else PRESENT_IMMEDIATELY));
+            end loop;
+            return;
+         end if;
+
+         while first <= count loop
+            batchCount := Natural'Min (4, count - first + 1);
+            request := NULL_MESSAGE;
+            request.tag :=
+              (label =>
+                 (if first = 1 then OP_DISPLAY_PRESENT_REGION
+                  else OP_DISPLAY_PRESENT_IMMEDIATE_REGION),
+               length => Unsigned_8 (batchCount), flags => 0, badge => 0);
+            for offset in 0 .. batchCount - 1 loop
+               request.words (offset) :=
+                 Pack_Rect (regions (Damage_Index (first + offset)));
+            end loop;
+
+            t0 := syscall (SYSCALL_GETTIME);
+            request.tag := capCall (CAP_SLOT_DISPLAY, request);
+            t1 := syscall (SYSCALL_GETTIME);
+            statsPresentOps := statsPresentOps + 1;
+            if t0 /= Unsigned_64'Last and then t1 /= Unsigned_64'Last and then
+              t1 >= t0
+            then
+               statsPresentMs := statsPresentMs + (t1 - t0);
+            end if;
+            first := first + batchCount;
+         end loop;
+      end Present_Regions;
+   begin
+      redrawCachedMove (dirty, pixelCount, cachedHandled);
+      if cachedHandled then
+         return;
+      end if;
+
+      pixelCount := 0;
+      if dragMode = DRAG_MOVE and then dragPresentedValid then
+         --  A complete moved window plus the pixels exposed at its old
+         --  position cover essentially the union of the old and new bounds.
+         --  Render that union once: multiple clipped scene traversals save no
+         --  memory traffic here and can expose partially updated geometry.
+         Add
+           (unionRect
+              (dirty,
+               unionRect
+                 (windowVisualRect (dragPresentedRect),
+                  windowVisualRect (dragPreviewRect))));
+      else
+         Add (dirty);
+         if dragPresentedValid then
+            Add_Outline (dragPresentedRect);
+         end if;
+         if dragPreviewValid then
+            Add_Outline (dragPreviewRect);
+         end if;
+      end if;
+
+      if fbBpp /= 32 or else count = 0 then
+         return;
+      end if;
+
+      restoreCursorOverlay;
+      drawingBackBuffer := backBufferReady;
+      for i in Damage_Index'First .. Damage_Index (count) loop
+         clipRect := regions (i);
+         clipEnabled := True;
+         drawCurrentScene;
+         pixelCount := pixelCount +
+           Unsigned_64 (regions (i).w) * Unsigned_64 (regions (i).h);
+      end loop;
+      clipEnabled := False;
+      drawCursorOverlay;
+
+      if drawingBackBuffer then
+         drawingBackBuffer := False;
+         --  A region is one display transaction and one vblank decision, so
+         --  scanout cannot expose each strip as a separate compositor frame.
+         Present_Regions;
+      end if;
+   end redrawDragFrame;
+
    procedure scheduleRedraw is
       now : constant Unsigned_64 := nowMs;
    begin
@@ -2538,6 +2842,7 @@ procedure main is
       t0 : Unsigned_64;
       t1 : Unsigned_64;
       full : Boolean;
+      damagePixels : Unsigned_64 := 0;
    begin
       if not framePending then
          return;
@@ -2560,8 +2865,18 @@ procedure main is
       t0 := syscall (SYSCALL_GETTIME);
       if full then
          redraw;
+         damagePixels := Unsigned_64 (damage.w) * Unsigned_64 (damage.h);
+      elsif dragPresentedValid or else dragPreviewValid then
+         redrawDragFrame (damage, damagePixels);
       else
          redrawRect (damage);
+         damagePixels := Unsigned_64 (damage.w) * Unsigned_64 (damage.h);
+      end if;
+      dragPresentedValid :=
+        (dragMode = DRAG_MOVE and then dragSurfaceId /= 0) or else
+        dragPreviewValid;
+      if dragPresentedValid then
+         dragPresentedRect := dragPreviewRect;
       end if;
       noteCursorPresented;
       t1 := syscall (SYSCALL_GETTIME);
@@ -2570,8 +2885,7 @@ procedure main is
       if full then
          statsFullFrames := statsFullFrames + 1;
       end if;
-      statsDamagePixels :=
-         statsDamagePixels + Unsigned_64 (damage.w) * Unsigned_64 (damage.h);
+      statsDamagePixels := statsDamagePixels + damagePixels;
       if t0 /= Unsigned_64'Last and then t1 /= Unsigned_64'Last and then
          t1 >= t0
       then
@@ -2828,6 +3142,7 @@ procedure main is
          dragSurfaceId := 0;
          dragMode := DRAG_NONE;
          dragPreviewValid := False;
+         dragPresentedValid := False;
       end if;
       clearInputForTarget (oldId);
 
@@ -2872,6 +3187,7 @@ procedure main is
                dragSurfaceId := 0;
                dragMode := DRAG_NONE;
                dragPreviewValid := False;
+               dragPresentedValid := False;
             end if;
             clearInputForTarget (surfaces (i).id);
             if focusSurface = surfaces (i).id then
@@ -3326,6 +3642,7 @@ procedure main is
       dragSurfaceId := 0;
       dragMode := DRAG_NONE;
       dragPreviewValid := False;
+      dragPresentedValid := False;
       desktopExtendedPrefix := False;
 
       if desktopShiftDown then
@@ -3612,6 +3929,16 @@ procedure main is
          when others =>
             statsOtherReq := statsOtherReq + 1;
       end case;
+
+      if dragBaseReady and then
+        request.tag.label /= OP_INPUT_POLL and then
+        request.tag.label /= OP_INPUT_WAIT
+      then
+         --  The retained under-window layer is a snapshot. Any client or
+         --  window-management mutation invalidates it; correctness falls
+         --  back to normal scene composition for the rest of this drag.
+         dragBaseReady := False;
+      end if;
 
       case request.tag.label is
          when OP_DESKTOP_HELLO =>
@@ -4083,6 +4410,7 @@ procedure main is
                      dragSurfaceId := 0;
                      dragMode := DRAG_NONE;
                      dragPreviewValid := False;
+                     dragPresentedValid := False;
                   end if;
                   clearInputForTarget (request.words (0));
                   surfaces (SurfaceIndex (idx)) := (others => <>);
@@ -4174,6 +4502,7 @@ procedure main is
                      dragSurfaceId := 0;
                      dragMode := DRAG_NONE;
                      dragPreviewValid := False;
+                     dragPresentedValid := False;
                   end if;
                   clearInputForTarget (surfaces (i).id);
                   surfaces (i) := (others => <>);
@@ -4762,7 +5091,10 @@ procedure main is
       deliverMove : constant Boolean :=
         not leftTransition and then
         (pointerMoved or else buttons /= lastButtons);
-      sceneDamage : constant Boolean := leftDown or else leftWasDown;
+      --  A held client button does not inherently alter the compositor scene.
+      --  Treating every held-motion packet as scene damage throttled the
+      --  software cursor behind the 60 Hz frame scheduler.
+      sceneDamage : Boolean := leftTransition;
       handledChromeClick : Boolean := False;
       taskIdx   : Integer;
       launchAction : Launch_Action;
@@ -4909,10 +5241,19 @@ procedure main is
                      dragOffsetX := cursorX - surfaces (SurfaceIndex (idx)).x;
                      dragOffsetY := cursorY - surfaces (SurfaceIndex (idx)).y;
                      dragPreviewRect := surfaceRect (surfaces (SurfaceIndex (idx)));
-                     dragPreviewValid := dragMode /= DRAG_NONE;
-                     if dragPreviewValid then
-                        damage := unionRect
-                          (damage, inflateRect (dragPreviewRect, 4));
+                     if dragMode = DRAG_MOVE then
+                        --  The existing surface is already the first
+                        --  presented position. Moves can reuse its attached
+                        --  buffer directly; resizes retain the outline preview
+                        --  until a new client buffer is configured.
+                        dragPreviewValid := False;
+                        dragPresentedRect := dragPreviewRect;
+                        dragPresentedValid := True;
+                        prepareMoveBase (clickedId);
+                     else
+                        dragPreviewValid := dragMode /= DRAG_NONE;
+                        dragPresentedValid := False;
+                        dragBaseReady := False;
                      end if;
                   end if;
                end if;
@@ -4929,7 +5270,9 @@ procedure main is
             pointerSurfaceId := 0;
          elsif dragMode /= DRAG_NONE and then dragSurfaceId /= 0 then
             idx := findSurface (dragSurfaceId);
-            if idx >= 0 and then dragPreviewValid then
+            if idx >= 0 and then
+              (dragPreviewValid or else dragMode = DRAG_MOVE)
+            then
                oldBounds := surfaceRect (surfaces (SurfaceIndex (idx)));
                newBounds := clampWindowRect
                  (surfaces (SurfaceIndex (idx)), dragPreviewRect);
@@ -4940,22 +5283,38 @@ procedure main is
                surfaces (SurfaceIndex (idx)).h := newBounds.h;
                surfaces (SurfaceIndex (idx)).serial :=
                   surfaces (SurfaceIndex (idx)).serial + 1;
-               if surfaces (SurfaceIndex (idx)).owner /= NO_PROCESS then
+               if dragMode /= DRAG_MOVE and then
+                 surfaces (SurfaceIndex (idx)).owner /= NO_PROCESS
+               then
                   queueConfigure (surfaces (SurfaceIndex (idx)).id,
                                   Unsigned_64 (newBounds.w),
                                   Unsigned_64 (newBounds.h));
                end if;
 
-               damage := unionRect (damage,
-                          inflateRect (unionRect (oldBounds, newBounds), 4));
+               --  Ensure a final position that arrived just before release is
+               --  presented even if the deferred drag frame had not fired.
+               damage := unionRect
+                 (damage,
+                  inflateRect
+                    (unionRect
+                       ((if dragPresentedValid
+                         then dragPresentedRect else oldBounds),
+                        newBounds), 4));
+               tracePointer
+                 ("drag-up", dragSurfaceId,
+                  Unsigned_64 (newBounds.x), Unsigned_64 (newBounds.y));
             end if;
          end if;
 
          dragPreviewValid := False;
+         dragPresentedValid := False;
+         dragBaseReady := False;
          dragMode := DRAG_NONE;
          dragSurfaceId := 0;
       elsif not leftDown then
          dragPreviewValid := False;
+         dragPresentedValid := False;
+         dragBaseReady := False;
          dragMode := DRAG_NONE;
          dragSurfaceId := 0;
       end if;
@@ -4963,20 +5322,28 @@ procedure main is
       if leftDown and then dragMode /= DRAG_NONE and then dragSurfaceId /= 0 then
          idx := findSurface (dragSurfaceId);
          if idx >= 0 then
-            oldBounds := dragPreviewRect;
             dragPreviewRect :=
                previewRectFromPointer (surfaces (SurfaceIndex (idx)));
-            newBounds := dragPreviewRect;
-            damage := unionRect (damage,
-                       inflateRect (unionRect (oldBounds, newBounds), 4));
+            if dragMode = DRAG_MOVE then
+               surfaces (SurfaceIndex (idx)).x := dragPreviewRect.x;
+               surfaces (SurfaceIndex (idx)).y := dragPreviewRect.y;
+            end if;
+            --  The compositor frame compares the last drag geometry actually
+            --  presented with this latest position. Intermediate mouse
+            --  positions drained in the same pass require no repaint at all.
+            sceneDamage := True;
          end if;
       end if;
 
       cursorStyle := cursorStyleAtPointer;
       damage := unionRect (damage, cursorRect);
       lastButtons := buttons;
-      if sceneDamage or else framePending then
-         scheduleRedrawRect (inflateRect (damage, 2), defer => True);
+      if sceneDamage or else
+        (dragMode /= DRAG_NONE and then dragSurfaceId /= 0)
+      then
+         scheduleRedrawRect
+           (inflateRect (damage, 2),
+            defer => False);
       else
          scheduleCursorPresent;
       end if;
@@ -5270,6 +5637,7 @@ procedure main is
       pages : Unsigned_64;
       raw   : Unsigned_64;
       aligned : Unsigned_64;
+      dragRaw : Unsigned_64;
       grantOk : Boolean;
       attach  : Message;
       status  : Message;
@@ -5363,6 +5731,18 @@ procedure main is
          debugPrint ("desktop: display attach failed" & LF);
          status := callDisplay (OP_DISPLAY_RELEASE);
          return;
+      end if;
+
+      --  A retained, compositor-private scene without the actively dragged
+      --  window turns movement into bounded rectangle copies plus one window
+      --  blit. Failure is non-fatal: the compositor retains its complete
+      --  redraw fallback on memory-constrained systems.
+      dragRaw := syscall (SYSCALL_SBRK, pages * 4096 + 4096);
+      if dragRaw /= Unsigned_64'Last then
+         dragBaseBufferAddr := To_Address
+           (Integer_Address (alignUpPage (dragRaw)));
+      else
+         debugPrint ("desktop: retained drag layer unavailable" & LF);
       end if;
 
       backBufferReady := True;

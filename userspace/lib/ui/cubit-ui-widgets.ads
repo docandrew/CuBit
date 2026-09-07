@@ -97,7 +97,8 @@ package CuBit.UI.Widgets is
        second : out CuBit.UI.Rect;
        splitterSize : Natural := 6;
        minFirst : Natural := 96;
-       minSecond : Natural := 96);
+       minSecond : Natural := 96;
+       retainedInput : Boolean := False);
 
    procedure Scroll_Area
       (c : CuBit.UI.Canvas;
@@ -122,7 +123,8 @@ package CuBit.UI.Widgets is
        damage : CuBit.UI.Rect;
        colors : CuBit.UI.Theme;
        label : String;
-       result : out CuBit.UI.Widget_Result);
+       result : out CuBit.UI.Widget_Result;
+       retainedInput : Boolean := False);
 
    procedure Disabled_Button
       (c : CuBit.UI.Canvas;
@@ -254,7 +256,8 @@ package CuBit.UI.Widgets is
        minValue, maxValue : Natural;
        value : in out Natural;
        result : out CuBit.UI.Widget_Result;
-       pageSize : Positive := 1);
+       pageSize : Positive := 1;
+       retainedInput : Boolean := False);
 
    procedure Horizontal_Scrollbar
       (c : CuBit.UI.Canvas;

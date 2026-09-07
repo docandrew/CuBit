@@ -7,15 +7,14 @@
 with Spinlocks;
 with TextIO; use TextIO;
 
-package body Process.Queues with
-    SPARK_Mode => On
-is
+-- Ada implementation: custom storage, address overlays or live context state.
+-- Only separately annotated SPARK policy/state routines carry proof obligations.
+package body Process.Queues is
 
-    function isInSleepQueue (pid : ProcessID) return Boolean
-        with SPARK_Mode => On;
+    function isInSleepQueue (pid : ProcessID) return Boolean;
 
-    procedure initQueue (q : in out ProcQueue; locknamePtr : access String)
-        with SPARK_Mode => On
+    procedure initQueue (q : in out ProcQueue; locknamePtr : Spinlocks.Lock_Name)
+
     is
     begin
         q.lock := (name => locknamePtr, others => <>);
@@ -27,7 +26,7 @@ is
     -- isEmpty
     ---------------------------------------------------------------------------
     function isEmpty (q : ProcQueue) return Boolean
-        with SPARK_Mode => On
+
     is
     begin
         return (q.head = NO_PROCESS);
@@ -37,7 +36,7 @@ is
     -- popFront
     ---------------------------------------------------------------------------
     procedure popFront (q : in out ProcQueue; result : out ProcessID)
-        with SPARK_Mode => On
+
     is
     begin
         if isEmpty (q) then
@@ -52,7 +51,7 @@ is
     -- popBack
     ---------------------------------------------------------------------------
     procedure popBack (q : in out ProcQueue; result : out ProcessID)
-        with SPARK_Mode => On
+
     is
     begin
         if isEmpty(q) then
@@ -73,7 +72,7 @@ is
     ---------------------------------------------------------------------------
     procedure popItemNoLock (q : in out ProcQueue; pid : ProcessID;
         result : out ProcessID)
-        with SPARK_Mode => On
+
     is
         prev, next : ProcessID;
     begin
@@ -104,7 +103,7 @@ is
     ---------------------------------------------------------------------------
     procedure popItem (q : in out ProcQueue; pid : ProcessID;
         result : out ProcessID)
-        with SPARK_Mode => On
+
     is
     begin
         Spinlocks.enterCriticalSection (q.lock);
@@ -119,7 +118,7 @@ is
     ---------------------------------------------------------------------------
     procedure enqueue (q : in out ProcQueue; pid : ProcessID;
         result : out ProcessID)
-        with SPARK_Mode => On
+
     is
         prev : ProcessID;
     begin
@@ -147,7 +146,7 @@ is
     -- dequeueNoLock
     ---------------------------------------------------------------------------
     procedure dequeueNoLock (q : in out ProcQueue; result : out ProcessID)
-        with SPARK_Mode => On
+
     is
         pid : ProcessID;
     begin
@@ -169,7 +168,7 @@ is
     -- dequeue - remove from front of the list while holding the list's lock
     ---------------------------------------------------------------------------
     procedure dequeue (q : in out ProcQueue; result : out ProcessID)
-        with SPARK_Mode => On
+
     is
         pid : ProcessID;
     begin
@@ -199,7 +198,7 @@ is
                       pid    : ProcessID;
                       key    : Integer;
                       result : out ProcessID)
-        with SPARK_Mode => On
+
     is
         curr : ProcessID;
         prev : ProcessID;
@@ -261,7 +260,7 @@ is
                            pid          : ProcessID;
                            delayFromNow : Integer;
                            result       : out ProcessID)
-        with SPARK_Mode => On
+
     is
         -- accumDelay tracks the absolute wakeup time of all entries
         -- before the current insertion point.
@@ -334,7 +333,7 @@ is
     ---------------------------------------------------------------------------
     -- wakeup
     ---------------------------------------------------------------------------
-    procedure wakeup with SPARK_Mode => On
+    procedure wakeup
     is
         wakePid : ProcessID;
     begin
@@ -354,7 +353,7 @@ is
                                  pid          : ProcessID;
                                  delayFromNow : Integer;
                                  result       : out ProcessID)
-        with SPARK_Mode => On
+
     is
         accumDelay : Integer := 0;
         prev, curr : ProcessID;
@@ -413,7 +412,7 @@ is
     -- Must be called while holding sleepList.lock.
     ---------------------------------------------------------------------------
     function isInSleepQueue (pid : ProcessID) return Boolean
-        with SPARK_Mode => On
+
     is
         curr : ProcessID := sleepList.head;
     begin
@@ -434,7 +433,7 @@ is
     -- from a race with Process.sleep.
     ---------------------------------------------------------------------------
     procedure wakeFromSleep (pid : ProcessID; woken : out Boolean)
-        with SPARK_Mode => On
+
     is
         ignore  : ProcessID;
         nextPID : ProcessID;
@@ -464,7 +463,7 @@ is
     ---------------------------------------------------------------------------
     -- clockTick
     ---------------------------------------------------------------------------
-    procedure clockTick with SPARK_Mode => On
+    procedure clockTick
     is
     begin
         Spinlocks.enterCriticalSection (sleepList.lock);
@@ -485,7 +484,7 @@ is
     ---------------------------------------------------------------------------
     -- print
     ---------------------------------------------------------------------------
-    procedure print (q : ProcQueue) with SPARK_Mode => On
+    procedure print (q : ProcQueue)
     is
         curr : ProcessID := q.head;
     begin

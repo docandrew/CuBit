@@ -11,6 +11,17 @@ package CuBit.UI.Controls is
 
    MAX_CONTROLS : constant Natural := 128;
    subtype Control_Index is Natural range 1 .. MAX_CONTROLS;
+   subtype Control_Count is Natural range 0 .. MAX_CONTROLS;
+
+   --  Input behavior is retained independently of paint. Render_Driven keeps
+   --  existing immediate controls compatible while they are migrated.
+   type Control_Behavior is
+     (Render_Driven,
+      Retained_Button,
+      Retained_Vertical_Scrollbar,
+      Retained_Horizontal_Drag);
+   type Pointer_Action is
+     (Pointer_Press, Pointer_Move, Pointer_Release, Pointer_Cancel);
 
    type Control_Entry is record
       id           : Control_ID := NO_CONTROL;
@@ -22,6 +33,18 @@ package CuBit.UI.Controls is
       cursor       : CuBit.UI.Pointer_Cursor_Style :=
         CuBit.UI.Pointer_Default;
       continuousAction : Boolean := False;
+      behavior     : Control_Behavior := Render_Driven;
+      value        : Natural := 0;
+      minimumValue : Natural := 0;
+      maximumValue : Natural := 0;
+      pageSize     : Positive := 1;
+      scrollbarPart : CuBit.UI.Scrollbar_Part := CuBit.UI.Scrollbar_None;
+      grabOffset   : Natural := 0;
+      coordinateOrigin : Natural := 0;
+      dragOffset   : Long_Long_Integer := 0;
+      active       : Boolean := False;
+      activated    : Boolean := False;
+      pendingValue : Boolean := False;
       enabled      : Boolean := False;
    end record;
 
@@ -29,6 +52,11 @@ package CuBit.UI.Controls is
 
    type Control_Map is record
       entries : Control_Entries := (others => (others => <>));
+      entryCount : Control_Count := 0;
+      --  The previous committed registry preserves per-control interaction
+      --  state while the next declarative frame rebuilds geometry.
+      retainedEntries : Control_Entries := (others => (others => <>));
+      retainedCount : Control_Count := 0;
       valid : Boolean := True;
    end record;
 
@@ -48,6 +76,57 @@ package CuBit.UI.Controls is
        actionDamage : CuBit.UI.Rect;
        cursor : CuBit.UI.Pointer_Cursor_Style := CuBit.UI.Pointer_Default;
        continuousAction : Boolean := False);
+
+   procedure Add_Vertical_Scrollbar
+      (m : in out Control_Map;
+       id : Control_ID;
+       bounds : CuBit.UI.Rect;
+       actionDamage : CuBit.UI.Rect;
+       value : Natural;
+       minValue, maxValue : Natural;
+       pageSize : Positive := 1);
+
+   procedure Add_Horizontal_Drag
+      (m : in out Control_Map;
+       id : Control_ID;
+       bounds : CuBit.UI.Rect;
+       actionDamage : CuBit.UI.Rect;
+       value : Natural;
+       minValue, maxValue : Natural;
+       coordinateOrigin : Natural);
+
+   procedure Add_Button
+      (m : in out Control_Map;
+       id : Control_ID;
+       bounds : CuBit.UI.Rect;
+       actionDamage : CuBit.UI.Rect;
+       cursor : CuBit.UI.Pointer_Cursor_Style := CuBit.UI.Pointer_Default);
+
+   --  Dispatches retained behavior before painting. handled is true only for
+   --  a migrated retained control. changed reports a semantic value change,
+   --  allowing callers to avoid repainting expensive content at rest.
+   procedure Dispatch_Pointer
+      (m : in out Control_Map;
+       id : Control_ID;
+       action : Pointer_Action;
+       x, y : Natural;
+       changed : out Boolean;
+       handled : out Boolean);
+
+   procedure Take_Value
+      (m : in out Control_Map;
+       id : Control_ID;
+       value : out Natural;
+       available : out Boolean);
+
+   function Is_Active
+      (m : Control_Map; id : Control_ID) return Boolean;
+
+   function Take_Activated
+      (m : in out Control_Map; id : Control_ID) return Boolean;
+
+   function Active_Scrollbar_Part
+      (m : Control_Map; id : Control_ID) return CuBit.UI.Scrollbar_Part;
 
    function Hit
       (m : Control_Map; x, y : Natural) return Control_ID;

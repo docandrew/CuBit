@@ -40,6 +40,12 @@ jobs:
       - name: Prove capability derivation attenuation
         run: nix develop --command make -C kernel prove-capability-derive
 
+      - name: Check kernel SPARK boundaries
+        run: nix develop --command make -C kernel check-spark-boundaries
+
+      - name: Prove interrupt exclusion and context handoff state
+        run: nix develop --command make -C kernel prove-interrupt-state
+
       - name: Boot adversarial guest under QEMU
         run: >-
           nix develop --command tests/headless/run.sh
@@ -69,3 +75,5 @@ jobs:
           path: |
             ${{ runner.temp }}/cubit-capability-security-serial.log
             ${{ runner.temp }}/cubit-capability-security-net.pcap
+            kernel/build/spark-legality/gnatprove/gnatprove.out
+            kernel/build/proof-interrupt-state/gnatprove/gnatprove.out

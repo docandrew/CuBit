@@ -12,9 +12,8 @@ with System;
 
 with virtmem;
 
-package acpi 
-    with SPARK_Mode => On
-is
+-- Firmware-table overlays are Ada; no blanket SPARK claim for this package.
+package acpi is
 
     -- Base address of the mmap-ed LAPIC registers we find when parsing the
     -- ACPI tables.
@@ -50,7 +49,7 @@ is
     -- @field reserved2 - not used
     -- @field reserved3 - not used
     --
-    -- Note: We just assume this is going to be an ACPI version 2 record. 
+    -- Note: We just assume this is going to be an ACPI version 2 record.
     --  This may come back to bite us later, but ACPI 2 was released almost 20
     --  years ago...
     ---------------------------------------------------------------------------
@@ -104,12 +103,12 @@ is
     end record with Pack, Size => 8*8;
 
     ---------------------------------------------------------------------------
-    -- ACPI System Description Table (RSDT/XSDT). This is called the RSDT in 
+    -- ACPI System Description Table (RSDT/XSDT). This is called the RSDT in
     --  ACPI 1.0, but has been superseded by the XSDT. The only difference is
     --  the width of the pointers in the entries array at the end.
     --
     -- @field signature - Always "RSDT"
-    -- @field length - length of array of physical memory pointers to other 
+    -- @field length - length of array of physical memory pointers to other
     --  ACPI system description tables
     -- @field revision - Always 1
     -- @field checksum - entire table must sum to 0.
@@ -118,7 +117,7 @@ is
     --  field must match the OEM Table ID in the FADT.
     -- @field recordPointers - Array of pointers (length addresses long) to
     --  additional ACPI records.
-    -- @field OEMRevision - OEM revision of RSDT table for supplied OEM 
+    -- @field OEMRevision - OEM revision of RSDT table for supplied OEM
     --  Table ID.
     -- @field creatorID - Vendor ID of utility that created the table. For
     --  tables containing Definition Blocks, this is the ID for the ASL
@@ -172,7 +171,7 @@ is
         creatorID       : Unsigned_32;
         creatorRevision : Unsigned_32;
     end record with Size => 36*8;
-    
+
     for SDTRecordHeader use
     record
         signature       at 0  range 0..31;
@@ -411,7 +410,7 @@ is
     -- APICStructureType.
     ---------------------------------------------------------------------------
     subtype APICStructureType is Unsigned_8 range 0..8;
-    
+
     LOCAL_APIC              : constant APICStructureType := 0;
     IO_APIC                 : constant APICStructureType := 1;
     INT_SRC_OVERRIDE        : constant APICStructureType := 2;
@@ -422,10 +421,10 @@ is
     LOCAL_SAPIC             : constant APICStructureType := 7;
     PLATFORM_INTERRUPT      : constant APICStructureType := 8;
 
-    -- Note: the ACPI spec says that LAPIC_DISABLED means the _processor_ is 
+    -- Note: the ACPI spec says that LAPIC_DISABLED means the _processor_ is
     -- unusable.
     subtype LocalAPICFlags is Unsigned_32 range 0..1;
-    
+
     LAPIC_ENABLED           : constant LocalAPICFlags := 1;
     LAPIC_DISABLED          : constant LocalAPICFlags := 0;
 
@@ -433,7 +432,7 @@ is
     -- APICRecordHeader is common to each of the MADT's APIC entries. This is
     -- used when parsing the MADT entries to determine which type of APIC is
     -- being described and to use the appropriate record type for it.
-    -- @field apicType - Describes the type of APIC described. 
+    -- @field apicType - Describes the type of APIC described.
     --  See APICStructureType.
     -- @field length - Length of the APIC record.
     ---------------------------------------------------------------------------
@@ -766,7 +765,7 @@ is
     end record;
 
     ---------------------------------------------------------------------------
-    -- SSDT - 
+    -- SSDT -
     ---------------------------------------------------------------------------
 
     ---------------------------------------------------------------------------
@@ -777,7 +776,7 @@ is
     function setup return Boolean;
 
     ---------------------------------------------------------------------------
-    -- findRSDP - search through BIOS memory area for a pointer to the ACPI 
+    -- findRSDP - search through BIOS memory area for a pointer to the ACPI
     --  System Description Table. Note that the ACPI specification says that it
     --  may be in the lower 1k of memory, pointed to by the value at address
     --  0x40E. Currently this function _does not_ search there.

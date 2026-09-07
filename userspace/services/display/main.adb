@@ -28,11 +28,13 @@ procedure main is
    OP_DISPLAY_RELEASE       : constant Unsigned_32 := 16#0906#;
    OP_DISPLAY_MAP_BACKBUFFER : constant Unsigned_32 := 16#0907#;
    OP_DISPLAY_PRESENT_IMMEDIATE_RECT : constant Unsigned_32 := 16#0908#;
+   OP_DISPLAY_PRESENT_REGION : constant Unsigned_32 := 16#0909#;
+   OP_DISPLAY_PRESENT_IMMEDIATE_REGION : constant Unsigned_32 := 16#090A#;
 
    OP_GPU_CLEAR         : constant Unsigned_32 := 16#0A03#;
    OP_GPU_GET_STATUS    : constant Unsigned_32 := 16#0A04#;
    OP_GPU_MAP_FRAMEBUFFER : constant Unsigned_32 := 16#0A05#;
-   OP_GPU_FLUSH_RECT    : constant Unsigned_32 := 16#0A06#;
+   OP_GPU_PRESENT_BUFFER : constant Unsigned_32 := 16#0A07#;
 
    DISPLAY_OK              : constant Unsigned_64 := 0;
    DISPLAY_ERR_DENIED      : constant Unsigned_64 := 1;
@@ -42,15 +44,12 @@ procedure main is
 
    GRANT_REGION_BASE : constant Unsigned_64 := 16#0000_4000_0000_0000#;
    GRANT_SLOT_SIZE   : constant Unsigned_64 := 4096 * 4096; -- 16 MiB
-   VGA_STATUS_PORT   : constant Unsigned_16 := 16#03DA#;
-   VGA_VBLANK_BIT    : constant Unsigned_64 := 16#08#;
-
    DISPLAY_BACKEND_LINEAR_FB : constant Unsigned_64 := 1;
    DISPLAY_BACKEND_VIRTIO_GPU : constant Unsigned_64 := 3;
 
    DISPLAY_CAP_COPY_PRESENT : constant Unsigned_64 := 16#0001#;
-   DISPLAY_CAP_VBLANK_WAIT  : constant Unsigned_64 := 16#0002#;
    DISPLAY_CAP_GPU_PRESENT  : constant Unsigned_64 := 16#0004#;
+   DISPLAY_CAP_PAGE_FLIP    : constant Unsigned_64 := 16#0008#;
 
    CAP_SLOT_GPU : constant CapabilitySlot := 9;
 
@@ -67,11 +66,17 @@ procedure main is
    srcOwner  : ProcessID := NO_PROCESS;
    gpuAvailable : Boolean := False;
    gpuCopyActive  : Boolean := False;
-   gpuScanoutAddr : System.Address := System.Null_Address;
-   gpuScanoutGrantId : Unsigned_64 := 0;
+   subtype Gpu_Buffer_Index is Natural range 0 .. 1;
+   type Gpu_Address_Array is
+     array (Gpu_Buffer_Index) of System.Address;
+   type Gpu_Grant_Array is
+     array (Gpu_Buffer_Index) of Unsigned_64;
+   gpuScanoutAddr : Gpu_Address_Array := (others => System.Null_Address);
+   gpuScanoutGrantId : Gpu_Grant_Array := (others => 0);
    gpuScanoutWidth   : Natural := 0;
    gpuScanoutHeight  : Natural := 0;
    gpuScanoutPitch   : Natural := 0;
+   gpuActiveBuffer : Gpu_Buffer_Index := 0;
    displayOwner : ProcessID := NO_PROCESS;
 
    type Rect is record
@@ -80,6 +85,8 @@ procedure main is
       w : Natural := 0;
       h : Natural := 0;
    end record;
+
+   gpuPreviousDamage : Rect := (others => 0);
 
    pendingPresent : Boolean := False;
    pendingRect    : Rect;
@@ -117,9 +124,15 @@ procedure main is
          --  client would be an untracked re-grant. Until CuBit has an
          --  explicit attenuating derived-loan operation, display.svc owns
          --  the scanout mapping and copies client damage into it.
-         return DISPLAY_CAP_COPY_PRESENT or DISPLAY_CAP_GPU_PRESENT;
+         return DISPLAY_CAP_COPY_PRESENT or DISPLAY_CAP_GPU_PRESENT or
+           DISPLAY_CAP_PAGE_FLIP;
       else
-         return DISPLAY_CAP_COPY_PRESENT or DISPLAY_CAP_VBLANK_WAIT;
+         --  A bootloader/firmware linear framebuffer does not provide a
+         --  trustworthy vertical-blank event. In particular, polling the
+         --  legacy VGA status port on modern Intel hardware can spin forever
+         --  (and used to cost one syscall per poll). Present immediately until
+         --  a hardware display backend supplies real flip completion events.
+         return DISPLAY_CAP_COPY_PRESENT;
       end if;
    end backendCaps;
 
@@ -248,6 +261,7 @@ procedure main is
       pendingPresent := False;
       pendingRect := (others => 0);
       gpuCopyActive := False;
+      gpuPreviousDamage := (others => 0);
    end detachOwnerBuffer;
 
    function isEmpty (r : Rect) return Boolean is
@@ -304,34 +318,6 @@ procedure main is
       return Natural (Shift_Right (x, 32));
    end unpackHi32;
 
-   procedure waitForVBlank is
-      val : Unsigned_64;
-      MAX_POLLS : constant Natural := 200_000;
-   begin
-      --  QEMU's VESA framebuffer is still backed by VGA-compatible scanout
-      --  state. Waiting for vertical blank before touching the live scanout
-      --  buffer reduces tearing until display.svc grows real page flipping.
-      --
-      --  This is deliberately bounded: if the platform does not expose the
-      --  VGA status bit, or the I/O-port cap was not granted, present should
-      --  degrade to immediate copy rather than wedging the display service.
-      for i in 1 .. MAX_POLLS loop
-         val := portInp8 (VGA_STATUS_PORT);
-         if val = Unsigned_64'Last then
-            return;
-         end if;
-         exit when (val and VGA_VBLANK_BIT) = 0;
-      end loop;
-
-      for i in 1 .. MAX_POLLS loop
-         val := portInp8 (VGA_STATUS_PORT);
-         if val = Unsigned_64'Last then
-            return;
-         end if;
-         exit when (val and VGA_VBLANK_BIT) /= 0;
-      end loop;
-   end waitForVBlank;
-
    procedure clear (color : Unsigned_32) is
       line : array (Natural range 0 .. 1023) of Unsigned_32;
       ignore : System.Address;
@@ -378,6 +364,8 @@ procedure main is
 
       reply := callGpu (OP_GPU_CLEAR, color, 0, 0, 0);
       if reply.tag.length >= 1 and then reply.words (0) = 0 then
+         gpuActiveBuffer := 0;
+         gpuPreviousDamage := (others => 0);
          return True;
       end if;
 
@@ -441,81 +429,137 @@ procedure main is
          return False;
       end if;
 
-      if gpuScanoutAddr = System.Null_Address then
-         gpuMap := callGpu (OP_GPU_MAP_FRAMEBUFFER);
-         if gpuMap.tag.length < 4 or else gpuMap.words (0) /= 0 then
-            debugPrint ("display: gpu scanout map failed" & LF);
-            return False;
+      for index in Gpu_Buffer_Index loop
+         if gpuScanoutAddr (index) = System.Null_Address then
+            gpuMap := callGpu
+              (OP_GPU_MAP_FRAMEBUFFER, Unsigned_64 (index), 0, 0, 0);
+            if gpuMap.tag.length < 4 or else gpuMap.words (0) /= 0 then
+               debugPrint ("display: gpu scanout map failed" & LF);
+               return False;
+            end if;
+
+            gpuScanoutGrantId (index) := gpuMap.words (1);
+            gpuScanoutAddr (index) := toAddr
+              (GRANT_REGION_BASE +
+               gpuScanoutGrantId (index) * GRANT_SLOT_SIZE);
+            if index = Gpu_Buffer_Index'First then
+               gpuScanoutWidth := unpackLo32 (gpuMap.words (2));
+               gpuScanoutHeight := unpackHi32 (gpuMap.words (2));
+               gpuScanoutPitch := Natural (gpuMap.words (3));
+            elsif gpuScanoutWidth /= unpackLo32 (gpuMap.words (2)) or else
+              gpuScanoutHeight /= unpackHi32 (gpuMap.words (2)) or else
+              gpuScanoutPitch /= Natural (gpuMap.words (3))
+            then
+               debugPrint ("display: gpu swapchain geometry mismatch" & LF);
+               return False;
+            end if;
          end if;
+      end loop;
 
-         gpuScanoutGrantId := gpuMap.words (1);
-         gpuScanoutAddr := toAddr
-           (GRANT_REGION_BASE + gpuScanoutGrantId * GRANT_SLOT_SIZE);
-         gpuScanoutWidth := unpackLo32 (gpuMap.words (2));
-         gpuScanoutHeight := unpackHi32 (gpuMap.words (2));
-         gpuScanoutPitch := Natural (gpuMap.words (3));
-      end if;
-
-      return gpuScanoutAddr /= System.Null_Address and then
+      return
+        (for all index in Gpu_Buffer_Index =>
+           gpuScanoutAddr (index) /= System.Null_Address) and then
         gpuScanoutWidth > 0 and then gpuScanoutHeight > 0 and then
         gpuScanoutPitch >= gpuScanoutWidth * 4;
    end ensureGpuScanout;
 
-   function copyAndFlushGpuRect (r : Rect) return Boolean is
-      maxX : Natural := r.x + r.w;
-      maxY : Natural := r.y + r.h;
-      ignore : System.Address;
-      reply : Message;
+   function clampGpuRect (r : Rect) return Rect is
+      limitW : constant Natural := Natural'Min (srcWidth, gpuScanoutWidth);
+      limitH : constant Natural := Natural'Min (srcHeight, gpuScanoutHeight);
    begin
-      if not gpuCopyActive or else srcAddr = System.Null_Address or else
-         r.w = 0 or else r.h = 0 or else
-         r.x >= srcWidth or else r.y >= srcHeight or else
-         r.x >= gpuScanoutWidth or else r.y >= gpuScanoutHeight
+      if r.w = 0 or else r.h = 0 or else
+        r.x >= limitW or else r.y >= limitH
       then
-         return False;
+         return (others => 0);
+      end if;
+      return
+        (x => r.x,
+         y => r.y,
+         w => Natural'Min (r.w, limitW - r.x),
+         h => Natural'Min (r.h, limitH - r.y));
+   end clampGpuRect;
+
+   procedure copyGpuRect
+     (dest      : System.Address;
+      destPitch : Natural;
+      source    : System.Address;
+      sourcePitch : Natural;
+      r         : Rect)
+   is
+      ignore : System.Address;
+   begin
+      if isEmpty (r) then
+         return;
       end if;
 
-      maxX := Natural'Min (maxX, srcWidth);
-      maxX := Natural'Min (maxX, gpuScanoutWidth);
-      maxY := Natural'Min (maxY, srcHeight);
-      maxY := Natural'Min (maxY, gpuScanoutHeight);
-      if r.x >= maxX or else r.y >= maxY then
-         return False;
-      end if;
-
-      if r.x = 0 and then maxX = gpuScanoutWidth and then
-         srcPitch = gpuScanoutPitch
+      if r.x = 0 and then r.w = gpuScanoutWidth and then
+         sourcePitch = destPitch
       then
          ignore := memcpy
-           (gpuScanoutAddr + Storage_Offset (r.y * gpuScanoutPitch),
-            srcAddr + Storage_Offset (r.y * srcPitch),
-            Storage_Count ((maxY - r.y) * gpuScanoutPitch));
+           (dest + Storage_Offset (r.y * destPitch),
+            source + Storage_Offset (r.y * sourcePitch),
+            Storage_Count (r.h * destPitch));
       else
-         for row in r.y .. maxY - 1 loop
+         for row in r.y .. r.y + r.h - 1 loop
             ignore := memcpy
-              (gpuScanoutAddr +
-                 Storage_Offset (row * gpuScanoutPitch + r.x * 4),
-               srcAddr + Storage_Offset (row * srcPitch + r.x * 4),
-               Storage_Count ((maxX - r.x) * 4));
+              (dest + Storage_Offset (row * destPitch + r.x * 4),
+               source + Storage_Offset (row * sourcePitch + r.x * 4),
+               Storage_Count (r.w * 4));
          end loop;
       end if;
+   end copyGpuRect;
+
+   function copyAndFlipGpuRect (damage : Rect) return Boolean is
+      r : constant Rect := clampGpuRect (damage);
+      previous : constant Rect := clampGpuRect (gpuPreviousDamage);
+      target : constant Gpu_Buffer_Index := 1 - gpuActiveBuffer;
+      transfer : Rect := r;
+      reply : Message;
+      packedXY : Unsigned_64;
+      packedWH : Unsigned_64;
+   begin
+      if not gpuCopyActive or else srcAddr = System.Null_Address or else
+        isEmpty (r)
+      then
+         return False;
+      end if;
+
+      --  The inactive resource is one frame old. Bring forward precisely the
+      --  damage written while it was inactive, then apply this frame's new
+      --  pixels. This is buffer-age tracking: unchanged pixels never need a
+      --  full-screen copy merely because the scanout resource alternates.
+      if not isEmpty (previous) then
+         copyGpuRect
+           (gpuScanoutAddr (target), gpuScanoutPitch,
+            gpuScanoutAddr (gpuActiveBuffer), gpuScanoutPitch,
+            previous);
+         transfer := unionRect (previous, r);
+      end if;
+
+      copyGpuRect
+        (gpuScanoutAddr (target), gpuScanoutPitch,
+         srcAddr, srcPitch, r);
+
+      packedXY := Unsigned_64 (transfer.x) or
+        Shift_Left (Unsigned_64 (transfer.y), 32);
+      packedWH := Unsigned_64 (transfer.w) or
+        Shift_Left (Unsigned_64 (transfer.h), 32);
 
       reply := callGpu
-        (OP_GPU_FLUSH_RECT,
-         Unsigned_64 (r.x),
-         Unsigned_64 (r.y),
-         Unsigned_64 (maxX - r.x),
-         Unsigned_64 (maxY - r.y));
+        (OP_GPU_PRESENT_BUFFER,
+         Unsigned_64 (target), packedXY, packedWH, 0);
       if reply.tag.length >= 1 and then reply.words (0) = 0 then
+         gpuActiveBuffer := target;
+         gpuPreviousDamage := r;
          return True;
       end if;
 
-      debugPrint ("display: gpu copy flush failed" & LF);
+      debugPrint ("display: gpu page flip failed" & LF);
       gpuCopyActive := False;
       return False;
-   end copyAndFlushGpuRect;
+   end copyAndFlipGpuRect;
 
-   procedure flushPendingPresent (waitForScanout : Boolean := True) is
+   procedure flushPendingPresent is
       r : constant Rect := pendingRect;
       waitStart : Unsigned_64;
       copyStart : Unsigned_64;
@@ -537,16 +581,10 @@ procedure main is
       waitStart := syscall (SYSCALL_GETTIME);
       if gpuCopyActive then
          copyStart := syscall (SYSCALL_GETTIME);
-         if not copyAndFlushGpuRect (r) then
-            if waitForScanout then
-               waitForVBlank;
-            end if;
+         if not copyAndFlipGpuRect (r) then
             presentRect (r.x, r.y, r.w, r.h);
          end if;
       else
-         if waitForScanout then
-            waitForVBlank;
-         end if;
          copyStart := syscall (SYSCALL_GETTIME);
          presentRect (r.x, r.y, r.w, r.h);
       end if;
@@ -565,6 +603,97 @@ procedure main is
          statsCopyMs := statsCopyMs + (copyEnd - copyStart);
       end if;
    end flushPendingPresent;
+
+   procedure presentPackedRegion (request : Message)
+   is
+      regionCount : constant Natural := Natural (request.tag.length);
+      packed : Unsigned_64;
+      r : Rect;
+      waitStart : Unsigned_64;
+      copyStart : Unsigned_64;
+      copyEnd : Unsigned_64;
+      pixels : Unsigned_64 := 0;
+   begin
+      if regionCount = 0 or else regionCount > request.words'Length then
+         return;
+      end if;
+
+      --  A damage region is one scanout transaction. Wait once, then copy all
+      --  constituent rectangles before replying to the compositor. This
+      --  avoids multiplying IPC/vblank latency and prevents a moving window
+      --  from exposing each strip as a separately timed frame.
+      waitStart := syscall (SYSCALL_GETTIME);
+      copyStart := syscall (SYSCALL_GETTIME);
+
+      if gpuCopyActive then
+         --  A packed region is one visual frame. The current wire format can
+         --  carry several rectangles but the swapchain flips once, so merge
+         --  them here and preserve atomic presentation. Future display lists
+         --  can retain disjoint damage through the GPU command queue.
+         r := (others => 0);
+         for i in 0 .. regionCount - 1 loop
+            packed := request.words (i);
+            declare
+               item : constant Rect :=
+                 (x => Natural (packed and 16#FFFF#),
+                  y => Natural (Shift_Right (packed, 16) and 16#FFFF#),
+                  w => Natural (Shift_Right (packed, 32) and 16#FFFF#),
+                  h => Natural (Shift_Right (packed, 48) and 16#FFFF#));
+            begin
+               if not isEmpty (item) then
+                  r := unionRect (r, item);
+               end if;
+            end;
+         end loop;
+         if not isEmpty (r) then
+            pixels := Unsigned_64 (r.w) * Unsigned_64 (r.h);
+            if not copyAndFlipGpuRect (r) then
+               presentRect (r.x, r.y, r.w, r.h);
+            end if;
+         end if;
+         copyEnd := syscall (SYSCALL_GETTIME);
+         statsPresents := statsPresents + 1;
+         statsPixels := statsPixels + pixels;
+         if waitStart /= Unsigned_64'Last and then
+           copyStart /= Unsigned_64'Last and then copyStart >= waitStart
+         then
+            statsWaitMs := statsWaitMs + (copyStart - waitStart);
+         end if;
+         if copyStart /= Unsigned_64'Last and then
+           copyEnd /= Unsigned_64'Last and then copyEnd >= copyStart
+         then
+            statsCopyMs := statsCopyMs + (copyEnd - copyStart);
+         end if;
+         return;
+      end if;
+
+      for i in 0 .. regionCount - 1 loop
+         packed := request.words (i);
+         r :=
+           (x => Natural (packed and 16#FFFF#),
+            y => Natural (Shift_Right (packed, 16) and 16#FFFF#),
+            w => Natural (Shift_Right (packed, 32) and 16#FFFF#),
+            h => Natural (Shift_Right (packed, 48) and 16#FFFF#));
+         if not isEmpty (r) then
+            presentRect (r.x, r.y, r.w, r.h);
+            pixels := pixels + Unsigned_64 (r.w) * Unsigned_64 (r.h);
+         end if;
+      end loop;
+      copyEnd := syscall (SYSCALL_GETTIME);
+
+      statsPresents := statsPresents + 1;
+      statsPixels := statsPixels + pixels;
+      if waitStart /= Unsigned_64'Last and then
+        copyStart /= Unsigned_64'Last and then copyStart >= waitStart
+      then
+         statsWaitMs := statsWaitMs + (copyStart - waitStart);
+      end if;
+      if copyStart /= Unsigned_64'Last and then
+        copyEnd /= Unsigned_64'Last and then copyEnd >= copyStart
+      then
+         statsCopyMs := statsCopyMs + (copyEnd - copyStart);
+      end if;
+   end presentPackedRegion;
 
    procedure handleRequest
       (from     : ProcessID;
@@ -689,9 +818,7 @@ procedure main is
                   --  single-buffer clients can safely draw their next frame.
                   --  Async packed presents remain queued for clients that have
                   --  their own buffering or can tolerate eventual scanout.
-                  flushPendingPresent
-                    (waitForScanout =>
-                       request.tag.label = OP_DISPLAY_PRESENT_RECT);
+                  flushPendingPresent;
                else
                   --  Packed async form used by capSubmit: word0 = x/y,
                   --  word1 = w/h. This keeps fire-and-forget present within
@@ -702,6 +829,23 @@ procedure main is
                       w => unpackLo32 (request.words (1)),
                       h => unpackHi32 (request.words (1))));
                end if;
+               replyMsg.words (0) := DISPLAY_OK;
+            end if;
+
+         when OP_DISPLAY_PRESENT_REGION |
+              OP_DISPLAY_PRESENT_IMMEDIATE_REGION =>
+            replyMsg.tag := (label => request.tag.label,
+                             length => 1, flags => 0, badge => 0);
+            if not ownsDisplay (from) then
+               replyMsg.words (0) := DISPLAY_ERR_DENIED;
+            elsif srcOwner /= from or else srcAddr = System.Null_Address then
+               replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
+            elsif request.tag.length = 0 or else
+              Natural (request.tag.length) > request.words'Length
+            then
+               replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
+            else
+               presentPackedRegion (request);
                replyMsg.words (0) := DISPLAY_OK;
             end if;
 

@@ -17,13 +17,12 @@ with System.Secondary_Stack; use System.Secondary_Stack;
 pragma Warnings (On);
 
 with Config;
+with Interrupt_State;
 with Process;
 with Segment;
 with Util;
 
-package PerCPUData with
-    SPARK_Mode => On
-is
+package PerCPUData is
     ---------------------------------------------------------------------------
     -- Each CPU has one of these data structures associated with it.
     -- @field cpuNum - the CPU number this record is for
@@ -40,10 +39,10 @@ is
     -- @field currentContext - currently running stack on this CPU
     -- @field schedulerContext - stack for the scheduling thread on this CPU
     --
-    -- @field intsEnabled - Whether interrupts are enabled or not on THIS CPU.
-    -- @field numCLI - number of cli instructions we've executed. Used by locks
-    --  to enable nesting.
-    -- 
+    -- @field exclusion - Proved nesting and IF-restoration state. The depth
+    --  remains CPU-local across a Process.lock handoff; the saved restoration
+    --  policy follows the suspended context. It is not the hardware IF value.
+    --
     -- @WARNING Make sure these match the offsets in cubit.inc, this record is
     --  accessed from assembly code!
     ---------------------------------------------------------------------------
@@ -67,8 +66,7 @@ is
         currentContext      : System.Address;
         schedulerContext    : System.Address;
 
-        intsEnabled         : Boolean;
-        numCLI              : Integer;
+        exclusion           : Interrupt_State.State := Interrupt_State.Initial_State;
 
         -- NMI tracking for lock-free NMI handler
         nmiCount            : Natural := 0;
@@ -98,8 +96,7 @@ is
         oldContext          at 202  range 0..63;
         currentContext      at 210  range 0..63;
         schedulerContext    at 218  range 0..63;
-        intsEnabled         at 226  range 0..31;
-        numCLI              at 230  range 0..31;
+        exclusion           at 226  range 0..63;
         nmiCount            at 234  range 0..31;
         nmiInProgress       at 238  range 0..7;
         needReschedule      at 239  range 0..7;
@@ -131,7 +128,7 @@ is
                      tssAddr         : in System.Address) with
         Pre => (cpuNum < Config.MAX_CPUS and
                 cpuDataAddr /= System.Null_Address and
-                gdtAddr /= System.Null_Address and 
+                gdtAddr /= System.Null_Address and
                 gdtPointerAddr /= System.Null_Address and
                 tssAddr /= System.Null_Address);
 
@@ -182,7 +179,7 @@ is
 
     ---------------------------------------------------------------------------
     -- intsEnabled
-    -- Returns True if interrupts are enabled on this CPU
+    -- Returns the outer critical section's IF-restoration policy, not live IF.
     ---------------------------------------------------------------------------
     function intsEnabled return Boolean;
 
@@ -204,13 +201,18 @@ is
     -- popCLI
     -- Undoes the effect of one call to pushCLI, decreases the CLI depth by one.
     -- If the CLI depth reaches 0 (i.e. all pushCLIs have been matched), then
-    -- interrupts are enabled for this CPU.
+    -- interrupts are restored to the outermost entry's policy.
     -- @raise InterruptException if interrupts not previously disabled prior to
     --  this call.
     -- @raise InterruptException if this is called without a previous matching
     --  call to pushCLI
     ---------------------------------------------------------------------------
     procedure popCLI;
+
+    -- Trusted boundary: validate hardware IF and CPU ownership of the single
+    -- handed-off Process.lock before invoking the proved state transition.
+    function captureHandoff return Interrupt_State.Context;
+    procedure resumeHandoff (saved : Interrupt_State.Context);
 
     ---------------------------------------------------------------------------
     -- Used to get pointers to the per-CPU secondary stacks.

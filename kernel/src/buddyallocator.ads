@@ -127,7 +127,7 @@ is
 
     totalManagedBytes : Storage_Count := 0;
 
-    lockName : aliased String := "buddy";
+    lockName : aliased constant String := "buddy";
     lock : Spinlocks.Spinlock :=
         (name => lockName'Access, others => <>);
 

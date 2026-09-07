@@ -19,7 +19,7 @@ is
     -- bootCalibrationSleep - busy wait until tick difference matches up
     ---------------------------------------------------------------------------
     procedure bootCalibrationSleep (ms : in Unsigned_64)
-        with SPARK_Mode => On
+        with SPARK_Mode => Off -- asynchronous hardware tick polling
     is
         startTicks : constant Unsigned_64 := msTicks;
     begin
@@ -38,7 +38,7 @@ is
     -- TODO: need to find whether TSC is invariant or not.
     ---------------------------------------------------------------------------
     procedure calibrateTSC
-        with SPARK_Mode => On
+        with SPARK_Mode => Off -- asynchronous hardware tick/TSC sampling
     is
         samplems    : constant Unsigned_64 := 100;
         startTicks  : constant Unsigned_64 := msTicks;
@@ -92,7 +92,7 @@ is
     cpuQuantumTicks : array (0..Config.MAX_SMP_CPUS - 1) of Natural :=
         (others => 0);
 
-    procedure clockTick with SPARK_Mode => On
+    procedure clockTick with SPARK_Mode => Off -- live process queues and CPU state
     is
         cpuNum    : constant Natural := PerCPUData.getCPUNumber;
         currentPID : constant Process.ProcessID := PerCPUData.getCurrentPID;

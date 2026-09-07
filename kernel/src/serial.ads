@@ -354,11 +354,12 @@ is
     ---------------------------------------------------------------------------
     -- See if this serial port has data available.
     ---------------------------------------------------------------------------
-    function hasData(port : SerialPort) return Boolean;
+    -- Port reads have hardware side effects; these are trusted Ada adapters.
+    function hasData(port : SerialPort) return Boolean with SPARK_Mode => Off;
 
     ---------------------------------------------------------------------------
     -- Receive a single character via this serial port.
     ---------------------------------------------------------------------------
-    function recv(port : SerialPort) return Character;
+    function recv(port : SerialPort) return Character with SPARK_Mode => Off;
 
 end serial;

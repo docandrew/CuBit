@@ -12,50 +12,41 @@
 -- to the first entry from the proctab in that list.
 -------------------------------------------------------------------------------
 
-package Process.Queues with
-    SPARK_Mode => On
-is
+package Process.Queues is
 
-    procedure initQueue (q : in out ProcQueue; locknamePtr : access String)
-        with SPARK_Mode => On;
+    procedure initQueue (q : in out ProcQueue; locknamePtr : Spinlocks.Lock_Name);
 
     ---------------------------------------------------------------------------
     -- isEmpty
     ---------------------------------------------------------------------------
-    function isEmpty (q : ProcQueue) return Boolean
-        with SPARK_Mode => On;
+    function isEmpty (q : ProcQueue) return Boolean;
 
     ---------------------------------------------------------------------------
     -- popFront
     ---------------------------------------------------------------------------
-    procedure popFront (q : in out ProcQueue; result : out ProcessID)
-        with SPARK_Mode => On;
+    procedure popFront (q : in out ProcQueue; result : out ProcessID);
 
     -- ---------------------------------------------------------------------------
     -- -- popBack
     -- ---------------------------------------------------------------------------
-    procedure popBack (q : in out ProcQueue; result : out ProcessID)
-        with SPARK_Mode => On;
+    procedure popBack (q : in out ProcQueue; result : out ProcessID);
 
     -- ---------------------------------------------------------------------------
     -- -- popItem
     -- ---------------------------------------------------------------------------
     procedure popItem (q : in out ProcQueue; pid : ProcessID;
-                       result : out ProcessID)
-        with SPARK_Mode => On;
+                       result : out ProcessID);
 
     ---------------------------------------------------------------------------
     -- enqueue
     ---------------------------------------------------------------------------
     procedure enqueue (q : in out ProcQueue; pid : ProcessID;
-                       result : out ProcessID)
-        with SPARK_Mode => On;
+                       result : out ProcessID);
 
     ---------------------------------------------------------------------------
     -- dequeue
     ---------------------------------------------------------------------------
-    procedure dequeue (q : in out ProcQueue; result : out ProcessID)
-        with SPARK_Mode => On;
+    procedure dequeue (q : in out ProcQueue; result : out ProcessID);
 
     ---------------------------------------------------------------------------
     -- insert
@@ -64,8 +55,7 @@ is
     procedure insert (q      : in out ProcQueue;
                       pid    : ProcessID;
                       key    : Integer;
-                      result : out ProcessID)
-        with SPARK_Mode => On;
+                      result : out ProcessID);
 
     ---------------------------------------------------------------------------
     -- insertDelta
@@ -75,8 +65,7 @@ is
     procedure insertDelta (q            : in out ProcQueue;
                            pid          : ProcessID;
                            delayFromNow : Integer;
-                           result       : out ProcessID)
-        with SPARK_Mode => On;
+                           result       : out ProcessID);
 
     ---------------------------------------------------------------------------
     -- insertDeltaNoLock
@@ -86,28 +75,26 @@ is
     procedure insertDeltaNoLock (q            : in out ProcQueue;
                                  pid          : ProcessID;
                                  delayFromNow : Integer;
-                                 result       : out ProcessID)
-        with SPARK_Mode => On;
+                                 result       : out ProcessID);
 
     ---------------------------------------------------------------------------
     -- wakeFromSleep
     -- Remove a specific process from the sleep delta queue and ready it.
     -- Adjusts the successor's delta to preserve remaining timings.
     ---------------------------------------------------------------------------
-    procedure wakeFromSleep (pid : ProcessID; woken : out Boolean)
-        with SPARK_Mode => On;
+    procedure wakeFromSleep (pid : ProcessID; woken : out Boolean);
 
     ---------------------------------------------------------------------------
     -- clockTick
     -- Adjust the delta queue entries by the elapsed tick, wake up any sleeping
     -- processes whose delay has elapsed.
     ---------------------------------------------------------------------------
-    procedure clockTick with SPARK_Mode => On;
+    procedure clockTick;
 
     ---------------------------------------------------------------------------
     -- print
     -- Dump the list contents to TextIO
     ---------------------------------------------------------------------------
-    procedure print (q : ProcQueue) with SPARK_Mode => On;
+    procedure print (q : ProcQueue);
 
 end Process.Queues;

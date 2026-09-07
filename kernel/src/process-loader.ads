@@ -15,7 +15,7 @@ package Process.Loader is
     -- If the header provided is a valid ELF object file header, return True.
     ---------------------------------------------------------------------------
     function isValidELF (hdr : ELF.ELFFileHeader) return Boolean with
-        SPARK_Mode => On;
+        SPARK_Mode => Off; -- Logs rejection diagnostics; not a pure predicate.
 
     ---------------------------------------------------------------------------
     -- load
@@ -35,6 +35,6 @@ package Process.Loader is
                    requestedPID : ProcessID := NO_PROCESS;
                    priority     : ProcessPriority := 1;
                    ppid         : ProcessID := NO_PROCESS) return ProcessID
-        with SPARK_Mode => On;
+        with SPARK_Mode => Off; -- Allocates and maps a live address space.
 
 end Process.Loader;

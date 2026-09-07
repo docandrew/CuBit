@@ -14,17 +14,13 @@ with TextIO; use TextIO;
 with Trace;
 with x86;
 
-package body Scheduler with
-    -- Refined_State => (
-    --     SchedulerState => ()),
-    SPARK_Mode => On
-is
+-- Ada adapter over hardware context switching and live process-table/GS state.
+package body Scheduler is
     ---------------------------------------------------------------------------
     -- Enter the scheduler from a process.
     -- Checks the kernel stack canary before context switching.
     ---------------------------------------------------------------------------
-    procedure enter with
-        SPARK_Mode => On
+    procedure enter
     is
         use type Process.ProcessMode;
         use type Process.ProcessState;
@@ -76,8 +72,7 @@ is
     --  procedure which means we'll pick up where we left off,
     --  trying to run the next process in the proctab.
     ---------------------------------------------------------------------------
-    procedure schedule (cpuData : in out PerCPUData.PerCPUData) with
-        SPARK_Mode => On
+    procedure schedule (cpuData : in out PerCPUData.PerCPUData)
     is
         use Spinlocks;
         use Process;
@@ -96,7 +91,7 @@ is
             end if;
 
             -- @NOTE This lock is released either by process.start (if this is the process'
-            --  first time executing); process.yield (if the process is continuing from the 
+            --  first time executing); process.yield (if the process is continuing from the
             --  call to scheduler.enter from the last time it yielded); or at the symmetric
             --  exitCriticalSection call in this function.
             --
@@ -127,7 +122,7 @@ is
             -- switch address spaces if appropriate
             cpuData.savedKernelRSP      := Process.proctab(pid).kernelStackTop;
             cpuData.tss.rsp0            := Process.proctab(pid).kernelStackTop;
-            
+
             -- Only change address spaces if we're switching to a user-mode process.
             if Process.proctab(pid).mode = Process.USER then
                 Process.switchAddressSpace (pid);

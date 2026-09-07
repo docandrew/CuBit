@@ -11,7 +11,8 @@ project CuBit is
 
     for Runtime ("Ada") use "runtime";
 
-    for Excluded_Source_Files use ("init.asm");
+    -- vectors.ads is an unfinished, unreferenced API sketch, not kernel code.
+    for Excluded_Source_Files use ("init.asm", "vectors.ads");
 
     -- So gprbuild finds our .asm files
     package Naming is

@@ -66,7 +66,9 @@ is
     ---------------------------------------------------------------------------
     -- getTextInterface
     ---------------------------------------------------------------------------
-    function getTextInterface return TextIO.TextIOInterface is
+    function getTextInterface return TextIO.TextIOInterface
+        with SPARK_Mode => Off -- Installs callbacks with framebuffer side effects.
+    is
     begin
         return (rows   => Natural(ROWS),
                 cols   => Natural(COLS),

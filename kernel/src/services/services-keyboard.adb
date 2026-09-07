@@ -13,14 +13,12 @@ with Sysinfo;
 with Time;
 with x86; use x86;
 
-package body Services.Keyboard
-    with SPARK_Mode => On
-is
+package body Services.Keyboard with SPARK_Mode => Off is
 
     ---------------------------------------------------------------------------
     -- Start the keyboard handling service
     ---------------------------------------------------------------------------
-    procedure start with SPARK_Mode => On is
+    procedure start  is
         use Time;
 
         event     : Process.Message;

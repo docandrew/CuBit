@@ -38,7 +38,7 @@ package body Sysinfo is
     ---------------------------------------------------------------------------
     function getInfo (query  : Unsigned_64;
                       detail : Unsigned_64) return Unsigned_64
-        with SPARK_Mode => On
+        with SPARK_Mode => Off
     is
     begin
         case query is
@@ -103,7 +103,7 @@ package body Sysinfo is
     ---------------------------------------------------------------------------
     function registerDriver (pid    : Process.ProcessID;
                              driver : DriverID) return Unsigned_64
-        with SPARK_Mode => On
+        with SPARK_Mode => Off
     is
     begin
         registeredDrivers (driver) := pid;
@@ -119,7 +119,7 @@ package body Sysinfo is
     -- unregisterDriverByPID
     ---------------------------------------------------------------------------
     procedure unregisterDriverByPID (pid : Process.ProcessID)
-        with SPARK_Mode => On
+        with SPARK_Mode => Off -- live volatile registry
     is
     begin
         for d in DriverID loop
@@ -155,7 +155,7 @@ package body Sysinfo is
     ---------------------------------------------------------------------------
     function setInfo (queryID : Unsigned_64;
                       value   : Unsigned_64) return Boolean
-        with SPARK_Mode => On
+        with SPARK_Mode => Off
     is
     begin
         case queryID is

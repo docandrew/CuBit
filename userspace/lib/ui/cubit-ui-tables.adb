@@ -47,11 +47,14 @@ package body CuBit.UI.Tables is
        colors : CuBit.UI.Theme;
        c1, c2, c3 : String;
        layout : in out CuBit.UI.Table_Column_Layout;
-       minimumFirst, minimumSecond, minimumThird : Natural := 32)
+       minimumFirst, minimumSecond, minimumThird : Natural := 32;
+       retainedInput : Boolean := False)
    is
       firstDivider, secondDivider : CuBit.UI.Rect := (others => 0);
       firstResult, secondResult : CuBit.UI.Widget_Result;
       desired, firstMaximum, secondMaximum : Natural := 0;
+      retainedValue : Natural;
+      retainedAvailable : Boolean;
       resizable : constant Boolean :=
         bounds.w >= minimumFirst + minimumSecond + minimumThird;
 
@@ -83,19 +86,41 @@ package body CuBit.UI.Tables is
         Clamp (layout.Second_Width, minimumSecond, secondMaximum);
 
       firstDivider := Divider_Bounds (bounds, layout.First_Width);
-      CuBit.UI.Controls.Add
-        (controls, firstDividerId, firstDivider, damage,
-         CuBit.UI.Pointer_Resize_Horizontal,
-         continuousAction => True);
-      firstResult := CuBit.UI.State.Button
-        (st, CuBit.UI.Controls.Bounds (controls, firstDividerId),
-         CuBit.UI.State.Widget_ID (firstDividerId));
-      if CuBit.UI.State.Is_Last_Widget_Captured (st) then
-         firstResult.active := True;
-         desired :=
-           (if st.pointer.x <= bounds.x then 0
-            else st.pointer.x - bounds.x);
-         layout.First_Width := Clamp (desired, minimumFirst, firstMaximum);
+      if retainedInput then
+         CuBit.UI.Controls.Add_Horizontal_Drag
+           (controls, firstDividerId, firstDivider, damage,
+            layout.First_Width, minimumFirst, firstMaximum, bounds.x);
+         CuBit.UI.Controls.Take_Value
+           (controls, firstDividerId, retainedValue, retainedAvailable);
+         if retainedAvailable then
+            layout.First_Width := retainedValue;
+         end if;
+         firstResult :=
+           (hot => st.pointer.enabled and then
+              CuBit.UI.Point_In_Rect
+                (st.pointer.x, st.pointer.y,
+                 CuBit.UI.Controls.Bounds (controls, firstDividerId)),
+            active => CuBit.UI.Controls.Is_Active
+              (controls, firstDividerId),
+            activated => False);
+      else
+         CuBit.UI.Controls.Add
+           (controls, firstDividerId, firstDivider, damage,
+            CuBit.UI.Pointer_Resize_Horizontal,
+            continuousAction => True);
+         firstResult := CuBit.UI.State.Button
+           (st, CuBit.UI.Controls.Bounds (controls, firstDividerId),
+            CuBit.UI.State.Widget_ID (firstDividerId));
+         if CuBit.UI.State.Is_Last_Widget_Captured (st) then
+            firstResult.active := True;
+            desired :=
+              (if st.pointer.x <= bounds.x then 0
+               else st.pointer.x - bounds.x);
+            layout.First_Width :=
+              Clamp (desired, minimumFirst, firstMaximum);
+         end if;
+      end if;
+      if firstResult.active then
          secondMaximum := bounds.w - layout.First_Width - minimumThird;
          layout.Second_Width :=
            Clamp (layout.Second_Width, minimumSecond, secondMaximum);
@@ -103,20 +128,40 @@ package body CuBit.UI.Tables is
 
       secondDivider := Divider_Bounds
         (bounds, layout.First_Width + layout.Second_Width);
-      CuBit.UI.Controls.Add
-        (controls, secondDividerId, secondDivider, damage,
-         CuBit.UI.Pointer_Resize_Horizontal,
-         continuousAction => True);
-      secondResult := CuBit.UI.State.Button
-        (st, CuBit.UI.Controls.Bounds (controls, secondDividerId),
-         CuBit.UI.State.Widget_ID (secondDividerId));
-      if CuBit.UI.State.Is_Last_Widget_Captured (st) then
-         secondResult.active := True;
-         desired :=
-           (if st.pointer.x <= bounds.x + layout.First_Width then 0
-            else st.pointer.x - bounds.x - layout.First_Width);
-         layout.Second_Width :=
-           Clamp (desired, minimumSecond, secondMaximum);
+      if retainedInput then
+         CuBit.UI.Controls.Add_Horizontal_Drag
+           (controls, secondDividerId, secondDivider, damage,
+            layout.Second_Width, minimumSecond, secondMaximum,
+            bounds.x + layout.First_Width);
+         CuBit.UI.Controls.Take_Value
+           (controls, secondDividerId, retainedValue, retainedAvailable);
+         if retainedAvailable then
+            layout.Second_Width := retainedValue;
+         end if;
+         secondResult :=
+           (hot => st.pointer.enabled and then
+              CuBit.UI.Point_In_Rect
+                (st.pointer.x, st.pointer.y,
+                 CuBit.UI.Controls.Bounds (controls, secondDividerId)),
+            active => CuBit.UI.Controls.Is_Active
+              (controls, secondDividerId),
+            activated => False);
+      else
+         CuBit.UI.Controls.Add
+           (controls, secondDividerId, secondDivider, damage,
+            CuBit.UI.Pointer_Resize_Horizontal,
+            continuousAction => True);
+         secondResult := CuBit.UI.State.Button
+           (st, CuBit.UI.Controls.Bounds (controls, secondDividerId),
+            CuBit.UI.State.Widget_ID (secondDividerId));
+         if CuBit.UI.State.Is_Last_Widget_Captured (st) then
+            secondResult.active := True;
+            desired :=
+              (if st.pointer.x <= bounds.x + layout.First_Width then 0
+               else st.pointer.x - bounds.x - layout.First_Width);
+            layout.Second_Width :=
+              Clamp (desired, minimumSecond, secondMaximum);
+         end if;
       end if;
 
       CuBit.UI.Draw_Table_Header

@@ -2,19 +2,16 @@
 -- CuBitOS
 -- Copyright (C) 2019 Jon Andrew
 --
--- System Scheduler - the scheduler runs on each CPU, trying to fetch 
+-- System Scheduler - the scheduler runs on each CPU, trying to fetch
 -- processes to run in a round-robin manner.
 -------------------------------------------------------------------------------
 with PerCPUData;
 with Process;
 with Spinlocks;
 
-package Scheduler with
-    --Abstract_State => (SchedulerState),
-    SPARK_Mode => On
-is
+package Scheduler is
     SchedulerException : exception;
-    
+
     ---------------------------------------------------------------------------
     -- enter:
     --

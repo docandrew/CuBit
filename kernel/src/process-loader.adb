@@ -18,7 +18,7 @@ package body Process.Loader is
     -- isValidELF
     ---------------------------------------------------------------------------
     function isValidELF (hdr : ELF.ELFFileHeader) return Boolean with
-        SPARK_Mode => On
+        SPARK_Mode => Off
     is
         use ELF;
     begin
@@ -148,7 +148,7 @@ package body Process.Loader is
     procedure addSegmentToProcess (elfAddr : in System.Address;
                                    segment : in ELF.ProgramHeader;
                                    proc    : in out Process) with
-        SPARK_Mode => On
+        SPARK_Mode => Off -- Custom pool storage and page-table updates.
     is
         -- How many pages needed for this segment, and what flags?
         numPages : Storage_Count := (segment.p_memsz + Virtmem.PAGE_SIZE - 1) / Virtmem.PAGE_SIZE;
@@ -213,7 +213,7 @@ package body Process.Loader is
                    requestedPID : ProcessID := NO_PROCESS;
                    priority     : ProcessPriority := 1;
                    ppid         : ProcessID := NO_PROCESS) return ProcessID with
-        SPARK_Mode => On
+        SPARK_Mode => Off
     is
         use type ELF.SegmentType;
         use type ELF.SegmentFlags;

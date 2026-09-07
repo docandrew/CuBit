@@ -259,11 +259,11 @@ is
     -- of the device at specified bus, slot and function.
     -- @param offset - must be 32-bit aligned (bottom 2 bits = 0)
     ---------------------------------------------------------------------------
-    function readConfig32 (bus    : in PCIBusNum; 
+    function readConfig32 (bus    : in PCIBusNum;
                            slot   : in PCISlotNum;
                            func   : in PCIFunctionNum;
                            offset : in Unsigned_8) return Unsigned_32 with
-        Pre => (offset and 3) = 0;
+        SPARK_Mode => Off, Pre => (offset and 3) = 0;
 
     ---------------------------------------------------------------------------
     -- readConfig16 - read a 16-bit word from the PCI configuration space
@@ -274,7 +274,7 @@ is
                            slot   : in PCISlotNum;
                            func   : in PCIFunctionNum;
                            offset : in Unsigned_8) return Unsigned_16 with
-        Pre => (offset and 1) = 0;
+        SPARK_Mode => Off, Pre => (offset and 1) = 0;
     
     ---------------------------------------------------------------------------
     -- readConfig8 - read a byte from the PCI configuration space of the
@@ -283,7 +283,8 @@ is
     function readConfig8 (bus    : in PCIBusNum;
                           slot   : in PCISlotNum;
                           func   : in PCIFunctionNum;
-                          offset : in Unsigned_8) return Unsigned_8;
+                          offset : in Unsigned_8) return Unsigned_8
+        with SPARK_Mode => Off;
 
     ---------------------------------------------------------------------------
     -- writeConfig32 - write a 32-bit value to the PCI configuration space
@@ -335,7 +336,7 @@ is
     -- @param class - class code to search for
     -- @return number of devices that match this code.
     ---------------------------------------------------------------------------
-    function getNumDevices (class : in PCIClassCode) return Natural;
+    function getNumDevices (class : in PCIClassCode) return Natural with SPARK_Mode => Off;
 
     ---------------------------------------------------------------------------
     -- findDevice - given a particular PCI class+subclass, return the bus,
@@ -353,5 +354,6 @@ is
     ---------------------------------------------------------------------------
     function getDeviceConfiguration (bus  : in PCIBusNum;
                                      slot : in PCISlotNum;
-                                     func : in PCIFunctionNum) return PCIDeviceHeader;
+                                     func : in PCIFunctionNum) return PCIDeviceHeader
+        with SPARK_Mode => Off;
 end pci;

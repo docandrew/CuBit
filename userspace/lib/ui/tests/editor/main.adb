@@ -74,6 +74,14 @@ procedure Main is
      (x => 10, y => 240, w => 120, h => 24);
    Long_Field : constant CuBit.UI.Rect :=
      (x => 10, y => 270, w => 220, h => 24);
+   Retained_Changed : Boolean;
+   Retained_Handled : Boolean;
+   Retained_Available : Boolean;
+   Retained_Value : Natural;
+   Drag_Bounds : constant CuBit.UI.Rect :=
+     (x => 117, y => 10, w => 7, h => 24);
+   Button_Bounds : constant CuBit.UI.Rect :=
+     (x => 250, y => 10, w => 80, h => 24);
 begin
    --  Held motion only invalidates controls that continuously manipulate a
    --  value.  Ordinary rows and buttons must not repaint their containing
@@ -86,6 +94,155 @@ begin
       continuousAction => True);
    pragma Assert (not CuBit.UI.Controls.Has_Continuous_Action (Control_Map, 1));
    pragma Assert (CuBit.UI.Controls.Has_Continuous_Action (Control_Map, 2));
+
+   --  Retained controls interpret input before paint and preserve capture,
+   --  grab geometry, and pending values across declarative frame rebuilds.
+   CuBit.UI.Controls.Clear (Control_Map);
+   CuBit.UI.Controls.Add_Vertical_Scrollbar
+     (Control_Map, 2, Scrollbar_Bounds, Scrollbar_Bounds,
+      0, 0, 24, 17);
+   Scrollbar_Layout := CuBit.UI.Layout_Vertical_Scrollbar
+     (Scrollbar_Bounds, 0, 24, 0, 17);
+   CuBit.UI.Controls.Dispatch_Pointer
+     (Control_Map, 2, CuBit.UI.Controls.Pointer_Press,
+      Scrollbar_Layout.incrementButton.x + 2,
+      Scrollbar_Layout.incrementButton.y + 2,
+      Retained_Changed, Retained_Handled);
+   pragma Assert
+     (Retained_Handled and then Retained_Changed and then
+      CuBit.UI.Controls.Is_Active (Control_Map, 2));
+   CuBit.UI.Controls.Take_Value
+     (Control_Map, 2, Retained_Value, Retained_Available);
+   pragma Assert (Retained_Available and then Retained_Value = 1);
+
+   CuBit.UI.Controls.Clear (Control_Map);
+   CuBit.UI.Controls.Add_Vertical_Scrollbar
+     (Control_Map, 2, Scrollbar_Bounds, Scrollbar_Bounds,
+      Retained_Value, 0, 24, 17);
+   pragma Assert
+     (CuBit.UI.Controls.Is_Active (Control_Map, 2) and then
+      CuBit.UI.Controls.Active_Scrollbar_Part (Control_Map, 2) =
+        CuBit.UI.Scrollbar_Increment);
+   CuBit.UI.Controls.Dispatch_Pointer
+     (Control_Map, 2, CuBit.UI.Controls.Pointer_Release,
+      Scrollbar_Layout.incrementButton.x + 2,
+      Scrollbar_Layout.incrementButton.y + 2,
+      Retained_Changed, Retained_Handled);
+   pragma Assert
+     (Retained_Handled and then not Retained_Changed and then
+      not CuBit.UI.Controls.Is_Active (Control_Map, 2));
+
+   CuBit.UI.Controls.Clear (Control_Map);
+   CuBit.UI.Controls.Add_Vertical_Scrollbar
+     (Control_Map, 2, Scrollbar_Bounds, Scrollbar_Bounds,
+      8, 0, 24, 17);
+   Scrollbar_Layout := CuBit.UI.Layout_Vertical_Scrollbar
+     (Scrollbar_Bounds, 0, 24, 8, 17);
+   CuBit.UI.Controls.Dispatch_Pointer
+     (Control_Map, 2, CuBit.UI.Controls.Pointer_Press,
+      Scrollbar_Layout.incrementButton.x + 2,
+      Scrollbar_Layout.incrementButton.y + 2,
+      Retained_Changed, Retained_Handled);
+   pragma Assert
+     (Retained_Handled and then not Retained_Changed and then
+      not CuBit.UI.Controls.Is_Active (Control_Map, 2) and then
+      CuBit.UI.Controls.Active_Scrollbar_Part (Control_Map, 2) =
+        CuBit.UI.Scrollbar_None);
+
+   CuBit.UI.Controls.Clear (Control_Map);
+   CuBit.UI.Controls.Add_Vertical_Scrollbar
+     (Control_Map, 2, Scrollbar_Bounds, Scrollbar_Bounds,
+      0, 0, 24, 17);
+   Scrollbar_Layout := CuBit.UI.Layout_Vertical_Scrollbar
+     (Scrollbar_Bounds, 0, 24, 0, 17);
+   CuBit.UI.Controls.Dispatch_Pointer
+     (Control_Map, 2, CuBit.UI.Controls.Pointer_Press,
+      Scrollbar_Layout.thumb.x + 1,
+      Scrollbar_Layout.thumb.y + Scrollbar_Layout.thumb.h / 2,
+      Retained_Changed, Retained_Handled);
+   pragma Assert (Retained_Handled and then not Retained_Changed);
+   CuBit.UI.Controls.Clear (Control_Map);
+   CuBit.UI.Controls.Add_Vertical_Scrollbar
+     (Control_Map, 2, Scrollbar_Bounds, Scrollbar_Bounds,
+      0, 0, 24, 17);
+   CuBit.UI.Controls.Dispatch_Pointer
+     (Control_Map, 2, CuBit.UI.Controls.Pointer_Move,
+      Scrollbar_Layout.thumb.x + 1,
+      Scrollbar_Layout.track.y + Scrollbar_Layout.track.h - 1,
+      Retained_Changed, Retained_Handled);
+   CuBit.UI.Controls.Take_Value
+     (Control_Map, 2, Retained_Value, Retained_Available);
+   pragma Assert
+     (Retained_Handled and then Retained_Changed and then
+      Retained_Available and then Retained_Value = 8);
+
+   --  Retained dividers keep the exact point grabbed within a wider hit area.
+   --  Moving twenty pixels therefore changes the model by twenty pixels
+   --  without snapping the visible divider under the pointer.
+   CuBit.UI.Controls.Clear (Control_Map);
+   CuBit.UI.Controls.Add_Horizontal_Drag
+     (Control_Map, 3, Drag_Bounds, Tree_Damage,
+      20, 10, 100, 100);
+   CuBit.UI.Controls.Dispatch_Pointer
+     (Control_Map, 3, CuBit.UI.Controls.Pointer_Press,
+      118, 16, Retained_Changed, Retained_Handled);
+   pragma Assert (Retained_Handled and then not Retained_Changed);
+   CuBit.UI.Controls.Clear (Control_Map);
+   CuBit.UI.Controls.Add_Horizontal_Drag
+     (Control_Map, 3, Drag_Bounds, Tree_Damage,
+      20, 10, 100, 100);
+   CuBit.UI.Controls.Dispatch_Pointer
+     (Control_Map, 3, CuBit.UI.Controls.Pointer_Move,
+      138, 16, Retained_Changed, Retained_Handled);
+   CuBit.UI.Controls.Take_Value
+     (Control_Map, 3, Retained_Value, Retained_Available);
+   pragma Assert
+     (Retained_Handled and then Retained_Changed and then
+      Retained_Available and then Retained_Value = 40);
+
+   --  Button activation belongs to one press/release transaction and is
+   --  consumed by event handling, never inferred later while painting.
+   CuBit.UI.Controls.Clear (Control_Map);
+   CuBit.UI.Controls.Add_Button
+     (Control_Map, 4, Button_Bounds, Button_Bounds);
+   CuBit.UI.Controls.Dispatch_Pointer
+     (Control_Map, 4, CuBit.UI.Controls.Pointer_Press,
+      260, 16, Retained_Changed, Retained_Handled);
+   pragma Assert
+     (Retained_Handled and then not Retained_Changed and then
+      CuBit.UI.Controls.Is_Active (Control_Map, 4));
+   CuBit.UI.Controls.Clear (Control_Map);
+   CuBit.UI.Controls.Add_Button
+     (Control_Map, 4, Button_Bounds, Button_Bounds);
+   CuBit.UI.Controls.Dispatch_Pointer
+     (Control_Map, 4, CuBit.UI.Controls.Pointer_Release,
+      260, 16, Retained_Changed, Retained_Handled);
+   pragma Assert
+     (Retained_Handled and then Retained_Changed and then
+      not CuBit.UI.Controls.Is_Active (Control_Map, 4));
+   pragma Assert (CuBit.UI.Controls.Take_Activated (Control_Map, 4));
+   pragma Assert (not CuBit.UI.Controls.Take_Activated (Control_Map, 4));
+
+   CuBit.UI.Controls.Dispatch_Pointer
+     (Control_Map, 4, CuBit.UI.Controls.Pointer_Press,
+      260, 16, Retained_Changed, Retained_Handled);
+   CuBit.UI.Controls.Dispatch_Pointer
+     (Control_Map, 4, CuBit.UI.Controls.Pointer_Release,
+      400, 16, Retained_Changed, Retained_Handled);
+   pragma Assert
+     (Retained_Handled and then not Retained_Changed and then
+      not CuBit.UI.Controls.Take_Activated (Control_Map, 4));
+
+   CuBit.UI.Controls.Dispatch_Pointer
+     (Control_Map, 4, CuBit.UI.Controls.Pointer_Press,
+      260, 16, Retained_Changed, Retained_Handled);
+   CuBit.UI.Controls.Dispatch_Pointer
+     (Control_Map, 4, CuBit.UI.Controls.Pointer_Cancel,
+      260, 16, Retained_Changed, Retained_Handled);
+   pragma Assert
+     (Retained_Handled and then not Retained_Changed and then
+      not CuBit.UI.Controls.Is_Active (Control_Map, 4) and then
+      not CuBit.UI.Controls.Take_Activated (Control_Map, 4));
 
    --  Capture belongs to the control under the physical press. Merely moving
    --  into a control while another region owns a held button must not begin a

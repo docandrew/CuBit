@@ -91,7 +91,7 @@ package Sysinfo is
     ---------------------------------------------------------------------------
     function getInfo (query  : Unsigned_64;
                       detail : Unsigned_64) return Unsigned_64
-        with SPARK_Mode => On;
+        with SPARK_Mode => Off, Volatile_Function; -- live driver registry
 
     ---------------------------------------------------------------------------
     -- registerDriver
@@ -101,7 +101,7 @@ package Sysinfo is
     ---------------------------------------------------------------------------
     function registerDriver (pid    : Process.ProcessID;
                              driver : DriverID) return Unsigned_64
-        with SPARK_Mode => On;
+        with SPARK_Mode => Off; -- effectful registration and logging
 
     ---------------------------------------------------------------------------
     -- setNetIOBase
@@ -132,6 +132,6 @@ package Sysinfo is
     ---------------------------------------------------------------------------
     function setInfo (queryID : Unsigned_64;
                       value   : Unsigned_64) return Boolean
-        with SPARK_Mode => On;
+        with SPARK_Mode => Off; -- effectful hardware/module configuration
 
 end Sysinfo;

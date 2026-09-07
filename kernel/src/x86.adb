@@ -355,7 +355,7 @@ is
     procedure sti is
     begin
         --textmode.println("sti");
-        Asm("sti", Volatile => True);
+        Asm("sti", Volatile => True, Clobber => "memory");
 
         interruptsEnabled := True;      -- ghost assignment
     end sti;
@@ -366,7 +366,7 @@ is
     procedure cli is
     begin
         --textmode.println("cli");
-        Asm("cli", Volatile => True);
+        Asm("cli", Volatile => True, Clobber => "memory");
 
         interruptsEnabled := False;     -- ghost assignment
     end cli;
@@ -387,7 +387,7 @@ is
                         Unsigned_32'Asm_Output("=a", oldval)),  -- need to use eax
             Inputs => Unsigned_32'Asm_Input("1", newval),       -- operand 1 is val
             Volatile => True,
-            Clobber => "cc");
+            Clobber => "cc,memory");
     end xchg;
 
     ---------------------------------------------------------------------------
@@ -404,7 +404,7 @@ is
                         Unsigned_32'Asm_Output("=a", oldval)),  -- need to use eax
             Inputs => Unsigned_32'Asm_Input("1", newval),       -- operand 1 is val
             Volatile => True,
-            Clobber => "cc");
+            Clobber => "cc,memory");
     end lock_xchg;
 
     ---------------------------------------------------------------------------

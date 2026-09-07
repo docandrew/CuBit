@@ -133,7 +133,8 @@ is
     end send;
 
     -- See if this serial port has data available.
-    function hasData(port : in SerialPort) return Boolean is
+    function hasData(port : in SerialPort) return Boolean
+      with SPARK_Mode => Off is
         lsr : LineStatus;
         inByte : Unsigned_8;
         lsrPort : constant IOPort := serial.LSR(port);
@@ -146,7 +147,8 @@ is
     end hasData;
 
     -- Receive a single character via this serial port.
-    function recv(port : in SerialPort) return Character is
+    function recv(port : in SerialPort) return Character
+      with SPARK_Mode => Off is
         rec : Character;
         inByte : Unsigned_8;
         rbrPort : constant IOPort := RBR(port);

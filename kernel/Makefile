@@ -5,6 +5,12 @@ BUILD_DATE := $(shell date)
 # Use Alire to get toolchain on PATH
 ALR := alr exec --
 
+# Interactive runs should exercise CuBit at native CPU speed.  Override with
+# QEMU_ACCEL=tcg when instruction emulation is specifically desired; headless
+# tests select their accelerator independently in tests/headless/run.sh.
+QEMU_ACCEL ?= kvm
+QEMU_ACCEL_ARGS := $(if $(strip $(QEMU_ACCEL)),-accel $(QEMU_ACCEL),)
+
 all: cubit_kernel iso
 
 # Runtime library used by the CuBit Kernel itself (not the runtime used by
@@ -65,6 +71,17 @@ cubit_kernel: build/libcubit.a build/init.bin
 .PHONY : prove
 prove:
 	$(ALR) gnatprove -Pcubit.gpr --mode=all --level=0 --no-axiom-guard
+
+# Legality is separate from proof coverage. Include every buildable source;
+# unsupported hardware glue remains explicitly outside the SPARK core.
+.PHONY : check-spark-boundaries prove-interrupt-state
+check-spark-boundaries:
+	$(ALR) gnatprove -Pcubit.gpr -U --subdirs=spark-legality --mode=check_all -j2
+
+prove-interrupt-state:
+	$(ALR) gnatprove -Pcubit.gpr -u interrupt_state.adb \
+		--subdirs=proof-interrupt-state --mode=all --level=1 -j2
+	@cat build/proof-interrupt-state/gnatprove/gnatprove.out
 
 # Focused proof gate for the capability-policy core.  This is intentionally
 # small enough to run on every CI boot test rather than only in full proofs.
@@ -689,6 +706,7 @@ run-laptop-fast:
 	rm -f serial_output.log laptop_sata_run.img $(LAPTOP_MONITOR)
 	cp laptop_sata_disk.img laptop_sata_run.img
 	GDK_BACKEND=x11 qemu-system-x86_64 \
+		$(QEMU_ACCEL_ARGS) \
 		-machine q35 \
 		-cpu $(LAPTOP_CPU) \
 		-smp $(LAPTOP_CPUS) \
@@ -751,6 +769,7 @@ run: nvme_disk.img
 	grub-mkrescue -o cubit_kernel.iso isodir
 	sed -i 's/^set default=.*/set default=0/' isodir/boot/grub/grub.cfg
 	GDK_BACKEND=x11 qemu-system-x86_64 \
+		$(QEMU_ACCEL_ARGS) \
 		-machine q35 \
 		-cpu Broadwell \
 		-smp 4 \
@@ -784,6 +803,7 @@ run-desktop: cubit_kernel desktop-session-content
 	grub-mkrescue -o cubit_kernel.iso isodir
 	sed -i 's/^set default=.*/set default=0/' isodir/boot/grub/grub.cfg
 	GDK_BACKEND=x11 qemu-system-x86_64 \
+		$(QEMU_ACCEL_ARGS) \
 		-machine q35 \
 		-cpu Broadwell \
 		-smp 4 \
@@ -832,6 +852,7 @@ run-desktop-fast:
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" desktop_disk.img
 	debugfs -w -R "write isodir/boot/netsurf.app netsurf.app" desktop_disk.img
 	GDK_BACKEND=x11 qemu-system-x86_64 \
+		$(QEMU_ACCEL_ARGS) \
 		-machine q35 \
 		-cpu Broadwell \
 		-smp 4 \
@@ -883,6 +904,7 @@ run-desktop-inspect:
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" desktop_disk.img
 	debugfs -w -R "write isodir/boot/netsurf.app netsurf.app" desktop_disk.img
 	GDK_BACKEND=x11 qemu-system-x86_64 \
+		$(QEMU_ACCEL_ARGS) \
 		-machine q35 \
 		-cpu Broadwell \
 		-smp 4 \
@@ -921,6 +943,7 @@ run-virtio-vga: nvme_disk.img
 	grub-mkrescue -o cubit_kernel.iso isodir
 	sed -i 's/^set default=.*/set default=0/' isodir/boot/grub/grub.cfg
 	GDK_BACKEND=x11 qemu-system-x86_64 \
+		$(QEMU_ACCEL_ARGS) \
 		-machine q35 \
 		-cpu Broadwell \
 		-smp 4 \

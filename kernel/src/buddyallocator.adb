@@ -217,7 +217,7 @@ is
     ---------------------------------------------------------------------------
     procedure popFromFreeList (ord  : in Order;
                                addr : out System.Address) with
-        SPARK_Mode => On,
+        SPARK_Mode => Off, -- physical-memory free-list overlays
         Pre     => freeLists(ord).numFreeBlocks > 0,
         Post    => freeLists(ord).numFreeBlocks =
                    freeLists(ord).numFreeBlocks - 1
@@ -254,7 +254,7 @@ is
     ---------------------------------------------------------------------------
     procedure addToFreeList (ord : Order;
                              newBlockAddr : in System.Address) with
-        SPARK_Mode => On
+        SPARK_Mode => Off -- physical-memory free-list overlays
     is
         newBlock  : aliased FreeBlock with
             Import, Volatile, Address => newBlockAddr;
@@ -284,7 +284,7 @@ is
     -- ord to freeLists(N-1).
     ---------------------------------------------------------------------------
     procedure splitBlock (ord : in Order; addr : in System.Address) with
-        SPARK_Mode => On,
+        SPARK_Mode => Off, -- free-list and bitmap mutation
         Pre     => ord > 0,
         Post    => freeLists(ord - 1).numFreeBlocks =
                    freeLists(ord - 1).numFreeBlocks'Old + 1
@@ -324,7 +324,7 @@ is
     -- @param addr - address of the block to remove from the free list
     ---------------------------------------------------------------------------
     procedure unlink (ord : in Order; addr : in System.Address) with
-        SPARK_Mode => On,
+        SPARK_Mode => Off, -- physical-memory free-list overlays
         Pre  => freeLists(ord).numFreeBlocks > 0,
         Post => freeLists(ord).numFreeBlocks =
                 freeLists(ord).numFreeBlocks'Old - 1
@@ -449,7 +449,7 @@ is
     -- setup
     ---------------------------------------------------------------------------
     procedure setup (areas : in MemoryAreas.MemoryAreaArray) with
-        SPARK_Mode => On
+        SPARK_Mode => Off -- allocation and physical-memory initialization
     is
         use type MemoryAreas.MemoryAreaType;
         use type Virtmem.PFN;

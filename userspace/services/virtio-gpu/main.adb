@@ -31,7 +31,8 @@ procedure main is
    USED_OFF  : constant Storage_Offset := 16#2000#;
    CMD_OFF   : constant Storage_Offset := 16#3000#;
    RESP_OFF  : constant Storage_Offset := 16#4000#;
-   FB_OFF    : constant Storage_Offset := 16#100000#;
+   FB0_OFF   : constant Storage_Offset := 16#100000#;
+   FB1_OFF   : constant Storage_Offset := 16#400000#;
 
    FB_W : constant Unsigned_32 := 1024;
    FB_H : constant Unsigned_32 := 768;
@@ -77,6 +78,7 @@ procedure main is
    OP_GPU_GET_STATUS    : constant Unsigned_32 := 16#0A04#;
    OP_GPU_MAP_FRAMEBUFFER : constant Unsigned_32 := 16#0A05#;
    OP_GPU_FLUSH_RECT    : constant Unsigned_32 := 16#0A06#;
+   OP_GPU_PRESENT_BUFFER : constant Unsigned_32 := 16#0A07#;
 
    GPU_OK              : constant Unsigned_64 := 0;
    GPU_ERR_BAD_STATE   : constant Unsigned_64 := 3;
@@ -159,6 +161,15 @@ procedure main is
    srcWidth : Natural := 0;
    srcHeight : Natural := 0;
    srcPitch : Natural := 0;
+   activeBuffer : Natural range 0 .. 1 := 0;
+   flipAnnounced : Boolean := False;
+
+   function framebufferOffset
+     (index : Natural) return Storage_Offset is
+     (if index = 0 then FB0_OFF else FB1_OFF);
+
+   function resourceId (index : Natural) return Unsigned_32 is
+     (if index = 0 then 1 else 2);
 
    function memcpy
       (dest : System.Address;
@@ -486,9 +497,9 @@ procedure main is
       debugPrint ("" & LF);
    end initTransport;
 
-   procedure paintFramebuffer is
+   procedure paintFramebuffer (index : Natural) is
       pixels : array (0 .. Natural (FB_W * FB_H) - 1) of Unsigned_32
-        with Import, Address => DMA_BASE + FB_OFF;
+        with Import, Address => DMA_BASE + framebufferOffset (index);
       color : Unsigned_32;
       x : Natural;
       y : Natural;
@@ -516,7 +527,6 @@ procedure main is
       width : Unsigned_32;
       height : Unsigned_32;
       enabled : Unsigned_32;
-      RESOURCE_ID : constant Unsigned_32 := 1;
    begin
       trace ("cmd GET_DISPLAY_INFO");
       beginCmd (CMD_GET_DISPLAY_INFO);
@@ -538,48 +548,56 @@ procedure main is
       debugPrint ("" & LF);
 
       trace ("paint test framebuffer");
-      paintFramebuffer;
+      paintFramebuffer (0);
+      paintFramebuffer (1);
       trace ("test framebuffer painted");
 
-      trace ("cmd RESOURCE_CREATE_2D");
-      beginCmd (CMD_RESOURCE_CREATE_2D);
-      put32 (CMD_OFF, 24, RESOURCE_ID);
-      put32 (CMD_OFF, 28, FORMAT_B8G8R8X8_UNORM);
-      put32 (CMD_OFF, 32, FB_W);
-      put32 (CMD_OFF, 36, FB_H);
-      ok := submitCmd (40, 24, RESP_OK_NODATA);
-      if not ok then
-         fail ("RESOURCE_CREATE_2D failed");
-         return;
-      end if;
+      --  Keep two complete 2D resources. display.svc updates the inactive
+      --  backing and asks us to switch scanout only after the transfer has
+      --  completed, so the host never scans a resource while it is changing.
+      for index in 0 .. 1 loop
+         trace ("cmd RESOURCE_CREATE_2D");
+         beginCmd (CMD_RESOURCE_CREATE_2D);
+         put32 (CMD_OFF, 24, resourceId (index));
+         put32 (CMD_OFF, 28, FORMAT_B8G8R8X8_UNORM);
+         put32 (CMD_OFF, 32, FB_W);
+         put32 (CMD_OFF, 36, FB_H);
+         ok := submitCmd (40, 24, RESP_OK_NODATA);
+         if not ok then
+            fail ("RESOURCE_CREATE_2D failed");
+            return;
+         end if;
 
-      trace ("cmd RESOURCE_ATTACH_BACKING");
-      beginCmd (CMD_RESOURCE_ATTACH);
-      put32 (CMD_OFF, 24, RESOURCE_ID);
-      put32 (CMD_OFF, 28, 1);
-      put64 (CMD_OFF, 32, dmaPhys + Unsigned_64 (FB_OFF));
-      put32 (CMD_OFF, 40, FB_BYTES);
-      put32 (CMD_OFF, 44, 0);
-      ok := submitCmd (48, 24, RESP_OK_NODATA);
-      if not ok then
-         fail ("RESOURCE_ATTACH_BACKING failed");
-         return;
-      end if;
+         trace ("cmd RESOURCE_ATTACH_BACKING");
+         beginCmd (CMD_RESOURCE_ATTACH);
+         put32 (CMD_OFF, 24, resourceId (index));
+         put32 (CMD_OFF, 28, 1);
+         put64
+           (CMD_OFF, 32,
+            dmaPhys + Unsigned_64 (framebufferOffset (index)));
+         put32 (CMD_OFF, 40, FB_BYTES);
+         put32 (CMD_OFF, 44, 0);
+         ok := submitCmd (48, 24, RESP_OK_NODATA);
+         if not ok then
+            fail ("RESOURCE_ATTACH_BACKING failed");
+            return;
+         end if;
 
-      trace ("cmd TRANSFER_TO_HOST_2D");
-      beginCmd (CMD_TRANSFER_TO_HOST_2D);
-      put32 (CMD_OFF, 24, 0);
-      put32 (CMD_OFF, 28, 0);
-      put32 (CMD_OFF, 32, FB_W);
-      put32 (CMD_OFF, 36, FB_H);
-      put64 (CMD_OFF, 40, 0);
-      put32 (CMD_OFF, 48, RESOURCE_ID);
-      put32 (CMD_OFF, 52, 0);
-      ok := submitCmd (56, 24, RESP_OK_NODATA);
-      if not ok then
-         fail ("TRANSFER_TO_HOST_2D failed");
-         return;
-      end if;
+         trace ("cmd TRANSFER_TO_HOST_2D");
+         beginCmd (CMD_TRANSFER_TO_HOST_2D);
+         put32 (CMD_OFF, 24, 0);
+         put32 (CMD_OFF, 28, 0);
+         put32 (CMD_OFF, 32, FB_W);
+         put32 (CMD_OFF, 36, FB_H);
+         put64 (CMD_OFF, 40, 0);
+         put32 (CMD_OFF, 48, resourceId (index));
+         put32 (CMD_OFF, 52, 0);
+         ok := submitCmd (56, 24, RESP_OK_NODATA);
+         if not ok then
+            fail ("TRANSFER_TO_HOST_2D failed");
+            return;
+         end if;
+      end loop;
 
       trace ("cmd SET_SCANOUT");
       beginCmd (CMD_SET_SCANOUT);
@@ -588,7 +606,7 @@ procedure main is
       put32 (CMD_OFF, 32, FB_W);
       put32 (CMD_OFF, 36, FB_H);
       put32 (CMD_OFF, 40, 0);
-      put32 (CMD_OFF, 44, RESOURCE_ID);
+      put32 (CMD_OFF, 44, resourceId (0));
       ok := submitCmd (48, 24, RESP_OK_NODATA);
       if not ok then
          fail ("SET_SCANOUT failed");
@@ -601,7 +619,7 @@ procedure main is
       put32 (CMD_OFF, 28, 0);
       put32 (CMD_OFF, 32, FB_W);
       put32 (CMD_OFF, 36, FB_H);
-      put32 (CMD_OFF, 40, RESOURCE_ID);
+      put32 (CMD_OFF, 40, resourceId (0));
       put32 (CMD_OFF, 44, 0);
       ok := submitCmd (48, 24, RESP_OK_NODATA);
       if not ok then
@@ -610,9 +628,13 @@ procedure main is
       end if;
 
       debugPrint ("virtio-gpu: scanout test frame presented" & LF);
+      activeBuffer := 0;
    end initGpu;
 
-   procedure copySourceRect (x, y, w, h : Natural) is
+   procedure copySourceRect
+     (bufferIndex : Natural;
+      x, y, w, h : Natural)
+   is
       maxX : Natural := x + w;
       maxY : Natural := y + h;
       ignore : System.Address;
@@ -646,7 +668,8 @@ procedure main is
          srcPitch = Natural (FB_W) * 4
       then
          ignore := memcpy
-           (DMA_BASE + FB_OFF + Storage_Offset (y * Natural (FB_W) * 4),
+           (DMA_BASE + framebufferOffset (bufferIndex) +
+              Storage_Offset (y * Natural (FB_W) * 4),
             srcAddr + Storage_Offset (y * srcPitch),
             Storage_Count ((maxY - y) * srcPitch));
          return;
@@ -654,14 +677,18 @@ procedure main is
 
       for row in y .. maxY - 1 loop
          ignore := memcpy
-           (DMA_BASE + FB_OFF +
+           (DMA_BASE + framebufferOffset (bufferIndex) +
               Storage_Offset ((row * Natural (FB_W) + x) * 4),
             srcAddr + Storage_Offset (row * srcPitch + x * 4),
             Storage_Count ((maxX - x) * 4));
       end loop;
    end copySourceRect;
 
-   function transferAndFlush (x, y, w, h : Natural) return Boolean is
+   function transferAndFlush
+     (bufferIndex : Natural;
+      x, y, w, h : Natural;
+      switchScanout : Boolean := False) return Boolean
+   is
       maxX : Natural := x + w;
       maxY : Natural := y + h;
       backingOffset : Unsigned_64;
@@ -694,11 +721,25 @@ procedure main is
       --  the framebuffer into arbitrary screen rectangles, which looks like
       --  cursor/window movement erasing or smearing unrelated pixels.
       put64 (CMD_OFF, 40, backingOffset);
-      put32 (CMD_OFF, 48, 1);
+      put32 (CMD_OFF, 48, resourceId (bufferIndex));
       put32 (CMD_OFF, 52, 0);
       ok := submitCmd (56, 24, RESP_OK_NODATA);
       if not ok then
          return False;
+      end if;
+
+      if switchScanout then
+         beginCmd (CMD_SET_SCANOUT);
+         put32 (CMD_OFF, 24, 0);
+         put32 (CMD_OFF, 28, 0);
+         put32 (CMD_OFF, 32, FB_W);
+         put32 (CMD_OFF, 36, FB_H);
+         put32 (CMD_OFF, 40, 0);
+         put32 (CMD_OFF, 44, resourceId (bufferIndex));
+         ok := submitCmd (48, 24, RESP_OK_NODATA);
+         if not ok then
+            return False;
+         end if;
       end if;
 
       beginCmd (CMD_RESOURCE_FLUSH);
@@ -706,14 +747,22 @@ procedure main is
       put32 (CMD_OFF, 28, Unsigned_32 (y));
       put32 (CMD_OFF, 32, Unsigned_32 (maxX - x));
       put32 (CMD_OFF, 36, Unsigned_32 (maxY - y));
-      put32 (CMD_OFF, 40, 1);
+      put32 (CMD_OFF, 40, resourceId (bufferIndex));
       put32 (CMD_OFF, 44, 0);
-      return submitCmd (48, 24, RESP_OK_NODATA);
+      ok := submitCmd (48, 24, RESP_OK_NODATA);
+      if ok and then switchScanout then
+         activeBuffer := bufferIndex;
+         if not flipAnnounced then
+            debugPrint ("virtio-gpu: page flipping active" & LF);
+            flipAnnounced := True;
+         end if;
+      end if;
+      return ok;
    end transferAndFlush;
 
-   procedure clearFb (color : Unsigned_32) is
+   procedure clearFb (bufferIndex : Natural; color : Unsigned_32) is
       pixels : array (0 .. Natural (FB_W * FB_H) - 1) of Unsigned_32
-        with Import, Address => DMA_BASE + FB_OFF;
+        with Import, Address => DMA_BASE + framebufferOffset (bufferIndex);
    begin
       for i in pixels'Range loop
          pixels (i) := color;
@@ -744,6 +793,8 @@ procedure main is
 
          when OP_GPU_MAP_FRAMEBUFFER =>
             declare
+               bufferIndexRaw : constant Unsigned_64 := request.words (0);
+               bufferIndex : Natural range 0 .. 1 := 0;
                pages : constant Natural :=
                   Natural ((Unsigned_64 (FB_BYTES) + 4095) / 4096);
                gid   : Unsigned_64;
@@ -751,13 +802,20 @@ procedure main is
             begin
                replyMsg.tag := (label => OP_GPU_MAP_FRAMEBUFFER,
                                 length => 4, flags => 0, badge => 0);
-               createGrant
-                 (grantee   => from,
-                  localAddr => DMA_BASE + FB_OFF,
-                  numPages  => pages,
-                  readWrite => True,
-                  grantId   => gid,
-                  success   => grantOk);
+               if bufferIndexRaw <= 1 then
+                  bufferIndex := Natural (bufferIndexRaw);
+                  createGrant
+                    (grantee   => from,
+                     localAddr =>
+                       DMA_BASE + framebufferOffset (bufferIndex),
+                     numPages  => pages,
+                     readWrite => True,
+                     grantId   => gid,
+                     success   => grantOk);
+               else
+                  grantOk := False;
+                  gid := 0;
+               end if;
                if grantOk then
                   replyMsg.words (0) := GPU_OK;
                   replyMsg.words (1) := gid;
@@ -795,12 +853,14 @@ procedure main is
                replyMsg.words (0) := GPU_ERR_BAD_STATE;
             else
                copySourceRect
-                 (Natural (request.words (0)),
+                 (activeBuffer,
+                  Natural (request.words (0)),
                   Natural (request.words (1)),
                   Natural (request.words (2)),
                   Natural (request.words (3)));
                ok := transferAndFlush
-                 (Natural (request.words (0)),
+                 (activeBuffer,
+                  Natural (request.words (0)),
                   Natural (request.words (1)),
                   Natural (request.words (2)),
                   Natural (request.words (3)));
@@ -815,7 +875,8 @@ procedure main is
             replyMsg.tag := (label => OP_GPU_FLUSH_RECT,
                              length => 1, flags => 0, badge => 0);
             ok := transferAndFlush
-              (Natural (request.words (0)),
+              (activeBuffer,
+               Natural (request.words (0)),
                Natural (request.words (1)),
                Natural (request.words (2)),
                Natural (request.words (3)));
@@ -825,11 +886,43 @@ procedure main is
                replyMsg.words (0) := GPU_ERR_BAD_STATE;
             end if;
 
+         when OP_GPU_PRESENT_BUFFER =>
+            declare
+               bufferIndexRaw : constant Unsigned_64 := request.words (0);
+               bufferIndex : Natural range 0 .. 1 := 0;
+               packedXY : constant Unsigned_64 := request.words (1);
+               packedWH : constant Unsigned_64 := request.words (2);
+            begin
+               replyMsg.tag := (label => OP_GPU_PRESENT_BUFFER,
+                                length => 1, flags => 0, badge => 0);
+               if bufferIndexRaw > 1 then
+                  replyMsg.words (0) := GPU_ERR_UNSUPPORTED;
+               else
+                  bufferIndex := Natural (bufferIndexRaw);
+                  ok := transferAndFlush
+                    (bufferIndex,
+                     Natural (packedXY and 16#FFFF_FFFF#),
+                     Natural (Shift_Right (packedXY, 32)),
+                     Natural (packedWH and 16#FFFF_FFFF#),
+                     Natural (Shift_Right (packedWH, 32)),
+                     switchScanout => True);
+                  replyMsg.words (0) :=
+                    (if ok then GPU_OK else GPU_ERR_BAD_STATE);
+               end if;
+            end;
+
          when OP_GPU_CLEAR =>
             replyMsg.tag := (label => OP_GPU_CLEAR,
                              length => 1, flags => 0, badge => 0);
-            clearFb (Unsigned_32 (request.words (0) and 16#FFFF_FFFF#));
-            ok := transferAndFlush (0, 0, Natural (FB_W), Natural (FB_H));
+            clearFb (0, Unsigned_32 (request.words (0) and 16#FFFF_FFFF#));
+            clearFb (1, Unsigned_32 (request.words (0) and 16#FFFF_FFFF#));
+            ok := transferAndFlush
+              (1, 0, 0, Natural (FB_W), Natural (FB_H));
+            if ok then
+               ok := transferAndFlush
+                 (0, 0, 0, Natural (FB_W), Natural (FB_H),
+                  switchScanout => activeBuffer /= 0);
+            end if;
             if ok then
                replyMsg.words (0) := GPU_OK;
             else

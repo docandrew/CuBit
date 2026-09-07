@@ -110,18 +110,18 @@ package CuBit.UI.App is
       (win : Window; damage : CuBit.UI.Rect);
 
    procedure Apply_Pointer_Event
-      (interaction : in out Pointer_Interaction;
+       (interaction : in out Pointer_Interaction;
        ui : in out CuBit.UI.State.UI_State;
-       controls : CuBit.UI.Controls.Control_Map;
+       controls : in out CuBit.UI.Controls.Control_Map;
        win : Window;
        event : Input_Event;
        dirty : in out CuBit.UI.Rect;
        repaint : Pointer_Repaint_Policy := Repaint_Changed_Controls);
 
    generic
-      --  Run owns pointer bookkeeping and minimal damage. Render rebuilds the
-      --  control map each frame through ordinary widget calls; Handle_Event
-      --  only needs application semantics such as navigation or data reloads.
+      --  Run owns pointer routing and minimal damage. Migrated controls update
+      --  retained state before paint; Render declaratively reconciles them by
+      --  stable ID. Handle_Event owns only application/domain semantics.
       ui : in out CuBit.UI.State.UI_State;
       controls : in out CuBit.UI.Controls.Control_Map;
       pointerRepaint : Pointer_Repaint_Policy := Repaint_Changed_Controls;

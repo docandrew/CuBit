@@ -58,7 +58,7 @@ is
     -- Return the calibrated APIC timer ticks-per-ms value. Only valid after
     -- setupLAPIC_BSP has been called.
     ---------------------------------------------------------------------------
-    function getTimerInterval return Unsigned_32;
+    function getTimerInterval return Unsigned_32 with SPARK_Mode => Off;
 
     ---------------------------------------------------------------------------
     -- setTimerInterval

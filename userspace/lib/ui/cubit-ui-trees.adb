@@ -104,7 +104,8 @@ package body CuBit.UI.Trees is
        focused : Boolean := True;
        lastSibling : Boolean := False;
        ancestorBranches : Unsigned_64 := 0;
-       result : out CuBit.UI.Widget_Result)
+       result : out CuBit.UI.Widget_Result;
+       retainedInput : Boolean := False)
    is
       bg : CuBit.UI.Color := colors.field;
       fg : CuBit.UI.Color := colors.text;
@@ -115,13 +116,24 @@ package body CuBit.UI.Trees is
       textX : Natural;
       clipped : constant CuBit.UI.Canvas := CuBit.UI.With_Clip (c, bounds);
    begin
-      CuBit.UI.Controls.Add (controls, id, bounds, damage);
-      result := CuBit.UI.State.Button
-        (st, CuBit.UI.Controls.Bounds (controls, id),
-         CuBit.UI.State.Widget_ID (id));
-      if result.activated and then selectedIndex /= itemIndex then
-         selectedIndex := itemIndex;
-         CuBit.UI.State.Request_Followup_Render (st);
+      if retainedInput then
+         CuBit.UI.Controls.Add_Button (controls, id, bounds, damage);
+         result :=
+           (hot => st.pointer.enabled and then
+              CuBit.UI.Point_In_Rect
+                (st.pointer.x, st.pointer.y,
+                 CuBit.UI.Controls.Bounds (controls, id)),
+            active => CuBit.UI.Controls.Is_Active (controls, id),
+            activated => False);
+      else
+         CuBit.UI.Controls.Add (controls, id, bounds, damage);
+         result := CuBit.UI.State.Button
+           (st, CuBit.UI.Controls.Bounds (controls, id),
+            CuBit.UI.State.Widget_ID (id));
+         if result.activated and then selectedIndex /= itemIndex then
+            selectedIndex := itemIndex;
+            CuBit.UI.State.Request_Followup_Render (st);
+         end if;
       end if;
 
       if selectedIndex = itemIndex then

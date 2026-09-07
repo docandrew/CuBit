@@ -74,6 +74,10 @@ syscallEntry:
 ;------------------------------------------------------------------------------
 syscallReturn:
 
+    ; The final stack/GS transition must be atomic with respect to maskable
+    ; interrupts. SYSRET restores user IF from r11 only after changing CPL.
+    cli
+
     add rsp, 8      ; discard pushed value of rax, it's getting overwritten
 
     pop rcx         ; restore process' return address

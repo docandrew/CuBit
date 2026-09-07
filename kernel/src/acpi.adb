@@ -9,9 +9,9 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with TextIO; use TextIO;
 
-package body acpi
-    with SPARK_Mode => On
-is
+-- Ada implementation: custom storage, address overlays or live context state.
+-- Only separately annotated SPARK policy/state routines carry proof obligations.
+package body acpi is
     -- As we go through each of the tables, stash a copy here.
 
     rsdp : RSDPRecord;
@@ -26,7 +26,7 @@ is
     -- checksumACPI - ensure all bytes of the ACPI table sum to 0 mod x100.
     --------------------------------------------------------------------------
     function checksumACPI(tableAddr : in System.Address; len : in Unsigned_32)
-        return Boolean with SPARK_Mode => Off  -- Storage_Array
+        return Boolean   -- Storage_Array
     is
         tableBytes : Storage_Array(1..Storage_Offset(len))
             with Import, Volatile, Address => tableAddr;
@@ -49,7 +49,7 @@ is
     --  an RSDT or an XSDT
     ---------------------------------------------------------------------------
     function makeTableAddress(acpiAddr : in Integer_Address; ptrSize : Unsigned_32)
-        return Integer_Address with SPARK_Mode => On is 
+        return Integer_Address  is
     begin
         if ptrSize = 4 then
             return virtmem.P2V(16#0000_0000_FFFF_FFFF# and acpiAddr);
@@ -59,11 +59,11 @@ is
     end makeTableAddress;
 
     ---------------------------------------------------------------------------
-    -- getRSDP - convenience function for getting a RSDPRecord 
+    -- getRSDP - convenience function for getting a RSDPRecord
     -- @return True if successful, False if address does not point to an RSDP
     ---------------------------------------------------------------------------
     procedure getRSDP(rsdpAddr : in System.Address; rsdp : in out RSDPRecord;
-        success : out Boolean) with SPARK_Mode => Off
+        success : out Boolean)
     is
         retRSDP : RSDPRecord with Import, Volatile, Address => rsdpAddr;
     begin
@@ -79,7 +79,7 @@ is
     -- getXSDT - convenience function for getting a XSDTRecord
     ---------------------------------------------------------------------------
     procedure getXSDT(sdtAddr : in System.Address; xsdt : in out XSDTRecord;
-        success : out Boolean) with SPARK_Mode => Off
+        success : out Boolean)
     is
         retXSDT : XSDTRecord with Import, Volatile, Address => sdtAddr;
     begin
@@ -95,7 +95,7 @@ is
     -- getRSDT - convenience function for getting a RSDTRecord
     ---------------------------------------------------------------------------
     procedure getRSDT(sdtAddr : in System.Address; rsdt : in out RSDTRecord;
-        success : out Boolean) with SPARK_Mode => Off
+        success : out Boolean)
     is
         retRSDT : RSDTRecord with Import, Volatile, Address => sdtAddr;
     begin
@@ -106,12 +106,12 @@ is
             success := False;
         end if;
     end getRSDT;
-    
+
     ---------------------------------------------------------------------------
     -- getLAPIC - given an APIC table entry describing a local APIC, get it.
     ---------------------------------------------------------------------------
     procedure getLAPIC(lapicAddr : in System.Address; lapic : in out LAPICRecord;
-        success : out Boolean) with SPARK_Mode => Off
+        success : out Boolean)
     is
         retLAPIC : LAPICRecord with Import, Volatile, Address => lapicAddr;
     begin
@@ -127,7 +127,7 @@ is
     -- getIOAPIC - given an APIC table entry describing an I/O APIC, get it.
     ---------------------------------------------------------------------------
     procedure getIOAPIC(ioapicAddr : in System.Address; ioapic : in out IOAPICRecord;
-        success : out Boolean) with SPARK_Mode => Off
+        success : out Boolean)
     is
         retIOAPIC : IOAPICRecord with Import, Volatile, Address => ioapicAddr;
     begin
@@ -143,7 +143,7 @@ is
     -- parseMADT - get information from the Multiple APIC Description Table
     ---------------------------------------------------------------------------
     procedure parseMADT (madtAddr : in System.Address)
-        with SPARK_Mode => Off
+
     is
         madt : MADTRecord
             with Import, Volatile, Address => madtAddr;
@@ -253,7 +253,7 @@ is
     -- Need to get the PCIe configuration addresses here
     ---------------------------------------------------------------------------
     procedure parseMCFG (mcfgAddr : System.Address) is
-        
+
         mcfg     : MCFGRecord with Import, Volatile, Address => mcfgAddr;
         tableLen : Unsigned_32;
         curTable : System.Address;
@@ -307,11 +307,11 @@ is
     -- parse ACPI tables, get information we need out of them.
     ---------------------------------------------------------------------------
     function setup return Boolean
-        with SPARK_Mode => Off
+
     is
         use System;
         rsdpAddr    : constant System.Address := findRSDP;
-        
+
         -- use XSDT if available.
         useXSDT     : Boolean := False;
 
@@ -319,7 +319,7 @@ is
         sdtAddr     : Unsigned_64;
         sdtPtrSize  : Unsigned_32 := 4;
         sdtHeader   : SDTRecordHeader;
-        
+
         numEntries  : Unsigned_32;      -- number of entries in the SDT
         entries_0   : Integer_Address;  -- address of first SDT entry
         offset      : Integer_Address;  -- offset to i-th SDT entry
@@ -349,7 +349,7 @@ is
             -- print(" RSDP length: "); println(rsdp.length);
             -- print(" XSDT addr:   "); println(rsdp.XSDTAddress);
             -- print(" exChecksum:  "); println(rsdp.exChecksum);
-            
+
             useXSDT := True;
         end if;
 
@@ -357,14 +357,14 @@ is
             -- Per the spec, if XSDT is available, we must use it.
             sdtAddr := rsdp.XSDTAddress;
             print("ACPI XSDT at:  "); println(sdtAddr);
-            
+
             getXSDT(To_Address(virtmem.P2V(Integer_Address(sdtAddr))), xsdt, ok);
             if not ok then
                 println("Error reading XSDT, defaulting to RSDT");
                 useXSDT := False;   -- try and fall back on RSDT
             else
                 sdtPtrSize := 8;
-                sdtHeader := xsdt.header;              
+                sdtHeader := xsdt.header;
                 entries_0 := Integer_Address(sdtAddr + (SDTRecordHeader'Size / 8));
             end if;
         end if;
@@ -447,7 +447,7 @@ is
                     end parseFADT;
 
                 elsif descHdr.signature = "APIC" then
-                    
+
                     parseMADT(descHdr'Address);
 
                 elsif descHdr.signature = "MCFG" then
@@ -477,7 +477,7 @@ is
     ---------------------------------------------------------------------------
     -- findRSDP
     ---------------------------------------------------------------------------
-    function findRSDP return System.Address with SPARK_Mode => Off
+    function findRSDP return System.Address
     is
         --use System.Storage_Elements;
         package ToRSDP is new System.Address_To_Access_Conversions(RSDPRecord);

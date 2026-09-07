@@ -23,7 +23,7 @@ package body Syscall is
     ---------------------------------------------------------------------------
     -- exit
     ---------------------------------------------------------------------------
-    procedure exitp (currentPID : in Process.ProcessID) with SPARK_Mode => On
+    procedure exitp (currentPID : in Process.ProcessID) with SPARK_Mode => Off
     is
     begin
         Process.kill (currentPID);
@@ -34,7 +34,7 @@ package body Syscall is
     ---------------------------------------------------------------------------
     function write (fd    : in Descriptors.DescriptorNum;
                     buf   : in System.Address;
-                    count : in Unsigned_64) return Unsigned_64 with SPARK_Mode => On
+                    count : in Unsigned_64) return Unsigned_64 with SPARK_Mode => Off
     is
         use Descriptors;    -- for '=' comparison
         bytesWritten : Unsigned_64 := 0;

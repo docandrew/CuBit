@@ -149,7 +149,8 @@ is
                              arg4,
                              arg5,
                              syscallNumRaw : in Unsigned_64) return Unsigned_64
-        with Export => True, Convention => C, External_Name => "syscallHandler";
+        with SPARK_Mode => Off, -- effectful dispatch, process/VM/hardware state
+             Export => True, Convention => C, External_Name => "syscallHandler";
 
     ---------------------------------------------------------------------------
     -- syscallReturn is in syscall_entry.asm
@@ -167,6 +168,7 @@ private
     ---------------------------------------------------------------------------
     function write (fd       : in Descriptors.DescriptorNum;
                     buf      : in System.Address;
-                    count    : in Unsigned_64) return Unsigned_64;
+                    count    : in Unsigned_64) return Unsigned_64
+        with SPARK_Mode => Off; -- user-address overlay and device writes
 
 end Syscall;

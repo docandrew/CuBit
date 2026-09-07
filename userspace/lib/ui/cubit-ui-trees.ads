@@ -42,5 +42,6 @@ package CuBit.UI.Trees is
        focused : Boolean := True;
        lastSibling : Boolean := False;
        ancestorBranches : Unsigned_64 := 0;
-       result : out CuBit.UI.Widget_Result);
+       result : out CuBit.UI.Widget_Result;
+       retainedInput : Boolean := False);
 end CuBit.UI.Trees;

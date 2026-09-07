@@ -283,9 +283,9 @@ procedure main is
       table := (x => 8, y => 52, w => full.w - 16, h => full.h - 88);
       CuBit.UI.Widgets.Toolbar (c, toolbar, colors);
       CuBit.UI.Widgets.Button
-        (c, ui, controls, CONTROL_REFRESH,
+         (c, ui, controls, CONTROL_REFRESH,
          (x => toolbar.x + 7, y => toolbar.y + 6, w => 82, h => 26),
-         toolbar, colors, "Refresh", refreshResult);
+         toolbar, colors, "Refresh", refreshResult, retainedInput => True);
       CuBit.UI.Labels.Label
         (c, (x => toolbar.x + 105, y => toolbar.y + 9,
              w => toolbar.w - 220, h => 20), colors,
@@ -303,7 +303,8 @@ procedure main is
         (c, ui, controls, CONTROL_FIRST_COLUMN, CONTROL_SECOND_COLUMN,
          regions.Header, table, colors, "Name", "Kind", "Size",
          tableColumns,
-         minimumFirst => 120, minimumSecond => 72, minimumThird => 90);
+         minimumFirst => 120, minimumSecond => 72, minimumThird => 90,
+         retainedInput => True);
       visibleRows := regions.Rows.h / ROW_HEIGHT;
       if itemCount > visibleRows then
          maximumScroll := itemCount - visibleRows;
@@ -320,7 +321,7 @@ procedure main is
          CuBit.UI.Widgets.Vertical_Scrollbar
            (c, ui, controls, CONTROL_SCROLLBAR, scrollBounds, table,
             colors, 0, itemCount - 1, scrollRow, scrollResult,
-            pageSize => Positive (visibleRows));
+            pageSize => Positive (visibleRows), retainedInput => True);
          if scrollRow /= previousScroll and then not firstScrollbarLogged then
             debugPrint
               ("files: scrollbar scroll row=" &
@@ -328,7 +329,8 @@ procedure main is
             firstScrollbarLogged := True;
          end if;
          if scrollRow /= previousScroll and then
-           CuBit.UI.State.Active_Scrollbar_Part (ui) =
+           CuBit.UI.Controls.Active_Scrollbar_Part
+             (controls, CONTROL_SCROLLBAR) =
              CuBit.UI.Scrollbar_Thumb and then
            not firstScrollbarDragLogged
          then
@@ -351,18 +353,18 @@ procedure main is
                   w => regions.Rows.w -
                     (if maximumScroll > 0 then 15 else 0),
                   h => ROW_HEIGHT);
-               CuBit.UI.Controls.Add
+               CuBit.UI.Controls.Add_Button
                  (controls, CONTROL_ROW_FIRST + visibleIndex,
-                  rowBounds, rowBounds);
-               rowResult := CuBit.UI.State.Button
-                 (ui,
-                  CuBit.UI.Controls.Bounds
+                  rowBounds, regions.Rows);
+               rowResult :=
+                 (hot => ui.pointer.enabled and then
+                    CuBit.UI.Point_In_Rect
+                      (ui.pointer.x, ui.pointer.y,
+                       CuBit.UI.Controls.Bounds
+                         (controls, CONTROL_ROW_FIRST + visibleIndex)),
+                  active => CuBit.UI.Controls.Is_Active
                     (controls, CONTROL_ROW_FIRST + visibleIndex),
-                  CuBit.UI.State.Widget_ID
-                    (CONTROL_ROW_FIRST + visibleIndex));
-               if rowResult.activated then
-                  selectedItem := itemIndex;
-               end if;
+                  activated => False);
                CuBit.UI.Draw_Table_Row
                  (c, rowBounds, colors, selectedItem = itemIndex,
                   rowResult.hot,
@@ -409,7 +411,7 @@ procedure main is
          elsif event.payload0 = KEY_F5 then
             Load_Directory;
             debugPrint ("files: refresh input received" & LF);
-            dirty := CuBit.UI.App.Full_Rect (win);
+            dirty := CuBit.UI.Union_Rect (dirty, lastListBounds);
          elsif event.payload0 = KEY_UP and then selectedItem > 1 then
             selectedItem := selectedItem - 1;
             selectionMoved := True;
@@ -468,9 +470,24 @@ procedure main is
                Decimal (Unsigned_64 (tableColumns.Second_Width)) & LF);
          end if;
          activeColumnDrag := No_Column_Drag;
-         if hit = CONTROL_REFRESH then
+         if hit = CONTROL_REFRESH and then
+           CuBit.UI.Controls.Take_Activated (controls, hit)
+         then
+            debugPrint ("files: refresh click activated" & LF);
             Load_Directory;
             dirty := CuBit.UI.App.Full_Rect (win);
+         elsif hit >= CONTROL_ROW_FIRST and then
+           CuBit.UI.Controls.Take_Activated (controls, hit)
+         then
+            declare
+               visibleIndex : constant Natural := hit - CONTROL_ROW_FIRST;
+               itemIndex : constant Natural := scrollRow + visibleIndex + 1;
+            begin
+               if itemIndex <= itemCount then
+                  selectedItem := itemIndex;
+                  dirty := CuBit.UI.Union_Rect (dirty, lastListBounds);
+               end if;
+            end;
          end if;
       elsif event.kind = CuBit.UI.App.INPUT_POINTER_WHEEL and then
         CuBit.UI.Point_In_Rect

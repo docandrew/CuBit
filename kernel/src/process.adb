@@ -20,6 +20,7 @@ with Capabilities.Operations;
 with IPC_Labels;
 with IPI;
 with Config;
+with Interrupt_State;
 with Mem_mgr;
 with PerCPUData;
 with Process.IPC;
@@ -31,17 +32,16 @@ with Sysinfo;
 with TextIO; use TextIO;
 with x86;
 
-package body Process
-    with SPARK_Mode => On
-is
+-- Ada implementation: custom storage, address overlays or live context state.
+-- Only separately annotated SPARK policy/state routines carry proof obligations.
+package body Process is
 
     ---------------------------------------------------------------------------
     -- initializeFPUState
     -- Construct the architectural reset state expected by FXRSTOR. Keeping a
     -- valid image for every user process prevents first-use state inheritance.
     ---------------------------------------------------------------------------
-    procedure initializeFPUState (state : out FPUState) with
-        SPARK_Mode => On
+    procedure initializeFPUState (state : out FPUState) with SPARK_Mode => On
     is
     begin
         state := (others => 0);
@@ -68,8 +68,7 @@ is
     ---------------------------------------------------------------------------
     -- addToProctab
     ---------------------------------------------------------------------------
-    procedure addToProctab (proc : in Process) with
-        SPARK_Mode => On
+    procedure addToProctab (proc : in Process)
     is
     begin
         -- println ("Process.addToProctab: acquiring proctab lock");
@@ -123,7 +122,7 @@ is
         proc.kernelStack.filler := (others => 0);
 
         proc.kernelStack.interruptFrame := (
-                interruptNumber => 0,    
+                interruptNumber => 0,
                 rip             => procStart,
                 rsp             => proc.kernelStackTop,
                 rflags          => x86.FLAGS_INTERRUPT,
@@ -181,7 +180,7 @@ is
         if newFrame = 0 then
             raise ProcessException with "Unable to allocate memory for Process' stack expansion.";
         end if;
-        
+
         if proc.isThread then
             frameOwner := proc.ppid;
             FrameLists.insertFront (proctab(proc.ppid).frames, newFrame);
@@ -228,7 +227,7 @@ is
         claimed : Boolean;
         frameOwner : ProcessID;
         MapException : exception;
-    
+
         procedure mapPage is new Virtmem.mapPage (BuddyAllocator.allocFrame);
     begin
 
@@ -278,7 +277,7 @@ is
                      stackSize    : in UserStackSize;
                      thread       : in Boolean := False;
                      requestedPID : in ProcessID := NO_PROCESS) return ProcessID
-        with SPARK_Mode => Off
+
     is
         pid : ProcessID;
 
@@ -440,19 +439,18 @@ is
     end create;
 
     ---------------------------------------------------------------------------
-    -- This is where READY processes continue executing after the scheduler 
+    -- This is where READY processes continue executing after the scheduler
     --  puts them in the RUNNING state. Note that the scheduler acquires the
     --  proctab lock in schedule;, but we must release that lock here.
     -- @TODO annotate that a process used its full time-slice here so we can
     --  de-prioritize it.
     ---------------------------------------------------------------------------
-    procedure yield with
-        SPARK_Mode => On
+    procedure yield
     is
     begin
         -- println ("Process.yield: acquiring proctab lock");
         Spinlocks.enterCriticalSection (lock);
-        
+
         Scheduler.enter;
 
         -- continue execution here after context switch back to this process.
@@ -464,8 +462,7 @@ is
     -- ready
     -- Move a process into the ready list and change its state to READY
     ---------------------------------------------------------------------------
-    procedure ready (pid : ProcessID) with
-        SPARK_Mode => On
+    procedure ready (pid : ProcessID)
     is
         ret : ProcessID;
         targetCPU : constant Natural := proctab(pid).cpu;
@@ -513,7 +510,7 @@ is
          periodUs : Unsigned_32;
          budgetUs : Unsigned_32;
          flags    : Unsigned_32)
-        with SPARK_Mode => On
+
     is
     begin
         proctab(pid).latency :=
@@ -527,8 +524,7 @@ is
     -- Release our hold on a resource and go into WAITING state.
     ---------------------------------------------------------------------------
     procedure wait (channel      : in WaitChannel;
-                    resourceLock : in out Spinlocks.spinlock) with
-        SPARK_Mode => On
+                    resourceLock : in out Spinlocks.spinlock)
     is
         pid : constant ProcessID := PerCPUData.getCurrentPID;
     begin
@@ -558,8 +554,7 @@ is
     -- @TODO this is probably a poor implementation, may cause thrashing when
     -- all the woken threads attempt to get the same resource.
     ---------------------------------------------------------------------------
-    procedure goAheadBody (channel : in WaitChannel) with
-        SPARK_Mode => On
+    procedure goAheadBody (channel : in WaitChannel)
     is
     begin
         for p of proctab loop
@@ -573,15 +568,14 @@ is
     -- goAhead - public interface for internal goAheadBody, to ensure locks are
     -- held.
     ---------------------------------------------------------------------------
-    procedure goAhead (channel : in WaitChannel) with
-        SPARK_Mode => On
+    procedure goAhead (channel : in WaitChannel)
     is
     begin
         -- println ("Process.goAhead: acquiring proctab lock");
         Spinlocks.enterCriticalSection (lock);
-        
+
         goAheadBody (channel);
-        
+
         -- println ("Process.goAhead: releasing proctab lock");
         Spinlocks.exitCriticalSection (lock);
     end goAhead;
@@ -589,8 +583,7 @@ is
     ---------------------------------------------------------------------------
     -- suspend
     ---------------------------------------------------------------------------
-    procedure suspend with
-        SPARK_Mode => On
+    procedure suspend
     is
         pid : constant ProcessID := PerCPUData.getCurrentPID;
     begin
@@ -610,8 +603,7 @@ is
     ---------------------------------------------------------------------------
     -- resume
     ---------------------------------------------------------------------------
-    procedure resume (pid : ProcessID) with
-        SPARK_Mode => On
+    procedure resume (pid : ProcessID)
     is
         ignore : ProcessID;
     begin
@@ -631,8 +623,7 @@ is
     ---------------------------------------------------------------------------
     -- notify
     ---------------------------------------------------------------------------
-    procedure notify (pid : ProcessID) with
-        SPARK_Mode => On
+    procedure notify (pid : ProcessID)
     is
         ignore : ProcessID;
     begin
@@ -663,8 +654,7 @@ is
     ---------------------------------------------------------------------------
     -- sleep
     ---------------------------------------------------------------------------
-    procedure sleep (us : Time.Duration) with
-        SPARK_Mode => On
+    procedure sleep (us : Time.Duration)
     is
         pid    : ProcessID := PerCPUData.getCurrentPID;
         ignore : ProcessID;
@@ -688,14 +678,37 @@ is
     ---------------------------------------------------------------------------
     -- This is where the scheduler will initially switch() to.
     ---------------------------------------------------------------------------
-    procedure start with
-        SPARK_Mode => On
+    procedure start
     is
     begin
+        -- A new context has no suspended switch frame to restore its state.
+        -- Keep interrupts masked until interruptReturn restores the initial
+        -- RFLAGS together with CS/RSP through IRETQ.
+        PerCPUData.resumeHandoff (Interrupt_State.Initial_Context);
         -- println ("Process.start: releasing proctab lock");
         Spinlocks.exitCriticalSection (lock);
         -- Return to interruptReturn.
     end start;
+
+    ---------------------------------------------------------------------------
+    -- switch
+    -- Save the outer critical section's restoration policy on this context's
+    -- stack. numCLI remains CPU-local: Process.lock is handed across the
+    -- switch with interrupts disabled. All callers use that same handoff.
+    ---------------------------------------------------------------------------
+    procedure switch (oldProc : in System.Address; newProc : in System.Address)
+    is
+        procedure switchRegisters (oldContext, newContext : System.Address)
+            with Import => True, Convention => C,
+                 External_Name => "asm_switch_to";
+        saved : constant Interrupt_State.Context := PerCPUData.captureHandoff;
+    begin
+        switchRegisters (oldProc, newProc);
+
+        -- Re-read GS after resumption: the task may have migrated. Using the
+        -- old CPU's address here would corrupt another CPU's lock state.
+        PerCPUData.resumeHandoff (saved);
+    end switch;
 
     ---------------------------------------------------------------------------
     -- symbols needed for createFirstProcess to load the init binary image.
@@ -705,14 +718,13 @@ is
 
     initBinarySize      : Util.Symbol with
         Import => True, External_Name => "_binary_build_init_bin_size";
-    
+
     ---------------------------------------------------------------------------
     -- createFirstProcess
     -- The first process (called init in other systems) just makes syscalls to
     --  start running the first executable from disk.
     ---------------------------------------------------------------------------
-    procedure createFirstProcess with
-        SPARK_Mode => Off   -- use of 'Address
+    procedure createFirstProcess    -- use of 'Address
     is
         -- This is kind of funky. The initBinarySize gets stored as though it were
         -- an address.
@@ -753,8 +765,7 @@ is
     ---------------------------------------------------------------------------
     -- getParent
     ---------------------------------------------------------------------------
-    function getParent (pid : in ProcessID) return ProcessID with
-        SPARK_Mode => On
+    function getParent (pid : in ProcessID) return ProcessID
     is
     begin
         return proctab(pid).ppid;
@@ -763,8 +774,7 @@ is
     ---------------------------------------------------------------------------
     -- switchAddressSpace
     ---------------------------------------------------------------------------
-    procedure switchAddressSpace (pid : in ProcessID) with
-        SPARK_Mode => On
+    procedure switchAddressSpace (pid : in ProcessID)
     is
         p4addr : System.Address;
     begin
@@ -779,12 +789,11 @@ is
 
     ---------------------------------------------------------------------------
     -- removeFromMailQueue
-    -- If a process is blocked in the SENDING or RECEIVING states, this 
+    -- If a process is blocked in the SENDING or RECEIVING states, this
     -- procedure will identify the appropriate mailbox it is waiting on, and
     -- remove it from the list.
     ---------------------------------------------------------------------------
-    procedure removeFromMailQueue (pid : in ProcessID) with
-        SPARK_Mode => On
+    procedure removeFromMailQueue (pid : in ProcessID)
     is
         mailbox : constant ProcessID    := proctab(pid).queueKey;
         state   : constant ProcessState := proctab(pid).state;
@@ -802,8 +811,7 @@ is
     ---------------------------------------------------------------------------
     -- killProcess
     ---------------------------------------------------------------------------
-    procedure killProcess (pid : in ProcessID) with
-        SPARK_Mode => On
+    procedure killProcess (pid : in ProcessID)
     is
         -- recursively unmaps/deallocates process' full paging hierarchy
         procedure deleteP4 is new Virtmem.deleteP4 (BuddyAllocator.freeFrame);
@@ -864,7 +872,7 @@ is
 
             when SLEEPING =>
                 Queues.popItem (sleepList, pid, ignore);
-            
+
             when SENDING | RECEIVING =>
                 removeFromMailQueue (pid);
 
@@ -1073,7 +1081,7 @@ is
             deleteP4 (addrtab(pid));
             proctab(pid).pgTable := NO_PROCESS;
         end if;
-        
+
         -- Remap the guard page so the buddy allocator can reuse it,
         -- then free the 2-page block (guard + stack).
         if proctab(pid).guardPage /= 0 then
@@ -1108,8 +1116,7 @@ is
     ---------------------------------------------------------------------------
     -- kill
     ---------------------------------------------------------------------------
-    procedure kill (pid : in ProcessID) with
-        SPARK_Mode => On
+    procedure kill (pid : in ProcessID)
     is
     begin
         killProcess (pid);
@@ -1137,8 +1144,7 @@ is
     ---------------------------------------------------------------------------
     -- pageFault
     ---------------------------------------------------------------------------
-    procedure pageFault (pid : ProcessID; addr : System.Address) with
-        SPARK_Mode => On
+    procedure pageFault (pid : ProcessID; addr : System.Address)
     is
         ignore : System.Address;
     begin
@@ -1192,7 +1198,7 @@ is
     -- enableFPU
     -- Turn on FPU state saving/restoring for this process.
     ---------------------------------------------------------------------------
-    procedure enableFPU with SPARK_Mode => On
+    procedure enableFPU
     is
         pid : constant ProcessID := PerCPUData.getCurrentPID;
         perCPUAddr : constant System.Address := PerCPUData.getPerCPUDataAddr;
@@ -1217,8 +1223,7 @@ is
     -- Caller MUST hold Process.lock. Target resumes in yield() which
     -- releases Process.lock.
     ---------------------------------------------------------------------------
-    procedure directSwitch (fromPID : ProcessID; toPID : ProcessID) with
-        SPARK_Mode => Off
+    procedure directSwitch (fromPID : ProcessID; toPID : ProcessID)
     is
         perCPUAddr : constant System.Address := PerCPUData.getPerCPUDataAddr;
     begin
@@ -1257,7 +1262,7 @@ is
     ---------------------------------------------------------------------------
     -- saveFPUState
     ---------------------------------------------------------------------------
-    procedure saveFPUState (pid : ProcessID) with SPARK_Mode => On
+    procedure saveFPUState (pid : ProcessID)
     is
         perCPUAddr : constant System.Address := PerCPUData.getPerCPUDataAddr;
     begin
@@ -1275,7 +1280,7 @@ is
     ---------------------------------------------------------------------------
     -- restoreFPUState
     ---------------------------------------------------------------------------
-    procedure restoreFPUState (pid : ProcessID) with SPARK_Mode => On
+    procedure restoreFPUState (pid : ProcessID)
     is
     begin
         if proctab(pid).mode = USER then
@@ -1298,7 +1303,7 @@ is
     ---------------------------------------------------------------------------
     -- Track which PIDs are in use, allocate new ones.
     ---------------------------------------------------------------------------
-    package body PIDTracker with 
+    package body PIDTracker with
         Refined_State => (PIDTrackerState => (pidMap, pidLock, trackerLockName))
     is
 
@@ -1308,8 +1313,7 @@ is
         -- Find a free PID and mark it as in use. Uses spinlock
         -- to ensure that two processes don't share the same PID
         -- if this were called by two threads at once.
-        procedure allocPID(pid : out ProcessID) with
-            SPARK_Mode => On
+        procedure allocPID(pid : out ProcessID)
         is
             use Spinlocks;
         begin
@@ -1320,25 +1324,23 @@ is
             exitCriticalSection (pidLock);
         end allocPID;
 
-        procedure allocSpecificPID (pid : in ProcessID) with
-            SPARK_Mode => On
+        procedure allocSpecificPID (pid : in ProcessID)
         is
             use Spinlocks;
         begin
             enterCriticalSection (pidLock);
-            
+
             if pidMap (pid) = False then
                 raise ProcessException with "Attempted to use specific PID already in use";
             end if;
-            
+
             markUsed (pid);
             exitCriticalSection (pidLock);
         end allocSpecificPID;
 
 
         -- Mark a PID as free. Acquires pidLock for thread safety.
-        procedure freePID(pid : in ProcessID) with
-            SPARK_Mode => On
+        procedure freePID(pid : in ProcessID)
         is
             use Spinlocks;
         begin
@@ -1349,8 +1351,7 @@ is
 
 
         -- Find a free PID
-        function findFreePID return ProcessID with
-            SPARK_Mode => On
+        function findFreePID return ProcessID
         is
             --block : Unsigned_64;
             --retPID : ProcessID := 0;
@@ -1370,8 +1371,7 @@ is
 
 
         -- Mark a particular PID as used.
-        procedure markUsed(pid : in ProcessID) with
-            SPARK_Mode => On
+        procedure markUsed(pid : in ProcessID)
         is
             --block : constant PIDBlock := getBlock(pid);
             --offset : constant PIDOffset := getOffset(pid);
@@ -1379,11 +1379,10 @@ is
             --util.setBit(pidMap(block), offset);
             pidMap(pid) := False;
         end markUsed;
-        
+
 
         -- Mark a PID as free.
-        procedure markFree(pid : in ProcessID) with
-            SPARK_Mode => On
+        procedure markFree(pid : in ProcessID)
         is
             -- block : constant PIDBlock := getBlock(pid);
             -- offset : constant PIDOffset := getOffset(pid);
@@ -1395,7 +1394,7 @@ is
 
         -- -- Return the index into bitmap array in which this PID resides.
         -- function getBlock(pid : in ProcessID) return PIDBlock with
-        --     SPARK_Mode => On is
+        --      is
         -- begin
         --     return Natural(pid / 64);
         -- end getBlock;
@@ -1403,7 +1402,7 @@ is
 
         -- -- Return the bit within a Unsigned_64 representing this single PID.
         -- function getOffset(pid : in ProcessID) return PIDOffset with
-        --     SPARK_Mode => On is
+        --      is
         -- begin
         --     return Natural(pid mod 64);
         -- end getOffset;

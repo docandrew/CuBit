@@ -10,9 +10,8 @@ with System; use System;
 with PerCPUData;
 with TextIO; use TextIO;
 
-package body Spinlocks
-    with SPARK_Mode => On
-is
+-- Atomic exchange and CPU-local hardware exclusion are trusted boundaries.
+package body Spinlocks with SPARK_Mode => Off is
 
     ---------------------------------------------------------------------------
     -- Getter function for lock state.
@@ -22,8 +21,7 @@ is
     ---------------------------------------------------------------------------
     -- disable interrupts on this CPU and loop until we acquire the lock
     ---------------------------------------------------------------------------
-    procedure enterCriticalSection (s : in out Spinlock) with
-        SPARK_Mode => On
+    procedure enterCriticalSection (s : in out Spinlock)
     is
         use ASCII;
 
@@ -52,15 +50,14 @@ is
 
         -- save info for debugging and ensuring per-CPU mutex
         s.cpu := PerCPUData.getCPUNumber;
-        
+
     end enterCriticalSection;
 
     ---------------------------------------------------------------------------
     -- Release the lock and set interrupts to their state prior to entering
     -- the lock.
     ---------------------------------------------------------------------------
-    procedure exitCriticalSection (s : in out Spinlock) with
-        SPARK_Mode => On
+    procedure exitCriticalSection (s : in out Spinlock)
     is
         ignore : LockBool;
     begin
@@ -71,6 +68,10 @@ is
                 print (" Lock: (no name)");
             end if;
             raise SpinLockException with "Attempted release of un-held lock.";
+        end if;
+
+        if s.cpu /= PerCPUData.getCPUNumber then
+            raise SpinLockException with "Attempted release of another CPU's lock";
         end if;
 
         s.cpu := -1;

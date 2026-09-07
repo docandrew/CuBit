@@ -86,7 +86,7 @@ is
     ---------------------------------------------------------------------------
     procedure allocFrame (addr : out Virtmem.PhysAddress) with
         Global  => (
-            In_Out      => (BitmapState, x86.interruptsEnabled),
+            In_Out      => BitmapState,
             Proof_In    => (BootAllocator.initialized)),
         
         Pre     => BootAllocator.initialized,
@@ -101,7 +101,7 @@ is
     ---------------------------------------------------------------------------
     procedure allocFrames (num : in AllocSize; addr : out Virtmem.PhysAddress) with
         Global  => (
-            In_Out      => (BitmapState, x86.interruptsEnabled),
+            In_Out      => BitmapState,
             Proof_In    => (BootAllocator.initialized)),
 
         Pre     => num <= MAX_BOOT_PFN and 

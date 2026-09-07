@@ -10,18 +10,17 @@ with BuddyAllocator;
 with Config;
 with TextIO; use TextIO;
 
-package body LinkedLists
-    with SPARK_Mode => On
-is
+-- Ada implementation: custom storage, address overlays or live context state.
+-- Only separately annotated SPARK policy/state routines carry proof obligations.
+package body LinkedLists is
 
     ---------------------------------------------------------------------------
     -- setup
     ---------------------------------------------------------------------------
-    procedure setup (capacity : in Natural) with
-        SPARK_Mode => Off
+    procedure setup (capacity : in Natural)
     is
     begin
-        SlabAllocator.setup (pool     => nodeSlab, 
+        SlabAllocator.setup (pool     => nodeSlab,
                              objSize  => Node'Size,
                              capacity => capacity);
     end setup;
@@ -29,8 +28,7 @@ is
     ---------------------------------------------------------------------------
     -- teardown
     ---------------------------------------------------------------------------
-    procedure teardown with
-        SPARK_Mode => Off
+    procedure teardown
     is
     begin
         SlabAllocator.teardown (nodeSlab);
@@ -39,8 +37,7 @@ is
     ---------------------------------------------------------------------------
     -- create
     ---------------------------------------------------------------------------
-    procedure create (myList : in out List; capacity : in Natural) with
-        SPARK_Mode => On
+    procedure create (myList : in out List; capacity : in Natural)
     is
     begin
         myList.head := null;
@@ -52,8 +49,7 @@ is
     ---------------------------------------------------------------------------
     -- delete
     ---------------------------------------------------------------------------
-    procedure delete (myList : in out List) with
-        SPARK_Mode => On
+    procedure delete (myList : in out List)
     is
     begin
         clear (myList);
@@ -67,8 +63,7 @@ is
     ---------------------------------------------------------------------------
     -- insertFront
     ---------------------------------------------------------------------------
-    procedure insertFront (myList : in out List; element : in T) with
-        SPARK_Mode => Off
+    procedure insertFront (myList : in out List; element : in T)
     is
         prevHead : constant NodePtr := myList.head;
         newNode  : constant NodePtr := new Node'(element => element,
@@ -97,8 +92,7 @@ is
     ---------------------------------------------------------------------------
     -- insertBack
     ---------------------------------------------------------------------------
-    procedure insertBack (myList : in out List; element : in T) with
-        SPARK_Mode => Off
+    procedure insertBack (myList : in out List; element : in T)
     is
         prevTail : constant NodePtr := myList.tail;
         newNode  : constant NodePtr := new Node'(element => element,
@@ -127,8 +121,7 @@ is
     ---------------------------------------------------------------------------
     -- popFront
     ---------------------------------------------------------------------------
-    procedure popFront (myList : in out List) with
-        SPARK_Mode => Off
+    procedure popFront (myList : in out List)
     is
         oldHead : NodePtr;
         newHead : NodePtr;
@@ -149,8 +142,7 @@ is
     ---------------------------------------------------------------------------
     -- front
     ---------------------------------------------------------------------------
-    function front (myList : in List) return T with
-        SPARK_Mode => Off
+    function front (myList : in List) return T
     is
     begin
         if myList.length = 0 then
@@ -163,8 +155,7 @@ is
     ---------------------------------------------------------------------------
     -- popBack
     ---------------------------------------------------------------------------
-    procedure popBack (myList : in out List) with
-        SPARK_Mode => Off
+    procedure popBack (myList : in out List)
     is
         oldTail : NodePtr;
         newTail : NodePtr;
@@ -185,8 +176,7 @@ is
     ---------------------------------------------------------------------------
     -- back
     ---------------------------------------------------------------------------
-    function back (myList : in List) return T with
-        SPARK_Mode => Off
+    function back (myList : in List) return T
     is
     begin
         if myList.length = 0 then
@@ -197,7 +187,7 @@ is
     end back;
 
     -- procedure remove(myList : in out List; value : in T) with
-    --     SPARK_Mode => Off
+    --
     -- is
     --     curNode    : NodePtr := myList.head;
     --     prevNode   : NodePtr := curNode;
@@ -211,8 +201,7 @@ is
     ---------------------------------------------------------------------------
     -- clear
     ---------------------------------------------------------------------------
-    procedure clear (myList : in out List) with
-        SPARK_Mode => On
+    procedure clear (myList : in out List)
     is
     begin
         DeleteLoop: loop
@@ -224,8 +213,7 @@ is
     ---------------------------------------------------------------------------
     -- print
     ---------------------------------------------------------------------------
-    procedure print (myList : in List) with
-        SPARK_Mode => On
+    procedure print (myList : in List)
     is
         curNode : NodePtr := myList.head;
     begin

@@ -18,9 +18,7 @@
 with Capabilities;
 with Memory_Grants;
 
-package Process.IPC with
-    SPARK_Mode => On
-is
+package Process.IPC is
 
     ---------------------------------------------------------------------------
     -- send
@@ -31,8 +29,7 @@ is
     -- The caller blocks in WAITINGFORREPLY until the receiver calls reply().
     -- @return the reply message tag.
     ---------------------------------------------------------------------------
-    function send (dest : ProcessID; msg : Message) return MessageTag
-        with SPARK_Mode => On;
+    function send (dest : ProcessID; msg : Message) return MessageTag;
 
     ---------------------------------------------------------------------------
     -- sendEvent
@@ -40,8 +37,7 @@ is
     -- to the destination process but does not block whatever process was
     -- active when the interrupt occurred.
     ---------------------------------------------------------------------------
-    procedure sendEvent (dest : ProcessID; msg : Message)
-        with SPARK_Mode => On;
+    procedure sendEvent (dest : ProcessID; msg : Message);
 
     --  Non-blocking event publication with explicit backpressure. accepted is
     --  False when the destination is unavailable or its bounded event lane is
@@ -49,21 +45,18 @@ is
     --  accepted report as a resynchronization snapshot.
     procedure trySendEvent (dest     : ProcessID;
                             msg      : Message;
-                            accepted : out Boolean)
-        with SPARK_Mode => On;
+                            accepted : out Boolean);
 
     -- Publish a coalescible, persistent device-work doorbell. Unlike
     -- sendEvent, this cannot be lost because a mailbox ring is full.
-    procedure notifyIRQ (dest : ProcessID)
-        with SPARK_Mode => On;
+    procedure notifyIRQ (dest : ProcessID);
 
     ---------------------------------------------------------------------------
     -- receive
     -- Receive a message from one's mailbox. Block if no message available.
     -- On return, from contains the sender PID and msg contains the message.
     ---------------------------------------------------------------------------
-    procedure receive (from : out ProcessID; msg : out Message)
-        with SPARK_Mode => On;
+    procedure receive (from : out ProcessID; msg : out Message);
 
     --  Block until any IPC arrives or the absolute monotonic millisecond
     --  deadline is reached. Unlike a userspace sleep/poll loop, publication
@@ -72,13 +65,11 @@ is
         (deadlineMs : in  Unsigned_64;
          from       : out ProcessID;
          msg        : out Message;
-         received   : out Boolean)
-        with SPARK_Mode => On;
+         received   : out Boolean);
 
     --  Called once per monotonic millisecond by the BSP timer. Timed receivers
     --  are removed from their one mailbox queue and made runnable when due.
-    procedure expireReceiveDeadlines (nowMs : Unsigned_64)
-        with SPARK_Mode => On;
+    procedure expireReceiveDeadlines (nowMs : Unsigned_64);
 
     ---------------------------------------------------------------------------
     -- receiveEvent
@@ -86,8 +77,7 @@ is
     -- waiting. If multiple events are sent to this process between
     -- receiveEvent calls, only the latest one will be delivered.
     ---------------------------------------------------------------------------
-    function receiveEvent return Message
-        with SPARK_Mode => On;
+    function receiveEvent return Message;
 
     ---------------------------------------------------------------------------
     -- receiveEventNB
@@ -95,8 +85,7 @@ is
     -- @param msg   - the event message (valid only if found is True)
     -- @param found - True if an event was available
     ---------------------------------------------------------------------------
-    procedure receiveEventNB (msg : out Message; found : out Boolean)
-        with SPARK_Mode => On;
+    procedure receiveEventNB (msg : out Message; found : out Boolean);
 
     ---------------------------------------------------------------------------
     -- reply
@@ -107,8 +96,7 @@ is
     -- in WAITINGFORCOMPLETION.
     -- @return 1 on success.
     ---------------------------------------------------------------------------
-    function reply (replyTo : ProcessID; msg : Message) return Unsigned_64
-        with SPARK_Mode => On;
+    function reply (replyTo : ProcessID; msg : Message) return Unsigned_64;
 
     ---------------------------------------------------------------------------
     -- replyCap
@@ -118,8 +106,7 @@ is
     ---------------------------------------------------------------------------
     function replyCap
         (capSlot : Capabilities.CapabilitySlot;
-         msg     : Message) return Unsigned_64
-        with SPARK_Mode => On;
+         msg     : Message) return Unsigned_64;
 
     ---------------------------------------------------------------------------
     -- replyWait
@@ -134,8 +121,7 @@ is
     procedure replyWait (replyTo  : in  ProcessID;
                          replyMsg : in  Message;
                          from     : out ProcessID;
-                         msg      : out Message)
-        with SPARK_Mode => On;
+                         msg      : out Message);
 
     ---------------------------------------------------------------------------
     -- receiveServiceRequestNB
@@ -154,8 +140,7 @@ is
     ---------------------------------------------------------------------------
     procedure receiveServiceRequestNB (from  : out ProcessID;
                                        msg   : out Message;
-                                       found : out Boolean)
-        with SPARK_Mode => On;
+                                       found : out Boolean);
 
     ---------------------------------------------------------------------------
     -- receiveAnyIpcNB
@@ -170,8 +155,7 @@ is
     ---------------------------------------------------------------------------
     procedure receiveAnyIpcNB (from  : out ProcessID;
                                msg   : out Message;
-                               found : out Boolean)
-        with SPARK_Mode => On;
+                               found : out Boolean);
 
     ---------------------------------------------------------------------------
     -- Async I/O Primitives
@@ -187,8 +171,7 @@ is
     ---------------------------------------------------------------------------
     function submit (dest  : ProcessID;
                      msg   : Message;
-                     token : Unsigned_64) return Boolean
-        with SPARK_Mode => On;
+                     token : Unsigned_64) return Boolean;
 
     ---------------------------------------------------------------------------
     -- waitCompletion
@@ -202,8 +185,7 @@ is
     procedure waitCompletion (entries     : out CompletionRing;
                               maxEntries  : in  Natural;
                               minWait     : in  Natural;
-                              numReturned : out Natural)
-        with SPARK_Mode => On;
+                              numReturned : out Natural);
 
     ---------------------------------------------------------------------------
     -- pollCompletion
@@ -212,8 +194,7 @@ is
     -- @param found  - True if a completion was available
     ---------------------------------------------------------------------------
     procedure pollCompletion (result : out CompletionEntry;
-                              found  : out Boolean)
-        with SPARK_Mode => On;
+                              found  : out Boolean);
 
     ---------------------------------------------------------------------------
     -- Shared Memory Grant Operations
@@ -225,8 +206,7 @@ is
     --  an explicit derived-loan operation with parent lifetime tracking.
     function overlapsGrantRegion (localAddr : System.Address;
                                   numPages  : Natural) return Boolean
-        with SPARK_Mode => On,
-             Global     => null;
+        with Global     => null;
 
     ---------------------------------------------------------------------------
     -- createGrant
@@ -245,8 +225,7 @@ is
                            numPages  : in  Natural;
                            perm      : in  GrantPermission;
                            id        : out Natural;
-                           success   : out Boolean)
-        with SPARK_Mode => On;
+                           success   : out Boolean);
 
     ---------------------------------------------------------------------------
     -- revokeGrant
@@ -254,8 +233,7 @@ is
     -- Only the granter (caller) can revoke.
     -- @param id - ID of the grant to revoke
     ---------------------------------------------------------------------------
-    procedure revokeGrant (id : GrantID)
-        with SPARK_Mode => On;
+    procedure revokeGrant (id : GrantID);
 
     ---------------------------------------------------------------------------
     -- revokeAllGrants
@@ -263,8 +241,7 @@ is
     -- Called during process kill() to prevent dangling mappings.
     -- @param pid - PID of the process whose grants should be revoked
     ---------------------------------------------------------------------------
-    procedure revokeAllGrants (pid : ProcessID)
-        with SPARK_Mode => On;
+    procedure revokeAllGrants (pid : ProcessID);
 
     ---------------------------------------------------------------------------
     -- revokeAllGrantsTo
@@ -272,8 +249,7 @@ is
     -- during process death so an owner cannot retain metadata naming a PID
     -- that may later be reused for an unrelated process.
     ---------------------------------------------------------------------------
-    procedure revokeAllGrantsTo (pid : ProcessID)
-        with SPARK_Mode => On;
+    procedure revokeAllGrantsTo (pid : ProcessID);
 
     ---------------------------------------------------------------------------
     -- getOwnedGrantGeneration
@@ -282,8 +258,7 @@ is
     procedure getOwnedGrantGeneration
       (slot       : Memory_Grants.Global_Slot;
        generation : out Memory_Grants.Grant_Generation;
-       success    : out Boolean)
-      with SPARK_Mode => On;
+       success    : out Boolean);
 
     ---------------------------------------------------------------------------
     -- acquireGrant
@@ -297,34 +272,28 @@ is
        byteLength    : Unsigned_64;
        requiredWrite : Boolean;
        mappedAddress : out System.Address;
-       success       : out Boolean)
-      with SPARK_Mode => On;
+       success       : out Boolean);
 
     procedure returnGrant
       (reference : Memory_Grants.Reference;
-       success   : out Boolean)
-      with SPARK_Mode => On;
+       success   : out Boolean);
 
     procedure revokeGrantReference
       (reference : Memory_Grants.Reference;
-       success   : out Boolean)
-      with SPARK_Mode => On;
+       success   : out Boolean);
 
     -- Called by process teardown.  When acquired grants remain, retain the
     -- PID until teardown is complete and the final acquisition is returned.
     procedure prepareGrantProtectedTeardown
       (pid         : ProcessID;
        pidReusable : Boolean;
-       deferred    : out Boolean)
-      with SPARK_Mode => On;
+       deferred    : out Boolean);
 
-    procedure finishGrantProtectedTeardown (pid : ProcessID)
-      with SPARK_Mode => On;
+    procedure finishGrantProtectedTeardown (pid : ProcessID);
 
     -- Release DMA blocks owned by a process.  Teardown calls this immediately
     -- when no grant is acquired, or after the final acquisition is returned.
-    procedure releaseDMAAllocations (pid : ProcessID)
-      with SPARK_Mode => Off;
+    procedure releaseDMAAllocations (pid : ProcessID);
 
     ---------------------------------------------------------------------------
     -- Capability-Aware IPC
@@ -338,8 +307,7 @@ is
     -- @return the reply message tag (NULL_TAG on capability error).
     ---------------------------------------------------------------------------
     function capSend (capSlot : Capabilities.CapabilitySlot;
-                      msg     : Message) return MessageTag
-        with SPARK_Mode => On;
+                      msg     : Message) return MessageTag;
 
     ---------------------------------------------------------------------------
     -- capCall
@@ -349,8 +317,7 @@ is
     -- @return the reply message tag (NULL_TAG on capability error).
     ---------------------------------------------------------------------------
     function capCall (capSlot : Capabilities.CapabilitySlot;
-                      msg     : Message) return MessageTag
-        with SPARK_Mode => On;
+                      msg     : Message) return MessageTag;
 
     ---------------------------------------------------------------------------
     -- capSubmit
@@ -359,8 +326,7 @@ is
     ---------------------------------------------------------------------------
     function capSubmit (capSlot : Capabilities.CapabilitySlot;
                         msg     : Message;
-                        token   : Unsigned_64) return Boolean
-        with SPARK_Mode => On;
+                        token   : Unsigned_64) return Boolean;
 
     ---------------------------------------------------------------------------
     -- Supervisor Notification
@@ -380,7 +346,6 @@ is
                                 faultLabel : Unsigned_32;
                                 detail0    : Unsigned_64;
                                 detail1    : Unsigned_64;
-                                detail2    : Unsigned_64)
-        with SPARK_Mode => On;
+                                detail2    : Unsigned_64);
 
 end Process.IPC;

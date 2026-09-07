@@ -9,9 +9,8 @@ with System.Storage_Elements; use System.Storage_Elements;
 with TextIO; use TextIO;
 with Util;
 
-package body pci with
-    SPARK_Mode => On
-is
+-- PCI config transactions use port I/O/MMIO and may write the address port.
+package body pci with SPARK_Mode => Off is
     ---------------------------------------------------------------------------
     -- Read dword
     ---------------------------------------------------------------------------
@@ -19,10 +18,10 @@ is
                            slot   : in PCISlotNum;
                            func   : in PCIFunctionNum;
                            offset : in Unsigned_8) return Unsigned_32
-        with SPARK_Mode => On
+
     is
         ret : Unsigned_32;
-        addr : constant Unsigned_32 := 
+        addr : constant Unsigned_32 :=
                             Shift_Left (Unsigned_32(bus), 16) or
                             Shift_Left (Unsigned_32(slot), 11) or
                             Shift_Left (Unsigned_32(func), 8) or
@@ -41,10 +40,10 @@ is
                            slot   : in PCISlotNum;
                            func   : in PCIFunctionNum;
                            offset : in Unsigned_8) return Unsigned_16
-        with SPARK_Mode => On
+
     is
         ret : Unsigned_16;
-        addr : constant Unsigned_32 := 
+        addr : constant Unsigned_32 :=
                             Shift_Left (Unsigned_32(bus), 16) or
                             Shift_Left (Unsigned_32(slot), 11) or
                             Shift_Left (Unsigned_32(func), 8) or
@@ -62,11 +61,10 @@ is
     function readConfig8 (bus    : in PCIBusNum;
                           slot   : in PCISlotNum;
                           func   : in PCIFunctionNum;
-                          offset : in Unsigned_8) return Unsigned_8 with
-        SPARK_Mode => On
+                          offset : in Unsigned_8) return Unsigned_8
     is
         ret : Unsigned_8;
-        addr : constant Unsigned_32 := 
+        addr : constant Unsigned_32 :=
                             Shift_Left (Unsigned_32(bus), 16) or
                             Shift_Left (Unsigned_32(slot), 11) or
                             Shift_Left (Unsigned_32(func), 8) or
@@ -86,7 +84,7 @@ is
                              func   : in PCIFunctionNum;
                              offset : in Unsigned_8;
                              val    : in Unsigned_32)
-        with SPARK_Mode => On
+
     is
         addr : constant Unsigned_32 :=
                             Shift_Left (Unsigned_32(bus), 16) or
@@ -106,7 +104,7 @@ is
                              func   : in PCIFunctionNum;
                              offset : in Unsigned_8;
                              val    : in Unsigned_16)
-        with SPARK_Mode => On
+
     is
         addr : constant Unsigned_32 :=
                             Shift_Left (Unsigned_32(bus), 16) or
@@ -126,7 +124,7 @@ is
                             func   : in PCIFunctionNum;
                             offset : in Unsigned_8;
                             val    : in Unsigned_8)
-        with SPARK_Mode => On
+
     is
         addr : constant Unsigned_32 :=
                             Shift_Left (Unsigned_32(bus), 16) or
@@ -143,12 +141,11 @@ is
     ---------------------------------------------------------------------------
     procedure dumpDevice (bus  : PCIBusNum;
                           slot : PCISlotNum;
-                          func : PCIFunctionNum) with
-        SPARK_Mode => On
+                          func : PCIFunctionNum)
     is
         val : Unsigned_32;
     begin
-        print (bus); print(":"); print(slot); print(":"); 
+        print (bus); print(":"); print(slot); print(":");
         printd (Unsigned_32(func));
         println ("Configuration Space: ");
 
@@ -166,8 +163,7 @@ is
     ---------------------------------------------------------------------------
     -- Enumerate PCI devices
     ---------------------------------------------------------------------------
-    procedure enumerateDevices with
-        SPARK_Mode => On
+    procedure enumerateDevices
     is
         revision : Unsigned_32;
         kind     : Unsigned_8;
@@ -186,11 +182,11 @@ is
 
                     if revision /= 16#FFFF_FFFF# then
                         --dumpPCIDevice(bus, slot, func);
-                        vendorID := 
+                        vendorID :=
                             readConfig16 (bus, slot, func, PCI_VENDOR_ID);
-                        deviceID := 
+                        deviceID :=
                             readConfig16 (bus, slot, func, PCI_DEVICE_ID);
-                        class    := 
+                        class    :=
                             PCIClassCode(readConfig16 (bus, slot, func, PCI_CLASSCODE));
 
                         print (" "); print (Unsigned_32(vendorID));
@@ -201,14 +197,14 @@ is
 
                         if func = 0 then
                             kind := readConfig8 (bus, slot, func, PCI_HEADER_TYPE);
-                            
+
                             -- If bit 7 of Header Type is 0, then device does
                             -- not have multiple functions and there's no need
                             -- to check the others.
                             exit FuncLoop when (kind and PCI_MULTIPLE_FUNCS) = 0;
                         end if;
                     end if;
-                
+
                 end loop FuncLoop;
             end loop SlotLoop;
         end loop BusLoop;
@@ -217,8 +213,7 @@ is
     ---------------------------------------------------------------------------
     -- getNumDevices
     ---------------------------------------------------------------------------
-    function getNumDevices (class : in PCIClassCode) return Natural with
-        SPARK_Mode => On
+    function getNumDevices (class : in PCIClassCode) return Natural
     is
         kind      : Unsigned_8;
         thisClass : PCIClassCode;
@@ -231,7 +226,7 @@ is
                     revision := readConfig32 (bus, slot, func, PCI_REVISION_ID);
 
                     if revision /= 16#FFFF_FFFF# then
-                        thisClass := 
+                        thisClass :=
                             PCIClassCode(readConfig16 (bus, slot, func, PCI_CLASSCODE));
 
                         if thisClass = class then
@@ -240,14 +235,14 @@ is
 
                         if func = 0 then
                             kind := readConfig8 (bus, slot, func, PCI_HEADER_TYPE);
-                            
+
                             -- If bit 7 of Header Type is 0, then device does
                             -- not have multiple functions and there's no need
                             -- to check the others.
                             exit FuncLoop when (kind and PCI_MULTIPLE_FUNCS) = 0;
                         end if;
                     end if;
-                
+
                 end loop FuncLoop;
             end loop SlotLoop;
         end loop BusLoop;
@@ -259,10 +254,9 @@ is
     -- findDevice
     ---------------------------------------------------------------------------
     procedure findDevice (findClass : in PCIClassCode;
-                          foundBus  : out PCIBusNum; 
+                          foundBus  : out PCIBusNum;
                           foundSlot : out PCISlotNum;
-                          foundFunc : out PCIFunctionNum) with
-        SPARK_Mode => On
+                          foundFunc : out PCIFunctionNum)
     is
         kind      : Unsigned_8;
         thisClass : PCIClassCode;
@@ -274,7 +268,7 @@ is
                     revision := readConfig32 (bus, slot, func, PCI_REVISION_ID);
 
                     if revision /= 16#FFFF_FFFF# then
-                        thisClass    := 
+                        thisClass    :=
                             PCIClassCode(readConfig16 (bus, slot, func, PCI_CLASSCODE));
 
                         if thisClass = findClass then
@@ -286,15 +280,15 @@ is
 
                         if func = 0 then
                             kind := readConfig8 (bus, slot, func, PCI_HEADER_TYPE);
-                            
+
                             -- If bit 7 of Header Type is 0, then device does
                             -- not have multiple functions and there's no need
                             -- to check the others.
-                            exit FuncLoop when 
+                            exit FuncLoop when
                                 (kind and PCI_MULTIPLE_FUNCS) = 0;
                         end if;
                     end if;
-                
+
                 end loop FuncLoop;
             end loop SlotLoop;
         end loop BusLoop;
@@ -309,8 +303,7 @@ is
     ---------------------------------------------------------------------------
     function getDeviceConfiguration (bus  : in PCIBusNum;
                                      slot : in PCISlotNum;
-                                     func : in PCIFunctionNum) return PCIDeviceHeader with
-        SPARK_Mode => On
+                                     func : in PCIFunctionNum) return PCIDeviceHeader
     is
         ret : PCIDeviceHeader;
     begin
@@ -321,12 +314,12 @@ is
         ret.revisionID      := readConfig8 (bus, slot, func,  PCI_REVISION_ID);
         ret.progInterface   := readConfig8 (bus, slot, func,  PCI_PROG_IF);
         ret.classCode       := PCIClassCode(readConfig16 (bus, slot, func, PCI_CLASSCODE));
-        
+
         ret.cacheLineSize   := readConfig8 (bus, slot, func, PCI_CACHELINE_SIZE);
         ret.latencyTimer    := readConfig8 (bus, slot, func, PCI_LATENCY_TIMER);
-        
+
         ret.headerType      := PCIHeaderType(readConfig8 (bus, slot, func, PCI_HEADER_TYPE));
-        
+
         ret.builtInSelfTest := readConfig8 (bus, slot, func,  PCI_BIST);
         ret.baseAddr0       := readConfig32 (bus, slot, func, PCI_BASEADDR_0);
         ret.baseAddr1       := readConfig32 (bus, slot, func, PCI_BASEADDR_1);
@@ -354,12 +347,11 @@ is
                              bus  : PCIBusNum;
                              slot : PCISlotNum;
                              func : PCIFunctionNum;
-                             conf : out PCIDeviceHeader) with
-        SPARK_Mode => On
+                             conf : out PCIDeviceHeader)
     is
-        devBase : System.Address := base + 
+        devBase : System.Address := base +
             ((Storage_Offset(bus) * 256) + (Storage_Offset(slot) * 8) + Storage_Offset(func)) * 4096;
-    
+
         ret     : PCIDeviceHeader with Import, Volatile, Address => devBase;
     begin
         conf := ret;
@@ -368,8 +360,7 @@ is
     ---------------------------------------------------------------------------
     -- enumerateDevicesPCIe
     ---------------------------------------------------------------------------
-    procedure enumerateDevicesPCIe (base : System.Address) with
-        SPARK_Mode => On
+    procedure enumerateDevicesPCIe (base : System.Address)
     is
         conf : PCIDeviceHeader;
     begin

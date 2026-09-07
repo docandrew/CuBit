@@ -26,17 +26,16 @@ use type Capabilities.Operations.OperationStatus;
 use type Memory_Grants.Return_Result;
 use type Memory_Grants.Revocation_Result;
 
-package body Process.IPC with
-    SPARK_Mode => On
-is
+-- Ada implementation: custom storage, address overlays or live context state.
+-- Only separately annotated SPARK policy/state routines carry proof obligations.
+package body Process.IPC is
 
     ---------------------------------------------------------------------------
     -- getReceiver
     -- Determine which mailbox to use for receive operations. If the caller
     -- is a thread, use the parent's mailbox.
     ---------------------------------------------------------------------------
-    function getReceiver (pid : ProcessID) return ProcessID with
-        SPARK_Mode => On
+    function getReceiver (pid : ProcessID) return ProcessID
     is
     begin
         if proctab(pid).isThread then
@@ -59,7 +58,7 @@ is
     procedure enqueueCompletion (owner   : in  ProcessID;
                                  item    : in  CompletionEntry;
                                  success : out Boolean)
-        with SPARK_Mode => On
+
     is
         cq : CompletionQueue renames completionTab(owner);
     begin
@@ -82,7 +81,7 @@ is
     procedure dequeueCompletion (owner   : in  ProcessID;
                                  item    : out CompletionEntry;
                                  success : out Boolean)
-        with SPARK_Mode => On
+
     is
         cq : CompletionQueue renames completionTab(owner);
     begin
@@ -110,7 +109,7 @@ is
                                     requestId : in Unsigned_64;
                                     token   : out Unsigned_64;
                                     found   : out Boolean)
-        with SPARK_Mode => On
+
     is
     begin
         found := False;
@@ -152,7 +151,7 @@ is
          replyTo   : in  ProcessID;
          requestId : out Unsigned_64;
          ok        : out Boolean)
-        with SPARK_Mode => On
+
     is
         cap        : Capabilities.Capability;
         foundSlot  : Capabilities.CapabilitySlot :=
@@ -229,7 +228,7 @@ is
     procedure takeIRQDoorbell (owner   : in  ProcessID;
                                item    : out RingEntry;
                                success : out Boolean)
-        with SPARK_Mode => On
+
     is
     begin
         if not proctab(owner).irqNotificationPending then
@@ -259,7 +258,7 @@ is
     procedure enqueueRing (owner   : in  ProcessID;
                            item    : in  RingEntry;
                            success : out Boolean)
-        with SPARK_Mode => On
+
     is
         r : MessageRing renames mailtab(owner).ring;
     begin
@@ -282,7 +281,7 @@ is
     procedure dequeueRing (owner   : in  ProcessID;
                            item    : out RingEntry;
                            success : out Boolean)
-        with SPARK_Mode => On
+
     is
         r : MessageRing renames mailtab(owner).ring;
     begin
@@ -308,7 +307,7 @@ is
                                kind    : in  RingEntryKind;
                                item    : out RingEntry;
                                success : out Boolean)
-        with SPARK_Mode => On
+
     is
         r     : MessageRing renames mailtab(owner).ring;
         idx   : RingIndex;
@@ -367,7 +366,7 @@ is
     procedure dequeueRingServiceRequest (owner   : in  ProcessID;
                                          item    : out RingEntry;
                                          success : out Boolean)
-        with SPARK_Mode => On
+
     is
         r     : MessageRing renames mailtab(owner).ring;
         idx   : RingIndex;
@@ -420,7 +419,7 @@ is
          from        : out ProcessID;
          msg         : out Message;
          received    : out Boolean)
-        with SPARK_Mode => On
+
     is
         mypid    : constant ProcessID := PerCPUData.getCurrentPID;
         receiver : constant ProcessID := getReceiver (mypid);
@@ -577,8 +576,7 @@ is
     -- the message immediately and move the sender to WAITINGFORREPLY.
     -- Otherwise, enqueue ourselves as a receiver and block.
     ---------------------------------------------------------------------------
-    procedure receive (from : out ProcessID; msg : out Message) with
-        SPARK_Mode => On
+    procedure receive (from : out ProcessID; msg : out Message)
     is
         received : Boolean;
     begin
@@ -593,7 +591,7 @@ is
          from       : out ProcessID;
          msg        : out Message;
          received   : out Boolean)
-        with SPARK_Mode => On
+
     is
     begin
         receiveInternal (True, deadlineMs, from, msg, received);
@@ -607,8 +605,7 @@ is
     -- decisions are repeated while holding the mailbox and process locks that
     -- serialize receive, publication, and teardown.
     ---------------------------------------------------------------------------
-    procedure expireReceiveDeadlines (nowMs : Unsigned_64) with
-        SPARK_Mode => On
+    procedure expireReceiveDeadlines (nowMs : Unsigned_64)
     is
         receiver : ProcessID;
         removed  : ProcessID;
@@ -644,7 +641,7 @@ is
     -- receiveEvent
     -- Blocking receive from the unified ring buffer.
     ---------------------------------------------------------------------------
-    function receiveEvent return Message with SPARK_Mode => On is
+    function receiveEvent return Message  is
         mypid    : constant ProcessID := PerCPUData.getCurrentPID;
         receiver : constant ProcessID := getReceiver (mypid);
         re       : RingEntry;
@@ -675,8 +672,7 @@ is
     -- receiveEventNB
     -- Non-blocking receive from the unified ring buffer.
     ---------------------------------------------------------------------------
-    procedure receiveEventNB (msg : out Message; found : out Boolean) with
-        SPARK_Mode => On
+    procedure receiveEventNB (msg : out Message; found : out Boolean)
     is
         mypid    : constant ProcessID := PerCPUData.getCurrentPID;
         receiver : constant ProcessID := getReceiver (mypid);
@@ -712,8 +708,7 @@ is
     procedure replyWait (replyTo  : in  ProcessID;
                          replyMsg : in  Message;
                          from     : out ProcessID;
-                         msg      : out Message) with
-        SPARK_Mode => On
+                         msg      : out Message)
     is
         mypid    : constant ProcessID := PerCPUData.getCurrentPID;
         receiver : constant ProcessID := getReceiver (mypid);
@@ -897,8 +892,7 @@ is
 
     procedure receiveServiceRequestNB (from  : out ProcessID;
                                        msg   : out Message;
-                                       found : out Boolean) with
-        SPARK_Mode => On
+                                       found : out Boolean)
     is
         mypid    : constant ProcessID := PerCPUData.getCurrentPID;
         receiver : constant ProcessID := getReceiver (mypid);
@@ -970,8 +964,7 @@ is
     ---------------------------------------------------------------------------
     procedure receiveAnyIpcNB (from  : out ProcessID;
                                msg   : out Message;
-                               found : out Boolean) with
-        SPARK_Mode => On
+                               found : out Boolean)
     is
         mypid    : constant ProcessID := PerCPUData.getCurrentPID;
         receiver : constant ProcessID := getReceiver (mypid);
@@ -1052,7 +1045,7 @@ is
     --   us to the ready list. We resume with reply already delivered.
     ---------------------------------------------------------------------------
     function send (dest : ProcessID; msg : Message) return MessageTag
-        with SPARK_Mode => On
+
     is
         pid      : constant ProcessID := PerCPUData.getCurrentPID;
         receiver : ProcessID;
@@ -1169,7 +1162,7 @@ is
     procedure trySendEvent (dest     : ProcessID;
                             msg      : Message;
                             accepted : out Boolean)
-        with SPARK_Mode => On is
+         is
         removed : ProcessID;
     begin
         accepted := False;
@@ -1213,7 +1206,7 @@ is
     end trySendEvent;
 
     procedure sendEvent (dest : ProcessID; msg : Message)
-        with SPARK_Mode => On
+
     is
         accepted : Boolean;
     begin
@@ -1227,7 +1220,7 @@ is
     -- bit is sufficient regardless of how many interrupts arrived meanwhile.
     ---------------------------------------------------------------------------
     procedure notifyIRQ (dest : ProcessID)
-        with SPARK_Mode => On
+
     is
         removed : ProcessID;
     begin
@@ -1257,7 +1250,7 @@ is
                                 detail0    : Unsigned_64;
                                 detail1    : Unsigned_64;
                                 detail2    : Unsigned_64)
-        with SPARK_Mode => On
+
     is
         svpid : constant ProcessID := proctab(pid).svpid;
         faultMsg : Message := NULL_MESSAGE;
@@ -1288,7 +1281,7 @@ is
     --   WAITINGFORCOMPLETION.
     ---------------------------------------------------------------------------
     function reply (replyTo : ProcessID; msg : Message) return Unsigned_64
-        with SPARK_Mode => On
+
     is
         mypid : constant ProcessID := PerCPUData.getCurrentPID;
         token     : Unsigned_64;
@@ -1379,7 +1372,7 @@ is
     function replyCap
         (capSlot : Capabilities.CapabilitySlot;
          msg     : Message) return Unsigned_64
-        with SPARK_Mode => On
+
     is
         mypid     : constant ProcessID := PerCPUData.getCurrentPID;
         cap       : Capabilities.Capability;
@@ -1483,7 +1476,7 @@ is
     function submit (dest  : ProcessID;
                      msg   : Message;
                      token : Unsigned_64) return Boolean
-        with SPARK_Mode => On
+
     is
         pid      : constant ProcessID := PerCPUData.getCurrentPID;
         receiver : ProcessID;
@@ -1578,7 +1571,7 @@ is
                               minWait     : in  Natural;
                               numReturned : out Natural)
         -- SPARK_Mode Off: uses x86.stac/clac for SMAP user memory access
-        with SPARK_Mode => Off
+
     is
         mypid    : constant ProcessID := PerCPUData.getCurrentPID;
         receiver : constant ProcessID := getReceiver (mypid);
@@ -1653,7 +1646,7 @@ is
     ---------------------------------------------------------------------------
     procedure pollCompletion (result : out CompletionEntry;
                               found  : out Boolean)
-        with SPARK_Mode => On
+
     is
         mypid    : constant ProcessID := PerCPUData.getCurrentPID;
         receiver : constant ProcessID := getReceiver (mypid);
@@ -1677,7 +1670,7 @@ is
     ---------------------------------------------------------------------------
 
     procedure invalidateGrant (value : in out Grant)
-        with SPARK_Mode => On
+
     is
         nextGeneration : Memory_Grants.Live_Grant_Generation :=
           value.generation;
@@ -1698,7 +1691,7 @@ is
 
     function overlapsGrantRegion (localAddr : System.Address;
                                   numPages  : Natural) return Boolean
-        with SPARK_Mode => On
+
     is
     begin
         if numPages = 0 or else numPages > MAX_GRANT_PAGES then
@@ -1720,7 +1713,7 @@ is
                            perm      : in  GrantPermission;
                            id        : out Natural;
                            success   : out Boolean)
-        with SPARK_Mode => On
+
     is
         pid      : constant ProcessID := PerCPUData.getCurrentPID;
         -- Threads share parent's address space and grant table
@@ -1913,7 +1906,7 @@ is
     end createGrant;
 
     procedure pinGrantPages (g : Grant; success : out Boolean)
-        with SPARK_Mode => Off
+
     is
         phys   : Virtmem.PhysAddress;
         ok     : Boolean;
@@ -1954,7 +1947,7 @@ is
     end pinGrantPages;
 
     procedure unpinGrantPages (g : Grant)
-        with SPARK_Mode => Off
+
     is
         phys : Virtmem.PhysAddress;
         ok   : Boolean;
@@ -1978,7 +1971,7 @@ is
     end unpinGrantPages;
 
     procedure unmapGrantPages (g : Grant)
-        with SPARK_Mode => On
+
     is
         granteeVirt : Integer_Address;
         ok : Boolean;
@@ -2009,7 +2002,7 @@ is
     end unmapGrantPages;
 
     procedure revokeGrantLocked (g : in out Grant)
-        with SPARK_Mode => On
+
     is
         result : Memory_Grants.Revocation_Result;
     begin
@@ -2030,7 +2023,7 @@ is
     -- revokeGrant
     ---------------------------------------------------------------------------
     procedure revokeGrant (id : GrantID)
-        with SPARK_Mode => On
+
     is
         pid   : constant ProcessID := PerCPUData.getCurrentPID;
         owner : constant ProcessID :=
@@ -2047,7 +2040,7 @@ is
     -- Called during process kill().
     ---------------------------------------------------------------------------
     procedure revokeAllGrants (pid : ProcessID)
-        with SPARK_Mode => On
+
     is
     begin
         Spinlocks.enterCriticalSection (grantLock);
@@ -2057,8 +2050,7 @@ is
         Spinlocks.exitCriticalSection (grantLock);
     end revokeAllGrants;
 
-    procedure completeOwnerPIDIfReady (owner : ProcessID)
-        with SPARK_Mode => Off;
+    procedure completeOwnerPIDIfReady (owner : ProcessID);
 
     ---------------------------------------------------------------------------
     -- revokeAllGrantsTo
@@ -2068,7 +2060,7 @@ is
     -- be invalidated before the PID can be reused.
     ---------------------------------------------------------------------------
     procedure revokeAllGrantsTo (pid : ProcessID)
-        with SPARK_Mode => On
+
     is
     begin
         Spinlocks.enterCriticalSection (grantLock);
@@ -2100,7 +2092,7 @@ is
       (slot       : Memory_Grants.Global_Slot;
        generation : out Memory_Grants.Grant_Generation;
        success    : out Boolean)
-      with SPARK_Mode => On
+
     is
         pid : constant ProcessID := PerCPUData.getCurrentPID;
         owner : constant ProcessID :=
@@ -2137,7 +2129,7 @@ is
        requiredWrite : Boolean;
        mappedAddress : out System.Address;
        success       : out Boolean)
-      with SPARK_Mode => On
+
     is
         pid : constant ProcessID := PerCPUData.getCurrentPID;
         receiver : constant ProcessID :=
@@ -2193,7 +2185,7 @@ is
     end acquireGrant;
 
     procedure releaseDMAAllocations (pid : ProcessID)
-      with SPARK_Mode => Off
+
     is
     begin
         for d in DMAAllocArray'Range loop
@@ -2217,7 +2209,7 @@ is
     end releaseDMAAllocations;
 
     procedure completeOwnerPIDIfReady (owner : ProcessID)
-        with SPARK_Mode => Off
+
     is
         activeGrant : Boolean := False;
     begin
@@ -2254,7 +2246,7 @@ is
     procedure returnGrant
       (reference : Memory_Grants.Reference;
        success   : out Boolean)
-      with SPARK_Mode => On
+
     is
         pid : constant ProcessID := PerCPUData.getCurrentPID;
         receiver : constant ProcessID :=
@@ -2295,7 +2287,7 @@ is
     procedure revokeGrantReference
       (reference : Memory_Grants.Reference;
        success   : out Boolean)
-      with SPARK_Mode => On
+
     is
         pid : constant ProcessID := PerCPUData.getCurrentPID;
         owner : constant ProcessID :=
@@ -2326,7 +2318,7 @@ is
       (pid         : ProcessID;
        pidReusable : Boolean;
        deferred    : out Boolean)
-      with SPARK_Mode => On
+
     is
     begin
         deferred := False;
@@ -2349,7 +2341,7 @@ is
     end prepareGrantProtectedTeardown;
 
     procedure finishGrantProtectedTeardown (pid : ProcessID)
-      with SPARK_Mode => On
+
     is
     begin
         Spinlocks.enterCriticalSection (grantLock);
@@ -2369,7 +2361,7 @@ is
     ---------------------------------------------------------------------------
     function capSend (capSlot : Capabilities.CapabilitySlot;
                       msg     : Message) return MessageTag
-        with SPARK_Mode => On
+
     is
         pid          : constant ProcessID := PerCPUData.getCurrentPID;
         destPID      : Unsigned_64;
@@ -2411,7 +2403,7 @@ is
     ---------------------------------------------------------------------------
     function capCall (capSlot : Capabilities.CapabilitySlot;
                       msg     : Message) return MessageTag
-        with SPARK_Mode => On
+
     is
         pid          : constant ProcessID := PerCPUData.getCurrentPID;
         destPID      : Unsigned_64;
@@ -2452,7 +2444,7 @@ is
     function capSubmit (capSlot : Capabilities.CapabilitySlot;
                         msg     : Message;
                         token   : Unsigned_64) return Boolean
-        with SPARK_Mode => On
+
     is
         pid          : constant ProcessID := PerCPUData.getCurrentPID;
         destPID      : Unsigned_64;

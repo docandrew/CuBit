@@ -13,9 +13,8 @@ with Virtmem;
 
 Pragma Elaborate_All (Virtmem);
 
-package Mem_mgr with
-    SPARK_Mode => On
-is
+-- Linker-symbol bounds and live page-table mappings are Ada boundaries.
+package Mem_mgr is
 
     subtype kernelTextPages is Virtmem.PFN range
         Virtmem.addrToPFN(Virtmem.K2P(To_Integer(Virtmem.stext'Address))) .. 

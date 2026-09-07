@@ -24,7 +24,7 @@ with Sysinfo;
 with TextIO; use TextIO;
 with Virtmem;
 
-package body Modules is
+package body Modules with SPARK_Mode => Off is
 
     initrdAddr  : Virtmem.PhysAddress;
     initrdSize  : Storage_Count;
@@ -42,7 +42,7 @@ package body Modules is
                            name     : String;
                            priority : Process.ProcessPriority := 1)
         return Process.ProcessID
-        with SPARK_Mode => On
+
     is
         idx     : Natural;
         elfAddr : System.Address;
@@ -96,8 +96,7 @@ package body Modules is
     ---------------------------------------------------------------------------
     procedure mapInitrd (pid  : Process.ProcessID;
                          addr : Virtmem.PhysAddress;
-                         size : Storage_Count) with
-        SPARK_Mode => On
+                         size : Storage_Count)
     is
         ok : Boolean;
 
@@ -139,8 +138,7 @@ package body Modules is
     -- devmgr.svc, map the initrd into it, grant it CAP_PROCESS + CAP_IOPORT,
     -- and resume it. The device manager handles all remaining boot policy.
     ---------------------------------------------------------------------------
-    procedure setup (mbinfo : in Multiboot.MultibootInfo) with
-        SPARK_Mode => On
+    procedure setup (mbinfo : in Multiboot.MultibootInfo)
     is
         cpioOk : Boolean;
     begin

@@ -50,9 +50,7 @@ with Virtmem;
 Pragma Elaborate_All (Virtmem);
 Pragma Elaborate_All (Descriptors);
 
-package Process with
-    SPARK_Mode => On
-is
+package Process is
     pool : StoragePools.StoragePool;
 
     ProcessException : exception;
@@ -62,7 +60,7 @@ is
     -- Process ID is just an index into the process table, address table and
     -- mail table.
     subtype ProcessID is Natural range 0..255;
-    
+
     NO_PROCESS : constant ProcessID := 0;
 
     -- Limit a user-mode process to 256GiB of memory space. Later we'll add
@@ -86,7 +84,7 @@ is
         Natural (16 * 1024 * 1024 / Virtmem.FRAME_SIZE);
 
     BAD_HEAP_ADDRESS       : constant System.Address := To_Address (16#DEAD_DEAD_DEAD_DEAD#);
-    
+
     -- Secondary stack starts at the bottom of the stack and eats upwards into it.
     --
     -- @TODO this is fine for ZFP user runtime for now, but eventually we'll
@@ -175,7 +173,7 @@ is
 
     ---------------------------------------------------------------------------
     -- The ProcessKernelStack is a page of memory in the Kernel's
-    --  address space. Our process will use the kernel stack during system 
+    --  address space. Our process will use the kernel stack during system
     --  calls, and when it is being scheduled. This structure represents the
     --  _initial_ state of the kernel stack. We have to set up the fields here
     --  to look like we have previously interrupted and context switched to the
@@ -241,7 +239,7 @@ is
         head => NO_PROCESS,
         tail => NO_PROCESS
     );
-    
+
     ---------------------------------------------------------------------------
     -- IPC Message Types
     --
@@ -479,14 +477,14 @@ is
     --                          If this is a thread on another process' sendQueue
     --                          or recvQueue, the queueKey will be that process' PID.
     -- @field isThread        - True if this process is a child thread of some
-    --                          other parent process, sharing the parent's 
-    --                          address space, descriptors and 
+    --                          other parent process, sharing the parent's
+    --                          address space, descriptors and
     -- @field pid             - Process ID of this process
     -- @field ppid            - Parent Process ID
     -- @field name            - short name of this process
     -- @field state           - state of the process
     -- @field mode            - KERNEL or USER mode
-    -- @field priority        - user specified priority for this 
+    -- @field priority        - user specified priority for this
     -- @field pgTable         - index to top-level page table for this process' address space.
     -- @field context         - pointer to process' saved state
     -- @field kernelStack     - pointer to the process' kernel-mode stack
@@ -523,9 +521,9 @@ is
         mode                : ProcessMode;
 
         priority            : ProcessPriority;
-        
+
         pgTable             : ProcessID;        -- Index into addrtab
-        
+
         context             : System.Address;   -- Pointer to the saved state
 
         kernelStack         : ProcessKernelStackPtr;
@@ -548,7 +546,7 @@ is
 
         -- Immutable primary-stack reservation declared by the executable.
         stackSize           : UserStackSize := MIN_USER_STACK_SIZE;
-        
+
         -- Heap
         heapEnd             : System.Address;
         heapStart           : System.Address;
@@ -690,13 +688,13 @@ is
     -- setup
     -- Allocate storage used for the FrameList package
     ---------------------------------------------------------------------------
-    procedure setup with SPARK_Mode => On;
+    procedure setup;
 
     ---------------------------------------------------------------------------
     -- addToProctab
     -- Given a process object, add it to the process table.
     ---------------------------------------------------------------------------
-    procedure addToProctab (proc : in Process) with SPARK_Mode => On;
+    procedure addToProctab (proc : in Process);
 
     ---------------------------------------------------------------------------
     -- startKernelThread
@@ -709,12 +707,11 @@ is
                                  name       : in ProcessName;
                                  pid        : in ProcessID;
                                  priority   : in ProcessPriority;
-                                 homeCPU    : in Natural := 0)
-        with SPARK_Mode => On;
+                                 homeCPU    : in Natural := 0);
 
     ---------------------------------------------------------------------------
     -- addPage
-    -- 
+    --
     -- Map a page into this process' address space at the specified virtual
     -- address with the given flags. This procedure will allocate memory for
     -- the page, which can be accessed via the storage param if bytes need to
@@ -730,8 +727,7 @@ is
     procedure addPage (proc    : in out Process;
                        mapTo   : in System.Address;
                        storage : out System.Address;
-                       flags   : in Unsigned_64 := Virtmem.PG_USERDATA)
-        with SPARK_Mode => On;
+                       flags   : in Unsigned_64 := Virtmem.PG_USERDATA);
 
     ---------------------------------------------------------------------------
     -- create:
@@ -760,21 +756,20 @@ is
                      procStack    : in System.Address;
                      stackSize    : in UserStackSize;
                      thread       : in Boolean := False;
-                     requestedPID : in ProcessID := NO_PROCESS) return ProcessID
-        with SPARK_Mode => On;
+                     requestedPID : in ProcessID := NO_PROCESS) return ProcessID;
 
     ---------------------------------------------------------------------------
     -- yield
     -- Yield this process' execution back to the scheduler.
     -- Called by the running process itself after an interrupt.
     ---------------------------------------------------------------------------
-    procedure yield with SPARK_Mode => On;
+    procedure yield;
 
     ---------------------------------------------------------------------------
     -- ready
     -- Move a process into the ready list and change its state to READY
     ---------------------------------------------------------------------------
-    procedure ready (pid : ProcessID) with SPARK_Mode => On;
+    procedure ready (pid : ProcessID);
 
     ---------------------------------------------------------------------------
     -- setLatencyContract
@@ -788,8 +783,7 @@ is
          class    : LatencyClass;
          periodUs : Unsigned_32;
          budgetUs : Unsigned_32;
-         flags    : Unsigned_32)
-        with SPARK_Mode => On;
+         flags    : Unsigned_32);
 
     ---------------------------------------------------------------------------
     -- wait
@@ -798,34 +792,33 @@ is
     -- ExitCriticalSection and begin waiting for the scheduler to wake us back
     -- up when someone or something else calls goAhead on the channel.
     -- @TODO replace this in favor of using IPC for resource synchronization
-    ---------------------------------------------------------------------------    
-    procedure wait (channel : in WaitChannel; resourceLock : in out Spinlocks.spinlock)
-        with SPARK_Mode => On;
+    ---------------------------------------------------------------------------
+    procedure wait (channel : in WaitChannel; resourceLock : in out Spinlocks.spinlock);
 
     ---------------------------------------------------------------------------
     -- goAhead
     -- Set any processes waiting on the specified channel to READY.
     -- The opposite of "wait".
     ---------------------------------------------------------------------------
-    procedure goAhead (channel : in WaitChannel) with SPARK_Mode => On;
+    procedure goAhead (channel : in WaitChannel);
 
     ---------------------------------------------------------------------------
     -- suspend
     -- Place the current PID in a SUSPENDED state and reschedule.
     ---------------------------------------------------------------------------
-    procedure suspend with SPARK_Mode => On;
+    procedure suspend;
 
     ---------------------------------------------------------------------------
     -- resume
     -- Move the given PID from SUSPENDED to READY state
     ---------------------------------------------------------------------------
-    procedure resume (pid : ProcessID) with SPARK_Mode => On;
+    procedure resume (pid : ProcessID);
 
     ---------------------------------------------------------------------------
     -- notify
     -- Wake a blocked process by moving it to READY state
     ---------------------------------------------------------------------------
-    procedure notify (pid : ProcessID) with SPARK_Mode => On;
+    procedure notify (pid : ProcessID);
 
     ---------------------------------------------------------------------------
     -- sleep
@@ -833,17 +826,15 @@ is
     -- @NOTE delta queue uses signed integer for the ms delay, so we're limited
     -- by how long the delay can be here.
     ---------------------------------------------------------------------------
-    procedure sleep (us : Time.Duration) with SPARK_Mode => On,
-        Pre => (us <= 2147483647 * Time.Milliseconds);
+    procedure sleep (us : Time.Duration) with Pre => (us <= 2147483647 * Time.Milliseconds);
 
     ---------------------------------------------------------------------------
     -- start
-    -- This procedure is set as the return address for new processes. A new 
+    -- This procedure is set as the return address for new processes. A new
     --  process first scheduling will context switch here.
     -- This procedure releases the lock previously set by Scheduler.schedule
     ---------------------------------------------------------------------------
     procedure start with
-        SPARK_Mode => On,
         Pre => Spinlocks.isLocked(lock),
         Post => not Spinlocks.isLocked(lock);
 
@@ -854,33 +845,32 @@ is
     --
     -- TODO: make separate type for a context address
     ---------------------------------------------------------------------------
-    procedure switch (oldProc : in System.Address; newProc : in System.Address)
-        with Import => True, Convention => C, External_Name => "asm_switch_to";
+    -- The outer critical section's interrupt restoration state belongs to
+    -- this execution context and must survive scheduler and direct IPC
+    -- handoffs, including resumption on a different CPU.
+    procedure switch (oldProc : in System.Address; newProc : in System.Address);
 
     ---------------------------------------------------------------------------
     -- createFirstProcess:
     -- Since we can't call a syscall from kernel mode, we need to create a stub
     -- for the first user process (init) here and it can perform the syscall to
-    -- load the actual init binary and start running it. See init.asm. 
+    -- load the actual init binary and start running it. See init.asm.
     ---------------------------------------------------------------------------
-    procedure createFirstProcess
-        with SPARK_Mode => On;
+    procedure createFirstProcess;
 
     ---------------------------------------------------------------------------
     -- switchAddressSpace
     -- Given a process ID, make the corresponding entry in the addrtab the
     -- currently active table, changing the virtual memory address space in use.
     ---------------------------------------------------------------------------
-    procedure switchAddressSpace (pid : in ProcessID)
-        with SPARK_Mode => On;
+    procedure switchAddressSpace (pid : in ProcessID);
 
     ---------------------------------------------------------------------------
     -- getParent
     -- Given a process ID, return the parent process. If the process ID given
     -- is a thread, then return the owning process' ID.
     ---------------------------------------------------------------------------
-    function getParent (pid : in ProcessID) return ProcessID
-        with SPARK_Mode => On;
+    function getParent (pid : in ProcessID) return ProcessID;
 
     ---------------------------------------------------------------------------
     -- killProcess
@@ -888,22 +878,20 @@ is
     -- enter the scheduler. Used for killing another process where the
     -- caller needs to continue executing.
     ---------------------------------------------------------------------------
-    procedure killProcess (pid : in ProcessID)
-        with SPARK_Mode => On;
+    procedure killProcess (pid : in ProcessID);
 
     ---------------------------------------------------------------------------
     -- kill
     -- End this process and enter the scheduler (never returns).
     -- Used for self-kill (SYSCALL_EXIT).
     ---------------------------------------------------------------------------
-    procedure kill (pid : in ProcessID)
-        with SPARK_Mode => On;
+    procedure kill (pid : in ProcessID);
 
     ---------------------------------------------------------------------------
     -- getRunningProcess
     ---------------------------------------------------------------------------
     -- function getRunningProcess return ProcPtr
-    --     with SPARK_Mode => On;
+    --;
 
     ---------------------------------------------------------------------------
     -- pageFault
@@ -911,8 +899,7 @@ is
     -- simply to a page that hasn't been demand-mapped yet, or an actual
     -- violation.
     ---------------------------------------------------------------------------
-    procedure pageFault (pid : ProcessID; addr : System.Address)
-        with SPARK_Mode => On;
+    procedure pageFault (pid : ProcessID; addr : System.Address);
 
     ---------------------------------------------------------------------------
     -- directSwitch
@@ -920,31 +907,30 @@ is
     -- the scheduler. Used by IPC fast path for send→receive and reply→sender.
     -- Caller MUST hold Process.lock before calling.
     ---------------------------------------------------------------------------
-    procedure directSwitch (fromPID : ProcessID; toPID : ProcessID)
-        with SPARK_Mode => Off;
+    procedure directSwitch (fromPID : ProcessID; toPID : ProcessID);
 
     ---------------------------------------------------------------------------
     -- saveFPUState
     -- Save the complete FPU/MMX/SSE state of a user process before switching
     -- away from it. Scalar kernel threads are a no-op.
     ---------------------------------------------------------------------------
-    procedure saveFPUState (pid : ProcessID) with SPARK_Mode => On;
+    procedure saveFPUState (pid : ProcessID);
 
     ---------------------------------------------------------------------------
     -- restoreFPUState
     -- Restore the complete, initialized FPU/MMX/SSE state before entering a
     -- user process. Scalar kernel threads are a no-op.
     ---------------------------------------------------------------------------
-    procedure restoreFPUState (pid : ProcessID) with SPARK_Mode => On;
+    procedure restoreFPUState (pid : ProcessID);
 
 private
     ---------------------------------------------------------------------------
     -- Ring 3 entry point in interrupt.asm. Processes will initially set
-    -- their return address here, so when we "return" to the process, they'll 
+    -- their return address here, so when we "return" to the process, they'll
     -- clean up the "interrupt" and begin executing in the process context
     -- upon return from interrupt.
     ---------------------------------------------------------------------------
-    interruptReturn : Util.Symbol 
+    interruptReturn : Util.Symbol
         with Import, Convention => C, External_Name => "interruptReturn";
 
     ---------------------------------------------------------------------------
@@ -953,7 +939,6 @@ private
     -- In the pidMap, "True" means available, "False" means not available.
     ---------------------------------------------------------------------------
     package PIDTracker with
-        SPARK_Mode => On,
         Abstract_State => PIDTrackerState
     is
         -----------------------------------------------------------------------
@@ -962,7 +947,6 @@ private
         -- Protected with pidLock
         -----------------------------------------------------------------------
         procedure allocPID (pid : out ProcessID) with
-            SPARK_Mode => On,
             Global => (In_Out => PIDTrackerState);
 
         -----------------------------------------------------------------------
@@ -972,14 +956,12 @@ private
         -- Protected with pidLock
         -----------------------------------------------------------------------
         procedure allocSpecificPID (pid : in ProcessID) with
-            SPARK_Mode => On,
             Global => (In_Out => PIDTrackerState);
 
         -----------------------------------------------------------------------
         -- freePID: mark PID as free in bitmap. Acquires pidLock.
         -----------------------------------------------------------------------
         procedure freePID (pid : in ProcessID) with
-            SPARK_Mode => On,
             Global => (In_Out => PIDTrackerState);
 
     private
@@ -995,20 +977,17 @@ private
         -- Keep some PIDs reserved for the kernel to use for tasks with specific PIDs
         pidMap : PIDBitmapType := (0 => False, others => True)
             with Part_Of => PIDTrackerState;
-        
+
         pidLock : Spinlocks.Spinlock := (name => trackerLockName'Access, others => <>)
             with Part_Of => PIDTrackerState;
 
         function findFreePID return ProcessID with
-            SPARK_Mode => On,
             Global => (Input => PIDTrackerState);
 
         procedure markUsed (pid : in ProcessID) with
-            SPARK_Mode => On,
             Global => (In_Out => PIDTrackerState);
 
         procedure markFree (pid : in ProcessID) with
-            SPARK_Mode => On,
             Global => (In_Out => PIDTrackerState),
             Pre => pid /= 0;
 

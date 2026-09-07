@@ -390,6 +390,9 @@ isrCommon:
     call interruptHandler
 
 interruptReturn:
+    ; Keep the return frame and GS transition protected until IRETQ restores
+    ; the destination context's interrupt state and privilege level together.
+    cli
     pop rax
     pop rbx
     pop rcx

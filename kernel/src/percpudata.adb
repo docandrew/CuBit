@@ -10,16 +10,17 @@ with System.Machine_Code; use System.Machine_Code;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with TextIO; use TextIO;
+with Spinlocks;
 with Util;
 with Virtmem;
 with x86;
 
-package body PerCPUData with
-    SPARK_Mode => On
-is
-    function toSegmentDescriptor is 
+-- Ada implementation: custom storage, address overlays or live context state.
+-- Only separately annotated SPARK policy/state routines carry proof obligations.
+package body PerCPUData is
+    function toSegmentDescriptor is
         new Ada.Unchecked_Conversion (Unsigned_64, Segment.Descriptor);
-    
+
     ---------------------------------------------------------------------------
     -- setup
     ---------------------------------------------------------------------------
@@ -29,8 +30,7 @@ is
                      gdtAddr        : in System.Address;
                      gdtPointerAddr : in System.Address;
                      tssAddr        : in System.Address)
-    with
-        SPARK_Mode => On
+
     is
         use Segment;
 
@@ -41,6 +41,7 @@ is
         newPAT : x86.PATRegister;
     begin
         cpuData.currentPID := Process.NO_PROCESS;
+        cpuData.exclusion := Interrupt_State.Initial_State;
         cpuData.nmiCount := 0;
         cpuData.nmiInProgress := False;
         cpuData.needReschedule := False;
@@ -70,7 +71,7 @@ is
 
         cpuData.cpuNum := cpuNum;
         cpuData.gdt(GDT_SEGMENT_NULL) := toSegmentDescriptor(0);
-        
+
         cpuData.gdt(GDT_SEGMENT_KERNEL_CODE) := (
             typeField =>        Segment.CODE_EXECUTE_ONLY,
             systemSegment =>    True,
@@ -79,7 +80,7 @@ is
             longmode =>         True,
             others => <>
         );
-        
+
         cpuData.gdt(GDT_SEGMENT_KERNEL_DATA) := (
             typeField =>        Segment.DATA_READ_WRITE,
             systemSegment =>    True,
@@ -121,25 +122,25 @@ is
                 lowBits.limit_0_15 := 16#67#;
             end if;
 
-            lowBits.base_0_15   := 
+            lowBits.base_0_15   :=
                 Unsigned_16(tssAddrNum and 16#FFFF#);
-            lowBits.base_16_23  := 
+            lowBits.base_16_23  :=
                 Unsigned_8(Shift_Right(tssAddrNum, 16) and 16#FF#);
             lowBits.base_24_31  :=
                 Unsigned_8(Shift_Right(tssAddrNum, 24) and 16#FF#);
-            
+
             -- This just happens to have the same type (9) as 64-bit TSS
             lowBits.typeField   := Segment.CODE_EXECUTE_ONLY_ACCESSED;
 
             lowBits.dpl         := x86.DPL_USER;
             lowBits.present     := True;
-            
+
             cpuData.gdt(GDT_SEGMENT_TSS_0)  := lowBits;
             cpuData.gdt(GDT_SEGMENT_TSS_1)  := toSegmentDescriptor (highBits);
         end setupTSS;
 
         cpuData.gdt(GDT_SEGMENT_UNUSED) := toSegmentDescriptor(0);
-        
+
         cpuData.gdtPointer.base     := Util.addrToNum(gdtAddr);
         cpuData.gdtPointer.limit    := (cpuData'Size / 8) - 1;
 
@@ -164,10 +165,10 @@ is
             -- we use the GDT_OFFSET_KERNEL_DATA selector for the SYSRET
             -- CS and SS portion of the STAR MSR
             starVal : constant Unsigned_64 :=
-                Shift_Left (GDTOffset'Enum_Rep(GDT_OFFSET_KERNEL_DATA) or 3, 48) 
+                Shift_Left (GDTOffset'Enum_Rep(GDT_OFFSET_KERNEL_DATA) or 3, 48)
                 or
                 Shift_Left (GDTOffset'Enum_Rep(GDT_OFFSET_KERNEL_CODE), 32);
-        begin            
+        begin
             --print("loading STAR with"); println(starVal);
             x86.wrmsr (x86.MSRs.STAR, starVal);
         end makeStar;
@@ -187,8 +188,7 @@ is
     -- the address from GS that we can use to instantiate the PerCPUData struct
     -- in our SPARK code.
     ---------------------------------------------------------------------------
-    function getPerCPUDataAddr return System.Address with
-        SPARK_Mode => Off --inline ASM
+    function getPerCPUDataAddr return System.Address  --inline ASM
     is
         ret : System.Address;
     begin
@@ -204,8 +204,7 @@ is
     ---------------------------------------------------------------------------
     -- getCPUNumber
     ---------------------------------------------------------------------------
-    function getCPUNumber return Natural with
-        SPARK_Mode => On
+    function getCPUNumber return Natural
     is
         perCPUAddr : constant System.Address := getPerCPUDataAddr;
     begin
@@ -220,8 +219,7 @@ is
     ---------------------------------------------------------------------------
     -- getCurrentPID
     ---------------------------------------------------------------------------
-    function getCurrentPID return Process.ProcessID with
-        SPARK_Mode => On
+    function getCurrentPID return Process.ProcessID
     is
         perCPUAddr : constant System.Address := getPerCPUDataAddr;
     begin
@@ -236,8 +234,7 @@ is
     ---------------------------------------------------------------------------
     -- intsEnabled
     ---------------------------------------------------------------------------
-    function intsEnabled return Boolean with
-        SPARK_Mode => On
+    function intsEnabled return Boolean
     is
         perCPUAddr : constant System.Address := getPerCPUDataAddr;
     begin
@@ -245,15 +242,14 @@ is
             cpuData : PerCPUData with
                 Import, Volatile, Address => perCPUAddr;
         begin
-            return cpuData.intsEnabled;
+            return Interrupt_State.Restores_Interrupts (cpuData.exclusion);
         end getCPUContext;
     end intsEnabled;
-    
+
     ---------------------------------------------------------------------------
     -- numCLI
     ---------------------------------------------------------------------------
-    function numCLI return Integer with
-        SPARK_Mode => On
+    function numCLI return Integer
     is
         perCPUAddr : constant System.Address := getPerCPUDataAddr;
     begin
@@ -261,7 +257,7 @@ is
             cpuData : PerCPUData with
                 Import, Volatile, Address => perCPUAddr;
         begin
-            return cpuData.numCLI;
+            return Interrupt_State.Depth (cpuData.exclusion);
         end getCPUContext;
     end numCLI;
 
@@ -270,20 +266,24 @@ is
     ---------------------------------------------------------------------------
     procedure pushCLI is
         priorFlags : x86.RFlags;
-        perCPUAddr : constant System.Address := getPerCPUDataAddr;
+        status : Interrupt_State.Result;
+        state : Interrupt_State.State;
+        use type Interrupt_State.Result;
     begin
+        -- Mask before reading GS: an interrupt may schedule/migrate this
+        -- context, so a per-CPU address obtained before CLI can be stale.
+        priorFlags := x86.getFlags;
+        x86.cli;
         declare
             cpuData : PerCPUData with
-                Import, Volatile, Address => perCPUAddr;
+                Import, Volatile, Address => getPerCPUDataAddr;
         begin
-            priorFlags := x86.getFlags;
-            x86.cli;
-
-            if cpuData.numCLI = 0 then
-                cpuData.intsEnabled := priorFlags.interrupt;
+            state := cpuData.exclusion;
+            Interrupt_State.Enter (state, priorFlags.interrupt, status);
+            if status /= Interrupt_State.Success then
+                raise InterruptException with "Invalid interrupt exclusion entry";
             end if;
-
-            cpuData.numCLI := cpuData.numCLI + 1;
+            cpuData.exclusion := state;
         end;
     end pushCLI;
 
@@ -293,6 +293,10 @@ is
     procedure popCLI is
         priorFlags : x86.RFlags;
         perCPUAddr : constant System.Address := getPerCPUDataAddr;
+        state : Interrupt_State.State;
+        status : Interrupt_State.Result;
+        enable : Boolean;
+        use type Interrupt_State.Result;
     begin
         declare
             cpuData : PerCPUData with
@@ -300,31 +304,53 @@ is
         begin
             priorFlags := x86.getFlags;
 
-            if priorFlags.interrupt then
-                raise InterruptException with "Called popCLI with interrupts enabled";
+            state := cpuData.exclusion;
+            Interrupt_State.Leave (state, priorFlags.interrupt, enable, status);
+            if status /= Interrupt_State.Success then
+                raise InterruptException with "Invalid interrupt exclusion release";
             end if;
-
-            cpuData.numCLI := cpuData.numCLI - 1;
-
-            if cpuData.numCLI < 0 then
-                raise InterruptException with "Called popCLI without calling pushCLI first.";
-            end if;
-
-            if cpuData.numCli = 0 and cpuData.intsEnabled then
+            cpuData.exclusion := state;
+            if enable then
                 x86.sti;
             end if;
         end;
     end popCLI;
 
+    function captureHandoff return Interrupt_State.Context is
+        cpuData : PerCPUData with
+            Import, Volatile, Address => getPerCPUDataAddr;
+        state : constant Interrupt_State.State := cpuData.exclusion;
+        ownsLock : constant Boolean := Spinlocks.isLocked (Process.lock) and then
+            Process.lock.cpu = cpuData.cpuNum;
+    begin
+        if not Interrupt_State.Can_Handoff (state, x86.getFlags.interrupt, ownsLock) then
+            raise InterruptException with "Invalid context handoff: IF/depth/Process.lock";
+        end if;
+        return Interrupt_State.Capture (state);
+    end captureHandoff;
+
+    procedure resumeHandoff (saved : Interrupt_State.Context) is
+        cpuData : PerCPUData with
+            Import, Volatile, Address => getPerCPUDataAddr;
+        state : Interrupt_State.State := cpuData.exclusion;
+        ownsLock : constant Boolean := Spinlocks.isLocked (Process.lock) and then
+            Process.lock.cpu = cpuData.cpuNum;
+    begin
+        if not Interrupt_State.Can_Handoff (state, x86.getFlags.interrupt, ownsLock) then
+            raise InterruptException with "Invalid context resumption: IF/depth/Process.lock";
+        end if;
+        Interrupt_State.Resume (state, saved);
+        cpuData.exclusion := state;
+    end resumeHandoff;
+
     ---------------------------------------------------------------------------
     -- We statically allocate per-CPU stacks in boot.asm, and can use simple
     -- arithmetic to determine the secondary stack address given the CPU num.
     ---------------------------------------------------------------------------
-    function getSecondaryStack return SS_Stack_Ptr with
-        SPARK_Mode => Off   -- Unchecked_Conversion
+    function getSecondaryStack return SS_Stack_Ptr    -- Unchecked_Conversion
     is
         function toPtr is new Ada.Unchecked_Conversion(Integer_Address, SS_Stack_Ptr);
-        
+
         perCPUAddr      : constant System.Address := getPerCPUDataAddr;
         totalStackSize  : Unsigned_64;
         perCPUStackSize : Unsigned_64;
@@ -332,7 +358,7 @@ is
     begin
 
         if perCPUAddr = System.Null_Address then
-            raise SecondaryStackNotAvailable 
+            raise SecondaryStackNotAvailable
                 with "Attempted secondary stack use before per-CPU data is initialized";
         end if;
 
@@ -345,13 +371,13 @@ is
             --print(" total Stack Size: "); println(totalStackSize);
 
             perCPUStackSize := totalStackSize / Config.MAX_CPUS;
-            
+
             --print(" perCPUStackSize: "); println(perCPUStackSize);
 
-            cpuSecStack := 
+            cpuSecStack :=
                 Virtmem.STACK_TOP -
                 Integer_Address(Unsigned_64(perCPU.cpuNum + 1) * perCPUStackSize);
-        
+
                 --print(" Secondary stack: "); print(cpuSecStack); print(" for CPU "); println(perCPU.cpuNum);
         end getPerCPU;
 

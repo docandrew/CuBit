@@ -7,9 +7,7 @@
 with Interfaces; use Interfaces;
 with Multiboot; use Multiboot;
 
-package kmain with
-    SPARK_Mode => On
-is
+package kmain is
 
     ---------------------------------------------------------------------------
     -- Our kernel's Ada entry point. Jumped to from boot.asm
@@ -30,5 +28,5 @@ is
     ---------------------------------------------------------------------------
     startingCPU : Unsigned_32
         with Export => True, External_Name => "startingCPU";
-    
+
 end kmain;

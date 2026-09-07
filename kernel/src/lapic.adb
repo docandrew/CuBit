@@ -16,8 +16,9 @@ with TextIO; use TextIO;
 with Time;
 with x86;
 
+-- MMIO register overlays, IPI delivery and bootstrap hardware sequencing.
 package body Lapic
-    with SPARK_Mode => On
+    with SPARK_Mode => Off
 is
     type LAPICRegister is new Unsigned_32;
 
@@ -199,7 +200,7 @@ is
     -- procedure write(reg : in out LAPICRegister; val : in Unsigned_32);
 
     procedure write(reg : in out LAPICRegister; val : in Unsigned_32)
-        with SPARK_Mode => On
+        with SPARK_Mode => Off
     is
         ignore : Unsigned_32;
     begin
@@ -217,7 +218,7 @@ is
     -- values of some of these LAPIC registers should be (commented out below)
     ---------------------------------------------------------------------------
     function goodPowerOnState return Boolean
-        with SPARK_Mode => On
+        with SPARK_Mode => Off
     is
     begin
             -- textmode.print("isr0: "); textmode.println(isr0.all);
@@ -301,7 +302,7 @@ is
     -- @return number of APIC ticks / ms
     ---------------------------------------------------------------------------
     function calibrateAPICTimer return Unsigned_32
-        with SPARK_Mode => On
+        with SPARK_Mode => Off
     is
         APICTicksIn10ms : Unsigned_32;
     begin
@@ -330,7 +331,7 @@ is
     -- @param lapicPhysAddr - physical base address of the LAPIC registers
     ---------------------------------------------------------------------------
     procedure setupLAPIC_BSP
-        with SPARK_Mode => On
+        with SPARK_Mode => Off
     is
         RemapFail   : exception;
 
@@ -411,7 +412,7 @@ is
     end setTimerInterval;
 
     procedure finishIRQ
-        with SPARK_Mode => On
+        with SPARK_Mode => Off
     is
     begin
         write(eoi, 0);
@@ -421,7 +422,7 @@ is
     -- Notes: writing the icr0 causes the IPI to be sent.
     ---------------------------------------------------------------------------
     procedure sendIPI(cpuNum : in Unsigned_8; intCommand : in Unsigned_32) with
-        SPARK_Mode => On
+        SPARK_Mode => Off
     is
     begin
         -- make sure no IPI is pending
@@ -456,7 +457,7 @@ is
     --  U16 here and set the offset to 0.
     ---------------------------------------------------------------------------
     procedure setWarmResetVector(startAddr : in Unsigned_16) with
-        SPARK_Mode => On
+        SPARK_Mode => Off
     is
     begin
         warmResetVectorSeg := Unsigned_16(Shift_Right(startAddr, 4));
@@ -469,7 +470,7 @@ is
     -- Zero out the warm reset vector
     ---------------------------------------------------------------------------
     procedure clearWarmResetVector with
-        SPARK_Mode => On
+        SPARK_Mode => Off
     is
     begin
         warmResetVectorSeg := 0;
@@ -491,7 +492,7 @@ is
     -- INIT is edge-triggered, and vector field must be 0x00
     ---------------------------------------------------------------------------
     procedure bootAP(cpuNum : in Unsigned_8; startAddr : in Unsigned_16) with
-        SPARK_Mode => On
+        SPARK_Mode => Off
     is
     begin
         cmos.write(cmos.ShutdownStatus, cmos.JMP_PTR_NO_EOI);

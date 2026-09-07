@@ -12,9 +12,8 @@ with MemoryAreas; use MemoryAreas;
 with TextIO; use TextIO;
 with x86;
 
-package body Mem_mgr
-    with SPARK_Mode => On
-is
+-- Only explicitly annotated pure helpers are SPARK; mappings use overlays.
+package body Mem_mgr is
     -- raise if we fail to re-map any pages
     RemapException : exception;
 
@@ -156,8 +155,8 @@ is
     ---------------------------------------------------------------------------
     -- isBigFrameAligned
     ---------------------------------------------------------------------------
-    function isBigFrameAligned (addr : in Virtmem.PhysAddress) 
-        return Boolean
+    function isBigFrameAligned (addr : in Virtmem.PhysAddress)
+        return Boolean with SPARK_Mode => On
     is
     begin
         return Unsigned_64(addr) mod Unsigned_64(Virtmem.BIG_FRAME_SIZE) = 0;
@@ -287,8 +286,7 @@ is
     -- setup
     -- map all physical memory into our p4 table.
     ---------------------------------------------------------------------------
-    procedure setup (areas : in MemoryAreas.MemoryAreaArray) with
-        SPARK_Mode => Off
+    procedure setup (areas : in MemoryAreas.MemoryAreaArray)
     is
         procedure mapIOArea is new Mem_mgr.mapIOArea(BootAllocator.allocFrame);
         procedure mapArea is new Mem_mgr.mapArea(BootAllocator.allocFrame);
@@ -327,8 +325,7 @@ is
     -- part of a 2MB big page, split the big page into 512 small pages first,
     -- then clear the target P1 entry. Used for kernel stack guard pages.
     ---------------------------------------------------------------------------
-    procedure createGuardPage (physAddr : in Virtmem.PhysAddress) with
-        SPARK_Mode => Off  -- uses 'Address, Import overlays
+    procedure createGuardPage (physAddr : in Virtmem.PhysAddress)
     is
         use Virtmem;
 
@@ -450,8 +447,7 @@ is
     -- Restore a previously unmapped kernel linear page so the buddy
     -- allocator can reuse the frame. Assumes big page was already split.
     ---------------------------------------------------------------------------
-    procedure removeGuardPage (physAddr : in Virtmem.PhysAddress) with
-        SPARK_Mode => Off  -- uses 'Address, Import overlays
+    procedure removeGuardPage (physAddr : in Virtmem.PhysAddress)
     is
         use Virtmem;
 
@@ -509,8 +505,7 @@ is
     ---------------------------------------------------------------------------
     -- switchAddressSpace - make the kernel's page table the active one.
     ---------------------------------------------------------------------------
-    procedure switchAddressSpace with
-        SPARK_Mode => On
+    procedure switchAddressSpace
     is
     begin
         -- only switch if its necessary to avoid the TLB flush
@@ -522,8 +517,7 @@ is
     ---------------------------------------------------------------------------
     -- mapKernelMemIntoProcess
     ---------------------------------------------------------------------------
-    procedure mapKernelMemIntoProcess (procP4 : in out Virtmem.P4) with
-        SPARK_Mode => On
+    procedure mapKernelMemIntoProcess (procP4 : in out Virtmem.P4)
     is
         use Virtmem; -- for PageTableIndex
     begin
@@ -538,8 +532,7 @@ is
     ---------------------------------------------------------------------------
     -- unmapKernelMemFromProcess
     ---------------------------------------------------------------------------
-    procedure unmapKernelMemFromProcess (procP4 : in out Virtmem.P4) with
-        SPARK_Mode => On
+    procedure unmapKernelMemFromProcess (procP4 : in out Virtmem.P4)
     is
         use Virtmem; -- for PageTableIndex
     begin
@@ -556,7 +549,6 @@ is
     ---------------------------------------------------------------------------
     function mapIOFrame (addr  : in Virtmem.PhysAddress;
                          flags : in Unsigned_64 := Virtmem.PG_IO) return Boolean
-        with SPARK_Mode => On
     is
         procedure mapPage is new Virtmem.mapPage (allocate);
         ok : Boolean;

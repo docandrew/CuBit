@@ -62,3 +62,25 @@ GPL-3.0, and Fedora packages the Bluecurve icon theme as GPL-2.0-or-later.
 Bluecurve Metacity window control PNGs in `themes/Bluecurve/metacity-1`. The
 generated atlas currently includes Close, Minimize, Maximize, Restore, and Menu
 icons.
+
+## Bluecurve Cursor Atlas
+
+`userspace/services/desktop/desktop_cursors.ads` was generated from the nominal
+24-pixel Xcursor images in `icons/icon-set/Bluecurve/cursors` at Bluecurve
+commit `013ba225e78d9767b274ac6f16a67cb19f0673c6`. It includes `left_ptr`,
+`xterm`, `sb_h_double_arrow`, `sb_v_double_arrow`, and
+`bottom_right_corner`. The original dimensions, hotspots, antialiasing, and
+premultiplied ARGB pixels are retained; CuBit does not parse Xcursor files at
+runtime.
+
+Regenerate the atlas with:
+
+```sh
+python3 tools/generate_cursor_atlas.py \
+  --source-dir /path/to/Bluecurve/icons/icon-set/Bluecurve/cursors \
+  --output userspace/services/desktop/desktop_cursors.ads \
+  --source-label 'neeeeow/Bluecurve@013ba225 icons/icon-set/Bluecurve/cursors'
+```
+
+The source repository declares GPL-3.0. Fedora distributes the corresponding
+Bluecurve cursor theme as GPL-2.0-or-later.

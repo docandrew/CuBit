@@ -22,7 +22,8 @@ package CuBit.UI.Tables is
        colors : CuBit.UI.Theme;
        c1, c2, c3 : String;
        layout : in out CuBit.UI.Table_Column_Layout;
-       minimumFirst, minimumSecond, minimumThird : Natural := 32);
+       minimumFirst, minimumSecond, minimumThird : Natural := 32;
+       retainedInput : Boolean := False);
 
    procedure Row
       (c : CuBit.UI.Canvas;

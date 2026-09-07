@@ -77,7 +77,7 @@ is
     --  called, and will cause a kernel panic if it is.
     ---------------------------------------------------------------------------
     procedure eoi (num : x86Interrupt) with
-        SPARK_Mode => On
+        SPARK_Mode => Off -- instantiate MMIO controller at live LAPIC address
     is
         NoInterruptController : Exception;
         package myLapic is new lapic(lapicAddr);
@@ -133,7 +133,7 @@ is
     --  interrupts.
     ---------------------------------------------------------------------------
     procedure interruptHandler (frame : not null access constant Stackframe.InterruptStackFrame)
-        with SPARK_Mode => On
+        with SPARK_Mode => Off -- live CPU/process overlays and hardware dispatch
     is
         KernelFPUException : Exception;
 

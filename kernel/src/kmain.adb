@@ -49,6 +49,8 @@ pragma Unreferenced(Last_Chance_Handler);
 with Syscall;
 pragma Unreferenced(Syscall);
 
+-- Ada implementation: custom storage, address overlays or live context state.
+-- Only separately annotated SPARK policy/state routines carry proof obligations.
 package body kmain is
 
 -- For testing only. Can remove later.
@@ -71,8 +73,8 @@ NoAPICException      : exception;
 --
 -- Entry point for the kernel.
 -------------------------------------------------------------------------------
-procedure kmain (magic       : Unsigned_32; 
-                 mbInfo_orig : in MultibootInfo) with SPARK_Mode => Off
+procedure kmain (magic       : Unsigned_32;
+                 mbInfo_orig : in MultibootInfo)
 is
     mbOK     : constant Boolean := (magic = 16#2BADB002#);
     mbInfo   : constant MultibootInfo := mbInfo_orig;
@@ -124,10 +126,10 @@ begin
     end enableSMEPSMAP;
 
     PerCPUData.setup (0,
-                      cpu0Data, 
+                      cpu0Data,
                       cpu0Data'Address,
-                      cpu0Data.gdt'Address, 
-                      cpu0Data.gdtPointer'Address, 
+                      cpu0Data.gdt'Address,
+                      cpu0Data.gdtPointer'Address,
                       cpu0Data.tss'Address);
 
     ssPtr := PerCPUData.getSecondaryStack;
@@ -202,11 +204,11 @@ begin
     println ("-----------------------------------------------------");
     print ("text:     "); print (stext'Address);
         print("-"); println (etext'Address);
-    print("rodata:   "); print (srodata'Address); 
+    print("rodata:   "); print (srodata'Address);
         print("-"); println (erodata'Address);
-    print("data:     "); print (sdata'Address); 
+    print("data:     "); print (sdata'Address);
         print("-"); println (edata'Address);
-    print("bss:      "); print (sbss'Address); 
+    print("bss:      "); print (sbss'Address);
         print("-"); println (ebss'Address);
 
     println;
@@ -215,25 +217,25 @@ begin
     println ("-----------------------------------------------------");
     println ("      Start                 End            Type");
     for area of memAreas loop
-        print (area.startAddr); print (" - "); print (area.endAddr); 
+        print (area.startAddr); print (" - "); print (area.endAddr);
         print ("   ");
         case area.kind is
-            when MemoryAreas.USABLE => 
+            when MemoryAreas.USABLE =>
                 println ("Usable", LT_GREEN, BLACK);
 
-            when MemoryAreas.RESERVED => 
+            when MemoryAreas.RESERVED =>
                 println ("Reserved", YELLOW, BLACK);
 
-            when MemoryAreas.ACPI => 
+            when MemoryAreas.ACPI =>
                 println ("ACPI", MAGENTA, BLACK);
 
-            when MemoryAreas.HIBERNATE => 
+            when MemoryAreas.HIBERNATE =>
                 println ("Hibernate", BROWN, BLACK);
 
-            when MemoryAreas.BAD => 
+            when MemoryAreas.BAD =>
                 println ("Bad", RED, BLACK);
 
-            when MemoryAreas.VIDEO => 
+            when MemoryAreas.VIDEO =>
                 println ("Framebuffer", CYAN, BLACK);
 
             when MemoryAreas.IO =>
@@ -261,7 +263,7 @@ begin
     println;
 
     BuddyAllocator.print;
-    
+
     initACPI: declare
     begin
         println("Setting up ACPI", LT_BLUE, BLACK);
@@ -315,7 +317,7 @@ begin
             else
                 print(" APIC address not found in ACPI, using APIC_BASE MSR: ");
             end if;
-            
+
             setupLAPIC : declare
                 package myLapic is new lapic(To_Address(virtmem.P2V(apicBase)));
             begin
@@ -370,7 +372,7 @@ begin
             -- disable caching on the mmap-ed I/O APIC registers,
             -- re-map it into the higher-half.
             ioapicVirtBase := Virtmem.P2V(ioapicBase);
-            
+
             print ("Setting up I/O APIC at address: ", LT_BLUE, BLACK);
             println (ioapicVirtBase);
 
@@ -378,12 +380,12 @@ begin
                 package io_apic is new ioapic(To_Address(ioapicVirtBase));
                 function mapIOFrame is new Mem_mgr.mapIOFrame(BuddyAllocator.allocFrame);
                 IORemapException : exception;
-            begin    
+            begin
                 if not mapIOFrame (ioapicBase) then
                     raise IORemapException with "Unable to remap I/O APIC registers.";
                 else
                     io_apic.setupIOAPIC (acpi.ioapicID);
-                    
+
                     -- Enable Keyboard Interrupts
                     println ("Enabling keyboard");
                     io_apic.enableIRQ (33, 0);
@@ -487,7 +489,7 @@ begin
     -- print ("Creating kernel thread 2, procedure address: ");
     -- println (testKThread2'Address);
     -- Process.startKernelThread (testKThread2'Address, "kthread2        ", 2);
-   
+
     -- println ("Creating User Process");
     -- Process.createFirstProcess;
 
@@ -507,7 +509,7 @@ end kmain;
 -- and starts the scheduler.
 --
 -- Note that we place the per-CPU data on the CPU's stack and then give its
--- address to the KERNELGS_BASE MSR for later Per-CPU access (in 
+-- address to the KERNELGS_BASE MSR for later Per-CPU access (in
 -- setupPerCPUData). Since this procedure never exits, the stack is a safe
 -- place to keep it.
 -------------------------------------------------------------------------------
@@ -583,7 +585,7 @@ end apEnter;
     --
     --
     -- procedure task1
-    --     with SPARK_Mode => Off
+    --
     -- is
     --     ignore : Unsigned_64;
     -- begin
@@ -597,7 +599,7 @@ end apEnter;
     -- end task1;
 
     -- procedure task2
-    --     with SPARK_Mode => Off
+    --
     -- is
     -- begin
     --     while True loop
@@ -607,7 +609,7 @@ end apEnter;
     -- end task2;
 
     -- procedure task3
-    --     with SPARK_Mode => Off
+    --
     -- is
     -- begin
     --     while True loop
@@ -640,7 +642,7 @@ end apEnter;
     --     taskthree : Process.ProcessID;
     -- begin
     --     println("Creating test tasks:");
-    --     Process.create(procMain => task1'Address, 
+    --     Process.create(procMain => task1'Address,
     --                 ppid => 0,
     --                 lightweight => True,
     --                 name => "Task 1          ",
@@ -649,7 +651,7 @@ end apEnter;
     --                 priority => 3,
     --                 pid => taskone);
     --     print("Task 1 PID: "); println(taskone);
-        
+
     --     Process.create(procMain => task2'Address,
     --                 ppid => 0,
     --                 lightweight => True,
@@ -676,7 +678,7 @@ end apEnter;
     -- begin
     --     println("Test boot allocator allocation: ");
     --     print("Free frames: "); printdln(BootAllocator.getFreeFrameCount);
-    --     print("Allocate 40 frames: "); 
+    --     print("Allocate 40 frames: ");
     --     BootAllocator.allocFrames(40, allocAddr);
     --     println(allocAddr);
     --     print("Free frames: "); printdln(BootAllocator.getFreeFrameCount);
@@ -762,7 +764,7 @@ end apEnter;
     --     u64s : U64List.List;
     -- begin
     --     U64List.setup(U64s, 100);
-        
+
     --     print("List: "); U64List.print(u64s);
     --     print("Length: "); println(u64s.length);
     --     print("Capacity: "); println(u64s.capacity);
@@ -786,7 +788,7 @@ end apEnter;
     --     println("Inserting 15 U64s in new linked list");
 
     --     for i in 1..15 loop
-    --         U64List.insertBack(u64s, Unsigned_64(i));   
+    --         U64List.insertBack(u64s, Unsigned_64(i));
     --     end loop;
 
     --     print("List:"); U64List.print(u64s);
@@ -814,7 +816,7 @@ end apEnter;
     --     print("Front: "); printdln(U64List.front(u64s));
     --     print("Back: "); printdln(U64List.back(u64s));
     --     print("Length: "); println(u64s.length);
-        
+
     --     print("Clearing list");
     --     U64List.clear(u64s);
     --     print("List: "); U64List.print(u64s);
