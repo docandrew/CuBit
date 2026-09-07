@@ -230,12 +230,12 @@ package Process is
 
     -- Per-CPU ready lists. Each CPU dequeues from its own list.
     cpuReadyLists : array (0..Config.MAX_SMP_CPUS - 1) of ProcQueue :=
-        (others => (lock => (name => null, others => <>),
+        (others => (lock => <>,
                     head => NO_PROCESS, tail => NO_PROCESS));
 
     sleepListLockName : aliased String := "Sleep List";
     sleepList : ProcQueue := (
-        lock => (name => sleepListLockName'Access, others => <>),
+        lock => <>,
         head => NO_PROCESS,
         tail => NO_PROCESS
     );
@@ -455,7 +455,7 @@ package Process is
     -- @field ring            - Unified ring for submit() and sendEvent()
     ---------------------------------------------------------------------------
     type Mailbox is record
-        lock        : Spinlocks.spinlock := (name => null, others => <>);
+        lock        : Spinlocks.spinlock;
 
         -- Unified ring buffer for async messages and events
         ring        : MessageRing;
@@ -633,19 +633,10 @@ package Process is
 
     -- Lock for protecting the proctab
     lockname : aliased String := "Proctab";
-    lock : Spinlocks.Spinlock := (name => lockname'Access, others => <>);
+    lock : Spinlocks.Spinlock;
 
     grantLockName : aliased String := "grants";
-    grantLock : Spinlocks.Spinlock :=
-        (name => grantLockName'Access, others => <>);
-
-    ---------------------------------------------------------------------------
-    -- TLB flush request array. Set by revokeGrant when a grantee on a
-    -- remote CPU needs its TLB flushed. Checked by the RESCHEDULE IPI
-    -- handler (interrupts.adb). Indexed by CPU number.
-    ---------------------------------------------------------------------------
-    tlbFlushPending : array (0 .. Config.MAX_SMP_CPUS - 1) of Boolean :=
-        (others => False);
+    grantLock : Spinlocks.Spinlock;
 
     ---------------------------------------------------------------------------
     -- Proctab. Array of Process entries and master list of active processes in
@@ -835,8 +826,7 @@ package Process is
     -- This procedure releases the lock previously set by Scheduler.schedule
     ---------------------------------------------------------------------------
     procedure start with
-        Pre => Spinlocks.isLocked(lock),
-        Post => not Spinlocks.isLocked(lock);
+        Pre => Spinlocks.isLocked(lock);
 
     ---------------------------------------------------------------------------
     -- switch:
@@ -966,8 +956,6 @@ private
 
     private
 
-        trackerLockName : aliased String := "PID Tracker Lock"
-            with Part_Of => PIDTrackerState;
         --subtype PIDBlock is Natural range 0..(MAX_PID / 64);
         --subtype PIDOffset is Natural range 0..63;
 
@@ -978,7 +966,7 @@ private
         pidMap : PIDBitmapType := (0 => False, others => True)
             with Part_Of => PIDTrackerState;
 
-        pidLock : Spinlocks.Spinlock := (name => trackerLockName'Access, others => <>)
+        pidLock : Spinlocks.Spinlock
             with Part_Of => PIDTrackerState;
 
         function findFreePID return ProcessID with

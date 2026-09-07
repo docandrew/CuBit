@@ -391,23 +391,6 @@ is
     end xchg;
 
     ---------------------------------------------------------------------------
-    -- Version of XCHG strictly for LockBool, to allow SPARK proving
-    ---------------------------------------------------------------------------
-    procedure lock_xchg(var     : in out locks.LockBool; 
-                        newval  : in locks.LockBool;
-                        oldval  : out locks.LockBool)
-        with SPARK_Mode => Off      --inline ASM
-    is
-    begin
-        Asm("lock; xchgl %0, %1",
-            Outputs => (Unsigned_32'Asm_Output("+m", var),      -- +m read-write-modify
-                        Unsigned_32'Asm_Output("=a", oldval)),  -- need to use eax
-            Inputs => Unsigned_32'Asm_Input("1", newval),       -- operand 1 is val
-            Volatile => True,
-            Clobber => "cc,memory");
-    end lock_xchg;
-
-    ---------------------------------------------------------------------------
     -- Kernel panic
     -- TODO: move this to or call this from a separate error-handling packages
     ---------------------------------------------------------------------------

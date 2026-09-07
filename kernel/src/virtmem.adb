@@ -94,7 +94,7 @@ is
     begin
         Asm("movq %0, %%cr3",
             Inputs => PhysAddress'Asm_Input ("r", p4addr),
-            Volatile => True);
+            Volatile => True, Clobber => "memory");
     end setActiveP4;
 
     ---------------------------------------------------------------------------
@@ -109,7 +109,7 @@ is
         Asm("movq %%cr3, %%rax" & LF & HT &
             "movq %%rax, %%cr3",
             Volatile => True,
-            Clobber => "rax");
+            Clobber => "rax,memory");
     end flushTLB;
 
     ---------------------------------------------------------------------------
@@ -266,23 +266,23 @@ is
             -- PTE to point to it. We assume that we're allocating from
             -- a mapped and accessible linear range.
             allocate (addrNext);
-            --print("zeroizing "); printd(Unsigned_32(PN'Size) / 8); print(" bytes at ");
-            --println(addrNext);
+            -- Allocation failure must not touch the linear alias of physical
+            -- address zero, or publish any change to the parent entry.
+            if addrNext = 0 then
+                tableAddr := 0;
+                return;
+            end if;
+
+            -- This freshly allocated frame is exclusively ours. Initialize
+            -- it before publishing the parent entry to page-table walkers.
             declare
                 ignore : System.Address;
             begin
                 ignore := Util.memset (To_Address(P2V (addrNext)), 0, PN'Size / 8);
             end;
 
-            if(addrNext /= 0) then
-                
-                table (index) := makePTE (addrToPFN (addrNext), flags);
-                tableAddr := addrNext;
-                return;
-            end if;
-
-            -- uh oh, couldn't allocate memory for this page.
-            tableAddr := 0;
+            table (index) := makePTE (addrToPFN (addrNext), flags);
+            tableAddr := addrNext;
         end if;
     end createNextTable;
 

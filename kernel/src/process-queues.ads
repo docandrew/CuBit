@@ -81,6 +81,7 @@ package Process.Queues is
     -- wakeFromSleep
     -- Remove a specific process from the sleep delta queue and ready it.
     -- Adjusts the successor's delta to preserve remaining timings.
+    -- Acquires Process.lock before sleepList.lock; caller must not hold either.
     ---------------------------------------------------------------------------
     procedure wakeFromSleep (pid : ProcessID; woken : out Boolean);
 
@@ -88,6 +89,7 @@ package Process.Queues is
     -- clockTick
     -- Adjust the delta queue entries by the elapsed tick, wake up any sleeping
     -- processes whose delay has elapsed.
+    -- Acquires Process.lock; timer caller must not already hold it.
     ---------------------------------------------------------------------------
     procedure clockTick;
 

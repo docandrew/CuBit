@@ -53,4 +53,22 @@ is
         icr0 := Unsigned_32 (RESCHEDULE_VECTOR);
     end sendReschedule;
 
+    procedure broadcastReschedule is
+        icr0 : Unsigned_32 with
+            Import, Volatile, Address => lapicAddr + ICR0_OFFSET;
+        Delivery_Failure : exception;
+    begin
+        if lapicAddr = System.Null_Address then
+            return; -- uniprocessor legacy-PIC boot; self already flushed
+        end if;
+        for Attempt in 1 .. 1_000_000 loop
+            if (icr0 and ICR_SEND_PENDING) = 0 then
+                -- Destination shorthand 11: all excluding self.
+                icr0 := Shift_Left (Unsigned_32 (3), 18) or RESCHEDULE_VECTOR;
+                return;
+            end if;
+        end loop;
+        raise Delivery_Failure with "TLB broadcast delivery stalled";
+    end broadcastReschedule;
+
 end IPI;

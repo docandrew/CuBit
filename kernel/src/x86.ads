@@ -8,8 +8,6 @@ with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
 
-with Locks;
-
 package x86 with
     Abstract_State => (IOPortState with External),
     SPARK_Mode => On
@@ -240,14 +238,6 @@ is
     procedure xchg(var : in out Unsigned_32; newval : in Unsigned_32; 
                    oldval : out Unsigned_32)
         with Inline, Convention => C;
-
-    ---------------------------------------------------------------------------
-    -- XCHG instruction specialized for locking.
-    ---------------------------------------------------------------------------
-    procedure lock_xchg(var : in out locks.LockBool; newval : in locks.LockBool;
-                        oldval : out locks.LockBool)
-        with Inline, Convention => C,
-             Post => var = newval and then oldval = var'old;
 
     ---------------------------------------------------------------------------
     -- Kernel Panic, calls software interrupt

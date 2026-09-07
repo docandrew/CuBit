@@ -9,11 +9,13 @@
 -- (opcode, length, flags, badge), a kernel-stamped capability badge, and up to
 -- 4 64-bit data words, for a total of 48 bytes.
 --
--- Lock ordering (acquire in this order, never reverse):
+-- IPC lock ordering (acquire in this order, never reverse):
 --   1. mailtab(pid).lock    (per-mailbox, also protects completionTab(pid))
 --   2. Process.lock         (global process table)
---   3. cpuReadyLists.lock   (per-CPU scheduler)
---   4. sleepList.lock       (sleep queue)
+--   3. individual process queue locks (ready, sleep, send, receive)
+-- Queue locks are leaves: release the sleep lock before acquiring a ready
+-- lock. See docs/kernel-locking.md for allocator/grant dependencies and the
+-- remaining process-lifetime / mailbox teardown synchronization obligations.
 -------------------------------------------------------------------------------
 with Capabilities;
 with Memory_Grants;

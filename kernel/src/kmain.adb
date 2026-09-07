@@ -20,6 +20,7 @@ with Cpuid;
 with Ioapic;
 with Interrupts;
 with IPI;
+with TLB_Shootdown;
 with Lapic;
 with Mem_mgr;
 with MemoryAreas;
@@ -457,6 +458,7 @@ begin
     end initModules;
     showBootStage ("Live system image loaded");
 
+    TLB_Shootdown.Register_CPU (0);
     if acpi.numCPUs > 1 then
         initSMP: declare
             package myLapic is new lapic(To_Address(virtmem.P2V(apicBase)));
@@ -567,6 +569,8 @@ begin
         pid       => idlePID,
         priority  => -1,
         homeCPU   => Natural(cpuNum));
+
+    TLB_Shootdown.Register_CPU (Natural (cpuNum));
 
     -- Signal BSP that we're up
     startingCPU := 0;

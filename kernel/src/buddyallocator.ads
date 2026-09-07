@@ -128,8 +128,7 @@ is
     totalManagedBytes : Storage_Count := 0;
 
     lockName : aliased constant String := "buddy";
-    lock : Spinlocks.Spinlock :=
-        (name => lockName'Access, others => <>);
+    lock : Spinlocks.Spinlock;
 
     function "<" (Left : in System.Address; Right : System.Address) return Boolean;
     pragma Convention (Intrinsic, "<");
@@ -277,13 +276,15 @@ is
     --
     -- A pinned order-0 frame cannot return to the allocator.  freeFrame marks
     -- it for deferred release, and the final unpin performs that release.
-    -- Shared-memory acquisitions use this to keep a dead owner's pages alive
-    -- until the borrower returns the acquisition.
+    -- Shared-memory mappings use this to keep backing pages alive until the
+    -- mapping is removed and every online CPU acknowledges invalidation.
+    -- Acquisitions may defer that revocation but do not own separate pins.
     ---------------------------------------------------------------------------
-    procedure pinFrame
-      (addr    : in Virtmem.PhysAddress;
-       success : out Boolean) with
-        SPARK_Mode => Off;
+    -- Ownership validation and pin acquisition share one allocator-lock
+    -- interval, so a stale physical address cannot pass a separate check.
+    procedure pinOwnedFrame
+      (addr : Virtmem.PhysAddress; owner : Unsigned_8; success : out Boolean)
+      with SPARK_Mode => Off;
 
     procedure unpinFrame
       (addr    : in Virtmem.PhysAddress;

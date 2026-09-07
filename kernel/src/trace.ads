@@ -17,6 +17,8 @@ is
     EVENT_SYSCALL_TIME   : constant EventKind := 4;
     EVENT_RUN_TIME       : constant EventKind := 5;
     EVENT_READY_LATENCY  : constant EventKind := 6;
+    EVENT_LOCK_WAIT      : constant EventKind := 7;
+    EVENT_LOCK_HOLD      : constant EventKind := 8;
 
     -- Clear all trace buffers and enable recording. Tracing starts disabled so
     -- normal boots and UI work do not pay for benchmark instrumentation.

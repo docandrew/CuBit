@@ -320,8 +320,8 @@ package body PerCPUData is
         cpuData : PerCPUData with
             Import, Volatile, Address => getPerCPUDataAddr;
         state : constant Interrupt_State.State := cpuData.exclusion;
-        ownsLock : constant Boolean := Spinlocks.isLocked (Process.lock) and then
-            Process.lock.cpu = cpuData.cpuNum;
+        ownsLock : constant Boolean :=
+            Spinlocks.ownedBy (Process.lock, cpuData.cpuNum);
     begin
         if not Interrupt_State.Can_Handoff (state, x86.getFlags.interrupt, ownsLock) then
             raise InterruptException with "Invalid context handoff: IF/depth/Process.lock";
@@ -333,8 +333,8 @@ package body PerCPUData is
         cpuData : PerCPUData with
             Import, Volatile, Address => getPerCPUDataAddr;
         state : Interrupt_State.State := cpuData.exclusion;
-        ownsLock : constant Boolean := Spinlocks.isLocked (Process.lock) and then
-            Process.lock.cpu = cpuData.cpuNum;
+        ownsLock : constant Boolean :=
+            Spinlocks.ownedBy (Process.lock, cpuData.cpuNum);
     begin
         if not Interrupt_State.Can_Handoff (state, x86.getFlags.interrupt, ownsLock) then
             raise InterruptException with "Invalid context resumption: IF/depth/Process.lock";

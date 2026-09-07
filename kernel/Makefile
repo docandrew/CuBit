@@ -83,6 +83,34 @@ prove-interrupt-state:
 		--subdirs=proof-interrupt-state --mode=all --level=1 -j2
 	@cat build/proof-interrupt-state/gnatprove/gnatprove.out
 
+.PHONY : prove-lock-ownership
+prove-lock-ownership:
+	$(ALR) gnatprove -Pcubit.gpr -u locks.adb \
+		--subdirs=proof-lock-ownership --mode=all --level=1 -j2
+	@cat build/proof-lock-ownership/gnatprove/gnatprove.out
+
+.PHONY : prove-frame-pins
+prove-frame-pins:
+	$(ALR) gnatprove -Pcubit.gpr -u frame_pins.adb \
+		--subdirs=proof-frame-pins --mode=all --level=1 -j2
+	@cat build/proof-frame-pins/gnatprove/gnatprove.out
+
+.PHONY : prove-tlb-reclamation
+prove-tlb-reclamation:
+	$(ALR) gnatprove -Pcubit.gpr -u tlb_reclamation.adb \
+		--subdirs=proof-tlb-reclamation --mode=all --level=1 -j2
+	@cat build/proof-tlb-reclamation/gnatprove/gnatprove.out
+
+.PHONY : test-reclamation-state
+test-reclamation-state:
+	$(ALR) gprbuild -p -P../tests/kernel-reclamation/reclamation_tests.gpr
+	../tests/kernel-reclamation/build/main
+
+.PHONY : test-locking
+test-locking:
+	$(ALR) gprbuild -p -P../tests/kernel-locking/locking_tests.gpr
+	timeout 30 ../tests/kernel-locking/build/main
+
 # Focused proof gate for the capability-policy core.  This is intentionally
 # small enough to run on every CI boot test rather than only in full proofs.
 .PHONY : prove-capability-policy

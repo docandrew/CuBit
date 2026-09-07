@@ -12,12 +12,14 @@ with TextIO; use TextIO;
 package body Process.Queues is
 
     function isInSleepQueue (pid : ProcessID) return Boolean;
+    procedure popItemNoLock (q : in out ProcQueue; pid : ProcessID;
+                            result : out ProcessID);
 
     procedure initQueue (q : in out ProcQueue; locknamePtr : Spinlocks.Lock_Name)
 
     is
     begin
-        q.lock := (name => locknamePtr, others => <>);
+        Spinlocks.Initialize (q.lock, locknamePtr);
         q.head := NO_PROCESS;
         q.tail := NO_PROCESS;
     end initQueue;
@@ -39,12 +41,8 @@ package body Process.Queues is
 
     is
     begin
-        if isEmpty (q) then
-            result := NO_PROCESS;
-            return;
-        end if;
-
-        popItem (q, q.head, result);
+        -- Selection and removal must use the same lock acquisition.
+        dequeue (q, result);
     end popFront;
 
     ---------------------------------------------------------------------------
@@ -54,17 +52,20 @@ package body Process.Queues is
 
     is
     begin
+        Spinlocks.enterCriticalSection (q.lock);
         if isEmpty(q) then
             result := NO_PROCESS;
-            return;
+        else
+            popItemNoLock (q, q.tail, result);
+            proctab(result).prev := NO_PROCESS;
+            proctab(result).next := NO_PROCESS;
         end if;
-
-        popItem (q, q.tail, result);
+        Spinlocks.exitCriticalSection (q.lock);
     end popBack;
 
     ---------------------------------------------------------------------------
     -- popItemNoLock
-    -- Remove an item from the queue _without_ holding the lock. Internal
+    -- Remove an item without acquiring the lock. Internal
     -- functions in Process.Queue that already hold the lock should use this.
     --
     -- Public clients of the Process.Queues package use popItem which will hold
@@ -135,6 +136,7 @@ package body Process.Queues is
             proctab(pid).prev := prev;
             proctab(pid).next := NO_PROCESS;
             proctab(prev).next := pid;
+            q.tail := pid;
         end if;
 
         Spinlocks.exitCriticalSection (q.lock);
@@ -331,16 +333,24 @@ package body Process.Queues is
     end insertDelta;
 
     ---------------------------------------------------------------------------
-    -- wakeup
+    -- wakeup -- caller holds Process.lock. Do not nest ready-list locks
+    -- underneath the sleep-list lock; move each process between queues.
     ---------------------------------------------------------------------------
     procedure wakeup
     is
         wakePid : ProcessID;
     begin
-        while not Queues.isEmpty (sleepList) and
-            proctab(sleepList.head).queueKey <= 0 loop
-            -- print ("Waking PID"); println (Integer(sleepList.head));
-            dequeueNoLock (sleepList, wakePid);
+        loop
+            Spinlocks.enterCriticalSection (sleepList.lock);
+            if not Queues.isEmpty (sleepList) and then
+               proctab(sleepList.head).queueKey <= 0
+            then
+                dequeueNoLock (sleepList, wakePid);
+            else
+                wakePid := NO_PROCESS;
+            end if;
+            Spinlocks.exitCriticalSection (sleepList.lock);
+            exit when wakePid = NO_PROCESS;
             ready (wakePid);
         end loop;
     end wakeup;
@@ -439,6 +449,7 @@ package body Process.Queues is
         nextPID : ProcessID;
     begin
         woken := False;
+        Spinlocks.enterCriticalSection (lock);
         Spinlocks.enterCriticalSection (sleepList.lock);
 
         if proctab(pid).state = SLEEPING and then
@@ -458,6 +469,7 @@ package body Process.Queues is
         if woken then
             ready (pid);
         end if;
+        Spinlocks.exitCriticalSection (lock);
     end wakeFromSleep;
 
     ---------------------------------------------------------------------------
@@ -466,19 +478,19 @@ package body Process.Queues is
     procedure clockTick
     is
     begin
+        Spinlocks.enterCriticalSection (lock);
         Spinlocks.enterCriticalSection (sleepList.lock);
 
-        if not isEmpty (sleepList) then
-            -- decrement head of sleep list by 1 ms
+        if not isEmpty (sleepList) and then
+           proctab(sleepList.head).queueKey > 0
+        then
+            -- Zero-delay entries are already due; don't make them negative.
             proctab(sleepList.head).queueKey := proctab(sleepList.head).queueKey - 1;
-
-            if proctab(sleepList.head).queueKey <= 0 then
-                -- wakeup all processes with this delay
-                wakeup;
-            end if;
         end if;
 
         Spinlocks.exitCriticalSection (sleepList.lock);
+        wakeup;
+        Spinlocks.exitCriticalSection (lock);
     end clockTick;
 
     ---------------------------------------------------------------------------

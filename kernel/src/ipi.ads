@@ -27,4 +27,7 @@ is
     ---------------------------------------------------------------------------
     procedure sendReschedule (targetCPU : in Natural);
 
+    -- All processors except self, independent of their physical APIC IDs.
+    procedure broadcastReschedule;
+
 end IPI;

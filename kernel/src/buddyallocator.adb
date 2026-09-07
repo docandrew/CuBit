@@ -8,6 +8,7 @@ with Ada.Unchecked_Conversion;
 with Interfaces; use Interfaces;
 
 with Spinlocks;
+with Frame_Pins;
 with TextIO; use TextIO;
 with Util;
 
@@ -32,8 +33,6 @@ is
     pinStateBase    : System.Address := System.Null_Address;
     frameOwnerBase  : System.Address := System.Null_Address;
     maxPinPFN       : Unsigned_64 := 0;
-    PIN_COUNT_MASK  : constant Unsigned_8 := 16#7F#;
-    PIN_DEFERRED    : constant Unsigned_8 := 16#80#;
 
     ---------------------------------------------------------------------------
     -- Address Arithmetic (don't tell!)
@@ -468,6 +467,7 @@ is
         endPFN                : Virtmem.PFN;
         numTopLevelBlocksHere : Storage_Count;
     begin
+        Spinlocks.Initialize (lock, lockName'Access);
         -- make freeLists self-referential and empty to start
         for ord in Order'Range loop
             freeLists(ord).prevBlock := getListAddress (ord);
@@ -623,7 +623,8 @@ is
         vaddr : System.Address;
     begin
         alloc (0, vaddr);
-        addr := Virtmem.V2P (vaddr);
+        -- Null is the allocation-failure sentinel, not a linear-map address.
+        addr := (if vaddr = NO_BLOCK_AVAILABLE then 0 else Virtmem.V2P (vaddr));
     end allocFrame;
 
     ---------------------------------------------------------------------------
@@ -690,6 +691,7 @@ is
         SPARK_Mode => Off
     is
         pfn : constant Unsigned_64 := Unsigned_64 (Virtmem.addrToPFN (addr));
+        use type Frame_Pins.Release_Action;
     begin
         Spinlocks.enterCriticalSection (lock);
         if pinStateBase /= System.Null_Address and then pfn <= maxPinPFN then
@@ -702,10 +704,14 @@ is
                     Import,
                     Volatile,
                     Address => frameOwnerBase + Storage_Offset (pfn);
+                lifetime : Frame_Pins.State;
+                action : Frame_Pins.Release_Action;
             begin
                 owner := 0;
-                if (state and PIN_COUNT_MASK) /= 0 then
-                    state := state or PIN_DEFERRED;
+                lifetime := Frame_Pins.Decode (state);
+                Frame_Pins.Request_Free (lifetime, action);
+                state := Frame_Pins.Encode (lifetime);
+                if action = Frame_Pins.Keep_Frame then
                     Spinlocks.exitCriticalSection (lock);
                     return;
                 end if;
@@ -716,35 +722,35 @@ is
         Spinlocks.exitCriticalSection (lock);
     end freeFrame;
 
-    procedure pinFrame
-      (addr    : in Virtmem.PhysAddress;
-       success : out Boolean) with
-        SPARK_Mode => Off
+
+    procedure pinOwnedFrame
+      (addr : Virtmem.PhysAddress; owner : Unsigned_8; success : out Boolean)
+      with SPARK_Mode => Off
     is
         pfn : constant Unsigned_64 := Unsigned_64 (Virtmem.addrToPFN (addr));
     begin
         success := False;
-        if pinStateBase = System.Null_Address or else pfn > maxPinPFN or else
+        if owner = 0 or else pinStateBase = System.Null_Address or else
+           frameOwnerBase = System.Null_Address or else pfn > maxPinPFN or else
            addr mod Virtmem.FRAME_SIZE /= 0
         then
             return;
         end if;
-
         Spinlocks.enterCriticalSection (lock);
         declare
-            state : Unsigned_8 with
-                Import,
-                Volatile,
+            currentOwner : Unsigned_8 with Import, Volatile,
+                Address => frameOwnerBase + Storage_Offset (pfn);
+            raw : Unsigned_8 with Import, Volatile,
                 Address => pinStateBase + Storage_Offset (pfn);
-            count : constant Unsigned_8 := state and PIN_COUNT_MASK;
+            lifetime : Frame_Pins.State := Frame_Pins.Decode (raw);
         begin
-            if (state and PIN_DEFERRED) = 0 and then count < PIN_COUNT_MASK then
-                state := state + 1;
-                success := True;
+            if currentOwner = owner then
+                Frame_Pins.Pin (lifetime, success);
+                raw := Frame_Pins.Encode (lifetime);
             end if;
         end;
         Spinlocks.exitCriticalSection (lock);
-    end pinFrame;
+    end pinOwnedFrame;
 
     procedure unpinFrame
       (addr    : in Virtmem.PhysAddress;
@@ -752,6 +758,7 @@ is
         SPARK_Mode => Off
     is
         pfn : constant Unsigned_64 := Unsigned_64 (Virtmem.addrToPFN (addr));
+        use type Frame_Pins.Release_Action;
     begin
         success := False;
         if pinStateBase = System.Null_Address or else pfn > maxPinPFN or else
@@ -766,15 +773,13 @@ is
                 Import,
                 Volatile,
                 Address => pinStateBase + Storage_Offset (pfn);
-            count : constant Unsigned_8 := state and PIN_COUNT_MASK;
+            lifetime : Frame_Pins.State := Frame_Pins.Decode (state);
+            action : Frame_Pins.Release_Action;
         begin
-            if count /= 0 then
-                state := state - 1;
-                success := True;
-                if count = 1 and then (state and PIN_DEFERRED) /= 0 then
-                    state := 0;
-                    freeLocked (0, Virtmem.P2Va (addr));
-                end if;
+            Frame_Pins.Unpin (lifetime, success, action);
+            state := Frame_Pins.Encode (lifetime);
+            if action = Frame_Pins.Reclaim_Frame then
+                freeLocked (0, Virtmem.P2Va (addr));
             end if;
         end;
         Spinlocks.exitCriticalSection (lock);

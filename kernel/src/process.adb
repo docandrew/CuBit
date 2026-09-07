@@ -60,6 +60,10 @@ package body Process is
     ---------------------------------------------------------------------------
     procedure setup is
     begin
+        -- Before AP startup / publication; never reinitialize live locks.
+        Spinlocks.Initialize (lock, lockname'Access);
+        Spinlocks.Initialize (grantLock, grantLockName'Access);
+        Spinlocks.Initialize (sleepList.lock, sleepListLockName'Access);
         -- ProcList.setup (allProcs, Config.MAX_PROCESSES);
         FrameLists.setup (Config.MAX_PROCESSES * Config.PAGES_PER_PROCESS);
         -- MsgQueue.setup (Config.MAX_PROCESSES);
@@ -405,13 +409,13 @@ package body Process is
             proctab(pid).pgTable := pid;
 
             mailtab(pid).recvQueue := (
-                lock => (name => null, others => <>),
+                lock => <>,
                 head => NO_PROCESS,
                 tail => NO_PROCESS
             );
 
             mailtab(pid).sendQueue := (
-                lock => (name => null, others => <>),
+                lock => <>,
                 head => NO_PROCESS,
                 tail => NO_PROCESS
             );
@@ -659,8 +663,10 @@ package body Process is
         pid    : ProcessID := PerCPUData.getCurrentPID;
         ignore : ProcessID;
     begin
-        -- Hold sleepList.lock across state change + insertion so that
-        -- wakeFromSleep cannot see SLEEPING before we are in the queue.
+        -- Publish the blocked state and hand off the running context under
+        -- Process.lock. A remote wakeup cannot enqueue this task before its
+        -- context has been saved by the scheduler.
+        Spinlocks.enterCriticalSection (lock);
         Spinlocks.enterCriticalSection (sleepList.lock);
 
         proctab(pid).state := SLEEPING;
@@ -672,7 +678,8 @@ package body Process is
 
         Spinlocks.exitCriticalSection (sleepList.lock);
 
-        yield;
+        Scheduler.enter;
+        Spinlocks.exitCriticalSection (lock);
     end sleep;
 
     ---------------------------------------------------------------------------
@@ -1045,7 +1052,7 @@ package body Process is
           (current  => proctab(pid).capGeneration,
            reusable => pidReusable);
 
-        -- An acquisition pins its backing frames.  Retain this dead process's
+        -- A grant mapping pins its backing frames. Retain this dead process's
         -- PID (and therefore its authoritative grant records) until every
         -- borrower has returned.  The address space itself can still be torn
         -- down now; BuddyAllocator defers freeing the pinned data frames.
@@ -1304,7 +1311,7 @@ package body Process is
     -- Track which PIDs are in use, allocate new ones.
     ---------------------------------------------------------------------------
     package body PIDTracker with
-        Refined_State => (PIDTrackerState => (pidMap, pidLock, trackerLockName))
+        Refined_State => (PIDTrackerState => (pidMap, pidLock))
     is
 
         -- TODO: this is basically cut-n-paste from the bootmem allocator.

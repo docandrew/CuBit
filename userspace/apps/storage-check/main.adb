@@ -51,7 +51,7 @@ procedure main is
          return False;
       end if;
 
-      --  Multiple accepted uses share one physical pin but retain distinct
+      --  Multiple accepted uses share one mapping-owned pin but retain distinct
       --  return obligations.
       Acquire
         (firstRef, pid, 8, 8, Read_Access, mapped, ok);
@@ -558,6 +558,17 @@ begin
       debugPrint ("GRANT-REFERENCE-CHECK: FAIL" & LF);
       return;
    end if;
+
+   -- Reuse one backing frame and the same grant slots beyond the pin-count
+   -- limit. Leaked mapping pins fail this run; stale epochs must not satisfy
+   -- later shootdowns. The headless guest runs with four online CPUs.
+   for Round in 1 .. 128 loop
+      if not exerciseGrantReferences then
+         debugPrint ("GRANT-RECLAMATION-CHECK: FAIL" & LF);
+         return;
+      end if;
+   end loop;
+   debugPrint ("GRANT-RECLAMATION-CHECK: PASS" & LF);
 
    CuBit.Memory_Grants.Create_Via_Capability
      (slot      => CAP_SLOT_FS,

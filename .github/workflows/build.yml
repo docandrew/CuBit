@@ -46,6 +46,15 @@ jobs:
       - name: Prove interrupt exclusion and context handoff state
         run: nix develop --command make -C kernel prove-interrupt-state
 
+      - name: Prove spinlock ownership policy and exercise concurrent adapter
+        run: nix develop --command make -C kernel prove-lock-ownership test-locking
+
+      - name: Prove frame pins and TLB reclamation authorization
+        run: nix develop --command make -C kernel prove-frame-pins prove-tlb-reclamation
+
+      - name: Exercise production reclamation state transitions
+        run: nix develop --command make -C kernel test-reclamation-state
+
       - name: Boot adversarial guest under QEMU
         run: >-
           nix develop --command tests/headless/run.sh
@@ -77,3 +86,6 @@ jobs:
             ${{ runner.temp }}/cubit-capability-security-net.pcap
             kernel/build/spark-legality/gnatprove/gnatprove.out
             kernel/build/proof-interrupt-state/gnatprove/gnatprove.out
+            kernel/build/proof-lock-ownership/gnatprove/gnatprove.out
+            kernel/build/proof-frame-pins/gnatprove/gnatprove.out
+            kernel/build/proof-tlb-reclamation/gnatprove/gnatprove.out

@@ -1,0 +1,16 @@
+with "fixture.gpr";
+project Locking_Tests is
+    for Source_Dirs use (".", "fixture", "../../kernel/src");
+    for Source_Files use ("main.adb", "spinlocks.ads", "spinlocks.adb",
+                         "locks.ads", "locks.adb",
+                         "process.ads", "process.adb",
+                         "process-queues.ads", "process-queues.adb",
+                         "textio.ads");
+    for Object_Dir use "build";
+    for Exec_Dir use "build";
+    for Main use ("main.adb");
+    package Compiler is
+        -- Linux-hosted executable only. Never imported by cubit.gpr.
+        for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-O2", "-g");
+    end Compiler;
+end Locking_Tests;

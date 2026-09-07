@@ -51,6 +51,7 @@ package body StoragePools is
             if bytes <= slabSizes(i) then
                 -- @NOTE size is ignored by the SlabAllocator, and we ignore alignment.
                 SlabAllocator.Deallocate (slabs(i), addr);
+                return;
             end if;
         end loop;
 

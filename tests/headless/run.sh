@@ -732,6 +732,8 @@ TRACE: event=schedule_stop
 TRACE: hist=syscall_tsc
 TRACE: hist=run_tsc
 TRACE: hist=ready_latency_tsc
+TRACE: hist=lock_wait_tsc
+TRACE: hist=lock_hold_tsc
 TRACE: summary end
 "
         ;;
@@ -788,6 +790,7 @@ capability-test: all tests passed
     storage-grants)
         required_markers="
 GRANT-REFERENCE-CHECK: PASS
+GRANT-RECLAMATION-CHECK: PASS
 MALFORMED-DIRECTORY-CHECK: PASS
 STORAGE-CHECK: PASS
 "

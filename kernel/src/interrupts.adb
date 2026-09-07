@@ -21,6 +21,7 @@ with Process.IPC;
 with Serial;
 with TextIO; use TextIO;
 with Time;
+with TLB_Shootdown;
 with Virtmem;
 
 package body Interrupts with
@@ -251,10 +252,7 @@ is
                     myCPU : constant Natural := cpuData2.cpuNum;
                 begin
                     cpuData2.needReschedule := True;
-                    if Process.tlbFlushPending(myCPU) then
-                        Process.tlbFlushPending(myCPU) := False;
-                        Virtmem.flushTLB;
-                    end if;
+                    TLB_Shootdown.Service (myCPU);
                 end reschedIPI;
 
             when SPURIOUS =>

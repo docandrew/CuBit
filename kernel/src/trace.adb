@@ -79,6 +79,10 @@ is
                 return "run_tsc";
             when EVENT_READY_LATENCY =>
                 return "ready_latency_tsc";
+            when EVENT_LOCK_WAIT =>
+                return "lock_wait_tsc";
+            when EVENT_LOCK_HOLD =>
+                return "lock_hold_tsc";
             when others =>
                 return "unknown";
         end case;

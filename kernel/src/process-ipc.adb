@@ -17,6 +17,7 @@ with Memory_Grants;
 with PerCPUData;
 with Process.Queues;
 with Time;
+with TLB_Shootdown;
 with Util;
 with Virtmem;
 with x86;
@@ -1545,8 +1546,10 @@ package body Process.IPC is
 
         -- Wake receiver if one is waiting
         if not Queues.isEmpty (mailtab(dest).recvQueue) then
+            Spinlocks.enterCriticalSection (lock);
             Queues.dequeue (mailtab(dest).recvQueue, receiver);
             ready (receiver);
+            Spinlocks.exitCriticalSection (lock);
         elsif proctab(dest).state = SLEEPING then
             declare
                 woken : Boolean;
@@ -1707,298 +1710,157 @@ package body Process.IPC is
     -- createGrant
     -- Map pages from caller's address space into grantee's address space.
     ---------------------------------------------------------------------------
-    procedure createGrant (grantee   : in  ProcessID;
-                           localAddr : in  System.Address;
-                           numPages  : in  Natural;
-                           perm      : in  GrantPermission;
+    -- Serialized by grantLock. Keep the retirement snapshot off the 4 KiB
+    -- kernel stack; a grant may contain 4096 pages. These addresses survive
+    -- removal of the mappings and are used only after shootdown completion.
+    Retiring_Frames : array (Memory_Grants.Page_Offset) of Virtmem.PhysAddress;
+
+    procedure unmapGrantPages (g : Grant);
+
+    procedure createGrant (grantee   : in ProcessID;
+                           localAddr : in System.Address;
+                           numPages  : in Natural;
+                           perm      : in GrantPermission;
                            id        : out Natural;
                            success   : out Boolean)
-
     is
-        pid      : constant ProcessID := PerCPUData.getCurrentPID;
-        -- Threads share parent's address space and grant table
-        owner    : constant ProcessID :=
-            (if proctab(pid).isThread then proctab(pid).ppid else pid);
-        physAddr : Virtmem.PhysAddress;
-        granteeVirt : Integer_Address;
-        flags    : Unsigned_64;
-        ok       : Boolean;
-        slotFound : Boolean := False;
-        granterSlot : GrantID := 0;
-
-        --  Globally unique grant ID: ownerPID * MAX_GRANTS + granterSlot.
-        --  This ensures each grant maps to a unique address in the grantee,
-        --  even when multiple granters create grants to the same grantee.
+        pid : constant ProcessID := PerCPUData.getCurrentPID;
+        owner : constant ProcessID :=
+          (if proctab(pid).isThread then proctab(pid).ppid else pid);
+        receiver : ProcessID;
+        physical : Virtmem.PhysAddress;
+        flags : Unsigned_64;
+        ok : Boolean;
+        found : Boolean := False;
+        slot : GrantID := 0;
         globalId : Natural;
-
+        staging : Grant;
         procedure mapPageInst is new Virtmem.mapPage (BuddyAllocator.allocFrame);
     begin
-        id      := 0;
+        id := 0;
         success := False;
-
-        -- Validate parameters
-        if grantee = NO_PROCESS then
-            return;
-        end if;
-
-        if proctab(grantee).state = INVALID then
-            return;
-        end if;
-
-        if numPages = 0 or numPages > MAX_GRANT_PAGES then
-            return;
-        end if;
-
-        --  An ordinary grant may contain only pages owned in the caller's
-        --  normal address space. Re-granting a received mapping would lose its
-        --  parent lifetime and could amplify GRANT_READ into READWRITE.
-        if overlapsGrantRegion (localAddr, numPages) then
-            return;
-        end if;
-
-        -- Check page alignment
-        if (To_Integer (localAddr) and 16#FFF#) /= 0 then
+        if grantee = NO_PROCESS or else numPages = 0 or else
+           numPages > MAX_GRANT_PAGES or else
+           overlapsGrantRegion (localAddr, numPages) or else
+           (To_Integer (localAddr) and 16#FFF#) /= 0
+        then
             return;
         end if;
 
         Spinlocks.enterCriticalSection (grantLock);
-
-        -- Recheck lifecycle state under the grant lock.  A concurrent kill
-        -- may have invalidated either endpoint after the early validation.
+        receiver := (if proctab(grantee).isThread then proctab(grantee).ppid
+                     else grantee);
         if proctab(owner).state = INVALID or else
-           proctab(grantee).state = INVALID
+           proctab(grantee).state = INVALID or else
+           proctab(receiver).state = INVALID
         then
             Spinlocks.exitCriticalSection (grantLock);
             return;
         end if;
 
-        -- Find a free grant slot in owner's array
-        for i in GrantID loop
+        for candidate in GrantID loop
             if not Memory_Grants.Is_Active
-              (proctab(owner).grants(i).lifecycle) and then
-               proctab(owner).grants(i).reusable
+              (proctab(owner).grants(candidate).lifecycle) and then
+               proctab(owner).grants(candidate).reusable
             then
-                granterSlot := i;
-                slotFound   := True;
+                slot := candidate;
+                found := True;
                 exit;
             end if;
         end loop;
-
-        if not slotFound then
+        if not found then
             Spinlocks.exitCriticalSection (grantLock);
             return;
         end if;
+        globalId := Natural (owner) * MAX_GRANTS_PER_PROCESS + slot;
+        flags := (if perm = GRANT_READWRITE then Virtmem.PG_USERDATA
+                  else Virtmem.PG_USERDATARO);
+        staging := (granterPID => owner, granteePID => receiver,
+                    granterAddr => localAddr,
+                    granteeAddr => To_Address (GRANT_REGION_BASE +
+                        Integer_Address (globalId) * GRANT_SLOT_SIZE),
+                    permission => perm, others => <>);
 
-        --  Compute globally unique ID: each owner PID gets its own
-        --  region in the grantee's address space.
-        globalId := Natural (owner) * MAX_GRANTS_PER_PROCESS + granterSlot;
-
-        -- Determine permission flags
-        if perm = GRANT_READWRITE then
-            flags := Virtmem.PG_USERDATA;
-        else
-            flags := Virtmem.PG_USERDATARO;
-        end if;
-
-        -- Map each page from granter's space into grantee's space
-        for i in 0 .. numPages - 1 loop
-            -- Look up physical address behind owner's virtual address
-            physAddr := Virtmem.tableWalk (
-                virt => To_Integer (localAddr) +
-                        Integer_Address (i) * Integer_Address (Virtmem.PAGE_SIZE),
-                myP4 => addrtab(proctab(owner).pgTable));
-
-            if physAddr = 0 then
-                -- Page not mapped in granter's space — roll back
-                if i > 0 then
-                    for j in 0 .. i - 1 loop
-                        granteeVirt := GRANT_REGION_BASE +
-                            Integer_Address (globalId) * GRANT_SLOT_SIZE +
-                            Integer_Address (j) *
-                              Integer_Address (Virtmem.PAGE_SIZE);
-
-                        Virtmem.unmapPage
-                          (virt => granteeVirt,
-                           myP4 => addrtab(proctab(grantee).pgTable),
-                           success => ok);
-                    end loop;
-                end if;
-                Spinlocks.exitCriticalSection (grantLock);
-                return;
+        for page in 0 .. numPages - 1 loop
+            physical := Virtmem.tableWalk
+              (To_Integer (localAddr) +
+                 Integer_Address (page) * Virtmem.PAGE_SIZE,
+               addrtab(proctab(owner).pgTable));
+            ok := False;
+            if physical /= 0 then
+                BuddyAllocator.pinOwnedFrame (physical, Unsigned_8 (owner), ok);
             end if;
-
-            -- Ordinary grants may name only order-0 user frames owned by the
-            -- granter.  Device/DMA mappings have different lifetimes and need
-            -- a future explicit grant operation rather than being smuggled
-            -- through the generic memory-loan path.
-            if not BuddyAllocator.isUserFrameOwnedBy
-              (physAddr, Unsigned_8 (owner))
-            then
-                if i > 0 then
-                    for j in 0 .. i - 1 loop
-                        granteeVirt := GRANT_REGION_BASE +
-                            Integer_Address (globalId) * GRANT_SLOT_SIZE +
-                            Integer_Address (j) *
-                              Integer_Address (Virtmem.PAGE_SIZE);
-                        Virtmem.unmapPage
-                          (virt => granteeVirt,
-                           myP4 => addrtab(proctab(grantee).pgTable),
-                           success => ok);
-                    end loop;
-                end if;
-                Spinlocks.exitCriticalSection (grantLock);
-                return;
-            end if;
-
-            -- Calculate target virtual address in grantee's space
-            granteeVirt := GRANT_REGION_BASE +
-                Integer_Address (globalId) * GRANT_SLOT_SIZE +
-                Integer_Address (i) * Integer_Address (Virtmem.PAGE_SIZE);
-
-            -- Map the physical page into grantee's address space
-            mapPageInst (
-                phys    => physAddr,
-                virt    => granteeVirt,
-                flags   => flags,
-                myP4    => addrtab(proctab(grantee).pgTable),
-                success => ok);
-
             if not ok then
-                -- Roll back previously mapped pages
-                if i > 0 then
-                    for j in 0 .. i - 1 loop
-                        granteeVirt := GRANT_REGION_BASE +
-                            Integer_Address (globalId) * GRANT_SLOT_SIZE +
-                            Integer_Address (j) *
-                              Integer_Address (Virtmem.PAGE_SIZE);
-
-                        Virtmem.unmapPage
-                          (virt => granteeVirt,
-                           myP4 => addrtab(proctab(grantee).pgTable),
-                           success => ok);
-                    end loop;
-                end if;
+                unmapGrantPages (staging);
                 Spinlocks.exitCriticalSection (grantLock);
                 return;
             end if;
+
+            -- The mapping itself owns this pin, even without an acquisition.
+            mapPageInst
+              (physical,
+               To_Integer (staging.granteeAddr) +
+                 Integer_Address (page) * Virtmem.PAGE_SIZE,
+               flags, addrtab(proctab(receiver).pgTable), ok);
+            if not ok then
+                -- This page was never published. Prior pages require a real
+                -- unmap/shootdown before dropping their mapping-owned pins.
+                BuddyAllocator.unpinFrame (physical, ok);
+                if not ok then
+                    raise ProcessException with "Unpublished grant pin lost";
+                end if;
+                unmapGrantPages (staging);
+                Spinlocks.exitCriticalSection (grantLock);
+                return;
+            end if;
+            staging.numPages := staging.numPages + 1;
         end loop;
 
-        -- Record grant metadata in owner's grant table
-        proctab(owner).grants(granterSlot) := (
-            lifecycle   => Memory_Grants.Available_Lifecycle,
-            reusable    => True,
-            generation  => proctab(owner).grants(granterSlot).generation,
-            granterPID  => owner,
-            granteePID  => grantee,
-            granterAddr => localAddr,
-            granteeAddr => To_Address (
-                GRANT_REGION_BASE +
-                Integer_Address (globalId) * GRANT_SLOT_SIZE),
-            numPages    => numPages,
-            permission  => perm
-        );
-
-        --  Return globally unique ID for both address computation
-        --  and revocation.
-        id      := globalId;
+        staging.lifecycle := Memory_Grants.Available_Lifecycle;
+        staging.generation := proctab(owner).grants(slot).generation;
+        proctab(owner).grants(slot) := staging;
+        id := globalId;
         success := True;
         Spinlocks.exitCriticalSection (grantLock);
     end createGrant;
 
-    procedure pinGrantPages (g : Grant; success : out Boolean)
-
-    is
-        phys   : Virtmem.PhysAddress;
-        ok     : Boolean;
-        pinned : Natural := 0;
-    begin
-        success := False;
-        for i in 0 .. g.numPages - 1 loop
-            phys := Virtmem.tableWalk
-              (virt => To_Integer (g.granteeAddr) +
-                       Integer_Address (i) *
-                         Integer_Address (Virtmem.PAGE_SIZE),
-               myP4 => addrtab(proctab(g.granteePID).pgTable));
-            if phys = 0 then
-                exit;
-            end if;
-            BuddyAllocator.pinFrame (phys, ok);
-            if not ok then
-                exit;
-            end if;
-            pinned := pinned + 1;
-        end loop;
-
-        if pinned = g.numPages then
-            success := True;
-            return;
-        end if;
-
-        if pinned > 0 then
-            for i in 0 .. pinned - 1 loop
-                phys := Virtmem.tableWalk
-                  (virt => To_Integer (g.granteeAddr) +
-                           Integer_Address (i) *
-                             Integer_Address (Virtmem.PAGE_SIZE),
-                   myP4 => addrtab(proctab(g.granteePID).pgTable));
-                BuddyAllocator.unpinFrame (phys, ok);
-            end loop;
-        end if;
-    end pinGrantPages;
-
-    procedure unpinGrantPages (g : Grant)
-
-    is
-        phys : Virtmem.PhysAddress;
-        ok   : Boolean;
-    begin
-        for i in 0 .. g.numPages - 1 loop
-            phys := Virtmem.tableWalk
-              (virt => To_Integer (g.granteeAddr) +
-                       Integer_Address (i) *
-                         Integer_Address (Virtmem.PAGE_SIZE),
-               myP4 => addrtab(proctab(g.granteePID).pgTable));
-            if phys = 0 then
-                raise ProcessException with
-                  "Acquired grant lost its mapped backing frame";
-            end if;
-            BuddyAllocator.unpinFrame (phys, ok);
-            if not ok then
-                raise ProcessException with
-                  "Acquired grant returned an unpinned frame";
-            end if;
-        end loop;
-    end unpinGrantPages;
-
-    procedure unmapGrantPages (g : Grant)
-
-    is
-        granteeVirt : Integer_Address;
+    procedure unmapGrantPages (g : Grant) is
+        physical : Virtmem.PhysAddress;
+        virtual : Integer_Address;
         ok : Boolean;
     begin
-        if proctab(g.granteePID).state = INVALID then
+        if g.numPages = 0 then
             return;
         end if;
-
-        for i in 0 .. g.numPages - 1 loop
-            granteeVirt := To_Integer (g.granteeAddr) +
-                Integer_Address (i) * Integer_Address (Virtmem.PAGE_SIZE);
-            Virtmem.unmapPage
-              (virt    => granteeVirt,
-               myP4    => addrtab(proctab(g.granteePID).pgTable),
-               success => ok);
-        end loop;
-
-        declare
-            granteeCPU : constant Natural := proctab(g.granteePID).cpu;
-        begin
-            if granteeCPU = PerCPUData.getCPUNumber then
-                Virtmem.flushTLB;
-            else
-                tlbFlushPending(granteeCPU) := True;
-                IPI.sendReschedule (granteeCPU);
+        -- INVALID does not mean other CPUs have stopped using this address
+        -- space. Remove mappings while the page tables still exist, even on
+        -- process teardown, and acknowledge every online CPU before release.
+        if proctab(g.granteePID).pgTable = NO_PROCESS then
+            raise ProcessException with "Grant page tables destroyed before retirement";
+        end if;
+        for page in 0 .. g.numPages - 1 loop
+            virtual := To_Integer (g.granteeAddr) +
+                Integer_Address (page) * Virtmem.PAGE_SIZE;
+            physical := Virtmem.tableWalk
+              (virtual, addrtab(proctab(g.granteePID).pgTable));
+            if physical = 0 then
+                raise ProcessException with "Grant mapping lost before retirement";
             end if;
-        end;
+            Retiring_Frames (page) := physical;
+            Virtmem.unmapPage
+              (virtual, addrtab(proctab(g.granteePID).pgTable), ok);
+            if not ok then
+                raise ProcessException with "Grant mapping could not be removed";
+            end if;
+        end loop;
+        TLB_Shootdown.Invalidate_All;
+        -- No pin release (and hence no allocator reuse) before completion.
+        for page in 0 .. g.numPages - 1 loop
+            BuddyAllocator.unpinFrame (Retiring_Frames (page), ok);
+            if not ok then
+                raise ProcessException with "Retired grant lost its lifetime pin";
+            end if;
+        end loop;
     end unmapGrantPages;
 
     procedure revokeGrantLocked (g : in out Grant)
@@ -2054,10 +1916,10 @@ package body Process.IPC is
 
     ---------------------------------------------------------------------------
     -- revokeAllGrantsTo
-    -- The target process is already non-runnable when this is called. Its
-    -- address space will be destroyed, so no target-page-table mutation or
-    -- TLB shootdown is needed; only the authoritative owner records remain to
-    -- be invalidated before the PID can be reused.
+    -- Teardown must retire received mappings while the page tables exist.
+    -- INVALID is a scheduler state, not proof of remote TLB quiescence.
+    -- Force-close stops acquisitions, then the ordinary acknowledged mapping
+    -- retirement path drops the lifetime pins before invalidating the record.
     ---------------------------------------------------------------------------
     procedure revokeAllGrantsTo (pid : ProcessID)
 
@@ -2076,9 +1938,7 @@ package body Process.IPC is
                         Memory_Grants.Force_Close
                           (proctab(owner).grants(slot).lifecycle,
                            hadAcquisitions);
-                        if hadAcquisitions then
-                            unpinGrantPages (proctab(owner).grants(slot));
-                        end if;
+                        unmapGrantPages (proctab(owner).grants(slot));
                         invalidateGrant (proctab(owner).grants(slot));
                     end;
                 end if;
@@ -2140,7 +2000,6 @@ package body Process.IPC is
           (Memory_Grants.Local_Slot_Of (reference.slot));
         value : Grant renames proctab(slotOwner).grants(localSlot);
         mappedBytes : Unsigned_64;
-        pinned : Boolean;
     begin
         mappedAddress := System.Null_Address;
         success := False;
@@ -2168,14 +2027,8 @@ package body Process.IPC is
             return;
         end if;
 
-        if Memory_Grants.Acquisition_Total (value.lifecycle) = 0 then
-            pinGrantPages (value, pinned);
-            if not pinned then
-                Spinlocks.exitCriticalSection (grantLock);
-                return;
-            end if;
-        end if;
-
+        -- Mapping-owned lifetime pins already exist. Acquisitions govern
+        -- deferred revocation, not whether a visible mapping owns its pages.
         Memory_Grants.Record_Acquire (value.lifecycle);
 
         mappedAddress := To_Address
@@ -2272,7 +2125,6 @@ package body Process.IPC is
 
         Memory_Grants.Record_Return (value.lifecycle, result);
         if Memory_Grants.Acquisition_Total (value.lifecycle) = 0 then
-            unpinGrantPages (value);
             if result = Memory_Grants.Revocation_Completed_On_Return then
                 unmapGrantPages (value);
                 invalidateGrant (value);

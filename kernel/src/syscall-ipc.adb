@@ -176,6 +176,11 @@ package body Syscall.IPC is
         if numPages = 0 or numPages > 1024 then
             return;
         end if;
+        if Memory_Grants.Overlaps_Received_Region
+          (arg1, Memory_Grants.Page_Count (numPages))
+        then
+            return; -- only the grant subsystem may mutate its aperture
+        end if;
 
         Capabilities.Operations.checkDeviceMemAccess (
             table   => Process.proctab(callerPID).caps,
@@ -255,6 +260,11 @@ package body Syscall.IPC is
         targetPID := Process.ProcessID (arg0);
         order := BuddyAllocator.Order (arg1);
         virtBase := Virtmem.VirtAddress (arg2);
+        if Memory_Grants.Overlaps_Received_Region
+          (arg2, Memory_Grants.Page_Count (2 ** Natural (order)))
+        then
+            return;
+        end if;
 
         -- Check CAP_PROCESS with RIGHT_GRANT matching target (ref=0 wildcard)
         for slot in Capabilities.CapabilitySlot loop
@@ -414,6 +424,11 @@ package body Syscall.IPC is
             return;
         elsif arg3 = 0 or else arg3 > MAX_MAP_INTO_PAGES_PER_CALL then
             println ("MAP_INTO: invalid page count");
+            return;
+        end if;
+        if Memory_Grants.Overlaps_Received_Region
+          (arg2, Memory_Grants.Page_Count (arg3))
+        then
             return;
         end if;
 
