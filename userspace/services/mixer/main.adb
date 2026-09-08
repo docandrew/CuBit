@@ -154,8 +154,8 @@ procedure main is
          (tag => (label  => label,
                   length => 4,
                   flags  => 0,
-                  badge  => 0),
-          capBadge => 0,
+                  reserved  => 0),
+          authorityTag => 0,
           words => (0 => w0, 1 => w1, 2 => w2, 3 => w3)));
    end sendReply;
 
@@ -193,8 +193,8 @@ procedure main is
 
       ctlMsg :=
         (tag => (label => OP_AUDIO_HW_START, length => 0,
-                 flags => 0, badge => 0),
-         capBadge => 0,
+                 flags => 0, reserved => 0),
+         authorityTag => 0,
          words => (others => 0));
       ctlMsg.tag := capCall (CAP_SLOT_HDA, ctlMsg);
       if ctlMsg.tag.label = REPLY_OK then
@@ -214,8 +214,8 @@ procedure main is
 
       ctlMsg :=
         (tag => (label => OP_AUDIO_HW_STOP, length => 0,
-                 flags => 0, badge => 0),
-         capBadge => 0,
+                 flags => 0, reserved => 0),
+         authorityTag => 0,
          words => (others => 0));
       ctlMsg.tag := capCall (CAP_SLOT_HDA, ctlMsg);
       if ctlMsg.tag.label = REPLY_OK then
@@ -272,8 +272,8 @@ begin
    begin
       initMsg :=
         (tag => (label => OP_AUDIO_HW_INIT, length => 0,
-                 flags => 0, badge => 0),
-         capBadge => 0,
+                 flags => 0, reserved => 0),
+         authorityTag => 0,
          words => (others => 0));
       initMsg.tag := capCall (CAP_SLOT_HDA, initMsg);
 
@@ -324,8 +324,8 @@ begin
    begin
       ignore := capSend (CAP_SLOT_READY,
          (tag      => (label => OP_READY, length => 0,
-                       flags => 0, badge => 0),
-          capBadge => 0,
+                       flags => 0, reserved => 0),
+          authorityTag => 0,
           words    => (others => 0)));
    end;
 
@@ -362,7 +362,7 @@ begin
          end if;
 
       else
-         from := ProcessID (msg.capBadge);
+         from := ProcessID (msg.authorityTag);
          case msg.tag.label is
             when OP_AUDIO_OPEN =>
                --  words(0) = sampleRate

@@ -118,6 +118,64 @@ test-locking:
 	$(ALR) gprbuild -p -P../tests/kernel-locking/locking_tests.gpr
 	timeout 30 ../tests/kernel-locking/build/main
 
+.PHONY: test-ccl-cbor prove-ccl-cbor prove-ccl-cbor-core measure-ccl-cbor check-ccl-cbor-native
+test-ccl-cbor:
+	@test -n "$(CBOR_ADA_SRC)" || { echo "Run inside nix develop (CBOR_ADA_SRC missing)"; exit 1; }
+	$(ALR) gprbuild -p -P../tests/ccl-cbor/upstream_tests.gpr
+	../tests/ccl-cbor/build/upstream-off/test_cbor
+	$(ALR) gprbuild -p -P../tests/ccl-cbor/evaluation.gpr
+	../tests/ccl-cbor/build/on/main
+
+prove-ccl-cbor-core:
+	@test -n "$(CBOR_ADA_SRC)" || { echo "Run inside nix develop (CBOR_ADA_SRC missing)"; exit 1; }
+	$(ALR) gnatprove -P../tests/ccl-cbor/evaluation.gpr \
+		-u cbor-encoding.adb cbor-decoding.adb cbor-model.ads sample_profile.adb \
+		--level=2 --timeout=30 --report=all --checks-as-errors=on -j2
+	@cat ../tests/ccl-cbor/build/on/gnatprove/gnatprove.out
+
+# Also reproduces upstream's property lemmas. Keep this separate from the
+# core gate: three float lemma assertions currently remain unproved locally.
+prove-ccl-cbor: prove-ccl-cbor-core
+	$(ALR) gnatprove -P../tests/ccl-cbor/upstream_tests.gpr \
+		-u cbor-encoding.adb cbor-decoding.adb cbor-properties.adb cbor-model.ads \
+		--level=2 --timeout=30 --report=all --checks-as-errors=on -j2
+	@cat ../tests/ccl-cbor/build/upstream-off/gnatprove/gnatprove.out
+
+measure-ccl-cbor:
+	$(ALR) gprbuild -p -P../tests/ccl-cbor/evaluation.gpr -XCBOR_CHECKS=off
+	../tests/ccl-cbor/build/off/main
+
+check-ccl-cbor-native:
+	@test -n "$(CBOR_ADA_SRC)" || { echo "Run inside nix develop (CBOR_ADA_SRC missing)"; exit 1; }
+	$(ALR) gprbuild -p -c -P../tests/ccl-cbor/native_probe.gpr
+
+.PHONY : test-tcp-session prove-tcp-session
+test-network-authority:
+	$(ALR) gprbuild -p -P../tests/network-authority/network_authority_tests.gpr
+	../tests/network-authority/build/main
+
+prove-network-authority:
+	$(ALR) gnatprove -P../tests/network-authority/network_authority_tests.gpr \
+		-u cubit-network_authority.adb network_grants.adb --level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/network-authority/build/gnatprove/gnatprove.out
+
+.PHONY: network-check test-network-authority prove-network-authority
+network-check: user_runtime
+	mkdir -p ../userspace/apps/network-check/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/apps/network-check/manifest.c -o ../userspace/apps/network-check/build/manifest.o
+	$(ALR) gprbuild -P ../userspace/apps/network-check/network_check.gpr
+	cp ../userspace/apps/network-check/build/network-check.app isodir/boot/network-check.app
+
+test-tcp-session:
+	$(ALR) gprbuild -p -P../tests/tcp-session/tcp_session_tests.gpr
+	../tests/tcp-session/build/main
+
+prove-tcp-session:
+	$(ALR) gnatprove -P../tests/tcp-session/tcp_session_tests.gpr \
+		-u tcpsession.adb tcp_listeners.adb --level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/tcp-session/build/gnatprove/gnatprove.out
+
 .PHONY : test-filesystem-policy
 test-filesystem-policy:
 	$(ALR) gprbuild -p -P../userspace/runtime/tests/directory-paths/paths_tests.gpr
@@ -256,6 +314,14 @@ bench-ipc-client: user_runtime
 .PHONY : ccl-run
 ccl-run:
 	$(ALR) gprbuild -P ../userspace/ccl/ccl_run.gpr -p
+
+.PHONY : ccl-control
+ccl-control: user_runtime
+	mkdir -p ../userspace/ccl/apps/ccl-control/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/ccl/apps/ccl-control/manifest.c -o ../userspace/ccl/apps/ccl-control/build/manifest.o
+	$(ALR) gprbuild -p -P ../userspace/ccl/apps/ccl-control/ccl_control.gpr
+	cp ../userspace/ccl/apps/ccl-control/build/ccl-control.app isodir/boot/ccl-control.app
 
 .PHONY : ccl-ui-preview
 ccl-ui-preview:

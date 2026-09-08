@@ -85,7 +85,6 @@ package body Syscall is
             when 21   =>
                 number := SYSCALL_RECEIVE_UNTIL_MONOTONIC_MILLISECOND;
             when 22   => number := SYSCALL_POLL_ANY_IPC;
-            when 23   => number := SYSCALL_SUBMIT;
             when 24   => number := SYSCALL_WAIT_COMPLETION;
             when 25   => number := SYSCALL_POLL_COMPLETION;
             when 26   => number := SYSCALL_RECEIVE_EVENT_NB;
@@ -258,10 +257,6 @@ package body Syscall is
 
             when SYSCALL_POLL_SERVICE_REQUEST =>
                 IPC.handlePollServiceRequest (arg0, retval);
-
-            when SYSCALL_SUBMIT =>
-                IPC.handleSubmit (
-                    arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
             when SYSCALL_WAIT_COMPLETION =>
                 IPC.handleWaitCompletion (

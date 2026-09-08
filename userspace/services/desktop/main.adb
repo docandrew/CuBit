@@ -316,7 +316,7 @@ procedure main is
    subtype InputSourceIndex is Natural range 0 .. MAX_INPUT_SOURCES - 1;
    type InputSourceState is record
       used       : Boolean := False;
-      badge      : Unsigned_64 := 0;
+      authorityTag      : Unsigned_64 := 0;
       device     : CuBit.Input.Device_Class := CuBit.Input.KEYBOARD;
       generation : CuBit.Input.Source_Generation := 0;
       sequence   : CuBit.Input.Source_Sequence := 0;
@@ -1396,8 +1396,8 @@ procedure main is
                else OP_DISPLAY_PRESENT_RECT),
                       length => 4,
                       flags  => 0,
-                      badge  => 0),
-         capBadge => 0,
+                      reserved  => 0),
+         authorityTag => 0,
          words    => (Unsigned_64 (r.x),
                       Unsigned_64 (r.y),
                       Unsigned_64 (r.w),
@@ -2731,7 +2731,7 @@ procedure main is
               (label =>
                  (if first = 1 then OP_DISPLAY_PRESENT_REGION
                   else OP_DISPLAY_PRESENT_IMMEDIATE_REGION),
-               length => Unsigned_8 (batchCount), flags => 0, badge => 0);
+               length => Unsigned_8 (batchCount), flags => 0, reserved => 0);
             for offset in 0 .. batchCount - 1 loop
                request.words (offset) :=
                  Pack_Rect (regions (Damage_Index (first + offset)));
@@ -3626,7 +3626,7 @@ procedure main is
             flags =>
               (if hasInputAfter (target, event.serial)
                then INPUT_REPLY_MORE_PENDING else 0),
-            badge => 0);
+            reserved => 0);
          response.words (0) := event.kind;
          response.words (1) := event.serial;
          response.words (2) := event.payload0;
@@ -3732,7 +3732,7 @@ procedure main is
 
       if inputChannels (SurfaceIndex (channelSlot)).waiter.active then
          response.tag :=
-           (label => OP_INPUT_WAIT, length => 4, flags => 0, badge => 0);
+           (label => OP_INPUT_WAIT, length => 4, flags => 0, reserved => 0);
          response.words (0) := INPUT_RESYNC;
          response.words (1) :=
            inputChannels (SurfaceIndex (channelSlot)).nextSerial;
@@ -3957,7 +3957,7 @@ procedure main is
             replyMsg.tag := (label  => OP_DESKTOP_HELLO,
                              length => 4,
                              flags  => 0,
-                             badge  => 0);
+                             reserved  => 0);
             replyMsg.words (0) := 1; -- session id
             replyMsg.words (1) := 0; -- compositor flags
             replyMsg.words (2) := 8; -- max surfaces
@@ -3967,7 +3967,7 @@ procedure main is
             replyMsg.tag := (label  => OP_DESKTOP_GET_INFO,
                              length => 4,
                              flags  => 0,
-                             badge  => 0);
+                             reserved  => 0);
             replyMsg.words (0) := Unsigned_64 (fbWidth);
             replyMsg.words (1) := Unsigned_64 (fbHeight);
             replyMsg.words (2) := PIXEL_FORMAT_BGRA8888;
@@ -3997,13 +3997,13 @@ procedure main is
                   replyMsg.tag := (label  => OP_SURFACE_CREATE,
                                    length => 1,
                                    flags  => 0,
-                                   badge  => 0);
+                                   reserved  => 0);
                   replyMsg.words (0) := UI_ERR_BAD_STATE;
                elsif slot < 0 then
                   replyMsg.tag := (label  => OP_SURFACE_CREATE,
                                    length => 1,
                                    flags  => 0,
-                                   badge  => 0);
+                                   reserved  => 0);
                   replyMsg.words (0) := UI_ERR_BAD_STATE;
                else
                   if reqW = 0 or else reqW > fbWidth then
@@ -4072,7 +4072,7 @@ procedure main is
                   replyMsg.tag := (label  => OP_SURFACE_CREATE,
                                    length => 4,
                                    flags  => 0,
-                                   badge  => 0);
+                                   reserved  => 0);
                   replyMsg.words (0) := nextSurfaceId;
                   replyMsg.words (1) := Unsigned_64 (reqW);
                   replyMsg.words (2) := Unsigned_64 (reqH);
@@ -4099,13 +4099,13 @@ procedure main is
                   replyMsg.tag := (label  => OP_SURFACE_RESIZE,
                                    length => 1,
                                    flags  => 0,
-                                   badge  => 0);
+                                   reserved  => 0);
                   replyMsg.words (0) := UI_ERR_BAD_OBJECT;
                elsif surfaces (SurfaceIndex (idx)).owner /= from then
                   replyMsg.tag := (label  => OP_SURFACE_RESIZE,
                                    length => 1,
                                    flags  => 0,
-                                   badge  => 0);
+                                   reserved  => 0);
                   replyMsg.words (0) := UI_ERR_DENIED;
                else
                   clampSurfaceSize (surfaces (SurfaceIndex (idx)), newW, newH);
@@ -4133,7 +4133,7 @@ procedure main is
                   replyMsg.tag := (label  => OP_SURFACE_RESIZE,
                                    length => 4,
                                    flags  => 0,
-                                   badge  => 0);
+                                   reserved  => 0);
                   replyMsg.words (0) := UI_OK;
                   replyMsg.words (1) := Unsigned_64 (newW);
                   replyMsg.words (2) := Unsigned_64 (newH);
@@ -4155,7 +4155,7 @@ procedure main is
             begin
                replyMsg.tag :=
                  (label => OP_SURFACE_SET_POINTER_CURSOR,
-                  length => 1, flags => 0, badge => 0);
+                  length => 1, flags => 0, reserved => 0);
                if idx < 0 then
                   replyMsg.words (0) := UI_ERR_BAD_OBJECT;
                elsif surfaces (SurfaceIndex (idx)).owner /= from then
@@ -4195,7 +4195,7 @@ procedure main is
                replyMsg.tag := (label  => OP_WINDOW_SET_LIMITS,
                                 length => 4,
                                 flags  => 0,
-                                badge  => 0);
+                                reserved  => 0);
 
                if idx < 0 then
                   replyMsg.words (0) := UI_ERR_BAD_OBJECT;
@@ -4263,7 +4263,7 @@ procedure main is
             begin
                replyMsg.tag :=
                  (label => OP_WINDOW_SET_TITLE,
-                  length => 1, flags => 0, badge => 0);
+                  length => 1, flags => 0, reserved => 0);
                if idx < 0 then
                   replyMsg.words (0) := UI_ERR_BAD_OBJECT;
                elsif surfaces (SurfaceIndex (idx)).owner /= from then
@@ -4309,7 +4309,7 @@ procedure main is
                replyMsg.tag := (label  => OP_SURFACE_ATTACH_BUFFER,
                                 length => 4,
                                 flags  => 0,
-                                badge  => 0);
+                                reserved  => 0);
 
                if idx < 0 then
                   replyMsg.words (0) := UI_ERR_BAD_OBJECT;
@@ -4357,7 +4357,7 @@ procedure main is
             replyMsg.tag := (label  => OP_SURFACE_PRESENT,
                              length => 1,
                              flags  => 0,
-                             badge  => 0);
+                             reserved  => 0);
             replyMsg.words (0) := UI_OK;
             declare
                idx : constant Integer := findSurface (request.words (0));
@@ -4406,13 +4406,13 @@ procedure main is
                   replyMsg.tag := (label  => OP_SURFACE_DESTROY,
                                    length => 1,
                                    flags  => 0,
-                                   badge  => 0);
+                                   reserved  => 0);
                   replyMsg.words (0) := UI_ERR_BAD_OBJECT;
                elsif surfaces (SurfaceIndex (idx)).owner /= from then
                   replyMsg.tag := (label  => OP_SURFACE_DESTROY,
                                    length => 1,
                                    flags  => 0,
-                                   badge  => 0);
+                                   reserved  => 0);
                   replyMsg.words (0) := UI_ERR_DENIED;
                else
                   if pointerSurfaceId = request.words (0) then
@@ -4432,7 +4432,7 @@ procedure main is
                   replyMsg.tag := (label  => OP_SURFACE_DESTROY,
                                    length => 1,
                                    flags  => 0,
-                                   badge  => 0);
+                                   reserved  => 0);
                   replyMsg.words (0) := UI_OK;
                   if anySurfaceUsed then
                      scheduleRedraw;
@@ -4446,7 +4446,7 @@ procedure main is
             replyMsg.tag := (label  => request.tag.label,
                              length => 4,
                              flags  => 0,
-                             badge  => 0);
+                             reserved  => 0);
             declare
                found : Boolean;
                event : PendingInput;
@@ -4526,7 +4526,7 @@ procedure main is
             replyMsg.tag := (label  => OP_DESKTOP_BYE,
                              length => 1,
                              flags  => 0,
-                             badge  => 0);
+                             reserved  => 0);
             replyMsg.words (0) := UI_OK;
             if anySurfaceUsed then
                scheduleRedraw;
@@ -4538,7 +4538,7 @@ procedure main is
             replyMsg.tag := (label  => request.tag.label,
                              length => 1,
                              flags  => 0,
-                             badge  => 0);
+                             reserved  => 0);
             replyMsg.words (0) := UI_ERR_UNSUPPORTED;
       end case;
 
@@ -4797,7 +4797,7 @@ procedure main is
       msg.tag := (label  => OP_SPAWN,
                   length => Unsigned_8 (len),
                   flags  => 0,
-                  badge  => 0);
+                  reserved  => 0);
       msg.words (0) := spawnGrantId;
       msg.words (1) := 5;
       msg.words (2) := 0;
@@ -5375,7 +5375,7 @@ procedure main is
 
       for i in inputSources'Range loop
          if inputSources (i).used and then
-            inputSources (i).badge = report.sourceBadge and then
+            inputSources (i).authorityTag = report.sourceAuthorityTag and then
             inputSources (i).device = report.device
          then
             slot := Integer (i);
@@ -5423,7 +5423,7 @@ procedure main is
                 (source.sequence, report.sequence)));
 
          source.used := True;
-         source.badge := report.sourceBadge;
+         source.authorityTag := report.sourceAuthorityTag;
          source.device := report.device;
          source.generation := report.generation;
          source.sequence := report.sequence;
@@ -5609,8 +5609,8 @@ procedure main is
        w3    : Unsigned_64 := 0) return Message
    is
       msg : Message :=
-        (tag      => (label => label, length => 4, flags => 0, badge => 0),
-         capBadge => 0,
+        (tag      => (label => label, length => 4, flags => 0, reserved => 0),
+         authorityTag => 0,
          words    => (w0, w1, w2, w3));
       tag : MessageTag;
    begin

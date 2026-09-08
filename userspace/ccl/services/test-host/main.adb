@@ -30,11 +30,11 @@ begin
       then
          debugPrint ("ccl-test-host: import invoked" & LF);
          Response.tag :=
-           (label => REPLY_OK, length => 1, flags => 0, badge => 0);
+           (label => REPLY_OK, length => 1, flags => 0, reserved => 0);
          Response.words (0) := Request.words (0) + 1;
       else
          Response.tag :=
-           (label => REPLY_ERROR, length => 0, flags => 0, badge => 0);
+           (label => REPLY_ERROR, length => 0, flags => 0, reserved => 0);
       end if;
       Ignore := reply (From, Response);
    end loop;

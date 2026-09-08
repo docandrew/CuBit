@@ -252,30 +252,32 @@ package Process is
         label  : Unsigned_32;   -- Protocol-defined operation code
         length : Unsigned_8;    -- Number of valid words (0-4)
         flags  : Unsigned_8;    -- Reserved for future (grant, capability, etc.)
-        badge  : Unsigned_16;   -- Sender badge / endpoint ID
+        reserved : Unsigned_16; -- Not authenticated; never an authority tag
     end record with Size => 64;
 
     for MessageTag use record
         label  at 0 range 0..31;
         length at 4 range 0..7;
         flags  at 5 range 0..7;
-        badge  at 6 range 0..15;
+        reserved  at 6 range 0..15;
     end record;
 
-    NULL_TAG : constant MessageTag := (label => 0, length => 0, flags => 0, badge => 0);
+    NULL_TAG : constant MessageTag := (label => 0, length => 0, flags => 0, reserved => 0);
 
     type MessageWords is array (0..3) of Unsigned_64;
 
     type Message is record
         tag      : MessageTag;
-        capBadge : Unsigned_64 := 0;  -- Kernel-stamped 64-bit badge
+        authorityTag : Unsigned_64 := 0;  -- Kernel-stamped 64-bit authority tag
         words    : MessageWords;
     end record;
-    -- Total: 48 bytes (tag:8 + badge:8 + words:32)
+    -- Total: 48 bytes (tag:8 + authority tag:8 + words:32)
+    pragma Compile_Time_Error (Message'Size /= 48 * 8,
+                               "IPC message ABI must remain 48 bytes");
 
     NULL_MESSAGE : constant Message := (
         tag      => NULL_TAG,
-        capBadge => 0,
+        authorityTag => 0,
         words    => (others => 0));
 
     ---------------------------------------------------------------------------

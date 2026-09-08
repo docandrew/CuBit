@@ -33,13 +33,13 @@ begin
       then
          Now_Ms := syscall (SYSCALL_GETTIME);
          Response.tag :=
-           (label => REPLY_OK, length => 1, flags => 0, badge => 0);
+           (label => REPLY_OK, length => 1, flags => 0, reserved => 0);
          Response.words (0) := Unsigned_64'Min
            (Now_Ms, MAX_CCL_MILLISECONDS);
          debugPrint ("clock: monotonic query" & LF);
       else
          Response.tag :=
-           (label => REPLY_ERROR, length => 0, flags => 0, badge => 0);
+           (label => REPLY_ERROR, length => 0, flags => 0, reserved => 0);
       end if;
       Ignore := reply (From, Response);
    end loop;

@@ -31,7 +31,6 @@ package CuBit.Messages is
    SYSCALL_RECEIVE_UNTIL_MONOTONIC_MILLISECOND :
       constant Unsigned_64 := 21;
    SYSCALL_POLL_ANY_IPC    : constant Unsigned_64 := 22;
-   SYSCALL_SUBMIT          : constant Unsigned_64 := 23;
    SYSCALL_WAIT_COMPLETION : constant Unsigned_64 := 24;
    SYSCALL_POLL_COMPLETION : constant Unsigned_64 := 25;
    SYSCALL_RECEIVE_EVENT_NB : constant Unsigned_64 := 26;
@@ -184,29 +183,33 @@ package CuBit.Messages is
       label  : Unsigned_32;
       length : Unsigned_8;
       flags  : Unsigned_8;
-      badge  : Unsigned_16;
+      reserved : Unsigned_16; -- Not authenticated; never an authority tag
    end record with Size => 64;
 
    for MessageTag use record
       label  at 0 range 0 .. 31;
       length at 4 range 0 .. 7;
       flags  at 5 range 0 .. 7;
-      badge  at 6 range 0 .. 15;
+      reserved  at 6 range 0 .. 15;
    end record;
 
    NULL_TAG : constant MessageTag :=
-     (label => 0, length => 0, flags => 0, badge => 0);
+     (label => 0, length => 0, flags => 0, reserved => 0);
 
    type MessageWords is array (0 .. 3) of Unsigned_64;
 
    type Message is record
       tag      : MessageTag;
-      capBadge : Unsigned_64 := 0;
+      --  Kernel-stamped from the capability authorizing this message.
+      authorityTag : Unsigned_64 := 0;
       words    : MessageWords;
    end record;
 
+   pragma Compile_Time_Error (Message'Size /= 48 * 8,
+                              "IPC message ABI must remain 48 bytes");
+
    NULL_MESSAGE : constant Message :=
-     (tag => NULL_TAG, capBadge => 0, words => (others => 0));
+     (tag => NULL_TAG, authorityTag => 0, words => (others => 0));
 
    subtype ProcessID is Unsigned_64;
    NO_PROCESS : constant ProcessID := 0;
@@ -310,11 +313,10 @@ package CuBit.Messages is
       msg   : out Message;
       found : out Boolean);
 
-   --  Async non-blocking send (submit + token for completion tracking).
-   function submit
-     (dest  : ProcessID;
-      msg   : Message;
-      token : Unsigned_64) return Boolean;
+   --  Resolve an already-held endpoint, never acquire authority from a PID.
+   --  capSubmit revalidates the selected capability's rights and generation.
+   procedure Find_Endpoint_Capability
+     (Target : ProcessID; Slot : out CapabilitySlot; Found : out Boolean);
 
    --  Async completion queue wrappers
 
@@ -329,7 +331,7 @@ package CuBit.Messages is
    --  Poll_Completion
    --
    --  Non-blocking completion receive for work this process initiated with
-   --  submit/capSubmit. Completions are not incoming client requests; they are
+   --  capSubmit. Completions are not incoming client requests; they are
    --  the answers to this process' own async operations.
    --
    --  result must point to a CompletionEntry. Returns 1 if found, 0 if empty.
@@ -338,7 +340,7 @@ package CuBit.Messages is
 
    --  Capability-aware IPC wrappers
 
-   --  Cap-aware synchronous send: resolve endpoint cap, stamp badge, send.
+   --  Synchronous send: resolve endpoint cap, stamp authority tag, send.
    function capSend
      (slot : CapabilitySlot; msg : Message) return MessageTag;
 
@@ -346,7 +348,7 @@ package CuBit.Messages is
    function capCall
      (slot : CapabilitySlot; msg : in out Message) return MessageTag;
 
-   --  Cap-aware async submit: resolve cap, stamp badge, submit.
+   --  Cap-aware async submit: resolve cap, stamp authority tag, submit.
    function capSubmit
      (slot  : CapabilitySlot;
       msg   : Message;
@@ -356,8 +358,8 @@ package CuBit.Messages is
    procedure sendEvent (dest : ProcessID; msg : Message);
 
    --  Send an async event and report bounded-queue backpressure. The kernel
-   --  replaces msg.capBadge with the badge of the capability authorizing the
-   --  publication; caller-supplied badges are never trusted.
+   --  replaces msg.authorityTag with the tag of the authorizing capability;
+   --  publication; caller-supplied authority tags are never trusted.
    function trySendEvent (dest : ProcessID; msg : Message) return Boolean;
 
    --  Blocking receive for unsolicited events. The current ABI returns only

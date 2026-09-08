@@ -27,7 +27,7 @@ Usage: tests/headless/run.sh [options]
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, capability-security, storage-grants, audio-grants, desktop-display, input-stream, devices, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, capability-security, network-authority, storage-grants, audio-grants, desktop-display, input-stream, devices, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
   --timeout SECONDS    QEMU runtime before timeout is treated as success
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
   --disk PATH          Base ext2 disk image (default: kernel/nvme_disk.img)
@@ -119,7 +119,7 @@ case "$TIMEOUT_SECONDS" in
 esac
 
 case "$TEST_NAME" in
-    boot-shell-nvme|async-ipc|bench-ipc|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|capability-security|storage-grants|audio-grants|desktop-display|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
+    boot-shell-nvme|async-ipc|bench-ipc|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|capability-security|network-authority|storage-grants|audio-grants|desktop-display|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -156,10 +156,15 @@ if [ -z "$NET_PCAP" ]; then
 fi
 
 GRUB_CFG="$KERNEL_DIR/isodir/boot/grub/grub.cfg"
+NETWORK_PEER_PID=""
 GRUB_BAK="$(mktemp "${TMPDIR:-/tmp}/cubit-grub.XXXXXX")"
 cp "$GRUB_CFG" "$GRUB_BAK"
 
 cleanup() {
+    if [ -n "$NETWORK_PEER_PID" ]; then
+        kill "$NETWORK_PEER_PID" >/dev/null 2>&1 || true
+        wait "$NETWORK_PEER_PID" >/dev/null 2>&1 || true
+    fi
     if [ -n "$INPUT_INJECTOR_PID" ]; then
         kill "$INPUT_INJECTOR_PID" >/dev/null 2>&1 || true
         wait "$INPUT_INJECTOR_PID" >/dev/null 2>&1 || true
@@ -221,6 +226,9 @@ case "$TEST_NAME" in
         ;;
     capability-security)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-capability-security.conf"
+        ;;
+    network-authority)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-network-authority.conf"
         ;;
     storage-grants)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-storage-grants.conf"
@@ -366,7 +374,15 @@ if [ -n "$INIT_PROFILE" ]; then
             fi
         done
     fi
-    if [ "$TEST_NAME" = "capability-security" ]; then
+    if [ "$TEST_NAME" = "network-authority" ]; then
+        NETWORK_TEST_IMAGE="$KERNEL_DIR/isodir/boot/network-check.app"
+        debugfs -w -R "rm network-check.app" "$TEMP_DISK" >/dev/null 2>&1
+        if ! debugfs -w -R "write $NETWORK_TEST_IMAGE network-check.app" "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to install network-check.app" >&2
+            exit 1
+        fi
+    fi
+    if [ "$TEST_NAME" = "capability-security" ] || [ "$TEST_NAME" = "network-authority" ]; then
         CAPABILITY_TEST_IMAGE="$KERNEL_DIR/isodir/boot/capability-test.app"
         if [ ! -f "$CAPABILITY_TEST_IMAGE" ]; then
             echo "headless: missing current capability test image: $CAPABILITY_TEST_IMAGE" >&2
@@ -837,6 +853,11 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] ||
     INPUT_INJECTOR_PID=$!
 fi
 
+if [ "$TEST_NAME" = "network-authority" ]; then
+    python3 "$ROOT_DIR/tests/network-authority/peer.py" &
+    NETWORK_PEER_PID=$!
+fi
+
 (
     cd "$KERNEL_DIR" || exit 1
     # shellcheck disable=SC2086
@@ -893,6 +914,24 @@ procmgr: ready, entering receive loop
 shell: cwd=@nvme:0/
 ps2: consumer registered, entering event loop
 "
+        ;;
+    network-authority)
+        required_markers="
+TEST: PASS network-unapproved
+TEST: PASS network-authority
+capability-test: retired PID submit rejected PASS
+capability-test: authorityless capability submit rejected PASS
+capability-test: all tests passed
+"
+        if ! rg -q 'TEST: PASS network-authority' "$SERIAL_LOG"; then
+            echo "headless: guest network authority checks did not finish" >&2
+            exit 1
+        fi
+        if ! wait "$NETWORK_PEER_PID"; then
+            echo "headless: network peer failed" >&2
+            exit 1
+        fi
+        NETWORK_PEER_PID=""
         ;;
     async-ipc)
         required_markers="
@@ -979,6 +1018,8 @@ capability-test: no ambient keyboard PASS
 capability-test: no ambient mouse PASS
 capability-test: no ambient process management PASS
 capability-test: ambient event publication denied PASS
+capability-test: retired PID submit rejected PASS
+capability-test: authorityless capability submit rejected PASS
 capability-test: self mint denied PASS
 capability-test: mint denial leaves slot empty PASS
 capability-test: ambient spawn denied PASS

@@ -1,0 +1,16 @@
+project Native_Probe is
+   Source := external ("CBOR_ADA_SRC");
+   for Source_Dirs use (Source & "/src");
+   for Source_Files use
+     ("cbor.ads", "cbor-model.ads", "cbor-encoding.ads", "cbor-encoding.adb",
+      "cbor-decoding.ads", "cbor-decoding.adb");
+   for Object_Dir use "build/native-probe";
+   for Runtime ("Ada") use "../../userspace/runtime";
+   package Compiler is
+      -- Compile-only CuBit USERSPACE probe. No executable assertions, no
+      -- kernel linkage and no change to a native application's dependencies.
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-mno-red-zone", "-mno-sse", "-mno-sse2",
+         "-fno-pic", "-fstack-usage", "-I-");
+   end Compiler;
+end Native_Probe;

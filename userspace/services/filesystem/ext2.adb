@@ -162,8 +162,8 @@ package body Ext2 is
                   msg.tag := (label  => OP_READ_BLOCKS,
                               length => 4,
                               flags  => 0,
-                              badge  => 0);
-                  msg.capBadge := 0;
+                              reserved  => 0);
+                  msg.authorityTag := 0;
                   msg.words := [0 => lba,
                                 1 => fs.device.grant.slot,
                                 2 => sectorsNeeded,
@@ -1068,8 +1068,8 @@ package body Ext2 is
                      msg.tag := (label  => OP_READ_BLOCKS,
                                  length => 4,
                                  flags  => 0,
-                                 badge  => 0);
-                     msg.capBadge := 0;
+                                 reserved  => 0);
+                     msg.authorityTag := 0;
                      msg.words := [0 => lba,
                                    1 => fs.device.grant.slot,
                                    2 => 1,
@@ -1102,8 +1102,8 @@ package body Ext2 is
                      msg.tag := (label  => OP_WRITE_BLOCKS,
                                  length => 4,
                                  flags  => 0,
-                                 badge  => 0);
-                     msg.capBadge := 0;
+                                 reserved  => 0);
+                     msg.authorityTag := 0;
                      msg.words := [0 => lba,
                                    1 => fs.device.grant.slot,
                                    2 => 1,
@@ -1159,8 +1159,8 @@ package body Ext2 is
                         msg.tag := (label  => OP_WRITE_BLOCKS,
                                     length => 4,
                                     flags  => 0,
-                                    badge  => 0);
-                        msg.capBadge := 0;
+                                    reserved  => 0);
+                        msg.authorityTag := 0;
                         msg.words := [0 => lba,
                                       1 => fs.device.grant.slot,
                                       2 => sectorsNeeded,
@@ -2776,8 +2776,8 @@ package body Ext2 is
 
       describeMsg :=
         (tag      => (label => OP_DESCRIBE_DEVICE, length => 0,
-                      flags => 0, badge => 0),
-         capBadge => 0,
+                      flags => 0, reserved => 0),
+         authorityTag => 0,
          words    => [others => 0]);
       ignore := capCall (capSlot, describeMsg);
       if describeMsg.tag.label /= REPLY_OK or else

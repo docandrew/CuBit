@@ -328,7 +328,7 @@ procedure main is
       msg.tag := (label  => OP_DISPLAY_RELEASE,
                   length => 0,
                   flags  => 0,
-                  badge  => 0);
+                  reserved  => 0);
       tag := capCall (CAP_SLOT_DISPLAY, msg);
       msg.tag := tag;
       displayAttached := False;
@@ -351,7 +351,7 @@ procedure main is
          msg.tag := (label  => OP_DISPLAY_PRESENT_RECT,
                      length => 4,
                      flags  => 0,
-                     badge  => 0);
+                     reserved  => 0);
          msg.words (0) := Unsigned_64 (x);
          msg.words (1) := Unsigned_64 (y);
          msg.words (2) := Unsigned_64 (w);
@@ -403,7 +403,7 @@ procedure main is
       status.tag := (label  => OP_DISPLAY_GET_STATUS,
                      length => 0,
                      flags  => 0,
-                     badge  => 0);
+                     reserved  => 0);
       tag := capCall (CAP_SLOT_DISPLAY, status);
       status.tag := tag;
 
@@ -423,7 +423,7 @@ procedure main is
       acquire.tag := (label  => OP_DISPLAY_ACQUIRE,
                       length => 0,
                       flags  => 0,
-                      badge  => 0);
+                      reserved  => 0);
       tag := capCall (CAP_SLOT_DISPLAY, acquire);
       acquire.tag := tag;
       if tag.length < 1 or else acquire.words (0) /= DISPLAY_OK then
@@ -453,7 +453,7 @@ procedure main is
       attach.tag := (label  => OP_DISPLAY_ATTACH_BUFFER,
                      length => 4,
                      flags  => 0,
-                     badge  => 0);
+                     reserved  => 0);
       attach.words (0) := displayGrantId;
       attach.words (1) := Unsigned_64 (fbWidth);
       attach.words (2) := Unsigned_64 (fbHeight);
@@ -777,7 +777,7 @@ procedure main is
          msg.tag := (label  => OP_SPAWN,
                      length => Unsigned_8 (totalLen),
                      flags  => 0,
-                     badge  => 0);
+                     reserved  => 0);
          msg.words (0) := grantId;
          msg.words (1) := 5;  -- default priority
          msg.words (2) := 0;  -- no sandbox override from shell
@@ -811,8 +811,8 @@ procedure main is
                tag => (label  => CuBit.Streams.OP_STREAM_SUBSCRIBE_TYPED,
                        length => 4,
                        flags  => 0,
-                       badge  => 0),
-               capBadge => 0,
+                       reserved  => 0),
+               authorityTag => 0,
                words    =>
                  (0 => Unsigned_64 (CuBit.Streams.STREAM_STDOUT),
                   1 => Unsigned_64
@@ -822,8 +822,13 @@ procedure main is
                   3 => CuBit.Protocols.Wire_Descriptor
                     (CuBit.Protocols.TEXT_LINE_CONTRACT)));
             ok : Boolean;
+            endpointSlot : CapabilitySlot;
+            hasEndpoint : Boolean;
          begin
-            ok := submit (foregroundPID, subMsg, STREAM_SUB_TOKEN);
+            Find_Endpoint_Capability
+              (foregroundPID, endpointSlot, hasEndpoint);
+            ok := hasEndpoint and then
+              capSubmit (endpointSlot, subMsg, STREAM_SUB_TOKEN);
             if ok then
                streamSubPending := True;
                streamDrainPolls := 0;
@@ -885,7 +890,7 @@ procedure main is
          msg.tag := (label  => OP_SPAWN,
                      length => Unsigned_8 (totalLen),
                      flags  => 0,
-                     badge  => 0);
+                     reserved  => 0);
          msg.words (0) := grantId;
          msg.words (1) := 5;
          msg.words (2) := 0;  -- no sandbox override from shell
@@ -1010,7 +1015,7 @@ procedure main is
          msg.tag := (label  => OP_OPEN,
                      length => 4,
                      flags  => 0,
-                     badge  => 0);
+                     reserved  => 0);
          msg.words (0) := fsGrant.slot;
          msg.words (1) := Unsigned_64 (resolvedLen);
          msg.words (2) := 0;
@@ -1031,7 +1036,7 @@ procedure main is
          msg.tag := (label  => OP_READ,
                      length => 4,
                      flags  => 0,
-                     badge  => 0);
+                     reserved  => 0);
          msg.words (0) := handle;
          msg.words (1) := fsGrant.slot;
          msg.words (2) := Unsigned_64 (FS_BUF_PAGES * 4096);
@@ -1071,7 +1076,7 @@ procedure main is
       msg.tag := (label  => OP_CLOSE,
                   length => 1,
                   flags  => 0,
-                  badge  => 0);
+                  reserved  => 0);
       msg.words (0) := handle;
       tag := capCall (CAP_SLOT_FS, msg);
 
@@ -1213,7 +1218,7 @@ procedure main is
          msg.tag := (label  => OP_OPEN,
                      length => 4,
                      flags  => 0,
-                     badge  => 0);
+                     reserved  => 0);
          msg.words (0) := fsGrant.slot;
          msg.words (1) := Unsigned_64 (resolvedLen);
          msg.words (2) := O_CREAT or O_TRUNC or O_WRONLY;
@@ -1242,7 +1247,7 @@ procedure main is
          msg.tag := (label  => OP_WRITE,
                      length => 4,
                      flags  => 0,
-                     badge  => 0);
+                     reserved  => 0);
          msg.words (0) := handle;
          msg.words (1) := fsGrant.slot;
          msg.words (2) := Unsigned_64 (text'Length);
@@ -1262,7 +1267,7 @@ procedure main is
          msg.tag := (label  => OP_CLOSE,
                      length => 1,
                      flags  => 0,
-                     badge  => 0);
+                     reserved  => 0);
          msg.words (0) := handle;
          tag := capCall (CAP_SLOT_FS, msg);
       end;
@@ -1707,7 +1712,7 @@ procedure main is
          --  OP_OPEN
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_OPEN,
-                     length => 4, flags => 0, badge => 0);
+                     length => 4, flags => 0, reserved => 0);
          msg.words (0) := fsGrant.slot;
          msg.words (1) := Unsigned_64 (resolvedLen);
          msg.words (2) := 0;
@@ -1726,7 +1731,7 @@ procedure main is
       loop
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_READ,
-                     length => 4, flags => 0, badge => 0);
+                     length => 4, flags => 0, reserved => 0);
          msg.words (0) := handle;
          msg.words (1) := fsGrant.slot;
          msg.words (2) := Unsigned_64 (FS_BUF_PAGES * 4096);
@@ -1797,7 +1802,7 @@ procedure main is
       --  OP_CLOSE
       msg := NULL_MESSAGE;
       msg.tag := (label  => OP_CLOSE,
-                  length => 1, flags => 0, badge => 0);
+                  length => 1, flags => 0, reserved => 0);
       msg.words (0) := handle;
       tag := capCall (CAP_SLOT_FS, msg);
 
@@ -1881,7 +1886,7 @@ procedure main is
             --  OP_OPEN
             msg := NULL_MESSAGE;
             msg.tag := (label  => OP_OPEN,
-                        length => 4, flags => 0, badge => 0);
+                        length => 4, flags => 0, reserved => 0);
             msg.words (0) := fsGrant.slot;
             msg.words (1) := Unsigned_64 (resolvedLen);
             msg.words (2) := 0;
@@ -1900,7 +1905,7 @@ procedure main is
          loop
             msg := NULL_MESSAGE;
             msg.tag := (label  => OP_READ,
-                        length => 4, flags => 0, badge => 0);
+                        length => 4, flags => 0, reserved => 0);
             msg.words (0) := handle;
             msg.words (1) := fsGrant.slot;
             msg.words (2) := Unsigned_64 (FS_BUF_PAGES * 4096);
@@ -1934,7 +1939,7 @@ procedure main is
          --  OP_CLOSE
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_CLOSE,
-                     length => 1, flags => 0, badge => 0);
+                     length => 1, flags => 0, reserved => 0);
          msg.words (0) := handle;
          tag := capCall (CAP_SLOT_FS, msg);
 
@@ -1971,7 +1976,7 @@ procedure main is
          --  OP_OPEN
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_OPEN,
-                     length => 4, flags => 0, badge => 0);
+                     length => 4, flags => 0, reserved => 0);
          msg.words (0) := fsGrant.slot;
          msg.words (1) := Unsigned_64 (resolvedLen);
          msg.words (2) := 0;
@@ -1990,7 +1995,7 @@ procedure main is
       loop
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_READ,
-                     length => 4, flags => 0, badge => 0);
+                     length => 4, flags => 0, reserved => 0);
          msg.words (0) := handle;
          msg.words (1) := fsGrant.slot;
          msg.words (2) := Unsigned_64 (FS_BUF_PAGES * 4096);
@@ -2033,7 +2038,7 @@ procedure main is
       --  OP_CLOSE
       msg := NULL_MESSAGE;
       msg.tag := (label  => OP_CLOSE,
-                  length => 1, flags => 0, badge => 0);
+                  length => 1, flags => 0, reserved => 0);
       msg.words (0) := handle;
       tag := capCall (CAP_SLOT_FS, msg);
 
@@ -2090,7 +2095,7 @@ procedure main is
       tag : MessageTag;
    begin
       msg.tag := (label  => OP_SEEK,
-                  length => 3, flags => 0, badge => 0);
+                  length => 3, flags => 0, reserved => 0);
       msg.words (0) := handle;
       msg.words (1) := offset;
       msg.words (2) := 0;  -- SEEK_SET
@@ -2106,7 +2111,7 @@ procedure main is
       tag : MessageTag;
    begin
       msg.tag := (label  => OP_READ,
-                  length => 4, flags => 0, badge => 0);
+                  length => 4, flags => 0, reserved => 0);
       msg.words (0) := handle;
       msg.words (1) := fsGrant.slot;
       msg.words (2) := count;
@@ -2154,7 +2159,7 @@ procedure main is
          --  OP_OPEN
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_OPEN,
-                     length => 4, flags => 0, badge => 0);
+                     length => 4, flags => 0, reserved => 0);
          msg.words (0) := fsGrant.slot;
          msg.words (1) := Unsigned_64 (resolvedLen);
          msg.words (2) := 0;
@@ -2701,7 +2706,7 @@ procedure main is
    <<Close_File>>
       msg := NULL_MESSAGE;
       msg.tag := (label  => OP_CLOSE,
-                  length => 1, flags => 0, badge => 0);
+                  length => 1, flags => 0, reserved => 0);
       msg.words (0) := handle;
       tag := capCall (CAP_SLOT_FS, msg);
 
@@ -2873,8 +2878,8 @@ procedure main is
               (tag => (label  => OP_CONFIG_SAVE,
                        length => 0,
                        flags  => 0,
-                       badge  => 0),
-               capBadge => 0,
+                       reserved  => 0),
+               authorityTag => 0,
                words => (others => 0));
          begin
             saveMsg.tag := capCall (CAP_SLOT_CONFIG, saveMsg);
@@ -2892,8 +2897,8 @@ procedure main is
               (tag => (label  => OP_CONFIG_LOAD,
                        length => 0,
                        flags  => 0,
-                       badge  => 0),
-               capBadge => 0,
+                       reserved  => 0),
+               authorityTag => 0,
                words => (others => 0));
          begin
             loadMsg.tag := capCall (CAP_SLOT_CONFIG, loadMsg);
@@ -2996,7 +3001,7 @@ procedure main is
 
       msg := NULL_MESSAGE;
       msg.tag := (label  => OP_NET_IF_DETAIL,
-                  length => 1, flags => 0, badge => 0);
+                  length => 1, flags => 0, reserved => 0);
       msg.words (0) := 0;  -- interface 0
       tag := capCall (CAP_SLOT_NET, msg);
 
@@ -3078,7 +3083,7 @@ procedure main is
       loop
          msg := NULL_MESSAGE;
          msg.tag := (label  => OP_NET_ROUTE_LIST,
-                     length => 1, flags => 0, badge => 0);
+                     length => 1, flags => 0, reserved => 0);
          msg.words (0) := startIdx;
          tag := capCall (CAP_SLOT_NET, msg);
 
@@ -3170,7 +3175,7 @@ procedure main is
          begin
             msg := NULL_MESSAGE;
             msg.tag := (label  => OP_NET_PING,
-                        length => 3, flags => 0, badge => 0);
+                        length => 3, flags => 0, reserved => 0);
             msg.words (0) := dstPacked;
             msg.words (1) := Unsigned_64 (seq);
             msg.words (2) := sendTs;
@@ -3221,7 +3226,7 @@ procedure main is
       msg := NULL_MESSAGE;
       msg.tag := (label  => OP_NET_RESOLVE,
                   length => Unsigned_8 (nameLen),
-                  flags  => 0, badge => 0);
+                  flags  => 0, reserved => 0);
 
       --  Pack hostname bytes into message words
       declare
@@ -3286,9 +3291,16 @@ procedure main is
       --  Build and send OP_STREAM_LIST
       msg := NULL_MESSAGE;
       msg.tag := (label  => OP_STREAM_LIST,
-                  length => 0, flags => 0, badge => 0);
+                  length => 0, flags => 0, reserved => 0);
 
-      ok := submit (ProcessID (pid), msg, STREAM_LIST_TOKEN);
+      declare
+         endpointSlot : CapabilitySlot;
+         hasEndpoint : Boolean;
+      begin
+         Find_Endpoint_Capability (ProcessID (pid), endpointSlot, hasEndpoint);
+         ok := hasEndpoint and then
+           capSubmit (endpointSlot, msg, STREAM_LIST_TOKEN);
+      end;
       if not ok then
          putStr ("streams: send failed" & LF);
          return;
@@ -3368,8 +3380,8 @@ procedure main is
             tag => (label  => OP_LOG_QUERY,
                     length => 2,
                     flags  => 0,
-                    badge  => 0),
-            capBadge => 0,
+                    reserved  => 0),
+            authorityTag => 0,
             words    => (0 => LOG_MAX_ENTRIES,
                          1 => 0,  --  filter: all PIDs
                          others => 0));

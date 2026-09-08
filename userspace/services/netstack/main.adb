@@ -26,12 +26,20 @@ with Net.RFLX_Types;
 with Net.UDP.Datagram;
 with Net.TCP.Segment;
 with TCPSession;
+with TCP_Listeners;
+with Network_Grants;
+with CuBit.Network_Authority;
+with CuBit.Memory_Grants;
 
 procedure main is
    use ASCII;
    use type Net.IPv4Address;
    use type TCPSession.TCPState;
    use type TCPSession.ActionKind;
+   package Network_Authority renames CuBit.Network_Authority;
+   use type TCP_Listeners.Bind_Status;
+   networkGrants : Network_Grants.Table;
+   listeners : TCP_Listeners.Table;
 
    --  Well-known capability slots (granted by kernel modules.adb)
    CAP_SLOT_NET_DRV : constant CapabilitySlot := 10;
@@ -83,6 +91,7 @@ procedure main is
 
    --  TCP connection table (types in TCPSession package)
    tcpConns : TCPSession.ConnTable;
+   connectionAuthority : array (tcpConns'Range) of Unsigned_64 := [others => 0];
    RX_BUFFER_SIZE : constant := 65_536;
    type RX_Data is array (0 .. RX_BUFFER_SIZE - 1) of Unsigned_8;
    type RX_Buffer is record
@@ -168,10 +177,22 @@ procedure main is
       remoteIP   : Net.IPv4Address := (others => 0);
       remotePort : Unsigned_16 := 0;
       localPort  : Unsigned_16 := 0;
+      authorityTag : Unsigned_64 := 0;
+      transfer : CuBit.Memory_Grants.Grant_Reference;
+      acquired : Boolean := False;
    end record;
 
    MAX_NET_CHANNELS : constant := 8;
    channels : array (0 .. MAX_NET_CHANNELS - 1) of NetChannel;
+
+   procedure releaseChannel (Index : Natural) is
+      released : Boolean;
+   begin
+      if channels (Index).acquired then
+         CuBit.Memory_Grants.Return_Acquisition (channels (Index).transfer, released);
+      end if;
+      channels (Index) := (others => <>);
+   end releaseChannel;
 
    --  Legacy app channel table (for old socket-style API compatibility)
    MAX_APP_CHANNELS : constant := 4;
@@ -203,6 +224,54 @@ procedure main is
    MAX_PENDING : constant := 8;
    pendingReqs : array (0 .. MAX_PENDING - 1) of PendingRequest;
    nextDnsTxid : Unsigned_16 := 16#CB20#;
+
+   function policyAddress (Address : Net.IPv4Address) return Unsigned_32 is
+     (Shift_Left (Unsigned_32 (Address (0)), 24) or
+      Shift_Left (Unsigned_32 (Address (1)), 16) or
+      Shift_Left (Unsigned_32 (Address (2)), 8) or Unsigned_32 (Address (3)));
+
+   --  Category admission precedes pointer/range decoding in every handler.
+   --  A general service endpoint grants inspection, not networking or admin.
+   function admittedRequest (Owner : ProcessID; Request : Message)
+                             return Boolean is
+   begin
+      case Request.tag.label is
+         when Network_Authority.OP_INSTALL_SCOPE |
+              Network_Authority.OP_RELEASE_SCOPE =>
+            return Request.authorityTag = Network_Authority.Policy_Authority_Tag;
+         when OP_NET_ATTACH | OP_NET_RX | REPLY_OK =>
+            return Request.authorityTag = Network_Authority.Driver_Authority_Tag;
+         when OP_NET_CONFIGURE | OP_NET_SET_DNS | OP_NET_ROUTE_ADD |
+              OP_NET_ROUTE_DEL | OP_NET_OPEN_RAW | OP_NET_PING =>
+            return Request.authorityTag = Network_Authority.Manager_Authority_Tag;
+         when OP_NET_LIST_IF =>
+            return True; -- an endpoint invocation is still required by the kernel
+         when OP_NET_IF_DETAIL =>
+            return Request.words (0) < Unsigned_64 (numIfaces);
+         when OP_NET_ROUTE_LIST =>
+            return Request.words (0) <= Unsigned_64 (routeTable'Length);
+         when OP_NET_RESOLVE =>
+            return Request.tag.length in 1 .. 32 and then Network_Grants.May_Resolve
+              (networkGrants, Owner, Request.authorityTag);
+         when OP_NET_OPEN =>
+            return Request.tag.flags = 0 and then Request.tag.length > 0 and then
+              Request.words (0) <= CuBit.Memory_Grants.MAXIMUM_GLOBAL_SLOT and then
+              Request.words (1) in 1 .. RX_BUFFER_SIZE and then
+              Unsigned_64 (Request.tag.length) <= Request.words (1) and then
+              Request.words (3) in 1 .. CuBit.Memory_Grants.MAXIMUM_GENERATION and then
+              Network_Grants.Owned (networkGrants, Owner, Request.authorityTag);
+         when OP_NET_WRITE | OP_NET_READ | OP_NET_SHUT =>
+            return Request.words (0) <= Unsigned_64 (channels'Last) and then
+              Request.words (1) <= RX_BUFFER_SIZE and then
+              Request.words (2) <= RX_BUFFER_SIZE and then
+              Network_Grants.Owned (networkGrants, Owner, Request.authorityTag);
+         when Network_Authority.OP_BIND | Network_Authority.OP_CLOSE_LISTENER =>
+            return Network_Grants.Owned
+              (networkGrants, Owner, Request.authorityTag);
+         when others =>
+            return False; -- includes retired raw connection-index operations
+      end case;
+   end admittedRequest;
 
    ---------------------------------------------------------------------------
    --  hexDigit
@@ -434,8 +503,8 @@ procedure main is
         (tag      => (label  => OP_NET_TX,
                       length => 2,
                       flags  => 1,      -- fire-and-forget (no reply)
-                      badge  => 0),
-         capBadge => 0,
+                      reserved  => 0),
+         authorityTag => 0,
          words    => (0 => Unsigned_64 (slotOff),
                       1 => Unsigned_64 (frameLen),
                       others => 0));
@@ -989,8 +1058,8 @@ procedure main is
                     (tag      => (label  => REPLY_OK,
                                   length => 1,
                                   flags  => 0,
-                                  badge  => 0),
-                     capBadge => 0,
+                                  reserved  => 0),
+                     authorityTag => 0,
                      words    => (0 => ipPacked, others => 0));
                   ignore : Unsigned_64;
                begin
@@ -1012,17 +1081,23 @@ procedure main is
                   chIdx   : constant Integer := pendingReqs (i).channelIdx;
                   connIdx : Integer;
                begin
-                  if chIdx >= 0 and chIdx <= channels'Last then
+                  if chIdx >= 0 and then chIdx <= channels'Last and then
+                    Network_Grants.Allows
+                      (networkGrants, pendingReqs (i).sender,
+                       channels (chIdx).authorityTag, Network_Authority.Connect_TCP,
+                       policyAddress (resolvedIP), pendingReqs (i).dstPort)
+                  then
                      channels (chIdx).remoteIP := resolvedIP;
                      connIdx := tcpConnect (resolvedIP, interfaces (0).gwMAC,
                                             pendingReqs (i).dstPort);
                      if connIdx < 0 then
-                        channels (chIdx).kind := CHANNEL_NONE;
+                        releaseChannel (chIdx);
                         replyError (pendingReqs (i).sender,
                                     pendingReqs (i).replySlot);
                         pendingReqs (i).kind := PENDING_NONE;
                      else
                         channels (chIdx).connIdx := connIdx;
+                        connectionAuthority (connIdx) := channels (chIdx).authorityTag;
                         --  Transition: PENDING_OPEN -> PENDING_CONNECT
                         --  so completePendingConnect will reply with
                         --  the channel handle.
@@ -1030,6 +1105,9 @@ procedure main is
                         pendingReqs (i).connIdx := connIdx;
                      end if;
                   else
+                     if chIdx in channels'Range then
+                        releaseChannel (chIdx);
+                     end if;
                      replyError (pendingReqs (i).sender,
                                  pendingReqs (i).replySlot);
                      pendingReqs (i).kind := PENDING_NONE;
@@ -1052,12 +1130,6 @@ procedure main is
       use Net.RFLX_Builtin_Types;
       udpOff : constant Natural := ipOff + ipHdrLen;
       udpLen : constant Natural := totalIPLen - ipHdrLen;
-
-      udpBuf : aliased Bytes (1 .. Index (udpLen))
-         with Import, Address => pktBuf + Storage_Offset (udpOff);
-      bufPtr : Bytes_Ptr := udpBuf'Unrestricted_Access;
-      ctx    : Net.UDP.Datagram.Context;
-
       srcPort : Unsigned_16;
       dstPort : Unsigned_16;
    begin
@@ -1065,6 +1137,13 @@ procedure main is
          return;
       end if;
 
+      --  Establish the minimum length before constructing the 1-based view.
+      declare
+         udpBuf : aliased Bytes (1 .. Index (udpLen))
+            with Import, Address => pktBuf + Storage_Offset (udpOff);
+         bufPtr : Bytes_Ptr := udpBuf'Unrestricted_Access;
+         ctx    : Net.UDP.Datagram.Context;
+      begin
       Net.UDP.Datagram.Initialize
          (ctx, bufPtr,
           Written_Last => Net.RFLX_Types.Bit_Length (udpLen) * 8);
@@ -1093,6 +1172,7 @@ procedure main is
       end if;
 
       Net.UDP.Datagram.Take_Buffer (ctx, bufPtr);
+      end;
    end handleUDP;
 
    ---------------------------------------------------------------------------
@@ -1153,7 +1233,7 @@ procedure main is
       Net.TCP.Segment.Set_RST (ctx, isRST);
       Net.TCP.Segment.Set_SYN (ctx, isSYN);
       Net.TCP.Segment.Set_FIN (ctx, isFIN);
-      Net.TCP.Segment.Set_Window (ctx, 8192);
+      Net.TCP.Segment.Set_Window (ctx, Net.TCP.Window (conn.receiveWindow));
       Net.TCP.Segment.Set_Checksum (ctx, 0);
       Net.TCP.Segment.Set_Urgent_Pointer (ctx, 0);
       Net.TCP.Segment.Set_Options_Empty (ctx);
@@ -1203,8 +1283,8 @@ procedure main is
          nextEphemeralPort := 49152;
       end if;
 
-      idx := TCPSession.allocateConn
-         (tcpConns, dstIP, dstMAC, dstPort, lport, tcpISN);
+      TCPSession.allocateConn
+         (tcpConns, dstIP, dstMAC, dstPort, lport, tcpISN, idx);
       if idx < 0 then
          return -1;
       end if;
@@ -1407,6 +1487,12 @@ procedure main is
             rxBuffers (connIdx).data (j - copyLen) := rxBuffers (connIdx).data (j);
          end loop;
          rxBuffers (connIdx).len := rxBuffers (connIdx).len - copyLen;
+         tcpConns (connIdx).receiveWindow := Unsigned_16
+           (Natural'Min (Natural (Unsigned_16'Last), RX_BUFFER_SIZE - rxBuffers (connIdx).len));
+         --  Return receive credit when the application drains the buffer.
+         sendTCPSegment (tcpConns (connIdx), TCPSession.TCP_FLAG_ACK,
+                         tcpConns (connIdx).sendNext, tcpConns (connIdx).recvNext,
+                         System.Null_Address, 0);
       end if;
       replyOKWord (snd, Unsigned_64 (copyLen), slot);
    end replyBuffered;
@@ -1442,8 +1528,8 @@ procedure main is
                  (tag      => (label  => REPLY_EOF,
                                length => 0,
                                flags  => 0,
-                               badge  => 0),
-                  capBadge => 0,
+                               reserved  => 0),
+                  authorityTag => 0,
                   words    => (others => 0));
                ignore : Unsigned_64;
             begin
@@ -1560,17 +1646,13 @@ procedure main is
                         ipOff      : Natural;
                         ipHdrLen   : Natural;
                         srcIP      : Net.IPv4Address;
+                        dstIP      : Net.IPv4Address;
                         srcMAC     : Net.MACAddress;
                         totalIPLen : Natural) is
       pragma Unreferenced (srcMAC);
       use Net.RFLX_Builtin_Types;
       tcpOff : constant Natural := ipOff + ipHdrLen;
       tcpLen : constant Natural := totalIPLen - ipHdrLen;
-
-      tcpBuf : aliased Bytes (1 .. Index (tcpLen))
-         with Import, Address => pktBuf + Storage_Offset (tcpOff);
-      bufPtr : Bytes_Ptr := tcpBuf'Unrestricted_Access;
-      ctx    : Net.TCP.Segment.Context;
 
       seg     : TCPSession.SegmentInfo;
       connIdx : Integer := -1;
@@ -1581,6 +1663,21 @@ procedure main is
          return;
       end if;
 
+      --  RecordFlux validates the layout, not the TCP pseudo-header checksum.
+      --  Validate before a packet can acknowledge data or change TCP state.
+      if Net.transportChecksum
+        (srcIP, dstIP, Net.PROTO_TCP,
+         pktBuf + Storage_Offset (tcpOff), tcpLen) /= 0
+      then
+         return;
+      end if;
+
+      declare
+         tcpBuf : aliased Bytes (1 .. Index (tcpLen))
+            with Import, Address => pktBuf + Storage_Offset (tcpOff);
+         bufPtr : Bytes_Ptr := tcpBuf'Unrestricted_Access;
+         ctx    : Net.TCP.Segment.Context;
+      begin
       Net.TCP.Segment.Initialize
          (ctx, bufPtr,
           Segment_Length => Net.TCP.Segment_Length (tcpLen),
@@ -1623,6 +1720,7 @@ procedure main is
       end;
 
       Net.TCP.Segment.Take_Buffer (ctx, bufPtr);
+      end;
 
       --  Drive the state machine
       TCPSession.onSegmentIn (tcpConns, seg, connIdx, res);
@@ -1806,8 +1904,8 @@ procedure main is
                              (tag      => (label  => REPLY_OK,
                                            length => 3,
                                            flags  => 0,
-                                           badge  => 0),
-                              capBadge => 0,
+                                           reserved  => 0),
+                              authorityTag => 0,
                               words    => (0 => Unsigned_64 (icmpSeq),
                                            1 => srcPacked,
                                            2 => (if nowMs > sendTs
@@ -1867,16 +1965,29 @@ procedure main is
       verIHL   := Net.getU8 (pktBuf, ipOff);
       ipHdrLen := Natural (verIHL and 16#0F#) * 4;
 
-      if ipHdrLen < 20 or else pktLen < 14 + ipHdrLen then
+      if Shift_Right (verIHL, 4) /= 4 or else
+         ipHdrLen < 20 or else pktLen < ipOff + ipHdrLen
+      then
          return;
       end if;
 
       totalLen := Net.getU16BE (pktBuf, ipOff + 2);
 
-      --  Clamp totalLen to actual received data (prevents OOB read from
-      --  a crafted IP header claiming more data than actually present).
-      if Natural (totalLen) > pktLen - 14 then
-         totalLen := Unsigned_16 (pktLen - 14);
+      --  Do not reinterpret truncated datagrams as shorter valid packets.
+      --  This also establishes safe payload-length subtraction downstream.
+      if Natural (totalLen) < ipHdrLen or else
+         Natural (totalLen) > pktLen - ipOff
+      then
+         return;
+      end if;
+
+      --  No fragment reassembly yet. A fragment (including a first fragment
+      --  with MF set) must not be parsed as a complete transport segment.
+      --  Reject the reserved flag too; DF alone is permitted.
+      if (Net.getU16BE (pktBuf, ipOff + 6) and 16#BFFF#) /= 0 or else
+         Net.internetChecksum (pktBuf + Storage_Offset (ipOff), ipHdrLen) /= 0
+      then
+         return;
       end if;
 
       proto := Net.getU8 (pktBuf, ipOff + 9);
@@ -1895,7 +2006,7 @@ procedure main is
          handleUDP (pktBuf, ipOff, ipHdrLen, srcIP,
                     Natural (totalLen));
       elsif proto = Net.PROTO_TCP then
-         handleTCP (pktBuf, ipOff, ipHdrLen, srcIP, srcMAC,
+         handleTCP (pktBuf, ipOff, ipHdrLen, srcIP, dstIP, srcMAC,
                     Natural (totalLen));
       end if;
    end handleIPv4;
@@ -2175,8 +2286,8 @@ procedure main is
         (tag      => (label  => REPLY_ERR,
                       length => 0,
                       flags  => 0,
-                      badge  => 0),
-         capBadge => 0,
+                      reserved  => 0),
+         authorityTag => 0,
          words    => (others => 0));
       ignore : Unsigned_64;
    begin
@@ -2196,8 +2307,8 @@ procedure main is
         (tag      => (label  => REPLY_OK,
                       length => 1,
                       flags  => 0,
-                      badge  => 0),
-         capBadge => 0,
+                      reserved  => 0),
+         authorityTag => 0,
          words    => (0 => w0, others => 0));
       ignore : Unsigned_64;
    begin
@@ -2356,7 +2467,9 @@ procedure main is
          return;
       end if;
 
-      if tcpConns (connHandle).state /= TCPSession.TCP_ESTABLISHED then
+      if tcpConns (connHandle).state /= TCPSession.TCP_ESTABLISHED and then
+        tcpConns (connHandle).state /= TCPSession.TCP_CLOSE_WAIT
+      then
          replyError (snd);
          return;
       end if;
@@ -2419,8 +2532,8 @@ procedure main is
               (tag      => (label  => REPLY_EOF,
                             length => 0,
                             flags  => 0,
-                            badge  => 0),
-               capBadge => 0,
+                            reserved  => 0),
+               authorityTag => 0,
                words    => (others => 0));
             ignore : Unsigned_64;
          begin
@@ -2471,8 +2584,8 @@ procedure main is
                  (tag      => (label  => REPLY_EOF,
                                length => 0,
                                flags  => 0,
-                               badge  => 0),
-                  capBadge => 0,
+                               reserved  => 0),
+                  authorityTag => 0,
                   words    => (others => 0));
                ignore : Unsigned_64;
             begin
@@ -2492,7 +2605,7 @@ procedure main is
    --
    --  Request: tag.label=OP_NET_OPEN, tag.length=scheme string length,
    --           tag.flags=channel kind (0=client),
-   --           words(0)=grant ID, words(1)=buffer size
+   --           words(0)=grant slot, words(1)=buffer size, words(3)=generation
    --  Scheme string is at offset 0 of the grant buffer.
    --  Reply: deferred until DNS+TCP handshake completes
    ---------------------------------------------------------------------------
@@ -2500,9 +2613,9 @@ procedure main is
       schemeLen : constant Natural := Natural (m.tag.length);
       grantId   : constant Unsigned_64 := m.words (0);
       bufSize   : constant Natural := Natural (m.words (1));
-      grantAddr : constant System.Address :=
-         To_Address (GRANT_REGION_BASE +
-                     Integer_Address (grantId) * GRANT_SLOT_SIZE);
+      grantAddr : System.Address;
+      reference : constant CuBit.Memory_Grants.Grant_Reference :=
+        (slot => grantId, generation => m.words (3));
       scheme    : ParsedScheme;
       chIdx     : Integer;
       ok        : Boolean;
@@ -2518,10 +2631,16 @@ procedure main is
          return;
       end if;
 
+      CuBit.Memory_Grants.Acquire
+        (reference, snd, 0, Unsigned_64 (bufSize),
+         CuBit.Memory_Grants.Write_Access, grantAddr, ok);
+      if not ok then replyError (snd); return; end if;
+
       --  Parse scheme string from grant buffer
       parseNetScheme (grantAddr, schemeLen, scheme);
       if not scheme.valid then
          debugPrint ("netstack: open: invalid scheme" & LF);
+         CuBit.Memory_Grants.Return_Acquisition (reference, ok);
          replyError (snd);
          return;
       end if;
@@ -2529,6 +2648,7 @@ procedure main is
       --  Only TCP client channels for now
       if scheme.proto /= Net.PROTO_TCP then
          debugPrint ("netstack: open: only TCP supported" & LF);
+         CuBit.Memory_Grants.Return_Acquisition (reference, ok);
          replyError (snd);
          return;
       end if;
@@ -2537,6 +2657,7 @@ procedure main is
       chIdx := allocNetChannel;
       if chIdx < 0 then
          debugPrint ("netstack: open: no free channels" & LF);
+         CuBit.Memory_Grants.Return_Acquisition (reference, ok);
          replyError (snd);
          return;
       end if;
@@ -2551,7 +2672,10 @@ procedure main is
           connIdx    => -1,
           remoteIP   => (others => 0),
           remotePort => scheme.port,
-          localPort  => 0);
+          localPort  => 0,
+          authorityTag => m.authorityTag,
+          transfer => reference,
+          acquired => True);
 
       if scheme.isIPLiteral then
          --  Parse IP directly, skip DNS
@@ -2561,8 +2685,11 @@ procedure main is
             connIdx : Integer;
          begin
             parseIPLiteral (scheme.hostname, scheme.hostLen, dstIP, ipOK);
-            if not ipOK then
-               channels (chIdx).kind := CHANNEL_NONE;
+            if not ipOK or else not Network_Grants.Allows
+              (networkGrants, snd, m.authorityTag, Network_Authority.Connect_TCP,
+               policyAddress (dstIP), scheme.port)
+            then
+               releaseChannel (chIdx);
                replyError (snd);
                return;
             end if;
@@ -2570,11 +2697,12 @@ procedure main is
             channels (chIdx).remoteIP := dstIP;
             connIdx := tcpConnect (dstIP, interfaces (0).gwMAC, scheme.port);
             if connIdx < 0 then
-               channels (chIdx).kind := CHANNEL_NONE;
+               releaseChannel (chIdx);
                replyError (snd);
                return;
             end if;
             channels (chIdx).connIdx := connIdx;
+            connectionAuthority (connIdx) := m.authorityTag;
 
             ok := addPending (
                (kind       => PENDING_CONNECT,
@@ -2588,13 +2716,18 @@ procedure main is
                 dstPort    => scheme.port,
                 replySlot  => 0));
             if not ok then
-               channels (chIdx).kind := CHANNEL_NONE;
+               releaseChannel (chIdx);
                replyError (snd);
                return;
             end if;
          end;
       else
          --  Need DNS resolution first
+         if not Network_Grants.May_Resolve (networkGrants, snd, m.authorityTag) then
+            releaseChannel (chIdx);
+            replyError (snd);
+            return;
+         end if;
          declare
             txid : Unsigned_16;
          begin
@@ -2613,7 +2746,7 @@ procedure main is
                 dstPort    => scheme.port,
                 replySlot  => 0));
             if not ok then
-               channels (chIdx).kind := CHANNEL_NONE;
+               releaseChannel (chIdx);
                replyError (snd);
                return;
             end if;
@@ -2638,7 +2771,8 @@ procedure main is
    begin
       if chHandle > channels'Last or else
          channels (chHandle).kind = CHANNEL_NONE or else
-         channels (chHandle).pid /= snd
+         channels (chHandle).pid /= snd or else
+         channels (chHandle).authorityTag /= m.authorityTag
       then
          replyError (snd);
          return;
@@ -2646,14 +2780,15 @@ procedure main is
 
       if channels (chHandle).connIdx < 0 or else
          channels (chHandle).connIdx > tcpConns'Last or else
-         tcpConns (channels (chHandle).connIdx).state /=
-            TCPSession.TCP_ESTABLISHED
+         connectionAuthority (channels (chHandle).connIdx) /= m.authorityTag or else
+         tcpConns (channels (chHandle).connIdx).state not in
+            TCPSession.TCP_ESTABLISHED | TCPSession.TCP_CLOSE_WAIT
       then
          replyError (snd);
          return;
       end if;
 
-      if offset > channels (chHandle).bufSize or
+      if offset > channels (chHandle).bufSize or else
          len > channels (chHandle).bufSize - offset
       then
          replyError (snd);
@@ -2680,20 +2815,22 @@ procedure main is
    begin
       if chHandle > channels'Last or else
          channels (chHandle).kind = CHANNEL_NONE or else
-         channels (chHandle).pid /= snd
+         channels (chHandle).pid /= snd or else
+         channels (chHandle).authorityTag /= m.authorityTag
       then
          replyError (snd);
          return;
       end if;
 
       if channels (chHandle).connIdx < 0 or else
-         channels (chHandle).connIdx > tcpConns'Last
+         channels (chHandle).connIdx > tcpConns'Last or else
+         connectionAuthority (channels (chHandle).connIdx) /= m.authorityTag
       then
          replyError (snd);
          return;
       end if;
 
-      if offset > channels (chHandle).bufSize or
+      if offset > channels (chHandle).bufSize or else
          maxLen > channels (chHandle).bufSize - offset
       then
          replyError (snd);
@@ -2721,8 +2858,8 @@ procedure main is
                  (tag      => (label  => REPLY_EOF,
                                length => 0,
                                flags  => 0,
-                               badge  => 0),
-                  capBadge => 0,
+                               reserved  => 0),
+                  authorityTag => 0,
                   words    => (others => 0));
                ignore : Unsigned_64;
             begin
@@ -2760,14 +2897,17 @@ procedure main is
    begin
       if chHandle > channels'Last or else
          channels (chHandle).kind = CHANNEL_NONE or else
-         channels (chHandle).pid /= snd
+         channels (chHandle).pid /= snd or else
+         channels (chHandle).authorityTag /= m.authorityTag
       then
          replyError (snd);
          return;
       end if;
 
       --  Complete all pending RECV for this connection with EOF
-      if channels (chHandle).connIdx >= 0 then
+      if channels (chHandle).connIdx in tcpConns'Range and then
+        connectionAuthority (channels (chHandle).connIdx) = m.authorityTag
+      then
          for i in pendingReqs'Range loop
             if pendingReqs (i).kind = PENDING_RECV and
                pendingReqs (i).connIdx = channels (chHandle).connIdx
@@ -2777,8 +2917,8 @@ procedure main is
                     (tag      => (label  => REPLY_EOF,
                                   length => 0,
                                   flags  => 0,
-                                  badge  => 0),
-                     capBadge => 0,
+                                  reserved  => 0),
+                     authorityTag => 0,
                      words    => (others => 0));
                   ignore : Unsigned_64;
                begin
@@ -2788,15 +2928,15 @@ procedure main is
             end if;
          end loop;
 
-         if channels (chHandle).connIdx <= tcpConns'Last then
+         if channels (chHandle).connIdx <= tcpConns'Last and then
+           connectionAuthority (channels (chHandle).connIdx) = m.authorityTag
+         then
             tcpClose (channels (chHandle).connIdx);
          end if;
       end if;
 
       --  Free the channel slot
-      channels (chHandle).kind := CHANNEL_NONE;
-      channels (chHandle).pid := NO_PROCESS;
-      channels (chHandle).connIdx := -1;
+      releaseChannel (chHandle);
 
       replyOKWord (snd, 0);
    end handleNetShut;
@@ -2873,8 +3013,8 @@ procedure main is
            (tag      => (label  => REPLY_OK,
                          length => 2,
                          flags  => 0,
-                         badge  => 0),
-            capBadge => 0,
+                         reserved  => 0),
+            authorityTag => 0,
             words    => (0 => interfaces (ifIdx).pktGrant,
                          1 => Unsigned_64 (PACKET_BUF_SIZE),
                          others => 0));
@@ -2952,8 +3092,8 @@ begin
    begin
       rdyIgnore := capSend (CAP_SLOT_READY,
          (tag      => (label => OP_READY, length => 0,
-                       flags => 0, badge => 0),
-          capBadge => 0,
+                       flags => 0, reserved => 0),
+          authorityTag => 0,
           words    => (others => 0)));
    end;
 
@@ -3015,7 +3155,69 @@ begin
 
       --  4. Dispatch message
       if found then
+         if not admittedRequest (sender, msg) then
+            replyError (sender);
+         else
          case msg.tag.label is
+            when Network_Authority.OP_INSTALL_SCOPE =>
+               declare
+                  item : Network_Authority.Scope;
+                  valid, installed : Boolean;
+                  authorityTag : Unsigned_64;
+               begin
+                  Network_Authority.Decode (msg.words (1), msg.words (2), item, valid);
+                  if msg.tag.length /= 3 or else not valid or else msg.words (0) = 0 then
+                     replyError (sender);
+                  else
+                     Network_Grants.Install
+                       (networkGrants, msg.words (0), item, authorityTag, installed);
+                     if installed then replyOKWord (sender, authorityTag);
+                     else replyError (sender); end if;
+                  end if;
+               end;
+
+            when Network_Authority.OP_RELEASE_SCOPE =>
+               --  Used to roll back a failed capability mint. Do not silently
+               --  revoke live channels; general revocation needs full teardown.
+               if msg.tag.length = 2 then
+                  Network_Grants.Release (networkGrants, msg.words (0), msg.words (1));
+                  replyOKWord (sender, 0);
+               else replyError (sender); end if;
+
+            when Network_Authority.OP_BIND =>
+               declare
+                  handle : TCP_Listeners.Handle;
+                  status : TCP_Listeners.Bind_Status;
+               begin
+                  if msg.tag.length /= 2 or else
+                    msg.words (0) > Unsigned_64 (Unsigned_32'Last) or else
+                    msg.words (1) > Unsigned_64 (Unsigned_16'Last) or else
+                    not Network_Grants.Allows
+                      (networkGrants, sender, msg.authorityTag,
+                       Network_Authority.Listen_TCP, Unsigned_32 (msg.words (0)),
+                       Unsigned_16 (msg.words (1))) or else
+                    numIfaces = 0 or else interfaces (0).state /= IF_UP or else
+                    policyAddress (interfaces (0).ipv4) /= Unsigned_32 (msg.words (0))
+                  then
+                     replyError (sender);
+                  else
+                     TCP_Listeners.Bind
+                       (listeners, msg.authorityTag, Unsigned_32 (msg.words (0)),
+                        Unsigned_16 (msg.words (1)), handle, status);
+                     if status = TCP_Listeners.Bound then replyOKWord (sender, handle);
+                     else replyError (sender); end if;
+                  end if;
+               end;
+
+            when Network_Authority.OP_CLOSE_LISTENER =>
+               declare
+                  children : TCP_Listeners.Connection_List;
+                  closed : Boolean;
+               begin
+                  TCP_Listeners.Close (listeners, msg.authorityTag, msg.words (0), children, closed);
+                  if closed then replyOKWord (sender, 0);
+                  else replyError (sender); end if;
+               end;
             when OP_NET_ATTACH =>
                handleAttach (sender);
 
@@ -3053,8 +3255,8 @@ begin
                     (tag      => (label  => REPLY_OK,
                                   length => 0,
                                   flags  => 0,
-                                  badge  => 0),
-                     capBadge => 0,
+                                  reserved  => 0),
+                     authorityTag => 0,
                      words    => (others => 0));
                   ignore : Unsigned_64;
                begin
@@ -3150,8 +3352,8 @@ begin
                           (tag      => (label  => REPLY_OK,
                                         length => 4,
                                         flags  => 0,
-                                        badge  => 0),
-                           capBadge => 0,
+                                        reserved  => 0),
+                           authorityTag => 0,
                            words    => (
                               0 => ipPacked or
                                    Shift_Left (stateVal, 32),
@@ -3215,8 +3417,8 @@ begin
                        (tag      => (label  => REPLY_OK,
                                      length => Unsigned_8 (total),
                                      flags  => Unsigned_8 (nextStart),
-                                     badge  => 0),
-                        capBadge => 0,
+                                     reserved  => 0),
+                        authorityTag => 0,
                         words    => (0 => packed (0),
                                      1 => packed (1),
                                      2 => packed (2),
@@ -3266,8 +3468,8 @@ begin
                           (tag      => (label  => REPLY_OK,
                                         length => 3,
                                         flags  => 0,
-                                        badge  => 0),
-                           capBadge => 0,
+                                        reserved  => 0),
+                           authorityTag => 0,
                            words    => (0 => Unsigned_64 (seq),
                                         1 => msg.words (0),
                                         2 => rtt,
@@ -3409,14 +3611,15 @@ begin
                     (tag      => (label  => REPLY_ERR,
                                   length => 0,
                                   flags  => 0,
-                                  badge  => 0),
-                     capBadge => 0,
+                                  reserved  => 0),
+                     authorityTag => 0,
                      words    => (others => 0));
                   ignore : Unsigned_64;
                begin
                   ignore := replyCap (CapabilitySlot'Last, replyMsg);
                end;
          end case;
+         end if;
       end if;
    end loop;
 

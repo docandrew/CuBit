@@ -432,17 +432,17 @@ int rename(const char *oldpath, const char *newpath)
 
     /* Send OP_RENAME (0x0008) to FS server */
     typedef struct __attribute__((packed)) {
-        uint32_t label; uint8_t length; uint8_t flags; uint16_t badge;
+        uint32_t label; uint8_t length; uint8_t flags; uint16_t reserved;
     } rename_tag_t;
     typedef struct __attribute__((packed)) {
-        rename_tag_t tag; uint64_t capBadge; uint64_t words[4];
+        rename_tag_t tag; uint64_t authorityTag; uint64_t words[4];
     } rename_msg_t;
 
     rename_msg_t msg;
     msg.tag.label  = 0x0008;
     msg.tag.length = 4;
     msg.tag.flags  = 0;
-    msg.tag.badge  = 0;
+    msg.tag.reserved  = 0;
     msg.words[0] = (uint64_t)gid;
     msg.words[1] = oldlen;
     msg.words[2] = newlen;

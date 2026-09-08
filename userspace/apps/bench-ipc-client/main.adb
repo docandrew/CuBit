@@ -64,7 +64,7 @@ procedure main is
       msg.tag := (label  => OP_BENCH_ECHO,
                   length => 1,
                   flags  => 0,
-                  badge  => 0);
+                  reserved  => 0);
       msg.words (0) := value;
       return msg;
    end echoMsg;

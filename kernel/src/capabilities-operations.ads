@@ -131,7 +131,7 @@ is
     ---------------------------------------------------------------------------
     -- isEndpointResolution
     -- Proof-only model of endpoint lookup and rights enforcement.  A failed
-    -- resolution discloses neither an object reference nor a badge.  The
+    -- resolution discloses neither an object reference nor a authority tag.  The
     -- target object's live generation is checked by the IPC operation after
     -- this table-local resolution succeeds.
     ---------------------------------------------------------------------------
@@ -139,25 +139,25 @@ is
                                    slot     : CapabilitySlot;
                                    rights   : CapabilityRights;
                                    destPID  : Unsigned_64;
-                                   capBadge : Badge;
+                                   authorityTag : Authority_Tag;
                                    status   : OperationStatus)
                                    return Boolean is
         (if table(slot).capType = CAP_NULL then
              status = OP_NULL_CAPABILITY
              and then destPID = 0
-             and then capBadge = NO_BADGE
+             and then authorityTag = NO_AUTHORITY_TAG
          elsif table(slot).capType /= CAP_ENDPOINT then
              status = OP_INVALID_SLOT
              and then destPID = 0
-             and then capBadge = NO_BADGE
+             and then authorityTag = NO_AUTHORITY_TAG
          elsif not isSubsetOf (rights, table(slot).rights) then
              status = OP_INSUFFICIENT_RIGHTS
              and then destPID = 0
-             and then capBadge = NO_BADGE
+             and then authorityTag = NO_AUTHORITY_TAG
          else
              status = OP_OK
              and then destPID = table(slot).object.ref
-             and then capBadge = table(slot).capBadge)
+             and then authorityTag = table(slot).authorityTag)
         with Ghost;
 
     ---------------------------------------------------------------------------
@@ -172,28 +172,28 @@ is
        rights            : CapabilityRights;
        currentGeneration : Generation;
        destPID           : Unsigned_64;
-       capBadge          : Badge;
+       authorityTag          : Authority_Tag;
        status            : OperationStatus) return Boolean is
         (if table(slot).capType = CAP_NULL then
              status = OP_NULL_CAPABILITY
              and then destPID = 0
-             and then capBadge = NO_BADGE
+             and then authorityTag = NO_AUTHORITY_TAG
          elsif table(slot).capType /= CAP_ENDPOINT then
              status = OP_INVALID_SLOT
              and then destPID = 0
-             and then capBadge = NO_BADGE
+             and then authorityTag = NO_AUTHORITY_TAG
          elsif not isSubsetOf (rights, table(slot).rights) then
              status = OP_INSUFFICIENT_RIGHTS
              and then destPID = 0
-             and then capBadge = NO_BADGE
+             and then authorityTag = NO_AUTHORITY_TAG
          elsif table(slot).gen /= currentGeneration then
              status = OP_STALE_GENERATION
              and then destPID = 0
-             and then capBadge = NO_BADGE
+             and then authorityTag = NO_AUTHORITY_TAG
          else
              status = OP_OK
              and then destPID = table(slot).object.ref
-             and then capBadge = table(slot).capBadge)
+             and then authorityTag = table(slot).authorityTag)
         with Ghost;
 
     ---------------------------------------------------------------------------
@@ -297,12 +297,12 @@ is
                           status :    out OperationStatus);
 
     ---------------------------------------------------------------------------
-    -- findByBadge
-    -- Return the first slot whose capability badge matches the given value.
+    -- findByAuthorityTag
+    -- Return the first slot whose capability authority tag matches the given value.
     -- OP_NULL_CAPABILITY if no match found.
     ---------------------------------------------------------------------------
-    procedure findByBadge (table  : in     CapabilityTable;
-                           wanted : in     Badge;
+    procedure findByAuthorityTag (table  : in     CapabilityTable;
+                           wanted : in     Authority_Tag;
                            slot   :    out CapabilitySlot;
                            status :    out OperationStatus);
 
@@ -310,16 +310,16 @@ is
     -- resolveEndpoint
     -- Given a capability slot, verify it holds a valid CAP_ENDPOINT with
     -- the required rights. On success, return the destination PID (from
-    -- object.ref) and the badge.
+    -- object.ref) and the authority tag.
     ---------------------------------------------------------------------------
     procedure resolveEndpoint (table    : in     CapabilityTable;
                                slot     : in     CapabilitySlot;
                                rights   : in     CapabilityRights;
                                destPID  :    out Unsigned_64;
-                               capBadge :    out Badge;
+                               authorityTag :    out Authority_Tag;
                                status   :    out OperationStatus) with
         Post => isEndpointResolution
-          (table, slot, rights, destPID, capBadge, status);
+          (table, slot, rights, destPID, authorityTag, status);
 
     ---------------------------------------------------------------------------
     -- resolveCurrentEndpoint
@@ -334,11 +334,11 @@ is
        rights            : in     CapabilityRights;
        currentGeneration : in     Generation;
        destPID           :    out Unsigned_64;
-       capBadge          :    out Badge;
+       authorityTag          :    out Authority_Tag;
        status            :    out OperationStatus) with
         Post => isCurrentEndpointResolution
           (table, slot, rights, currentGeneration,
-           destPID, capBadge, status);
+           destPID, authorityTag, status);
 
     ---------------------------------------------------------------------------
     -- grantInitialCaps
@@ -349,8 +349,8 @@ is
     -- current capability generation (preserved across PID recycling).
     --
     -- Slot layout:
-    --   0: CAP_ENDPOINT  self, READ+WRITE (ref=pid)          badge=pid
-    --   3: CAP_PROCESS   self, READ+WRITE (ref=pid)          badge=0
+    --   0: CAP_ENDPOINT  self, READ+WRITE (ref=pid)          authority tag=pid
+    --   3: CAP_PROCESS   self, READ+WRITE (ref=pid)          authority tag=0
     ---------------------------------------------------------------------------
     procedure grantInitialCaps (table :    out CapabilityTable;
                                 pid   : in     Unsigned_64;
@@ -359,13 +359,13 @@ is
           table(0) =
             (capType  => CAP_ENDPOINT,
              rights   => READ_WRITE,
-             capBadge => pid,
+             authorityTag => pid,
              object   => (ref => pid, param => 0),
              gen      => gen)
           and then table(3) =
             (capType  => CAP_PROCESS,
              rights   => READ_WRITE,
-             capBadge => NO_BADGE,
+             authorityTag => NO_AUTHORITY_TAG,
              object   => (ref => pid, param => 0),
              gen      => gen)
           and then

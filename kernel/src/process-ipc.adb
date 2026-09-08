@@ -242,8 +242,8 @@ package body Process.IPC is
         proctab(owner).irqNotificationPending := False;
         item :=
           (msg       =>
-             (tag      => (label => 1, length => 0, flags => 0, badge => 0),
-              capBadge => 0,
+             (tag      => (label => 1, length => 0, flags => 0, reserved => 0),
+              authorityTag => 0,
               words    => (others => 0)),
            sender    => NO_PROCESS,
            kind      => RING_EVENT,
@@ -457,7 +457,7 @@ package body Process.IPC is
             proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
                 (capType  => Capabilities.CAP_REPLY,
                  rights   => Capabilities.ALL_RIGHTS,
-                 capBadge => Capabilities.NO_BADGE,
+                 authorityTag => Capabilities.NO_AUTHORITY_TAG,
                  object   => (ref   => Unsigned_64(from),
                               param => NO_REQUEST_ID),
                  gen      => proctab(from).capGeneration);
@@ -485,7 +485,7 @@ package body Process.IPC is
                 proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
                     (capType  => Capabilities.CAP_REPLY,
                      rights   => Capabilities.ALL_RIGHTS,
-                     capBadge => Capabilities.NO_BADGE,
+                     authorityTag => Capabilities.NO_AUTHORITY_TAG,
                      object   => (ref   => Unsigned_64(from),
                                   param => re.requestId),
                      gen      => proctab(from).capGeneration);
@@ -558,7 +558,7 @@ package body Process.IPC is
             proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
                 (capType  => Capabilities.CAP_REPLY,
                  rights   => Capabilities.ALL_RIGHTS,
-                 capBadge => Capabilities.NO_BADGE,
+                 authorityTag => Capabilities.NO_AUTHORITY_TAG,
                  object   => (ref   => Unsigned_64(from),
                               param => re.requestId),
                  gen      => proctab(from).capGeneration);
@@ -748,7 +748,7 @@ package body Process.IPC is
             proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
                 (capType  => Capabilities.CAP_REPLY,
                  rights   => Capabilities.ALL_RIGHTS,
-                 capBadge => Capabilities.NO_BADGE,
+                 authorityTag => Capabilities.NO_AUTHORITY_TAG,
                  object   => (ref   => Unsigned_64(from),
                               param => NO_REQUEST_ID),
                  gen      => proctab(from).capGeneration);
@@ -767,7 +767,7 @@ package body Process.IPC is
                     proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
                         (capType  => Capabilities.CAP_REPLY,
                          rights   => Capabilities.ALL_RIGHTS,
-                         capBadge => Capabilities.NO_BADGE,
+                         authorityTag => Capabilities.NO_AUTHORITY_TAG,
                          object   => (ref   => Unsigned_64(from),
                                       param => re.requestId),
                          gen      => proctab(from).capGeneration);
@@ -820,7 +820,7 @@ package body Process.IPC is
             proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
                 (capType  => Capabilities.CAP_REPLY,
                  rights   => Capabilities.ALL_RIGHTS,
-                 capBadge => Capabilities.NO_BADGE,
+                 authorityTag => Capabilities.NO_AUTHORITY_TAG,
                  object   => (ref   => Unsigned_64(from),
                               param => NO_REQUEST_ID),
                  gen      => proctab(from).capGeneration);
@@ -842,7 +842,7 @@ package body Process.IPC is
                     proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
                         (capType  => Capabilities.CAP_REPLY,
                          rights   => Capabilities.ALL_RIGHTS,
-                         capBadge => Capabilities.NO_BADGE,
+                         authorityTag => Capabilities.NO_AUTHORITY_TAG,
                          object   => (ref   => Unsigned_64(from),
                                       param => re.requestId),
                          gen      => proctab(from).capGeneration);
@@ -1114,7 +1114,7 @@ package body Process.IPC is
         faultMsg.tag := (label  => faultLabel,
                          length => 4,
                          flags  => 0,
-                         badge  => 0);
+                         reserved  => 0);
         faultMsg.words (0) := Unsigned_64 (pid);
         faultMsg.words (1) := detail0;
         faultMsg.words (2) := detail1;
@@ -1259,10 +1259,11 @@ package body Process.IPC is
         Spinlocks.exitCriticalSection (mailtab(ProcessID'Min (A, B)).lock);
     end unlockMailboxes;
 
-    function submit (dest  : ProcessID;
+    --  Body-local: only capSubmit may enqueue a resolved endpoint request.
+    function submitResolvedEndpoint (dest  : ProcessID;
                      msg   : Message;
                      token : Unsigned_64;
-                     expectedGeneration : Capabilities.Generation := 0) return Boolean
+                     expectedGeneration : Capabilities.Generation) return Boolean
 
     is
         pid      : constant ProcessID := PerCPUData.getCurrentPID;
@@ -1287,8 +1288,7 @@ package body Process.IPC is
 
         lockMailboxes (pid, dest);
         if mailtab(pid).closed or else mailtab(dest).closed or else
-           (expectedGeneration /= 0 and then
-            expectedGeneration /= proctab(dest).capGeneration)
+           expectedGeneration /= proctab(dest).capGeneration
         then
             unlockMailboxes (pid, dest);
             return False;
@@ -1360,7 +1360,7 @@ package body Process.IPC is
 
         -- Do NOT block — caller keeps running
         return True;
-    end submit;
+    end submitResolvedEndpoint;
 
     ---------------------------------------------------------------------------
     -- waitCompletion
@@ -2024,7 +2024,7 @@ package body Process.IPC is
         pid          : constant ProcessID := PerCPUData.getCurrentPID;
         destPID      : Unsigned_64;
         candidatePID : ProcessID;
-        badge        : Capabilities.Badge;
+        authorityTag        : Capabilities.Authority_Tag;
         status       : Capabilities.Operations.OperationStatus;
         stamped      : Message := msg;
     begin
@@ -2045,14 +2045,14 @@ package body Process.IPC is
            rights            => Capabilities.READ_WRITE,
            currentGeneration => proctab(candidatePID).capGeneration,
            destPID           => destPID,
-           capBadge          => badge,
+           authorityTag          => authorityTag,
            status            => status);
 
         if status /= Capabilities.Operations.OP_OK then
             return NULL_TAG;
         end if;
 
-        stamped.capBadge := badge;
+        stamped.authorityTag := authorityTag;
         return send (dest => candidatePID, msg => stamped,
                      expectedGeneration => proctab(pid).caps(capSlot).gen);
     end capSend;
@@ -2067,7 +2067,7 @@ package body Process.IPC is
         pid          : constant ProcessID := PerCPUData.getCurrentPID;
         destPID      : Unsigned_64;
         candidatePID : ProcessID;
-        badge        : Capabilities.Badge;
+        authorityTag        : Capabilities.Authority_Tag;
         status       : Capabilities.Operations.OperationStatus;
         stamped      : Message := msg;
     begin
@@ -2086,14 +2086,14 @@ package body Process.IPC is
            rights            => Capabilities.READ_WRITE,
            currentGeneration => proctab(candidatePID).capGeneration,
            destPID           => destPID,
-           capBadge          => badge,
+           authorityTag          => authorityTag,
            status            => status);
 
         if status /= Capabilities.Operations.OP_OK then
             return NULL_TAG;
         end if;
 
-        stamped.capBadge := badge;
+        stamped.authorityTag := authorityTag;
         return send (dest => candidatePID, msg => stamped,
                      expectedGeneration => proctab(pid).caps(capSlot).gen);
     end capCall;
@@ -2109,7 +2109,7 @@ package body Process.IPC is
         pid          : constant ProcessID := PerCPUData.getCurrentPID;
         destPID      : Unsigned_64;
         candidatePID : ProcessID;
-        badge        : Capabilities.Badge;
+        authorityTag        : Capabilities.Authority_Tag;
         status       : Capabilities.Operations.OperationStatus;
         stamped      : Message := msg;
     begin
@@ -2128,15 +2128,15 @@ package body Process.IPC is
            rights            => Capabilities.READ_WRITE,
            currentGeneration => proctab(candidatePID).capGeneration,
            destPID           => destPID,
-           capBadge          => badge,
+           authorityTag          => authorityTag,
            status            => status);
 
         if status /= Capabilities.Operations.OP_OK then
             return False;
         end if;
 
-        stamped.capBadge := badge;
-        return submit (dest  => candidatePID,
+        stamped.authorityTag := authorityTag;
+        return submitResolvedEndpoint (dest  => candidatePID,
                        msg   => stamped,
                        token => token,
                        expectedGeneration => proctab(pid).caps(capSlot).gen);

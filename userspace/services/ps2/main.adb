@@ -211,7 +211,7 @@ procedure main is
       if kbdConsumer /= 0 then
          keyboardSequence := Next_Sequence (keyboardSequence);
          report :=
-           (sourceBadge => 0,
+           (sourceAuthorityTag => 0,
             sequence    => keyboardSequence,
             generation  => 1,
             device      => KEYBOARD,
@@ -307,7 +307,7 @@ procedure main is
 
             pointerSequence := Next_Sequence (pointerSequence);
             report :=
-              (sourceBadge => 0,
+              (sourceAuthorityTag => 0,
                sequence    => pointerSequence,
                generation  => 1,
                device      => RELATIVE_POINTER,
@@ -352,8 +352,8 @@ begin
    begin
       rdyIgnore := capSend (CAP_SLOT_READY,
          (tag      => (label => OP_READY, length => 0,
-                       flags => 0, badge => 0),
-          capBadge => 0,
+                       flags => 0, reserved => 0),
+          authorityTag => 0,
           words    => (others => 0)));
    end;
 

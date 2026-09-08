@@ -258,8 +258,8 @@ package body DHCP is
       msg := (tag      => (label  => OP_NET_WRITE,
                            length => 3,
                            flags  => 0,
-                           badge  => 0),
-              capBadge => 0,
+                           reserved  => 0),
+              authorityTag => 0,
               words    => (0 => state.grantId,
                            1 => 0,                      -- offset in grant
                            2 => Unsigned_64 (pktLen),

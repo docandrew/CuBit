@@ -202,8 +202,8 @@ procedure main is
       ignore : MessageTag;
    begin
       ignore := capSend (15,
-         (tag      => (label => label, length => 0, flags => 0, badge => 0),
-          capBadge => 0,
+         (tag      => (label => label, length => 0, flags => 0, reserved => 0),
+          authorityTag => 0,
           words    => (others => 0)));
    end signalReady;
 
@@ -777,7 +777,7 @@ procedure main is
       case request.tag.label is
          when OP_GPU_GET_INFO =>
             replyMsg.tag := (label => OP_GPU_GET_INFO,
-                             length => 4, flags => 0, badge => 0);
+                             length => 4, flags => 0, reserved => 0);
             replyMsg.words (0) := Unsigned_64 (FB_W);
             replyMsg.words (1) := Unsigned_64 (FB_H);
             replyMsg.words (2) := Unsigned_64 (FB_W) * 4;
@@ -785,7 +785,7 @@ procedure main is
 
          when OP_GPU_GET_STATUS =>
             replyMsg.tag := (label => OP_GPU_GET_STATUS,
-                             length => 4, flags => 0, badge => 0);
+                             length => 4, flags => 0, reserved => 0);
             replyMsg.words (0) := GPU_OK;
             replyMsg.words (1) := 1; -- scanout resource initialized
             replyMsg.words (2) := Unsigned_64 (FB_W);
@@ -801,7 +801,7 @@ procedure main is
                grantOk : Boolean;
             begin
                replyMsg.tag := (label => OP_GPU_MAP_FRAMEBUFFER,
-                                length => 4, flags => 0, badge => 0);
+                                length => 4, flags => 0, reserved => 0);
                if bufferIndexRaw <= 1 then
                   bufferIndex := Natural (bufferIndexRaw);
                   createGrant
@@ -829,7 +829,7 @@ procedure main is
 
          when OP_GPU_ATTACH_BUFFER =>
             replyMsg.tag := (label => OP_GPU_ATTACH_BUFFER,
-                             length => 1, flags => 0, badge => 0);
+                             length => 1, flags => 0, reserved => 0);
             if request.words (1) = 0 or else request.words (2) = 0 or else
                request.words (1) > Unsigned_64 (FB_W) or else
                request.words (2) > Unsigned_64 (FB_H) or else
@@ -848,7 +848,7 @@ procedure main is
 
          when OP_GPU_PRESENT_RECT =>
             replyMsg.tag := (label => OP_GPU_PRESENT_RECT,
-                             length => 1, flags => 0, badge => 0);
+                             length => 1, flags => 0, reserved => 0);
             if srcAddr = System.Null_Address then
                replyMsg.words (0) := GPU_ERR_BAD_STATE;
             else
@@ -873,7 +873,7 @@ procedure main is
 
          when OP_GPU_FLUSH_RECT =>
             replyMsg.tag := (label => OP_GPU_FLUSH_RECT,
-                             length => 1, flags => 0, badge => 0);
+                             length => 1, flags => 0, reserved => 0);
             ok := transferAndFlush
               (activeBuffer,
                Natural (request.words (0)),
@@ -894,7 +894,7 @@ procedure main is
                packedWH : constant Unsigned_64 := request.words (2);
             begin
                replyMsg.tag := (label => OP_GPU_PRESENT_BUFFER,
-                                length => 1, flags => 0, badge => 0);
+                                length => 1, flags => 0, reserved => 0);
                if bufferIndexRaw > 1 then
                   replyMsg.words (0) := GPU_ERR_UNSUPPORTED;
                else
@@ -913,7 +913,7 @@ procedure main is
 
          when OP_GPU_CLEAR =>
             replyMsg.tag := (label => OP_GPU_CLEAR,
-                             length => 1, flags => 0, badge => 0);
+                             length => 1, flags => 0, reserved => 0);
             clearFb (0, Unsigned_32 (request.words (0) and 16#FFFF_FFFF#));
             clearFb (1, Unsigned_32 (request.words (0) and 16#FFFF_FFFF#));
             ok := transferAndFlush
@@ -931,7 +931,7 @@ procedure main is
 
          when others =>
             replyMsg.tag := (label => request.tag.label,
-                             length => 1, flags => 0, badge => 0);
+                             length => 1, flags => 0, reserved => 0);
             replyMsg.words (0) := GPU_ERR_UNSUPPORTED;
       end case;
 

@@ -1,5 +1,6 @@
 with CCL.VM;
 with Interfaces;
+with CCL.Diagnostics;
 
 package body CCL.Sessions with SPARK_Mode is
    use type CCL.Language.Interpretation_Status;
@@ -84,11 +85,11 @@ package body CCL.Sessions with SPARK_Mode is
       if Outcome.Status = CCL.Language.Host_Import_Required then
          return "Service call needs VM execution; no service was invoked.";
       elsif Outcome.Status /= CCL.Language.Succeeded then
-         return CCL.Language.Interpretation_Status'Image (Outcome.Status) &
+         return CCL.Diagnostics.Message (Outcome.Status) &
            (if Outcome.Diagnostic = CCL.Language.No_Diagnostic then ""
-            else ": " & CCL.Language.Diagnostic_Code'Image (Outcome.Diagnostic)) &
+            else ": " & CCL.Diagnostics.Message (Outcome.Diagnostic)) &
            (if Outcome.Diagnostic_Position = 0 then ""
-            else " at" & Natural'Image (Outcome.Diagnostic_Position));
+            else " at character" & Natural'Image (Outcome.Diagnostic_Position));
       end if;
       case Result_Type (Outcome) is
          when CCL.Language.Integer_Type =>

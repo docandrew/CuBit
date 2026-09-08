@@ -141,7 +141,7 @@ begin
          All_Passed := False;
       else
          Request.tag :=
-           (label => OP_INCREMENT, length => 1, flags => 0, badge => 0);
+           (label => OP_INCREMENT, length => 1, flags => 0, reserved => 0);
          Request.words (0) := Unsigned_64 (VM_Result.Request_Argument.Integer);
          Submit_OK := capSubmit (IMPORT_SLOT, Request, IMPORT_TOKEN);
          if Submit_OK then
@@ -251,7 +251,7 @@ begin
          debugPrint ("ccl-vm: clock source/link PASS" & LF);
          Request.tag :=
            (label => CuBit.Protocols.CLOCK_OP_MONOTONIC_MS, length => 1,
-            flags => 0, badge => 0);
+            flags => 0, reserved => 0);
          Request.words (0) := 0;
          Submit_OK := capSubmit (CLOCK_SLOT, Request, IMPORT_TOKEN);
          if Submit_OK then
@@ -343,7 +343,7 @@ begin
          All_Passed := False;
       else
          Request.tag :=
-           (label => OP_INCREMENT, length => 1, flags => 0, badge => 0);
+           (label => OP_INCREMENT, length => 1, flags => 0, reserved => 0);
          Request.words (0) := Unsigned_64 (Event.Argument.Integer);
          Submitted := capSubmit (IMPORT_SLOT, Request, Event.Token);
 

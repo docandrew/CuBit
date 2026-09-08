@@ -26,12 +26,12 @@ typedef struct __attribute__((packed)) {
     uint32_t label;
     uint8_t  length;
     uint8_t  flags;
-    uint16_t badge;
+    uint16_t reserved;
 } cfg_ipc_tag_t;
 
 typedef struct __attribute__((packed)) {
     cfg_ipc_tag_t tag;
-    uint64_t      capBadge;
+    uint64_t      authorityTag;
     uint64_t      words[4];
 } cfg_ipc_message_t;
 
@@ -133,8 +133,8 @@ int cubit_config_get(const char *key, void *buf,
     msg.tag.label  = OP_CONFIG_GET;
     msg.tag.length = 2;
     msg.tag.flags  = 0;
-    msg.tag.badge  = 0;
-    msg.capBadge   = 0;
+    msg.tag.reserved  = 0;
+    msg.authorityTag   = 0;
     msg.words[0]   = cfg_grant_id;
     msg.words[1]   = keyLen;
     msg.words[2]   = 0;
@@ -185,8 +185,8 @@ int cubit_config_set(const char *key, const void *value,
     msg.tag.label  = OP_CONFIG_SET;
     msg.tag.length = 3;
     msg.tag.flags  = 0;
-    msg.tag.badge  = 0;
-    msg.capBadge   = 0;
+    msg.tag.reserved  = 0;
+    msg.authorityTag   = 0;
     msg.words[0]   = cfg_grant_id;
     msg.words[1]   = keyLen;
     msg.words[2]   = value_len;
@@ -222,8 +222,8 @@ int cubit_config_delete(const char *key)
     msg.tag.label  = OP_CONFIG_DELETE;
     msg.tag.length = 2;
     msg.tag.flags  = 0;
-    msg.tag.badge  = 0;
-    msg.capBadge   = 0;
+    msg.tag.reserved  = 0;
+    msg.authorityTag   = 0;
     msg.words[0]   = cfg_grant_id;
     msg.words[1]   = keyLen;
     msg.words[2]   = 0;
@@ -279,8 +279,8 @@ int cubit_config_list(const char *prefix, char *buf,
     msg.tag.label  = OP_CONFIG_LIST;
     msg.tag.length = 2;
     msg.tag.flags  = 0;
-    msg.tag.badge  = 0;
-    msg.capBadge   = 0;
+    msg.tag.reserved  = 0;
+    msg.authorityTag   = 0;
     msg.words[0]   = cfg_grant_id;
     msg.words[1]   = prefixLen;
     msg.words[2]   = 0;

@@ -113,8 +113,8 @@ procedure main is
       debugPrint (LF & "");
       publish :=
         (tag => (label => CuBit.Devices.OP_PUBLISH_XHCI_STATS,
-                 length => 3, flags => 0, badge => 0),
-         capBadge => 0,
+                 length => 3, flags => 0, reserved => 0),
+         authorityTag => 0,
          words =>
            (0 => (diagnostics.decodedReports and 16#FFFF_FFFF#) or
               Shift_Left (diagnostics.motionReports and 16#FFFF_FFFF#, 32),
@@ -154,8 +154,8 @@ procedure main is
    begin
       ignore := replyCap
         (CapabilitySlot'Last,
-         (tag => (label => label, length => 2, flags => 0, badge => 0),
-          capBadge => 0,
+         (tag => (label => label, length => 2, flags => 0, reserved => 0),
+          authorityTag => 0,
           words => (0 => word0, 1 => word1, others => 0)));
    end Reply_With;
 
@@ -303,7 +303,7 @@ begin
               Shift_Left (Unsigned_64 (deltaZ mod 256), 32);
             pointerSequence := Next_Sequence (pointerSequence);
             inputReport :=
-              (sourceBadge => 0,
+              (sourceAuthorityTag => 0,
                sequence    => pointerSequence,
                generation  => 1,
                device      => RELATIVE_POINTER,

@@ -16,12 +16,12 @@ with Interfaces; use Interfaces;
 
 with Net;
 
-package TCPSession is
+package TCPSession with SPARK_Mode is
 
    ---------------------------------------------------------------------------
    --  Connection states (RFC 793)
    ---------------------------------------------------------------------------
-   type TCPState is (TCP_CLOSED, TCP_SYN_SENT, TCP_ESTABLISHED,
+   type TCPState is (TCP_CLOSED, TCP_SYN_SENT, TCP_SYN_RECEIVED, TCP_ESTABLISHED,
                      TCP_FIN_WAIT_1, TCP_FIN_WAIT_2,
                      TCP_CLOSE_WAIT, TCP_CLOSING,
                      TCP_LAST_ACK, TCP_TIME_WAIT);
@@ -33,19 +33,22 @@ package TCPSession is
       state      : TCPState := TCP_CLOSED;
       localPort  : Unsigned_16 := 0;
       remotePort : Unsigned_16 := 0;
-      remoteIP   : Net.IPv4Address := (others => 0);
-      remoteMAC  : Net.MACAddress := (others => 0);
+      remoteIP   : Net.IPv4Address := [others => 0];
+      remoteMAC  : Net.MACAddress := [others => 0];
       sendNext   : Unsigned_32 := 0;   -- SND.NXT
       sendUnack  : Unsigned_32 := 0;   -- SND.UNA
       recvNext   : Unsigned_32 := 0;   -- RCV.NXT
       sendWindow : Unsigned_16 := 0;   -- SND.WND
+      receiveWindow : Unsigned_16 := Unsigned_16'Last;
    end record;
 
    ---------------------------------------------------------------------------
    --  Connection table
    ---------------------------------------------------------------------------
    MAX_TCP_CONNS : constant := 4;
-   type ConnTable is array (0 .. MAX_TCP_CONNS - 1) of Connection;
+   subtype Connection_Index is Natural range 0 .. MAX_TCP_CONNS - 1;
+   subtype Connection_Reference is Integer range -1 .. Connection_Index'Last;
+   type ConnTable is array (Connection_Index) of Connection;
 
    ---------------------------------------------------------------------------
    --  Input: parsed segment fields (from RecordFlux Net.TCP.Segment)
@@ -61,7 +64,7 @@ package TCPSession is
       flagFIN : Boolean;
       flagRST : Boolean;
       winSize : Unsigned_16;
-      dataLen : Natural;       -- TCP payload length
+      dataLen : Natural range 0 .. 65_535; -- bounded IPv4 TCP payload
       dataOff : Natural;       -- byte offset of payload in packet buffer
    end record;
 
@@ -88,12 +91,14 @@ package TCPSession is
       dataOff : Natural := 0;        -- offset of payload in packet buffer
    end record;
 
-   MAX_ACTIONS : constant := 4;
+   --  Final handshake ACK can also carry data and FIN: established, ACK,
+   --  data, ACK, EOF. Never silently lose the fifth notification.
+   MAX_ACTIONS : constant := 5;
    type ActionArray is array (0 .. MAX_ACTIONS - 1) of Action;
 
    type Result is record
-      actions    : ActionArray := (others => (others => <>));
-      numActions : Natural := 0;
+      actions    : ActionArray := [others => (others => <>)];
+      numActions : Natural range 0 .. MAX_ACTIONS := 0;
    end record;
 
    ---------------------------------------------------------------------------
@@ -103,12 +108,17 @@ package TCPSession is
    --  Process an incoming TCP segment
    procedure onSegmentIn (conns   : in out ConnTable;
                           seg     : SegmentInfo;
-                          connIdx : out Integer;
+                          connIdx : out Connection_Reference;
                           res     : out Result);
 
    --  Initiate a TCP connection (SYN)
    procedure onConnect (conn : in out Connection;
                         res  : out Result);
+
+   --  Caller must first reserve a connection under an admitted listener.
+   --  This routine neither opens a port nor decides application authority.
+   procedure onPassiveOpen
+     (conn : in out Connection; seg : SegmentInfo; res : out Result);
 
    --  Send data on an established connection (PSH+ACK)
    procedure onSend (conn    : in out Connection;
@@ -129,15 +139,16 @@ package TCPSession is
    function findConn (conns   : ConnTable;
                       srcIP   : Net.IPv4Address;
                       srcPort : Unsigned_16;
-                      dstPort : Unsigned_16) return Integer;
+                      dstPort : Unsigned_16) return Connection_Reference;
 
    --  Allocate a new connection slot and initialize it for outgoing SYN.
    --  Returns index into ConnTable, or -1 if table is full.
-   function allocateConn (conns     : in out ConnTable;
+   procedure allocateConn (conns     : in out ConnTable;
                           dstIP     : Net.IPv4Address;
                           dstMAC    : Net.MACAddress;
                           dstPort   : Unsigned_16;
                           localPort : Unsigned_16;
-                          isn       : Unsigned_32) return Integer;
+                          isn       : Unsigned_32;
+                          index     : out Connection_Reference);
 
 end TCPSession;

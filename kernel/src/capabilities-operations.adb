@@ -178,17 +178,17 @@ is
     end findByType;
 
     ---------------------------------------------------------------------------
-    -- findByBadge
+    -- findByAuthorityTag
     ---------------------------------------------------------------------------
-    procedure findByBadge (table  : in     CapabilityTable;
-                           wanted : in     Badge;
+    procedure findByAuthorityTag (table  : in     CapabilityTable;
+                           wanted : in     Authority_Tag;
                            slot   :    out CapabilitySlot;
                            status :    out OperationStatus)
     is
     begin
         for i in CapabilitySlot loop
             if table(i).capType /= CAP_NULL and then
-               table(i).capBadge = wanted then
+               table(i).authorityTag = wanted then
                 slot   := i;
                 status := OP_OK;
                 return;
@@ -197,7 +197,7 @@ is
 
         slot   := CapabilitySlot'First;
         status := OP_NULL_CAPABILITY;
-    end findByBadge;
+    end findByAuthorityTag;
 
     ---------------------------------------------------------------------------
     -- resolveEndpoint
@@ -206,13 +206,13 @@ is
                                slot     : in     CapabilitySlot;
                                rights   : in     CapabilityRights;
                                destPID  :    out Unsigned_64;
-                               capBadge :    out Badge;
+                               authorityTag :    out Authority_Tag;
                                status   :    out OperationStatus)
     is
         cap : constant Capability := table(slot);
     begin
         destPID  := 0;
-        capBadge := NO_BADGE;
+        authorityTag := NO_AUTHORITY_TAG;
 
         if cap.capType = CAP_NULL then
             status := OP_NULL_CAPABILITY;
@@ -230,7 +230,7 @@ is
         end if;
 
         destPID  := cap.object.ref;
-        capBadge := cap.capBadge;
+        authorityTag := cap.authorityTag;
         status   := OP_OK;
     end resolveEndpoint;
 
@@ -243,7 +243,7 @@ is
        rights            : in     CapabilityRights;
        currentGeneration : in     Generation;
        destPID           :    out Unsigned_64;
-       capBadge          :    out Badge;
+       authorityTag          :    out Authority_Tag;
        status            :    out OperationStatus)
     is
     begin
@@ -252,7 +252,7 @@ is
            slot     => slot,
            rights   => rights,
            destPID  => destPID,
-           capBadge => capBadge,
+           authorityTag => authorityTag,
            status   => status);
 
         if status /= OP_OK then
@@ -261,7 +261,7 @@ is
 
         if table(slot).gen /= currentGeneration then
             destPID  := 0;
-            capBadge := NO_BADGE;
+            authorityTag := NO_AUTHORITY_TAG;
             status   := OP_STALE_GENERATION;
         end if;
     end resolveCurrentEndpoint;
@@ -284,7 +284,7 @@ is
         table(0) := (
             capType  => CAP_ENDPOINT,
             rights   => READ_WRITE,
-            capBadge => pid,
+            authorityTag => pid,
             object   => (ref => pid, param => 0),
             gen      => gen);
 
@@ -297,7 +297,7 @@ is
         table(3) := (
             capType  => CAP_PROCESS,
             rights   => READ_WRITE,
-            capBadge => NO_BADGE,
+            authorityTag => NO_AUTHORITY_TAG,
             object   => (ref => pid, param => 0),
             gen      => gen);
     end grantInitialCaps;

@@ -37,7 +37,7 @@ procedure main is
       replyMsg.tag := (label  => label,
                        length => 1,
                        flags  => 0,
-                       badge  => 0);
+                       reserved  => 0);
       replyMsg.words := (0 => word0, others => 0);
       ignore := reply (dest, replyMsg);
    end sendReply;
@@ -202,8 +202,8 @@ procedure main is
          end if;
 
          replyMsg.tag := (label => REPLY_OK, length => 4,
-                          flags => 0, badge => 0);
-         replyMsg.capBadge := 0;
+                          flags => 0, reserved => 0);
+         replyMsg.authorityTag := 0;
          replyMsg.words :=
            (0 => NVMe.nsBlockCount,
             1 => Pack_Sizes
@@ -240,8 +240,8 @@ begin
       begin
          rdyIgnore := capSend (CAP_SLOT_READY,
             (tag      => (label => OP_NOT_PRESENT, length => 0,
-                          flags => 0, badge => 0),
-             capBadge => 0,
+                          flags => 0, reserved => 0),
+             authorityTag => 0,
              words    => (others => 0)));
          ignore := syscall (SYSCALL_EXIT);
       end;
@@ -275,8 +275,8 @@ begin
    begin
       ignore := capSend (CAP_SLOT_READY,
          (tag      => (label => OP_READY, length => 0,
-                       flags => 0, badge => 0),
-          capBadge => 0,
+                       flags => 0, reserved => 0),
+          authorityTag => 0,
           words    => (others => 0)));
    end;
 

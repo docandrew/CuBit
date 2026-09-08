@@ -603,7 +603,7 @@ procedure main is
       --  a wildcard profile by calling the management operation directly.
       msg := NULL_MESSAGE;
       msg.tag := (label => OP_SET_ACL, length => 4,
-                  flags => 0, badge => 0);
+                  flags => 0, reserved => 0);
       msg.words :=
         (0 => syscall (SYSCALL_GETPID), 1 => 0, 2 => 0, 3 => 0);
       staleTag := capCall (CAP_SLOT_FS, msg);

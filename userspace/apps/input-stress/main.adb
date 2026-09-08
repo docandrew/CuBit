@@ -49,7 +49,7 @@ procedure Main is
       pointerSequence := Next_Sequence (pointerSequence);
       Publish
         (pointerConsumer,
-         (sourceBadge => 0,
+         (sourceAuthorityTag => 0,
           sequence => pointerSequence,
           generation => 1,
           device => RELATIVE_POINTER,
@@ -64,7 +64,7 @@ procedure Main is
       keyboardSequence := Next_Sequence (keyboardSequence);
       Publish
         (keyboardConsumer,
-         (sourceBadge => 0,
+         (sourceAuthorityTag => 0,
           sequence => keyboardSequence,
           generation => 1,
           device => KEYBOARD,

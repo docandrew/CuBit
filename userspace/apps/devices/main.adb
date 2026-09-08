@@ -203,7 +203,7 @@ procedure main is
 
       msg := NULL_MESSAGE;
       msg.tag := (label => CuBit.Devices.OP_INVENTORY_COUNT,
-                  length => 0, flags => 0, badge => 0);
+                  length => 0, flags => 0, reserved => 0);
       tag := capCall (CAP_SLOT_DEVICE_INSPECTION, msg);
       if tag.label /= CuBit.Devices.REPLY_OK then
          return;
@@ -220,7 +220,7 @@ procedure main is
       for index in 1 .. count loop
          msg := NULL_MESSAGE;
          msg.tag := (label => CuBit.Devices.OP_INVENTORY_ITEM,
-                     length => 1, flags => 0, badge => 0);
+                     length => 1, flags => 0, reserved => 0);
          msg.words (0) := Unsigned_64 (index);
          tag := capCall (CAP_SLOT_DEVICE_INSPECTION, msg);
          if tag.label = CuBit.Devices.REPLY_OK then
@@ -260,7 +260,7 @@ procedure main is
 
       msg := NULL_MESSAGE;
       msg.tag := (label => CuBit.Devices.OP_XHCI_DIAGNOSTICS,
-                  length => 0, flags => 0, badge => 0);
+                  length => 0, flags => 0, reserved => 0);
       tag := capCall (CAP_SLOT_DEVICE_INSPECTION, msg);
       if tag.label = CuBit.Devices.REPLY_OK then
          modeRep := Shift_Right (msg.words (3), 48) and 16#FF#;

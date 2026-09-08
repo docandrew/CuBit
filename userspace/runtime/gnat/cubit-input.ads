@@ -2,7 +2,7 @@
 --  CuBit typed input-source publication protocol.
 --
 --  A report is a state-bearing message, not an unauthenticated device event.
---  The kernel stamps Message.capBadge from the publication capability; the
+--  The kernel stamps Message.authorityTag from the publication capability; the
 --  sequence, generation, and recovery flag make bounded transport loss
 --  observable. This is the driver-facing half of the future input.svc stream.
 ------------------------------------------------------------------------------
@@ -32,7 +32,7 @@ package CuBit.Input with SPARK_Mode => On is
    subtype Source_Sequence is Unsigned_64;
 
    type Source_Report is record
-      sourceBadge : Unsigned_64 := 0;
+      sourceAuthorityTag : Unsigned_64 := 0;
       sequence    : Source_Sequence := 0;
       generation  : Source_Generation := 0;
       device      : Device_Class := KEYBOARD;

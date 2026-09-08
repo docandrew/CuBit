@@ -95,7 +95,7 @@ begin
       msg.tag := (label  => OP_ASYNC_ECHO,
                   length => 1,
                   flags  => 0,
-                  badge  => 0);
+                  reserved  => 0);
       msg.words (0) := 99;
       submitOk := capSubmit (CAP_SLOT_EMPTY, msg, TOKEN_BASE + 99);
       if submitOk then
@@ -110,7 +110,7 @@ begin
          msg.tag := (label  => OP_ONEWAY_PROBE,
                      length => 1,
                      flags  => 0,
-                     badge  => 0);
+                     reserved  => 0);
          msg.words (0) := 77;
          submitOk := capSubmit (CAP_SLOT_IPCTEST, msg, NO_COMPLETION_TOKEN);
          if not submitOk then
@@ -135,7 +135,7 @@ begin
          msg.tag := (label  => OP_DOUBLE_REPLY,
                      length => 1,
                      flags  => 0,
-                     badge  => 0);
+                     reserved  => 0);
          msg.words (0) := 42;
          submitOk := capSubmit (CAP_SLOT_IPCTEST, msg, DOUBLE_TOKEN);
          if not submitOk then
@@ -177,7 +177,7 @@ begin
          msg.tag := (label  => OP_OCCUPIED_HOLD,
                      length => 1,
                      flags  => 0,
-                     badge  => 0);
+                     reserved  => 0);
          msg.words (0) := 501;
          submitOk := capSubmit
            (CAP_SLOT_IPCTEST, msg, OCCUPIED_HOLD_TOKEN);
@@ -239,7 +239,7 @@ begin
             msg.tag := (label  => OP_PRESSURE_HOLD,
                         length => 1,
                         flags  => 0,
-                        badge  => 0);
+                        reserved  => 0);
             msg.words (0) := Unsigned_64 (i);
 
             submitOk := capSubmit (
@@ -261,7 +261,7 @@ begin
          msg.tag := (label  => OP_PRESSURE_HOLD,
                      length => 1,
                      flags  => 0,
-                     badge  => 0);
+                     reserved  => 0);
          msg.words (0) := Unsigned_64 (PRESSURE_COUNT + 1);
 
          submitOk := capSubmit (
@@ -282,7 +282,7 @@ begin
          msg.tag := (label  => OP_PRESSURE_RELEASE,
                      length => 0,
                      flags  => 0,
-                     badge  => 0);
+                     reserved  => 0);
          submitOk := capSubmit (
             CAP_SLOT_IPCTEST,
             msg,
@@ -346,7 +346,7 @@ begin
          msg.tag := (label  => OP_ASYNC_ECHO,
                      length => 1,
                      flags  => 0,
-                     badge  => 0);
+                     reserved  => 0);
          msg.words (0) := 123;
          submitOk := capSubmit (CAP_SLOT_IPCTEST, msg, RECOVERY_TOKEN);
          if not submitOk then
@@ -389,7 +389,7 @@ begin
             msg.tag := (label  => OP_REVERSE_ECHO,
                         length => 1,
                         flags  => 0,
-                        badge  => 0);
+                        reserved  => 0);
             msg.words (0) := Unsigned_64 (i);
 
             submitOk := capSubmit (
@@ -464,7 +464,7 @@ begin
          msg.tag := (label  => OP_STATUS,
                      length => 0,
                      flags  => 0,
-                     badge  => 0);
+                     reserved  => 0);
          loadFPUProbe;
          tag := capCall (CAP_SLOT_IPCTEST, msg);
          if readFPUProbe /= FPU_SENTINEL then
@@ -488,7 +488,7 @@ begin
          msg.tag := (label  => OP_DIE,
                      length => 0,
                      flags  => 0,
-                     badge  => 0);
+                     reserved  => 0);
          submitOk := capSubmit (CAP_SLOT_IPCTEST, msg, DEATH_TOKEN);
          if not submitOk then
             fail ("death-submit");

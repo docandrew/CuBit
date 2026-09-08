@@ -1,5 +1,22 @@
 {
   "nodes": {
+    "cbor_ada": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1784997409,
+        "narHash": "sha256-E1yiZe+iO4tYgHt2WM/pSa+08GWc0pY3nentn8AoAdM=",
+        "owner": "b-erdem",
+        "repo": "cbor_ada",
+        "rev": "ce9897cdd80dea21112c59b80a5c42f2921f59f0",
+        "type": "github"
+      },
+      "original": {
+        "owner": "b-erdem",
+        "repo": "cbor_ada",
+        "rev": "ce9897cdd80dea21112c59b80a5c42f2921f59f0",
+        "type": "github"
+      }
+    },
     "doomgeneric": {
       "flake": false,
       "locked": {
@@ -35,6 +52,7 @@
     },
     "root": {
       "inputs": {
+        "cbor_ada": "cbor_ada",
         "doomgeneric": "doomgeneric",
         "nixpkgs": "nixpkgs",
         "stb": "stb"

@@ -13,6 +13,7 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Network_Authority;
 with CuBit.Devices;
 with Cpio;
 
@@ -520,7 +521,7 @@ procedure main is
    procedure grantEndpoint (target    : Unsigned_64;
                             destPID   : Unsigned_64;
                             capSlot   : Unsigned_64;
-                            badgePID  : Unsigned_64)
+                            authorityTagPID : Unsigned_64)
    is
    begin
       mintCap (target   => target,
@@ -626,8 +627,8 @@ procedure main is
       aclMsg.tag := (label  => OP_SET_ACL,
                       length => 4,
                       flags  => 0,
-                      badge  => 0);
-      aclMsg.capBadge := 0;
+                      reserved  => 0);
+      aclMsg.authorityTag := 0;
       aclMsg.words := (0 => targetPID, 1 => 0, 2 => 0, 3 => 0);
       ignore := capCall (1, aclMsg);
    end sendWildcardACL;
@@ -645,8 +646,8 @@ procedure main is
       aclMsg.tag := (label  => OP_SET_ACL,
                       length => 4,
                       flags  => 0,
-                      badge  => 0);
-      aclMsg.capBadge := 0;
+                      reserved  => 0);
+      aclMsg.authorityTag := 0;
       aclMsg.words := (0 => targetPID, 1 => 0, 2 => 0, 3 => 0);
       ignore := capCall (2, aclMsg);
    end sendWildcardACLConfig;
@@ -1441,8 +1442,8 @@ procedure main is
 
       cfgMsg :=
         (tag => (label => OP_XHCI_CONFIGURE,
-                 length => 4, flags => 0, badge => 0),
-         capBadge => 0,
+                 length => 4, flags => 0, reserved => 0),
+         authorityTag => 0,
          words =>
            (0 => bar0Phys,
             1 => barPages,
@@ -1841,8 +1842,8 @@ begin
                                          (tag => (label  => OP_CONFIG_SET,
                                                   length => 3,
                                                   flags  => 0,
-                                                  badge  => 0),
-                                          capBadge => 0,
+                                                  reserved  => 0),
+                                          authorityTag => 0,
                                           words =>
                                             (0 => cfgGid,
                                              1 => Unsigned_64 (kLen),
@@ -1865,8 +1866,8 @@ begin
                        (tag => (label  => OP_CONFIG_LOAD,
                                 length => 0,
                                 flags  => 0,
-                                badge  => 0),
-                        capBadge => 0,
+                                reserved  => 0),
+                        authorityTag => 0,
                         words => (others => 0));
                      cfgMsg.tag := capCall (2, cfgMsg);
                   end if;
@@ -1926,7 +1927,9 @@ begin
       grantEndpoint (netstackPID, virtioNetPID, 10, netstackPID);
 
       --  Virtio-net slot 7 -> netstack service
-      grantEndpoint (virtioNetPID, netstackPID, 7, virtioNetPID);
+      mintCap (virtioNetPID, CAP_ENDPOINT, netstackPID,
+               CuBit.Network_Authority.Driver_Authority_Tag,
+               RIGHT_READ or RIGHT_WRITE, 7);
 
       --  CAP_NOTIFICATION for DRIVER_NETSTACK registration (slot 8)
       mintCap (netstackPID, CAP_NOTIFICATION, DRIVER_NETSTACK, 0,
@@ -1975,7 +1978,9 @@ begin
    end if;
    if netmgrPID /= 0 and netstackPID /= 0 then
       --  Slot 4: endpoint to netstack (config + raw UDP IPC)
-      grantEndpoint (netmgrPID, netstackPID, 4, netmgrPID);
+      mintCap (netmgrPID, CAP_ENDPOINT, netstackPID,
+               CuBit.Network_Authority.Manager_Authority_Tag,
+               RIGHT_READ or RIGHT_WRITE, 4);
 
       --  Slot 20: endpoint to config.svc (CAP_SLOT_CONFIG)
       if configPID /= 0 then
@@ -2108,6 +2113,14 @@ begin
          grantEndpoint (procmgrPID, configPID, 2, procmgrPID);
       end if;
 
+      --  Only this explicitly held endpoint may install network scopes.
+      if netstackPID /= 0 then
+         mintCap (procmgrPID, CAP_ENDPOINT, netstackPID,
+                  CuBit.Network_Authority.Policy_Authority_Tag,
+                  RIGHT_READ or RIGHT_WRITE,
+                  CuBit.Network_Authority.Policy_Capability_Slot);
+      end if;
+
       --  CAP_NOTIFICATION for DRIVER_PROCMGR registration (slot 7)
       mintCap (procmgrPID, CAP_NOTIFICATION, DRIVER_PROCMGR, 0,
                RIGHT_WRITE, 7);
@@ -2142,8 +2155,8 @@ begin
            (reply
               (from,
                (tag => (label  => CuBit.Devices.REPLY_OK,
-                        length => 2, flags => 0, badge => 0),
-                capBadge => 0,
+                        length => 2, flags => 0, reserved => 0),
+                authorityTag => 0,
                 words =>
                   (0 => Unsigned_64 (inventoryCount),
                    1 => (if inventoryOverflow then 1 else 0),
@@ -2206,8 +2219,8 @@ begin
               (reply
                  (from,
                   (tag => (label => CuBit.Devices.REPLY_OK,
-                           length => 4, flags => 0, badge => 0),
-                   capBadge => 0,
+                           length => 4, flags => 0, reserved => 0),
+                   authorityTag => 0,
                    words =>
                      (0 => locationWord, 1 => identityWord,
                       2 => driverPID, 3 => 1))));
@@ -2246,8 +2259,8 @@ begin
               (from,
                (tag =>
                   (label => CuBit.Devices.REPLY_OK,
-                   length => 4, flags => 0, badge => 0),
-                capBadge => 0,
+                   length => 4, flags => 0, reserved => 0),
+                authorityTag => 0,
                 words =>
                   (0 => xhciDiagnostics.decodedReports,
                    1 => xhciDiagnostics.motionReports,
@@ -2270,8 +2283,8 @@ begin
            (reply
               (from,
                (tag => (label => CuBit.Devices.REPLY_ERROR,
-                        length => 0, flags => 0, badge => 0),
-                capBadge => 0, words => (others => 0))));
+                        length => 0, flags => 0, reserved => 0),
+                authorityTag => 0, words => (others => 0))));
       end if;
    end loop;
 

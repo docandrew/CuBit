@@ -1,0 +1,10 @@
+project TCP_Session_Tests is
+   for Source_Dirs use (".", "../../userspace/services/netstack");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      --  Assertions are for this hosted test only, never kernel/service builds.
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa");
+   end Compiler;
+end TCP_Session_Tests;

@@ -86,10 +86,6 @@ is
     procedure handlePollAnyIpc (arg0   : Unsigned_64;
                                 retval : out Unsigned_64);
 
-    procedure handleSubmit (arg0, arg1, arg2, arg3,
-                            arg4, arg5 : Unsigned_64;
-                            retval     : out Unsigned_64);
-
     procedure handleWaitCompletion (arg0, arg1, arg2 : Unsigned_64;
                                     retval : out Unsigned_64);
 

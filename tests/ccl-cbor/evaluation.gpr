@@ -1,0 +1,21 @@
+project Evaluation is
+   Source := external ("CBOR_ADA_SRC");
+   Checks := external ("CBOR_CHECKS", "on");
+   for Source_Dirs use (".", Source & "/src");
+   for Object_Dir use "build/" & Checks;
+   for Exec_Dir use "build/" & Checks;
+   for Main use ("main.adb");
+   package Compiler is
+      case Checks is
+         when "on" =>
+            for Default_Switches ("Ada") use
+              ("-O2", "-g", "-gnat2022", "-gnata", "-gnato", "-gnatVa",
+               "-fstack-usage", "-I-");
+         when others =>
+            -- Compare stack/copy costs without executable ghost contracts.
+            -- Normal language checks remain enabled; this is still Linux.
+            for Default_Switches ("Ada") use
+              ("-O2", "-g", "-gnat2022", "-fstack-usage", "-I-");
+      end case;
+   end Compiler;
+end Evaluation;

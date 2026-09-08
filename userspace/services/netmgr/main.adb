@@ -168,8 +168,8 @@ procedure main is
       msg := (tag      => (label  => OP_NET_CONFIGURE,
                            length => 4,
                            flags  => 0,
-                           badge  => 0),
-              capBadge => 0,
+                           reserved  => 0),
+              authorityTag => 0,
               words    => (0 => ifIdx,
                            1 => addr,
                            2 => mask,
@@ -194,8 +194,8 @@ procedure main is
       msg := (tag      => (label  => OP_NET_SET_DNS,
                            length => 2,
                            flags  => 0,
-                           badge  => 0),
-              capBadge => 0,
+                           reserved  => 0),
+              authorityTag => 0,
               words    => (0 => primary,
                            1 => secondary,
                            others => 0));
@@ -212,8 +212,8 @@ procedure main is
       msg := (tag      => (label  => OP_READY,
                            length => 0,
                            flags  => 0,
-                           badge  => 0),
-              capBadge => 0,
+                           reserved  => 0),
+              authorityTag => 0,
               words    => (others => 0));
       ignore := capCall (CAP_SLOT_READY, msg);
    end signalReady;
@@ -227,8 +227,8 @@ procedure main is
       msg := (tag      => (label  => OP_NET_LIST_IF,
                            length => 0,
                            flags  => 0,
-                           badge  => 0),
-              capBadge => 0,
+                           reserved  => 0),
+              authorityTag => 0,
               words    => (others => 0));
       msg.tag := capCall (CAP_SLOT_NETSTACK, msg);
       if msg.tag.label = REPLY_OK then
@@ -248,8 +248,8 @@ procedure main is
       msg := (tag      => (label  => OP_NET_OPEN_RAW,
                            length => 3,
                            flags  => 0,
-                           badge  => 0),
-              capBadge => 0,
+                           reserved  => 0),
+              authorityTag => 0,
               words    => (0 => ifIdx,
                            1 => Unsigned_64 (PROTO_UDP),
                            2 => Unsigned_64 (port),
@@ -396,8 +396,8 @@ begin
               (tag      => (label  => REPLY_ERR,
                             length => 0,
                             flags  => 0,
-                            badge  => 0),
-               capBadge => 0,
+                            reserved  => 0),
+               authorityTag => 0,
                words    => (others => 0));
             ignore : Unsigned_64;
          begin

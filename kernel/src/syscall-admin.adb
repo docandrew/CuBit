@@ -370,7 +370,7 @@ package body Syscall.Admin is
 
         sendMsg : constant Process.Message := (
             tag      => u64ToTag (arg1),
-            capBadge => 0,
+            authorityTag => 0,
             words    => (arg2, arg3, arg4, arg5));
         replyTag : Process.MessageTag;
     begin
@@ -438,7 +438,7 @@ package body Syscall.Admin is
 
         submitMsg : constant Process.Message := (
             tag      => u64ToTag (arg1),
-            capBadge => 0,
+            authorityTag => 0,
             words    => (arg2, arg3, arg4, 0));
         ok : Boolean;
     begin
@@ -614,7 +614,7 @@ package body Syscall.Admin is
         outAddr   : constant System.Address := Util.numToAddr (arg2);
         typeVal   : Unsigned_64 with Import, Address => outAddr;
         rightsVal : Unsigned_64 with Import, Address => outAddr + 8;
-        badgeVal  : Unsigned_64 with Import, Address => outAddr + 16;
+        authorityTagVal  : Unsigned_64 with Import, Address => outAddr + 16;
         refVal    : Unsigned_64 with Import, Address => outAddr + 24;
         paramVal  : Unsigned_64 with Import, Address => outAddr + 32;
         genVal    : Unsigned_64 with Import, Address => outAddr + 40;
@@ -674,7 +674,7 @@ package body Syscall.Admin is
         x86.stac;
         typeVal := Unsigned_64 (Capabilities.CapabilityType'Pos (cap.capType));
         rightsVal := rights;
-        badgeVal := cap.capBadge;
+        authorityTagVal := cap.authorityTag;
         refVal := cap.object.ref;
         paramVal := cap.object.param;
         genVal := Unsigned_64 (cap.gen);
@@ -810,7 +810,12 @@ package body Syscall.Admin is
                     newCap := (
                         capType  => ct,
                         rights   => newRights,
-                        capBadge => Unsigned_64 (targetPID),
+                        --  Endpoint object.param is its explicit authority
+                        --  context when supplied by the capability-space
+                        --  policy holder. Zero retains the sender-ID tag.
+                        authorityTag =>
+                          (if ct = Capabilities.CAP_ENDPOINT and arg3 /= 0
+                           then arg3 else Unsigned_64 (targetPID)),
                         object   => (ref   => arg2,
                                      param => arg3),
                         gen      => capGen);

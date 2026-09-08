@@ -144,8 +144,8 @@ procedure main is
        w3    : Unsigned_64 := 0) return Message
    is
       msg : Message :=
-        (tag      => (label => label, length => 4, flags => 0, badge => 0),
-         capBadge => 0,
+        (tag      => (label => label, length => 4, flags => 0, reserved => 0),
+         authorityTag => 0,
          words    => (w0, w1, w2, w3));
       tag : MessageTag;
    begin
@@ -709,7 +709,7 @@ procedure main is
             replyMsg.tag := (label  => OP_DISPLAY_GET_INFO,
                              length => 4,
                              flags  => 0,
-                             badge  => 0);
+                             reserved  => 0);
             replyMsg.words (0) := Unsigned_64 (fbWidth);
             replyMsg.words (1) := Unsigned_64 (fbHeight);
             replyMsg.words (2) := Unsigned_64 (fbPitch);
@@ -719,7 +719,7 @@ procedure main is
             replyMsg.tag := (label  => OP_DISPLAY_GET_STATUS,
                              length => 4,
                              flags  => 0,
-                             badge  => 0);
+                             reserved  => 0);
             replyMsg.words (0) := backendId;
             replyMsg.words (1) := backendCaps;
             replyMsg.words (2) := Unsigned_64 (displayOwner);
@@ -727,7 +727,7 @@ procedure main is
 
          when OP_DISPLAY_ACQUIRE =>
             replyMsg.tag := (label => OP_DISPLAY_ACQUIRE,
-                             length => 1, flags => 0, badge => 0);
+                             length => 1, flags => 0, reserved => 0);
             if displayOwner = NO_PROCESS or else displayOwner = from then
                displayOwner := from;
                replyMsg.words (0) := DISPLAY_OK;
@@ -737,7 +737,7 @@ procedure main is
 
          when OP_DISPLAY_RELEASE =>
             replyMsg.tag := (label => OP_DISPLAY_RELEASE,
-                             length => 1, flags => 0, badge => 0);
+                             length => 1, flags => 0, reserved => 0);
             if displayOwner = from then
                detachOwnerBuffer;
                displayOwner := NO_PROCESS;
@@ -751,18 +751,18 @@ procedure main is
          when OP_DISPLAY_ATTACH_BUFFER =>
             if not ownsDisplay (from) then
                replyMsg.tag := (label => OP_DISPLAY_ATTACH_BUFFER,
-                                length => 1, flags => 0, badge => 0);
+                                length => 1, flags => 0, reserved => 0);
                replyMsg.words (0) := DISPLAY_ERR_DENIED;
             elsif request.words (1) = 0 or else request.words (2) = 0 then
                replyMsg.tag := (label => OP_DISPLAY_ATTACH_BUFFER,
-                                length => 1, flags => 0, badge => 0);
+                                length => 1, flags => 0, reserved => 0);
                replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
             elsif request.words (1) > Unsigned_64 (fbWidth) or else
                   request.words (2) > Unsigned_64 (fbHeight) or else
                   request.words (3) < request.words (1) * 4
             then
                replyMsg.tag := (label => OP_DISPLAY_ATTACH_BUFFER,
-                                length => 1, flags => 0, badge => 0);
+                                length => 1, flags => 0, reserved => 0);
                replyMsg.words (0) := DISPLAY_ERR_UNSUPPORTED;
             else
                srcAddr :=
@@ -780,14 +780,14 @@ procedure main is
                end if;
 
                replyMsg.tag := (label => OP_DISPLAY_ATTACH_BUFFER,
-                                length => 1, flags => 0, badge => 0);
+                                length => 1, flags => 0, reserved => 0);
                replyMsg.words (0) := DISPLAY_OK;
                debugPrint ("display: buffer attached" & LF);
             end if;
 
          when OP_DISPLAY_MAP_BACKBUFFER =>
             replyMsg.tag := (label => OP_DISPLAY_MAP_BACKBUFFER,
-                             length => 4, flags => 0, badge => 0);
+                             length => 4, flags => 0, reserved => 0);
             if not ownsDisplay (from) then
                replyMsg.words (0) := DISPLAY_ERR_DENIED;
             else
@@ -802,7 +802,7 @@ procedure main is
          when OP_DISPLAY_PRESENT_RECT |
               OP_DISPLAY_PRESENT_IMMEDIATE_RECT =>
             replyMsg.tag := (label => request.tag.label,
-                             length => 1, flags => 0, badge => 0);
+                             length => 1, flags => 0, reserved => 0);
             if not ownsDisplay (from) then
                replyMsg.words (0) := DISPLAY_ERR_DENIED;
             elsif srcOwner /= from or else srcAddr = System.Null_Address then
@@ -835,7 +835,7 @@ procedure main is
          when OP_DISPLAY_PRESENT_REGION |
               OP_DISPLAY_PRESENT_IMMEDIATE_REGION =>
             replyMsg.tag := (label => request.tag.label,
-                             length => 1, flags => 0, badge => 0);
+                             length => 1, flags => 0, reserved => 0);
             if not ownsDisplay (from) then
                replyMsg.words (0) := DISPLAY_ERR_DENIED;
             elsif srcOwner /= from or else srcAddr = System.Null_Address then
@@ -851,7 +851,7 @@ procedure main is
 
          when OP_DISPLAY_CLEAR =>
             replyMsg.tag := (label => OP_DISPLAY_CLEAR,
-                             length => 1, flags => 0, badge => 0);
+                             length => 1, flags => 0, reserved => 0);
             if not ownsDisplay (from) then
                replyMsg.words (0) := DISPLAY_ERR_DENIED;
             elsif not clearGpu (request.words (0)) then
@@ -865,7 +865,7 @@ procedure main is
             replyMsg.tag := (label  => request.tag.label,
                              length => 1,
                              flags  => 0,
-                             badge  => 0);
+                             reserved  => 0);
             replyMsg.words (0) := DISPLAY_ERR_UNSUPPORTED;
       end case;
 

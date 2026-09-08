@@ -185,8 +185,8 @@ begin
    begin
       rdyIgnore := capSend (CAP_SLOT_READY,
          (tag      => (label => OP_READY, length => 0,
-                       flags => 0, badge => 0),
-          capBadge => 0,
+                       flags => 0, reserved => 0),
+          authorityTag => 0,
           words    => (others => 0)));
    end;
 
@@ -209,9 +209,10 @@ begin
    msg.tag := (label  => OP_NET_OPEN,
                length => Unsigned_8 (SCHEME'Length),
                flags  => 0,       -- 0 = client channel
-               badge  => 0);
+               reserved  => 0);
    msg.words (0) := grantId;
    msg.words (1) := Unsigned_64 (DATA_BUF_SIZE);
+   msg.words (3) := syscall (SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION, grantId);
    tag := capCall (CAP_SLOT_NET, msg);
 
    if tag.label /= REPLY_OK then
@@ -248,7 +249,7 @@ begin
    msg.tag := (label  => OP_NET_WRITE,
                length => 3,
                flags  => 0,
-               badge  => 0);
+               reserved  => 0);
    msg.words (0) := chanHandle;
    msg.words (1) := 0;   -- offset
    msg.words (2) := Unsigned_64 (HTTP_REQ'Length);
@@ -281,7 +282,7 @@ begin
       msg.tag := (label  => OP_NET_READ,
                   length => 3,
                   flags  => 0,
-                  badge  => 0);
+                  reserved  => 0);
       msg.words (0) := chanHandle;
       msg.words (1) := 0;      -- offset in grant buffer
       msg.words (2) := Unsigned_64 (DATA_BUF_SIZE);
@@ -334,7 +335,7 @@ begin
    msg.tag := (label  => OP_NET_SHUT,
                length => 1,
                flags  => 0,
-               badge  => 0);
+               reserved  => 0);
    msg.words (0) := chanHandle;
    declare
       ignore : MessageTag;

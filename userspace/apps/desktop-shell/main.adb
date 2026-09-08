@@ -78,8 +78,8 @@ procedure main is
         (tag      => (label  => label,
                       length => 4,
                       flags  => 0,
-                      badge  => 0),
-         capBadge => 0,
+                      reserved  => 0),
+         authorityTag => 0,
          words    => (w0, w1, w2, w3));
       tag : MessageTag;
    begin

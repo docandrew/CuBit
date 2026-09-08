@@ -49,7 +49,7 @@
 
 /*
  * IPC Message structure — must match kernel's Process.Message layout.
- * MessageTag: label(u32) + length(u8) + flags(u8) + badge(u16) = 8 bytes
+ * MessageTag: label(u32) + length(u8) + flags(u8) + reserved(u16) = 8 bytes
  * Words: 4 x u64 = 32 bytes
  * Total: 40 bytes
  */
@@ -57,12 +57,12 @@ typedef struct __attribute__((packed)) {
     uint32_t label;
     uint8_t  length;
     uint8_t  flags;
-    uint16_t badge;
+    uint16_t reserved;
 } ipc_tag_t;
 
 typedef struct __attribute__((packed)) {
     ipc_tag_t tag;
-    uint64_t  capBadge;
+    uint64_t  authorityTag;
     uint64_t  words[4];
 } ipc_message_t;
 
@@ -127,7 +127,7 @@ static int flush_write_buf(FILE *f)
     msg.tag.label  = OP_WRITE;
     msg.tag.length = 4;
     msg.tag.flags  = 0;
-    msg.tag.badge  = 0;
+    msg.tag.reserved  = 0;
     msg.words[0] = (uint64_t)f->handle;
     msg.words[1] = f->grant_id;
     msg.words[2] = f->wbuf_pos;
@@ -215,7 +215,7 @@ FILE *fopen(const char *path, const char *mode)
     msg.tag.label  = OP_OPEN;
     msg.tag.length = 4;
     msg.tag.flags  = 0;
-    msg.tag.badge  = 0;
+    msg.tag.reserved  = 0;
     msg.words[0] = f->grant_id;    /* grant_id (where path is) */
     msg.words[1] = pathlen;        /* path length */
     msg.words[2] = flags;          /* open flags (O_CREAT, O_TRUNC, etc.) */
@@ -271,7 +271,7 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream)
         msg.tag.label  = OP_READ;
         msg.tag.length = 4;
         msg.tag.flags  = 0;
-        msg.tag.badge  = 0;
+        msg.tag.reserved  = 0;
         msg.words[0] = (uint64_t)stream->handle;
         msg.words[1] = stream->grant_id;
         msg.words[2] = chunk;
@@ -372,7 +372,7 @@ int fseek(FILE *stream, long offset, int whence)
     msg.tag.label  = OP_SEEK;
     msg.tag.length = 3;
     msg.tag.flags  = 0;
-    msg.tag.badge  = 0;
+    msg.tag.reserved  = 0;
     msg.words[0] = (uint64_t)stream->handle;
     msg.words[1] = (uint64_t)offset;
     msg.words[2] = w;
@@ -414,7 +414,7 @@ int fclose(FILE *stream)
     msg.tag.label  = OP_CLOSE;
     msg.tag.length = 1;
     msg.tag.flags  = 0;
-    msg.tag.badge  = 0;
+    msg.tag.reserved  = 0;
     msg.words[0] = (uint64_t)stream->handle;
     msg.words[1] = 0;
     msg.words[2] = 0;

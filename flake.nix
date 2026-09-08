@@ -10,8 +10,13 @@
     url = "github:nothings/stb/f58f558c120e9b32c217290b80bad1a0729fbb2c";
     flake = false;
   };
+  # Hosted CBOR evaluation only; not linked into kernel or native services.
+  inputs.cbor_ada = {
+    url = "github:b-erdem/cbor_ada/ce9897cdd80dea21112c59b80a5c42f2921f59f0";
+    flake = false;
+  };
 
-  outputs = { self, nixpkgs, doomgeneric, stb }:
+  outputs = { self, nixpkgs, doomgeneric, stb, cbor_ada }:
     let
       supportedSystems = [ "x86_64-linux" ];
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
@@ -38,6 +43,7 @@
               libjpeg_turbo
               libpng
               librsvg
+              nodejs
               perl
               pkg-config
               python3Packages.pillow
@@ -53,6 +59,7 @@
               export DOOMGENERIC_SRC="${doomgeneric}"
               export DOOM_WAD="${pkgs.freedoom}/share/games/doom/freedoom1.wad"
               export STB_SRC="${stb}"
+              export CBOR_ADA_SRC="${cbor_ada}"
               export IBM_PLEX_SANS_FONT="${pkgs.ibm-plex}/share/fonts/truetype/IBMPlexSans-Regular.ttf"
               export IBM_PLEX_MONO_FONT="${pkgs.ibm-plex}/share/fonts/truetype/IBMPlexMono-Regular.ttf"
               # Hosted developer tools built through Alire/GPRBuild do not

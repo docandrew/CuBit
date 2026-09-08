@@ -52,7 +52,7 @@ procedure main is
       replyMsg.tag := (label  => label,
                        length => 1,
                        flags  => 0,
-                       badge  => 0);
+                       reserved  => 0);
       replyMsg.words := (0 => word0, others => 0);
       ignore := reply (dest, replyMsg);
    end sendReply;

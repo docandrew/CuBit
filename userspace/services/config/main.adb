@@ -193,7 +193,7 @@ procedure main is
       replyMsg.tag := (label  => label,
                        length => 1,
                        flags  => 0,
-                       badge  => 0);
+                       reserved  => 0);
       replyMsg.words := (0 => word0, others => 0);
       ignore := reply (dest, replyMsg);
    end sendReply;
@@ -1032,8 +1032,8 @@ begin
    begin
       ignore := capSend (CAP_SLOT_READY,
          (tag      => (label => OP_READY, length => 0,
-                       flags => 0, badge => 0),
-          capBadge => 0,
+                       flags => 0, reserved => 0),
+          authorityTag => 0,
           words    => (others => 0)));
    end;
 

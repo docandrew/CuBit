@@ -67,6 +67,7 @@ is
     OP_NET_BIND       : constant Unsigned_32 := 16#0424#;
     OP_NET_ACCEPT     : constant Unsigned_32 := 16#0425#;
     OP_NET_OPEN_RAW   : constant Unsigned_32 := 16#0426#;
+    OP_NET_CLOSE_LISTENER : constant Unsigned_32 := 16#0427#;
 
     -- Network management operations (netmgr -> netstack)
     OP_NET_CONFIGURE  : constant Unsigned_32 := 16#0430#;
@@ -77,6 +78,10 @@ is
     OP_NET_IF_DETAIL  : constant Unsigned_32 := 16#0436#;
     OP_NET_ROUTE_LIST : constant Unsigned_32 := 16#0437#;
     OP_NET_PING       : constant Unsigned_32 := 16#0438#;
+
+    -- Trusted policy endpoint only; tags reference private service state.
+    OP_NET_INSTALL_SCOPE : constant Unsigned_32 := 16#0440#;
+    OP_NET_RELEASE_SCOPE : constant Unsigned_32 := 16#0441#;
 
     -- Audio operations (app ↔ mixer)
     OP_AUDIO_OPEN     : constant Unsigned_32 := 16#0500#;

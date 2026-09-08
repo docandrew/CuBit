@@ -91,8 +91,8 @@ package body CuBit.Audio is
       msg := (tag => (label  => OP_AUDIO_OPEN,
                       length => 2,
                       flags  => 0,
-                      badge  => 0),
-              capBadge => 0,
+                      reserved  => 0),
+              authorityTag => 0,
               words => (0 => Unsigned_64 (sampleRate),
                         1 => Unsigned_64 (channels) or
                              Shift_Left (Unsigned_64 (FORMAT_S16LE), 16) or
@@ -420,8 +420,8 @@ package body CuBit.Audio is
       msg := (tag => (label  => OP_AUDIO_SET_VOL,
                       length => 2,
                       flags  => 0,
-                      badge  => 0),
-              capBadge => 0,
+                      reserved  => 0),
+              authorityTag => 0,
               words => (0 => s.streamId,
                         1 => Unsigned_64 (volToU32 (vol)),
                         others => 0));
@@ -445,8 +445,8 @@ package body CuBit.Audio is
       msg := (tag => (label  => OP_AUDIO_CLOSE,
                       length => 1,
                       flags  => 0,
-                      badge  => 0),
-              capBadge => 0,
+                      reserved  => 0),
+              authorityTag => 0,
               words => (0 => s.streamId, others => 0));
 
       ignore := capCall (CAP_SLOT_MIXER, msg);
@@ -469,8 +469,8 @@ package body CuBit.Audio is
    procedure notify is
       msg : constant Message :=
         (tag => (label => OP_AUDIO_WAKE, length => 0,
-                 flags => 0, badge => 0),
-         capBadge => 0,
+                 flags => 0, reserved => 0),
+         authorityTag => 0,
          words => (others => 0));
       submitted : Boolean;
    begin

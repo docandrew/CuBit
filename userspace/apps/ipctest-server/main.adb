@@ -96,7 +96,7 @@ procedure main is
       replyMsg.tag := (label  => label,
                        length => 3,
                        flags  => 0,
-                       badge  => 0);
+                       reserved  => 0);
       replyMsg.words (0) := word0;
       replyMsg.words (1) := word1;
       replyMsg.words (2) := word2;
@@ -113,7 +113,7 @@ procedure main is
       replyMsg.tag := (label  => REPLY_OK,
                        length => 3,
                        flags  => 0,
-                       badge  => 0);
+                       reserved  => 0);
       replyMsg.words (0) := value;
       replyMsg.words (1) := value xor XOR_MAGIC;
       replyMsg.words (2) := sender;

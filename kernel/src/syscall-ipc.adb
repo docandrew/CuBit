@@ -686,7 +686,7 @@ package body Syscall.IPC is
 
         replyMsg : constant Process.Message := (
             tag      => u64ToTag (arg1),
-            capBadge => 0,
+            authorityTag => 0,
             words    => (arg2, arg3, arg4, arg5));
     begin
         if arg0 > Unsigned_64(Process.ProcessID'Last) then
@@ -708,7 +708,7 @@ package body Syscall.IPC is
     is
         replyMsg : constant Process.Message := (
             tag      => u64ToTag (arg1),
-            capBadge => 0,
+            authorityTag => 0,
             words    => (arg2, arg3, arg4, arg5));
     begin
         if arg0 > Unsigned_64(Capabilities.CapabilitySlot'Last) then
@@ -761,9 +761,9 @@ package body Syscall.IPC is
         generation : Capabilities.Generation;
         hasCap  : Boolean := False;
         accepted : Boolean;
-        authorityBadge : Capabilities.Badge := Capabilities.NO_BADGE;
+        authorityTag : Capabilities.Authority_Tag := Capabilities.NO_AUTHORITY_TAG;
         resolvedPID : Unsigned_64;
-        resolvedBadge : Capabilities.Badge;
+        resolvedAuthorityTag : Capabilities.Authority_Tag;
         resolveStatus : Capabilities.Operations.OperationStatus;
         publishRights : constant Capabilities.CapabilityRights :=
           (Capabilities.RIGHT_WRITE => True, others => False);
@@ -778,7 +778,7 @@ package body Syscall.IPC is
         generation := Process.proctab(destPID).capGeneration;
         eventMsg := (
             tag      => u64ToTag (arg1),
-            capBadge => 0,
+            authorityTag => 0,
             words    => (arg2, arg3, arg4, arg5));
 
         -- Kernel-mode threads are exempt
@@ -804,8 +804,8 @@ package body Syscall.IPC is
                        Unsigned_64 (destPID)
                 then
                     hasCap := True;
-                    authorityBadge :=
-                      Process.proctab(callerPID).caps(slot).capBadge;
+                    authorityTag :=
+                      Process.proctab(callerPID).caps(slot).authorityTag;
                     exit;
                 end if;
             end loop;
@@ -825,13 +825,13 @@ package body Syscall.IPC is
                        currentGeneration =>
                          Process.proctab(destPID).capGeneration,
                        destPID => resolvedPID,
-                       capBadge => resolvedBadge,
+                       authorityTag => resolvedAuthorityTag,
                        status => resolveStatus);
                     if resolveStatus = Capabilities.Operations.OP_OK and then
                        resolvedPID = Unsigned_64 (destPID)
                     then
                        hasCap := True;
-                       authorityBadge := resolvedBadge;
+                       authorityTag := resolvedAuthorityTag;
                        exit;
                     end if;
                 end if;
@@ -848,9 +848,9 @@ package body Syscall.IPC is
             retval := reterr;
         else
             --  The receiver learns which granted authority published the
-            --  event. A userspace payload cannot forge this badge because the
+            --  event. A userspace payload cannot forge this authority tag because the
             --  kernel overwrites it after resolving the caller's capability.
-            eventMsg.capBadge := authorityBadge;
+            eventMsg.authorityTag := authorityTag;
             Process.IPC.trySendEvent (
                 dest => destPID,
                 msg  => eventMsg,
@@ -915,37 +915,6 @@ package body Syscall.IPC is
             retval := 0;
         end if;
     end handlePollAnyIpc;
-
-    ---------------------------------------------------------------------------
-    -- handleSubmit
-    ---------------------------------------------------------------------------
-    procedure handleSubmit (arg0, arg1, arg2, arg3,
-                            arg4, arg5 : Unsigned_64;
-                            retval     : out Unsigned_64) with
-        SPARK_Mode => Off
-    is
-
-
-        submitMsg : constant Process.Message := (
-            tag      => u64ToTag (arg1),
-            capBadge => 0,
-            words    => (arg2, arg3, arg4, 0));
-        ok : Boolean;
-    begin
-        if arg0 > Unsigned_64(Process.ProcessID'Last) then
-            retval := 0;
-        else
-            ok := Process.IPC.submit (
-                dest  => Process.ProcessID(arg0),
-                msg   => submitMsg,
-                token => arg5);
-            if ok then
-                retval := 1;
-            else
-                retval := 0;
-            end if;
-        end if;
-    end handleSubmit;
 
     ---------------------------------------------------------------------------
     -- handleWaitCompletion

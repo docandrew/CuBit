@@ -63,12 +63,12 @@ typedef struct __attribute__((packed)) {
     uint32_t label;
     uint8_t  length;
     uint8_t  flags;
-    uint16_t badge;
+    uint16_t reserved;
 } stream_tag_t;
 
 typedef struct __attribute__((packed)) {
     stream_tag_t tag;
-    uint64_t     capBadge;
+    uint64_t     authorityTag;
     uint64_t     words[4];
 } stream_msg_t;
 

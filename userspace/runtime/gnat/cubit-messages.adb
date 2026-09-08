@@ -7,8 +7,10 @@
 --
 --  Full multi-word IPC wrappers matching kernel Process.IPC.
 ------------------------------------------------------------------------------
+pragma Ada_2022;
 with Ada.Unchecked_Conversion;
 with System;
+with System.Storage_Elements;
 with System.Machine_Code; use System.Machine_Code;
 
 package body CuBit.Messages is
@@ -179,26 +181,35 @@ package body CuBit.Messages is
       found := (ret /= 0);
    end Poll_Any_Ipc;
 
-   --  submit
-   --  SUBMIT: RDI=dest, RSI=tag, RDX=w0, R10=w1, R8=w2, R9=token
-   --  Note: w3 is sacrificed to pass token in R9
-
-   function submit
-     (dest  : ProcessID;
-      msg   : Message;
-      token : Unsigned_64) return Boolean
+   procedure Find_Endpoint_Capability
+     (Target : ProcessID; Slot : out CapabilitySlot; Found : out Boolean)
    is
-      ret : Unsigned_64;
+      --  INSPECT_CAPABILITY's fixed six-word result; only inspect our table.
+      Info : array (0 .. 5) of Unsigned_64 := [others => 0];
+      Self : constant Unsigned_64 := syscall (SYSCALL_GETPID);
+      Result : Unsigned_64;
+      Endpoint_Kind : constant Unsigned_64 := 1;
+      Read_Write_Rights : constant Unsigned_64 := 3;
    begin
-      ret := syscall (SYSCALL_SUBMIT,
-                       dest,
-                       tagToU64 (msg.tag),
-                       msg.words (0),
-                       msg.words (1),
-                       msg.words (2),
-                       token);
-      return (ret = 1);
-   end submit;
+      Slot := CapabilitySlot'First;
+      Found := False;
+      if Target = NO_PROCESS then
+         return;
+      end if;
+      for Candidate in CapabilitySlot loop
+         Result := syscall
+           (SYSCALL_INSPECT_CAPABILITY, Self, Candidate,
+            Unsigned_64 (System.Storage_Elements.To_Integer (Info'Address)));
+         if Result = 1 and then Info (0) = Endpoint_Kind and then
+           (Info (1) and Read_Write_Rights) = Read_Write_Rights and then
+           Info (3) = Target
+         then
+            Slot := Candidate;
+            Found := True;
+            return;
+         end if;
+      end loop;
+   end Find_Endpoint_Capability;
 
    --  waitCompletion
    --  WAIT_COMPLETION: RDI=pointer to buffer, RSI=maxEntries, RDX=minWait

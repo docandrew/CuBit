@@ -196,12 +196,12 @@ typedef struct {
     uint32_t label;
     uint8_t  length;
     uint8_t  flags;
-    uint16_t badge;
+    uint16_t reserved;
 } cubit_message_tag_t;
 
 typedef struct {
     cubit_message_tag_t tag;
-    uint64_t capBadge;
+    uint64_t authorityTag;
     uint64_t words[4];
 } cubit_message_t;
 

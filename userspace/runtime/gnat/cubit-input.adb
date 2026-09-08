@@ -19,9 +19,9 @@ package body CuBit.Input with SPARK_Mode => On is
 
       return
         (tag => (label => OP_SOURCE_REPORT, length => 4,
-                 flags => 0, badge => 0),
+                 flags => 0, reserved => 0),
          --  This field is deliberately ignored on send and kernel-stamped.
-         capBadge => 0,
+         authorityTag => 0,
          words => (0 => report.sequence,
                    1 => header,
                    2 => report.payload,
@@ -37,7 +37,7 @@ package body CuBit.Input with SPARK_Mode => On is
    begin
       return msg.tag.label = OP_SOURCE_REPORT and then
         msg.tag.length = 4 and then
-        msg.capBadge /= 0 and then
+        msg.authorityTag /= 0 and then
         msg.words (0) /= 0 and then
         (msg.words (1) and RESERVED_FLAG_MASK) = 0 and then
         (msg.words (1) and GENERATION_MASK) /= 0 and then
@@ -65,7 +65,7 @@ package body CuBit.Input with SPARK_Mode => On is
 
       deviceRep := msg.words (1) and DEVICE_MASK;
       deliveryRep := Shift_Right (msg.words (1) and DELIVERY_MASK, 8);
-      report.sourceBadge := msg.capBadge;
+      report.sourceAuthorityTag := msg.authorityTag;
       report.sequence := msg.words (0);
       report.generation := Source_Generation
         (Shift_Right (msg.words (1) and GENERATION_MASK, 32));

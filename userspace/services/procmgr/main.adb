@@ -23,6 +23,7 @@ with CuBit.Authority; use CuBit.Authority;
 with CuBit.Memory_Grants;
 with CuBit.Filesystems;
 with CuBit.File_Access;
+with CuBit.Network_Authority;
 
 procedure main is
    use ASCII;
@@ -121,7 +122,7 @@ procedure main is
       replyMsg.tag := (label  => label,
                        length => 1,
                        flags  => 0,
-                       badge  => 0);
+                       reserved  => 0);
       replyMsg.words := (0 => word0, others => 0);
       ignore := reply (dest, replyMsg);
    end sendReply;
@@ -653,7 +654,8 @@ procedure main is
    procedure parseAndGrantManifest
      (childPID      : Unsigned_64;
       elfSize       : Unsigned_64;
-      streamBitmask : in out Unsigned_64)
+      streamBitmask : in out Unsigned_64;
+      approveNetwork : Boolean := False)
    is
       --  ELF64 header field offsets
       e_shoff_off     : constant := 40;  -- Section header table offset
@@ -752,6 +754,57 @@ procedure main is
                         rightsMask := Unsigned_64 (rights);
 
                         case reqType is
+                           when CuBit.Network_Authority.Manifest_Request =>
+                              declare
+                                 scope : CuBit.Network_Authority.Scope;
+                                 valid : Boolean;
+                                 request : Message := NULL_MESSAGE;
+                                 resultTag : MessageTag;
+                                 networkPID : constant Unsigned_64 := getInfo
+                                   (SYSINFO_REGISTERED_DRIVER, DRIVER_NETSTACK);
+                              begin
+                                 CuBit.Network_Authority.Decode
+                                   (Unsigned_64 (param0), param1, scope, valid);
+                                 if approveNetwork and then valid and then
+                                   rightsMask = 3 and then slotNum in 1 .. 62 and then
+                                   networkPID /= 0 and then networkPID /= Unsigned_64'Last
+                                 then
+                                    request.tag.label := CuBit.Network_Authority.OP_INSTALL_SCOPE;
+                                    request.tag.length := 3;
+                                    request.words (0) := childPID;
+                                    request.words (1) := Unsigned_64 (scope.Network);
+                                    request.words (2) := CuBit.Network_Authority.Descriptor (scope);
+                                    resultTag := capCall
+                                      (CuBit.Network_Authority.Policy_Capability_Slot, request);
+                                    if resultTag.label = REPLY_OK and then
+                                      request.words (0) in
+                                        CuBit.Network_Authority.First_Grant_Tag ..
+                                        CuBit.Network_Authority.Last_Grant_Tag
+                                    then
+                                       declare
+                                          authorityTag : constant Unsigned_64 := request.words (0);
+                                       begin
+                                          mintRecorded
+                                            (childPID, CAP_TYPE_ENDPOINT, networkPID,
+                                             authorityTag, rightsMask, Unsigned_64 (slotNum),
+                                             AUTH_SOURCE_CONFIG_POLICY,
+                                             AUTH_REASON_MANIFEST_REQUEST, True, ignore);
+                                          if ignore = Unsigned_64'Last then
+                                             request := NULL_MESSAGE;
+                                             request.tag.label := CuBit.Network_Authority.OP_RELEASE_SCOPE;
+                                             request.tag.length := 2;
+                                             request.words (0) := childPID;
+                                             request.words (1) := authorityTag;
+                                             resultTag := capCall
+                                               (CuBit.Network_Authority.Policy_Capability_Slot, request);
+                                          end if;
+                                       end;
+                                    end if;
+                                 else
+                                    debugPrint ("procmgr: network scope denied (not approved or invalid)" & LF);
+                                 end if;
+                              end;
+
                            when REQ_FRAMEBUFFER =>
                               --  CAP_DEVICE_MEM, ref=0, param=0x1000_0000
                               mintRecorded
@@ -1186,7 +1239,7 @@ procedure main is
                               aclMsg.tag := (label  => OP_SET_ACL,
                                              length => 4,
                                              flags  => 0,
-                                             badge  => 0);
+                                             reserved  => 0);
                               aclMsg.words := (0 => childPID,
                                                1 => Unsigned_64 (fsCount),
                                                2 => fsGrant.slot,
@@ -1236,7 +1289,7 @@ procedure main is
                               aclMsg.tag := (label  => OP_SET_ACL,
                                              length => 4,
                                              flags  => 0,
-                                             badge  => 0);
+                                             reserved  => 0);
                               aclMsg.words := (
                                  0 => childPID,
                                  1 => Unsigned_64 (configCount),
@@ -1316,7 +1369,7 @@ procedure main is
          cfgMsg.tag := (label  => OP_CONFIG_GET,
                         length => 2,
                         flags  => 0,
-                        badge  => 0);
+                        reserved  => 0);
          cfgMsg.words (0) := configGrantId;
          cfgMsg.words (1) := Unsigned_64 (totalLen);
          cfgMsg.tag := capCall (CAP_SLOT_CONFIG_LOCAL, cfgMsg);
@@ -1366,7 +1419,8 @@ procedure main is
       priority    : Unsigned_64;
       requester   : Unsigned_64 := 0;
       sandboxMode : Unsigned_8 := SANDBOX_NONE;
-      cwd         : String := "") return Unsigned_64
+      cwd         : String := "";
+      approveNetwork : Boolean := False) return Unsigned_64
    is
       elfSize       : Unsigned_64;
       newPID        : Unsigned_64;
@@ -1456,7 +1510,8 @@ procedure main is
 
       --  Parse .cubit.caps manifest (streams fallback if no .cubit.streams)
       t0 := syscall (SYSCALL_GETTIME);
-      parseAndGrantManifest (newPID, elfSize, streamBitmask);
+      parseAndGrantManifest
+        (newPID, elfSize, streamBitmask, approveNetwork);
       t1 := syscall (SYSCALL_GETTIME);
 
       debugPrint ("procmgr: manifest took ");
@@ -1632,7 +1687,7 @@ procedure main is
       begin
          resetMessage.tag :=
            (label => CuBit.Filesystems.OP_REVOKE_ACL, length => 1,
-            flags => 0, badge => 0);
+            flags => 0, reserved => 0);
          resetMessage.words (0) := newPID;
          resetTag := capCall (CAP_SLOT_FS_LOCAL, resetMessage);
          if resetTag.label /= CuBit.Filesystems.REPLY_OK then
@@ -1697,7 +1752,7 @@ procedure main is
                label  => OP_STREAM_AVAILABLE,
                length => 2,
                flags  => 0,
-               badge  => 0);
+               reserved  => 0);
             evMsg.words (0) := newPID;
             evMsg.words (1) := streamBitmask;
 
@@ -1706,16 +1761,19 @@ procedure main is
                debugPrint ("procmgr: sent stream available" & LF);
             end if;
 
-            --  Also notify log store (if registered) via submit
-            --  (sendEvent requires CAP_ENDPOINT; submit does not)
+            --  Notify logstore only through an already-held endpoint.
             declare
                logPID : constant Unsigned_64 :=
                   getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_LOGSTORE);
                ignore : Boolean;
+               endpointSlot : CapabilitySlot;
+               hasEndpoint : Boolean;
             begin
                if logPID /= 0 and logPID /= Unsigned_64'Last then
-                  ignore := submit (ProcessID (logPID), evMsg,
-                                    Unsigned_64'Last);
+                  Find_Endpoint_Capability
+                    (ProcessID (logPID), endpointSlot, hasEndpoint);
+                  ignore := hasEndpoint and then capSubmit
+                    (endpointSlot, evMsg, Unsigned_64'Last);
                   debugPrint ("procmgr: notified logstore" & LF);
                end if;
             end;
@@ -1800,6 +1858,7 @@ procedure main is
          name     : String (1 .. MAX_NAME_LEN);
          nameLen  : Natural;
          priority : Unsigned_64;
+         approveNetwork : Boolean := False;
       end record;
 
       entries   : array (0 .. MAX_ENTRIES - 1) of InitEntry;
@@ -1918,6 +1977,29 @@ procedure main is
                            end if;
                         end if;
 
+                        --  An explicit trusted boot-config decision, separate
+                        --  from the ELF's request. Ordinary OP_SPAWN callers
+                        --  cannot supply this flag. A future installation/
+                        --  approval service will supply persistent ceilings.
+                        while pos < Natural (confSize) and then
+                          (conf (pos) = ' ' or conf (pos) = ASCII.HT)
+                        loop
+                           pos := pos + 1;
+                        end loop;
+                        declare
+                           approval : constant String := "network=declared";
+                           matches : Boolean := pos + approval'Length <= Natural (confSize);
+                        begin
+                           if matches then
+                              for c in approval'Range loop
+                                 if conf (pos + c - 1) /= approval (c) then matches := False; end if;
+                              end loop;
+                              if pos + approval'Length < Natural (confSize) and then
+                                conf (pos + approval'Length) not in ASCII.LF | ASCII.CR | ' ' | ASCII.HT
+                              then matches := False; end if;
+                           end if;
+                           entries (numEntries).approveNetwork := matches;
+                        end;
                         entries (numEntries).priority := pri;
                         numEntries := numEntries + 1;
                      end if;
@@ -1948,7 +2030,9 @@ procedure main is
             debugPrint ("procmgr: init spawn: ");
             debugPrint (n);
             debugPrint ("" & LF);
-            pid := spawnByName (n, entries (i).priority);
+            pid := spawnByName
+              (n, entries (i).priority,
+               approveNetwork => entries (i).approveNetwork);
             if pid = 0 then
                debugPrint ("procmgr: init spawn failed: ");
                debugPrint (n);
@@ -1982,8 +2066,8 @@ begin
    begin
       ignore := capSend (CAP_SLOT_READY,
          (tag      => (label => OP_READY, length => 0,
-                       flags => 0, badge => 0),
-          capBadge => 0,
+                       flags => 0, reserved => 0),
+          authorityTag => 0,
           words    => (others => 0)));
    end;
 

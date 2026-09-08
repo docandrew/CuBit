@@ -6,8 +6,8 @@
 -- Capability Types and Data Structures
 --
 -- Foundational capability type system for CuBitOS. Defines capability records,
--- rights bitmasks, badges, generation counters, and per-process capability
--- tables. Draws on seL4 (badges, endpoint caps), EROS (generation-counter
+-- rights bitmasks, authority tags, generation counters, and per-process capability
+-- tables. Draws on seL4 (authority tags, endpoint caps), EROS (generation-counter
 -- revocation), and Zircon (flat handle table with rights bitmask).
 --
 -- This is a spec-only package; all operations are expression functions. More
@@ -75,15 +75,16 @@ is
     );
 
     ---------------------------------------------------------------------------
-    -- Badge
+    -- Authority tag
     --
-    -- 64-bit badge, matching seL4 convention. When capabilities are
-    -- integrated into IPC, the MessageTag.badge (currently 16-bit) will be
-    -- restructured to support full 64-bit badges in a separate Message field.
+    -- A label attached to a capability, copied by the kernel into the separate
+    -- 64-bit Message.authorityTag field when that capability authorizes IPC.
+    -- It is not independently authority or necessarily a unique capability ID.
+    -- MessageTag.reserved is unrelated, caller-controlled header padding.
     ---------------------------------------------------------------------------
-    subtype Badge is Unsigned_64;
+    subtype Authority_Tag is Unsigned_64;
 
-    NO_BADGE : constant Badge := 0;
+    NO_AUTHORITY_TAG : constant Authority_Tag := 0;
 
     ---------------------------------------------------------------------------
     -- Generation Counter
@@ -128,17 +129,17 @@ is
     -- Capability Record
     ---------------------------------------------------------------------------
     type Capability is record
-        capType : CapabilityType    := CAP_NULL;
-        rights  : CapabilityRights  := NO_RIGHTS;
-        capBadge : Badge            := NO_BADGE;
-        object  : ObjectRef         := NULL_OBJECT;
-        gen     : Generation        := 0;
+        capType      : CapabilityType   := CAP_NULL;
+        rights       : CapabilityRights := NO_RIGHTS;
+        authorityTag : Authority_Tag    := NO_AUTHORITY_TAG;
+        object       : ObjectRef        := NULL_OBJECT;
+        gen          : Generation       := 0;
     end record;
 
     NULL_CAPABILITY : constant Capability := (
         capType => CAP_NULL,
         rights  => NO_RIGHTS,
-        capBadge => NO_BADGE,
+        authorityTag => NO_AUTHORITY_TAG,
         object  => NULL_OBJECT,
         gen     => 0
     );
@@ -190,7 +191,7 @@ is
     -- isOrdinarilyDerivable
     -- Null slots carry no authority, and reply capabilities are consumed-or-
     -- returned one-use authority. Neither may pass through ordinary copying,
-    -- derivation, or badge-minting paths.
+    -- derivation, or authority tag-minting paths.
     ---------------------------------------------------------------------------
     function isOrdinarilyDerivable (capType : CapabilityType)
         return Boolean is
@@ -198,9 +199,9 @@ is
 
     ---------------------------------------------------------------------------
     -- isAttenuationOf
-    -- A derived capability denotes the same object, generation, and badge as
+    -- A derived capability denotes the same object, generation, and authority tag as
     -- its parent and carries no rights absent from the parent.  This is the
-    -- ordinary-derivation non-amplification relation; badge-changing minting
+    -- ordinary-derivation non-amplification relation; authority tag-changing minting
     -- is intentionally outside this relation.
     ---------------------------------------------------------------------------
     function isAttenuationOf (child  : Capability;
@@ -208,30 +209,30 @@ is
         (child.capType = parent.capType
          and then child.object = parent.object
          and then child.gen = parent.gen
-         and then child.capBadge = parent.capBadge
+         and then child.authorityTag = parent.authorityTag
          and then isSubsetOf (child.rights, parent.rights))
         with Ghost;
 
     ---------------------------------------------------------------------------
     -- isMintOf
     -- A minted capability is an attenuation of its parent except that its
-    -- badge is replaced by the explicitly requested badge.  Minting cannot
+    -- authority tag is replaced by the explicitly requested authority tag.  Minting cannot
     -- redirect the capability to another object or amplify its rights.
     ---------------------------------------------------------------------------
     function isMintOf (child    : Capability;
                        parent   : Capability;
-                       newBadge : Badge) return Boolean is
+                       newAuthorityTag : Authority_Tag) return Boolean is
         (child.capType = parent.capType
          and then child.object = parent.object
          and then child.gen = parent.gen
-         and then child.capBadge = newBadge
+         and then child.authorityTag = newAuthorityTag
          and then isSubsetOf (child.rights, parent.rights))
         with Ghost;
 
     ---------------------------------------------------------------------------
     -- derive
     -- Create a new capability with rights reduced to the intersection of the
-    -- parent's rights and the requested rights. The badge, object reference,
+    -- parent's rights and the requested rights. The authority tag, object reference,
     -- and generation are inherited from the parent.
     --
     -- Precondition: newRights must be a subset of the parent's rights
@@ -242,7 +243,7 @@ is
         (Capability'(
             capType    => parent.capType,
             rights     => parent.rights and newRights,
-            capBadge   => parent.capBadge,
+            authorityTag   => parent.authorityTag,
             object     => parent.object,
             gen        => parent.gen
         ))
@@ -253,23 +254,23 @@ is
 
     ---------------------------------------------------------------------------
     -- mint
-    -- Derive a capability with reduced rights and a new badge stamped on it.
+    -- Derive a capability with reduced rights and a new authority tag stamped on it.
     --
     -- Precondition: newRights must be a subset of the parent's rights.
     ---------------------------------------------------------------------------
     function mint (parent    : Capability;
-                   newBadge  : Badge;
+                   newAuthorityTag  : Authority_Tag;
                    newRights : CapabilityRights) return Capability is
         (Capability'(
             capType    => parent.capType,
             rights     => parent.rights and newRights,
-            capBadge   => newBadge,
+            authorityTag   => newAuthorityTag,
             object     => parent.object,
             gen        => parent.gen
         ))
         with
           Pre  => isOrdinarilyDerivable (parent.capType)
                   and then isSubsetOf (newRights, parent.rights),
-          Post => isMintOf (mint'Result, parent, newBadge);
+          Post => isMintOf (mint'Result, parent, newAuthorityTag);
 
 end Capabilities;

@@ -138,11 +138,11 @@ begin
 
       --  Knowing administrative labels is not policy-installation authority.
       Msg := NULL_MESSAGE;
-      Msg.tag := (label => OP_SET_ACL, length => 4, flags => 0, badge => 0);
+      Msg.tag := (label => OP_SET_ACL, length => 4, flags => 0, reserved => 0);
       Msg.words := [0 => syscall (SYSCALL_GETPID), others => 0];
       Tag := capCall (Slot, Msg);
       Check (Tag.label = REPLY_ACCESS_DENIED, "self-grant denied");
-      Msg.tag := (label => OP_REVOKE_ACL, length => 1, flags => 0, badge => 0);
+      Msg.tag := (label => OP_REVOKE_ACL, length => 1, flags => 0, reserved => 0);
       Msg.words := [0 => syscall (SYSCALL_GETPID), others => 0];
       Tag := capCall (Slot, Msg);
       Check (Tag.label = REPLY_ACCESS_DENIED, "untrusted policy edit denied");

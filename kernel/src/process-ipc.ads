@@ -6,7 +6,7 @@
 -- CuBitOS IPC
 --
 -- Multi-word register-based IPC (L4/seL4 style). Messages carry a tag
--- (opcode, length, flags, badge), a kernel-stamped capability badge, and up to
+-- (opcode, length, flags, authority tag), a kernel-stamped capability authority tag, and up to
 -- 4 64-bit data words, for a total of 48 bytes.
 --
 -- IPC lock ordering (acquire in this order, never reverse):
@@ -173,19 +173,6 @@ package Process.IPC is
     ---------------------------------------------------------------------------
 
     ---------------------------------------------------------------------------
-    -- submit
-    -- Non-blocking async send. Enqueues message in dest's ring and
-    -- returns immediately. If token /= NO_COMPLETION_TOKEN, the caller records
-    -- a (dest, requestId, token) pending request so that reply() can enqueue a
-    -- completion.
-    -- @return True on success, False if ring full or invalid dest.
-    ---------------------------------------------------------------------------
-    function submit (dest  : ProcessID;
-                     msg   : Message;
-                     token : Unsigned_64;
-                     expectedGeneration : Capabilities.Generation := 0) return Boolean;
-
-    ---------------------------------------------------------------------------
     -- waitCompletion
     -- Block until at least minWait completions are available, then drain
     -- up to maxEntries from the caller's completion queue.
@@ -315,7 +302,7 @@ package Process.IPC is
     ---------------------------------------------------------------------------
     -- capSend
     -- Resolve the endpoint capability at capSlot in the caller's cap table,
-    -- stamp the message badge from the capability, and perform a synchronous
+    -- stamp the message authority tag from the capability, and perform a synchronous
     -- send to the resolved destination.
     -- @return the reply message tag (NULL_TAG on capability error).
     ---------------------------------------------------------------------------
@@ -325,7 +312,7 @@ package Process.IPC is
     ---------------------------------------------------------------------------
     -- capCall
     -- Like capSend but writes the full reply message back via pointer.
-    -- Resolves endpoint cap, stamps badge, sends, returns reply tag.
+    -- Resolves endpoint cap, stamps authority tag, sends, returns reply tag.
     -- The caller should read the full reply from proctab(pid).replyMsg.
     -- @return the reply message tag (NULL_TAG on capability error).
     ---------------------------------------------------------------------------
@@ -334,7 +321,7 @@ package Process.IPC is
 
     ---------------------------------------------------------------------------
     -- capSubmit
-    -- Resolve endpoint capability, stamp badge, perform async submit.
+    -- Resolve endpoint capability, stamp authority tag, perform async submit.
     -- @return True on success, False on capability error or mailbox full.
     ---------------------------------------------------------------------------
     function capSubmit (capSlot : Capabilities.CapabilitySlot;

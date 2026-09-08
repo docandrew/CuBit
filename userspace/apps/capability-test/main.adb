@@ -85,6 +85,14 @@ begin
      (SYSCALL_SEND_EVENT, Process_Manager_PID, 0, 0, 0, 0, 0);
    Check (Result = ERROR_RESULT, "ambient event publication denied");
 
+   --  Deliberately invoke the retired ABI number, not a runtime alias.
+   --  Unknown syscalls return zero; the old unchecked submit returned one.
+   Result := syscall (23, Process_Manager_PID, 0, 0, 0, 0,
+                      NO_COMPLETION_TOKEN);
+   Check (Result = 0, "retired PID submit rejected");
+   Check (not capSubmit (TEST_SLOT, NULL_MESSAGE, NO_COMPLETION_TOKEN),
+          "authorityless capability submit rejected");
+
    Result := syscall
      (SYSCALL_POLICY_MINT_CAPABILITY, PID, CAP_ENDPOINT, PID, 0, RIGHT_RW,
       TEST_SLOT);

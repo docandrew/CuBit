@@ -405,7 +405,7 @@ package body CCL_Workbench_Platform is
       Success.all := 0;
       Request.tag :=
         (label => CuBit.Protocols.CLOCK_OP_MONOTONIC_MS,
-         length => 1, flags => 0, badge => 0);
+         length => 1, flags => 0, reserved => 0);
       Request.words (0) := 0;
       Tag := capCall (CAP_SLOT_CLOCK, Request);
       if Tag.label = REPLY_OK and then Tag.length = 1 and then

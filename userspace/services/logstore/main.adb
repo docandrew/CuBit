@@ -134,7 +134,7 @@ procedure main is
       replyMsg.tag := (label  => label,
                        length => 2,
                        flags  => 0,
-                       badge  => 0);
+                       reserved  => 0);
       replyMsg.words := (0 => word0, 1 => word1, others => 0);
       ignore := reply (dest, replyMsg);
    end sendReply;
@@ -385,7 +385,7 @@ procedure main is
          replyMsg.tag := (label  => REPLY_OK,
                           length => 3,
                           flags  => 0,
-                          badge  => 0);
+                          reserved  => 0);
          replyMsg.words (0) := Unsigned_64 (written);
          replyMsg.words (1) := Unsigned_64 (fifoCount);
          replyMsg.words (2) := gid;
@@ -456,13 +456,18 @@ procedure main is
          label  => CuBit.Streams.OP_STREAM_SUBSCRIBE,
          length => 1,
          flags  => 0,
-         badge  => 0);
+         reserved  => 0);
       subMsg.words (0) := 16#0004#;
 
       producers (slot).pid := prodPID;
-      ok := submit (
-         ProcessID (prodPID), subMsg,
-         TOKEN_BASE + Unsigned_64 (slot));
+      declare
+         endpointSlot : CapabilitySlot;
+         hasEndpoint : Boolean;
+      begin
+         Find_Endpoint_Capability (prodPID, endpointSlot, hasEndpoint);
+         ok := hasEndpoint and then capSubmit
+           (endpointSlot, subMsg, TOKEN_BASE + Unsigned_64 (slot));
+      end;
 
       if ok then
          debugPrint ("logstore: subscribe sent pid=");
@@ -600,15 +605,23 @@ begin
                      label  => CuBit.Streams.OP_STREAM_SUBSCRIBE,
                      length => 1,
                      flags  => 0,
-                     badge  => 0),
-                  capBadge => 0,
+                     reserved  => 0),
+                  authorityTag => 0,
                   words    => (0 => 16#0004#, others => 0));
                ok : Boolean;
             begin
-               ok := submit (
-                  ProcessID (producers (i).pid),
-                  subMsg,
-                  TOKEN_BASE + Unsigned_64 (i));
+               declare
+                  endpointSlot : CapabilitySlot;
+                  hasEndpoint : Boolean;
+               begin
+                  Find_Endpoint_Capability
+                    (producers (i).pid, endpointSlot, hasEndpoint);
+                  ok := hasEndpoint and then capSubmit
+                    (endpointSlot, subMsg, TOKEN_BASE + Unsigned_64 (i));
+                  if not hasEndpoint then
+                     producers (i).pendingSub := False;
+                  end if;
+               end;
                if ok then
                   producers (i).pendingSub := False;
                   debugPrint ("logstore: subscribe sent pid=");

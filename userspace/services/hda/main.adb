@@ -53,8 +53,8 @@ procedure main is
          (tag => (label  => label,
                   length => 4,
                   flags  => 0,
-                  badge  => 0),
-          capBadge => 0,
+                  reserved  => 0),
+          authorityTag => 0,
           words => (0 => w0, 1 => w1, 2 => w2, 3 => w3)));
    end sendReply;
 
@@ -74,8 +74,8 @@ begin
       begin
          rdyIgnore := capSend (CAP_SLOT_READY,
             (tag      => (label => OP_NOT_PRESENT, length => 0,
-                          flags => 0, badge => 0),
-             capBadge => 0,
+                          flags => 0, reserved => 0),
+             authorityTag => 0,
              words    => (others => 0)));
       end;
       ret := syscall (SYSCALL_EXIT);
@@ -96,8 +96,8 @@ begin
    begin
       ignore := capSend (CAP_SLOT_READY,
          (tag      => (label => OP_READY, length => 0,
-                       flags => 0, badge => 0),
-          capBadge => 0,
+                       flags => 0, reserved => 0),
+          authorityTag => 0,
           words    => (others => 0)));
    end;
 
@@ -125,8 +125,8 @@ begin
                  (tag => (label  => OP_AUDIO_HW_PERIOD,
                           length => 3,
                           flags  => 0,
-                          badge  => 0),
-                  capBadge => 0,
+                          reserved  => 0),
+                  authorityTag => 0,
                   words =>
                     (0 => Unsigned_64 (completedSlot),
                      1 => periodSequence,

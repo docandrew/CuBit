@@ -284,7 +284,7 @@ procedure main is
       replyMsg.tag := (label  => label,
                        length => 1,
                        flags  => 0,
-                       badge  => 0);
+                       reserved  => 0);
       replyMsg.words := (0 => word0, others => 0);
       ignore := reply (dest, replyMsg);
    end sendReply;
@@ -1097,7 +1097,7 @@ procedure main is
          replyMsg.tag := (label  => REPLY_OK,
                           length => 2,
                           flags  => 0,
-                          badge  => 0);
+                          reserved  => 0);
          replyMsg.words := (0 => handleId,
                             1 => fsize,
                             others => 0);
@@ -1557,7 +1557,7 @@ procedure main is
          ignored : Unsigned_64;
       begin
          replyMsg.tag :=
-           (label => REPLY_OK, length => 2, flags => 0, badge => 0);
+           (label => REPLY_OK, length => 2, flags => 0, reserved => 0);
          replyMsg.words (0) := handleId;
          replyMsg.words (1) :=
            (if backend = CPIO_RAMDISK then 0 else
@@ -2163,8 +2163,8 @@ begin
    begin
       ignore := capSend (CAP_SLOT_READY,
          (tag      => (label => OP_READY, length => 0,
-                       flags => 0, badge => 0),
-          capBadge => 0,
+                       flags => 0, reserved => 0),
+          authorityTag => 0,
           words    => (others => 0)));
    end;
 

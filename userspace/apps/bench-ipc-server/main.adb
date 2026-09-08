@@ -28,7 +28,7 @@ procedure main is
       replyMsg.tag := (label  => REPLY_OK,
                        length => 3,
                        flags  => 0,
-                       badge  => 0);
+                       reserved  => 0);
       replyMsg.words (0) := value;
       replyMsg.words (1) := value xor XOR_MAGIC;
       replyMsg.words (2) := Unsigned_64 (from);
@@ -68,7 +68,7 @@ begin
             replyMsg.tag := (label  => 16#F001#,
                              length => 1,
                              flags  => 0,
-                             badge  => 0);
+                             reserved  => 0);
             replyMsg.words (0) := Unsigned_64 (msg.tag.label);
             replyWait (from, replyMsg, from, msg);
          end;

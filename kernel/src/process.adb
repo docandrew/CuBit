@@ -1051,7 +1051,7 @@ package body Process is
         -- notification to the original parent's generation, never a reused PID.
         if parent /= NO_PROCESS and then parentGen /= 0 then
             exitMsg.tag := (label => IPC_Labels.EVENT_CHILD_EXIT,
-                            length => 1, flags => 0, badge => 0);
+                            length => 1, flags => 0, reserved => 0);
             exitMsg.words(0) := Unsigned_64(pid);
             IPC.sendRetirementEvent (parent, parentGen, exitMsg);
         end if;

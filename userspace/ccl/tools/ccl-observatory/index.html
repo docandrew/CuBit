@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>CuBit · Observatory</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="importmap">{"imports":{"three":"/three.module.js"}}</script>
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header><a class="brand" href="/">◈ <strong>CuBit</strong><span>OBSERVATORY</span></a>
+    <div class="connection"><i id="status-light"></i><span id="connection">Awaiting guest</span></div>
+    <span class="development">PLAINTEXT LAB · NOT AUTHENTICATED</span></header>
+  <div class="workspace">
+    <aside class="navigation">
+      <div class="eyebrow">EXPLORER / 01</div><h2>Visible objects</h2>
+      <p class="muted">The connected adapter's view.<br>Not a whole-system inventory.</p>
+      <div id="objects"><p class="empty">No host observations yet.</p></div>
+      <div class="scope-card"><span class="eyebrow">AUTHORITY BOUNDARY</span>
+        <h3>Small by design.</h3><p>This development adapter exposes pure CCL evaluation and clock observation.</p>
+        <p>No filesystem, deployment, secret, or process-control operations are exported.</p>
+        <span class="tag">No ambient remote shell</span></div>
+      <div class="nav-footer">Protocol 01<br><a href="/LICENSE-three.txt">Three.js · MIT license</a></div>
+    </aside>
+    <main>
+      <div class="main-heading"><div><div class="eyebrow">LIVE SYSTEM EXPLORATION</div><h1>Local constellation<span>.</span></h1></div>
+        <div class="view-controls"><button id="refresh">↻ Refresh</button><button id="pause">Pause updates</button><button id="reset">⌖ Reset view</button></div></div>
+      <div class="metrics"><div><span>OBSERVED PROCESSES</span><strong id="process-count">—</strong></div>
+        <div><span>CLOCK SAMPLE / MS</span><strong id="clock-value">—</strong></div>
+        <div><span>REQUEST ROUND TRIP</span><strong id="latency">—</strong></div>
+        <div><span>LAST OBSERVATION</span><strong id="freshness">Never</strong></div></div>
+      <section id="viewport" aria-label="Interactive 3D view of observed CuBit adapter bindings">
+        <div class="map-caption"><span class="tiny-square"></span> BINDING TOPOLOGY <span class="muted">/ logical layout, not physical geography</span></div>
+        <div id="map-labels"></div><div id="hover-card" hidden></div>
+        <div id="map-empty"><span class="empty-orbit">◎</span><h2>Waiting for a real system.</h2><p>No simulated nodes or sample telemetry.<br>Start the CuBit control guest and refresh.</p></div>
+        <div class="map-foot"><span>DRAG TO ORBIT · SCROLL TO ZOOM · CLICK TO INSPECT</span><span>━━ observed binding &nbsp; ◇ process</span></div>
+      </section>
+      <section class="console"><div class="console-title"><div><span class="eyebrow">CCL / NATIVE EXECUTION</span><h2>Ask the system.</h2></div><span class="tag">4,096 fuel / submission</span></div>
+        <form id="command-form"><label for="source">Expression <span class="muted">· independent submissions · Ctrl+Enter to run</span></label>
+          <div class="editor-row"><textarea id="source" maxlength="1024" spellcheck="false" rows="2">(concat "Hello, " "CuBit!")</textarea><button id="execute" class="primary" type="submit">▶ Evaluate<br><small>inside CuBit</small></button></div></form>
+        <div id="outcome" role="status">Results arrive from the guest's CCL.Sessions engine. The relay does not interpret source.</div>
+      </section>
+    </main>
+    <aside class="inspector"><div class="eyebrow">OBJECT INSPECTOR</div><h2 id="object-title">Select an object</h2><span id="object-kind" class="tag">No observation</span>
+      <p id="object-description" class="muted">Inspect a node to see the evidence behind its bindings.</p>
+      <dl id="properties"></dl>
+      <section id="type-card" hidden><div class="eyebrow">ADVERTISED SHAPE / BUNDLED SCHEMA</div><h3 id="operation-name"></h3><div class="type-flow"><span class="unit">( )</span><span class="type-arrow">⟶</span><div><strong>Integer</strong><span class="muted">64-bit signed · milliseconds</span></div></div>
+        <div class="bytes" aria-label="8 bytes forming a 64-bit integer"><span>8</span><span>8</span><span>8</span><span>8</span><span>8</span><span>8</span><span>8</span><span>8</span></div>
+        <p class="muted">No arguments. One scalar result.<br>Observe authority; no ownership transfer.</p>
+        <button id="invoke" class="primary">Invoke clock endpoint →</button>
+        <details><summary>Descriptor identity</summary><code id="digest"></code><p class="muted">A digest identifies a schema. It does not authenticate its provider.</p></details></section>
+      <div class="evidence"><span class="eyebrow">WHAT THIS VIEW CANNOT CLAIM</span><p>No verified peer identity. No full capability-table inspection. No remote discovery service yet.</p><p id="evidence-source">Awaiting a native response.</p></div>
+      <section class="activity"><div class="eyebrow">REQUEST JOURNAL / LAST 12</div><ol id="journal"></ol></section>
+    </aside>
+  </div>
+  <footer><span>CuBit Control Language · one typed core, many ways to see it</span><span id="footer-status">Disconnected</span></footer>
+</body></html>

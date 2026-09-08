@@ -337,8 +337,8 @@ procedure main is
                  (tag      => (label  => OP_NET_RX,
                                length => 2,
                                flags  => 0,
-                               badge  => 0),
-                  capBadge => 0,
+                               reserved  => 0),
+                  authorityTag => 0,
                   words    => (0 => 0,  -- offset in grant (RX area)
                                1 => Unsigned_64 (ethLen),
                                others => 0));
@@ -374,8 +374,8 @@ procedure main is
            (tag      => (label  => OP_NET_ATTACH,
                          length => 1,
                          flags  => 0,
-                         badge  => 0),
-            capBadge => 0,
+                         reserved  => 0),
+            authorityTag => 0,
             words    => (0 => macPacked,
                          others => 0));
          replyTag : MessageTag;
@@ -430,8 +430,8 @@ begin
       begin
          rdyIgnore := capSend (CAP_SLOT_READY,
             (tag      => (label => OP_NOT_PRESENT, length => 0,
-                          flags => 0, badge => 0),
-             capBadge => 0,
+                          flags => 0, reserved => 0),
+             authorityTag => 0,
              words    => (others => 0)));
       end;
       return;
@@ -455,8 +455,8 @@ begin
       begin
          rdyIgnore := capSend (CAP_SLOT_READY,
             (tag      => (label => OP_NOT_PRESENT, length => 0,
-                          flags => 0, badge => 0),
-             capBadge => 0,
+                          flags => 0, reserved => 0),
+             authorityTag => 0,
              words    => (others => 0)));
       end;
       return;
@@ -552,8 +552,8 @@ begin
    begin
       rdyIgnore := capSend (CAP_SLOT_READY,
          (tag      => (label => OP_READY, length => 0,
-                       flags => 0, badge => 0),
-          capBadge => 0,
+                       flags => 0, reserved => 0),
+          authorityTag => 0,
           words    => (others => 0)));
    end;
 
@@ -591,8 +591,8 @@ begin
                              (tag      => (label  => REPLY_OK,
                                            length => 0,
                                            flags  => 0,
-                                           badge  => 0),
-                              capBadge => 0,
+                                           reserved  => 0),
+                              authorityTag => 0,
                               words    => (others => 0));
                            ignore : Unsigned_64;
                         begin

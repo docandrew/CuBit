@@ -23,8 +23,8 @@ is
    is
    begin
       return
-        (tag      => (label => label, length => 4, flags => 0, badge => 0),
-         capBadge => 0,
+        (tag      => (label => label, length => 4, flags => 0, reserved => 0),
+         authorityTag => 0,
          words    => (0 => word0,
                       1 => loan.slot,
                       2 => byteCount,
@@ -64,8 +64,9 @@ is
    is
    begin
       return
-        (tag      => (label => OP_OPEN, length => 4, flags => 0, badge => 0),
-         capBadge => 0,
+        (tag      => (label => OP_OPEN, length => 4,
+                      flags => 0, reserved => 0),
+         authorityTag => 0,
          words    => (0 => loan.slot,
                       1 => Unsigned_64 (pathLength),
                       2 => Unsigned_64 (options),
@@ -77,8 +78,9 @@ is
    is
    begin
       return
-        (tag      => (label => OP_CLOSE, length => 1, flags => 0, badge => 0),
-         capBadge => 0,
+        (tag      => (label => OP_CLOSE, length => 1,
+                      flags => 0, reserved => 0),
+         authorityTag => 0,
          words    => (0 => Unsigned_64 (handle), others => 0));
    end Close_Request;
 
@@ -107,8 +109,9 @@ is
    is
    begin
       return
-        (tag      => (label => OP_SEEK, length => 3, flags => 0, badge => 0),
-         capBadge => 0,
+        (tag      => (label => OP_SEEK, length => 3,
+                      flags => 0, reserved => 0),
+         authorityTag => 0,
          words    => (0 => Unsigned_64 (handle),
                       1 => offset,
                       2 => Unsigned_64 (Seek_Origin'Enum_Rep (origin)),
@@ -122,8 +125,8 @@ is
    begin
       return
         (tag      => (label => OP_OPEN_DIRECTORY, length => 3,
-                       flags => 0, badge => 0),
-         capBadge => 0,
+                       flags => 0, reserved => 0),
+         authorityTag => 0,
          words    => (0 => loan.slot,
                       1 => Unsigned_64 (pathLength),
                       2 => loan.generation,
@@ -138,8 +141,8 @@ is
    begin
       return
         (tag      => (label => OP_READ_DIRECTORY_PAGE, length => 4,
-                       flags => 0, badge => 0),
-         capBadge => 0,
+                       flags => 0, reserved => 0),
+         authorityTag => 0,
          words    => (0 => Unsigned_64 (handle),
                       1 => loan.slot,
                       2 => Unsigned_64 (PROTOCOL_VERSION),
@@ -152,8 +155,8 @@ is
    begin
       return
         (tag      => (label => OP_CLOSE_DIRECTORY, length => 1,
-                       flags => 0, badge => 0),
-         capBadge => 0,
+                       flags => 0, reserved => 0),
+         authorityTag => 0,
          words    => (0 => Unsigned_64 (handle), others => 0));
    end Close_Directory_Request;
 
@@ -165,8 +168,8 @@ is
    begin
       return
         (tag => (label => OP_OPEN_CHILD_DIRECTORY, length => 4,
-                 flags => 0, badge => 0),
-         capBadge => 0,
+                 flags => 0, reserved => 0),
+         authorityTag => 0,
          words => (0 => Unsigned_64 (parent),
                    1 => Unsigned_64 (nameLength),
                    2 => loan.slot, 3 => loan.generation));
@@ -178,8 +181,8 @@ is
    begin
       return
         (tag => (label => OP_REWIND_DIRECTORY, length => 1,
-                 flags => 0, badge => 0),
-         capBadge => 0,
+                 flags => 0, reserved => 0),
+         authorityTag => 0,
          words => (0 => Unsigned_64 (handle), others => 0));
    end Rewind_Directory_Request;
 
@@ -192,8 +195,8 @@ is
    begin
       return
         (tag      => (label => OP_RENAME, length => 4,
-                       flags => 0, badge => 0),
-         capBadge => 0,
+                       flags => 0, reserved => 0),
+         authorityTag => 0,
          words    => (0 => loan.slot,
                       1 => Unsigned_64 (oldPathLength),
                       2 => Unsigned_64 (newPathLength),

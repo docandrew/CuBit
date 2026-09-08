@@ -243,7 +243,7 @@ package body Modules with SPARK_Mode => Off is
                                    Capabilities.RIGHT_GRANT   => True,
                                    Capabilities.RIGHT_WRITE   => True,
                                    others => False),
-                      capBadge => Capabilities.NO_BADGE,
+                      authorityTag => Capabilities.NO_AUTHORITY_TAG,
                       object   => (ref => 0, param => 0),
                       gen      => Capabilities.INITIAL_GENERATION));
 
@@ -255,7 +255,7 @@ package body Modules with SPARK_Mode => Off is
             cap   => (capType  => Capabilities.CAP_CSPACE,
                       rights   => (Capabilities.RIGHT_GRANT => True,
                                    others => False),
-                      capBadge => Capabilities.NO_BADGE,
+                      authorityTag => Capabilities.NO_AUTHORITY_TAG,
                       object   => (ref => 0, param => 0),
                       gen      => Capabilities.INITIAL_GENERATION));
 
@@ -265,7 +265,7 @@ package body Modules with SPARK_Mode => Off is
             slot  => 5,
             cap   => (capType  => Capabilities.CAP_IOPORT,
                       rights   => Capabilities.READ_WRITE,
-                      capBadge => Capabilities.NO_BADGE,
+                      authorityTag => Capabilities.NO_AUTHORITY_TAG,
                       object   => (ref => 16#CF8#, param => 8),
                       gen      => Capabilities.INITIAL_GENERATION));
 
@@ -276,7 +276,7 @@ package body Modules with SPARK_Mode => Off is
             cap   => (capType  => Capabilities.CAP_NOTIFICATION,
                       rights   => (Capabilities.RIGHT_WRITE => True,
                                    others => False),
-                      capBadge => Capabilities.NO_BADGE,
+                      authorityTag => Capabilities.NO_AUTHORITY_TAG,
                       object   => (ref   => Unsigned_64 (Sysinfo.DRIVER_DEVMGR),
                                    param => 0),
                       gen      => Capabilities.INITIAL_GENERATION));
@@ -287,7 +287,7 @@ package body Modules with SPARK_Mode => Off is
             slot  => 7,
             cap   => (capType  => Capabilities.CAP_DEVICE_MEM,
                       rights   => Capabilities.READ_WRITE,
-                      capBadge => Capabilities.NO_BADGE,
+                      authorityTag => Capabilities.NO_AUTHORITY_TAG,
                       object   => (ref => 0, param => 16#FFFF_FFFF#),
                       gen      => Capabilities.INITIAL_GENERATION));
 

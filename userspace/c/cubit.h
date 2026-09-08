@@ -63,7 +63,6 @@ typedef long                ssize_t;
 #define SYSCALL_POLL_ANY_IPC    22
 
 /* IPC - Async */
-#define SYSCALL_SUBMIT          23
 #define SYSCALL_WAIT_COMPLETION 24
 #define SYSCALL_POLL_COMPLETION 25
 #define SYSCALL_RECEIVE_EVENT_NB 26
@@ -148,12 +147,12 @@ typedef struct {
     uint32_t label;
     uint8_t length;
     uint8_t flags;
-    uint16_t badge;
+    uint16_t reserved;
 } cubit_async_message_tag_t;
 
 typedef struct {
     cubit_async_message_tag_t tag;
-    uint64_t cap_badge;
+    uint64_t authority_tag;
     uint64_t words[4];
 } cubit_async_message_t;
 
@@ -171,6 +170,12 @@ typedef char cubit_async_tag_size_must_be_8[
     sizeof(cubit_async_message_tag_t) == 8 ? 1 : -1];
 typedef char cubit_async_message_size_must_be_48[
     sizeof(cubit_async_message_t) == 48 ? 1 : -1];
+typedef char cubit_reserved_header_offset_must_be_6[
+    __builtin_offsetof(cubit_async_message_tag_t, reserved) == 6 ? 1 : -1];
+typedef char cubit_authority_tag_offset_must_be_8[
+    __builtin_offsetof(cubit_async_message_t, authority_tag) == 8 ? 1 : -1];
+typedef char cubit_message_words_offset_must_be_16[
+    __builtin_offsetof(cubit_async_message_t, words) == 16 ? 1 : -1];
 typedef char cubit_completion_size_must_be_88[
     sizeof(cubit_completion_t) == 88 ? 1 : -1];
 
