@@ -146,7 +146,8 @@ is
                              arg3,
                              arg4,
                              arg5,
-                             syscallNumRaw : in Unsigned_64) return Unsigned_64
+                             syscallNumRaw,
+                             arg6 : in Unsigned_64) return Unsigned_64
         with SPARK_Mode => Off, -- effectful dispatch, process/VM/hardware state
              Export => True, Convention => C, External_Name => "syscallHandler";
 

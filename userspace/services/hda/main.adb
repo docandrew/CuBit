@@ -11,6 +11,7 @@
 --  authority, and reports completed periods through one-way capability IPC.
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
+with CuBit.Benchmark_Clock;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
@@ -123,7 +124,7 @@ begin
                periodSequence := periodSequence + 1;
                periodMsg :=
                  (tag => (label  => OP_AUDIO_HW_PERIOD,
-                          length => 3,
+                          length => 4,
                           flags  => 0,
                           reserved  => 0),
                   authorityTag => 0,
@@ -131,7 +132,7 @@ begin
                     (0 => Unsigned_64 (completedSlot),
                      1 => periodSequence,
                      2 => Unsigned_64 (position),
-                     3 => 0));
+                     3 => CuBit.Benchmark_Clock.Read_Counter));
                submitted := capSubmit
                  (CAP_SLOT_MIXER, periodMsg, NO_COMPLETION_TOKEN);
                if not submitted then

@@ -156,7 +156,8 @@ package body Syscall is
                              arg3,   -- rcx
                              arg4,   -- r8
                              arg5,   -- r9
-                             syscallNumRaw : in Unsigned_64)   -- first on stack
+                             syscallNumRaw : in Unsigned_64;  -- first on stack
+                             arg6 : in Unsigned_64)           -- second on stack
                              return Unsigned_64
     is
         percpu : PerCPUData.PerCPUData with
@@ -326,7 +327,7 @@ package body Syscall is
 
             when SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY =>
                 Admin.handleCapSubmit (
-                    arg0, arg1, arg2, arg3, arg4, arg5, retval);
+                    arg0, arg1, arg2, arg3, arg4, arg5, arg6, retval);
 
             when SYSCALL_REPLY_WAIT =>
                 Admin.handleReplyWait (arg0, arg1, retval);

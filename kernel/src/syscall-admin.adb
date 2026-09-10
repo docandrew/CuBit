@@ -5,6 +5,7 @@
 -- Syscall privileged/management handler implementations: capabilities,
 -- port I/O, process management, system configuration.
 -------------------------------------------------------------------------------
+pragma Ada_2022;
 with Ada.Unchecked_Conversion;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -430,7 +431,7 @@ package body Syscall.Admin is
     -- handleCapSubmit
     ---------------------------------------------------------------------------
     procedure handleCapSubmit (arg0, arg1, arg2, arg3,
-                               arg4, arg5 : Unsigned_64;
+                               arg4, arg5, arg6 : Unsigned_64;
                                retval     : out Unsigned_64) with
         SPARK_Mode => Off
     is
@@ -439,7 +440,7 @@ package body Syscall.Admin is
         submitMsg : constant Process.Message := (
             tag      => u64ToTag (arg1),
             authorityTag => 0,
-            words    => (arg2, arg3, arg4, 0));
+            words    => [arg2, arg3, arg4, arg5]);
         ok : Boolean;
     begin
         if arg0 > Unsigned_64(Capabilities.CapabilitySlot'Last) then
@@ -448,7 +449,7 @@ package body Syscall.Admin is
             ok := Process.IPC.capSubmit (
                 capSlot => Capabilities.CapabilitySlot(arg0),
                 msg     => submitMsg,
-                token   => arg5);
+                token   => arg6);
             if ok then
                 retval := 1;
             else

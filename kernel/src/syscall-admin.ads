@@ -36,7 +36,7 @@ is
                              retval     : out Unsigned_64);
 
     procedure handleCapSubmit (arg0, arg1, arg2, arg3,
-                               arg4, arg5 : Unsigned_64;
+                               arg4, arg5, arg6 : Unsigned_64;
                                retval     : out Unsigned_64);
 
     procedure handleReplyWait (arg0, arg1 : Unsigned_64;

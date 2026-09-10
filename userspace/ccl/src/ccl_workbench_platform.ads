@@ -11,6 +11,9 @@ package CCL_Workbench_Platform is
    Save_Source_Event : constant := 35;
    Tab_Event : constant := 36;
    Toggle_REPL_Event : constant := 37;
+   Toggle_Watch_Event : constant := 38;
+   type Live_Label_Event is (Started, Stopped, Sampled, Faulted);
+   procedure Live_Label_Changed (Event : Live_Label_Event);
    procedure Activate;
    --  Optional lifecycle diagnostic. Never logs submitted source or values.
    procedure REPL_Completed;

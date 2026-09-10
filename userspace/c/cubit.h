@@ -95,6 +95,7 @@ typedef long                ssize_t;
 #define SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY   40
 #define SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY   41
 #define SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY 42
+#define SYSCALL_INSPECT_CAPABILITY             84
 
 #define SYSCALL_REPLY_WAIT      48
 
@@ -352,6 +353,27 @@ static inline long cubit_syscall(long num, long a0, long a1, long a2,
         : "rcx", "r11", "memory"
     );
 
+    return ret;
+}
+
+/* Seven-value register ABI for async IPC: R12 carries the completion token.
+ * The kernel preserves R12; GCC preserves its caller's R12 around this helper.
+ */
+static inline long cubit_syscall7(long num, long a0, long a1, long a2,
+                                 long a3, long a4, long a5, long a6)
+{
+    long ret;
+    register long r10 __asm__("r10") = a3;
+    register long r8  __asm__("r8") = a4;
+    register long r9  __asm__("r9") = a5;
+    register long r12 __asm__("r12") = a6;
+    __asm__ volatile (
+        "syscall"
+        : "=a"(ret)
+        : "a"(num), "D"(a0), "S"(a1), "d"(a2),
+          "r"(r10), "r"(r8), "r"(r9), "r"(r12)
+        : "rcx", "r11", "memory"
+    );
     return ret;
 }
 

@@ -391,6 +391,9 @@ begin
                         flags  => 0,
                         reserved  => 0);
             msg.words (0) := Unsigned_64 (i);
+            msg.words (1) := 16#1122_3344_5566_7788#;
+            msg.words (2) := 16#8877_6655_4433_2211#;
+            msg.words (3) := 16#FEDC_BA98_7654_3210#;
 
             submitOk := capSubmit (
                CAP_SLOT_IPCTEST,

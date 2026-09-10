@@ -217,7 +217,7 @@ package body Process.Queues is
     end dequeue;
 
     ---------------------------------------------------------------------------
-    -- insert in descending key order
+    -- Insert in descending key order, FIFO among equal keys.
     ---------------------------------------------------------------------------
     procedure insert (q      : in out ProcQueue;
                       pid    : ProcessID;
@@ -247,12 +247,13 @@ package body Process.Queues is
         curr := q.head;
 
         loop
-            exit when key >= proctab(curr).queueKey or proctab(curr).next = NO_PROCESS;
+            exit when key > proctab(curr).queueKey or proctab(curr).next = NO_PROCESS;
             curr := proctab(curr).next;
         end loop;
 
-        if key >= proctab(curr).queueKey then
-            -- Insert BEFORE curr (new node has higher or equal priority)
+        if key > proctab(curr).queueKey then
+            -- Insert BEFORE curr only for strictly higher priority. A task
+            -- whose quantum expired must go behind already-ready peers.
             prev                  := proctab(curr).prev;
             proctab(pid).next     := curr;
             proctab(pid).prev     := prev;

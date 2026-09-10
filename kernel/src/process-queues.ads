@@ -55,7 +55,7 @@ package Process.Queues is
 
     ---------------------------------------------------------------------------
     -- insert
-    -- inserts into a given queue in descending key order
+    -- Inserts in descending key order; equal keys retain FIFO arrival order.
     ---------------------------------------------------------------------------
     procedure insert (q      : in out ProcQueue;
                       pid    : ProcessID;

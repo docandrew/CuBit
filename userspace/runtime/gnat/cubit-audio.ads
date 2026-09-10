@@ -164,6 +164,15 @@ package CuBit.Audio is
    ---------------------------------------------------------------------------
    function isValid (stream : StreamHandle) return Boolean;
 
+   --  Local, read-only diagnostic snapshot of this stream's shared ring.
+   --  Counts are not an atomic snapshot of producer and consumer activity.
+   type Stream_Statistics is record
+      Valid : Boolean := False;
+      Queued_Frames, Capacity_Frames : Natural := 0;
+      Underruns, Overruns : Unsigned_32 := 0;
+   end record;
+   function Statistics (Stream : StreamHandle) return Stream_Statistics;
+
    ---------------------------------------------------------------------------
    --  notify
    --  Send a notification to the mixer to wake it for mixing. Call after

@@ -92,7 +92,7 @@ $(BUILDDIR)/%.o: $(DG_DIR)/%.c | $(BUILDDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Compile CuBit platform glue (from userspace/c/)
-$(CUBIT_PLATFORM_OBJ): doomgeneric_cubit.c cubit.h | $(BUILDDIR)
+$(CUBIT_PLATFORM_OBJ): doomgeneric_cubit.c cubit.h cubit_desktop.h | $(BUILDDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Compile libc stubs

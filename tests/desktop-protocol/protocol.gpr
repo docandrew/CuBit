@@ -1,0 +1,13 @@
+project Protocol is
+   -- Copy ONLY the three portable units here before invoking GPRbuild. Adding
+   -- the whole freestanding runtime directory shadows Linux's GNAT runtime.
+   for Source_Dirs use (".", "build/source");
+   for Source_Files use ("main.adb", "cubit.ads", "cubit-grant_references.ads",
+                        "cubit-desktop_protocol.ads", "cubit-desktop_protocol.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa");
+   end Compiler;
+end Protocol;

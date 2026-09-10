@@ -26,6 +26,8 @@ package body CuBit.Audio is
    HDR_WRITE_PTR    : constant := 16#00#;
    HDR_READ_PTR     : constant := 16#04#;
    HDR_STATE        : constant := 16#1C#;
+   HDR_UNDERRUNS    : constant := 16#14#;
+   HDR_OVERRUNS     : constant := 16#18#;
 
    --  Grant region base (must match mixer)
    GRANT_REGION_BASE : constant Unsigned_64 := 16#4000_0000_0000#;
@@ -466,6 +468,27 @@ package body CuBit.Audio is
    ---------------------------------------------------------------------------
    --  notify
    ---------------------------------------------------------------------------
+   function Statistics (Stream : StreamHandle) return Stream_Statistics is
+      S : StreamRecord renames streamTable (Stream.idx);
+      Used, Frame_Bytes : Unsigned_32;
+   begin
+      if not Stream.valid or else not S.active then
+         return (others => <>);
+      end if;
+      Frame_Bytes := Unsigned_32 (S.channels) * 2;
+      Used := readU32 (S.ringAddr + HDR_WRITE_PTR) -
+        readU32 (S.ringAddr + HDR_READ_PTR);
+      if Frame_Bytes = 0 or else Used > S.bufferSize or else
+        S.bufferSize mod Frame_Bytes /= 0 or else Used mod Frame_Bytes /= 0
+      then
+         return (others => <>);
+      end if;
+      return (True, Natural (Used / Frame_Bytes),
+              Natural (S.bufferSize / Frame_Bytes),
+              readU32 (S.ringAddr + HDR_UNDERRUNS),
+              readU32 (S.ringAddr + HDR_OVERRUNS));
+   end Statistics;
+
    procedure notify is
       msg : constant Message :=
         (tag => (label => OP_AUDIO_WAKE, length => 0,

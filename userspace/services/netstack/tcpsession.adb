@@ -79,9 +79,10 @@ package body TCPSession with SPARK_Mode is
    begin
       index := -1;
       for i in conns'Range loop
-         if conns (i).state = TCP_CLOSED then
+         if conns (i).state = TCP_CLOSED and not conns (i).reserved then
             conns (i) :=
                (state      => TCP_SYN_SENT,
+                reserved   => True,
                 localPort  => localPort,
                 remotePort => dstPort,
                 remoteIP   => dstIP,
@@ -96,6 +97,15 @@ package body TCPSession with SPARK_Mode is
          end if;
       end loop;
    end allocateConn;
+
+   procedure releaseReservation (conn : in out Connection) is
+   begin
+      conn.reserved := False;
+      --  Failed opening requests have no user-visible channel to close them.
+      if conn.state in TCP_SYN_SENT | TCP_SYN_RECEIVED then
+         conn := (others => <>);
+      end if;
+   end releaseReservation;
 
    ---------------------------------------------------------------------------
    --  onConnect - send SYN, advance sendNext

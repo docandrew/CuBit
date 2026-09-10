@@ -19,6 +19,7 @@ src/build.ads
 /kernel/isodir/boot/*.drv
 /kernel/isodir/boot/*.img
 /kernel/isodir/boot/*.svc
+/kernel/isodir/licenses/cbor_ada.txt
 
 # Local third-party source/build trees used by port experiments
 /userspace/c/doom_src/

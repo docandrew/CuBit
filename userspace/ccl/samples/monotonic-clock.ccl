@@ -1,0 +1,14 @@
+# Sample once: elapsed time since boot, not calendar time.
+(let ((elapsed-ms (clock.monotonic-ms)))
+  (let ((hours (to-string (/ elapsed-ms 3600000))))
+    (let ((minutes (to-string (/ (mod elapsed-ms 3600000) 60000))))
+      (let ((seconds (to-string (/ (mod elapsed-ms 60000) 1000))))
+        (concat
+          (if (= (length hours) 1) (concat "0" hours) hours)
+          (concat ":"
+            (concat
+              (if (= (length minutes) 1) (concat "0" minutes) minutes)
+              (concat ":"
+                (if (= (length seconds) 1)
+                    (concat "0" seconds)
+                    seconds)))))))))

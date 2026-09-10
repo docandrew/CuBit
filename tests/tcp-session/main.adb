@@ -3,6 +3,7 @@ with Interfaces; use Interfaces;
 with Net;
 with TCPSession; use TCPSession;
 with TCP_Listeners;
+with Network_Channel_Handles;
 
 procedure Main is
    Connections : ConnTable;
@@ -91,6 +92,81 @@ procedure Main is
       pragma Assert (Status = Table_Full and Replacement = No_Handle);
       Ada.Text_IO.Put_Line ("TCP listeners: ownership, bounded backlog, stale handles, admission to accept, expiry PASS");
    end Test_Listeners;
+   procedure Test_Channel_Handles is
+      use Network_Channel_Handles;
+      Handles : Table;
+      Slot : Channel_Reference;
+      Old, New_Id : Handle;
+      Saved : array (Channel_Index) of Handle;
+   begin
+      Allocate (Handles, 0, 42, Slot);
+      pragma Assert (Slot = No_Channel);
+      Allocate (Handles, 10, 0, Slot);
+      pragma Assert (Slot = No_Channel);
+      Allocate (Handles, 10, 42, Slot);
+      pragma Assert (Slot = 0);
+      Old := Value (Handles, Slot);
+      pragma Assert (Old /= No_Handle);
+      pragma Assert (Resolve (Handles, 10, 42, Old) = Slot);
+      pragma Assert (Resolve (Handles, 11, 42, Old) = No_Channel);
+      pragma Assert (Resolve (Handles, 10, 43, Old) = No_Channel);
+      pragma Assert (Resolve (Handles, 10, 42, No_Handle) = No_Channel);
+      pragma Assert (Resolve (Handles, 10, 42, Handle'Last) = No_Channel);
+      for Round in 1 .. 1000 loop
+         Release (Handles, 0);
+         Allocate (Handles, 10, 42, Slot);
+         pragma Assert (Slot = 0);
+         New_Id := Value (Handles, Slot);
+         pragma Assert (New_Id > Old);
+         pragma Assert (Resolve (Handles, 10, 42, Old) = No_Channel);
+         pragma Assert (Resolve (Handles, 10, 42, New_Id) = 0);
+         Old := New_Id;
+      end loop;
+      Saved (0) := Old;
+      for I in Channel_Index range 1 .. Channel_Index'Last loop
+         Allocate (Handles, 10, 42, Slot);
+         pragma Assert (Slot = I);
+         Saved (I) := Value (Handles, I);
+      end loop;
+      Allocate (Handles, 10, 42, Slot);
+      pragma Assert (Slot = No_Channel);
+      for I in Saved'Range loop
+         pragma Assert (Resolve (Handles, 10, 42, Saved (I)) = I);
+      end loop;
+      Release (Handles, 3);
+      Release (Handles, 3); -- repeated internal release cannot revive an ID
+      Allocate (Handles, 11, 43, Slot);
+      pragma Assert (Slot = 3);
+      pragma Assert (Resolve (Handles, 10, 42, Saved (3)) = No_Channel);
+      pragma Assert (Resolve (Handles, 11, 43, Value (Handles, 3)) = 3);
+      Ada.Text_IO.Put_Line ("Network channel handles: owner/tag binding, non-reuse, stale rejection, table exhaustion PASS");
+   end Test_Channel_Handles;
+
+   procedure Test_Reservations is
+      Table : ConnTable;
+      Slot : Connection_Reference;
+   begin
+      for I in Table'Range loop
+         allocateConn (Table, S.srcIP, Net.ZERO_MAC, S.srcPort, S.dstPort, 1000, Slot);
+         pragma Assert (Slot = I and then Table (Slot).reserved);
+         Table (Slot).state := TCP_CLOSED; -- reset/close doesn't release ownership
+      end loop;
+      allocateConn (Table, S.srcIP, Net.ZERO_MAC, S.srcPort, S.dstPort, 2000, Slot);
+      pragma Assert (Slot = -1);
+      releaseReservation (Table (2));
+      allocateConn (Table, S.srcIP, Net.ZERO_MAC, S.srcPort, S.dstPort, 3000, Slot);
+      pragma Assert (Slot = 2 and then Table (2).reserved);
+      releaseReservation (Table (2)); -- abandoned handshake returns capacity
+      pragma Assert (Table (2).state = TCP_CLOSED and not Table (2).reserved);
+      Table (2).state := TCP_LAST_ACK;
+      releaseReservation (Table (2));
+      allocateConn (Table, S.srcIP, Net.ZERO_MAC, S.srcPort, S.dstPort, 4000, Slot);
+      pragma Assert (Slot = -1); -- unowned but closing: protocol still retains it
+      Table (2).state := TCP_CLOSED;
+      allocateConn (Table, S.srcIP, Net.ZERO_MAC, S.srcPort, S.dstPort, 5000, Slot);
+      pragma Assert (Slot = 2);
+      Ada.Text_IO.Put_Line ("TCP reservations: closed-but-owned slots retained, explicit release and reuse PASS");
+   end Test_Reservations;
 begin
    Fresh;
    onPassiveOpen (Connections (0), S, R);
@@ -153,4 +229,6 @@ begin
    pragma Assert (Connections (0).state = TCP_ESTABLISHED);
    Ada.Text_IO.Put_Line ("TCP session: passive handshake, duplicate SYN, ACK validation, half-close, receive credit, wrap, RST PASS");
    Test_Listeners;
+   Test_Channel_Handles;
+   Test_Reservations;
 end Main;

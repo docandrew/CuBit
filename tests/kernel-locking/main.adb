@@ -14,6 +14,98 @@ procedure Main is
     Failed : Boolean := False with Atomic;
     Iterations : constant := 100_000;
 
+    procedure Check_Ready_Fairness is
+        use Process;
+        Q : ProcQueue;
+        Got, Ignored : ProcessID;
+        -- Independent stable-array oracle, not another linked-list insertion.
+        type Entry_Info is record
+            PID : ProcessID;
+            Priority : Integer;
+        end record;
+        Expected : array (1 .. 16) of Entry_Info;
+        Length : Natural := 0;
+        Seed : Natural := 17;
+        Present : array (ProcessID range 1 .. 16) of Boolean := [others => False];
+
+        procedure Add (PID : ProcessID; Priority : Integer) is
+            Position : Positive := Length + 1;
+        begin
+            Queues.insert (Q, PID, Priority, Ignored);
+            pragma Assert (Ignored = PID);
+            for I in 1 .. Length loop
+                if Expected (I).Priority < Priority then
+                    Position := I;
+                    exit;
+                end if;
+            end loop;
+            for I in reverse Position .. Length loop
+                Expected (I + 1) := Expected (I);
+            end loop;
+            Expected (Position) := (PID, Priority);
+            Length := Length + 1;
+            Present (PID) := True;
+        end Add;
+
+        procedure Verify is
+            Cursor : ProcessID := Q.head;
+            Previous : ProcessID := NO_PROCESS;
+        begin
+            for I in 1 .. Length loop
+                pragma Assert (Cursor = Expected (I).PID);
+                pragma Assert (proctab (Cursor).prev = Previous);
+                pragma Assert (proctab (Cursor).queueKey = Expected (I).Priority);
+                Previous := Cursor;
+                Cursor := proctab (Cursor).next;
+            end loop;
+            pragma Assert (Cursor = NO_PROCESS and Q.tail = Previous);
+        end Verify;
+
+        procedure Remove_First is
+        begin
+            Queues.dequeue (Q, Got);
+            pragma Assert (Got = Expected (1).PID);
+            Present (Got) := False;
+            Length := Length - 1;
+            for I in 1 .. Length loop
+                Expected (I) := Expected (I + 1);
+            end loop;
+            pragma Assert (proctab (Got).prev = NO_PROCESS);
+            pragma Assert (proctab (Got).next = NO_PROCESS);
+        end Remove_First;
+    begin
+        -- Simulate quantum expiration using the production dequeue/reinsert
+        -- path. The old >= insertion fails the very first FIFO check.
+        for PID in 1 .. 3 loop Add (PID, 4); end loop;
+        Verify;
+        for Quantum in 1 .. 300 loop
+            Remove_First;
+            pragma Assert (Got = (Quantum - 1) mod 3 + 1);
+            Add (Got, 4);
+            Verify;
+        end loop;
+        while Length > 0 loop Remove_First; end loop;
+        -- Exercise arrival, blocking, re-entry, ties and distinct priorities.
+        for Step in 1 .. 10_000 loop
+            Seed := (Seed * 251 + 17) mod 65521;
+            declare
+                PID : constant ProcessID := Seed mod 16 + 1;
+            begin
+                if not Present (PID) then
+                    Add (PID, (Seed / 16) mod 5);
+                elsif Length > 0 then
+                    Remove_First;
+                end if;
+            end;
+            Verify;
+        end loop;
+        while Length > 0 loop Remove_First; Verify; end loop;
+        Queues.dequeue (Q, Got);
+        pragma Assert (Got = NO_PROCESS and PerCPUData.Depth = 0);
+        Ada.Text_IO.Put_Line
+          ("READY-FAIRNESS-CHECK: PASS (300 quanta, 10000 stable-priority oracle steps)");
+    end Check_Ready_Fairness;
+
     procedure Check_Policy is
         S, Before : State;
         Result : Acquire_Result;
@@ -169,6 +261,7 @@ procedure Main is
           ("PROCESS-LIFETIME-CHECK: PASS (10000 concurrent stop/acknowledge/reap/reuse rounds)");
     end Check_Lifetime;
 begin
+    Check_Ready_Fairness;
     Check_Policy;
     Check_Lifetime;
 

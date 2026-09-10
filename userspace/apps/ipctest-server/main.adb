@@ -160,6 +160,12 @@ begin
             end;
          end if;
       elsif msg.tag.label = OP_REVERSE_ECHO then
+         if msg.words (1) /= 16#1122_3344_5566_7788# or else
+            msg.words (2) /= 16#8877_6655_4433_2211# or else
+            msg.words (3) /= 16#FEDC_BA98_7654_3210#
+         then
+            debugPrint ("TEST: FAIL async-ipc four-word payload" & LF);
+         end if;
          if reversePending < REVERSE_COUNT then
             reversePending := reversePending + 1;
             reverseValues (reversePending) := msg.words (0);

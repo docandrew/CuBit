@@ -7,9 +7,14 @@
 with Interfaces; use Interfaces;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Benchmark_Clock;
+with CuBit.Timing_Histograms;
 
 procedure main is
    use ASCII;
+   package Clock renames CuBit.Benchmark_Clock;
+   package Timing renames CuBit.Timing_Histograms;
+   Rate : Unsigned_64;
 
    CAP_SLOT_BENCH : constant CapabilitySlot := 18;
    OP_BENCH_ECHO  : constant Unsigned_32 := 16#0910#;
@@ -19,8 +24,8 @@ procedure main is
    XOR_MAGIC      : constant Unsigned_64 := 16#C0B1_7000_BE11#;
 
    WARMUP_COUNT : constant Natural := 64;
-   SYNC_COUNT   : constant Natural := 2000;
-   ASYNC_COUNT  : constant Natural := 512;
+   SYNC_COUNT   : constant Natural := 20_000;
+   ASYNC_COUNT  : constant Natural := 8_192;
    TOKEN_BASE   : constant Unsigned_64 := 16#B100_0000#;
 
    ok : Boolean := True;
@@ -84,7 +89,8 @@ procedure main is
       msg : Message;
       t0  : Unsigned_64;
       t1  : Unsigned_64;
-      totalUs : Unsigned_64;
+      Started, Finished : Unsigned_64;
+      Samples : Timing.Histogram;
    begin
       for i in 1 .. WARMUP_COUNT loop
          msg := echoMsg (Unsigned_64 (i));
@@ -100,7 +106,14 @@ procedure main is
       t0 := nowMs;
       for i in 1 .. SYNC_COUNT loop
          msg := echoMsg (Unsigned_64 (i));
+         Started := Clock.Read_Counter;
          msg.tag := capCall (CAP_SLOT_BENCH, msg);
+         Finished := Clock.Read_Counter;
+         if Finished < Started then
+            fail ("counter-went-backwards");
+            exit;
+         end if;
+         Timing.Add (Samples, Finished - Started);
          verifyReply (msg, Unsigned_64 (i));
          exit when not ok;
       end loop;
@@ -110,14 +123,12 @@ procedure main is
          return;
       end if;
 
-      totalUs := (t1 - t0) * 1000;
       debugPrint ("BENCH: ipc sync count=");
       printDec (Unsigned_64 (SYNC_COUNT));
       debugPrint (" total_ms=");
       printDec (t1 - t0);
-      debugPrint (" avg_us=");
-      printDec (totalUs / Unsigned_64 (SYNC_COUNT));
       debugPrint (LF & "");
+      Clock.Report ("ipc-sync-round-trip", Samples);
    end runSync;
 
    procedure runAsync is
@@ -129,9 +140,23 @@ procedure main is
       inFlight   : Natural := 0;
       t0         : Unsigned_64;
       t1         : Unsigned_64;
-      totalUs    : Unsigned_64;
       seen       : array (1 .. ASYNC_COUNT) of Boolean := (others => False);
+      Started : array (1 .. ASYNC_COUNT) of Unsigned_64 := (others => 0);
+      Samples : Timing.Histogram;
+      Finished : Unsigned_64;
    begin
+      completions := (others => NULL_COMPLETION);
+      for I in 1 .. WARMUP_COUNT loop
+         submitOk := capSubmit
+           (CAP_SLOT_BENCH, echoMsg (Unsigned_64 (I)), Unsigned_64 (I));
+         if not submitOk then fail ("async-warmup-submit"); return; end if;
+         ret := waitCompletion (completions'Address, 1, 1);
+         if ret /= 1 or else completions (0).status /= COMPLETION_OK then
+            fail ("async-warmup-completion"); return;
+         end if;
+         verifyReply (completions (0).msg, Unsigned_64 (I));
+         if not ok then return; end if;
+      end loop;
       t0 := nowMs;
 
       while completed < ASYNC_COUNT and then ok loop
@@ -139,6 +164,7 @@ procedure main is
          --  queue-depth test. Current async capacity is small, so refill as
          --  completions arrive and measure sustained throughput.
          while submitted < ASYNC_COUNT and then inFlight < 16 loop
+            Started (submitted + 1) := Clock.Read_Counter;
             submitOk := capSubmit
               (CAP_SLOT_BENCH,
                echoMsg (Unsigned_64 (submitted + 1)),
@@ -179,6 +205,12 @@ procedure main is
                   if seen (idx) then
                      fail ("async-duplicate");
                   else
+                     Finished := Clock.Read_Counter;
+                     if Finished < Started (idx) then
+                        fail ("counter-went-backwards");
+                        exit;
+                     end if;
+                     Timing.Add (Samples, Finished - Started (idx));
                      verifyReply (completions (slot).msg,
                                   Unsigned_64 (idx));
                      seen (idx) := True;
@@ -199,20 +231,14 @@ procedure main is
          return;
       end if;
 
-      totalUs := (t1 - t0) * 1000;
       debugPrint ("BENCH: ipc async submitted=");
       printDec (Unsigned_64 (submitted));
       debugPrint (" completed=");
       printDec (Unsigned_64 (completed));
       debugPrint (" total_ms=");
       printDec (t1 - t0);
-      debugPrint (" avg_us=");
-      if completed > 0 then
-         printDec (totalUs / Unsigned_64 (completed));
-      else
-         printDec (0);
-      end if;
       debugPrint (LF & "");
+      Clock.Report ("ipc-async-observed-completion", Samples);
    end runAsync;
 
    procedure runRetirement is
@@ -280,6 +306,28 @@ procedure main is
 
 begin
    debugPrint ("bench-ipc-client: starting" & LF);
+   Clock.Calibrate (Rate);
+   if Rate = 0 then
+      fail ("unstable-counter-calibration");
+      return;
+   end if;
+   declare
+      Overhead : Timing.Histogram;
+      Before, After : Unsigned_64;
+   begin
+      for I in 1 .. 1024 loop
+         Before := Clock.Read_Counter;
+         After := Clock.Read_Counter;
+         if After >= Before then
+            Timing.Add (Overhead, After - Before);
+         end if;
+      end loop;
+      Clock.Report ("counter-read-pair", Overhead);
+   end;
+   debugPrint ("BENCH: phase=untraced async_depth=16" & LF);
+   runSync;
+   if ok then runAsync; end if;
+   debugPrint ("BENCH: phase=traced async_depth=16" & LF);
    declare
       ignored : Unsigned_64;
    begin

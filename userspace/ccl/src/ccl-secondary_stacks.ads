@@ -1,6 +1,7 @@
 generic
    Capacity   : Positive;
    Max_Values : Positive;
+   Max_String_Length : Positive := Capacity;
 package CCL.Secondary_Stacks with
    SPARK_Mode => On
 is
@@ -10,6 +11,9 @@ is
    --  or depending on the GNAT secondary stack.
 
    subtype Storage_Count is Natural range 0 .. Capacity;
+   --  Region capacity and per-value capacity are separate budgets.
+   subtype String_Length is
+     Natural range 0 .. Natural'Min (Capacity, Max_String_Length);
    subtype Value_Count is Natural range 0 .. Max_Values;
    --  Reserving Capacity positions in the index subtype makes Last_Index
    --  representable for every value the region can construct.  The type, not
@@ -70,7 +74,7 @@ is
 
    function First_Index (Value : String_Value) return String_Index;
    function Last_Index (Value : String_Value) return Natural;
-   function Length (Value : String_Value) return Storage_Count;
+   function Length (Value : String_Value) return String_Length;
 
    procedure Read
      (Item   : Stack;
@@ -99,7 +103,7 @@ private
       Slot       : Value_Slot := 0;
       Generation_Number : Generation := 0;
       First      : String_Index := 1;
-      Count      : Storage_Count := 0;
+      Count      : String_Length := 0;
    end record;
 
    type Stack_Mark is record
@@ -137,7 +141,7 @@ private
      (if Value.Count = 0 then Value.First - 1
       else Value.First + (Value.Count - 1));
 
-   function Length (Value : String_Value) return Storage_Count is
+   function Length (Value : String_Value) return String_Length is
      (Value.Count);
 
    function Is_Valid

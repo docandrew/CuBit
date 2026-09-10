@@ -10,6 +10,7 @@ with CCL.VM;
 with CCL_Workbench_Platform;
 with CCL_Workspace;
 with CCL.Sessions;
+with CCL.Periodic_Programs;
 with CCL_REPL_View;
 with CuBit.File_Selection;
 with CuBit.UI.File_Dialogs;
@@ -31,6 +32,8 @@ with CuBit.UI.Widgets;
 package body CCL_Workbench is
    use type System.Address;
    use type CCL.Language.Interpretation_Status;
+   use type CCL.Periodic_Programs.Lifecycle;
+   use type CCL.Periodic_Programs.Load_Result;
    use type CCL.Catalog.Catalog_Error;
    use type CCL.Catalog.Grant_Result;
    use type CCL.Catalog.Link_Result;
@@ -103,7 +106,7 @@ package body CCL_Workbench is
    Result_Text : String (1 .. 96) := [others => ' '];
    Result_Last : Natural := 5;
    Last_Outcome : CCL.Language.Interpretation_Result;
-   Source_Session : CCL.Sessions.Session;
+   Live_Program : CCL.Periodic_Programs.Program;
    REPL : CCL_REPL_View.View_State;
    REPL_Visible : Boolean := False;
    REPL_Bounds : CuBit.UI.Rect;
@@ -208,6 +211,18 @@ package body CCL_Workbench is
    Stop_Button_Pressed : Boolean := False;
    Step_Into_Button_Pressed : Boolean := False;
    Step_Over_Button_Pressed : Boolean := False;
+   Watch_Button_Bounds : constant CuBit.UI.Rect :=
+     (x => 296, y => CLIENT_TITLE_HEIGHT + 25, w => 62, h => 27);
+   Watch_Button_Pressed : Boolean := False;
+
+   function Watching return Boolean is
+     (CCL.Periodic_Programs.State (Live_Program) in
+        CCL.Periodic_Programs.Waiting | CCL.Periodic_Programs.Executing |
+        CCL.Periodic_Programs.Stopping);
+
+   function Live_Label_Bounds return CuBit.UI.Rect is
+     (x => 366, y => CLIENT_TITLE_HEIGHT + 25,
+      w => Canvas.width - 374, h => 27);
    Pointer_X, Pointer_Y : Natural := 0;
    Pointer_Known : Boolean := False;
 
@@ -215,7 +230,7 @@ package body CCL_Workbench is
    --  these semantic regions.  Keeping this state independent of raw pointer
    --  coordinates prevents an editor-sized repaint for every mouse report.
    type Hover_Target is
-     (Hover_None, Hover_Open, Hover_Save, Hover_Compile, Hover_Interpret,
+     (Hover_None, Hover_Open, Hover_Save, Hover_Compile, Hover_Interpret, Hover_Watch,
       Hover_VM_Run, Hover_Pause, Hover_Stop, Hover_Step_Into,
       Hover_Step_Over, Hover_Inspector_Splitter,
       Hover_Disassembly_Splitter, Hover_First_Column,
@@ -234,6 +249,10 @@ package body CCL_Workbench is
         (Pointer_X, Pointer_Y, Save_Button_Bounds)
       then
          return Hover_Save;
+      elsif CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Watch_Button_Bounds)
+      then
+         return Hover_Watch;
       elsif CuBit.UI.Point_In_Rect
         (Pointer_X, Pointer_Y, Compile_Button_Bounds)
       then
@@ -303,6 +322,9 @@ package body CCL_Workbench is
    begin
       if not Pointer_Known then
          return "CCL Workbench";
+      elsif CuBit.UI.Point_In_Rect (Pointer_X, Pointer_Y, Watch_Button_Bounds) then
+         return (if Watching then "Stop live label (F7); retain its last value"
+                 else "Watch source every second (F7); edits do not change the snapshot. Save source with Ctrl+S.");
       elsif CuBit.UI.Point_In_Rect
         (Pointer_X, Pointer_Y, Open_Button_Bounds)
       then
@@ -396,6 +418,8 @@ package body CCL_Workbench is
    with Import, Convention => C, External_Name => "ccl_window_set_cursor";
    procedure Window_Wait (May_Block : Integer_32)
    with Import, Convention => C, External_Name => "ccl_window_wait";
+   procedure Window_Wait_Until (Deadline : Unsigned_64)
+   with Import, Convention => C, External_Name => "ccl_window_wait_until";
    function Window_Ticks return Interfaces.Unsigned_64
    with Import, Convention => C, External_Name => "ccl_window_ticks";
    function Window_Clock_Monotonic
@@ -404,6 +428,83 @@ package body CCL_Workbench is
         External_Name => "ccl_window_clock_monotonic";
    procedure Window_Close (Handle : System.Address)
    with Import, Convention => C, External_Name => "ccl_window_close";
+
+   type Live_Context is null record;
+   Live_Host : Live_Context;
+   function Live_Now (Context : Live_Context) return Unsigned_64 is
+      pragma Unreferenced (Context);
+   begin
+      return Window_Ticks;
+   end Live_Now;
+
+   procedure Invoke_Live
+     (Context : in out Live_Context; Binding : Unsigned_32;
+      Argument : CCL.VM.Value; Value : out CCL.VM.Value; Success : out Boolean)
+   is
+      pragma Unreferenced (Context);
+      Available : aliased Integer_32 := 0;
+      Milliseconds : Unsigned_64;
+   begin
+      Value := CCL.VM.Integer_Constant (0);
+      Success := False;
+      if Binding /= CLOCK_HOST_BINDING or else
+        Argument.Kind /= CCL.VM.Integer_Value or else Argument.Integer /= 0
+      then
+         return;
+      end if;
+      Milliseconds := Window_Clock_Monotonic (Available'Access);
+      Success := Available /= 0 and then Milliseconds <= Unsigned_64 (Integer_64'Last);
+      if Success then Value := CCL.VM.Integer_Constant (Integer_64 (Milliseconds)); end if;
+   end Invoke_Live;
+   procedure Interpret_Live is new CCL.Language.Interpret_With_Host
+     (Live_Context, Invoke_Live);
+   procedure Pump_Live is new CCL.Periodic_Programs.Evaluate_Due
+     (Live_Context, Live_Now, Invoke_Live);
+
+   procedure Set_Result (Text : String);
+
+   procedure Toggle_Watch is
+      Result : CCL.Periodic_Programs.Load_Result;
+   begin
+      if Watching then
+         CCL.Periodic_Programs.Stop (Live_Program);
+         CCL_Workbench_Platform.Live_Label_Changed (CCL_Workbench_Platform.Stopped);
+      else
+         CCL.Periodic_Programs.Load
+           (Live_Program, CuBit.UI.Editor.Documents.Content (Source), Window_Ticks,
+            1_000, CCL.Sessions.Default_Fuel, Result);
+         if Result /= CCL.Periodic_Programs.Loaded then
+            Set_Result
+              (case Result is
+                  when CCL.Periodic_Programs.Source_Too_Long =>
+                     "Watch: source exceeds" & Natural'Image (CCL.Language.MAX_SOURCE_LENGTH) & " bytes",
+                  when CCL.Periodic_Programs.Identity_Exhausted => "Watch: instance identities exhausted",
+                  when others => "Watch: previous invocation is still active");
+            return;
+         end if;
+         CCL_Workbench_Platform.Live_Label_Changed (CCL_Workbench_Platform.Started);
+      end if;
+   end Toggle_Watch;
+
+   procedure Render_Live_Label is
+      State : constant CCL.Periodic_Programs.Lifecycle :=
+        CCL.Periodic_Programs.State (Live_Program);
+      Outcome : constant CCL.Language.Interpretation_Result :=
+        CCL.Periodic_Programs.Last_Result (Live_Program);
+      Bounds : constant CuBit.UI.Rect := Live_Label_Bounds;
+      Clipped : constant CuBit.UI.Canvas := CuBit.UI.With_Clip (Canvas, Bounds);
+   begin
+      CuBit.UI.Fill_Rect (Clipped, Bounds, Colors.face);
+      CuBit.UI.Widgets.Label
+        (Clipped, (Bounds.x + 4, Bounds.y + 5, Bounds.w - 8, Bounds.h - 10), Colors,
+         (if State = CCL.Periodic_Programs.Empty then "Live label: click Watch"
+          elsif State = CCL.Periodic_Programs.Faulted then
+             "Stopped: " & CCL.Sessions.Result_Image (Outcome)
+          elsif CCL.Periodic_Programs.Completed_Runs (Live_Program) = 0 then "Waiting for sample"
+          else (if Watching then "Live: " else "Stopped: ") &
+            (if Outcome.Has_Text then Outcome.Result_Text.Data (1 .. Outcome.Result_Text.Length)
+             else CCL.Sessions.Result_Image (Outcome))));
+   end Render_Live_Label;
 
    procedure Set_Result (Text : String) is
       Length : constant Natural := Natural'Min (Text'Length, Result_Text'Length);
@@ -565,7 +666,9 @@ package body CCL_Workbench is
       VM_Continuous := False;
       VM_Has_Run := False;
       REPL_Visible := False;
-      CCL.Sessions.Submit (Source_Session, Text, CCL.Sessions.Default_Fuel, Outcome);
+      Interpret_Live
+        (Text, CCL.Sessions.Default_Fuel, Visible_Interfaces,
+         Granted_Interfaces, Live_Host, Outcome);
       Last_Outcome := Outcome;
       Has_Run := True;
       Diagnostic_Line := 0;
@@ -2041,6 +2144,12 @@ package body CCL_Workbench is
            (not VM_Has_State or else not VM_Snapshot.Terminal),
          pressed => Step_Over_Button_Pressed);
 
+      CuBit.UI.Draw_Button
+        (Canvas, Watch_Button_Bounds, Colors,
+         (if Watch_Button_Pressed then CuBit.UI.Button_Pressed else CuBit.UI.Button_Normal),
+         (if Watching then "Unwatch" else "Watch"));
+      Render_Live_Label;
+
       CuBit.UI.Widgets.Group_Box
         (Canvas, Inspector_Bounds, Colors,
          (if REPL_Visible then "Source execution" else "Execution"), Execution_Content, 8);
@@ -2594,7 +2703,6 @@ procedure Run is
 begin
    CCL_Workbench_Platform.Activate;
    Initialize_Visible_Interfaces;
-   CCL.Sessions.Initialize (Source_Session, Visible_Interfaces);
    CCL_REPL_View.Initialize (REPL, Visible_Interfaces);
    declare
       Source_Result : CuBit.UI.Editor.Documents.Edit_Result;
@@ -2605,7 +2713,8 @@ begin
          "# Strings are immutable and indexes start at one." & ASCII.LF &
          "# Run with Interpret; string bytecode arrives with CCLB v4." &
            ASCII.LF &
-         "(let ((elapsed-ms (* 3661 1000)))" & ASCII.LF &
+         "# Watch takes a snapshot; stop and restart to apply edits." & ASCII.LF &
+         "(let ((elapsed-ms (clock.monotonic-ms)))" & ASCII.LF &
          "  (let ((label ""uptime""))" & ASCII.LF &
          "    (let ((initial (at label 1)))" & ASCII.LF &
          "      (let ((hours (/ elapsed-ms 3600000)))" & ASCII.LF &
@@ -2857,6 +2966,8 @@ begin
                Handle_File_Dialog;
             elsif Kind = CCL_Workbench_Platform.Toggle_REPL_Event then
                Toggle_REPL;
+            elsif Kind = CCL_Workbench_Platform.Toggle_Watch_Event then
+               Toggle_Watch;
             elsif Kind in 11 | 14 | 15 and then
               CuBit.UI.Point_In_Rect (Pointer_X, Pointer_Y, REPL_Toggle)
             then
@@ -3002,6 +3113,12 @@ begin
                        Open_Button_Bounds) and then CCL_Workspace.Supported
                   then
                      Open_Button_Pressed := True;
+                     Dragging := False;
+                  elsif Mouse_X >= 0 and then Mouse_Y >= 0 and then
+                    CuBit.UI.Point_In_Rect
+                      (Natural (Mouse_X), Natural (Mouse_Y), Watch_Button_Bounds)
+                  then
+                     Watch_Button_Pressed := True;
                      Dragging := False;
                   elsif Mouse_X >= 0 and then Mouse_Y >= 0 and then
                     CuBit.UI.Point_In_Rect
@@ -3242,6 +3359,13 @@ begin
                   end if;
                   Open_Button_Pressed := False;
                   Save_Button_Pressed := False;
+                  if Watch_Button_Pressed and then Mouse_X >= 0 and then Mouse_Y >= 0 and then
+                    CuBit.UI.Point_In_Rect
+                      (Natural (Mouse_X), Natural (Mouse_Y), Watch_Button_Bounds)
+                  then
+                     Toggle_Watch;
+                  end if;
+                  Watch_Button_Pressed := False;
                   if Compile_Button_Pressed and then
                     Mouse_X >= 0 and then Mouse_Y >= 0 and then
                     CuBit.UI.Point_In_Rect
@@ -3515,6 +3639,37 @@ begin
          end if;
          Prepare_Surface;
          exit when not Running;
+         declare
+            Updated : Boolean;
+         begin
+            Pump_Live (Live_Program, Visible_Interfaces, Granted_Interfaces, Live_Host, Updated);
+            if Updated and then CCL.Periodic_Programs.State (Live_Program) =
+              CCL.Periodic_Programs.Faulted
+            then
+               Needs_Render := True;
+               REPL_Only_Render := False;
+               Dialog_Background_Dirty := True;
+               CCL_Workbench_Platform.Live_Label_Changed (CCL_Workbench_Platform.Faulted);
+            elsif Updated and then CCL.Periodic_Programs.Completed_Runs (Live_Program) <= 2 then
+               CCL_Workbench_Platform.Live_Label_Changed (CCL_Workbench_Platform.Sampled);
+            end if;
+            if Updated and then REPL_Only_Render then
+               REPL_Only_Render := False;
+            end if;
+            if Updated and then not Needs_Render and then
+              not CuBit.UI.File_Dialogs.Is_Open (File_Dialog)
+            then
+               Render_Live_Label;
+               declare
+                  Damage : constant CuBit.UI.Rect := Live_Label_Bounds;
+               begin
+                  exit when Window_Present
+                    (Handle, Pixels'Address, Integer_32 (MAXIMUM_WIDTH * 4),
+                     Integer_32 (Damage.x), Integer_32 (Damage.y),
+                     Integer_32 (Damage.w), Integer_32 (Damage.h)) /= 0;
+               end;
+            end if;
+         end;
          if Needs_Render then
             declare
                Damage : CuBit.UI.Rect := (0, 0, Canvas.width, Canvas.height);
@@ -3574,15 +3729,26 @@ begin
             Next_Scrollbar_Repeat :=
               Window_Ticks + SCROLL_REPEAT_DELAY;
          end if;
-         Window_Wait
-           ((if not VM_Continuous and then
-                not (Active_Source_Scrollbar /= No_Scrollbar and then
-                     (CuBit.UI.State.Active_Scrollbar_Part (Workbench_UI) =
-                        CuBit.UI.Scrollbar_Decrement or else
-                      CuBit.UI.State.Active_Scrollbar_Part (Workbench_UI) =
-                        CuBit.UI.Scrollbar_Increment))
-             then 1 else 0));
+         declare
+            Wakeup : Unsigned_64 := CCL.Periodic_Programs.Next_Deadline (Live_Program);
+         begin
+            if Active_Source_Scrollbar /= No_Scrollbar and then
+              Next_Scrollbar_Repeat /= 0 and then
+              CuBit.UI.State.Active_Scrollbar_Part (Workbench_UI) in
+                CuBit.UI.Scrollbar_Decrement | CuBit.UI.Scrollbar_Increment
+            then
+               Wakeup := Unsigned_64'Min (Wakeup, Next_Scrollbar_Repeat);
+            end if;
+            if VM_Continuous then
+               Window_Wait (0); -- VM has runnable work; yield between slices.
+            elsif Wakeup /= Unsigned_64'Last then
+               Window_Wait_Until (Wakeup);
+            else
+               Window_Wait (1);
+            end if;
+         end;
       end loop;
+      CCL.Periodic_Programs.Stop (Live_Program);
       Window_Close (Handle);
    end;
 end Run;

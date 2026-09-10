@@ -1,12 +1,23 @@
 import * as THREE from 'three';
 import { OrbitControls } from '/OrbitControls.js';
+import { encodeRequest, decodeResponse } from '/wire.js';
 
 const $ = id => document.getElementById(id);
-const token = new URLSearchParams(location.hash.slice(1)).get('session') || '';
-// Keep the development credential in memory, not storage or subsequent URLs.
-history.replaceState(null, '', '/');
-let snapshot = null, connection = null, selected = 'control', busy = false;
-let paused = false, observedAt = 0, healthy = false;
+// No relay credentials, browser-side evaluator, or synthetic observations.
+const disconnected = 'Connect to the isolated CuBit lab guest first. Nothing was executed.';
+let snapshot = null, selected = 'control';
+let connected = false, busy = false, paused = false, requestId = 0n, observedAt = 0;
+let monitor = null;
+function updateControls() {
+  $('refresh').disabled = busy;
+  $('refresh').textContent = connected ? '↻ Refresh' : 'Connect to CuBit';
+  $('execute').disabled = !connected || busy;
+  $('invoke').disabled = !connected || busy || !snapshot?.clock.available;
+  $('pause').disabled = !connected;
+  const active = monitor && ['Waiting','Executing','Stopping'].includes(monitor.state);
+  $('start-monitor').disabled = !connected || busy || !monitor || active;
+  $('stop-monitor').disabled = !connected || busy || !active;
+}
 const journal = [];
 const objects = new Map();
 const viewport = $('viewport');
@@ -85,7 +96,8 @@ function setupMap() {
     document.addEventListener('visibilitychange', requestRender);
   } catch (error) {
     $('map-empty').querySelector('h2').textContent = '3D rendering is unavailable.';
-    $('map-empty').querySelector('p').textContent = 'The live object list, inspector, and CCL controls still work.';
+    $('map-empty').querySelector('p').textContent = 'The preview layout and expression editor remain available. No guest is connected.';
+    $('reset').disabled = true;
     renderer = null;
   }
 }
@@ -151,16 +163,15 @@ function select(id) {
   $('object-description').textContent = {
     control: 'Evaluates bounded CCL expressions inside the guest. Each submission is independent.',
     clock: 'Monotonic time read through the adapter’s manifest-requested clock endpoint. Not calendar time.',
-    network: 'The native netstack carries the guest’s outbound TCP connection to the local development relay.'
+    network: 'Native network service binding reported by the control adapter.'
   }[id];
   $('properties').replaceChildren();
   property('Process', item.pid);
   property('Identity assurance', 'Not cryptographically authenticated');
   property('Evidence', id === 'control' ? 'Guest-reported process ID' : id === 'clock' ?
-    (snapshot.clock.available ? 'Clock IPC call succeeded' : 'Registered provider; clock call failed') : 'Registered provider + active TCP relay');
+    (snapshot.clock.available ? 'Clock IPC call succeeded' : 'Registered provider; clock call failed') : 'Guest-reported provider');
   property('Scope', 'Adapter’s own bindings only');
   if (id !== 'control') property('Manifest request', id === 'clock' ? 'Clock endpoint · slot 25 · read/write' : 'Network endpoint · slot 11 · read/write');
-  if (id === 'network') property('Destination', '10.0.2.2:9440 · adapter configuration, not enforced destination policy');
   $('type-card').hidden = id !== 'clock';
   if (id === 'clock') {
     $('operation-name').textContent = snapshot.interface.operation;
@@ -173,13 +184,16 @@ function select(id) {
   }
 }
 function fail(message) {
-  healthy = false; document.body.classList.add('stale');
+  connected = false;
+  document.body.classList.add('stale');
   $('status-light').className = ''; $('connection').textContent = 'Unavailable / stale';
   $('footer-status').textContent = message;
+  $('monitor-state').textContent = 'Unknown / stale';
+  updateControls();
 }
 function validateSnapshot(data) {
   const decimal = value => typeof value === 'string' && /^\d{1,20}$/.test(value) && BigInt(value) <= 18446744073709551615n;
-  if (data.scope !== 'adapter-bindings-only' || data.transport !== 'plaintext-development-relay' || data.peerAuthenticated !== false ||
+  if (data.scope !== 'adapter-bindings-only' || data.peerAuthenticated !== false ||
       ![data.processId, data.networkProcessId, data.clockProcessId].every(decimal) ||
       typeof data.clock?.available !== 'boolean' || (data.clock.available && !decimal(data.clock.monotonicMs)) ||
       data.interface?.name !== 'clock' || data.interface?.version !== '1.0' ||
@@ -189,41 +203,77 @@ function validateSnapshot(data) {
     throw new Error('Unsupported or invalid observation schema; no topology rendered');
   }
 }
-async function call(operation, source = '') {
-  if (!token) throw new Error('Open the session URL printed by the local relay. No credential is stored in the browser.');
-  if (busy) throw new Error('A native request is already in progress');
-  busy = true; $('execute').disabled = true; $('invoke').disabled = true;
+async function call(operation, source = '', target = 0n) {
+  if (busy) throw new Error('A native request is already in flight.');
+  if (!connected && operation !== 'inspect') throw new Error(disconnected);
+  if (location.origin !== 'http://127.0.0.1:8787') throw new Error('Open this lab frontend at http://127.0.0.1:8787/');
+  const id = ++requestId, body = encodeRequest(id, operation, source, target);
+  const start = performance.now();
+  busy = true; updateControls();
   try {
-    const response = await fetch('/api/request', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CuBit-Session': token },
-      body: JSON.stringify({ operation, source }), signal: AbortSignal.timeout(5000)
+    const response = await fetch('http://127.0.0.1:18445/ccl', {
+      method: 'POST', headers: { 'Content-Type': 'application/cbor' }, body,
+      credentials: 'omit', cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(8000)
     });
-    const envelope = await response.json();
-    if (!response.ok) throw new Error(envelope.error || 'Control request failed');
-    if (connection !== null && connection !== envelope.connection) {
-      snapshot = null; clearGraph(); record('New native connection; prior observations discarded');
-    }
-    connection = envelope.connection;
-    $('latency').textContent = `${envelope.roundTripMs} ms`;
-    $('footer-status').textContent = `Native connection ${connection} · request ${envelope.request} · plaintext development`;
-    if (operation !== 'inspect') record(`#${envelope.request} ${operation} · ${envelope.roundTripMs} ms`);
-    return envelope.result;
-  } catch (error) { fail(error.message); throw error; }
-  finally { busy = false; $('execute').disabled = false; $('invoke').disabled = false; }
+    if (!response.ok || response.headers.get('content-type') !== 'application/cbor') throw new Error(`Native request rejected (HTTP ${response.status})`);
+    const reader = response.body.getReader(), bytes = new Uint8Array(8192);
+    let used = 0;
+    try {
+      for (;;) {
+        const { value, done } = await reader.read(); if (done) break;
+        if (value.length > bytes.length - used) throw new Error('Oversized native response');
+        bytes.set(value, used); used += value.length;
+      }
+    } finally { await reader.cancel(); }
+    const result = decodeResponse(bytes.subarray(0, used), id, operation);
+    $('latency').textContent = `${Math.round(performance.now() - start)} ms`;
+    record(`${operation} #${id} · native CBOR response`);
+    return result;
+  } catch (error) {
+    fail(`Native connection unavailable: ${error.message}`); throw error;
+  } finally { busy = false; updateControls(); }
 }
 async function refresh() {
   if (busy) return;
   try {
     const data = await call('inspect'); validateSnapshot(data);
-    snapshot = data; buildGraph(data); observedAt = Date.now(); healthy = true;
+    snapshot = data; connected = true; observedAt = Date.now(); buildGraph(data);
     document.body.classList.remove('stale'); $('status-light').className = 'live';
     $('connection').textContent = 'Receiving native observations';
     $('clock-value').textContent = data.clock.available ? data.clock.monotonicMs : 'Unavailable';
+    $('freshness').textContent = new Date(observedAt).toLocaleTimeString();
+    $('footer-status').textContent = 'Live guest · plaintext lab connection · peer NOT authenticated';
+    $('session-mode').textContent = 'Native interpreter · fuel 4096';
+    updateControls();
     select(selected);
+    renderMonitor(await call('monitor'));
   } catch (error) { fail(error.message); }
 }
+function renderMonitor(data) {
+  monitor = data;
+  $('monitor-state').textContent = data.state;
+  $('monitor-value').textContent = data.runs === '0' ? 'No completed invocation.' : data.result.message;
+  $('monitor-value').classList.toggle('error', data.state === 'Faulted');
+  $('monitor-detail').textContent = `Generation ${data.generation} · ${data.runs} completed runs · ${data.intervalMs} ms after completion · fuel ${data.result.fuelRemaining} remaining on last run. Runs in CuBit, not this browser; not saved across reboot.`;
+  $('monitor-source').textContent = data.source;
+  updateControls();
+}
+async function monitorAction(operation) {
+  if (busy) return;
+  try {
+    const data = await call(operation, operation === 'startMonitor' ? $('source').value : '',
+      operation === 'stopMonitor' ? BigInt(monitor.generation) : 0n);
+    renderMonitor(data);
+    $('monitor-notice').textContent = data.accepted ?
+      (operation === 'startMonitor' ? 'Loaded inside CuBit. Editing the source above does not alter the running widget.' : 'Stop acknowledged by CuBit.') :
+      'Request not accepted: the native slot is busy or its generation changed. Refreshed its current state.';
+  } catch (error) { $('monitor-notice').textContent = error.message; }
+}
+$('start-monitor').onclick = () => monitorAction('startMonitor');
+$('stop-monitor').onclick = () => monitorAction('stopMonitor');
 async function evaluate(event) {
   event.preventDefault();
+  if (busy) return;
   const source = $('source').value;
   if (!/^[\x09\x0a\x0d\x20-\x7e]{0,1024}$/.test(source)) {
     $('outcome').textContent = 'This CCL version accepts up to 1024 ASCII bytes.'; $('outcome').className = 'error'; return;
@@ -242,7 +292,10 @@ async function evaluate(event) {
 $('command-form').addEventListener('submit', evaluate);
 $('source').addEventListener('keydown', e => { if (e.ctrlKey && e.key === 'Enter') evaluate(e); });
 $('refresh').onclick = refresh;
-$('pause').onclick = () => { paused = !paused; $('pause').textContent = paused ? 'Resume updates' : 'Pause updates'; if (!paused) refresh(); };
+$('pause').onclick = () => {
+  paused = !paused; $('pause').textContent = paused ? 'Resume updates' : 'Pause updates';
+  if (!paused) refresh();
+};
 $('reset').onclick = () => { if (controls) { camera.position.set(11, 10, 16); controls.target.set(0, .8, 0); controls.update(); requestRender(); } };
 $('invoke').onclick = async () => {
   try {
@@ -251,9 +304,14 @@ $('invoke').onclick = async () => {
     $('outcome').className = data.clock?.available ? 'success' : 'error';
   } catch (error) { $('outcome').textContent = error.message; $('outcome').className = 'error'; }
 };
-setupMap(); refresh();
+setupMap();
+updateControls();
 setInterval(() => {
-  $('freshness').textContent = observedAt ? `${Math.floor((Date.now() - observedAt) / 1000)}s ago${paused ? ' / paused' : ''}` : 'Never';
-  if (observedAt && Date.now() - observedAt > 6000 && healthy) fail('Observations are stale; current state is unknown');
-}, 1000);
-setInterval(() => { if (!paused && !document.hidden) refresh(); }, 2000);
+  if (observedAt) $('freshness').textContent = `${Math.floor((Date.now() - observedAt) / 1000)}s ago${paused ? ' · paused' : ''}`;
+  if (connected && Date.now() - observedAt > 8000) {
+    document.body.classList.add('stale'); $('status-light').className = '';
+    $('connection').textContent = 'Observation is stale';
+  }
+  if (connected && !paused && !document.hidden && !busy) refresh();
+}, 2000);
+record('Opened locally · click Connect to contact the lab guest');

@@ -140,6 +140,12 @@ is
       Import_Contract_Mismatch,
       Authority_Not_Granted);
 
+   -- Same exact descriptor/contract lookup used by bytecode linking. A name
+   -- visible in a catalog does not by itself provide a runtime binding.
+   procedure Find_Granted_Binding
+     (Item : Granted_Bindings; Operation : Resolved_Operation;
+      Binding : out Unsigned_32; Found : out Boolean);
+
    --  Link_Program is deliberately a separate admission step. Compilation
    --  leaves every runtime binding zero. This procedure validates all imports
    --  before installing any binding, so failure never partially links a

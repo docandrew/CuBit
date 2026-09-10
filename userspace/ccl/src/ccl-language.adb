@@ -1,16 +1,20 @@
 with Interfaces; use Interfaces;
 with CCL.Checked_Arithmetic;
 with CCL.Secondary_Stacks;
+with CCL.Imports;
 
 package body CCL.Language with
    SPARK_Mode => On
 is
    use type CCL.VM.Value_Kind;
    use type CCL.Checked_Arithmetic.Arithmetic_Error;
+   use type CCL.Imports.Transfer_Mode;
+   use type CCL.Imports.Cancellation_Mode;
 
    package Text_Regions is new CCL.Secondary_Stacks
      (Capacity => MAX_TEXT_BYTES * 4,
-      Max_Values => MAX_AST_NODES);
+      Max_Values => MAX_AST_NODES,
+      Max_String_Length => MAX_TEXT_BYTES);
    use type Text_Regions.Operation_Result;
 
    type Runtime_Value is record
@@ -95,16 +99,60 @@ is
          Left < Integer_64'First - Right
       else False);
 
-   procedure Process_Source
+   function Decimal_Image (Value : Integer_64) return String is
+      Buffer : String (1 .. 20) := [others => '0'];
+      First : Positive range 2 .. 20 := 20;
+      Signed_First : Positive range 1 .. 20;
+      Magnitude : Unsigned_64;
+      Digit : Unsigned_64 range 0 .. 9;
+   begin
+      Magnitude := (if Value < 0 then Unsigned_64 (-(Value + 1)) + 1
+                    else Unsigned_64 (Value));
+      --  Nineteen magnitude digits, plus a reserved sign position. The
+      --  bounded reverse loop cannot underflow, even for Integer_64'First.
+      for Position in reverse 2 .. 20 loop
+         First := Position;
+         Digit := Magnitude mod 10;
+         Buffer (First) := Character'Val (Character'Pos ('0') + Natural (Digit));
+         Magnitude := Magnitude / 10;
+         exit when Magnitude = 0;
+      end loop;
+      Signed_First := First;
+      if Value < 0 then
+         Signed_First := First - 1;
+         Buffer (Signed_First) := '-';
+      end if;
+      return Buffer (Signed_First .. Buffer'Last);
+   end Decimal_Image;
+
+   generic
+      type Host_Context is limited private;
+      with procedure Invoke
+        (Context : in out Host_Context; Binding : Unsigned_32;
+         Argument : CCL.VM.Value; Value : out CCL.VM.Value;
+         Success : out Boolean);
+   procedure Process_Source_With_Host
      (Source : String;
       Fuel   : Natural;
       Visible_Interfaces : CCL.Catalog.Interface_Catalog;
+      Grants : CCL.Catalog.Granted_Bindings;
+      Context : in out Host_Context;
+      Host_Enabled : Boolean;
       Analyze_Input : Boolean;
       Evaluate : Boolean;
       Result : out Interpretation_Result;
       Tree   : in out Syntax_Tree)
    with
-      Post => Result.Fuel_Remaining <= Fuel
+      Post => Result.Fuel_Remaining <= Fuel;
+
+   procedure Process_Source_With_Host
+     (Source : String; Fuel : Natural;
+      Visible_Interfaces : CCL.Catalog.Interface_Catalog;
+      Grants : CCL.Catalog.Granted_Bindings;
+      Context : in out Host_Context;
+      Host_Enabled : Boolean;
+      Analyze_Input : Boolean; Evaluate : Boolean;
+      Result : out Interpretation_Result; Tree : in out Syntax_Tree)
    is
       Cursor     : Natural := 0;
       Root       : Node_Reference := NO_NODE;
@@ -260,7 +308,6 @@ is
          end Append;
       begin
          Index := NO_NODE;
-         Cursor := Cursor + 1;
          while Cursor < Source'Length and then
            Diagnostic = No_Diagnostic
          loop
@@ -297,8 +344,8 @@ is
          elsif Diagnostic = No_Diagnostic then
             Add_Node
               ((Kind => String_Literal,
-                Text_Offset => Start,
-                Text_Length => Tree.Text_Bytes_Used - Start,
+                Text_First => Start + 1,
+                Text_Last => Tree.Text_Bytes_Used,
                 others => <>),
                Index);
          end if;
@@ -514,6 +561,7 @@ is
                  To_Diagnostic_Position (Start);
             end if;
          elsif Source (Source'First + Cursor) = '"' then
+            Cursor := Cursor + 1;
             Parse_String (Index);
             if Index < Tree.Length then
                Tree.Nodes (Node_Index (Index)).Source_Position :=
@@ -804,18 +852,12 @@ is
                Ok := True;
             when String_Literal =>
                Item.Kind := String_Type;
-               if Tree.Nodes (Node_Index (Index)).Text_Length = 0 then
-                  Text_Regions.Allocate_String
-                    (Text_Region, "", Item.Text, Region_Result);
-               else
-                  Text_Regions.Allocate_String
-                    (Text_Region,
-                     Tree.Text_Data
-                       (Tree.Nodes (Node_Index (Index)).Text_Offset + 1 ..
-                        Tree.Nodes (Node_Index (Index)).Text_Offset +
-                          Tree.Nodes (Node_Index (Index)).Text_Length),
-                     Item.Text, Region_Result);
-               end if;
+               Text_Regions.Allocate_String
+                 (Text_Region,
+                  Tree.Text_Data
+                    (Tree.Nodes (Node_Index (Index)).Text_First ..
+                     Tree.Nodes (Node_Index (Index)).Text_Last),
+                  Item.Text, Region_Result);
                if Region_Result = Text_Regions.Operation_Ok then
                   Ok := True;
                else
@@ -999,53 +1041,30 @@ is
                elsif Good then
                   Text_Length := Text_Regions.Length (Left.Text) +
                     Text_Regions.Length (Right.Text);
-                  if Text_Regions.Length (Left.Text) > 0 then
-                     for Position in
-                       0 .. Text_Regions.Length (Left.Text) - 1
-                     loop
-                        Text_Regions.Read
-                          (Text_Region, Left.Text,
-                           Text_Regions.First_Index (Left.Text) + Position,
-                           Scratch (Position + 1), Region_Result);
-                        if Region_Result /= Text_Regions.Operation_Ok then
-                           Good := False;
-                           exit;
-                        end if;
-                     end loop;
-                  end if;
-                  if Good and then Text_Regions.Length (Right.Text) > 0 then
-                     for Position in
-                       0 .. Text_Regions.Length (Right.Text) - 1
-                     loop
-                        Text_Regions.Read
-                          (Text_Region, Right.Text,
-                           Text_Regions.First_Index (Right.Text) + Position,
-                           Scratch
-                             (Text_Regions.Length (Left.Text) + Position + 1),
-                           Region_Result);
-                        if Region_Result /= Text_Regions.Operation_Ok then
-                           Good := False;
-                           exit;
-                        end if;
-                     end loop;
+                  Text_Regions.Copy_To
+                    (Text_Region, Left.Text,
+                     Scratch (1 .. Text_Regions.Length (Left.Text)),
+                     Region_Result);
+                  Good := Region_Result = Text_Regions.Operation_Ok;
+                  if Good then
+                     Text_Regions.Copy_To
+                       (Text_Region, Right.Text,
+                        Scratch (Text_Regions.Length (Left.Text) + 1 ..
+                                   Text_Length), Region_Result);
+                     Good := Region_Result = Text_Regions.Operation_Ok;
                   end if;
                   if not Good then
                      Eval_Status := Evaluation_Index_Error;
-                  elsif Text_Length = 0 then
-                     Text_Regions.Allocate_String
-                       (Text_Region, "", Item.Text, Region_Result);
                   else
                      Text_Regions.Allocate_String
                        (Text_Region, Scratch (1 .. Text_Length), Item.Text,
                         Region_Result);
-                  end if;
-                  if Good and then
-                    Region_Result = Text_Regions.Operation_Ok
-                  then
-                     Item.Kind := String_Type;
-                  elsif Good then
-                     Eval_Status := Evaluation_Text_Storage_Exhausted;
-                     Good := False;
+                     if Region_Result = Text_Regions.Operation_Ok then
+                        Item.Kind := String_Type;
+                     else
+                        Eval_Status := Evaluation_Text_Storage_Exhausted;
+                        Good := False;
+                     end if;
                   end if;
                end if;
                Ok := Good;
@@ -1053,49 +1072,58 @@ is
                Evaluate_Node (Tree.Nodes (Node_Index (Index)).First,
                               Depth + 1, Left, Good);
                if Good then
-                  declare
-                     Image_Buffer : String (1 .. 20) := [others => '0'];
-                     Image_First  : Positive := Image_Buffer'Last;
-                     Magnitude    : Unsigned_64;
-                     Digit        : Unsigned_64;
-                  begin
-                     if Left.Scalar.Integer < 0 then
-                        Magnitude :=
-                          Unsigned_64 (-(Left.Scalar.Integer + 1)) + 1;
-                     else
-                        Magnitude := Unsigned_64 (Left.Scalar.Integer);
-                     end if;
-                     loop
-                        Digit := Magnitude mod 10;
-                        Image_Buffer (Image_First) := Character'Val
-                          (Character'Pos ('0') + Natural (Digit));
-                        Magnitude := Magnitude / 10;
-                        exit when Magnitude = 0;
-                        Image_First := Image_First - 1;
-                     end loop;
-                     if Left.Scalar.Integer < 0 then
-                        Image_First := Image_First - 1;
-                        Image_Buffer (Image_First) := '-';
-                     end if;
-                     Text_Regions.Allocate_String
-                       (Text_Region,
-                        Image_Buffer (Image_First .. Image_Buffer'Last),
-                        Item.Text, Region_Result);
-                     if Region_Result = Text_Regions.Operation_Ok then
-                        Item.Kind := String_Type;
-                     else
-                        Eval_Status := Evaluation_Text_Storage_Exhausted;
-                        Good := False;
-                     end if;
-                  end;
+                  Text_Regions.Allocate_String
+                    (Text_Region, Decimal_Image (Left.Scalar.Integer),
+                     Item.Text, Region_Result);
+                  if Region_Result = Text_Regions.Operation_Ok then
+                     Item.Kind := String_Type;
+                  else
+                     Eval_Status := Evaluation_Text_Storage_Exhausted;
+                     Good := False;
+                  end if;
                end if;
                Ok := Good;
             when Host_Import_Form =>
-               --  The direct evaluator deliberately has no host.  Catalog
-               --  visibility permits analysis; only a linked VM host can
-               --  satisfy the operation's declared authority requirement.
-               Eval_Status := Host_Import_Required;
-               Ok := False;
+               if not Host_Enabled then
+                  Eval_Status := Host_Import_Required; Ok := False;
+               else
+                  declare
+                     Operation : constant CCL.Catalog.Resolved_Operation :=
+                       Tree.Nodes (Node_Index (Index)).Host_Call;
+                     Binding : Unsigned_32;
+                     Granted, Called : Boolean;
+                     Argument : CCL.VM.Value := CCL.VM.Integer_Constant (0);
+                     Returned : CCL.VM.Value;
+                  begin
+                     Good := True;
+                     if Operation.Parameters = 1 then
+                        Evaluate_Node (Tree.Nodes (Node_Index (Index)).First,
+                                       Depth + 1, Left, Good);
+                        if Good then Argument := Left.Scalar; end if;
+                     end if;
+                     if Good then
+                        CCL.Catalog.Find_Granted_Binding (Grants, Operation, Binding, Granted);
+                        if not Granted then
+                           Eval_Status := Host_Authority_Denied; Good := False;
+                        else
+                           Invoke (Context, Binding, Argument, Returned, Called);
+                           if not Called then
+                              Eval_Status := Host_Call_Failed; Good := False;
+                           elsif Returned.Kind /= Operation.Import.Result then
+                              Eval_Status := Host_Result_Type_Mismatch; Good := False;
+                           else
+                              Item.Scalar := Returned;
+                              Item.Kind := (if Returned.Kind = CCL.VM.Integer_Value
+                                            then Integer_Type else Boolean_Type);
+                           end if;
+                        end if;
+                     end if;
+                     if not Good then
+                        Result.Diagnostic_Position := Tree.Nodes (Node_Index (Index)).Source_Position;
+                     end if;
+                     Ok := Good;
+                  end;
+               end if;
             when Invalid_Node => Ok := False;
          end case;
       end Evaluate_Node;
@@ -1181,7 +1209,77 @@ is
          end case;
       end if;
       Text_Regions.Clear (Text_Region);
+   end Process_Source_With_Host;
+
+   type No_Host is null record;
+   procedure Deny_Host
+     (Context : in out No_Host; Binding : Unsigned_32;
+      Argument : CCL.VM.Value; Value : out CCL.VM.Value; Success : out Boolean)
+   is
+      pragma Unreferenced (Context, Binding, Argument);
+   begin
+      Value := CCL.VM.Integer_Constant (0); Success := False;
+   end Deny_Host;
+   procedure Process_Without_Host is new Process_Source_With_Host (No_Host, Deny_Host);
+
+   procedure Process_Source
+     (Source : String; Fuel : Natural;
+      Visible_Interfaces : CCL.Catalog.Interface_Catalog;
+      Analyze_Input : Boolean; Evaluate : Boolean;
+      Result : out Interpretation_Result; Tree : in out Syntax_Tree)
+     with Post => Result.Fuel_Remaining <= Fuel
+   is
+      Grants : CCL.Catalog.Granted_Bindings;
+      Context : No_Host;
+   begin
+      CCL.Catalog.Initialize (Grants);
+      Process_Without_Host (Source, Fuel, Visible_Interfaces, Grants, Context,
+                            False, Analyze_Input, Evaluate, Result, Tree);
    end Process_Source;
+
+   procedure Interpret_With_Host
+     (Source : String; Fuel : Natural;
+      Visible_Interfaces : CCL.Catalog.Interface_Catalog;
+      Grants : CCL.Catalog.Granted_Bindings;
+      Context : in out Host_Context;
+      Result : out Interpretation_Result)
+   is
+      Analysis : Analysis_Result;
+      Tree : Syntax_Tree;
+      procedure Run is new Process_Source_With_Host (Host_Context, Invoke);
+      Binding : Unsigned_32;
+      Granted : Boolean;
+   begin
+      Analyze (Source, Visible_Interfaces, Analysis);
+      Result := (Fuel_Remaining => Fuel, others => <>);
+      if Analysis.Status /= Analysis_Succeeded then
+         Result.Status := (if Analysis.Status = Analysis_Type_Check_Failed then Type_Check_Failed else Parse_Failed);
+         Result.Diagnostic := Analysis.Diagnostic;
+         Result.Diagnostic_Position := Analysis.Diagnostic_Position;
+         return;
+      end if;
+      Tree := Analysis.Tree;
+      -- Like VM linkage: reject the whole program before executing anything.
+      for N of Tree.Nodes loop
+         if N.Kind = Host_Import_Form then
+            if N.Host_Call.Import.Ownership_Argument or else
+              N.Host_Call.Import.Transfer /= CCL.Imports.Copy_Argument or else
+              N.Host_Call.Import.Cancellation /= CCL.Imports.Not_Cancellable or else
+              N.Host_Call.Import.Success_Verb /= 0 or else
+              N.Host_Call.Import.Failure_Verb /= 0 or else N.Host_Call.Import.Cancel_Verb /= 0
+            then
+               Result.Status := Host_Contract_Unsupported;
+               Result.Diagnostic_Position := N.Source_Position; return;
+            end if;
+            CCL.Catalog.Find_Granted_Binding (Grants, N.Host_Call, Binding, Granted);
+            if not Granted then
+               Result.Status := Host_Authority_Denied;
+               Result.Diagnostic_Position := N.Source_Position; return;
+            end if;
+         end if;
+      end loop;
+      Run (Source, Fuel, Visible_Interfaces, Grants, Context, True, False, True, Result, Tree);
+   end Interpret_With_Host;
 
    procedure Analyze
      (Source : String;

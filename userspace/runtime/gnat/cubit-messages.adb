@@ -21,6 +21,9 @@ package body CuBit.Messages is
    --  Note: The syscall instruction clobbers RCX (return address) and
    --  R11 (RFLAGS). The kernel entry moves R10 -> RCX for arg3, so arg3
    --  must go into R10 from userspace.
+   --  CuBit's kernel preserves all other general-purpose registers, including
+   --  RDI/RSI/RDX (input-only operands below). R10/R8/R9 are clobbers here
+   --  because this wrapper itself loads them before entering the kernel.
 
    function syscall
      (call : Unsigned_64; arg0 : Unsigned_64 := 0; arg1 : Unsigned_64 := 0;
@@ -269,7 +272,8 @@ package body CuBit.Messages is
    end capCall;
 
    --  capSubmit
-   --  CAP_SUBMIT: RDI=cap_slot, RSI=tag, RDX=w0, R10=w1, R8=w2, R9=token
+   --  CAP_SUBMIT: RDI=slot, RSI=tag, RDX=w0, R10=w1, R8=w2, R9=w3,
+   --  R12=completion token. All four payload words reach the receiver.
 
    function capSubmit
      (slot  : CapabilitySlot;
@@ -278,13 +282,24 @@ package body CuBit.Messages is
    is
       ret : Unsigned_64;
    begin
-      ret := syscall (SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY,
-                       slot,
-                       tagToU64 (msg.tag),
-                       msg.words (0),
-                       msg.words (1),
-                       msg.words (2),
-                       token);
+      Asm
+        ("mov %5, %%r10" & ASCII.LF &
+         "mov %6, %%r8" & ASCII.LF &
+         "mov %7, %%r9" & ASCII.LF &
+         "mov %8, %%r12" & ASCII.LF & "syscall",
+         Outputs => Unsigned_64'Asm_Output ("=a", ret),
+         Inputs =>
+           (Unsigned_64'Asm_Input
+              ("a", SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY),
+            Unsigned_64'Asm_Input ("D", slot),
+            Unsigned_64'Asm_Input ("S", tagToU64 (msg.tag)),
+            Unsigned_64'Asm_Input ("d", msg.words (0)),
+            Unsigned_64'Asm_Input ("rm", msg.words (1)),
+            Unsigned_64'Asm_Input ("rm", msg.words (2)),
+            Unsigned_64'Asm_Input ("rm", msg.words (3)),
+            Unsigned_64'Asm_Input ("rm", token)),
+         Clobber => "r10, r8, r9, r12, rcx, r11, memory",
+         Volatile => True);
       return (ret = 1);
    end capSubmit;
 

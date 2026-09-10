@@ -31,6 +31,9 @@ package TCPSession with SPARK_Mode is
    ---------------------------------------------------------------------------
    type Connection is record
       state      : TCPState := TCP_CLOSED;
+      --  CLOSED is a protocol state, not permission to reuse storage. A
+      --  channel or listener retains its reservation until explicit release.
+      reserved   : Boolean := False;
       localPort  : Unsigned_16 := 0;
       remotePort : Unsigned_16 := 0;
       remoteIP   : Net.IPv4Address := [others => 0];
@@ -150,5 +153,9 @@ package TCPSession with SPARK_Mode is
                           localPort : Unsigned_16;
                           isn       : Unsigned_32;
                           index     : out Connection_Reference);
+
+   --  Drop the lifetime pin after its owner has completed pending operations
+   --  and detached all references. Closing handshakes may continue unowned.
+   procedure releaseReservation (conn : in out Connection);
 
 end TCPSession;

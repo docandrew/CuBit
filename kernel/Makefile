@@ -114,6 +114,10 @@ test-reclamation-state:
 	../tests/kernel-reclamation/build/main
 
 .PHONY : test-locking
+.PHONY : test-doom-audio
+test-doom-audio:
+	bash ../tests/doom-audio/test.sh
+
 test-locking:
 	$(ALR) gprbuild -p -P../tests/kernel-locking/locking_tests.gpr
 	timeout 30 ../tests/kernel-locking/build/main
@@ -173,7 +177,7 @@ test-tcp-session:
 
 prove-tcp-session:
 	$(ALR) gnatprove -P../tests/tcp-session/tcp_session_tests.gpr \
-		-u tcpsession.adb tcp_listeners.adb --level=2 --report=all --checks-as-errors=on -j2
+		-u tcpsession.adb tcp_listeners.adb network_channel_handles.adb --level=2 --report=all --checks-as-errors=on -j2
 	@cat ../tests/tcp-session/build/gnatprove/gnatprove.out
 
 .PHONY : test-filesystem-policy
@@ -214,7 +218,7 @@ prove-capability-derive:
 .PHONY : prove-memory-grants
 prove-memory-grants:
 	$(ALR) gnatprove -Pcubit.gpr -u memory_grants.adb \
-		--mode=all --level=1 --function-sandboxing=off
+		--mode=all --level=1 --function-sandboxing=off --checks-as-errors=on -j2
 	@cat build/gnatprove/gnatprove.out
 
 .PHONY : clean
@@ -258,11 +262,37 @@ sleep: user_runtime
 .PHONY : capability-test
 capability-test: user_runtime
 	mkdir -p ../userspace/apps/capability-test/build
+	yasm -f elf64 ../userspace/apps/capability-test/syscall_registers.asm \
+		-o ../userspace/apps/capability-test/build/syscall_registers.o
 	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
 		../userspace/apps/capability-test/manifest.c \
 		-o ../userspace/apps/capability-test/build/manifest.o
 	$(ALR) gprbuild -P ../userspace/apps/capability-test/capability_test.gpr
 	cp ../userspace/apps/capability-test/build/capability-test.app isodir/boot/capability-test.app
+
+# Portable protocol checks and an unprivileged native desktop adversary.
+.PHONY : desktop-check prepare-desktop-protocol test-desktop-protocol prove-desktop-protocol
+desktop-check: user_runtime
+	mkdir -p ../userspace/apps/desktop-check/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/apps/desktop-check/manifest.c -o ../userspace/apps/desktop-check/build/manifest.o
+	$(ALR) gprbuild -p -P ../userspace/apps/desktop-check/desktop_check.gpr
+	cp ../userspace/apps/desktop-check/build/desktop-check.app isodir/boot/desktop-check.app
+
+prepare-desktop-protocol:
+	mkdir -p ../tests/desktop-protocol/build/source
+	cp ../userspace/runtime/gnat/cubit.ads ../userspace/runtime/gnat/cubit-desktop_protocol.ads \
+		../userspace/runtime/gnat/cubit-grant_references.ads \
+		../userspace/runtime/gnat/cubit-desktop_protocol.adb ../tests/desktop-protocol/build/source/
+
+test-desktop-protocol: prepare-desktop-protocol
+	$(ALR) gprbuild -p -P ../tests/desktop-protocol/protocol.gpr
+	../tests/desktop-protocol/build/main
+
+prove-desktop-protocol: prepare-desktop-protocol
+	$(ALR) gnatprove -P ../tests/desktop-protocol/protocol.gpr \
+		-u cubit-desktop_protocol.adb --level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/desktop-protocol/build/obj/gnatprove/gnatprove.out
 
 # Deterministic typed input stream publisher used by the headless recovery gate.
 .PHONY : input-stress
@@ -291,6 +321,30 @@ ipctest-client: user_runtime
 		-o ../userspace/apps/ipctest-client/build/manifest.o
 	$(ALR) gprbuild -P ../userspace/apps/ipctest-client/ipctest_client.gpr
 	cp ../userspace/apps/ipctest-client/build/ipctest-client.app isodir/boot/ipctest-client.app
+
+.PHONY : bench-load
+.PHONY : bench-storage
+bench-storage: user_runtime
+	mkdir -p ../userspace/apps/bench-storage/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/apps/bench-storage/manifest.c -o ../userspace/apps/bench-storage/build/manifest.o
+	$(ALR) gprbuild -p -P ../userspace/apps/bench-storage/bench_storage.gpr
+	cp ../userspace/apps/bench-storage/build/bench-storage.app isodir/boot/bench-storage.app
+
+bench-load: user_runtime
+	mkdir -p ../userspace/apps/bench-load/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/apps/bench-load/manifest.c -o ../userspace/apps/bench-load/build/manifest.o
+	$(ALR) gprbuild -p -P ../userspace/apps/bench-load/bench_load.gpr
+	cp ../userspace/apps/bench-load/build/bench-load.app isodir/boot/bench-load.app
+
+.PHONY : bench-audio
+bench-audio: user_runtime
+	mkdir -p ../userspace/apps/bench-audio/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/apps/bench-audio/manifest.c -o ../userspace/apps/bench-audio/build/manifest.o
+	$(ALR) gprbuild -p -P ../userspace/apps/bench-audio/bench_audio.gpr
+	cp ../userspace/apps/bench-audio/build/bench-audio.app isodir/boot/bench-audio.app
 
 .PHONY : bench-ipc-server
 bench-ipc-server: user_runtime
@@ -322,6 +376,43 @@ ccl-control: user_runtime
 		../userspace/ccl/apps/ccl-control/manifest.c -o ../userspace/ccl/apps/ccl-control/build/manifest.o
 	$(ALR) gprbuild -p -P ../userspace/ccl/apps/ccl-control/ccl_control.gpr
 	cp ../userspace/ccl/apps/ccl-control/build/ccl-control.app isodir/boot/ccl-control.app
+	mkdir -p isodir/licenses
+	cp ../userspace/ccl/remote/CBOR_LICENSE.txt isodir/licenses/cbor_ada.txt
+
+.PHONY : test-ccl-remote ccl-web-preview test-ccl-web-preview
+test-ccl-remote:
+	$(ALR) gprbuild -p -P../tests/ccl-remote/remote.gpr
+	../tests/ccl-remote/build/main
+	../tests/ccl-remote/build/host_tests
+	../tests/ccl-remote/build/periodic_tests
+
+.PHONY: prove-ccl-interpreter-host
+prove-ccl-interpreter-host:
+	$(ALR) gnatprove -P../tests/ccl-remote/remote.gpr \
+		-u ccl-language.adb ccl-catalog.adb interpreter_host.adb --level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/ccl-remote/build/gnatprove/gnatprove.out
+
+.PHONY: prove-ccl-periodic
+prove-ccl-periodic:
+	$(ALR) gnatprove -P../tests/ccl-remote/remote.gpr --subdirs=periodic-proof \
+		-u ccl-periodic_programs.adb interpreter_host.adb --level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/ccl-remote/build/periodic-proof/gnatprove/gnatprove.out
+
+.PHONY: prove-ccl-remote ccl-remote-lab
+prove-ccl-remote:
+	$(ALR) gnatprove -P../tests/ccl-remote/remote.gpr --subdirs=wire-proof \
+		-u control_http.adb control_wire.adb ccl-control.adb --level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/ccl-remote/build/wire-proof/gnatprove/gnatprove.out
+
+CCL_LAB_ACCEL ?= kvm
+ccl-remote-lab: ccl-control clock netstack
+	../tests/headless/run.sh --test ccl-remote --accel $(CCL_LAB_ACCEL) --timeout 3600 --keep-logs
+
+ccl-web-preview:
+	cd ../userspace/ccl/tools/ccl-observatory && npm run preview
+
+test-ccl-web-preview:
+	cd ../userspace/ccl/tools/ccl-observatory && npm test
 
 .PHONY : ccl-ui-preview
 ccl-ui-preview:

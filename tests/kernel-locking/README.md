@@ -12,6 +12,13 @@ check visibility, ownership, and balanced exclusion. Queue tests check sleep
 wakeup serialization, duplicate wakeup, delta preservation, and queue endpoints.
 A 30-second timeout makes a deadlocked host test fail.
 
+Ready-queue tests simulate 300 quantum expirations and compare 10,000 seeded
+arrival/blocking operations against an independent stable-array ordering model.
+They check descending priority, FIFO ties, forward/back links, empty endpoints,
+and removal cleanup using the **production** queue code. The original `>=`
+insertion failed the first FIFO assertion; strict `>` insertion passes.
+This is deterministic policy testing, not host wall-clock scheduling measurement.
+
 Assertions are enabled **only in this host executable**. No fixture is compiled
 into CuBit and no kernel runtime assertion policy is changed.
 

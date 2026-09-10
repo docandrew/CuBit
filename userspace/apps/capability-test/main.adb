@@ -33,6 +33,14 @@ procedure Main is
    Result : Unsigned_64;
    Passed : Boolean := True;
 
+   function Syscall_Registers_Preserved
+     (Number, Argument : Unsigned_64) return Unsigned_64
+     with Import, Convention => C,
+          External_Name => "syscall_registers_preserved";
+
+   Endpoint_Slot : CapabilitySlot;
+   Endpoint_Found : Boolean;
+
    procedure Check (Condition : Boolean; Name : String) is
    begin
       if Condition then
@@ -54,8 +62,22 @@ procedure Main is
          Name);
    end Check_Empty_Slot;
 begin
+   Check (Syscall_Registers_Preserved (SYSCALL_GETPID, 0) = 1,
+          "syscall registers normal return");
+   Check (Syscall_Registers_Preserved (Unsigned_64'Last, 0) = 1,
+          "syscall registers unknown call");
+   Check (Syscall_Registers_Preserved (SYSCALL_SPAWN, 0) = 1,
+          "syscall registers denied call");
+   Check (Syscall_Registers_Preserved (SYSCALL_SLEEP, 10) = 1,
+          "syscall registers blocking return");
+
    PID := syscall (SYSCALL_GETPID);
    Check (PID > 0 and then PID /= ERROR_RESULT, "getpid");
+
+   --  The all-ones sentinel cannot name a kernel process. Exhausting the
+   --  table exercises the optimized syscall loop that froze procmgr at launch.
+   Find_Endpoint_Capability (ERROR_RESULT, Endpoint_Slot, Endpoint_Found);
+   Check (not Endpoint_Found, "endpoint scan completes");
 
    Inspection := (others => 0);
    Result := syscall

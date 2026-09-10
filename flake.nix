@@ -10,7 +10,8 @@
     url = "github:nothings/stb/f58f558c120e9b32c217290b80bad1a0729fbb2c";
     flake = false;
   };
-  # Hosted CBOR evaluation only; not linked into kernel or native services.
+  # Pinned CBOR source for hosted evaluation and the native userspace control
+  # app's bounded wire codec. Never linked into the kernel.
   inputs.cbor_ada = {
     url = "github:b-erdem/cbor_ada/ce9897cdd80dea21112c59b80a5c42f2921f59f0";
     flake = false;

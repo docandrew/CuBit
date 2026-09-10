@@ -37,7 +37,9 @@ package CuBit.Doom_Sound is
            External_Name => "cubit_snd_shutdown";
 
    ---------------------------------------------------------------------------
-   --  sndUpdate - mix all active channels, write to ring buffer.
+   --  sndUpdate - first drain any unwritten PCM, then mix active channels.
+   --  Partial/zero writes retain the suffix, even if no channel remains active.
+   --  Queued/mixed PCM is not retracted by sndStopChannel; shutdown discards it.
    --  Called once per game tic (~35 Hz).
    ---------------------------------------------------------------------------
    procedure sndUpdate

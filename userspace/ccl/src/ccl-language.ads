@@ -62,8 +62,10 @@ is
       Source_End_Position : CCL.Language.Source_Position := 0;
       Integer_Value   : Interfaces.Integer_64 := 0;
       Boolean_Value   : Boolean := False;
-      Text_Offset     : Natural range 0 .. MAX_TEXT_BYTES := 0;
-      Text_Length     : Natural range 0 .. MAX_TEXT_BYTES := 0;
+      --  Inclusive slice bounds, including the canonical empty slice 1 .. 0.
+      --  Unlike independent offset/length fields, no sum can leave storage.
+      Text_First      : Positive range 1 .. MAX_TEXT_BYTES + 1 := 1;
+      Text_Last       : Natural range 0 .. MAX_TEXT_BYTES := 0;
       Identifier      : Name;
       First           : Node_Reference := NO_NODE;
       Second          : Node_Reference := NO_NODE;
@@ -91,7 +93,11 @@ is
       Evaluation_Division_By_Zero,
       Evaluation_Index_Error,
       Evaluation_Text_Storage_Exhausted,
-      Host_Import_Required);
+      Host_Import_Required,
+      Host_Authority_Denied,
+      Host_Call_Failed,
+      Host_Result_Type_Mismatch,
+      Host_Contract_Unsupported);
 
    type Diagnostic_Code is
      (No_Diagnostic,
@@ -184,6 +190,23 @@ is
       Result             : out Interpretation_Result)
    with
       Post => Result.Fuel_Remaining <= Fuel;
+
+   -- Trusted, statically instantiated host adapter. Source cannot supply a
+   -- callback or mint bindings. Initial support is synchronous scalar-copy
+   -- calls only, with full analysis/admission before any host invocation.
+   generic
+      type Host_Context is limited private;
+      with procedure Invoke
+        (Context : in out Host_Context; Binding : Interfaces.Unsigned_32;
+         Argument : CCL.VM.Value; Value : out CCL.VM.Value;
+         Success : out Boolean);
+   procedure Interpret_With_Host
+     (Source : String; Fuel : Natural;
+      Visible_Interfaces : CCL.Catalog.Interface_Catalog;
+      Grants : CCL.Catalog.Granted_Bindings;
+      Context : in out Host_Context;
+      Result : out Interpretation_Result)
+     with Post => Result.Fuel_Remaining <= Fuel;
 
 private
    type Analysis_Result is record

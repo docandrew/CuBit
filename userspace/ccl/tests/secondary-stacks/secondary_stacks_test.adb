@@ -85,6 +85,28 @@ begin
       not Is_Valid (Region, Reused),
       "execution teardown invalidates all values");
 
+   declare
+      package Small_Values is new CCL.Secondary_Stacks
+        (Capacity => 32, Max_Values => 4, Max_String_Length => 4);
+      use Small_Values;
+      Storage : Small_Values.Stack;
+      Value : Small_Values.String_Value;
+      Status : Small_Values.Operation_Result;
+   begin
+      Small_Values.Initialize (Storage);
+      Small_Values.Allocate_String (Storage, "1234", Value, Status);
+      Check (Status = Small_Values.Operation_Ok, "per-value limit accepts exact bound");
+      Small_Values.Allocate_String (Storage, "12345", Value, Status);
+      Check (Status = Small_Values.Storage_Full and then
+             Small_Values.Used_Bytes (Storage) = 4 and then
+             Small_Values.Live_Values (Storage) = 1,
+             "oversized value leaves the larger region unchanged");
+      Small_Values.Allocate_String (Storage, "5678", Value, Status);
+      Check (Status = Small_Values.Operation_Ok and then
+             Small_Values.Used_Bytes (Storage) = 8,
+             "aggregate region capacity is distinct from value capacity");
+   end;
+
    if Failures /= 0 then
       raise Program_Error;
    end if;

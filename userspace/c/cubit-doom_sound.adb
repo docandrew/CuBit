@@ -5,6 +5,7 @@
 --  @summary
 --  DOOM sound engine implementation
 ------------------------------------------------------------------------------
+pragma Ada_2022;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Audio;
@@ -48,6 +49,28 @@ package body CuBit.Doom_Sound is
    mixBuf : MixBufArray;
    outBuf : OutBufArray;
 
+   --  The suffix of outBuf not yet accepted by the stream. MIX_FRAMES means
+   --  empty. Keep one bounded batch; never remix or advance channels over an
+   --  unwritten suffix, including after the last active channel has ended.
+   subtype Output_Frame_Offset is Natural range 0 .. MIX_FRAMES;
+   pendingFirst : Output_Frame_Offset := MIX_FRAMES;
+
+   procedure flushPending is
+   begin
+      if pendingFirst < MIX_FRAMES then
+         declare
+            --  CuBit.Audio.write accepts a prefix of the requested frames.
+            subtype Accepted_Frames is Natural range
+              0 .. MIX_FRAMES - pendingFirst;
+            written : constant Accepted_Frames := CuBit.Audio.write
+              (stream, outBuf (pendingFirst * 2)'Address,
+               MIX_FRAMES - pendingFirst);
+         begin
+            pendingFirst := pendingFirst + written;
+         end;
+      end if;
+   end flushPending;
+
    ---------------------------------------------------------------------------
    --  computeVolumes - convert DOOM vol (0-127) and sep (0-254) to L/R
    ---------------------------------------------------------------------------
@@ -79,6 +102,8 @@ package body CuBit.Doom_Sound is
    ---------------------------------------------------------------------------
    function sndInit return Integer is
    begin
+      pendingFirst := MIX_FRAMES;
+      channels := [others => (others => <>)];
       stream := CuBit.Audio.open (OUTPUT_RATE, 2);
 
       if not CuBit.Audio.isValid (stream) then
@@ -99,6 +124,8 @@ package body CuBit.Doom_Sound is
       if CuBit.Audio.isValid (stream) then
          CuBit.Audio.close (stream);
       end if;
+      pendingFirst := MIX_FRAMES;
+      channels := [others => (others => <>)];
    end sndShutdown;
 
    ---------------------------------------------------------------------------
@@ -194,10 +221,14 @@ package body CuBit.Doom_Sound is
       scaledL   : MixSample;
       scaledR   : MixSample;
       val       : MixSample;
-      written   : Natural;
       anyActive : Boolean := False;
    begin
       if not CuBit.Audio.isValid (stream) then
+         return;
+      end if;
+
+      flushPending;
+      if pendingFirst < MIX_FRAMES then
          return;
       end if;
 
@@ -272,9 +303,11 @@ package body CuBit.Doom_Sound is
          outBuf (i) := Sample16 (val);
       end loop;
 
-      --  Write mixed output to ring buffer
-      written := CuBit.Audio.write (stream, outBuf'Address,
-                                     MIX_FRAMES);
+      --  Publish only the accepted prefix. A later update retries the suffix
+      --  before generating another batch. At most two writes per update;
+      --  a full ring never causes a spin/block loop in the game thread.
+      pendingFirst := 0;
+      flushPending;
    end sndUpdate;
 
 end CuBit.Doom_Sound;

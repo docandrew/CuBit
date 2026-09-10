@@ -1,72 +1,110 @@
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
-with CuBit.Protocols;
+with CBOR;
 with CCL.Control;
 with CCL.Sessions;
-with CCL.Catalog;
-with CCL.Interfaces.Clock;
 with Control_Transport;
+with Control_HTTP;
+with Control_Wire;
+with Control_Host;
 
 procedure Main is
-   Session : CCL.Sessions.Session;
-   Catalog : CCL.Catalog.Interface_Catalog;
-   Catalog_Error : CCL.Catalog.Catalog_Error;
    Host : CCL.Control.Observation;
-   Result : CCL.Control.Response;
-   Header : String (1 .. 8);
-   Source : String (1 .. 1024);
-   Count, Code : Natural;
    Success : Boolean;
-   Request : Message;
-   Tag : MessageTag;
-   use type CCL.Catalog.Catalog_Error;
+   use type Control_HTTP.Parse_State;
+   use type Control_HTTP.Method;
+   use type CCL.Control.Operation;
+
+   procedure Serve is
+      Input : String (1 .. Control_HTTP.Max_Input);
+      Used : Natural := 0;
+      Count : Natural;
+      Frame : Control_HTTP.Request;
+      Query : Control_Wire.Request;
+      Encoded : Control_Wire.Response;
+      Result : CCL.Control.Response;
+      Session : CCL.Sessions.Session;
+      Valid : Boolean;
+      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Deadline : constant Unsigned_64 :=
+        (if Now > Unsigned_64'Last - 5000 then Unsigned_64'Last else Now + 5000);
+   begin
+      loop
+         Control_Transport.Read_Some (Input (Used + 1 .. Input'Last), Count, Deadline, Success);
+         if not Success then return; end if;
+         Used := Used + Count;
+         Control_HTTP.Parse (Input (1 .. Used), Frame);
+         exit when Frame.State /= Control_HTTP.Incomplete or Used = Input'Length;
+      end loop;
+      if Frame.State /= Control_HTTP.Ready then
+         Control_Transport.Write_All (Control_HTTP.Error_Response, Success); return;
+      end if;
+      if Frame.Verb = Control_HTTP.Preflight then
+         Control_Transport.Write_All (Control_HTTP.Preflight_Response, Success); return;
+      end if;
+      declare
+         Bytes : CBOR.Byte_Array (1 .. CBOR.SE_Offset (Frame.Body_Length));
+      begin
+         for I in Bytes'Range loop
+            Bytes (I) := Character'Pos (Input (Frame.Body_First + Natural (I) - 1));
+         end loop;
+         Control_Wire.Decode (Bytes, Query, Valid);
+      end;
+      if not Valid then
+         Control_Transport.Write_All (Control_HTTP.Error_Response, Success); return;
+      end if;
+      -- Fresh bounded evaluation state per submission. No remote session or
+      -- user identity is implicitly granted authority by this lab adapter.
+      CCL.Sessions.Initialize (Session);
+      if Query.Op = CCL.Control.Evaluate_Expression then
+         Result := (Observed => Host, others => <>);
+         Control_Host.Evaluate (Query.Source (1 .. Query.Length), Result.Outcome);
+      elsif Query.Op in CCL.Control.Start_Monitor | CCL.Control.Stop_Monitor |
+        CCL.Control.Inspect_Monitor
+      then
+         Result := (Observed => Host, others => <>);
+         case Query.Op is
+            when CCL.Control.Start_Monitor =>
+               Control_Host.Start_Monitor (Query.Source (1 .. Query.Length), Result.Accepted);
+            when CCL.Control.Stop_Monitor =>
+               Control_Host.Stop_Monitor (Query.Target, Result.Accepted);
+            when others => Result.Accepted := True;
+         end case;
+         Control_Host.Pump;
+         Result.Monitor := Control_Host.Monitor;
+      else
+         Control_Host.Read_Clock (Host.Clock_Available, Host.Monotonic_Ms);
+         CCL.Control.Execute (Session, Query.Op, Query.Source (1 .. Query.Length), Host, Result);
+      end if;
+      Control_Wire.Encode (Query, Result, Encoded);
+      if Encoded.Length = 0 then
+         Control_Transport.Write_All (Control_HTTP.Error_Response, Success); return;
+      end if;
+      declare
+         Output : String (1 .. Encoded.Length);
+      begin
+         for I in Output'Range loop Output (I) := Character'Val (Encoded.Data (CBOR.SE_Offset (I))); end loop;
+         Control_Transport.Write_All (Control_HTTP.Response_Header (Output'Length) & Output, Success);
+      end;
+      if Success then debugPrint ("ccl-control: request completed" & ASCII.LF); end if;
+   end Serve;
 begin
    debugPrint ("ccl-control: DEVELOPMENT PLAINTEXT; own bindings only" & ASCII.LF);
    Host.Process_Id := syscall (SYSCALL_GETPID);
-   Control_Transport.Open (Host.Network_Process, Success);
+   Host.Clock_Process := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_CLOCK);
+   Control_Host.Initialize (Success);
    if not Success then
-      debugPrint ("ccl-control: relay connection failed" & ASCII.LF);
+      debugPrint ("ccl-control: host binding initialization failed" & ASCII.LF); return;
+   end if;
+   Control_Transport.Listen (Host.Network_Process, Success);
+   if not Success then
+      debugPrint ("ccl-control: listener failed" & ASCII.LF);
       Control_Transport.Close; return;
    end if;
-   CCL.Catalog.Initialize (Catalog);
-   Host.Clock_Process := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_CLOCK);
-   if Host.Clock_Process /= 0 and Host.Clock_Process /= Unsigned_64'Last then
-      CCL.Interfaces.Clock.Publish (Catalog, Catalog_Error);
-      if Catalog_Error /= CCL.Catalog.Catalog_Valid then Control_Transport.Close; return; end if;
-   end if;
-   CCL.Sessions.Initialize (Session, Catalog);
-   debugPrint ("ccl-control: relay connected" & ASCII.LF);
+   debugPrint ("ccl-control: native listener ready" & ASCII.LF);
    loop
-      Control_Transport.Read_Exact (Header, Success);
-      exit when not Success;
-      Code := Character'Pos (Header (4));
-      Count := Character'Pos (Header (7)) * 256 + Character'Pos (Header (8));
-      --  Reject invalid frames before slicing, enum conversion, or evaluation.
-      exit when Header (1 .. 3) /= "CC" & Character'Val (1) or else
-        Code not in 1 .. 3 or else Count > Source'Length or else
-        (Header (5) = Character'Val (0) and Header (6) = Character'Val (0)) or else
-        (Code /= 2 and Count /= 0);
-      Control_Transport.Read_Exact (Source (1 .. Count), Success);
-      exit when not Success;
-      exit when (for some C of Source (1 .. Count) =>
-        C not in ' ' .. '~' | ASCII.HT | ASCII.CR | ASCII.LF);
-      Request := NULL_MESSAGE;
-      Request.tag := (label => CuBit.Protocols.CLOCK_OP_MONOTONIC_MS,
-                      length => 1, flags => 0, reserved => 0);
-      Tag := capCall (CAP_SLOT_CLOCK, Request);
-      Host.Clock_Available := Tag.label = 16#F000# and Tag.length = 1;
-      if Host.Clock_Available then Host.Monotonic_Ms := Request.words (0); end if;
-      CCL.Control.Execute
-        (Session, CCL.Control.Operation'Enum_Val (Code), Source (1 .. Count), Host, Result);
-      Header (4) := Character'Val (Code + 128);
-      Header (7) := Character'Val (Result.Length / 256);
-      Header (8) := Character'Val (Result.Length mod 256);
-      Control_Transport.Write_All (Header, Success);
-      exit when not Success;
-      Control_Transport.Write_All (Result.Data (1 .. Result.Length), Success);
-      exit when not Success;
-      debugPrint ("ccl-control: request completed" & ASCII.LF);
+      Control_Host.Pump;
+      Control_Transport.Accept_Connection (Control_Host.Next_Deadline, Success);
+      if Success then Serve; Control_Transport.Close_Connection; end if;
    end loop;
-   Control_Transport.Close;
-   debugPrint ("ccl-control: disconnected; session discarded" & ASCII.LF);
 end Main;

@@ -294,6 +294,7 @@ int ccl_window_poll(void *handle, int *kind, unsigned int *character,
         /* Shared CCL_Workbench_Platform event numbers. */
         if (event.key.keysym.sym == SDLK_TAB) { *kind = 36; return 1; }
         if (event.key.keysym.sym == SDLK_F6) { *kind = 37; return 1; }
+        if (event.key.keysym.sym == SDLK_F7) { *kind = 38; return 1; }
         if (event.key.keysym.sym == SDLK_o && (*modifiers & 2u) != 0) {
             *kind = 34; return 1;
         }
@@ -407,6 +408,16 @@ void ccl_window_wait(int may_block)
     } else {
         SDL_Delay(1);
     }
+}
+
+void ccl_window_wait_until(uint64_t deadline)
+{
+    SDL_Event event;
+    uint64_t now = SDL_GetTicks64();
+    if (now >= deadline) return;
+    uint64_t remaining = deadline - now;
+    int timeout = remaining > 0x7fffffffU ? 0x7fffffff : (int)remaining;
+    if (SDL_WaitEventTimeout(&event, timeout) != 0) SDL_PushEvent(&event);
 }
 
 uint64_t ccl_window_ticks(void) { return SDL_GetTicks64(); }

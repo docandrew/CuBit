@@ -42,5 +42,12 @@ package CuBit.Network_Authority with SPARK_Mode is
    OP_INSTALL_SCOPE : constant Unsigned_32 := 16#0440#;
    OP_RELEASE_SCOPE : constant Unsigned_32 := 16#0441#;
    OP_BIND : constant Unsigned_32 := 16#0424#;
+   --  words: listener ID, transfer slot, buffer bytes, transfer generation.
+   --  With flag 1, word 2 packs buffer bytes in low 32 bits and a relative
+   --  wait (0 .. 30_000 ms) in high 32 bits. Still four inline IPC words.
+   --  Without that flag, the service uses its default 30-second timeout.
+   --  Expiry releases the pending acquisition.
+   --  Reply returns an ordinary owner-bound channel ID, never a TCP index.
+   OP_ACCEPT : constant Unsigned_32 := 16#0425#;
    OP_CLOSE_LISTENER : constant Unsigned_32 := 16#0427#;
 end CuBit.Network_Authority;

@@ -350,6 +350,20 @@ capability to `clock.svc`; it does not link SDL or use ambient hosted file I/O.
 Build it with `make -C kernel ccl-workbench`, or launch it from the desktop's
 Launch menu after `make -C kernel run-desktop`.
 
+The shared Workbench now includes a **Watch** button (**F7**) for a live label.
+The default source formats live clock uptime as HH:MM:SS. Watch snapshots the
+source and evaluates it every second; Unwatch/F7 stops it and retains the last
+value. Editing does not change the running snapshot. Save/Open stores source,
+not execution state or authority; Watch again after loading. F5 also evaluates
+live clock calls once in interpreted mode. Linux uses its clock emulator;
+native CuBit calls `clock.svc` through the Workbench's granted endpoint.
+
+This first label belongs to Workbench and stops when it closes. It is not yet
+an independent widget application or the proposed CCL UI construction API.
+Evaluation errors stop the monitor; host-call latency is not bounded by fuel.
+See [CCL UI](../../docs/ccl-ui.md) for the typed-string/handle boundary needed
+before exposing general UI functions.
+
 The core can also be compiled against CuBit's freestanding userspace runtime:
 
 ```text
@@ -367,6 +381,12 @@ currently discharge all level-1 GNATprove checks. The catalog-aware language
 frontend and generic AST-to-CCLB lowering do as well. None of these units uses
 `pragma Assume` or disables SPARK. This does not erase the separately tracked
 obligations in the scheduler, VM execution loop, or v3 bytecode formatter.
+
+Update for host-enabled direct interpretation: the generic interpreter and its
+string paths have an expanded proof target, `make -C kernel prove-ccl-interpreter-host`.
+That run now discharges 1468/1468 obligations (resolved SEC-017); the earlier
+proof statement above is a historical checkpoint, not the count for the refactored
+host-enabled instantiation. Hosted and real CuBit clock-formatting tests pass.
 
 ### In-guest runtime
 

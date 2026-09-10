@@ -16,10 +16,17 @@ with Desktop_Cursors;
 with Desktop_Icons;
 with Desktop_UI_Font;
 with Desktop_Window_Icons;
+with CuBit.Desktop_Protocol;
+with CuBit.Desktop_Messages;
+with CuBit.Memory_Grants;
 with Font8x16;
 
 procedure main is
+   package MG renames CuBit.Memory_Grants;
    use ASCII;
+   package DP renames CuBit.Desktop_Protocol;
+   use type DP.Status_Code;
+   use type DP.Damage_Mode;
    use type CuBit.Input.Device_Class;
    use type CuBit.Input.Delivery_Class;
 
@@ -32,21 +39,21 @@ procedure main is
    EVENT_KEYBOARD : constant Unsigned_32 := 1;
    EVENT_MOUSE    : constant Unsigned_32 := 2;
 
-   OP_DESKTOP_HELLO    : constant Unsigned_32 := 16#0800#;
-   OP_DESKTOP_BYE      : constant Unsigned_32 := 16#0801#;
-   OP_DESKTOP_GET_INFO : constant Unsigned_32 := 16#0802#;
+   OP_DESKTOP_HELLO    : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Hello);
+   OP_DESKTOP_BYE      : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Goodbye);
+   OP_DESKTOP_GET_INFO : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Get_Information);
    OP_SPAWN            : constant Unsigned_32 := 16#0100#;
-   OP_SURFACE_CREATE   : constant Unsigned_32 := 16#0810#;
-   OP_SURFACE_DESTROY  : constant Unsigned_32 := 16#0811#;
-   OP_SURFACE_PRESENT  : constant Unsigned_32 := 16#0812#;
-   OP_SURFACE_RESIZE   : constant Unsigned_32 := 16#0813#;
-   OP_SURFACE_ATTACH_BUFFER : constant Unsigned_32 := 16#0814#;
-   OP_SURFACE_SET_POINTER_CURSOR : constant Unsigned_32 := 16#0815#;
-   OP_WINDOW_SET_LIMITS : constant Unsigned_32 := 16#0841#;
-   OP_WINDOW_SET_TITLE  : constant Unsigned_32 := 16#0842#;
+   OP_SURFACE_CREATE   : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Create_Surface);
+   OP_SURFACE_DESTROY  : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Destroy_Surface);
+   OP_SURFACE_PRESENT  : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Present_Surface);
+   OP_SURFACE_RESIZE   : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Resize_Surface);
+   OP_SURFACE_ATTACH_BUFFER : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Attach_Buffer);
+   OP_SURFACE_SET_POINTER_CURSOR : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Set_Pointer_Cursor);
+   OP_WINDOW_SET_LIMITS : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Set_Window_Limits);
+   OP_WINDOW_SET_TITLE  : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Set_Window_Title);
    OP_STREAM_AVAILABLE  : constant Unsigned_32 := 16#0706#;
-   OP_INPUT_POLL       : constant Unsigned_32 := 16#0821#;
-   OP_INPUT_WAIT       : constant Unsigned_32 := 16#0822#;
+   OP_INPUT_POLL       : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Poll_Input);
+   OP_INPUT_WAIT       : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Wait_Input);
    INPUT_REPLY_MORE_PENDING : constant Unsigned_8 := 1;
 
    OP_DISPLAY_GET_INFO      : constant Unsigned_32 := 16#0900#;
@@ -227,7 +234,7 @@ procedure main is
       title       : String (1 .. 23) := (others => ' ');
       titleLen    : Natural range 0 .. 23 := 0;
       bufferAttached : Boolean := False;
-      bufferGrant    : Unsigned_64 := 0;
+      bufferGrant    : MG.Grant_Reference;
       bufferAddr     : System.Address := System.Null_Address;
       bufferW        : Natural := 0;
       bufferH        : Natural := 0;
@@ -289,6 +296,7 @@ procedure main is
       owner       : ProcessID := NO_PROCESS;
       target      : Unsigned_64 := 0;
       afterSerial : Unsigned_64 := 0;
+      deadline    : Unsigned_64 := 0;
       replySlot   : CapabilitySlot := INPUT_REPLY_SLOT_FIRST;
    end record;
 
@@ -3136,6 +3144,21 @@ procedure main is
                                w => fbWidth, h => TASKBAR_H), 2));
    end toggleMaximizeSurface;
 
+   procedure releaseSurfaceBuffer (s : in out Surface) is
+      returned : Boolean;
+   begin
+      if s.bufferAttached then
+         -- Single compositor event loop: no blit retains this address after
+         -- the handler returns. This is lifetime, not pixel immutability.
+         s.bufferAttached := False;
+         s.bufferAddr := System.Null_Address;
+         MG.Return_Acquisition (s.bufferGrant, returned);
+         if not returned then
+            debugPrint ("TEST: FAIL desktop buffer acquisition return" & LF);
+         end if;
+      end if;
+   end releaseSurfaceBuffer;
+
    procedure closeSurface (idx : SurfaceIndex; damage : in out Rect) is
       oldBounds : constant Rect := surfaceRect (surfaces (idx));
       oldId     : constant Unsigned_64 := surfaces (idx).id;
@@ -3158,6 +3181,7 @@ procedure main is
       end if;
       clearInputForTarget (oldId);
 
+      releaseSurfaceBuffer (surfaces (idx));
       surfaces (idx) := (others => <>);
 
       if focusSurface = oldId then
@@ -3186,10 +3210,8 @@ procedure main is
             surfaces (i).owner /= NO_PROCESS and then
             not processAlive (surfaces (i).owner)
          then
-            --  Client-owned surface buffers are grants from the client. When
-            --  the client exits, the kernel revokes those grants. Reap the
-            --  stale surface before the compositor tries to blit from the
-            --  now-unmapped address.
+            -- The acquisition keeps mappings alive across owner exit. Reaping
+            -- releases it; processAlive is no longer the memory-safety fence.
             oldBounds := surfaceRect (surfaces (i));
             oldTask := taskButtonRect (i);
             if pointerSurfaceId = surfaces (i).id then
@@ -3204,6 +3226,10 @@ procedure main is
             clearInputForTarget (surfaces (i).id);
             if focusSurface = surfaces (i).id then
                focusSurface := 0;
+            end if;
+            if surfaces (i).bufferAttached then
+               releaseSurfaceBuffer (surfaces (i));
+               debugPrint ("desktop: dead client buffer acquisition released" & LF);
             end if;
             surfaces (i) := (others => <>);
             damage := unionRect (damage, inflateRect (oldBounds, 4));
@@ -3343,7 +3369,7 @@ procedure main is
          title => (others => ' '),
          titleLen => 0,
          bufferAttached => False,
-         bufferGrant => 0,
+         bufferGrant => <>,
          bufferAddr => System.Null_Address,
          bufferW => 0,
          bufferH => 0,
@@ -3643,6 +3669,45 @@ procedure main is
       end;
    end completeInputWaiter;
 
+   function nextInputDeadline return Unsigned_64 is
+      deadline : Unsigned_64 := 0;
+   begin
+      for channel of inputChannels loop
+         if channel.waiter.active and then channel.waiter.deadline /= 0 and then
+           (deadline = 0 or else channel.waiter.deadline < deadline)
+         then
+            deadline := channel.waiter.deadline;
+         end if;
+      end loop;
+      return deadline;
+   end nextInputDeadline;
+
+   procedure expireInputWaiters is
+      now : constant Unsigned_64 := nowMs;
+      response : Message;
+      ignore : Unsigned_64;
+   begin
+      for channel of inputChannels loop
+         if channel.waiter.active and then channel.waiter.deadline /= 0 and then
+           now >= channel.waiter.deadline
+         then
+            -- Input publication completes its waiter immediately. An expiry
+            -- consumes the same one-use reply, without inventing an input
+            -- serial or clearing queued events.
+            response := NULL_MESSAGE;
+            response.tag := (OP_INPUT_WAIT, 4, 0, 0);
+            response.words (0) := INPUT_NONE;
+            response.words (1) := channel.waiter.afterSerial;
+            declare
+               slot : constant CapabilitySlot := channel.waiter.replySlot;
+            begin
+               channel.waiter := (replySlot => slot, others => <>);
+               ignore := replyCap (slot, response);
+            end;
+         end if;
+      end loop;
+   end expireInputWaiters;
+
    --  A source-stream discontinuity invalidates transient ownership and every
    --  queued transition derived from the old stream history. Publish one
    --  authoritative state record per surface instead of attempting to guess
@@ -3931,7 +3996,28 @@ procedure main is
       replyMsg : Message := NULL_MESSAGE;
       ignore   : Unsigned_64;
       replyNow : Boolean := True;
+      creation : DP.Create_Decoding;
+      present : DP.Present_Decoding;
    begin
+      -- Snapshot the small inline payload once. The pure decoder establishes
+      -- geometry bounds before any narrowing conversion or scene mutation.
+      if request.tag.label = OP_SURFACE_CREATE then
+         creation := DP.Decode_Create (CuBit.Desktop_Messages.To_Wire (request));
+         if not creation.Valid then
+            replyMsg := CuBit.Desktop_Messages.From_Wire
+              (DP.Encode_Creation_Result ((Status => DP.Invalid_Request)));
+            ignore := reply (from, replyMsg);
+            return;
+         end if;
+      elsif request.tag.label = OP_SURFACE_PRESENT then
+         present := DP.Decode_Present (CuBit.Desktop_Messages.To_Wire (request));
+         if not present.Valid then
+            replyMsg.tag := (OP_SURFACE_PRESENT, 1, 0, 0);
+            replyMsg.words (0) := DP.Status_Code'Enum_Rep (DP.Invalid_Request);
+            ignore := reply (from, replyMsg);
+            return;
+         end if;
+      end if;
       statsRequests := statsRequests + 1;
       case request.tag.label is
          when OP_SURFACE_PRESENT =>
@@ -3976,8 +4062,8 @@ procedure main is
          when OP_SURFACE_CREATE =>
             declare
                slot : Integer := -1;
-               reqW : Natural := Natural (request.words (0));
-               reqH : Natural := Natural (request.words (1));
+               reqW : Natural := Natural (creation.Value.Width);
+               reqH : Natural := Natural (creation.Value.Height);
                surfX : Natural := 0;
                surfY : Natural := 0;
                displayReady : Boolean := True;
@@ -3994,17 +4080,12 @@ procedure main is
                end loop;
 
                if not displayReady then
-                  replyMsg.tag := (label  => OP_SURFACE_CREATE,
-                                   length => 1,
-                                   flags  => 0,
-                                   reserved  => 0);
-                  replyMsg.words (0) := UI_ERR_BAD_STATE;
-               elsif slot < 0 then
-                  replyMsg.tag := (label  => OP_SURFACE_CREATE,
-                                   length => 1,
-                                   flags  => 0,
-                                   reserved  => 0);
-                  replyMsg.words (0) := UI_ERR_BAD_STATE;
+                  replyMsg := CuBit.Desktop_Messages.From_Wire
+                    (DP.Encode_Creation_Result ((Status => DP.Bad_State)));
+               elsif slot < 0 or else nextSurfaceId = Unsigned_64'Last then
+                  -- Never wrap the name allocator and alias a live object.
+                  replyMsg := CuBit.Desktop_Messages.From_Wire
+                    (DP.Encode_Creation_Result ((Status => DP.Resources_Exhausted)));
                else
                   if reqW = 0 or else reqW > fbWidth then
                      reqW := fbWidth;
@@ -4060,7 +4141,7 @@ procedure main is
                      title => (others => ' '),
                      titleLen => 0,
                      bufferAttached => False,
-                     bufferGrant => 0,
+                     bufferGrant => <>,
                      bufferAddr => System.Null_Address,
                      bufferW => 0,
                      bufferH => 0,
@@ -4069,14 +4150,10 @@ procedure main is
                      pointerCursor => POINTER_DEFAULT);
                   focusSurface := nextSurfaceId;
 
-                  replyMsg.tag := (label  => OP_SURFACE_CREATE,
-                                   length => 4,
-                                   flags  => 0,
-                                   reserved  => 0);
-                  replyMsg.words (0) := nextSurfaceId;
-                  replyMsg.words (1) := Unsigned_64 (reqW);
-                  replyMsg.words (2) := Unsigned_64 (reqH);
-                  replyMsg.words (3) := 1;
+                  replyMsg := CuBit.Desktop_Messages.From_Wire
+                    (DP.Encode_Creation_Result
+                       ((DP.Success, DP.Live_Surface_Name (nextSurfaceId),
+                         DP.Positive_Extent (reqW), DP.Positive_Extent (reqH), 1)));
 
                   queueConfigure (nextSurfaceId,
                                   Unsigned_64 (reqW),
@@ -4296,56 +4373,45 @@ procedure main is
 
          when OP_SURFACE_ATTACH_BUFFER =>
             declare
-               idx    : constant Integer := findSurface (request.words (0));
-               grant  : constant Unsigned_64 := request.words (1);
-               bufW   : Natural :=
-                  Natural (request.words (2) and 16#FFFF_FFFF#);
-               bufH   : Natural := Natural (Shift_Right (request.words (2), 32));
-               pitch  : Natural :=
-                  Natural (request.words (3) and 16#FFFF_FFFF#);
-               format : constant Unsigned_64 := Shift_Right (request.words (3), 32);
-               pages  : Unsigned_64;
+               decoded : constant DP.Attachment_Decoding :=
+                 DP.Decode_Attachment (CuBit.Desktop_Messages.To_Wire (request));
+               idx : constant Integer := findSurface (request.words (0));
+               mapped : System.Address;
+               acquired : Boolean;
             begin
-               replyMsg.tag := (label  => OP_SURFACE_ATTACH_BUFFER,
-                                length => 4,
-                                flags  => 0,
-                                reserved  => 0);
-
-               if idx < 0 then
+               replyMsg.tag := (OP_SURFACE_ATTACH_BUFFER, 1, 0, 0);
+               if not decoded.Valid then
+                  replyMsg.words (0) := DP.Status_Code'Enum_Rep (DP.Invalid_Request);
+               elsif idx < 0 then
                   replyMsg.words (0) := UI_ERR_BAD_OBJECT;
                elsif surfaces (SurfaceIndex (idx)).owner /= from then
                   replyMsg.words (0) := UI_ERR_DENIED;
-               elsif bufW = 0 or else bufH = 0 or else
-                  pitch < bufW * 4 or else format /= PIXEL_FORMAT_BGRA8888
-               then
-                  replyMsg.words (0) := UI_ERR_UNSUPPORTED;
+               elsif surfaces (SurfaceIndex (idx)).serial = Unsigned_64'Last then
+                  replyMsg.words (0) := UI_ERR_BAD_STATE;
                else
-                  pages :=
-                    (Unsigned_64 (pitch) * Unsigned_64 (bufH) + 4095) / 4096;
-                  if pages > 4096 then
-                     replyMsg.words (0) := UI_ERR_BAD_STATE;
+                  -- Acquire the new buffer BEFORE releasing the old one.
+                  -- Failed validation/acquisition leaves the old attachment intact.
+                  MG.Acquire
+                    (decoded.Value.Grant, from, 0,
+                     DP.Byte_Length (decoded.Value.Layout), MG.Read_Access,
+                     mapped, acquired);
+                  if not acquired then
+                     replyMsg.words (0) := UI_ERR_DENIED;
                   else
+                     releaseSurfaceBuffer (surfaces (SurfaceIndex (idx)));
+                     surfaces (SurfaceIndex (idx)).bufferGrant := decoded.Value.Grant;
+                     surfaces (SurfaceIndex (idx)).bufferAddr := mapped;
+                     surfaces (SurfaceIndex (idx)).bufferW :=
+                       Natural (decoded.Value.Layout.Width);
+                     surfaces (SurfaceIndex (idx)).bufferH :=
+                       Natural (decoded.Value.Layout.Height);
+                     surfaces (SurfaceIndex (idx)).bufferPitch := decoded.Value.Layout.Pitch;
+                     surfaces (SurfaceIndex (idx)).bufferFormat := PIXEL_FORMAT_BGRA8888;
                      surfaces (SurfaceIndex (idx)).bufferAttached := True;
-                     surfaces (SurfaceIndex (idx)).bufferGrant := grant;
-                     surfaces (SurfaceIndex (idx)).bufferAddr :=
-                        To_Address
-                          (Integer_Address
-                             (GRANT_REGION_BASE + grant * GRANT_SLOT_SIZE));
-                     surfaces (SurfaceIndex (idx)).bufferW := bufW;
-                     surfaces (SurfaceIndex (idx)).bufferH := bufH;
-                     surfaces (SurfaceIndex (idx)).bufferPitch := pitch;
-                     surfaces (SurfaceIndex (idx)).bufferFormat := format;
                      surfaces (SurfaceIndex (idx)).dirty := True;
                      surfaces (SurfaceIndex (idx)).serial :=
-                        surfaces (SurfaceIndex (idx)).serial + 1;
-
+                       surfaces (SurfaceIndex (idx)).serial + 1;
                      replyMsg.words (0) := UI_OK;
-                     replyMsg.words (1) := grant;
-                     replyMsg.words (2) := Unsigned_64 (bufW) or
-                        Shift_Left (Unsigned_64 (bufH), 32);
-                     replyMsg.words (3) :=
-                        surfaces (SurfaceIndex (idx)).serial;
-
                      scheduleRedrawRect
                        (inflateRect
                           (surfaceRect (surfaces (SurfaceIndex (idx))), 4));
@@ -4361,8 +4427,14 @@ procedure main is
             replyMsg.words (0) := UI_OK;
             declare
                idx : constant Integer := findSurface (request.words (0));
+               accessStatus : constant DP.Status_Code := DP.Surface_Access
+                 (idx >= 0,
+                  (if idx >= 0 then Unsigned_64 (surfaces (SurfaceIndex (idx)).owner) else 0),
+                  Unsigned_64 (from));
             begin
-               if idx >= 0 and then
+               if accessStatus /= DP.Success then
+                  replyMsg.words (0) := DP.Status_Code'Enum_Rep (accessStatus);
+               elsif
                   (surfaces (SurfaceIndex (idx)).flags and
                    SURFACE_FLAG_SHELL) = 0
                then
@@ -4376,21 +4448,16 @@ procedure main is
                   declare
                      client : constant Rect :=
                         clientRect (surfaces (SurfaceIndex (idx)));
-                     localX : constant Natural := unpackLo32 (request.words (1));
-                     localY : constant Natural := unpackHi32 (request.words (1));
-                     localW : constant Natural := unpackLo32 (request.words (2));
-                     localH : constant Natural := unpackHi32 (request.words (2));
+                     damage : constant DP.Rectangle :=
+                       DP.Clip (present.Value.Area, client.w, client.h);
                   begin
-                     if localW = 0 or else localH = 0 then
+                     if DP.Mode (present.Value) = DP.Whole_Surface then
                         scheduleRedrawRect (client);
                      else
                         scheduleRedrawRect
-                          ((x => client.x + localX,
-                            y => client.y + localY,
-                            w => Natural'Min (localW,
-                                  client.w - Natural'Min (localX, client.w)),
-                            h => Natural'Min (localH,
-                                  client.h - Natural'Min (localY, client.h))));
+                          ((x => client.x + Natural (damage.X),
+                            y => client.y + Natural (damage.Y),
+                            w => Natural (damage.Width), h => Natural (damage.Height)));
                      end if;
                   end;
                else
@@ -4425,6 +4492,7 @@ procedure main is
                      dragPresentedValid := False;
                   end if;
                   clearInputForTarget (request.words (0));
+                  releaseSurfaceBuffer (surfaces (SurfaceIndex (idx)));
                   surfaces (SurfaceIndex (idx)) := (others => <>);
                   if focusSurface = request.words (0) then
                      focusSurface := 0;
@@ -4475,6 +4543,7 @@ procedure main is
                   replyMsg.words (2) := event.payload0;
                   replyMsg.words (3) := event.payload1;
                elsif request.tag.label = OP_INPUT_WAIT and then
+                 (request.words (2) = 0 or else request.words (2) > nowMs) and then
                  idx >= 0 and then
                  surfaces (SurfaceIndex (idx)).owner = from and then
                  channelSlot >= 0 and then
@@ -4491,6 +4560,7 @@ procedure main is
                            owner       => from,
                            target      => request.words (0),
                            afterSerial => request.words (1),
+                           deadline    => request.words (2),
                            replySlot   => slot);
                         replyNow := False;
                      else
@@ -4517,6 +4587,7 @@ procedure main is
                      dragPresentedValid := False;
                   end if;
                   clearInputForTarget (surfaces (i).id);
+                  releaseSurfaceBuffer (surfaces (i));
                   surfaces (i) := (others => <>);
                end if;
             end loop;
@@ -5846,7 +5917,9 @@ begin
    --  `spawn desktop-shell.app`; the desktop takes over scanout lazily when
    --  the first real surface is created.
    queryDisplayInfo (displayInfoOk);
-   if not displayInfoOk then
+   if not displayInfoOk or else fbWidth not in 1 .. Natural (DP.Pixel_Extent'Last) or else
+     fbHeight not in 1 .. Natural (DP.Pixel_Extent'Last)
+   then
       debugPrint ("desktop: display setup failed" & LF);
       ret := syscall (SYSCALL_EXIT, 1);
       return;
@@ -5895,9 +5968,12 @@ begin
          flushFrame;
          flushCursorPresent;
          maybePrintStats;
+         expireInputWaiters;
 
          if not eventFound and then not found then
-            if not framePending and then not cursorPresentPending then
+            if not framePending and then not cursorPresentPending and then
+              nextInputDeadline = 0
+            then
                --  Idle input and service dispatch must be event-driven. The
                --  mixed receive primitive blocks on the unified mailbox and
                --  is woken directly by either an unsolicited device event or
@@ -5912,14 +5988,16 @@ begin
             else
                declare
                   now : constant Unsigned_64 := nowMs;
-                  nextDueMs : Unsigned_64 := 0;
+                  nextDueMs : Unsigned_64 := nextInputDeadline;
                   mayWait : Boolean := now /= Unsigned_64'Last;
                   received : Boolean;
                begin
                   if framePending and then now /= Unsigned_64'Last and then
                      frameDueMs /= 0 and then now < frameDueMs
                   then
-                     nextDueMs := frameDueMs;
+                     if nextDueMs = 0 or else frameDueMs < nextDueMs then
+                        nextDueMs := frameDueMs;
+                     end if;
                   elsif framePending then
                      mayWait := False;
                   end if;

@@ -17,6 +17,7 @@
 #include "d_event.h"
 
 #include "cubit.h"
+#include "cubit_desktop.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -265,15 +266,16 @@ static int desktop_submit(uint32_t label,
 
     memset(&tag, 0, sizeof(tag));
     tag.label = label;
-    tag.length = 3;
+    tag.length = 4; /* Desktop present includes a reserved zero fourth word. */
     memcpy(&tag_word, &tag, sizeof(tag_word));
 
-    return syscall6(SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY,
+    return cubit_syscall7(SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY,
                     CAP_SLOT_DESKTOP,
                     tag_word,
                     w0,
                     w1,
                     w2,
+                    0,
                     NO_COMPLETION_TOKEN) == 1 ? 0 : -1;
 }
 
@@ -407,14 +409,9 @@ static int init_desktop_surface(void)
         return -1;
     desktop_buffer_grant = (uint64_t)grant;
 
-    if (desktop_call(OP_SURFACE_ATTACH_BUFFER,
-                     desktop_surface,
-                     desktop_buffer_grant,
-                     pack_u32_pair(DOOMGENERIC_RESX, DOOMGENERIC_RESY),
-                     ((uint64_t)DOOM_BUFFER_PITCH) |
-                        (((uint64_t)PIXEL_FORMAT_BGRA8888) << 32),
-                     &reply) < 0 ||
-        reply.words[0] != 0) {
+    if (cubit_desktop_attach_buffer(desktop_surface, desktop_buffer_grant,
+                                    DOOMGENERIC_RESX, DOOMGENERIC_RESY,
+                                    DOOM_BUFFER_PITCH) < 0) {
         return -1;
     }
 

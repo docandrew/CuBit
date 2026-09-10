@@ -7,6 +7,7 @@
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with System;
+with CuBit.Grant_References;
 
 with CuBit.UI;
 with CuBit.UI.Controls;
@@ -92,6 +93,15 @@ package CuBit.UI.App is
        event : out Input_Event;
        found : out Boolean);
 
+   --  Same event-driven wait, bounded by an absolute monotonic millisecond
+   --  deadline. Found=False on expiry; it is not a window-close indication.
+   --  Zero means no deadline, as in Wait_Input.
+   procedure Wait_Input_Until
+      (win : in out Window;
+       deadline : Interfaces.Unsigned_64;
+       event : out Input_Event;
+       found : out Boolean);
+
    --  True only when the compositor explicitly reported another queued event
    --  with the last input reply. It is a drain hint, never authority or an
    --  assertion that a later event cannot arrive.
@@ -150,7 +160,7 @@ private
       surfaceId : Unsigned_64 := 0;
       flags : Unsigned_64 := 0;
       bufferAddr : System.Address := System.Null_Address;
-      bufferGrant : Unsigned_64 := 0;
+      bufferGrant : CuBit.Grant_References.Reference;
       bufferPages : Unsigned_64 := 0;
       width : Natural := 0;
       height : Natural := 0;

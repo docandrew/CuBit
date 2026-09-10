@@ -11,6 +11,8 @@ TIMEOUT_SECONDS=25
 BUILD_WORLD=0
 KEEP_LOGS=0
 QEMU_ACCEL=""
+QEMU_CPUS=4
+BENCH_LOAD=0
 SERIAL_LOG=""
 NET_PCAP=""
 BASE_DISK=""
@@ -27,9 +29,11 @@ Usage: tests/headless/run.sh [options]
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, capability-security, network-authority, storage-grants, audio-grants, desktop-display, input-stream, devices, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-remote, capability-security, network-authority, storage-grants, audio-grants, desktop-display, desktop-protocol, input-stream, devices, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
   --timeout SECONDS    QEMU runtime before timeout is treated as success
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
+  --cpus COUNT         Virtual CPUs, 1..4 (default: 4)
+  --load               Add one busy peer (bench-ipc / bench-audio only)
   --disk PATH          Base ext2 disk image (default: kernel/nvme_disk.img)
   --serial PATH        Serial log path (default: /tmp/cubit-headless-*.log)
   --pcap PATH          Packet capture path (default: /tmp/cubit-headless-*.pcap)
@@ -38,6 +42,7 @@ Options:
 
 The suite boots the NVMe profile headlessly and checks serial output for
 stable pass markers.
+Performance fixtures: bench-ipc, bench-audio, bench-storage.
 EOF
 }
 
@@ -70,6 +75,18 @@ while [ "$#" -gt 0 ]; do
             fi
             QEMU_ACCEL="$2"
             shift 2
+            ;;
+        --cpus)
+            if [ "$#" -lt 2 ] || ! [[ "$2" =~ ^[1-4]$ ]]; then
+                echo "headless: --cpus requires 1..4" >&2
+                exit 2
+            fi
+            QEMU_CPUS="$2"
+            shift 2
+            ;;
+        --load)
+            BENCH_LOAD=1
+            shift
             ;;
         --disk)
             if [ "$#" -lt 2 ]; then
@@ -119,13 +136,18 @@ case "$TIMEOUT_SECONDS" in
 esac
 
 case "$TEST_NAME" in
-    boot-shell-nvme|async-ipc|bench-ipc|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|capability-security|network-authority|storage-grants|audio-grants|desktop-display|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|storage-grants|audio-grants|desktop-display|desktop-protocol|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
         exit 2
         ;;
 esac
+
+if [ "$BENCH_LOAD" = 1 ] && [ "$TEST_NAME" != "bench-ipc" ] && [ "$TEST_NAME" != "bench-audio" ]; then
+    echo "headless: --load only supports bench-ipc and bench-audio" >&2
+    exit 2
+fi
 
 if ! command -v "$QEMU_BIN" >/dev/null 2>&1; then
     echo "headless: missing $QEMU_BIN" >&2
@@ -218,6 +240,9 @@ case "$TEST_NAME" in
     bench-ipc)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-bench-ipc.conf"
         ;;
+    bench-storage)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-bench-storage.conf"
+        ;;
     ccl-vm)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-vm.conf"
         ;;
@@ -226,6 +251,9 @@ case "$TEST_NAME" in
         ;;
     capability-security)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-capability-security.conf"
+        ;;
+    ccl-remote)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-remote.conf"
         ;;
     network-authority)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-network-authority.conf"
@@ -238,6 +266,12 @@ case "$TEST_NAME" in
         ;;
     input-stream)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-input-stream.conf"
+        ;;
+    bench-audio)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-bench-audio.conf"
+        ;;
+    desktop-protocol)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-desktop-protocol.conf"
         ;;
     devices)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-devices.conf"
@@ -255,6 +289,9 @@ case "$TEST_NAME" in
         ;;
 esac
 
+if [ "$BENCH_LOAD" = 1 ]; then
+    INIT_PROFILE="$ROOT_DIR/tests/headless/init-${TEST_NAME}-load.conf"
+fi
 if [ -n "$INIT_PROFILE" ]; then
     TEMP_DISK="$(mktemp "${TMPDIR:-/tmp}/cubit-${TEST_NAME}-disk.XXXXXX.img")"
     cp "$BASE_DISK" "$TEMP_DISK"
@@ -262,6 +299,20 @@ if [ -n "$INIT_PROFILE" ]; then
     if ! debugfs -w -R "write $INIT_PROFILE init.conf" "$TEMP_DISK" >/dev/null 2>&1; then
         echo "headless: failed to install $TEST_NAME init.conf" >&2
         exit 1
+    fi
+    if [ "$TEST_NAME" = "bench-ipc" ] || [ "$TEST_NAME" = "bench-audio" ] || [ "$TEST_NAME" = "bench-storage" ]; then
+        BENCHMARK_IMAGES="bench-ipc-client.app bench-ipc-server.app"
+        if [ "$TEST_NAME" = "bench-audio" ]; then BENCHMARK_IMAGES="bench-audio.app"; fi
+        if [ "$TEST_NAME" = "bench-storage" ]; then BENCHMARK_IMAGES="bench-storage.app"; fi
+        if [ "$BENCH_LOAD" = 1 ]; then BENCHMARK_IMAGES="$BENCHMARK_IMAGES bench-load.app"; fi
+        for benchmark_image in $BENCHMARK_IMAGES; do
+            if [ ! -f "$KERNEL_DIR/isodir/boot/$benchmark_image" ]; then
+                echo "headless: build $benchmark_image first" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $benchmark_image" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "write $KERNEL_DIR/isodir/boot/$benchmark_image $benchmark_image" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        done
     fi
     if [ "$TEST_NAME" = "desktop-doom" ]; then
         DOOM_IMAGE="$KERNEL_DIR/isodir/boot/doom.elf"
@@ -276,6 +327,7 @@ if [ -n "$INIT_PROFILE" ]; then
         fi
     fi
     if [ "$TEST_NAME" = "desktop-display" ] ||
+       [ "$TEST_NAME" = "desktop-protocol" ] ||
        [ "$TEST_NAME" = "ccl-workbench" ] ||
        [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
        [ "$TEST_NAME" = "ccl-workspace" ] ||
@@ -300,6 +352,18 @@ if [ -n "$INIT_PROFILE" ]; then
                 exit 1
             fi
         done
+    fi
+    if [ "$TEST_NAME" = "desktop-protocol" ]; then
+        DESKTOP_CHECK_IMAGE="$KERNEL_DIR/isodir/boot/desktop-check.app"
+        if [ ! -f "$DESKTOP_CHECK_IMAGE" ]; then
+            echo "headless: build desktop-check first" >&2
+            exit 1
+        fi
+        debugfs -w -R "rm desktop-check.app" "$TEMP_DISK" >/dev/null 2>&1
+        if ! debugfs -w -R "write $DESKTOP_CHECK_IMAGE desktop-check.app" "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to install desktop-check" >&2
+            exit 1
+        fi
     fi
     if [ "$TEST_NAME" = "ccl-vm" ] || [ "$TEST_NAME" = "ccl-workbench" ] ||
        [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
@@ -370,6 +434,16 @@ if [ -n "$INIT_PROFILE" ]; then
             if ! debugfs -w -R "write $BENCH_IMAGE $BENCH_IMAGE_NAME" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $BENCH_IMAGE_NAME" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "ccl-remote" ]; then
+        for REMOTE_IMAGE_NAME in ccl-control.app clock.svc; do
+            REMOTE_IMAGE="$KERNEL_DIR/isodir/boot/$REMOTE_IMAGE_NAME"
+            debugfs -w -R "rm $REMOTE_IMAGE_NAME" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $REMOTE_IMAGE $REMOTE_IMAGE_NAME" "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $REMOTE_IMAGE_NAME" >&2
                 exit 1
             fi
         done
@@ -526,6 +600,8 @@ if [ "$TEST_NAME" = "virtio-vga-primary" ] ||
 fi
 
 echo "headless: running $TEST_NAME for ${TIMEOUT_SECONDS}s"
+echo "headless: cpus=$QEMU_CPUS accel=${QEMU_ACCEL:-qemu-default} busy_peer=$BENCH_LOAD"
+"$QEMU_BIN" --version | head -1
 
 ACCEL_ARGS=()
 if [ -n "$QEMU_ACCEL" ]; then
@@ -533,14 +609,15 @@ if [ -n "$QEMU_ACCEL" ]; then
 fi
 
 AUDIO_ARGS=(-audiodev none,id=snd0)
-if [ "$TEST_NAME" = "desktop-doom" ]; then
-    TEMP_AUDIO="$(mktemp "${TMPDIR:-/tmp}/cubit-${TEST_NAME}-audio.XXXXXX.wav")"
+if [ "$TEST_NAME" = "desktop-doom" ] || [ "$TEST_NAME" = "bench-audio" ]; then
+    TEMP_AUDIO="$(mktemp "$(dirname "$SERIAL_LOG")/cubit-${TEST_NAME}-audio.XXXXXX.wav")"
     AUDIO_ARGS=(-audiodev "wav,id=snd0,path=$TEMP_AUDIO")
 fi
 
 MONITOR_ARGS=()
 QMP_ARGS=()
 if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] ||
+   [ "$TEST_NAME" = "desktop-protocol" ] ||
    [ "$TEST_NAME" = "ccl-workspace" ] ||
    [ "$TEST_NAME" = "desktop-doom" ]; then
     if ! command -v nc >/dev/null 2>&1; then
@@ -579,7 +656,28 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] ||
             exit 1
         fi
 
-        if [ "$TEST_NAME" = "desktop-doom" ]; then
+        if [ "$TEST_NAME" = "desktop-protocol" ]; then
+            protocol_ready=0
+            for ((attempt = 0; attempt < 150; attempt++)); do
+                if grep -F "DESKTOP-PROTOCOL-CHECK: PASS" "$SERIAL_LOG" >/dev/null 2>&1; then
+                    protocol_ready=1
+                    break
+                fi
+                sleep 0.1
+            done
+            if [ "$protocol_ready" -ne 1 ]; then
+                echo "headless: desktop grant adversary did not complete" >&2
+                exit 1
+            fi
+            # Reaping currently runs on scene composition, not a death event.
+            # Open/close Apps after the adversary exits to exercise that path.
+            {
+                sleep 0.3
+                printf 'sendkey super_l\n'
+                sleep 0.3
+                printf 'sendkey esc\n'
+            } | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+        elif [ "$TEST_NAME" = "desktop-doom" ]; then
             doom_ready=0
             for ((attempt = 0; attempt < 100; attempt++)); do
                 if grep -F "I_InitGraphics: framebuffer" \
@@ -623,6 +721,15 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] ||
                 exit 1
             fi
             {
+                # Default live-clock source: wake twice on a deadline without
+                # input, then stop via real keyboard input during a timed wait.
+                printf 'sendkey f7\n'
+                sleep 2.5
+                if [ "$KEEP_LOGS" -eq 1 ]; then
+                    printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-live-label.ppm"
+                fi
+                printf 'sendkey f7\n'
+                sleep 0.3
                 printf 'sendkey ctrl-a\n'
                 sleep 0.2
                 printf 'sendkey backspace\n'
@@ -853,8 +960,13 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] ||
     INPUT_INJECTOR_PID=$!
 fi
 
+NETDEV_CONFIG="user,id=net0"
+if [ "$TEST_NAME" = "ccl-remote" ]; then
+    NETDEV_CONFIG="user,id=net0,hostfwd=tcp:127.0.0.1:18445-10.0.2.15:8080"
+fi
 if [ "$TEST_NAME" = "network-authority" ]; then
-    python3 "$ROOT_DIR/tests/network-authority/peer.py" &
+    NETDEV_CONFIG="user,id=net0,hostfwd=tcp:127.0.0.1:18444-10.0.2.15:8080"
+    python3 "$ROOT_DIR/tests/network-authority/peer.py" "$SERIAL_LOG" &
     NETWORK_PEER_PID=$!
 fi
 
@@ -865,7 +977,7 @@ fi
         "${ACCEL_ARGS[@]}" \
         -machine q35 \
         -cpu Broadwell \
-        -smp 4 \
+        -smp "$QEMU_CPUS" \
         -m 128M \
         -cdrom cubit_kernel.iso \
         -serial "file:$SERIAL_LOG" \
@@ -876,7 +988,7 @@ fi
         -device nvme,serial=cubitnvme,drive=nvme0 \
         -device virtio-net-pci,netdev=net0 \
         $VIDEO_ARGS \
-        -netdev user,id=net0 \
+        -netdev "$NETDEV_CONFIG" \
         -object "filter-dump,id=f0,netdev=net0,file=$NET_PCAP" \
         "${AUDIO_ARGS[@]}" \
         -device intel-hda \
@@ -915,10 +1027,17 @@ shell: cwd=@nvme:0/
 ps2: consumer registered, entering event loop
 "
         ;;
+    ccl-remote)
+        required_markers="ccl-control: native listener ready"
+        ;;
     network-authority)
         required_markers="
 TEST: PASS network-unapproved
 TEST: PASS network-authority
+network-check: async outbound connects PASS
+network-check: async outbound round trip PASS
+network-check: async completion identity PASS
+network-check: accept remains pending until listener close PASS
 capability-test: retired PID submit rejected PASS
 capability-test: authorityless capability submit rejected PASS
 capability-test: all tests passed
@@ -1007,10 +1126,18 @@ ccl-workbench: workspace opened ccl-0002.ccl
 ccl-workbench: workspace saved clock.ccl
 ccl-workbench: workspace saved quoted.ccl
 ccl-workbench: REPL completed
+ccl-workbench: live label STARTED
+ccl-workbench: live label SAMPLED
+ccl-workbench: live label STOPPED
 "
         ;;
     capability-security)
         required_markers="
+capability-test: syscall registers normal return PASS
+capability-test: syscall registers unknown call PASS
+capability-test: syscall registers denied call PASS
+capability-test: syscall registers blocking return PASS
+capability-test: endpoint scan completes PASS
 capability-test: getpid PASS
 capability-test: no ambient filesystem PASS
 capability-test: self process rights attenuated PASS
@@ -1037,9 +1164,26 @@ FILESYSTEM-SCOPE-CHECK: PASS
 STORAGE-CHECK: PASS
 "
         ;;
+    bench-storage)
+        required_markers="
+STORAGE-BENCH: COMPLETE
+TIMING: fs-open-existing count= 512
+TIMING: fs-read-4k-sequential-warm count= 512
+TIMING: fs-read-4k-random-warm count= 512
+TIMING: fs-write-4k-overwrite count= 512
+"
+        ;;
     audio-grants)
         required_markers="
 mixer: acquired HDA period grant
+"
+        ;;
+    bench-audio)
+        required_markers="
+AUDIO-BENCH: COMPLETE
+TIMING: audio-mix-and-copy
+TIMING: audio-driver-publication-to-mixer
+mixer: HDA period IRQ active
 "
         ;;
     desktop-display)
@@ -1048,6 +1192,13 @@ display: gpu not primary, using linear-fb
 desktop: display backend=1 caps=1
 desktop: internal shell active
 shell: cwd=@nvme:0/
+"
+        ;;
+    desktop-protocol)
+        required_markers="
+desktop: internal shell active
+DESKTOP-PROTOCOL-CHECK: PASS
+desktop: dead client buffer acquisition released
 "
         ;;
     input-stream)
@@ -1136,6 +1287,11 @@ shell: cwd=@nvme:0/
         ;;
 esac
 
+if [ "$BENCH_LOAD" = 1 ]; then
+    required_markers="$required_markers
+BENCH-LOAD: START
+BENCH-LOAD: COMPLETE"
+fi
 missing=0
 while IFS= read -r marker; do
     [ -z "$marker" ] && continue
@@ -1150,6 +1306,13 @@ EOF
 if [ "$missing" -ne 0 ]; then
     echo "headless: serial log: $SERIAL_LOG" >&2
     exit 1
+fi
+
+if [ "$BENCH_LOAD" = 1 ]; then
+    if ! python3 "$ROOT_DIR/tests/performance/report.py" "$SERIAL_LOG" --require-load >/dev/null; then
+        echo "headless: INVALID loaded benchmark (see $SERIAL_LOG)" >&2
+        exit 1
+    fi
 fi
 
 if [ "$TEST_NAME" = "input-stream" ]; then
@@ -1236,7 +1399,7 @@ if { [ "$TEST_NAME" = "desktop-virtio-vga" ] ||
     exit 1
 fi
 
-FAULT_SIGNATURE='panic|assert|double fault|triple fault|general protection|machine check exception|^EXCEPTION:|deadlock|TEST: FAIL'
+FAULT_SIGNATURE='panic|assert|double fault|triple fault|general protection|machine check exception|^EXCEPTION:|deadlock|TEST: FAIL|BENCH: FAIL'
 if grep -Ei "$FAULT_SIGNATURE" "$SERIAL_LOG" >/dev/null 2>&1; then
     echo "headless: fault signature found in serial log: $SERIAL_LOG" >&2
     grep -Ein "$FAULT_SIGNATURE" "$SERIAL_LOG" >&2
@@ -1244,6 +1407,11 @@ if grep -Ei "$FAULT_SIGNATURE" "$SERIAL_LOG" >/dev/null 2>&1; then
 fi
 
 if [ "$TEST_NAME" = "ccl-workspace" ]; then
+    if [ "$(grep -Fc 'ccl-workbench: live label SAMPLED' "$SERIAL_LOG")" -ne 2 ] ||
+       grep -F 'ccl-workbench: live label FAULTED' "$SERIAL_LOG" >/dev/null; then
+        echo "headless: live clock did not sample successfully across its timer wake" >&2
+        exit 1
+    fi
     first_source="$(debugfs -R 'cat work/ccl-0001.ccl' "$TEMP_DISK" 2>/dev/null)"
     second_source="$(debugfs -R 'cat work/ccl-0002.ccl' "$TEMP_DISK" 2>/dev/null)"
     named_source="$(debugfs -R 'cat work/clock.ccl' "$TEMP_DISK" 2>/dev/null)"
@@ -1257,3 +1425,4 @@ fi
 HEADLESS_TEST_FAILED=0
 echo "headless: PASS $TEST_NAME"
 echo "headless: serial log: $SERIAL_LOG"
+if [ -n "$TEMP_AUDIO" ]; then echo "headless: audio capture: $TEMP_AUDIO"; fi

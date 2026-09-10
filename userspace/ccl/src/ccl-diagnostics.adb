@@ -37,6 +37,10 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Evaluation_Division_By_Zero => "Cannot divide by zero",
          when Evaluation_Index_Error => "Index is outside the value's bounds",
          when Evaluation_Text_Storage_Exhausted => "Execution text storage exhausted",
-         when Host_Import_Required => "Service call needs VM execution; no service was invoked.");
+         when Host_Import_Required => "Service call needs a host-enabled interpreter or VM; no service was invoked.",
+         when Host_Authority_Denied => "Service operation has no granted runtime binding",
+         when Host_Call_Failed => "Service call failed; no value returned",
+         when Host_Result_Type_Mismatch => "Service returned a value with the wrong type",
+         when Host_Contract_Unsupported => "Interpreter host supports only synchronous scalar-copy operations");
    end Message;
 end CCL.Diagnostics;

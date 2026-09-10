@@ -14,6 +14,16 @@ with CCL_Workspace;
 
 package body CCL_Workbench_Platform is
 
+   procedure Live_Label_Changed (Event : Live_Label_Event) is
+   begin
+      -- Native release builds discard enumeration names; diagnostics must
+      -- retain their meaning without relying on Enum'Image.
+      debugPrint ("ccl-workbench: live label " &
+        (case Event is
+            when Started => "STARTED", when Stopped => "STOPPED",
+            when Sampled => "SAMPLED", when Faulted => "FAULTED") & ASCII.LF);
+   end Live_Label_Changed;
+
    procedure REPL_Completed is
    begin
       CuBit.Messages.debugPrint ("ccl-workbench: REPL completed" & ASCII.LF);
@@ -40,6 +50,7 @@ package body CCL_Workbench_Platform is
    KEY_F3        : constant Unsigned_64 := 16#3D#;
    KEY_F5        : constant Unsigned_64 := 16#3F#;
    KEY_F6        : constant Unsigned_64 := 16#40#;
+   KEY_F7        : constant Unsigned_64 := 16#41#;
    KEY_HOME      : constant Unsigned_64 := 16#47#;
    KEY_UP        : constant Unsigned_64 := 16#48#;
    KEY_PAGE_UP   : constant Unsigned_64 := 16#49#;
@@ -264,6 +275,8 @@ package body CCL_Workbench_Platform is
                Kind.all := 33;
             elsif Key = KEY_F6 then
                Kind.all := Toggle_REPL_Event;
+            elsif Key = KEY_F7 then
+               Kind.all := Toggle_Watch_Event;
             elsif Key = KEY_F5 or else
               (Key = KEY_ENTER and then (Mods and 2) /= 0)
             then
@@ -384,6 +397,18 @@ package body CCL_Workbench_Platform is
          Ignore := syscall (SYSCALL_SLEEP, 1);
       end if;
    end Window_Wait;
+
+   procedure Window_Wait_Until (Deadline : Unsigned_64)
+   with Export, Convention => C, External_Name => "ccl_window_wait_until";
+
+   procedure Window_Wait_Until (Deadline : Unsigned_64) is
+   begin
+      if Native_Open and then not Pending_Found then
+         CuBit.UI.App.Wait_Input_Until
+           (Native_Window, Deadline, Pending_Event, Pending_Found);
+         -- No event means expiry, not a failed/closed window.
+      end if;
+   end Window_Wait_Until;
 
    function Window_Ticks return Unsigned_64
    with Export, Convention => C, External_Name => "ccl_window_ticks";

@@ -9,6 +9,10 @@ contents, and IPC paths exercised by the early userspace stack.
 
 ## Run
 
+For calibrated IPC/audio distributions, queue-depth sweeps and busy-peer
+checks, see [performance measurements](../performance/README.md). Use explicit
+`--accel kvm` for hardware-accelerated timing; TCG is not a comparable baseline.
+
 From the repository root:
 
 ```sh
@@ -50,8 +54,21 @@ The suite currently includes:
   CuBit and checks their in-guest self-test markers.
 - `ccl-workbench`: boots the native CCL Workbench and checks its first
   presented frame.
+- `ccl-remote`: boots the clock service and listen-scoped control app. For a
+  live browser lab use `nix develop -c make -C kernel ccl-remote-lab`, then
+  `nix develop -c make -C kernel ccl-web-preview` in another terminal and open
+  `http://127.0.0.1:8787/`. The runner checks listener readiness; run
+  `nix develop -c node tests/ccl-remote/smoke.mjs` against the running guest for
+  actual HTTP/CBOR, evaluator, rejection and request-deadline checks. Host port
+  18445 is bound only to loopback. This is plaintext lab access, not production
+  remote management. See the Observatory README for limits and authority scope.
 - `ccl-workspace`: drives native Open/Save dialogs through QEMU, verifies
   dirty-source protection, selected-file reopening, and overwrite rejection.
+  First starts the default live-clock label with F7, checks successful samples
+  across an idle timer wake, then stops it with keyboard input during a wait.
+  With `--keep-logs`, also retains a `*-live-label.ppm` screenshot beside the
+  serial log. The shared periodic runner separately tests fuel exhaustion,
+  missing authority, coalescing, and no further calls after Stop.
   Checks two revision files plus chosen `clock.ccl` and `quoted.ccl` names on
   the temporary test disk. The latter must contain the exact quoted string
   entered through QEMU's keyboard, exercising desktop Shift/text composition.
@@ -62,6 +79,15 @@ The suite currently includes:
   that it cannot acquire filesystem, input, process-management, or capability-
   minting authority that was absent from its manifest-derived capability
   space.
+  It also checks actual syscall register preservation on normal, unknown,
+  denied, and blocking calls, and completion of a full endpoint-table scan.
+- `network-authority`: checks manifest approval and scoped inbound/outbound TCP
+  in the real guest. A loopback peer exercises twelve outbound lifetimes and
+  four inbound accepts, including fragmented writes, peer half-close, stale
+  handles, listener cancellation, and backlog/accept deadlines. Uses local ports
+  18443/18444 and needs `--timeout 90` because an idle accept intentionally waits
+  30 seconds. See `tests/network-authority/README.md`; this does not test an
+  internet-ready or authenticated management endpoint.
 - `storage-grants`: exercises generation-tagged acquire/use/return, access and
   range denial, pending revocation, stale-reference rejection, and a writable
   ext2 transfer. Also checks child-directory navigation, stale directory handles,
@@ -89,6 +115,14 @@ The suite currently includes:
   pointer reports through the kernel event lane, forces one explicit recovery
   boundary, and checks that motion over the CCL Workbench editor does not
   regress into one full client-surface presentation per report.
+- `desktop-protocol`: runs an unprivileged native adversary against the real
+  desktop service: malformed create/present requests, foreign-surface denial,
+  clipping, table exhaustion and recovery. Also tests generation-checked buffer
+  attachment, 140 balanced replacements, short/stale grants, deferred revocation,
+  release on destroy, and release after owner exit followed by an injected repaint.
+  Build `make -C kernel desktop-check desktop` inside the Nix shell first.
+  See [the protocol specification](../../docs/desktop-protocol.md)
+  for the separate portable SPARK proof and hosted codec tests.
 - `desktop-doom`: installs the current `doom.elf`, boots `display.svc`,
   `desktop.svc`, and DOOM on primary `virtio-vga`, then uses QEMU's WAV audio
   backend to require a real HDA period interrupt and capture

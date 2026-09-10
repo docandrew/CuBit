@@ -8,19 +8,18 @@ with Interfaces; use Interfaces;
 with System;
 
 with CuBit.Messages;
+with CuBit.Grant_References;
 
 package CuBit.Memory_Grants is
    PAGE_SIZE : constant Unsigned_64 := 4096;
-   MAXIMUM_GLOBAL_SLOT : constant Unsigned_64 := 4095;
-   MAXIMUM_GENERATION : constant Unsigned_64 := Unsigned_64 (Unsigned_32'Last);
+   MAXIMUM_GLOBAL_SLOT : constant Unsigned_64 :=
+     CuBit.Grant_References.Maximum_Slot;
+   MAXIMUM_GENERATION : constant Unsigned_64 :=
+     CuBit.Grant_References.Maximum_Generation;
 
-   subtype Global_Grant_Slot is Unsigned_64 range 0 .. MAXIMUM_GLOBAL_SLOT;
-   subtype Grant_Generation is Unsigned_64 range 1 .. MAXIMUM_GENERATION;
-
-   type Grant_Reference is record
-      slot       : Global_Grant_Slot := 0;
-      generation : Grant_Generation := 1;
-   end record;
+   subtype Global_Grant_Slot is CuBit.Grant_References.Global_Slot;
+   subtype Grant_Generation is CuBit.Grant_References.Generation;
+   subtype Grant_Reference is CuBit.Grant_References.Reference;
 
    type Required_Access is (Read_Access, Write_Access);
    for Required_Access use (Read_Access => 0, Write_Access => 1);

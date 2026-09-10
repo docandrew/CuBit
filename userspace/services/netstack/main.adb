@@ -28,6 +28,7 @@ with Net.TCP.Segment;
 with TCPSession;
 with TCP_Listeners;
 with Network_Grants;
+with Network_Channel_Handles;
 with CuBit.Network_Authority;
 with CuBit.Memory_Grants;
 
@@ -92,6 +93,13 @@ procedure main is
    --  TCP connection table (types in TCPSession package)
    tcpConns : TCPSession.ConnTable;
    connectionAuthority : array (tcpConns'Range) of Unsigned_64 := [others => 0];
+   parentListener : array (tcpConns'Range) of TCP_Listeners.Handle := [others => 0];
+   HANDSHAKE_TIMEOUT_MS : constant Unsigned_64 := 5000;
+   ACCEPT_TIMEOUT_MS : constant Unsigned_64 := 30_000;
+   PING_TIMEOUT_MS : constant Unsigned_64 := 5000;
+
+   function deadlineAfter (Now, Delay_MS : Unsigned_64) return Unsigned_64 is
+     (if Delay_MS > Unsigned_64'Last - Now then Unsigned_64'Last else Now + Delay_MS);
    RX_BUFFER_SIZE : constant := 65_536;
    type RX_Data is array (0 .. RX_BUFFER_SIZE - 1) of Unsigned_8;
    type RX_Buffer is record
@@ -180,18 +188,26 @@ procedure main is
       authorityTag : Unsigned_64 := 0;
       transfer : CuBit.Memory_Grants.Grant_Reference;
       acquired : Boolean := False;
+      listener : TCP_Listeners.Handle := 0;
+      acceptDeadline : Unsigned_64 := Unsigned_64'Last;
+      readDeadline : Unsigned_64 := Unsigned_64'Last;
    end record;
 
-   MAX_NET_CHANNELS : constant := 8;
-   channels : array (0 .. MAX_NET_CHANNELS - 1) of NetChannel;
+   channels : array (Network_Channel_Handles.Channel_Index) of NetChannel;
+   channelHandles : Network_Channel_Handles.Table;
 
-   procedure releaseChannel (Index : Natural) is
+   procedure releaseChannel (Index : Network_Channel_Handles.Channel_Index) is
       released : Boolean;
    begin
+      if channels (Index).connIdx in tcpConns'Range then
+         TCPSession.releaseReservation (tcpConns (channels (Index).connIdx));
+         connectionAuthority (channels (Index).connIdx) := 0;
+      end if;
       if channels (Index).acquired then
          CuBit.Memory_Grants.Return_Acquisition (channels (Index).transfer, released);
       end if;
       channels (Index) := (others => <>);
+      Network_Channel_Handles.Release (channelHandles, Index);
    end releaseChannel;
 
    --  Legacy app channel table (for old socket-style API compatibility)
@@ -207,7 +223,7 @@ procedure main is
    --  Pending request queue (deferred reply for blocking ops)
    type PendingKind is (PENDING_NONE, PENDING_RESOLVE,
                         PENDING_CONNECT, PENDING_RECV,
-                        PENDING_OPEN, PENDING_PING);
+                        PENDING_OPEN, PENDING_PING, PENDING_ACCEPT);
    type PendingRequest is record
       kind       : PendingKind := PENDING_NONE;
       sender     : ProcessID := NO_PROCESS;
@@ -261,13 +277,21 @@ procedure main is
               Request.words (3) in 1 .. CuBit.Memory_Grants.MAXIMUM_GENERATION and then
               Network_Grants.Owned (networkGrants, Owner, Request.authorityTag);
          when OP_NET_WRITE | OP_NET_READ | OP_NET_SHUT =>
-            return Request.words (0) <= Unsigned_64 (channels'Last) and then
-              Request.words (1) <= RX_BUFFER_SIZE and then
+            return Request.words (1) <= RX_BUFFER_SIZE and then
               Request.words (2) <= RX_BUFFER_SIZE and then
               Network_Grants.Owned (networkGrants, Owner, Request.authorityTag);
          when Network_Authority.OP_BIND | Network_Authority.OP_CLOSE_LISTENER =>
             return Network_Grants.Owned
               (networkGrants, Owner, Request.authorityTag);
+         when Network_Authority.OP_ACCEPT =>
+            return Request.tag.length = 4 and then Request.tag.flags in 0 .. 1 and then
+              Network_Grants.Owned (networkGrants, Owner, Request.authorityTag) and then
+              TCP_Listeners.Owned (listeners, Request.authorityTag, Request.words (0)) and then
+              Request.words (1) <= CuBit.Memory_Grants.MAXIMUM_GLOBAL_SLOT and then
+              (Request.words (2) and 16#FFFF_FFFF#) in 1 .. RX_BUFFER_SIZE and then
+              (if Request.tag.flags = 0 then Shift_Right (Request.words (2), 32) = 0
+               else Shift_Right (Request.words (2), 32) <= 30_000) and then
+              Request.words (3) in 1 .. CuBit.Memory_Grants.MAXIMUM_GENERATION;
          when others =>
             return False; -- includes retired raw connection-index operations
       end case;
@@ -1268,6 +1292,22 @@ procedure main is
    procedure executeActions (connIdx : Natural;
                              res     : TCPSession.Result;
                              pktBuf  : System.Address);
+   procedure completePendingAccepts;
+
+   --  Caller has detached the backlog/channel before discarding the TCP slot.
+   procedure discardConnection (Index : TCPSession.Connection_Index) is
+   begin
+      if tcpConns (Index).state /= TCPSession.TCP_CLOSED then
+         sendTCPSegment (tcpConns (Index), TCPSession.TCP_FLAG_RST or TCPSession.TCP_FLAG_ACK,
+                         tcpConns (Index).sendNext, tcpConns (Index).recvNext,
+                         System.Null_Address, 0);
+      end if;
+      TCP_Listeners.Remove (listeners, Index);
+      parentListener (Index) := 0;
+      tcpConns (Index) := (others => <>);
+      connectionAuthority (Index) := 0;
+      rxBuffers (Index).len := 0;
+   end discardConnection;
 
    function tcpConnect (dstIP   : Net.IPv4Address;
                         dstMAC  : Net.MACAddress;
@@ -1278,7 +1318,14 @@ procedure main is
    begin
       tcpISN := tcpISN + 64000;
       lport := nextEphemeralPort;
-      nextEphemeralPort := nextEphemeralPort + 1;
+      --  At most Maximum_Listeners ports are bound, so one more candidate
+      --  suffices. Never originate a connection from an admitted listen port.
+      for Attempt in 1 .. TCP_Listeners.Maximum_Listeners + 1 loop
+         exit when TCP_Listeners.Find (listeners, policyAddress (interfaces (0).ipv4), lport) = 0;
+         lport := lport + 1;
+         if lport = 0 then lport := 49152; end if;
+      end loop;
+      nextEphemeralPort := lport + 1;
       if nextEphemeralPort = 0 then
          nextEphemeralPort := 49152;
       end if;
@@ -1403,7 +1450,8 @@ procedure main is
             if pendingReqs (i).channelIdx >= 0 then
                --  Channel API: reply with channel handle
                replyOKWord (pendingReqs (i).sender,
-                            Unsigned_64 (pendingReqs (i).channelIdx),
+                            Unsigned_64 (Network_Channel_Handles.Value
+                              (channelHandles, pendingReqs (i).channelIdx)),
                             pendingReqs (i).replySlot);
             else
                --  Legacy API: reply with raw connIdx
@@ -1424,7 +1472,8 @@ procedure main is
             pendingReqs (i).channelIdx >= 0
          then
             replyOKWord (pendingReqs (i).sender,
-                         Unsigned_64 (pendingReqs (i).channelIdx),
+                         Unsigned_64 (Network_Channel_Handles.Value
+                           (channelHandles, pendingReqs (i).channelIdx)),
                          pendingReqs (i).replySlot);
             pendingReqs (i).kind := PENDING_NONE;
             exit;
@@ -1553,6 +1602,13 @@ procedure main is
          then
             replyError (pendingReqs (i).sender,
                         pendingReqs (i).replySlot);
+            --  A failed OPEN never delivered its handle. Return its transfer
+            --  acquisition and reservation here; the caller cannot SHUT it.
+            if pendingReqs (i).kind in PENDING_CONNECT | PENDING_OPEN and then
+              pendingReqs (i).channelIdx in channels'Range
+            then
+               releaseChannel (pendingReqs (i).channelIdx);
+            end if;
             pendingReqs (i).kind := PENDING_NONE;
          end if;
       end loop;
@@ -1594,6 +1650,7 @@ procedure main is
                printDec (Unsigned_32 (tcpConns (connIdx).remotePort));
                debugPrint ("" & LF);
                completePendingConnect (connIdx);
+               TCP_Listeners.Mark_Ready (listeners, connIdx);
 
             when TCPSession.ACT_NOTIFY_DATA =>
                debugPrint ("TCP: received ");
@@ -1604,18 +1661,8 @@ procedure main is
                printDec (Unsigned_32 (tcpConns (connIdx).remotePort));
                debugPrint ("" & LF);
 
-               --  DNS/TCP response: parse it (skip 2-byte length prefix)
-               if tcpConns (connIdx).remotePort = 53 and
-                  res.actions (i).dataLen > 2 and
-                  pktBuf /= System.Null_Address
-               then
-                  debugPrint ("DNS/TCP: ");
-                  handleDNSResponse
-                     (pktBuf +
-                        Storage_Offset (res.actions (i).dataOff + 2),
-                      res.actions (i).dataLen - 2);
-               end if;
-
+               --  A remote port number is not protocol authority. All channel
+               --  bytes go to their owner, including a peer using port 53.
                bufferReceived (connIdx, pktBuf,
                                res.actions (i).dataOff,
                                res.actions (i).dataLen);
@@ -1632,6 +1679,9 @@ procedure main is
                printIP (tcpConns (connIdx).remoteIP);
                debugPrint ("" & LF);
                completePendingError (connIdx);
+               if parentListener (connIdx) /= 0 then
+                  discardConnection (connIdx);
+               end if;
 
             when TCPSession.ACT_NONE =>
                null;
@@ -1649,7 +1699,6 @@ procedure main is
                         dstIP      : Net.IPv4Address;
                         srcMAC     : Net.MACAddress;
                         totalIPLen : Natural) is
-      pragma Unreferenced (srcMAC);
       use Net.RFLX_Builtin_Types;
       tcpOff : constant Natural := ipOff + ipHdrLen;
       tcpLen : constant Natural := totalIPLen - ipHdrLen;
@@ -1659,7 +1708,11 @@ procedure main is
       res     : TCPSession.Result;
       dataLen : Natural;
    begin
-      if tcpLen < 20 then
+      --  The connection table/TX path currently supports interface zero only.
+      --  Broadcast and another interface must not match a unicast TCP tuple.
+      if tcpLen < 20 or else numIfaces = 0 or else interfaces (0).state /= IF_UP or else
+        dstIP /= interfaces (0).ipv4
+      then
          return;
       end if;
 
@@ -1722,6 +1775,39 @@ procedure main is
       Net.TCP.Segment.Take_Buffer (ctx, bufPtr);
       end;
 
+      connIdx := TCPSession.findConn (tcpConns, srcIP, seg.srcPort, seg.dstPort);
+      if connIdx < 0 then
+         if not seg.flagSYN or else seg.flagACK or else seg.flagRST or else seg.flagFIN or else
+           seg.srcPort = 0 or else srcIP (0) = 0 or else srcIP (0) >= 224
+         then
+            return;
+         end if;
+         declare
+            listener : constant TCP_Listeners.Handle :=
+              TCP_Listeners.Find (listeners, policyAddress (dstIP), seg.dstPort);
+            reserved : Boolean;
+         begin
+            if listener = TCP_Listeners.No_Handle then return; end if;
+            tcpISN := tcpISN + 64000;
+            TCPSession.allocateConn
+              (tcpConns, srcIP, srcMAC, seg.srcPort, seg.dstPort, tcpISN, connIdx);
+            if connIdx < 0 then return; end if;
+            TCP_Listeners.Reserve
+              (listeners, listener, connIdx,
+               deadlineAfter (syscall (SYSCALL_GETTIME), HANDSHAKE_TIMEOUT_MS), reserved);
+            if not reserved then
+               TCPSession.releaseReservation (tcpConns (connIdx));
+               return;
+            end if;
+            parentListener (connIdx) := listener;
+            connectionAuthority (connIdx) := 0;
+            rxBuffers (connIdx).len := 0;
+            TCPSession.onPassiveOpen (tcpConns (connIdx), seg, res);
+            executeActions (connIdx, res, pktBuf);
+            return;
+         end;
+      end if;
+
       --  Drive the state machine
       TCPSession.onSegmentIn (tcpConns, seg, connIdx, res);
 
@@ -1731,6 +1817,9 @@ procedure main is
 
       --  Execute returned actions
       executeActions (connIdx, res, pktBuf);
+      --  Finish buffering all final-ACK payload/FIN actions before handing the
+      --  connection to its waiting application.
+      completePendingAccepts;
    end handleTCP;
 
    ---------------------------------------------------------------------------
@@ -2068,19 +2157,6 @@ procedure main is
    end allocAppChannel;
 
    ---------------------------------------------------------------------------
-   --  allocNetChannel - allocate a new NetChannel slot, return index or -1
-   ---------------------------------------------------------------------------
-   function allocNetChannel return Integer is
-   begin
-      for i in channels'Range loop
-         if channels (i).kind = CHANNEL_NONE then
-            return i;
-         end if;
-      end loop;
-      return -1;
-   end allocNetChannel;
-
-   ---------------------------------------------------------------------------
    --  Scheme parser types and procedure
    --
    --  Parses "@net:<proto>:<host>:<port>" from raw bytes at a given address.
@@ -2315,6 +2391,129 @@ procedure main is
       pragma Unreferenced (to);
       ignore := replyCap (slot, okMsg);
    end replyOKWord;
+
+   procedure completePendingAccepts is
+      connIdx : TCP_Listeners.Connection_Index;
+      ready : Boolean;
+   begin
+      for P of pendingReqs loop
+         if P.kind = PENDING_ACCEPT then
+            declare
+               chIdx : constant Network_Channel_Handles.Channel_Index := P.channelIdx;
+               response : Message := NULL_MESSAGE;
+            begin
+               TCP_Listeners.Accept_Ready
+                 (listeners, channels (chIdx).authorityTag, channels (chIdx).listener,
+                  connIdx, ready);
+               if ready then
+                  channels (chIdx).connIdx := connIdx;
+                  channels (chIdx).remoteIP := tcpConns (connIdx).remoteIP;
+                  channels (chIdx).remotePort := tcpConns (connIdx).remotePort;
+                  channels (chIdx).localPort := tcpConns (connIdx).localPort;
+                  parentListener (connIdx) := 0;
+                  connectionAuthority (connIdx) := channels (chIdx).authorityTag;
+                  response.tag.label := REPLY_OK; response.tag.length := 1;
+                  response.words (0) := Unsigned_64
+                    (Network_Channel_Handles.Value (channelHandles, chIdx));
+                  --  If the waiting caller died, it cannot close the channel.
+                  if replyCap (P.replySlot, response) /= 1 then
+                     releaseChannel (chIdx);
+                     discardConnection (connIdx);
+                  end if;
+                  P.kind := PENDING_NONE;
+               end if;
+            end;
+         end if;
+      end loop;
+   end completePendingAccepts;
+
+   procedure handleNetAccept (snd : ProcessID; m : Message) is
+      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Deadline : constant Unsigned_64 :=
+        (if m.tag.flags = 1 then
+           deadlineAfter (Now, Shift_Right (m.words (2), 32))
+         else deadlineAfter (Now, ACCEPT_TIMEOUT_MS));
+      Buffer_Bytes : constant Unsigned_64 := m.words (2) and 16#FFFF_FFFF#;
+      reference : constant CuBit.Memory_Grants.Grant_Reference :=
+        (slot => m.words (1), generation => m.words (3));
+      chIdx : Network_Channel_Handles.Channel_Reference;
+      address : System.Address;
+      ok : Boolean;
+   begin
+      if Deadline <= Now then replyError (snd); return; end if;
+      --  Admission already checked listener ownership and wire ranges. One
+      --  waiting accept per listener bounds held grants and reply capabilities.
+      for P of pendingReqs loop
+         if P.kind = PENDING_ACCEPT and then
+           channels (P.channelIdx).listener = m.words (0)
+         then
+            replyError (snd); return;
+         end if;
+      end loop;
+      CuBit.Memory_Grants.Acquire
+        (reference, snd, 0, Buffer_Bytes, CuBit.Memory_Grants.Write_Access, address, ok);
+      if not ok then replyError (snd); return; end if;
+      Network_Channel_Handles.Allocate (channelHandles, snd, m.authorityTag, chIdx);
+      if chIdx = Network_Channel_Handles.No_Channel then
+         CuBit.Memory_Grants.Return_Acquisition (reference, ok);
+         replyError (snd); return;
+      end if;
+      channels (chIdx) :=
+        (kind => CHANNEL_SERVER, proto => Net.PROTO_TCP, pid => snd,
+         bufAddr => address, grantId => reference.slot, bufSize => Natural (Buffer_Bytes),
+         authorityTag => m.authorityTag, transfer => reference, acquired => True,
+         listener => m.words (0),
+         acceptDeadline => Deadline,
+         others => <>);
+      ok := addPending
+        ((kind => PENDING_ACCEPT, sender => snd, channelIdx => chIdx, others => <>));
+      if not ok then
+         releaseChannel (chIdx); replyError (snd); return;
+      end if;
+      completePendingAccepts;
+   end handleNetAccept;
+
+   procedure expireRequests (Now : Unsigned_64) is
+      children : TCP_Listeners.Connection_List;
+   begin
+      TCP_Listeners.Expire (listeners, Now, children);
+      for I in children'Range loop
+         if children (I) then discardConnection (I); end if;
+      end loop;
+      for P of pendingReqs loop
+         if P.kind = PENDING_ACCEPT and then Now >= channels (P.channelIdx).acceptDeadline then
+            replyError (P.sender, P.replySlot);
+            releaseChannel (P.channelIdx);
+            P.kind := PENDING_NONE;
+         elsif P.kind = PENDING_RECV and then P.channelIdx in channels'Range and then
+           Now >= channels (P.channelIdx).readDeadline
+         then
+            replyError (P.sender, P.replySlot);
+            P.kind := PENDING_NONE;
+         elsif P.kind = PENDING_PING and then
+           Now >= deadlineAfter (Unsigned_64 (To_Integer (P.bufAddr)), PING_TIMEOUT_MS)
+         then
+            replyError (P.sender, P.replySlot);
+            P.kind := PENDING_NONE;
+         end if;
+      end loop;
+   end expireRequests;
+
+   function nextDeadline return Unsigned_64 is
+      deadline : Unsigned_64 := TCP_Listeners.Next_Deadline (listeners);
+   begin
+      for P of pendingReqs loop
+         if P.kind = PENDING_ACCEPT then
+            deadline := Unsigned_64'Min (deadline, channels (P.channelIdx).acceptDeadline);
+         elsif P.kind = PENDING_RECV and then P.channelIdx in channels'Range then
+            deadline := Unsigned_64'Min (deadline, channels (P.channelIdx).readDeadline);
+         elsif P.kind = PENDING_PING then
+            deadline := Unsigned_64'Min
+              (deadline, deadlineAfter (Unsigned_64 (To_Integer (P.bufAddr)), PING_TIMEOUT_MS));
+         end if;
+      end loop;
+      return deadline;
+   end nextDeadline;
 
    ---------------------------------------------------------------------------
    --  handleAppResolve - DNS A-record lookup for an app
@@ -2654,7 +2853,7 @@ procedure main is
       end if;
 
       --  Allocate a channel slot
-      chIdx := allocNetChannel;
+      Network_Channel_Handles.Allocate (channelHandles, snd, m.authorityTag, chIdx);
       if chIdx < 0 then
          debugPrint ("netstack: open: no free channels" & LF);
          CuBit.Memory_Grants.Return_Acquisition (reference, ok);
@@ -2675,7 +2874,8 @@ procedure main is
           localPort  => 0,
           authorityTag => m.authorityTag,
           transfer => reference,
-          acquired => True);
+          acquired => True,
+          others => <>);
 
       if scheme.isIPLiteral then
          --  Parse IP directly, skip DNS
@@ -2764,12 +2964,14 @@ procedure main is
    --  Reply: immediate REPLY_OK or REPLY_ERR
    ---------------------------------------------------------------------------
    procedure handleNetWrite (snd : ProcessID; m : Message) is
-      chHandle : constant Natural := Natural (m.words (0));
+      chHandle : constant Network_Channel_Handles.Channel_Reference :=
+        Network_Channel_Handles.Resolve
+          (channelHandles, snd, m.authorityTag, Network_Channel_Handles.Handle (m.words (0)));
       offset   : constant Natural := Natural (m.words (1));
       len      : constant Natural := Natural (m.words (2));
       dataAddr : System.Address;
    begin
-      if chHandle > channels'Last or else
+      if chHandle not in channels'Range or else
          channels (chHandle).kind = CHANNEL_NONE or else
          channels (chHandle).pid /= snd or else
          channels (chHandle).authorityTag /= m.authorityTag
@@ -2805,15 +3007,18 @@ procedure main is
    --  handleNetRead - receive data on a channel (deferred)
    --
    --  Request: words(0)=channel handle, words(1)=offset, words(2)=max len
+   --  Optional length=4: words(3)=absolute monotonic deadline in milliseconds.
    --  Reply: deferred until data arrives or connection closes
    ---------------------------------------------------------------------------
    procedure handleNetRead (snd : ProcessID; m : Message) is
-      chHandle : constant Natural := Natural (m.words (0));
+      chHandle : constant Network_Channel_Handles.Channel_Reference :=
+        Network_Channel_Handles.Resolve
+          (channelHandles, snd, m.authorityTag, Network_Channel_Handles.Handle (m.words (0)));
       offset   : constant Natural := Natural (m.words (1));
       maxLen   : constant Natural := Natural (m.words (2));
       ok       : Boolean;
    begin
-      if chHandle > channels'Last or else
+      if chHandle not in channels'Range or else
          channels (chHandle).kind = CHANNEL_NONE or else
          channels (chHandle).pid /= snd or else
          channels (chHandle).authorityTag /= m.authorityTag
@@ -2835,6 +3040,21 @@ procedure main is
       then
          replyError (snd);
          return;
+      end if;
+
+      if m.tag.length not in 3 .. 4 then replyError (snd); return; end if;
+      --  A channel has one outstanding reader. Do not let a second request
+      --  replace the first reader's deadline or race its shared buffer.
+      for P of pendingReqs loop
+         if P.kind = PENDING_RECV and then P.channelIdx = chHandle then
+            replyError (snd); return;
+         end if;
+      end loop;
+      if maxLen = 0 then replyOKWord (snd, 0); return; end if;
+      channels (chHandle).readDeadline :=
+        (if m.tag.length = 4 then m.words (3) else Unsigned_64'Last);
+      if syscall (SYSCALL_GETTIME) >= channels (chHandle).readDeadline then
+         replyError (snd); return;
       end if;
 
       if rxBuffers (channels (chHandle).connIdx).len > 0 then
@@ -2893,9 +3113,11 @@ procedure main is
    --  Reply: immediate REPLY_OK
    ---------------------------------------------------------------------------
    procedure handleNetShut (snd : ProcessID; m : Message) is
-      chHandle : constant Natural := Natural (m.words (0));
+      chHandle : constant Network_Channel_Handles.Channel_Reference :=
+        Network_Channel_Handles.Resolve
+          (channelHandles, snd, m.authorityTag, Network_Channel_Handles.Handle (m.words (0)));
    begin
-      if chHandle > channels'Last or else
+      if chHandle not in channels'Range or else
          channels (chHandle).kind = CHANNEL_NONE or else
          channels (chHandle).pid /= snd or else
          channels (chHandle).authorityTag /= m.authorityTag
@@ -3107,6 +3329,8 @@ begin
    --  message dispatches.
    loop
       found := False;
+      --  Timers must run even under a continuous stream of service requests.
+      expireRequests (syscall (SYSCALL_GETTIME));
 
       --  1. Try non-blocking service-request receive to keep responsiveness.
       --     Network driver events and completions stay on their own lanes.
@@ -3122,35 +3346,9 @@ begin
             end;
          end if;
 
-      --  3. If no message, check for expired pings before blocking
+      --  3. Block on messages or the earliest actual resource deadline.
       elsif not found then
-         declare
-            nowMs : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
-            PING_TIMEOUT_MS : constant Unsigned_64 := 5000;
-         begin
-            --  Expire any timed-out pings before blocking
-            for i in pendingReqs'Range loop
-               if pendingReqs (i).kind = PENDING_PING then
-                  declare
-                     sendTs : constant Unsigned_64 := Unsigned_64 (
-                        To_Integer (pendingReqs (i).bufAddr));
-                  begin
-                     if nowMs > sendTs and
-                        nowMs - sendTs > PING_TIMEOUT_MS
-                     then
-                        replyError (pendingReqs (i).sender,
-                                    pendingReqs (i).replySlot);
-                        pendingReqs (i).kind := PENDING_NONE;
-                     end if;
-                  end;
-               end if;
-            end loop;
-
-            --  Block until next message. ICMP replies arrive as
-            --  OP_NET_RX IPC from the driver, so we wake immediately.
-            receive (sender, msg);
-            found := True;
-         end;
+         receiveUntil (nextDeadline, sender, msg, found);
       end if;
 
       --  4. Dispatch message
@@ -3188,7 +3386,15 @@ begin
                declare
                   handle : TCP_Listeners.Handle;
                   status : TCP_Listeners.Bind_Status;
+                  outboundConflict : Boolean := False;
                begin
+                  for C of channels loop
+                     if C.kind = CHANNEL_CLIENT and then C.connIdx in tcpConns'Range and then
+                       Unsigned_64 (tcpConns (C.connIdx).localPort) = msg.words (1)
+                     then
+                        outboundConflict := True;
+                     end if;
+                  end loop;
                   if msg.tag.length /= 2 or else
                     msg.words (0) > Unsigned_64 (Unsigned_32'Last) or else
                     msg.words (1) > Unsigned_64 (Unsigned_16'Last) or else
@@ -3196,7 +3402,7 @@ begin
                       (networkGrants, sender, msg.authorityTag,
                        Network_Authority.Listen_TCP, Unsigned_32 (msg.words (0)),
                        Unsigned_16 (msg.words (1))) or else
-                    numIfaces = 0 or else interfaces (0).state /= IF_UP or else
+                    outboundConflict or else numIfaces = 0 or else interfaces (0).state /= IF_UP or else
                     policyAddress (interfaces (0).ipv4) /= Unsigned_32 (msg.words (0))
                   then
                      replyError (sender);
@@ -3214,10 +3420,29 @@ begin
                   children : TCP_Listeners.Connection_List;
                   closed : Boolean;
                begin
-                  TCP_Listeners.Close (listeners, msg.authorityTag, msg.words (0), children, closed);
-                  if closed then replyOKWord (sender, 0);
-                  else replyError (sender); end if;
+                  if msg.tag.length /= 1 then
+                     replyError (sender);
+                  else
+                     TCP_Listeners.Close (listeners, msg.authorityTag, msg.words (0), children, closed);
+                     if closed then
+                        for I in children'Range loop
+                           if children (I) then discardConnection (I); end if;
+                        end loop;
+                        for P of pendingReqs loop
+                           if P.kind = PENDING_ACCEPT and then channels (P.channelIdx).listener = msg.words (0) then
+                              replyError (P.sender, P.replySlot);
+                              releaseChannel (P.channelIdx);
+                              P.kind := PENDING_NONE;
+                           end if;
+                        end loop;
+                        replyOKWord (sender, 0);
+                     else
+                        replyError (sender);
+                     end if;
+                  end if;
                end;
+            when Network_Authority.OP_ACCEPT =>
+               handleNetAccept (sender, msg);
             when OP_NET_ATTACH =>
                handleAttach (sender);
 

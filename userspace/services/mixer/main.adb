@@ -17,9 +17,15 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants; use CuBit.Memory_Grants;
 with Mixer;
+with CuBit.Benchmark_Clock;
+with CuBit.Timing_Histograms;
 
 procedure main is
    use ASCII;
+   package Clock renames CuBit.Benchmark_Clock;
+   package Timing renames CuBit.Timing_Histograms;
+   Mix_Timing, Publication_Timing : Timing.Histogram;
+   Received_At : Unsigned_64;
 
    --  IPC labels
    OP_AUDIO_OPEN     : constant Unsigned_32 := 16#0500#;
@@ -161,13 +167,19 @@ procedure main is
 
    procedure mixIntoPeriod (slot : Natural) is
       target : Unsigned_64;
+      Before, After : Unsigned_64;
    begin
       if not hdaReady or else slot >= periodCount then
          return;
       end if;
 
       target := dmaRingAddr + Unsigned_64 (slot) * Unsigned_64 (periodBytes);
+      Before := Clock.Read_Counter;
       mixFrames := Mixer.mixPeriod (mixBuf, target, Mixer.MIX_FRAMES);
+      After := Clock.Read_Counter;
+      if After >= Before then
+         Timing.Add (Mix_Timing, After - Before);
+      end if;
       statsPeriods := statsPeriods + 1;
       if mixFrames > 0 then
          statsActivePeriods := statsActivePeriods + 1;
@@ -186,6 +198,8 @@ procedure main is
       end if;
 
       --  Before the device starts, every period belongs to the mixer.  Prime
+      Mix_Timing := Timing.Empty;
+      Publication_Timing := Timing.Empty;
       --  the complete cyclic buffer so the first sample can play immediately.
       for slot in 0 .. periodCount - 1 loop
          mixIntoPeriod (slot);
@@ -220,6 +234,9 @@ procedure main is
       ctlMsg.tag := capCall (CAP_SLOT_HDA, ctlMsg);
       if ctlMsg.tag.label = REPLY_OK then
          hdaRunning := False;
+         -- The measured stream has stopped; no per-sample serial output.
+         Clock.Report ("audio-mix-and-copy", Mix_Timing);
+         Clock.Report ("audio-driver-publication-to-mixer", Publication_Timing);
       end if;
    end stopHardware;
 
@@ -335,6 +352,7 @@ begin
    --  messages.  There is no timer polling and no synchronous per-period IPC.
    loop
       receive (from, msg);
+      Received_At := Clock.Read_Counter;
 
       if msg.tag.label = OP_AUDIO_HW_PERIOD then
          if hdaRunning and then msg.words (0) < Unsigned_64 (periodCount) then
@@ -350,6 +368,11 @@ begin
             end if;
             if msg.words (1) > lastPeriodSequence then
                lastPeriodSequence := msg.words (1);
+               if msg.tag.length = 4 and then msg.words (3) /= 0 and then
+                 Received_At >= msg.words (3)
+               then
+                  Timing.Add (Publication_Timing, Received_At - msg.words (3));
+               end if;
                mixIntoPeriod (Natural (msg.words (0)));
             end if;
          end if;
@@ -399,10 +422,13 @@ begin
                      Natural (msg.words (0));
                begin
                   Mixer.closeStream (streamIdx);
-                  sendReply (REPLY_OK);
                   if not Mixer.hasRunningOutput then
                      stopHardware;
                   end if;
+                  -- Complete final-stream shutdown before releasing the
+                  -- caller. This also orders the stopped-stream timing
+                  -- report before the producer's own report on another CPU.
+                  sendReply (REPLY_OK);
                end closeStream;
 
             when OP_AUDIO_SET_VOL =>

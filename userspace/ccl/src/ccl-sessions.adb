@@ -83,7 +83,7 @@ package body CCL.Sessions with SPARK_Mode is
    function Result_Image (Outcome : CCL.Language.Interpretation_Result) return String is
    begin
       if Outcome.Status = CCL.Language.Host_Import_Required then
-         return "Service call needs VM execution; no service was invoked.";
+         return CCL.Diagnostics.Message (Outcome.Status);
       elsif Outcome.Status /= CCL.Language.Succeeded then
          return CCL.Diagnostics.Message (Outcome.Status) &
            (if Outcome.Diagnostic = CCL.Language.No_Diagnostic then ""

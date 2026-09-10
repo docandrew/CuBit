@@ -27,8 +27,8 @@ package Scheduler is
     --
     -- Choose a new process to execute. It should pick the highest priority
     --  READY process in proctab. Of those processes with equal priority, the
-    --  scheduler will use FIFO mechanics, choosing the process which was last
-    --  run.
+    --  scheduler uses FIFO ready order. A process requeued after its quantum
+    --  joins behind already-ready peers of equal priority.
     ---------------------------------------------------------------------------
     procedure schedule(cpuData : in out PerCPUData.PerCPUData) with
         Global => (In_Out => process.proctab);

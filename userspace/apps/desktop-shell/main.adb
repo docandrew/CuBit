@@ -10,6 +10,9 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Memory_Grants;
+with CuBit.Desktop_Protocol;
+with CuBit.Desktop_Messages;
 with CuBit.UI;
 
 procedure main is
@@ -21,12 +24,10 @@ procedure main is
    OP_SURFACE_CREATE   : constant Unsigned_32 := 16#0810#;
    OP_SURFACE_PRESENT  : constant Unsigned_32 := 16#0812#;
    OP_SURFACE_RESIZE   : constant Unsigned_32 := 16#0813#;
-   OP_SURFACE_ATTACH_BUFFER : constant Unsigned_32 := 16#0814#;
    OP_INPUT_POLL       : constant Unsigned_32 := 16#0821#;
 
    SURFACE_FLAG_SHELL  : constant Unsigned_64 := 1;
    SURFACE_FLAG_WINDOW : constant Unsigned_64 := 2;
-   PIXEL_FORMAT_BGRA8888 : constant Unsigned_64 := 1;
 
    INPUT_NONE      : constant Unsigned_64 := 0;
    INPUT_KEY_DOWN  : constant Unsigned_64 := 1;
@@ -49,7 +50,7 @@ procedure main is
    bufferH   : constant Natural := 176;
    bufferPitch : constant Natural := bufferW * 4;
    bufferAddr : System.Address := System.Null_Address;
-   bufferGrant : Unsigned_64 := 0;
+   bufferGrant : CuBit.Memory_Grants.Grant_Reference;
    lastEvent : Unsigned_64 := 0;
    compact   : Boolean := False;
    running   : Boolean := True;
@@ -146,25 +147,25 @@ procedure main is
       bufferAddr := To_Address (Integer_Address (alignUpPage (raw)));
       drawPixelTest (0);
 
-      createGrantViaCap
+      CuBit.Memory_Grants.Create_Via_Capability
         (slot      => CAP_SLOT_DESKTOP,
          localAddr => bufferAddr,
          numPages  => Natural (pages),
          readWrite => False,
-         grantId   => bufferGrant,
+         reference => bufferGrant,
          success   => grantOk);
       if not grantOk then
          debugPrint ("desktop-shell: pixel grant failed" & LF);
          return;
       end if;
 
-      reply := callDesktop
-        (OP_SURFACE_ATTACH_BUFFER,
-         windowId,
-         bufferGrant,
-         Unsigned_64 (bufferW) or Shift_Left (Unsigned_64 (bufferH), 32),
-         Unsigned_64 (bufferPitch) or
-            Shift_Left (PIXEL_FORMAT_BGRA8888, 32));
+      reply := CuBit.Desktop_Messages.From_Wire
+        (CuBit.Desktop_Protocol.Encode_Attachment
+           ((CuBit.Desktop_Protocol.Live_Surface_Name (windowId),
+             bufferGrant,
+             (CuBit.Desktop_Protocol.Positive_Extent (bufferW),
+              CuBit.Desktop_Protocol.Positive_Extent (bufferH), bufferPitch))));
+      reply.tag := capCall (CAP_SLOT_DESKTOP, reply);
       if reply.words (0) /= 0 then
          debugPrint ("desktop-shell: pixel attach failed" & LF);
       else
@@ -274,7 +275,7 @@ begin
                       windowW,
                       windowH,
                       SURFACE_FLAG_WINDOW,
-                      surfaceId);
+                      0);
    begin
       windowId := created.words (0);
       windowW := created.words (1);

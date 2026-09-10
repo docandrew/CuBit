@@ -13,9 +13,9 @@ int cubit_cap_submit(uint64_t cap_slot, const cubit_async_message_t *message,
         return 0;
 
     memcpy(&tag, &message->tag, sizeof(tag));
-    return syscall6(SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY, cap_slot, tag,
+    return cubit_syscall7(SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY, cap_slot, tag,
                     message->words[0], message->words[1],
-                    message->words[2], token) == 1;
+                    message->words[2], message->words[3], token) == 1;
 }
 
 int cubit_poll_completion(cubit_completion_t *completion)

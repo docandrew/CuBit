@@ -9,25 +9,26 @@ with System; use type System.Address;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Desktop_Protocol;
+with CuBit.Desktop_Messages;
+with CuBit.Memory_Grants;
 
 package body CuBit.UI.App is
    use ASCII;
+   package DP renames CuBit.Desktop_Protocol;
+   package MG renames CuBit.Memory_Grants;
+   use type DP.Status_Code;
 
-   OP_DESKTOP_HELLO    : constant Unsigned_32 := 16#0800#;
-   OP_DESKTOP_BYE      : constant Unsigned_32 := 16#0801#;
-   OP_DESKTOP_GET_INFO : constant Unsigned_32 := 16#0802#;
-   OP_SURFACE_CREATE   : constant Unsigned_32 := 16#0810#;
-   OP_SURFACE_PRESENT  : constant Unsigned_32 := 16#0812#;
-   OP_SURFACE_ATTACH_BUFFER : constant Unsigned_32 := 16#0814#;
-   OP_SURFACE_SET_POINTER_CURSOR : constant Unsigned_32 := 16#0815#;
-   OP_WINDOW_SET_LIMITS : constant Unsigned_32 := 16#0841#;
-   OP_WINDOW_SET_TITLE  : constant Unsigned_32 := 16#0842#;
-   OP_INPUT_POLL       : constant Unsigned_32 := 16#0821#;
-   OP_INPUT_WAIT       : constant Unsigned_32 := 16#0822#;
+   OP_DESKTOP_HELLO    : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Hello);
+   OP_DESKTOP_BYE      : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Goodbye);
+   OP_DESKTOP_GET_INFO : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Get_Information);
+   OP_SURFACE_SET_POINTER_CURSOR : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Set_Pointer_Cursor);
+   OP_WINDOW_SET_LIMITS : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Set_Window_Limits);
+   OP_WINDOW_SET_TITLE  : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Set_Window_Title);
+   OP_INPUT_POLL       : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Poll_Input);
+   OP_INPUT_WAIT       : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Wait_Input);
    INPUT_REPLY_MORE_PENDING : constant Unsigned_8 := 1;
 
-   SURFACE_FLAG_WINDOW : constant Unsigned_64 := 2;
-   PIXEL_FORMAT_BGRA8888 : constant Unsigned_64 := 1;
    WINDOW_CHROME_W : constant Natural := 8;
    WINDOW_CHROME_H : constant Natural := 34;
    PROTOCOL_VERSION : constant Unsigned_64 :=
@@ -157,27 +158,21 @@ package body CuBit.UI.App is
        width, height : Natural;
        ok : out Boolean)
    is
-      reply : Message;
+      request : Message;
+      layout : constant DP.Buffer_Layout :=
+        (DP.Positive_Extent (width), DP.Positive_Extent (height), width * 4);
    begin
-      ok := False;
-      if win.surfaceId = 0 or else win.bufferGrant = 0 or else
-         width = 0 or else height = 0
-      then
-         return;
+      request := CuBit.Desktop_Messages.From_Wire
+        (DP.Encode_Attachment
+           ((DP.Live_Surface_Name (win.surfaceId), win.bufferGrant, layout)));
+      request.tag := capCall (CAP_SLOT_DESKTOP, request);
+      ok := request.tag.label = DP.Code (DP.Attach_Buffer) and then
+        request.tag.length = 1 and then request.words (0) = 0;
+      if ok then
+         win.width := width;
+         win.height := height;
+         win.pitch := layout.Pitch;
       end if;
-
-      win.width := width;
-      win.height := height;
-      win.pitch := width * 4;
-
-      reply := Call_Desktop
-        (OP_SURFACE_ATTACH_BUFFER,
-         win.surfaceId,
-         win.bufferGrant,
-         Pack_U32_Pair (Unsigned_64 (win.width), Unsigned_64 (win.height)),
-         Unsigned_64 (win.pitch) or
-            Shift_Left (PIXEL_FORMAT_BGRA8888, 32));
-      ok := reply.words (0) = 0;
    end Attach_Buffer;
 
    procedure Ensure_Buffer
@@ -187,41 +182,51 @@ package body CuBit.UI.App is
    is
       raw : Unsigned_64;
       pages : Unsigned_64;
-      grantOk : Boolean;
+      created, revoked : Boolean;
+      candidate : Window := win;
+      replacing : Boolean := False;
    begin
       ok := False;
-      if width = 0 or else height = 0 then
+      if win.surfaceId = 0 or else
+        width not in 1 .. Natural (DP.Positive_Extent'Last) or else
+        height not in 1 .. Natural (DP.Positive_Extent'Last)
+      then
          return;
       end if;
-
-      pages := (Unsigned_64 (width * 4) * Unsigned_64 (height) + 4095) / 4096;
-      if pages = 0 then
-         pages := 1;
-      end if;
-
-      if win.bufferAddr = System.Null_Address or else pages > win.bufferPages
+      -- Validate before allocation or mutation, using the same wire policy.
+      if not DP.Valid_Layout
+        ((DP.Positive_Extent (width), DP.Positive_Extent (height), width * 4))
       then
+         return;
+      end if;
+      pages := (Unsigned_64 (width) * 4 * Unsigned_64 (height) + 4095) / 4096;
+
+      if win.bufferPages = 0 or else pages > win.bufferPages then
          raw := syscall (SYSCALL_SBRK, pages * 4096 + 4096);
          if raw = Unsigned_64'Last then
             return;
          end if;
-
-         win.bufferAddr := To_Address (Integer_Address (Align_Up_Page (raw)));
-         createGrantViaCap
-           (slot      => CAP_SLOT_DESKTOP,
-            localAddr => win.bufferAddr,
-            numPages  => Natural (pages),
-            readWrite => False,
-            grantId   => win.bufferGrant,
-            success   => grantOk);
-         if not grantOk then
-            win.bufferGrant := 0;
+         candidate.bufferAddr := To_Address (Integer_Address (Align_Up_Page (raw)));
+         MG.Create_Via_Capability
+           (CAP_SLOT_DESKTOP, candidate.bufferAddr, Natural (pages), False,
+            candidate.bufferGrant, created);
+         if not created then
             return;
          end if;
-         win.bufferPages := pages;
+         candidate.bufferPages := pages;
+         replacing := True;
       end if;
 
-      Attach_Buffer (win, width, height, ok);
+      Attach_Buffer (candidate, width, height, ok);
+      if ok then
+         if replacing and then win.bufferPages /= 0 then
+            -- The accepted replacement released the compositor's old loan.
+            MG.Revoke (win.bufferGrant, revoked);
+         end if;
+         win := candidate;
+      elsif replacing then
+         MG.Revoke (candidate.bufferGrant, revoked);
+      end if;
    end Ensure_Buffer;
 
    procedure Open
@@ -236,11 +241,9 @@ package body CuBit.UI.App is
       hello : Message;
       info : Message;
       created : Message;
+      creation : DP.Creation_Result;
       reply : Message;
-      minW : constant Unsigned_64 :=
-         Unsigned_64 (width + WINDOW_CHROME_W);
-      minH : constant Unsigned_64 :=
-         Unsigned_64 (height + WINDOW_CHROME_H);
+      minW, minH : Unsigned_64;
       maxW : Unsigned_64 := 0;
       maxH : Unsigned_64 := 0;
       attached : Boolean;
@@ -248,6 +251,17 @@ package body CuBit.UI.App is
       ok := False;
       win := (others => <>);
       win.flags := flags;
+      -- Validate the public API before adding chrome or converting into the
+      -- wire's bounded geometry. Bad caller input leaves the window unopened.
+      if width not in 1 .. Natural (DP.Pixel_Extent'Last) - WINDOW_CHROME_W or else
+        height not in 1 .. Natural (DP.Pixel_Extent'Last) - WINDOW_CHROME_H or else
+        maximum_width > Natural (DP.Pixel_Extent'Last) - WINDOW_CHROME_W or else
+        maximum_height > Natural (DP.Pixel_Extent'Last) - WINDOW_CHROME_H
+      then
+         return;
+      end if;
+      minW := Unsigned_64 (width + WINDOW_CHROME_W);
+      minH := Unsigned_64 (height + WINDOW_CHROME_H);
 
       if (flags and WINDOW_FLAG_FIXED_SIZE) /= 0 then
          maxW := minW;
@@ -271,19 +285,16 @@ package body CuBit.UI.App is
          return;
       end if;
 
-      created :=
-         Call_Desktop
-           (OP_SURFACE_CREATE,
-            minW,
-            minH,
-            SURFACE_FLAG_WINDOW,
-            0);
-      win.surfaceId := created.words (0);
-      if win.surfaceId = 0 then
+      created := CuBit.Desktop_Messages.From_Wire
+        (DP.Encode_Create ((DP.Pixel_Extent (minW), DP.Pixel_Extent (minH), DP.Window_Surface)));
+      created.tag := capCall (CAP_SLOT_DESKTOP, created);
+      creation := DP.Decode_Creation_Result (CuBit.Desktop_Messages.To_Wire (created));
+      if creation.Status /= DP.Success then
          debugPrint ("ui-app: surface create failed" & LF);
          Close (win);
          return;
       end if;
+      win.surfaceId := Unsigned_64 (creation.Surface);
 
       reply := Call_Desktop
         (OP_WINDOW_SET_LIMITS,
@@ -350,7 +361,8 @@ package body CuBit.UI.App is
       (win : in out Window;
        operation : Unsigned_32;
        event : out Input_Event;
-       found : out Boolean)
+       found : out Boolean;
+       deadline : Unsigned_64 := 0)
    is
       reply : Message;
    begin
@@ -360,7 +372,7 @@ package body CuBit.UI.App is
          return;
       end if;
 
-      reply := Call_Desktop (operation, win.surfaceId, win.lastEvent, 0, 0);
+      reply := Call_Desktop (operation, win.surfaceId, win.lastEvent, deadline, 0);
       win.inputMayRemain :=
         (reply.tag.flags and INPUT_REPLY_MORE_PENDING) /= 0;
       if reply.words (0) = INPUT_NONE then
@@ -408,6 +420,16 @@ package body CuBit.UI.App is
       Receive_Input (win, OP_INPUT_WAIT, event, found);
    end Wait_Input;
 
+   procedure Wait_Input_Until
+      (win : in out Window;
+       deadline : Unsigned_64;
+       event : out Input_Event;
+       found : out Boolean)
+   is
+   begin
+      Receive_Input (win, OP_INPUT_WAIT, event, found, deadline);
+   end Wait_Input_Until;
+
    function Input_May_Remain (win : Window) return Boolean is
      (win.inputMayRemain);
 
@@ -443,19 +465,20 @@ package body CuBit.UI.App is
    procedure Present
       (win : Window; damage : CuBit.UI.Rect)
    is
-      reply : Message;
+      request : Message;
+      tag : MessageTag;
       r : constant CuBit.UI.Rect := CuBit.UI.Clamp_Rect (Canvas (win), damage);
    begin
       if win.surfaceId = 0 or else CuBit.UI.Is_Empty (r) then
          return;
       end if;
 
-      reply := Call_Desktop
-        (OP_SURFACE_PRESENT,
-         win.surfaceId,
-         Pack_U32_Pair (Unsigned_64 (r.x), Unsigned_64 (r.y)),
-         Pack_U32_Pair (Unsigned_64 (r.w), Unsigned_64 (r.h)),
-         0);
+      request := CuBit.Desktop_Messages.From_Wire
+        (DP.Encode_Present
+           ((DP.Live_Surface_Name (win.surfaceId),
+             (DP.Pixel_Coordinate (r.x), DP.Pixel_Coordinate (r.y),
+              DP.Pixel_Extent (r.w), DP.Pixel_Extent (r.h)))));
+      tag := capCall (CAP_SLOT_DESKTOP, request);
    end Present;
 
    procedure Apply_Pointer_Event
@@ -769,12 +792,19 @@ package body CuBit.UI.App is
 
    procedure Close (win : in out Window) is
       reply : Message;
+      revoked : Boolean;
    begin
       if win.sentBye then
          return;
       end if;
 
       reply := Call_Desktop (OP_DESKTOP_BYE);
+      if win.bufferPages /= 0 then
+         MG.Revoke (win.bufferGrant, revoked);
+      end if;
+      win.bufferPages := 0;
+      win.bufferAddr := System.Null_Address;
+      win.surfaceId := 0;
       win.sentBye := True;
    end Close;
 end CuBit.UI.App;

@@ -26,7 +26,9 @@ is
       Offset      : Storage_Offset := 0;
    begin
       Value := (others => <>);
-      if Text_Length > Capacity or else Text_Length > Capacity - Item.Used then
+      if Text_Length > Max_String_Length or else
+        Text_Length > Capacity or else Text_Length > Capacity - Item.Used
+      then
          Result := Storage_Full;
       elsif Item.Count = Max_Values then
          Result := Value_Table_Full;
