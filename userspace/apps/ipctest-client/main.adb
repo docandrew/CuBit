@@ -25,6 +25,12 @@ procedure main is
    OP_DIE            : constant Unsigned_32 := 16#0908#;
    OP_OCCUPIED_HOLD  : constant Unsigned_32 := 16#0909#;
    OP_OCCUPIED_PROBE : constant Unsigned_32 := 16#090A#;
+   OP_RETIRE_DEPARTED : constant Unsigned_32 := 16#090D#;
+   OP_FAIR_BEGIN : constant Unsigned_32 := 16#090E#;
+   OP_FAIR_POLL : constant Unsigned_32 := 16#090F#;
+   OP_FAIR_QUEUED : constant Unsigned_32 := 16#0910#;
+   OP_FAIR_END : constant Unsigned_32 := 16#0911#;
+   RETIRE_TOKEN : constant Unsigned_64 := 16#D1ED_0003#;
    REPLY_OK          : constant Unsigned_32 := 16#F000#;
 
    REQUEST_COUNT : constant Natural := 3;
@@ -88,6 +94,12 @@ begin
    end if;
 
    debugPrint ("ipctest-client: starting" & LF);
+
+   ret := replyCap (CAP_SLOT_IPCTEST, NULL_MESSAGE);
+   if ret /= 0 then
+      fail ("endpoint-is-not-reply-authority");
+   end if;
+   -- Subsequent service calls also verify this failure preserved the endpoint.
 
    declare
       msg : Message := NULL_MESSAGE;
@@ -487,7 +499,78 @@ begin
    if ok then
       declare
          msg : Message := NULL_MESSAGE;
+         seenRetirement : Boolean := False;
       begin
+         msg.tag := (OP_RETIRE_DEPARTED, 1, 0, 0);
+         msg.words (0) := 77;
+         if not capSubmit (CAP_SLOT_IPCTEST, msg, RETIRE_TOKEN) then
+            fail ("retire-submit");
+         else
+            for attempt in 1 .. 300 loop
+               completion := NULL_COMPLETION;
+               ret := Poll_Completion (completion'Address);
+               if ret = 1 then
+                  seenRetirement := True;
+                  if completion.token /= RETIRE_TOKEN or else
+                     completion.status /= COMPLETION_OK or else
+                     completion.msg.tag.label /= REPLY_OK or else
+                     completion.msg.words (0) /= 77 or else
+                     completion.msg.words (1) /= (77 xor XOR_MAGIC)
+                  then
+                     fail ("retire-slot-reuse-completion");
+                  end if;
+                  exit;
+               end if;
+               ret := syscall (SYSCALL_SLEEP, 10);
+            end loop;
+            if not seenRetirement then fail ("retire-timeout"); end if;
+         end if;
+      end;
+   end if;
+
+   if ok then
+      declare
+         msg : Message := NULL_MESSAGE;
+      begin
+         -- All shared request receive variants must service the queued
+         -- message despite repeated synchronous calls from this process.
+         for mode in Unsigned_64 range 0 .. 3 loop
+            declare
+               tag : MessageTag;
+               served : Boolean := False;
+            begin
+               msg := NULL_MESSAGE;
+               msg.tag := (OP_FAIR_BEGIN, 1, 0, 0);
+               msg.words (0) := mode;
+               tag := capCall (CAP_SLOT_IPCTEST, msg);
+               if tag.label /= REPLY_OK then fail ("fairness-begin"); end if;
+               msg := NULL_MESSAGE;
+               msg.tag := (OP_FAIR_QUEUED, 0, 0, 0);
+               if not capSubmit (CAP_SLOT_IPCTEST, msg, NO_COMPLETION_TOKEN) then
+                  fail ("fairness-submit");
+               end if;
+               for poll in 1 .. 2 loop
+                  msg := NULL_MESSAGE;
+                  msg.tag := (OP_FAIR_POLL, 0, 0, 0);
+                  tag := capCall (CAP_SLOT_IPCTEST, msg);
+                  if tag.label /= REPLY_OK then fail ("fairness-poll"); end if;
+                  served := served or else msg.words (0) = 1;
+               end loop;
+               if not served then fail ("queued-request-starved"); end if;
+            end;
+         end loop;
+         declare
+            tag : MessageTag;
+         begin
+            msg := NULL_MESSAGE;
+            msg.tag := (OP_FAIR_END, 0, 0, 0);
+            tag := capCall (CAP_SLOT_IPCTEST, msg);
+            if tag.label /= REPLY_OK then fail ("fairness-end"); end if;
+         end;
+         if ok then
+            debugPrint ("ipctest-client: four receive fairness paths PASS" & LF);
+         end if;
+
          msg.tag := (label  => OP_DIE,
                      length => 0,
                      flags  => 0,

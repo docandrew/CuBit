@@ -1219,12 +1219,15 @@ package body Syscall.Admin is
             return;
         end if;
 
+        -- The same lock serializes authorized cspace edits and inspection.
+        Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
         Capabilities.Operations.moveReplyCap
           (table => Process.proctab(callerPID).caps,
            dest  => destSlot,
            moved => moved);
 
         if not moved then
+            Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
             retval := 0;
             return;
         end if;
@@ -1232,6 +1235,7 @@ package body Syscall.Admin is
         Process.proctab(callerPID).deferredReplyCaps :=
             Process.proctab(callerPID).deferredReplyCaps or
             Shift_Left (Unsigned_64'(1), destSlot);
+        Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
         retval := 1;
     end handleSaveReplyCap;
 

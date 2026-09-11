@@ -49,6 +49,21 @@ is
         taken := True;
     end takeReplyCap;
 
+    procedure retireReplyCap
+      (table         : in out CapabilityTable;
+       deferredSlots : in out Unsigned_64;
+       slot          : in     CapabilitySlot;
+       cap           :    out Capability;
+       taken         :    out Boolean)
+    is
+    begin
+        takeReplyCap (table, slot, cap, taken);
+        if taken then
+            deferredSlots := deferredSlots and
+              not Shift_Left (Unsigned_64'(1), slot);
+        end if;
+    end retireReplyCap;
+
     ---------------------------------------------------------------------------
     -- proveReplyCapSingleUse
     ---------------------------------------------------------------------------

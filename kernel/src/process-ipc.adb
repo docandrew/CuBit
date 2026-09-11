@@ -32,6 +32,11 @@ use type Memory_Grants.Revocation_Result;
 -- Only separately annotated SPARK policy/state routines carry proof obligations.
 package body Process.IPC is
 
+    -- Multi-owner IPC operations use ascending PID order. A completing reply
+    -- releases its caller lock before the target-locked scheduling handoff.
+    procedure lockMailboxes (A, B : ProcessID);
+    procedure unlockMailboxes (A, B : ProcessID);
+
     ---------------------------------------------------------------------------
     -- getReceiver
     -- Determine which mailbox to use for receive operations. If the caller
@@ -200,8 +205,9 @@ package body Process.IPC is
         end if;
 
         if ok then
-            Capabilities.Operations.takeReplyCap
+            Capabilities.Operations.retireReplyCap
               (table => proctab(caller).caps,
+               deferredSlots => proctab(caller).deferredReplyCaps,
                slot  => foundSlot,
                cap   => cap,
                taken => ok);
@@ -211,9 +217,6 @@ package body Process.IPC is
                 return;
             end if;
 
-            proctab(caller).deferredReplyCaps :=
-                proctab(caller).deferredReplyCaps and
-                not Shift_Left (Unsigned_64'(1), foundSlot);
         end if;
     end consumeReplyAuthority;
 
@@ -415,168 +418,131 @@ package body Process.IPC is
         success := False;
     end dequeueRingServiceRequest;
 
+    -- Called with the receiver mailbox locked. Each successful take advances
+    -- a persistent lane cursor. A continuously available eligible lane waits
+    -- behind at most two other takes (one for service-only receive). FIFO
+    -- order within each lane is preserved; this is not a wall-clock guarantee.
+    procedure takeMailboxWork
+      (receiver : ProcessID; serviceOnly : Boolean;
+       item : out RingEntry; found : out Boolean)
+    is
+        lane : Receive_Lane := mailtab(receiver).nextReceiveLane;
+        sender : ProcessID;
+    begin
+        item := NULL_RING_ENTRY;
+        found := False;
+        for probe in Receive_Lane loop
+            case lane is
+                when Queued_Messages =>
+                    if serviceOnly then
+                        dequeueRingServiceRequest (receiver, item, found);
+                    else
+                        dequeueRing (receiver, item, found);
+                    end if;
+                when Waiting_Senders =>
+                    if not Queues.isEmpty (mailtab(receiver).sendQueue) then
+                        Queues.dequeue (mailtab(receiver).sendQueue, sender);
+                        item := (msg => proctab(sender).sendMsg,
+                                 sender => sender, kind => RING_SYNC,
+                                 requestId => NO_REQUEST_ID);
+                        proctab(sender).state := WAITINGFORREPLY;
+                        found := True;
+                    end if;
+                when IRQ_Doorbell =>
+                    if not serviceOnly then
+                        takeIRQDoorbell (receiver, item, found);
+                    end if;
+            end case;
+            lane := (if lane = Receive_Lane'Last then Receive_Lane'First
+                     else Receive_Lane'Succ (lane));
+            if found then
+                mailtab(receiver).nextReceiveLane := lane;
+                return;
+            end if;
+        end loop;
+    end takeMailboxWork;
+
+    -- Only a successfully dequeued reply-bearing request mints authority.
+    -- One-way messages, events and empty polls never inherit an older reply.
+    procedure installReceivedWork
+      (mypid : ProcessID; item : RingEntry; found : Boolean;
+       from : out ProcessID; msg : out Message)
+    is
+    begin
+        from := (if found then item.sender else NO_PROCESS);
+        msg := (if found then item.msg else NULL_MESSAGE);
+        if found and then from /= NO_PROCESS and then
+           item.kind in RING_SYNC | RING_ASYNC_REQUEST
+        then
+            proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
+                (capType => Capabilities.CAP_REPLY,
+                 rights => Capabilities.ALL_RIGHTS,
+                 authorityTag => Capabilities.NO_AUTHORITY_TAG,
+                 object => (ref => Unsigned_64(from), param => item.requestId),
+                 gen => proctab(from).capGeneration);
+        else
+            proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
+                Capabilities.NULL_CAPABILITY;
+        end if;
+    end installReceivedWork;
+
     procedure receiveInternal
         (hasDeadline : in  Boolean;
          deadlineMs  : in  Unsigned_64;
          from        : out ProcessID;
          msg         : out Message;
          received    : out Boolean)
-
     is
         mypid    : constant ProcessID := PerCPUData.getCurrentPID;
         receiver : constant ProcessID := getReceiver (mypid);
-        sender   : ProcessID;
         ignore   : ProcessID;
         re       : RingEntry;
-        ok       : Boolean;
     begin
-        -- Validate our own state
         if mypid = NO_PROCESS then
             from := NO_PROCESS;
-            msg  := NULL_MESSAGE;
+            msg := NULL_MESSAGE;
             received := False;
             return;
         end if;
 
         Spinlocks.enterCriticalSection (mailtab(receiver).lock);
-
-        -- Check sendQueue FIRST (synchronous call/send senders).
-        if not Queues.isEmpty (mailtab(receiver).sendQueue) then
-            Queues.dequeue (mailtab(receiver).sendQueue, sender);
-
-            msg  := proctab(sender).sendMsg;
-            from := sender;
-            re   := (msg       => msg,
-                     sender    => sender,
-                     kind      => RING_SYNC,
-                     requestId => NO_REQUEST_ID);
-
-            proctab(sender).state := WAITINGFORREPLY;
-
-            -- Mint one-use reply cap for this sender
-            proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
-                (capType  => Capabilities.CAP_REPLY,
-                 rights   => Capabilities.ALL_RIGHTS,
-                 authorityTag => Capabilities.NO_AUTHORITY_TAG,
-                 object   => (ref   => Unsigned_64(from),
-                              param => NO_REQUEST_ID),
-                 gen      => proctab(from).capGeneration);
-
+        takeMailboxWork (receiver, False, re, received);
+        if received then
+            installReceivedWork (mypid, re, True, from, msg);
             Spinlocks.exitCriticalSection (mailtab(receiver).lock);
-            received := True;
-            return;
-        end if;
-
-        -- Device IRQs are persistent doorbells outside the lossy message
-        -- ring. Prefer one bounded device drain before ordinary queued work.
-        takeIRQDoorbell (receiver, re, ok);
-        if not ok then
-            -- Check unified ring (submit messages, events, send Path 1).
-            dequeueRing (receiver, re, ok);
-        end if;
-        if ok then
-            from := re.sender;
-            msg  := re.msg;
-
-            -- Mint reply cap only for messages that expect replies.
-            if from /= NO_PROCESS and then
-               (re.kind = RING_SYNC or else re.kind = RING_ASYNC_REQUEST)
-            then
-                proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
-                    (capType  => Capabilities.CAP_REPLY,
-                     rights   => Capabilities.ALL_RIGHTS,
-                     authorityTag => Capabilities.NO_AUTHORITY_TAG,
-                     object   => (ref   => Unsigned_64(from),
-                                  param => re.requestId),
-                     gen      => proctab(from).capGeneration);
-            else
-                proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
-                    Capabilities.NULL_CAPABILITY;
-            end if;
-
-            Spinlocks.exitCriticalSection (mailtab(receiver).lock);
-            received := True;
             return;
         end if;
 
         if hasDeadline and then Time.msTicks >= deadlineMs then
-            from := NO_PROCESS;
-            msg := NULL_MESSAGE;
-            received := False;
+            installReceivedWork (mypid, re, False, from, msg);
             Spinlocks.exitCriticalSection (mailtab(receiver).lock);
             return;
         end if;
 
-        -- No message and no sender waiting. Block as a receiver.
+        -- Publication and registration of this wait share the mailbox lock.
         proctab(mypid).queueKey := receiver;
         proctab(mypid).receiveDeadlineMs := deadlineMs;
         proctab(mypid).receiveDeadlineReceiver := receiver;
         proctab(mypid).receiveDeadlineActive := hasDeadline;
         Queues.enqueue (mailtab(receiver).recvQueue, mypid, ignore);
         proctab(mypid).state := RECEIVING;
-
         Spinlocks.exitCriticalSection (mailtab(receiver).lock);
-
         yield;
 
-        -- Woken by send/submit/sendEvent. Check sendQueue first.
         Spinlocks.enterCriticalSection (mailtab(receiver).lock);
         proctab(mypid).receiveDeadlineActive := False;
         proctab(mypid).receiveDeadlineMs := 0;
         proctab(mypid).receiveDeadlineReceiver := NO_PROCESS;
-
-        if not Queues.isEmpty (mailtab(receiver).sendQueue) then
-            Queues.dequeue (mailtab(receiver).sendQueue, sender);
-
-            msg  := proctab(sender).sendMsg;
-            from := sender;
-            re   := (msg       => msg,
-                     sender    => sender,
-                     kind      => RING_SYNC,
-                     requestId => NO_REQUEST_ID);
-
-            proctab(sender).state := WAITINGFORREPLY;
-        else
-            -- Woken by an IRQ doorbell, submit, sendEvent, or send Path 1.
-            takeIRQDoorbell (receiver, re, ok);
-            if not ok then
-                dequeueRing (receiver, re, ok);
-            end if;
-            if ok then
-                from := re.sender;
-                msg  := re.msg;
-            else
-                from := NO_PROCESS;
-                msg  := NULL_MESSAGE;
-            end if;
-        end if;
-
-        -- Mint reply cap if real sender
-        if from /= NO_PROCESS and then
-           (re.kind = RING_SYNC or else re.kind = RING_ASYNC_REQUEST)
-        then
-            proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
-                (capType  => Capabilities.CAP_REPLY,
-                 rights   => Capabilities.ALL_RIGHTS,
-                 authorityTag => Capabilities.NO_AUTHORITY_TAG,
-                 object   => (ref   => Unsigned_64(from),
-                              param => re.requestId),
-                 gen      => proctab(from).capGeneration);
-        else
-            proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
-                Capabilities.NULL_CAPABILITY;
-        end if;
-
-        received := from /= NO_PROCESS or else ok;
+        takeMailboxWork (receiver, False, re, received);
+        installReceivedWork (mypid, re, received, from, msg);
         Spinlocks.exitCriticalSection (mailtab(receiver).lock);
     end receiveInternal;
 
     ---------------------------------------------------------------------------
     -- receive
     --
-    -- Check if a sender is already waiting in our sendQueue. If so, accept
-    -- the message immediately and move the sender to WAITINGFORREPLY.
-    -- Otherwise, enqueue ourselves as a receiver and block.
+    -- Fairly select available queued traffic, synchronous senders, and IRQ
+    -- doorbells. If none is available, atomically register a blocking receive.
     ---------------------------------------------------------------------------
     procedure receive (from : out ProcessID; msg : out Message)
     is
@@ -720,69 +686,17 @@ package body Process.IPC is
         receive (from, msg);
     end replyWait;
 
-    procedure receiveServiceRequestNB (from  : out ProcessID;
-                                       msg   : out Message;
+    procedure receiveServiceRequestNB (from : out ProcessID;
+                                       msg : out Message;
                                        found : out Boolean)
     is
-        mypid    : constant ProcessID := PerCPUData.getCurrentPID;
+        mypid : constant ProcessID := PerCPUData.getCurrentPID;
         receiver : constant ProcessID := getReceiver (mypid);
-        sender   : ProcessID;
-        re       : RingEntry;
+        re : RingEntry;
     begin
         Spinlocks.enterCriticalSection (mailtab(receiver).lock);
-
-        -- Check sendQueue first (synchronous senders).
-        if not Queues.isEmpty (mailtab(receiver).sendQueue) then
-            Queues.dequeue (mailtab(receiver).sendQueue, sender);
-
-            msg   := proctab(sender).sendMsg;
-            from  := sender;
-            re    := (msg       => msg,
-                      sender    => sender,
-                      kind      => RING_SYNC,
-                      requestId => NO_REQUEST_ID);
-            found := True;
-
-            proctab(sender).state := WAITINGFORREPLY;
-
-            proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
-                (capType  => Capabilities.CAP_REPLY,
-                 rights   => Capabilities.ALL_RIGHTS,
-                 authorityTag => Capabilities.NO_AUTHORITY_TAG,
-                 object   => (ref   => Unsigned_64(from),
-                              param => NO_REQUEST_ID),
-                 gen      => proctab(from).capGeneration);
-        else
-            -- Service-request polling is intentionally typed. The mailbox ring
-            -- may contain events, but this receive path must leave them queued
-            -- for receiveEventNB.
-            dequeueRingServiceRequest (receiver, re, found);
-            if found then
-                from := re.sender;
-                msg  := re.msg;
-
-                if from /= NO_PROCESS and then
-                   (re.kind = RING_SYNC or else re.kind = RING_ASYNC_REQUEST)
-                then
-                    proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
-                        (capType  => Capabilities.CAP_REPLY,
-                         rights   => Capabilities.ALL_RIGHTS,
-                         authorityTag => Capabilities.NO_AUTHORITY_TAG,
-                         object   => (ref   => Unsigned_64(from),
-                                      param => re.requestId),
-                         gen      => proctab(from).capGeneration);
-                else
-                    proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
-                        Capabilities.NULL_CAPABILITY;
-                end if;
-            else
-                from  := NO_PROCESS;
-                msg   := NULL_MESSAGE;
-                proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
-                    Capabilities.NULL_CAPABILITY;
-            end if;
-        end if;
-
+        takeMailboxWork (receiver, True, re, found);
+        installReceivedWork (mypid, re, found, from, msg);
         Spinlocks.exitCriticalSection (mailtab(receiver).lock);
     end receiveServiceRequestNB;
 
@@ -792,70 +706,17 @@ package body Process.IPC is
     -- it may consume service requests, one-way messages, and events. Use only
     -- for intentionally mixed dispatch loops.
     ---------------------------------------------------------------------------
-    procedure receiveAnyIpcNB (from  : out ProcessID;
-                               msg   : out Message;
-                               found : out Boolean)
+    procedure receiveAnyIpcNB (from : out ProcessID;
+                                       msg : out Message;
+                                       found : out Boolean)
     is
-        mypid    : constant ProcessID := PerCPUData.getCurrentPID;
+        mypid : constant ProcessID := PerCPUData.getCurrentPID;
         receiver : constant ProcessID := getReceiver (mypid);
-        sender   : ProcessID;
-        re       : RingEntry;
+        re : RingEntry;
     begin
         Spinlocks.enterCriticalSection (mailtab(receiver).lock);
-
-        -- Check sendQueue first (synchronous senders).
-        if not Queues.isEmpty (mailtab(receiver).sendQueue) then
-            Queues.dequeue (mailtab(receiver).sendQueue, sender);
-
-            msg   := proctab(sender).sendMsg;
-            from  := sender;
-            re    := (msg       => msg,
-                      sender    => sender,
-                      kind      => RING_SYNC,
-                      requestId => NO_REQUEST_ID);
-            found := True;
-
-            proctab(sender).state := WAITINGFORREPLY;
-
-            proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
-                (capType  => Capabilities.CAP_REPLY,
-                 rights   => Capabilities.ALL_RIGHTS,
-                 authorityTag => Capabilities.NO_AUTHORITY_TAG,
-                 object   => (ref   => Unsigned_64(from),
-                              param => NO_REQUEST_ID),
-                 gen      => proctab(from).capGeneration);
-        else
-            -- Explicitly broad: this removes the next ring entry regardless of
-            -- whether it is a request or event. Persistent device work is
-            -- checked first so it cannot sit behind a full ordinary ring.
-            takeIRQDoorbell (receiver, re, found);
-            if not found then
-                dequeueRing (receiver, re, found);
-            end if;
-            if found then
-                from := re.sender;
-                msg  := re.msg;
-
-                if from /= NO_PROCESS and then
-                   (re.kind = RING_SYNC or else re.kind = RING_ASYNC_REQUEST)
-                then
-                    proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
-                        (capType  => Capabilities.CAP_REPLY,
-                         rights   => Capabilities.ALL_RIGHTS,
-                         authorityTag => Capabilities.NO_AUTHORITY_TAG,
-                         object   => (ref   => Unsigned_64(from),
-                                      param => re.requestId),
-                         gen      => proctab(from).capGeneration);
-                else
-                    proctab(mypid).caps(Capabilities.REPLY_CAP_SLOT) :=
-                        Capabilities.NULL_CAPABILITY;
-                end if;
-            else
-                from  := NO_PROCESS;
-                msg   := NULL_MESSAGE;
-            end if;
-        end if;
-
+        takeMailboxWork (receiver, False, re, found);
+        installReceivedWork (mypid, re, found, from, msg);
         Spinlocks.exitCriticalSection (mailtab(receiver).lock);
     end receiveAnyIpcNB;
 
@@ -1185,15 +1046,18 @@ package body Process.IPC is
         ok : Boolean;
     begin
         if replyTo = NO_PROCESS then return 0; end if;
-        Spinlocks.enterCriticalSection (mailtab(replyTo).lock);
+        lockMailboxes (mypid, replyTo);
         if mailtab(replyTo).closed then
-            Spinlocks.exitCriticalSection (mailtab(replyTo).lock);
+            unlockMailboxes (mypid, replyTo);
             return 0;
         end if;
         consumeReplyAuthority (mypid, replyTo, requestId, ok);
         if not ok then
-            Spinlocks.exitCriticalSection (mailtab(replyTo).lock);
+            unlockMailboxes (mypid, replyTo);
             return 0;
+        end if;
+        if mypid /= replyTo then
+            Spinlocks.exitCriticalSection (mailtab(mypid).lock);
         end if;
         return completeReplyLocked (replyTo, requestId, msg);
     end reply;
@@ -1208,9 +1072,18 @@ package body Process.IPC is
         ok : Boolean;
     begin
         if mypid = NO_PROCESS then return 0; end if;
-        cap := proctab(mypid).caps(capSlot);
-        if cap.capType /= Capabilities.CAP_REPLY or else
-           cap.object.ref = 0 or else cap.object.ref > Unsigned_64(ProcessID'Last)
+        -- Consume the explicitly selected one-use reply even when delivery
+        -- will fail. Otherwise a departed caller strands the server's slot.
+        -- Non-reply authority is preserved. Serialize with policy-authorized
+        -- edits of this cspace, not just other executions of this process.
+        Spinlocks.enterCriticalSection (mailtab(mypid).lock);
+        Capabilities.Operations.retireReplyCap
+          (proctab(mypid).caps, proctab(mypid).deferredReplyCaps,
+           capSlot, cap, ok);
+        Spinlocks.exitCriticalSection (mailtab(mypid).lock);
+        if not ok then return 0; end if;
+        if cap.object.ref = 0 or else
+           cap.object.ref > Unsigned_64(ProcessID'Last)
         then return 0; end if;
         replyTo := ProcessID(cap.object.ref);
         Spinlocks.enterCriticalSection (mailtab(replyTo).lock);
@@ -1220,15 +1093,6 @@ package body Process.IPC is
             Spinlocks.exitCriticalSection (mailtab(replyTo).lock);
             return 0;
         end if;
-        Capabilities.Operations.takeReplyCap
-          (proctab(mypid).caps, capSlot, cap, ok);
-        if not ok then
-            Spinlocks.exitCriticalSection (mailtab(replyTo).lock);
-            return 0;
-        end if;
-        proctab(mypid).deferredReplyCaps :=
-            proctab(mypid).deferredReplyCaps and
-            not Shift_Left (Unsigned_64'(1), capSlot);
         return completeReplyLocked (replyTo, cap.object.param, msg);
     end replyCap;
 
@@ -1307,17 +1171,21 @@ package body Process.IPC is
         end if;
 
         if wantCompletion then
-            requestId := proctab(pid).nextRequestId;
-            if requestId = NO_REQUEST_ID then
-                requestId := 1;
-            end if;
-
-            if proctab(pid).nextRequestId = Unsigned_64'Last then
-                proctab(pid).nextRequestId := 1;
-            else
-                proctab(pid).nextRequestId :=
-                    proctab(pid).nextRequestId + 1;
-            end if;
+            declare
+                allocation : constant IPC_Request_Ids.Allocation :=
+                  IPC_Request_Ids.Next (proctab(pid).requestSequence);
+            begin
+                if not allocation.Available then
+                    unlockMailboxes (pid, dest);
+                    return False;
+                end if;
+                requestId := allocation.Id;
+                -- Commit under the caller's mailbox lock, together with
+                -- pending/completion reservation and publication. A failed
+                -- enqueue may burn an ID but must never permit its reuse.
+                proctab(pid).requestSequence :=
+                  IPC_Request_Ids.Sequence (allocation.Id);
+            end;
         end if;
 
         -- Enqueue in unified ring
@@ -2242,6 +2110,7 @@ package body Process.IPC is
 
                 --  Clear stale mailbox state
                 mailtab(pid).ring := (others => <>);
+                mailtab(pid).nextReceiveLane := Queued_Messages;
 
                 --  Clear completion queue and pending requests
                 completionTab(pid) := (ring => (others => NULL_COMPLETION),
@@ -2249,7 +2118,7 @@ package body Process.IPC is
                 proctab(pid).pendingRequests :=
                     (others => (NO_PROCESS, NO_REQUEST_ID, 0));
                 proctab(pid).numPending := 0;
-                proctab(pid).nextRequestId := 1;
+                proctab(pid).requestSequence := IPC_Request_Ids.Initial_Sequence;
                 proctab(pid).irqNotificationPending := False;
                 proctab(pid).receiveDeadlineActive := False;
                 proctab(pid).receiveDeadlineMs := 0;

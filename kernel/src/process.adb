@@ -395,6 +395,7 @@ package body Process is
             end loop;
 
             ignore := Util.memset (proctab(pid)'Address, 0, Process'Size / 8);
+            proctab(pid).requestSequence := IPC_Request_Ids.Initial_Sequence;
             proctab(pid).lifetime := Process_Lifetime.Initial_State;
             proctab(pid).admitted := False;
             if savedGen >= Capabilities.INITIAL_GENERATION then
@@ -504,6 +505,7 @@ package body Process is
             Spinlocks.enterCriticalSection (mailtab(pid).lock);
             mailtab(pid).closed := True;
             mailtab(pid).ring := (others => <>);
+            mailtab(pid).nextReceiveLane := Queued_Messages;
             Spinlocks.exitCriticalSection (mailtab(pid).lock);
 
             -- Grant initial capabilities for well-known services

@@ -20,12 +20,16 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Config;
 with CuBit.Filesystems;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Display_Protocol;
+with CuBit.Desktop_Messages;
 with CuBit.Memory_Grants;
 with CuBit.Streams;
 with CuBit.Protocols;
 with Font8x16;
 
 procedure main is
+   package DSP renames CuBit.Display_Protocol;
+   package MG renames CuBit.Memory_Grants;
    use ASCII;
 
    --  IPC label constants
@@ -48,15 +52,11 @@ procedure main is
    OP_NET_ROUTE_LIST : constant Unsigned_32 := 16#0437#;
    OP_NET_PING       : constant Unsigned_32 := 16#0438#;
 
-   --  Display service labels.  The shell still renders into its mapped
-   --  framebuffer, but on GPU-backed displays that memory is no longer the
-   --  visible scanout.  In that case we grant the buffer to display.svc and
-   --  ask it to present dirty rectangles after text redraws.
-   OP_DISPLAY_ATTACH_BUFFER : constant Unsigned_32 := 16#0901#;
-   OP_DISPLAY_PRESENT_RECT  : constant Unsigned_32 := 16#0902#;
-   OP_DISPLAY_GET_STATUS    : constant Unsigned_32 := 16#0904#;
-   OP_DISPLAY_ACQUIRE       : constant Unsigned_32 := 16#0905#;
-   OP_DISPLAY_RELEASE       : constant Unsigned_32 := 16#0906#;
+   --  GPU mode renders into owned RAM granted read-only to display.svc.
+   --  Linear framebuffer mode still draws directly into the device mapping.
+   OP_DISPLAY_ATTACH_BUFFER : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Attach_Buffer);
+   OP_DISPLAY_PRESENT_RECT  : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Present_Rectangle);
+   OP_DISPLAY_GET_STATUS    : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Get_Status);
 
    DISPLAY_OK                 : constant Unsigned_64 := 0;
    DISPLAY_BACKEND_VIRTIO_GPU : constant Unsigned_64 := 3;
@@ -80,7 +80,9 @@ procedure main is
    --  display service reports a GPU backend; the linear framebuffer path keeps
    --  drawing directly to visible memory as before.
    displayAttached : Boolean := False;
-   displayGrantId  : Unsigned_64 := 0;
+   displayGrant : MG.Grant_Reference;
+   displayGranted : Boolean := False;
+   displayPixels : System.Address := System.Null_Address;
    fullPresentNeeded : Boolean := False;
 
    --  Console grid dimensions
@@ -324,14 +326,20 @@ procedure main is
    procedure releaseDisplayPresent is
       msg : Message := NULL_MESSAGE;
       tag : MessageTag;
+      revoked : Boolean;
    begin
-      msg.tag := (label  => OP_DISPLAY_RELEASE,
-                  length => 0,
-                  flags  => 0,
-                  reserved  => 0);
+      msg := CuBit.Desktop_Messages.From_Wire
+        (DSP.Encode_Lease_Request (DSP.Release_Display));
       tag := capCall (CAP_SLOT_DISPLAY, msg);
       msg.tag := tag;
       displayAttached := False;
+      if displayGranted then
+         MG.Revoke (displayGrant, revoked);
+         if not revoked then
+            debugPrint ("shell: display grant revoke failed" & LF);
+         end if;
+         displayGranted := False;
+      end if;
    end releaseDisplayPresent;
 
    --  Present a framebuffer rectangle through display.svc.  This is the
@@ -379,7 +387,7 @@ procedure main is
       end if;
    end presentDisplayRect;
 
-   --  Attach the shell's mapped framebuffer to display.svc when the visible
+   --  Attach an owned RAM framebuffer to display.svc when the visible
    --  device is GPU-backed.  Linear framebuffer mode intentionally skips this
    --  path so legacy boot and plain VBE behavior remains unchanged.
    procedure setupDisplayPresent is
@@ -390,7 +398,23 @@ procedure main is
       ok     : Boolean;
       pid    : Unsigned_64;
       acquire : Message := NULL_MESSAGE;
+      layout : DSP.Buffer_Layout;
+      rawBuffer : Unsigned_64;
    begin
+      if fbWidth not in 1 .. Natural (DSP.DP.Positive_Extent'Last) or else
+        fbHeight not in 1 .. Natural (DSP.DP.Positive_Extent'Last) or else
+        fbPitch > DSP.DP.Maximum_Buffer_Bytes
+      then
+         return;
+      end if;
+      layout := (DSP.DP.Positive_Extent (fbWidth),
+                 DSP.DP.Positive_Extent (fbHeight), fbPitch);
+      if not DSP.DP.Valid_Layout (layout) then
+         return;
+      end if;
+      if displayGranted then
+         releaseDisplayPresent;
+      end if;
       pid := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DISPLAY);
       if pid = 0 or else pid = Unsigned_64'Last then
          debugPrint ("shell: display service unavailable" & LF);
@@ -420,10 +444,8 @@ procedure main is
          return;
       end if;
 
-      acquire.tag := (label  => OP_DISPLAY_ACQUIRE,
-                      length => 0,
-                      flags  => 0,
-                      reserved  => 0);
+      acquire := CuBit.Desktop_Messages.From_Wire
+        (DSP.Encode_Lease_Request (DSP.Acquire_Display));
       tag := capCall (CAP_SLOT_DISPLAY, acquire);
       acquire.tag := tag;
       if tag.length < 1 or else acquire.words (0) /= DISPLAY_OK then
@@ -434,34 +456,44 @@ procedure main is
       pages :=
         (Unsigned_64 (fbPitch) * Unsigned_64 (fbHeight) + 4095) / 4096;
 
-      --  The service only needs to read the shell buffer, but grant it RW for
-      --  now because the current shared-memory grant API treats framebuffer
-      --  client buffers consistently with other display users.
-      createGrantViaCap
+      if displayPixels = System.Null_Address then
+         --  MAPFB is device memory, not a frame owned by this process. Generic
+         --  grants intentionally cannot pin/regrant it. Draw directly into an
+         --  ordinary owned buffer instead; no extra staging copy is needed.
+         rawBuffer := syscall (SYSCALL_SBRK, pages * 4096 + 4096);
+         if rawBuffer = Unsigned_64'Last then
+            debugPrint ("shell: display buffer allocation failed" & LF);
+            releaseDisplayPresent;
+            return;
+         end if;
+         displayPixels := To_Address
+           (Integer_Address ((rawBuffer + 4095) and not Unsigned_64'(4095)));
+      end if;
+
+      --  Scanout only reads the client's pixels; it has no write authority.
+      MG.Create_Via_Capability
         (slot      => CAP_SLOT_DISPLAY,
-         localAddr => fbAddr,
+         localAddr => displayPixels,
          numPages  => Natural (pages),
-         readWrite => True,
-         grantId   => displayGrantId,
+         readWrite => False,
+         reference => displayGrant,
          success   => ok);
 
       if not ok then
          debugPrint ("shell: display grant failed" & LF);
+         releaseDisplayPresent;
          return;
       end if;
-
-      attach.tag := (label  => OP_DISPLAY_ATTACH_BUFFER,
-                     length => 4,
-                     flags  => 0,
-                     reserved  => 0);
-      attach.words (0) := displayGrantId;
-      attach.words (1) := Unsigned_64 (fbWidth);
-      attach.words (2) := Unsigned_64 (fbHeight);
-      attach.words (3) := Unsigned_64 (fbPitch);
+      displayGranted := True;
+      attach := CuBit.Desktop_Messages.From_Wire
+        (DSP.Encode_Attachment ((displayGrant, layout)));
 
       tag := capCall (CAP_SLOT_DISPLAY, attach);
       attach.tag := tag;
-      if tag.length >= 1 and then attach.words (0) = DISPLAY_OK then
+      if tag.label = OP_DISPLAY_ATTACH_BUFFER and then tag.length = 1 and then
+        attach.words (0) = DISPLAY_OK
+      then
+         fbAddr := displayPixels;
          displayAttached := True;
          debugPrint ("shell: display buffer attached" & LF);
       else

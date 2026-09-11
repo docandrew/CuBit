@@ -3,12 +3,13 @@ project IPCtest_Client is
     for Languages use ("Ada");
     for Object_Dir use "build";
     for Source_Dirs use (".");
-    for Main use ("main.adb");
+    for Main use ("main.adb", "departing.adb");
     for Runtime ("Ada") use "../../runtime";
     for Library_Dir use "";
 
     package Builder is
         for Executable ("main.adb") use "ipctest-client.app";
+        for Executable ("departing.adb") use "ipctest-departing.app";
         for Default_Switches ("Ada") use
         (
             "-g",

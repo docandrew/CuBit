@@ -22,6 +22,17 @@ procedure main is
    OP_DIE            : constant Unsigned_32 := 16#0908#;
    OP_OCCUPIED_HOLD  : constant Unsigned_32 := 16#0909#;
    OP_OCCUPIED_PROBE : constant Unsigned_32 := 16#090A#;
+   OP_DEPARTING_HOLD : constant Unsigned_32 := 16#090B#;
+   OP_DEPARTING_READY : constant Unsigned_32 := 16#090C#;
+   OP_RETIRE_DEPARTED : constant Unsigned_32 := 16#090D#;
+   OP_FAIR_BEGIN : constant Unsigned_32 := 16#090E#;
+   OP_FAIR_POLL : constant Unsigned_32 := 16#090F#;
+   OP_FAIR_QUEUED : constant Unsigned_32 := 16#0910#;
+   OP_FAIR_END : constant Unsigned_32 := 16#0911#;
+   type Receive_Mode is (Blocking, Service_Poll, Mixed_Poll, Timed);
+   mode : Receive_Mode := Blocking;
+   fairSeen : Boolean := False;
+   found : Boolean;
    REPLY_OK      : constant Unsigned_32 := 16#F000#;
    REPLY_ERR     : constant Unsigned_32 := 16#F001#;
 
@@ -51,6 +62,9 @@ procedure main is
    oneWaySaveRejected : Boolean := False;
    doubleUseRejected  : Boolean := False;
    occupiedValue      : Unsigned_64 := 0;
+   DEPARTING_SLOT : constant CapabilitySlot := 12;
+   departingCaller : ProcessID := NO_PROCESS;
+   departingReady : Boolean := False;
 
    from : ProcessID;
    msg  : Message;
@@ -137,13 +151,41 @@ begin
    loadFPUProbe;
 
    loop
-      receive (from, msg);
+      loop
+         found := True;
+         case mode is
+            when Blocking => receive (from, msg);
+            when Service_Poll => Poll_Service_Request (from, msg, found);
+            when Mixed_Poll => Poll_Any_Ipc (from, msg, found);
+            when Timed =>
+               receiveUntil (syscall (SYSCALL_GETTIME) + 1000, from, msg, found);
+         end case;
+         exit when found;
+      end loop;
 
       if readFPUProbe /= FPU_SENTINEL then
          debugPrint ("TEST: FAIL async-ipc fpu-server-restore" & LF);
       end if;
 
-      if msg.tag.label = OP_ASYNC_ECHO then
+      if msg.tag.label = OP_FAIR_BEGIN then
+         mode := Receive_Mode'Val (msg.words (0));
+         fairSeen := False;
+         sendReply (from, REPLY_OK);
+         -- Let the caller enqueue a one-way request AND block in a synchronous
+         -- poll before the next receive. On CPU 0, direct reply handoff then
+         -- keeps that poller hot, reproducing the closed-window starvation.
+         ret := syscall (SYSCALL_SLEEP, 25);
+      elsif msg.tag.label = OP_FAIR_QUEUED then
+         fairSeen := True;
+         if saveReplyCap (11) /= 0 then
+            debugPrint ("TEST: FAIL async-ipc fairness-oneway-authority" & LF);
+         end if;
+      elsif msg.tag.label = OP_FAIR_POLL then
+         sendReply (from, REPLY_OK, boolWord (fairSeen));
+      elsif msg.tag.label = OP_FAIR_END then
+         mode := Blocking;
+         sendReply (from, REPLY_OK);
+      elsif msg.tag.label = OP_ASYNC_ECHO then
          ret := saveReplyCap (REPLY_SLOT);
          if ret /= 1 then
             debugPrint ("TEST: FAIL async-ipc save-reply-cap" & LF);
@@ -281,6 +323,46 @@ begin
             end;
          end loop;
          pressurePending := 0;
+      elsif msg.tag.label = OP_DEPARTING_HOLD then
+         ret := saveReplyCap (DEPARTING_SLOT);
+         if ret /= 1 then
+            debugPrint ("TEST: FAIL async-ipc departing save" & LF);
+            sendReply (from, REPLY_ERR);
+         else
+            departingCaller := from;
+         end if;
+      elsif msg.tag.label = OP_DEPARTING_READY then
+         departingReady := from = departingCaller;
+         sendReply (from, (if departingReady then REPLY_OK else REPLY_ERR));
+      elsif msg.tag.label = OP_RETIRE_DEPARTED then
+         if not departingReady then
+            sendReply (from, REPLY_ERR, 1);
+         else
+            -- Test-only scheduling allowance after the barrier acknowledgement.
+            -- Sleep is not the oracle: delivery MUST fail, then the same slot
+            -- MUST accept a fresh reply and complete the survivor's token.
+            ret := syscall (SYSCALL_SLEEP, 50);
+            ret := replyCap (DEPARTING_SLOT, makeEchoReply (0, departingCaller));
+            if ret /= 0 then
+               debugPrint ("TEST: FAIL async-ipc dead caller reply delivered" & LF);
+            end if;
+            ret := replyCap (DEPARTING_SLOT, makeEchoReply (0, departingCaller));
+            if ret /= 0 then
+               debugPrint ("TEST: FAIL async-ipc dead caller double reply" & LF);
+            end if;
+            ret := saveReplyCap (DEPARTING_SLOT);
+            if ret /= 1 then
+               debugPrint ("TEST: FAIL async-ipc dead caller reply slot leaked" & LF);
+               sendReply (from, REPLY_ERR, 2);
+            else
+               ret := replyCap (DEPARTING_SLOT, makeEchoReply (msg.words (0), from));
+               if ret /= 1 then
+                  debugPrint ("TEST: FAIL async-ipc reused reply slot" & LF);
+               else
+                  debugPrint ("ipctest-server: dead caller reply retired and slot reused" & LF);
+               end if;
+            end if;
+         end if;
       elsif msg.tag.label = OP_DIE then
          ret := syscall (SYSCALL_EXIT);
          loop

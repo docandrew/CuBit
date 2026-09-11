@@ -19,46 +19,11 @@ package body CuBit.UI.App is
    package MG renames CuBit.Memory_Grants;
    use type DP.Status_Code;
 
-   OP_DESKTOP_HELLO    : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Hello);
-   OP_DESKTOP_BYE      : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Goodbye);
-   OP_DESKTOP_GET_INFO : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Get_Information);
-   OP_SURFACE_SET_POINTER_CURSOR : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Set_Pointer_Cursor);
-   OP_WINDOW_SET_LIMITS : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Set_Window_Limits);
-   OP_WINDOW_SET_TITLE  : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Set_Window_Title);
-   OP_INPUT_POLL       : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Poll_Input);
-   OP_INPUT_WAIT       : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Wait_Input);
-   INPUT_REPLY_MORE_PENDING : constant Unsigned_8 := 1;
+   use type DP.Operation;
+   use type DP.Input_Event_Kind;
 
    WINDOW_CHROME_W : constant Natural := 8;
    WINDOW_CHROME_H : constant Natural := 34;
-   PROTOCOL_VERSION : constant Unsigned_64 :=
-      0 or Shift_Left (Unsigned_64'(1), 32);
-
-   function Call_Desktop
-      (label : Unsigned_32;
-       w0    : Unsigned_64 := 0;
-       w1    : Unsigned_64 := 0;
-       w2    : Unsigned_64 := 0;
-       w3    : Unsigned_64 := 0) return Message
-   is
-      msg : Message :=
-        (tag      => (label  => label,
-                      length => 4,
-                      flags  => 0,
-                      reserved  => 0),
-         authorityTag => 0,
-         words    => (w0, w1, w2, w3));
-      tag : MessageTag;
-   begin
-      tag := capCall (CAP_SLOT_DESKTOP, msg);
-      msg.tag := tag;
-      return msg;
-   end Call_Desktop;
-
-   function Pack_U32_Pair (lo, hi : Unsigned_64) return Unsigned_64 is
-   begin
-      return (lo and 16#FFFF_FFFF#) or Shift_Left (hi and 16#FFFF_FFFF#, 32);
-   end Pack_U32_Pair;
 
    function Align_Up_Page (value : Unsigned_64) return Unsigned_64 is
    begin
@@ -242,6 +207,7 @@ package body CuBit.UI.App is
       info : Message;
       created : Message;
       creation : DP.Creation_Result;
+      limits : DP.Limits_Request;
       reply : Message;
       minW, minH : Unsigned_64;
       maxW : Unsigned_64 := 0;
@@ -256,7 +222,8 @@ package body CuBit.UI.App is
       if width not in 1 .. Natural (DP.Pixel_Extent'Last) - WINDOW_CHROME_W or else
         height not in 1 .. Natural (DP.Pixel_Extent'Last) - WINDOW_CHROME_H or else
         maximum_width > Natural (DP.Pixel_Extent'Last) - WINDOW_CHROME_W or else
-        maximum_height > Natural (DP.Pixel_Extent'Last) - WINDOW_CHROME_H
+        maximum_height > Natural (DP.Pixel_Extent'Last) - WINDOW_CHROME_H or else
+        flags > DP.Feature_Bits ([others => True])
       then
          return;
       end if;
@@ -273,14 +240,18 @@ package body CuBit.UI.App is
                               WINDOW_CHROME_H);
       end if;
 
-      hello := Call_Desktop (OP_DESKTOP_HELLO, PROTOCOL_VERSION, 0, 0, 0);
-      if hello.words (0) = 0 then
+      hello := CuBit.Desktop_Messages.From_Wire
+        (DP.Encode_Hello (DP.Current_Revision));
+      hello.tag := capCall (CAP_SLOT_DESKTOP, hello);
+      if DP.Decode_Hello_Result (CuBit.Desktop_Messages.To_Wire (hello)).Status /= DP.Success then
          debugPrint ("ui-app: desktop hello failed" & LF);
          return;
       end if;
 
-      info := Call_Desktop (OP_DESKTOP_GET_INFO);
-      if info.words (0) = 0 then
+      info := CuBit.Desktop_Messages.From_Wire
+        (DP.Encode_Empty_Request (DP.Get_Information));
+      info.tag := capCall (CAP_SLOT_DESKTOP, info);
+      if DP.Decode_Information_Result (CuBit.Desktop_Messages.To_Wire (info)).Status /= DP.Success then
          debugPrint ("ui-app: desktop info failed" & LF);
          return;
       end if;
@@ -296,14 +267,22 @@ package body CuBit.UI.App is
       end if;
       win.surfaceId := Unsigned_64 (creation.Surface);
 
-      reply := Call_Desktop
-        (OP_WINDOW_SET_LIMITS,
-         win.surfaceId,
-         Pack_U32_Pair (minW, minH),
-         Pack_U32_Pair (maxW, maxH),
-         flags);
-      if reply.words (0) = 0 then
-         null;
+      limits.Surface := creation.Surface;
+      limits.Bounds :=
+        (DP.Pixel_Extent (minW), DP.Pixel_Extent (minH),
+         DP.Pixel_Extent (maxW), DP.Pixel_Extent (maxH));
+      for feature in DP.Window_Feature loop
+         limits.Features (feature) :=
+           (flags and DP.Window_Feature'Enum_Rep (feature)) /= 0;
+      end loop;
+      reply := CuBit.Desktop_Messages.From_Wire (DP.Encode_Limits (limits));
+      reply.tag := capCall (CAP_SLOT_DESKTOP, reply);
+      if DP.Decode_Limits_Result
+        (CuBit.Desktop_Messages.To_Wire (reply)).Status /= DP.Success
+      then
+         debugPrint ("ui-app: window limits failed" & LF);
+         Close (win);
+         return;
       end if;
 
       Set_Title (win, title);
@@ -319,52 +298,31 @@ package body CuBit.UI.App is
    end Open;
 
    procedure Set_Title (win : Window; title : String) is
-      --  Three inline IPC words leave 23 UTF-8/ASCII bytes plus an explicit
-      --  length byte. Longer titles are clipped deterministically for now;
-      --  a future string grant can lift the transport bound without changing
-      --  window ownership semantics.
-      MAX_INLINE_TITLE : constant Natural := 23;
-      titleLength : constant Natural := Natural'Min
-        (title'Length, MAX_INLINE_TITLE);
-      packed0, packed1, packed2 : Unsigned_64 := 0;
-      value : Unsigned_64;
-      byteIndex : Natural;
+      request : Message;
    begin
       if win.surfaceId = 0 then
          return;
       end if;
-      if titleLength > 0 then
-         for index in 0 .. titleLength - 1 loop
-            byteIndex := index mod 8;
-            value := Shift_Left
-              (Unsigned_64 (Character'Pos (title (title'First + index))),
-               byteIndex * 8);
-            case index / 8 is
-               when 0 => packed0 := packed0 or value;
-               when 1 => packed1 := packed1 or value;
-               when others => packed2 := packed2 or value;
-            end case;
-         end loop;
+      request := CuBit.Desktop_Messages.From_Wire
+        (DP.Encode_Title
+           ((DP.Live_Surface_Name (win.surfaceId), DP.Make_Title (title))));
+      request.tag := capCall (CAP_SLOT_DESKTOP, request);
+      if DP.Decode_Status (CuBit.Desktop_Messages.To_Wire (request),
+                           DP.Set_Window_Title) /= DP.Success
+      then
+         debugPrint ("ui-app: window title request failed" & LF);
       end if;
-      packed2 := packed2 or Shift_Left (Unsigned_64 (titleLength), 56);
-      declare
-         reply : constant Message := Call_Desktop
-           (OP_WINDOW_SET_TITLE, win.surfaceId, packed0, packed1, packed2);
-      begin
-         if reply.words (0) = 0 then
-            null;
-         end if;
-      end;
    end Set_Title;
 
    procedure Receive_Input
       (win : in out Window;
-       operation : Unsigned_32;
+       operation : DP.Input_Operation;
        event : out Input_Event;
        found : out Boolean;
        deadline : Unsigned_64 := 0)
    is
       reply : Message;
+      decoded : DP.Input_Result;
    begin
       event := (others => <>);
       found := False;
@@ -372,20 +330,28 @@ package body CuBit.UI.App is
          return;
       end if;
 
-      reply := Call_Desktop (operation, win.surfaceId, win.lastEvent, deadline, 0);
-      win.inputMayRemain :=
-        (reply.tag.flags and INPUT_REPLY_MORE_PENDING) /= 0;
-      if reply.words (0) = INPUT_NONE then
-         win.lastEvent := reply.words (1);
+      reply := CuBit.Desktop_Messages.From_Wire
+        ((if operation = DP.Poll_Input then
+            DP.Encode_Input_Request ((DP.Poll_Input, DP.Live_Surface_Name (win.surfaceId), win.lastEvent))
+          else DP.Encode_Input_Request ((DP.Wait_Input, DP.Live_Surface_Name (win.surfaceId), win.lastEvent, deadline))));
+      reply.tag := capCall (CAP_SLOT_DESKTOP, reply);
+      decoded := DP.Decode_Input_Result (CuBit.Desktop_Messages.To_Wire (reply), operation);
+      win.inputMayRemain := False;
+      if decoded.Status /= DP.Success then
+         debugPrint ("ui-app: input request or reply rejected" & LF);
+         return;
+      end if;
+      win.inputMayRemain := decoded.Value.More_Pending;
+      win.lastEvent := decoded.Value.Serial;
+      if decoded.Value.Kind = DP.No_Input then
          return;
       end if;
 
-      win.lastEvent := reply.words (1);
       event :=
-        (kind     => reply.words (0),
-         serial   => reply.words (1),
-         payload0 => reply.words (2),
-         payload1 => reply.words (3));
+        (kind     => DP.Input_Event_Kind'Enum_Rep (decoded.Value.Kind),
+         serial   => decoded.Value.Serial,
+         payload0 => decoded.Value.Payload0,
+         payload1 => decoded.Value.Payload1);
       if event.kind = INPUT_CONFIGURE then
          declare
             newW : constant Natural :=
@@ -408,7 +374,7 @@ package body CuBit.UI.App is
        found : out Boolean)
    is
    begin
-      Receive_Input (win, OP_INPUT_POLL, event, found);
+      Receive_Input (win, DP.Poll_Input, event, found);
    end Poll_Input;
 
    procedure Wait_Input
@@ -417,7 +383,7 @@ package body CuBit.UI.App is
        found : out Boolean)
    is
    begin
-      Receive_Input (win, OP_INPUT_WAIT, event, found);
+      Receive_Input (win, DP.Wait_Input, event, found);
    end Wait_Input;
 
    procedure Wait_Input_Until
@@ -427,7 +393,7 @@ package body CuBit.UI.App is
        found : out Boolean)
    is
    begin
-      Receive_Input (win, OP_INPUT_WAIT, event, found, deadline);
+      Receive_Input (win, DP.Wait_Input, event, found, deadline);
    end Wait_Input_Until;
 
    function Input_May_Remain (win : Window) return Boolean is
@@ -448,18 +414,35 @@ package body CuBit.UI.App is
       return -Integer (negativeMagnitude);
    end Pointer_Wheel_Delta;
 
-   procedure Set_Pointer_Cursor
+   function Request_Pointer_Cursor
       (win : Window; cursor : CuBit.UI.Pointer_Cursor_Style)
+      return Boolean
    is
       reply : Message;
    begin
       if win.surfaceId = 0 then
-         return;
+         return False;
       end if;
-      reply := Call_Desktop
-        (OP_SURFACE_SET_POINTER_CURSOR,
-         win.surfaceId,
-         Unsigned_64 (CuBit.UI.Pointer_Cursor_Style'Enum_Rep (cursor)));
+      reply := CuBit.Desktop_Messages.From_Wire
+        (DP.Encode_Cursor
+           ((DP.Live_Surface_Name (win.surfaceId),
+             (case cursor is
+                when Pointer_Default => DP.Default_Cursor,
+                when Pointer_Text => DP.Text_Cursor,
+                when Pointer_Resize_Horizontal => DP.Horizontal_Resize_Cursor,
+                when Pointer_Resize_Vertical => DP.Vertical_Resize_Cursor,
+                when Pointer_Resize_Diagonal => DP.Diagonal_Resize_Cursor))));
+      reply.tag := capCall (CAP_SLOT_DESKTOP, reply);
+      return DP.Decode_Status (CuBit.Desktop_Messages.To_Wire (reply),
+                               DP.Set_Pointer_Cursor) = DP.Success;
+   end Request_Pointer_Cursor;
+
+   procedure Set_Pointer_Cursor
+      (win : Window; cursor : CuBit.UI.Pointer_Cursor_Style) is
+   begin
+      if not Request_Pointer_Cursor (win, cursor) then
+         debugPrint ("ui-app: pointer cursor request failed" & LF);
+      end if;
    end Set_Pointer_Cursor;
 
    procedure Present
@@ -523,8 +506,9 @@ package body CuBit.UI.App is
          nextCursor : constant CuBit.UI.Pointer_Cursor_Style :=
            CuBit.UI.Controls.Cursor (controls, control);
       begin
-         if nextCursor /= interaction.cursor then
-            Set_Pointer_Cursor (win, nextCursor);
+         if nextCursor /= interaction.cursor and then
+           Request_Pointer_Cursor (win, nextCursor)
+         then
             interaction.cursor := nextCursor;
          end if;
       end Update_Cursor;
@@ -798,7 +782,13 @@ package body CuBit.UI.App is
          return;
       end if;
 
-      reply := Call_Desktop (OP_DESKTOP_BYE);
+      reply := CuBit.Desktop_Messages.From_Wire
+        (DP.Encode_Empty_Request (DP.Goodbye));
+      reply.tag := capCall (CAP_SLOT_DESKTOP, reply);
+      if DP.Decode_Status (CuBit.Desktop_Messages.To_Wire (reply), DP.Goodbye) /= DP.Success then
+         debugPrint ("ui-app: desktop goodbye failed; retaining window state" & LF);
+         return;
+      end if;
       if win.bufferPages /= 0 then
          MG.Revoke (win.bufferGrant, revoked);
       end if;

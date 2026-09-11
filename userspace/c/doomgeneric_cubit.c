@@ -559,6 +559,9 @@ static void poll_desktop_input(void)
             return;
         }
 
+        if (!cubit_desktop_input_reply_valid(OP_INPUT_POLL, reply.tag.label,
+                reply.tag.length, reply.tag.flags, reply.tag.reserved, reply.words))
+            return;
         if (reply.words[0] == INPUT_NONE)
             break;
 

@@ -46,8 +46,9 @@ not depend on nested virtualization or access to `/dev/kvm`.
 The suite currently includes:
 
 - `boot-shell-nvme`: boots the normal NVMe shell profile.
-- `async-ipc`: boots a test init profile that starts an IPC test server and
-  client from the NVMe image.
+- `async-ipc`: boots a test server, a departing caller, and a surviving client.
+  Build `nix develop -c make -C kernel ipctest-server ipctest-client` first;
+  the runner installs those current binaries into its temporary disk image.
 - `bench-ipc`: boots a benchmark init profile that starts an IPC benchmark
   server and client, then emits compact timing summaries.
 - `ccl-vm`: runs the freestanding CCL bytecode VM and source interpreter inside
@@ -111,6 +112,10 @@ The suite currently includes:
 - `desktop-display`: boots a test init profile that starts `display.svc` and
   `desktop.svc`, verifies the display backend status handshake, and injects
   QEMU i8042 keyboard and pointer input through the real PS/2 driver path.
+  It opens the internal console through Apps, drags its caption to y=0, then
+  requires a stationary triple-click to maximize exactly once and a subsequent
+  double-click to restore exactly once. Both normal and maximized captions
+  must consume the gesture. Build the current `desktop` and `shell` first.
 - `input-stream`: publishes authenticated, sequenced keyboard and relative-
   pointer reports through the kernel event lane, forces one explicit recovery
   boundary, and checks that motion over the CCL Workbench editor does not
@@ -120,13 +125,41 @@ The suite currently includes:
   clipping, table exhaustion and recovery. Also tests generation-checked buffer
   attachment, 140 balanced replacements, short/stale grants, deferred revocation,
   release on destroy, and release after owner exit followed by an injected repaint.
+  Geometry/control cases cover checked resize and limits, all cursor styles,
+  foreign/missing targets, malformed headers/reserved payload, and contradictory
+  bounds. Rejected limits preserve prior bounds; malformed destruction leaves
+  the surface usable, and repeated valid destruction returns `Bad_Object`.
+  Title cases cover all supported lengths, empty captions, ownership, malformed
+  headers, oversized lengths and nonzero padding after the declared text.
+  Session cases cover exact handshake revision, information queries, malformed
+  goodbye preserving surfaces/acquisitions, caller-scoped cleanup and repetition.
+  Input cases require rejection before queue mutation, foreign/missing-target
+  errors, repeated finite waits that cannot return before their deadlines,
+  saved-reply channel reuse, and configure delivery after timeout.
+  An async wait followed by a malformed poll and surface destruction must
+  produce three correctly correlated, nonduplicate completions; destruction
+  resolves the waiter before its acknowledgement and permits channel reuse.
   Build `make -C kernel desktop-check desktop` inside the Nix shell first.
   See [the protocol specification](../../docs/desktop-protocol.md)
   for the separate portable SPARK proof and hosted codec tests.
+- `display-grants` / `display-grants-virtio-vga`: dedicated display endpoint
+  adversary, without direct framebuffer authority or a concurrent desktop
+  session. Exercises lease admission, canonical requests, 140 balanced
+  same-reference replacements, byte-range rejection, pinned revocation,
+  replacement/release cleanup, and stale generation rejection after slot reuse.
+  Runs against the firmware framebuffer or primary virtio-GPU respectively.
+  Build `make -C kernel display display-check` inside Nix first; the runner
+  installs current test/service binaries into its temporary disk.
+  See [display buffer lifetimes](../../docs/display-buffer-lifetimes.md).
 - `desktop-doom`: installs the current `doom.elf`, boots `display.svc`,
-  `desktop.svc`, and DOOM on primary `virtio-vga`, then uses QEMU's WAV audio
-  backend to require a real HDA period interrupt and capture
-  compositor/display/audio telemetry.
+  `clock.svc`, and `desktop.svc` on primary `virtio-vga`, then launches DOOM
+  through Apps. Uses QEMU's WAV audio backend to require a real HDA period
+  interrupt and capture compositor/display/audio telemetry. Framebuffer checks
+  require game pixels and a responsive keyboard-opened Apps menu after launch.
+  `CUBIT_DOOM_MULTIAPP=1` additionally opens/closes Workbench and NetSurf first
+  (allow `--timeout 60` and provide current app images). This covers the stale
+  client poll flood that previously starved queued DOOM frames and input;
+  see [IPC receive fairness](../../docs/ipc-receive-fairness.md).
 - `virtio-gpu`: boots with QEMU's `virtio-gpu-pci` device and verifies the
   modern virtio-gpu command path reaches scanout presentation.
 - `virtio-vga-primary`: boots with primary QEMU `virtio-vga` under
@@ -201,10 +234,20 @@ and service behavior.
 
 The `async-ipc` test follows that pattern. It covers:
 
+- Queued one-way request progress under hot synchronous polling through all
+  four request/mixed receive variants, without minting reply authority for the
+  one-way message.
+
 - endpoint capability denial through an empty capability slot;
 - one-way async submit using `NO_COMPLETION_TOKEN`, with no reply cap minted
   and no completion delivered;
 - saved reply capability single-use semantics;
+- the first two async requests of a fresh process must remain distinguishable
+  (the departing caller's barrier must not complete its held request's token);
+- caller death with an outstanding saved reply: delivery fails, a second use
+  fails, and the same slot can save and complete a surviving caller's request;
+- a reply attempt through an endpoint capability fails without destroying that
+  endpoint (subsequent calls still succeed);
 - deferred `replyCap` replies;
 - reverse-order async completions matched by request ID, token, and payload
   identity;
@@ -214,6 +257,15 @@ The `async-ipc` test follows that pattern. It covers:
 - target-death lifecycle behavior: a completion-bearing request to a dying
   server returns a `COMPLETION_TARGET_DIED` status instead of hanging or
   leaking a pending request slot.
+
+The departing fixture shares the client's manifest and test-only endpoint scope.
+Its two submissions use the same async lane; the barrier acknowledgement means
+the held reply has been saved. A test-only 50 ms scheduling allowance precedes
+retirement; elapsed time alone is not a pass condition. Delivery rejection and
+successful same-slot reuse are required. This is an integration regression,
+not exhaustive SMP interleaving verification. See
+[IPC request lifetimes](../../docs/ipc-request-lifetimes.md) for the sequential
+proofs and the lock boundary that connects them to kernel IPC.
 
 ## Benchmarks
 

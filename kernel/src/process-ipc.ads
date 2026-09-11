@@ -10,8 +10,12 @@
 -- 4 64-bit data words, for a total of 48 bytes.
 --
 -- IPC lock ordering (acquire in this order, never reverse):
---   1. mailtab(pid).lock    (ring, completionTab and pendingRequests)
+--   1. mailtab(pid).lock    (ring, completions, pending requests, request IDs,
+--                          reply-slot changes and authorized cspace edits)
 --      Two-mailbox publication acquires distinct PIDs in ascending order.
+--      Explicit reply retirement releases the caller lock before locking its
+--      target. PID-based reply selection holds both, then drops the caller
+--      lock before the target-locked completion/handoff. Self-reply locks once.
 --   2. Process.lock         (global process table)
 --   3. individual process queue locks (ready, sleep, send, receive)
 -- Queue locks are leaves: release the sleep lock before acquiring a ready
@@ -22,6 +26,13 @@ with Capabilities;
 with Memory_Grants;
 
 package Process.IPC is
+    -- Request/mixed receive variants share a mailbox-locked round-robin over
+    -- queued messages, blocked synchronous senders, and persistent IRQ work.
+    -- Service-only polls omit IRQs and preserve unsolicited events. Under
+    -- continuous eligible traffic, neither synchronous calls nor queued
+    -- submissions may monopolize receive selection. This is a dequeue-count
+    -- fairness bound, not a scheduler/service-time or p99 latency guarantee.
+
     -- Victim is closed, off CPU and exclusively claimed by the reaper.
     -- Acquires each mailbox before Process.lock, never the reverse.
     procedure retireMailboxes (pid : ProcessID);
@@ -112,6 +123,8 @@ package Process.IPC is
     -- replyCap
     -- Reply using a specific CAP_REPLY slot. This lets deferred-reply servers
     -- choose the exact saved reply authority/request ID to complete.
+    -- A selected reply is consumed even if the peer is dead/stale or delivery
+    -- otherwise fails. A non-reply slot is never changed by this operation.
     -- @return 1 on success.
     ---------------------------------------------------------------------------
     function replyCap

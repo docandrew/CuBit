@@ -279,10 +279,20 @@ desktop-check: user_runtime
 	$(ALR) gprbuild -p -P ../userspace/apps/desktop-check/desktop_check.gpr
 	cp ../userspace/apps/desktop-check/build/desktop-check.app isodir/boot/desktop-check.app
 
+.PHONY: display-check
+display-check: user_runtime
+	mkdir -p ../userspace/apps/display-check/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/apps/display-check/manifest.c -o ../userspace/apps/display-check/build/manifest.o
+	$(ALR) gprbuild -p -P ../userspace/apps/display-check/display_check.gpr
+	cp ../userspace/apps/display-check/build/display-check.app isodir/boot/display-check.app
+
 prepare-desktop-protocol:
 	mkdir -p ../tests/desktop-protocol/build/source
 	cp ../userspace/runtime/gnat/cubit.ads ../userspace/runtime/gnat/cubit-desktop_protocol.ads \
 		../userspace/runtime/gnat/cubit-grant_references.ads \
+		../userspace/runtime/gnat/cubit-display_protocol.ads \
+		../userspace/runtime/gnat/cubit-display_protocol.adb \
 		../userspace/runtime/gnat/cubit-desktop_protocol.adb ../tests/desktop-protocol/build/source/
 
 test-desktop-protocol: prepare-desktop-protocol
@@ -291,8 +301,40 @@ test-desktop-protocol: prepare-desktop-protocol
 
 prove-desktop-protocol: prepare-desktop-protocol
 	$(ALR) gnatprove -P ../tests/desktop-protocol/protocol.gpr \
-		-u cubit-desktop_protocol.adb --level=2 --report=all --checks-as-errors=on -j2
+		-u cubit-desktop_protocol.adb cubit-display_protocol.adb --level=2 --report=all --checks-as-errors=on -j2
 	@cat ../tests/desktop-protocol/build/obj/gnatprove/gnatprove.out
+
+.PHONY: prepare-desktop-state test-desktop-state prove-desktop-state
+prepare-desktop-state:
+	mkdir -p ../tests/desktop-state/build/source
+	cp ../userspace/runtime/gnat/cubit.ads \
+		../userspace/runtime/gnat/cubit-click_sequences.ads \
+		../userspace/runtime/gnat/cubit-presentation_state.ads \
+		../userspace/runtime/gnat/cubit-presentation_state.adb \
+		../userspace/runtime/gnat/cubit-click_sequences.adb ../tests/desktop-state/build/source/
+
+test-desktop-state: prepare-desktop-state
+	$(ALR) gprbuild -p -P ../tests/desktop-state/state.gpr
+	../tests/desktop-state/build/main
+
+prove-desktop-state: prepare-desktop-state
+	$(ALR) gnatprove -P ../tests/desktop-state/state.gpr \
+		-u cubit-click_sequences.adb presentation_proof.ads --level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/desktop-state/build/obj/gnatprove/gnatprove.out
+
+.PHONY: prepare-ipc-request-ids test-ipc-request-ids prove-ipc-request-ids
+prepare-ipc-request-ids:
+	mkdir -p ../tests/ipc-request-ids/build/source
+	cp src/ipc_request_ids.ads src/ipc_request_ids.adb ../tests/ipc-request-ids/build/source/
+
+test-ipc-request-ids: prepare-ipc-request-ids
+	$(ALR) gprbuild -p -P ../tests/ipc-request-ids/ids.gpr
+	../tests/ipc-request-ids/build/main
+
+prove-ipc-request-ids: prepare-ipc-request-ids
+	$(ALR) gnatprove -P ../tests/ipc-request-ids/ids.gpr \
+		-u ipc_request_ids.adb --level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/ipc-request-ids/build/obj/gnatprove/gnatprove.out
 
 # Deterministic typed input stream publisher used by the headless recovery gate.
 .PHONY : input-stress
@@ -321,6 +363,7 @@ ipctest-client: user_runtime
 		-o ../userspace/apps/ipctest-client/build/manifest.o
 	$(ALR) gprbuild -P ../userspace/apps/ipctest-client/ipctest_client.gpr
 	cp ../userspace/apps/ipctest-client/build/ipctest-client.app isodir/boot/ipctest-client.app
+	cp ../userspace/apps/ipctest-client/build/ipctest-departing.app isodir/boot/ipctest-departing.app
 
 .PHONY : bench-load
 .PHONY : bench-storage

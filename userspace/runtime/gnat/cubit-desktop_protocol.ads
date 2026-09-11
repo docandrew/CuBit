@@ -52,6 +52,168 @@ package CuBit.Desktop_Protocol with SPARK_Mode, Pure is
    for Surface_Kind use (Plain_Surface => 0, Shell_Surface => 1,
      Window_Surface => 2);
 
+   type Protocol_Revision is record
+      Major, Minor : Unsigned_32;
+   end record;
+   Current_Revision : constant Protocol_Revision := (0, 1);
+   type Hello_Decoding (Valid : Boolean := False) is record
+      case Valid is
+         when True => Revision : Protocol_Revision;
+         when False => null;
+      end case;
+   end record;
+   function Decode_Hello (Wire : Wire_Message) return Hello_Decoding;
+   function Encode_Hello (Revision : Protocol_Revision) return Wire_Message;
+   subtype Empty_Session_Operation is Operation
+     with Static_Predicate => Empty_Session_Operation in
+       Goodbye | Get_Information;
+   function Valid_Empty_Request
+     (Wire : Wire_Message; Kind : Empty_Session_Operation) return Boolean;
+   function Encode_Empty_Request (Kind : Empty_Session_Operation)
+      return Wire_Message;
+
+   type Session_Identifier is new Unsigned_64 range 1 .. Unsigned_64'Last;
+   type Surface_Capacity is range 1 .. 65_535;
+   --  Informational compositor/session identifier and shared table capacity.
+   --  Neither identifies authority, reserves objects, or installs a session.
+   type Hello_Result (Status : Status_Code := Invalid_Request) is record
+      case Status is
+         when Success =>
+            Session : Session_Identifier;
+            Capacity : Surface_Capacity;
+         when others => null;
+      end case;
+   end record;
+   function Decode_Hello_Result (Wire : Wire_Message) return Hello_Result;
+   function Encode_Hello_Result (Item : Hello_Result) return Wire_Message;
+   type Pixel_Format is (BGRA_8888);
+   for Pixel_Format use (BGRA_8888 => 1);
+   subtype Display_Scale is Unsigned_32 range 1 .. Unsigned_32'Last;
+   Unit_Scale : constant Display_Scale := 2 ** 16;
+   type Information_Result (Status : Status_Code := Invalid_Request) is record
+      case Status is
+         when Success =>
+            Width, Height : Positive_Extent;
+            Format : Pixel_Format;
+            Scale : Display_Scale;
+         when others => null;
+      end case;
+   end record;
+   function Decode_Information_Result (Wire : Wire_Message)
+      return Information_Result;
+   function Encode_Information_Result (Item : Information_Result)
+      return Wire_Message;
+
+   subtype Input_Operation is Operation range Poll_Input .. Wait_Input;
+   type Input_Request (Kind : Input_Operation := Poll_Input) is record
+      Surface : Live_Surface_Name := 1;
+      After_Serial : Unsigned_64 := 0;
+      case Kind is
+         when Wait_Input => Deadline : Unsigned_64 := 0;
+         when Poll_Input => null;
+      end case;
+   end record;
+   type Input_Request_Decoding (Valid : Boolean := False) is record
+      case Valid is
+         when True => Value : Input_Request;
+         when False => null;
+      end case;
+   end record;
+   function Decode_Input_Request (Wire : Wire_Message)
+      return Input_Request_Decoding;
+   function Encode_Input_Request (Item : Input_Request) return Wire_Message;
+
+   type Input_Event_Kind is
+     (No_Input, Key_Pressed, Key_Released, Pointer_Moved, Pointer_Pressed,
+      Pointer_Released, Text_Entered, Wheel_Turned, Surface_Configured,
+      Input_Resynchronized);
+   for Input_Event_Kind use
+     (No_Input => 0, Key_Pressed => 1, Key_Released => 2, Pointer_Moved => 3,
+      Pointer_Pressed => 4, Pointer_Released => 5, Text_Entered => 6,
+      Wheel_Turned => 7, Surface_Configured => 8, Input_Resynchronized => 9);
+   --  Checked event envelope. Packed words remain for the existing toolkit
+   --  ABI; validity establishes their per-kind bounds before narrowing.
+   type Input_Envelope is record
+      Kind : Input_Event_Kind := No_Input;
+      Serial, Payload0, Payload1 : Unsigned_64 := 0;
+      More_Pending : Boolean := False;
+   end record;
+   More_Pending_Flag : constant Unsigned_8 := 1;
+   function Valid_Input_Envelope (Item : Input_Envelope) return Boolean
+     with Annotate => (GNATprove, Inline_For_Proof);
+   type Input_Result (Status : Status_Code := Invalid_Request) is record
+      case Status is
+         when Success => Value : Input_Envelope;
+         when others => null;
+      end case;
+   end record;
+   function Decode_Input_Result
+     (Wire : Wire_Message; Expected : Input_Operation)
+      return Input_Result
+     with Post => (if Decode_Input_Result'Result.Status = Success then
+       Valid_Input_Envelope (Decode_Input_Result'Result.Value));
+   function Encode_Input_Reply (Kind : Input_Operation; Item : Input_Envelope)
+      return Wire_Message with Pre => Valid_Input_Envelope (Item);
+
+   --  Status-only acknowledgements: exact operation label, one status word,
+   --  zero flags/reserved fields and zero unused words. Not a buffer fence.
+   function Decode_Status (Wire : Wire_Message; Expected : Operation)
+      return Status_Code;
+   function Encode_Status (Kind : Operation; Status : Status_Code)
+      return Wire_Message;
+
+   type Destroy_Request is record
+      Surface : Live_Surface_Name := 1;
+   end record;
+   type Destroy_Decoding (Valid : Boolean := False) is record
+      case Valid is
+         when True => Value : Destroy_Request;
+         when False => null;
+      end case;
+   end record;
+   function Decode_Destroy (Wire : Wire_Message) return Destroy_Decoding;
+   function Encode_Destroy (Item : Destroy_Request) return Wire_Message;
+
+   type Cursor_Style is
+     (Default_Cursor, Text_Cursor, Horizontal_Resize_Cursor,
+      Vertical_Resize_Cursor, Diagonal_Resize_Cursor);
+   for Cursor_Style use
+     (Default_Cursor => 0, Text_Cursor => 1, Horizontal_Resize_Cursor => 2,
+      Vertical_Resize_Cursor => 3, Diagonal_Resize_Cursor => 4);
+   type Cursor_Request is record
+      Surface : Live_Surface_Name := 1;
+      Style : Cursor_Style := Default_Cursor;
+   end record;
+   type Cursor_Decoding (Valid : Boolean := False) is record
+      case Valid is
+         when True => Value : Cursor_Request;
+         when False => null;
+      end case;
+   end record;
+   function Decode_Cursor (Wire : Wire_Message) return Cursor_Decoding;
+   function Encode_Cursor (Item : Cursor_Request) return Wire_Message;
+
+   --  Existing inline wire format: up to 23 bytes, not Unicode characters.
+   --  The discriminant owns the length; there is no separate buffer/count
+   --  invariant for callers or the compositor to maintain.
+   subtype Title_Length is Natural range 0 .. 23;
+   type Inline_Title (Length : Title_Length := 0) is record
+      Text : String (1 .. Length);
+   end record;
+   function Make_Title (Text : String) return Inline_Title;
+   type Title_Request is record
+      Surface : Live_Surface_Name := 1;
+      Title : Inline_Title;
+   end record;
+   type Title_Decoding (Valid : Boolean := False) is record
+      case Valid is
+         when True => Value : Title_Request;
+         when False => null;
+      end case;
+   end record;
+   function Decode_Title (Wire : Wire_Message) return Title_Decoding;
+   function Encode_Title (Item : Title_Request) return Wire_Message;
+
    type Create_Request is record
       --  Zero requests compositor-selected size.
       Width, Height : Pixel_Extent := 0;
@@ -66,8 +228,8 @@ package CuBit.Desktop_Protocol with SPARK_Mode, Pure is
    function Decode_Create (Wire : Wire_Message) return Create_Decoding
      with Annotate => (GNATprove, Inline_For_Proof);
    function Encode_Create (Item : Create_Request) return Wire_Message
-     with Post => Decode_Create (Encode_Create'Result) =
-       (Valid => True, Value => Item);
+     with Post => Decode_Create (Encode_Create'Result).Valid and then
+       Decode_Create (Encode_Create'Result).Value = Item;
 
    type Creation_Result (Status : Status_Code := Bad_State) is record
       case Status is
@@ -90,6 +252,74 @@ package CuBit.Desktop_Protocol with SPARK_Mode, Pure is
       X, Y : Pixel_Coordinate := 0;
       Width, Height : Pixel_Extent := 0;
    end record;
+
+   type Resize_Request is record
+      Surface : Live_Surface_Name := 1;
+      Width, Height : Pixel_Extent := 0;
+   end record;
+   type Resize_Decoding (Valid : Boolean := False) is record
+      case Valid is
+         when True => Value : Resize_Request;
+         when False => null;
+      end case;
+   end record;
+   function Decode_Resize (Wire : Wire_Message) return Resize_Decoding;
+   function Encode_Resize (Item : Resize_Request) return Wire_Message;
+   type Resize_Result (Status : Status_Code := Invalid_Request) is record
+      case Status is
+         when Success =>
+            Width, Height : Pixel_Extent;
+            Serial : Unsigned_64;
+         when others => null;
+      end case;
+   end record;
+   function Decode_Resize_Result (Wire : Wire_Message) return Resize_Result;
+   function Encode_Resize_Result (Item : Resize_Result) return Wire_Message;
+
+   type Window_Feature is
+     (Decorated, Resizable, Minimizable, Maximizable, Closeable,
+      Fullscreenable, Pointer_Capture, Fixed_Size);
+   for Window_Feature use
+     (Decorated => 1, Resizable => 2, Minimizable => 4, Maximizable => 8,
+      Closeable => 16, Fullscreenable => 32, Pointer_Capture => 64,
+      Fixed_Size => 128);
+   type Window_Features is array (Window_Feature) of Boolean;
+   function Feature_Bits (Features : Window_Features) return Unsigned_64;
+   type Window_Bounds is record
+      Minimum_Width, Minimum_Height : Pixel_Extent := 0;
+      --  Zero maximum means no application-supplied upper limit.
+      Maximum_Width, Maximum_Height : Pixel_Extent := 0;
+   end record;
+   function Valid_Bounds (Bounds : Window_Bounds) return Boolean is
+     ((Bounds.Maximum_Width = 0 or else
+       Bounds.Maximum_Width >= Bounds.Minimum_Width) and then
+      (Bounds.Maximum_Height = 0 or else
+       Bounds.Maximum_Height >= Bounds.Minimum_Height));
+   type Limits_Request is record
+      Surface : Live_Surface_Name := 1;
+      Bounds : Window_Bounds;
+      Features : Window_Features := [others => False];
+   end record;
+   type Limits_Decoding (Valid : Boolean := False) is record
+      case Valid is
+         when True => Value : Limits_Request;
+         when False => null;
+      end case;
+   end record;
+   function Decode_Limits (Wire : Wire_Message) return Limits_Decoding
+     with Post => (if Decode_Limits'Result.Valid then
+       Valid_Bounds (Decode_Limits'Result.Value.Bounds));
+   function Encode_Limits (Item : Limits_Request) return Wire_Message
+     with Pre => Valid_Bounds (Item.Bounds);
+   type Limits_Result (Status : Status_Code := Invalid_Request) is record
+      case Status is
+         when Success => Bounds : Window_Bounds; Serial : Unsigned_64;
+         when others => null;
+      end case;
+   end record;
+   function Decode_Limits_Result (Wire : Wire_Message) return Limits_Result;
+   function Encode_Limits_Result (Item : Limits_Result) return Wire_Message
+     with Pre => (if Item.Status = Success then Valid_Bounds (Item.Bounds));
    type Damage_Mode is (Whole_Surface, Damaged_Rectangle);
    type Present_Request is record
       Surface : Live_Surface_Name := 1;

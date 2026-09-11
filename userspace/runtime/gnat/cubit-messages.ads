@@ -270,6 +270,8 @@ package CuBit.Messages is
      (replyTo : ProcessID; msg : Message) return Unsigned_64;
 
    --  Reply using a specific saved CAP_REPLY slot.
+   --  Consumes a selected reply even if delivery fails (including caller
+   --  death). Other capability types are rejected without modification.
    function replyCap
      (slot : CapabilitySlot; msg : Message) return Unsigned_64;
 

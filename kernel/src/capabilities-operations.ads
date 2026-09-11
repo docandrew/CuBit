@@ -115,6 +115,21 @@ is
         Post => isReplyTakeResult
           (table, table'Old, slot, cap, taken);
 
+    -- Retire a selected reply and its deferred-slot bookkeeping together.
+    -- Delivery validity is checked afterward. Dead peers cannot leave an
+    -- unusable reply occupying a slot; non-reply authority is unchanged.
+    procedure retireReplyCap
+      (table         : in out CapabilityTable;
+       deferredSlots : in out Unsigned_64;
+       slot          : in     CapabilitySlot;
+       cap           :    out Capability;
+       taken         :    out Boolean) with
+        Post => isReplyTakeResult (table, table'Old, slot, cap, taken)
+          and then deferredSlots =
+            (if taken then deferredSlots'Old and
+                 not Shift_Left (Unsigned_64'(1), slot)
+             else deferredSlots'Old);
+
     ---------------------------------------------------------------------------
     -- proveReplyCapSingleUse
     -- Ghost proof harness: two consecutive takes from the same slot cannot

@@ -10,8 +10,13 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Display_Protocol;
+with CuBit.Desktop_Messages;
+with CuBit.Memory_Grants;
 
 procedure main is
+   package DSP renames CuBit.Display_Protocol;
+   package MG renames CuBit.Memory_Grants;
    use ASCII;
 
    SYSINFO_FB_WIDTH  : constant Unsigned_64 := 1100;
@@ -19,17 +24,17 @@ procedure main is
    SYSINFO_FB_PITCH  : constant Unsigned_64 := 1102;
    SYSINFO_FB_BPP    : constant Unsigned_64 := 1103;
 
-   OP_DISPLAY_GET_INFO      : constant Unsigned_32 := 16#0900#;
-   OP_DISPLAY_ATTACH_BUFFER : constant Unsigned_32 := 16#0901#;
-   OP_DISPLAY_PRESENT_RECT  : constant Unsigned_32 := 16#0902#;
-   OP_DISPLAY_CLEAR         : constant Unsigned_32 := 16#0903#;
-   OP_DISPLAY_GET_STATUS    : constant Unsigned_32 := 16#0904#;
-   OP_DISPLAY_ACQUIRE       : constant Unsigned_32 := 16#0905#;
-   OP_DISPLAY_RELEASE       : constant Unsigned_32 := 16#0906#;
-   OP_DISPLAY_MAP_BACKBUFFER : constant Unsigned_32 := 16#0907#;
-   OP_DISPLAY_PRESENT_IMMEDIATE_RECT : constant Unsigned_32 := 16#0908#;
-   OP_DISPLAY_PRESENT_REGION : constant Unsigned_32 := 16#0909#;
-   OP_DISPLAY_PRESENT_IMMEDIATE_REGION : constant Unsigned_32 := 16#090A#;
+   OP_DISPLAY_GET_INFO      : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Get_Information);
+   OP_DISPLAY_ATTACH_BUFFER : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Attach_Buffer);
+   OP_DISPLAY_PRESENT_RECT  : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Present_Rectangle);
+   OP_DISPLAY_CLEAR         : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Clear);
+   OP_DISPLAY_GET_STATUS    : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Get_Status);
+   OP_DISPLAY_ACQUIRE       : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Acquire_Display);
+   OP_DISPLAY_RELEASE       : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Release_Display);
+   OP_DISPLAY_MAP_BACKBUFFER : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Map_Backbuffer);
+   OP_DISPLAY_PRESENT_IMMEDIATE_RECT : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Present_Immediate_Rectangle);
+   OP_DISPLAY_PRESENT_REGION : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Present_Region);
+   OP_DISPLAY_PRESENT_IMMEDIATE_REGION : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Present_Immediate_Region);
 
    OP_GPU_CLEAR         : constant Unsigned_32 := 16#0A03#;
    OP_GPU_GET_STATUS    : constant Unsigned_32 := 16#0A04#;
@@ -64,6 +69,8 @@ procedure main is
    srcHeight : Natural := 0;
    srcPitch  : Natural := 0;
    srcOwner  : ProcessID := NO_PROCESS;
+   srcGrant : MG.Grant_Reference;
+   srcAcquired : Boolean := False;
    gpuAvailable : Boolean := False;
    gpuCopyActive  : Boolean := False;
    subtype Gpu_Buffer_Index is Natural range 0 .. 1;
@@ -252,7 +259,10 @@ procedure main is
    end ownsDisplay;
 
    procedure detachOwnerBuffer is
+      returned : Boolean;
    begin
+      --  The event loop finishes synchronous copies before it can detach.
+      --  Discard queued damage and all local pointers before returning the pin.
       srcAddr := System.Null_Address;
       srcWidth := 0;
       srcHeight := 0;
@@ -262,6 +272,13 @@ procedure main is
       pendingRect := (others => 0);
       gpuCopyActive := False;
       gpuPreviousDamage := (others => 0);
+      if srcAcquired then
+         MG.Return_Acquisition (srcGrant, returned);
+         if not returned then
+            debugPrint ("display: buffer acquisition return failed" & LF);
+         end if;
+         srcAcquired := False;
+      end if;
    end detachOwnerBuffer;
 
    function isEmpty (r : Rect) return Boolean is
@@ -728,7 +745,11 @@ procedure main is
          when OP_DISPLAY_ACQUIRE =>
             replyMsg.tag := (label => OP_DISPLAY_ACQUIRE,
                              length => 1, flags => 0, reserved => 0);
-            if displayOwner = NO_PROCESS or else displayOwner = from then
+            if not DSP.Valid_Lease_Request
+              (CuBit.Desktop_Messages.To_Wire (request), DSP.Acquire_Display)
+            then
+               replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
+            elsif displayOwner = NO_PROCESS or else displayOwner = from then
                displayOwner := from;
                replyMsg.words (0) := DISPLAY_OK;
             else
@@ -738,7 +759,11 @@ procedure main is
          when OP_DISPLAY_RELEASE =>
             replyMsg.tag := (label => OP_DISPLAY_RELEASE,
                              length => 1, flags => 0, reserved => 0);
-            if displayOwner = from then
+            if not DSP.Valid_Lease_Request
+              (CuBit.Desktop_Messages.To_Wire (request), DSP.Release_Display)
+            then
+               replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
+            elsif displayOwner = from then
                detachOwnerBuffer;
                displayOwner := NO_PROCESS;
                replyMsg.words (0) := DISPLAY_OK;
@@ -749,40 +774,54 @@ procedure main is
             end if;
 
          when OP_DISPLAY_ATTACH_BUFFER =>
+            replyMsg.tag := (label => OP_DISPLAY_ATTACH_BUFFER,
+                             length => 1, flags => 0, reserved => 0);
             if not ownsDisplay (from) then
-               replyMsg.tag := (label => OP_DISPLAY_ATTACH_BUFFER,
-                                length => 1, flags => 0, reserved => 0);
                replyMsg.words (0) := DISPLAY_ERR_DENIED;
-            elsif request.words (1) = 0 or else request.words (2) = 0 then
-               replyMsg.tag := (label => OP_DISPLAY_ATTACH_BUFFER,
-                                length => 1, flags => 0, reserved => 0);
-               replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
-            elsif request.words (1) > Unsigned_64 (fbWidth) or else
-                  request.words (2) > Unsigned_64 (fbHeight) or else
-                  request.words (3) < request.words (1) * 4
-            then
-               replyMsg.tag := (label => OP_DISPLAY_ATTACH_BUFFER,
-                                length => 1, flags => 0, reserved => 0);
-               replyMsg.words (0) := DISPLAY_ERR_UNSUPPORTED;
             else
-               srcAddr :=
-                  toAddr (GRANT_REGION_BASE +
-                          request.words (0) * GRANT_SLOT_SIZE);
-               srcWidth  := Natural (request.words (1));
-               srcHeight := Natural (request.words (2));
-               srcPitch  := Natural (request.words (3));
-               srcOwner  := from;
-               if gpuAvailable then
-                  gpuCopyActive := ensureGpuScanout;
-                  if gpuCopyActive then
-                     debugPrint ("display: gpu copy buffer attached" & LF);
+               declare
+                  decoded : constant DSP.Attachment_Decoding :=
+                    DSP.Decode_Attachment
+                      (CuBit.Desktop_Messages.To_Wire (request));
+                  acquired : Boolean;
+                  mapped : System.Address;
+               begin
+                  if not decoded.Valid then
+                     replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
+                  elsif Natural (decoded.Value.Layout.Width) > fbWidth or else
+                    Natural (decoded.Value.Layout.Height) > fbHeight
+                  then
+                     replyMsg.words (0) := DISPLAY_ERR_UNSUPPORTED;
+                  else
+                     MG.Acquire
+                       (decoded.Value.Grant, from, 0,
+                        DSP.DP.Byte_Length (decoded.Value.Layout),
+                        MG.Read_Access, mapped, acquired);
+                     if not acquired then
+                        replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
+                     else
+                        --  Failed replacements preserve the current buffer.
+                        --  Acquire first, even when replacing with the same
+                        --  reference: the new pin survives returning the old.
+                        detachOwnerBuffer;
+                        srcGrant := decoded.Value.Grant;
+                        srcAcquired := True;
+                        srcAddr := mapped;
+                        srcWidth := Natural (decoded.Value.Layout.Width);
+                        srcHeight := Natural (decoded.Value.Layout.Height);
+                        srcPitch := decoded.Value.Layout.Pitch;
+                        srcOwner := from;
+                        if gpuAvailable then
+                           gpuCopyActive := ensureGpuScanout;
+                           if gpuCopyActive then
+                              debugPrint ("display: gpu copy buffer attached" & LF);
+                           end if;
+                        end if;
+                        replyMsg.words (0) := DISPLAY_OK;
+                        debugPrint ("display: buffer attached" & LF);
+                     end if;
                   end if;
-               end if;
-
-               replyMsg.tag := (label => OP_DISPLAY_ATTACH_BUFFER,
-                                length => 1, flags => 0, reserved => 0);
-               replyMsg.words (0) := DISPLAY_OK;
-               debugPrint ("display: buffer attached" & LF);
+               end;
             end if;
 
          when OP_DISPLAY_MAP_BACKBUFFER =>

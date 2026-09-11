@@ -17,14 +17,11 @@ with CuBit.UI;
 
 procedure main is
    use ASCII;
+   package DP renames CuBit.Desktop_Protocol;
+   use type DP.Status_Code;
 
-   OP_DESKTOP_HELLO    : constant Unsigned_32 := 16#0800#;
-   OP_DESKTOP_BYE      : constant Unsigned_32 := 16#0801#;
-   OP_DESKTOP_GET_INFO : constant Unsigned_32 := 16#0802#;
    OP_SURFACE_CREATE   : constant Unsigned_32 := 16#0810#;
    OP_SURFACE_PRESENT  : constant Unsigned_32 := 16#0812#;
-   OP_SURFACE_RESIZE   : constant Unsigned_32 := 16#0813#;
-   OP_INPUT_POLL       : constant Unsigned_32 := 16#0821#;
 
    SURFACE_FLAG_SHELL  : constant Unsigned_64 := 1;
    SURFACE_FLAG_WINDOW : constant Unsigned_64 := 2;
@@ -36,9 +33,6 @@ procedure main is
    KEY_ESC : constant Unsigned_64 := 16#01#;
    KEY_Q   : constant Unsigned_64 := 16#10#;
    KEY_R : constant Unsigned_64 := 16#13#;
-
-   PROTOCOL_VERSION : constant Unsigned_64 :=
-      0 or Shift_Left (Unsigned_64'(1), 32);
 
    surfaceId : Unsigned_64 := 0;
    windowId  : Unsigned_64 := 0;
@@ -189,11 +183,15 @@ procedure main is
 
    procedure requestResize is
       reply : Message;
+      resized : DP.Resize_Result;
       nextW : Unsigned_64 := windowW;
       nextH : Unsigned_64 := windowH;
    begin
       --  Bring-up resize exercise: press R to toggle a single child window.
       --  This proves resize belongs to a surface, not the whole desktop.
+      if windowId = 0 then
+         return;
+      end if;
       if compact then
          compact := False;
       else
@@ -208,10 +206,14 @@ procedure main is
          nextH := 220;
       end if;
 
-      reply := callDesktop (OP_SURFACE_RESIZE, windowId, nextW, nextH, 0);
-      if reply.words (0) = 0 then
-         windowW := reply.words (1);
-         windowH := reply.words (2);
+      reply := CuBit.Desktop_Messages.From_Wire
+        (DP.Encode_Resize ((DP.Live_Surface_Name (windowId),
+                            DP.Pixel_Extent (nextW), DP.Pixel_Extent (nextH))));
+      reply.tag := capCall (CAP_SLOT_DESKTOP, reply);
+      resized := DP.Decode_Resize_Result (CuBit.Desktop_Messages.To_Wire (reply));
+      if resized.Status = DP.Success then
+         windowW := Unsigned_64 (resized.Width);
+         windowH := Unsigned_64 (resized.Height);
          present;
       end if;
    end requestResize;
@@ -226,7 +228,13 @@ procedure main is
       --  This is the graceful prototype exit path. The shell client asks the
       --  desktop service to remove its surface, then exits so the CLI shell's
       --  foreground-child logic can reclaim keyboard/mouse focus and redraw.
-      reply := callDesktop (OP_DESKTOP_BYE);
+      reply := CuBit.Desktop_Messages.From_Wire
+        (DP.Encode_Empty_Request (DP.Goodbye));
+      reply.tag := capCall (CAP_SLOT_DESKTOP, reply);
+      if DP.Decode_Status (CuBit.Desktop_Messages.To_Wire (reply), DP.Goodbye) /= DP.Success then
+         debugPrint ("desktop-shell: goodbye failed" & LF);
+         return;
+      end if;
       sentBye := True;
    end closeSession;
 
@@ -234,10 +242,11 @@ begin
    debugPrint ("desktop-shell: starting" & LF);
 
    declare
-      hello : constant Message :=
-         callDesktop (OP_DESKTOP_HELLO, PROTOCOL_VERSION, 0, 0, 0);
+      hello : Message := CuBit.Desktop_Messages.From_Wire
+        (DP.Encode_Hello (DP.Current_Revision));
    begin
-      if hello.words (0) = 0 then
+      hello.tag := capCall (CAP_SLOT_DESKTOP, hello);
+      if DP.Decode_Hello_Result (CuBit.Desktop_Messages.To_Wire (hello)).Status /= DP.Success then
          debugPrint ("desktop-shell: hello failed" & LF);
          ignore := syscall (SYSCALL_EXIT, 1);
          return;
@@ -245,10 +254,19 @@ begin
    end;
 
    declare
-      info : constant Message := callDesktop (OP_DESKTOP_GET_INFO);
+      info : Message := CuBit.Desktop_Messages.From_Wire
+        (DP.Encode_Empty_Request (DP.Get_Information));
+      decoded : DP.Information_Result;
    begin
-      width := info.words (0);
-      height := info.words (1);
+      info.tag := capCall (CAP_SLOT_DESKTOP, info);
+      decoded := DP.Decode_Information_Result (CuBit.Desktop_Messages.To_Wire (info));
+      if decoded.Status /= DP.Success then
+         debugPrint ("desktop-shell: display information failed" & LF);
+         closeSession;
+         return;
+      end if;
+      width := Unsigned_64 (decoded.Width);
+      height := Unsigned_64 (decoded.Height);
    end;
 
    declare
@@ -294,9 +312,17 @@ begin
 
    while running loop
       declare
-         ev : constant Message :=
-            callDesktop (OP_INPUT_POLL, windowId, lastEvent, 0, 0);
+         ev : Message := CuBit.Desktop_Messages.From_Wire
+           (DP.Encode_Input_Request ((DP.Poll_Input, DP.Live_Surface_Name (windowId), lastEvent)));
+         decoded : DP.Input_Result;
       begin
+         ev.tag := capCall (CAP_SLOT_DESKTOP, ev);
+         decoded := DP.Decode_Input_Result (CuBit.Desktop_Messages.To_Wire (ev), DP.Poll_Input);
+         if decoded.Status /= DP.Success then
+            debugPrint ("desktop-shell: input rejected" & LF);
+            closeSession;
+            exit;
+         end if;
          if ev.words (0) /= INPUT_NONE then
             lastEvent := ev.words (1);
 

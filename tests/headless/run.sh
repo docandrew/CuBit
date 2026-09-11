@@ -29,7 +29,7 @@ Usage: tests/headless/run.sh [options]
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-remote, capability-security, network-authority, storage-grants, audio-grants, desktop-display, desktop-protocol, input-stream, devices, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-remote, capability-security, network-authority, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
   --timeout SECONDS    QEMU runtime before timeout is treated as success
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
   --cpus COUNT         Virtual CPUs, 1..4 (default: 4)
@@ -136,7 +136,7 @@ case "$TIMEOUT_SECONDS" in
 esac
 
 case "$TEST_NAME" in
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|storage-grants|audio-grants|desktop-display|desktop-protocol|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -273,6 +273,9 @@ case "$TEST_NAME" in
     desktop-protocol)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-desktop-protocol.conf"
         ;;
+    display-grants|display-grants-virtio-vga)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-display-grants.conf"
+        ;;
     devices)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-devices.conf"
         ;;
@@ -300,6 +303,16 @@ if [ -n "$INIT_PROFILE" ]; then
         echo "headless: failed to install $TEST_NAME init.conf" >&2
         exit 1
     fi
+    if [ "$TEST_NAME" = "async-ipc" ]; then
+        for ipc_image in ipctest-server.app ipctest-client.app ipctest-departing.app; do
+            if [ ! -f "$KERNEL_DIR/isodir/boot/$ipc_image" ]; then
+                echo "headless: build ipctest-server ipctest-client first ($ipc_image missing)" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $ipc_image" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "write $KERNEL_DIR/isodir/boot/$ipc_image $ipc_image" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        done
+    fi
     if [ "$TEST_NAME" = "bench-ipc" ] || [ "$TEST_NAME" = "bench-audio" ] || [ "$TEST_NAME" = "bench-storage" ]; then
         BENCHMARK_IMAGES="bench-ipc-client.app bench-ipc-server.app"
         if [ "$TEST_NAME" = "bench-audio" ]; then BENCHMARK_IMAGES="bench-audio.app"; fi
@@ -324,6 +337,17 @@ if [ -n "$INIT_PROFILE" ]; then
         if ! debugfs -w -R "write $DOOM_IMAGE doom.elf" "$TEMP_DISK" >/dev/null 2>&1; then
             echo "headless: failed to install current doom.elf" >&2
             exit 1
+        fi
+        if [ "${CUBIT_DOOM_MULTIAPP:-0}" = 1 ]; then
+            for app in ccl-workbench.app netsurf.app; do
+                if [ ! -f "$KERNEL_DIR/isodir/boot/$app" ]; then
+                    echo "headless: build $app before the multi-app DOOM test" >&2
+                    exit 1
+                fi
+                debugfs -w -R "rm $app" "$TEMP_DISK" >/dev/null 2>&1
+                debugfs -w -R "write $KERNEL_DIR/isodir/boot/$app $app" \
+                    "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+            done
         fi
     fi
     if [ "$TEST_NAME" = "desktop-display" ] ||
@@ -364,6 +388,32 @@ if [ -n "$INIT_PROFILE" ]; then
             echo "headless: failed to install desktop-check" >&2
             exit 1
         fi
+    fi
+    if [ "$TEST_NAME" = "virtio-vga-primary" ] || [ "$TEST_NAME" = "desktop-display" ]; then
+        SHELL_TEST_IMAGE="$KERNEL_DIR/isodir/boot/shell.app"
+        if [ ! -f "$SHELL_TEST_IMAGE" ]; then
+            echo "headless: build shell first" >&2
+            exit 1
+        fi
+        debugfs -w -R "rm shell.app" "$TEMP_DISK" >/dev/null 2>&1
+        if ! debugfs -w -R "write $SHELL_TEST_IMAGE shell.app" "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to install current shell" >&2
+            exit 1
+        fi
+    fi
+    if [ "$TEST_NAME" = "display-grants" ] || [ "$TEST_NAME" = "display-grants-virtio-vga" ]; then
+        for DISPLAY_TEST_IMAGE_NAME in display.svc display-check.app; do
+            DISPLAY_TEST_IMAGE="$KERNEL_DIR/isodir/boot/$DISPLAY_TEST_IMAGE_NAME"
+            if [ ! -f "$DISPLAY_TEST_IMAGE" ]; then
+                echo "headless: build display and display-check first" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $DISPLAY_TEST_IMAGE_NAME" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $DISPLAY_TEST_IMAGE $DISPLAY_TEST_IMAGE_NAME" "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $DISPLAY_TEST_IMAGE_NAME" >&2
+                exit 1
+            fi
+        done
     fi
     if [ "$TEST_NAME" = "ccl-vm" ] || [ "$TEST_NAME" = "ccl-workbench" ] ||
        [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
@@ -592,6 +642,7 @@ cp "$GRUB_BAK" "$GRUB_CFG"
 
 VIDEO_ARGS="-device virtio-gpu-pci"
 if [ "$TEST_NAME" = "virtio-vga-primary" ] ||
+   [ "$TEST_NAME" = "display-grants-virtio-vga" ] ||
    [ "$TEST_NAME" = "ccl-workspace" ] ||
    [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
    [ "$TEST_NAME" = "desktop-virtio-vga" ] ||
@@ -673,11 +724,81 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] ||
             # Open/close Apps after the adversary exits to exercise that path.
             {
                 sleep 0.3
-                printf 'sendkey super_l\n'
+                printf 'sendkey meta_l\n'
                 sleep 0.3
                 printf 'sendkey esc\n'
             } | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
         elif [ "$TEST_NAME" = "desktop-doom" ]; then
+            move_pointer() {
+                local dx=$1 dy=$2 sx sy
+                while [ "$dx" -ne 0 ] || [ "$dy" -ne 0 ]; do
+                    sx=$dx; sy=$dy
+                    if [ "$sx" -gt 80 ]; then sx=80; fi
+                    if [ "$sx" -lt -80 ]; then sx=-80; fi
+                    if [ "$sy" -gt 80 ]; then sy=80; fi
+                    if [ "$sy" -lt -80 ]; then sy=-80; fi
+                    printf 'mouse_move %s %s\n' "$sx" "$sy"
+                    dx=$((dx-sx)); dy=$((dy-sy))
+                    sleep 0.05
+                done
+                sleep 0.3
+            }
+            if [ "${CUBIT_DOOM_MULTIAPP:-0}" = 1 ]; then
+                {
+                    printf 'sendkey meta_l\n'
+                    sleep 0.3
+                    printf 'sendkey down\n'
+                    sleep 0.2
+                    printf 'sendkey ret\n'
+                    sleep 4
+                    printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-workbench.ppm"
+                    # Close the native client before reusing its desktop slot.
+                    move_pointer 910 14
+                    sleep 0.3
+                    printf 'mouse_button 1\n'
+                    sleep 0.1
+                    printf 'mouse_button 0\n'
+                    sleep 1
+                    move_pointer -910 -14
+                    printf 'sendkey meta_l\n'
+                    sleep 0.3
+                    for key in down down down down ret; do
+                        printf 'sendkey %s\n' "$key"
+                        sleep 0.2
+                    done
+                    sleep 4
+                    printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-browser.ppm"
+                    # Move the fixed-size browser fully onto the screen so its
+                    # close button is reachable, then close before DOOM.
+                    move_pointer 120 14
+                    sleep 0.3
+                    printf 'mouse_button 1\n'
+                    sleep 0.2
+                    move_pointer -98 -58
+                    sleep 0.3
+                    printf 'mouse_button 0\n'
+                    sleep 0.3
+                    printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-browser-moved.ppm"
+                    move_pointer 909 0
+                    sleep 0.3
+                    printf 'mouse_button 1\n'
+                    sleep 0.1
+                    printf 'mouse_button 0\n'
+                    sleep 1
+                    printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-browser-closed.ppm"
+                } | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            fi
+            # Launch through Apps: boot-time spawning bypasses compositor
+            # bookkeeping and cannot cover interactive-launch regressions.
+            {
+                printf 'sendkey meta_l\n'
+                sleep 0.3
+                printf 'sendkey down\n'
+                sleep 0.2
+                printf 'sendkey down\n'
+                sleep 0.2
+                printf 'sendkey ret\n'
+            } | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
             doom_ready=0
             for ((attempt = 0; attempt < 100; attempt++)); do
                 if grep -F "I_InitGraphics: framebuffer" \
@@ -706,6 +827,12 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] ||
                 printf 'sendkey up 500\n'
                 sleep 1
                 printf 'sendkey ctrl 500\n'
+                sleep 1
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-game.ppm"
+                printf 'sendkey meta_l\n'
+                sleep 0.5
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-apps.ppm"
+                printf 'sendkey esc\n'
             } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
         elif [ "$TEST_NAME" = "ccl-workspace" ]; then
             workbench_ready=0
@@ -954,6 +1081,39 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] ||
                 sleep 1.2
                 printf 'sendkey b\n'
                 printf 'mouse_move 16 8\n'
+                if [ "$TEST_NAME" = "desktop-display" ]; then
+                    sleep 0.2
+                    printf 'sendkey meta_l\n'
+                    sleep 0.2
+                    printf 'sendkey ret\n'
+                    sleep 0.4
+                    # Cursor (128,104) -> internal console caption (148,88).
+                    printf 'mouse_move 20 -16\n'
+                    sleep 0.2
+                    # Move the caption to y=0 first: all three subsequent
+                    # clicks stay on the caption even after maximizing.
+                    printf 'mouse_button 1\n'
+                    sleep 0.1
+                    printf 'mouse_move 0 -76\n'
+                    sleep 0.2
+                    printf 'mouse_button 0\n'
+                    sleep 0.6
+                    # Three clicks must produce only one maximize.
+                    for _click in 1 2 3; do
+                        printf 'mouse_button 1\n'
+                        sleep 0.06
+                        printf 'mouse_button 0\n'
+                        sleep 0.06
+                    done
+                    # Expire the third press before the restoration pair.
+                    sleep 0.6
+                    for _click in 1 2; do
+                        printf 'mouse_button 1\n'
+                        sleep 0.06
+                        printf 'mouse_button 0\n'
+                        sleep 0.06
+                    done
+                fi
             } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
         fi
     ) &
@@ -1056,6 +1216,9 @@ capability-test: all tests passed
         required_markers="
 ipctest-server: registered
 ipctest-client: starting
+ipctest-departing: exiting with saved reply
+ipctest-server: dead caller reply retired and slot reused
+ipctest-client: four receive fairness paths PASS
 TEST: PASS async-ipc
 "
         ;;
@@ -1201,6 +1364,19 @@ DESKTOP-PROTOCOL-CHECK: PASS
 desktop: dead client buffer acquisition released
 "
         ;;
+    display-grants)
+        required_markers="
+display: gpu not primary, using linear-fb
+DISPLAY-GRANTS-CHECK: PASS
+"
+        ;;
+    display-grants-virtio-vga)
+        required_markers="
+display: backend virtio-gpu
+display: gpu copy buffer attached
+DISPLAY-GRANTS-CHECK: PASS
+"
+        ;;
     input-stream)
         required_markers="
 desktop: internal shell active
@@ -1262,7 +1438,7 @@ mixer: HDA period IRQ active
         ;;
     virtio-gpu)
         required_markers="
-devmgr: found virtio-gpu at PCI
+vendor=1AF4 device=1050 class=0380 prog-if=00 virtio-gpu
 devmgr: virtio-gpu setup complete
 virtio-gpu: transport ready queues=2
 virtio-gpu: scanout test frame presented
@@ -1272,7 +1448,7 @@ shell: cwd=@nvme:0/
         ;;
     virtio-vga-primary)
         required_markers="
-devmgr: found virtio-gpu at PCI
+vendor=1AF4 device=1050 class=0300 prog-if=00 virtio-gpu
 devmgr: virtio-gpu setup complete
 virtio-gpu: scanout0 1024x768 enabled=1
 virtio-gpu: scanout test frame presented
@@ -1308,6 +1484,17 @@ if [ "$missing" -ne 0 ]; then
     exit 1
 fi
 
+if [ "$TEST_NAME" = "desktop-doom" ]; then
+    if [ "${CUBIT_DOOM_MULTIAPP:-0}" = 1 ] &&
+       [ "$(grep -Ec 'desktop: ptr hit-down [0-9]+ [0-9]+ 6$' "$SERIAL_LOG")" -lt 2 ]; then
+        echo "headless: multi-app fixture did not close both windows" >&2
+        exit 1
+    fi
+    if ! python3 "$ROOT_DIR/tests/headless/check-doom-frame.py" "${SERIAL_LOG%.log}"; then
+        exit 1
+    fi
+fi
+
 if [ "$BENCH_LOAD" = 1 ]; then
     if ! python3 "$ROOT_DIR/tests/performance/report.py" "$SERIAL_LOG" --require-load >/dev/null; then
         echo "headless: INVALID loaded benchmark (see $SERIAL_LOG)" >&2
@@ -1339,6 +1526,12 @@ if [ "$TEST_NAME" = "input-stream" ]; then
 fi
 
 if [ "$TEST_NAME" = "desktop-display" ]; then
+    TITLE_DOUBLE_EVENTS="$(grep -F 'desktop: ptr title-double ' "$SERIAL_LOG")"
+    if [ "$(printf '%s\n' "$TITLE_DOUBLE_EVENTS" | grep -c ' 1 0$')" -ne 1 ] ||
+       [ "$(printf '%s\n' "$TITLE_DOUBLE_EVENTS" | grep -c ' 0 0$')" -ne 1 ]; then
+        echo "headless: title double-click did not maximize/restore exactly once" >&2
+        exit 1
+    fi
     DESKTOP_INPUT_STATS="$(grep -F 'desktop: stats ' "$SERIAL_LOG")"
     KEYBOARD_REPORTS="$(printf '%s\n' "$DESKTOP_INPUT_STATS" | awk '
       { for (i = 1; i <= NF; i++) if ($i ~ /^key=/) {

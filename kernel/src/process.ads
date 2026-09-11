@@ -36,6 +36,7 @@ with BuddyAllocator;
 with Capabilities;
 with Config;
 with Descriptors;
+with IPC_Request_Ids;
 with LinkedLists;
 with Memory_Grants;
 with Process_Lifetime;
@@ -457,12 +458,18 @@ package Process is
     --                          to receive a message destined for this mailbox
     -- @field ring            - Unified ring for submit() and sendEvent()
     ---------------------------------------------------------------------------
+    type Receive_Lane is (Queued_Messages, Waiting_Senders, IRQ_Doorbell);
+
     type Mailbox is record
         lock        : Spinlocks.spinlock;
         closed      : Boolean := True;
 
         -- Unified ring buffer for async messages and events
         ring        : MessageRing;
+        -- Protected by lock, shared by all receivers and receive variants.
+        -- Persistent round-robin prevents a hot synchronous caller from
+        -- starving queued async requests, one-way presents, or device work.
+        nextReceiveLane : Receive_Lane := Queued_Messages;
 
         sendQueue   : ProcQueue;
         recvQueue   : ProcQueue;
@@ -572,7 +579,8 @@ package Process is
         pendingRequests     : PendingArray :=
                                   (others => (NO_PROCESS, NO_REQUEST_ID, 0));
         numPending          : Natural := 0;
-        nextRequestId       : Unsigned_64 := 1;
+        requestSequence     : IPC_Request_Ids.Sequence :=
+                                IPC_Request_Ids.Initial_Sequence;
         grants              : GrantArray := (others => <>);
         -- Process teardown retains the PID while an acquired grant still
         -- names this owner.  The final return completes PID retirement.

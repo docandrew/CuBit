@@ -40,8 +40,47 @@ jobs:
       - name: Prove capability derivation attenuation
         run: nix develop --command make -C kernel prove-capability-derive
 
+      - name: Test and prove asynchronous request identity
+        run: nix develop --command make -C kernel test-ipc-request-ids prove-ipc-request-ids
+
+      - name: Build request and reply lifetime regressions
+        run: nix develop --command make -C kernel ipctest-server ipctest-client
+
+      - name: Boot request and reply lifetime regressions
+        run: >-
+          nix develop --command tests/headless/run.sh
+          --test async-ipc
+          --disk kernel/capability_security_disk.img
+          --accel tcg,thread=multi
+          --cpus 2
+          --timeout 45
+          --serial "${{ runner.temp }}/cubit-ipc-lifetime-serial.log"
+          --pcap "${{ runner.temp }}/cubit-ipc-lifetime-net.pcap"
+          --keep-logs
+
       - name: Check kernel SPARK boundaries
         run: nix develop --command make -C kernel check-spark-boundaries
+
+      - name: Test and prove desktop and display codecs
+        run: nix develop --command make -C kernel test-desktop-protocol prove-desktop-protocol
+
+      - name: Test and prove click and presentation state machines
+        run: nix develop --command make -C kernel test-desktop-state prove-desktop-state
+
+      - name: Build display buffer lifetime regression
+        run: nix develop --command make -C kernel display display-check
+
+      - name: Boot display buffer lifetime regression
+        run: >-
+          nix develop --command tests/headless/run.sh
+          --test display-grants
+          --disk kernel/capability_security_disk.img
+          --accel tcg,thread=multi
+          --cpus 2
+          --timeout 45
+          --serial "${{ runner.temp }}/cubit-display-grants-serial.log"
+          --pcap "${{ runner.temp }}/cubit-display-grants-net.pcap"
+          --keep-logs
 
       - name: Prove interrupt exclusion and context handoff state
         run: nix develop --command make -C kernel prove-interrupt-state
@@ -103,6 +142,13 @@ jobs:
             ${{ runner.temp }}/cubit-capability-security-net.pcap
             ${{ runner.temp }}/cubit-filesystem-scope-serial.log
             ${{ runner.temp }}/cubit-filesystem-scope-net.pcap
+            ${{ runner.temp }}/cubit-ipc-lifetime-serial.log
+            ${{ runner.temp }}/cubit-ipc-lifetime-net.pcap
+            tests/ipc-request-ids/build/obj/gnatprove/gnatprove.out
+            ${{ runner.temp }}/cubit-display-grants-serial.log
+            ${{ runner.temp }}/cubit-display-grants-net.pcap
+            tests/desktop-protocol/build/obj/gnatprove/gnatprove.out
+            tests/desktop-state/build/obj/gnatprove/gnatprove.out
             userspace/runtime/tests/directory-paths/build/gnatprove/gnatprove.out
             userspace/runtime/tests/file-access/build/gnatprove/gnatprove.out
             kernel/build/spark-legality/gnatprove/gnatprove.out
