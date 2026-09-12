@@ -1,0 +1,6 @@
+# Requests only: installation/launch policy still decides effective authority.
+(executable-manifest 1
+  (identity "com.cubit.ccl-vm")
+  (version "0.1.0")
+  (request-service ccl-test-host read-write test-host)
+  (request-service clock read-write clock))

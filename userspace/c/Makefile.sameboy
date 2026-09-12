@@ -1,0 +1,44 @@
+# Freestanding CuBit frontend, not the upstream SDL/Unix application.
+CC = gcc
+.DEFAULT_GOAL := all
+LD = ld
+SB_SRC ?= $(SAMEBOY_SRC)
+OUT := sameboy_build
+CORE_NAMES := $(filter-out debugger cheat_search cheats rewind sm83_disassembler symbol_hash,$(basename $(notdir $(wildcard $(SB_SRC)/Core/*.c))))
+CORE_OBJS := $(addprefix $(OUT)/core/,$(addsuffix .o,$(CORE_NAMES)))
+FLAGS := -O2 -std=gnu11 -ffreestanding -fno-builtin -fno-stack-protector \
+ -fno-pic -fno-pie -mno-red-zone -ffunction-sections -fdata-sections -MMD -MP \
+ -Wall -Werror=implicit-function-declaration -DNDEBUG -D_GNU_SOURCE \
+ -DGB_INTERNAL -DGB_DISABLE_DEBUGGER -DGB_DISABLE_CHEATS -DGB_DISABLE_REWIND \
+ -DGB_DISABLE_TIMEKEEPING -DGB_VERSION='"CuBit-port"' \
+ -include sameboy/include/port_compat.h \
+ -Isameboy/include -isystem include -I. -I$(SB_SRC) -I$(SB_SRC)/Core
+
+.PHONY: all runtime bootroms core
+-include $(wildcard $(OUT)/*.d $(OUT)/core/*.d)
+core: $(CORE_OBJS)
+all: $(OUT)/sameboy.app $(OUT)/test.gb
+runtime:
+	$(MAKE) build/crt0.o build/libcubit.a
+$(OUT)/core/%.o: $(SB_SRC)/Core/%.c
+	mkdir -p $(dir $@)
+	$(CC) $(FLAGS) -c $< -o $@
+$(OUT)/%.o: sameboy/%.c
+	mkdir -p $(dir $@)
+	$(CC) $(FLAGS) -c $< -o $@
+$(OUT)/libc_stubs.o: libc_stubs.c
+	$(CC) $(FLAGS) -Dfabs=cubit_legacy_fabs -Dceil=cubit_legacy_ceil \
+	 -Dsin=cubit_legacy_sin -Dcos=cubit_legacy_cos -c $< -o $@
+bootroms:
+	$(MAKE) -C $(SB_SRC) bootroms CONF=release BIN=$(abspath $(OUT)/resources) OBJ=$(abspath $(OUT)/resources/obj) PB12_COMPRESS=$(abspath $(OUT)/resources/pb12)
+$(OUT)/bootroms.o: sameboy/bootroms.S bootroms
+	$(CC) -c $< -o $@
+$(OUT)/test.gb: sameboy/test-cartridge.asm
+	mkdir -p $(OUT)
+	rgbasm -o $(OUT)/test-rom.o $<
+	rgblink -o $@ $(OUT)/test-rom.o
+	rgbfix -v -p 0 -t "CUBIT TEST" $@
+$(OUT)/sameboy.app: runtime $(CORE_OBJS) $(OUT)/main.o $(OUT)/compat.o $(OUT)/bootroms.o $(OUT)/libc_stubs.o
+	$(LD) -nostdlib -static --gc-sections -z stack-size=16777216 -T link.ld \
+	 build/crt0.o $(CORE_OBJS) $(OUT)/main.o $(OUT)/compat.o $(OUT)/bootroms.o $(OUT)/libc_stubs.o $(SAMEBOY_LIBM) \
+	 build/libcubit.a -o $@

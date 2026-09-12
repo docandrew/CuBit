@@ -1,4 +1,5 @@
-/* CuBit Control Language VM test application identity. */
+/* Regression fixture only: the pre-CCL ccl-vm manifest, retained to compare
+ * ELF section bytes independently. Not part of any application build. */
 static const unsigned char __cubit_id[]
     __attribute__((section(".cubit.id"), used)) = {
     0x43, 0x42, 0x49, 0x44,

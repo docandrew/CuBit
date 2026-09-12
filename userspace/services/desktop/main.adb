@@ -464,11 +464,11 @@ procedure main is
 
    type Launch_Action is
      (LAUNCH_NONE, LAUNCH_CONSOLE, LAUNCH_WORKBENCH, LAUNCH_DOOM,
-      LAUNCH_DEVICES, LAUNCH_BROWSER, LAUNCH_FILES, LAUNCH_POWER);
+      LAUNCH_DEVICES, LAUNCH_BROWSER, LAUNCH_FILES, LAUNCH_SAMEBOY, LAUNCH_POWER);
    for Launch_Action use
      (LAUNCH_NONE => 0, LAUNCH_CONSOLE => 1, LAUNCH_WORKBENCH => 2,
       LAUNCH_DOOM => 3, LAUNCH_DEVICES => 4, LAUNCH_BROWSER => 5,
-      LAUNCH_FILES => 6, LAUNCH_POWER => 7);
+      LAUNCH_FILES => 6, LAUNCH_SAMEBOY => 7, LAUNCH_POWER => 8);
    for Launch_Action'Size use 8;
 
    launchMenuSelection : Launch_Action := LAUNCH_CONSOLE;
@@ -480,12 +480,13 @@ procedure main is
    begin
       if upward then
          case current is
-            when LAUNCH_CONSOLE   => return LAUNCH_FILES;
+            when LAUNCH_CONSOLE   => return LAUNCH_SAMEBOY;
             when LAUNCH_WORKBENCH => return LAUNCH_CONSOLE;
             when LAUNCH_DOOM      => return LAUNCH_WORKBENCH;
             when LAUNCH_DEVICES   => return LAUNCH_DOOM;
             when LAUNCH_BROWSER   => return LAUNCH_DEVICES;
             when LAUNCH_FILES     => return LAUNCH_BROWSER;
+            when LAUNCH_SAMEBOY   => return LAUNCH_FILES;
             when others           => return LAUNCH_CONSOLE;
          end case;
       else
@@ -495,7 +496,8 @@ procedure main is
             when LAUNCH_DOOM      => return LAUNCH_DEVICES;
             when LAUNCH_DEVICES   => return LAUNCH_BROWSER;
             when LAUNCH_BROWSER   => return LAUNCH_FILES;
-            when LAUNCH_FILES     => return LAUNCH_CONSOLE;
+            when LAUNCH_FILES     => return LAUNCH_SAMEBOY;
+            when LAUNCH_SAMEBOY   => return LAUNCH_CONSOLE;
             when others           => return LAUNCH_CONSOLE;
          end case;
       end if;
@@ -537,7 +539,7 @@ procedure main is
    LAUNCH_W     : constant Natural := 88;
    LAUNCH_H     : constant Natural := 24;
    MENU_W       : constant Natural := 250;
-   MENU_H       : constant Natural := 286;
+   MENU_H       : constant Natural := 320;
    TASK_BUTTON_W : constant Natural := 156;
    TASK_BUTTON_H : constant Natural := 24;
    TASK_BUTTON_GAP : constant Natural := 6;
@@ -928,8 +930,10 @@ procedure main is
             y := menu.y + 178;
          when LAUNCH_FILES =>
             y := menu.y + 212;
+         when LAUNCH_SAMEBOY =>
+            y := menu.y + 246;
          when LAUNCH_POWER =>
-            y := menu.y + 252;
+            y := menu.y + 286;
          when others =>
             return (others => 0);
       end case;
@@ -945,7 +949,7 @@ procedure main is
       if isEmpty (menu) or else menu.w <= 24 then
          return (others => 0);
       end if;
-      y := menu.y + 244;
+      y := menu.y + 278;
       return clampRect ((x => menu.x + 12, y => y,
                          w => menu.w - 24, h => 1));
    end launchSeparatorRect;
@@ -1003,6 +1007,8 @@ procedure main is
          return LAUNCH_BROWSER;
       elsif pointInRect (x, y, launchItemRect (LAUNCH_FILES)) then
          return LAUNCH_FILES;
+      elsif pointInRect (x, y, launchItemRect (LAUNCH_SAMEBOY)) then
+         return LAUNCH_SAMEBOY;
       elsif pointInRect (x, y, launchItemRect (LAUNCH_POWER)) then
          return LAUNCH_POWER;
       else
@@ -2461,6 +2467,8 @@ procedure main is
         (LAUNCH_BROWSER, Desktop_Icons.Files, "NetSurf", C_TEXT);
       drawLaunchItem
         (LAUNCH_FILES, Desktop_Icons.Files, "Files", C_TEXT);
+      drawLaunchItem
+        (LAUNCH_SAMEBOY, Desktop_Icons.Doom, "SameBoy", C_TEXT);
       declare
          sep : constant Rect := launchSeparatorRect;
       begin
@@ -5111,6 +5119,8 @@ procedure main is
             trySpawnFromConsole ("netsurf.app", ok);
          when LAUNCH_FILES =>
             trySpawnFromConsole ("files.app", ok);
+         when LAUNCH_SAMEBOY =>
+            trySpawnFromConsole ("sameboy.app", ok);
          when others =>
             null;
       end case;

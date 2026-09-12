@@ -352,6 +352,11 @@ doom: user_runtime
 	$(ALR) $(MAKE) -C ../userspace/c -f Makefile.doomgeneric
 	cp ../userspace/c/doom_build/doom.elf isodir/boot/doom.elf
 
+.PHONY : sameboy
+sameboy: user_runtime
+	$(ALR) $(MAKE) -C ../userspace/c -f Makefile.sameboy
+	cp ../userspace/c/sameboy_build/sameboy.app isodir/boot/sameboy.app
+
 .PHONY : netsurf
 netsurf:
 	../userspace/c/netsurf/build-freestanding-deps.sh
@@ -600,10 +605,22 @@ ccl-test-native:
 	../userspace/ccl/build/native/main
 
 .PHONY : ccl-vm
-ccl-vm: user_runtime
-	mkdir -p ../userspace/ccl/apps/ccl-vm/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/ccl/apps/ccl-vm/manifest.c \
+.PHONY : ccl-manifest
+ccl-manifest:
+	$(ALR) gprbuild -p -P ../userspace/ccl/ccl_manifest.gpr
+
+.PHONY : test-ccl-manifests
+test-ccl-manifests: ccl-vm
+	$(ALR) python3 ../tests/ccl-manifests/test-manifests.py -v
+
+ccl-vm: user_runtime ccl-manifest
+	mkdir -p ../userspace/ccl/apps/ccl-vm/build/generated
+	../userspace/ccl/build/manifest/ccl-manifest \
+		../userspace/ccl/catalogs/bootstrap-services.ccl \
+		../userspace/ccl/apps/ccl-vm/manifest.ccl \
+		--ada-output ../userspace/ccl/apps/ccl-vm/build/generated/ccl_manifest_bindings.ads \
+		> ../userspace/ccl/apps/ccl-vm/build/manifest.S
+	$(ALR) gcc -c ../userspace/ccl/apps/ccl-vm/build/manifest.S \
 		-o ../userspace/ccl/apps/ccl-vm/build/manifest.o
 	$(ALR) gprbuild -P ../userspace/ccl/apps/ccl-vm/ccl_vm.gpr
 	cp ../userspace/ccl/apps/ccl-vm/build/ccl-vm.app isodir/boot/ccl-vm.app
@@ -856,6 +873,7 @@ shell: user_runtime
 DOOM_WAD ?= ../doom1.wad
 
 DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/netsurf.app isodir/boot/sleep.app \
+	isodir/boot/sameboy.app ../userspace/c/sameboy_build/test.gb \
 	isodir/boot/capability-test.app \
 	isodir/boot/wget.app isodir/boot/devices.app isodir/boot/files.app \
 	isodir/boot/ccl-vm.app isodir/boot/ccl-workbench.app \
@@ -878,7 +896,7 @@ INITRD_SERVICES := filesystem ata nvme netstack virtio-net virtio-gpu hda \
 # rebuild the ext2 disk image from those freshly staged files.
 .PHONY : desktop-session-content
 desktop-session-content: $(INITRD_SERVICES) desktop display logstore \
-	desktop-shell devices files ccl-workbench clock doom netsurf
+	desktop-shell devices files ccl-workbench clock doom netsurf sameboy
 
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.conf, shell.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
@@ -890,6 +908,9 @@ ata_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write ../init.conf init.conf" ata_disk.img
 	debugfs -w -R "write isodir/boot/shell.app shell.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" ata_disk.img
+	debugfs -w -R "write isodir/boot/sameboy.app sameboy.app" ata_disk.img
+	debugfs -w -R "mkdir sameboy" ata_disk.img
+	debugfs -w -R "write ../userspace/c/sameboy_build/test.gb sameboy/00.gb" ata_disk.img
 	debugfs -w -R "write isodir/boot/netsurf.app netsurf.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/sleep.app sleep.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/capability-test.app capability-test.app" ata_disk.img
@@ -919,6 +940,9 @@ nvme_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write ../userspace/motd.txt motd.txt" nvme_disk.img
 	debugfs -w -R "write $(DOOM_WAD) doom1.wad" nvme_disk.img
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" nvme_disk.img
+	debugfs -w -R "write isodir/boot/sameboy.app sameboy.app" nvme_disk.img
+	debugfs -w -R "mkdir sameboy" nvme_disk.img
+	debugfs -w -R "write ../userspace/c/sameboy_build/test.gb sameboy/00.gb" nvme_disk.img
 	debugfs -w -R "write isodir/boot/netsurf.app netsurf.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/sleep.app sleep.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/capability-test.app capability-test.app" nvme_disk.img
@@ -1001,7 +1025,7 @@ initrd: $(INITRD_SERVICES)
 LAPTOP_LIVE_STAGE1 := filesystem ata nvme netstack virtio-net virtio-gpu hda \
 	mixer ps2 xhci config netmgr procmgr devmgr
 LAPTOP_LIVE_STAGE2 := logstore clock display desktop ccl-workbench devices files \
-	storage-check doom
+	storage-check doom sameboy
 LAPTOP_LIVE_RW_DISK := laptop_live_rw.img
 
 # Native USB optical edition. Keep the original initrd-only laptop image as
@@ -1155,7 +1179,7 @@ iso: cubit_kernel initrd
 
 # Build everything including DOOM, then create ISO and disk images
 .PHONY : world
-world: cubit_kernel doom netsurf sleep capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices files desktop-shell procmgr shell hda mixer ps2 xhci config netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: cubit_kernel doom sameboy netsurf sleep capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices files desktop-shell procmgr shell hda mixer ps2 xhci config netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world

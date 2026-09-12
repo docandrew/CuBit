@@ -53,8 +53,15 @@ boot = entries(*root['boot'])
 expected_apps = {'config.svc', 'netmgr.svc', 'netstack.svc', 'virtio-net.drv',
                  'virtio-gpu.drv', 'hda.drv', 'mixer.svc', 'procmgr.svc',
                  'logstore.svc', 'clock.svc', 'display.svc', 'desktop.svc',
-                 'ccl-workbench.app', 'devices.app', 'files.app', 'doom.elf', 'doom1.wad'}
+                 'ccl-workbench.app', 'devices.app', 'files.app', 'doom.elf', 'doom1.wad',
+                 'sameboy.app'}
 assert expected_apps <= apps.keys(), expected_apps - apps.keys()
+cartridges = entries(*apps['sameboy'])
+assert '00.gb' in cartridges
+for name, entry in cartridges.items():
+    if name not in ('\x00', '\x01'):
+        assert name in {f'{i:02d}.gb' for i in range(16)}, name
+        assert 0x150 <= entry[1] <= 8 * 1024 * 1024
 archive = contents(boot['initrd.img'])
 names = set()
 position = 0
@@ -80,4 +87,5 @@ modules = [line.split()[1:] for line in config.splitlines()
 assert modules and all(line == ['/boot/initrd.img', 'init.img'] for line in modules)
 assert contents(apps['doom1.wad'])[:4] in (b'IWAD', b'PWAD')
 print(f'IMAGE AUDIT PASS: {len(names)} bootstrap files; {len(expected_apps)} CD payload files.')
+print(f'CARTRIDGE AUDIT PASS: {len(cartridges) - 2} ROMs on CD, none in initrd.')
 print(f'ISO sha256: {hashlib.sha256(data).hexdigest()}')

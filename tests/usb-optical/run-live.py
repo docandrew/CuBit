@@ -22,7 +22,12 @@ parser.add_argument('--disk-first', action='store_true', help='non-optical LUN 0
 parser.add_argument('--mouse-first', action='store_true')
 parser.add_argument('--eject', action='store_true', help='test fail-closed media removal after app launch')
 parser.add_argument('--early-text', action='store_true', help='check the early text diagnostic boot entry')
+parser.add_argument('--sameboy', action='store_true', help='also exercise the native Game Boy frontend')
+parser.add_argument('--sameboy-local-rom', action='store_true',
+                    help='also launch explicitly staged ROM 01; never supplies or downloads a cartridge')
 args = parser.parse_args()
+if args.sameboy_local_rom and not args.sameboy:
+    parser.error('--sameboy-local-rom requires --sameboy')
 root = pathlib.Path(__file__).resolve().parents[2]
 image = root / 'kernel/cubit_laptop_usb.iso'
 run = pathlib.Path(tempfile.mkdtemp(prefix='cubit-usb-live.', dir='/tmp'))
@@ -109,6 +114,41 @@ with (run / 'qemu.log').open('w') as log:
         wait_for('desktop: display info ready')
         time.sleep(2)
         hmp(f'screendump {run}/desktop.ppm')
+        if args.sameboy:
+            key('meta_l')
+            for _ in range(6):
+                key('down')
+            key('ret')
+            wait_for('sameboy: loaded ROM 00')
+            wait_for('sameboy: 120 emulated frames')
+            time.sleep(4)
+            key('p')
+            hmp(f'screendump {run}/sameboy-before.ppm')
+            key('p')
+            hmp('sendkey right 500')
+            time.sleep(1)
+            key('p')
+            hmp(f'screendump {run}/sameboy-after.ppm')
+            if (run / 'sameboy-before.ppm').read_bytes() == (run / 'sameboy-after.ppm').read_bytes():
+                raise RuntimeError('SameBoy framebuffer did not respond to Right input')
+            if args.sameboy_local_rom:
+                key('f2')
+                wait_for('sameboy: loaded ROM 01')
+                time.sleep(12)
+                hmp(f'screendump {run}/sameboy-local-intro.ppm')
+                key('ret')
+                time.sleep(2)
+                hmp(f'screendump {run}/sameboy-local-start.ppm')
+                key('ret')
+                time.sleep(2)
+                for _ in range(6):
+                    key('x')
+                    time.sleep(0.5)
+                hmp(f'screendump {run}/sameboy-local-game.ppm')
+                print('LOCAL CARTRIDGE: loaded ROM 01; inspect intro/start/game screenshots.', flush=True)
+            key('esc')
+            wait_for('sameboy: clean exit')
+            print('SAMEBOY PASS: cartridge read from USB CD, frames and keyboard response, clean exit.', flush=True)
         # Apps menu starts on Console, followed by Workbench and DOOM.
         key('meta_l'); key('down'); key('down'); key('ret')
         wait_for('doom.elf')

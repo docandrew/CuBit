@@ -55,7 +55,25 @@
         "cbor_ada": "cbor_ada",
         "doomgeneric": "doomgeneric",
         "nixpkgs": "nixpkgs",
+        "sameboy": "sameboy",
         "stb": "stb"
+      }
+    },
+    "sameboy": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1783697835,
+        "narHash": "sha256-QZ0iJ7ezN/ziuKoQTW+F2QnciLwr8c1h4NUVeLp/asg=",
+        "owner": "LIJI32",
+        "repo": "SameBoy",
+        "rev": "213a12ce93d66b105a113debd9396306066a7cfc",
+        "type": "github"
+      },
+      "original": {
+        "owner": "LIJI32",
+        "repo": "SameBoy",
+        "rev": "213a12ce93d66b105a113debd9396306066a7cfc",
+        "type": "github"
       }
     },
     "stb": {

@@ -13,10 +13,18 @@ cp ../tests/hardware/init-usb-live.conf "$stage/initrd/init.conf"
 cp ../tests/hardware/system-live.conf "$stage/initrd/system.conf"
 for file in config.svc netmgr.svc netstack.svc virtio-net.drv virtio-gpu.drv \
     hda.drv mixer.svc procmgr.svc logstore.svc clock.svc display.svc desktop.svc \
-    ccl-workbench.app devices.app files.app doom.elf; do
+    ccl-workbench.app devices.app files.app doom.elf sameboy.app; do
     cp "isodir/boot/$file" "$stage/iso/apps/"
 done
 cp "${1:?DOOM WAD path required}" "$stage/iso/apps/doom1.wad"
+rom_args=()
+if [[ -n ${SAMEBOY_ROMS_DIR:-} ]]; then
+    rom_args=(--directory "$SAMEBOY_ROMS_DIR")
+fi
+python3 ../tests/usb-optical/stage-roms.py "$stage/iso/apps/sameboy" "${rom_args[@]}"
+mkdir -p "$stage/iso/licenses"
+cp "${SAMEBOY_SRC:?run in nix develop}/LICENSE" "$stage/iso/licenses/SameBoy.txt"
+cp -r "${SAMEBOY_LIBM_NOTICES:?run in nix develop}" "$stage/iso/licenses/"
 (cd "$stage/initrd" && find . -mindepth 1 -maxdepth 1 -printf '%f\n' | sort |
     cpio -o -H newc) > "$stage/iso/boot/initrd.img"
 cp cubit_kernel "$stage/iso/boot/cubit_kernel"

@@ -1,6 +1,7 @@
 with Interfaces; use Interfaces;
 
 with CCL.Catalog;
+with CCL_Manifest_Bindings;
 with CCL.Compiler;
 with CCL.Interfaces.Clock;
 with CCL.Language;
@@ -102,7 +103,7 @@ begin
    end if;
 
    declare
-      IMPORT_SLOT : constant CapabilitySlot := 24;
+      IMPORT_SLOT : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Test_Host;
       OP_INCREMENT : constant Unsigned_32 :=
         CuBit.Protocols.CCL_TEST_OP_INCREMENT;
       REPLY_OK : constant Unsigned_32 := 16#F000#;
@@ -172,7 +173,7 @@ begin
    end;
 
    declare
-      CLOCK_SLOT : constant CapabilitySlot := 25;
+      CLOCK_SLOT : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Clock;
       --  Opaque index in this host adapter's binding table. It is deliberately
       --  unrelated to Clock's temporary system-wide driver registration ID.
       CLOCK_HOST_BINDING : constant Unsigned_32 := 1;
@@ -289,7 +290,7 @@ begin
    end;
 
    declare
-      IMPORT_SLOT : constant CapabilitySlot := 24;
+      IMPORT_SLOT : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Test_Host;
       OP_INCREMENT : constant Unsigned_32 :=
         CuBit.Protocols.CCL_TEST_OP_INCREMENT;
       REPLY_OK : constant Unsigned_32 := 16#F000#;

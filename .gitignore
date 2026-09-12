@@ -28,3 +28,9 @@ src/build.ads
 /userspace/c/netsurf/
 /userspace/c/netsurf_deps/
 /userspace/c/netsurf_src/
+/userspace/c/sameboy_src/
+/userspace/c/sameboy_build/
+# Private cartridges are build inputs, never source artifacts.
+/local-roms/
+*.[gG][bB]
+*.[gG][bB][cC]
