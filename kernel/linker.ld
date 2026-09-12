@@ -92,6 +92,18 @@ SECTIONS
     . = ALIGN(4K);          /* Round up to next page for neatness */
     KERNEL_END_VIRT = .;
 
+    /* The bootstrap CPU stacks occupy physical memory below 16 MiB before
+     * Ada runs. Make that reservation visible to GRUB's ELF loader, so a
+     * small module cannot be placed over a live bootstrap stack. NOBITS:
+     * this reserves memory without padding the ISO with dummy file data.
+     */
+    .bootstrap_reservation (NOLOAD) :
+    {
+        . += (KERNEL_BASE + 0x01000000) - KERNEL_END_VIRT;
+    }
+    ASSERT(KERNEL_END_VIRT < KERNEL_BASE + 0x01000000,
+           "kernel overlaps bootstrap stack top")
+
     /DISCARD/ :
     {
         *(.eh_frame)

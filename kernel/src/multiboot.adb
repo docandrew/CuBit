@@ -12,6 +12,7 @@ with Virtmem;
 package body Multiboot
     with SPARK_Mode => On
 is
+    use type MemoryAreas.MemoryAreaType;
 
     ---------------------------------------------------------------------------
     -- numAreas
@@ -48,8 +49,37 @@ is
     is
         upcast   : Integer_Address := Integer_Address(mbinfo.mmap_addr);
         addr     : System.Address;
-        retAreas : MemoryAreas.MemoryAreaArray (1..numAreas(mbinfo) + 1);
+        retAreas : MemoryAreas.MemoryAreaArray (1..numAreas(mbinfo) + 2);
+        --  Firmware describes these pages as usable RAM, not free RAM.
+        --  Retain the low boot arena through the highest module/metadata end
+        --  in BOTH allocators by removing it from the usable area list.
+        bootEnd : Integer_Address :=
+            Virtmem.V2P (To_Address (Virtmem.STACK_TOP));
     begin
+        bootEnd := Integer_Address'Max
+          (bootEnd, Integer_Address (mbinfo.mmap_addr) +
+                    Integer_Address (mbinfo.mmap_length));
+        if mbinfo.flags.hasModules then
+            bootEnd := Integer_Address'Max
+              (bootEnd, Integer_Address (mbinfo.mods_addr) +
+                        Integer_Address (mbinfo.mods_count) * 16);
+            for i in Unsigned_32 range 1 .. mbinfo.mods_count loop
+                declare
+                    item : MBModule with Import, Address => Virtmem.P2Va
+                      (Integer_Address (mbinfo.mods_addr) +
+                       Integer_Address (i - 1) * 16);
+                begin
+                    bootEnd := Integer_Address'Max
+                      (bootEnd, Integer_Address (item.mod_end));
+                    bootEnd := Integer_Address'Max
+                      (bootEnd, Integer_Address (item.mod_string) + 16);
+                end;
+            end loop;
+        end if;
+        bootEnd := (bootEnd + 4095) and not Integer_Address (4095);
+        if mbinfo.flags.hasFramebuffer and then mbinfo.framebuffer_type = 2 then
+            print ("Boot reserved arena ends at "); println (bootEnd);
+        end if;
         for i in 1..numAreas(mbinfo) loop
 
             addr := To_Address(upcast);
@@ -78,10 +108,23 @@ is
                 retAreas(i).startAddr := Integer_Address(thisArea.addr);
                 retAreas(i).endAddr   := Integer_Address(thisArea.addr + thisArea.length - 1);
 
+                if retAreas(i).kind = MemoryAreas.USABLE then
+                    if retAreas(i).endAddr < bootEnd then
+                        retAreas(i).kind := MemoryAreas.RESERVED;
+                    elsif retAreas(i).startAddr < bootEnd then
+                        retAreas(i).startAddr := bootEnd;
+                    end if;
+                end if;
+
                 -- advance to next area
                 upcast := upcast + Integer_Address(thisArea.size + 4);
             end getThisArea;
         end loop;
+
+        --  Keep the retained arena in the direct map, but never free it.
+        retAreas (retAreas'Last - 1) :=
+          (kind => MemoryAreas.RESERVED, startAddr => 16#100000#,
+           endAddr => bootEnd - 1);
 
         -- If there's a framebuffer, designate another memory area for it so it
         -- will be mapped appropriately in the mem manager.

@@ -10,6 +10,8 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Input; use CuBit.Input;
 with CuBit.Devices;
 with XHCI;
+with XHCI_Capabilities;
+with Optical_Service;
 
 procedure main is
    use ASCII;
@@ -45,6 +47,8 @@ procedure main is
    diagnosticsStartMs : Unsigned_64 := 0;
    diagnosticsCountdown : Natural := 64;
    CAP_SLOT_DEVMGR : constant CapabilitySlot := 15;
+   storageProgress, irqAvailable : Boolean;
+   activity : Activity_Result;
 
    procedure Print_Decimal (value : Unsigned_64) is
       text : String (1 .. 20);
@@ -163,7 +167,11 @@ begin
    debugPrint ("xhci: awaiting bounded controller authority" & LF);
    receive (sender, msg);
 
-   if msg.tag.label /= OP_XHCI_CONFIGURE or else msg.tag.length < 4 then
+   if sender = 0 or else
+      sender /= getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DEVMGR) or else
+      msg.tag.label /= OP_XHCI_CONFIGURE or else msg.tag.length /= 4 or else
+      Shift_Right (msg.words (1), 32) >
+        Unsigned_64 (XHCI_Capabilities.Scratchpad_Buffer_Count'Last) then
       debugPrint ("xhci: invalid configuration message" & LF);
       Reply_With (REPLY_ERR);
       ignore := syscall (SYSCALL_EXIT);
@@ -189,8 +197,9 @@ begin
 
    XHCI.Initialize
      (barPhys  => msg.words (0),
-      barPages => msg.words (1),
+      barPages => msg.words (1) and 16#FFFF_FFFF#,
       dmaPhys  => msg.words (2),
+      expectedScratchpads => Natural (Shift_Right (msg.words (1), 32)),
       result   => initResult);
 
    if initResult /= XHCI.INIT_OK then
@@ -204,8 +213,10 @@ begin
             debugPrint ("bad-capability-registers");
          when XHCI.INIT_PAGE_SIZE_UNSUPPORTED =>
             debugPrint ("4k-page-size-unsupported");
-         when XHCI.INIT_SCRATCHPAD_LIMIT =>
-            debugPrint ("scratchpad-limit");
+         when XHCI.INIT_DMA_LAYOUT_MISMATCH =>
+            debugPrint ("dma-layout-mismatch");
+         when XHCI.INIT_FIRMWARE_HANDOFF_FAILED =>
+            debugPrint ("firmware-handoff-failed");
          when XHCI.INIT_STOP_TIMEOUT =>
             debugPrint ("stop-timeout");
          when XHCI.INIT_RESET_TIMEOUT =>
@@ -262,6 +273,7 @@ begin
    end;
    debugPrint (LF & "");
 
+   XHCI.Probe_Optical;
    XHCI.Start_Boot_Mouse_Transfers;
    XHCI.Enable_Runtime_Interrupts
      (interruptMode,
@@ -287,6 +299,7 @@ begin
    --  event ABI.  A dedicated typed usb-hid service endpoint will replace
    --  this legacy driver lookup as the service boundary is split out.
    loop
+      Optical_Service.Poll (storageProgress);
       XHCI.Poll_Boot_Mouse
         (buttons, deltaX, deltaY, deltaZ, reportReady, eventAvailable);
       if reportReady then
@@ -318,13 +331,17 @@ begin
          end if;
       end if;
 
-      if not eventAvailable then
+      irqAvailable := Poll_Event (msg);
+      if irqAvailable then
+         XHCI.Acknowledge_Runtime_Interrupt;
+      end if;
+      if not eventAvailable and then not storageProgress and then
+         not irqAvailable
+      then
          if interruptDriven then
-            --  IRQ delivery and controller acknowledgement are separate:
-            --  Wait_Event consumes only the kernel notification, while xHCI
-            --  event-ring dequeue pointers are advanced by Poll_Boot_Mouse.
-            msg := Wait_Event;
-            XHCI.Acknowledge_Runtime_Interrupt;
+            --  Wake for either a storage request or an IRQ, with a bounded
+            --  timeout for the outstanding USB command. Never poll on a timer.
+            activity := Wait_For_Activity_Until (XHCI.Optical_Deadline);
          else
             ignore := syscall (SYSCALL_SLEEP, 1);
          end if;

@@ -4,12 +4,14 @@ project Devmgr is
 
     for Object_Dir use "build";
 
-    for Source_Dirs use (".", "../filesystem");
+    for Source_Dirs use (".", "../filesystem", "../xhci");
 
     for Main use ("main.adb");
 
-    --  Explicit source list: our main + CPIO parser from filesystem dir
-    for Source_Files use ("main.adb", "cpio.ads", "cpio.adb");
+    --  Explicit list excludes other service mains and hardware adapters.
+    for Source_Files use ("main.adb", "cpio.ads", "cpio.adb",
+       "xhci_dma_layout.ads", "xhci_dma_layout.adb",
+       "xhci_capabilities.ads", "xhci_capabilities.adb");
 
     for Runtime ("Ada") use "../../runtime";
 

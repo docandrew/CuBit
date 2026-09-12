@@ -1,0 +1,12 @@
+project Accounting is
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use ("main.adb", "execution_accounting.ads", "execution_accounting.adb",
+                         "proof_driver.ads", "proof_driver.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      -- Hosted assertions only, never imported by the native kernel project.
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Accounting;

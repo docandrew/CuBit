@@ -93,6 +93,17 @@ start:
     mov edi, eax 		                    ; argument 1 (magic #) to kmain2 in boot64.asm (64-bit calling convention)
     mov esi, ebx 		                    ; arg 2 (multiboot header struct address)
 
+    ; Allocation-free breadcrumbs for the explicit legacy text diagnostic
+    ; entry only. Never write VGA text memory for a graphical framebuffer.
+    cmp edi, 0x2BADB002
+    jne .no_text_breadcrumb
+    test dword [esi], 1 << 12
+    jz .no_text_breadcrumb
+    cmp byte [esi + 109], 2
+    jne .no_text_breadcrumb
+    mov dword [0xb8000], 0x1f301f42 ; B0: entered 32-bit kernel
+.no_text_breadcrumb:
+
     ; Zero out ebx for the initial processor. AP cores will come in with a
     ; non-zero ebx for their CPU number.
     xor ebx, ebx
@@ -253,6 +264,13 @@ setup_bsp:
     push rdi
     push rsi
 
+    test dword [rsi], 1 << 12
+    jz .before_elaboration
+    cmp byte [rsi + 109], 2
+    jne .before_elaboration
+    mov dword [abs 0xb8004], 0x1f311f42 ; B1: long mode, before Ada elaboration
+.before_elaboration:
+
     ; Initialize with adainit for elaboration prior to entering Ada.
     mov rax, qword adainit
     call rax
@@ -260,6 +278,13 @@ setup_bsp:
     ; Restore arguments to kmain
     pop rsi
     pop rdi
+
+    test dword [rsi], 1 << 12
+    jz .enter_ada
+    cmp byte [rsi + 109], 2
+    jne .enter_ada
+    mov dword [abs 0xb8008], 0x1f321f42 ; B2: Ada elaboration returned
+.enter_ada:
 
     ; call into Ada code
     mov rax, qword kmain

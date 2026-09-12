@@ -81,7 +81,19 @@ is
     mbOK     : constant Boolean := (magic = 16#2BADB002#);
     mbInfo   : constant MultibootInfo := mbInfo_orig;
     ssPtr    : System.Secondary_Stack.SS_Stack_Ptr;
-    memAreas : MemoryAreas.MemoryAreaArray(1..Multiboot.numAreas(mbInfo) + 1);
+    memAreas : MemoryAreas.MemoryAreaArray(1..Multiboot.numAreas(mbInfo) + 2);
+    earlyText : constant Boolean := mbInfo.flags.hasFramebuffer and then
+      mbInfo.framebuffer_type = 2 and then mbInfo.framebuffer_width = 80;
+
+    --  Diagnostic-only VGA text output needs neither allocation nor a
+    --  framebuffer mapping: boot tables already map physical B8000.
+    procedure earlyCheckpoint (message : String) is
+    begin
+        if earlyText then
+            print ("EARLY: ");
+            println (message);
+        end if;
+    end earlyCheckpoint;
 
     --  Keep the physical-screen boot display intentionally sparse.  The VGA
     --  text renderer scrolls by moving and repainting the whole framebuffer,
@@ -91,9 +103,17 @@ is
     begin
         TextIO.enableVideo;
         println ("[ OK ] " & message, LT_GREEN, BLACK);
-        TextIO.disableVideo;
+        if not earlyText then
+            TextIO.disableVideo;
+        end if;
     end showBootStage;
 begin
+
+    if earlyText then
+        TextIO.setVideo (Video.EGA.getTextInterface);
+        TextIO.clear (BLACK);
+        earlyCheckpoint ("Ada entered; initializing serial");
+    end if;
 
     if (config.serialMirror) then
         Serial.init (serial.COM1);
@@ -109,6 +129,7 @@ begin
         raise NoMemoryMapException with "No memory map available from bootloader";
     end if;
 
+    earlyCheckpoint ("CPU features");
     cpuid.setupCPUID;
 
     -- Enable SMEP/SMAP if supported
@@ -127,6 +148,7 @@ begin
         x86.setCR4 (cr4);
     end enableSMEPSMAP;
 
+    earlyCheckpoint ("CPU-local state");
     PerCPUData.setup (0,
                       cpu0Data,
                       cpu0Data'Address,
@@ -136,18 +158,27 @@ begin
 
     ssPtr := PerCPUData.getSecondaryStack;
 
+    earlyCheckpoint ("secondary stack");
     System.Secondary_Stack.SS_Init (ssPtr);
 
+    earlyCheckpoint ("interrupt tables");
     Interrupts.setup;
 
+    earlyCheckpoint ("normalize boot memory map");
     memAreas := Multiboot.getMemoryAreas (mbInfo);
 
+    earlyCheckpoint ("bootstrap allocator");
     BootAllocator.setup (memAreas);
 
+    earlyCheckpoint ("kernel page tables");
     Mem_mgr.setup (memAreas);
+    earlyCheckpoint ("buddy allocator");
     BuddyAllocator.setup (memAreas);
+    earlyCheckpoint ("storage pools");
     StoragePools.setup;
+    earlyCheckpoint ("process tables");
     Process.setup;
+    earlyCheckpoint ("memory initialization complete");
 
     -- Use video driver chosen by GRUB
     if mbInfo.framebuffer_width = 80 then
@@ -168,7 +199,9 @@ begin
     --  expensive framebuffer-scroll path.
     println ("CuBitOS v0.0.1", LT_BLUE, BLACK);
     println ("Booting...");
-    TextIO.disableVideo;
+    if not earlyText then
+        TextIO.disableVideo;
+    end if;
 
     println ("Build Date:    " & Build.DATE);
     println ("Git Commit:    " & Build.COMMIT);

@@ -248,10 +248,15 @@ test-usb-optical:
 	../tests/usb-optical/build/main
 	../tests/usb-optical/build/configuration_tests
 	../tests/usb-optical/build/completion_tests
+	../tests/usb-optical/build/iso_tests
+	../tests/usb-optical/build/capability_tests
+	../tests/usb-optical/build/dma_layout_tests
+	../tests/usb-optical/build/port_tests
+	../tests/usb-optical/build/legacy_tests
 
 prove-usb-optical:
 	$(ALR) gnatprove -P../tests/usb-optical/usb_optical_tests.gpr \
-		-u usb_optical.adb usb_configurations.adb xhci_completions.adb \
+		-u usb_optical.adb usb_configurations.adb xhci_completions.adb iso_records.adb xhci_capabilities.adb xhci_dma_layout.adb xhci_ports.adb xhci_legacy.ads \
 		--level=2 --report=all --checks-as-errors=on -j2
 	@cat ../tests/usb-optical/build/gnatprove/gnatprove.out
 
@@ -998,6 +1003,22 @@ LAPTOP_LIVE_STAGE1 := filesystem ata nvme netstack virtio-net virtio-gpu hda \
 LAPTOP_LIVE_STAGE2 := logstore clock display desktop ccl-workbench devices files \
 	storage-check doom
 LAPTOP_LIVE_RW_DISK := laptop_live_rw.img
+
+# Native USB optical edition. Keep the original initrd-only laptop image as
+# an independent fallback; no ATA/NVMe driver is admitted in this profile.
+.PHONY: usb-live-iso run-usb-live
+usb-live-iso: cubit_kernel $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) $(LAPTOP_LIVE_RW_DISK)
+	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)"
+
+run-usb-live: usb-live-iso
+	qemu-system-x86_64 $(QEMU_ACCEL_ARGS) -machine q35 -cpu host -smp 4 -m 8G \
+		-nodefaults -device VGA -device qemu-xhci,id=xhci \
+		-drive file=cubit_laptop_usb.iso,if=none,id=livecd,media=cdrom,format=raw,readonly=on \
+		-device usb-bot,id=usbcd,bus=xhci.0,port=1 \
+		-device scsi-cd,bus=usbcd.0,lun=0,drive=livecd,bootindex=1 \
+		-device usb-mouse,bus=xhci.0,port=2 \
+		-audiodev sdl,id=snd0 -device ich9-intel-hda -device hda-output,audiodev=snd0 \
+		-serial file:/tmp/cubit-usb-live-serial.log -display sdl -no-reboot
 
 $(LAPTOP_LIVE_RW_DISK):
 	dd if=/dev/zero of=$(LAPTOP_LIVE_RW_DISK) bs=1M count=8

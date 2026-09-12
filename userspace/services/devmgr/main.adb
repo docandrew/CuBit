@@ -8,6 +8,7 @@
 --  Responsible for PCI scanning, service spawning, capability granting,
 --  and startup ordering. Replaces the kernel-side policy in modules.adb.
 ------------------------------------------------------------------------------
+pragma Ada_2022;
 with Interfaces; use Interfaces;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -16,7 +17,12 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Network_Authority;
 with CuBit.Devices;
 with CuBit.Virtio_Net_Control;
+with CuBit.Filesystems;
+with CuBit.Memory_Grants;
+with CuBit.File_Access;
 with Cpio;
+with XHCI_DMA_Layout;
+with XHCI_Capabilities;
 
 procedure main is
    use ASCII;
@@ -453,7 +459,78 @@ procedure main is
    -- Spawn a service from the CPIO initrd.
    -- Returns new PID, or 0 on failure.
    ---------------------------------------------------------------------------
-   function spawnFromCpio (name     : String;
+   Optical_Storage_Ready : Boolean := False;
+   Boot_Buffer : System.Address := System.Null_Address;
+   Boot_Grant : CuBit.Memory_Grants.Grant_Reference;
+   Boot_Granted : Boolean := False;
+   Boot_Read_Policy : Boolean := False;
+   Boot_Buffer_Bytes : constant Unsigned_64 := 8 * 1024 * 1024;
+
+   function Read_Boot_Image (Name : String) return Unsigned_64 is
+      Request : Message;
+      Tag : MessageTag;
+      Raw, Size, Read_Bytes : Unsigned_64;
+      Handle : CuBit.Filesystems.File_Handle;
+   begin
+      if not Optical_Storage_Ready or else Name'Length not in 1 .. 256 then
+         return 0;
+      end if;
+      if Boot_Buffer = System.Null_Address then
+         Raw := syscall (SYSCALL_SBRK, Boot_Buffer_Bytes + 4096);
+         if Raw = reterr then return 0; end if;
+         Boot_Buffer := To_Address (Integer_Address ((Raw + 4095) and not 4095));
+      end if;
+      if not Boot_Granted then
+         CuBit.Memory_Grants.Create_Via_Capability
+           (1, Boot_Buffer, Natural (Boot_Buffer_Bytes / 4096), True,
+            Boot_Grant, Boot_Granted);
+         if not Boot_Granted then return 0; end if;
+      end if;
+      if not Boot_Read_Policy then
+         declare
+            Policy : CuBit.File_Access.Wire_Bytes (1 .. 72)
+              with Import, Address => Boot_Buffer;
+         begin
+            Policy := [others => 0];
+            Policy (1) := 1; -- Read_Objects only, empty prefix = bootstrap scope
+         end;
+         Request :=
+           (tag => (label => CuBit.Filesystems.OP_SET_ACL,
+                    length => 4, flags => 0, reserved => 0),
+            authorityTag => 0,
+            words => [getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DEVMGR), 1,
+                      Unsigned_64 (Boot_Grant.slot),
+                      Unsigned_64 (Boot_Grant.generation)]);
+         Tag := capCall (1, Request);
+         if Tag.label /= REPLY_OK then return 0; end if;
+         Boot_Read_Policy := True;
+      end if;
+      declare
+         Path : String (1 .. Name'Length) with Import, Address => Boot_Buffer;
+      begin
+         Path := Name;
+      end;
+      Request := CuBit.Filesystems.Open_Request
+        (Boot_Grant, CuBit.Filesystems.Nonempty_Path_Byte_Count (Name'Length));
+      Tag := capCall (1, Request);
+      if Tag.label /= REPLY_OK or else Tag.length /= 2 then return 0; end if;
+      Handle := CuBit.Filesystems.File_Handle (Request.words (0));
+      Size := Request.words (1);
+      Read_Bytes := 0;
+      if Size in 1 .. Boot_Buffer_Bytes then
+         Request := CuBit.Filesystems.Read_Request (Handle, Boot_Grant, Size);
+         Tag := capCall (1, Request);
+         if Tag.label = REPLY_OK and then Tag.length >= 1 and then
+           Request.words (0) = Size
+         then Read_Bytes := Size; end if;
+      end if;
+      Request := CuBit.Filesystems.Close_Request (Handle);
+      Tag := capCall (1, Request);
+      if Tag.label /= REPLY_OK then return 0; end if;
+      return Read_Bytes;
+   end Read_Boot_Image;
+
+   function spawnFromBootStorage (name     : String;
                            priority : Unsigned_64;
                            reqPID   : Unsigned_64 := 0) return Unsigned_64
    is
@@ -466,13 +543,18 @@ procedure main is
    begin
       idx := Cpio.findFile (cpioArchive, name);
       if idx >= cpioArchive.count then
-         debugPrint ("devmgr: not found in CPIO: " & name & LF);
-         return 0;
+         size := Read_Boot_Image (name);
+         if size = 0 then
+            debugPrint ("devmgr: boot image unavailable: " & name & LF);
+            return 0;
+         end if;
+         addr := Unsigned_64 (To_Integer (Boot_Buffer));
+         debugPrint ("devmgr: loaded from filesystem: " & name & LF);
+      else
+         addr := INITRD_BASE +
+                 Unsigned_64 (cpioArchive.files (idx).dataOff);
+         size := Unsigned_64 (cpioArchive.files (idx).dataSize);
       end if;
-
-      addr := INITRD_BASE +
-              Unsigned_64 (cpioArchive.files (idx).dataOff);
-      size := Unsigned_64 (cpioArchive.files (idx).dataSize);
 
       nameLen := name'Length;
       if nameLen > 16 then
@@ -484,7 +566,7 @@ procedure main is
 
       return syscall (SYSCALL_SPAWN, addr, size, priority,
                       Unsigned_64 (To_Integer (nameBuf'Address)), reqPID);
-   end spawnFromCpio;
+   end spawnFromBootStorage;
 
    ---------------------------------------------------------------------------
    -- Mint a capability into a target process
@@ -1311,8 +1393,11 @@ procedure main is
       msixTableOffset : Unsigned_64 := 0;
       irqRet    : Unsigned_64;
 
-      DMA_ORDER : constant Unsigned_64 := 6;  --  64 pages = 256 KiB
-      DMA_SIZE  : constant Unsigned_64 := 64 * 4096;
+      scratchpads : XHCI_Capabilities.Scratchpad_Buffer_Count;
+      dmaLayout : XHCI_DMA_Layout.Allocation;
+      --  Bootstrap-only, uncached capability-register mapping. devmgr already
+      --  owns physical mapping authority; it never touches rings or payloads.
+      CAPABILITY_PROBE_BASE : constant Unsigned_64 := 16#0000_6000_1000_0000#;
       DEVMGR_XHCI_SLOT : constant Unsigned_64 := 3;
       OP_XHCI_CONFIGURE : constant Unsigned_32 := 16#0220#;
       XHCI_MSI_VECTOR : constant Unsigned_64 := 48;
@@ -1337,7 +1422,8 @@ procedure main is
       end if;
 
       barSize := probeMemoryBARSize (xhciDev, PCI_BASEADDR_0);
-      if bar0Phys = 0 or else barSize = 0 then
+      if bar0Phys = 0 or else bar0Phys mod 4096 /= 0 or else
+         barSize < 4096 or else barSize > 256 * 4096 then
          debugPrint ("devmgr: xHCI BAR probe failed" & LF);
          return;
       end if;
@@ -1491,7 +1577,20 @@ procedure main is
          debugPrint ("devmgr: xHCI using queued polling fallback" & LF);
       end if;
 
-      dmaPhys := allocDma (xhciPID, DMA_ORDER, DMA_VIRT_BASE);
+      irqRet := mapInto (myPID, bar0Phys, CAPABILITY_PROBE_BASE, 1, MAP_FLAG_IO);
+      if irqRet = reterr then
+         debugPrint ("devmgr: xHCI capability mapping failed" & LF);
+         return;
+      end if;
+      declare
+         type Capability_Register is new Unsigned_32 with Volatile_Full_Access;
+         parameters : Capability_Register with Import,
+           Address => To_Address (Integer_Address (CAPABILITY_PROBE_BASE + 8));
+      begin
+         scratchpads := XHCI_Capabilities.Scratchpad_Count (Unsigned_32 (parameters));
+      end;
+      dmaLayout := XHCI_DMA_Layout.Plan (scratchpads);
+      dmaPhys := allocDma (xhciPID, Unsigned_64 (dmaLayout.Order), DMA_VIRT_BASE);
       if dmaPhys = reterr then
          debugPrint ("devmgr: xHCI DMA allocation failed" & LF);
          return;
@@ -1501,7 +1600,7 @@ procedure main is
         (xhciPID, CAP_DEVICE_MEM, bar0Phys, barPages * 4096,
          RIGHT_READ or RIGHT_WRITE, 4);
       mintCap
-        (xhciPID, CAP_DEVICE_MEM, 0, DMA_SIZE,
+        (xhciPID, CAP_DEVICE_MEM, 0, XHCI_DMA_Layout.Bytes (dmaLayout),
          RIGHT_READ or RIGHT_WRITE, 6);
       if interruptMode /= XHCI_INTERRUPT_POLLING then
          --  Slot 5: receive only the explicitly registered xHCI MSI.
@@ -1525,7 +1624,10 @@ procedure main is
          authorityTag => 0,
          words =>
            (0 => bar0Phys,
-            1 => barPages,
+            --  Low 32 bits: BAR pages. High 32 bits: allocation's scratchpad
+            --  count. Driver checks it against a fresh HCSPARAMS2 read before
+            --  accessing DMA; this does not grant arbitrary allocation size.
+            1 => barPages or Shift_Left (Unsigned_64 (scratchpads), 32),
             2 => dmaPhys,
             3 =>
               Unsigned_64 (XHCI_Interrupt_Mode'Enum_Rep (interruptMode)) or
@@ -1547,6 +1649,11 @@ procedure main is
             end;
          end if;
          debugPrint ("devmgr: xHCI controller started" & LF);
+         --  Read-only optical block endpoint; no raw controller authority.
+         if filesystemPID /= 0 then
+            grantEndpoint (filesystemPID, xhciPID, 12, filesystemPID);
+            Optical_Storage_Ready := True;
+         end if;
       else
          debugPrint ("devmgr: xHCI controller rejected setup" & LF);
          xhciPID := 0;
@@ -1599,7 +1706,7 @@ begin
    -----------------------------------------------------------------------
    -- Phase 1: Spawn filesystem server (auto-assign PID)
    -----------------------------------------------------------------------
-   filesystemPID := spawnFromCpio ("filesystem.svc", 5, 0);
+   filesystemPID := spawnFromBootStorage ("filesystem.svc", 5, 0);
    if filesystemPID = reterr then
       filesystemPID := 0;
       debugPrint ("devmgr: filesystem.svc spawn failed" & LF);
@@ -1679,7 +1786,7 @@ begin
    -----------------------------------------------------------------------
 
    --  ATA driver
-   ataPID := spawnFromCpio ("ata.drv", 5);
+   ataPID := spawnFromBootStorage ("ata.drv", 5);
    if ataPID = reterr then
       ataPID := 0;
    end if;
@@ -1705,7 +1812,7 @@ begin
    end if;
 
    --  NVMe driver
-   nvmePID := spawnFromCpio ("nvme.drv", 5);
+   nvmePID := spawnFromBootStorage ("nvme.drv", 5);
    if nvmePID = reterr then
       nvmePID := 0;
    end if;
@@ -1733,7 +1840,7 @@ begin
    -----------------------------------------------------------------------
    -- Phase 2b: Spawn PS/2 keyboard + mouse driver
    -----------------------------------------------------------------------
-   ps2PID := spawnFromCpio ("ps2.drv", 5);
+   ps2PID := spawnFromBootStorage ("ps2.drv", 5);
    if ps2PID = reterr then
       ps2PID := 0;
    end if;
@@ -1754,7 +1861,7 @@ begin
    -- Phase 2c: Spawn xHCI only when PCI discovery found a controller.
    -----------------------------------------------------------------------
    if xhciDev.found then
-      xhciPID := spawnFromCpio ("xhci.drv", 5);
+      xhciPID := spawnFromBootStorage ("xhci.drv", 5);
       if xhciPID = reterr then
          xhciPID := 0;
       end if;
@@ -1766,7 +1873,7 @@ begin
    -----------------------------------------------------------------------
    -- Phase 2d: Spawn config store service
    -----------------------------------------------------------------------
-   configPID := spawnFromCpio ("config.svc", 5);
+   configPID := spawnFromBootStorage ("config.svc", 5);
    if configPID = reterr then
       configPID := 0;
    end if;
@@ -1962,7 +2069,7 @@ begin
    -----------------------------------------------------------------------
    -- Phase 2d: Spawn VirtIO-GPU driver when QEMU/hardware exposes it
    -----------------------------------------------------------------------
-   virtioGpuPID := spawnFromCpio ("virtio-gpu.drv", 5);
+   virtioGpuPID := spawnFromBootStorage ("virtio-gpu.drv", 5);
    if virtioGpuPID = reterr then
       virtioGpuPID := 0;
    end if;
@@ -1987,13 +2094,13 @@ begin
    -----------------------------------------------------------------------
 
    --  Netstack service
-   netstackPID := spawnFromCpio ("netstack.svc", 5);
+   netstackPID := spawnFromBootStorage ("netstack.svc", 5);
    if netstackPID = reterr then
       netstackPID := 0;
    end if;
 
    --  Virtio-net driver
-   virtioNetPID := spawnFromCpio ("virtio-net.drv", 5);
+   virtioNetPID := spawnFromBootStorage ("virtio-net.drv", 5);
    if virtioNetPID = reterr then
       virtioNetPID := 0;
    end if;
@@ -2079,7 +2186,7 @@ begin
    -----------------------------------------------------------------------
    -- Phase 3b: Spawn network manager service
    -----------------------------------------------------------------------
-   netmgrPID := spawnFromCpio ("netmgr.svc", 5);
+   netmgrPID := spawnFromBootStorage ("netmgr.svc", 5);
    if netmgrPID = reterr then
       netmgrPID := 0;
    end if;
@@ -2132,13 +2239,13 @@ begin
    -----------------------------------------------------------------------
 
    --  HDA driver
-   hdaPID := spawnFromCpio ("hda.drv", 5);
+   hdaPID := spawnFromBootStorage ("hda.drv", 5);
    if hdaPID = reterr then
       hdaPID := 0;
    end if;
 
    --  Mixer service
-   mixerPID := spawnFromCpio ("mixer.svc", 5);
+   mixerPID := spawnFromBootStorage ("mixer.svc", 5);
    if mixerPID = reterr then
       mixerPID := 0;
    end if;
@@ -2198,7 +2305,7 @@ begin
    -- Phase 5: Spawn procmgr
    -- Disk drivers already waited in Phase 2, no duplicate wait needed.
    -----------------------------------------------------------------------
-   procmgrPID := spawnFromCpio ("procmgr.svc", 5);
+   procmgrPID := spawnFromBootStorage ("procmgr.svc", 5);
    if procmgrPID = reterr then
       procmgrPID := 0;
    end if;

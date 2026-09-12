@@ -1,0 +1,21 @@
+project USB_Optical_Tests is
+   for Source_Dirs use (".", "../../userspace/services/xhci",
+      "../../userspace/services/filesystem");
+   for Source_Files use ("main.adb", "usb_optical.ads", "usb_optical.adb",
+      "usb_configurations.ads", "usb_configurations.adb", "configuration_tests.adb",
+      "xhci_completions.ads", "xhci_completions.adb", "completion_tests.adb",
+      "iso_records.ads", "iso_records.adb", "iso_tests.adb",
+      "xhci_capabilities.ads", "xhci_capabilities.adb", "capability_tests.adb",
+      "xhci_dma_layout.ads", "xhci_dma_layout.adb", "dma_layout_tests.adb",
+      "xhci_ports.ads", "xhci_ports.adb", "port_tests.adb",
+      "xhci_legacy.ads", "legacy_tests.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb", "configuration_tests.adb", "completion_tests.adb",
+      "iso_tests.adb", "capability_tests.adb", "dma_layout_tests.adb",
+      "port_tests.adb", "legacy_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnatwa");
+   end Compiler;
+end USB_Optical_Tests;

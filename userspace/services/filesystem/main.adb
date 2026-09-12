@@ -21,6 +21,8 @@ with CuBit.Directory_Paths;
 with CuBit.File_Access;
 with Cpio;
 with Ext2;
+with ISO_Records;
+with ISO9660;
 
 procedure main is
    use ASCII;
@@ -34,7 +36,7 @@ procedure main is
 
    --  Backend kind for file handles
    type BackendKind is
-     (CPIO_RAMDISK, EXT2_MEMORY, EXT2_ATA, EXT2_NVME);
+     (CPIO_RAMDISK, ISO_OPTICAL, EXT2_MEMORY, EXT2_ATA, EXT2_NVME);
 
    type SchemeKind is
      (AUTOMATIC_SCHEME, MEMORY_SCHEME, ATA_SCHEME, NVME_SCHEME);
@@ -49,6 +51,7 @@ procedure main is
       backend     : BackendKind  := CPIO_RAMDISK;
       inodeNum    : Unsigned_32  := 0;      --  ext2 only
       ino         : Ext2.Inode;             --  ext2 only
+      opticalFile : ISO_Records.File_Record;
       cpioFileIdx : Natural      := 0;      --  cpio only
       offset      : Unsigned_64  := 0;
       ownerPID    : ProcessID    := NO_PROCESS;
@@ -655,6 +658,8 @@ procedure main is
       relStart   : Natural;
       useBackend : BackendKind := CPIO_RAMDISK;
       cpioIdx    : Natural := 0;
+      opticalFile : ISO_Records.File_Record;
+      opticalFound : Boolean;
    begin
       if msg.tag.length /= 4 or else
          pathLen = 0 or else pathLen > MAXIMUM_PATH_BYTES or else
@@ -824,6 +829,20 @@ procedure main is
                end if;
             end if;
 
+            if inodeNum = 0 then
+               ISO9660.Find (pathStr, opticalFile, opticalFound);
+               if opticalFound then
+                  useBackend := ISO_OPTICAL;
+                  inodeNum := 1;
+               elsif ISO9660.Media_Failed then
+                  --  Unreadable immutable boot media is not "not found".
+                  --  Never substitute a writable shadow for an admitted
+                  --  image. Explicit @mem paths remain independently usable.
+                  sendReply (sender, REPLY_IO_ERROR, 0);
+                  return;
+               end if;
+            end if;
+
             if inodeNum = 0 and then memoryInitialized then
                useBackend := EXT2_MEMORY;
                inodeNum := Ext2.resolvePath (memoryFs, pathStr);
@@ -860,11 +879,23 @@ procedure main is
          end if;
       end;
 
+      if inodeNum /= 0 and then useBackend in CPIO_RAMDISK | ISO_OPTICAL and then
+        (Requests_Write (openFlags) or else
+         (openFlags and (OPEN_CREATE or OPEN_TRUNCATE or OPEN_EXCLUSIVE)) /= 0)
+      then
+         sendReply (sender, REPLY_READ_ONLY, 0);
+         return;
+      end if;
+      if useBackend = ISO_OPTICAL and then opticalFile.Directory then
+         sendReply (sender, REPLY_WRONG_OBJECT_TYPE, 0);
+         return;
+      end if;
+
       if (openFlags and OPEN_EXCLUSIVE) /= 0 then
          --  Lookup and creation execute in one request in this single-threaded
          --  service. A future concurrent dispatcher must preserve that
          --  serialization; a client-side exists-then-create is not equivalent.
-         if useBackend = CPIO_RAMDISK then
+         if useBackend in CPIO_RAMDISK | ISO_OPTICAL then
             sendReply (sender, REPLY_READ_ONLY, 0);
             return;
          end if;
@@ -891,7 +922,7 @@ procedure main is
                   Ext2.resolvePath (nvmeFs, pathBuffer (first .. Natural (pathLen)), inodeNum, lookup);
                when EXT2_ATA =>
                   Ext2.resolvePath (ataFs, pathBuffer (first .. Natural (pathLen)), inodeNum, lookup);
-               when CPIO_RAMDISK => lookup := Ext2.Lookup_Malformed;
+               when CPIO_RAMDISK | ISO_OPTICAL => lookup := Ext2.Lookup_Malformed;
             end case;
             if lookup = Ext2.Lookup_Found then
                sendReply (sender, REPLY_ALREADY_EXISTS, 0);
@@ -1010,7 +1041,7 @@ procedure main is
 
       --  A file handle must never be an alternate spelling of directory
       --  authority. Directories are opened only through OP_OPEN_DIRECTORY.
-      if useBackend /= CPIO_RAMDISK then
+      if useBackend not in CPIO_RAMDISK | ISO_OPTICAL then
          declare
             objectInode : Ext2.Inode;
          begin
@@ -1021,7 +1052,7 @@ procedure main is
                   Ext2.readInode (ataFs, inodeNum, objectInode);
                when EXT2_NVME =>
                   Ext2.readInode (nvmeFs, inodeNum, objectInode);
-               when CPIO_RAMDISK => null;
+               when CPIO_RAMDISK | ISO_OPTICAL => null;
             end case;
             if Ext2.inodeType (objectInode) = Ext2.INODE_DIRECTORY then
                sendReply (sender, REPLY_WRONG_OBJECT_TYPE, 0);
@@ -1055,6 +1086,7 @@ procedure main is
       files (handle).ownerPID    := sender;
       files (handle).backend     := useBackend;
       files (handle).cpioFileIdx := cpioIdx;
+      files (handle).opticalFile := opticalFile;
       files (handle).openRights := 0;
       files (handle).objectKind := FILE_OBJECT;
       if Requests_Read (openFlags) then
@@ -1067,7 +1099,7 @@ procedure main is
       end if;
 
       case useBackend is
-         when CPIO_RAMDISK =>
+         when CPIO_RAMDISK | ISO_OPTICAL =>
             null;  --  cpio files don't need inode
          when EXT2_MEMORY =>
             Ext2.readInode (memoryFs, inodeNum, files (handle).ino);
@@ -1084,6 +1116,8 @@ procedure main is
          ignore   : Unsigned_64;
       begin
          case useBackend is
+            when ISO_OPTICAL =>
+               fsize := Unsigned_64 (opticalFile.Bytes);
             when CPIO_RAMDISK =>
                fsize := cpioArchive.files (cpioIdx).dataSize;
             when EXT2_MEMORY =>
@@ -1161,6 +1195,15 @@ procedure main is
       end if;
 
       case files (handle).backend is
+         when ISO_OPTICAL =>
+            declare
+               ok : Boolean;
+            begin
+               ISO9660.Read (files (handle).opticalFile, files (handle).offset,
+                             count, grantAddr, bytesRead, ok);
+               readStatus := (if ok then Ext2.Read_Complete
+                              else Ext2.Read_Device_Error);
+            end;
          when CPIO_RAMDISK =>
             bytesRead := Cpio.readData
               (cpioArchive,
@@ -1260,8 +1303,8 @@ procedure main is
          return;
       end if;
 
-      if files (handle).backend = CPIO_RAMDISK then
-         -- CPIO bootstrap storage is immutable; reject before acquiring the
+      if files (handle).backend in CPIO_RAMDISK | ISO_OPTICAL then
+         -- Immutable bootstrap storage is immutable; reject before acquiring the
          -- caller's memory so every successful acquisition has one exit.
          sendReply (sender, REPLY_ERR, 0);
          return;
@@ -1277,7 +1320,7 @@ procedure main is
       end if;
 
       case files (handle).backend is
-         when CPIO_RAMDISK =>
+         when CPIO_RAMDISK | ISO_OPTICAL =>
             bytesWritten := 0; -- Rejected above.
          when EXT2_MEMORY =>
             Ext2.writeData
@@ -1343,6 +1386,8 @@ procedure main is
       end if;
 
       case files (handle).backend is
+         when ISO_OPTICAL =>
+            size := Unsigned_64 (files (handle).opticalFile.Bytes);
          when CPIO_RAMDISK =>
             size := cpioArchive.files (files (handle).cpioFileIdx).dataSize;
          when EXT2_MEMORY | EXT2_ATA | EXT2_NVME =>
@@ -1525,7 +1570,7 @@ procedure main is
             when EXT2_MEMORY => Ext2.readInode (memoryFs, inodeNum, dirIno);
             when EXT2_ATA => Ext2.readInode (ataFs, inodeNum, dirIno);
             when EXT2_NVME => Ext2.readInode (nvmeFs, inodeNum, dirIno);
-            when CPIO_RAMDISK => null;
+            when CPIO_RAMDISK | ISO_OPTICAL => null;
          end case;
          if Ext2.inodeType (dirIno) /= Ext2.INODE_DIRECTORY then
             sendReply (sender, REPLY_WRONG_OBJECT_TYPE, 0);
@@ -1673,7 +1718,7 @@ procedure main is
          when EXT2_MEMORY => Lookup (memoryFs);
          when EXT2_ATA => Lookup (ataFs);
          when EXT2_NVME => Lookup (nvmeFs);
-         when CPIO_RAMDISK =>
+         when CPIO_RAMDISK | ISO_OPTICAL =>
             --  The bootstrap archive exposes flat names, not directory objects.
             sendReply (sender, REPLY_WRONG_OBJECT_TYPE, 0);
             return;
@@ -1720,7 +1765,7 @@ procedure main is
             Ext2.readInode (ataFs, files (handle).inodeNum, candidate, status);
          when EXT2_NVME =>
             Ext2.readInode (nvmeFs, files (handle).inodeNum, candidate, status);
-         when CPIO_RAMDISK => null;
+         when CPIO_RAMDISK | ISO_OPTICAL => null;
       end case;
       if status /= Ext2.Read_Complete then
          sendReply (sender, Read_Reply_Label (status), 0);
@@ -1836,7 +1881,7 @@ procedure main is
                   Ext2.readDirectoryPage
                     (nvmeFs, files (handle).ino, files (handle).offset,
                      pageEntries, entryCount, nextCursor, readStatus);
-               when CPIO_RAMDISK => null;
+               when CPIO_RAMDISK | ISO_OPTICAL => null;
             end case;
 
             case readStatus is
