@@ -1,28 +1,24 @@
-project Bench_Load is
+project Bench_Input is
    for Languages use ("Ada");
    for Object_Dir use "build";
    for Source_Dirs use (".");
-   for Main use ("main.adb", "input_load.adb");
+   for Main use ("main.adb");
    for Runtime ("Ada") use "../../runtime";
    for Library_Dir use "";
-
    package Builder is
-      for Executable ("main.adb") use "bench-load.app";
-      for Executable ("input_load.adb") use "bench-input-load.app";
+      for Executable ("main.adb") use "bench-input.app";
       for Default_Switches ("Ada") use
         ("-g", "-gnatwa", "-gnatw.X", "-s", "-v", "-nostdlib");
    end Builder;
-
    package Compiler is
       for Default_Switches ("Ada") use
-        ("-O2", "-fstack-usage", "-fomit-frame-pointer", "-mno-red-zone",
-         "-fno-pic", "-mno-sse", "-mno-sse2");
+        ("-O2", "-gnat2022", "-gnatwa", "-fstack-usage",
+         "-fomit-frame-pointer", "-mno-red-zone", "-fno-pic",
+         "-mno-sse", "-mno-sse2");
    end Compiler;
-
    package Binder is
       for Default_Switches ("Ada") use ("-d_C");
    end Binder;
-
    package Linker is
       for Default_Switches ("Ada") use
         ("-nostdlib", "-static", "-no-pie",
@@ -30,4 +26,4 @@ project Bench_Load is
          "-T", "../../c/link.ld", "../../c/build/crt0.o",
          "build/manifest.o");
    end Linker;
-end Bench_Load;
+end Bench_Input;

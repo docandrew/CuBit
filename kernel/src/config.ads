@@ -21,9 +21,6 @@ is
     -- Max supported number of logical CPUs
     MAX_CPUS : constant := 128;
 
-    -- ms before context switch takes place.
-    TIME_SLICE : constant := 10;
-
     -- Debug flags that can be set at runtime
     debugFlag : Boolean := False;
 

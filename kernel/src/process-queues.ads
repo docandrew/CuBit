@@ -21,6 +21,10 @@ package Process.Queues is
     ---------------------------------------------------------------------------
     function isEmpty (q : ProcQueue) return Boolean;
 
+    -- Atomic readiness test for the priority-ordered run queue. No dequeue,
+    -- preference boost or borrowed authority; the scheduler still selects.
+    function hasReadyPeer (q : in out ProcQueue; priority : Integer) return Boolean;
+
     ---------------------------------------------------------------------------
     -- popFront
     ---------------------------------------------------------------------------

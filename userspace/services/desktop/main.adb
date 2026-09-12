@@ -22,6 +22,7 @@ with Desktop_Window_Icons;
 with CuBit.Desktop_Protocol;
 with CuBit.Memory_Grants;
 with Font8x16;
+with Presentation_Test_Policy;
 
 procedure main is
    package DSP renames CuBit.Display_Protocol;
@@ -61,10 +62,6 @@ procedure main is
 
    OP_DISPLAY_GET_INFO      : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Get_Information);
    OP_DISPLAY_ATTACH_BUFFER : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Attach_Buffer);
-   OP_DISPLAY_PRESENT_RECT  : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Present_Rectangle);
-   OP_DISPLAY_PRESENT_IMMEDIATE_RECT : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Present_Immediate_Rectangle);
-   OP_DISPLAY_PRESENT_REGION : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Present_Region);
-   OP_DISPLAY_PRESENT_IMMEDIATE_REGION : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Present_Immediate_Region);
    OP_DISPLAY_CLEAR         : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Clear);
    OP_DISPLAY_GET_STATUS    : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Get_Status);
    OP_DISPLAY_ACQUIRE       : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Acquire_Display);
@@ -130,6 +127,15 @@ procedure main is
    fbPitch  : Natural := 0;
    fbBpp    : Natural := 0;
    backBufferAddr : System.Address := System.Null_Address;
+   transferBufferAddr : System.Address := System.Null_Address;
+   type Transfer_Phase is (Available, In_Flight, Quarantined);
+   transferPhase : Transfer_Phase := Available;
+   presentationSession : Unsigned_64 := 0;
+   frameSequence : Unsigned_64 := 0;
+   presentationStarted : Unsigned_64 := 0;
+   asyncAnnounced, releaseAnnounced : Boolean := False;
+   inputWhileHeldFrame : Unsigned_64 := 0;
+   retiredThrough : Unsigned_64 := 0;
    backBufferGrant : MG.Grant_Reference;
    backBufferGranted : Boolean := False;
    dragBaseBufferAddr : System.Address := System.Null_Address;
@@ -156,6 +162,7 @@ procedure main is
       w : Natural := 0;
       h : Natural := 0;
    end record;
+   transferDamage : Rect;
 
    --  Damage clipping for compositor redraws. A full scene redraw with a clip
    --  rectangle lets existing drawing code repaint correct background/window
@@ -576,13 +583,19 @@ procedure main is
    statsOtherReq     : Unsigned_64 := 0;
    statsDrawMs       : Unsigned_64 := 0;
    statsPresentOps   : Unsigned_64 := 0;
-   statsPresentMs    : Unsigned_64 := 0;
+   statsCompletionMs : Unsigned_64 := 0;
    statsDamagePixels : Unsigned_64 := 0;
    statsSourceGaps   : Unsigned_64 := 0;
    statsSourceRejects : Unsigned_64 := 0;
    lastEventDrops    : Unsigned_64 := 0;
    lastInputQueueOverflows : Unsigned_64 := 0;
    inputTraceBudget  : Natural := 64;
+
+   function Decimal (Value : Unsigned_64) return String is
+      Text : constant String := Value'Image;
+   begin
+      return Text (Text'First + 1 .. Text'Last);
+   end Decimal;
 
    procedure printDec (val : Unsigned_64) is
       buf : String (1 .. 20);
@@ -643,51 +656,32 @@ procedure main is
       lastInputQueueOverflows := inputQueueOverflows;
 
       if statsFrames > 0 or else statsEvents > 0 then
-         debugPrint ("desktop: stats ev=");
-         printDec (statsEvents);
-         debugPrint (" key=");
-         printDec (statsKeyboardEvents);
-         debugPrint (" mouse=");
-         printDec (statsMouseEvents);
-         debugPrint (" button=");
-         printDec (statsButtonTransitions);
-         debugPrint (" wheel=");
-         printDec (statsWheelEvents);
-         debugPrint (" event_drop=");
-         printDec (eventDropsThisPeriod);
-         debugPrint (" input_resync=");
-         printDec (inputOverflowsThisPeriod);
-         debugPrint (" source_gap=");
-         printDec (statsSourceGaps);
-         debugPrint (" source_reject=");
-         printDec (statsSourceRejects);
-         debugPrint (" req=");
-         printDec (statsRequests);
-         debugPrint (" frames=");
-         printDec (statsFrames);
-         debugPrint (" fast=");
-         printDec (statsFastFrames);
-         debugPrint (" full=");
-         printDec (statsFullFrames);
-         debugPrint (" present_req=");
-         printDec (statsPresentReq);
-         debugPrint (" input_req=");
-         printDec (statsInputReq);
-         debugPrint (" other_req=");
-         printDec (statsOtherReq);
-         debugPrint (" draw_ms=");
-         printDec (statsDrawMs);
-         debugPrint (" submit=");
-         printDec (statsPresentOps);
-         debugPrint (" submit_ms=");
-         printDec (statsPresentMs);
-         debugPrint (" px=");
-         printDec (statsDamagePixels);
-         debugPrint (" cursor_x=");
-         printDec (Unsigned_64 (cursorX));
-         debugPrint (" cursor_y=");
-         printDec (Unsigned_64 (cursorY));
-         debugPrint ("" & LF);
+         -- One write, not a scheduling opportunity between every field.
+         -- This fixes same-CPU service interleaving; the debug console is not
+         -- a cross-CPU structured or bounded-latency logging transport.
+         debugPrint
+           ("desktop: stats ev=" & Decimal (statsEvents) &
+            " key=" & Decimal (statsKeyboardEvents) &
+            " mouse=" & Decimal (statsMouseEvents) &
+            " button=" & Decimal (statsButtonTransitions) &
+            " wheel=" & Decimal (statsWheelEvents) &
+            " event_drop=" & Decimal (eventDropsThisPeriod) &
+            " input_resync=" & Decimal (inputOverflowsThisPeriod) &
+            " source_gap=" & Decimal (statsSourceGaps) &
+            " source_reject=" & Decimal (statsSourceRejects) &
+            " req=" & Decimal (statsRequests) &
+            " frames=" & Decimal (statsFrames) &
+            " fast=" & Decimal (statsFastFrames) &
+            " full=" & Decimal (statsFullFrames) &
+            " present_req=" & Decimal (statsPresentReq) &
+            " input_req=" & Decimal (statsInputReq) &
+            " other_req=" & Decimal (statsOtherReq) &
+            " draw_ms=" & Decimal (statsDrawMs) &
+            " submit=" & Decimal (statsPresentOps) &
+            " completion_ms=" & Decimal (statsCompletionMs) &
+            " px=" & Decimal (statsDamagePixels) &
+            " cursor_x=" & Decimal (Unsigned_64 (cursorX)) &
+            " cursor_y=" & Decimal (Unsigned_64 (cursorY)) & LF);
       end if;
 
       statsStartMs := now;
@@ -705,7 +699,7 @@ procedure main is
       statsOtherReq := 0;
       statsDrawMs := 0;
       statsPresentOps := 0;
-      statsPresentMs := 0;
+      statsCompletionMs := 0;
       statsDamagePixels := 0;
       statsSourceGaps := 0;
       statsSourceRejects := 0;
@@ -721,15 +715,8 @@ procedure main is
       end if;
 
       inputTraceBudget := inputTraceBudget - 1;
-      debugPrint ("desktop: ptr ");
-      debugPrint (label);
-      debugPrint (" ");
-      printDec (a);
-      debugPrint (" ");
-      printDec (b);
-      debugPrint (" ");
-      printDec (c);
-      debugPrint ("" & LF);
+      debugPrint ("desktop: ptr " & label & " " & Decimal (a) &
+        " " & Decimal (b) & " " & Decimal (c) & LF);
    end tracePointer;
 
    function nowMs return Unsigned_64 is
@@ -1372,56 +1359,104 @@ procedure main is
       return POINTER_DEFAULT;
    end cursorStyleAtPointer;
 
-   type Present_Timing is (PRESENT_AT_VBLANK, PRESENT_IMMEDIATELY);
-
-   procedure flushBackBufferRect
-      (dirty  : Rect;
-       timing : Present_Timing := PRESENT_AT_VBLANK)
+   procedure flushBackBufferRect (dirty : Rect)
    is
       r : constant Rect := clampRect (dirty);
-      msg : Message :=
-        (tag      =>
-           (label  =>
-              (if timing = PRESENT_IMMEDIATELY
-               then OP_DISPLAY_PRESENT_IMMEDIATE_RECT
-               else OP_DISPLAY_PRESENT_RECT),
-                      length => 4,
-                      flags  => 0,
-                      reserved  => 0),
-         authorityTag => 0,
-         words    => (Unsigned_64 (r.x),
-                      Unsigned_64 (r.y),
-                      Unsigned_64 (r.w),
-                      Unsigned_64 (r.h)));
-      t0 : Unsigned_64;
-      t1 : Unsigned_64;
    begin
-      if not backBufferReady or else fbBpp /= 32 then
-         return;
-      end if;
-      if isEmpty (r) then
-         return;
-      end if;
-
-      --  Present is delegated to display.svc, the sole scanout owner. Keeping
-      --  display timing in one service gives us a clean place for vblank waits,
-      --  page flips, and frame-deadline scheduling.
-      --
-      --  This service currently has one mutable backbuffer, so use the
-      --  synchronous present form. Async present needs either buffer rotation
-      --  or a returned fence/completion before we can safely draw the next
-      --  frame without smearing cursor/window damage.
-      t0 := syscall (SYSCALL_GETTIME);
-      msg.tag := capCall (CAP_SLOT_DISPLAY, msg);
-      t1 := syscall (SYSCALL_GETTIME);
-
-      statsPresentOps := statsPresentOps + 1;
-      if t0 /= Unsigned_64'Last and then t1 /= Unsigned_64'Last and then
-         t1 >= t0
-      then
-         statsPresentMs := statsPresentMs + (t1 - t0);
+      if backBufferReady and then fbBpp = 32 and then not isEmpty (r) then
+         -- One bounded union, not an unbounded frame queue. Paint remains
+         -- private while the immutable transfer buffer belongs to display.
+         transferDamage := unionRect (transferDamage, r);
       end if;
    end flushBackBufferRect;
+
+   procedure collectPresentations is
+      completion : CompletionEntry;
+      count : Unsigned_64;
+      use type DSP.Frame_Outcome, DSP.Buffer_Disposition;
+   begin
+      loop
+         completion := NULL_COMPLETION;
+         count := Poll_Completion (completion'Address);
+         exit when count = 0;
+         if count /= 1 then
+            transferPhase := Quarantined;
+            debugPrint ("desktop: completion queue unavailable" & LF);
+            exit;
+         end if;
+         if completion.token > retiredThrough then
+            declare
+               result : constant DSP.Frame_Result_Decoding :=
+                 DSP.Decode_Frame_Result (CuBit.Desktop_Messages.To_Wire (completion.msg));
+            begin
+               -- The kernel binds this non-reused token to the submitted endpoint
+               -- and only its reserved reply authority can complete the request.
+               -- A payload claiming release is insufficient without that envelope.
+               if not completion.valid or else
+                 completion.status /= COMPLETION_OK or else
+                 transferPhase /= In_Flight or else completion.token /= frameSequence or else
+                 not result.Valid or else result.Value.Session /= presentationSession or else
+                 result.Value.Frame /= frameSequence or else
+                 result.Value.Outcome /= DSP.Published or else
+                 result.Value.Buffer_State /= DSP.Released
+               then
+                  transferPhase := Quarantined;
+                  debugPrint ("desktop: asynchronous transfer quarantined" & LF);
+               else
+                  transferPhase := Available;
+                  statsCompletionMs := statsCompletionMs + nowMs - presentationStarted;
+                  if not releaseAnnounced then
+                     releaseAnnounced := True;
+                     debugPrint ("desktop: asynchronous frame released" & LF);
+                  end if;
+               end if;
+            end;
+         end if;
+      end loop;
+   end collectPresentations;
+
+   procedure pumpPresentation is
+      r : constant Rect := transferDamage;
+      ignored : System.Address;
+      request : Message;
+   begin
+      if not backBufferReady or else transferPhase /= Available or else isEmpty (r) then
+         return;
+      end if;
+      -- Last is the IPC no-completion sentinel. Never use it as our token,
+      -- and never reset the sequence when replacing a display session.
+      if frameSequence >= Unsigned_64'Last - 1 then
+         transferPhase := Quarantined;
+         debugPrint ("desktop: frame identifiers exhausted" & LF);
+         return;
+      end if;
+      for row in r.y .. r.y + r.h - 1 loop
+         ignored := memcpy
+           (transferBufferAddr + Storage_Offset (row * fbPitch + r.x * 4),
+            backBufferAddr + Storage_Offset (row * fbPitch + r.x * 4),
+            Storage_Count (r.w * 4));
+      end loop;
+      frameSequence := frameSequence + 1;
+      request := CuBit.Desktop_Messages.From_Wire (DSP.Encode_Frame
+        ((presentationSession, frameSequence,
+          (DP.Pixel_Coordinate (r.x), DP.Pixel_Coordinate (r.y),
+           DP.Pixel_Extent (r.w), DP.Pixel_Extent (r.h)))));
+      transferPhase := In_Flight;
+      presentationStarted := nowMs;
+      if capSubmit (CAP_SLOT_DISPLAY, request, frameSequence) then
+         transferDamage := (others => 0);
+         statsPresentOps := statsPresentOps + 1;
+         if not asyncAnnounced then
+            asyncAnnounced := True;
+            debugPrint ("desktop: asynchronous presentation active" & LF);
+         end if;
+      else
+         -- No completion is promised on failed admission. Do not spin waiting
+         -- for one, or fall back to untracked reads of the same shared pixels.
+         transferPhase := Quarantined;
+         debugPrint ("desktop: asynchronous submission unavailable" & LF);
+      end if;
+   end pumpPresentation;
 
    procedure fillRect (x, y, w, h : Natural; color : Unsigned_32) is
       minX : Natural := x;
@@ -2124,7 +2159,7 @@ procedure main is
       --  packet serializes the input path at the refresh rate and can fill
       --  the bounded event ring. display.svc still owns scanout, but copies
       --  this explicitly marked damage immediately.
-      flushBackBufferRect (damage, PRESENT_IMMEDIATELY);
+      flushBackBufferRect (damage);
       noteCursorPresented;
    end presentCursorOverlay;
 
@@ -2687,57 +2722,10 @@ procedure main is
                w => edgeW, h => r.h));
       end Add_Outline;
 
-      function Pack_Rect (r : Rect) return Unsigned_64 is
-      begin
-         return
-           Unsigned_64 (r.x) or
-           Shift_Left (Unsigned_64 (r.y), 16) or
-           Shift_Left (Unsigned_64 (r.w), 32) or
-           Shift_Left (Unsigned_64 (r.h), 48);
-      end Pack_Rect;
-
       procedure Present_Regions is
-         first : Natural := 1;
-         batchCount : Natural;
-         request : Message := NULL_MESSAGE;
-         t0, t1 : Unsigned_64;
       begin
-         --  The packed display protocol supports framebuffer coordinates up
-         --  to 65535 and four rectangles per IPC message. This is deliberately
-         --  a scanout protocol limit, not a UI-coordinate limitation.
-         if fbWidth > 16#FFFF# or else fbHeight > 16#FFFF# then
-            for i in Damage_Index'First .. Damage_Index (count) loop
-               flushBackBufferRect
-                 (regions (i),
-                  (if i = Damage_Index'First
-                   then PRESENT_AT_VBLANK else PRESENT_IMMEDIATELY));
-            end loop;
-            return;
-         end if;
-
-         while first <= count loop
-            batchCount := Natural'Min (4, count - first + 1);
-            request := NULL_MESSAGE;
-            request.tag :=
-              (label =>
-                 (if first = 1 then OP_DISPLAY_PRESENT_REGION
-                  else OP_DISPLAY_PRESENT_IMMEDIATE_REGION),
-               length => Unsigned_8 (batchCount), flags => 0, reserved => 0);
-            for offset in 0 .. batchCount - 1 loop
-               request.words (offset) :=
-                 Pack_Rect (regions (Damage_Index (first + offset)));
-            end loop;
-
-            t0 := syscall (SYSCALL_GETTIME);
-            request.tag := capCall (CAP_SLOT_DISPLAY, request);
-            t1 := syscall (SYSCALL_GETTIME);
-            statsPresentOps := statsPresentOps + 1;
-            if t0 /= Unsigned_64'Last and then t1 /= Unsigned_64'Last and then
-              t1 >= t0
-            then
-               statsPresentMs := statsPresentMs + (t1 - t0);
-            end if;
-            first := first + batchCount;
+         for i in Damage_Index'First .. Damage_Index (count) loop
+            flushBackBufferRect (regions (i));
          end loop;
       end Present_Regions;
    begin
@@ -5798,6 +5786,11 @@ procedure main is
       end if;
 
       backBufferReady := False;
+      -- Old storage is revoked, not recycled. Late completions for that
+      -- retired session cannot change ownership of a newly allocated buffer.
+      retiredThrough := frameSequence;
+      presentationSession := 0;
+      transferDamage := (others => 0);
       drawingBackBuffer := False;
       cursorSaveValid := False;
       framePending := False;
@@ -5874,9 +5867,16 @@ procedure main is
 
       aligned := alignUpPage (raw);
       backBufferAddr := To_Address (Integer_Address (aligned));
+      raw := syscall (SYSCALL_SBRK, pages * 4096 + 4096);
+      if raw = Unsigned_64'Last then
+         debugPrint ("desktop: transfer buffer alloc failed" & LF);
+         status := callDisplay (OP_DISPLAY_RELEASE);
+         return;
+      end if;
+      transferBufferAddr := To_Address (Integer_Address (alignUpPage (raw)));
       MG.Create_Via_Capability
         (slot      => CAP_SLOT_DISPLAY,
-         localAddr => backBufferAddr,
+         localAddr => transferBufferAddr,
          numPages  => Natural (pages),
          readWrite => False,
          reference => backBufferGrant,
@@ -5902,6 +5902,23 @@ procedure main is
          return;
       end if;
 
+      attach := CuBit.Desktop_Messages.From_Wire (DSP.Encode_Open_Session);
+      attach.tag := capCall (CAP_SLOT_DISPLAY, attach);
+      if attach.tag.label /= DSP.Code (DSP.Open_Presentation_Session) or else
+        attach.tag.length /= 4 or else attach.tag.flags /= 0 or else
+        attach.tag.reserved /= 0 or else attach.words (0) /= 0 or else
+        attach.words (1) = 0 or else attach.words (2) /= 0 or else attach.words (3) /= 0
+      then
+         debugPrint ("desktop: presentation session failed" & LF);
+         status := callDisplay (OP_DISPLAY_RELEASE);
+         MG.Revoke (backBufferGrant, grantOk);
+         backBufferGranted := False;
+         return;
+      end if;
+      presentationSession := attach.words (1);
+      transferPhase := Available;
+      transferDamage := (others => 0);
+
       --  A retained, compositor-private scene without the actively dragged
       --  window turns movement into bounded rectangle copies plus one window
       --  blit. Failure is non-fatal: the compositor retains its complete
@@ -5916,11 +5933,8 @@ procedure main is
 
       backBufferReady := True;
       if status.tag.length >= 2 then
-         debugPrint ("desktop: display backend=");
-         printDec (status.words (0));
-         debugPrint (" caps=");
-         printDec (status.words (1));
-         debugPrint ("" & LF);
+         debugPrint ("desktop: display backend=" & Decimal (status.words (0)) &
+           " caps=" & Decimal (status.words (1)) & LF);
       end if;
       ok := True;
    end setupDisplayBuffer;
@@ -6028,10 +6042,18 @@ begin
          eventMsg   : Message;
          eventFound : Boolean;
          requestsThisPass : Natural := 0;
+         activity : Activity_Result;
       begin
+         collectPresentations;
          loop
             eventFound := Poll_Event (eventMsg);
             exit when not eventFound;
+            if Presentation_Test_Policy.Enabled and then transferPhase = In_Flight and then
+              inputWhileHeldFrame /= frameSequence
+            then
+               inputWhileHeldFrame := frameSequence;
+               debugPrint ("desktop: input during frame" & frameSequence'Image & LF);
+            end if;
             handleEvent (eventMsg, running);
             exit when not running;
          end loop;
@@ -6053,6 +6075,7 @@ begin
 
          flushFrame;
          flushCursorPresent;
+         pumpPresentation;
          maybePrintStats;
          expireInputWaiters;
 
@@ -6060,23 +6083,15 @@ begin
             if not framePending and then not cursorPresentPending and then
               nextInputDeadline = 0
             then
-               --  Idle input and service dispatch must be event-driven. The
-               --  mixed receive primitive blocks on the unified mailbox and
-               --  is woken directly by either an unsolicited device event or
-               --  a client request; polling with a fixed sleep added up to
-               --  two milliseconds before any useful work even began.
-               receive (from, msg);
-               if from = NO_PROCESS then
-                  handleEvent (msg, running);
-               else
-                  handleRequest (from, msg);
-               end if;
+               --  Input, requests and frame completions all wake the same
+               --  non-consuming wait; typed dispatch remains above.
+               activity := Wait_For_Activity_Until (Unsigned_64'Last);
+               if activity = Unavailable then running := False; end if;
             else
                declare
                   now : constant Unsigned_64 := nowMs;
                   nextDueMs : Unsigned_64 := nextInputDeadline;
                   mayWait : Boolean := now /= Unsigned_64'Last;
-                  received : Boolean;
                begin
                   if framePending and then now /= Unsigned_64'Last and then
                      frameDueMs /= 0 and then now < frameDueMs
@@ -6104,18 +6119,8 @@ begin
                   end if;
 
                   if mayWait and then nextDueMs /= 0 then
-                     --  A single kernel wait races IPC publication against
-                     --  the absolute frame deadline atomically. Input wakes
-                     --  this process immediately; there is no millisecond
-                     --  sleep slice in the dispatch path.
-                     receiveUntil (nextDueMs, from, msg, received);
-                     if received then
-                        if from = NO_PROCESS then
-                           handleEvent (msg, running);
-                        else
-                           handleRequest (from, msg);
-                        end if;
-                     end if;
+                     activity := Wait_For_Activity_Until (nextDueMs);
+                     if activity = Unavailable then running := False; end if;
                   end if;
                end;
             end if;

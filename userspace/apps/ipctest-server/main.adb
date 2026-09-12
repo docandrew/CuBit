@@ -29,7 +29,7 @@ procedure main is
    OP_FAIR_POLL : constant Unsigned_32 := 16#090F#;
    OP_FAIR_QUEUED : constant Unsigned_32 := 16#0910#;
    OP_FAIR_END : constant Unsigned_32 := 16#0911#;
-   type Receive_Mode is (Blocking, Service_Poll, Mixed_Poll, Timed);
+   type Receive_Mode is (Blocking, Service_Poll, Mixed_Poll, Timed, Activity);
    mode : Receive_Mode := Blocking;
    fairSeen : Boolean := False;
    found : Boolean;
@@ -159,6 +159,16 @@ begin
             when Mixed_Poll => Poll_Any_Ipc (from, msg, found);
             when Timed =>
                receiveUntil (syscall (SYSCALL_GETTIME) + 1000, from, msg, found);
+            when Activity =>
+               declare
+                  activity : constant Activity_Result :=
+                    Wait_For_Activity_Until (Unsigned_64'Last);
+               begin
+                  if activity /= Work_Available then
+                     debugPrint ("TEST: FAIL async-ipc activity-server-wake" & LF);
+                  end if;
+                  Poll_Any_Ipc (from, msg, found);
+               end;
          end case;
          exit when found;
       end loop;
@@ -186,6 +196,15 @@ begin
          mode := Blocking;
          sendReply (from, REPLY_OK);
       elsif msg.tag.label = OP_ASYNC_ECHO then
+         declare
+            activity : constant Activity_Result :=
+              Wait_For_Activity_Until (syscall (SYSCALL_GETTIME));
+         begin
+            -- Readiness must not clear the current request's reply authority.
+            if activity = Unavailable then
+               debugPrint ("TEST: FAIL async-ipc activity-reply-authority" & LF);
+            end if;
+         end;
          ret := saveReplyCap (REPLY_SLOT);
          if ret /= 1 then
             debugPrint ("TEST: FAIL async-ipc save-reply-cap" & LF);
@@ -364,6 +383,8 @@ begin
             end if;
          end if;
       elsif msg.tag.label = OP_DIE then
+         -- Give the submitter time to enter its combined readiness wait.
+         ret := syscall (SYSCALL_SLEEP, 25);
          ret := syscall (SYSCALL_EXIT);
          loop
             ret := syscall (SYSCALL_SLEEP, 1000);

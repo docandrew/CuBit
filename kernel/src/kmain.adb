@@ -331,6 +331,9 @@ begin
             Interrupts.setLAPICBaseAddress (apicBase);
             IPI.init (To_Address (virtmem.P2V (apicBase)));
             pic.disable;
+            -- IF is still clear, the PIT is masked, and APs have not started.
+            -- Switch the clock divider before enabling the faster LAPIC tick.
+            Time.enableSchedulingClock;
         else
             -- @TODO not a big deal to fall-back to the PIC, but we need to
             -- handle it.

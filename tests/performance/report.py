@@ -20,7 +20,8 @@ def fields(line):
 def serial_report(text):
     rate = 0
     phase = "unlabelled"
-    timings, audio = [], []
+    timings, audio, inputs = [], [], []
+    load_progress = None
     for line in text.splitlines():
         if "BENCH: phase=" in line:
             phase = line.split("phase=", 1)[1].split()[0]
@@ -37,18 +38,56 @@ def serial_report(text):
             timings.append(sample)
         elif "AUDIO-BENCH: phase " in line or "AUDIO-BENCH: counters " in line:
             audio.append(fields(line))
+        elif "INPUT-BENCH: scenario=" in line:
+            inputs.append(dict(scenario=line.split("scenario=", 1)[1].split()[0],
+                               **fields(line)))
+        elif "BENCH-LOAD: COMPLETE" in line and "batches=" in line:
+            load_progress = fields(line)
     load_present = "BENCH-LOAD: START" in text
     overlap = load_overlaps_measurement(text) if load_present else None
-    return dict(ticks_per_guest_ms=rate, timings=timings, audio=audio,
+    input_valid = valid_input_run(text, rate, timings, inputs)
+    return dict(ticks_per_guest_ms=rate, timings=timings, audio=audio, inputs=inputs,
+                input_scope=("Closed-loop normalized publication to focused-app receipt; "
+                             "not IRQ-to-app, an admitted workload guarantee, or key-to-photon."
+                             if "INPUT-BENCH:" in text else None),
+                input_integrity_valid=input_valid,
+                input_observed_target_met=(input_valid and
+                    (not load_present or overlap is True) and all(
+                    item["misses_1ms"] * 100 <= item["delivered"] for item in inputs)),
                 load_covers_measurement=overlap,
+                load_progress=load_progress,
                 warnings=["Calibrated against guest milliseconds, not an external clock.",
                           "Quantiles are bucket upper bounds; maxima are observed samples.",
                           "SMP conversion assumes synchronized virtual TSCs."])
 
 
+def valid_input_run(text, rate, timings, inputs):
+    """Fail closed on incomplete or duplicated fixtures; never censor losses."""
+    scenarios = {"CONTINUOUS", "PACED", "REPAINTING"}
+    if (rate <= 0 or len(inputs) != len(scenarios) or
+            {item["scenario"] for item in inputs} != scenarios or
+            text.count("INPUT-BENCH: START") != 1 or
+            text.count("INPUT-BENCH: COMPLETE") != 1 or
+            "BENCH: PASS input integrity" not in text or "BENCH: FAIL input" in text or
+            text.index("INPUT-BENCH: START") > text.index("INPUT-BENCH: COMPLETE")):
+        return False
+    for item in inputs:
+        hist = [h for h in timings if h["name"] == "input-" + item["scenario"]]
+        if (len(hist) != 1 or item.get("delivered", 0) < 2048 or
+                hist[0].get("count") != item["delivered"] or
+                item.get("failures") != 0 or
+                not 0 <= item.get("misses_1ms", -1) <= item["delivered"]):
+            return False
+    return True
+
+
 def load_overlaps_measurement(text):
-    markers = ("AUDIO-BENCH: START", "AUDIO-BENCH: COMPLETE") if "AUDIO-BENCH:" in text else (
-        "BENCH: phase=untraced", "BENCH: PASS ipc")
+    if "INPUT-BENCH:" in text:
+        markers = ("INPUT-BENCH: START", "INPUT-BENCH: COMPLETE")
+    elif "AUDIO-BENCH:" in text:
+        markers = ("AUDIO-BENCH: START", "AUDIO-BENCH: COMPLETE")
+    else:
+        markers = ("BENCH: phase=untraced", "BENCH: PASS ipc")
     positions = [text.find(marker) for marker in
                  ("BENCH-LOAD: START", *markers, "BENCH-LOAD: COMPLETE")]
     return all(p >= 0 for p in positions) and positions == sorted(positions)
@@ -108,6 +147,9 @@ def main():
     parser.add_argument("serial", type=Path)
     parser.add_argument("--wav", type=Path)
     parser.add_argument("--require-load", action="store_true")
+    parser.add_argument("--require-input-integrity", action="store_true")
+    parser.add_argument("--require-input-target", action="store_true",
+                        help="Require observed <1ms p99 in every input scenario; not an SLA guarantee")
     args = parser.parse_args()
     result = serial_report(args.serial.read_text(errors="replace"))
     if args.wav:
@@ -115,6 +157,10 @@ def main():
     print(json.dumps(result, indent=2))
     if args.require_load and result["load_covers_measurement"] is not True:
         sys.exit("benchmark load did not cover measurement; not a valid loaded result")
+    if args.require_input_integrity and not result["input_integrity_valid"]:
+        sys.exit("input benchmark incomplete or invalid")
+    if args.require_input_target and not result["input_observed_target_met"]:
+        sys.exit("input benchmark invalid or observed p99 target missed")
 
 
 if __name__ == "__main__":

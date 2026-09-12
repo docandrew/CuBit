@@ -4,12 +4,14 @@
 --
 -- General functions and data structures for time-keeping.
 -------------------------------------------------------------------------------
+pragma Ada_2022;
 with Config;
 with cpuid;
 with PerCPUData;
 with Process;
 with Process.IPC;
 with Process.Queues;
+with Scheduler_Timing;
 with x86;
 
 package body Time with
@@ -87,25 +89,39 @@ is
     ---------------------------------------------------------------------------
     -- clockTick
     -- Per-CPU timer handler. Only BSP (CPU 0) manages global time and sleep
-    -- list. All CPUs handle their own preemption quantum.
+    -- list. All CPUs divide the timer into clock and scheduling opportunities.
     ---------------------------------------------------------------------------
-    cpuQuantumTicks : array (0..Config.MAX_SMP_CPUS - 1) of Natural :=
-        (others => 0);
+    schedulingClock : Boolean := False;
+    cpuTickPhase : array (0 .. Config.MAX_SMP_CPUS - 1) of
+      Scheduler_Timing.Tick_Phase := [others => <>];
+
+    procedure enableSchedulingClock is
+    begin
+        schedulingClock := True;
+    end enableSchedulingClock;
 
     procedure clockTick with SPARK_Mode => Off -- live process queues and CPU state
     is
         cpuNum    : constant Natural := PerCPUData.getCPUNumber;
         currentPID : constant Process.ProcessID := PerCPUData.getCurrentPID;
+        millisecond : Boolean := True;
+        quantum : Boolean := False;
     begin
+        if schedulingClock then
+            Scheduler_Timing.Advance
+              (cpuTickPhase (cpuNum), millisecond, quantum);
+        end if;
         -- Only BSP handles global timekeeping and sleep list
-        if cpuNum = 0 then
+        if cpuNum = 0 and then millisecond then
             Time.msTicks := Time.msTicks + 1;
             Process.Queues.clockTick;
             Process.IPC.expireReceiveDeadlines (Time.msTicks);
         end if;
 
-        -- CPU quota enforcement (before normal quantum check)
-        if currentPID /= Process.NO_PROCESS then
+        -- Existing coarse CPU quota accounting remains at one-millisecond
+        -- resolution; the faster timer IRQ must not charge it twice.
+        -- This legacy yield-on-exhaustion mechanism is NOT a reservation.
+        if currentPID /= Process.NO_PROCESS and then millisecond then
             checkQuota : declare
                 q : Process.ResourceQuota renames
                     Process.proctab(currentPID).quota;
@@ -126,7 +142,6 @@ is
                     if q.cpuUsedTicks >=
                        Natural (q.cpuQuotaUs / 1000)
                     then
-                        cpuQuantumTicks(cpuNum) := 0;
                         Process.yield;
                         return;
                     end if;
@@ -134,12 +149,14 @@ is
             end checkQuota;
         end if;
 
-        -- All CPUs handle their own preemption quantum
-        cpuQuantumTicks(cpuNum) := cpuQuantumTicks(cpuNum) + 1;
-        if cpuQuantumTicks(cpuNum) >= Config.TIME_SLICE and
-           currentPID /= Process.NO_PROCESS
+        -- FIFO rotation among equal-priority peers every 1.5 ms. No syscall,
+        -- block/wake or direct IPC handoff resets this CPU-owned opportunity.
+        -- Avoid a context switch when only lower-priority/idle work is ready.
+        -- Latency hints remain advisory; this creates no priority authority.
+        if quantum and then currentPID /= Process.NO_PROCESS and then
+           Process.Queues.hasReadyPeer
+             (Process.cpuReadyLists(cpuNum), Process.proctab(currentPID).priority)
         then
-            cpuQuantumTicks(cpuNum) := 0;
             Process.yield;
         end if;
     end clockTick;

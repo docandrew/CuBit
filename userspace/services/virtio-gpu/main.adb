@@ -15,6 +15,7 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Memory_Grants;
 
 procedure main is
    use ASCII;
@@ -797,32 +798,35 @@ procedure main is
                bufferIndex : Natural range 0 .. 1 := 0;
                pages : constant Natural :=
                   Natural ((Unsigned_64 (FB_BYTES) + 4095) / 4096);
-               gid   : Unsigned_64;
+               reference : CuBit.Memory_Grants.Grant_Reference;
                grantOk : Boolean;
             begin
                replyMsg.tag := (label => OP_GPU_MAP_FRAMEBUFFER,
                                 length => 4, flags => 0, reserved => 0);
                if bufferIndexRaw <= 1 then
                   bufferIndex := Natural (bufferIndexRaw);
-                  createGrant
+                  CuBit.Memory_Grants.Create_For_Process
                     (grantee   => from,
                      localAddr =>
                        DMA_BASE + framebufferOffset (bufferIndex),
                      numPages  => pages,
                      readWrite => True,
-                     grantId   => gid,
+                     reference => reference,
                      success   => grantOk);
                else
                   grantOk := False;
-                  gid := 0;
                end if;
                if grantOk then
-                  replyMsg.words (0) := GPU_OK;
-                  replyMsg.words (1) := gid;
+                  -- Same checked layout/reference payload as display attachment.
+                  -- A successful map has four words; errors have one, never a
+                  -- numerically ambiguous slot-or-status word.
+                  replyMsg.words (0) := reference.slot;
+                  replyMsg.words (1) := reference.generation;
                   replyMsg.words (2) := Unsigned_64 (FB_W) or
                      Shift_Left (Unsigned_64 (FB_H), 32);
                   replyMsg.words (3) := Unsigned_64 (FB_W) * 4;
                else
+                  replyMsg.tag.length := 1;
                   replyMsg.words (0) := GPU_ERR_BAD_STATE;
                end if;
             end;

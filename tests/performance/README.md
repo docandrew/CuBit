@@ -71,3 +71,74 @@ Fixture completion is not an audio-quality PASS. Inspect underruns, missed
 notifications, queue depths and capture diagnostics. No regression threshold
 for microseconds is imposed yet: establish repeated per-machine distributions
 before making noisy timing numbers a CI gate.
+
+## Focused-application input diagnostic
+
+```sh
+nix develop -c make -C kernel bench-input bench-load display desktop
+nix develop -c bash tests/headless/run.sh --test bench-input --accel kvm --cpus 4 \
+  --timeout 20 --keep-logs --serial /tmp/input-idle.log
+nix develop -c bash tests/headless/run.sh --test bench-input --accel kvm --cpus 1 \
+  --load --timeout 75 --keep-logs --serial /tmp/input-load.log
+nix develop -c python3 tests/performance/report.py /tmp/input-load.log \
+  --require-load --require-input-integrity
+# Optional observed-sample timing gate, distinct from integrity:
+nix develop -c python3 tests/performance/report.py /tmp/input-load.log \
+  --require-load --require-input-target
+```
+
+`bench-input.app` is a native CuBit desktop client with **test-only keyboard
+publication authority**. It creates a focused window and measures just before
+publishing a canonical normalized key report until its surface-scoped
+`Wait_Input` reply returns. No production protocol or authorization bypass is
+added. It is not in the normal boot profile. No real keyboard driver or QEMU
+input injection is involved; this does **not** measure interrupt-to-app latency.
+
+Three scenarios each deliver 2,048 alternating up-arrow press/release events:
+continuous closed-loop, closed-loop with a one-millisecond sleep between
+events, and closed-loop with a 320x200 surface-damage request before each event.
+The latter exercises compositor work on an otherwise empty client surface;
+it does not measure a rich application's painting, glyph layout or buffer
+uploads. There is one outstanding transition, no warmup exclusion or retries,
+and unexpected events, serial gaps, resync, duplicate, timeout or rejected
+publication fail integrity. The one-second wait deadline bounds transport
+failure; it is not the latency target. QEMU's overall timeout is a second
+failure boundary if the service stops responding entirely.
+
+Additional histograms split publication-call time from input-receive-call time.
+These are client-observed call intervals, not exclusive kernel CPU times;
+either can include scheduling. Their percentiles must not be added. One extra
+TSC read splits the stages, and its overhead is included in the end-to-end
+measurement. Production periodic desktop diagnostics remain enabled; the test
+itself prints only between scenarios, never per event.
+
+The input fixture and busy peer both run at priority 4, desktop at 4, display
+at 5. They currently share CPU 0 even in an SMP-enabled guest. Input uses the
+60-second `bench-input-load.app` variant of the same busy loop; other fixtures
+retain their 12-second load. The runner rejects incomplete load coverage and
+incomplete/inconsistent timing counts. Its **PASS is integrity, not timing**.
+The optional timing gate requires at most 1% of samples to be >= one calibrated
+guest millisecond in every scenario, using an exact miss counter rather than
+a histogram bucket that might straddle the threshold.
+
+The busy peer also reports its completed 4,096-iteration batches and longest
+guest-millisecond gap between batches, aggregated only at exit. Inspect these
+alongside load coverage: a bracketed START/COMPLETE alone is not a CPU-progress
+guarantee. The input fixture remains unchanged when comparing the scheduler
+cadence fix: it does not give either interactive participant a priority boost.
+
+The current scheduler experiment offers equal-priority peers a scheduling
+opportunity every 1.5 milliseconds, using a 500-microsecond timer and independent
+clock/quantum dividers. The preceding 250-microsecond experiment established
+the scheduling bottleneck relative to the original 10-millisecond cadence.
+See the September 11 follow-ups in the performance document for measured
+tradeoffs and limitations; a larger quantum alone cannot preserve the input
+target without bounded wakeup service.
+
+This is a bottleneck diagnostic, not a guaranteed performance envelope. A
+closed-loop source stops offering input while waiting, so it underexercises
+backlog (coordinated omission). A single guest calibration and finite sample
+set do not establish a statistical population bound; TSC/hypervisor/host
+scheduling assumptions still apply. Next requirements are independent paced
+producers, IRQ/driver timestamps, bounded scheduler admission, full critical
+section attribution, and measurements on the laptop.

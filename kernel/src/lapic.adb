@@ -14,6 +14,7 @@ with cmos;
 with Mem_mgr;
 with TextIO; use TextIO;
 with Time;
+with Scheduler_Timing;
 with x86;
 
 -- MMIO register overlays, IPI delivery and bootstrap hardware sequencing.
@@ -384,7 +385,12 @@ is
 
         write(timerDivideConf, DIVIDE_BY_16);
         write(lvtTimer, Unsigned_32(InterruptNumbers.TIMER) or TIMER_PERIODIC);
-        write(timerInitialCount, timerInterval);
+        -- Calibration remains ticks per millisecond (also shared with APs).
+        -- Time divides 500-us interrupts independently into millisecond clock
+        -- advances and 1.5-ms scheduling opportunities.
+        write(timerInitialCount,
+              Unsigned_32'Max (1, timerInterval /
+                Scheduler_Timing.Ticks_Per_Millisecond));
 
         -- Disable LINT0, LINT1
         write(lvtLINT0, Unsigned_32(lvtLINT0) and LVT_MASKED);

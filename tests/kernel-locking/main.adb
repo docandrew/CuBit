@@ -51,6 +51,14 @@ procedure Main is
             Cursor : ProcessID := Q.head;
             Previous : ProcessID := NO_PROCESS;
         begin
+            pragma Assert (not Queues.hasReadyPeer (Q, 100));
+            if Length = 0 then
+                pragma Assert (not Queues.hasReadyPeer (Q, -100));
+            else
+                pragma Assert (Queues.hasReadyPeer (Q, Expected (1).Priority));
+                pragma Assert (Queues.hasReadyPeer (Q, Expected (1).Priority - 1));
+                pragma Assert (not Queues.hasReadyPeer (Q, Expected (1).Priority + 1));
+            end if;
             for I in 1 .. Length loop
                 pragma Assert (Cursor = Expected (I).PID);
                 pragma Assert (proctab (Cursor).prev = Previous);
@@ -102,6 +110,7 @@ procedure Main is
         while Length > 0 loop Remove_First; Verify; end loop;
         Queues.dequeue (Q, Got);
         pragma Assert (Got = NO_PROCESS and PerCPUData.Depth = 0);
+        pragma Assert (not Queues.hasReadyPeer (Q, -100));
         Ada.Text_IO.Put_Line
           ("READY-FAIRNESS-CHECK: PASS (300 quanta, 10000 stable-priority oracle steps)");
     end Check_Ready_Fairness;

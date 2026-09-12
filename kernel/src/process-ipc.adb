@@ -486,6 +486,80 @@ package body Process.IPC is
         end if;
     end installReceivedWork;
 
+    -- Caller holds mailtab(owner).lock AND Process.lock. Queue membership is
+    -- stable under these locks; detach before making a waiter runnable.
+    procedure wakeActivityWaitersLocked (owner : ProcessID) is
+        waiter : ProcessID := mailtab(owner).recvQueue.head;
+        following : ProcessID;
+    begin
+        while waiter /= NO_PROCESS loop
+            following := proctab(waiter).next;
+            if proctab(waiter).waitsForIPCActivity then
+                Queues.detach (mailtab(owner).recvQueue, waiter);
+                proctab(waiter).receiveDeadlineActive := False;
+                ready (waiter);
+            end if;
+            waiter := following;
+        end loop;
+    end wakeActivityWaitersLocked;
+
+    -- Caller holds the mailbox lock. The common no-waiter path does not
+    -- acquire the scheduler lock just to discover an empty receive queue.
+    procedure wakeActivityWaiters (owner : ProcessID) is
+    begin
+        if not Queues.isEmpty (mailtab(owner).recvQueue) then
+            Spinlocks.enterCriticalSection (lock);
+            wakeActivityWaitersLocked (owner);
+            Spinlocks.exitCriticalSection (lock);
+        end if;
+    end wakeActivityWaiters;
+
+    function waitForActivityUntil (deadlineMs : Unsigned_64)
+      return Unsigned_64
+    is
+        mypid : constant ProcessID := PerCPUData.getCurrentPID;
+        receiver : constant ProcessID := getReceiver (mypid);
+        ignored : ProcessID;
+    begin
+        loop
+            Spinlocks.enterCriticalSection (mailtab(receiver).lock);
+            if mailtab(receiver).closed then
+                Spinlocks.exitCriticalSection (mailtab(receiver).lock);
+                return Unsigned_64'Last;
+            end if;
+            if mailtab(receiver).ring.count /= 0 or else
+               not Queues.isEmpty (mailtab(receiver).sendQueue) or else
+               proctab(receiver).irqNotificationPending or else
+               completionTab(receiver).count /= 0
+            then
+                Spinlocks.exitCriticalSection (mailtab(receiver).lock);
+                return 1;
+            end if;
+            if Time.msTicks >= deadlineMs then
+                Spinlocks.exitCriticalSection (mailtab(receiver).lock);
+                return 0;
+            end if;
+            proctab(mypid).queueKey := receiver;
+            proctab(mypid).waitsForIPCActivity := True;
+            proctab(mypid).receiveDeadlineMs := deadlineMs;
+            proctab(mypid).receiveDeadlineReceiver := receiver;
+            proctab(mypid).receiveDeadlineActive :=
+              deadlineMs /= Unsigned_64'Last;
+            Queues.enqueue (mailtab(receiver).recvQueue, mypid, ignored);
+            proctab(mypid).state := RECEIVING;
+            Spinlocks.exitCriticalSection (mailtab(receiver).lock);
+            yield;
+            Spinlocks.enterCriticalSection (mailtab(receiver).lock);
+            proctab(mypid).waitsForIPCActivity := False;
+            proctab(mypid).receiveDeadlineActive := False;
+            proctab(mypid).receiveDeadlineMs := 0;
+            proctab(mypid).receiveDeadlineReceiver := NO_PROCESS;
+            Spinlocks.exitCriticalSection (mailtab(receiver).lock);
+            -- A sibling receiver may have consumed the work. Recheck under
+            -- the lock before sleeping again; no dequeue or reply-cap mint.
+        end loop;
+    end waitForActivityUntil;
+
     procedure receiveInternal
         (hasDeadline : in  Boolean;
          deadlineMs  : in  Unsigned_64;
@@ -911,6 +985,8 @@ package body Process.IPC is
             notify (dest);
         end if;
 
+        wakeActivityWaiters (dest);
+
         Spinlocks.exitCriticalSection (mailtab(dest).lock);
     end trySendEvent;
 
@@ -950,6 +1026,8 @@ package body Process.IPC is
         elsif proctab(dest).state = WAITINGFOREVENT then
             notify (dest);
         end if;
+
+        wakeActivityWaiters (dest);
 
         Spinlocks.exitCriticalSection (mailtab(dest).lock);
     end notifyIRQ;
@@ -1035,6 +1113,7 @@ package body Process.IPC is
             if proctab(replyTo).state = WAITINGFORCOMPLETION then
                 notify (replyTo);
             end if;
+            wakeActivityWaiters (replyTo);
             Spinlocks.exitCriticalSection (mailtab(replyTo).lock);
         end if;
         return 1;
@@ -2121,6 +2200,7 @@ package body Process.IPC is
                 proctab(pid).requestSequence := IPC_Request_Ids.Initial_Sequence;
                 proctab(pid).irqNotificationPending := False;
                 proctab(pid).receiveDeadlineActive := False;
+                proctab(pid).waitsForIPCActivity := False;
                 proctab(pid).receiveDeadlineMs := 0;
                 proctab(pid).receiveDeadlineReceiver := NO_PROCESS;
 
@@ -2155,6 +2235,7 @@ package body Process.IPC is
                                 cq.tail := (cq.tail + 1) mod
                                     COMPLETION_QUEUE_SIZE;
                                 cq.count := cq.count + 1;
+                                wakeActivityWaitersLocked (p);
                                 if proctab(p).state =
                                     WAITINGFORCOMPLETION
                                 then

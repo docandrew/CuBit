@@ -79,6 +79,11 @@ package Process.IPC is
     ---------------------------------------------------------------------------
     procedure receive (from : out ProcessID; msg : out Message);
 
+    -- Wait without consuming messages or completions (or reply authority).
+    -- 1 = work available, 0 = deadline, Last = closed mailbox.
+    function waitForActivityUntil (deadlineMs : Unsigned_64)
+      return Unsigned_64;
+
     --  Block until any IPC arrives or the absolute monotonic millisecond
     --  deadline is reached. Unlike a userspace sleep/poll loop, publication
     --  wakes the receiver immediately. received is False only on timeout.

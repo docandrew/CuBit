@@ -100,6 +100,16 @@ package CuBit.Messages is
       constant Unsigned_64 := 111;
    SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT_VIA_CAPABILITY :
       constant Unsigned_64 := 112;
+   SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND :
+      constant Unsigned_64 := 113;
+
+   type Activity_Result is (Work_Available, Deadline_Reached, Unavailable);
+   --  Readiness hint only: drain typed queues separately.
+   --  Last means no deadline.
+   --  Available work wins over an expired deadline. Another receiver may
+   --  drain it before the caller polls; this does not reserve queue entries.
+   function Wait_For_Activity_Until (Deadline : Unsigned_64)
+      return Activity_Result;
 
    --  Well-known service roles (must match kernel Config.ServiceRole)
    ROLE_FILESYSTEM : constant Unsigned_64 := 1;

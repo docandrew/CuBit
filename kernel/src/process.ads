@@ -635,6 +635,8 @@ package Process is
         --  queue membership.  This permits an event or request to wake it
         --  immediately while the timer provides a bounded deadline wake.
         receiveDeadlineActive   : Boolean := False with Atomic;
+        -- Protected by the owning mailbox; activity waits do not dequeue.
+        waitsForIPCActivity     : Boolean := False;
         receiveDeadlineMs       : Unsigned_64 := 0;
         receiveDeadlineReceiver : ProcessID := NO_PROCESS;
 

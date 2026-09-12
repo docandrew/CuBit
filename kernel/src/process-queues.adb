@@ -34,6 +34,16 @@ package body Process.Queues is
         return (q.head = NO_PROCESS);
     end isEmpty;
 
+    function hasReadyPeer (q : in out ProcQueue; priority : Integer) return Boolean is
+        result : Boolean;
+    begin
+        Spinlocks.enterCriticalSection (q.lock);
+        result := q.head /= NO_PROCESS and then
+          proctab(q.head).queueKey >= priority;
+        Spinlocks.exitCriticalSection (q.lock);
+        return result;
+    end hasReadyPeer;
+
     ---------------------------------------------------------------------------
     -- popFront
     ---------------------------------------------------------------------------

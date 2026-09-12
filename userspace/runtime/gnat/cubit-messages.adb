@@ -60,6 +60,20 @@ package body CuBit.Messages is
       return ret;
    end syscall;
 
+   function Wait_For_Activity_Until (Deadline : Unsigned_64)
+      return Activity_Result
+   is
+      Result : constant Unsigned_64 := syscall
+        (SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND,
+         Deadline);
+   begin
+      case Result is
+         when 1 => return Work_Available;
+         when 0 => return Deadline_Reached;
+         when others => return Unavailable;
+      end case;
+   end Wait_For_Activity_Until;
+
    --  Conversion helpers
 
    function tagToU64 is new Ada.Unchecked_Conversion

@@ -138,6 +138,9 @@ package body Syscall is
                 number := SYSCALL_RETURN_SHARED_MEMORY_GRANT_ACQUISITION;
             when 112  =>
                 number := SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT_VIA_CAPABILITY;
+            when 113 =>
+                number :=
+                  SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND;
             when 2000 => number := SYSCALL_REGISTER_DRIVER;
             when others =>
                 number := SYSCALL_EXIT;
@@ -223,6 +226,9 @@ package body Syscall is
 
             when SYSCALL_RECEIVE =>
                 IPC.handleReceive (arg0, retval);
+
+            when SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND =>
+                retval := Process.IPC.waitForActivityUntil (arg0);
 
             when SYSCALL_RECEIVE_UNTIL_MONOTONIC_MILLISECOND =>
                 IPC.handleReceiveUntil (arg0, arg1, retval);

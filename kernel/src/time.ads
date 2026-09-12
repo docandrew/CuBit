@@ -69,9 +69,13 @@ is
     ---------------------------------------------------------------------------
     -- clockTick
     -- At timer interrupt intervals, this procedure will decrement the head of
-    -- the sleep list if it exists, and perform a context switch if the elapsed
-    -- quantum has occurred.
+    -- the sleep list once per millisecond, and offer ready peers a scheduling
+    -- opportunity every 1.5 ms, independently dividing the 500-us LAPIC tick.
     ---------------------------------------------------------------------------
     procedure clockTick with SPARK_Mode => On;
+
+    -- BSP boot only, interrupts disabled, after masking the calibration PIT
+    -- and before starting APs. Public time/sleep units remain milliseconds.
+    procedure enableSchedulingClock;
 
 end Time;

@@ -33,6 +33,24 @@ begin
       Canonical : Wire_Message := DSP.Encode_Attachment (Item);
    begin
       pragma Assert (DSP.Decode_Attachment (Canonical) = (True, Item));
+      pragma Assert (DSP.Valid_Open_Session (DSP.Encode_Open_Session));
+      for Length in Unsigned_8 loop
+         Wire := DSP.Encode_Open_Session; Wire.Length := Length;
+         pragma Assert (DSP.Valid_Open_Session (Wire) = (Length = 4));
+         Wire := DSP.Encode_Open_Session; Wire.Flags := Length;
+         pragma Assert (DSP.Valid_Open_Session (Wire) = (Length = 0));
+      end loop;
+      Wire := DSP.Encode_Open_Session; Wire.Reserved := 1;
+      pragma Assert (not DSP.Valid_Open_Session (Wire));
+      for Field in Payload'Range loop
+         Wire := DSP.Encode_Open_Session; Wire.Words (Field) := 1;
+         pragma Assert (not DSP.Valid_Open_Session (Wire));
+      end loop;
+      for Op in DSP.Operation loop
+         Wire := DSP.Encode_Open_Session; Wire.Label := DSP.Code (Op);
+         pragma Assert (DSP.Valid_Open_Session (Wire) =
+           (Wire.Label = DSP.Code (DSP.Open_Presentation_Session)));
+      end loop;
       for Op in DSP.Lease_Operation loop
          Wire := DSP.Encode_Lease_Request (Op);
          pragma Assert (DSP.Valid_Lease_Request (Wire, Op));
@@ -97,6 +115,105 @@ begin
          end loop;
       end loop;
       Put_Line ("PASS: display attachment codec, hostile words and bounded layouts");
+   end;
+   declare
+      package DSP renames CuBit.Display_Protocol;
+      use type DSP.Frame_Decoding;
+      use type DSP.Frame_Result_Decoding;
+      Item : DSP.Frame_Request := (1, 1, (0, 0, 800, 600));
+      Canonical : Wire_Message := DSP.Encode_Frame (Item);
+   begin
+      pragma Assert (DSP.Decode_Frame (Canonical) = (True, Item));
+      for X of Coordinates loop
+         for Y of Coordinates loop
+            for Width of Extents loop
+               for Height of Extents loop
+                  Item := (DSP.Live_ID'Last, DSP.Live_ID'Last,
+                           (X, Y, Width, Height));
+                  pragma Assert
+                    (DSP.Decode_Frame (DSP.Encode_Frame (Item)) = (True, Item));
+               end loop;
+            end loop;
+         end loop;
+      end loop;
+      for Length in Unsigned_8 loop
+         Wire := Canonical; Wire.Length := Length;
+         pragma Assert (DSP.Decode_Frame (Wire).Valid = (Length = 4));
+         Wire := Canonical; Wire.Flags := Length;
+         pragma Assert (DSP.Decode_Frame (Wire).Valid = (Length = 0));
+      end loop;
+      Wire := Canonical; Wire.Reserved := 1;
+      pragma Assert (not DSP.Decode_Frame (Wire).Valid);
+      for Op in DSP.Operation loop
+         Wire := Canonical; Wire.Label := DSP.Code (Op);
+         pragma Assert (DSP.Decode_Frame (Wire).Valid =
+           (Wire.Label = DSP.Code (DSP.Submit_Frame)));
+      end loop;
+      for Field in 0 .. 1 loop
+         Wire := Canonical; Wire.Words (Field) := 0;
+         pragma Assert (not DSP.Decode_Frame (Wire).Valid);
+      end loop;
+      for Field in Payload'Range loop
+         for Bit in 0 .. 63 loop
+            Wire := Canonical;
+            Wire.Words (Field) := Wire.Words (Field) xor Shift_Left (1, Bit);
+            declare
+               Decoded : constant DSP.Frame_Decoding := DSP.Decode_Frame (Wire);
+            begin
+               if Decoded.Valid then
+                  pragma Assert (DSP.Encode_Frame (Decoded.Value) = Wire);
+               end if;
+            end;
+         end loop;
+      end loop;
+      -- Outcome and source lifetime are distinct: presentation alone never
+      -- authorizes reuse. Even a failed/dropped frame can still hold a loan.
+      for Outcome in DSP.Frame_Outcome loop
+         for Disposition in DSP.Buffer_Disposition loop
+            declare
+               Result : constant DSP.Frame_Result :=
+                 (DSP.Live_ID'Last, DSP.Live_ID'Last, Outcome, Disposition);
+            begin
+               Canonical := DSP.Encode_Frame_Result (Result);
+               pragma Assert
+                 (DSP.Decode_Frame_Result (Canonical) = (True, Result));
+               for Field in Payload'Range loop
+                  for Bit in 0 .. 63 loop
+                     Wire := Canonical;
+                     Wire.Words (Field) :=
+                       Wire.Words (Field) xor Shift_Left (1, Bit);
+                     declare
+                        Decoded : constant DSP.Frame_Result_Decoding :=
+                          DSP.Decode_Frame_Result (Wire);
+                     begin
+                        if Decoded.Valid then
+                           pragma Assert
+                             (DSP.Encode_Frame_Result (Decoded.Value) = Wire);
+                        end if;
+                     end;
+                  end loop;
+               end loop;
+            end;
+         end loop;
+      end loop;
+      for Length in Unsigned_8 loop
+         Wire := Canonical; Wire.Length := Length;
+         pragma Assert (DSP.Decode_Frame_Result (Wire).Valid = (Length = 4));
+         Wire := Canonical; Wire.Flags := Length;
+         pragma Assert (DSP.Decode_Frame_Result (Wire).Valid = (Length = 0));
+      end loop;
+      Wire := Canonical; Wire.Reserved := 1;
+      pragma Assert (not DSP.Decode_Frame_Result (Wire).Valid);
+      for Op in DSP.Operation loop
+         Wire := Canonical; Wire.Label := DSP.Code (Op);
+         pragma Assert (DSP.Decode_Frame_Result (Wire).Valid =
+           (Wire.Label = DSP.Code (DSP.Submit_Frame)));
+      end loop;
+      for Field in 0 .. 1 loop
+         Wire := Canonical; Wire.Words (Field) := 0;
+         pragma Assert (not DSP.Decode_Frame_Result (Wire).Valid);
+      end loop;
+      Put_Line ("PASS: asynchronous frame and completion codecs, hostile words");
    end;
    for Op in Operation loop
       pragma Assert (Decode_Operation (Code (Op)) = (True, Op));

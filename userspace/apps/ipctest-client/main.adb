@@ -534,7 +534,7 @@ begin
       begin
          -- All shared request receive variants must service the queued
          -- message despite repeated synchronous calls from this process.
-         for mode in Unsigned_64 range 0 .. 3 loop
+         for mode in Unsigned_64 range 0 .. 4 loop
             declare
                tag : MessageTag;
                served : Boolean := False;
@@ -544,11 +544,17 @@ begin
                msg.words (0) := mode;
                tag := capCall (CAP_SLOT_IPCTEST, msg);
                if tag.label /= REPLY_OK then fail ("fairness-begin"); end if;
+               if mode = 4 then
+                  -- Server has entered an infinite activity wait before the
+                  -- one-way submission, then again before the synchronous call.
+                  ret := syscall (SYSCALL_SLEEP, 50);
+               end if;
                msg := NULL_MESSAGE;
                msg.tag := (OP_FAIR_QUEUED, 0, 0, 0);
                if not capSubmit (CAP_SLOT_IPCTEST, msg, NO_COMPLETION_TOKEN) then
                   fail ("fairness-submit");
                end if;
+               if mode = 4 then ret := syscall (SYSCALL_SLEEP, 50); end if;
                for poll in 1 .. 2 loop
                   msg := NULL_MESSAGE;
                   msg.tag := (OP_FAIR_POLL, 0, 0, 0);
@@ -569,8 +575,48 @@ begin
          end;
          if ok then
             debugPrint ("ipctest-client: four receive fairness paths PASS" & LF);
+            debugPrint ("ipctest-client: activity request wake PASS" & LF);
          end if;
 
+         -- Completion-aware idle waits must wake without consuming the
+         -- completion; repeated readiness checks must preserve its identity.
+         declare
+            event : Message;
+            found : Boolean;
+            started : Unsigned_64;
+         begin
+            loop
+               found := Poll_Event (event);
+               exit when not found;
+            end loop;
+            if Wait_For_Activity_Until (syscall (SYSCALL_GETTIME) + 10) /=
+              Deadline_Reached
+            then fail ("activity-empty-deadline"); end if;
+            msg := NULL_MESSAGE;
+            msg.tag := (OP_ASYNC_ECHO, 1, 0, 0);
+            msg.words (0) := 123;
+            started := syscall (SYSCALL_GETTIME);
+            if not capSubmit (CAP_SLOT_IPCTEST, msg, 16#AC71#) then
+               fail ("activity-submit");
+            end if;
+            if Wait_For_Activity_Until (started + 5000) /=
+              Work_Available
+            then fail ("activity-completion-wake"); end if;
+            if syscall (SYSCALL_GETTIME) - started >= 2500 then
+               fail ("activity-completion-only-woke-at-deadline");
+            end if;
+            if Wait_For_Activity_Until (syscall (SYSCALL_GETTIME)) /=
+              Work_Available
+            then fail ("activity-ready-does-not-consume"); end if;
+            ret := Poll_Completion (completion'Address);
+            if ret /= 1 or else not completion.valid or else
+              completion.status /= COMPLETION_OK or else
+              completion.token /= 16#AC71# or else
+              completion.msg.tag.label /= REPLY_OK or else
+              completion.msg.words (0) /= 123
+            then fail ("activity-completion-identity"); end if;
+            if ok then debugPrint ("ipctest-client: activity wait PASS" & LF); end if;
+         end;
          msg.tag := (label  => OP_DIE,
                      length => 0,
                      flags  => 0,
@@ -582,29 +628,31 @@ begin
       end;
    end if;
 
-   for attempt in 1 .. 300 loop
-      exit when not ok;
-
-      completion := NULL_COMPLETION;
-      ret := Poll_Completion (completion'Address);
-
-      if ret = 1 then
-         if completion.token /= DEATH_TOKEN then
+   if ok then
+      declare
+         started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      begin
+         if Wait_For_Activity_Until (started + 5000) /= Work_Available then
+            fail ("activity-death-wake");
+         elsif syscall (SYSCALL_GETTIME) - started >= 2500 then
+            fail ("activity-death-only-woke-at-deadline");
+         end if;
+         completion := NULL_COMPLETION;
+         ret := Poll_Completion (completion'Address);
+         if ret /= 1 then
+            fail ("death-completion-missing");
+         elsif completion.token /= DEATH_TOKEN then
             fail ("death-token");
          elsif completion.status /= COMPLETION_TARGET_DIED then
             fail ("death-status");
          elsif completion.from = 0 then
             fail ("death-from");
          end if;
-         exit;
-      else
-         ret := syscall (SYSCALL_SLEEP, 10);
-      end if;
-
-      if attempt = 300 then
-         fail ("death-timeout");
-      end if;
-   end loop;
+         if ok then
+            debugPrint ("ipctest-client: activity target death wake PASS" & LF);
+         end if;
+      end;
+   end if;
 
    if ok then
       debugPrint ("TEST: PASS async-ipc" & LF);

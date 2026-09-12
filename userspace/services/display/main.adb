@@ -13,10 +13,14 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Display_Protocol;
 with CuBit.Desktop_Messages;
 with CuBit.Memory_Grants;
+with CuBit.Presentation_State;
+with Presentation_Test_Policy;
 
 procedure main is
    package DSP renames CuBit.Display_Protocol;
    package MG renames CuBit.Memory_Grants;
+   package PS is new CuBit.Presentation_State;
+   use type PS.Phase, PS.Admission;
    use ASCII;
 
    SYSINFO_FB_WIDTH  : constant Unsigned_64 := 1100;
@@ -35,6 +39,8 @@ procedure main is
    OP_DISPLAY_PRESENT_IMMEDIATE_RECT : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Present_Immediate_Rectangle);
    OP_DISPLAY_PRESENT_REGION : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Present_Region);
    OP_DISPLAY_PRESENT_IMMEDIATE_REGION : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Present_Immediate_Region);
+   OP_OPEN_SESSION : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Open_Presentation_Session);
+   OP_SUBMIT_FRAME : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Submit_Frame);
 
    OP_GPU_CLEAR         : constant Unsigned_32 := 16#0A03#;
    OP_GPU_GET_STATUS    : constant Unsigned_32 := 16#0A04#;
@@ -47,8 +53,6 @@ procedure main is
    DISPLAY_ERR_BAD_STATE   : constant Unsigned_64 := 3;
    DISPLAY_ERR_UNSUPPORTED : constant Unsigned_64 := 5;
 
-   GRANT_REGION_BASE : constant Unsigned_64 := 16#0000_4000_0000_0000#;
-   GRANT_SLOT_SIZE   : constant Unsigned_64 := 4096 * 4096; -- 16 MiB
    DISPLAY_BACKEND_LINEAR_FB : constant Unsigned_64 := 1;
    DISPLAY_BACKEND_VIRTIO_GPU : constant Unsigned_64 := 3;
 
@@ -71,15 +75,17 @@ procedure main is
    srcOwner  : ProcessID := NO_PROCESS;
    srcGrant : MG.Grant_Reference;
    srcAcquired : Boolean := False;
+   sessionSequence : Unsigned_64 := 0;
+   activeSession : Unsigned_64 := 0;
+   lastFrame : Unsigned_64 := 0;
+   frameState : PS.State;
+   presentationFault : Boolean := False;
    gpuAvailable : Boolean := False;
    gpuCopyActive  : Boolean := False;
    subtype Gpu_Buffer_Index is Natural range 0 .. 1;
    type Gpu_Address_Array is
      array (Gpu_Buffer_Index) of System.Address;
-   type Gpu_Grant_Array is
-     array (Gpu_Buffer_Index) of Unsigned_64;
    gpuScanoutAddr : Gpu_Address_Array := (others => System.Null_Address);
-   gpuScanoutGrantId : Gpu_Grant_Array := (others => 0);
    gpuScanoutWidth   : Natural := 0;
    gpuScanoutHeight  : Natural := 0;
    gpuScanoutPitch   : Natural := 0;
@@ -248,19 +254,18 @@ procedure main is
       statsPixels := 0;
    end maybePrintStats;
 
-   function toAddr (x : Unsigned_64) return System.Address is
-   begin
-      return To_Address (Integer_Address (x));
-   end toAddr;
-
    function ownsDisplay (pid : ProcessID) return Boolean is
    begin
-      return displayOwner = pid;
+      return pid /= NO_PROCESS and then displayOwner = pid;
    end ownsDisplay;
 
    procedure detachOwnerBuffer is
       returned : Boolean;
    begin
+      -- Invalidate before releasing the attachment. Old queued frame requests
+      -- can then only be rejected, never read after a release acknowledgement.
+      activeSession := 0;
+      lastFrame := 0;
       --  The event loop finishes synchronous copies before it can detach.
       --  Discard queued damage and all local pointers before returning the pin.
       srcAddr := System.Null_Address;
@@ -275,6 +280,7 @@ procedure main is
       if srcAcquired then
          MG.Return_Acquisition (srcGrant, returned);
          if not returned then
+            presentationFault := True;
             debugPrint ("display: buffer acquisition return failed" & LF);
          end if;
          srcAcquired := False;
@@ -441,43 +447,52 @@ procedure main is
 
    function ensureGpuScanout return Boolean is
       gpuMap : Message;
+      wire : DSP.Wire_Message;
+      mapped : System.Address;
+      acquired : Boolean;
    begin
-      if not gpuAvailable then
-         return False;
-      end if;
-
+      if not gpuAvailable then return False; end if;
       for index in Gpu_Buffer_Index loop
          if gpuScanoutAddr (index) = System.Null_Address then
             gpuMap := callGpu
               (OP_GPU_MAP_FRAMEBUFFER, Unsigned_64 (index), 0, 0, 0);
-            if gpuMap.tag.length < 4 or else gpuMap.words (0) /= 0 then
-               debugPrint ("display: gpu scanout map failed" & LF);
-               return False;
-            end if;
-
-            gpuScanoutGrantId (index) := gpuMap.words (1);
-            gpuScanoutAddr (index) := toAddr
-              (GRANT_REGION_BASE +
-               gpuScanoutGrantId (index) * GRANT_SLOT_SIZE);
-            if index = Gpu_Buffer_Index'First then
-               gpuScanoutWidth := unpackLo32 (gpuMap.words (2));
-               gpuScanoutHeight := unpackHi32 (gpuMap.words (2));
-               gpuScanoutPitch := Natural (gpuMap.words (3));
-            elsif gpuScanoutWidth /= unpackLo32 (gpuMap.words (2)) or else
-              gpuScanoutHeight /= unpackHi32 (gpuMap.words (2)) or else
-              gpuScanoutPitch /= Natural (gpuMap.words (3))
-            then
-               debugPrint ("display: gpu swapchain geometry mismatch" & LF);
-               return False;
-            end if;
+            if gpuMap.tag.label /= OP_GPU_MAP_FRAMEBUFFER then return False; end if;
+            wire := CuBit.Desktop_Messages.To_Wire (gpuMap);
+            wire.Label := DSP.Code (DSP.Attach_Buffer);
+            declare
+               decoded : constant DSP.Attachment_Decoding := DSP.Decode_Attachment (wire);
+            begin
+               if not decoded.Valid then
+                  debugPrint ("display: invalid GPU mapping" & LF);
+                  return False;
+               end if;
+               if index /= Gpu_Buffer_Index'First and then
+                 (gpuScanoutWidth /= Natural (decoded.Value.Layout.Width) or else
+                  gpuScanoutHeight /= Natural (decoded.Value.Layout.Height) or else
+                  gpuScanoutPitch /= decoded.Value.Layout.Pitch)
+               then
+                  debugPrint ("display: gpu swapchain geometry mismatch" & LF);
+                  return False;
+               end if;
+               MG.Acquire_Via_Capability
+                 (CAP_SLOT_GPU, decoded.Value.Grant, 0,
+                  DSP.DP.Byte_Length (decoded.Value.Layout), MG.Write_Access, mapped, acquired);
+               if not acquired then
+                  debugPrint ("display: GPU mapping acquisition rejected" & LF);
+                  return False;
+               end if;
+               -- Retain both acquisitions for this display instance. GPU death
+               -- or grant revocation cannot recycle memory beneath a CPU copy.
+               gpuScanoutAddr (index) := mapped;
+               if index = Gpu_Buffer_Index'First then
+                  gpuScanoutWidth := Natural (decoded.Value.Layout.Width);
+                  gpuScanoutHeight := Natural (decoded.Value.Layout.Height);
+                  gpuScanoutPitch := decoded.Value.Layout.Pitch;
+               end if;
+            end;
          end if;
       end loop;
-
-      return
-        (for all index in Gpu_Buffer_Index =>
-           gpuScanoutAddr (index) /= System.Null_Address) and then
-        gpuScanoutWidth > 0 and then gpuScanoutHeight > 0 and then
-        gpuScanoutPitch >= gpuScanoutWidth * 4;
+      return True;
    end ensureGpuScanout;
 
    function clampGpuRect (r : Rect) return Rect is
@@ -712,6 +727,107 @@ procedure main is
       end if;
    end presentPackedRegion;
 
+   procedure submitFrame (from : ProcessID; request : Message;
+                          replyMsg : out Message) is
+      decoded : constant DSP.Frame_Decoding := DSP.Decode_Frame
+        (CuBit.Desktop_Messages.To_Wire (request));
+      result : DSP.Frame_Result;
+      admission : PS.Admission;
+      id : PS.Submission_ID;
+      mapped : System.Address;
+      acquired, returned, applied, obligation : Boolean;
+      r : Rect;
+      releasedState : PS.State;
+      published : Boolean;
+      started : Unsigned_64;
+      procedure advance (action : PS.Event) is
+      begin
+         PS.Apply (frameState, id, action, applied, obligation);
+         if not applied then presentationFault := True; end if;
+      end advance;
+   begin
+      replyMsg := NULL_MESSAGE;
+      replyMsg.tag := (DSP.Code (DSP.Submit_Frame), 1, 0, 0);
+      replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
+      if not decoded.Valid then return; end if;
+      result := (decoded.Value.Session, decoded.Value.Frame,
+                 DSP.Rejected, DSP.Not_Acquired);
+      r := (Natural (decoded.Value.Area.X), Natural (decoded.Value.Area.Y),
+            Natural (decoded.Value.Area.Width), Natural (decoded.Value.Area.Height));
+      if presentationFault or else not ownsDisplay (from) or else
+        not srcAcquired or else srcOwner /= from or else
+        activeSession /= decoded.Value.Session or else
+        decoded.Value.Frame <= lastFrame or else PS.Current (frameState) /= PS.Idle or else
+        isEmpty (r) or else r.x + r.w > srcWidth or else r.y + r.h > srcHeight
+      then
+         replyMsg := CuBit.Desktop_Messages.From_Wire (DSP.Encode_Frame_Result (result));
+         return;
+      end if;
+      -- The attachment pin is not admission authority for new work after
+      -- revocation. Each frame obtains its own checked, read-only acquisition.
+      MG.Acquire (srcGrant, from, 0, Unsigned_64 (srcPitch) * Unsigned_64 (srcHeight),
+                  MG.Read_Access, mapped, acquired);
+      if acquired then
+         PS.Submit (frameState, admission, id);
+         if admission = PS.Accepted then
+            lastFrame := decoded.Value.Frame;
+            result.Buffer_State := DSP.Still_Held;
+            result.Outcome := DSP.Failed;
+            advance (PS.Begin_Read);
+            if not presentationFault then
+               srcAddr := mapped;
+               started := syscall (SYSCALL_GETTIME);
+               if Presentation_Test_Policy.Enabled and then
+                 not Presentation_Test_Policy.Verify_Buffer
+                   (mapped, Unsigned_64 (srcPitch) * Unsigned_64 (srcHeight),
+                    decoded.Value.Frame)
+               then
+                  published := False;
+                  presentationFault := True;
+               elsif gpuCopyActive then
+                  published := copyAndFlipGpuRect (r);
+                  -- An uncertain GPU failure is not a successful linear
+                  -- fallback: retain the error in the terminal outcome.
+                  if not published then presentationFault := True; end if;
+               else
+                  presentRect (r.x, r.y, r.w, r.h);
+                  published := True;
+               end if;
+               statsPresents := statsPresents + 1;
+               statsPixels := statsPixels + Unsigned_64 (r.w) * Unsigned_64 (r.h);
+               statsCopyMs := statsCopyMs + syscall (SYSCALL_GETTIME) - started;
+               advance (if published then PS.Was_Presented else PS.Discard);
+               if published then result.Outcome := DSP.Published; end if;
+               -- Commit the model's release only once the kernel confirms the
+               -- real acquisition return. Failure retains an explicit hold.
+               releasedState := frameState;
+               PS.Apply (releasedState, id, PS.Release_Buffer, applied, obligation);
+               if applied and then obligation then
+                  MG.Return_Acquisition (srcGrant, returned);
+                  if returned then
+                     frameState := releasedState;
+                     result.Buffer_State := DSP.Released;
+                     advance (PS.Retire);
+                  else
+                     presentationFault := True;
+                  end if;
+               else
+                  presentationFault := True;
+               end if;
+            end if;
+         else
+            MG.Return_Acquisition (srcGrant, returned);
+            result.Buffer_State := (if returned then DSP.Released else DSP.Still_Held);
+            presentationFault := True;
+         end if;
+      end if;
+      if presentationFault then
+         PS.Close (frameState);
+         debugPrint ("display: asynchronous presentation quarantined" & LF);
+      end if;
+      replyMsg := CuBit.Desktop_Messages.From_Wire (DSP.Encode_Frame_Result (result));
+   end submitFrame;
+
    procedure handleRequest
       (from     : ProcessID;
        request  : Message;
@@ -722,6 +838,41 @@ procedure main is
       statsRequests := statsRequests + 1;
 
       case request.tag.label is
+         when OP_OPEN_SESSION =>
+            replyMsg.tag := (request.tag.label, 4, 0, 0);
+            replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
+            if not DSP.Valid_Open_Session (CuBit.Desktop_Messages.To_Wire (request)) then
+               replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
+            elsif not ownsDisplay (from) or else srcOwner /= from then
+               replyMsg.words (0) := DISPLAY_ERR_DENIED;
+            elsif srcAcquired and then not presentationFault and then
+              PS.Current (frameState) = PS.Idle and then sessionSequence < Unsigned_64'Last
+            then
+               declare
+                  mapped : System.Address;
+                  acquired, returned : Boolean;
+               begin
+                  MG.Acquire (srcGrant, from, 0,
+                    Unsigned_64 (srcPitch) * Unsigned_64 (srcHeight), MG.Read_Access,
+                    mapped, acquired);
+                  if acquired then
+                     MG.Return_Acquisition (srcGrant, returned);
+                     if returned then
+                        sessionSequence := sessionSequence + 1;
+                        activeSession := sessionSequence;
+                        lastFrame := 0;
+                        replyMsg.words (0) := DISPLAY_OK;
+                        replyMsg.words (1) := activeSession;
+                     else
+                        presentationFault := True;
+                     end if;
+                  end if;
+               end;
+            end if;
+
+         when OP_SUBMIT_FRAME =>
+            submitFrame (from, request, replyMsg);
+
          when OP_DISPLAY_GET_INFO =>
             replyMsg.tag := (label  => OP_DISPLAY_GET_INFO,
                              length => 4,
@@ -763,7 +914,7 @@ procedure main is
               (CuBit.Desktop_Messages.To_Wire (request), DSP.Release_Display)
             then
                replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
-            elsif displayOwner = from then
+            elsif displayOwner = from and then not presentationFault then
                detachOwnerBuffer;
                displayOwner := NO_PROCESS;
                replyMsg.words (0) := DISPLAY_OK;
@@ -776,7 +927,9 @@ procedure main is
          when OP_DISPLAY_ATTACH_BUFFER =>
             replyMsg.tag := (label => OP_DISPLAY_ATTACH_BUFFER,
                              length => 1, flags => 0, reserved => 0);
-            if not ownsDisplay (from) then
+            if presentationFault then
+               replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
+            elsif not ownsDisplay (from) then
                replyMsg.words (0) := DISPLAY_ERR_DENIED;
             else
                declare
@@ -790,6 +943,14 @@ procedure main is
                      replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
                   elsif Natural (decoded.Value.Layout.Width) > fbWidth or else
                     Natural (decoded.Value.Layout.Height) > fbHeight
+                  then
+                     replyMsg.words (0) := DISPLAY_ERR_UNSUPPORTED;
+                  elsif gpuAvailable and then not ensureGpuScanout then
+                     presentationFault := True;
+                     replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
+                  elsif gpuAvailable and then
+                    (Natural (decoded.Value.Layout.Width) > gpuScanoutWidth or else
+                     Natural (decoded.Value.Layout.Height) > gpuScanoutHeight)
                   then
                      replyMsg.words (0) := DISPLAY_ERR_UNSUPPORTED;
                   else
@@ -812,10 +973,8 @@ procedure main is
                         srcPitch := decoded.Value.Layout.Pitch;
                         srcOwner := from;
                         if gpuAvailable then
-                           gpuCopyActive := ensureGpuScanout;
-                           if gpuCopyActive then
-                              debugPrint ("display: gpu copy buffer attached" & LF);
-                           end if;
+                           gpuCopyActive := True;
+                           debugPrint ("display: gpu copy buffer attached" & LF);
                         end if;
                         replyMsg.words (0) := DISPLAY_OK;
                         debugPrint ("display: buffer attached" & LF);
@@ -842,7 +1001,9 @@ procedure main is
               OP_DISPLAY_PRESENT_IMMEDIATE_RECT =>
             replyMsg.tag := (label => request.tag.label,
                              length => 1, flags => 0, reserved => 0);
-            if not ownsDisplay (from) then
+            if activeSession /= 0 or else presentationFault then
+               replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
+            elsif not ownsDisplay (from) then
                replyMsg.words (0) := DISPLAY_ERR_DENIED;
             elsif srcOwner /= from or else srcAddr = System.Null_Address then
                replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
@@ -875,7 +1036,9 @@ procedure main is
               OP_DISPLAY_PRESENT_IMMEDIATE_REGION =>
             replyMsg.tag := (label => request.tag.label,
                              length => 1, flags => 0, reserved => 0);
-            if not ownsDisplay (from) then
+            if activeSession /= 0 or else presentationFault then
+               replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
+            elsif not ownsDisplay (from) then
                replyMsg.words (0) := DISPLAY_ERR_DENIED;
             elsif srcOwner /= from or else srcAddr = System.Null_Address then
                replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
@@ -891,7 +1054,9 @@ procedure main is
          when OP_DISPLAY_CLEAR =>
             replyMsg.tag := (label => OP_DISPLAY_CLEAR,
                              length => 1, flags => 0, reserved => 0);
-            if not ownsDisplay (from) then
+            if activeSession /= 0 or else presentationFault then
+               replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
+            elsif not ownsDisplay (from) then
                replyMsg.words (0) := DISPLAY_ERR_DENIED;
             elsif not clearGpu (request.words (0)) then
                clear (Unsigned_32 (request.words (0) and 16#FFFF_FFFF#));

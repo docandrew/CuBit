@@ -2,9 +2,16 @@ project Display is
 
     for Languages use ("Ada");
 
-    for Object_Dir use "build";
-
-    for Source_Dirs use (".");
+    type Test_Mode_Type is ("production", "delayed");
+    Test_Mode : Test_Mode_Type := external ("CUBIT_DISPLAY_TEST_MODE", "production");
+    case Test_Mode is
+        when "production" =>
+            for Object_Dir use "build";
+            for Source_Dirs use (".", "production");
+        when "delayed" =>
+            for Object_Dir use "build-delayed";
+            for Source_Dirs use (".", "test-delayed");
+    end case;
 
     for Main use ("main.adb");
 

@@ -33,7 +33,7 @@ Options:
   --timeout SECONDS    QEMU runtime before timeout is treated as success
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
   --cpus COUNT         Virtual CPUs, 1..4 (default: 4)
-  --load               Add one busy peer (bench-ipc / bench-audio only)
+  --load               Add one busy peer (bench-ipc / bench-audio / bench-input)
   --disk PATH          Base ext2 disk image (default: kernel/nvme_disk.img)
   --serial PATH        Serial log path (default: /tmp/cubit-headless-*.log)
   --pcap PATH          Packet capture path (default: /tmp/cubit-headless-*.pcap)
@@ -42,7 +42,7 @@ Options:
 
 The suite boots the NVMe profile headlessly and checks serial output for
 stable pass markers.
-Performance fixtures: bench-ipc, bench-audio, bench-storage.
+Performance fixtures: bench-ipc, bench-audio, bench-storage, bench-input.
 EOF
 }
 
@@ -136,7 +136,7 @@ case "$TIMEOUT_SECONDS" in
 esac
 
 case "$TEST_NAME" in
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -144,8 +144,8 @@ case "$TEST_NAME" in
         ;;
 esac
 
-if [ "$BENCH_LOAD" = 1 ] && [ "$TEST_NAME" != "bench-ipc" ] && [ "$TEST_NAME" != "bench-audio" ]; then
-    echo "headless: --load only supports bench-ipc and bench-audio" >&2
+if [ "$BENCH_LOAD" = 1 ] && [ "$TEST_NAME" != "bench-ipc" ] && [ "$TEST_NAME" != "bench-audio" ] && [ "$TEST_NAME" != "bench-input" ]; then
+    echo "headless: --load only supports bench-ipc, bench-audio and bench-input" >&2
     exit 2
 fi
 
@@ -240,6 +240,9 @@ case "$TEST_NAME" in
     bench-ipc)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-bench-ipc.conf"
         ;;
+    bench-input)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-bench-input.conf"
+        ;;
     bench-storage)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-bench-storage.conf"
         ;;
@@ -313,11 +316,18 @@ if [ -n "$INIT_PROFILE" ]; then
             debugfs -w -R "write $KERNEL_DIR/isodir/boot/$ipc_image $ipc_image" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
         done
     fi
-    if [ "$TEST_NAME" = "bench-ipc" ] || [ "$TEST_NAME" = "bench-audio" ] || [ "$TEST_NAME" = "bench-storage" ]; then
+    if [ "$TEST_NAME" = "bench-ipc" ] || [ "$TEST_NAME" = "bench-audio" ] || [ "$TEST_NAME" = "bench-storage" ] || [ "$TEST_NAME" = "bench-input" ]; then
         BENCHMARK_IMAGES="bench-ipc-client.app bench-ipc-server.app"
         if [ "$TEST_NAME" = "bench-audio" ]; then BENCHMARK_IMAGES="bench-audio.app"; fi
         if [ "$TEST_NAME" = "bench-storage" ]; then BENCHMARK_IMAGES="bench-storage.app"; fi
-        if [ "$BENCH_LOAD" = 1 ]; then BENCHMARK_IMAGES="$BENCHMARK_IMAGES bench-load.app"; fi
+        if [ "$TEST_NAME" = "bench-input" ]; then BENCHMARK_IMAGES="bench-input.app"; fi
+        if [ "$BENCH_LOAD" = 1 ]; then
+            if [ "$TEST_NAME" = "bench-input" ]; then
+                BENCHMARK_IMAGES="$BENCHMARK_IMAGES bench-input-load.app"
+            else
+                BENCHMARK_IMAGES="$BENCHMARK_IMAGES bench-load.app"
+            fi
+        fi
         for benchmark_image in $BENCHMARK_IMAGES; do
             if [ ! -f "$KERNEL_DIR/isodir/boot/$benchmark_image" ]; then
                 echo "headless: build $benchmark_image first" >&2
@@ -351,6 +361,7 @@ if [ -n "$INIT_PROFILE" ]; then
         fi
     fi
     if [ "$TEST_NAME" = "desktop-display" ] ||
+       [ "$TEST_NAME" = "bench-input" ] ||
        [ "$TEST_NAME" = "desktop-protocol" ] ||
        [ "$TEST_NAME" = "ccl-workbench" ] ||
        [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
@@ -1219,6 +1230,9 @@ ipctest-client: starting
 ipctest-departing: exiting with saved reply
 ipctest-server: dead caller reply retired and slot reused
 ipctest-client: four receive fairness paths PASS
+ipctest-client: activity request wake PASS
+ipctest-client: activity wait PASS
+ipctest-client: activity target death wake PASS
 TEST: PASS async-ipc
 "
         ;;
@@ -1377,6 +1391,16 @@ display: gpu copy buffer attached
 DISPLAY-GRANTS-CHECK: PASS
 "
         ;;
+    bench-input)
+        required_markers="
+INPUT-BENCH: START
+INPUT-BENCH: scenario=CONTINUOUS delivered= 2048
+INPUT-BENCH: scenario=PACED delivered= 2048
+INPUT-BENCH: scenario=REPAINTING delivered= 2048
+INPUT-BENCH: COMPLETE
+BENCH: PASS input integrity
+"
+        ;;
     input-stream)
         required_markers="
 desktop: internal shell active
@@ -1468,6 +1492,32 @@ if [ "$BENCH_LOAD" = 1 ]; then
 BENCH-LOAD: START
 BENCH-LOAD: COMPLETE"
 fi
+case "$TEST_NAME" in
+    display-grants|display-grants-virtio-vga)
+        required_markers="$required_markers
+DISPLAY-ASYNC-CHECK: PASS" ;;
+    input-stream|bench-input|desktop-protocol|desktop-doom|desktop-display|desktop-virtio-vga)
+        required_markers="$required_markers
+desktop: asynchronous presentation active
+desktop: asynchronous frame released" ;;
+esac
+if [ "${CUBIT_DISPLAY_TEST_MODE:-production}" = delayed ] && [ "$TEST_NAME" = input-stream ]; then
+    # Input must be dispatched between the delayed reader's two fingerprints,
+    # for the SAME frame, not merely while a submission was queued somewhere.
+    if ! awk '
+        /display-test: hold / { held[$NF] = NR }
+        /desktop: input during frame / { input[$NF] = NR }
+        /display-test: stable / {
+            stable++;
+            if (held[$NF] && input[$NF] > held[$NF] && input[$NF] < NR) progressed++;
+        }
+        END { exit !(stable >= 2 && progressed >= 1) }
+    ' "$SERIAL_LOG"; then
+        echo "headless: no input progress during a stable delayed frame loan" >&2
+        exit 1
+    fi
+    echo "headless: input progressed during delayed read; transfer remained stable"
+fi
 missing=0
 while IFS= read -r marker; do
     [ -z "$marker" ] && continue
@@ -1498,6 +1548,13 @@ fi
 if [ "$BENCH_LOAD" = 1 ]; then
     if ! python3 "$ROOT_DIR/tests/performance/report.py" "$SERIAL_LOG" --require-load >/dev/null; then
         echo "headless: INVALID loaded benchmark (see $SERIAL_LOG)" >&2
+        exit 1
+    fi
+fi
+
+if [ "$TEST_NAME" = "bench-input" ]; then
+    if ! python3 "$ROOT_DIR/tests/performance/report.py" "$SERIAL_LOG" --require-input-integrity >/dev/null; then
+        echo "headless: INVALID input benchmark (see $SERIAL_LOG)" >&2
         exit 1
     fi
 fi

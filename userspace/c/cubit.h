@@ -99,6 +99,9 @@ typedef long                ssize_t;
 
 #define SYSCALL_REPLY_WAIT      48
 
+/* Non-consuming readiness: 1 = work, 0 = deadline, UINT64_MAX = unavailable. */
+#define SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND 113
+
 /* Shared-memory grants */
 #define SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID      102
 #define SYSCALL_REVOKE_SHARED_MEMORY_GRANT                     103

@@ -114,6 +114,26 @@ test-reclamation-state:
 	../tests/kernel-reclamation/build/main
 
 .PHONY : test-locking
+.PHONY : test-scheduler-budgets prove-scheduler-budgets
+test-scheduler-budgets:
+	$(ALR) gprbuild -p -P../tests/scheduler-budgets/budgets.gpr
+	../tests/scheduler-budgets/build/main
+
+prove-scheduler-budgets:
+	$(ALR) gnatprove -P../tests/scheduler-budgets/budgets.gpr -u scheduling_budgets.adb \
+		--level=1 --report=all --checks-as-errors=on -j2
+	@cat ../tests/scheduler-budgets/build/gnatprove/gnatprove.out
+
+.PHONY : test-scheduler-timing prove-scheduler-timing
+test-scheduler-timing:
+	$(ALR) gprbuild -p -P../tests/scheduler-timing/timing.gpr
+	../tests/scheduler-timing/build/main
+
+prove-scheduler-timing:
+	$(ALR) gnatprove -P../tests/scheduler-timing/timing.gpr -u scheduler_timing.adb \
+		--level=1 --report=all --checks-as-errors=on -j2
+	@cat ../tests/scheduler-timing/build/gnatprove/gnatprove.out
+
 .PHONY : test-doom-audio
 test-doom-audio:
 	bash ../tests/doom-audio/test.sh
@@ -380,6 +400,7 @@ bench-load: user_runtime
 		../userspace/apps/bench-load/manifest.c -o ../userspace/apps/bench-load/build/manifest.o
 	$(ALR) gprbuild -p -P ../userspace/apps/bench-load/bench_load.gpr
 	cp ../userspace/apps/bench-load/build/bench-load.app isodir/boot/bench-load.app
+	cp ../userspace/apps/bench-load/build/bench-input-load.app isodir/boot/bench-input-load.app
 
 .PHONY : bench-audio
 bench-audio: user_runtime
@@ -388,6 +409,14 @@ bench-audio: user_runtime
 		../userspace/apps/bench-audio/manifest.c -o ../userspace/apps/bench-audio/build/manifest.o
 	$(ALR) gprbuild -p -P ../userspace/apps/bench-audio/bench_audio.gpr
 	cp ../userspace/apps/bench-audio/build/bench-audio.app isodir/boot/bench-audio.app
+
+.PHONY : bench-input
+bench-input: user_runtime
+	mkdir -p ../userspace/apps/bench-input/build
+	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
+		../userspace/apps/bench-input/manifest.c -o ../userspace/apps/bench-input/build/manifest.o
+	$(ALR) gprbuild -p -P ../userspace/apps/bench-input/bench_input.gpr
+	cp ../userspace/apps/bench-input/build/bench-input.app isodir/boot/bench-input.app
 
 .PHONY : bench-ipc-server
 bench-ipc-server: user_runtime
@@ -692,18 +721,20 @@ desktop: user_runtime
 	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
 		../userspace/services/desktop/manifest.c \
 		-o ../userspace/services/desktop/build/manifest.o
-	$(ALR) gprbuild -P ../userspace/services/desktop/desktop.gpr
-	cp ../userspace/services/desktop/build/desktop.svc isodir/boot/desktop.svc
+	$(ALR) gprbuild -p -P ../userspace/services/desktop/desktop.gpr -XCUBIT_DISPLAY_TEST_MODE=$(CUBIT_DISPLAY_TEST_MODE)
+	cp ../userspace/services/desktop/$(PRESENTATION_BUILD_DIR)/desktop.svc isodir/boot/desktop.svc
 
 # Build the userspace display scanout service prototype
 .PHONY : display
+CUBIT_DISPLAY_TEST_MODE ?= production
+PRESENTATION_BUILD_DIR = $(if $(filter delayed,$(CUBIT_DISPLAY_TEST_MODE)),build-delayed,build)
 display: user_runtime
 	mkdir -p ../userspace/services/display/build
 	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
 		../userspace/services/display/manifest.c \
 		-o ../userspace/services/display/build/manifest.o
-	$(ALR) gprbuild -P ../userspace/services/display/display.gpr
-	cp ../userspace/services/display/build/display.svc isodir/boot/display.svc
+	$(ALR) gprbuild -p -P ../userspace/services/display/display.gpr -XCUBIT_DISPLAY_TEST_MODE=$(CUBIT_DISPLAY_TEST_MODE)
+	cp ../userspace/services/display/$(PRESENTATION_BUILD_DIR)/display.svc isodir/boot/display.svc
 
 # Build the userspace network manager service
 .PHONY : netmgr
