@@ -2,6 +2,7 @@ with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CuBit.Network_Authority; use CuBit.Network_Authority;
 with Network_Grants;
+with CuBit.Launch_Policy;
 
 procedure Main is
    Narrow : constant Scope := (Connect_TCP, 16#0A00_0200#, 24, 80, 443, False);
@@ -11,6 +12,31 @@ procedure Main is
    Grants : Network_Grants.Table;
    Tag, Other_Tag, New_Tag : Unsigned_64;
 begin
+   declare
+      package Policy renames CuBit.Launch_Policy;
+      use type Policy.Network_Approval;
+   begin
+      pragma Assert (Policy.Desktop_Approval ("netsurf.app", 42, 42) =
+        Policy.Browser_Outbound);
+      pragma Assert (Policy.Desktop_Approval ("netsurf.app", 41, 42) =
+        Policy.No_Network);
+      pragma Assert (Policy.Desktop_Approval ("netsurf.app", 0, 0) =
+        Policy.No_Network);
+      pragma Assert (Policy.Desktop_Approval
+        ("netsurf.app", Unsigned_64'Last, Unsigned_64'Last) = Policy.No_Network);
+      pragma Assert (Policy.Desktop_Approval ("other.app", 42, 42) =
+        Policy.No_Network);
+      pragma Assert (Policy.Desktop_Approval ("netsurf.appx", 42, 42) =
+        Policy.No_Network);
+      pragma Assert (Policy.Desktop_Approval ("/netsurf.app", 42, 42) =
+        Policy.No_Network);
+      pragma Assert (Policy.Allows (Policy.Browser_Outbound, Broad_Outbound_TCP));
+      pragma Assert (Policy.Allows (Policy.Browser_Outbound, Narrow));
+      pragma Assert (not Policy.Allows (Policy.Browser_Outbound, Listener));
+      pragma Assert (not Policy.Allows (Policy.Browser_Outbound, Denied_Scope));
+      pragma Assert (not Policy.Allows (Policy.No_Network, Broad_Outbound_TCP));
+      pragma Assert (Policy.Allows (Policy.Declared_Network, Listener));
+   end;
    pragma Assert (not Valid (Denied_Scope));
    pragma Assert (Valid (Broad_Outbound_TCP));
    pragma Assert (Valid (Narrow) and Valid (Listener));

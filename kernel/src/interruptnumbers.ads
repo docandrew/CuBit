@@ -50,6 +50,7 @@ is
     IDE1                        : constant x86Interrupt := 46;  -- technically "ATA1"
     IDE2                        : constant x86Interrupt := 47;
     DEVICE_MSI_FIRST            : constant x86Interrupt := 48;
+    DEVICE_MSI_LAST             : constant x86Interrupt := 49;
 
     -- CuBitOS defined
     KERNEL_PANIC                : constant x86Interrupt := 127;

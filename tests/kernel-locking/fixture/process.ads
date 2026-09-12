@@ -3,10 +3,12 @@ package Process is
     subtype ProcessID is Natural range 0 .. 255;
     NO_PROCESS : constant ProcessID := 0;
     type ProcessState is (INVALID, SLEEPING, READY);
+    type Readiness_Origin is (Rescheduled, Awakened);
     type PCB is record
         state : ProcessState := INVALID;
         prev, next : ProcessID := NO_PROCESS;
         queueKey : Integer := 0;
+        readiness : Readiness_Origin := Rescheduled;
         name : String (1 .. 4) := "test";
     end record;
     proctab : array (1 .. 255) of PCB;

@@ -23,9 +23,11 @@ package Virtio is
    REG_QUEUE_NOTIFY      : constant Unsigned_16 := 16#10#;  -- 16-bit RW
    REG_DEVICE_STATUS     : constant Unsigned_16 := 16#12#;  -- 8-bit  RW
    REG_ISR_STATUS        : constant Unsigned_16 := 16#13#;  -- 8-bit  RO
+   REG_CONFIG_MSIX_VECTOR : constant Unsigned_16 := 16#14#;
+   REG_QUEUE_MSIX_VECTOR  : constant Unsigned_16 := 16#16#;
 
-   --  Virtio-net MAC address starts at offset 0x14 (6 bytes)
-   REG_NET_MAC           : constant Unsigned_16 := 16#14#;
+   --  MSI-X enabled legacy layout: device configuration moves by four bytes.
+   REG_NET_MAC           : constant Unsigned_16 := 16#18#;
 
    ---------------------------------------------------------------------------
    --  Device status bits
@@ -125,6 +127,8 @@ package Virtio is
    ---------------------------------------------------------------------------
    procedure resetDevice (ioBase : Unsigned_16);
    procedure initDevice  (ioBase : Unsigned_16);
+   procedure startDevice (ioBase : Unsigned_16);
+   function setQueueVector (ioBase : Unsigned_16) return Boolean;
    function  readISR     (ioBase : Unsigned_16) return Unsigned_8;
    procedure selectQueue (ioBase : Unsigned_16; idx : Unsigned_16);
    function  getQueueSize (ioBase : Unsigned_16) return Unsigned_16;

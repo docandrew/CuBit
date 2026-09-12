@@ -38,6 +38,14 @@ is
     ---------------------------------------------------------------------------
     procedure setupLAPIC_AP;
 
+    subtype Timer_Count is Unsigned_32 range 1 .. Unsigned_32'Last;
+    -- Local CPU only, interrupts disabled. Calibration uses divide-by-16.
+    -- Selecting a mode disarms the old countdown. An already pending vector
+    -- may still arrive; the caller must revalidate its software deadline.
+    procedure selectOneShotTimer with SPARK_Mode => Off;
+    procedure armTimer (Count : Timer_Count) with SPARK_Mode => Off;
+    procedure restorePeriodicTimer (Count : Timer_Count) with SPARK_Mode => Off;
+
     ---------------------------------------------------------------------------
     -- finishIRQ - Acknowledge the interrupt with an end-of-interrupt write to
     --  the eoi register.

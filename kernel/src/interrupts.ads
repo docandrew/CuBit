@@ -276,6 +276,7 @@ private
     isr46   : Symbol with Import, Convention => C;
     isr47   : Symbol with Import, Convention => C;
     isr48   : Symbol with Import, Convention => C;
+    isr49   : Symbol with Import, Convention => C;
 
     -- CuBit-specific
     -- Kernel Panic interrupt

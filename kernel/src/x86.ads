@@ -644,6 +644,10 @@ is
     ---------------------------------------------------------------------------
     function rdtsc return Unsigned_64 with Inline;
 
+    -- Ordered boundary timestamp; retains raw ticks and prevents compiler or
+    -- CPU instruction motion across an execution-accounting observation.
+    function readOrderedTSC return Unsigned_64 with Inline;
+
     ---------------------------------------------------------------------------
     -- Read Time-Stamp Counter & Processor ID (stronger serialization).
     -- Can be used to get the chip & core a process is running on.

@@ -8,6 +8,82 @@ from report import serial_report, wave_report, load_overlaps_measurement
 
 
 class Reports(unittest.TestCase):
+    def test_reference_clock(self):
+        good = (" TSC timer calibration: 3800 ticks/us (PIT reference)\n"
+                "TIMING: calibration ticks_per_ms=3800000 min=3800000 max=3800000\n")
+        self.assertTrue(serial_report(good)["reference_clock_valid"])
+        for bad in (good.replace("ticks_per_ms=3800000", "ticks_per_ms=7600000"),
+                    good + "CLOCK: FAIL source\n", good + good,
+                    good.replace(" (PIT reference)", ""), ""):
+            self.assertFalse(serial_report(bad)["reference_clock_valid"])
+
+    def test_multiple_load_workers(self):
+        good = ("BENCH-LOAD: START pid=31\nBENCH-LOAD: START pid=32\n"
+                "INPUT-BENCH: START\nINPUT-BENCH: COMPLETE\n"
+                "BENCH-LOAD: COMPLETE pid=32 batches=1\n"
+                "BENCH-LOAD: COMPLETE pid=31 batches=1\n")
+        self.assertTrue(load_overlaps_measurement(good, 2))
+        self.assertFalse(load_overlaps_measurement(good, 1))
+        self.assertFalse(load_overlaps_measurement(good, 3))
+        for bad in (good.replace("pid=32", "pid=31"),
+                    good.replace("pid=32", ""),
+                    good.replace("batches=1", "batches=0"),
+                    good.replace("INPUT-BENCH: START\n", "") + "INPUT-BENCH: START\n"):
+            self.assertFalse(load_overlaps_measurement(bad, 2))
+
+    def test_compute_control(self):
+        good = "".join(
+            f"CPU-CONTROL: START pid={pid} start_ms=100 ticks_per_ms=3000\n"
+            f"CPU-CONTROL: COMPLETE pid={pid} finish_ms=12100 batches=1000\n"
+            f"ACCOUNTING: pid={pid} cpu=0 residency_ticks=18000000 "
+            "scheduled=4000 direct=0 fault=0 saturated=0\n"
+            for pid in (31, 32))
+        result = serial_report(good)["compute_control"]
+        self.assertTrue(result["valid"])
+        self.assertEqual(result["workers"][0]["mean_charged_us_per_dispatch"], 1500)
+        for bad in (good + good, good.replace("pid=32", "pid=31"),
+                    good.replace("ticks_per_ms=3000", "ticks_per_ms=0"),
+                    good.replace("finish_ms=12100", "finish_ms=12099"),
+                    good.replace("scheduled=4000", "scheduled=0"),
+                    good.replace("direct=0", "direct=1"),
+                    good.replace("fault=0", "fault=1"),
+                    good.replace("saturated=0", "saturated=1"),
+                    good.replace("pid=32 cpu=0", "pid=32 cpu=1"),
+                    good.replace("batches=1000", "batches=0"),
+                    good.replace(" saturated=0", ""),
+                    good[:good.rfind("ACCOUNTING:")]):
+            self.assertFalse(serial_report(bad)["compute_control"]["valid"])
+        self.assertIsNone(serial_report("")["compute_control"])
+
+    def test_shadow_budgets(self):
+        accounting = ("ACCOUNTING: pid= 33 cpu= 0 residency_ticks= 9000 "
+                      "scheduled= 12 direct= 800 fault= 0 saturated= 0\n")
+        shadow = ("SHADOW-BUDGET: mode=demand-only pid=33 cpu=0 generation=1 "
+                  "charged_ticks=9000 dispatches=812 denied=810 checkpoints=1 "
+                  "remaining_ticks=0 credits=0 overrun=1 fault=0 saturated=0\n")
+        self.assertTrue(serial_report(accounting + shadow)["shadow_budgets_valid"])
+        for bad in ("", shadow + shadow, shadow.replace("demand-only", "enforced"),
+                    shadow.replace("9000", "8999"), shadow.replace("812", "811"),
+                    shadow.replace("810", "813"), shadow.replace("generation=1", "generation=0"),
+                    shadow.replace("checkpoints=1", "checkpoints=0"),
+                    shadow.replace("fault=0", "fault=1"),
+                    shadow.replace("saturated=0", "saturated=1")):
+            self.assertFalse(serial_report(accounting + bad)["shadow_budgets_valid"])
+
+    def test_execution_accounting(self):
+        good = ("ACCOUNTING: pid= 33 cpu= 0 residency_ticks= 9000 "
+                "scheduled= 12 direct= 800 fault= 0 saturated= 0\n")
+        self.assertTrue(serial_report(good)["execution_accounting_valid"])
+        for bad in ("", good + good, good.replace("pid= 33", "pid= 0"),
+                    good.replace("fault= 0", "fault= 1"),
+                    good.replace("saturated= 0", "saturated= 1"),
+                    good.replace("direct= 800", "direct= 0"),
+                    good.replace("scheduled= 12", "scheduled= 0"),
+                    good.replace("residency_ticks= 9000", "residency_ticks= 0"),
+                    good.replace("cpu= 0", "cpu= 4"),
+                    good.replace(" saturated= 0", "")):
+            self.assertFalse(serial_report(bad)["execution_accounting_valid"])
+
     def test_load_progress(self):
         result = serial_report("BENCH-LOAD: COMPLETE batches= 1234 max_gap_ms= 2\n")
         self.assertEqual(result["load_progress"], {"batches": 1234, "max_gap_ms": 2})

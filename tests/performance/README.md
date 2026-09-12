@@ -4,6 +4,12 @@ See [methodology, initial results, and findings](../../docs/performance-baseline
 These run **inside CuBit**, not the Linux Workbench. Linux hosts QEMU and
 analyzes artifacts. The small histogram test alone is Linux-hosted.
 
+Native scheduled-residency accounting is described in
+[execution-accounting](../execution-accounting/README.md). The IPC fixture now
+requires a healthy caller-only `ACCOUNTING:` snapshot exercising scheduler and
+direct IPC dispatches. Raw lifetime ticks include kernel/interrupt residency;
+they are not exclusive user CPU time and are not reset by tracing controls.
+
 ```sh
 nix develop -c make -C kernel bench-ipc-client bench-ipc-server bench-audio bench-load bench-storage
 nix develop -c make -C kernel test-locking
@@ -34,6 +40,38 @@ the ready queue reinserted equal-priority tasks ahead of their peers. FIFO
 insertion fixes that starvation. The smallest queue still underruns in the
 four-vCPU loaded scenario; fixture completion does not mean glitch-free audio.
 Do not bypass the overlap check.
+
+### Optional host vCPU pinning (Linux/KVM)
+
+```sh
+# Inspect CPU/core/SMT topology; select one allowed logical CPU per physical core.
+lscpu -e=CPU,CORE,SOCKET,NODE,ONLINE
+nix develop -c python3 -m unittest discover -s tests/headless -p 'test_qemu_affinity.py'
+nix develop -c tests/headless/run.sh --test bench-ipc --accel kvm --cpus 4 \
+  --vcpu-cpus 2,3,4,5 --load --timeout 25 --keep-logs --serial /tmp/ipc-pinned.log
+```
+
+The list maps vCPU 0,1,... in order, **not** a shared CPU pool. These CPU numbers
+are an example, not a portable topology assumption. Invalid counts, duplicate
+CPUs and CPUs outside the calling process's allowed affinity are rejected before
+boot-image preparation. The wrapper starts QEMU paused, discovers actual host
+thread IDs through a private QMP socket, sets and reads back each affinity, and
+resumes only after every vCPU is verified. Setup failure stops QEMU. Existing
+test QMP clients use a separate socket. `AFFINITY:` lines in the runner output
+record the mapping, thread IDs and SMT siblings; retain that output alongside
+the guest serial log. The normal unpinned runner path is unchanged.
+
+This does **not** reserve cores, move Linux workloads, isolate interrupts, alter
+host scheduler policy or constrain QEMU's other threads. SMT siblings remain
+available to other host work. Pinning reduces migration variability but can hurt
+if the selected cores are busy. Compare repeated interleaved pinned/unpinned runs
+with the same host load. Pinning does not change CuBit's own process placement:
+the present IPC/input fixtures still concentrate their participants on guest CPU 0.
+
+For a genuine four-CPU contention comparison of the current spinlock unlock
+against an experimental release store, use the isolated
+[native SMP spinlock benchmark](../spinlock-bench/README.md). This does not
+replace the normal kernel's lock implementation.
 
 Filesystem latency fixture:
 
@@ -73,6 +111,51 @@ for microseconds is imposed yet: establish repeated per-machine distributions
 before making noisy timing numbers a CI gate.
 
 ## Focused-application input diagnostic
+
+### Wake-aware scheduling
+
+`WAKEUP_SCHEDULING=1 ONESHOT_SCHEDULING=1` are now the defaults. When comparing
+alternative settings, use the same environment for **both** the build and the
+headless invocation: the runner checks and rebuilds the kernel, so setting a
+flag only on an earlier build is insufficient.
+The normal turn is 1.5 ms of charged execution. Adaptive one-shots bring forward
+a 100-us opportunity for newly awakened same-priority work; otherwise they
+cover clock maintenance and remaining turns. This is not a 100-us compute
+quantum. With `ONESHOT_SCHEDULING=0`, the comparison uses periodic 250-us ticks.
+
+The compute control runs two identical, authorityless compute workers on one
+CPU for overlapping 12-second intervals:
+
+```sh
+nix develop -c make -C kernel bench-load
+nix develop -c env WAKEUP_SCHEDULING=1 ONESHOT_SCHEDULING=1 bash tests/headless/run.sh \
+  --test bench-scheduler --accel kvm --cpus 1 --timeout 25 --keep-logs \
+  --serial /tmp/compute-control.log
+nix develop -c python3 tests/performance/report.py /tmp/compute-control.log \
+  --require-compute-control
+```
+
+Use `--load-workers 4` instead of `--load` for the heavier `bench-input` fixture;
+pass `--load-workers 4 --require-load --require-reference-clock
+--require-input-target` to the report. All four distinct worker lifetimes must
+cover the measurement, with positive progress. Integrity and observed timing
+are separate gates. Neither is an IRQ-to-app or hardware SLA proof.
+
+The `bench-scheduler` runner automatically starts `clock_reference.py` before
+boot and requires its independent clock check to pass. It timestamps live
+markers against host monotonic time and rejects more than 5% time dilation over
+the 12-second interval, saving the result beside the serial log as
+`<serial-log>.host-clock.json`. It cannot validate microsecond oscillator accuracy.
+`--require-reference-clock` additionally checks benchmark calibration against
+the kernel's pre-LAPIC PIT reference. This prevents a clamped periodic timer
+from making latency appear artificially small by slowing the guest clock.
+
+`ACCOUNTING` counts all scheduled dispatches, including higher-priority
+interruptions and resumption of unfinished turns. `TURNS` separates new/resumed
+turns and higher-priority, exhausted-quantum, wake-aware, and voluntary stops.
+Do not infer equal-peer switch frequency from total dispatch count alone.
+Guest calibration varies between runs: raw batch totals are not by themselves
+evidence of a host-throughput improvement.
 
 ```sh
 nix develop -c make -C kernel bench-input bench-load display desktop
@@ -142,3 +225,16 @@ set do not establish a statistical population bound; TSC/hypervisor/host
 scheduling assumptions still apply. Next requirements are independent paced
 producers, IRQ/driver timestamps, bounded scheduler admission, full critical
 section attribution, and measurements on the laptop.
+
+## Optional shadow scheduler accounting
+
+Set `SHADOW_SCHEDULING=1` in the environment when running the headless IPC
+fixture to enable demand-only budget observation. Its normal-build default is
+zero. The runner then additionally requires `--require-shadow-budgets` validation:
+caller ticks must exactly match native execution accounting, and shadow
+dispatches must equal scheduled plus direct dispatches. Faults, saturation,
+missing/duplicate records, and inconsistent totals fail the run. Budget overrun
+itself does not fail: execution is deliberately never throttled in shadow mode.
+See [scope and commands](../scheduler-shadow/README.md). Compare enabled and
+disabled builds using the same accelerator, CPU count and benchmark settings;
+this diagnostic adds work and is not a scheduler performance optimization.

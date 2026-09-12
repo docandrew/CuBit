@@ -8,6 +8,12 @@
 -------------------------------------------------------------------------------
 package Build with SPARK_MODE => On 
 is
+    -- Diagnostic demand accounting only; never changes scheduling policy.
+    Observe_Scheduling_Budgets : constant Boolean := SED_SHADOW_SCHEDULING;
+    Test_Deadline_Timer : constant Boolean := SED_DEADLINE_TIMER_TEST;
+    Test_Latency_Trace : constant Boolean := SED_LATENCY_TRACE;
+    Wakeup_Scheduling : constant Boolean := SED_WAKEUP_SCHEDULING;
+    OneShot_Scheduling : constant Boolean := SED_ONESHOT_SCHEDULING;
     -- Git Commit
     COMMIT : constant String := "SED_GIT_HASH";
 

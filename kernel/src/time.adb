@@ -6,12 +6,12 @@
 -------------------------------------------------------------------------------
 pragma Ada_2022;
 with Config;
-with cpuid;
 with PerCPUData;
 with Process;
 with Process.IPC;
 with Process.Queues;
 with Scheduler_Timing;
+with TextIO;
 with x86;
 
 package body Time with
@@ -92,11 +92,24 @@ is
     -- list. All CPUs divide the timer into clock and scheduling opportunities.
     ---------------------------------------------------------------------------
     schedulingClock : Boolean := False;
-    cpuTickPhase : array (0 .. Config.MAX_SMP_CPUS - 1) of
-      Scheduler_Timing.Tick_Phase := [others => <>];
+    cpuClock : array (0 .. Config.MAX_SMP_CPUS - 1) of
+      Scheduler_Timing.Clock_State;
+    referenceEpoch : Unsigned_64 := 0;
 
-    procedure enableSchedulingClock is
+    procedure enableSchedulingClock with SPARK_Mode => Off -- boot TSC anchor
+    is
+        Stamp : constant Unsigned_64 := x86.readOrderedTSC;
     begin
+        if tscPerDuration = 0 or else
+          tscPerDuration > Unsigned_64 (Scheduler_Timing.Tick_Count'Last) / 1000
+        then
+            raise Program_Error with "Missing reference TSC calibration";
+        end if;
+        referenceEpoch := Stamp;
+        for CPU in cpuClock'Range loop
+            cpuClock(CPU) := Scheduler_Timing.Start
+              (0, Scheduler_Timing.Tick_Rate (tscPerDuration * 1000));
+        end loop;
         schedulingClock := True;
     end enableSchedulingClock;
 
@@ -104,24 +117,38 @@ is
     is
         cpuNum    : constant Natural := PerCPUData.getCPUNumber;
         currentPID : constant Process.ProcessID := PerCPUData.getCurrentPID;
-        millisecond : Boolean := True;
-        quantum : Boolean := False;
+        elapsed : Unsigned_64 := 1;
+        valid : Boolean;
+        clockDelta : Scheduler_Timing.Tick_Count;
     begin
         if schedulingClock then
-            Scheduler_Timing.Advance
-              (cpuTickPhase (cpuNum), millisecond, quantum);
+            readClock : declare
+                stamp : constant Unsigned_64 := x86.readOrderedTSC - referenceEpoch;
+            begin
+                elapsed := 0;
+                valid := stamp <= Unsigned_64 (Scheduler_Timing.Tick_Count'Last);
+                if valid then
+                    Scheduler_Timing.Advance
+                      (cpuClock(cpuNum), Scheduler_Timing.Tick_Count (stamp), clockDelta, valid);
+                    elapsed := Unsigned_64 (clockDelta);
+                end if;
+                if not valid and then not clockFault then
+                    clockFault := True;
+                    TextIO.println ("CLOCK: FAIL reference counter outside monotonic epoch");
+                end if;
+            end readClock;
         end if;
         -- Only BSP handles global timekeeping and sleep list
-        if cpuNum = 0 and then millisecond then
-            Time.msTicks := Time.msTicks + 1;
-            Process.Queues.clockTick;
+        if cpuNum = 0 and then elapsed > 0 then
+            Time.msTicks := Time.msTicks + elapsed;
+            Process.Queues.clockTick (elapsed);
             Process.IPC.expireReceiveDeadlines (Time.msTicks);
         end if;
 
         -- Existing coarse CPU quota accounting remains at one-millisecond
         -- resolution; the faster timer IRQ must not charge it twice.
         -- This legacy yield-on-exhaustion mechanism is NOT a reservation.
-        if currentPID /= Process.NO_PROCESS and then millisecond then
+        if currentPID /= Process.NO_PROCESS and then elapsed > 0 then
             checkQuota : declare
                 q : Process.ResourceQuota renames
                     Process.proctab(currentPID).quota;
@@ -136,7 +163,9 @@ is
                         q.periodStartTick := Time.msTicks;
                     end if;
 
-                    q.cpuUsedTicks := q.cpuUsedTicks + 1;
+                    q.cpuUsedTicks := Natural (Unsigned_64'Min
+                      (Unsigned_64 (Natural'Last), Process.Accounting.Saturating_Add
+                         (Unsigned_64 (q.cpuUsedTicks), elapsed)));
 
                     -- Exceeded quota for this period? Force yield.
                     if q.cpuUsedTicks >=
@@ -149,15 +178,11 @@ is
             end checkQuota;
         end if;
 
-        -- FIFO rotation among equal-priority peers every 1.5 ms. No syscall,
-        -- block/wake or direct IPC handoff resets this CPU-owned opportunity.
-        -- Avoid a context switch when only lower-priority/idle work is ready.
-        -- Latency hints remain advisory; this creates no priority authority.
-        if quantum and then currentPID /= Process.NO_PROCESS and then
-           Process.Queues.hasReadyPeer
-             (Process.cpuReadyLists(cpuNum), Process.proctab(currentPID).priority)
-        then
-            Process.yield;
+        -- Rotation uses actual charged execution, not the wall-clock divider.
+        -- Unfinished turns survive higher-priority interruptions; direct IPC
+        -- transfers the existing CPU turn without replenishing it.
+        if schedulingClock then
+            Process.serviceTimerPreemption;
         end if;
     end clockTick;
 

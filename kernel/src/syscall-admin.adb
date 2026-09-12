@@ -1047,8 +1047,13 @@ package body Syscall.Admin is
         targetPID : Process.ProcessID;
     begin
         -- Validate args before cap check (arg1 is the owner PID)
-        if arg0 > 255 then
-            println ("ENABLE_IRQ: invalid vector");
+        -- Only vectors with installed device-interrupt stubs may be assigned.
+        -- Never turn a missing IDT entry (or an exception/IPI vector) into a
+        -- device route, even for a process-management authority holder.
+        if arg0 not in Unsigned_64 (InterruptNumbers.PS2KEYBOARD) ..
+          Unsigned_64 (InterruptNumbers.DEVICE_MSI_LAST)
+        then
+            println ("ENABLE_IRQ: unsupported device vector");
             retval := reterr;
             return;
         elsif arg1 > Unsigned_64 (Process.ProcessID'Last) or

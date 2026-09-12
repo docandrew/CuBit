@@ -19,6 +19,19 @@ is
     EVENT_READY_LATENCY  : constant EventKind := 6;
     EVENT_LOCK_WAIT      : constant EventKind := 7;
     EVENT_LOCK_HOLD      : constant EventKind := 8;
+    EVENT_TIMER_LATE     : constant EventKind := 9;
+    EVENT_READY         : constant EventKind := 10;
+    EVENT_IPC_HANDOFF   : constant EventKind := 11;
+    EVENT_SYSCALL_RETURN : constant EventKind := 12;
+
+    -- Extra control operations are available only in LATENCY_TRACE builds.
+    -- Local recording/freeze touches only the calling CPU, with IRQs masked.
+    type Control_Operation is (Summary, Start_Local, Freeze_Local, Dump_Local);
+    for Control_Operation use
+      (Summary => 0, Start_Local => 1, Freeze_Local => 2, Dump_Local => 3);
+    procedure StartLocal;
+    procedure FreezeLocal;
+    procedure DumpLocal;
 
     -- Clear all trace buffers and enable recording. Tracing starts disabled so
     -- normal boots and UI work do not pay for benchmark instrumentation.

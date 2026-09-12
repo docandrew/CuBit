@@ -8,6 +8,7 @@ with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with Capabilities.IRQ;
+with Build;
 with Config;
 with ioapic;
 with IPC_Labels;
@@ -19,8 +20,10 @@ with PerCpuData;
 with Process;
 with Process.IPC;
 with Serial;
+with Scheduler_Alarm;
 with TextIO; use TextIO;
 with Time;
+with Timer_Expiry_Probe;
 with TLB_Shootdown;
 with Virtmem;
 
@@ -214,7 +217,17 @@ is
                 -- will eventually return to interruptReturn in
                 -- interrupt.asm, not here.
                 eoi (TIMER);
-                Time.clockTick;
+                if not Build.Test_Deadline_Timer or else
+                   not Timer_Expiry_Probe.Handle_Interrupt
+                then
+                    if not Build.OneShot_Scheduling or else intController /= APIC then
+                        Time.clockTick;
+                    elsif Scheduler_Alarm.Interrupt_Due then
+                        -- Rearm before any clock work can yield off this stack.
+                        Scheduler_Alarm.Request_Earlier (1_000);
+                        Time.clockTick;
+                    end if;
+                end if;
                 
             when PS2KEYBOARD =>
                 -- println ("PS2 Interrupt");
@@ -229,7 +242,7 @@ is
                 eoi (IDE2);
                 dispatchDeviceIRQ (IDE2);
 
-            when DEVICE_MSI_FIRST =>
+            when DEVICE_MSI_FIRST .. DEVICE_MSI_LAST =>
                 --  Dedicated PCI message-signaled vector. It is outside
                 --  the legacy PIC range so no physical IRQ line aliases it.
                 eoi (interruptNumber);
@@ -293,19 +306,7 @@ is
         -- Guard: only yield when a real process is running. If the timer
         -- fires during the scheduler context (currentPID = NO_PROCESS),
         -- skip — the scheduler will pick the highest-priority process.
-        checkPreempt : declare
-            perCPUAddr : constant System.Address :=
-                PerCPUData.getPerCPUDataAddr;
-            cpuData : PerCPUData.PerCPUData with
-                Import, Volatile, Address => perCPUAddr;
-        begin
-            if cpuData.needReschedule then
-                cpuData.needReschedule := False;
-                if cpuData.currentPID /= Process.NO_PROCESS then
-                    Process.yield;
-                end if;
-            end if;
-        end checkPreempt;
+        Process.serviceReschedule;
 
         if (frame.cs and 3) /= 0 then
             Process.checkTermination;
@@ -570,6 +571,7 @@ is
         idt(46) := createIDTEntry(addrToNum(isr46'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
         idt(47) := createIDTEntry(addrToNum(isr47'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
         idt(DEVICE_MSI_FIRST) := createIDTEntry(addrToNum(isr48'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(DEVICE_MSI_LAST) := createIDTEntry(addrToNum(isr49'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
 
         -- Kernel Panic - don't want interrupts to happen here, because we're crashed.
         idt(127) := createIDTEntry(addrToNum(isr127'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);

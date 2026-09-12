@@ -24,6 +24,7 @@ with CuBit.Memory_Grants;
 with CuBit.Filesystems;
 with CuBit.File_Access;
 with CuBit.Network_Authority;
+with CuBit.Launch_Policy; use CuBit.Launch_Policy;
 
 procedure main is
    use ASCII;
@@ -655,7 +656,7 @@ procedure main is
      (childPID      : Unsigned_64;
       elfSize       : Unsigned_64;
       streamBitmask : in out Unsigned_64;
-      approveNetwork : Boolean := False)
+      approveNetwork : Network_Approval := No_Network)
    is
       --  ELF64 header field offsets
       e_shoff_off     : constant := 40;  -- Section header table offset
@@ -765,7 +766,7 @@ procedure main is
                               begin
                                  CuBit.Network_Authority.Decode
                                    (Unsigned_64 (param0), param1, scope, valid);
-                                 if approveNetwork and then valid and then
+                                 if valid and then Allows (approveNetwork, scope) and then
                                    rightsMask = 3 and then slotNum in 1 .. 62 and then
                                    networkPID /= 0 and then networkPID /= Unsigned_64'Last
                                  then
@@ -1420,7 +1421,7 @@ procedure main is
       requester   : Unsigned_64 := 0;
       sandboxMode : Unsigned_8 := SANDBOX_NONE;
       cwd         : String := "";
-      approveNetwork : Boolean := False) return Unsigned_64
+      approveNetwork : Network_Approval := No_Network) return Unsigned_64
    is
       elfSize       : Unsigned_64;
       newPID        : Unsigned_64;
@@ -1816,7 +1817,13 @@ procedure main is
       declare
          name : String (1 .. nameLen) with
             Import, Address => grantAddr;
+         approval : constant Network_Approval := Desktop_Approval
+           (name, Unsigned_64 (sender),
+            getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DESKTOP));
       begin
+         if approval = Browser_Outbound then
+            debugPrint ("procmgr: desktop NetSurf outbound approval" & LF);
+         end if;
          if cwdLen > 0 then
             declare
                cwdAddr : constant System.Address :=
@@ -1828,12 +1835,12 @@ procedure main is
             begin
                newPID := spawnByName (name, priority,
                                       Unsigned_64 (sender),
-                                      sandboxMode, cwdStr);
+                                      sandboxMode, cwdStr, approval);
             end;
          else
             newPID := spawnByName (name, priority,
                                    Unsigned_64 (sender),
-                                   sandboxMode);
+                                   sandboxMode, approveNetwork => approval);
          end if;
       end;
 
@@ -2032,7 +2039,9 @@ procedure main is
             debugPrint ("" & LF);
             pid := spawnByName
               (n, entries (i).priority,
-               approveNetwork => entries (i).approveNetwork);
+               approveNetwork =>
+                 (if entries (i).approveNetwork then Declared_Network
+                  else No_Network));
             if pid = 0 then
                debugPrint ("procmgr: init spawn failed: ");
                debugPrint (n);

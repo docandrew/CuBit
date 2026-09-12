@@ -9,6 +9,7 @@ with TextIO; use TextIO;
 
 -- Ada implementation: custom storage, address overlays or live context state.
 -- Only separately annotated SPARK policy/state routines carry proof obligations.
+with Interfaces;
 package body Process.Queues is
 
     function isInSleepQueue (pid : ProcessID) return Boolean;
@@ -34,15 +35,34 @@ package body Process.Queues is
         return (q.head = NO_PROCESS);
     end isEmpty;
 
-    function hasReadyPeer (q : in out ProcQueue; priority : Integer) return Boolean is
+    function hasReadyPeer (q : in out ProcQueue; priority : Integer;
+                          relation : Priority_Query := At_Least) return Boolean is
         result : Boolean;
     begin
         Spinlocks.enterCriticalSection (q.lock);
         result := q.head /= NO_PROCESS and then
-          proctab(q.head).queueKey >= priority;
+          (if relation = Strictly_Higher then proctab(q.head).queueKey > priority
+           else proctab(q.head).queueKey >= priority);
         Spinlocks.exitCriticalSection (q.lock);
         return result;
     end hasReadyPeer;
+
+    function hasAwakenedPeer (q : in out ProcQueue; priority : Integer) return Boolean is
+        Cursor : ProcessID;
+        Found : Boolean := False;
+    begin
+        Spinlocks.enterCriticalSection (q.lock);
+        Cursor := q.head;
+        while Cursor /= NO_PROCESS and then proctab(Cursor).queueKey >= priority loop
+            if proctab(Cursor).readiness = Awakened then
+                Found := True;
+                exit;
+            end if;
+            Cursor := proctab(Cursor).next;
+        end loop;
+        Spinlocks.exitCriticalSection (q.lock);
+        return Found;
+    end hasAwakenedPeer;
 
     ---------------------------------------------------------------------------
     -- popFront
@@ -232,7 +252,8 @@ package body Process.Queues is
     procedure insert (q      : in out ProcQueue;
                       pid    : ProcessID;
                       key    : Integer;
-                      result : out ProcessID)
+                      result : out ProcessID;
+                      placement : Equal_Placement := After_Peers)
 
     is
         curr : ProcessID;
@@ -257,13 +278,17 @@ package body Process.Queues is
         curr := q.head;
 
         loop
-            exit when key > proctab(curr).queueKey or proctab(curr).next = NO_PROCESS;
+            exit when key > proctab(curr).queueKey or else
+              (placement = Resume_Turn and then key = proctab(curr).queueKey) or else
+              proctab(curr).next = NO_PROCESS;
             curr := proctab(curr).next;
         end loop;
 
-        if key > proctab(curr).queueKey then
-            -- Insert BEFORE curr only for strictly higher priority. A task
-            -- whose quantum expired must go behind already-ready peers.
+        if key > proctab(curr).queueKey or else
+          (placement = Resume_Turn and then key = proctab(curr).queueKey)
+        then
+            -- Only an unfinished, higher-priority-preempted turn can resume
+            -- ahead of equal peers. Ordinary rotation remains FIFO.
             prev                  := proctab(curr).prev;
             proctab(pid).next     := curr;
             proctab(pid).prev     := prev;
@@ -509,18 +534,30 @@ package body Process.Queues is
     ---------------------------------------------------------------------------
     -- clockTick
     ---------------------------------------------------------------------------
-    procedure clockTick
+    procedure clockTick (elapsed : Interfaces.Unsigned_64 := 1)
     is
+        use type Interfaces.Unsigned_64;
+        remaining : Interfaces.Unsigned_64 := elapsed;
+        cursor : ProcessID;
     begin
         Spinlocks.enterCriticalSection (lock);
         Spinlocks.enterCriticalSection (sleepList.lock);
 
-        if not isEmpty (sleepList) and then
-           proctab(sleepList.head).queueKey > 0
-        then
-            -- Zero-delay entries are already due; don't make them negative.
-            proctab(sleepList.head).queueKey := proctab(sleepList.head).queueKey - 1;
-        end if;
+        -- Work is bounded by queued sleepers, not missed timer ticks. Preserve
+        -- the first future delta while marking every passed deadline due.
+        cursor := sleepList.head;
+        while cursor /= NO_PROCESS and then remaining > 0 loop
+            if proctab(cursor).queueKey > 0 then
+                if Interfaces.Unsigned_64 (proctab(cursor).queueKey) <= remaining then
+                    remaining := remaining - Interfaces.Unsigned_64 (proctab(cursor).queueKey);
+                    proctab(cursor).queueKey := 0;
+                else
+                    proctab(cursor).queueKey := proctab(cursor).queueKey - Integer (remaining);
+                    remaining := 0;
+                end if;
+            end if;
+            cursor := proctab(cursor).next;
+        end loop;
 
         Spinlocks.exitCriticalSection (sleepList.lock);
         wakeup;

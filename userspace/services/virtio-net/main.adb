@@ -21,6 +21,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
 with Virtio;
+with CuBit.Virtio_Net_Control;
 
 procedure main is
    use ASCII;
@@ -413,29 +414,57 @@ procedure main is
    devQSz     : Unsigned_16;
    rxPFN      : Unsigned_32;
    txPFN      : Unsigned_32;
+   configSender : ProcessID;
+   configMessage : Message;
+   ignore : Unsigned_64;
+
+   procedure Reject_Configuration is
+   begin
+      Virtio.resetDevice (ioBase);
+      ignore := reply (configSender,
+        (tag => (label => 16#F001#, length => 0, flags => 0, reserved => 0),
+         authorityTag => 0, words => (others => 0)));
+   end Reject_Configuration;
    --  devQSz is used in queue setup debug output
 begin
    debugPrint ("virtio-net: starting..." & LF);
 
-   --  1. Query sysinfo for BAR0 I/O base
-   ioBase := Unsigned_16 (getInfo (SYSINFO_NET_IOBASE) and 16#FFFF#);
-
-   if ioBase = 0 or ioBase = 16#FFFF# then
-      debugPrint ("virtio-net: no I/O base from sysinfo, exiting." & LF);
-      --  Signal devmgr that no hardware is present
-      declare
-         CAP_SLOT_READY  : constant Unsigned_64 := 15;
-         OP_NOT_PRESENT  : constant Unsigned_32 := 16#FF01#;
-         rdyIgnore : MessageTag;
-      begin
-         rdyIgnore := capSend (CAP_SLOT_READY,
-            (tag      => (label => OP_NOT_PRESENT, length => 0,
-                          flags => 0, reserved => 0),
-             authorityTag => 0,
-             words    => (others => 0)));
-      end;
+   --  Bind startup to the registered device manager's kernel-supplied sender
+   --  identity; netstack's TX endpoint cannot impersonate the configurator.
+   receive (configSender, configMessage);
+   if configSender = NO_PROCESS or else configSender /=
+      getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DEVMGR) or else
+      configMessage.tag.label /= CuBit.Virtio_Net_Control.Operation'Enum_Rep
+        (CuBit.Virtio_Net_Control.Configure_MSIX) or else
+      configMessage.tag.length /= 3 or else
+      configMessage.words (0) not in 1 .. 16#FFE0# or else
+      configMessage.words (1) not in CuBit.Virtio_Net_Control.Table_Offset or else
+      configMessage.words (1) mod 8 /= 0 or else
+      configMessage.words (2) /= CuBit.Virtio_Net_Control.Device_Vector
+   then
+      ignore := reply (configSender,
+        (tag => (label => 16#F001#, length => 0, flags => 0, reserved => 0),
+         authorityTag => 0, words => (others => 0)));
       return;
    end if;
+   ioBase := Unsigned_16 (configMessage.words (0));
+   declare
+      tableEntry : array (0 .. 3) of Unsigned_32 with Volatile,
+        Import, Address => To_Address (Integer_Address
+          (CuBit.Virtio_Net_Control.Table_Virtual_Address +
+           configMessage.words (1)));
+      flushed : Unsigned_32;
+   begin
+      --  Function remains masked by devmgr. Mask this entry while editing;
+      --  the UC readback orders posted MMIO before the configuration reply.
+      tableEntry (3) := 1;
+      tableEntry (0) := 16#FEE0_0000#; -- physical destination APIC 0
+      tableEntry (1) := 0;
+      tableEntry (2) := Unsigned_32 (CuBit.Virtio_Net_Control.Device_Vector);
+      tableEntry (3) := 0;
+      flushed := tableEntry (3);
+      if flushed /= 0 then Reject_Configuration; return; end if;
+   end;
 
    debugPrint ("virtio-net: ioBase=0x");
    printHex8 (Unsigned_8 (Shift_Right (ioBase, 8)));
@@ -446,19 +475,8 @@ begin
    DMA_PHYS_BASE := virtToPhys (DMA_BASE);
 
    if DMA_PHYS_BASE = Unsigned_64'Last then
+      Reject_Configuration;
       debugPrint ("virtio-net: DMA virt-to-phys failed." & LF);
-      --  Signal devmgr that no hardware is present
-      declare
-         CAP_SLOT_READY  : constant Unsigned_64 := 15;
-         OP_NOT_PRESENT  : constant Unsigned_32 := 16#FF01#;
-         rdyIgnore : MessageTag;
-      begin
-         rdyIgnore := capSend (CAP_SLOT_READY,
-            (tag      => (label => OP_NOT_PRESENT, length => 0,
-                          flags => 0, reserved => 0),
-             authorityTag => 0,
-             words    => (others => 0)));
-      end;
       return;
    end if;
 
@@ -473,7 +491,7 @@ begin
    Virtio.initDevice (ioBase);
    debugPrint ("virtio-net: device initialized." & LF);
 
-   --  4. Read MAC address (6 bytes at BAR0+0x14)
+   --  4. MSI-X-enabled legacy MAC address (BAR0+0x18).
    for i in mac'Range loop
       mac (i) := Unsigned_8 (portInp8 (ioBase + Virtio.REG_NET_MAC +
                                         Unsigned_16 (i)) and 16#FF#);
@@ -507,6 +525,10 @@ begin
    rxPFN := Unsigned_32 (DMA_PHYS_BASE / 4096);
    Virtio.selectQueue (ioBase, RX_QUEUE);
    Virtio.setQueueAddr (ioBase, rxPFN);
+   if not Virtio.setQueueVector (ioBase) then
+      Reject_Configuration;
+      return;
+   end if;
 
    --  6. Set up TX queue (queue 1)
    Virtio.selectQueue (ioBase, TX_QUEUE);
@@ -525,6 +547,10 @@ begin
 
    txPFN := Unsigned_32 ((DMA_PHYS_BASE + Unsigned_64 (TX_VRING_OFFSET)) / 4096);
    Virtio.setQueueAddr (ioBase, txPFN);
+   if not Virtio.setQueueVector (ioBase) then
+      Reject_Configuration;
+      return;
+   end if;
 
    debugPrint ("virtio-net: TX PFN=0x");
    printHex8 (Unsigned_8 (Shift_Right (txPFN, 8) and 16#FF#));
@@ -535,6 +561,19 @@ begin
    for i in 0 .. NUM_TX_BUFS - 1 loop
       txFreeStack (i) := TX_BUF_FIRST + i;
    end loop;
+
+   ignore := portOutp16 (ioBase + Virtio.REG_CONFIG_MSIX_VECTOR, 0);
+   if portInp16 (ioBase + Virtio.REG_CONFIG_MSIX_VECTOR) /= 0 then
+      Reject_Configuration;
+      return;
+   end if;
+   Virtio.startDevice (ioBase);
+   --  Devmgr may now unmask the function. Any IRQ before our wait is retained
+   --  by the kernel notification latch.
+   ignore := reply (configSender,
+     (tag => (label => REPLY_OK, length => 0, flags => 0, reserved => 0),
+      authorityTag => 0, words => (others => 0)));
+   debugPrint ("virtio-net: MSI-X RX/TX/config vectors ready" & LF);
 
    --  7. Notify device that RX buffers are available
    Virtio.notifyQueue (ioBase, RX_QUEUE);
@@ -557,14 +596,14 @@ begin
           words    => (others => 0)));
    end;
 
-   --  9. Event loop: poll IPC, events, and RX used ring.
-   --  PCI INTx routing on q35 may not deliver IRQs reliably, so we
-   --  always poll the RX used ring rather than waiting for events.
-   --  Sleep briefly when idle to avoid busy-spinning.
+   --  9. Drain work, then atomically wait on requests OR latched device IRQs.
+   --  Interrupts stay enabled in both rings (no suppression/rearm race).
    loop
       ipcFound := False;
       evtFound := False;
       rxActive := False;
+      --  Reclaim TX even when no RX arrives, before accepting another send.
+      processTXUsed;
 
       --  Check for service requests from netstack. IRQ-style traffic is
       --  handled through Poll_Event below, so this must stay request-only.
@@ -613,8 +652,7 @@ begin
          isr := Virtio.readISR (ioBase);
       end if;
 
-      --  Always poll RX used ring regardless of IRQ delivery.
-      --  This handles q35 PIRQ routing issues where INTx never fires.
+      --  Inspect durable ring state, not the number of coalesced IRQs.
       if lastRXUsedIdx /= rxUsed.idx then
          rxActive := True;
          processRX;
@@ -622,12 +660,18 @@ begin
          Virtio.notifyQueue (ioBase, RX_QUEUE);
       end if;
 
-      --  If nothing happened, sleep 1ms to avoid busy-spinning
+      --  The kernel checks all queues and the IRQ latch under the same lock
+      --  used to publish work before enrolling the waiter. Work arriving
+      --  between the checks above and this syscall cannot be lost.
       if not ipcFound and not evtFound and not rxActive then
          declare
-            ignore : Unsigned_64;
+            activity : Activity_Result;
          begin
-            ignore := syscall (SYSCALL_SLEEP, 1);
+            activity := Wait_For_Activity_Until (Unsigned_64'Last);
+            if activity = Unavailable then
+               debugPrint ("virtio-net: activity wait unavailable" & LF);
+               return;
+            end if;
          end;
       end if;
    end loop;

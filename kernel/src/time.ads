@@ -29,9 +29,10 @@ is
     ---------------------------------------------------------------------------
     -- TSC ticks per time duration
     ---------------------------------------------------------------------------
-    tscPerDuration      : TSCTicks;
+    tscPerDuration      : TSCTicks := 0;
 
     tscCalibrated       : Boolean := False with Ghost;
+    clockFault          : Boolean := False with Atomic;
 
     ---------------------------------------------------------------------------
     -- bootCalibrationSleep
@@ -70,7 +71,10 @@ is
     -- clockTick
     -- At timer interrupt intervals, this procedure will decrement the head of
     -- the sleep list once per millisecond, and offer ready peers a scheduling
-    -- opportunity every 1.5 ms, independently dividing the 500-us LAPIC tick.
+    -- opportunity on turn exhaustion. Elapsed time comes from the calibrated
+    -- TSC, not counting 250-us LAPIC interrupts, which may be delayed/coalesced.
+    -- The wake-aware experiment can offer an earlier FIFO rotation when newly
+    -- awakened work waits, without granting a priority boost.
     ---------------------------------------------------------------------------
     procedure clockTick with SPARK_Mode => On;
 

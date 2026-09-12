@@ -12,6 +12,7 @@
 -- to the first entry from the proctab in that list.
 -------------------------------------------------------------------------------
 
+with Interfaces;
 package Process.Queues is
 
     procedure initQueue (q : in out ProcQueue; locknamePtr : Spinlocks.Lock_Name);
@@ -23,7 +24,12 @@ package Process.Queues is
 
     -- Atomic readiness test for the priority-ordered run queue. No dequeue,
     -- preference boost or borrowed authority; the scheduler still selects.
-    function hasReadyPeer (q : in out ProcQueue; priority : Integer) return Boolean;
+    type Priority_Query is (At_Least, Strictly_Higher);
+    function hasReadyPeer (q : in out ProcQueue; priority : Integer;
+                          relation : Priority_Query := At_Least) return Boolean;
+    -- Newly awakened work at/above this priority can shorten the next peer
+    -- opportunity. Selection remains unchanged priority/FIFO, never a boost.
+    function hasAwakenedPeer (q : in out ProcQueue; priority : Integer) return Boolean;
 
     ---------------------------------------------------------------------------
     -- popFront
@@ -61,10 +67,12 @@ package Process.Queues is
     -- insert
     -- Inserts in descending key order; equal keys retain FIFO arrival order.
     ---------------------------------------------------------------------------
+    type Equal_Placement is (After_Peers, Resume_Turn);
     procedure insert (q      : in out ProcQueue;
                       pid    : ProcessID;
                       key    : Integer;
-                      result : out ProcessID);
+                      result : out ProcessID;
+                      placement : Equal_Placement := After_Peers);
 
     ---------------------------------------------------------------------------
     -- insertDelta
@@ -100,7 +108,7 @@ package Process.Queues is
     -- processes whose delay has elapsed.
     -- Acquires Process.lock; timer caller must not already hold it.
     ---------------------------------------------------------------------------
-    procedure clockTick;
+    procedure clockTick (elapsed : Interfaces.Unsigned_64 := 1);
 
     ---------------------------------------------------------------------------
     -- print

@@ -10,22 +10,22 @@ procedure Main is
       -- Deliberately slow, one-microsecond oracle, independent of the
       -- production constant-time quotient/remainder accounting algorithm.
       Seed : Unsigned_32 := 16#C0B17#;
-      Ref_Left, Ref_Time : Microseconds := 0;
+      Ref_Left, Ref_Time : Time_Units := 0;
       Ref_Running, Ref_Overrun : Boolean := False;
       Budget : Allowance;
-      Now : Microseconds;
+      Now : Time_Units;
       Execute : Boolean;
    begin
       for Trial in 1 .. 100 loop
          Budget := Allowance (Trial * 7);
-         Ref_Time := Microseconds (Trial * 19);
+         Ref_Time := Time_Units (Trial * 19);
          Ref_Left := Budget;
          Ref_Running := False;
          Ref_Overrun := False;
          S := Create (Budget, Ref_Time);
          for Event in 1 .. 100 loop
             Seed := Seed * 1_664_525 + 1_013_904_223;
-            Now := Ref_Time + Microseconds (Seed mod 6_001);
+            Now := Ref_Time + Time_Units (Seed mod 6_001);
             Execute := (Seed and 16#8000#) /= 0;
             while Ref_Time < Now loop
                if Ref_Running then
@@ -53,7 +53,7 @@ procedure Main is
    procedure Check_Shared_Ceiling is
       CPU : State := Create (1_000, 0);
       Client : State;
-      Now : Microseconds := 0;
+      Now : Time_Units := 0;
       Served : Natural := 0;
    begin
       -- Even a privileged caller replacing a client repeatedly must retain
@@ -103,9 +103,9 @@ procedure Main is
          Spammer => Create (600, 0, 2)];
       CPU : State := Create (1_000, 0, 8);
       Pending : array (Client_ID) of Natural := [others => 0];
-      Spent : array (Client_ID) of Microseconds := [others => 0];
-      Input_Start, Max_Input_Completion : Microseconds := 0;
-      Normal_Time, Expedited_Time : Microseconds := 0;
+      Spent : array (Client_ID) of Time_Units := [others => 0];
+      Input_Start, Max_Input_Completion : Time_Units := 0;
+      Normal_Time, Expedited_Time : Time_Units := 0;
       Input_Completions, Audio_Completions, Switches : Natural := 0;
       Selected, Previous : Work_ID := Compute_Work;
       Accepted : Boolean;
@@ -113,7 +113,7 @@ procedure Main is
    begin
       pragma Assert (Limit (Budgets (Input)) + Limit (Budgets (Audio)) +
                      Limit (Budgets (Spammer)) <= Limit (CPU));
-      for Now in Microseconds range 0 .. 199_999 loop
+      for Now in Time_Units range 0 .. 199_999 loop
          if Now mod 500 = 100 then
             pragma Assert (Pending (Input) = 0);
             Pending (Input) := 20;
@@ -166,7 +166,7 @@ procedure Main is
                   case Client is
                      when Input =>
                         Input_Completions := Input_Completions + 1;
-                        Max_Input_Completion := Microseconds'Max
+                        Max_Input_Completion := Time_Units'Max
                           (Max_Input_Completion, Now + 1 - Input_Start);
                      when Audio => Audio_Completions := Audio_Completions + 1;
                      when Spammer => null;
@@ -209,7 +209,7 @@ procedure Main is
 begin
    -- Spending in short bursts, including zero-duration wake/sleep spam.
    Account (S, 0, True, Result);
-   for T in Microseconds range 1 .. 200 loop
+   for T in Time_Units range 1 .. 200 loop
       Account (S, T, False, Result);
       pragma Assert (Result = Updated and not Overrun (S));
       for Spam in 1 .. 10 loop
@@ -238,11 +238,11 @@ begin
    Account (S, 2_050, True, Result);
    Account (S, 6_000, False, Result);
    pragma Assert (Overrun (S) and not Eligible (S));
-   Account (S, Microseconds'Last, False, Result);
+   Account (S, Time_Units'Last, False, Result);
    pragma Assert (Result = Updated and Overrun (S) and not Eligible (S));
-   S := Create (200, Microseconds'Last - 10);
-   Account (S, Microseconds'Last - 10, True, Result);
-   Account (S, Microseconds'Last, False, Result);
+   S := Create (200, Time_Units'Last - 10);
+   Account (S, Time_Units'Last - 10, True, Result);
+   Account (S, Time_Units'Last, False, Result);
    pragma Assert (Result = Updated and not Overrun (S));
    Put_Line ("SCHEDULER-BUDGETS: PASS exhaustion, wake spam, boundaries, late stop, clock reversal, clock limit");
    Check_Reference;

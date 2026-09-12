@@ -15,6 +15,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Network_Authority;
 with CuBit.Devices;
+with CuBit.Virtio_Net_Control;
 with Cpio;
 
 procedure main is
@@ -168,6 +169,11 @@ procedure main is
    nvmePID       : Unsigned_64 := 0;
    netstackPID   : Unsigned_64 := 0;
    virtioNetPID  : Unsigned_64 := 0;
+   netMSIXCap : Unsigned_8 := 0;
+   netTableOffset : Unsigned_64 := 0;
+   netIOBase : Unsigned_64 := 0;
+   netTransportReady : Boolean := False;
+   DEVMGR_NET_SLOT : constant Unsigned_64 := 3;
    procmgrPID    : Unsigned_64 := 0;
    shellPID      : Unsigned_64 := 0;
    hdaPID        : Unsigned_64 := 0;
@@ -751,11 +757,12 @@ procedure main is
    ---------------------------------------------------------------------------
    -- Setup virtio-net driver: PCI config, DMA, capabilities
    ---------------------------------------------------------------------------
+   function probeMemoryBARSize
+     (dev : PCIDeviceInfo; bar : Unsigned_8) return Unsigned_64;
+
    procedure setupVirtioNet is
       bar0Raw   : Unsigned_32;
       bar0Base  : Unsigned_64;
-      irqLine   : Unsigned_8;
-      irqVector : Unsigned_64;
       pciCmd    : Unsigned_16;
       dmaPhys   : Unsigned_64;
       ret       : Unsigned_64;
@@ -773,19 +780,88 @@ procedure main is
                                   PCI_BASEADDR_0);
       bar0Base := Unsigned_64 (bar0Raw and 16#FFFC#);
 
-      --  Read IRQ line
-      irqLine := pciReadConfig8 (netDev.bus, netDev.slot, netDev.func,
-                                 PCI_INTERRUPT_LINE);
-      irqVector := 32 + Unsigned_64 (irqLine);
+      if (bar0Raw and 1) = 0 or else bar0Base = 0 or else
+         bar0Base > 16#FFE0#
+      then
+         debugPrint ("devmgr: virtio-net requires legacy I/O transport" & LF);
+         return;
+      end if;
 
-      --  Enable I/O space + bus master
+      --  Do not trust the firmware's legacy interrupt-line byte as an APIC
+      --  route. Require MSI-X and keep the function masked until the driver
+      --  installs its table entry and queue vectors. No periodic fallback.
+      if (pciReadConfig16 (netDev.bus, netDev.slot, netDev.func,
+                           PCI_STATUS) and 16#10#) = 0
+      then
+         return;
+      end if;
+      netMSIXCap := pciReadConfig8
+        (netDev.bus, netDev.slot, netDev.func, PCI_CAP_PTR) and 16#FC#;
+      for hop in 1 .. 48 loop
+         exit when netMSIXCap < 16#40# or else netMSIXCap > 16#F4#;
+         exit when pciReadConfig8
+           (netDev.bus, netDev.slot, netDev.func, netMSIXCap) = PCI_CAP_ID_MSIX;
+         netMSIXCap := pciReadConfig8
+           (netDev.bus, netDev.slot, netDev.func, netMSIXCap + 1) and 16#FC#;
+      end loop;
+      if netMSIXCap < 16#40# or else netMSIXCap > 16#F4# or else
+         pciReadConfig8 (netDev.bus, netDev.slot, netDev.func, netMSIXCap) /=
+           PCI_CAP_ID_MSIX
+      then
+         debugPrint ("devmgr: virtio-net requires MSI-X" & LF);
+         return;
+      end if;
+      declare
+         tableInfo : constant Unsigned_32 := pciReadConfig32
+           (netDev.bus, netDev.slot, netDev.func, netMSIXCap + 4);
+         bir : constant Unsigned_8 := Unsigned_8 (tableInfo and 7);
+         bar : Unsigned_8;
+         lo, hi : Unsigned_32;
+         base, size, offset, tableAddress : Unsigned_64;
+         control : Unsigned_16;
+      begin
+         if bir > 5 then return; end if;
+         bar := PCI_BASEADDR_0 + bir * 4;
+         lo := pciReadConfig32 (netDev.bus, netDev.slot, netDev.func, bar);
+         if (lo and 1) /= 0 or else (lo and 6) not in 0 | 4 or else
+           (bir = 5 and then (lo and 6) = 4)
+         then
+            return;
+         end if;
+         base := Unsigned_64 (lo and 16#FFFF_FFF0#);
+         if (lo and 6) = 4 then
+            hi := pciReadConfig32 (netDev.bus, netDev.slot, netDev.func, bar + 4);
+            base := base or Shift_Left (Unsigned_64 (hi), 32);
+         end if;
+         size := probeMemoryBARSize (netDev, bar);
+         offset := Unsigned_64 (tableInfo and 16#FFFF_FFF8#);
+         if base = 0 or else size < 16 or else offset > size - 16 or else
+            base > Unsigned_64'Last - size
+         then
+            return;
+         end if;
+         tableAddress := base + offset;
+         netTableOffset := tableAddress mod 4096;
+         if netTableOffset > CuBit.Virtio_Net_Control.Table_Offset'Last then
+            return;
+         end if;
+         ret := mapInto (virtioNetPID, tableAddress - netTableOffset,
+           CuBit.Virtio_Net_Control.Table_Virtual_Address, 1, MAP_FLAG_IO);
+         if ret = reterr then return; end if;
+         ret := enableIrq (CuBit.Virtio_Net_Control.Device_Vector,
+           virtioNetPID, 0, messageSignaled => True);
+         if ret = reterr then return; end if;
+         control := pciReadConfig16
+           (netDev.bus, netDev.slot, netDev.func, netMSIXCap + 2);
+         pciWriteConfig16 (netDev.bus, netDev.slot, netDev.func,
+           netMSIXCap + 2, control or 16#C000#);
+      end;
+
+      --  Enable I/O + MMIO + bus master; disable legacy INTx output.
       pciCmd := pciReadConfig16 (netDev.bus, netDev.slot, netDev.func,
                                  PCI_COMMAND);
       pciWriteConfig16 (netDev.bus, netDev.slot, netDev.func,
-                        PCI_COMMAND, pciCmd or 16#0005#);
-
-      --  Enable IRQ routing
-      ret := enableIrq (irqVector, virtioNetPID, 0);
+                        PCI_COMMAND, pciCmd or 16#0407#);
 
       --  Allocate DMA
       dmaPhys := allocDma (virtioNetPID, DMA_ORDER, DMA_VIRT_BASE);
@@ -799,7 +875,8 @@ procedure main is
                RIGHT_READ or RIGHT_WRITE, 4);
 
       --  Slot 5: CAP_IRQ for device interrupt
-      mintCap (virtioNetPID, CAP_IRQ, irqVector, 0, RIGHT_READ, 5);
+      mintCap (virtioNetPID, CAP_IRQ, CuBit.Virtio_Net_Control.Device_Vector,
+               0, RIGHT_READ, 5);
 
       --  Slot 6: CAP_DEVICE_MEM for DMA region
       mintCap (virtioNetPID, CAP_DEVICE_MEM, 0, DMA_SIZE,
@@ -807,6 +884,8 @@ procedure main is
 
       --  Publish BAR0 via sysinfo
       ret := setSysinfo (SYSINFO_NET_IOBASE, bar0Base);
+      netIOBase := bar0Base;
+      netTransportReady := True;
 
       debugPrint ("devmgr: virtio-net setup complete" & LF);
    end setupVirtioNet;
@@ -1140,15 +1219,15 @@ procedure main is
    -- Probe a memory BAR's implemented size while its decode is disabled.
    -- Returns zero for an I/O BAR or a malformed/unsupported result.
    ---------------------------------------------------------------------------
-   function probeMemoryBAR0Size
-     (dev : PCIDeviceInfo) return Unsigned_64
+   function probeMemoryBARSize
+     (dev : PCIDeviceInfo; bar : Unsigned_8) return Unsigned_64
    is
       command : constant Unsigned_16 :=
         pciReadConfig16 (dev.bus, dev.slot, dev.func, PCI_COMMAND);
       originalLo : constant Unsigned_32 :=
-        pciReadConfig32 (dev.bus, dev.slot, dev.func, PCI_BASEADDR_0);
+        pciReadConfig32 (dev.bus, dev.slot, dev.func, bar);
       originalHi : constant Unsigned_32 :=
-        pciReadConfig32 (dev.bus, dev.slot, dev.func, PCI_BASEADDR_1);
+        pciReadConfig32 (dev.bus, dev.slot, dev.func, bar + 4);
       probeLo : Unsigned_32;
       probeHi : Unsigned_32 := 0;
       barMask : Unsigned_64;
@@ -1163,26 +1242,26 @@ procedure main is
         (dev.bus, dev.slot, dev.func, PCI_COMMAND,
          command and not Unsigned_16'(3));
       pciWriteConfig32
-        (dev.bus, dev.slot, dev.func, PCI_BASEADDR_0, 16#FFFF_FFFF#);
+        (dev.bus, dev.slot, dev.func, bar, 16#FFFF_FFFF#);
       if is64Bit then
          pciWriteConfig32
-           (dev.bus, dev.slot, dev.func, PCI_BASEADDR_1, 16#FFFF_FFFF#);
+           (dev.bus, dev.slot, dev.func, bar + 4, 16#FFFF_FFFF#);
       end if;
 
       probeLo := pciReadConfig32
-        (dev.bus, dev.slot, dev.func, PCI_BASEADDR_0);
+        (dev.bus, dev.slot, dev.func, bar);
       if is64Bit then
          probeHi := pciReadConfig32
-           (dev.bus, dev.slot, dev.func, PCI_BASEADDR_1);
+           (dev.bus, dev.slot, dev.func, bar + 4);
       end if;
 
       --  Restore the BAR before re-enabling memory decoding.
       if is64Bit then
          pciWriteConfig32
-           (dev.bus, dev.slot, dev.func, PCI_BASEADDR_1, originalHi);
+           (dev.bus, dev.slot, dev.func, bar + 4, originalHi);
       end if;
       pciWriteConfig32
-        (dev.bus, dev.slot, dev.func, PCI_BASEADDR_0, originalLo);
+        (dev.bus, dev.slot, dev.func, bar, originalLo);
       pciWriteConfig16
         (dev.bus, dev.slot, dev.func, PCI_COMMAND, command);
 
@@ -1201,7 +1280,7 @@ procedure main is
          return 0;
       end if;
       return size;
-   end probeMemoryBAR0Size;
+   end probeMemoryBARSize;
 
    ---------------------------------------------------------------------------
    -- Setup xHCI: grant the driver only its precisely sized BAR and a bounded
@@ -1257,7 +1336,7 @@ procedure main is
          bar0Phys := Unsigned_64 (bar0Lo and 16#FFFF_FFF0#);
       end if;
 
-      barSize := probeMemoryBAR0Size (xhciDev);
+      barSize := probeMemoryBARSize (xhciDev, PCI_BASEADDR_0);
       if bar0Phys = 0 or else barSize = 0 then
          debugPrint ("devmgr: xHCI BAR probe failed" & LF);
          return;
@@ -1945,13 +2024,41 @@ begin
          netstackPID := 0;
       end if;
 
-      assignCPU (virtioNetPID, "virtio-net.drv");
-      mintCap (virtioNetPID, CAP_ENDPOINT, myPID, 0,
-               RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
-      resumeProc (virtioNetPID);
-      debugPrint ("devmgr: virtio-net driver started" & LF);
+      if netTransportReady then
+         assignCPU (virtioNetPID, "virtio-net.drv");
+         mintCap (virtioNetPID, CAP_ENDPOINT, myPID, 0,
+                  RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
+         grantEndpoint (myPID, virtioNetPID, DEVMGR_NET_SLOT, myPID);
+         resumeProc (virtioNetPID);
+         declare
+            cfg : Message :=
+              (tag => (label => CuBit.Virtio_Net_Control.Operation'Enum_Rep
+                         (CuBit.Virtio_Net_Control.Configure_MSIX),
+                       length => 3, flags => 0, reserved => 0),
+               authorityTag => 0,
+               words => (0 => netIOBase, 1 => netTableOffset,
+                         2 => CuBit.Virtio_Net_Control.Device_Vector,
+                         others => 0));
+            response : MessageTag;
+            control : Unsigned_16;
+         begin
+            response := capCall (DEVMGR_NET_SLOT, cfg);
+            netTransportReady := response.label = REPLY_OK;
+            if netTransportReady then
+               control := pciReadConfig16
+                 (netDev.bus, netDev.slot, netDev.func, netMSIXCap + 2);
+               pciWriteConfig16 (netDev.bus, netDev.slot, netDev.func,
+                 netMSIXCap + 2, control and not Unsigned_16'(16#4000#));
+               debugPrint ("devmgr: virtio-net using MSI-X" & LF);
+            end if;
+         end;
+         debugPrint ("devmgr: virtio-net driver started" & LF);
 
-      if not waitReady (virtioNetPID) then
+         if not netTransportReady or else not waitReady (virtioNetPID) then
+            virtioNetPID := 0;
+         end if;
+      else
+         debugPrint ("devmgr: virtio-net interrupt setup unavailable" & LF);
          virtioNetPID := 0;
       end if;
    elsif netstackPID /= 0 then

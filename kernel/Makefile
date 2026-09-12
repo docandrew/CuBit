@@ -1,6 +1,27 @@
 # CuBitOS Makefile
 GIT_HASH := $(shell git rev-parse HEAD)
 BUILD_DATE := $(shell date)
+SHADOW_SCHEDULING ?= 0
+DEADLINE_TIMER_TEST ?= 0
+LATENCY_TRACE ?= 0
+ifneq ($(filter $(LATENCY_TRACE),0 1),$(LATENCY_TRACE))
+$(error LATENCY_TRACE must be 0 or 1)
+endif
+# Measured adaptive scheduling defaults; zero remains available for A/B runs.
+WAKEUP_SCHEDULING ?= 1
+ONESHOT_SCHEDULING ?= 1
+ifneq ($(filter $(ONESHOT_SCHEDULING),0 1),$(ONESHOT_SCHEDULING))
+$(error ONESHOT_SCHEDULING must be 0 or 1)
+endif
+ifneq ($(filter $(WAKEUP_SCHEDULING),0 1),$(WAKEUP_SCHEDULING))
+$(error WAKEUP_SCHEDULING must be 0 or 1)
+endif
+ifneq ($(filter $(DEADLINE_TIMER_TEST),0 1),$(DEADLINE_TIMER_TEST))
+$(error DEADLINE_TIMER_TEST must be 0 or 1)
+endif
+ifneq ($(filter $(SHADOW_SCHEDULING),0 1),$(SHADOW_SCHEDULING))
+$(error SHADOW_SCHEDULING must be 0 or 1)
+endif
 
 # Use Alire to get toolchain on PATH
 ALR := alr exec --
@@ -27,6 +48,11 @@ build/libcubit.a:
 
 	sed -e 's/SED_GIT_HASH/$(GIT_HASH)/' \
 		-e 's/SED_BUILD_DATE/$(BUILD_DATE)/' \
+		-e 's/SED_SHADOW_SCHEDULING/$(if $(filter 1,$(SHADOW_SCHEDULING)),True,False)/' \
+		-e 's/SED_DEADLINE_TIMER_TEST/$(if $(filter 1,$(DEADLINE_TIMER_TEST)),True,False)/' \
+		-e 's/SED_LATENCY_TRACE/$(if $(filter 1,$(LATENCY_TRACE)),True,False)/' \
+		-e 's/SED_WAKEUP_SCHEDULING/$(if $(filter 1,$(WAKEUP_SCHEDULING)),True,False)/' \
+		-e 's/SED_ONESHOT_SCHEDULING/$(if $(filter 1,$(ONESHOT_SCHEDULING)),True,False)/' \
 		-e 's/SED_SRC_HASH/$(SRC_HASH)/' src/build.pre > src/build.ads
 
 	$(ALR) gprbuild -Pkernel_runtime.gpr
@@ -114,6 +140,36 @@ test-reclamation-state:
 	../tests/kernel-reclamation/build/main
 
 .PHONY : test-locking
+.PHONY : test-scheduler-shadow prove-scheduler-shadow
+.PHONY : test-deadline-ownership prove-deadline-ownership
+test-deadline-ownership:
+	$(ALR) gprbuild -p -P../tests/deadline-ownership/deadlines.gpr
+	../tests/deadline-ownership/build/main
+
+prove-deadline-ownership:
+	$(ALR) gnatprove -P../tests/deadline-ownership/deadlines.gpr -u proof_driver.adb \
+		--level=1 --report=all --checks-as-errors=on -j2
+	@cat ../tests/deadline-ownership/build/gnatprove/gnatprove.out
+
+test-scheduler-shadow:
+	$(ALR) gprbuild -p -P../tests/scheduler-shadow/shadow.gpr
+	../tests/scheduler-shadow/build/main
+
+prove-scheduler-shadow:
+	$(ALR) gnatprove -P../tests/scheduler-shadow/shadow.gpr -u scheduling_shadow.adb \
+		--level=1 --report=all --checks-as-errors=on -j2
+	@cat ../tests/scheduler-shadow/build/gnatprove/gnatprove.out
+
+.PHONY : test-execution-accounting prove-execution-accounting
+test-execution-accounting:
+	$(ALR) gprbuild -p -P../tests/execution-accounting/accounting.gpr
+	../tests/execution-accounting/build/main
+
+prove-execution-accounting:
+	$(ALR) gnatprove -P../tests/execution-accounting/accounting.gpr -u proof_driver.adb \
+		--level=1 --report=all --checks-as-errors=on -j2
+	@cat ../tests/execution-accounting/build/gnatprove/gnatprove.out
+
 .PHONY : test-scheduler-budgets prove-scheduler-budgets
 test-scheduler-budgets:
 	$(ALR) gprbuild -p -P../tests/scheduler-budgets/budgets.gpr
@@ -123,6 +179,16 @@ prove-scheduler-budgets:
 	$(ALR) gnatprove -P../tests/scheduler-budgets/budgets.gpr -u scheduling_budgets.adb \
 		--level=1 --report=all --checks-as-errors=on -j2
 	@cat ../tests/scheduler-budgets/build/gnatprove/gnatprove.out
+
+.PHONY : test-scheduler-turns prove-scheduler-turns
+test-scheduler-turns:
+	$(ALR) gprbuild -p -P../tests/scheduler-turns/turns.gpr
+	../tests/scheduler-turns/build/main
+
+prove-scheduler-turns:
+	$(ALR) gnatprove -P../tests/scheduler-turns/turns.gpr -u scheduling_turns.adb \
+		--level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/scheduler-turns/build/gnatprove/gnatprove.out
 
 .PHONY : test-scheduler-timing prove-scheduler-timing
 test-scheduler-timing:
@@ -172,6 +238,22 @@ measure-ccl-cbor:
 check-ccl-cbor-native:
 	@test -n "$(CBOR_ADA_SRC)" || { echo "Run inside nix develop (CBOR_ADA_SRC missing)"; exit 1; }
 	$(ALR) gprbuild -p -c -P../tests/ccl-cbor/native_probe.gpr
+
+.PHONY: test-usb-optical prove-usb-optical test-usb-hid
+test-usb-hid:
+	bash ../tests/usb-optical/run-hid.sh
+
+test-usb-optical:
+	$(ALR) gprbuild -p -P../tests/usb-optical/usb_optical_tests.gpr
+	../tests/usb-optical/build/main
+	../tests/usb-optical/build/configuration_tests
+	../tests/usb-optical/build/completion_tests
+
+prove-usb-optical:
+	$(ALR) gnatprove -P../tests/usb-optical/usb_optical_tests.gpr \
+		-u usb_optical.adb usb_configurations.adb xhci_completions.adb \
+		--level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/usb-optical/build/gnatprove/gnatprove.out
 
 .PHONY : test-tcp-session prove-tcp-session
 test-network-authority:
@@ -401,6 +483,7 @@ bench-load: user_runtime
 	$(ALR) gprbuild -p -P ../userspace/apps/bench-load/bench_load.gpr
 	cp ../userspace/apps/bench-load/build/bench-load.app isodir/boot/bench-load.app
 	cp ../userspace/apps/bench-load/build/bench-input-load.app isodir/boot/bench-input-load.app
+	cp ../userspace/apps/bench-load/build/bench-cpu.app isodir/boot/bench-cpu.app
 
 .PHONY : bench-audio
 bench-audio: user_runtime

@@ -1,18 +1,22 @@
 -- CPU-time ledger for a future admitted, expedited scheduling lane.
 -- Pure policy only: no process IDs, authority lookup, clock reads or dispatch.
 package Scheduling_Budgets with Pure, SPARK_Mode is
-   type Microseconds is range 0 .. 2 ** 60;
-   Period : constant Microseconds := 2_000;
-   -- Experimental common period; at most half reserved for expedited work.
-   subtype Allowance is Microseconds range 1 .. Period / 2;
+   type Time_Units is range 0 .. 2 ** 60;
+   -- Units are chosen once per ledger: microseconds in hosted scenarios,
+   -- exact TSC ticks in native observation. Never round individual handoffs.
+   Period : constant Time_Units := 2_000;
+   subtype Period_Length is Time_Units range 2 .. Time_Units'Last;
+   subtype Allowance is Time_Units range 1 .. Time_Units'Last / 2;
    type Dispatch_Count is range 0 .. 32;
    subtype Dispatch_Allowance is Dispatch_Count range 1 .. Dispatch_Count'Last;
    type Update_Result is (Updated, Clock_Reversed);
    type State is private;
 
+   function Window (S : State) return Period_Length;
+
    function Limit (S : State) return Allowance;
-   function Remaining (S : State) return Microseconds;
-   function Last_Update (S : State) return Microseconds;
+   function Remaining (S : State) return Time_Units;
+   function Last_Update (S : State) return Time_Units;
    function Running (S : State) return Boolean;
    function Overrun (S : State) return Boolean;
    function Eligible (S : State) return Boolean;
@@ -24,9 +28,12 @@ package Scheduling_Budgets with Pure, SPARK_Mode is
    -- must not let an app recreate its budget. A shared per-CPU ledger bounds
    -- aggregate expedited time even when individual reservations are replaced.
    function Create
-     (Budget : Allowance; Now : Microseconds;
-      Dispatches : Dispatch_Allowance := 8) return State
-     with Post => Limit (Create'Result) = Budget and then
+     (Budget : Allowance; Now : Time_Units;
+      Dispatches : Dispatch_Allowance := 8;
+      Interval : Period_Length := Period) return State
+     with Pre => Budget <= Interval / 2,
+       Post => Window (Create'Result) = Interval and then
+       Limit (Create'Result) = Budget and then
        Remaining (Create'Result) = Budget and then
        Last_Update (Create'Result) = Now and then
        not Running (Create'Result) and then not Overrun (Create'Result) and then
@@ -39,6 +46,7 @@ package Scheduling_Budgets with Pure, SPARK_Mode is
    -- Continuing the same execution does not consume another dispatch credit.
    procedure Claim_Dispatch (S : in out State; Accepted : out Boolean)
      with Post =>
+       Window (S) = Window (S'Old) and then
        Limit (S) = Limit (S'Old) and then
        Remaining (S) = Remaining (S'Old) and then
        Last_Update (S) = Last_Update (S'Old) and then
@@ -56,9 +64,10 @@ package Scheduling_Budgets with Pure, SPARK_Mode is
    -- An overrun is sticky and disables this ledger's expedited eligibility;
    -- it does not kill a process or deny its ordinary scheduling eligibility.
    procedure Account
-     (S : in out State; Now : Microseconds; Execute : Boolean;
-      Result : out Update_Result)
+     (S : in out State; Now : Time_Units; Execute : Boolean;
+     Result : out Update_Result)
      with Post =>
+       Window (S) = Window (S'Old) and then
        Limit (S) = Limit (S'Old) and then
        Dispatch_Limit (S) = Dispatch_Limit (S'Old) and then
        (if Now < Last_Update (S'Old) then
@@ -67,10 +76,10 @@ package Scheduling_Budgets with Pure, SPARK_Mode is
           Result = Updated and then Last_Update (S) = Now and then
           Running (S) = Execute and then
           Dispatches_Left (S) =
-            (if Now / Period = Last_Update (S'Old) / Period
+            (if Now / Window (S) = Last_Update (S'Old) / Window (S)
              then Dispatches_Left (S'Old) else Dispatch_Limit (S)) and then
           (if Overrun (S'Old) then Overrun (S)) and then
-          (if Now / Period = Last_Update (S'Old) / Period then
+          (if Now / Window (S) = Last_Update (S'Old) / Window (S) then
              Remaining (S) =
                (if Running (S'Old) then
                   (if Now - Last_Update (S'Old) >= Remaining (S'Old)
@@ -82,40 +91,43 @@ package Scheduling_Budgets with Pure, SPARK_Mode is
            else
              Remaining (S) =
                (if not Running (S'Old) then Limit (S)
-                elsif Now mod Period >= Limit (S) then 0
-                else Limit (S) - Now mod Period) and then
+                elsif Now mod Window (S) >= Limit (S) then 0
+                else Limit (S) - Now mod Window (S)) and then
              Overrun (S) =
                (Overrun (S'Old) or
                 (Running (S'Old) and
-                 (Period - Last_Update (S'Old) mod Period > Remaining (S'Old)
-                  or Now / Period - Last_Update (S'Old) / Period > 1
-                  or Now mod Period > Limit (S))))));
+                 (Window (S) - Last_Update (S'Old) mod Window (S) > Remaining (S'Old)
+                  or Now / Window (S) - Last_Update (S'Old) / Window (S) > 1
+                  or Now mod Window (S) > Limit (S))))));
 
    -- Proof example: splitting execution at a same-period handoff cannot mint
    -- time or hide an overrun. No runtime code for this procedure.
    procedure Prove_Split_Charge
-     (Original : State; Middle, Finish : Microseconds)
+     (Original : State; Middle, Finish : Time_Units)
      with Ghost,
        Pre => Running (Original) and then
          Last_Update (Original) <= Middle and then Middle <= Finish and then
-         Last_Update (Original) / Period = Finish / Period;
+         Last_Update (Original) / Window (Original) = Finish / Window (Original);
 
 private
    type State is record
+      Interval : Period_Length := Period;
       Ceiling : Allowance := Allowance'First;
-      Left : Microseconds := Allowance'First;
-      Timestamp : Microseconds := 0;
+      Left : Time_Units := Allowance'First;
+      Timestamp : Time_Units := 0;
       Executing : Boolean := False;
       Missed_Stop : Boolean := False;
       Dispatch_Ceiling : Dispatch_Allowance := 8;
       Dispatch_Remaining : Dispatch_Count := 8;
    end record
-     with Type_Invariant => State.Left <= State.Ceiling and then
+     with Type_Invariant => State.Ceiling <= State.Interval / 2 and then
+       State.Left <= State.Ceiling and then
        State.Dispatch_Remaining <= State.Dispatch_Ceiling;
 
    function Limit (S : State) return Allowance is (S.Ceiling);
-   function Remaining (S : State) return Microseconds is (S.Left);
-   function Last_Update (S : State) return Microseconds is (S.Timestamp);
+   function Window (S : State) return Period_Length is (S.Interval);
+   function Remaining (S : State) return Time_Units is (S.Left);
+   function Last_Update (S : State) return Time_Units is (S.Timestamp);
    function Running (S : State) return Boolean is (S.Executing);
    function Overrun (S : State) return Boolean is (S.Missed_Stop);
    function Eligible (S : State) return Boolean is

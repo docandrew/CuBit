@@ -11,6 +11,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with Mem_mgr;
 with Process.Queues;
 with Process_Lifetime;
+with Scheduling_Turns;
 with TextIO; use TextIO;
 with Trace;
 with x86;
@@ -120,6 +121,7 @@ package body Scheduler is
             end if;
 
             Process.proctab(pid).state  := RUNNING;
+            Process.proctab(pid).readiness := Rescheduled;
             Process.noteContextStarted (pid);
 
             cpuData.currentPID          := pid;
@@ -156,6 +158,8 @@ package body Scheduler is
 
             runStartTSC := x86.rdtsc;
 
+            Process.accountBoundary (NO_PROCESS, pid, Scheduler_Start);
+
             -- Start executing new process
             Process.switch (cpuData.schedulerContext'Address, cpuData.currentContext);
 
@@ -163,6 +167,9 @@ package body Scheduler is
             -- directSwitch may have changed who's running on this CPU,
             -- so refresh pid from per-CPU state before processing.
             pid := cpuData.currentPID;
+            -- Charge the LAST direct-handoff owner before acknowledging its
+            -- context stop/reaping. The full chain is not this PID's runtime.
+            Process.accountBoundary (pid, NO_PROCESS, Scheduler_Stop);
             Trace.Emit
                 (Trace.EVENT_SCHEDULE_STOP,
                  Unsigned_64 (pid),
@@ -205,7 +212,10 @@ package body Scheduler is
                         q      => Process.cpuReadyLists(cpuData.cpuNum),
                         pid    => pid,
                         key    => Process.proctab(pid).priority,
-                        result => ign);
+                        result => ign,
+                        placement =>
+                          (if Scheduling_Turns.Remaining (proctab(pid).savedTurn) > 0
+                           then Process.Queues.Resume_Turn else Process.Queues.After_Peers));
 
                 when READY =>
                     -- Cross-CPU IPC race: another CPU's reply() called

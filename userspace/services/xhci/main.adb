@@ -116,7 +116,7 @@ procedure main is
                  length => 3, flags => 0, reserved => 0),
          authorityTag => 0,
          words =>
-           (0 => (diagnostics.decodedReports and 16#FFFF_FFFF#) or
+           [0 => (diagnostics.decodedReports and 16#FFFF_FFFF#) or
               Shift_Left (diagnostics.motionReports and 16#FFFF_FFFF#, 32),
             1 => (diagnostics.buttonTransitions and 16#FFFF_FFFF#) or
               Shift_Left (diagnostics.completionErrors and 16#FFFF_FFFF#, 32),
@@ -127,7 +127,7 @@ procedure main is
                 (Unsigned_64
                    (XHCI.Runtime_Interrupt_Mode'Enum_Rep (interruptMode)),
                  48),
-            3 => 0));
+            3 => 0]);
       --  Input diagnostics must never wait for devmgr. A full destination
       --  ring merely loses this replaceable snapshot; the next one follows.
       if not capSubmit
@@ -156,7 +156,7 @@ procedure main is
         (CapabilitySlot'Last,
          (tag => (label => label, length => 2, flags => 0, reserved => 0),
           authorityTag => 0,
-          words => (0 => word0, 1 => word1, others => 0)));
+          words => [0 => word0, 1 => word1, others => 0]));
    end Reply_With;
 
 begin
@@ -308,7 +308,7 @@ begin
                generation  => 1,
                device      => RELATIVE_POINTER,
                delivery    => ACCUMULABLE_DISPLACEMENT,
-               flags       => (RESYNCHRONIZE => pointerResyncPending),
+               flags       => [RESYNCHRONIZE => pointerResyncPending],
                payload     => packed,
                snapshot    => Unsigned_64 (buttons));
             accepted := trySendEvent

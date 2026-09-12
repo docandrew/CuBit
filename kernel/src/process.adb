@@ -12,9 +12,12 @@
 --
 -- @TODO Model lock ordering in SPARK to get formal guarantees of correctness.
 -------------------------------------------------------------------------------
+pragma Ada_2022;
 with Ada.Unchecked_Conversion;
 
 with BuddyAllocator;
+with Build;
+with Trace;
 with Capabilities.IRQ;
 with Capabilities.Operations;
 with IPC_Labels;
@@ -26,6 +29,8 @@ with PerCPUData;
 with Process.IPC;
 with Process.Queues;
 with Scheduler;
+with Scheduler_Timing;
+with Scheduler_Alarm;
 with Segment;
 with Spinlocks;
 with Sysinfo;
@@ -35,6 +40,200 @@ with x86;
 -- Ada implementation: custom storage, address overlays or live context state.
 -- Only separately annotated SPARK policy/state routines carry proof obligations.
 package body Process is
+    use type Scheduling_Shadow.Health;
+    -- Separate aligned CPU-local metadata avoids changing assembly-visible
+    -- PerCPUData offsets. All reads/writes use the existing Process.lock.
+    type Switch_Reason is (Relinquish, Quantum_Expired, Awakened_Peer, Higher_Priority);
+    type CPU_Accounting_Record is record
+        Clock : Accounting.Clock_State;
+        Scheduler_Time : Accounting.Totals;
+        Shadow : Scheduling_Shadow.CPU_State;
+        Turn : Scheduling_Turns.State;
+        Reason : Switch_Reason := Relinquish;
+    end record with Alignment => 64;
+    cpuAccounting : array (0 .. Config.MAX_CPUS - 1) of CPU_Accounting_Record;
+
+    procedure accountBoundary
+      (From_PID, To_PID : ProcessID; Boundary : Accounting_Boundary)
+    is
+        CPU : CPU_Accounting_Record renames
+          cpuAccounting (PerCPUData.getCPUNumber);
+        C : Accounting.Charge;
+        Now : constant Unsigned_64 := x86.readOrderedTSC;
+        function Observed (PID : ProcessID) return Boolean is
+          (PID /= NO_PROCESS and then
+           PID not in Config.IDLE_PID_BASE .. Config.IDLE_PID_BASE + Config.MAX_SMP_CPUS - 1);
+    begin
+        Accounting.Transition
+          (CPU.Clock, From_PID, To_PID, Now, C);
+        if C.Accepted then
+            if C.Charged_Owner = NO_PROCESS then
+                Accounting.Add_Time (CPU.Scheduler_Time, C.Ticks);
+            else
+                Accounting.Add_Time (proctab(C.Charged_Owner).execution, C.Ticks);
+                Scheduling_Turns.Charge (CPU.Turn, C.Ticks);
+            end if;
+            case Boundary is
+                when Scheduler_Start =>
+                    CPU.Reason := Relinquish;
+                    if Scheduling_Turns.Remaining (proctab(To_PID).savedTurn) > 0 then
+                        Scheduling_Turns.Move (proctab(To_PID).savedTurn, CPU.Turn);
+                        Scheduling_Turns.Count (proctab(To_PID).turnCounters,
+                          Scheduling_Turns.Resumed_Dispatch);
+                    elsif Time.tscPerDuration <= Unsigned_64'Last /
+                      Scheduler_Timing.Quantum_Microseconds
+                    then
+                        CPU.Turn := Scheduling_Turns.Fresh
+                          (Time.tscPerDuration * Scheduler_Timing.Quantum_Microseconds);
+                        Scheduling_Turns.Count (proctab(To_PID).turnCounters,
+                          Scheduling_Turns.Fresh_Dispatch);
+                    else
+                        CPU.Turn := Scheduling_Turns.Empty;
+                    end if;
+                    Accounting.Dispatch (proctab(To_PID).execution, Accounting.Scheduled);
+                when IPC_Handoff =>
+                    Trace.Emit (Trace.EVENT_IPC_HANDOFF,
+                      Unsigned_64(From_PID), Unsigned_64(To_PID));
+                    Accounting.Dispatch (proctab(To_PID).execution, Accounting.Direct_IPC);
+                when Scheduler_Stop =>
+                    Scheduling_Turns.Count (proctab(From_PID).turnCounters,
+                      (case CPU.Reason is
+                         when Higher_Priority => Scheduling_Turns.Higher_Preemption,
+                         when Quantum_Expired => Scheduling_Turns.Quantum_Rotation,
+                         when Awakened_Peer => Scheduling_Turns.Wake_Rotation,
+                         when Relinquish => Scheduling_Turns.Relinquishment));
+                    if CPU.Reason = Higher_Priority then
+                        Scheduling_Turns.Move (CPU.Turn, proctab(From_PID).savedTurn);
+                    else
+                        CPU.Turn := Scheduling_Turns.Empty;
+                        proctab(From_PID).savedTurn := Scheduling_Turns.Empty;
+                    end if;
+                when Accounting_Checkpoint => null;
+            end case;
+            if Build.OneShot_Scheduling and then To_PID /= NO_PROCESS then
+                if Build.Wakeup_Scheduling and then
+                  Queues.hasAwakenedPeer (cpuReadyLists(PerCPUData.getCPUNumber),
+                    proctab(To_PID).priority)
+                then
+                    Scheduler_Alarm.Request_Earlier (Scheduler_Timing.Wakeup_Microseconds);
+                elsif Time.tscPerDuration > 0 and then
+                  Scheduling_Turns.Remaining (CPU.Turn) > 0 and then
+                  Queues.hasReadyPeer (cpuReadyLists(PerCPUData.getCPUNumber),
+                    proctab(To_PID).priority)
+                then
+                    remainingTurn : declare
+                        Ticks : constant Unsigned_64 := Scheduling_Turns.Remaining (CPU.Turn);
+                        Delay_Us : Unsigned_64 := Ticks / Time.tscPerDuration;
+                    begin
+                        if Ticks mod Time.tscPerDuration /= 0 then Delay_Us := Delay_Us + 1; end if;
+                        Scheduler_Alarm.Request_Earlier
+                          (Scheduler_Alarm.Delay_Microseconds (Unsigned_64'Min (1_000, Delay_Us)));
+                    end remainingTurn;
+                end if;
+            end if;
+            if Build.Observe_Scheduling_Budgets then
+                if Now > Unsigned_64 (Scheduling_Shadow.Budgets.Time_Units'Last) or else
+                   Time.tscPerDuration = 0 or else
+                   Time.tscPerDuration > Unsigned_64 (Scheduling_Shadow.Tick_Rate'Last)
+                then
+                    Scheduling_Shadow.Invalidate (CPU.Shadow);
+                else
+                    declare
+                        Stamp : constant Scheduling_Shadow.Budgets.Time_Units :=
+                          Scheduling_Shadow.Budgets.Time_Units (Now);
+                    begin
+                        if not Scheduling_Shadow.Initialized (CPU.Shadow) and then
+                           Scheduling_Shadow.Status (CPU.Shadow) = Scheduling_Shadow.Healthy
+                        then
+                            Scheduling_Shadow.Initialize
+                              (CPU.Shadow, Scheduling_Shadow.Tick_Rate (Time.tscPerDuration), Stamp);
+                        end if;
+                        if Boundary = Accounting_Checkpoint then
+                            if Observed (From_PID) then
+                                Scheduling_Shadow.Observe
+                                  (CPU.Shadow, proctab(From_PID).shadow, Stamp,
+                                   Scheduling_Shadow.Continue_Execution);
+                            end if;
+                        else
+                            if Observed (From_PID) then
+                                Scheduling_Shadow.Observe
+                                  (CPU.Shadow, proctab(From_PID).shadow, Stamp, Scheduling_Shadow.Stop);
+                            end if;
+                            if Observed (To_PID) then
+                                Scheduling_Shadow.Observe
+                                  (CPU.Shadow, proctab(To_PID).shadow, Stamp, Scheduling_Shadow.Dispatch);
+                            end if;
+                        end if;
+                    end;
+                end if;
+            end if;
+        else
+            CPU.Turn := Scheduling_Turns.Empty;
+            if From_PID /= NO_PROCESS then
+                proctab(From_PID).savedTurn := Scheduling_Turns.Empty;
+            end if;
+            if To_PID /= NO_PROCESS then
+                proctab(To_PID).savedTurn := Scheduling_Turns.Empty;
+            end if;
+            if Build.Observe_Scheduling_Budgets then
+                Scheduling_Shadow.Invalidate (CPU.Shadow);
+            end if;
+        end if;
+    end accountBoundary;
+
+    procedure printOwnAccounting is
+        PID : constant ProcessID := PerCPUData.getCurrentPID;
+        CPU : constant Natural := PerCPUData.getCPUNumber;
+        Snapshot : Accounting.Totals;
+        Condition : Accounting.Health;
+        Shadow : Scheduling_Shadow.Snapshot;
+        Shadow_Health : Scheduling_Shadow.Health;
+        Generation : Capabilities.Generation;
+        Turns : Scheduling_Turns.Counters;
+    begin
+        Spinlocks.enterCriticalSection (lock);
+        accountBoundary (PID, PID, Accounting_Checkpoint);
+        Snapshot := proctab(PID).execution;
+        Turns := proctab(PID).turnCounters;
+        Condition := Accounting.Status (cpuAccounting(CPU).Clock);
+        if Build.Observe_Scheduling_Budgets then
+            Shadow := Scheduling_Shadow.Inspect (proctab(PID).shadow);
+            Shadow_Health := Scheduling_Shadow.Status (cpuAccounting(CPU).Shadow);
+            Generation := proctab(PID).capGeneration;
+        end if;
+        Spinlocks.exitCriticalSection (lock);
+        -- No global process enumeration or new authority granted by this
+        -- diagnostic. These are lifetime totals, independent of Trace.Reset.
+        println ("ACCOUNTING: pid=" & PID'Image &
+          " cpu=" & CPU'Image &
+          " residency_ticks=" & Snapshot.Residency_Ticks'Image &
+          " scheduled=" & Snapshot.Scheduled_Dispatches'Image &
+          " direct=" & Snapshot.Direct_Dispatches'Image &
+          " fault=" & Natural'Image (Accounting.Health'Pos (Condition)) &
+          " saturated=" & Natural'Image (Boolean'Pos (Snapshot.Saturated)));
+        println ("TURNS: pid=" & PID'Image &
+          " fresh=" & Turns(Scheduling_Turns.Fresh_Dispatch)'Image &
+          " resumed=" & Turns(Scheduling_Turns.Resumed_Dispatch)'Image &
+          " higher=" & Turns(Scheduling_Turns.Higher_Preemption)'Image &
+          " quantum=" & Turns(Scheduling_Turns.Quantum_Rotation)'Image &
+          " wake=" & Turns(Scheduling_Turns.Wake_Rotation)'Image &
+          " relinquish=" & Turns(Scheduling_Turns.Relinquishment)'Image &
+          " timer_opportunities=" & Turns(Scheduling_Turns.Timer_Opportunity)'Image);
+        if Build.Observe_Scheduling_Budgets then
+            println ("SHADOW-BUDGET: mode=demand-only pid=" & PID'Image &
+              " cpu=" & CPU'Image & " generation=" & Generation'Image &
+              " charged_ticks=" & Shadow.Totals.Charged_Ticks'Image &
+              " dispatches=" & Shadow.Totals.Dispatches'Image &
+              " denied=" & Shadow.Totals.Denied'Image &
+              " checkpoints=" & Shadow.Totals.Checkpoints'Image &
+              " remaining_ticks=" & Shadow.Remaining'Image &
+              " credits=" & Shadow.Credits'Image &
+              " overrun=" & Natural'Image (Boolean'Pos (Shadow.Overrun)) &
+              " fault=" & Natural'Image (Scheduling_Shadow.Health'Pos (Shadow_Health)) &
+              " saturated=" & Natural'Image (Boolean'Pos (Shadow.Totals.Saturated)));
+        end if;
+    end printOwnAccounting;
+
     ReaperPID : ProcessID := NO_PROCESS;
     procedure retirementWorker with No_Return;
     procedure reclaimProcess (pid : ProcessID);
@@ -397,6 +596,10 @@ package body Process is
             ignore := Util.memset (proctab(pid)'Address, 0, Process'Size / 8);
             proctab(pid).requestSequence := IPC_Request_Ids.Initial_Sequence;
             proctab(pid).lifetime := Process_Lifetime.Initial_State;
+            proctab(pid).execution := (others => <>);
+            proctab(pid).savedTurn := Scheduling_Turns.Empty;
+            proctab(pid).turnCounters := [others => 0];
+            proctab(pid).shadow := Scheduling_Shadow.Empty_Reservation;
             proctab(pid).admitted := False;
             if savedGen >= Capabilities.INITIAL_GENERATION then
                 proctab(pid).capGeneration := savedGen;
@@ -548,6 +751,57 @@ package body Process is
         Spinlocks.exitCriticalSection (lock);
     end yield;
 
+    procedure serviceReschedule is
+        cpuData : PerCPUData.PerCPUData with Import, Volatile,
+          Address => PerCPUData.getPerCPUDataAddr;
+    begin
+        if not cpuData.needReschedule then return; end if;
+        Spinlocks.enterCriticalSection (lock);
+        cpuData.needReschedule := False;
+        if Build.OneShot_Scheduling and then Build.Wakeup_Scheduling and then
+          cpuData.currentPID /= NO_PROCESS and then
+          Queues.hasAwakenedPeer (cpuReadyLists(cpuData.cpuNum),
+            proctab(cpuData.currentPID).priority)
+        then
+            Scheduler_Alarm.Request_Earlier (Scheduler_Timing.Wakeup_Microseconds);
+        end if;
+        if cpuData.currentPID /= NO_PROCESS and then
+           proctab(cpuData.currentPID).state = RUNNING and then
+           Queues.hasReadyPeer (cpuReadyLists(cpuData.cpuNum),
+             proctab(cpuData.currentPID).priority, Queues.Strictly_Higher)
+        then
+            cpuAccounting(cpuData.cpuNum).Reason := Higher_Priority;
+            Scheduler.enter;
+        end if;
+        Spinlocks.exitCriticalSection (lock);
+    end serviceReschedule;
+
+    procedure serviceTimerPreemption is
+        PID : constant ProcessID := PerCPUData.getCurrentPID;
+        CPU : constant Natural := PerCPUData.getCPUNumber;
+    begin
+        if PID = NO_PROCESS then return; end if;
+        Spinlocks.enterCriticalSection (lock);
+        Scheduling_Turns.Count (proctab(PID).turnCounters, Scheduling_Turns.Timer_Opportunity);
+        accountBoundary (PID, PID, Accounting_Checkpoint);
+        if Queues.hasReadyPeer
+          (cpuReadyLists(CPU), proctab(PID).priority, Queues.Strictly_Higher)
+        then
+            cpuAccounting(CPU).Reason := Higher_Priority;
+            Scheduler.enter;
+        elsif Queues.hasReadyPeer (cpuReadyLists(CPU), proctab(PID).priority) and then
+          (Scheduling_Turns.Remaining (cpuAccounting(CPU).Turn) = 0 or else
+           (Build.Wakeup_Scheduling and then
+            Queues.hasAwakenedPeer (cpuReadyLists(CPU), proctab(PID).priority)))
+        then
+            cpuAccounting(CPU).Reason :=
+              (if Scheduling_Turns.Remaining (cpuAccounting(CPU).Turn) = 0
+               then Quantum_Expired else Awakened_Peer);
+            Scheduler.enter;
+        end if;
+        Spinlocks.exitCriticalSection (lock);
+    end serviceTimerPreemption;
+
     ---------------------------------------------------------------------------
     -- ready
     -- Move a process into the ready list and change its state to READY
@@ -564,12 +818,21 @@ package body Process is
             return; -- A queued notification cannot restart a retiring task.
         end if;
         proctab(pid).readyTSC := x86.rdtsc;
+        proctab(pid).readiness := Awakened;
+        Trace.Emit (Trace.EVENT_READY, Unsigned_64(pid), Unsigned_64(targetCPU));
         proctab(pid).state := READY;
         Queues.insert (cpuReadyLists(targetCPU), pid,
                        proctab(pid).priority, ret);
 
         if ret /= pid then
             raise ProcessException with "Process.ready: Error adding pid to ready list.";
+        end if;
+
+        if Build.OneShot_Scheduling and then Build.Wakeup_Scheduling and then
+          targetCPU = PerCPUData.getCPUNumber and then currentPID /= NO_PROCESS and then
+          proctab(pid).priority >= proctab(currentPID).priority
+        then
+            Scheduler_Alarm.Request_Earlier (Scheduler_Timing.Wakeup_Microseconds);
         end if;
 
         -- If the newly readied process has higher priority than the
@@ -1197,9 +1460,11 @@ package body Process is
             end if;
 
             proctab(toPID).state := RUNNING;
+            proctab(toPID).readiness := Rescheduled;
 
             -- The lock is transferred with the stack. No reaper can observe
             -- Leave_CPU until asm_switch_to has stopped using fromPID's stack.
+            accountBoundary (fromPID, toPID, IPC_Handoff);
             noteContextStopped (fromPID);
             noteContextStarted (toPID);
 

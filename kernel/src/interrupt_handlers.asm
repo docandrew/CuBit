@@ -57,6 +57,7 @@ global isr45
 global isr46
 global isr47
 global isr48
+global isr49
 
 global isr127   ; KERNEL PANIC
 global isr128   ; SYSCALL
@@ -335,10 +336,16 @@ isr47:
 ; First vector outside the legacy PIC range.  Device management currently
 ; assigns this vector to the xHCI controller's message-signaled interrupt.
 isr48:
-    swapGSIfFromProcess
+	swapGSIfFromProcess
 	push long 0
 	push long 48
 	jmp isrCommon
+
+isr49:
+    swapGSIfFromProcess
+    push long 0
+    push long 49
+    jmp isrCommon
 
 ; Kernel Panic
 isr127:

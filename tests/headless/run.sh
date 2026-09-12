@@ -12,7 +12,10 @@ BUILD_WORLD=0
 KEEP_LOGS=0
 QEMU_ACCEL=""
 QEMU_CPUS=4
+VCPU_CPUS=""
 BENCH_LOAD=0
+LOAD_WORKERS=1
+TEMP_LOAD_PROFILE=""
 SERIAL_LOG=""
 NET_PCAP=""
 BASE_DISK=""
@@ -33,7 +36,9 @@ Options:
   --timeout SECONDS    QEMU runtime before timeout is treated as success
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
   --cpus COUNT         Virtual CPUs, 1..4 (default: 4)
+  --vcpu-cpus LIST     Pin vCPU 0,1,... to distinct Linux CPUs (e.g. 2,3,4,5; KVM only)
   --load               Add one busy peer (bench-ipc / bench-audio / bench-input)
+  --load-workers COUNT Add 1..4 busy peers (bench-input only)
   --disk PATH          Base ext2 disk image (default: kernel/nvme_disk.img)
   --serial PATH        Serial log path (default: /tmp/cubit-headless-*.log)
   --pcap PATH          Packet capture path (default: /tmp/cubit-headless-*.pcap)
@@ -42,7 +47,7 @@ Options:
 
 The suite boots the NVMe profile headlessly and checks serial output for
 stable pass markers.
-Performance fixtures: bench-ipc, bench-audio, bench-storage, bench-input.
+Performance fixtures: bench-ipc, bench-audio, bench-storage, bench-input, bench-scheduler.
 EOF
 }
 
@@ -87,6 +92,25 @@ while [ "$#" -gt 0 ]; do
         --load)
             BENCH_LOAD=1
             shift
+            ;;
+        --load-workers)
+            if [ "$#" -lt 2 ]; then
+                echo "headless: --load-workers requires a count" >&2
+                exit 2
+            fi
+            case "$2" in
+                1|2|3|4) LOAD_WORKERS="$2"; BENCH_LOAD=1 ;;
+                *) echo "headless: --load-workers must be 1..4" >&2; exit 2 ;;
+            esac
+            shift 2
+            ;;
+        --vcpu-cpus)
+            if [ "$#" -lt 2 ] || [ -z "$2" ]; then
+                echo "headless: --vcpu-cpus requires a comma-separated CPU mapping" >&2
+                exit 2
+            fi
+            VCPU_CPUS="$2"
+            shift 2
             ;;
         --disk)
             if [ "$#" -lt 2 ]; then
@@ -136,7 +160,7 @@ case "$TIMEOUT_SECONDS" in
 esac
 
 case "$TEST_NAME" in
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -144,8 +168,24 @@ case "$TEST_NAME" in
         ;;
 esac
 
+PIN_ARGS=()
+if [ -n "$VCPU_CPUS" ]; then
+    if [ "$QEMU_ACCEL" != "kvm" ]; then
+        echo "headless: --vcpu-cpus requires explicit --accel kvm" >&2
+        exit 2
+    fi
+    PIN_ARGS=(python3 "$ROOT_DIR/tests/headless/qemu_affinity.py"
+              --vcpu-cpus "$VCPU_CPUS" --count "$QEMU_CPUS")
+    "${PIN_ARGS[@]}" --validate-only || exit 2
+    PIN_ARGS+=(--)
+fi
+
 if [ "$BENCH_LOAD" = 1 ] && [ "$TEST_NAME" != "bench-ipc" ] && [ "$TEST_NAME" != "bench-audio" ] && [ "$TEST_NAME" != "bench-input" ]; then
     echo "headless: --load only supports bench-ipc, bench-audio and bench-input" >&2
+    exit 2
+fi
+if [ "$LOAD_WORKERS" -gt 1 ] && [ "$TEST_NAME" != "bench-input" ]; then
+    echo "headless: multiple busy peers currently require bench-input" >&2
     exit 2
 fi
 
@@ -179,10 +219,18 @@ fi
 
 GRUB_CFG="$KERNEL_DIR/isodir/boot/grub/grub.cfg"
 NETWORK_PEER_PID=""
+CLOCK_OBSERVER_PID=""
 GRUB_BAK="$(mktemp "${TMPDIR:-/tmp}/cubit-grub.XXXXXX")"
 cp "$GRUB_CFG" "$GRUB_BAK"
 
 cleanup() {
+    if [ -n "$CLOCK_OBSERVER_PID" ]; then
+        kill "$CLOCK_OBSERVER_PID" >/dev/null 2>&1 || true
+        wait "$CLOCK_OBSERVER_PID" >/dev/null 2>&1 || true
+    fi
+    if [ -n "$TEMP_LOAD_PROFILE" ]; then
+        rm -f "$TEMP_LOAD_PROFILE"
+    fi
     if [ -n "$NETWORK_PEER_PID" ]; then
         kill "$NETWORK_PEER_PID" >/dev/null 2>&1 || true
         wait "$NETWORK_PEER_PID" >/dev/null 2>&1 || true
@@ -243,6 +291,9 @@ case "$TEST_NAME" in
     bench-input)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-bench-input.conf"
         ;;
+    bench-scheduler)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-bench-scheduler.conf"
+        ;;
     bench-storage)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-bench-storage.conf"
         ;;
@@ -297,6 +348,17 @@ esac
 
 if [ "$BENCH_LOAD" = 1 ]; then
     INIT_PROFILE="$ROOT_DIR/tests/headless/init-${TEST_NAME}-load.conf"
+    if [ "$LOAD_WORKERS" -gt 1 ]; then
+        TEMP_LOAD_PROFILE="$(mktemp "${TMPDIR:-/tmp}/cubit-input-load.XXXXXX.conf")"
+        awk -v count="$LOAD_WORKERS" '
+            /^bench-input-load.app pri=4$/ {
+                for (i=1; i<=count; i++) print;
+                next
+            }
+            { print }
+        ' "$INIT_PROFILE" > "$TEMP_LOAD_PROFILE"
+        INIT_PROFILE="$TEMP_LOAD_PROFILE"
+    fi
 fi
 if [ -n "$INIT_PROFILE" ]; then
     TEMP_DISK="$(mktemp "${TMPDIR:-/tmp}/cubit-${TEST_NAME}-disk.XXXXXX.img")"
@@ -316,11 +378,24 @@ if [ -n "$INIT_PROFILE" ]; then
             debugfs -w -R "write $KERNEL_DIR/isodir/boot/$ipc_image $ipc_image" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
         done
     fi
-    if [ "$TEST_NAME" = "bench-ipc" ] || [ "$TEST_NAME" = "bench-audio" ] || [ "$TEST_NAME" = "bench-storage" ] || [ "$TEST_NAME" = "bench-input" ]; then
+    if [ "$TEST_NAME" = "bench-ipc" ] || [ "$TEST_NAME" = "bench-audio" ] || [ "$TEST_NAME" = "bench-storage" ] || [ "$TEST_NAME" = "bench-input" ] || [ "$TEST_NAME" = "bench-scheduler" ]; then
+        # Stage the current diagnostic, not an executable left by an earlier
+        # manual build. The kernel/initrd refresh alone does not rebuild apps.
+        benchmark_target="$TEST_NAME"
+        if [ "$TEST_NAME" = "bench-scheduler" ]; then benchmark_target=bench-load; fi
+        if ! make -s -C "$KERNEL_DIR" "$benchmark_target"; then
+            echo "headless: failed to build $benchmark_target" >&2
+            exit 1
+        fi
+        if [ "$BENCH_LOAD" = 1 ] && ! make -s -C "$KERNEL_DIR" bench-load; then
+            echo "headless: failed to build benchmark load" >&2
+            exit 1
+        fi
         BENCHMARK_IMAGES="bench-ipc-client.app bench-ipc-server.app"
         if [ "$TEST_NAME" = "bench-audio" ]; then BENCHMARK_IMAGES="bench-audio.app"; fi
         if [ "$TEST_NAME" = "bench-storage" ]; then BENCHMARK_IMAGES="bench-storage.app"; fi
         if [ "$TEST_NAME" = "bench-input" ]; then BENCHMARK_IMAGES="bench-input.app"; fi
+        if [ "$TEST_NAME" = "bench-scheduler" ]; then BENCHMARK_IMAGES="bench-cpu.app"; fi
         if [ "$BENCH_LOAD" = 1 ]; then
             if [ "$TEST_NAME" = "bench-input" ]; then
                 BENCHMARK_IMAGES="$BENCHMARK_IMAGES bench-input-load.app"
@@ -663,6 +738,7 @@ fi
 
 echo "headless: running $TEST_NAME for ${TIMEOUT_SECONDS}s"
 echo "headless: cpus=$QEMU_CPUS accel=${QEMU_ACCEL:-qemu-default} busy_peer=$BENCH_LOAD"
+if [ "$BENCH_LOAD" = 1 ]; then echo "headless: load_workers=$LOAD_WORKERS"; fi
 "$QEMU_BIN" --version | head -1
 
 ACCEL_ARGS=()
@@ -1141,10 +1217,16 @@ if [ "$TEST_NAME" = "network-authority" ]; then
     NETWORK_PEER_PID=$!
 fi
 
+if [ "$TEST_NAME" = "bench-scheduler" ]; then
+    python3 "$ROOT_DIR/tests/performance/clock_reference.py" "$SERIAL_LOG" \
+        --timeout "$((TIMEOUT_SECONDS + 5))" > "${SERIAL_LOG}.host-clock.json" &
+    CLOCK_OBSERVER_PID=$!
+fi
+
 (
     cd "$KERNEL_DIR" || exit 1
     # shellcheck disable=SC2086
-    "$TIMEOUT_BIN" "$TIMEOUT_SECONDS" "$QEMU_BIN" \
+    "$TIMEOUT_BIN" "$TIMEOUT_SECONDS" "${PIN_ARGS[@]}" "$QEMU_BIN" \
         "${ACCEL_ARGS[@]}" \
         -machine q35 \
         -cpu Broadwell \
@@ -1167,6 +1249,16 @@ fi
         -no-reboot
 )
 qemu_status=$?
+
+if [ -n "$CLOCK_OBSERVER_PID" ]; then
+    if ! wait "$CLOCK_OBSERVER_PID"; then
+        CLOCK_OBSERVER_PID=""
+        echo "headless: guest/host clock check failed: ${SERIAL_LOG}.host-clock.json" >&2
+        exit 1
+    fi
+    CLOCK_OBSERVER_PID=""
+    echo "headless: host clock reference: ${SERIAL_LOG}.host-clock.json"
+fi
 
 injector_status=0
 if [ -n "$INPUT_INJECTOR_PID" ]; then
@@ -1203,6 +1295,8 @@ ps2: consumer registered, entering event loop
         ;;
     network-authority)
         required_markers="
+devmgr: virtio-net using MSI-X
+virtio-net: MSI-X RX/TX/config vectors ready
 TEST: PASS network-unapproved
 TEST: PASS network-authority
 network-check: async outbound connects PASS
@@ -1254,6 +1348,13 @@ TRACE: hist=ready_latency_tsc
 TRACE: hist=lock_wait_tsc
 TRACE: hist=lock_hold_tsc
 TRACE: summary end
+"
+        ;;
+    bench-scheduler)
+        required_markers="
+CPU-CONTROL: START
+CPU-CONTROL: COMPLETE
+ACCOUNTING:
 "
         ;;
     ccl-vm)
@@ -1546,16 +1647,46 @@ if [ "$TEST_NAME" = "desktop-doom" ]; then
 fi
 
 if [ "$BENCH_LOAD" = 1 ]; then
-    if ! python3 "$ROOT_DIR/tests/performance/report.py" "$SERIAL_LOG" --require-load >/dev/null; then
+    if ! python3 "$ROOT_DIR/tests/performance/report.py" "$SERIAL_LOG" \
+        --require-load --load-workers "$LOAD_WORKERS" >/dev/null; then
         echo "headless: INVALID loaded benchmark (see $SERIAL_LOG)" >&2
         exit 1
     fi
 fi
 
+if [ "${DEADLINE_TIMER_TEST:-0}" = 1 ]; then
+    if ! python3 "$ROOT_DIR/tests/deadline-ownership/check_native.py" "$SERIAL_LOG" \
+        --cpus "$QEMU_CPUS" >/dev/null; then
+        echo "headless: invalid deadline timer probe: $SERIAL_LOG" >&2
+        exit 1
+    fi
+fi
+
 if [ "$TEST_NAME" = "bench-input" ]; then
-    if ! python3 "$ROOT_DIR/tests/performance/report.py" "$SERIAL_LOG" --require-input-integrity >/dev/null; then
+    if ! python3 "$ROOT_DIR/tests/performance/report.py" "$SERIAL_LOG" \
+        --require-input-integrity --load-workers "$LOAD_WORKERS" >/dev/null; then
         echo "headless: INVALID input benchmark (see $SERIAL_LOG)" >&2
         exit 1
+    fi
+fi
+
+if [ "$TEST_NAME" = "bench-scheduler" ]; then
+    if ! python3 "$ROOT_DIR/tests/performance/report.py" "$SERIAL_LOG" \
+        --require-compute-control --require-reference-clock >/dev/null; then
+        echo "headless: invalid compute control: $SERIAL_LOG" >&2
+        exit 1
+    fi
+fi
+
+if [ "$TEST_NAME" = "bench-ipc" ]; then
+    if ! python3 "$ROOT_DIR/tests/performance/report.py" "$SERIAL_LOG" \
+        --require-execution-accounting >/dev/null; then
+        echo "headless: invalid native execution accounting: $SERIAL_LOG" >&2
+        exit 1
+    fi
+    if [ "${SHADOW_SCHEDULING:-0}" = 1 ]; then
+        python3 "$ROOT_DIR/tests/performance/report.py" "$SERIAL_LOG" \
+            --require-shadow-budgets >/dev/null || exit 1
     fi
 fi
 
@@ -1649,7 +1780,7 @@ if { [ "$TEST_NAME" = "desktop-virtio-vga" ] ||
     exit 1
 fi
 
-FAULT_SIGNATURE='panic|assert|double fault|triple fault|general protection|machine check exception|^EXCEPTION:|deadlock|TEST: FAIL|BENCH: FAIL'
+FAULT_SIGNATURE='panic|assert|double fault|triple fault|general protection|machine check exception|^EXCEPTION:|deadlock|TEST: FAIL|BENCH: FAIL|CLOCK: FAIL|SCHED-ALARM: fallback'
 if grep -Ei "$FAULT_SIGNATURE" "$SERIAL_LOG" >/dev/null 2>&1; then
     echo "headless: fault signature found in serial log: $SERIAL_LOG" >&2
     grep -Ein "$FAULT_SIGNATURE" "$SERIAL_LOG" >&2

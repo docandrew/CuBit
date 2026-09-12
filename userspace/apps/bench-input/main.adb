@@ -19,6 +19,11 @@ procedure Main is
    Surface : Live_Surface_Name := 1;
    Serial, Sequence, Rate, Ignored : Unsigned_64 := 0;
    Passed : Boolean := True;
+   Trace_Active : Boolean := False;
+   Trace_Frozen : Boolean := False;
+   type Tail_Sample is record
+      Started, Published, Finished : Unsigned_64 := 0;
+   end record;
    type Scenario is (Continuous, Paced, Repainting);
    Sample_Count : constant := 2_048;
    -- The freestanding runtime discards enumeration image names.
@@ -51,6 +56,8 @@ procedure Main is
       Response : Wire_Message;
       Event : Input_Result;
       Expected : Input_Event_Kind;
+      Tail : array (1 .. 32) of Tail_Sample;
+      Tail_Count : Natural range 0 .. Tail'Length := 0;
    begin
       for I in 1 .. Sample_Count loop
          if Mode = Paced then
@@ -98,7 +105,21 @@ procedure Main is
          Timing.Add (Reception, Finished - Published);
          -- Exact threshold count: histogram buckets are upper bounds and may
          -- straddle 1 ms. Equality misses the strictly-less-than target.
-         if Finished - Started >= Rate then Misses := Misses + 1; end if;
+         if Finished - Started >= Rate then
+            Misses := Misses + 1;
+            if Tail_Count < Tail'Length then
+               Tail_Count := Tail_Count + 1;
+               Tail(Tail_Count) := (Started, Published, Finished);
+            end if;
+            if Trace_Active and then not Trace_Frozen and then
+              Finished - Started >= 4 * Rate
+            then
+               -- Freeze in memory, with no serial output in the measurement.
+               Ignored := syscall (SYSCALL_TRACE_SUMMARY,
+                 Trace_Control_Operation'Enum_Rep (Freeze_Local));
+               Trace_Frozen := True;
+            end if;
+         end if;
       end loop;
       Clock.Report ("input-" & Name (Mode), Samples);
       Clock.Report ("input-publish-call-" & Name (Mode), Publication);
@@ -106,6 +127,12 @@ procedure Main is
       debugPrint ("INPUT-BENCH: scenario=" & Name (Mode) &
         " delivered=" & Sample_Count'Image & " misses_1ms=" & Misses'Image &
         " failures=0" & ASCII.LF);
+      for I in 1 .. Tail_Count loop
+         debugPrint ("INPUT-TAIL: scenario=" & Name(Mode) &
+           " started=" & Tail(I).Started'Image &
+           " published=" & Tail(I).Published'Image &
+           " finished=" & Tail(I).Finished'Image & ASCII.LF);
+      end loop;
    end Run;
 
    procedure Exercise is
@@ -138,10 +165,18 @@ procedure Main is
       Clock.Calibrate (Rate);
       if Rate = 0 then Fail ("uncalibrated clock"); return; end if;
       debugPrint ("INPUT-BENCH: START boundary=publication-to-app closed_loop=1" & ASCII.LF);
+      Trace_Active := syscall (SYSCALL_TRACE_SUMMARY,
+        Trace_Control_Operation'Enum_Rep (Start_Local)) = 0;
       for Mode in Scenario loop
          Run (Mode);
          exit when not Passed;
       end loop;
+      if Trace_Active then
+         Ignored := syscall (SYSCALL_TRACE_SUMMARY,
+           Trace_Control_Operation'Enum_Rep (Freeze_Local));
+         Ignored := syscall (SYSCALL_TRACE_SUMMARY,
+           Trace_Control_Operation'Enum_Rep (Dump_Local));
+      end if;
       if Passed then
          debugPrint ("INPUT-BENCH: COMPLETE" & ASCII.LF);
          debugPrint ("BENCH: PASS input integrity" & ASCII.LF);

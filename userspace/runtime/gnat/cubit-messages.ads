@@ -104,6 +104,11 @@ package CuBit.Messages is
       constant Unsigned_64 := 113;
 
    type Activity_Result is (Work_Available, Deadline_Reached, Unavailable);
+   --  TRACE_SUMMARY controls beyond Summary require a LATENCY_TRACE kernel.
+   type Trace_Control_Operation is
+     (Summary, Start_Local, Freeze_Local, Dump_Local);
+   for Trace_Control_Operation use
+     (Summary => 0, Start_Local => 1, Freeze_Local => 2, Dump_Local => 3);
    --  Readiness hint only: drain typed queues separately.
    --  Last means no deadline.
    --  Available work wins over an expired deadline. Another receiver may

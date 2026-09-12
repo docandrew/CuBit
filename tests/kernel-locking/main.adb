@@ -111,6 +111,46 @@ procedure Main is
         Queues.dequeue (Q, Got);
         pragma Assert (Got = NO_PROCESS and PerCPUData.Depth = 0);
         pragma Assert (not Queues.hasReadyPeer (Q, -100));
+        pragma Assert (not Queues.hasAwakenedPeer (Q, -100));
+        Add (1, 4);
+        Add (2, 4);
+        Add (3, 3);
+        pragma Assert (not Queues.hasAwakenedPeer (Q, 4));
+        proctab (3).readiness := Awakened;
+        pragma Assert (not Queues.hasAwakenedPeer (Q, 4));
+        pragma Assert (Queues.hasAwakenedPeer (Q, 3));
+        proctab (2).readiness := Awakened;
+        pragma Assert (Queues.hasAwakenedPeer (Q, 4));
+        pragma Assert (not Queues.hasAwakenedPeer (Q, 5));
+        Verify;
+        -- The wake flag changes when to rotate, not the FIFO selection.
+        Remove_First;
+        pragma Assert (Got = 1);
+        Remove_First;
+        pragma Assert (Got = 2);
+        proctab (2).readiness := Rescheduled;
+        Add (2, 4);
+        pragma Assert (not Queues.hasAwakenedPeer (Q, 4));
+        while Length > 0 loop Remove_First; end loop;
+        proctab (3).readiness := Rescheduled;
+        -- Interrupted turn resumes before equal peers, never above higher
+        -- priority work. Exhausted/voluntarily relinquished turns use FIFO.
+        Queues.insert (Q, 1, 4, Ignored);
+        Queues.insert (Q, 2, 5, Ignored);
+        Queues.insert (Q, 3, 4, Ignored, Queues.Resume_Turn);
+        pragma Assert (Queues.hasReadyPeer (Q, 4, Queues.Strictly_Higher));
+        pragma Assert (not Queues.hasReadyPeer (Q, 5, Queues.Strictly_Higher));
+        pragma Assert (not Queues.hasReadyPeer (Q, Integer'Last, Queues.Strictly_Higher));
+        pragma Assert (Queues.hasReadyPeer (Q, Integer'First, Queues.Strictly_Higher));
+        Queues.dequeue (Q, Got);
+        pragma Assert (Got = 2);
+        Queues.dequeue (Q, Got);
+        pragma Assert (Got = 3);
+        Queues.insert (Q, 3, 4, Ignored);
+        Queues.dequeue (Q, Got);
+        pragma Assert (Got = 1);
+        Queues.dequeue (Q, Got);
+        pragma Assert (Got = 3 and Queues.isEmpty (Q));
         Ada.Text_IO.Put_Line
           ("READY-FAIRNESS-CHECK: PASS (300 quanta, 10000 stable-priority oracle steps)");
     end Check_Ready_Fairness;
@@ -189,6 +229,26 @@ procedure Main is
         Process.Queues.popFront (Process.readyList, Removed);
         pragma Assert (Removed = Process.NO_PROCESS);
         pragma Assert (PerCPUData.Depth = 0);
+        -- A coalesced timer advances every elapsed deadline without a loop
+        -- per missed millisecond, preserving the first future delta.
+        Spinlocks.enterCriticalSection (Process.lock);
+        for PID in 1 .. 3 loop
+            Process.proctab(PID).state := Process.SLEEPING;
+            Process.Queues.insertDelta (Process.sleepList, PID, PID * 3, Ignored);
+        end loop;
+        Spinlocks.exitCriticalSection (Process.lock);
+        Process.Queues.clockTick (7);
+        pragma Assert (Process.proctab(1).state = Process.READY);
+        pragma Assert (Process.proctab(2).state = Process.READY);
+        pragma Assert (Process.sleepList.head = 3 and Process.proctab(3).queueKey = 2);
+        Process.Queues.clockTick (1);
+        pragma Assert (Process.proctab(3).queueKey = 1);
+        Process.Queues.clockTick (1_000_000);
+        pragma Assert (Process.Queues.isEmpty (Process.sleepList));
+        for PID in 1 .. 3 loop
+            Process.Queues.popFront (Process.readyList, Removed);
+            pragma Assert (Removed = PID);
+        end loop;
         Ada.Text_IO.Put_Line
           ("SLEEP-QUEUE-CHECK: PASS (timer/IPC wake serialization, delta preservation, queue endpoints)");
     end Check_Queues;

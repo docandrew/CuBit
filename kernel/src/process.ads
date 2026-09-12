@@ -28,6 +28,7 @@
 -- The proctab itself is protected by a lock (Process.lock) which ensures the
 -- proctab can be manipulated by only a single thread at a time.
 -------------------------------------------------------------------------------
+pragma Ada_2022;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 with Interfaces; use Interfaces;
@@ -36,10 +37,13 @@ with BuddyAllocator;
 with Capabilities;
 with Config;
 with Descriptors;
+with Execution_Accounting;
 with IPC_Request_Ids;
 with LinkedLists;
 with Memory_Grants;
 with Process_Lifetime;
+with Scheduling_Shadow;
+with Scheduling_Turns;
 limited with Process.Queues;
 with Spinlocks;
 with Stackframe;
@@ -64,6 +68,8 @@ package Process is
     subtype ProcessID is Natural range 0..255;
 
     NO_PROCESS : constant ProcessID := 0;
+
+    package Accounting is new Execution_Accounting (ProcessID, NO_PROCESS);
 
     -- Limit a user-mode process to 256GiB of memory space. Later we'll add
     --  ASLR, and make the process' stack top some random negative offset
@@ -134,6 +140,7 @@ package Process is
     NO_CHANNEL : constant WaitChannel := Null_Address;
 
     type ProcessMode is (KERNEL, USER);
+    type Readiness_Origin is (Rescheduled, Awakened);
 
     type ExitCode is new Natural;
 
@@ -617,6 +624,15 @@ package Process is
         -- benchmark-only scheduler telemetry used to measure wake-to-run
         -- latency without serial output in the hot path.
         readyTSC            : Unsigned_64 := 0;
+        readiness           : Readiness_Origin := Rescheduled;
+        savedTurn           : Scheduling_Turns.State;
+        turnCounters        : Scheduling_Turns.Counters := [others => 0];
+
+        -- Raw scheduled-residency ticks, including interrupts/syscalls within
+        -- the interval. Protected by Process.lock; reset only at PID creation.
+        execution           : Accounting.Totals;
+        -- Hypothetical demand ledger, not an admitted scheduling reservation.
+        shadow              : Scheduling_Shadow.Reservation;
 
         -- Number of unsolicited events discarded because this process's
         -- bounded mailbox ring was full. Event loss must be observable: a
@@ -773,6 +789,10 @@ package Process is
     -- Called by the running process itself after an interrupt.
     ---------------------------------------------------------------------------
     procedure yield;
+    -- Safe syscall/interrupt return, with no resource locks held. Revalidate
+    -- current ready priority before honoring a possibly stale reschedule IPI.
+    procedure serviceReschedule;
+    procedure serviceTimerPreemption;
 
     ---------------------------------------------------------------------------
     -- ready
@@ -895,6 +915,16 @@ package Process is
     -- Caller holds Process.lock. Execution presence spans IPC state changes.
     procedure noteContextStarted (pid : ProcessID);
     procedure noteContextStopped (pid : ProcessID);
+
+    type Accounting_Boundary is
+      (Scheduler_Start, IPC_Handoff, Scheduler_Stop, Accounting_Checkpoint);
+    -- Caller holds Process.lock with interrupts excluded. No new lock, heap
+    -- allocation, serial output or scheduling decision on this hot path.
+    procedure accountBoundary
+      (From_PID, To_PID : ProcessID; Boundary : Accounting_Boundary);
+    -- Existing trace-summary diagnostic: caller's own counters only. Takes a
+    -- short locked snapshot, then prints with the process lock released.
+    procedure printOwnAccounting;
     -- Called at a completed syscall / user interrupt return boundary.
     procedure checkTermination;
 

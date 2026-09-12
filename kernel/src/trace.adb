@@ -8,6 +8,7 @@ with Config;
 with PerCPUData;
 with TextIO; use TextIO;
 with x86;
+with Build;
 
 package body Trace with
     SPARK_Mode => Off
@@ -39,6 +40,10 @@ is
     heads   : TraceHeads := (others => 0);
     counts  : EventCounters := (others => (others => 0));
     hists   : Histograms := (others => (others => (others => 0)));
+    localEnabled : array (CPUIndex) of Boolean := (others => False);
+    localTracingStarted : Boolean := False with Atomic;
+    localFrozen : array (CPUIndex) of Boolean := (others => False);
+    localCount : array (CPUIndex) of Natural range 0 .. EVENTS_PER_CPU := (others => 0);
 
     bucketLimits : constant array (BucketIndex) of Unsigned_64 :=
         (1_000,
@@ -83,6 +88,10 @@ is
                 return "lock_wait_tsc";
             when EVENT_LOCK_HOLD =>
                 return "lock_hold_tsc";
+            when EVENT_TIMER_LATE => return "timer_late";
+            when EVENT_READY => return "ready";
+            when EVENT_IPC_HANDOFF => return "ipc_handoff";
+            when EVENT_SYSCALL_RETURN => return "syscall_return";
             when others =>
                 return "unknown";
         end case;
@@ -121,7 +130,49 @@ is
         enabled := False;
     end Disable;
 
-    function IsEnabled return Boolean is (enabled);
+    function IsEnabled return Boolean is
+      (enabled or else (Build.Test_Latency_Trace and then localTracingStarted
+         and then localEnabled(CurrentCPU)));
+
+    procedure StartLocal is
+        cpu : constant CPUIndex := CurrentCPU;
+    begin
+        if not Build.Test_Latency_Trace then return; end if;
+        heads(cpu) := 0;
+        localCount(cpu) := 0;
+        localFrozen(cpu) := False;
+        localEnabled(cpu) := True;
+        localTracingStarted := True;
+    end StartLocal;
+
+    procedure FreezeLocal is
+        cpu : constant CPUIndex := CurrentCPU;
+    begin
+        if not Build.Test_Latency_Trace then return; end if;
+        localEnabled(cpu) := False;
+        localFrozen(cpu) := True;
+    end FreezeLocal;
+
+    procedure DumpLocal is
+        cpu : constant CPUIndex := CurrentCPU;
+        index : RingIndex;
+    begin
+        if not Build.Test_Latency_Trace or else not localFrozen(cpu) then return; end if;
+        index := (if localCount(cpu) = EVENTS_PER_CPU then heads(cpu) else 0);
+        print ("LATENCY-TRACE: cpu="); printdln (Unsigned_64(cpu));
+        for sample in 1 .. localCount(cpu) loop
+            declare
+                item : TraceEvent renames rings(cpu)(index);
+            begin
+                print ("LATENCY-TRACE: tsc="); printd (item.tsc);
+                print (" pid="); printd (item.pid);
+                print (" event="); print (EventName(item.event));
+                print (" a="); printd (item.arg0);
+                print (" b="); printdln (item.arg1);
+            end;
+            index := (if index = RingIndex'Last then 0 else index + 1);
+        end loop;
+    end DumpLocal;
 
     procedure Emit
         (event : in EventKind;
@@ -131,7 +182,7 @@ is
         cpu  : CPUIndex;
         head : RingIndex;
     begin
-        if not enabled then
+        if not IsEnabled then
             return;
         end if;
 
@@ -139,13 +190,16 @@ is
         head := heads(cpu);
 
         rings(cpu)(head) :=
-            (tsc   => x86.rdtsc,
+            (tsc   => x86.readOrderedTSC,
              pid   => Unsigned_64 (PerCPUData.getCurrentPID),
              event => event,
              arg0  => arg0,
              arg1  => arg1);
 
         counts(cpu, event) := counts(cpu, event) + 1;
+        if localEnabled(cpu) and then localCount(cpu) < EVENTS_PER_CPU then
+            localCount(cpu) := localCount(cpu) + 1;
+        end if;
 
         if head = RingIndex'Last then
             heads(cpu) := RingIndex'First;
@@ -161,7 +215,7 @@ is
         cpu : CPUIndex;
         bucket : BucketIndex;
     begin
-        if not enabled then
+        if not IsEnabled then
             return;
         end if;
 

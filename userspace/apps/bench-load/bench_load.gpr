@@ -2,13 +2,14 @@ project Bench_Load is
    for Languages use ("Ada");
    for Object_Dir use "build";
    for Source_Dirs use (".");
-   for Main use ("main.adb", "input_load.adb");
+   for Main use ("main.adb", "input_load.adb", "cpu_control.adb");
    for Runtime ("Ada") use "../../runtime";
    for Library_Dir use "";
 
    package Builder is
       for Executable ("main.adb") use "bench-load.app";
       for Executable ("input_load.adb") use "bench-input-load.app";
+      for Executable ("cpu_control.adb") use "bench-cpu.app";
       for Default_Switches ("Ada") use
         ("-g", "-gnatwa", "-gnatw.X", "-s", "-v", "-nostdlib");
    end Builder;

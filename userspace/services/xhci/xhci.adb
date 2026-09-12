@@ -12,6 +12,8 @@ with System.Address_To_Access_Conversions;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with USB_Configurations;
+with XHCI_Completions;
 
 package body XHCI is
 
@@ -98,19 +100,7 @@ package body XHCI is
    HID_REPORT_STRIDE    : constant Natural := 64;
    HID_TRANSFER_DEPTH   : constant Natural := 8;
 
-   type TRB is record
-      parameterLo : Unsigned_32;
-      parameterHi : Unsigned_32;
-      status      : Unsigned_32;
-      control     : Unsigned_32;
-   end record with Convention => C, Size => 128;
-
-   for TRB use record
-      parameterLo at  0 range 0 .. 31;
-      parameterHi at  4 range 0 .. 31;
-      status      at  8 range 0 .. 31;
-      control     at 12 range 0 .. 31;
-   end record;
+   subtype TRB is XHCI_Completions.Event;
 
    NULL_TRB : constant TRB :=
      (parameterLo => 0, parameterHi => 0, status => 0, control => 0);
@@ -153,6 +143,8 @@ package body XHCI is
    commandCycle : Unsigned_32 := TRB_CYCLE;
    eventHead    : Natural := 0;
    eventCycle   : Unsigned_32 := TRB_CYCLE;
+   completionMailboxes : XHCI_Completions.Mailboxes;
+   completionRoutingFailed : Boolean := False;
    ep0Tail      : Natural := 0;
    ep0Cycle     : Unsigned_32 := TRB_CYCLE;
    hidTail      : Natural := 0;
@@ -284,7 +276,7 @@ package body XHCI is
       Write64 (runtimeBase + RT_INTR0, INTR_ERDP, dequeue or 16#8#);
    end Acknowledge_Event;
 
-   function Poll_Event (event : out TRB) return Boolean is
+   function Poll_Hardware_Event (event : out TRB) return Boolean is
       control : Unsigned_32;
    begin
       control := eventRing (eventHead).control;
@@ -302,7 +294,54 @@ package body XHCI is
       end if;
       Acknowledge_Event;
       return True;
-   end Poll_Event;
+   end Poll_Hardware_Event;
+
+   --  All hardware events pass through one owner. A command/control wait
+   --  leaves unrelated endpoint completions available to their consumer.
+   function Collect_Event return Boolean is
+      event : TRB;
+      result : XHCI_Completions.Route_Result;
+   begin
+      if completionRoutingFailed or else not Poll_Hardware_Event (event) then
+         return False;
+      end if;
+      XHCI_Completions.Route (completionMailboxes, event, result);
+      case result is
+         when XHCI_Completions.Queued | XHCI_Completions.Not_A_Completion =>
+            null;
+         when XHCI_Completions.Invalid_Target | XHCI_Completions.Queue_Full =>
+            --  Never silently overwrite a completion or reuse its DMA page.
+            --  Stop new submissions and request controller halt. The private
+            --  DMA allocation remains retained, even if halt itself fails.
+            completionRoutingFailed := True;
+            Write32 (operational, OP_USBCMD, 0);
+            debugPrint ("xhci: completion routing fault; halt requested" & ASCII.LF);
+      end case;
+      return True;
+   end Collect_Event;
+
+   procedure Next_Completion
+     (slot : XHCI_Completions.Slot_Number;
+      endpoint : XHCI_Completions.Endpoint_Number;
+      event : out TRB; found, progressed : out Boolean)
+   is
+   begin
+      event := NULL_TRB;
+      found := False;
+      progressed := False;
+      if completionRoutingFailed then
+         return;
+      end if;
+      XHCI_Completions.Take (completionMailboxes, slot, endpoint, event, found);
+      progressed := found;
+      if not found then
+         progressed := Collect_Event;
+         if not completionRoutingFailed then
+            XHCI_Completions.Take
+              (completionMailboxes, slot, endpoint, event, found);
+         end if;
+      end if;
+   end Next_Completion;
 
    procedure Submit_Command
      (command        : TRB;
@@ -316,10 +355,14 @@ package body XHCI is
       commandPhys   : Unsigned_64;
       eventType     : Unsigned_32;
       eventPointer  : Unsigned_64;
+      found, progressed : Boolean;
    begin
       completionCode := 0;
       slotId := 0;
       completed := False;
+      if completionRoutingFailed then
+         return;
+      end if;
       commandPhys :=
         dmaPhysical + COMMAND_RING_OFFSET + Unsigned_64 (commandTail * 16);
       pending.control :=
@@ -338,7 +381,11 @@ package body XHCI is
 
       Write32 (doorbellBase, 0, 0);
       for attempt in 1 .. 10_000 loop
-         if Poll_Event (event) then
+         Next_Completion (0, 0, event, found, progressed);
+         if completionRoutingFailed then
+            return;
+         end if;
+         if found then
             eventType := Shift_Right (event.control and TRB_TYPE_MASK, 10);
             if eventType = TRB_TYPE_COMMAND_COMPLETION then
                eventPointer := Unsigned_64 (event.parameterLo) or
@@ -350,7 +397,7 @@ package body XHCI is
                   return;
                end if;
             end if;
-         else
+         elsif not progressed then
             ignore := syscall (SYSCALL_SLEEP, 1);
          end if;
       end loop;
@@ -398,12 +445,22 @@ package body XHCI is
       eventSlot  : Natural;
       eventEP    : Natural;
       ignore     : Unsigned_64;
+      found, progressed : Boolean;
    begin
       completionCode := 0;
       actualLength := 0;
       completed := False;
+      if activeSlot not in 1 .. XHCI_Completions.Maximum_Slots or else
+         endpoint not in 1 .. 31
+      then
+         return;
+      end if;
       for attempt in 1 .. 10_000 loop
-         if Poll_Event (event) then
+         Next_Completion (activeSlot, endpoint, event, found, progressed);
+         if completionRoutingFailed then
+            return;
+         end if;
+         if found then
             eventType := Shift_Right (event.control and TRB_TYPE_MASK, 10);
             if eventType = TRB_TYPE_TRANSFER_EVENT then
                eventSlot := Natural (Shift_Right (event.control, 24));
@@ -419,7 +476,7 @@ package body XHCI is
                   return;
                end if;
             end if;
-         else
+         elsif not progressed then
             ignore := syscall (SYSCALL_SLEEP, 1);
          end if;
       end loop;
@@ -445,7 +502,7 @@ package body XHCI is
    begin
       actualLength := 0;
       success := False;
-      if length > 4096 then
+      if length > 4096 or else completionRoutingFailed then
          return;
       end if;
 
@@ -560,6 +617,8 @@ package body XHCI is
       commandCycle := TRB_CYCLE;
       eventHead := 0;
       eventCycle := TRB_CYCLE;
+      XHCI_Completions.Clear (completionMailboxes);
+      completionRoutingFailed := False;
       ep0Tail := 0;
       ep0Cycle := TRB_CYCLE;
       hidTail := 0;
@@ -690,7 +749,7 @@ package body XHCI is
          ringSize => Unsigned_32 (EVENT_RING_ENTRIES),
          reserved => 0);
 
-      enabledSlots := Natural'Min (maxSlots, 8);
+      enabledSlots := Natural'Min (maxSlots, XHCI_Completions.Maximum_Slots);
       Write64 (operational, OP_DCBAAP, dmaPhys + DCBAA_OFFSET);
       Write64
         (operational, OP_CRCR,
@@ -782,7 +841,9 @@ package body XHCI is
       if not commandDone then
          result := INIT_COMMAND_TIMEOUT;
          return;
-      elsif commandCompletion /= COMPLETION_SUCCESS or else slotId = 0 then
+      elsif commandCompletion /= COMPLETION_SUCCESS or else
+         slotId not in 1 .. XHCI_Completions.Maximum_Slots
+      then
          Debug_Hex32 ("xhci: Enable Slot completion=", commandCompletion);
          result := INIT_COMMAND_FAILED;
          return;
@@ -870,14 +931,11 @@ package body XHCI is
          actualLength       : Natural;
          requestOK          : Boolean;
          totalLength        : Natural;
-         position           : Natural;
-         descriptorLength   : Natural;
          configValue        : Unsigned_8 := 0;
          interfaceNumber    : Unsigned_8 := 0;
          endpointAddress    : Unsigned_8 := 0;
          endpointPacketSize : Natural := 0;
          endpointInterval   : Unsigned_8 := 0;
-         inBootMouse        : Boolean := False;
          endpointNumber     : Natural;
          endpointDCI        : Natural;
          endpointInputBase  : Natural;
@@ -927,46 +985,33 @@ package body XHCI is
             return;
          end if;
 
-         --  Accept one HID boot-mouse interface and one interrupt-IN
-         --  endpoint.  Every descriptor length is validated before fields
-         --  are inspected, so malformed device data cannot escape the page.
-         position := 0;
-         while position + 2 <= totalLength loop
-            descriptorLength := Natural (descriptorBytes (position));
-            if descriptorLength < 2 or else
-               descriptorLength > totalLength - position
-            then
+         --  Snapshot completed DMA before the pure decoder sees it. The
+         --  interface number and endpoint are retained as one object, never
+         --  assembled from unrelated interfaces in a composite device.
+         declare
+            data : USB_Configurations.Bytes (1 .. totalLength);
+            configuration : USB_Configurations.Configuration;
+            decoded : USB_Configurations.Decode_Result;
+            use type USB_Configurations.Decode_Result;
+         begin
+            for i in data'Range loop
+               data (i) := descriptorBytes (i - 1);
+            end loop;
+            USB_Configurations.Decode (data, configuration, decoded);
+            if decoded /= USB_Configurations.Decoded then
                result := INIT_DESCRIPTOR_FAILED;
                return;
             end if;
-
-            if descriptorBytes (position + 1) = 4 and then
-               descriptorLength >= 9
-            then
-               inBootMouse :=
-                 descriptorBytes (position + 5) = 3 and then
-                 descriptorBytes (position + 6) = 1 and then
-                 descriptorBytes (position + 7) = 2;
-               if inBootMouse then
-                  interfaceNumber := descriptorBytes (position + 2);
-               end if;
-            elsif descriptorBytes (position + 1) = 5 and then
-                  descriptorLength >= 7 and then inBootMouse and then
-                  (descriptorBytes (position + 2) and 16#80#) /= 0 and then
-                  (descriptorBytes (position + 3) and 3) = 3 and then
-                  endpointAddress = 0
-            then
-               endpointAddress := descriptorBytes (position + 2);
-               endpointPacketSize :=
-                 Natural
-                   ((Unsigned_16 (descriptorBytes (position + 4)) or
-                     Shift_Left
-                       (Unsigned_16 (descriptorBytes (position + 5)), 8)) and
-                    16#07FF#);
-               endpointInterval := descriptorBytes (position + 6);
+            if not configuration.Mouse.Present then
+               result := INIT_NOT_BOOT_MOUSE;
+               return;
             end if;
-            position := position + descriptorLength;
-         end loop;
+            configValue := configuration.Value;
+            interfaceNumber := configuration.Mouse.Number;
+            endpointAddress := configuration.Mouse.Input.Address;
+            endpointPacketSize := configuration.Mouse.Input.Packet_Bytes;
+            endpointInterval := configuration.Mouse.Input.Interval;
+         end;
 
          if endpointAddress = 0 or else endpointPacketSize = 0 or else
             endpointPacketSize > HID_REPORT_STRIDE
@@ -1216,14 +1261,22 @@ package body XHCI is
       completion     : Unsigned_32;
       residual       : Natural;
       actualLength   : Natural := 0;
+      found          : Boolean;
    begin
       buttons := 0;
       deltaX := 0;
       deltaY := 0;
       deltaZ := 0;
       ready := False;
-      eventAvailable := Poll_Event (event);
-      if not eventAvailable then
+      eventAvailable := False;
+      if activeSlot not in 1 .. XHCI_Completions.Maximum_Slots or else
+         hidEndpointDCI not in 1 .. 31
+      then
+         return;
+      end if;
+      Next_Completion
+        (activeSlot, hidEndpointDCI, event, found, eventAvailable);
+      if not found then
          return;
       end if;
 

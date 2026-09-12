@@ -81,10 +81,20 @@ package body Virtio is
       drvFeatures := devFeatures and VIRTIO_NET_F_MAC;
       outl (ioBase + REG_DRIVER_FEATURES, drvFeatures);
 
-      --  5. Set DRIVER_OK
-      status := status or STATUS_DRIVER_OK;
-      outb (ioBase + REG_DEVICE_STATUS, status);
    end initDevice;
+
+   procedure startDevice (ioBase : Unsigned_16) is
+   begin
+      --  Only expose DRIVER_OK after descriptors and MSI-X mappings exist.
+      outb (ioBase + REG_DEVICE_STATUS,
+            STATUS_ACKNOWLEDGE or STATUS_DRIVER or STATUS_DRIVER_OK);
+   end startDevice;
+
+   function setQueueVector (ioBase : Unsigned_16) return Boolean is
+   begin
+      outw (ioBase + REG_QUEUE_MSIX_VECTOR, 0);
+      return inw (ioBase + REG_QUEUE_MSIX_VECTOR) = 0;
+   end setQueueVector;
 
    ---------------------------------------------------------------------------
    --  readISR - read and acknowledge interrupt status

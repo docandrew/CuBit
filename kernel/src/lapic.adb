@@ -9,6 +9,7 @@
 with System.Storage_Elements; use System.Storage_Elements;
 
 with BootAllocator;
+with Build;
 with BuddyAllocator;
 with cmos;
 with Mem_mgr;
@@ -306,9 +307,12 @@ is
         with SPARK_Mode => Off
     is
         APICTicksIn10ms : Unsigned_32;
+        Start_TSC, Elapsed_TSC, Scaled : Unsigned_64;
+        Bad_Timer_Calibration : exception;
     begin
         write (timerDivideConf,   DIVIDE_BY_16);
         write (timerInitialCount, 16#FFFF_FFFF#);
+        Start_TSC := x86.readOrderedTSC;
 
         -- sleep for 10ms using the PIT
         Time.bootCalibrationSleep(10);
@@ -317,8 +321,21 @@ is
         write(lvtTimer, LVT_MASKED);
 
         APICTicksIn10ms := 16#FFFF_FFFF# - Unsigned_32(timerCurrentCount);
-
-        return APICTicksIn10ms / 10;
+        Elapsed_TSC := x86.readOrderedTSC - Start_TSC;
+        -- The PIT sleep spans tick boundaries, not necessarily exactly 10 ms.
+        -- Use the independently calibrated TSC interval rather than dividing
+        -- by the requested delay (which made short one-shots fire early).
+        Scaled := Unsigned_64 (APICTicksIn10ms) * 1000;
+        if Elapsed_TSC = 0 or else Scaled = 0 or else Time.tscPerDuration = 0 or else
+          Time.tscPerDuration > Unsigned_64'Last / Scaled
+        then
+            raise Bad_Timer_Calibration;
+        end if;
+        Scaled := Scaled * Time.tscPerDuration / Elapsed_TSC;
+        if Scaled = 0 or else Scaled > Unsigned_64 (Unsigned_32'Last) then
+            raise Bad_Timer_Calibration;
+        end if;
+        return Unsigned_32 (Scaled);
     end calibrateAPICTimer;
 
     ---------------------------------------------------------------------------
@@ -384,13 +401,13 @@ is
         write(svr, SVR_ENABLE or Unsigned_32(InterruptNumbers.SPURIOUS));
 
         write(timerDivideConf, DIVIDE_BY_16);
-        write(lvtTimer, Unsigned_32(InterruptNumbers.TIMER) or TIMER_PERIODIC);
-        -- Calibration remains ticks per millisecond (also shared with APs).
-        -- Time divides 500-us interrupts independently into millisecond clock
-        -- advances and 1.5-ms scheduling opportunities.
+        write(lvtTimer, Unsigned_32(InterruptNumbers.TIMER) or
+          (if Build.OneShot_Scheduling then TIMER_ONESHOT else TIMER_PERIODIC));
+        -- This is an interrupt opportunity, never the elapsed-time reference.
         write(timerInitialCount,
               Unsigned_32'Max (1, timerInterval /
-                Scheduler_Timing.Ticks_Per_Millisecond));
+                (if Build.OneShot_Scheduling then Scheduler_Timing.OneShot_Ticks_Per_Millisecond
+                 else Scheduler_Timing.Ticks_Per_Millisecond)));
 
         -- Disable LINT0, LINT1
         write(lvtLINT0, Unsigned_32(lvtLINT0) and LVT_MASKED);
@@ -411,6 +428,26 @@ is
     begin
         return timerInterval;
     end getTimerInterval;
+
+    procedure selectOneShotTimer is
+    begin
+        write (lvtTimer, LVT_MASKED or Unsigned_32 (InterruptNumbers.TIMER));
+        write (timerInitialCount, 0);
+        write (timerDivideConf, DIVIDE_BY_16);
+        write (lvtTimer, Unsigned_32 (InterruptNumbers.TIMER) or TIMER_ONESHOT);
+    end selectOneShotTimer;
+
+    procedure armTimer (Count : Timer_Count) is
+    begin
+        write (timerInitialCount, Count);
+    end armTimer;
+
+    procedure restorePeriodicTimer (Count : Timer_Count) is
+    begin
+        write (timerInitialCount, 0);
+        write (lvtTimer, Unsigned_32 (InterruptNumbers.TIMER) or TIMER_PERIODIC);
+        write (timerInitialCount, Count);
+    end restorePeriodicTimer;
 
     procedure setTimerInterval (interval : in Unsigned_32) is
     begin

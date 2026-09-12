@@ -460,6 +460,16 @@ is
         return (Shift_Left(Unsigned_64(high), 32) or Unsigned_64(low));
     end rdtsc;
 
+    function readOrderedTSC return Unsigned_64 is
+        high, low : Unsigned_32;
+    begin
+        Asm ("lfence; rdtsc; lfence",
+             Outputs => (Unsigned_32'Asm_Output ("=a", low),
+                         Unsigned_32'Asm_Output ("=d", high)),
+             Clobber => "memory", Volatile => True);
+        return Shift_Left (Unsigned_64 (high), 32) or Unsigned_64 (low);
+    end readOrderedTSC;
+
     ---------------------------------------------------------------------------
     -- Read Time-Stamp Counter & Processor ID atomically
     ---------------------------------------------------------------------------

@@ -2,7 +2,9 @@
 
 This is **Linux-hosted policy testing**, not an enabled CuBit scheduler change.
 The production-shaped pure SPARK component lives in
-`kernel/src/scheduling_budgets.*`, but no native dispatch path calls it yet.
+`kernel/src/scheduling_budgets.*`. An opt-in native shadow observer now calls it
+to measure actual demand; it does not make scheduling decisions. See
+[shadow accounting](../scheduler-shadow/README.md).
 CuBit retains the 1.5-ms peer-rotation experiment.
 
 ```sh
@@ -58,7 +60,7 @@ The bounded simulation uses 100/200/600-us per-reservation allowances and
 not production admission policy. Ordinary tasks and their quantum are not
 modeled in enough detail to compare general compute throughput.
 
-GNATprove discharges **117 obligations**, with no unproved or justified checks.
+GNATprove discharges **138 obligations**, with no unproved or justified checks.
 This includes exact accounting and dispatch-claim contracts, range checks,
 initialization, termination, and a ghost proof that splitting same-period
 execution at a handoff preserves both the remaining balance and overrun state.
@@ -66,7 +68,7 @@ No `pragma Assume` or `SPARK_Mode => Off` is used in the component. Assertions
 are enabled only in the hosted test project, not the kernel.
 
 Not proved or implemented: authority admission, aggregate reservation admission,
-native timer enforcement, clock conversion precision, SMP migration, process
-lifetime binding, IPC donation, lock synchronization, fairness among ordinary
+native timer enforcement, hardware clock accuracy, SMP migration, a proof of
+native process lifetime binding, IPC donation, lock synchronization, fairness among ordinary
 tasks, or any physical latency bound. See the
 [native integration checklist](../../docs/input-latency.md#hosted-expedited-budget-prototype).

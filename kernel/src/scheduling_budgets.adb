@@ -1,8 +1,9 @@
 package body Scheduling_Budgets with SPARK_Mode is
    function Create
-     (Budget : Allowance; Now : Microseconds;
-      Dispatches : Dispatch_Allowance := 8) return State is
-     ((Ceiling => Budget, Left => Budget, Timestamp => Now,
+     (Budget : Allowance; Now : Time_Units;
+      Dispatches : Dispatch_Allowance := 8;
+      Interval : Period_Length := Period) return State is
+     ((Interval => Interval, Ceiling => Budget, Left => Budget, Timestamp => Now,
        Executing => False, Missed_Stop => False,
        Dispatch_Ceiling => Dispatches, Dispatch_Remaining => Dispatches));
 
@@ -14,8 +15,8 @@ package body Scheduling_Budgets with SPARK_Mode is
       end if;
    end Claim_Dispatch;
 
-   procedure Charge (S : in out State; Elapsed : Microseconds)
-     with Post =>
+   procedure Charge (S : in out State; Elapsed : Time_Units)
+     with Post => S.Interval = S'Old.Interval and then
        S.Ceiling = S'Old.Ceiling and then
        S.Timestamp = S'Old.Timestamp and then
        S.Executing = S'Old.Executing and then
@@ -34,11 +35,12 @@ package body Scheduling_Budgets with SPARK_Mode is
    end Charge;
 
    procedure Account
-     (S : in out State; Now : Microseconds; Execute : Boolean;
+     (S : in out State; Now : Time_Units; Execute : Boolean;
       Result : out Update_Result)
    is
-      Until_Boundary : constant Microseconds := Period - S.Timestamp mod Period;
-      Elapsed : Microseconds;
+      Period : constant Period_Length := S.Interval;
+      Until_Boundary : constant Time_Units := Period - S.Timestamp mod Period;
+      Elapsed : Time_Units;
    begin
       if Now < S.Timestamp then
          Result := Clock_Reversed;
@@ -72,7 +74,7 @@ package body Scheduling_Budgets with SPARK_Mode is
    end Account;
 
    procedure Prove_Split_Charge
-     (Original : State; Middle, Finish : Microseconds)
+     (Original : State; Middle, Finish : Time_Units)
    is
       Whole, Split : State := Original;
       Result : Update_Result;

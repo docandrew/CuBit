@@ -15,6 +15,7 @@ with Time;
 with Trace;
 with Util;
 with x86;
+with Build;
 
 use type Process.MessageTag;
 
@@ -174,7 +175,14 @@ package body Syscall is
     begin
         if traceActive then
             startTSC := x86.rdtsc;
-            Trace.Emit (Trace.EVENT_SYSCALL_ENTER, syscallNumRaw, arg0);
+            -- Tight compute controls issue GETTIME repeatedly. Keep their
+            -- timer/dispatch events without letting clock reads evict the
+            -- bounded latency trace before the delayed receiver can freeze it.
+            if not Build.Test_Latency_Trace or else
+              syscallNumRaw /= SyscallNumber'Enum_Rep (SYSCALL_GETTIME)
+            then
+                Trace.Emit (Trace.EVENT_SYSCALL_ENTER, syscallNumRaw, arg0);
+            end if;
         end if;
 
         decodeSyscall (syscallNumRaw, syscallNum, validSyscall);
@@ -185,6 +193,7 @@ package body Syscall is
                 Trace.ObserveDuration (Trace.EVENT_SYSCALL_TIME,
                                        x86.rdtsc - startTSC);
             end if;
+            Process.serviceReschedule;
             Process.checkTermination;
             return 0;
         end if;
@@ -415,8 +424,19 @@ package body Syscall is
                 retval := 0;
 
             when SYSCALL_TRACE_SUMMARY =>
-                Trace.PrintSummary;
-                retval := 0;
+                if arg0 = Trace.Control_Operation'Enum_Rep (Trace.Summary) then
+                    Trace.PrintSummary;
+                    Process.printOwnAccounting;
+                elsif Build.Test_Latency_Trace then
+                    case arg0 is
+                        when Trace.Control_Operation'Enum_Rep (Trace.Start_Local) => Trace.StartLocal;
+                        when Trace.Control_Operation'Enum_Rep (Trace.Freeze_Local) => Trace.FreezeLocal;
+                        when Trace.Control_Operation'Enum_Rep (Trace.Dump_Local) => Trace.DumpLocal;
+                        when others => retval := Unsigned_64'Last;
+                    end case;
+                else
+                    retval := Unsigned_64'Last;
+                end if;
 
             when SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY =>
                 IPC.handleGrantViaCap (
@@ -433,7 +453,14 @@ package body Syscall is
             Trace.ObserveDuration (Trace.EVENT_SYSCALL_TIME,
                                    x86.rdtsc - startTSC);
         end if;
+        Process.serviceReschedule;
         Process.checkTermination;
+        if Trace.IsEnabled and then
+          (not Build.Test_Latency_Trace or else
+           syscallNumRaw /= SyscallNumber'Enum_Rep (SYSCALL_GETTIME))
+        then
+            Trace.Emit (Trace.EVENT_SYSCALL_RETURN, syscallNumRaw, 0);
+        end if;
         return retval;
     end syscallHandler;
 

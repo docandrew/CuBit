@@ -37,6 +37,7 @@ with StoragePools;
 with TextIO; use TextIO;
 with Time;
 with Timer_pit;
+with Timer_Expiry_Probe;
 with Video;
 with Video.EGA;
 with Video.VGA;
@@ -291,6 +292,9 @@ begin
         timer_pit.setupPIT;
         timer_pit.enable;
         x86.sti;
+        -- Independent low-rate reference, before the hypervisor can clamp a
+        -- short LAPIC period. Never calibrate TSC against counted fast IRQs.
+        Time.calibrateTSC;
     end initPIT;
 
 
@@ -332,7 +336,7 @@ begin
             IPI.init (To_Address (virtmem.P2V (apicBase)));
             pic.disable;
             -- IF is still clear, the PIT is masked, and APs have not started.
-            -- Switch the clock divider before enabling the faster LAPIC tick.
+            -- Anchor elapsed time before enabling the faster LAPIC tick.
             Time.enableSchedulingClock;
         else
             -- @TODO not a big deal to fall-back to the PIC, but we need to
@@ -344,12 +348,10 @@ begin
     initTimerCalibration: declare
     begin
         x86.sti;
-        -- At this point, interrupts are enabled (using either PIC or APIC),
-        -- and we can calibrate the TSC ticks.
-        Time.calibrateTSC;
+        -- TSC was calibrated against the PIT before LAPIC setup.
         print (" TSC timer calibration: ");
         printd (time.tscPerDuration);
-        println (" ticks/ms");
+        println (" ticks/us (PIT reference)");
 
         if not cpuid.hasInvariantTSC then
             println (" CAUTION: Time-Stamp Counter is not invariant and may vary with CPU speed.",
@@ -361,6 +363,10 @@ begin
         -- experiment
         x86.cli;
     end initTimerCalibration;
+
+    if Build.Test_Deadline_Timer then
+        Timer_Expiry_Probe.Run;
+    end if;
 
     initIOAPIC: declare
     begin
@@ -565,6 +571,10 @@ begin
         myLapic.setTimerInterval (Interrupts.getLAPICTimerInterval);
         myLapic.setupLAPIC_AP;
     end setupAPLapic;
+
+    if Build.Test_Deadline_Timer then
+        Timer_Expiry_Probe.Run;
+    end if;
 
     -- Create idle process for this CPU
     Process.startKernelThread (

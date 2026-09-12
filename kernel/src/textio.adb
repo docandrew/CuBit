@@ -274,19 +274,18 @@ package body TextIO is
         MAX_DIGITS : constant := 20;
         myDigits : array (1..MAX_DIGITS) of Character := (others => NUL);
         i : Unsigned_64 := n;
-        c : Natural := 0;
     begin
         if i = 0 then
             print('0', fg, bg);
             return;
         end if;
 
-        while (i > 0 and c < 10) loop
-            pragma Loop_Invariant (c >= 0);
-
-            myDigits(MAX_DIGITS - c) := Character'Val((i mod 10) + 48);
+        -- A 64-bit value may need all twenty digits, not the ten supported
+        -- by the old copied 32-bit loop. Traverse the destination's bounds.
+        for position in reverse myDigits'Range loop
+            exit when i = 0;
+            myDigits(position) := Character'Val((i mod 10) + 48);
             i := i / 10;
-            c := c + 1;
         end loop;
 
         for j in myDigits'Range loop
