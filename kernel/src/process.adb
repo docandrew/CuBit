@@ -25,6 +25,7 @@ with IPI;
 with Config;
 with Interrupt_State;
 with Mem_mgr;
+with Page_Admission;
 with PerCPUData;
 with Process.IPC;
 with Process.Queues;
@@ -255,6 +256,42 @@ package body Process is
         Spinlocks.exitCriticalSection (mailtab(pid).lock);
     end publish;
 
+    procedure discardUnpublished (pid : ProcessID) is
+        procedure deleteP4 is new Virtmem.deleteP4 (BuddyAllocator.freeFrame);
+        procedure zeroize is new Virtmem.zeroize (Virtmem.P4);
+    begin
+        if pid = NO_PROCESS or else proctab(pid).admitted or else
+          proctab(pid).state /= SUSPENDED then
+            raise ProcessException with "Invalid unpublished-process rollback";
+        end if;
+        -- No CPU has used this address space, and no endpoint has been opened.
+        -- This is distinct from reclaimProcess's live-process retirement path.
+        if proctab(pid).pgTable /= NO_PROCESS then
+            Mem_mgr.unmapKernelMemFromProcess (addrtab(pid));
+            deleteP4 (addrtab(pid));
+            zeroize (addrtab(pid));
+            proctab(pid).pgTable := NO_PROCESS;
+        end if;
+        while proctab(pid).frames.length > 0 loop
+            BuddyAllocator.freeFrame (FrameLists.front (proctab(pid).frames));
+            FrameLists.popFront (proctab(pid).frames);
+        end loop;
+        FrameLists.delete (proctab(pid).frames);
+        if proctab(pid).guardPage /= 0 then
+            Mem_mgr.removeGuardPage (proctab(pid).guardPage);
+            BuddyAllocator.free (1, Virtmem.P2Va (proctab(pid).guardPage));
+            proctab(pid).guardPage := 0;
+        end if;
+        proctab(pid).kernelStack := null;
+        proctab(pid).kernelStackTop := System.Null_Address;
+        proctab(pid).context := System.Null_Address;
+        proctab(pid).fpu := System.Null_Address;
+        Capabilities.Operations.clearTable (proctab(pid).caps);
+        proctab(pid).state := INVALID;
+        -- No access to this slot after returning its PID to the allocator.
+        PIDTracker.freePID (pid);
+    end discardUnpublished;
+
     procedure noteContextStarted (pid : ProcessID) is
         OK : Boolean;
     begin
@@ -432,110 +469,61 @@ package body Process is
     end startReaper;
 
     ---------------------------------------------------------------------------
-    -- addStackPage
-    -- Allocate an additional page of memory for this process or thread's stack,
-    -- map it into the process or thread's parent process page tables, and add
-    -- it to the list of pages used by this process or thread's parent process.
-    ---------------------------------------------------------------------------
-    procedure addStackPage (proc : in out Process) is
-        newFrame : Virtmem.PhysAddress;
-        ok : Boolean;
-        claimed : Boolean;
-        frameOwner : ProcessID;
-        MapException : exception;
-
-        procedure mapPage is new Virtmem.mapPage (BuddyAllocator.allocFrame);
-    begin
-        BuddyAllocator.allocFrame (newFrame);
-
-        -- @TODO this shouldn't be a fatal error for kernel but works for now to detect errors.
-        if newFrame = 0 then
-            raise ProcessException with "Unable to allocate memory for Process' stack expansion.";
-        end if;
-
-        if proc.isThread then
-            frameOwner := proc.ppid;
-            FrameLists.insertFront (proctab(proc.ppid).frames, newFrame);
-        else
-            frameOwner := proc.pid;
-            FrameLists.insertFront (proc.frames, newFrame);
-        end if;
-
-        BuddyAllocator.claimUserFrame
-          (newFrame, Unsigned_8 (frameOwner), claimed);
-        if not claimed then
-            raise ProcessException with
-              "Unable to establish stack-frame ownership";
-        end if;
-
-        -- Map the frame just below the thread's current stack.
-        mapPage (phys    => newFrame,
-                 virt    => To_Integer(proc.stackTop - Storage_Count((proc.numStackFrames + 1) * Virtmem.PAGE_SIZE)),
-                 flags   => Virtmem.PG_USERDATA,
-                 myP4    => addrtab(proc.pgTable),
-                 success => ok);
-
-        -- print ("Process.addStackPage: Mapping new frame at "); println(To_Integer(proc.stackTop - Storage_Count((proc.numStackFrames + 1) * Virtmem.PAGE_SIZE)));
-
-        if not ok then
-            raise MapException with "Process.addStackPage - can't map process' stack";
-        end if;
-
-        proc.numStackFrames := proc.numStackFrames + 1;
-    end addStackPage;
-
-    ---------------------------------------------------------------------------
-    -- addPage
+    -- tryAddPage
     -- Allocate a page of memory for a process or thread's parent process, map
     -- at the specified address and adds the memory to the process or thread's
     -- parent process frame list so it will be freed on exit.
     ---------------------------------------------------------------------------
-    procedure addPage (proc    : in out Process;
-                       mapTo   : in System.Address;
-                       storage : out System.Address;
-                       flags   : in Unsigned_64 := Virtmem.PG_USERDATA) is
+    procedure tryAddPage
+      (proc : in out Process; mapTo : System.Address; storage : out System.Address;
+       result : out Page_Allocation_Result;
+       flags : Unsigned_64 := Virtmem.PG_USERDATA)
+    is
         newFrame : Virtmem.PhysAddress;
-        ok : Boolean;
-        claimed : Boolean;
-        frameOwner : ProcessID;
-        MapException : exception;
+        outcome : Page_Allocation.Result;
+        frameOwner : constant ProcessID := (if proc.isThread then proc.ppid else proc.pid);
+        frames : FrameLists.List renames proctab(frameOwner).frames;
 
         procedure mapPage is new Virtmem.mapPage (BuddyAllocator.allocFrame);
+
+        procedure Track (Frame : Virtmem.PhysAddress; Accepted : out Boolean) is
+        begin
+            FrameLists.tryInsertFront (frames, Frame, Accepted);
+        end Track;
+        procedure Forget is
+        begin
+            FrameLists.popFront (frames);
+        end Forget;
+        procedure Claim (Frame : Virtmem.PhysAddress; Accepted : out Boolean) is
+        begin
+            BuddyAllocator.claimUserFrame (Frame, Unsigned_8 (frameOwner), Accepted);
+        end Claim;
+        procedure Map (Frame : Virtmem.PhysAddress; Accepted : out Boolean) is
+        begin
+            mapPage (Frame, To_Integer (mapTo), flags, addrtab(proc.pgTable), Accepted);
+        end Map;
+        procedure Acquire is new Page_Allocation.Acquire
+          (Virtmem.PhysAddress, BuddyAllocator.allocFrame, BuddyAllocator.freeFrame,
+           Track, Forget, Claim, Map);
     begin
-
-        BuddyAllocator.allocFrame (newFrame);
-
-        if newFrame = 0 then
-            raise ProcessException with "Process.addPage: Unable to allocate memory for Process";
+        storage := System.Null_Address;
+        if frames.length >= frames.capacity then
+            result := Frame_Tracking_Full;
+            return;
+        elsif proctab(frameOwner).quota.maxFrames /= 0 and then
+          frames.length >= proctab(frameOwner).quota.maxFrames then
+            result := Frame_Quota_Full;
+            return;
+        elsif Virtmem.tableWalk (To_Integer (mapTo), addrtab(proc.pgTable)) /= 0 then
+            result := Mapping_Already_Present;
+            return;
         end if;
-
-        storage := Virtmem.P2Va (newFrame);
-
-        if proc.isThread then
-            frameOwner := proc.ppid;
-            FrameLists.insertFront (proctab(proc.ppid).frames, newFrame);
-        else
-            frameOwner := proc.pid;
-            FrameLists.insertFront (proc.frames, newFrame);
+        Acquire (newFrame, outcome);
+        result := Page_Allocation_Result (outcome);
+        if result = Page_Added then
+            storage := Virtmem.P2Va (newFrame);
         end if;
-
-        BuddyAllocator.claimUserFrame
-          (newFrame, Unsigned_8 (frameOwner), claimed);
-        if not claimed then
-            raise ProcessException with
-              "Unable to establish user-frame ownership";
-        end if;
-
-        mapPage (phys    => newFrame,
-                 virt    => To_Integer(mapTo),
-                 flags   => flags,
-                 myP4    => addrtab(proc.pgTable),
-                 success => ok);
-
-        if not ok then
-            raise MapException with "Process.addPage - can't map process page";
-        end if;
-    end addPage;
+    end tryAddPage;
 
     ---------------------------------------------------------------------------
     -- create
@@ -552,6 +540,9 @@ package body Process is
 
     is
         pid : ProcessID;
+        reserved : Boolean;
+        storage : System.Address;
+        allocation : Page_Allocation_Result;
 
         procedure zeroize is new Virtmem.zeroize (Virtmem.P4);
     begin
@@ -559,10 +550,17 @@ package body Process is
             -- This dormant path never set isThread and has no live syscall
             -- consumer. Do not admit shared address spaces without lifetime
             -- accounting for every executing member.
-            raise ProcessException with "Shared-address-space thread creation unsupported";
+            return NO_PROCESS;
+        end if;
+        if To_Integer (procStack) > To_Integer (PROCESS_STACK_TOP_VIRT) or else
+          To_Integer (procStack) < Integer_Address (stackSize) or else
+          To_Integer (procStack) mod Virtmem.PAGE_SIZE /= 0 or else
+          stackSize mod Virtmem.PAGE_SIZE /= 0 then
+            return NO_PROCESS;
         end if;
         if requestedPID /= NO_PROCESS then
-            PIDTracker.allocSpecificPID (requestedPID);
+            PIDTracker.tryAllocSpecificPID (requestedPID, reserved);
+            if not reserved then return NO_PROCESS; end if;
             pid := requestedPID;
         else
             PIDTracker.allocPID (pid);
@@ -570,7 +568,7 @@ package body Process is
 
         -- sanity checks
         if pid = 0 then
-            raise ProcessException with "Unable to create new process. No free PIDs";
+            return NO_PROCESS;
         end if;
 
         -- Clear the proctab entry before populating fields. The entry may
@@ -645,18 +643,23 @@ package body Process is
             function toKStackPtr is new Ada.Unchecked_Conversion
                 (System.Address, ProcessKernelStackPtr);
             baseVirt : System.Address;
+            guarded : Boolean;
         begin
             BuddyAllocator.alloc (1, baseVirt);
             if baseVirt = BuddyAllocator.NO_BLOCK_AVAILABLE then
-                raise ProcessException with
-                    "Unable to allocate kernel stack + guard page";
+                discardUnpublished (pid);
+                return NO_PROCESS;
+            end if;
+            Mem_mgr.tryCreateGuardPage (Virtmem.V2P (baseVirt), guarded);
+            if not guarded then
+                BuddyAllocator.free (1, baseVirt);
+                discardUnpublished (pid);
+                return NO_PROCESS;
             end if;
             proctab(pid).guardPage   := Virtmem.V2P (baseVirt);
             proctab(pid).kernelStack :=
                 toKStackPtr (baseVirt + Virtmem.PAGE_SIZE);
             proctab(pid).kernelStack.canary := KSTACK_CANARY;
-            -- Unmap the guard page so overflow triggers a page fault
-            Mem_mgr.createGuardPage (proctab(pid).guardPage);
         end allocGuardedStack;
 
         FrameLists.create
@@ -726,7 +729,12 @@ package body Process is
         end if;
 
         -- Add a page for the process' stack
-        addStackPage (proctab(pid));
+        tryAddPage (proctab(pid), procStack - Virtmem.PAGE_SIZE, storage, allocation);
+        if allocation /= Page_Added then
+            discardUnpublished (pid);
+            return NO_PROCESS;
+        end if;
+        proctab(pid).numStackFrames := 1;
 
         return pid;
     end create;
@@ -1100,6 +1108,7 @@ package body Process is
         initSize : constant Storage_Count := Storage_Count(Util.addrToNum (initBinarySize'Address));
 
         InitImageTooBigException : exception;
+        allocation : Page_Allocation_Result;
 
         pid          : ProcessID;
         alignedStart : System.Address;
@@ -1117,11 +1126,20 @@ package body Process is
                        procStack   => PROCESS_STACK_TOP_VIRT,
                        stackSize   => INIT_PROCESS_STACK_SIZE);
 
+        if pid = NO_PROCESS then
+            raise ProcessException with "Insufficient memory for bootstrap process";
+        end if;
+
         -- add page to process, copy the init image to it
-        addPage (proc    => proctab(pid),
+        tryAddPage (proc    => proctab(pid),
                  mapTo   => To_Address(0),
                  storage => alignedStart,
+                 result  => allocation,
                  flags   => Virtmem.PG_USERCODE);
+        if allocation /= Page_Added then
+            discardUnpublished (pid);
+            raise ProcessException with "Insufficient memory for bootstrap image";
+        end if;
 
         ignore := Util.memcpy (alignedStart,
                                initBinaryStart'Address,
@@ -1358,33 +1376,27 @@ package body Process is
     procedure pageFault (pid : ProcessID; addr : System.Address)
     is
         ignore : System.Address;
+        result : Page_Allocation_Result;
+        use type Page_Admission.Decision;
+        admission : constant Page_Admission.Decision := Page_Admission.Check
+          (Unsigned_64 (To_Integer (proctab(pid).stackBottom)),
+           Unsigned_64 (To_Integer (proctab(pid).stackTop)),
+           Unsigned_64 (To_Integer (proctab(pid).heapStart)),
+           Unsigned_64 (To_Integer (proctab(pid).heapEnd)),
+           Unsigned_64 (To_Integer (addr)), proctab(pid).frames.length,
+           proctab(pid).frames.capacity, Natural (proctab(pid).quota.maxFrames));
     begin
-        -- Valid stack or heap address? heapEnd and heapStart should always be
-        -- page aligned, so we can round down to lower page here when mapping.
-        if (addr <= Proctab(pid).stackTop and addr >= Proctab(pid).stackBottom) or
-           (addr <= Proctab(pid).heapEnd  and addr >= Proctab(pid).heapStart) then
-
-            -- Check memory quota before allocating
-            if Proctab(pid).quota.maxFrames > 0 and then
-               Proctab(pid).frames.length >= Proctab(pid).quota.maxFrames
-            then
-                print ("Process: memory quota exceeded for pid ");
-                println (Integer(pid));
-                IPC.notifySupervisor (
-                    pid        => pid,
-                    faultLabel => IPC_Labels.EVENT_PROCESS_FAULT,
-                    detail0    => 14,
-                    detail1    => Unsigned_64 (To_Integer (addr)),
-                    detail2    => Unsigned_64 (Proctab(pid).quota.maxFrames));
+        if admission = Page_Admission.Admitted then
+            tryAddPage (proc => Proctab(pid),
+                        mapTo => To_Address (To_Integer (addr) and Virtmem.PAGE_MASK),
+                        storage => ignore, result => result);
+            if result /= Page_Added then
+                IPC.notifySupervisor
+                  (pid => pid, faultLabel => IPC_Labels.EVENT_PROCESS_FAULT,
+                   detail0 => 14, detail1 => Unsigned_64 (To_Integer (addr)),
+                   detail2 => Unsigned_64 (Page_Allocation_Result'Pos (result)));
                 kill (pid);
-                return;
             end if;
-
-            print ("Process: Adding page for pid "); print (Integer(pid));
-            print (" at "); println (To_Address (To_Integer (addr) and Virtmem.PAGE_MASK));
-            addPage (proc    => Proctab(pid),
-                     mapTo   => To_Address (To_Integer (addr) and Virtmem.PAGE_MASK),   -- round down
-                     storage => ignore);
         else
             -- @TODO use a heuristic here to figure out if this was a stack
             -- overflow, or heap over/underflow and signal the process either way.
@@ -1542,18 +1554,26 @@ package body Process is
             exitCriticalSection (pidLock);
         end allocPID;
 
-        procedure allocSpecificPID (pid : in ProcessID)
+        procedure tryAllocSpecificPID (pid : ProcessID; success : out Boolean)
         is
             use Spinlocks;
         begin
             enterCriticalSection (pidLock);
 
-            if pidMap (pid) = False then
+            success := pidMap (pid);
+            if success then
+                markUsed (pid);
+            end if;
+            exitCriticalSection (pidLock);
+        end tryAllocSpecificPID;
+
+        procedure allocSpecificPID (pid : in ProcessID) is
+            success : Boolean;
+        begin
+            tryAllocSpecificPID (pid, success);
+            if not success then
                 raise ProcessException with "Attempted to use specific PID already in use";
             end if;
-
-            markUsed (pid);
-            exitCriticalSection (pidLock);
         end allocSpecificPID;
 
 

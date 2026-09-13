@@ -105,7 +105,7 @@ is
     --
     -- @NOTE numFree should not be used to determine whether or not an allocation
     --  will succeed, since this number will increase when additional blocks
-    --  are added. Use the hasFree function for this purpose.
+    --  are added. Only tryAllocate can establish whether allocation succeeds.
     --
     --  @TODO develop an arrangement whereby we can continue adding storage to
     --  a slab indefinitely.
@@ -186,10 +186,14 @@ is
 
     ---------------------------------------------------------------------------
     -- hasFree
-    -- @return True if an Allocate call (or call to "new") will succeed on this
-    --  storage pool, False otherwise.
+    -- A capacity hint only: physical exhaustion and concurrent allocations
+    -- can still make allocation fail. This does not reserve storage.
     ---------------------------------------------------------------------------
     function hasFree (pool : in Slab) return Boolean;
+
+    -- Resource exhaustion returns Null_Address with the mutex released.
+    -- The pool must already be initialized; misuse remains a programming error.
+    procedure tryAllocate (pool : in out Slab; addr : out System.Address);
 
     ---------------------------------------------------------------------------
     -- Allocate - called automagically by "new". The first time this is called,

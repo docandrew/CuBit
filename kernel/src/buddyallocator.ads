@@ -31,33 +31,18 @@
 -- a bunch of Address_to_Access conversions, etc. Using explicit placement
 -- with Import is much more straightforward.
 --
--- @CAUTION Theoretically, a malicious user program could put the address
---  of our buddy in the buddy offset of a page that's mapped, and when the
---  buddy is freed, it would coalesce with a block that's owned by the
---  user. It's unlikely that a user would be able to guess the physical
---  page he's on, nor what size block was allocated, but it is still a
---  risk. This is mitigated in other systems by maintaining a separate
---  bitmap for the frame usage, but the bitmaps grow quite large.
+-- Coalescing consults a separate XOR bitmap, never user-controlled payload
+-- bytes to decide whether a buddy is free. Bitmap layout/indexing is provided
+-- by the SPARK Buddy_Bitmap core. Bitmap and frame lifetime metadata are
+-- reserved by the boot allocator before memory enters the free lists.
 --
---  One technique to mitigate the risk is to always give user processes
---  two smaller buddies, rather than a single larger block. 
---
---  CuBit wouldn't try and free either buddy until they are
---  both no longer mapped to the process. The only time it would use
---  extra memory is for MAX_BUDDY_ORDER or order 0 allocations.
---
---  Obviously there comes a point where the excess memory given to
---  processes may outweigh the memory used by the bitmaps. Likely, it's
---  probably irrelevant, as the greedy process just ends up having to ask
---  us for memory less frequently.
--- 
---  Another option is to check whether the buddy being freed is mapped to a
---  process, but this could be expensive. Or, we just add bitmaps.
---
--- @NOTE This package makes no use of dynamic memory allocation at this time,
---  and could theoretically be used as the boot allocator, however that may
---  change later if we add bitmaps or other lists representing the state of
---  physical frames.
+-- Out-of-band Buddy_Blocks descriptors now validate the head's state and order
+-- before a runtime free or list removal. Boot admission is a separate operation.
+-- Buddy_Geometry supplies proved local split/coalesce span calculations.
+-- Intrusive links, their correspondence with those descriptors, and arena-wide
+-- partition preservation remain proof boundaries; see
+-- docs/allocator-verification.md. Physical overlays are not formally safe
+-- merely because they use addresses instead of access types.
 --
 -- @CAUTION This allocator builds its free lists in the virtual, linear-mapped
 --  memory range. All the internal addresses it uses are going to be
@@ -100,9 +85,7 @@ is
     --  this node's buddy.
     -- @param nextNode - the next node in the free list, again, NOT necessarily
     --  this node's buddy.
-    -- @param buddy - contains the address of our buddy when we're on the free
-    --  list, used by that buddy when he is freed to see if he can coalesce
-    --  with us.
+    -- @param buddy - legacy diagnostic field; not consulted for coalescing.
     -- @param numFreeBlocks - number of free blocks in this list (only 
     --  applies to head of list)
     ---------------------------------------------------------------------------
@@ -115,8 +98,7 @@ is
     end record;
 
     ---------------------------------------------------------------------------
-    -- Array of circularly-linked lists. Not SPARK-blessed, but we're not using
-    -- access types so it's sort of a loophole.
+    -- Circular intrusive lists. Physical overlays remain outside SPARK proof.
     ---------------------------------------------------------------------------
     type FreeListArray is array (Order) of FreeBlock;
 
@@ -141,7 +123,7 @@ is
     ---------------------------------------------------------------------------
     function blockSize (ord : in Order) return Storage_Count with
         Depends => (blockSize'Result => ord),
-        Post    => blockSize'Result > Virtmem.FRAME_SIZE;
+        Post    => blockSize'Result >= Virtmem.FRAME_SIZE;
 
     ---------------------------------------------------------------------------
     -- getOrder
@@ -220,7 +202,7 @@ is
                     freeLists               => (ord, freeLists),
                     lock                    =>+ null,
                     x86.interruptsEnabled   =>+ null),
-        Pre     => BuddyAllocator.initialized and ord < Order'Last,
+        Pre     => BuddyAllocator.initialized,
         Post    => isValidBlock (ord, addr);
 
     ---------------------------------------------------------------------------
@@ -253,8 +235,7 @@ is
         Depends => (freeLists               => (ord, addr, freeLists),
                     lock                    =>+ null,
                     x86.interruptsEnabled   =>+ null),
-        Pre     => isValidBlock(ord, addr) and BuddyAllocator.initialized and
-                   ord < Order'Last;
+        Pre     => isValidBlock(ord, addr) and BuddyAllocator.initialized;
 
     ---------------------------------------------------------------------------
     -- freeFrame

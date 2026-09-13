@@ -1,0 +1,18 @@
+project Allocation_Tests is
+   for Source_Dirs use (".", "fixture", "../../kernel/src");
+   for Source_Files use
+     ("main.adb", "slaballocator.ads", "slaballocator.adb",
+      "linkedlists.ads", "linkedlists.adb", "page_admission.ads", "page_admission.adb",
+      "page_allocation.ads", "page_allocation.adb", "check_page_allocation.adb",
+      "allocation_proof.ads", "allocation_proof.adb",
+      "elf_admission.ads", "elf_admission.adb", "check_elf_admission.adb",
+      "buddyallocator.ads", "buddyallocator.adb", "spinlocks.ads", "spinlocks.adb",
+      "config.ads", "textio.ads", "virtmem.ads");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      -- Assertions/checks are host-only, not kernel switches.
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2", "-g");
+   end Compiler;
+end Allocation_Tests;

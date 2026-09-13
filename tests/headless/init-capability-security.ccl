@@ -1,4 +1,17 @@
 # Capability non-amplification regression profile.
 (startup v1
+  # Rejection before construction, then repeated failure after partial mapping.
+  # The final authorityless app must still launch and pass all its checks.
+  (start "bad-phdr.app" (priority 5))
+  (start "bad-segment.app" (priority 5))
+  (start "bad-stack.app" (priority 5))
+  (start "overlap.app" (priority 5))
+  (start "overlap.app" (priority 5))
+  (start "overlap.app" (priority 5))
+  (start "overlap.app" (priority 5))
+  (start "overlap.app" (priority 5))
+  (start "overlap.app" (priority 5))
+  (start "overlap.app" (priority 5))
+  (start "overlap.app" (priority 5))
   (start "capability-test.app" (priority 5))
 )

@@ -4,11 +4,16 @@
 --
 -- @summary Physical Memory Allocator
 -------------------------------------------------------------------------------
-with Ada.Unchecked_Conversion;
 with Interfaces; use Interfaces;
 
 with Spinlocks;
 with Frame_Pins;
+with Buddy_Bitmap;
+with Buddy_Blocks;
+with Buddy_Geometry;
+with Buddy_Boot_Admission;
+with Buddy_Metadata;
+with Intrusive_List_Splices;
 with TextIO; use TextIO;
 with Util;
 
@@ -16,6 +21,8 @@ package body BuddyAllocator
     with SPARK_Mode => On
 is
     use type System.Address;
+    use type Buddy_Geometry.Count;
+    package List_Splices is new Intrusive_List_Splices (System.Address);
 
     ---------------------------------------------------------------------------
     -- Buddy-pair XOR bitmap for safe coalesce checks.
@@ -25,14 +32,107 @@ is
     -- Dynamically allocated from the boot allocator during setup.
     ---------------------------------------------------------------------------
     bitmapBase     : System.Address := System.Null_Address;
-    maxBitmapPFN   : Unsigned_64 := 0;
-    orderBitOffset : array (Order) of Unsigned_64 := (others => 0);
+    bitmapLayout : Buddy_Bitmap.Layout
+      (Buddy_Bitmap.Order (Natural (Order'Last) - 1));
 
     -- One byte per physical frame.  Bits 0..6 are the pin count and bit 7
     -- records a freeFrame deferred until the final pin is returned.
     pinStateBase    : System.Address := System.Null_Address;
     frameOwnerBase  : System.Address := System.Null_Address;
     maxPinPFN       : Unsigned_64 := 0;
+    blockStateBase : System.Address := System.Null_Address;
+
+    -- Only this adapter converts addresses into metadata locations. All
+    -- callers hold the allocator lock (or are in single-threaded setup).
+    function descriptorAddress (ord : Order; addr : System.Address)
+      return System.Address with SPARK_Mode => Off
+    is
+        phys : Integer_Address;
+        pfn : Unsigned_64;
+        frames : constant Unsigned_64 := 2 ** Natural (ord);
+    begin
+        if To_Integer (addr) < Virtmem.LINEAR_BASE or else
+           addr mod Virtmem.FRAME_SIZE /= 0
+        then
+            raise AllocatorException with "Invalid buddy block address";
+        end if;
+        phys := To_Integer (addr) - Virtmem.LINEAR_BASE;
+        pfn := Unsigned_64 (phys / Integer_Address (Virtmem.FRAME_SIZE));
+        if blockStateBase = System.Null_Address or else pfn > maxPinPFN
+          or else not Buddy_Geometry.Fits
+            (Buddy_Geometry.Frame (pfn), Buddy_Geometry.Frame_Count (frames),
+             Buddy_Geometry.Frame (maxPinPFN))
+        then
+            raise AllocatorException with "Block outside allocator metadata";
+        end if;
+        return To_Address (Integer_Address (Buddy_Metadata.Address_Of
+          (Unsigned_64 (To_Integer (blockStateBase)), Buddy_Metadata.Frame (pfn),
+           Buddy_Metadata.Block_State)));
+    end descriptorAddress;
+
+    function geometryBlock (ord : Order; addr : System.Address)
+      return Buddy_Geometry.Block with SPARK_Mode => Off
+    is
+        checked : constant System.Address := descriptorAddress (ord, addr);
+        pragma Unreferenced (checked);
+    begin
+        -- The single metadata admission boundary checked alignment and extent
+        -- with the same Fits predicate required by the proved constructor.
+        return Buddy_Geometry.Make
+          (Buddy_Geometry.Frame (Virtmem.vaddrToPFN (addr)), 2 ** Natural (ord));
+    end geometryBlock;
+
+    function blockAddress (item : Buddy_Geometry.Block) return System.Address
+      with SPARK_Mode => Off
+    is
+    begin
+        return Virtmem.P2Va (Virtmem.PhysAddress (Buddy_Geometry.First (item)) *
+          Virtmem.FRAME_SIZE);
+    end blockAddress;
+
+    function blockState (ord : Order; addr : System.Address)
+      return Buddy_Blocks.Descriptor with SPARK_Mode => Off
+    is
+        item : Buddy_Blocks.Descriptor with Import,
+          Address => descriptorAddress (ord, addr);
+    begin
+        return item;
+    end blockState;
+
+    procedure moveBlock (ord : Order; addr : System.Address;
+                         action : Buddy_Blocks.Transition)
+      with SPARK_Mode => Off
+    is
+        item : Buddy_Blocks.Descriptor with Import,
+          Address => descriptorAddress (ord, addr);
+        success : Boolean;
+    begin
+        Buddy_Blocks.Move (item, Buddy_Blocks.Order (ord), action, success);
+        if not success then
+            raise AllocatorException with "Invalid buddy block transition";
+        end if;
+    end moveBlock;
+
+    function containsAllocatedFrame (addr : Virtmem.PhysAddress) return Boolean
+      with SPARK_Mode => Off
+    is
+        frame : constant System.Address := Virtmem.P2Va (addr);
+        head : System.Address;
+    begin
+        -- At most MAX_BUDDY_ORDER + 1 metadata reads; supports constituent
+        -- frames of a DMA allocation without treating them as allocation heads.
+        for size in Order loop
+            head := To_Address (To_Integer (frame) and
+              not (Integer_Address (blockSize (size)) - 1));
+            if Buddy_Blocks.Matches (blockState (0, head),
+                                     Buddy_Blocks.Allocated,
+                                     Buddy_Blocks.Order (size))
+            then
+                return True;
+            end if;
+        end loop;
+        return False;
+    end containsAllocatedFrame;
 
     ---------------------------------------------------------------------------
     -- Address Arithmetic (don't tell!)
@@ -72,7 +172,7 @@ is
     ---------------------------------------------------------------------------
     function blockStart (ord : in Order; addr : in System.Address) return System.Address
         with SPARK_Mode => On,
-        Post => blockStart'Result < addr
+        Post => To_Integer (blockStart'Result) <= To_Integer (addr)
     is
         roundDownMask : constant Integer_Address := 
             Integer_Address(not (blockSize (ord) - 1));
@@ -104,18 +204,17 @@ is
         maxPFN     : constant Unsigned_64 :=
             Unsigned_64(Virtmem.MAX_PHYS_USABLE) /
             Unsigned_64(Virtmem.FRAME_SIZE);
-        totalBits  : Unsigned_64 := 0;
         totalBytes : Storage_Count;
         numFrames  : Positive;
         physAddr   : Virtmem.PhysAddress;
     begin
-        for ord in Order range 0 .. Order'Last - 1 loop
-            orderBitOffset(ord) := totalBits;
-            totalBits := totalBits +
-                Shift_Right(maxPFN, Natural(ord) + 1);
-        end loop;
-
-        totalBytes := Storage_Count(Shift_Right(totalBits + 63, 6) * 8);
+        -- Firmware supplies an inclusive maximum, not a count of frames.
+        if maxPFN > Unsigned_64 (Buddy_Bitmap.Frame_Number'Last) then
+            raise AllocatorException with "Physical frame number exceeds x86-64 format";
+        end if;
+        bitmapLayout := Buddy_Bitmap.Make
+          (Buddy_Bitmap.Frame_Number (maxPFN), bitmapLayout.Last_Order);
+        totalBytes := Storage_Count (Buddy_Bitmap.Word_Count (bitmapLayout)) * 8;
 
         if totalBytes < Virtmem.FRAME_SIZE then
             numFrames := 1;
@@ -127,7 +226,6 @@ is
         BootAllocator.allocFrames(numFrames, physAddr);
 
         bitmapBase   := Virtmem.P2Va(physAddr);
-        maxBitmapPFN := maxPFN;
 
         declare
             ignore : System.Address;
@@ -143,28 +241,66 @@ is
     procedure allocPinState with
         SPARK_Mode => Off
     is
+        use type Buddy_Metadata.Byte_Count;
+        -- allocBitmap already admitted the firmware maximum into a bounded
+        -- frame type. All metadata tables must use that same inclusive extent.
+        highest : constant Buddy_Metadata.Frame := Buddy_Metadata.Frame
+          (Buddy_Bitmap.Highest_Frame (bitmapLayout));
         stateBytes : constant Storage_Count :=
-          Storage_Count (Unsigned_64 (Virtmem.MAX_PHYS_USABLE) /
-                         Unsigned_64 (Virtmem.FRAME_SIZE) + 1);
-        numFrames  : constant Positive := Positive
-          ((stateBytes + Virtmem.FRAME_SIZE - 1) / Virtmem.FRAME_SIZE);
+          Storage_Count (Buddy_Metadata.Bytes (highest, Buddy_Metadata.Pin_State));
+        ownerBytes : constant Storage_Count :=
+          Storage_Count (Buddy_Metadata.Bytes (highest, Buddy_Metadata.Frame_Owners));
+        blockBytes : constant Storage_Count :=
+          Storage_Count (Buddy_Metadata.Bytes (highest, Buddy_Metadata.Block_State));
+        statePages : constant Buddy_Metadata.Table_Size := Buddy_Metadata.Pages
+          (highest, Buddy_Metadata.Pin_State, Buddy_Metadata.Page_Size (Virtmem.FRAME_SIZE));
+        ownerPages : constant Buddy_Metadata.Table_Size := Buddy_Metadata.Pages
+          (highest, Buddy_Metadata.Frame_Owners, Buddy_Metadata.Page_Size (Virtmem.FRAME_SIZE));
+        blockPages : constant Buddy_Metadata.Table_Size := Buddy_Metadata.Pages
+          (highest, Buddy_Metadata.Block_State, Buddy_Metadata.Page_Size (Virtmem.FRAME_SIZE));
         pinPhys    : Virtmem.PhysAddress;
         ownerPhys  : Virtmem.PhysAddress;
+        blockPhys  : Virtmem.PhysAddress;
         ignore     : System.Address;
     begin
-        BootAllocator.allocFrames (numFrames, pinPhys);
-        BootAllocator.allocFrames (numFrames, ownerPhys);
+        -- Firmware determines the metadata extent. Validate before narrowing
+        -- into AllocSize: kernel builds intentionally omit subtype checks.
+        if statePages > Buddy_Metadata.Byte_Count (BootAllocator.AllocSize'Last)
+          or else ownerPages > Buddy_Metadata.Byte_Count (BootAllocator.AllocSize'Last)
+          or else blockPages > Buddy_Metadata.Byte_Count (BootAllocator.AllocSize'Last)
+        then
+            raise BootAllocator.OutOfMemoryException with "Buddy metadata exceeds boot allocation capacity";
+        end if;
+        BootAllocator.allocFrames (BootAllocator.AllocSize (statePages), pinPhys);
+        BootAllocator.allocFrames (BootAllocator.AllocSize (ownerPages), ownerPhys);
+        BootAllocator.allocFrames (BootAllocator.AllocSize (blockPages), blockPhys);
         pinStateBase := Virtmem.P2Va (pinPhys);
         frameOwnerBase := Virtmem.P2Va (ownerPhys);
-        maxPinPFN := Unsigned_64 (Virtmem.MAX_PHYS_USABLE) /
-          Unsigned_64 (Virtmem.FRAME_SIZE);
+        blockStateBase := Virtmem.P2Va (blockPhys);
+        maxPinPFN := Unsigned_64 (highest);
         ignore := Util.memset (pinStateBase, 0, stateBytes);
-        ignore := Util.memset (frameOwnerBase, 0, stateBytes);
+        ignore := Util.memset (frameOwnerBase, 0, ownerBytes);
+        -- Descriptor's all-zero representation is Reserved, order zero.
+        ignore := Util.memset (blockStateBase, 0, blockBytes);
 
         print ("Frame pin state: ");
         print (Natural (stateBytes));
         println (" bytes");
     end allocPinState;
+
+    -- The only raw-address admission boundary for bitmap operations. Layout
+    -- geometry and indexing live in the same pure core used by host proofs.
+    function bitmapBit (ord : Order; addr : System.Address) return Buddy_Bitmap.Count
+      with SPARK_Mode => Off
+    is
+        pfn : constant Unsigned_64 := Unsigned_64 (Virtmem.vaddrToPFN (addr));
+    begin
+        if pfn > Unsigned_64 (Buddy_Bitmap.Highest_Frame (bitmapLayout)) then
+            raise AllocatorException with "Frame outside buddy bitmap";
+        end if;
+        return Buddy_Bitmap.Locate
+          (bitmapLayout, Buddy_Bitmap.Order (ord), Buddy_Bitmap.Frame_Number (pfn));
+    end bitmapBit;
 
     ---------------------------------------------------------------------------
     -- toggleBit - Toggle the XOR bit for the buddy pair containing addr
@@ -173,17 +309,13 @@ is
     procedure toggleBit (ord : in Order; addr : in System.Address) with
         SPARK_Mode => Off
     is
-        pfn     : constant Unsigned_64 :=
-            Unsigned_64(Virtmem.vaddrToPFN(addr));
-        pi      : constant Unsigned_64 :=
-            Shift_Right(pfn, Natural(ord) + 1);
-        bitPos  : constant Unsigned_64 := orderBitOffset(ord) + pi;
-        wordIdx : constant Unsigned_64 := Shift_Right(bitPos, 6);
-        bitIdx  : constant Natural := Natural(bitPos and 63);
+        bitPos  : constant Buddy_Bitmap.Count := bitmapBit (ord, addr);
+        wordIdx : constant Storage_Offset := Storage_Offset (Buddy_Bitmap.Word_Index (bitPos));
+        bitIdx  : constant Natural := Buddy_Bitmap.Within_Word (bitPos);
 
         word : aliased Unsigned_64 with
             Import, Address => bitmapBase +
-                Storage_Offset(wordIdx * 8);
+                wordIdx * 8;
     begin
         word := word xor Shift_Left(Unsigned_64(1), bitIdx);
     end toggleBit;
@@ -196,17 +328,13 @@ is
         return Boolean with
         SPARK_Mode => Off
     is
-        pfn     : constant Unsigned_64 :=
-            Unsigned_64(Virtmem.vaddrToPFN(addr));
-        pi      : constant Unsigned_64 :=
-            Shift_Right(pfn, Natural(ord) + 1);
-        bitPos  : constant Unsigned_64 := orderBitOffset(ord) + pi;
-        wordIdx : constant Unsigned_64 := Shift_Right(bitPos, 6);
-        bitIdx  : constant Natural := Natural(bitPos and 63);
+        bitPos  : constant Buddy_Bitmap.Count := bitmapBit (ord, addr);
+        wordIdx : constant Storage_Offset := Storage_Offset (Buddy_Bitmap.Word_Index (bitPos));
+        bitIdx  : constant Natural := Buddy_Bitmap.Within_Word (bitPos);
 
         word : aliased Unsigned_64 with
             Import, Address => bitmapBase +
-                Storage_Offset(wordIdx * 8);
+                wordIdx * 8;
     begin
         return (word and Shift_Left(Unsigned_64(1), bitIdx)) /= 0;
     end testBit;
@@ -219,13 +347,14 @@ is
         SPARK_Mode => Off, -- physical-memory free-list overlays
         Pre     => freeLists(ord).numFreeBlocks > 0,
         Post    => freeLists(ord).numFreeBlocks =
-                   freeLists(ord).numFreeBlocks - 1
+                   freeLists(ord).numFreeBlocks'Old - 1
     is
         retBlock : aliased FreeBlock
             with Import, Volatile, Address => freeLists(ord).nextBlock;
     begin
         -- set output
         addr := freeLists(ord).nextBlock;
+        moveBlock (ord, addr, Buddy_Blocks.Remove);
 
         linkNext:
         declare
@@ -233,13 +362,13 @@ is
                 with Import, Volatile, Address => retBlock.nextBlock;
         begin
             -- fwd link to next block in list (may be the head)
-            freeLists(ord).nextBlock := retBlock.nextBlock;
-
-            -- link next block in list back to head
-            nextBlock.prevBlock := retBlock.prevBlock;
+            List_Splices.Remove
+              (freeLists (ord).nextBlock, nextBlock.prevBlock,
+               getListAddress (ord), retBlock.nextBlock);
         end linkNext;
 
-        freeLists(ord).numFreeBlocks := freeLists(ord).numFreeBlocks - 1;
+        freeLists (ord).numFreeBlocks := List_Splices.Removed
+          (freeLists (ord).numFreeBlocks);
 
         -- Toggle bitmap: this block transitions from free to allocated.
         if ord < Order'Last then
@@ -261,19 +390,14 @@ is
         nextBlock : aliased FreeBlock with
             Import, Volatile, Address => freeLists(ord).nextBlock;
     begin
-        -- point us to the next block in the line
-        newBlock.prevBlock          := nextBlock.prevBlock;
-        newBlock.nextBlock          := freeLists(ord).nextBlock;
+        moveBlock (ord, newBlockAddr, Buddy_Blocks.Publish);
+        List_Splices.Insert_Front
+          (freeLists (ord).nextBlock, nextBlock.prevBlock,
+           newBlock.prevBlock, newBlock.nextBlock,
+           getListAddress (ord), newBlockAddr);
         newBlock.buddy              := getBuddy (ord, newBlockAddr);
-
-        -- point list head fwd to us
-        freeLists(ord).nextBlock    := newBlockAddr;
-
-        -- point next block in line back to us
-        nextBlock.prevBlock         := newBlockAddr;
-
-        -- increase block count
-        freeLists(ord).numFreeBlocks := freeLists(ord).numFreeBlocks + 1;
+        freeLists (ord).numFreeBlocks := List_Splices.Added
+          (freeLists (ord).numFreeBlocks);
     end addToFreeList;
 
     ---------------------------------------------------------------------------
@@ -288,12 +412,27 @@ is
         Post    => freeLists(ord - 1).numFreeBlocks =
                    freeLists(ord - 1).numFreeBlocks'Old + 1
     is
-        rightHalfAddr : constant System.Address := getBuddy((ord - 1), addr);
+        parent : constant Buddy_Geometry.Block := geometryBlock (ord, addr);
+        leftRange, rightRange : Buddy_Geometry.Block;
     begin
-        addToFreeList (ord - 1, rightHalfAddr);
+        Buddy_Geometry.Split (parent, leftRange, rightRange);
+        declare
+            rightHalfAddr : constant System.Address := blockAddress (rightRange);
+            left : Buddy_Blocks.Descriptor with Import,
+              Address => descriptorAddress (ord - 1, blockAddress (leftRange));
+            right : Buddy_Blocks.Descriptor with Import,
+              Address => descriptorAddress (ord - 1, rightHalfAddr);
+            success : Boolean;
+        begin
+            Buddy_Blocks.Split (left, right, Buddy_Blocks.Order (ord), success);
+            if not success then
+                raise AllocatorException with "Invalid buddy split";
+            end if;
+            addToFreeList (ord - 1, rightHalfAddr);
 
-        -- Toggle bitmap: right half transitions to free at ord-1.
-        toggleBit (ord - 1, rightHalfAddr);
+            -- Toggle bitmap: right half transitions to free at ord-1.
+            toggleBit (ord - 1, rightHalfAddr);
+        end;
     end splitBlock;
 
     ---------------------------------------------------------------------------
@@ -331,24 +470,26 @@ is
         block : aliased FreeBlock with
             Import, Volatile, Address => addr;
 
-        prevAddr : constant System.Address := block.prevBlock;
-        nextAddr : constant System.Address := block.nextBlock;
     begin
-
+        -- Validate membership before reading potentially live payload as links.
+        moveBlock (ord, addr, Buddy_Blocks.Remove);
         linkNeighbors:
         declare
+            prevAddr : constant System.Address := block.prevBlock;
+            nextAddr : constant System.Address := block.nextBlock;
             prevBlock : aliased FreeBlock with
                 Import, Volatile, Address => prevAddr;
 
             nextBlock : aliased FreeBlock with
                 Import, Volatile, Address => nextAddr;
         begin
-            prevBlock.nextBlock := nextAddr;
-            nextBlock.prevBlock := prevAddr;
+            List_Splices.Remove
+              (prevBlock.nextBlock, nextBlock.prevBlock, prevAddr, nextAddr);
         end linkNeighbors;
 
-        -- decrement the free list count when we unlink somebody
-        freeLists(ord).numFreeBlocks := freeLists(ord).numFreeBlocks - 1;
+        freeLists (ord).numFreeBlocks := List_Splices.Removed
+          (freeLists (ord).numFreeBlocks);
+
     end unlink;
 
     ---------------------------------------------------------------------------
@@ -444,6 +585,37 @@ is
         return effOrd;
     end effectiveOrder;
 
+    procedure freeLocked (ord : Order; addr : System.Address)
+      with SPARK_Mode => Off;
+
+    procedure admitBootBlock (ord : Order; addr : System.Address)
+      with SPARK_Mode => Off
+    is
+        use type Buddy_Blocks.Block_Kind;
+        frames : constant Natural := 2 ** Natural (ord);
+        base : constant System.Address := descriptorAddress (ord, addr);
+        type Descriptors is array (Natural range <>) of Buddy_Blocks.Descriptor
+          with Component_Size => Buddy_Blocks.Descriptor_Bits;
+        items : Descriptors (0 .. frames - 1) with Import, Address => base;
+        success : Boolean;
+    begin
+        -- Validate the entire range before admitting any part of it. Overlap
+        -- in firmware regions must never seed the same memory twice.
+        for item of items loop
+            if Buddy_Blocks.Kind (item) /= Buddy_Blocks.Reserved then
+                raise AllocatorException with "Overlapping buddy boot admission";
+            end if;
+        end loop;
+        for i in items'Range loop
+            Buddy_Blocks.Admit (items (i), Buddy_Blocks.Order (ord),
+                                i = items'First, success);
+            if not success then
+                raise AllocatorException with "Invalid buddy boot admission";
+            end if;
+        end loop;
+        freeLocked (ord, addr);
+    end admitBootBlock;
+
     ---------------------------------------------------------------------------
     -- setup
     ---------------------------------------------------------------------------
@@ -452,6 +624,7 @@ is
     is
         use type MemoryAreas.MemoryAreaType;
         use type Virtmem.PFN;
+        use type Buddy_Boot_Admission.Admission_Source;
 
         alignedStart          : System.Address;
         alignedEnd            : System.Address;
@@ -473,6 +646,7 @@ is
             freeLists(ord).prevBlock := getListAddress (ord);
             freeLists(ord).nextBlock := getListAddress (ord);
             freeLists(ord).buddy     := System.Null_Address;
+            freeLists(ord).numFreeBlocks := 0;
         end loop;
 
         -- Allocate XOR bitmap for safe buddy-pair coalesce checks.
@@ -516,18 +690,34 @@ is
                             startPFN := Virtmem.vaddrToPFN (topLevelBlockStart);
                             endPFN   := Virtmem.vaddrToPFN (topLevelBlockEnd);
 
-                            if BootAllocator.highestPFNAllocated > startPFN then
+                            if Buddy_Boot_Admission.Source_Of
+                              (Buddy_Boot_Admission.Frame (startPFN),
+                               Buddy_Boot_Admission.Frame
+                                 (BootAllocator.highestPFNAllocated)) =
+                              Buddy_Boot_Admission.Boot_Bitmap
+                            then
                                 -- Within boot allocator range: page by page
                                 eachPFN:
                                 for pfn in startPFN .. endPFN loop
-                                    if BootAllocator.isFree (pfn) then
-                                        free (ord  => Order'First,
+                                    -- The high-water mark is inclusive. Above
+                                    -- it, firmware already admitted the area
+                                    -- and no boot allocation can own a frame.
+                                    -- Do not read past the bounded boot bitmap
+                                    -- when a block straddles its last frame.
+                                    if Buddy_Boot_Admission.Source_Of
+                                      (Buddy_Boot_Admission.Frame (pfn),
+                                       Buddy_Boot_Admission.Frame
+                                         (BootAllocator.highestPFNAllocated)) =
+                                      Buddy_Boot_Admission.Unallocated_Tail
+                                      or else BootAllocator.isFree (pfn)
+                                    then
+                                        admitBootBlock (ord  => Order'First,
                                               addr => Virtmem.P2Va (
                                                   Virtmem.pfnToAddr (pfn)));
                                     end if;
                                 end loop eachPFN;
                             else
-                                free (effOrd, topLevelBlockStart);
+                                admitBootBlock (effOrd, topLevelBlockStart);
                             end if;
                         end loop;
                     end if;
@@ -592,6 +782,7 @@ is
                     curOrd := curOrd - 1;
                 end loop;
 
+                moveBlock (ord, retBlock, Buddy_Blocks.Commit);
                 Spinlocks.exitCriticalSection (lock);
 
                 -- Zero the allocated block outside the lock to prevent
@@ -628,16 +819,6 @@ is
     end allocFrame;
 
     ---------------------------------------------------------------------------
-    -- getOrderNum
-    ---------------------------------------------------------------------------
-    function getOrderNum (ord : in Order) return Natural
-    is
-        function toNat is new Ada.Unchecked_Conversion(Source => Order, Target => Natural);
-    begin
-        return toNat (ord);
-    end getOrderNum;
-
-    ---------------------------------------------------------------------------
     -- free
     ---------------------------------------------------------------------------
     procedure freeLocked (ord : in Order; addr : in System.Address) with
@@ -654,13 +835,42 @@ is
             toggleBit (curOrd, To_Address(freeAddr));
 
             if isBuddyFree (curOrd, To_Address(freeAddr)) then
-                -- buddy is free, coalesce
-
-                -- remove buddy from its current free list
-                unlink (curOrd, getBuddy (curOrd, To_Address(freeAddr)));
-
-                -- combined us+buddy address, whether we were left or right
-                freeAddr := freeAddr and Integer_Address(not blockSize (curOrd));
+                -- XOR proposes a candidate; geometry validates the complete
+                -- pair before list removal, and computes the merged address.
+                declare
+                    candidate : constant System.Address :=
+                      getBuddy (curOrd, To_Address (freeAddr));
+                    leftAddr : constant System.Address :=
+                      (if candidate < To_Address (freeAddr) then candidate
+                       else To_Address (freeAddr));
+                    rightAddr : constant System.Address :=
+                      (if candidate < To_Address (freeAddr) then To_Address (freeAddr)
+                       else candidate);
+                    leftRange : constant Buddy_Geometry.Block :=
+                      geometryBlock (curOrd, leftAddr);
+                    rightRange : constant Buddy_Geometry.Block :=
+                      geometryBlock (curOrd, rightAddr);
+                begin
+                    if not Buddy_Geometry.Can_Merge (leftRange, rightRange) then
+                        raise AllocatorException with "Invalid buddy merge geometry";
+                    end if;
+                    unlink (curOrd, candidate);
+                    declare
+                        left : Buddy_Blocks.Descriptor with Import,
+                          Address => descriptorAddress (curOrd, leftAddr);
+                        right : Buddy_Blocks.Descriptor with Import,
+                          Address => descriptorAddress (curOrd, rightAddr);
+                        success : Boolean;
+                    begin
+                        Buddy_Blocks.Merge (left, right,
+                          Buddy_Blocks.Order (curOrd), success);
+                        if not success then
+                            raise AllocatorException with "Invalid buddy merge";
+                        end if;
+                    end;
+                    freeAddr := To_Integer (blockAddress
+                      (Buddy_Geometry.Merge (leftRange, rightRange)));
+                end;
 
                 -- see if our coalesced block can be combined with the next level up
                 curOrd := curOrd + 1;
@@ -678,7 +888,36 @@ is
         SPARK_Mode => Off  -- lock calls change Global contract
     is
     begin
+        if ord = 0 then
+            -- Use the same pin-aware lifetime path for both public free APIs.
+            declare
+                checked : constant System.Address := descriptorAddress (ord, addr);
+                pragma Unreferenced (checked);
+            begin
+                freeFrame (Virtmem.V2P (addr));
+            end;
+            return;
+        end if;
         Spinlocks.enterCriticalSection (lock);
+        -- Multi-frame DMA teardown must return every pin before freeing the
+        -- containing allocation. Do not silently bypass per-frame lifetimes.
+        declare
+            base : constant System.Address := descriptorAddress (ord, addr);
+            pragma Unreferenced (base);
+            pfn : constant Storage_Offset := Storage_Offset (Virtmem.vaddrToPFN (addr));
+            type Bytes is array (Natural range <>) of Unsigned_8;
+            pins : Bytes (0 .. 2 ** Natural (ord) - 1) with Import,
+              Address => pinStateBase + pfn;
+            owners : Bytes (pins'Range) with Import,
+              Address => frameOwnerBase + pfn;
+        begin
+            for i in pins'Range loop
+                if pins (i) /= 0 or else owners (i) /= 0 then
+                    raise AllocatorException with "Free of owned or pinned buddy block";
+                end if;
+            end loop;
+        end;
+        moveBlock (ord, addr, Buddy_Blocks.Release_Block);
         freeLocked (ord, addr);
 
         Spinlocks.exitCriticalSection (lock);
@@ -694,6 +933,8 @@ is
         use type Frame_Pins.Release_Action;
     begin
         Spinlocks.enterCriticalSection (lock);
+        -- Admission occurs before owner/pin mutations as well as list writes.
+        moveBlock (0, Virtmem.P2Va (addr), Buddy_Blocks.Defer);
         if pinStateBase /= System.Null_Address and then pfn <= maxPinPFN then
             declare
                 state : Unsigned_8 with
@@ -718,6 +959,7 @@ is
             end;
         end if;
 
+        moveBlock (0, Virtmem.P2Va (addr), Buddy_Blocks.Reclaim);
         freeLocked (0, Virtmem.P2Va (addr));
         Spinlocks.exitCriticalSection (lock);
     end freeFrame;
@@ -779,6 +1021,7 @@ is
             Frame_Pins.Unpin (lifetime, success, action);
             state := Frame_Pins.Encode (lifetime);
             if action = Frame_Pins.Reclaim_Frame then
+                moveBlock (0, Virtmem.P2Va (addr), Buddy_Blocks.Reclaim);
                 freeLocked (0, Virtmem.P2Va (addr));
             end if;
         end;
@@ -807,7 +1050,7 @@ is
                 Volatile,
                 Address => frameOwnerBase + Storage_Offset (pfn);
         begin
-            if currentOwner = 0 then
+            if currentOwner = 0 and then containsAllocatedFrame (addr) then
                 currentOwner := owner;
                 success := True;
             end if;

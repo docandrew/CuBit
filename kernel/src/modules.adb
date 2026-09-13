@@ -26,12 +26,22 @@ with Virtmem;
 
 package body Modules with SPARK_Mode => Off is
 
-    initrdAddr  : Virtmem.PhysAddress;
-    initrdSize  : Storage_Count;
+    initrdAddr  : Virtmem.PhysAddress := 0;
+    initrdSize  : Storage_Count := 0;
     devmgrPID   : Process.ProcessID;
 
     -- Package-level to avoid 2KB+ stack usage from FileIndex array
     cpioArchive : Cpio.Archive;
+
+    function residentInitrdRange
+      (Physical : Integer_Address; Length : Storage_Count) return Boolean
+    is
+    begin
+        return initrdAddr /= 0 and then Physical >= Integer_Address (initrdAddr)
+          and then Physical - Integer_Address (initrdAddr) < Integer_Address (initrdSize)
+          and then Integer_Address (Length) <= Integer_Address (initrdSize) -
+            (Physical - Integer_Address (initrdAddr));
+    end residentInitrdRange;
 
     ---------------------------------------------------------------------------
     -- loadFromCpio

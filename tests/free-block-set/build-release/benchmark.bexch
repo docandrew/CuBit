@@ -1,0 +1,22 @@
+[GENERATED OBJECT FILE]
+b__benchmark.o
+[PROJECT FILES]
+/home/doc/git/cubit/tests/free-block-set/benchmark.gpr
+20260913194209 88d0d1a1642bef6368b25496bab28fc5
+[BOUND OBJECT FILES]
+/home/doc/git/cubit/tests/free-block-set/build-release/free_block_set.o
+/home/doc/git/cubit/tests/free-block-set/build-release/benchmark.o
+[GENERATED SOURCE FILES]
+b__benchmark.ads
+b__benchmark.adb
+b__benchmark.ali
+[RESULTING OPTIONS]
+-L/home/doc/git/cubit/tests/free-block-set/build-release/
+-L/home/doc/git/cubit/tests/free-block-set/build-release/
+-L/home/doc/.local/share/alire/toolchains/gnat_native_16.1.0_9f74f58a/lib/gcc/x86_64-pc-linux-gnu/16.1.0/adalib/
+-static
+/home/doc/.local/share/alire/toolchains/gnat_native_16.1.0_9f74f58a/lib/gcc/x86_64-pc-linux-gnu/16.1.0/adalib/libgnarl.a
+/home/doc/.local/share/alire/toolchains/gnat_native_16.1.0_9f74f58a/lib/gcc/x86_64-pc-linux-gnu/16.1.0/adalib/libgnat.a
+-lrt
+-lpthread
+-ldl

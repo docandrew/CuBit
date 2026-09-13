@@ -68,7 +68,9 @@ build/init.bin: src/init.asm
 MAX_STACK_USAGE := 2048
 
 # kernel ELF object
-cubit_kernel: build/libcubit.a build/init.bin
+cubit_kernel: build/libcubit.a build/init.bin cubit.gpr linker.ld Makefile \
+              $(wildcard src/*.ads src/*.adb src/*.asm src/*.adc \
+                         src/services/*.ads src/services/*.adb)
 # Compile and bind only
 	$(ALR) gprbuild -b -c -Pcubit.gpr
 # Check kernel stack usage - fail if any function exceeds threshold.
@@ -376,6 +378,8 @@ capability-test: user_runtime ccl-manifest
 	$(call compile_ccl_manifest,../userspace/apps/capability-test)
 	$(ALR) gprbuild -P ../userspace/apps/capability-test/capability_test.gpr
 	cp ../userspace/apps/capability-test/build/capability-test.app isodir/boot/capability-test.app
+	$(ALR) python3 ../tests/process-construction/make-fixtures.py \
+		isodir/boot/capability-test.app ../tests/process-construction/build
 
 # Portable protocol checks and an unprivileged native desktop adversary.
 .PHONY : desktop-check prepare-desktop-protocol test-desktop-protocol prove-desktop-protocol

@@ -175,6 +175,10 @@ package Mem_mgr is
     ---------------------------------------------------------------------------
     procedure createGuardPage (physAddr : in Virtmem.PhysAddress);
 
+    -- Physical exhaustion leaves the mapping unchanged and returns False.
+    procedure tryCreateGuardPage
+      (physAddr : Virtmem.PhysAddress; success : out Boolean);
+
     ---------------------------------------------------------------------------
     -- removeGuardPage - restore a previously unmapped guard page so the
     -- buddy allocator can reuse the frame. Must be called before freeing

@@ -37,7 +37,7 @@ class Images(unittest.TestCase):
         self.catalog.write_text(CATALOG)
         self.profile.write_text(PROFILE)
         (self.root / "a.app").write_bytes(b"fixture executable")
-        (self.root / "settings.ccl").write_text('(system-config v1 (set "answer" (* 6 7)))')
+        (self.root / "settings.ccl").write_text('(system-config v1 (setting "answer" (* 6 7)))')
 
     def compile(self, profile=PROFILE, catalog=CATALOG):
         self.catalog.write_text(catalog)
@@ -175,7 +175,7 @@ class Images(unittest.TestCase):
         (self.root / "settings.ccl").write_text('(startup v1 (start "a.app" (priority 5)))')
         with self.assertRaisesRegex(ValueError, "profile kind mismatch"):
             self.prepare()
-        (self.root / "settings.ccl").write_text('(system-config v1 (set "x" 1))')
+        (self.root / "settings.ccl").write_text('(system-config v1 (setting "x" 1))')
         self.catalog.write_text(CATALOG[:-1] + '(artifact "start" repository "start.ccl"))')
         self.profile.write_text(PROFILE[:-1] + '(startup "start"))')
         (self.root / "start.ccl").write_text('(startup v1 (start "missing.app" (priority 5)))')

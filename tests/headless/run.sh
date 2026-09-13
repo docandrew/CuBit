@@ -610,6 +610,17 @@ if [ -n "$INIT_PROFILE" ]; then
             exit 1
         fi
     fi
+    if [ "$TEST_NAME" = "capability-security" ]; then
+        for fixture in bad-phdr.app bad-segment.app bad-stack.app overlap.app; do
+            fixture_path="$ROOT_DIR/tests/process-construction/build/$fixture"
+            if [ ! -f "$fixture_path" ]; then
+                echo "headless: build capability-test first ($fixture_path missing)" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $fixture" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "write $fixture_path $fixture" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        done
+    fi
     if [ "$TEST_NAME" = "input-stream" ]; then
         for INPUT_TEST_IMAGE_NAME in \
           input-stress.app ccl-workbench.app clock.svc; do
@@ -1414,6 +1425,20 @@ ccl-workbench: live label STOPPED
         ;;
     capability-security)
         required_markers="
+Process.Loader: invalid program-header table
+Process.Loader: invalid load-segment geometry or flags
+Process.Loader: PT_GNU_STACK size violates stack policy
+Process.Loader: unpublished process reclaimed
+procmgr: init spawn failed: bad-phdr.app
+procmgr: init spawn failed: bad-segment.app
+procmgr: init spawn failed: bad-stack.app
+procmgr: init spawn failed: overlap.app
+capability-test: heap query PASS
+capability-test: stack demand pages writable and retained PASS
+capability-test: heap wrapping request rejected without growth PASS
+capability-test: heap oversized request rejected without growth PASS
+capability-test: heap usable after rejected requests PASS
+capability-test: heap admitted pages zeroed and writable PASS
 capability-test: syscall registers normal return PASS
 capability-test: syscall registers unknown call PASS
 capability-test: syscall registers denied call PASS
@@ -1814,6 +1839,9 @@ if [ "$TEST_NAME" = "ccl-workspace" ]; then
         echo "headless: saved source revisions were not preserved correctly" >&2
         exit 1
     fi
+fi
+if [ "$TEST_NAME" = "capability-security" ]; then
+    python3 "$ROOT_DIR/tests/process-construction/check-log.py" "$SERIAL_LOG"
 fi
 HEADLESS_TEST_FAILED=0
 echo "headless: PASS $TEST_NAME"

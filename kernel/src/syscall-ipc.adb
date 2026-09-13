@@ -4,6 +4,7 @@
 --
 -- Syscall IPC, memory, and process creation handler implementations.
 -------------------------------------------------------------------------------
+pragma Ada_2022;
 with Ada.Unchecked_Conversion;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -16,17 +17,20 @@ with Capabilities.Operations;
 with InterruptNumbers;
 with IPC_Labels;
 with ELF;
+with Heap_Admission;
 with Interrupts;
 with Memory_Grants;
 with PerCpuData;
 with Process;
 with Process.IPC;
 with Process.Loader;
+with Process.User_Memory;
 with Spinlocks;
 with Process_Lifetime;
 with Sysinfo;
 with TextIO; use TextIO;
 with Util;
+with User_Buffer_Copy;
 with Video.VGA;
 with Virtmem;
 with x86;
@@ -61,7 +65,7 @@ package body Syscall.IPC is
                            arg4      : Unsigned_64;
                            arg5      : Unsigned_64;
                            retval    : out Unsigned_64) with
-        SPARK_Mode => Off   -- Import overlay
+        SPARK_Mode => Off   -- Raw syscall/process integration; pure helpers proved separately
     is
         use type ELF.SegmentType;
         use type Capabilities.CapabilityType;
@@ -69,11 +73,11 @@ package body Syscall.IPC is
 
         hasCap   : Boolean := False;
         elfAddr  : constant System.Address := Util.numToAddr (arg0);
-        elfSize  : constant Storage_Count := Storage_Count (arg1);
+        elfSize  : Storage_Count;
         priority : Process.ProcessPriority;
-        elfHeader : ELF.ELFFileHeader with Import, Address => elfAddr;
-        defaultName : aliased constant String := "spawned" & ASCII.NUL;
-        nameAddr : System.Address;
+        elfHeader : aliased ELF.ELFFileHeader;
+        name : aliased Process.ProcessName := [others => ASCII.NUL];
+        copied : Boolean;
         newPID   : Process.ProcessID;
         reqPID   : Process.ProcessID := Process.NO_PROCESS;
     begin
@@ -93,16 +97,21 @@ package body Syscall.IPC is
         if not hasCap then
             println ("SPAWN: denied, no CAP_PROCESS/EXECUTE");
             return;
-        elsif elfSize < 64 then
-            println ("SPAWN: ELF too small");
+        elsif arg1 < ELF.ELFFileHeader'Size / 8 or else
+          not User_Buffer_Copy.Valid_Range (arg0, arg1) then
+            println ("SPAWN: invalid ELF source range");
+            return;
+        end if;
+        -- Validate before converting the unsigned ABI length or reading it.
+        elfSize := Storage_Count (arg1);
+        Process.User_Memory.Copy
+          (callerPID, arg0, elfHeader'Address, ELF.ELFFileHeader'Size / 8, copied);
+        if not copied then
+            println ("SPAWN: ELF header source unreadable");
             return;
         end if;
 
-        -- Enable user memory access for ELF reading (SMAP)
-        x86.stac;
-
         if not Process.Loader.isValidELF (elfHeader) then
-            x86.clac;
             println ("SPAWN: invalid ELF header");
             return;
         end if;
@@ -121,23 +130,26 @@ package body Syscall.IPC is
 
         -- arg3 = name pointer (0 = default "spawned")
         if arg3 /= 0 then
-            nameAddr := Util.numToAddr (arg3);
+            Process.User_Memory.Copy_Name (callerPID, arg3, name, copied);
+            if not copied then
+                println ("SPAWN: process name unreadable");
+                return;
+            end if;
         else
-            nameAddr := defaultName'Address;
+            name (1 .. 7) := "spawned";
         end if;
 
         newPID := Process.Loader.load (
             elfHeader    => elfHeader,
             objStart     => elfAddr,
             size         => elfSize,
-            strAddr      => nameAddr,
+            strAddr      => name'Address,
             requestedPID => reqPID,
             priority     => priority,
             ppid         => (if arg5 <= Unsigned_64 (Process.ProcessID'Last)
                               then Process.ProcessID (arg5)
-                              else callerPID));
-
-        x86.clac;
+                              else callerPID),
+            sourcePID    => callerPID);
 
         if newPID = Process.NO_PROCESS then
             println ("SPAWN: load failed");
@@ -511,55 +523,53 @@ package body Syscall.IPC is
                           retval    : out Unsigned_64) with
         SPARK_Mode => Off
     is
-        function toNum is new Ada.Unchecked_Conversion
-            (System.Address, Unsigned_64);
-
-        increment : constant Storage_Count := Storage_Count(arg0);
-        oldEnd    : constant System.Address :=
-            Process.proctab(callerPID).heapEnd;
-        newEnd    : System.Address;
+        use type Heap_Admission.Status;
+        use type Process.Page_Allocation_Result;
+        plan : constant Heap_Admission.Growth_Plan := Heap_Admission.Plan
+          (Heap_Start => Unsigned_64 (To_Integer (Process.proctab(callerPID).heapStart)),
+           Current_Break => Unsigned_64 (To_Integer (Process.proctab(callerPID).heapEnd)),
+           Exclusive_Limit => Unsigned_64
+             (Integer_Address'Min
+                (Process.GRANT_REGION_BASE,
+                 To_Integer (Process.proctab(callerPID).stackBottom)) and Virtmem.PAGE_MASK),
+           Increment => arg0,
+           Used_Frames => Unsigned_64 (Process.proctab(callerPID).frames.length),
+           Tracking_Capacity => Unsigned_64 (Process.proctab(callerPID).frames.capacity),
+           Quota => Unsigned_64 (Process.proctab(callerPID).quota.maxFrames));
         storage   : System.Address;
         curPage   : System.Address;
-        newPage   : System.Address;
+        remaining : Unsigned_64;
+        allocation : Process.Page_Allocation_Result;
     begin
-        if increment = 0 then
-            retval := toNum (oldEnd);
-        else
-            newEnd := oldEnd + increment;
+        retval := reterr;
+        if plan.Result /= Heap_Admission.Ready then return; end if;
 
-            curPage := To_Address (
-                (To_Integer(oldEnd) +
-                 Integer_Address(Virtmem.PAGE_SIZE - 1)) and
-                Integer_Address(Virtmem.PAGE_MASK));
-
-            newPage := To_Address (
-                (To_Integer(newEnd) +
-                 Integer_Address(Virtmem.PAGE_SIZE - 1)) and
-                Integer_Address(Virtmem.PAGE_MASK));
-
-            while To_Integer(curPage) < To_Integer(newPage) loop
-                -- Check memory quota before allocating
-                if Process.proctab(callerPID).quota.maxFrames > 0 and then
-                   Process.proctab(callerPID).frames.length >=
-                   Process.proctab(callerPID).quota.maxFrames
-                then
-                    -- Partial alloc: update heapEnd to what we managed
-                    Process.proctab(callerPID).heapEnd := curPage;
-                    retval := toNum (oldEnd);
-                    return;
+        --  One executing member per user address space is enforced by create;
+        --  its execution pin prevents reaping while this syscall runs. Shared
+        --  address spaces will require reservation/serialization before they
+        --  can be enabled. No new global allocator lock is introduced here.
+        curPage := To_Address (Integer_Address (plan.First_Page));
+        remaining := plan.Page_Count;
+        while remaining > 0 loop
+            Process.tryAddPage
+              (proc => Process.proctab(callerPID), mapTo => curPage,
+               storage => storage, result => allocation, flags => Virtmem.PG_USERDATA);
+            if allocation /= Process.Page_Added then
+                -- Nothing mapped: ordinary allocation failure, break unchanged.
+                -- Partial growth: stop this process through normal retirement.
+                -- Do not free published pages without SMP TLB/pin coordination,
+                -- or return to userspace with writable pages beyond its break.
+                if remaining /= plan.Page_Count then
+                    Process.kill (callerPID);
                 end if;
-
-                Process.addPage (
-                    proc    => Process.proctab(callerPID),
-                    mapTo   => curPage,
-                    storage => storage,
-                    flags   => Virtmem.PG_USERDATA);
-                curPage := curPage + Virtmem.PAGE_SIZE;
-            end loop;
-
-            Process.proctab(callerPID).heapEnd := newEnd;
-            retval := toNum (oldEnd);
-        end if;
+                return;
+            end if;
+            curPage := curPage + Virtmem.PAGE_SIZE;
+            remaining := remaining - 1;
+        end loop;
+        Process.proctab(callerPID).heapEnd :=
+          To_Address (Integer_Address (plan.New_Break));
+        retval := plan.Old_Break;
     end handleSbrk;
 
     ---------------------------------------------------------------------------

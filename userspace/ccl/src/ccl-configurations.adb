@@ -185,7 +185,7 @@ package body CCL.Configurations with SPARK_Mode => On is
       while not Stopped and then not At_Close (Reader) and then not At_End (Reader) loop
          Open_Form (Reader);
          Read_Symbol (Reader, Name);
-         if Kind = System_Profile and then Matches (Name, "set") then Setting;
+         if Kind = System_Profile and then Matches (Name, "setting") then Setting;
          elsif Kind = Startup_Profile and then Matches (Name, "start") then Launch;
          else Fail (Unknown_Declaration);
          end if;

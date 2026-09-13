@@ -41,6 +41,7 @@ with Execution_Accounting;
 with IPC_Request_Ids;
 with LinkedLists;
 with Memory_Grants;
+with Page_Allocation;
 with Process_Lifetime;
 with Scheduling_Shadow;
 with Scheduling_Turns;
@@ -735,7 +736,7 @@ package Process is
                                  homeCPU    : in Natural := 0);
 
     ---------------------------------------------------------------------------
-    -- addPage
+    -- tryAddPage
     --
     -- Map a page into this process' address space at the specified virtual
     -- address with the given flags. This procedure will allocate memory for
@@ -749,16 +750,26 @@ package Process is
     --  for this page.
     -- @param flags - Page Table flags for this mapping.
     ---------------------------------------------------------------------------
-    procedure addPage (proc    : in out Process;
-                       mapTo   : in System.Address;
-                       storage : out System.Address;
-                       flags   : in Unsigned_64 := Virtmem.PG_USERDATA);
+    type Page_Allocation_Result is new Page_Allocation.Result;
+
+    -- Expected resource failures do not raise. On failure storage is null;
+    -- no data frame or list node is leaked, and no leaf mapping is published.
+    -- Intermediate page tables may remain linked for reuse / normal teardown.
+    -- Requires serialized address-space mutation. Local runtime calls have an
+    -- execution pin and one executing member; privileged remote mapping paths
+    -- still need a common mutation-lock audit. Shared threads remain disabled.
+    procedure tryAddPage
+      (proc : in out Process; mapTo : System.Address; storage : out System.Address;
+       result : out Page_Allocation_Result;
+       flags : Unsigned_64 := Virtmem.PG_USERDATA);
 
     ---------------------------------------------------------------------------
     -- create:
     --
-    -- Creates a new process or thread in the SUSPENDED state. Writes
-    -- directly to proctab(pid) to avoid large stack allocations.
+    -- Creates an unpublished process in the SUSPENDED state. Returns NO_PROCESS
+    -- on resource exhaustion/invalid geometry; shared threads are not supported.
+    -- Writes directly to proctab(pid) to avoid large stack allocations. The
+    -- builder must either publish it or discardUnpublished it after success.
     --
     -- @param procStart - the virtual process address where execution should
     --  start.
@@ -912,6 +923,11 @@ package Process is
                           return Boolean;
     procedure startReaper;
     procedure publish (pid : ProcessID);
+
+    -- Builder-only rollback: PID is exclusively owned by construction, has
+    -- never been published or dispatched, and has no external grants/handles.
+    -- Not a substitute for kill/retirement of an admitted process.
+    procedure discardUnpublished (pid : ProcessID);
     -- Caller holds Process.lock. Execution presence spans IPC state changes.
     procedure noteContextStarted (pid : ProcessID);
     procedure noteContextStopped (pid : ProcessID);
@@ -1005,6 +1021,9 @@ private
         -----------------------------------------------------------------------
         procedure allocSpecificPID (pid : in ProcessID) with
             Global => (In_Out => PIDTrackerState);
+
+        procedure tryAllocSpecificPID (pid : ProcessID; success : out Boolean)
+          with Global => (In_Out => PIDTrackerState);
 
         -----------------------------------------------------------------------
         -- freePID: mark PID as free in bitmap. Acquires pidLock.

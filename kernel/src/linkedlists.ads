@@ -108,6 +108,10 @@ package LinkedLists is
     ---------------------------------------------------------------------------
     procedure insertFront (myList : in out List; element : in T);
 
+    -- Capacity/physical exhaustion leaves the list unchanged.
+    procedure tryInsertFront
+      (myList : in out List; element : in T; success : out Boolean);
+
     ---------------------------------------------------------------------------
     -- insertBack
     -- Insert an element at the back of this linked list.

@@ -34,7 +34,8 @@ package Process.Loader is
                    strAddr      : System.Address;
                    requestedPID : ProcessID := NO_PROCESS;
                    priority     : ProcessPriority := 1;
-                   ppid         : ProcessID := NO_PROCESS) return ProcessID
+                   ppid         : ProcessID := NO_PROCESS;
+                   sourcePID    : ProcessID := NO_PROCESS) return ProcessID
         with SPARK_Mode => Off; -- Allocates and maps a live address space.
 
 end Process.Loader;

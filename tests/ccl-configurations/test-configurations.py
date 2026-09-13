@@ -39,6 +39,11 @@ class Configurations(unittest.TestCase):
             with self.subTest(profile=relative):
                 expected = ''.join(line + '\n' for line in fixture.read_text().splitlines()
                                    if line and not line.startswith('#'))
+                if relative.as_posix() in ('system.conf', 'tests/hardware/system-live.conf'):
+                    # Intentional post-migration default added with RTC time.
+                    # Preserve the legacy oracle and account for the exact key.
+                    self.assertNotIn('clock.time-zone=', expected)
+                    expected = 'clock.time-zone=UTC\n' + expected
                 result = self.compile(source.read_text())
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(result.stdout, expected)
@@ -47,10 +52,10 @@ class Configurations(unittest.TestCase):
     def test_real_ccl_field_expressions(self):
         result = self.compile('''# Ordinary CCL, no host callbacks
           (system-config v1
-            (set (concat "net." "name") (concat "Cu" "Bit"))
-            (set "count" (* 6 7))
-            (set "negative" -4)
-            (set "enabled" (if (= 2 2) true false)))''')
+            (setting (concat "net." "name") (concat "Cu" "Bit"))
+            (setting "count" (* 6 7))
+            (setting "negative" -4)
+            (setting "enabled" (if (= 2 2) true false)))''')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, 'net.name=CuBit\ncount=42\nnegative=-4\nenabled=true\n')
 
@@ -64,20 +69,21 @@ class Configurations(unittest.TestCase):
 
     def test_rejected_config(self):
         for text, diagnostic in [
-            ('(system-config v2 (set "x" 1))', 'UNSUPPORTED_VERSION'),
+            ('(system-config v1 (set "x" 1))', 'UNKNOWN_DECLARATION'),
+            ('(system-config v2 (setting "x" 1))', 'UNSUPPORTED_VERSION'),
             ('(system-config v1)', 'MISSING_FIELD'),
             ('(startup v1)', 'MISSING_FIELD'),
-            ('(system-config v1 (set "x" ""))', 'INVALID_VALUE'),
-            ('(system-config v1 (set "" 1))', 'INVALID_KEY'),
-            ('(system-config v1 (set "a=b" 1))', 'INVALID_KEY'),
-            ('(system-config v1 (set "a b" 1))', 'INVALID_KEY'),
-            ('(system-config v1 (set "x" "a\\nb=2"))', 'INVALID_VALUE'),
-            ('(system-config v1 (set "x" "a\\rb=2"))', 'INVALID_VALUE'),
-            ('(system-config v1 (set "x" "é"))', 'INVALID_VALUE'),
-            ('(system-config v1 (set "x" 1) (set "x" 2))', 'DUPLICATE_KEY'),
+            ('(system-config v1 (setting "x" ""))', 'INVALID_VALUE'),
+            ('(system-config v1 (setting "" 1))', 'INVALID_KEY'),
+            ('(system-config v1 (setting "a=b" 1))', 'INVALID_KEY'),
+            ('(system-config v1 (setting "a b" 1))', 'INVALID_KEY'),
+            ('(system-config v1 (setting "x" "a\\nb=2"))', 'INVALID_VALUE'),
+            ('(system-config v1 (setting "x" "a\\rb=2"))', 'INVALID_VALUE'),
+            ('(system-config v1 (setting "x" "é"))', 'INVALID_VALUE'),
+            ('(system-config v1 (setting "x" 1) (setting "x" 2))', 'DUPLICATE_KEY'),
             ('(system-config v1 (unknown "x" 1))', 'UNKNOWN_DECLARATION'),
-            ('(system-config v1 (set "x" (clock.monotonic-ms)))', 'INVALID_SYNTAX'),
-            ('(system-config v1 (set "x" 1)) trailing', 'TRAILING_INPUT')]:
+            ('(system-config v1 (setting "x" (clock.monotonic-ms)))', 'INVALID_SYNTAX'),
+            ('(system-config v1 (setting "x" 1)) trailing', 'TRAILING_INPUT')]:
             with self.subTest(text=text):
                 self.reject(text, diagnostic)
 
@@ -95,7 +101,7 @@ class Configurations(unittest.TestCase):
         self.reject(base.replace('(priority 5)', '(priority 5) (grant everything)'), 'UNKNOWN_DECLARATION')
 
     def test_symbolic_format_versions(self):
-        for kind, fields in (("system-config", '(set "x" 1)'),
+        for kind, fields in (("system-config", '(setting "x" 1)'),
                              ("startup", '(start "a.app" (priority 5))')):
             for token in ("1", "2", "v2", "V1", '"v1"', "(+ 0 1)"):
                 with self.subTest(kind=kind, token=token):
@@ -104,12 +110,12 @@ class Configurations(unittest.TestCase):
     def test_bounds(self):
         self.reject('#' * 8193)
         for length, good in ((128, True), (129, False)):
-            source = f'(system-config v1 (set "{"k" * length}" 1))'
+            source = f'(system-config v1 (setting "{"k" * length}" 1))'
             if good:
                 self.assertEqual(self.compile(source).returncode, 0)
             else:
                 self.reject(source, 'INVALID_KEY')
-        self.reject('(system-config v1 ' + ' '.join(f'(set "k{i}" 1)' for i in range(129)) + ')',
+        self.reject('(system-config v1 ' + ' '.join(f'(setting "k{i}" 1)' for i in range(129)) + ')',
                     'TOO_MANY_ENTRIES')
         self.assertEqual(self.compile('(startup v1 ' + '(start "a.app" (priority 5))' * 16 + ')').returncode, 0)
         self.reject('(startup v1 ' + '(start "a.app" (priority 5))' * 17 + ')', 'TOO_MANY_ENTRIES')
@@ -117,7 +123,7 @@ class Configurations(unittest.TestCase):
         for i in reversed(range(1, 6)):
             value = f'(let ((x{i} (concat x{i-1} x{i-1}))) {value})'
         value = f'(let ((x0 "{"x" * 32}")) {value})'
-        source = '(system-config v1 ' + ' '.join(f'(set "k{i}" {value})' for i in range(33)) + ')'
+        source = '(system-config v1 ' + ' '.join(f'(setting "k{i}" {value})' for i in range(33)) + ')'
         self.assertLessEqual(len(source), 8192)
         self.assertEqual(self.compile(source).returncode, 0)
 

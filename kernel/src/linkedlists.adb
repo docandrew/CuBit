@@ -5,6 +5,8 @@
 -- @summary Linked List implementation
 -------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
+with Ada.Unchecked_Conversion;
+with System;
 
 with BuddyAllocator;
 with Config;
@@ -63,45 +65,25 @@ package body LinkedLists is
     ---------------------------------------------------------------------------
     -- insertFront
     ---------------------------------------------------------------------------
-    procedure insertFront (myList : in out List; element : in T)
+    procedure tryInsertFront
+      (myList : in out List; element : in T; success : out Boolean)
     is
-        prevHead : constant NodePtr := myList.head;
-        newNode  : constant NodePtr := new Node'(element => element,
-                                                 next    => null,
-                                                 prev    => null);
+        use type System.Address;
+        function To_Node is new Ada.Unchecked_Conversion (System.Address, NodePtr);
+        address : System.Address;
+        newNode : NodePtr;
     begin
-        if myList.length = myList.capacity then
-            raise LinkedListException with "Exceeded list capacity";
+        success := False;
+        if myList.length >= myList.capacity then
+            return;
         end if;
 
-        if myList.length = 0 then
-            newNode.prev    := newNode;
-            newNode.next    := newNode;
-            myList.head     := newNode;
-            myList.tail     := newNode;
-        else
-            newNode.prev    := myList.head;
-            newNode.next    := prevHead;
-            prevHead.prev   := newNode;
-            myList.head     := newNode;
-        end if;
-
-        myList.length := myList.length + 1;
-    end insertFront;
-
-    ---------------------------------------------------------------------------
-    -- insertBack
-    ---------------------------------------------------------------------------
-    procedure insertBack (myList : in out List; element : in T)
-    is
-        prevTail : constant NodePtr := myList.tail;
-        newNode  : constant NodePtr := new Node'(element => element,
-                                                 next    => null,
-                                                 prev    => null);
-    begin
-        if myList.length = myList.capacity then
-            raise LinkedListException with "Exceeded list capacity";
-        end if;
+        SlabAllocator.tryAllocate (nodeSlab, address);
+        if address = System.Null_Address then return; end if;
+        -- Storage comes from the same pool used by free; no allocation or
+        -- externally supplied pointer is hidden in this conversion.
+        newNode := To_Node (address);
+        newNode.all := (element => element, next => null, prev => null);
 
         if myList.length = 0 then
             newNode.prev    := newNode;
@@ -111,11 +93,34 @@ package body LinkedLists is
         else
             newNode.prev    := myList.tail;
             newNode.next    := myList.head;
-            prevTail.next   := newNode;
-            myList.tail     := newNode;
+            myList.head.prev := newNode;
+            myList.tail.next := newNode;
+            myList.head     := newNode;
         end if;
 
         myList.length := myList.length + 1;
+        success := True;
+    end tryInsertFront;
+
+    procedure insertFront (myList : in out List; element : in T) is
+        success : Boolean;
+    begin
+        tryInsertFront (myList, element, success);
+        if not success then
+            raise LinkedListException with "List capacity or node storage exhausted";
+        end if;
+    end insertFront;
+
+    ---------------------------------------------------------------------------
+    -- insertBack
+    ---------------------------------------------------------------------------
+    procedure insertBack (myList : in out List; element : in T)
+    is
+    begin
+        insertFront (myList, element);
+        -- Rotate the circular list to put the new head at its back.
+        myList.tail := myList.head;
+        myList.head := myList.head.next;
     end insertBack;
 
     ---------------------------------------------------------------------------
@@ -124,16 +129,20 @@ package body LinkedLists is
     procedure popFront (myList : in out List)
     is
         oldHead : NodePtr;
-        newHead : NodePtr;
     begin
         if myList.length = 0 then
             raise ListEmptyException with "Cannot popFront on empty list";
         end if;
 
         oldHead         := myList.head;
-        newHead         := myList.head.next;
-        newHead.prev    := myList.head;
-        myList.head     := newHead;
+        if myList.length = 1 then
+            myList.head := null;
+            myList.tail := null;
+        else
+            myList.head := oldHead.next;
+            myList.head.prev := myList.tail;
+            myList.tail.next := myList.head;
+        end if;
 
         free (oldHead);
         myList.length := myList.length - 1;
@@ -158,16 +167,20 @@ package body LinkedLists is
     procedure popBack (myList : in out List)
     is
         oldTail : NodePtr;
-        newTail : NodePtr;
     begin
         if myList.length = 0 then
             raise ListEmptyException with "Cannot popBack of empty list";
         end if;
 
         oldTail         := myList.tail;
-        newTail         := myList.tail.prev;
-        newTail.next    := myList.head;
-        myList.tail     := newTail;
+        if myList.length = 1 then
+            myList.head := null;
+            myList.tail := null;
+        else
+            myList.tail := oldTail.prev;
+            myList.tail.next := myList.head;
+            myList.head.prev := myList.tail;
+        end if;
 
         free(oldTail);
         myList.length := myList.length - 1;

@@ -38,17 +38,22 @@ is
         pool.numFree := pool.numFree + 1;
     end insertFreeNodeLocked;
 
-    procedure addStorage (pool : in out Slab) with SPARK_Mode => Off is
+    procedure addStorage (pool : in out Slab; success : out Boolean)
+      with SPARK_Mode => Off is
         blockAddr    : System.Address;
         objsPerBlock : constant Storage_Count := BuddyAllocator.blockSize (pool.blockOrder) / pool.paddedSize;
     begin
+        success := False;
+        if pool.numBlocks = pool.blocks'Length then
+            return;
+        end if;
         -- Allocate a new block
         -- println ("SlabAllocator: Allocating block ");
         BuddyAllocator.alloc (pool.blockOrder, blockAddr);
         -- print ("SlabAllocator: Allocated block at "); println (blockAddr);
 
         if blockAddr = System.Null_Address then
-            raise OutOfMemoryException with "Slab could not allocate additional physical memory";
+            return;
         end if;
 
         pool.numBlocks := pool.numBlocks + 1;
@@ -62,6 +67,7 @@ is
             -- from Allocate already owns the mutex.
             insertFreeNodeLocked (pool, blockAddr + (index * pool.paddedSize));
         end loop;
+        success := True;
     end addStorage;
 
     ---------------------------------------------------------------------------
@@ -75,6 +81,7 @@ is
         SPARK_Mode => Off
     is
         minSize : System.Storage_Elements.Storage_Count;
+        success : Boolean;
     begin
         pool.numFree := 0;
         pool.initialized := False;
@@ -111,7 +118,10 @@ is
         pool.freeList.prev := pool.freeList'Address;
         pool.freeList.next := pool.freeList'Address;
 
-        addStorage (pool);
+        addStorage (pool, success);
+        if not success then
+            raise OutOfMemoryException with "Slab setup could not allocate physical memory";
+        end if;
         pool.initialized := True;
 
     end setup;
@@ -149,24 +159,25 @@ is
     ---------------------------------------------------------------------------
     -- Allocate
     ---------------------------------------------------------------------------
-    procedure Allocate (pool     : in out Slab;
-                        addr     : out System.Address;
-                        ignore_1 : in System.Storage_Elements.Storage_Count := 0;
-                        ignore_2 : in System.Storage_Elements.Storage_Count := 0)
+    procedure tryAllocate (pool : in out Slab; addr : out System.Address)
     with
         SPARK_Mode => Off -- lock-protected in-band free-list overlays
     is
+        success : Boolean;
     begin
+        addr := System.Null_Address;
         if not pool.initialized then
             raise NotInitializedException with "Allocate: Slab not initialized with call to setup";
         end if;
 
         Spinlocks.enterCriticalSection (pool.mutex);
 
-        if not hasFree (pool) then
-            raise OutOfMemoryException with "Slab is empty";
-        elsif pool.numFree = 0 then
-            addStorage (pool);
+        if pool.numFree = 0 then
+            addStorage (pool, success);
+            if not success then
+                Spinlocks.exitCriticalSection (pool.mutex);
+                return;
+            end if;
         end if;
 
         -- out param - first free node in the list
@@ -189,6 +200,22 @@ is
         pool.numFree := pool.numFree - 1;
 
         Spinlocks.exitCriticalSection (pool.mutex);
+    end tryAllocate;
+
+    procedure Allocate (pool     : in out Slab;
+                        addr     : out System.Address;
+                        ignore_1 : in System.Storage_Elements.Storage_Count := 0;
+                        ignore_2 : in System.Storage_Elements.Storage_Count := 0)
+      with SPARK_Mode => Off
+    is
+    begin
+        tryAllocate (pool, addr);
+        if addr = System.Null_Address then
+            -- GNAT's storage-pool interface cannot return an error status.
+            -- Raise only AFTER releasing the mutex. Fallible callers use
+            -- tryAllocate directly, never an exception as resource control flow.
+            raise OutOfMemoryException with "Slab is empty";
+        end if;
     end Allocate;
 
 

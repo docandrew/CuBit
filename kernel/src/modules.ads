@@ -19,6 +19,13 @@ is
     MAGIC_RAMDISK_ADDRESS : System.Address;
     MAGIC_RAMDISK_SIZE    : Storage_Count := 0;
 
+    -- The boot allocator permanently excludes the multiboot image from its
+    -- free pool. This recognizes only actual initrd bytes, not page padding.
+    -- It confers no mapping authority: callers must first validate a readable
+    -- user mapping to these bytes.
+    function residentInitrdRange
+      (Physical : Integer_Address; Length : Storage_Count) return Boolean;
+
     ---------------------------------------------------------------------------
     -- setup
     -- See if GRUB has loaded any modules, and if so, print any information

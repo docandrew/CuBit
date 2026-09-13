@@ -325,7 +325,8 @@ package body Mem_mgr is
     -- part of a 2MB big page, split the big page into 512 small pages first,
     -- then clear the target P1 entry. Used for kernel stack guard pages.
     ---------------------------------------------------------------------------
-    procedure createGuardPage (physAddr : in Virtmem.PhysAddress)
+    procedure tryCreateGuardPage
+      (physAddr : Virtmem.PhysAddress; success : out Boolean)
     is
         use Virtmem;
 
@@ -341,6 +342,7 @@ package body Mem_mgr is
         p3Addr : PhysAddress;
         p2Addr : PhysAddress;
     begin
+        success := False;
         p3Addr := getP3 (kernelP4, p4Index);
         if p3Addr = 0 then
             raise RemapException with
@@ -379,8 +381,7 @@ package body Mem_mgr is
                     begin
                         BuddyAllocator.allocFrame (p1Phys);
                         if p1Phys = 0 then
-                            raise RemapException with
-                                "createGuardPage: cannot allocate P1 frame";
+                            return;
                         end if;
 
                         fillP1 : declare
@@ -440,6 +441,16 @@ package body Mem_mgr is
         end walkP3;
 
         flushTLB;
+        success := True;
+    end tryCreateGuardPage;
+
+    procedure createGuardPage (physAddr : in Virtmem.PhysAddress) is
+        success : Boolean;
+    begin
+        tryCreateGuardPage (physAddr, success);
+        if not success then
+            raise RemapException with "createGuardPage: cannot allocate P1 frame";
+        end if;
     end createGuardPage;
 
     ---------------------------------------------------------------------------
