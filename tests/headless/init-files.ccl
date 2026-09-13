@@ -1,0 +1,7 @@
+# CuBit native Files browser smoke-test profile
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "files.app" (priority 3))
+)

@@ -11,12 +11,15 @@
 --  HDA PCM DMA grant.  Device-period notifications and client wakeups arrive
 --  through one-way capability IPC; control operations use capCall.
 ------------------------------------------------------------------------------
+pragma Ada_2022;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants; use CuBit.Memory_Grants;
 with Mixer;
+with Mixer_Control;
+with CuBit.Audio_Control;
 with CuBit.Benchmark_Clock;
 with CuBit.Timing_Histograms;
 
@@ -63,6 +66,20 @@ procedure main is
    statsMissedPeriods : Unsigned_64 := 0;
    statsUnderrunsLast : Unsigned_64 := 0;
    periodIRQObserved : Boolean := False;
+   hdaPID : Unsigned_64 := 0;
+
+   function clientRequestAllowed return Boolean is
+      Owners : Mixer_Control.Owner_Table (Mixer.streams'Range);
+   begin
+      for I in Owners'Range loop
+         Owners (I) := (if Mixer.streams (I).active then Mixer.streams (I).pid else 0);
+      end loop;
+      return Mixer_Control.Allowed
+        (msg.tag.label, msg.tag.length, msg.tag.flags, msg.tag.reserved,
+         [msg.words (0), msg.words (1), msg.words (2), msg.words (3)],
+         msg.authorityTag, Owners) and then
+        (msg.tag.label /= OP_AUDIO_OPEN or else hdaReady);
+   end clientRequestAllowed;
 
    procedure printDec (val : Unsigned_64) is
       buf : String (1 .. 20);
@@ -162,7 +179,7 @@ procedure main is
                   flags  => 0,
                   reserved  => 0),
           authorityTag => 0,
-          words => (0 => w0, 1 => w1, 2 => w2, 3 => w3)));
+          words => [0 => w0, 1 => w1, 2 => w2, 3 => w3]));
    end sendReply;
 
    procedure mixIntoPeriod (slot : Natural) is
@@ -209,7 +226,7 @@ procedure main is
         (tag => (label => OP_AUDIO_HW_START, length => 0,
                  flags => 0, reserved => 0),
          authorityTag => 0,
-         words => (others => 0));
+         words => [others => 0]);
       ctlMsg.tag := capCall (CAP_SLOT_HDA, ctlMsg);
       if ctlMsg.tag.label = REPLY_OK then
          hdaRunning := True;
@@ -230,7 +247,7 @@ procedure main is
         (tag => (label => OP_AUDIO_HW_STOP, length => 0,
                  flags => 0, reserved => 0),
          authorityTag => 0,
-         words => (others => 0));
+         words => [others => 0]);
       ctlMsg.tag := capCall (CAP_SLOT_HDA, ctlMsg);
       if ctlMsg.tag.label = REPLY_OK then
          hdaRunning := False;
@@ -291,7 +308,7 @@ begin
         (tag => (label => OP_AUDIO_HW_INIT, length => 0,
                  flags => 0, reserved => 0),
          authorityTag => 0,
-         words => (others => 0));
+         words => [others => 0]);
       initMsg.tag := capCall (CAP_SLOT_HDA, initMsg);
 
       gid := initMsg.words (0);
@@ -331,6 +348,7 @@ begin
    end;
 
    --  Register as mixer driver
+   hdaPID := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_HDA);
    ret := registerDriver (DRIVER_MIXER);
 
    --  Signal devmgr that we are ready
@@ -343,7 +361,7 @@ begin
          (tag      => (label => OP_READY, length => 0,
                        flags => 0, reserved => 0),
           authorityTag => 0,
-          words    => (others => 0)));
+          words    => [others => 0]));
    end;
 
    debugPrint ("mixer: registered, entering service loop" & ASCII.LF);
@@ -355,7 +373,12 @@ begin
       Received_At := Clock.Read_Counter;
 
       if msg.tag.label = OP_AUDIO_HW_PERIOD then
-         if hdaRunning and then msg.words (0) < Unsigned_64 (periodCount) then
+         if hdaReady and then hdaRunning and then hdaPID /= 0 and then
+           hdaPID /= Unsigned_64'Last and then from = hdaPID and then
+           msg.authorityTag = hdaPID and then msg.tag.length = 4 and then
+           msg.tag.flags = 0 and then msg.tag.reserved = 0 and then
+           msg.words (0) < Unsigned_64 (periodCount)
+         then
             if not periodIRQObserved then
                debugPrint ("mixer: HDA period IRQ active" & LF);
                periodIRQObserved := True;
@@ -384,6 +407,23 @@ begin
             stopHardware;
          end if;
 
+      elsif msg.tag.label in CuBit.Audio_Control.Get_State | CuBit.Audio_Control.Set_State then
+         if not Mixer_Control.Master_Allowed
+           (msg.tag.label, msg.tag.length, msg.tag.flags, msg.tag.reserved,
+            Mixer_Control.Words (msg.words), msg.authorityTag,
+            CuBit.Audio_Control.Authority_Tag)
+         then
+            sendReply (REPLY_ERR);
+         else
+            if msg.tag.label = CuBit.Audio_Control.Set_State then
+               Mixer.Master.Level := CuBit.Audio_Control.Percent (msg.words (0));
+               Mixer.Master.Muted := msg.words (1) = 1;
+            end if;
+            sendReply (REPLY_OK, Unsigned_64 (Mixer.Master.Level),
+                       Boolean'Pos (Mixer.Master.Muted), Boolean'Pos (hdaReady));
+         end if;
+      elsif not clientRequestAllowed then
+         sendReply (REPLY_ERR);
       else
          from := ProcessID (msg.authorityTag);
          case msg.tag.label is

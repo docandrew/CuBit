@@ -13,12 +13,15 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Display_Protocol;
 with CuBit.Desktop_Messages;
 with CuBit.Input;
+with CuBit.Audio_Control;
+with CuBit.Clocks;
 with CuBit.Click_Sequences;
 with CuBit.Theme;
 with Desktop_Cursors;
 with Desktop_Icons;
 with Desktop_UI_Font;
 with Desktop_Window_Icons;
+with Desktop_Wallpaper;
 with CuBit.Desktop_Protocol;
 with CuBit.Memory_Grants;
 with Font8x16;
@@ -334,6 +337,12 @@ procedure main is
 
    pointerSurfaceId : Unsigned_64 := 0;
    launchMenuOpen : Boolean := False;
+   masterAudio : CuBit.Audio_Control.State;
+   audioPopupOpen : Boolean := False;
+   audioPointerCapture : Boolean := False;
+   audioSliderDragging : Boolean := False;
+   clockText : String (1 .. 5) := "--:--";
+   statusDueMs : Unsigned_64 := 0;
    desktopExtendedPrefix : Boolean := False;
    desktopShiftDown : Boolean := False;
    desktopCtrlDown  : Boolean := False;
@@ -974,17 +983,38 @@ procedure main is
       x       : Natural := 104 + ordinal * (TASK_BUTTON_W + TASK_BUTTON_GAP);
       maxW    : Natural := TASK_BUTTON_W;
    begin
-      if x >= fbWidth then
+      if fbWidth < 160 or else x >= fbWidth - 160 then
          return (others => 0);
       end if;
 
-      if x + maxW + 6 > fbWidth then
-         maxW := fbWidth - x;
+      if x + maxW + 6 > fbWidth - 160 then
+         maxW := fbWidth - 160 - x;
       end if;
 
       return clampRect ((x => x, y => taskbarY + 6,
                          w => maxW, h => TASK_BUTTON_H));
    end taskButtonRect;
+
+   function statusRect return Rect is
+     (clampRect ((x => (if fbWidth >= 160 then fbWidth - 160 else 0),
+                  y => taskbarY + 4, w => 154, h => 28)));
+
+   function speakerRect return Rect is
+     (clampRect ((x => statusRect.x + 4, y => taskbarY + 6,
+                  w => 56, h => 24)));
+
+   function audioPopupRect return Rect is
+     (clampRect ((x => (if fbWidth >= 250 then fbWidth - 250 else 0),
+                  y => (if taskbarY >= 124 then taskbarY - 124 else 0),
+                  w => 244, h => 118)));
+
+   function volumeTrackRect return Rect is
+     (clampRect ((x => audioPopupRect.x + 18,
+                  y => audioPopupRect.y + 46, w => 208, h => 24)));
+
+   function muteButtonRect return Rect is
+     (clampRect ((x => audioPopupRect.x + 18,
+                  y => audioPopupRect.y + 80, w => 92, h => 26)));
 
    function pointInRect (x, y : Natural; r : Rect) return Boolean is
    begin
@@ -1550,6 +1580,21 @@ procedure main is
       end loop;
    end fillRect;
 
+   procedure drawWallpaper is
+      Area : Rect := (0, 0, fbWidth, fbHeight);
+   begin
+      if clipEnabled then
+         --  The compositor damage rectangle is already clipped to the screen.
+         Area := clipRect;
+      end if;
+      if backBufferAddr = System.Null_Address or else isEmpty (Area) then
+         return;
+      end if;
+      Desktop_Wallpaper.Paint
+        (backBufferAddr, fbWidth, fbHeight, fbPitch,
+         Area.x, Area.y, Area.w, Area.h);
+   end drawWallpaper;
+
    procedure drawDappledShadow (x, y, w, h : Natural) is
    begin
       if w = 0 or else h = 0 then
@@ -2084,6 +2129,9 @@ procedure main is
          end loop;
       end loop;
 
+      --  Scanout also needs the restored pixels, even outside scene damage
+      --  and the new pointer position. All repaint paths share this rule.
+      flushBackBufferRect (cursorSaveRect);
       cursorSaveValid := False;
    end restoreCursorOverlay;
 
@@ -2136,6 +2184,7 @@ procedure main is
             end if;
          end loop;
       end loop;
+      flushBackBufferRect (r);
    end drawCursorOverlay;
 
    procedure noteCursorPresented is
@@ -2211,7 +2260,7 @@ procedure main is
       damage : Rect;
       occluded : Boolean;
    begin
-      if isEmpty (r) or else launchMenuOpen or else
+      if isEmpty (r) or else launchMenuOpen or else audioPopupOpen or else
          not backBufferReady or else backBufferAddr = System.Null_Address
       then
          return False;
@@ -2247,7 +2296,18 @@ procedure main is
 
                   statsFastFrames := statsFastFrames + 1;
                   restoreCursorOverlay;
-                  drawClientBuffer (surfaces (i), c.x, c.y, c.w, c.h);
+                  declare
+                     savedClip : constant Rect := clipRect;
+                     savedEnabled : constant Boolean := clipEnabled;
+                  begin
+                     --  Keep the private scene and scanout consistent outside
+                     --  a partial present, including saved cursor backgrounds.
+                     clipRect := r;
+                     clipEnabled := True;
+                     drawClientBuffer (surfaces (i), c.x, c.y, c.w, c.h);
+                     clipRect := savedClip;
+                     clipEnabled := savedEnabled;
+                  end;
                   drawCursorOverlay;
 
                   damage := unionRect (r, cursorRect);
@@ -2478,6 +2538,63 @@ procedure main is
         (LAUNCH_POWER, Desktop_Icons.Power, "Power", C_MUTED);
    end drawLaunchMenu;
 
+   procedure drawStatus is
+      r : constant Rect := statusRect;
+      speaker : constant Rect := speakerRect;
+      ink : constant Unsigned_32 :=
+        (if masterAudio.Available then C_TEXT else C_MUTED);
+      iconX : constant Natural := speaker.x + 4;
+      iconY : constant Natural := speaker.y + 5;
+   begin
+      fillRect (r.x, r.y, r.w, r.h, C_BAR);
+      strokeRect (r.x, r.y, r.w, r.h, C_SHADOW, C_EDGE);
+      if audioPopupOpen then
+         strokeRect (speaker.x, speaker.y, speaker.w, speaker.h,
+                     C_SHADOW, C_EDGE);
+      end if;
+      --  Original compact speaker geometry; no borrowed platform artwork.
+      fillRect (iconX, iconY + 4, 4, 6, ink);
+      for column in 0 .. 4 loop
+         fillRect (iconX + 4 + column, iconY + 4 - column,
+                   1, 6 + column * 2, ink);
+      end loop;
+      if masterAudio.Muted then
+         for step in 0 .. 4 loop
+            putPixel (iconX + 11 + step, iconY + 4 + step, C_ACCENT);
+            putPixel (iconX + 11 + step, iconY + 8 - step, C_ACCENT);
+         end loop;
+      else
+         fillRect (iconX + 11, iconY + 4, 1, 6, ink);
+         fillRect (iconX + 14, iconY + 2, 1, 10, ink);
+      end if;
+      drawUIText (speaker.x + 24, speaker.y + 3,
+                  masterAudio.Level'Image, ink, C_BAR);
+      drawUIText (r.x + 84, r.y + 5, clockText, C_TEXT, C_BAR);
+   end drawStatus;
+
+   procedure drawAudioPopup is
+      r : constant Rect := audioPopupRect;
+      track : constant Rect := volumeTrackRect;
+      mute : constant Rect := muteButtonRect;
+      thumbX : constant Natural := track.x + masterAudio.Level * 196 / 100;
+   begin
+      if not audioPopupOpen then return; end if;
+      fillRect (r.x, r.y, r.w, r.h, C_PANEL);
+      strokeRect (r.x, r.y, r.w, r.h, C_EDGE, C_SHADOW);
+      drawUIText (r.x + 18, r.y + 12,
+                  "Master volume" & masterAudio.Level'Image & "%", C_TEXT, C_PANEL);
+      fillRect (track.x + 6, track.y + 10, 196, 4, C_SHADOW);
+      fillRect (track.x + 6, track.y + 10, masterAudio.Level * 196 / 100, 4, C_ACCENT);
+      fillRect (thumbX, track.y + 2, 12, 20, C_BAR);
+      strokeRect (thumbX, track.y + 2, 12, 20, C_EDGE, C_SHADOW);
+      fillRect (mute.x, mute.y, mute.w, mute.h, C_BAR);
+      strokeRect (mute.x, mute.y, mute.w, mute.h,
+                  (if masterAudio.Muted then C_SHADOW else C_EDGE),
+                  (if masterAudio.Muted then C_EDGE else C_SHADOW));
+      drawUIText (mute.x + 12, mute.y + 4,
+                  (if masterAudio.Muted then "Unmute" else "Mute"), C_TEXT, C_BAR);
+   end drawAudioPopup;
+
    procedure drawDesktopShell is
       barY     : constant Natural := taskbarY;
       launch   : constant Rect := launchButtonRect;
@@ -2500,7 +2617,7 @@ procedure main is
       --  pixels for now; the shell owns policy and talks through the protocol.
       --  Shared client buffers can replace this drawing path later without
       --  changing the surface/session shape.
-      fillRect (0, 0, fbWidth, fbHeight, C_DESK);
+      drawWallpaper;
       fillRect (0, barY, fbWidth, TASKBAR_H, C_BAR);
       strokeRect (0, barY, fbWidth, TASKBAR_H, C_EDGE, C_SHADOW);
       fillRect (0, barY, fbWidth, 2, C_ACCENT);
@@ -2526,6 +2643,8 @@ procedure main is
       end loop;
 
       drawLaunchMenu;
+      drawStatus;
+      drawAudioPopup;
    end drawDesktopShell;
 
    procedure drawCurrentScene is
@@ -2542,7 +2661,7 @@ procedure main is
       if shellVisible then
          drawDesktopShell;
       else
-         fillRect (0, 0, fbWidth, fbHeight, C_DESK);
+         drawWallpaper;
       end if;
       drawDragOutline;
    end drawCurrentScene;
@@ -2672,6 +2791,10 @@ procedure main is
       clipEnabled := True;
       drawingBackBuffer := backBufferReady;
       drawWindow (surfaces (SurfaceIndex (idx)));
+      --  The retained layer can outlive a minute boundary or media-key press.
+      --  Composite current taskbar state over it, within this damage clip.
+      drawStatus;
+      drawAudioPopup;
       clipEnabled := False;
       drawCursorOverlay;
       drawingBackBuffer := False;
@@ -5197,6 +5320,55 @@ procedure main is
       return clampWindowRect (s, r);
    end previewRectFromPointer;
 
+   procedure refreshStatus is
+      stamp : CuBit.Clocks.Snapshot;
+      audio : CuBit.Audio_Control.State;
+      ok : Boolean;
+      nextText : String (1 .. 5) := "--:--";
+      now : constant Unsigned_64 := nowMs;
+      use type CuBit.Clocks.Time_Quality;
+      use type CuBit.Audio_Control.State;
+      function digit (v : Natural) return Character is
+        (Character'Val (Character'Pos ('0') + v));
+   begin
+      if now < statusDueMs then return; end if;
+      statusDueMs := now + 10_000;
+      CuBit.Clocks.Read (stamp, ok);
+      if ok and then stamp.Quality = CuBit.Clocks.RTC_Only then
+         nextText := [digit (stamp.Hour / 10), digit (stamp.Hour mod 10), ':',
+                      digit (stamp.Minute / 10), digit (stamp.Minute mod 10)];
+         statusDueMs := now + Unsigned_64'Min
+           (10_000, Unsigned_64 (60 - stamp.Second) * 1000);
+      elsif ok and then stamp.Quality = CuBit.Clocks.Invalid_Zone then
+         nextText := " TZ? ";
+      end if;
+      if clockText /= nextText then
+         clockText := nextText;
+         scheduleRedrawRect (statusRect);
+      end if;
+      CuBit.Audio_Control.Read (audio, ok);
+      if ok and then audio /= masterAudio then
+         masterAudio := audio;
+         scheduleRedrawRect (statusRect);
+         if audioPopupOpen then scheduleRedrawRect (audioPopupRect); end if;
+      end if;
+   end refreshStatus;
+
+   procedure setMasterAudio (level : CuBit.Audio_Control.Percent; muted : Boolean) is
+      value : CuBit.Audio_Control.State;
+      ok : Boolean;
+   begin
+      if not masterAudio.Available or else
+        (level = masterAudio.Level and then muted = masterAudio.Muted)
+      then return; end if;
+      CuBit.Audio_Control.Set (level, muted, value, ok);
+      if ok then
+         masterAudio := value;
+         scheduleRedrawRect (statusRect);
+         if audioPopupOpen then scheduleRedrawRect (audioPopupRect); end if;
+      end if;
+   end setMasterAudio;
+
    procedure handleMouseMotion
       (buttons : Unsigned_64;
        dx      : Integer;
@@ -5247,6 +5419,52 @@ procedure main is
       cursorX := clampPointerCoord (Integer (cursorX) + dx, maxX);
       cursorY := clampPointerCoord (Integer (cursorY) - dy, maxY);
       damage := unionRect (damage, cursorRect);
+
+      --  Popup input belongs to the desktop, including the release outside
+      --  its bounds. Never deliver half a gesture to the focused application.
+      if shellSurfaceVisible and then pointerSurfaceId = 0 and then
+        dragMode = DRAG_NONE and then
+        (audioPointerCapture or else audioPopupOpen or else
+         pointInRect (cursorX, cursorY, speakerRect))
+      then
+         if leftDown and then not leftWasDown then
+            audioPointerCapture := True;
+            if pointInRect (cursorX, cursorY, speakerRect) then
+               audioPopupOpen := not audioPopupOpen and then masterAudio.Available;
+               if launchMenuOpen then
+                  launchMenuOpen := False;
+                  scheduleRedrawRect (inflateRect (launchMenuRect, 4));
+               end if;
+            elsif audioPopupOpen and then
+              pointInRect (cursorX, cursorY, muteButtonRect)
+            then
+               setMasterAudio (masterAudio.Level, not masterAudio.Muted);
+            elsif audioPopupOpen and then
+              pointInRect (cursorX, cursorY, volumeTrackRect)
+            then audioSliderDragging := True;
+            elsif not pointInRect (cursorX, cursorY, audioPopupRect) then
+               audioPopupOpen := False;
+            end if;
+            scheduleRedrawRect (audioPopupRect);
+            scheduleRedrawRect (statusRect);
+         end if;
+         if audioSliderDragging and then leftDown then
+            declare
+               relative : constant Integer :=
+                 Integer (cursorX) - Integer (volumeTrackRect.x) - 6;
+               level : constant Natural :=
+                 Natural (Integer'Max (0, Integer'Min (196, relative))) * 100 / 196;
+            begin setMasterAudio (level, masterAudio.Muted); end;
+         end if;
+         if not leftDown then
+            audioSliderDragging := False;
+            audioPointerCapture := False;
+         end if;
+         lastButtons := buttons;
+         cursorStyle := POINTER_DEFAULT;
+         scheduleCursorPresent;
+         return;
+      end if;
 
       --  Moving away, using another button or scrolling breaks the sequence,
       --  even if the pointer later returns to the first click's position.
@@ -5664,7 +5882,25 @@ procedure main is
                   null;
                end if;
 
-               if extended and then
+               if extended and then code in 16#20# | 16#2E# | 16#30# then
+                  --  Set-1 multimedia keys: mute, volume down, volume up.
+                  if not release then
+                     if code = 16#20# then
+                        setMasterAudio (masterAudio.Level, not masterAudio.Muted);
+                     else
+                        setMasterAudio
+                          (Natural (Integer'Max (0, Integer'Min (100,
+                             Integer (masterAudio.Level) +
+                             (if code = 16#30# then 5 else -5)))), masterAudio.Muted);
+                     end if;
+                  end if;
+               elsif audioPopupOpen then
+                  if not release and then code = KEY_ESCAPE then
+                     audioPopupOpen := False;
+                     scheduleRedrawRect (audioPopupRect);
+                     scheduleRedrawRect (statusRect);
+                  end if;
+               elsif extended and then
                   (code = KEY_LEFT_SUPER or else code = KEY_RIGHT_SUPER)
                then
                   if not release and then shellSurfaceVisible then
@@ -5941,6 +6177,7 @@ procedure main is
          debugPrint ("desktop: retained drag layer unavailable" & LF);
       end if;
 
+      debugPrint ("desktop: wallpaper uses retained scene layers" & LF);
       backBufferReady := True;
       if status.tag.length >= 2 then
          debugPrint ("desktop: display backend=" & Decimal (status.words (0)) &
@@ -6083,6 +6320,7 @@ begin
                else REQUEST_BUDGET_IDLE);
          end loop;
 
+         refreshStatus;
          flushFrame;
          flushCursorPresent;
          pumpPresentation;
@@ -6091,7 +6329,7 @@ begin
 
          if not eventFound and then not found then
             if not framePending and then not cursorPresentPending and then
-              nextInputDeadline = 0
+              nextInputDeadline = 0 and then statusDueMs = 0
             then
                --  Input, requests and frame completions all wake the same
                --  non-consuming wait; typed dispatch remains above.
@@ -6103,6 +6341,9 @@ begin
                   nextDueMs : Unsigned_64 := nextInputDeadline;
                   mayWait : Boolean := now /= Unsigned_64'Last;
                begin
+                  if statusDueMs /= 0 and then
+                    (nextDueMs = 0 or else statusDueMs < nextDueMs)
+                  then nextDueMs := statusDueMs; end if;
                   if framePending and then now /= Unsigned_64'Last and then
                      frameDueMs /= 0 and then now < frameDueMs
                   then

@@ -1,0 +1,7 @@
+# Generated ELF metadata is tied to this executable; requests are not grants.
+(executable-manifest v1
+  (identity "com.cubit.bench-input")
+  (version "0.1.0")
+  # Test-only input publisher; not an ordinary app grant.
+  (request-service desktop read-write desktop)
+  (request-notification keyboard publish keyboard))

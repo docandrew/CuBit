@@ -1,13 +1,14 @@
 with Interfaces; use Interfaces;
+with CCL_Manifest_Bindings;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Network_Authority; use CuBit.Network_Authority;
 
 procedure Main is
-   Connect_Slot : constant CapabilitySlot := 30;
-   Listen_Slot : constant CapabilitySlot := 31;
-   Inspect_Slot : constant CapabilitySlot := 11;
+   Connect_Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Test_Connect;
+   Listen_Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Test_Listen;
+   Inspect_Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Network;
    OK_Label : constant Unsigned_32 := 16#F000#;
    Error_Label : constant Unsigned_32 := 16#F001#;
    Open_Label : constant Unsigned_32 := 16#0420#;

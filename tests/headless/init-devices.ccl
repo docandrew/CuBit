@@ -1,0 +1,7 @@
+# CuBit unified device-inspection smoke-test profile
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "devices.app" (priority 3))
+)

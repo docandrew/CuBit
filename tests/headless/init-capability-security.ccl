@@ -1,0 +1,4 @@
+# Capability non-amplification regression profile.
+(startup v1
+  (start "capability-test.app" (priority 5))
+)

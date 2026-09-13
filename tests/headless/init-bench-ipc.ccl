@@ -1,0 +1,6 @@
+# CuBit headless IPC benchmark profile
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "bench-ipc-server.app" (priority 5))
+  (start "bench-ipc-client.app" (priority 5))
+)

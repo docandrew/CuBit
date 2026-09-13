@@ -1,0 +1,5 @@
+# Requested authority only; the existing launch path remains in control.
+(executable-manifest v1
+  (identity "com.cubit.bench.audio")
+  (version "0.1.0")
+  (request-service mixer read-write mixer))

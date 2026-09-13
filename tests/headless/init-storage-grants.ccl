@@ -1,0 +1,5 @@
+# Generation, acquisition-lifetime, and writable-filesystem regression.
+(startup v1
+  (start "storage-check.app" (priority 5))
+  (start "filesystem-scope-check.app" (priority 5))
+)

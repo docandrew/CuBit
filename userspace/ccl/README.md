@@ -11,6 +11,14 @@ only through typed authority explicitly supplied to them.
 The current design proposal is in
 [`docs/control-language.md`](../../docs/control-language.md).
 
+CCL also supplies [native boot configuration](../../docs/ccl-boot-configuration.md):
+`devmgr.svc` evaluates `system.ccl`, and `procmgr.svc` evaluates `init.ccl` into
+bounded plans before applying settings or launching applications. The Linux
+`ccl-config` tool checks the same sources without replacing native evaluation.
+
+[CCL image profiles](../../images/README.md) now drive bootstrap/archive and
+USB ISO membership through a separate pure planner and Linux realization adapter.
+
 ## Names
 
 The initial naming conventions are:

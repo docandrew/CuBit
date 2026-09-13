@@ -1,0 +1,4 @@
+# Requested authority only; the existing launch path remains in control.
+(executable-manifest v1
+  (identity "com.cubit.bench.ipc.server")
+  (version "1.0.0"))

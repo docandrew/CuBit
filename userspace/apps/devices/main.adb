@@ -6,6 +6,7 @@
 --  Unified, authority-scoped hardware inventory and diagnostics
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
+with CCL_Manifest_Bindings;
 
 with CuBit.Devices;
 with CuBit.Messages; use CuBit.Messages;
@@ -24,7 +25,8 @@ procedure main is
 
    INITIAL_WIDTH  : constant Positive := 900;
    INITIAL_HEIGHT : constant Positive := 580;
-   CAP_SLOT_DEVICE_INSPECTION : constant CapabilitySlot := 22;
+   CAP_SLOT_DEVICE_INSPECTION : constant CapabilitySlot :=
+     CCL_Manifest_Bindings.Slot_Device_Manager;
 
    CONTROL_REFRESH    : constant CuBit.UI.Controls.Control_ID := 1;
    CONTROL_SPLITTER   : constant CuBit.UI.Controls.Control_ID := 2;

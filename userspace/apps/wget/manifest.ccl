@@ -1,0 +1,8 @@
+# Generated ELF metadata is tied to this executable; requests are not grants.
+(executable-manifest v1
+  (identity "com.cubit.wget")
+  (version "1.0.0")
+  # HTTP and DNS only; independent launch approval remains required.
+  (request-network tcp-connect (ipv4 "0.0.0.0" 0)
+    (ports 80 80) (dns allow) network)
+  (stream stdout text 4))

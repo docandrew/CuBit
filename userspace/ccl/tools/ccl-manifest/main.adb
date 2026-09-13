@@ -43,6 +43,7 @@ procedure Main is
 
    procedure Emit (Name : String; Item : CCL.Manifests.Section) is
    begin
+      if Item.Length = 0 then return; end if;
       Put_Line (".section " & Name & ","""",@progbits");
       for Index in 1 .. Item.Length loop
          Put_Line (".byte 0x" & Hex (Natural (Item.Data (Index) / 16) + 1)
@@ -54,7 +55,9 @@ procedure Main is
    begin
       Create (Ada_Output, Out_File, Argument (4));
       Put_Line (Ada_Output, "-- Generated with the ELF manifest; do not edit.");
-      Put_Line (Ada_Output, "with Interfaces;");
+      if Result.Binding_Count > 0 then
+         Put_Line (Ada_Output, "with Interfaces;");
+      end if;
       Put_Line (Ada_Output, "package CCL_Manifest_Bindings with SPARK_Mode => On is");
       for Binding of Result.Bindings (1 .. Result.Binding_Count) loop
          declare
@@ -95,6 +98,8 @@ begin
    if Argument_Count = 4 then Emit_Ada; end if;
    Emit (".cubit.id", Result.Identity);
    Emit (".cubit.caps", Result.Capabilities);
+   Emit (".cubit.access", Result.Access_Scopes);
+   Emit (".cubit.streams", Result.Streams);
    Put_Line (".section .note.GNU-stack,"""",@progbits");
 exception
    when Ada.Streams.Stream_IO.Name_Error | Ada.Streams.Stream_IO.Use_Error =>

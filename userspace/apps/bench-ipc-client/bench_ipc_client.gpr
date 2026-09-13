@@ -2,7 +2,7 @@ project Bench_IPC_Client is
 
     for Languages use ("Ada");
     for Object_Dir use "build";
-    for Source_Dirs use (".");
+    for Source_Dirs use (".", "build/generated");
     for Main use ("main.adb");
     for Runtime ("Ada") use "../../runtime";
     for Library_Dir use "";

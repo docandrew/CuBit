@@ -36,3 +36,16 @@ KVM required. Logs/screenshots stay in /tmp/cubit-usb-live.*. QMP uses request
 IDs, not ambiguous human-monitor prompts. Do not run image-building/headless
 tests concurrently against shared kernel staging. run-hid.sh uses the original
 NVMe Devices fixture and validates mouse-only regression, not CD reads.
+
+Taskbar/clock/audio regression (uses the original, freely bundled test ROM):
+
+```sh
+nix develop -c python3 tests/usb-optical/run-live.py --sameboy --sameboy-audio --taskbar --timeout 240
+```
+
+This boots with a fixed UTC RTC, checks wall-clock initialization, compares the
+background before/after a popup and pointer traversal, and measures actual PCM
+amplitude after media-key and popup-slider operations. It verifies master mute
+and restoration separately from application-local gain/mute/pause. Screenshots
+still need visual review for clock text and popup layout. It does not measure
+keypress-to-photon latency, acoustic latency, or certify click-free transitions.

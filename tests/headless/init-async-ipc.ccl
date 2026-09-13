@@ -1,0 +1,7 @@
+# CuBit headless async IPC regression profile
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "ipctest-server.app" (priority 5))
+  (start "ipctest-departing.app" (priority 5))
+  (start "ipctest-client.app" (priority 5))
+)

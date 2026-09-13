@@ -1,0 +1,7 @@
+# CuBit Stage 2 Init
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "shell.app" (priority 4))
+)

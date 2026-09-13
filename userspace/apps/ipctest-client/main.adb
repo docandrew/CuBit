@@ -1,3 +1,4 @@
+with CCL_Manifest_Bindings;
 ------------------------------------------------------------------------------
 --  CuBit headless IPC regression client
 --
@@ -12,7 +13,7 @@ with CuBit.Messages; use CuBit.Messages;
 procedure main is
    use ASCII;
 
-   CAP_SLOT_IPCTEST : constant CapabilitySlot := 18;
+   CAP_SLOT_IPCTEST : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_IPC_Test;
    CAP_SLOT_EMPTY   : constant CapabilitySlot := 19;
 
    OP_ASYNC_ECHO     : constant Unsigned_32 := 16#0901#;

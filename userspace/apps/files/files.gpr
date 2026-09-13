@@ -1,7 +1,7 @@
 project Files is
    for Languages use ("Ada");
    for Object_Dir use "build";
-   for Source_Dirs use (".", "../../lib/ui", "../../lib/theme");
+   for Source_Dirs use (".", "../../lib/ui", "../../lib/theme", "build/generated");
    for Main use ("main.adb");
    for Runtime ("Ada") use "../../runtime";
    for Library_Dir use "";

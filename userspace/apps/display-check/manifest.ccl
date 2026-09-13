@@ -1,0 +1,5 @@
+# Requested authority only; the existing launch path remains in control.
+(executable-manifest v1
+  (identity "com.cubit.display-check")
+  (version "0.1.0")
+  (request-service display read-write display))

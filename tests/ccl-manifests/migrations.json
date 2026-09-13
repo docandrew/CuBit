@@ -1,0 +1,130 @@
+[
+  {
+    "directory": "userspace/apps/bench-audio",
+    "fixture": "apps-bench-audio.c"
+  },
+  {
+    "directory": "userspace/apps/bench-ipc-client",
+    "fixture": "apps-bench-ipc-client.c"
+  },
+  {
+    "directory": "userspace/apps/bench-ipc-server",
+    "fixture": "apps-bench-ipc-server.c"
+  },
+  {
+    "directory": "userspace/apps/bench-load",
+    "fixture": "apps-bench-load.c"
+  },
+  {
+    "directory": "userspace/apps/bench-storage",
+    "fixture": "apps-bench-storage.c"
+  },
+  {
+    "directory": "userspace/apps/capability-test",
+    "fixture": "apps-capability-test.c"
+  },
+  {
+    "directory": "userspace/apps/desktop-check",
+    "fixture": "apps-desktop-check.c"
+  },
+  {
+    "directory": "userspace/apps/desktop-shell",
+    "fixture": "apps-desktop-shell.c"
+  },
+  {
+    "directory": "userspace/apps/display-check",
+    "fixture": "apps-display-check.c"
+  },
+  {
+    "directory": "userspace/apps/files",
+    "fixture": "apps-files.c"
+  },
+  {
+    "directory": "userspace/apps/filesystem-scope-check",
+    "fixture": "apps-filesystem-scope-check.c"
+  },
+  {
+    "directory": "userspace/apps/ipctest-client",
+    "fixture": "apps-ipctest-client.c"
+  },
+  {
+    "directory": "userspace/apps/ipctest-server",
+    "fixture": "apps-ipctest-server.c"
+  },
+  {
+    "directory": "userspace/apps/sleep",
+    "fixture": "apps-sleep.c"
+  },
+  {
+    "directory": "userspace/apps/storage-check",
+    "fixture": "apps-storage-check.c"
+  },
+  {
+    "directory": "userspace/ccl/apps/ccl-workbench",
+    "fixture": "ccl-apps-ccl-workbench.c"
+  },
+  {
+    "directory": "userspace/ccl/services/test-host",
+    "fixture": "ccl-services-test-host.c"
+  },
+  {
+    "directory": "userspace/services/clock",
+    "fixture": "services-clock.c"
+  },
+  {
+    "directory": "userspace/services/logstore",
+    "fixture": "services-logstore.c"
+  },
+  {
+    "directory": "userspace/apps/bench-input",
+    "fixture": "apps-bench-input.c"
+  },
+  {
+    "directory": "userspace/apps/input-stress",
+    "fixture": "apps-input-stress.c"
+  },
+  {
+    "directory": "userspace/apps/network-check",
+    "fixture": "apps-network-check.c",
+    "identity_update": {
+      "id": "com.cubit.network-check",
+      "version": "0.1.0",
+      "reason": "add missing executable identity"
+    }
+  },
+  {
+    "directory": "userspace/apps/shell",
+    "fixture": "apps-shell.c",
+    "extra_fixture": "apps-shell-access.c"
+  },
+  {
+    "directory": "userspace/apps/wget",
+    "fixture": "apps-wget.c"
+  },
+  {
+    "directory": "userspace/ccl/apps/ccl-control",
+    "fixture": "ccl-apps-ccl-control.c",
+    "identity_update": {
+      "id": "com.cubit.ccl-control",
+      "version": "0.1.0",
+      "reason": "add missing version"
+    }
+  },
+  {
+    "directory": "userspace/services/desktop",
+    "fixture": "services-desktop.c"
+  },
+  {
+    "directory": "userspace/services/display",
+    "fixture": "services-display.c"
+  },
+  {
+    "directory": "userspace/apps/devices",
+    "fixture": "apps-devices.c",
+    "identity_update": {
+      "id": "com.cubit.devices",
+      "version": "0.1.0",
+      "reason": "correct declared id length 19 to 17"
+    }
+  }
+]

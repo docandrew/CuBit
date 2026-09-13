@@ -4,14 +4,27 @@ project Devmgr is
 
     for Object_Dir use "build";
 
-    for Source_Dirs use (".", "../filesystem", "../xhci");
+    for Source_Dirs use (".", "../filesystem", "../xhci", "../../ccl/src", "../../lib/time");
 
     for Main use ("main.adb");
 
     --  Explicit list excludes other service mains and hardware adapters.
-    for Source_Files use ("main.adb", "cpio.ads", "cpio.adb",
+    for Source_Files use ("main.adb", "cpio.ads", "cpio.adb", "ccl.ads",
+       "boot_rtc.ads", "boot_rtc.adb", "civil_time.ads", "civil_time.adb",
        "xhci_dma_layout.ads", "xhci_dma_layout.adb",
-       "xhci_capabilities.ads", "xhci_capabilities.adb");
+       "xhci_capabilities.ads", "xhci_capabilities.adb",
+       "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb",
+       "ccl-checked_arithmetic.ads", "ccl-checked_arithmetic.adb",
+       "ccl-execution_budgets.ads", "ccl-execution_budgets.adb",
+       "ccl-ownership.ads", "ccl-ownership.adb",
+       "ccl-imports.ads", "ccl-imports.adb",
+       "ccl-ownership-bytecode.ads", "ccl-ownership-bytecode.adb",
+       "ccl-secondary_stacks.ads", "ccl-secondary_stacks.adb",
+       "ccl-vm.ads", "ccl-vm.adb",
+       "ccl-catalog.ads", "ccl-catalog.adb",
+       "ccl-language.ads", "ccl-language.adb",
+       "ccl-declarations.ads", "ccl-declarations.adb",
+       "ccl-configurations.ads", "ccl-configurations.adb");
 
     for Runtime ("Ada") use "../../runtime";
 
@@ -37,7 +50,7 @@ project Devmgr is
     package Compiler is
         for Default_Switches ("Ada") use
         (
-            "-O2",
+            "-O2", "-gnat2022",
             "-fstack-usage",
             "-fomit-frame-pointer",
             "-mno-red-zone",

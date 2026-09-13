@@ -1,0 +1,4 @@
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "bench-storage.app" (priority 4))
+)

@@ -1,0 +1,7 @@
+# Services and applications below are on ISO9660, not the bootstrap archive.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+)

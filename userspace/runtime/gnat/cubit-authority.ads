@@ -27,5 +27,6 @@ package CuBit.Authority with SPARK_Mode => On is
    AUTH_REASON_SERVICE_MISSING  : constant Unsigned_8 := 7;
    AUTH_REASON_MINT_FAILED      : constant Unsigned_8 := 8;
    AUTH_REASON_CONFIG_QUOTA     : constant Unsigned_8 := 9;
+   AUTH_REASON_STARTUP_REQUIRED : constant Unsigned_8 := 10;
 
 end CuBit.Authority;

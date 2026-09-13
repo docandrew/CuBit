@@ -38,7 +38,7 @@ $(OUT)/test.gb: sameboy/test-cartridge.asm
 	rgbasm -o $(OUT)/test-rom.o $<
 	rgblink -o $@ $(OUT)/test-rom.o
 	rgbfix -v -p 0 -t "CUBIT TEST" $@
-$(OUT)/sameboy.app: runtime $(CORE_OBJS) $(OUT)/main.o $(OUT)/compat.o $(OUT)/bootroms.o $(OUT)/libc_stubs.o
+$(OUT)/sameboy.app: runtime $(CORE_OBJS) $(OUT)/main.o $(OUT)/compat.o $(OUT)/bootroms.o $(OUT)/libc_stubs.o ../runtime/adalib/libgnat-user.a
 	$(LD) -nostdlib -static --gc-sections -z stack-size=16777216 -T link.ld \
 	 build/crt0.o $(CORE_OBJS) $(OUT)/main.o $(OUT)/compat.o $(OUT)/bootroms.o $(OUT)/libc_stubs.o $(SAMEBOY_LIBM) \
-	 build/libcubit.a -o $@
+	 build/libcubit.a ../runtime/adalib/libgnat-user.a -o $@

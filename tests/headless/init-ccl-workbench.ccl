@@ -1,0 +1,8 @@
+# Native CCL Workbench desktop integration profile
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "ccl-workbench.app" (priority 3))
+)

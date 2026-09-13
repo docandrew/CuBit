@@ -11,6 +11,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 
 package body Mixer is
+   Master_Gain : Integer_64 := 65_536;
 
    function toVolume is new Ada.Unchecked_Conversion (Unsigned_32, Volume);
    function fromVolume is new Ada.Unchecked_Conversion (Volume, Unsigned_32);
@@ -288,7 +289,21 @@ package body Mixer is
       --  so DMA never loops stale data (unread portion is silence from
       --  the cleared mixBuf).
       for i in 0 .. maxFrames * 2 - 1 loop
-         val := mixBuf (i);
+         if i mod 2 = 0 then
+            declare
+               Target : constant Integer_64 :=
+                 (if Master.Muted then 0 else Integer_64 (Master.Level) * 65_536 / 100);
+            begin
+               --  At most 256 frames to traverse full scale; both channels
+               --  share one gain, avoiding a discontinuous mute/volume step.
+               if Master_Gain < Target then
+                  Master_Gain := Integer_64'Min (Target, Master_Gain + 256);
+               else
+                  Master_Gain := Integer_64'Max (Target, Master_Gain - 256);
+               end if;
+            end;
+         end if;
+         val := Integer_32 (Integer_64 (mixBuf (i)) * Master_Gain / 65_536);
          if val > 32767 then
             val := 32767;
          elsif val < -32768 then

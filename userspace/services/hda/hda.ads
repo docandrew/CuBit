@@ -103,6 +103,23 @@ package HDA is
    VERB_SET_POWER_STATE : constant Unsigned_32 := 16#705_00#;
    VERB_GET_CONN_LIST   : constant Unsigned_32 := 16#F02_00#;
    VERB_GET_PIN_CTRL    : constant Unsigned_32 := 16#F07_00#;
+   VERB_GET_AMP_GAIN    : constant Unsigned_32 := 16#B00_00#;
+   VERB_GET_STREAM_FMT  : constant Unsigned_32 := 16#A00_00#;
+   VERB_GET_CHAN_STREAM : constant Unsigned_32 := 16#F06_00#;
+   VERB_GET_POWER_STATE : constant Unsigned_32 := 16#F05_00#;
+   VERB_GET_EAPD        : constant Unsigned_32 := 16#F0C_00#;
+   VERB_GET_PIN_DEFAULT : constant Unsigned_32 := 16#F1C_00#;
+   VERB_GET_SUBSYSTEM   : constant Unsigned_32 := 16#F20_00#;
+
+   WIDGET_OUTPUT_AMP    : constant Unsigned_32 := 16#04#;
+   WIDGET_AMP_OVERRIDE  : constant Unsigned_32 := 16#08#;
+   WIDGET_POWER        : constant Unsigned_32 := 16#400#;
+   PIN_CAP_EAPD        : constant Unsigned_32 := 16#1_0000#;
+   EAPD_ENABLE         : constant Unsigned_32 := 2;
+   AMP_GET_OUTPUT      : constant Unsigned_32 := 16#8000#;
+   AMP_GET_LEFT        : constant Unsigned_32 := 16#2000#;
+   --  GET selects right by clearing bit 13 (unlike SET's bit 12).
+   AMP_GET_RIGHT       : constant Unsigned_32 := 0;
 
    --  Parameter IDs (for GET_PARAM verb payload)
    PARAM_VENDOR_ID      : constant Unsigned_32 := 16#00#;
@@ -216,6 +233,10 @@ package HDA is
    --  codecs, configure output path, set up stream DMA.
    procedure initController;
 
+   --  Disable interrupts and command DMA after failed initialization.
+   --  Safe to call when the controller could not be mapped.
+   procedure abortInitialization;
+
    --  Send a verb to codec 0 and return the response.
    function sendVerb (nid  : Unsigned_8;
                       verb : Unsigned_32) return Unsigned_32;
@@ -259,6 +280,7 @@ package HDA is
    --  Discovered codec info
    codecFound  : Boolean := False;
    codecVendor : Unsigned_32 := 0;
+   outputConfigured : Boolean := False;
 
    --  Discovered output path
    dacNID      : Unsigned_8 := 0;

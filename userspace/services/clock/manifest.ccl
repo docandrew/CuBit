@@ -1,0 +1,6 @@
+# Requested authority only; the existing launch path remains in control.
+(executable-manifest v1
+  (identity "com.cubit.clock")
+  (version "0.1.0")
+  (request-service config read-write config)
+  (config-scope (rights read) "clock."))

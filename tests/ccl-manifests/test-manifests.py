@@ -46,7 +46,10 @@ class Manifests(unittest.TestCase):
 
     def extract(self, obj):
         sections = {}
-        for name in ('.cubit.id', '.cubit.caps'):
+        headers = subprocess.check_output(['objdump', '-h', obj], text=True)
+        names = [line.split()[1] for line in headers.splitlines()
+                 if len(line.split()) > 2 and line.split()[1].startswith('.cubit.')]
+        for name in names:
             output = self.directory / (obj.name + name + '.bin')
             subprocess.run(['objcopy', '--dump-section', f'{name}={output}', obj],
                            check=True, capture_output=True)
@@ -68,6 +71,14 @@ class Manifests(unittest.TestCase):
         native = ROOT / 'userspace/ccl/apps/ccl-vm/build/ccl-vm.app'
         self.assertEqual(sections, self.extract(native))
 
+    def test_symbolic_format_versions(self):
+        for token in ("1", "2", "v2", "V1", '"v1"', "(+ 0 1)"):
+            with self.subTest(token=token):
+                self.reject(source=SOURCE.replace("executable-manifest v1",
+                                                   "executable-manifest " + token))
+                self.reject(catalog=CATALOG.replace("service-catalog v1",
+                                                     "service-catalog " + token))
+
     def test_real_ccl_expressions_and_comments(self):
         source = SOURCE.replace('"com.cubit.ccl-vm"',
                                 '(concat "com.cubit." "ccl-vm")')
@@ -83,7 +94,7 @@ class Manifests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         caps = self.sections(result.stdout)['.cubit.caps']
         self.assertEqual(struct.unpack_from('<I', caps, 28)[0], 9001)
-        self.reject(catalog='(service-catalog 1 (application-slots 24 62))', diagnostic='UNKNOWN_SERVICE')
+        self.reject(catalog='(service-catalog v1 (application-slots 24 62))', diagnostic='UNKNOWN_SERVICE')
 
     def test_named_bindings_follow_layout_and_declaration_order(self):
         result = self.compile()
@@ -139,7 +150,7 @@ class Manifests(unittest.TestCase):
             (SOURCE.replace('(version "0.1.0")', '(version "0.1.0") (version "x")'), 'DUPLICATE_FIELD'),
             (SOURCE.replace('"com.cubit.ccl-vm"', '15'), 'EXPECTED_TEXT'),
             (SOURCE.replace('"com.cubit.ccl-vm"', '"bad\\nidentity"'), 'INVALID_TEXT'),
-            (SOURCE.replace('executable-manifest 1', 'executable-manifest 2'), 'UNSUPPORTED_VERSION'),
+            (SOURCE.replace('executable-manifest v1', 'executable-manifest v2'), 'UNSUPPORTED_VERSION'),
             (SOURCE.replace('"0.1.0"', '(/ 1 0)'), 'INVALID_EXPRESSION'),
             (SOURCE.replace('"0.1.0"', '(clock.monotonic-ms)'), 'INVALID_EXPRESSION'),
             (SOURCE.replace('(version', '(approved-authority'), 'UNKNOWN_DECLARATION'),
@@ -150,11 +161,11 @@ class Manifests(unittest.TestCase):
 
     def test_catalog_validation(self):
         for catalog, diagnostic in [
-            ('(service-catalog 2)', 'UNSUPPORTED_VERSION'),
-            ('(service-catalog 1 (service x 0 read))', 'INVALID_SERVICE_ID'),
-            ('(service-catalog 1 (service x 4294967296 read))', 'INVALID_SERVICE_ID'),
-            ('(service-catalog 1 (service x 1 read) (service x 2 read))', 'DUPLICATE_SERVICE'),
-            ('(service-catalog 1 (service x 1 read) (service y 1 read))', 'DUPLICATE_SERVICE'),
+            ('(service-catalog v2)', 'UNSUPPORTED_VERSION'),
+            ('(service-catalog v1 (service x 0 read))', 'INVALID_SERVICE_ID'),
+            ('(service-catalog v1 (service x 4294967296 read))', 'INVALID_SERVICE_ID'),
+            ('(service-catalog v1 (service x 1 read) (service x 2 read))', 'DUPLICATE_SERVICE'),
+            ('(service-catalog v1 (service x 1 read) (service y 1 read))', 'DUPLICATE_SERVICE'),
         ]:
             with self.subTest(catalog=catalog):
                 self.reject(catalog=catalog, diagnostic=diagnostic)
@@ -162,10 +173,10 @@ class Manifests(unittest.TestCase):
     def test_bounds(self):
         self.reject(source=' ' * 4097, diagnostic='4096-byte bound')
         self.reject(catalog=' ' * 4097, diagnostic='4096-byte bound')
-        base = '(executable-manifest 1 (identity "a") (version "1") '
+        base = '(executable-manifest v1 (identity "a") (version "1") '
         self.reject(base + ''.join(f'(request-service clock read b{i})' for i in range(1, 34)) + ')',
                     diagnostic='TOO_MANY_REQUESTS')
-        catalog = '(service-catalog 1 ' + ''.join(f'(service s{i} {i} read)' for i in range(1, 34)) + ')'
+        catalog = '(service-catalog v1 ' + ''.join(f'(service s{i} {i} read)' for i in range(1, 34)) + ')'
         self.reject(catalog=catalog, diagnostic='TOO_MANY_SERVICES')
         self.reject(SOURCE.replace('"0.1.0"', '(' * 33 + ')' * 33),
                     diagnostic='NESTING_TOO_DEEP')
@@ -175,6 +186,157 @@ class Manifests(unittest.TestCase):
         for _ in range(100):
             text = ''.join(rng.choice('()#"\\ abc123\n') for _ in range(rng.randrange(160)))
             self.reject(source=text)
+
+    def test_fixed_runtime_bindings(self):
+        catalog = CATALOG[:-2] + ' (fixed-binding test-host 18) (fixed-binding clock 25))'
+        result = self.compile(catalog=catalog)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        caps = self.sections(result.stdout)['.cubit.caps']
+        self.assertEqual(struct.unpack_from('<H', caps, 10)[0], 18)
+        self.assertEqual(struct.unpack_from('<H', caps, 26)[0], 25)
+        self.reject(catalog=catalog.replace('clock 25', 'clock 18'), diagnostic='DUPLICATE_SLOT')
+        self.reject(catalog=catalog.replace('clock 25', 'clock 63'), diagnostic='INVALID_SLOT')
+        self.reject(catalog=catalog.replace('fixed-binding clock', 'fixed-binding test-host'),
+                    diagnostic='DUPLICATE_BINDING')
+        # Even a later fixed binding reserves its slot before automatic allocation.
+        result = self.compile(catalog=CATALOG[:-2] + ' (fixed-binding clock 24))')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        caps = self.sections(result.stdout)['.cubit.caps']
+        self.assertEqual(struct.unpack_from('<H', caps, 10)[0], 25)
+        self.assertEqual(struct.unpack_from('<H', caps, 26)[0], 24)
+
+    def test_identity_only_and_explicit_empty_requests(self):
+        source = '(executable-manifest v1 (identity "a") (version "1"))'
+        result = self.compile(source)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('with Interfaces;',
+                         (self.directory / 'ccl_manifest_bindings.ads').read_text())
+        result = self.compile(source)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(set(self.sections(result.stdout)), {'.cubit.id'})
+        result = self.compile(source[:-1] + ' (requests-none))')
+        self.assertEqual(self.sections(result.stdout)['.cubit.caps'],
+                         struct.pack('<IHH', 0x43424954, 1, 0))
+        self.reject(SOURCE[:-2] + ' (requests-none))', diagnostic='DUPLICATE_FIELD')
+
+    def test_scopes_exact_encoding(self):
+        source = SOURCE[:-2] + ' (filesystem-scope (rights read write create) "@mem:0/work"))'
+        result = self.compile(source)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = self.sections(result.stdout)['.cubit.access']
+        expected = struct.pack('<IHHQ', 0x43434143, 1, 1, 0)
+        expected += struct.pack('<BB6x64s8x', 11, 11, b'@mem:0/work')
+        self.assertEqual(data, expected)
+        for path in ['', '../escape', '@mem:0/work/../other', 'a//b', '*', 'a\\nsecret', 'x' * 65]:
+            with self.subTest(path=path):
+                self.reject(source.replace('@mem:0/work', path), diagnostic='INVALID_PATH')
+        for rights in ['', 'read read', 'read admin']:
+            self.reject(source.replace('read write create', rights), diagnostic='INVALID_ACCESS_RIGHTS')
+        self.reject(source[:-1] + ' (filesystem-scope (rights read) "@mem:0/work"))',
+                    diagnostic='DUPLICATE_SCOPE')
+        many = ''.join(f'(filesystem-scope (rights read) "p{i}")' for i in range(17))
+        self.reject(SOURCE[:-2] + many + ')', diagnostic='TOO_MANY_SCOPES')
+
+    def test_streams_exact_encoding(self):
+        source = SOURCE[:-2] + ' (stream stdout text (* 2 2)) (stream log raw-bytes 1))'
+        result = self.compile(source)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.sections(result.stdout)['.cubit.streams'],
+                         struct.pack('<IHH', 0x54534243, 1, 2) +
+                         struct.pack('<HHHH', 2, 4, 1, 0) + struct.pack('<HHHH', 4, 1, 0, 0))
+        self.reject(source.replace('log raw-bytes', 'stdout raw-bytes'), diagnostic='DUPLICATE_STREAM')
+        self.reject(source.replace('stdout text', 'unknown text'), diagnostic='UNKNOWN_STREAM')
+        self.reject(source.replace('stdout text', 'stdout unknown'), diagnostic='UNKNOWN_STREAM')
+        for pages in ['0', '-1', '257', 'true', '"4"']:
+            self.reject(source.replace('(* 2 2)', pages), diagnostic='INVALID_STREAM_PAGES')
+
+
+    def test_native_manifest_sources_are_ccl(self):
+        for directory in ('userspace/apps', 'userspace/services',
+                          'userspace/ccl/apps', 'userspace/ccl/services'):
+            self.assertEqual(list((ROOT / directory).rglob('manifest*.c')), [],
+                             f'{directory}: native executable manifests must be CCL')
+
+    def test_notification_and_framebuffer_requests(self):
+        catalog = '''(service-catalog v1 (application-slots 24 62)
+          (notification keys 1 publish-and-manage)
+          (service unrelated 1 read-write))'''
+        source = '''(executable-manifest v1 (identity "test") (version "1")
+          (request-notification keys publish events)
+          (request-notification keys manage focus)
+          (request-framebuffer read-write framebuffer))'''
+        result = self.compile(source, catalog)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.sections(result.stdout)['.cubit.caps'],
+                         struct.pack('<IHH', 0x43424954, 1, 3) +
+                         struct.pack('<BBHIQ', 7, 1, 24, 1, 0) +
+                         struct.pack('<BBHIQ', 7, 2, 25, 1, 0) +
+                         struct.pack('<BBHIQ', 1, 3, 26, 0, 0))
+        self.reject(source.replace('keys publish', 'unrelated publish'), catalog,
+                    'UNKNOWN_NOTIFICATION')
+        self.reject(source.replace('request-notification keys publish',
+                                   'request-service keys read'), catalog, 'UNKNOWN_SERVICE')
+        self.reject(source, catalog.replace('publish-and-manage', 'publish'), 'RIGHTS_NOT_OFFERED')
+        self.reject(source.replace('keys publish', 'keys read'), catalog, 'UNKNOWN_RIGHTS')
+        self.reject(source, catalog.replace('keys 1', 'keys 18'), 'INVALID_NOTIFICATION_ID')
+        self.reject(source.replace('focus)', 'events)'), catalog, 'DUPLICATE_BINDING')
+        self.reject(source.replace('framebuffer)', 'Bad_name)'), catalog, 'INVALID_BINDING_NAME')
+
+    def test_explicit_broad_access_and_config_domain(self):
+        source = '''(executable-manifest v1 (identity "test") (version "1")
+          (filesystem-scope (rights read) all)
+          (config-scope (rights read write) all))'''
+        result = self.compile(source)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.sections(result.stdout)['.cubit.access'],
+                         struct.pack('<IHHQ', 0x43434143, 1, 2, 0) +
+                         bytes([1, 0, 0]) + bytes(77) + bytes([3, 0, 1]) + bytes(77))
+        self.reject(source.replace('config-scope (rights read write)',
+                                   'filesystem-scope (rights read write)'), diagnostic='DUPLICATE_SCOPE')
+        self.reject(source.replace('all)', '"")'), diagnostic='INVALID_PATH')
+        self.reject(source.replace('all)', 'all-folders)'), diagnostic='INVALID_PATH')
+        for right in ('execute', 'create'):
+            self.reject(source.replace('read write', right), diagnostic='INVALID_ACCESS_RIGHTS')
+
+    def test_network_scope_encoding_and_validation(self):
+        template = '''(executable-manifest v1 (identity "test") (version "1")
+          (request-network tcp-connect (ipv4 "10.0.2.0" 24)
+            (ports 80 443) (dns allow) network))'''
+        result = self.compile(template)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        descriptor = 80 | (443 << 16) | (24 << 32) | (1 << 40) | (1 << 48)
+        self.assertEqual(self.sections(result.stdout)['.cubit.caps'],
+                         struct.pack('<IHH', 0x43424954, 1, 1) +
+                         struct.pack('<BBHIQ', 10, 3, 24, 0x0a000200, descriptor))
+        listener = template.replace('tcp-connect', 'tcp-listen').replace(
+            '10.0.2.0" 24', '10.0.2.15" 32').replace('80 443', '8080 8080').replace('dns allow', 'dns deny')
+        result = self.compile(listener)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        descriptor = 8080 | (8080 << 16) | (32 << 32) | (2 << 40)
+        self.assertEqual(self.sections(result.stdout)['.cubit.caps'][8:],
+                         struct.pack('<BBHIQ', 10, 3, 24, 0x0a00020f, descriptor))
+        broad = template.replace('10.0.2.0" 24', '0.0.0.0" 0').replace('80 443', '1 65535')
+        self.assertEqual(self.compile(broad).returncode, 0)
+        for old, bad in [
+                ('tcp-connect', 'udp-connect'), ('"10.0.2.0"', '123'),
+                ('"10.0.2.0"', '"10.0.2.1"'), ('"10.0.2.0"', '"010.0.2.0"'),
+                ('"10.0.2.0"', '"256.0.2.0"'), ('"10.0.2.0"', '"10.0.2"'),
+                ('"10.0.2.0"', '"10..2.0"'), ('"10.0.2.0"', '"10.0.2.0."'),
+                ('"10.0.2.0"', '"10.0.2.0/24"'), ('"10.0.2.0"', '"1.2.3.4.5"'),
+                ('"10.0.2.0"', '"10.0.2.-1"'), ('"10.0.2.0"', '"10.0.2.0 "'),
+                ('24)', '33)'), ('24)', '-1)'), ('24)', 'true)'),
+                ('80 443', '0 443'), ('80 443', '444 443'), ('80 443', '80 65536'),
+                ('80 443', '"80" 443'), ('dns allow', 'dns maybe')]:
+            with self.subTest(old=old, bad=bad):
+                self.reject(template.replace(old, bad), diagnostic='INVALID_NETWORK_SCOPE')
+        for old, bad in [('dns deny', 'dns allow'), ('8080 8080', '8080 8081'),
+                         ('32)', '24)'), ('10.0.2.15', '0.0.0.0'),
+                         ('10.0.2.15', '224.0.0.1')]:
+            self.reject(listener.replace(old, bad), diagnostic='INVALID_NETWORK_SCOPE')
+        self.reject(template.replace('network)', 'Network)'), diagnostic='INVALID_BINDING_NAME')
+        # Truncation must fail without exceptions or partial ELF output.
+        for end in range(len(template) - 1):
+            self.reject(template[:end])
 
 
 if __name__ == '__main__':

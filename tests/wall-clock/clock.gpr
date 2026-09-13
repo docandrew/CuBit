@@ -1,0 +1,11 @@
+project Clock is
+   for Source_Dirs use (".", "../../userspace/lib/time",
+                        "../../userspace/services/clock/build/generated");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      --  Assertions and overflow checks are for this Linux-hosted test only.
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Clock;

@@ -76,6 +76,7 @@
             ];
 
             shellHook = ''
+              export PYTHONTZPATH="${pkgs.tzdata}/share/zoneinfo"
               export DOOMGENERIC_SRC="${doomgeneric}"
               export DOOM_WAD="${pkgs.freedoom}/share/games/doom/freedoom1.wad"
               export STB_SRC="${stb}"

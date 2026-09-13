@@ -1,0 +1,7 @@
+# CuBit headless display/desktop regression profile
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "shell.app" (priority 3))
+)

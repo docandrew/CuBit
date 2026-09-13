@@ -1,0 +1,6 @@
+# Requested authority only; the existing launch path remains in control.
+(executable-manifest v1
+  (identity "com.cubit.bench.storage")
+  (version "0.1.0")
+  (request-service filesystem read-write filesystem)
+  (filesystem-scope (rights read write create) "@nvme:0/"))

@@ -1,3 +1,4 @@
+with CCL_Manifest_Bindings;
 ------------------------------------------------------------------------------
 --  CuBit Files
 --  Read-only native browser for explicitly granted filesystem roots.
@@ -25,7 +26,7 @@ procedure main is
    INITIAL_WIDTH : constant Positive := 860;
    INITIAL_HEIGHT : constant Positive := 540;
    PAGE_SIZE : constant Unsigned_64 := 4096;
-   CAP_SLOT_FILESYSTEM : constant CapabilitySlot := 22;
+   CAP_SLOT_FILESYSTEM : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Files_Filesystem;
    MAXIMUM_ITEMS : constant Positive := 128;
    ROW_HEIGHT : constant Positive := 24;
 

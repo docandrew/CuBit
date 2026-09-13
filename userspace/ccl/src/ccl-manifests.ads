@@ -5,7 +5,7 @@ with CCL.Language;
 --  Field expressions use the existing CCL evaluator without a host adapter.
 package CCL.Manifests with SPARK_Mode => On is
    MAX_DECLARATION_LENGTH : constant := 4_096;
-   MAX_SECTION_BYTES : constant := 1_024;
+   MAX_SECTION_BYTES : constant := 2_048;
    MAX_BINDINGS : constant := 32;
    type Binding_Name is record
       Length : Natural range 0 .. 64 := 0;
@@ -29,7 +29,10 @@ package CCL.Manifests with SPARK_Mode => On is
       Invalid_Slot, Duplicate_Binding, Too_Many_Requests, Unsupported_Version,
       Trailing_Input, Nesting_Too_Deep, Invalid_Service_ID, Duplicate_Service,
       Too_Many_Services, Rights_Not_Offered, Invalid_Binding_Name,
-      Slots_Exhausted);
+      Slots_Exhausted, Duplicate_Slot, Invalid_Path, Invalid_Access_Rights,
+      Too_Many_Scopes, Duplicate_Scope, Unknown_Stream, Invalid_Stream_Pages,
+      Duplicate_Stream, Invalid_Network_Scope, Unknown_Notification,
+      Invalid_Notification_ID);
    type Compilation_Result is record
       Success : Boolean := False;
       Diagnostic : Diagnostic_Code := No_Error;
@@ -37,7 +40,7 @@ package CCL.Manifests with SPARK_Mode => On is
       In_Catalog : Boolean := False;
       Expression_Diagnostic : CCL.Language.Diagnostic_Code :=
         CCL.Language.No_Diagnostic;
-      Identity, Capabilities : Section;
+      Identity, Capabilities, Access_Scopes, Streams : Section;
       Binding_Count : Natural range 0 .. MAX_BINDINGS := 0;
       Bindings : Binding_Array := [others => (others => <>)];
    end record;

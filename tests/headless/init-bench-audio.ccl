@@ -1,0 +1,5 @@
+# Deterministic native producer; mixer and HDA are stage-1 services.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "bench-audio.app" (priority 4))
+)

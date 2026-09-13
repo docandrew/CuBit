@@ -47,7 +47,7 @@ procedure main is
    --  Interface method
    type IfMethod is (METHOD_NONE, METHOD_STATIC, METHOD_DHCP);
 
-   --  Per-interface config from system.conf
+   --  Per-interface config from system.ccl
    type IfConfig is record
       method  : IfMethod := METHOD_NONE;
       address : Unsigned_64 := 0;

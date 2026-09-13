@@ -78,7 +78,7 @@ while True:
     assert start + size <= len(archive)
     position = (start + size + 3) & ~3
 assert names == {'devmgr.svc', 'filesystem.svc', 'ps2.drv', 'xhci.drv',
-                 'live-rw.ext2', 'init.conf', 'system.conf'}, names
+                 'live-rw.ext2', 'init.ccl', 'system.ccl'}, names
 assert not names & expected_apps
 grub = entries(*boot['grub'])
 config = contents(grub['grub.cfg']).decode()

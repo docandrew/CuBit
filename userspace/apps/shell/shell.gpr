@@ -61,8 +61,7 @@ project Shell is
             "-lgnat-user",
             "-T", "../../c/link.ld",
             "../../c/build/crt0.o",
-            "build/manifest.o",
-            "build/manifest_access.o"
+            "build/manifest.o"
         );
     end Linker;
 

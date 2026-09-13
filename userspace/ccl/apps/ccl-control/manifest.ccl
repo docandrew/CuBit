@@ -1,0 +1,9 @@
+# Generated ELF metadata is tied to this executable; requests are not grants.
+(executable-manifest v1
+  (identity "com.cubit.ccl-control")
+  (version "0.1.0")
+  # Development-only plaintext listener, isolated behind a loopback QEMU forward.
+  # No outbound, filesystem, desktop, or process administration request.
+  (request-network tcp-listen (ipv4 "10.0.2.15" 32)
+    (ports 8080 8080) (dns deny) network)
+  (request-service clock read-write clock))

@@ -1,0 +1,7 @@
+# CCL VM and source interpreter in-guest regression profile
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "ccl-test-host.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "ccl-vm.app" (priority 5))
+)

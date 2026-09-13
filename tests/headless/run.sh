@@ -48,6 +48,8 @@ Options:
 The suite boots the NVMe profile headlessly and checks serial output for
 stable pass markers.
 Performance fixtures: bench-ipc, bench-audio, bench-storage, bench-input, bench-scheduler.
+Use --timeout 100 for network-authority: it includes an intentional 30-second
+accept deadline and a seven-second backlog expiry wait, plus traffic checks.
 EOF
 }
 
@@ -279,79 +281,80 @@ if [ ! -f "$BASE_DISK" ]; then
     exit 1
 fi
 
+
 DISK_IMAGE="$BASE_DISK"
 INIT_PROFILE=""
 case "$TEST_NAME" in
     async-ipc)
-        INIT_PROFILE="$ROOT_DIR/tests/headless/init-async-ipc.conf"
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-async-ipc.ccl"
         ;;
     bench-ipc)
-        INIT_PROFILE="$ROOT_DIR/tests/headless/init-bench-ipc.conf"
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-bench-ipc.ccl"
         ;;
     bench-input)
-        INIT_PROFILE="$ROOT_DIR/tests/headless/init-bench-input.conf"
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-bench-input.ccl"
         ;;
     bench-scheduler)
-        INIT_PROFILE="$ROOT_DIR/tests/headless/init-bench-scheduler.conf"
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-bench-scheduler.ccl"
         ;;
     bench-storage)
-        INIT_PROFILE="$ROOT_DIR/tests/headless/init-bench-storage.conf"
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-bench-storage.ccl"
         ;;
     ccl-vm)
-        INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-vm.conf"
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-vm.ccl"
         ;;
     ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace)
-        INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-workbench.conf"
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-workbench.ccl"
         ;;
     capability-security)
-        INIT_PROFILE="$ROOT_DIR/tests/headless/init-capability-security.conf"
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-capability-security.ccl"
         ;;
     ccl-remote)
-        INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-remote.conf"
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-remote.ccl"
         ;;
     network-authority)
-        INIT_PROFILE="$ROOT_DIR/tests/headless/init-network-authority.conf"
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-network-authority.ccl"
         ;;
     storage-grants)
-        INIT_PROFILE="$ROOT_DIR/tests/headless/init-storage-grants.conf"
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-storage-grants.ccl"
         ;;
     desktop-display|desktop-virtio-vga)
-        INIT_PROFILE="$ROOT_DIR/tests/headless/init-desktop-display.conf"
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-desktop-display.ccl"
         ;;
     input-stream)
-        INIT_PROFILE="$ROOT_DIR/tests/headless/init-input-stream.conf"
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-input-stream.ccl"
         ;;
     bench-audio)
-        INIT_PROFILE="$ROOT_DIR/tests/headless/init-bench-audio.conf"
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-bench-audio.ccl"
         ;;
     desktop-protocol)
-        INIT_PROFILE="$ROOT_DIR/tests/headless/init-desktop-protocol.conf"
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-desktop-protocol.ccl"
         ;;
     display-grants|display-grants-virtio-vga)
-        INIT_PROFILE="$ROOT_DIR/tests/headless/init-display-grants.conf"
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-display-grants.ccl"
         ;;
     devices)
-        INIT_PROFILE="$ROOT_DIR/tests/headless/init-devices.conf"
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-devices.ccl"
         ;;
     files)
-        INIT_PROFILE="$ROOT_DIR/tests/headless/init-files.conf"
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-files.ccl"
         ;;
     desktop-doom)
-        INIT_PROFILE="$ROOT_DIR/tests/headless/init-doom-desktop.conf"
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-doom-desktop.ccl"
         ;;
     virtio-gpu|virtio-vga-primary)
         if [ "$TEST_NAME" = "virtio-vga-primary" ]; then
-            INIT_PROFILE="$ROOT_DIR/init.conf"
+            INIT_PROFILE="$ROOT_DIR/init.ccl"
         fi
         ;;
 esac
 
 if [ "$BENCH_LOAD" = 1 ]; then
-    INIT_PROFILE="$ROOT_DIR/tests/headless/init-${TEST_NAME}-load.conf"
+    INIT_PROFILE="$ROOT_DIR/tests/headless/init-${TEST_NAME}-load.ccl"
     if [ "$LOAD_WORKERS" -gt 1 ]; then
-        TEMP_LOAD_PROFILE="$(mktemp "${TMPDIR:-/tmp}/cubit-input-load.XXXXXX.conf")"
+        TEMP_LOAD_PROFILE="$(mktemp "${TMPDIR:-/tmp}/cubit-input-load.XXXXXX.ccl")"
         awk -v count="$LOAD_WORKERS" '
-            /^bench-input-load.app pri=4$/ {
+            /^[[:space:]]*[(]start "bench-input-load[.]app" [(]priority 4[)][)]$/ {
                 for (i=1; i<=count; i++) print;
                 next
             }
@@ -363,9 +366,9 @@ fi
 if [ -n "$INIT_PROFILE" ]; then
     TEMP_DISK="$(mktemp "${TMPDIR:-/tmp}/cubit-${TEST_NAME}-disk.XXXXXX.img")"
     cp "$BASE_DISK" "$TEMP_DISK"
-    debugfs -w -R "rm init.conf" "$TEMP_DISK" >/dev/null 2>&1
-    if ! debugfs -w -R "write $INIT_PROFILE init.conf" "$TEMP_DISK" >/dev/null 2>&1; then
-        echo "headless: failed to install $TEST_NAME init.conf" >&2
+    debugfs -w -R "rm init.ccl" "$TEMP_DISK" >/dev/null 2>&1
+    if ! debugfs -w -R "write $INIT_PROFILE init.ccl" "$TEMP_DISK" >/dev/null 2>&1; then
+        echo "headless: failed to install $TEST_NAME init.ccl" >&2
         exit 1
     fi
     if [ "$TEST_NAME" = "async-ipc" ]; then
@@ -1778,6 +1781,15 @@ if { [ "$TEST_NAME" = "desktop-virtio-vga" ] ||
     echo "headless: display attempted an unsafe received-page re-grant" >&2
     echo "headless: serial log: $SERIAL_LOG" >&2
     exit 1
+fi
+
+if [ "$TEST_NAME" = "devices" ]; then
+    # A prefix match would accept the old malformed id with two version-header
+    # bytes appended. Require exactly the canonical identity from the loader.
+    if ! tr -d '\r' < "$SERIAL_LOG" | grep -Fx 'procmgr: pkg id=com.cubit.devices' >/dev/null; then
+        echo "headless: Devices package identity is malformed or missing" >&2
+        exit 1
+    fi
 fi
 
 FAULT_SIGNATURE='panic|assert|double fault|triple fault|general protection|machine check exception|^EXCEPTION:|deadlock|TEST: FAIL|BENCH: FAIL|CLOCK: FAIL|SCHED-ALARM: fallback'

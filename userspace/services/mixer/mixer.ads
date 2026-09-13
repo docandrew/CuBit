@@ -24,8 +24,10 @@
 --    Offset 0x040: Ring data (bufferSize bytes)
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
+with CuBit.Audio_Control;
 
 package Mixer is
+   Master : CuBit.Audio_Control.State;
 
    ---------------------------------------------------------------------------
    --  Ring buffer header (matches shared memory layout)

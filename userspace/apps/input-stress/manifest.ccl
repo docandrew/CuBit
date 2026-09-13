@@ -1,0 +1,7 @@
+# Generated ELF metadata is tied to this executable; requests are not grants.
+(executable-manifest v1
+  (identity "com.cubit.input-stress")
+  (version "1.0.0")
+  # Test-only publishers for input regression coverage.
+  (request-notification keyboard publish keyboard)
+  (request-notification mouse publish mouse))

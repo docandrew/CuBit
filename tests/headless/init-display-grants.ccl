@@ -1,0 +1,4 @@
+(startup v1
+  (start "display.svc" (priority 5))
+  (start "display-check.app" (priority 4))
+)

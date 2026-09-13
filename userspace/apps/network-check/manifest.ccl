@@ -1,0 +1,10 @@
+# Generated ELF metadata is tied to this executable; requests are not grants.
+(executable-manifest v1
+  (identity "com.cubit.network-check")
+  (version "0.1.0")
+  # Test scopes still require independent network=declared launch approval.
+  (request-service network-stack read-write network)
+  (request-network tcp-connect (ipv4 "10.0.2.0" 24)
+    (ports 18443 18443) (dns deny) test-connect)
+  (request-network tcp-listen (ipv4 "10.0.2.15" 32)
+    (ports 8080 8080) (dns deny) test-listen))

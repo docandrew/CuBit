@@ -271,10 +271,9 @@ prove-network-authority:
 	@cat ../tests/network-authority/build/gnatprove/gnatprove.out
 
 .PHONY: network-check test-network-authority prove-network-authority
-network-check: user_runtime
+network-check: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/network-check/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/apps/network-check/manifest.c -o ../userspace/apps/network-check/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/apps/network-check)
 	$(ALR) gprbuild -P ../userspace/apps/network-check/network_check.gpr
 	cp ../userspace/apps/network-check/build/network-check.app isodir/boot/network-check.app
 
@@ -363,39 +362,33 @@ netsurf:
 	cp ../userspace/c/netsurf/build/freestanding/netsurf.app isodir/boot/netsurf.app
 
 .PHONY : sleep
-sleep: user_runtime
+sleep: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/sleep/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/apps/sleep/manifest.c \
-		-o ../userspace/apps/sleep/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/apps/sleep)
 	$(ALR) gprbuild -P ../userspace/apps/sleep/sleep.gpr
 	cp ../userspace/apps/sleep/build/sleep.app isodir/boot/sleep.app
 
 .PHONY : capability-test
-capability-test: user_runtime
+capability-test: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/capability-test/build
 	yasm -f elf64 ../userspace/apps/capability-test/syscall_registers.asm \
 		-o ../userspace/apps/capability-test/build/syscall_registers.o
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/apps/capability-test/manifest.c \
-		-o ../userspace/apps/capability-test/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/apps/capability-test)
 	$(ALR) gprbuild -P ../userspace/apps/capability-test/capability_test.gpr
 	cp ../userspace/apps/capability-test/build/capability-test.app isodir/boot/capability-test.app
 
 # Portable protocol checks and an unprivileged native desktop adversary.
 .PHONY : desktop-check prepare-desktop-protocol test-desktop-protocol prove-desktop-protocol
-desktop-check: user_runtime
+desktop-check: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/desktop-check/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/apps/desktop-check/manifest.c -o ../userspace/apps/desktop-check/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/apps/desktop-check)
 	$(ALR) gprbuild -p -P ../userspace/apps/desktop-check/desktop_check.gpr
 	cp ../userspace/apps/desktop-check/build/desktop-check.app isodir/boot/desktop-check.app
 
 .PHONY: display-check
-display-check: user_runtime
+display-check: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/display-check/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/apps/display-check/manifest.c -o ../userspace/apps/display-check/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/apps/display-check)
 	$(ALR) gprbuild -p -P ../userspace/apps/display-check/display_check.gpr
 	cp ../userspace/apps/display-check/build/display-check.app isodir/boot/display-check.app
 
@@ -450,82 +443,68 @@ prove-ipc-request-ids: prepare-ipc-request-ids
 
 # Deterministic typed input stream publisher used by the headless recovery gate.
 .PHONY : input-stress
-input-stress: user_runtime
+input-stress: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/input-stress/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/apps/input-stress/manifest.c \
-		-o ../userspace/apps/input-stress/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/apps/input-stress)
 	$(ALR) gprbuild -P ../userspace/apps/input-stress/input_stress.gpr
 	cp ../userspace/apps/input-stress/build/input-stress.app isodir/boot/input-stress.app
 
 .PHONY : ipctest-server
-ipctest-server: user_runtime
+ipctest-server: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/ipctest-server/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/apps/ipctest-server/manifest.c \
-		-o ../userspace/apps/ipctest-server/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/apps/ipctest-server)
 	$(ALR) gprbuild -P ../userspace/apps/ipctest-server/ipctest_server.gpr
 	cp ../userspace/apps/ipctest-server/build/ipctest-server.app isodir/boot/ipctest-server.app
 
 .PHONY : ipctest-client
-ipctest-client: user_runtime
+ipctest-client: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/ipctest-client/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/apps/ipctest-client/manifest.c \
-		-o ../userspace/apps/ipctest-client/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/apps/ipctest-client)
 	$(ALR) gprbuild -P ../userspace/apps/ipctest-client/ipctest_client.gpr
 	cp ../userspace/apps/ipctest-client/build/ipctest-client.app isodir/boot/ipctest-client.app
 	cp ../userspace/apps/ipctest-client/build/ipctest-departing.app isodir/boot/ipctest-departing.app
 
 .PHONY : bench-load
 .PHONY : bench-storage
-bench-storage: user_runtime
+bench-storage: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/bench-storage/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/apps/bench-storage/manifest.c -o ../userspace/apps/bench-storage/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/apps/bench-storage)
 	$(ALR) gprbuild -p -P ../userspace/apps/bench-storage/bench_storage.gpr
 	cp ../userspace/apps/bench-storage/build/bench-storage.app isodir/boot/bench-storage.app
 
-bench-load: user_runtime
+bench-load: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/bench-load/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/apps/bench-load/manifest.c -o ../userspace/apps/bench-load/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/apps/bench-load)
 	$(ALR) gprbuild -p -P ../userspace/apps/bench-load/bench_load.gpr
 	cp ../userspace/apps/bench-load/build/bench-load.app isodir/boot/bench-load.app
 	cp ../userspace/apps/bench-load/build/bench-input-load.app isodir/boot/bench-input-load.app
 	cp ../userspace/apps/bench-load/build/bench-cpu.app isodir/boot/bench-cpu.app
 
 .PHONY : bench-audio
-bench-audio: user_runtime
+bench-audio: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/bench-audio/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/apps/bench-audio/manifest.c -o ../userspace/apps/bench-audio/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/apps/bench-audio)
 	$(ALR) gprbuild -p -P ../userspace/apps/bench-audio/bench_audio.gpr
 	cp ../userspace/apps/bench-audio/build/bench-audio.app isodir/boot/bench-audio.app
 
 .PHONY : bench-input
-bench-input: user_runtime
+bench-input: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/bench-input/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/apps/bench-input/manifest.c -o ../userspace/apps/bench-input/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/apps/bench-input)
 	$(ALR) gprbuild -p -P ../userspace/apps/bench-input/bench_input.gpr
 	cp ../userspace/apps/bench-input/build/bench-input.app isodir/boot/bench-input.app
 
 .PHONY : bench-ipc-server
-bench-ipc-server: user_runtime
+bench-ipc-server: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/bench-ipc-server/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/apps/bench-ipc-server/manifest.c \
-		-o ../userspace/apps/bench-ipc-server/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/apps/bench-ipc-server)
 	$(ALR) gprbuild -P ../userspace/apps/bench-ipc-server/bench_ipc_server.gpr
 	cp ../userspace/apps/bench-ipc-server/build/bench-ipc-server.app isodir/boot/bench-ipc-server.app
 
 .PHONY : bench-ipc-client
-bench-ipc-client: user_runtime
+bench-ipc-client: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/bench-ipc-client/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/apps/bench-ipc-client/manifest.c \
-		-o ../userspace/apps/bench-ipc-client/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/apps/bench-ipc-client)
 	$(ALR) gprbuild -P ../userspace/apps/bench-ipc-client/bench_ipc_client.gpr
 	cp ../userspace/apps/bench-ipc-client/build/bench-ipc-client.app isodir/boot/bench-ipc-client.app
 
@@ -535,10 +514,9 @@ ccl-run:
 	$(ALR) gprbuild -P ../userspace/ccl/ccl_run.gpr -p
 
 .PHONY : ccl-control
-ccl-control: user_runtime
+ccl-control: user_runtime ccl-manifest
 	mkdir -p ../userspace/ccl/apps/ccl-control/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/ccl/apps/ccl-control/manifest.c -o ../userspace/ccl/apps/ccl-control/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/ccl/apps/ccl-control)
 	$(ALR) gprbuild -p -P ../userspace/ccl/apps/ccl-control/ccl_control.gpr
 	cp ../userspace/ccl/apps/ccl-control/build/ccl-control.app isodir/boot/ccl-control.app
 	mkdir -p isodir/licenses
@@ -609,6 +587,51 @@ ccl-test-native:
 ccl-manifest:
 	$(ALR) gprbuild -p -P ../userspace/ccl/ccl_manifest.gpr
 
+CCL_CONFIG_TOOL := ../userspace/ccl/build/config/ccl-config
+CONFIG_SOURCES := ../init.ccl ../system.ccl \
+	$(wildcard ../tests/headless/init-*.ccl) \
+	$(wildcard ../tests/hardware/init-*.ccl ../tests/hardware/system-*.ccl)
+
+.PHONY: ccl-config configurations test-ccl-configurations
+ccl-config: $(CCL_CONFIG_TOOL)
+$(CCL_CONFIG_TOOL): $(wildcard ../userspace/ccl/src/*.ad?) \
+	../userspace/ccl/ccl_config.gpr ../userspace/ccl/tools/ccl-config/main.adb
+	$(ALR) gprbuild -p -P ../userspace/ccl/ccl_config.gpr
+
+# Optional host preflight; native services evaluate these same source files.
+configurations: $(CCL_CONFIG_TOOL)
+	@for source in $(CONFIG_SOURCES); do $(CCL_CONFIG_TOOL) $$source || exit 1; done
+
+test-ccl-configurations: configurations
+	$(ALR) python3 ../tests/ccl-configurations/test-configurations.py -v
+
+.PHONY: test-ccl-configurations-native
+test-ccl-configurations-native: iso nvme_disk.img
+	$(ALR) python3 ../tests/ccl-configurations/test-native-rejection.py
+
+CCL_IMAGE_TOOL := ../userspace/ccl/build/image/ccl-image
+CCL_IMAGE_REALIZER := ../userspace/ccl/tools/ccl-image/realize.py
+CCL_IMAGE_CATALOG := ../images/artifacts.ccl
+.PHONY: ccl-image test-ccl-images
+ccl-image: $(CCL_IMAGE_TOOL) ccl-config
+$(CCL_IMAGE_TOOL): $(wildcard ../userspace/ccl/src/*.ad?) \
+	../userspace/ccl/ccl_image.gpr ../userspace/ccl/tools/ccl-image/main.adb
+	$(ALR) gprbuild -p -P ../userspace/ccl/ccl_image.gpr
+test-ccl-images: ccl-image
+	$(ALR) python3 ../tests/ccl-images/test-images.py -v
+
+# One checked result supplies both the ELF requests and optional Ada bindings.
+# Named fixed bindings in this catalog preserve shared-runtime ABI conventions.
+define compile_ccl_manifest
+mkdir -p $(1)/build/generated
+../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl $(1)/manifest.ccl --ada-output $(1)/build/generated/ccl_manifest_bindings.ads > $(1)/build/manifest.S
+$(ALR) gcc -c $(1)/build/manifest.S -o $(1)/build/manifest.o
+endef
+
+.PHONY: ccl-migrated-manifests
+ccl-migrated-manifests: ccl-manifest
+	$(ALR) python3 ../tests/ccl-manifests/test-migrations.py
+
 .PHONY : test-ccl-manifests
 test-ccl-manifests: ccl-vm
 	$(ALR) python3 ../tests/ccl-manifests/test-manifests.py -v
@@ -627,31 +650,25 @@ ccl-vm: user_runtime ccl-manifest
 
 # Native CCL editor/compiler/debugger application.
 .PHONY : ccl-workbench
-ccl-workbench: user_runtime
+ccl-workbench: user_runtime ccl-manifest
 	mkdir -p ../userspace/ccl/apps/ccl-workbench/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/ccl/apps/ccl-workbench/manifest.c \
-		-o ../userspace/ccl/apps/ccl-workbench/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/ccl/apps/ccl-workbench)
 	$(ALR) gprbuild -P ../userspace/ccl/apps/ccl-workbench/ccl_workbench.gpr
 	cp ../userspace/ccl/apps/ccl-workbench/build/ccl-workbench.app isodir/boot/ccl-workbench.app
 
 # Test-only service used to exercise CCL's typed host-import IPC adapter.
 .PHONY : ccl-test-host
-ccl-test-host: user_runtime
+ccl-test-host: user_runtime ccl-manifest
 	mkdir -p ../userspace/ccl/services/test-host/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/ccl/services/test-host/manifest.c \
-		-o ../userspace/ccl/services/test-host/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/ccl/services/test-host)
 	$(ALR) gprbuild -P ../userspace/ccl/services/test-host/ccl_test_host.gpr
 	cp ../userspace/ccl/services/test-host/build/ccl-test-host.svc isodir/boot/ccl-test-host.svc
 
 # Capability-addressed monotonic clock service.
 .PHONY : clock
-clock: user_runtime ../userspace/ccl/interfaces/clock.ccl-interface
+clock: user_runtime ../userspace/ccl/interfaces/clock.ccl-interface ccl-manifest ../userspace/services/clock/build/generated/time_zones.ads ../userspace/services/clock/build/generated/time_zones.adb
 	mkdir -p ../userspace/services/clock/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/services/clock/manifest.c \
-		-o ../userspace/services/clock/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/services/clock)
 	$(ALR) gprbuild -P ../userspace/services/clock/clock.gpr
 	$(ALR) objcopy \
 		--add-section .cubit.interfaces=../userspace/ccl/interfaces/clock.ccl-interface \
@@ -659,6 +676,9 @@ clock: user_runtime ../userspace/ccl/interfaces/clock.ccl-interface
 		../userspace/services/clock/build/clock.svc isodir/boot/clock.svc
 
 # Build userspace Ada runtime (needed by filesystem server)
+../userspace/services/clock/build/generated/time_zones.ads ../userspace/services/clock/build/generated/time_zones.adb &: ../tools/generate_time_zones.py ../flake.lock ../flake.nix
+	$(ALR) python3 ../tools/generate_time_zones.py ../userspace/services/clock/build/generated
+
 .PHONY : user_runtime
 user_runtime:
 	$(ALR) $(MAKE) -C ../userspace/c build/crt0.o
@@ -710,60 +730,48 @@ netstack: user_runtime
 
 # Build the userspace wget app
 .PHONY : wget
-wget: user_runtime
+wget: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/wget/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/apps/wget/manifest.c \
-		-o ../userspace/apps/wget/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/apps/wget)
 	$(ALR) gprbuild -P ../userspace/apps/wget/wget.gpr
 	cp ../userspace/apps/wget/build/wget.app isodir/boot/wget.app
 
 # Build the unified hardware inventory and diagnostics app
 .PHONY : devices
-devices: user_runtime
+devices: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/devices/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/apps/devices/manifest.c \
-		-o ../userspace/apps/devices/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/apps/devices)
 	$(ALR) gprbuild -P ../userspace/apps/devices/devices.gpr
 	cp ../userspace/apps/devices/build/devices.app isodir/boot/devices.app
 
 # Build the read-only, authority-scoped filesystem browser.
 .PHONY : files
-files: user_runtime
+files: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/files/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/apps/files/manifest.c \
-		-o ../userspace/apps/files/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/apps/files)
 	$(ALR) gprbuild -P ../userspace/apps/files/files.gpr
 	cp ../userspace/apps/files/build/files.app isodir/boot/files.app
 
 # Build the live writable-storage diagnostic app.
 .PHONY : storage-check
-storage-check: user_runtime filesystem-scope-check
+storage-check: user_runtime filesystem-scope-check ccl-manifest
 	mkdir -p ../userspace/apps/storage-check/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/apps/storage-check/manifest.c \
-		-o ../userspace/apps/storage-check/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/apps/storage-check)
 	$(ALR) gprbuild -P ../userspace/apps/storage-check/storage_check.gpr
 	cp ../userspace/apps/storage-check/build/storage-check.app isodir/boot/storage-check.app
 
 .PHONY : filesystem-scope-check
-filesystem-scope-check: user_runtime
+filesystem-scope-check: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/filesystem-scope-check/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/apps/filesystem-scope-check/manifest.c \
-		-o ../userspace/apps/filesystem-scope-check/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/apps/filesystem-scope-check)
 	$(ALR) gprbuild -P ../userspace/apps/filesystem-scope-check/filesystem_scope_check.gpr
 	cp ../userspace/apps/filesystem-scope-check/build/filesystem-scope-check.app isodir/boot/filesystem-scope-check.app
 
 # Build the first desktop shell client
 .PHONY : desktop-shell
-desktop-shell: user_runtime
+desktop-shell: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/desktop-shell/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/apps/desktop-shell/manifest.c \
-		-o ../userspace/apps/desktop-shell/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/apps/desktop-shell)
 	$(ALR) gprbuild -P ../userspace/apps/desktop-shell/desktop_shell.gpr
 	cp ../userspace/apps/desktop-shell/build/desktop-shell.app isodir/boot/desktop-shell.app
 
@@ -811,33 +819,32 @@ config: user_runtime
 
 # Build the userspace log store service
 .PHONY : logstore
-logstore: user_runtime
+logstore: user_runtime ccl-manifest
 	mkdir -p ../userspace/services/logstore/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/services/logstore/manifest.c \
-		-o ../userspace/services/logstore/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/services/logstore)
 	$(ALR) gprbuild -P ../userspace/services/logstore/logstore.gpr
 	cp ../userspace/services/logstore/build/logstore.svc isodir/boot/logstore.svc
 
 # Build the userspace desktop compositor/session service prototype
 .PHONY : desktop
-desktop: user_runtime
+desktop: user_runtime ccl-manifest ../userspace/services/desktop/build/wallpaper.o
 	mkdir -p ../userspace/services/desktop/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/services/desktop/manifest.c \
-		-o ../userspace/services/desktop/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/services/desktop)
 	$(ALR) gprbuild -p -P ../userspace/services/desktop/desktop.gpr -XCUBIT_DISPLAY_TEST_MODE=$(CUBIT_DISPLAY_TEST_MODE)
 	cp ../userspace/services/desktop/$(PRESENTATION_BUILD_DIR)/desktop.svc isodir/boot/desktop.svc
+
+../userspace/services/desktop/build/wallpaper.o: ../assets/wallpapers/wallpaper2.png ../tools/prepare_wallpaper.py
+	mkdir -p ../userspace/services/desktop/build
+	$(ALR) python3 ../tools/prepare_wallpaper.py $< ../userspace/services/desktop/build
+	$(ALR) gcc -c ../userspace/services/desktop/build/wallpaper.S -o $@
 
 # Build the userspace display scanout service prototype
 .PHONY : display
 CUBIT_DISPLAY_TEST_MODE ?= production
 PRESENTATION_BUILD_DIR = $(if $(filter delayed,$(CUBIT_DISPLAY_TEST_MODE)),build-delayed,build)
-display: user_runtime
+display: user_runtime ccl-manifest
 	mkdir -p ../userspace/services/display/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/services/display/manifest.c \
-		-o ../userspace/services/display/build/manifest.o
+	$(call compile_ccl_manifest,../userspace/services/display)
 	$(ALR) gprbuild -p -P ../userspace/services/display/display.gpr -XCUBIT_DISPLAY_TEST_MODE=$(CUBIT_DISPLAY_TEST_MODE)
 	cp ../userspace/services/display/$(PRESENTATION_BUILD_DIR)/display.svc isodir/boot/display.svc
 
@@ -857,14 +864,9 @@ devmgr: user_runtime
 
 # Build the userspace shell app
 .PHONY : shell
-shell: user_runtime
+shell: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/shell/build
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/apps/shell/manifest.c \
-		-o ../userspace/apps/shell/build/manifest.o
-	$(ALR) gcc -c -fno-pic -mno-sse -mno-sse2 -mno-red-zone \
-		../userspace/apps/shell/manifest_access.c \
-		-o ../userspace/apps/shell/build/manifest_access.o
+	$(call compile_ccl_manifest,../userspace/apps/shell)
 	$(ALR) gprbuild -P ../userspace/apps/shell/shell.gpr
 	cp ../userspace/apps/shell/build/shell.app isodir/boot/shell.app
 
@@ -883,7 +885,7 @@ DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/netsurf.
 	isodir/boot/ipctest-server.app isodir/boot/ipctest-client.app \
 	isodir/boot/bench-ipc-server.app isodir/boot/bench-ipc-client.app \
 	isodir/boot/logstore.svc isodir/boot/display.svc isodir/boot/desktop.svc \
-	../init.conf ../userspace/motd.txt $(DOOM_WAD)
+	../init.ccl ../userspace/motd.txt $(DOOM_WAD)
 
 # Every stage-1 binary copied into initrd.img.  Keep this dependency list next
 # to the staging targets: copying an old service beside a newly rebuilt driver
@@ -898,14 +900,14 @@ INITRD_SERVICES := filesystem ata nvme netstack virtio-net virtio-gpu hda \
 desktop-session-content: $(INITRD_SERVICES) desktop display logstore \
 	desktop-shell devices files ccl-workbench clock doom netsurf sameboy
 
-# Create ext2 ATA disk image containing doom1.wad, doom.elf, init.conf, shell.app
+# Create ext2 ATA disk image containing doom1.wad, doom.elf, init.ccl, shell.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
 ata_disk.img: $(DISK_CONTENTS)
 	dd if=/dev/zero of=ata_disk.img bs=1K count=65536
 	mke2fs -t ext2 ata_disk.img
 	debugfs -w -R "write $(DOOM_WAD) doom1.wad" ata_disk.img
 	debugfs -w -R "write ../userspace/motd.txt motd.txt" ata_disk.img
-	debugfs -w -R "write ../init.conf init.conf" ata_disk.img
+	debugfs -w -R "write ../init.ccl init.ccl" ata_disk.img
 	debugfs -w -R "write isodir/boot/shell.app shell.app" ata_disk.img
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" ata_disk.img
 	debugfs -w -R "write isodir/boot/sameboy.app sameboy.app" ata_disk.img
@@ -931,7 +933,7 @@ ata_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write isodir/boot/desktop.svc desktop.svc" ata_disk.img
 	debugfs -w -R "write ../userspace/motd.txt config.dat" ata_disk.img
 
-# Create ext2 NVMe disk image containing motd.txt, doom1.wad, doom.elf, init.conf, shell.app, wget.app
+# Create ext2 NVMe disk image containing motd.txt, doom1.wad, doom.elf, init.ccl, shell.app, wget.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
 nvme_disk.img: $(DISK_CONTENTS)
 	dd if=/dev/zero of=nvme_disk.img bs=1K count=65536
@@ -947,7 +949,7 @@ nvme_disk.img: $(DISK_CONTENTS)
 	debugfs -w -R "write isodir/boot/sleep.app sleep.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/capability-test.app capability-test.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/logstore.svc logstore.svc" nvme_disk.img
-	debugfs -w -R "write ../init.conf init.conf" nvme_disk.img
+	debugfs -w -R "write ../init.ccl init.ccl" nvme_disk.img
 	debugfs -w -R "write isodir/boot/shell.app shell.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/wget.app wget.app" nvme_disk.img
 	debugfs -w -R "write isodir/boot/devices.app devices.app" nvme_disk.img
@@ -975,10 +977,10 @@ nvme_disk: nvme_disk.img
 # and game payloads that the security test never launches.
 CAPABILITY_SECURITY_DISK := capability_security_disk.img
 
-$(CAPABILITY_SECURITY_DISK): capability-test ../tests/headless/init-capability-security.conf
+$(CAPABILITY_SECURITY_DISK): capability-test ../tests/headless/init-capability-security.ccl
 	dd if=/dev/zero of=$(CAPABILITY_SECURITY_DISK) bs=1K count=16384
 	mke2fs -t ext2 -F $(CAPABILITY_SECURITY_DISK)
-	debugfs -w -R "write ../tests/headless/init-capability-security.conf init.conf" $(CAPABILITY_SECURITY_DISK)
+	debugfs -w -R "write ../tests/headless/init-capability-security.ccl init.ccl" $(CAPABILITY_SECURITY_DISK)
 	debugfs -w -R "write isodir/boot/capability-test.app capability-test.app" $(CAPABILITY_SECURITY_DISK)
 
 # Build the real kernel, normal stage-1 service graph, and only the stage-2
@@ -998,26 +1000,9 @@ capability-security-image: cubit_kernel $(CAPABILITY_SECURITY_STAGE1) $(CAPABILI
 # The kernel parses this at boot and loads services from it.
 # Stage-2 content (shell.app, doom.elf, motd.txt, etc.) lives on disk.
 .PHONY : initrd
-initrd: $(INITRD_SERVICES)
-	@rm -rf ramdisk_staging
-	mkdir -p ramdisk_staging
-	-cp isodir/boot/devmgr.svc ramdisk_staging/
-	-cp isodir/boot/filesystem.svc ramdisk_staging/
-	-cp isodir/boot/ata.drv ramdisk_staging/
-	-cp isodir/boot/nvme.drv ramdisk_staging/
-	-cp isodir/boot/netstack.svc ramdisk_staging/
-	-cp isodir/boot/virtio-net.drv ramdisk_staging/
-	-cp isodir/boot/virtio-gpu.drv ramdisk_staging/
-	-cp isodir/boot/hda.drv ramdisk_staging/
-	-cp isodir/boot/mixer.svc ramdisk_staging/
-	-cp isodir/boot/ps2.drv ramdisk_staging/
-	-cp isodir/boot/xhci.drv ramdisk_staging/
-	-cp isodir/boot/config.svc ramdisk_staging/
-	-cp isodir/boot/netmgr.svc ramdisk_staging/
-	-cp isodir/boot/procmgr.svc ramdisk_staging/
-	-cp ../system.conf ramdisk_staging/
-	cd ramdisk_staging && ls | cpio -o -H newc > ../isodir/boot/initrd.img
-	rm -rf ramdisk_staging
+initrd: $(INITRD_SERVICES) ccl-image ../images/development-initrd.ccl $(CCL_IMAGE_CATALOG) ../system.ccl
+	$(ALR) python3 $(CCL_IMAGE_REALIZER) ../images/development-initrd.ccl \
+		--output isodir/boot/initrd.img
 
 # Self-contained, read-only userspace image for real-hardware bring-up.  Keep
 # this separate from the normal two-stage image: the laptop must reach a
@@ -1031,7 +1016,7 @@ LAPTOP_LIVE_RW_DISK := laptop_live_rw.img
 # Native USB optical edition. Keep the original initrd-only laptop image as
 # an independent fallback; no ATA/NVMe driver is admitted in this profile.
 .PHONY: usb-live-iso run-usb-live
-usb-live-iso: cubit_kernel $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) $(LAPTOP_LIVE_RW_DISK)
+usb-live-iso: ccl-image ../images/laptop-usb.ccl $(CCL_IMAGE_CATALOG) cubit_kernel $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) $(LAPTOP_LIVE_RW_DISK)
 	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)"
 
 run-usb-live: usb-live-iso
@@ -1051,38 +1036,9 @@ $(LAPTOP_LIVE_RW_DISK):
 	debugfs -w -R "mkdir tmp" $(LAPTOP_LIVE_RW_DISK)
 
 .PHONY : laptop-live-initrd
-laptop-live-initrd: $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) $(LAPTOP_LIVE_RW_DISK)
-	rm -rf laptop_live_staging
-	mkdir -p laptop_live_staging
-	cp isodir/boot/devmgr.svc laptop_live_staging/
-	cp isodir/boot/filesystem.svc laptop_live_staging/
-	cp isodir/boot/ata.drv laptop_live_staging/
-	cp isodir/boot/nvme.drv laptop_live_staging/
-	cp isodir/boot/netstack.svc laptop_live_staging/
-	cp isodir/boot/virtio-net.drv laptop_live_staging/
-	cp isodir/boot/virtio-gpu.drv laptop_live_staging/
-	cp isodir/boot/hda.drv laptop_live_staging/
-	cp isodir/boot/mixer.svc laptop_live_staging/
-	cp isodir/boot/ps2.drv laptop_live_staging/
-	cp isodir/boot/xhci.drv laptop_live_staging/
-	cp isodir/boot/config.svc laptop_live_staging/
-	cp isodir/boot/netmgr.svc laptop_live_staging/
-	cp isodir/boot/procmgr.svc laptop_live_staging/
-	cp isodir/boot/logstore.svc laptop_live_staging/
-	cp isodir/boot/clock.svc laptop_live_staging/
-	cp isodir/boot/display.svc laptop_live_staging/
-	cp isodir/boot/desktop.svc laptop_live_staging/
-	cp isodir/boot/ccl-workbench.app laptop_live_staging/
-	cp isodir/boot/devices.app laptop_live_staging/
-	cp isodir/boot/files.app laptop_live_staging/
-	cp isodir/boot/storage-check.app laptop_live_staging/
-	cp isodir/boot/doom.elf laptop_live_staging/
-	cp $(DOOM_WAD) laptop_live_staging/doom1.wad
-	cp $(LAPTOP_LIVE_RW_DISK) laptop_live_staging/live-rw.ext2
-	cp ../tests/hardware/init-laptop-live.conf laptop_live_staging/init.conf
-	cp ../tests/hardware/system-live.conf laptop_live_staging/system.conf
-	cd laptop_live_staging && ls | cpio -o -H newc > ../isodir/boot/laptop-live-initrd.img
-	rm -rf laptop_live_staging
+laptop-live-initrd: ccl-image ../images/laptop-initrd.ccl $(CCL_IMAGE_CATALOG) $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) $(LAPTOP_LIVE_RW_DISK)
+	$(ALR) python3 $(CCL_IMAGE_REALIZER) ../images/laptop-initrd.ccl \
+		--input "doom-wad=$(DOOM_WAD)" --output isodir/boot/laptop-live-initrd.img
 
 # A blank SATA disk is attached to QEMU through Q35's ICH9 AHCI controller.
 # Runtime boots must use a copy so driver development cannot damage the base.
@@ -1233,8 +1189,8 @@ run-desktop: cubit_kernel desktop-session-content
 	@rm -f serial_output.log net.pcap desktop_disk.img
 	cp nvme_disk.img desktop_disk.img
 	debugfs -w -R "mkdir work" desktop_disk.img
-	-debugfs -w -R "rm init.conf" desktop_disk.img >/dev/null 2>&1
-	debugfs -w -R "write ../tests/headless/init-desktop-session.conf init.conf" desktop_disk.img
+	-debugfs -w -R "rm init.ccl" desktop_disk.img >/dev/null 2>&1
+	debugfs -w -R "write ../tests/headless/init-desktop-session.ccl init.ccl" desktop_disk.img
 	sed -i 's/^set default=.*/set default=4/' isodir/boot/grub/grub.cfg
 	grub-mkrescue -o cubit_kernel.iso isodir
 	sed -i 's/^set default=.*/set default=0/' isodir/boot/grub/grub.cfg
@@ -1269,7 +1225,7 @@ run-desktop-fast:
 	@test -f nvme_disk.img || (echo "missing nvme_disk.img; run make -C kernel run-desktop once first" && false)
 	@rm -f serial_output.log net.pcap desktop_disk.img
 	cp nvme_disk.img desktop_disk.img
-	-debugfs -w -R "rm init.conf" desktop_disk.img >/dev/null 2>&1
+	-debugfs -w -R "rm init.ccl" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm desktop.svc" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm display.svc" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm netstack.svc" desktop_disk.img >/dev/null 2>&1
@@ -1278,7 +1234,7 @@ run-desktop-fast:
 	-debugfs -w -R "rm files.app" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm doom.elf" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm netsurf.app" desktop_disk.img >/dev/null 2>&1
-	debugfs -w -R "write ../tests/headless/init-desktop-session.conf init.conf" desktop_disk.img
+	debugfs -w -R "write ../tests/headless/init-desktop-session.ccl init.ccl" desktop_disk.img
 	debugfs -w -R "write isodir/boot/desktop.svc desktop.svc" desktop_disk.img
 	debugfs -w -R "write isodir/boot/display.svc display.svc" desktop_disk.img
 	debugfs -w -R "write isodir/boot/netstack.svc netstack.svc" desktop_disk.img
@@ -1321,7 +1277,7 @@ run-desktop-inspect:
 	@test -f nvme_disk.img || (echo "missing nvme_disk.img; run make -C kernel run-desktop once first" && false)
 	@rm -f serial_output.log net.pcap desktop_disk.img $(QEMU_QMP) $(QEMU_MONITOR) $(QEMU_SCREENSHOT)
 	cp nvme_disk.img desktop_disk.img
-	-debugfs -w -R "rm init.conf" desktop_disk.img >/dev/null 2>&1
+	-debugfs -w -R "rm init.ccl" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm desktop.svc" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm display.svc" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm netstack.svc" desktop_disk.img >/dev/null 2>&1
@@ -1330,7 +1286,7 @@ run-desktop-inspect:
 	-debugfs -w -R "rm files.app" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm doom.elf" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm netsurf.app" desktop_disk.img >/dev/null 2>&1
-	debugfs -w -R "write ../tests/headless/init-desktop-session.conf init.conf" desktop_disk.img
+	debugfs -w -R "write ../tests/headless/init-desktop-session.ccl init.ccl" desktop_disk.img
 	debugfs -w -R "write isodir/boot/desktop.svc desktop.svc" desktop_disk.img
 	debugfs -w -R "write isodir/boot/display.svc display.svc" desktop_disk.img
 	debugfs -w -R "write isodir/boot/netstack.svc netstack.svc" desktop_disk.img

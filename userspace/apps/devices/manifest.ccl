@@ -1,0 +1,6 @@
+# Generated ELF metadata is tied to this executable; requests are not grants.
+(executable-manifest v1
+  (identity "com.cubit.devices")
+  (version "0.1.0")
+  (request-service desktop read-write desktop)
+  (request-service device-manager read-write device-manager))

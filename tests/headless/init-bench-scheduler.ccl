@@ -1,0 +1,6 @@
+# Two instances, same ordinary priority and no device/scheduling authority.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "bench-cpu.app" (priority 4))
+  (start "bench-cpu.app" (priority 4))
+)

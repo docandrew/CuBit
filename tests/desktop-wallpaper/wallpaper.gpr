@@ -1,0 +1,16 @@
+project Wallpaper is
+   for Source_Dirs use (".", "../../userspace/services/desktop");
+   for Source_Files use
+     ("main.adb", "desktop_wallpaper.ads", "desktop_wallpaper.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      --  Linux-hosted regression only.
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+   package Linker is
+      for Default_Switches ("Ada") use
+        ("../../userspace/services/desktop/build/wallpaper.o");
+   end Linker;
+end Wallpaper;

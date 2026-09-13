@@ -1,4 +1,5 @@
 build
+__pycache__/
 /userspace/services/display/build-delayed/
 /userspace/services/desktop/build-delayed/
 cubit_kernel
@@ -14,6 +15,8 @@ src/build.ads
 # Kernel and live-image build artifacts
 /kernel/*.img
 /kernel/*.iso
+/kernel/*.iso.plan.json
+/kernel/isodir/boot/*.img.plan.json
 /kernel/*.log
 /kernel/*.pcap
 /kernel/src/build.ads

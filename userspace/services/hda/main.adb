@@ -65,9 +65,14 @@ begin
    --  Initialize HDA controller
    HDA.initController;
 
-   if not HDA.codecFound then
-      debugPrint ("hda: no codec, exiting" & ASCII.LF);
-      --  Signal devmgr that no hardware is present
+   if HDA.codecFound then
+      HDA.configureOutput;
+   end if;
+
+   if not HDA.outputConfigured then
+      HDA.abortInitialization;
+      debugPrint ("hda: no usable output, exiting" & ASCII.LF);
+      --  Failed setup must not be advertised to the mixer as usable audio.
       declare
          CAP_SLOT_READY  : constant Unsigned_64 := 15;
          OP_NOT_PRESENT  : constant Unsigned_32 := 16#FF01#;
@@ -82,9 +87,6 @@ begin
       ret := syscall (SYSCALL_EXIT);
       return;
    end if;
-
-   --  Configure output path
-   HDA.configureOutput;
 
    --  Register as HDA driver
    ret := registerDriver (DRIVER_HDA);

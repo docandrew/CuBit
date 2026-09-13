@@ -1,3 +1,4 @@
+with "ccl_manifest_abi.gpr";
 project CCL_Manifest is
    for Languages use ("Ada");
    for Source_Dirs use ("src", "tools/ccl-manifest");

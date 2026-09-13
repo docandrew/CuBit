@@ -1,0 +1,18 @@
+# Generated ELF metadata is tied to this executable; requests are not grants.
+(executable-manifest v1
+  (identity "com.cubit.shell")
+  (version "1.0.0")
+  (request-framebuffer read-write framebuffer)
+  (request-service filesystem read-write filesystem)
+  (request-service process-manager read-write process-manager)
+  (request-service config read-write config)
+  # Broad outbound request, not independent approval.
+  (request-network tcp-connect (ipv4 "0.0.0.0" 0)
+    (ports 1 65535) (dns allow) network)
+  (request-service display read-write display)
+  (request-notification keyboard manage keyboard)
+  (request-notification mouse manage mouse)
+  (request-service logstore read-write logstore)
+  # Preserve the old shell's broad, explicitly declared access requests.
+  (filesystem-scope (rights read) all)
+  (config-scope (rights read write) all))

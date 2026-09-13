@@ -1,0 +1,8 @@
+# Requested authority only; the existing launch path remains in control.
+(executable-manifest v1
+  (identity "com.cubit.files")
+  (version "0.1.0")
+  (request-service desktop read-write desktop)
+  (request-service filesystem read-write files-filesystem)
+  (filesystem-scope (rights read) "@nvme:0/")
+  (filesystem-scope (rights read) "@mem:0/"))

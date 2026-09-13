@@ -37,6 +37,7 @@ project Desktop is
         for Default_Switches ("Ada") use
         (
             "-O2",
+            "-gnat2022",
             "-fstack-usage",
             "-fomit-frame-pointer",
             "-mno-red-zone",
@@ -63,7 +64,8 @@ project Desktop is
             "-lgnat-user",
             "-T", "../../c/link.ld",
             "../../c/build/crt0.o",
-            "build/manifest.o"
+            "build/manifest.o",
+            "build/wallpaper.o"
         );
     end Linker;
 

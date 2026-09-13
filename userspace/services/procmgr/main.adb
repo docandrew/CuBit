@@ -15,10 +15,13 @@
 ------------------------------------------------------------------------------
 with Ada.Unchecked_Conversion;
 with Interfaces; use Interfaces;
+with CCL.Configurations;
+with CCL.Declarations;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Audio_Control;
 with CuBit.Authority; use CuBit.Authority;
 with CuBit.Memory_Grants;
 with CuBit.Filesystems;
@@ -656,7 +659,8 @@ procedure main is
      (childPID      : Unsigned_64;
       elfSize       : Unsigned_64;
       streamBitmask : in out Unsigned_64;
-      approveNetwork : Network_Approval := No_Network)
+      approveNetwork : Network_Approval := No_Network;
+      systemStartup : Boolean := False)
    is
       --  ELF64 header field offsets
       e_shoff_off     : constant := 40;  -- Section header table offset
@@ -848,11 +852,26 @@ procedure main is
                               declare
                                  driverPID : Unsigned_64 := 0;
                                  MAX_RETRIES : constant := 20;
+                                 isAudioControl : constant Boolean :=
+                                   Unsigned_64 (param0) = CuBit.Audio_Control.Service_Role;
                               begin
+                                 --  Only the trusted startup-plan path can
+                                 --  approve this declared system authority.
+                                 --  OP_SPAWN cannot supply systemStartup.
+                                 if isAudioControl and then not systemStartup then
+                                    recordAuthority
+                                      (childPID, Unsigned_64 (slotNum),
+                                       AUTH_SOURCE_MANIFEST,
+                                       AUTH_REASON_STARTUP_REQUIRED,
+                                       CAP_TYPE_ENDPOINT, True, False,
+                                       rightsMask, Unsigned_64 (param0), 0);
+                                    debugPrint ("procmgr: master audio authority denied" & LF);
+                                 else
                                  for attempt in 1 .. MAX_RETRIES loop
                                     driverPID := getInfo (
                                        SYSINFO_REGISTERED_DRIVER,
-                                       Unsigned_64 (param0));
+                                       (if isAudioControl then DRIVER_MIXER
+                                        else Unsigned_64 (param0)));
                                     exit when driverPID /= 0;
                                     ignore := syscall (
                                        SYSCALL_SLEEP, 50);
@@ -861,7 +880,8 @@ procedure main is
                                  if driverPID /= 0 then
                                     mintRecorded
                                       (childPID, CAP_TYPE_ENDPOINT, driverPID,
-                                       0, rightsMask, Unsigned_64 (slotNum),
+                                       (if isAudioControl then CuBit.Audio_Control.Authority_Tag
+                                        else 0), rightsMask, Unsigned_64 (slotNum),
                                        AUTH_SOURCE_MANIFEST,
                                        AUTH_REASON_MANIFEST_REQUEST, True,
                                        ignore);
@@ -876,6 +896,7 @@ procedure main is
                                        rightsMask, Unsigned_64 (param0), 0);
                                     debugPrint (
                                        "procmgr: driver not found" & LF);
+                                 end if;
                                  end if;
                               end;
 
@@ -1421,7 +1442,8 @@ procedure main is
       requester   : Unsigned_64 := 0;
       sandboxMode : Unsigned_8 := SANDBOX_NONE;
       cwd         : String := "";
-      approveNetwork : Network_Approval := No_Network) return Unsigned_64
+      approveNetwork : Network_Approval := No_Network;
+      systemStartup : Boolean := False) return Unsigned_64
    is
       elfSize       : Unsigned_64;
       newPID        : Unsigned_64;
@@ -1512,7 +1534,7 @@ procedure main is
       --  Parse .cubit.caps manifest (streams fallback if no .cubit.streams)
       t0 := syscall (SYSCALL_GETTIME);
       parseAndGrantManifest
-        (newPID, elfSize, streamBitmask, approveNetwork);
+        (newPID, elfSize, streamBitmask, approveNetwork, systemStartup);
       t1 := syscall (SYSCALL_GETTIME);
 
       debugPrint ("procmgr: manifest took ");
@@ -1852,204 +1874,66 @@ procedure main is
    end handleSpawn;
 
    ---------------------------------------------------------------------------
-   --  processInitConf
-   --  Read init.conf from the filesystem, parse entries, and spawn each.
+   --  processInitCCL
+   --  Read init.ccl from the filesystem, parse entries, and spawn each.
    --  Format: one filename per line, optional "pri=N" suffix.
    --  Lines starting with '#' and blank lines are skipped.
    ---------------------------------------------------------------------------
-   procedure processInitConf is
-      MAX_ENTRIES   : constant := 16;
-      MAX_NAME_LEN  : constant := 64;
-
-      type InitEntry is record
-         name     : String (1 .. MAX_NAME_LEN);
-         nameLen  : Natural;
-         priority : Unsigned_64;
-         approveNetwork : Boolean := False;
-      end record;
-
-      entries   : array (0 .. MAX_ENTRIES - 1) of InitEntry;
-      numEntries : Natural := 0;
-
-      confSize : Unsigned_64;
+   procedure processInitCCL is
+      use CCL.Configurations;
+      Plan : Compilation_Result;
+      Source_Size : Unsigned_64;
    begin
-      --  Retry init.conf read: the ATA driver may still be registering
-      --  when procmgr starts, so the FS server might not have a disk
-      --  backend ready yet.
-      debugPrint ("procmgr: reading init.conf..." & LF);
-      for attempt in 1 .. 10 loop
-         confSize := readFileFromFS ("init.conf");
-         exit when confSize > 0;
-         if attempt < 10 then
+      debugPrint ("procmgr: reading init.ccl..." & LF);
+      for Attempt in 1 .. 10 loop
+         Source_Size := readFileFromFS ("init.ccl");
+         exit when Source_Size > 0;
+         if Attempt < 10 then
             declare
-               ignore : Unsigned_64;
+               Ignore : Unsigned_64;
             begin
-               ignore := syscall (SYSCALL_SLEEP, 100);
+               Ignore := syscall (SYSCALL_SLEEP, 100);
             end;
          end if;
       end loop;
-      if confSize = 0 then
-         debugPrint ("procmgr: init.conf not found, skipping" & LF);
+      if Source_Size not in 1 .. CCL.Declarations.MAX_SOURCE then
+         debugPrint ("procmgr: init.ccl missing or oversized; startup denied" & LF);
          return;
       end if;
-
-      --  Parse the config from elfBuf (readFileFromFS stores data there)
-      --  We must parse all entries before spawning, because spawnByName
-      --  overwrites elfBuf.
       declare
-         conf : array (0 .. Natural (confSize) - 1) of Character with
-            Import, Address => elfBuf;
-         pos  : Natural := 0;
+         Source : String (1 .. Natural (Source_Size))
+           with Import, Address => elfBuf;
       begin
-         while pos < Natural (confSize) and numEntries < MAX_ENTRIES loop
-            --  Skip leading whitespace
-            while pos < Natural (confSize) and then
-                  (conf (pos) = ' ' or conf (pos) = ASCII.HT)
-            loop
-               pos := pos + 1;
-            end loop;
-
-            --  End of buffer?
-            exit when pos >= Natural (confSize);
-
-            --  Skip blank lines
-            if conf (pos) = ASCII.LF or conf (pos) = ASCII.CR then
-               pos := pos + 1;
-
-            --  Skip comment lines
-            elsif conf (pos) = '#' then
-               while pos < Natural (confSize) and then
-                     conf (pos) /= ASCII.LF
-               loop
-                  pos := pos + 1;
-               end loop;
-
-            else
-               --  Parse filename (up to space or newline)
-               declare
-                  nameStart : constant Natural := pos;
-                  nameEnd   : Natural := pos;
-                  pri       : Unsigned_64 := 5;
-               begin
-                  while nameEnd < Natural (confSize) and then
-                        conf (nameEnd) /= ' ' and then
-                        conf (nameEnd) /= ASCII.HT and then
-                        conf (nameEnd) /= ASCII.LF and then
-                        conf (nameEnd) /= ASCII.CR
-                  loop
-                     nameEnd := nameEnd + 1;
-                  end loop;
-
-                  declare
-                     nLen : constant Natural := nameEnd - nameStart;
-                  begin
-                     if nLen > 0 and nLen <= MAX_NAME_LEN then
-                        entries (numEntries).nameLen := nLen;
-                        for i in 0 .. nLen - 1 loop
-                           entries (numEntries).name (i + 1) :=
-                              conf (nameStart + i);
-                        end loop;
-
-                        --  Check for "pri=N" after filename
-                        pos := nameEnd;
-                        while pos < Natural (confSize) and then
-                              (conf (pos) = ' ' or conf (pos) = ASCII.HT)
-                        loop
-                           pos := pos + 1;
-                        end loop;
-
-                        if pos + 3 < Natural (confSize) and then
-                           conf (pos)     = 'p' and then
-                           conf (pos + 1) = 'r' and then
-                           conf (pos + 2) = 'i' and then
-                           conf (pos + 3) = '='
-                        then
-                           pos := pos + 4;
-                           if pos < Natural (confSize) and then
-                              conf (pos) in '0' .. '9'
-                           then
-                              pri := Unsigned_64 (
-                                 Character'Pos (conf (pos)) -
-                                 Character'Pos ('0'));
-                              pos := pos + 1;
-                              --  Handle two-digit priority (e.g., "10")
-                              if pos < Natural (confSize) and then
-                                 conf (pos) in '0' .. '9'
-                              then
-                                 pri := pri * 10 + Unsigned_64 (
-                                    Character'Pos (conf (pos)) -
-                                    Character'Pos ('0'));
-                                 pos := pos + 1;
-                              end if;
-                           end if;
-                        end if;
-
-                        --  An explicit trusted boot-config decision, separate
-                        --  from the ELF's request. Ordinary OP_SPAWN callers
-                        --  cannot supply this flag. A future installation/
-                        --  approval service will supply persistent ceilings.
-                        while pos < Natural (confSize) and then
-                          (conf (pos) = ' ' or conf (pos) = ASCII.HT)
-                        loop
-                           pos := pos + 1;
-                        end loop;
-                        declare
-                           approval : constant String := "network=declared";
-                           matches : Boolean := pos + approval'Length <= Natural (confSize);
-                        begin
-                           if matches then
-                              for c in approval'Range loop
-                                 if conf (pos + c - 1) /= approval (c) then matches := False; end if;
-                              end loop;
-                              if pos + approval'Length < Natural (confSize) and then
-                                conf (pos + approval'Length) not in ASCII.LF | ASCII.CR | ' ' | ASCII.HT
-                              then matches := False; end if;
-                           end if;
-                           entries (numEntries).approveNetwork := matches;
-                        end;
-                        entries (numEntries).priority := pri;
-                        numEntries := numEntries + 1;
-                     end if;
-                  end;
-
-                  --  Skip to end of line
-                  while pos < Natural (confSize) and then
-                        conf (pos) /= ASCII.LF
-                  loop
-                     pos := pos + 1;
-                  end loop;
-               end;
-            end if;
-         end loop;
+         Compile (Source, Plan);
       end;
-
-      debugPrint ("procmgr: init.conf: ");
-      printDec (Unsigned_32 (numEntries));
+      if not Plan.Success or else Plan.Plan.Kind /= Startup_Profile then
+         debugPrint ("procmgr: init.ccl rejected at" & Plan.Position'Image &
+                     ": " & Diagnostic_Name (Plan.Diagnostic) &
+                     " (expected startup profile)" & LF);
+         return;
+      end if;
+      --  The entire plan owns its strings before spawnByName overwrites elfBuf.
+      debugPrint ("procmgr: init.ccl: ");
+      printDec (Unsigned_32 (Plan.Plan.Launch_Count));
       debugPrint (" entries" & LF);
-
-      --  Now spawn each entry (this overwrites elfBuf each time)
-      for i in 0 .. numEntries - 1 loop
+      for Item of Plan.Plan.Launches (1 .. Plan.Plan.Launch_Count) loop
          declare
-            n : String renames
-               entries (i).name (1 .. entries (i).nameLen);
-            pid : Unsigned_64;
+            Name : String renames
+              Item.Executable.Data (1 .. Item.Executable.Length);
+            PID : Unsigned_64;
          begin
-            debugPrint ("procmgr: init spawn: ");
-            debugPrint (n);
-            debugPrint ("" & LF);
-            pid := spawnByName
-              (n, entries (i).priority,
+            debugPrint ("procmgr: init spawn: " & Name & LF);
+            PID := spawnByName
+              (Name, Unsigned_64 (Item.Priority), systemStartup => True,
                approveNetwork =>
-                 (if entries (i).approveNetwork then Declared_Network
+                 (if Item.Approval = Approve_Declared then Declared_Network
                   else No_Network));
-            if pid = 0 then
-               debugPrint ("procmgr: init spawn failed: ");
-               debugPrint (n);
-               debugPrint ("" & LF);
+            if PID = 0 then
+               debugPrint ("procmgr: init spawn failed: " & Name & LF);
             end if;
          end;
       end loop;
-   end processInitConf;
+   end processInitCCL;
 
    ---------------------------------------------------------------------------
    --  Main variables
@@ -2149,8 +2033,8 @@ begin
       end if;
    end;
 
-   --  Process init.conf to spawn Stage 2 programs
-   processInitConf;
+   --  Process init.ccl to spawn Stage 2 programs
+   processInitCCL;
 
    debugPrint ("procmgr: ready, entering receive loop" & LF);
 

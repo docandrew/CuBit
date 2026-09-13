@@ -1,0 +1,5 @@
+# Development lab only: explicit listen declaration approval; no remote admin.
+(startup v1
+  (start "clock.svc" (priority 5))
+  (start "ccl-control.app" (priority 5) (network approve-declared))
+)

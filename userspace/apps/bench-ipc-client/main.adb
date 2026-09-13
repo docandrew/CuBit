@@ -1,3 +1,4 @@
+with CCL_Manifest_Bindings;
 ------------------------------------------------------------------------------
 --  CuBit IPC benchmark client
 --
@@ -16,7 +17,7 @@ procedure main is
    package Timing renames CuBit.Timing_Histograms;
    Rate : Unsigned_64;
 
-   CAP_SLOT_BENCH : constant CapabilitySlot := 18;
+   CAP_SLOT_BENCH : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_IPC_Test;
    OP_BENCH_ECHO  : constant Unsigned_32 := 16#0910#;
    OP_BENCH_DIE   : constant Unsigned_32 := 16#0911#;
    OP_BENCH_HOLD  : constant Unsigned_32 := 16#0912#;

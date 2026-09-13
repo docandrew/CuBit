@@ -1,0 +1,11 @@
+project Amplifiers is
+   for Source_Dirs use (".", "../../userspace/services/hda");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   for Source_Files use ("main.adb", "hda_amplifiers.ads", "hda_amplifiers.adb");
+   package Compiler is
+      --  Assertions are for this Linux-hosted regression only.
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Amplifiers;

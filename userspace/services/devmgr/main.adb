@@ -10,6 +10,9 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
+with Boot_RTC;
+with CCL.Configurations;
+with CCL.Declarations;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
@@ -1907,11 +1910,14 @@ begin
          sendWildcardACLConfig (myPID);
       end if;
 
-      --  Seed config from system.conf in CPIO initrd
+      --  Seed config from system.ccl in CPIO initrd
       if configPID /= 0 then
          declare
             OP_CONFIG_SET  : constant Unsigned_32 := 16#0601#;
             OP_CONFIG_LOAD : constant Unsigned_32 := 16#0604#;
+            CONFIG_REPLY_OK : constant Unsigned_32 := 16#F000#;
+            Plan : CCL.Configurations.Compilation_Result;
+            use type CCL.Configurations.Profile_Kind;
             confIdx    : Natural;
             confAddr   : Unsigned_64;
             confSize   : Unsigned_64;
@@ -1923,11 +1929,33 @@ begin
             cfgOk      : Boolean;
             cfgMsg     : Message;
          begin
-            confIdx := Cpio.findFile (cpioArchive, "system.conf");
+            confIdx := Cpio.findFile (cpioArchive, "system.ccl");
             if confIdx < cpioArchive.count then
                confAddr := INITRD_BASE +
                  Unsigned_64 (cpioArchive.files (confIdx).dataOff);
                confSize := Unsigned_64 (cpioArchive.files (confIdx).dataSize);
+
+               if confSize not in 1 .. CCL.Declarations.MAX_SOURCE then
+                  debugPrint ("devmgr: invalid system.ccl size; boot denied" & LF);
+                  ret := syscall (SYSCALL_EXIT);
+                  return;
+               end if;
+               declare
+                  Source : String (1 .. Natural (confSize)) with Import,
+                    Address => To_Address (Integer_Address (confAddr));
+               begin
+                  CCL.Configurations.Compile (Source, Plan);
+               end;
+               if not Plan.Success or else
+                 Plan.Plan.Kind /= CCL.Configurations.System_Profile
+               then
+                  debugPrint ("devmgr: system.ccl rejected at" &
+                              Plan.Position'Image & ": " &
+                              CCL.Configurations.Diagnostic_Name (Plan.Diagnostic) &
+                              " (expected system profile); boot denied" & LF);
+                  ret := syscall (SYSCALL_EXIT);
+                  return;
+               end if;
 
                --  Allocate grant buffer (2 pages for alignment)
                cfgRawAddr := syscall (SYSCALL_SBRK, 2 * 4096);
@@ -1946,106 +1974,36 @@ begin
                      success   => cfgOk);
 
                   if cfgOk then
-                     --  Parse system.conf line by line from CPIO memory
-                     declare
-                        data : array (0 .. Natural (confSize) - 1)
-                          of Unsigned_8
-                          with Import,
-                               Address => To_Address (
-                                 Integer_Address (confAddr));
-                        pos      : Natural := 0;
-                        lineStart : Natural;
-                        eol      : Natural;
-                        eqPos    : Integer;
-                     begin
-                        while pos < Natural (confSize) loop
-                           lineStart := pos;
-
-                           --  Find end of line
-                           eol := pos;
-                           while eol < Natural (confSize)
-                             and then data (eol) /= 16#0A#
-                           loop
-                              eol := eol + 1;
-                           end loop;
-
-                           declare
-                              lineEnd : Natural := eol;
-                           begin
-                              --  Trim CR
-                              if lineEnd > lineStart
-                                and then data (lineEnd - 1) = 16#0D#
-                              then
-                                 lineEnd := lineEnd - 1;
-                              end if;
-
-                              --  Advance past newline
-                              if eol < Natural (confSize) then
-                                 pos := eol + 1;
-                              else
-                                 pos := Natural (confSize);
-                              end if;
-
-                              --  Skip blank lines and comments
-                              if lineEnd > lineStart
-                                and then data (lineStart) /= 16#23#
-                              then
-                                 --  Find '='
-                                 eqPos := -1;
-                                 for e in lineStart .. lineEnd - 1 loop
-                                    if data (e) = 16#3D# then
-                                       eqPos := e;
-                                       exit;
-                                    end if;
-                                 end loop;
-
-                                 if eqPos > Integer (lineStart)
-                                   and eqPos < Integer (lineEnd)
-                                 then
-                                    declare
-                                       kLen : constant Natural :=
-                                         Natural (eqPos) - lineStart;
-                                       vLen : constant Natural :=
-                                         lineEnd - Natural (eqPos) - 1;
-                                       gBuf : array (0 .. kLen + vLen - 1)
-                                         of Unsigned_8
-                                         with Import,
-                                              Address => cfgBufAddr;
-                                    begin
-                                       --  Copy key to grant buf
-                                       for c in 0 .. kLen - 1 loop
-                                          gBuf (c) :=
-                                            data (lineStart + c);
-                                       end loop;
-                                       --  Copy value after key
-                                       for c in 0 .. vLen - 1 loop
-                                          gBuf (kLen + c) := data (
-                                            Natural (eqPos) + 1 + c);
-                                       end loop;
-
-                                       --  Send OP_CONFIG_SET
-                                       cfgMsg :=
-                                         (tag => (label  => OP_CONFIG_SET,
-                                                  length => 3,
-                                                  flags  => 0,
-                                                  reserved  => 0),
-                                          authorityTag => 0,
-                                          words =>
-                                            (0 => cfgGid,
-                                             1 => Unsigned_64 (kLen),
-                                             2 => Unsigned_64 (vLen),
-                                             others => 0));
-                                       cfgMsg.tag :=
-                                         capCall (2, cfgMsg);
-                                    end;
-                                 end if;
-                              end if;
-                           end;
-                        end loop;
-                     end;
+                     --  Only checked, owned entries reach the IPC adapter.
+                     for Item of Plan.Plan.Settings (1 .. Plan.Plan.Setting_Count) loop
+                        declare
+                           Key_Length : constant Natural := Item.Key.Length;
+                           Value_Length : constant Natural := Item.Value.Length;
+                           Buffer : String (1 .. Key_Length + Value_Length)
+                             with Import, Address => cfgBufAddr;
+                        begin
+                           Buffer (1 .. Key_Length) := Item.Key.Data (1 .. Key_Length);
+                           Buffer (Key_Length + 1 .. Buffer'Last) :=
+                             Item.Value.Data (1 .. Value_Length);
+                           cfgMsg :=
+                             (tag => (label => OP_CONFIG_SET, length => 3,
+                                      flags => 0, reserved => 0),
+                              authorityTag => 0,
+                              words => [0 => cfgGid,
+                                        1 => Unsigned_64 (Key_Length),
+                                        2 => Unsigned_64 (Value_Length),
+                                        others => 0]);
+                           cfgMsg.tag := capCall (2, cfgMsg);
+                           if cfgMsg.tag.label /= CONFIG_REPLY_OK then
+                              debugPrint ("devmgr: config seed failed; boot denied" & LF);
+                              ret := syscall (SYSCALL_EXIT);
+                              return;
+                           end if;
+                        end;
+                     end loop;
 
                      debugPrint (
-                       "devmgr: system.conf seeded into config" & LF);
+                       "devmgr: system.ccl seeded into config" & LF);
 
                      --  Send OP_CONFIG_LOAD to trigger disk load
                      cfgMsg :=
@@ -2056,11 +2014,50 @@ begin
                         authorityTag => 0,
                         words => (others => 0));
                      cfgMsg.tag := capCall (2, cfgMsg);
+                     --  Replace any persisted prior-boot sample atomically.
+                     --  This namespace is writable only by Config admins.
+                     declare
+                        UTC, Mono : Unsigned_64;
+                        Valid : Boolean;
+                        Key : constant String := "clock.boot-sample";
+                     begin
+                        mintCap (myPID, CAP_IOPORT, 16#70#, 2,
+                                 RIGHT_READ or RIGHT_WRITE, 27);
+                        Boot_RTC.Read (UTC, Mono, Valid);
+                        declare
+                           Value : constant String :=
+                             (if Valid then UTC'Image & Mono'Image else "unavailable");
+                           Buffer : String (1 .. Key'Length + Value'Length)
+                             with Import, Address => cfgBufAddr;
+                        begin
+                           Buffer := Key & Value;
+                           cfgMsg :=
+                             (tag => (OP_CONFIG_SET, 3, 0, 0), authorityTag => 0,
+                              words => [cfgGid, Key'Length, Value'Length, 0]);
+                           cfgMsg.tag := capCall (2, cfgMsg);
+                           if cfgMsg.tag.label /= CONFIG_REPLY_OK then
+                              debugPrint ("devmgr: clock seed rejected; boot denied" & LF);
+                              ret := syscall (SYSCALL_EXIT);
+                              return;
+                           end if;
+                           debugPrint ("devmgr: RTC seed " & Value & LF);
+                        end;
+                     end;
+                  else
+                     debugPrint ("devmgr: config seed grant failed; boot denied" & LF);
+                     ret := syscall (SYSCALL_EXIT);
+                     return;
                   end if;
+               else
+                  debugPrint ("devmgr: config seed allocation failed; boot denied" & LF);
+                  ret := syscall (SYSCALL_EXIT);
+                  return;
                end if;
             else
                debugPrint (
-                 "devmgr: system.conf not found in CPIO" & LF);
+                 "devmgr: system.ccl not found in CPIO; boot denied" & LF);
+               ret := syscall (SYSCALL_EXIT);
+               return;
             end if;
          end;
       end if;

@@ -130,6 +130,12 @@ procedure main is
          return True;
       end if;
 
+      if key'Length >= 11 and then key (key'First .. key'First + 10) = "clock.boot-"
+        and then (rights and ACL_WRITE) /= 0
+      then
+         return False;
+      end if;
+
       for i in aclProfiles'Range loop
          if aclProfiles (i).active and then
             aclProfiles (i).pid = sender

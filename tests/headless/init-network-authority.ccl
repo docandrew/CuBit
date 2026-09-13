@@ -1,0 +1,6 @@
+# First launch has declarations but no approval. Second is explicitly approved.
+(startup v1
+  (start "network-check.app" (priority 5))
+  (start "network-check.app" (priority 5) (network approve-declared))
+  (start "capability-test.app" (priority 5))
+)

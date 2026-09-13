@@ -1,0 +1,8 @@
+# CuBit headless desktop DOOM telemetry profile
+# The injector launches DOOM from Apps to exercise interactive bookkeeping.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+)

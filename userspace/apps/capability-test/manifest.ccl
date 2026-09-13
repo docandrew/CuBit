@@ -1,0 +1,5 @@
+# Requested authority only; the existing launch path remains in control.
+(executable-manifest v1
+  (identity "com.cubit.cap-test")
+  (version "1.0.0")
+  (requests-none))

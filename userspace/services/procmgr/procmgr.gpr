@@ -4,7 +4,7 @@ project Procmgr is
 
     for Object_Dir use "build";
 
-    for Source_Dirs use (".");
+    for Source_Dirs use (".", "../../ccl/src");
 
     for Main use ("main.adb");
 
@@ -32,7 +32,7 @@ project Procmgr is
     package Compiler is
         for Default_Switches ("Ada") use
         (
-            "-O2",
+            "-O2", "-gnat2022",
             "-fstack-usage",
             "-fomit-frame-pointer",
             "-mno-red-zone",
