@@ -27,6 +27,8 @@ parser.add_argument('--early-text', action='store_true', help='check the early t
 parser.add_argument('--without-audio', action='store_true',
                     help='omit HDA hardware and verify optional audio cannot block boot')
 parser.add_argument('--sameboy', action='store_true', help='also exercise the native Game Boy frontend')
+parser.add_argument('--settings', action='store_true', help='exercise Settings and live shared-toolkit theme changes')
+parser.add_argument('--ccl-ui-hooks', action='store_true', help='exercise native REPL clock and scoped label hooks')
 parser.add_argument('--sameboy-audio', action='store_true',
                     help='capture the original test ROM tone and verify volume, mute and pause')
 parser.add_argument('--taskbar', action='store_true',
@@ -340,6 +342,23 @@ with (run / 'qemu.log').open('w') as log:
         wait_for('ccl-workbench: native window ready')
         time.sleep(2)
         hmp(f'screendump {run}/workbench.ppm')
+        if args.ccl_ui_hooks:
+            key('f6')
+            def repl_command(source):
+                for ch in source:
+                    key({'(': 'shift-9', ')': 'shift-0', '.': 'dot',
+                         '-': 'minus', ' ': 'spc', '"': 'shift-apostrophe'}.get(ch, ch))
+                key('ret')
+                time.sleep(1)
+            repl_command('(ui.label-value 42)')
+            hmp(f'screendump {run}/ccl-label.ppm')
+            repl_command('(ui.label-visible false)')
+            repl_command('(clock.monotonic-ms)')
+            hmp(f'screendump {run}/ccl-clock-repl.ppm')
+            repl_command('(ui.label-text "hello cubit")')
+            hmp(f'screendump {run}/ccl-text-label.ppm')
+            if serial.read_text(errors='replace').count('ccl-workbench: REPL completed') < 4:
+                raise RuntimeError('native REPL did not complete all four submissions')
         key('meta_l')
         for _ in range(5):
             key('down')
@@ -347,6 +366,47 @@ with (run / 'qemu.log').open('w') as log:
         wait_for('files: native window ready')
         time.sleep(2)
         hmp(f'screendump {run}/files.ppm')
+        if args.settings:
+            key('meta_l'); key('up'); key('ret')
+            time.sleep(1)
+            hmp(f'screendump {run}/settings-light.ppm')
+            key('tab'); key('ret')  # Select Alloy Dark, still only a preview.
+            for _ in range(8): key('tab')
+            key('ret')
+            wait_for('desktop: appearance applied')
+            time.sleep(2)
+            hmp(f'screendump {run}/settings-dark.ppm')
+            from PIL import Image
+            light = Image.open(run / 'settings-light.ppm').convert('RGB')
+            dark = Image.open(run / 'settings-dark.ppm').convert('RGB')
+            # Shared Alloy taskbar face changes, not just the Settings preview.
+            point = (light.width // 2, light.height - 2)
+            if light.getpixel(point) == dark.getpixel(point):
+                raise RuntimeError('Settings Apply did not change desktop theme')
+            if dark.getpixel(point) != (48, 58, 66):
+                raise RuntimeError(f'wrong dark taskbar color: {dark.getpixel(point)}')
+            if dark.getpixel((800, 600)) != (35, 44, 51):
+                raise RuntimeError('existing Files client did not repaint with the dark palette')
+            if serial.read_text(errors='replace').count('desktop: CCL theme loaded') < 4:
+                raise RuntimeError('missing startup and Apply CCL theme-loading evidence')
+            # Apply currently has focus. Select Cubie, then apply it live.
+            for _ in range(6): key('shift-tab')
+            key('ret')
+            for _ in range(6): key('tab')
+            key('ret')
+            time.sleep(2)
+            hmp(f'screendump {run}/settings-cubie.ppm')
+            cubie = Image.open(run / 'settings-cubie.ppm').convert('RGB')
+            background = (dark.width - 10, 10)
+            if cubie.getpixel(background) == dark.getpixel(background):
+                raise RuntimeError('Cubie Apply did not change the wallpaper')
+            if cubie.getpixel(point) != dark.getpixel(point):
+                raise RuntimeError('wallpaper change unexpectedly changed the theme')
+            # Reopen an already-running Workbench to inspect its repainted UI.
+            key('meta_l'); key('down'); key('ret')
+            time.sleep(2)
+            hmp(f'screendump {run}/workbench-dark.ppm')
+            print('SETTINGS PASS: keyboard selection, Apply, live palette and Cubie wallpaper.', flush=True)
         if args.eject:
             qmp('eject', {'device': 'cd', 'force': True})
             key('meta_l')

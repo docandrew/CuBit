@@ -2,6 +2,7 @@ with Interfaces;
 with CCL.Language;
 with CCL.Catalog;
 with CCL.VM;
+with CCL.Host_Values;
 
 -- Transport- and UI-independent lifecycle for one bounded recurring program.
 -- The owning host supplies time and performs evaluation with its explicit
@@ -49,6 +50,17 @@ package CCL.Periodic_Programs with SPARK_Mode is
       Updated : out Boolean);
 
    function State (Item : Program) return Lifecycle;
+   generic
+      type Host_Context is limited private;
+      with function Now (Context : Host_Context) return Timestamp;
+      with procedure Invoke
+        (Context : in out Host_Context; Binding : Interfaces.Unsigned_32;
+         Argument : CCL.Host_Values.Value; Value : out CCL.Host_Values.Value;
+         Success : out Boolean);
+   procedure Evaluate_Values_Due
+     (Item : in out Program; Catalog : CCL.Catalog.Interface_Catalog;
+      Grants : CCL.Catalog.Granted_Bindings; Context : in out Host_Context;
+      Updated : out Boolean);
    function Identity (Item : Program) return Timestamp;
    function Next_Deadline (Item : Program) return Timestamp;
    function Source_Text (Item : Program) return String;

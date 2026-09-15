@@ -44,6 +44,13 @@ class Configurations(unittest.TestCase):
                     # Preserve the legacy oracle and account for the exact key.
                     self.assertNotIn('clock.time-zone=', expected)
                     expected = 'clock.time-zone=UTC\n' + expected
+                    expected = ('desktop.appearance.theme.light=(theme v1 (base alloy-light))\n'
+                                'desktop.appearance.theme.dark=(theme v1 (base alloy-dark))\n' + expected)
+                elif relative.as_posix() == 'tests/headless/init-capability-security.conf':
+                    # The committed construction-failure tests intentionally
+                    # extended this profile after the original migration.
+                    expected = ('bad-phdr.app pri=5\nbad-segment.app pri=5\n'
+                                'bad-stack.app pri=5\n' + 'overlap.app pri=5\n' * 8 + expected)
                 result = self.compile(source.read_text())
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(result.stdout, expected)

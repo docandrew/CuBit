@@ -97,9 +97,9 @@ begin
       O : Operation_Descriptor;
    begin
       Define_Interface ("clock", 1, 0, Operation.Interface_Digest, D, Error);
-      Define_Operation ("monotonic-ms", 0, Operation.Import, O, Error);
+      Define_Host_Operation ("monotonic-ms", 0, Operation.Import, O, Error);
       Add_Operation (D, O, Error); pragma Assert (Error = Catalog_Valid);
-      Define_Operation ("other", 0, Operation.Import, O, Error);
+      Define_Host_Operation ("other", 0, Operation.Import, O, Error);
       Add_Operation (D, O, Error); pragma Assert (Error = Catalog_Valid);
       Initialize (Catalog); Publish (Catalog, D, Error); pragma Assert (Error = Catalog_Valid);
       Context := (others => <>);
@@ -115,7 +115,7 @@ begin
       Define_Interface ("clock", 1, 0, Operation.Interface_Digest, D, Error);
       Forged := Operation;
       Forged.Import.Cancellation := CCL.Imports.Best_Effort_Cancellation;
-      Define_Operation ("monotonic-ms", 0, Forged.Import, O, Error);
+      Define_Host_Operation ("monotonic-ms", 0, Forged.Import, O, Error);
       pragma Assert (Error = Catalog_Valid);
       Add_Operation (D, O, Error); pragma Assert (Error = Catalog_Valid);
       Initialize (Catalog); Publish (Catalog, D, Error); pragma Assert (Error = Catalog_Valid);

@@ -9,7 +9,7 @@ with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements;
 
-with Multiboot;
+with Boot_Framebuffer;
 with TextIO;
 
 package Video.VGA is
@@ -44,10 +44,9 @@ package Video.VGA is
 
     ---------------------------------------------------------------------------
     -- setup
-    -- Given a MultibootInfo record containing framebuffer details, initialize
-    -- the VGA driver.
+    -- Consume the single admitted boot descriptor, never raw loader fields.
     ---------------------------------------------------------------------------
-    procedure setup (mbInfo : Multiboot.MultibootInfo);
+    procedure setup (Item : Boot_Framebuffer.Description);
 
     ---------------------------------------------------------------------------
     -- getTextInterface

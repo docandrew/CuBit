@@ -2,10 +2,13 @@ with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
 package body Desktop_Wallpaper is
+   use CuBit.Appearance;
    type Pixels is array (Natural range <>) of Unsigned_32
      with Convention => C;
    Source : constant Pixels (0 .. Source_Width * Source_Height - 1)
      with Import, Convention => C, External_Name => "cubit_desktop_wallpaper";
+   Cubie_Source : constant Pixels (0 .. Cubie_Width * Cubie_Height - 1)
+     with Import, Convention => C, External_Name => "cubit_desktop_wallpaper_cubie";
 
    procedure Render
      (Target : System.Address;
@@ -18,13 +21,27 @@ package body Desktop_Wallpaper is
    procedure Paint
      (Target : System.Address;
       Width, Height, Pitch : Positive;
-      X, Y, W, H : Natural)
+      X, Y, W, H : Natural;
+      Style : Preferences := Default)
    is
       --  Caller owns Pitch*Height writable bytes, validated by the display
       --  protocol before allocation. Only visible pixels are touched.
       Draw_Width, Draw_Height : Positive;
-      Left, Top : Natural;
+      Image_Width : constant Positive :=
+        (if Style.Backdrop = Cubie then Cubie_Width else Source_Width);
+      Image_Height : constant Positive :=
+        (if Style.Backdrop = Cubie then Cubie_Height else Source_Height);
+      Left, Top : Integer;
+      Image_X, Image_Y : Integer;
+      Background_Color : constant Unsigned_32 :=
+        (if Style.Backdrop = Ocean then 16#FF20_4058#
+         elsif Style.Scheme = Alloy_Dark then 16#FF20_282E#
+         else 16#FF54_5D63#);
       SX, SY, X0, Y0, X1, Y1, FX, FY : Natural;
+
+      function Sample (X, Y : Natural) return Unsigned_32 is
+        (if Style.Backdrop = Cubie then Cubie_Source (Y * Image_Width + X)
+         else Source (Y * Image_Width + X)) with Inline;
 
       function Blend (A, B : Unsigned_32; Fraction : Natural)
         return Unsigned_32
@@ -47,32 +64,56 @@ package body Desktop_Wallpaper is
       if W = 0 or else H = 0 then
          return;
       end if;
-      if Unsigned_64 (Width) * Source_Height >=
-         Unsigned_64 (Height) * Source_Width
+      if Style.Position = Center then
+         Draw_Width := Image_Width;
+         Draw_Height := Image_Height;
+      elsif (Unsigned_64 (Width) * Unsigned_64 (Image_Height) >=
+         Unsigned_64 (Height) * Unsigned_64 (Image_Width)
+        ) = (Style.Position = Fill)
       then
          Draw_Width := Width;
          Draw_Height := Positive
-           ((Unsigned_64 (Width) * Source_Height + Source_Width - 1) / Source_Width);
+           ((Unsigned_64 (Width) * Unsigned_64 (Image_Height) + Unsigned_64 (Image_Width) - 1) /
+             Unsigned_64 (Image_Width));
       else
          Draw_Height := Height;
          Draw_Width := Positive
-           ((Unsigned_64 (Height) * Source_Width + Source_Height - 1) / Source_Height);
+           ((Unsigned_64 (Height) * Unsigned_64 (Image_Width) + Unsigned_64 (Image_Height) - 1) /
+             Unsigned_64 (Image_Height));
       end if;
-      Left := (Draw_Width - Width) / 2;
-      Top := (Draw_Height - Height) / 2;
+      Left := (Width - Draw_Width) / 2;
+      Top := (Height - Draw_Height) / 2;
       for Row_Y in Y .. Y + H - 1 loop
-         SY := (if Draw_Height = 1 then 0 else
-           Natural (Unsigned_64 (Row_Y + Top) * (Source_Height - 1) * 256 /
-                    Unsigned_64 (Draw_Height - 1)));
-         Y0 := SY / 256;
-         Y1 := Natural'Min (Y0 + 1, Source_Height - 1);
-         FY := SY mod 256;
+         Image_Y := Row_Y - Top;
+         Y0 := 0;
+         Y1 := 0;
+         FY := 0;
+         if Image_Y >= 0 and then Image_Y < Draw_Height then
+            SY := (if Draw_Height = 1 then 0 else
+              Natural (Unsigned_64 (Image_Y) * Unsigned_64 (Image_Height - 1) * 256 /
+                       Unsigned_64 (Draw_Height - 1)));
+            Y0 := SY / 256;
+            Y1 := Natural'Min (Y0 + 1, Image_Height - 1);
+            FY := SY mod 256;
+         end if;
          for Column_X in X .. X + W - 1 loop
+            Image_X := Column_X - Left;
+            if Style.Backdrop not in Wallpaper | Cubie or else
+              Image_X < 0 or else Image_X >= Draw_Width or else
+              Image_Y < 0 or else Image_Y >= Draw_Height
+            then
+               declare
+                  Pixel : Unsigned_32 with Import, Address => Target +
+                    Storage_Offset (Row_Y * Pitch + Column_X * 4);
+               begin
+                  Pixel := Background_Color;
+               end;
+            else
             SX := (if Draw_Width = 1 then 0 else
-              Natural (Unsigned_64 (Column_X + Left) * (Source_Width - 1) * 256 /
+              Natural (Unsigned_64 (Image_X) * Unsigned_64 (Image_Width - 1) * 256 /
                        Unsigned_64 (Draw_Width - 1)));
             X0 := SX / 256;
-            X1 := Natural'Min (X0 + 1, Source_Width - 1);
+            X1 := Natural'Min (X0 + 1, Image_Width - 1);
             FX := SX mod 256;
             declare
                Pixel : Unsigned_32 with Import,
@@ -80,11 +121,10 @@ package body Desktop_Wallpaper is
                    Storage_Offset (Row_Y * Pitch + Column_X * 4);
             begin
                Pixel := Blend
-                 (Blend (Source (Y0 * Source_Width + X0),
-                         Source (Y0 * Source_Width + X1), FX),
-                  Blend (Source (Y1 * Source_Width + X0),
-                         Source (Y1 * Source_Width + X1), FX), FY);
+                 (Blend (Sample (X0, Y0), Sample (X1, Y0), FX),
+                  Blend (Sample (X0, Y1), Sample (X1, Y1), FX), FY);
             end;
+            end if;
          end loop;
       end loop;
    end Paint;

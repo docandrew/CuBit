@@ -6,7 +6,7 @@ with CCL.Imports;
 package body CCL.Language with
    SPARK_Mode => On
 is
-   use type CCL.VM.Value_Kind;
+   use type CCL.Host_Values.Value_Kind;
    use type CCL.Checked_Arithmetic.Arithmetic_Error;
    use type CCL.Imports.Transfer_Mode;
    use type CCL.Imports.Cancellation_Mode;
@@ -129,7 +129,7 @@ is
       type Host_Context is limited private;
       with procedure Invoke
         (Context : in out Host_Context; Binding : Unsigned_32;
-         Argument : CCL.VM.Value; Value : out CCL.VM.Value;
+         Argument : CCL.Host_Values.Value; Value : out CCL.Host_Values.Value;
          Success : out Boolean);
    procedure Process_Source_With_Host
      (Source : String;
@@ -363,6 +363,8 @@ is
          C             : Node_Reference := NO_NODE;
          Host_Call     : CCL.Catalog.Resolved_Operation;
          Host_Found    : Boolean;
+         Arguments     : Argument_Array := [others => NO_NODE];
+         Count         : Parameter_Count := 0;
       begin
          Read_Name (Operator_Name, Ok);
          if not Ok then
@@ -510,8 +512,28 @@ is
                Host_Call,
                Host_Found);
             if not Host_Found then
-               Diagnostic := Unknown_Form;
                Index := NO_NODE;
+               Skip_Trivia;
+               while Diagnostic = No_Diagnostic and then Cursor < Source'Length
+                 and then Source (Source'First + Cursor) /= ')'
+               loop
+                  if Count = MAX_PARAMETERS then
+                     Diagnostic := Too_Many_Parameters;
+                     return;
+                  end if;
+                  Count := Count + 1;
+                  Parse_Expression (Depth + 1, Arguments (Count));
+                  Skip_Trivia;
+               end loop;
+               if Diagnostic = No_Diagnostic then
+                  Expect (')', Ok);
+                  if Ok then
+                     Add_Node
+                       ((Kind => Function_Call, Identifier => Operator_Name,
+                         Arguments => Arguments, Argument_Count => Count,
+                         others => <>), Index);
+                  end if;
+               end if;
             else
                if Host_Call.Parameters = 1 then
                   Parse_Expression (Depth + 1, A);
@@ -522,6 +544,7 @@ is
                if Diagnostic = No_Diagnostic and then Ok then
                   Add_Node
                     ((Kind => Host_Import_Form,
+                      Identifier => Operator_Name,
                       First => A,
                       Host_Call => Host_Call,
                       others => <>),
@@ -605,8 +628,92 @@ is
          end if;
       end Parse_Expression;
 
+      --  A program is zero or more declarations followed by one expression.
+      --  Definitions are not expressions and cannot capture a surrounding let.
+      procedure Parse_Program (Depth : Natural; Index : out Node_Reference) is
+         Start : Natural;
+         Token : Name;
+         Ok : Boolean;
+         Decl : Function_Declaration;
+         Id : Function_Reference;
+         Tail : Node_Reference;
+         procedure Read_Type (Kind : out Static_Type) is
+            Token : Name;
+            Good : Boolean;
+         begin
+            Read_Name (Token, Good);
+            Kind := Invalid_Type;
+            if Good then
+               if Name_Is (Token, "Integer") then Kind := Integer_Type;
+               elsif Name_Is (Token, "Boolean") then Kind := Boolean_Type;
+               elsif Name_Is (Token, "String") then Kind := String_Type;
+               elsif Name_Is (Token, "Character") then Kind := Character_Type;
+               else Diagnostic := Expected_Type_Name;
+               end if;
+            end if;
+         end Read_Type;
+      begin
+         Index := NO_NODE;
+         if Diagnostic /= No_Diagnostic then return; end if;
+         Skip_Trivia;
+         Start := Cursor;
+         if Depth >= MAX_NESTING then Diagnostic := Nesting_Too_Deep; return; end if;
+         if Cursor < Source'Length and then Source (Source'First + Cursor) = '(' then
+            Cursor := Cursor + 1;
+            Read_Name (Token, Ok);
+            if not Ok then return; end if;
+         end if;
+         if not Name_Is (Token, "define") then
+            Cursor := Start;
+            Parse_Expression (Depth, Index);
+            return;
+         end if;
+         if Tree.Function_Count = MAX_FUNCTIONS then
+            Diagnostic := Too_Many_Functions; return;
+         end if;
+         Id := Tree.Function_Count;
+         Expect ('(', Ok);
+         if not Ok then return; end if;
+         Read_Name (Decl.Identifier, Ok);
+         if not Ok then return; end if;
+         Skip_Trivia;
+         while Diagnostic = No_Diagnostic and then Cursor < Source'Length
+           and then Source (Source'First + Cursor) = '('
+         loop
+            if Decl.Count = MAX_PARAMETERS then Diagnostic := Too_Many_Parameters; return; end if;
+            Decl.Count := Decl.Count + 1;
+            Cursor := Cursor + 1;
+            Read_Name (Decl.Parameters (Decl.Count).Identifier, Ok);
+            if not Ok then return; end if;
+            Read_Type (Decl.Parameters (Decl.Count).Kind);
+            if Diagnostic /= No_Diagnostic then return; end if;
+            Expect (')', Ok);
+            Skip_Trivia;
+         end loop;
+         if Diagnostic /= No_Diagnostic then return; end if;
+         Expect (')', Ok);
+         if not Ok then return; end if;
+         Read_Type (Decl.Result_Kind);
+         if Diagnostic /= No_Diagnostic then return; end if;
+         Parse_Expression (Depth + 1, Decl.Body_Node);
+         if Diagnostic /= No_Diagnostic then return; end if;
+         Expect (')', Ok);
+         if not Ok then return; end if;
+         Tree.Functions (Id) := Decl;
+         Tree.Function_Count := Tree.Function_Count + 1;
+         Add_Node
+           ((Kind => Function_Definition, Function_Id => Id,
+             First => Decl.Body_Node,
+             Source_Position => To_Diagnostic_Position (Start),
+             Source_End_Position => To_Diagnostic_Position (Cursor), others => <>), Index);
+         if Diagnostic /= No_Diagnostic then return; end if;
+         Parse_Program (Depth + 1, Tail);
+         Tree.Nodes (Index).Second := Tail;
+      end Parse_Program;
+
       Type_Env : Type_Environment := [others => (others => <>)];
       Type_Env_Length : Natural range 0 .. MAX_BINDINGS := 0;
+      Visible_Functions : Natural range 0 .. MAX_FUNCTIONS := 0;
 
       procedure Check_Node
         (Index : Natural;
@@ -766,25 +873,31 @@ is
                      Left_Type);
                   if Diagnostic = No_Diagnostic and then
                     ((Tree.Nodes (Node_Index (Index)).Host_Call.Import.Argument =
-                        CCL.VM.Integer_Value and then
+                        CCL.Host_Values.Integer_Value and then
                       Left_Type /= Integer_Type) or else
                      (Tree.Nodes (Node_Index (Index)).Host_Call.Import.Argument =
-                        CCL.VM.Boolean_Value and then
-                      Left_Type /= Boolean_Type))
+                        CCL.Host_Values.Boolean_Value and then
+                      Left_Type /= Boolean_Type) or else
+                     (Tree.Nodes (Node_Index (Index)).Host_Call.Import.Argument =
+                        CCL.Host_Values.Text_Value and then Left_Type /= String_Type))
                   then
                      Diagnostic :=
                        (if Tree.Nodes (Node_Index (Index)).Host_Call.Import.Argument =
-                           CCL.VM.Integer_Value
+                           CCL.Host_Values.Integer_Value
                         then Expected_Integer
-                        else Expected_Boolean);
+                        elsif Tree.Nodes (Node_Index (Index)).Host_Call.Import.Argument =
+                          CCL.Host_Values.Boolean_Value then Expected_Boolean
+                        else Expected_String);
                   end if;
                end if;
                if Diagnostic = No_Diagnostic then
                   Kind :=
                     (if Tree.Nodes (Node_Index (Index)).Host_Call.Import.Result =
-                        CCL.VM.Integer_Value
+                        CCL.Host_Values.Integer_Value
                      then Integer_Type
-                     else Boolean_Type);
+                     elsif Tree.Nodes (Node_Index (Index)).Host_Call.Import.Result =
+                       CCL.Host_Values.Boolean_Value then Boolean_Type
+                     else String_Type);
                end if;
             when Invalid_Node => Diagnostic := Unexpected_Token;
          end case;
@@ -1092,14 +1205,31 @@ is
                        Tree.Nodes (Node_Index (Index)).Host_Call;
                      Binding : Unsigned_32;
                      Granted, Called : Boolean;
-                     Argument : CCL.VM.Value := CCL.VM.Integer_Constant (0);
-                     Returned : CCL.VM.Value;
+                     Argument : CCL.Host_Values.Value := CCL.Host_Values.Integer_Constant (0);
+                     Returned : CCL.Host_Values.Value;
                   begin
                      Good := True;
                      if Operation.Parameters = 1 then
                         Evaluate_Node (Tree.Nodes (Node_Index (Index)).First,
                                        Depth + 1, Left, Good);
-                        if Good then Argument := Left.Scalar; end if;
+                        if Good then
+                           if Left.Kind = String_Type then
+                              Argument := (Kind => CCL.Host_Values.Text_Value, Content =>
+                                (Length => Text_Regions.Length (Left.Text), others => <>));
+                              Text_Regions.Copy_To
+                                (Text_Region, Left.Text,
+                                 Argument.Content.Data (1 .. Argument.Content.Length), Region_Result);
+                              Good := Region_Result = Text_Regions.Operation_Ok;
+                              if not Good then Eval_Status := Evaluation_Text_Storage_Exhausted; end if;
+                           else Argument := CCL.Host_Values.From_Scalar (Left.Scalar);
+                           end if;
+                        end if;
+                     end if;
+                     if Good and then not CCL.Host_Values.Matches
+                       (Argument, Operation.Import.Argument, Operation.Import.Argument_Text_Limit)
+                     then
+                        Eval_Status := Host_Argument_Out_Of_Bounds;
+                        Good := False;
                      end if;
                      if Good then
                         CCL.Catalog.Find_Granted_Binding (Grants, Operation, Binding, Granted);
@@ -1109,12 +1239,26 @@ is
                            Invoke (Context, Binding, Argument, Returned, Called);
                            if not Called then
                               Eval_Status := Host_Call_Failed; Good := False;
-                           elsif Returned.Kind /= Operation.Import.Result then
+                           elsif not CCL.Host_Values.Matches
+                             (Returned, Operation.Import.Result, Operation.Import.Result_Text_Limit)
+                           then
                               Eval_Status := Host_Result_Type_Mismatch; Good := False;
                            else
-                              Item.Scalar := Returned;
-                              Item.Kind := (if Returned.Kind = CCL.VM.Integer_Value
-                                            then Integer_Type else Boolean_Type);
+                              case Returned.Kind is
+                                 when CCL.Host_Values.Integer_Value =>
+                                    Item.Kind := Integer_Type;
+                                    Item.Scalar := CCL.VM.Integer_Constant (Returned.Integer);
+                                 when CCL.Host_Values.Boolean_Value =>
+                                    Item.Kind := Boolean_Type;
+                                    Item.Scalar := CCL.VM.Boolean_Constant (Returned.Boolean);
+                                 when CCL.Host_Values.Text_Value =>
+                                    Item.Kind := String_Type;
+                                    Text_Regions.Allocate_String
+                                      (Text_Region, Returned.Content.Data (1 .. Returned.Content.Length),
+                                       Item.Text, Region_Result);
+                                    Good := Region_Result = Text_Regions.Operation_Ok;
+                                    if not Good then Eval_Status := Evaluation_Text_Storage_Exhausted; end if;
+                              end case;
                            end if;
                         end if;
                      end if;
@@ -1146,7 +1290,7 @@ is
             return;
          end if;
 
-         Parse_Expression (0, Root);
+         Parse_Program (0, Root);
          Tree.Root := Root;
          Skip_Trivia;
          if Diagnostic = No_Diagnostic and then Cursor /= Source'Length then
@@ -1214,11 +1358,11 @@ is
    type No_Host is null record;
    procedure Deny_Host
      (Context : in out No_Host; Binding : Unsigned_32;
-      Argument : CCL.VM.Value; Value : out CCL.VM.Value; Success : out Boolean)
+      Argument : CCL.Host_Values.Value; Value : out CCL.Host_Values.Value; Success : out Boolean)
    is
       pragma Unreferenced (Context, Binding, Argument);
    begin
-      Value := CCL.VM.Integer_Constant (0); Success := False;
+      Value := CCL.Host_Values.Integer_Constant (0); Success := False;
    end Deny_Host;
    procedure Process_Without_Host is new Process_Source_With_Host (No_Host, Deny_Host);
 
@@ -1237,7 +1381,7 @@ is
                             False, Analyze_Input, Evaluate, Result, Tree);
    end Process_Source;
 
-   procedure Interpret_With_Host
+   procedure Interpret_With_Values
      (Source : String; Fuel : Natural;
       Visible_Interfaces : CCL.Catalog.Interface_Catalog;
       Grants : CCL.Catalog.Granted_Bindings;
@@ -1262,7 +1406,8 @@ is
       -- Like VM linkage: reject the whole program before executing anything.
       for N of Tree.Nodes loop
          if N.Kind = Host_Import_Form then
-            if N.Host_Call.Import.Ownership_Argument or else
+            if (not Allow_Text and then not CCL.Host_Values.Scalar_Only (N.Host_Call.Import)) or else
+              N.Host_Call.Import.Ownership_Argument or else
               N.Host_Call.Import.Transfer /= CCL.Imports.Copy_Argument or else
               N.Host_Call.Import.Cancellation /= CCL.Imports.Not_Cancellable or else
               N.Host_Call.Import.Success_Verb /= 0 or else
@@ -1279,6 +1424,28 @@ is
          end if;
       end loop;
       Run (Source, Fuel, Visible_Interfaces, Grants, Context, True, False, True, Result, Tree);
+   end Interpret_With_Values;
+
+   procedure Interpret_With_Host
+     (Source : String; Fuel : Natural;
+      Visible_Interfaces : CCL.Catalog.Interface_Catalog;
+      Grants : CCL.Catalog.Granted_Bindings;
+      Context : in out Host_Context; Result : out Interpretation_Result)
+   is
+      procedure Invoke_Scalar
+        (Context : in out Host_Context; Binding : Unsigned_32;
+         Argument : CCL.Host_Values.Value; Value : out CCL.Host_Values.Value;
+         Success : out Boolean)
+      is
+         A, R : CCL.VM.Value;
+      begin
+         CCL.Host_Values.To_Scalar (Argument, A, Success);
+         Value := CCL.Host_Values.Integer_Constant (0);
+         if Success then Invoke (Context, Binding, A, R, Success); Value := CCL.Host_Values.From_Scalar (R); end if;
+      end Invoke_Scalar;
+      procedure Run is new Interpret_With_Values (Host_Context, Invoke_Scalar, Allow_Text => False);
+   begin
+      Run (Source, Fuel, Visible_Interfaces, Grants, Context, Result);
    end Interpret_With_Host;
 
    procedure Analyze

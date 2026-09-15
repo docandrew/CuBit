@@ -13,6 +13,7 @@ with Buddy_Blocks;
 with Buddy_Geometry;
 with Buddy_Boot_Admission;
 with Buddy_Metadata;
+with Firmware_Frames;
 with Intrusive_List_Splices;
 with TextIO; use TextIO;
 with Util;
@@ -544,46 +545,6 @@ is
         return freeLists(ord)'Address;
     end getListAddress;
 
-    ---------------------------------------------------------------------------
-    -- getAlignedStart
-    -- Given the start of a _physical_ memory region, round up to the nearest
-    -- block-aligned _virtual_ (linear-mapped) address at the given order.
-    ---------------------------------------------------------------------------
-    function getAlignedStart (startPhys : Virtmem.PhysAddress;
-                              ord       : Order) return System.Address
-    is
-    begin
-        return blockStart (ord, Virtmem.P2Va(startPhys))
-             + blockSize (ord);
-    end getAlignedStart;
-
-    ---------------------------------------------------------------------------
-    -- getAlignedEnd
-    -- Given the end of a physical memory region, round down to the nearest
-    -- block-aligned _virtual_ (linear-mapped) address at the given order.
-    ---------------------------------------------------------------------------
-    function getAlignedEnd (endPhys : Virtmem.PhysAddress;
-                            ord     : Order) return System.Address
-    is
-    begin
-        return blockStart (ord, Virtmem.P2Va(endPhys)) - 1;
-    end getAlignedEnd;
-
-    ---------------------------------------------------------------------------
-    -- effectiveOrder
-    -- Choose the largest block order where alignment waste stays reasonable
-    -- for the given area size.  Target: blockSize(order) <= areaSize / 32,
-    -- so we lose at most ~6% to boundary alignment.
-    ---------------------------------------------------------------------------
-    function effectiveOrder (areaSize : Storage_Count) return Order
-    is
-        effOrd : Order := Order'Last;
-    begin
-        while effOrd > 0 and then blockSize (effOrd) > areaSize / 32 loop
-            effOrd := effOrd - 1;
-        end loop;
-        return effOrd;
-    end effectiveOrder;
 
     procedure freeLocked (ord : Order; addr : System.Address)
       with SPARK_Mode => Off;
@@ -619,26 +580,14 @@ is
     ---------------------------------------------------------------------------
     -- setup
     ---------------------------------------------------------------------------
-    procedure setup (areas : in MemoryAreas.MemoryAreaArray) with
+    procedure setup (Map : Firmware_Frames.Region_Array) with
         SPARK_Mode => Off -- allocation and physical-memory initialization
     is
-        use type MemoryAreas.MemoryAreaType;
-        use type Virtmem.PFN;
+        package FF renames Firmware_Frames;
+        use type FF.Count;
+        use type FF.Region_Kind;
+        use type FF.Decision;
         use type Buddy_Boot_Admission.Admission_Source;
-
-        alignedStart          : System.Address;
-        alignedEnd            : System.Address;
-
-        -- For performance, we always want to free the largest block we can.
-        -- If inside the area controlled by the boot allocator, if we're below
-        -- the boot allocated high-water mark, then we have to go page-by-page.
-        -- Past the next max order-aligned frame, we can free max order-sized
-        -- blocks.
-        topLevelBlockStart    : System.Address;
-        topLevelBlockEnd      : System.Address;
-        startPFN              : Virtmem.PFN;
-        endPFN                : Virtmem.PFN;
-        numTopLevelBlocksHere : Storage_Count;
     begin
         Spinlocks.Initialize (lock, lockName'Access);
         -- make freeLists self-referential and empty to start
@@ -655,75 +604,58 @@ is
         -- the buddy lists, so the metadata can never itself be allocated.
         allocPinState;
 
-        eachArea:
-        for area of areas loop
-            if area.kind /= MemoryAreas.USABLE or
-               area.endAddr < Config.MIN_PHYS_ALLOC then
-                null;
-            else
-                -- Pick the largest block order that keeps alignment waste
-                -- reasonable for this area's size.
+        -- Tile each usable span with aligned blocks; split only where a
+        -- reservation/earlier owner or the boot bitmap requires finer detail.
+        -- No discarded aligned edges and no second admission of duplicate RAM.
+        for Owner in Map'Range loop
+            if Map (Owner).Kind = FF.Usable then
                 declare
-                    areaSize : constant Storage_Count :=
-                        Storage_Count (area.endAddr - area.startAddr);
-                    effOrd   : constant Order := effectiveOrder (areaSize);
+                    Cursor : FF.Boundary := FF.Boundary'Max
+                      (FF.First (Map (Owner).Pages),
+                       FF.Count (Config.MIN_PHYS_ALLOC / Virtmem.FRAME_SIZE));
+                    Limit : constant FF.Boundary := FF.Limit (Map (Owner).Pages);
                 begin
-                    alignedStart := getAlignedStart (area.startAddr, effOrd);
-                    alignedEnd   := getAlignedEnd (area.endAddr, effOrd);
-
-                    numTopLevelBlocksHere :=
-                        (alignedEnd - alignedStart) / blockSize (effOrd);
-
-                    -- If this memory area was too small to fit a block at
-                    -- effOrd, the round-up and round-down will be flipped.
-                    if alignedEnd < alignedStart then
-                        null;
-                    else
-                        for i in 0 .. numTopLevelBlocksHere - 1 loop
-
-                            topLevelBlockStart :=
-                                alignedStart + (i * blockSize (effOrd));
-
-                            topLevelBlockEnd :=
-                                topLevelBlockStart + (blockSize (effOrd) - 1);
-
-                            startPFN := Virtmem.vaddrToPFN (topLevelBlockStart);
-                            endPFN   := Virtmem.vaddrToPFN (topLevelBlockEnd);
-
-                            if Buddy_Boot_Admission.Source_Of
-                              (Buddy_Boot_Admission.Frame (startPFN),
-                               Buddy_Boot_Admission.Frame
-                                 (BootAllocator.highestPFNAllocated)) =
-                              Buddy_Boot_Admission.Boot_Bitmap
-                            then
-                                -- Within boot allocator range: page by page
-                                eachPFN:
-                                for pfn in startPFN .. endPFN loop
-                                    -- The high-water mark is inclusive. Above
-                                    -- it, firmware already admitted the area
-                                    -- and no boot allocation can own a frame.
-                                    -- Do not read past the bounded boot bitmap
-                                    -- when a block straddles its last frame.
-                                    if Buddy_Boot_Admission.Source_Of
-                                      (Buddy_Boot_Admission.Frame (pfn),
-                                       Buddy_Boot_Admission.Frame
-                                         (BootAllocator.highestPFNAllocated)) =
-                                      Buddy_Boot_Admission.Unallocated_Tail
-                                      or else BootAllocator.isFree (pfn)
+                    while Cursor < Limit loop
+                        declare
+                            Ord : Order := Order (FF.Largest_Block
+                              (Cursor, Limit - 1, FF.Block_Order (Order'Last)));
+                            Pages : FF.Count := FF.Block_Pages (FF.Block_Order (Ord));
+                            Action : FF.Decision;
+                            Boot_Checked : constant Boolean :=
+                              Buddy_Boot_Admission.Source_Of
+                                (Buddy_Boot_Admission.Frame (Cursor),
+                                 Buddy_Boot_Admission.Frame
+                                   (BootAllocator.highestPFNAllocated)) =
+                                Buddy_Boot_Admission.Boot_Bitmap;
+                        begin
+                            loop
+                                Action := FF.Classify
+                                  (Map, Owner, Cursor, Cursor + Pages - 1);
+                                if Action = FF.Reject then
+                                    exit;
+                                elsif Action = FF.Split or else
+                                  (Ord > 0 and then Boot_Checked)
+                                then
+                                    -- Split is impossible for a singleton by
+                                    -- Classify's proved contract.
+                                    Ord := Ord - 1;
+                                    Pages := Pages / 2;
+                                else
+                                    if not Boot_Checked
+                                      or else BootAllocator.isFree (Virtmem.PFN (Cursor))
                                     then
-                                        admitBootBlock (ord  => Order'First,
-                                              addr => Virtmem.P2Va (
-                                                  Virtmem.pfnToAddr (pfn)));
+                                        admitBootBlock (Ord, Virtmem.P2Va
+                                          (Virtmem.PFNToAddr (Virtmem.PFN (Cursor))));
                                     end if;
-                                end loop eachPFN;
-                            else
-                                admitBootBlock (effOrd, topLevelBlockStart);
-                            end if;
-                        end loop;
-                    end if;
+                                    exit;
+                                end if;
+                            end loop;
+                            Cursor := Cursor + Pages;
+                        end;
+                    end loop;
                 end;
             end if;
-        end loop eachArea;
+        end loop;
 
         -- @TODO free memory used by the boot allocator. This will probably
         -- take a little effort, since it's buried in the midst of the kernel's

@@ -1,6 +1,7 @@
 with Interfaces;
 with CCL.Catalog;
 with CCL.VM;
+with CCL.Host_Values;
 
 package CCL.Language with
    SPARK_Mode => On
@@ -11,7 +12,9 @@ is
    MAX_NAME_LENGTH   : constant := 32;
    MAX_BINDINGS      : constant := 32;
    MAX_NESTING       : constant := 32;
-   MAX_TEXT_BYTES    : constant := MAX_SOURCE_LENGTH;
+   MAX_TEXT_BYTES    : constant := CCL.Host_Values.Maximum_Text_Length;
+   MAX_FUNCTIONS     : constant := 16;
+   MAX_PARAMETERS    : constant := 8;
 
    --  Shared, bounded frontend representation.  Both direct interpretation
    --  and CCLB compilation consume this tree, so syntax and type semantics
@@ -50,10 +53,32 @@ is
       String_Index_Form,
       String_Concat_Form,
       To_String_Form,
-      Host_Import_Form);
+      Host_Import_Form,
+      Function_Definition,
+      Function_Call);
 
    type Static_Type is
      (Invalid_Type, Integer_Type, Boolean_Type, String_Type, Character_Type);
+
+   subtype Parameter_Count is Natural range 0 .. MAX_PARAMETERS;
+   subtype Parameter_Index is Positive range 1 .. MAX_PARAMETERS;
+   type Parameter is record
+      Identifier : Name;
+      Kind : Static_Type := Invalid_Type;
+   end record;
+   type Parameter_Array is array (Parameter_Index) of Parameter;
+   type Argument_Array is array (Parameter_Index) of Node_Reference;
+   subtype Function_Index is Natural range 0 .. MAX_FUNCTIONS - 1;
+   NO_FUNCTION : constant := MAX_FUNCTIONS;
+   subtype Function_Reference is Natural range 0 .. NO_FUNCTION;
+   type Function_Declaration is record
+      Identifier : Name;
+      Count : Parameter_Count := 0;
+      Parameters : Parameter_Array := [others => (others => <>)];
+      Result_Kind : Static_Type := Invalid_Type;
+      Body_Node : Node_Reference := NO_NODE;
+   end record;
+   type Function_Array is array (Function_Index) of Function_Declaration;
 
    type Node is record
       Kind            : Node_Kind := Invalid_Node;
@@ -71,6 +96,9 @@ is
       Second          : Node_Reference := NO_NODE;
       Third           : Node_Reference := NO_NODE;
       Host_Call       : CCL.Catalog.Resolved_Operation := (others => <>);
+      Function_Id     : Function_Reference := NO_FUNCTION;
+      Argument_Count  : Parameter_Count := 0;
+      Arguments       : Argument_Array := [others => NO_NODE];
    end record;
 
    type Node_Array is array (Node_Index) of Node;
@@ -79,6 +107,8 @@ is
       Length : Node_Count := 0;
       Nodes  : Node_Array := [others => (others => <>)];
       Root   : Node_Reference := NO_NODE;
+      Function_Count : Natural range 0 .. MAX_FUNCTIONS := 0;
+      Functions : Function_Array := [others => (others => <>)];
       Text_Bytes_Used : Natural range 0 .. MAX_TEXT_BYTES := 0;
       Text_Data : String (1 .. MAX_TEXT_BYTES) :=
         [others => Character'Val (0)];
@@ -97,6 +127,7 @@ is
       Host_Authority_Denied,
       Host_Call_Failed,
       Host_Result_Type_Mismatch,
+      Host_Argument_Out_Of_Bounds,
       Host_Contract_Unsupported);
 
    type Diagnostic_Code is
@@ -119,7 +150,14 @@ is
       Too_Many_Bindings,
       Unterminated_String,
       Invalid_String_Escape,
-      Text_Storage_Full);
+      Text_Storage_Full,
+      Expected_Type_Name,
+      Too_Many_Functions,
+      Too_Many_Parameters,
+      Duplicate_Declaration,
+      Function_Arity_Mismatch,
+      Function_Argument_Mismatch,
+      Function_Result_Mismatch);
 
    type Text_Result is record
       Length : Natural range 0 .. MAX_TEXT_BYTES := 0;
@@ -206,6 +244,20 @@ is
       Grants : CCL.Catalog.Granted_Bindings;
       Context : in out Host_Context;
       Result : out Interpretation_Result)
+     with Post => Result.Fuel_Remaining <= Fuel;
+
+   generic
+      type Host_Context is limited private;
+      with procedure Invoke
+        (Context : in out Host_Context; Binding : Interfaces.Unsigned_32;
+         Argument : CCL.Host_Values.Value; Value : out CCL.Host_Values.Value;
+         Success : out Boolean);
+      Allow_Text : Boolean := True;
+   procedure Interpret_With_Values
+     (Source : String; Fuel : Natural;
+      Visible_Interfaces : CCL.Catalog.Interface_Catalog;
+      Grants : CCL.Catalog.Granted_Bindings;
+      Context : in out Host_Context; Result : out Interpretation_Result)
      with Post => Result.Fuel_Remaining <= Fuel;
 
 private

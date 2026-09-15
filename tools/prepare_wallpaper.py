@@ -7,22 +7,27 @@ from PIL import Image
 parser = argparse.ArgumentParser()
 parser.add_argument("source", type=Path)
 parser.add_argument("output", type=Path)
+parser.add_argument("--asset", choices=("cubes", "cubie"), default="cubes")
 args = parser.parse_args()
+source_size, raster_size, stem, symbol = {
+    "cubes": ((5120, 1440), (2048, 576), "wallpaper", "cubit_desktop_wallpaper"),
+    "cubie": ((3840, 2160), (2048, 1152), "wallpaper_cubie", "cubit_desktop_wallpaper_cubie"),
+}[args.asset]
 args.output.mkdir(parents=True, exist_ok=True)
 with Image.open(args.source) as picture:
-    if picture.size != (5120, 1440):
-        parser.error("wallpaper2 source must be 5120x1440")
+    if picture.size != source_size:
+        parser.error(f"{args.asset} source must be {source_size[0]}x{source_size[1]}")
     rgba = picture.convert("RGBA")
     if rgba.getextrema()[3] != (255, 255):
         parser.error("desktop wallpaper must be opaque")
     # Keep the source PNG intact; bound the linked raster's memory cost.
-    rgba = rgba.resize((2048, 576), Image.Resampling.LANCZOS)
-    (args.output / "wallpaper.bgra").write_bytes(rgba.tobytes("raw", "BGRA"))
-asset = str((args.output / "wallpaper.bgra").resolve())
+    rgba = rgba.resize(raster_size, Image.Resampling.LANCZOS)
+    (args.output / f"{stem}.bgra").write_bytes(rgba.tobytes("raw", "BGRA"))
+asset = str((args.output / f"{stem}.bgra").resolve())
 asset = asset.replace("\\", "\\\\").replace('"', '\\"')
-(args.output / "wallpaper.S").write_text(
-    '.section .rodata\n.balign 16\n.global cubit_desktop_wallpaper\n'
-    '.type cubit_desktop_wallpaper, @object\ncubit_desktop_wallpaper:\n'
+(args.output / f"{stem}.S").write_text(
+    f'.section .rodata\n.balign 16\n.global {symbol}\n'
+    f'.type {symbol}, @object\n{symbol}:\n'
     f'.incbin "{asset}"\n'
-    '.size cubit_desktop_wallpaper, .-cubit_desktop_wallpaper\n'
+    f'.size {symbol}, .-{symbol}\n'
     '.section .note.GNU-stack,"",@progbits\n')

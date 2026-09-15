@@ -22,6 +22,12 @@ with Desktop_Icons;
 with Desktop_UI_Font;
 with Desktop_Window_Icons;
 with Desktop_Wallpaper;
+with Desktop_Settings;
+with CuBit.Appearance;
+with CuBit.Config;
+with CuBit.UI;
+with CuBit.UI.Theme_CCL;
+with CuBit.UI.Theme_Data;
 with CuBit.Desktop_Protocol;
 with CuBit.Memory_Grants;
 with Font8x16;
@@ -197,9 +203,9 @@ procedure main is
       Convention => C,
       External_Name => "memcpy";
 
-   type App_Kind is (APP_CLIENT, APP_CONSOLE, APP_DOOM);
+   type App_Kind is (APP_CLIENT, APP_CONSOLE, APP_DOOM, APP_SETTINGS);
    for App_Kind use
-     (APP_CLIENT => 0, APP_CONSOLE => 1, APP_DOOM => 2);
+     (APP_CLIENT => 0, APP_CONSOLE => 1, APP_DOOM => 2, APP_SETTINGS => 3);
    for App_Kind'Size use 8;
 
    type Pointer_Cursor_Style is
@@ -473,11 +479,11 @@ procedure main is
 
    type Launch_Action is
      (LAUNCH_NONE, LAUNCH_CONSOLE, LAUNCH_WORKBENCH, LAUNCH_DOOM,
-      LAUNCH_DEVICES, LAUNCH_BROWSER, LAUNCH_FILES, LAUNCH_SAMEBOY, LAUNCH_POWER);
+      LAUNCH_DEVICES, LAUNCH_BROWSER, LAUNCH_FILES, LAUNCH_SAMEBOY, LAUNCH_SETTINGS, LAUNCH_POWER);
    for Launch_Action use
      (LAUNCH_NONE => 0, LAUNCH_CONSOLE => 1, LAUNCH_WORKBENCH => 2,
       LAUNCH_DOOM => 3, LAUNCH_DEVICES => 4, LAUNCH_BROWSER => 5,
-      LAUNCH_FILES => 6, LAUNCH_SAMEBOY => 7, LAUNCH_POWER => 8);
+      LAUNCH_FILES => 6, LAUNCH_SAMEBOY => 7, LAUNCH_SETTINGS => 8, LAUNCH_POWER => 9);
    for Launch_Action'Size use 8;
 
    launchMenuSelection : Launch_Action := LAUNCH_CONSOLE;
@@ -489,13 +495,14 @@ procedure main is
    begin
       if upward then
          case current is
-            when LAUNCH_CONSOLE   => return LAUNCH_SAMEBOY;
+            when LAUNCH_CONSOLE   => return LAUNCH_SETTINGS;
             when LAUNCH_WORKBENCH => return LAUNCH_CONSOLE;
             when LAUNCH_DOOM      => return LAUNCH_WORKBENCH;
             when LAUNCH_DEVICES   => return LAUNCH_DOOM;
             when LAUNCH_BROWSER   => return LAUNCH_DEVICES;
             when LAUNCH_FILES     => return LAUNCH_BROWSER;
             when LAUNCH_SAMEBOY   => return LAUNCH_FILES;
+            when LAUNCH_SETTINGS  => return LAUNCH_SAMEBOY;
             when others           => return LAUNCH_CONSOLE;
          end case;
       else
@@ -506,7 +513,8 @@ procedure main is
             when LAUNCH_DEVICES   => return LAUNCH_BROWSER;
             when LAUNCH_BROWSER   => return LAUNCH_FILES;
             when LAUNCH_FILES     => return LAUNCH_SAMEBOY;
-            when LAUNCH_SAMEBOY   => return LAUNCH_CONSOLE;
+            when LAUNCH_SAMEBOY   => return LAUNCH_SETTINGS;
+            when LAUNCH_SETTINGS  => return LAUNCH_CONSOLE;
             when others           => return LAUNCH_CONSOLE;
          end case;
       end if;
@@ -548,7 +556,7 @@ procedure main is
    LAUNCH_W     : constant Natural := 88;
    LAUNCH_H     : constant Natural := 24;
    MENU_W       : constant Natural := 250;
-   MENU_H       : constant Natural := 320;
+   MENU_H       : constant Natural := 354;
    TASK_BUTTON_W : constant Natural := 156;
    TASK_BUTTON_H : constant Natural := 24;
    TASK_BUTTON_GAP : constant Natural := 6;
@@ -564,20 +572,79 @@ procedure main is
    cursorSaveValid : Boolean := False;
    cursorSaveRect  : Rect;
 
-   C_BG     : constant Unsigned_32 := CuBit.Theme.Desktop;
-   C_PANEL  : constant Unsigned_32 := CuBit.Theme.Panel;
-   C_TEXT   : constant Unsigned_32 := CuBit.Theme.Text;
-   C_MUTED  : constant Unsigned_32 := CuBit.Theme.Muted;
-   C_ACCENT : constant Unsigned_32 := CuBit.Theme.Accent;
-   C_GOOD   : constant Unsigned_32 := CuBit.Theme.Good;
+   appearance : CuBit.Appearance.Preferences := CuBit.Appearance.Default;
+   settingsView : Desktop_Settings.State;
+   themeRevision : Unsigned_64 := 1;
+
+   procedure Load_Theme is
+      Value : System.Address;
+      Length : Natural;
+      Status : CuBit.Config.ConfigStatus;
+      Loaded : CuBit.UI.Theme_CCL.Result;
+      use type CuBit.Config.ConfigStatus;
+      use type CuBit.Appearance.Color_Scheme;
+   begin
+      for Scheme in CuBit.Appearance.Color_Scheme loop
+      declare
+         Fallback : constant CuBit.UI.Theme := CuBit.UI.Default_Palette (Scheme);
+      begin
+      CuBit.UI.Install_Palette (Scheme, Fallback);
+      CuBit.Config.get
+        ((if Scheme = CuBit.Appearance.Alloy_Light then
+           "desktop.appearance.theme.light" else "desktop.appearance.theme.dark"),
+         Value, Length, Status);
+      if Status = CuBit.Config.OK and then Value /= System.Null_Address and then
+        Length in 1 .. CuBit.UI.Theme_CCL.Maximum_Source
+      then
+         declare
+            Source : String (1 .. Length) with Import, Address => Value;
+         begin
+            CuBit.UI.Theme_CCL.Load (Source, Fallback, Loaded);
+         end;
+         if Loaded.Success then
+            CuBit.UI.Install_Palette (Scheme, Loaded.Value);
+            debugPrint ("desktop: CCL theme loaded" & LF);
+         else
+            debugPrint ("desktop: invalid CCL theme; using built-in Alloy" & LF);
+         end if;
+      elsif Status /= CuBit.Config.NotFound then
+         debugPrint ("desktop: theme unavailable or oversized; using built-in Alloy" & LF);
+      end if;
+      end;
+      end loop;
+      CuBit.UI.Set_Theme (CuBit.UI.Palette (appearance.Scheme));
+   end Load_Theme;
+
+   procedure Read_Appearance is
+      Value : System.Address;
+      Length : Natural;
+      Status : CuBit.Config.ConfigStatus;
+      use type CuBit.Config.ConfigStatus;
+   begin
+      CuBit.Config.get (CuBit.Appearance.Config_Key, Value, Length, Status);
+      if Status = CuBit.Config.OK and then Length = 3 and then Value /= System.Null_Address then
+         declare
+            Text : String (1 .. 3) with Import, Address => Value;
+         begin
+            if CuBit.Appearance.Valid (Text) then appearance := CuBit.Appearance.Decode (Text); end if;
+         end;
+      end if;
+      Load_Theme;
+   end Read_Appearance;
+   function C_BG return Unsigned_32 is (CuBit.UI.Current_Theme.desktop);
+   function C_PANEL return Unsigned_32 is (CuBit.UI.Current_Theme.panel);
+   function C_TEXT return Unsigned_32 is (CuBit.UI.Current_Theme.text);
+   function C_MUTED return Unsigned_32 is (CuBit.UI.Current_Theme.muted);
+   function C_ACCENT return Unsigned_32 is (CuBit.UI.Current_Theme.selection);
+   function C_GOOD return Unsigned_32 is (CuBit.UI.Current_Theme.good);
    C_WHITE  : constant Unsigned_32 := CuBit.Theme.White;
    C_BLACK  : constant Unsigned_32 := CuBit.Theme.Black;
-   C_DESK   : constant Unsigned_32 := CuBit.Theme.Desktop;
-   C_BAR    : constant Unsigned_32 := CuBit.Theme.Panel;
-   C_BLUE   : constant Unsigned_32 := CuBit.Theme.Accent;
-   C_WIN    : constant Unsigned_32 := CuBit.Theme.Face;
-   C_EDGE   : constant Unsigned_32 := CuBit.Theme.Edge;
-   C_SHADOW : constant Unsigned_32 := CuBit.Theme.Shadow;
+   function C_DESK return Unsigned_32 is (CuBit.UI.Current_Theme.desktop);
+   function C_BAR return Unsigned_32 is (CuBit.UI.Current_Theme.panel);
+   function C_BLUE return Unsigned_32 is (CuBit.UI.Current_Theme.selection);
+   function C_WIN return Unsigned_32 is (CuBit.UI.Current_Theme.face);
+   function C_EDGE return Unsigned_32 is (CuBit.UI.Current_Theme.edge);
+   function C_SHADOW return Unsigned_32 is (CuBit.UI.Current_Theme.shadow);
 
    statsStartMs      : Unsigned_64 := 0;
    statsEvents       : Unsigned_64 := 0;
@@ -942,7 +1009,9 @@ procedure main is
          when LAUNCH_SAMEBOY =>
             y := menu.y + 246;
          when LAUNCH_POWER =>
-            y := menu.y + 286;
+            y := menu.y + 320;
+         when LAUNCH_SETTINGS =>
+            y := menu.y + 280;
          when others =>
             return (others => 0);
       end case;
@@ -958,7 +1027,7 @@ procedure main is
       if isEmpty (menu) or else menu.w <= 24 then
          return (others => 0);
       end if;
-      y := menu.y + 278;
+      y := menu.y + 312;
       return clampRect ((x => menu.x + 12, y => y,
                          w => menu.w - 24, h => 1));
    end launchSeparatorRect;
@@ -1039,6 +1108,8 @@ procedure main is
          return LAUNCH_FILES;
       elsif pointInRect (x, y, launchItemRect (LAUNCH_SAMEBOY)) then
          return LAUNCH_SAMEBOY;
+      elsif pointInRect (x, y, launchItemRect (LAUNCH_SETTINGS)) then
+         return LAUNCH_SETTINGS;
       elsif pointInRect (x, y, launchItemRect (LAUNCH_POWER)) then
          return LAUNCH_POWER;
       else
@@ -1592,7 +1663,7 @@ procedure main is
       end if;
       Desktop_Wallpaper.Paint
         (backBufferAddr, fbWidth, fbHeight, fbPitch,
-         Area.x, Area.y, Area.w, Area.h);
+         Area.x, Area.y, Area.w, Area.h, appearance);
    end drawWallpaper;
 
    procedure drawDappledShadow (x, y, w, h : Natural) is
@@ -1898,6 +1969,8 @@ procedure main is
             drawUIText (x, y, "CuBASIC Console", fg, bg);
          when APP_DOOM =>
             drawUIText (x, y, "DOOM", fg, bg);
+         when APP_SETTINGS =>
+            drawUIText (x, y, "Settings", fg, bg);
          when others =>
             if s.title.Length > 0 then
                drawUIText (x, y, s.title.Text, fg, bg);
@@ -2406,6 +2479,20 @@ procedure main is
       end if;
 
       case s.appKind is
+         when APP_SETTINGS =>
+            declare
+               bounds : constant Rect := clientRect (frame);
+            begin
+               Desktop_Settings.Draw
+                 (settingsView,
+                  CuBit.UI.With_Clip
+                  ((addr => backBufferAddr, width => fbWidth, height => fbHeight,
+                   pitch => fbPitch, clipEnabled => True,
+                   clip => (if clipEnabled then (clipRect.x, clipRect.y, clipRect.w, clipRect.h)
+                            else (0, 0, fbWidth, fbHeight))),
+                   (bounds.x, bounds.y, bounds.w, bounds.h)),
+                  (bounds.x, bounds.y, bounds.w, bounds.h));
+            end;
          when APP_CONSOLE =>
             fillRect (x + 14, y + 40, w - 28, h - 56, C_SHADOW);
             drawConsoleText (x + 24, y + 50, C_SHADOW);
@@ -2529,6 +2616,8 @@ procedure main is
         (LAUNCH_FILES, Desktop_Icons.Files, "Files", C_TEXT);
       drawLaunchItem
         (LAUNCH_SAMEBOY, Desktop_Icons.Doom, "SameBoy", C_TEXT);
+      drawLaunchItem
+        (LAUNCH_SETTINGS, Desktop_Icons.UILab, "Settings", C_TEXT);
       declare
          sep : constant Rect := launchSeparatorRect;
       begin
@@ -3385,6 +3474,10 @@ procedure main is
       end if;
 
       case appKind is
+         when APP_SETTINGS =>
+            winW := 610;
+            winH := 420;
+            Desktop_Settings.Open (settingsView, appearance);
          when APP_CONSOLE =>
             winX := 86;
             winY := 76;
@@ -3467,7 +3560,10 @@ procedure main is
          minH => MIN_WIN_H,
          maxW => 0,
          maxH => 0,
-         windowFlags => WINDOW_FLAGS_DEFAULT,
+         windowFlags => (if appKind = APP_SETTINGS then
+           WINDOW_FLAG_DECORATED or WINDOW_FLAG_MINIMIZABLE or
+           WINDOW_FLAG_CLOSEABLE or WINDOW_FLAG_FIXED_SIZE
+           else WINDOW_FLAGS_DEFAULT),
          title => (0, ""),
          bufferAttached => False,
          bufferGrant => <>,
@@ -4111,6 +4207,28 @@ procedure main is
       use type DP.Status_Code;
       use type DP.Operation;
    begin
+      if request.tag.label = DP.Code (DP.Get_Appearance) then
+         --  Read-only observation over the existing desktop endpoint. There
+         --  is deliberately no client-supplied appearance mutation request.
+         if request.tag.length = 1 and then request.tag.flags = 0 and then
+           request.tag.reserved = 0 and then request.words (0) <= 3 and then
+           request.words (1) = 0 and then request.words (2) = 0 and then request.words (3) = 0
+         then
+            declare
+               Data : constant CuBit.UI.Theme_Data.Color_Chunk :=
+                 CuBit.UI.Theme_Data.Chunk (CuBit.UI.Theme_Data.Colors (CuBit.UI.Current_Theme),
+                   CuBit.UI.Theme_Data.Chunk_Index (request.words (0)));
+            begin
+               replyMsg.tag := (DP.Code (DP.Get_Appearance), 4, 0, 0);
+               replyMsg.words := [themeRevision, Data (1), Data (2), Data (3)];
+            end;
+         else
+            replyMsg := CuBit.Desktop_Messages.From_Wire
+              (DP.Encode_Status (DP.Get_Appearance, DP.Invalid_Request));
+         end if;
+         ignore := reply (from, replyMsg);
+         return;
+      end if;
       -- Snapshot the small inline payload once. The pure decoder establishes
       -- geometry bounds before any narrowing conversion or scene mutation.
       if request.tag.label = OP_SURFACE_CREATE then
@@ -4791,9 +4909,8 @@ procedure main is
       release : constant Boolean := (raw and 16#80#) /= 0;
       code    : constant Unsigned_8 := raw and 16#7F#;
    begin
-      --  Plain Tab is a prototype stand-in for Alt+Tab until modifier state
-      --  is represented in the input model.
-      return (not release) and then code = 16#0F#;
+      --  Modifiers are now tracked. Plain Tab belongs to widget navigation.
+      return (not release) and then desktopAltDown and then code = 16#0F#;
    end shouldCycleFocusKey;
 
    function updateDesktopModifierKey (raw : Unsigned_8) return Boolean is
@@ -5194,6 +5311,43 @@ procedure main is
       end if;
    end handleConsoleKey;
 
+   procedure Apply_Appearance (damage : in out Rect) is
+      Text : constant CuBit.Appearance.Encoding := CuBit.Appearance.Encode (settingsView.Pending);
+      Status : CuBit.Config.ConfigStatus;
+      use type CuBit.Config.ConfigStatus;
+   begin
+      if themeRevision = Unsigned_64'Last then return; end if;
+      appearance := settingsView.Pending;
+      Load_Theme;
+      themeRevision := themeRevision + 1;
+      CuBit.Config.set (CuBit.Appearance.Config_Key, Text'Address, Text'Length, Status);
+      settingsView.Applied := appearance;
+      settingsView.Status := (if Status = CuBit.Config.OK then Desktop_Settings.Saved_In_Config
+                              else Desktop_Settings.Session_Only);
+      dragBaseReady := False;
+      damage := (0, 0, fbWidth, fbHeight);
+      for S of surfaces loop
+         if S.used and then S.owner /= NO_PROCESS then
+            queueConfigure (S.id, Unsigned_64 (S.w), Unsigned_64 (S.h));
+         end if;
+      end loop;
+      debugPrint ("desktop: appearance applied" & LF);
+   end Apply_Appearance;
+
+   procedure Settings_Pointer (Index : SurfaceIndex; Down, Pressed, Released : Boolean;
+                               damage : in out Rect) is
+      Bounds : constant Rect := clientRect (surfaces (Index));
+      Before : constant Desktop_Settings.State := settingsView;
+      Apply : Boolean;
+      use type Desktop_Settings.State;
+   begin
+      Desktop_Settings.Pointer (settingsView, (Bounds.x, Bounds.y, Bounds.w, Bounds.h),
+        (cursorX, cursorY, Down, Pressed, Released, True), Apply);
+      if Apply then Apply_Appearance (damage);
+      elsif Before /= settingsView then damage := unionRect (damage, Bounds);
+      end if;
+   end Settings_Pointer;
+
    function handleInternalKey (raw : Unsigned_8; damage : in out Rect)
       return Boolean
    is
@@ -5208,6 +5362,15 @@ procedure main is
       end if;
 
       case surfaces (SurfaceIndex (idx)).appKind is
+         when APP_SETTINGS =>
+            if raw < 128 then
+               declare Apply : Boolean; begin
+                  Desktop_Settings.Key (settingsView, Natural (raw), desktopShiftDown, Apply);
+                  if Apply then Apply_Appearance (damage);
+                  else damage := unionRect (damage, surfaceRect (surfaces (SurfaceIndex (idx)))); end if;
+               end;
+            end if;
+            return True;
          when APP_CONSOLE =>
             handleConsoleKey (raw, damage);
             return True;
@@ -5227,6 +5390,8 @@ procedure main is
             openInternalApp (APP_CONSOLE, damage);
          when LAUNCH_WORKBENCH =>
             trySpawnFromConsole ("ccl-workbench.app", ok);
+         when LAUNCH_SETTINGS =>
+            openInternalApp (APP_SETTINGS, damage);
          when LAUNCH_DOOM =>
             if doomPid /= NO_PROCESS and then processAlive (doomPid) then
                setConsoleResult ("DOOM IS ALREADY RUNNING");
@@ -5474,6 +5639,13 @@ procedure main is
       end if;
 
       if pointerSurfaceId /= 0 then
+         idx := findSurface (pointerSurfaceId);
+         if idx >= 0 and then surfaces (SurfaceIndex (idx)).appKind = APP_SETTINGS then
+            declare Before : constant Rect := damage; begin
+               Settings_Pointer (SurfaceIndex (idx), leftDown, False, not leftDown and leftWasDown, damage);
+               sceneDamage := sceneDamage or damage /= Before;
+            end;
+         end if;
          if deliverMove then
             queuePointer (INPUT_POINTER_MOVE,
                           pointerSurfaceId,
@@ -5607,6 +5779,9 @@ procedure main is
                      null;
                   elsif dragMode = DRAG_NONE then
                      pointerSurfaceId := clickedId;
+                     if surfaces (SurfaceIndex (idx)).appKind = APP_SETTINGS then
+                        Settings_Pointer (SurfaceIndex (idx), True, True, False, damage);
+                     end if;
                      queuePointerIfClient (INPUT_POINTER_DOWN,
                                            clickedId,
                                            cursorX,
@@ -6245,6 +6420,7 @@ procedure main is
    displayInfoOk : Boolean := False;
 begin
    debugPrint ("desktop: starting" & LF);
+   Read_Appearance;
 
    ret := setLatencyContract
       (LATENCY_INTERACTIVE,

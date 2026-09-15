@@ -9,6 +9,9 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with elf; use elf;
 with MemoryAreas;
+with Config;
+with Boot_Modules;
+with Boot_Framebuffer;
 
 package Multiboot with
     SPARK_Mode => On
@@ -17,7 +20,7 @@ is
     MULTIBOOT_MAGIC : constant := 16#2BADB002#;
     
     -- "unused" member of the MultibootFlags record
-    type UnusedFlags is new Integer range 0..65535;
+    type UnusedFlags is new Integer range 0 .. 2**19 - 1;
 
     type MultibootFlags is
         record
@@ -159,62 +162,38 @@ is
         mod_start  : Unsigned_32;
         mod_end    : Unsigned_32;
         mod_string : Unsigned_32;
-        reserved   : Unsigned_8;
-    end record;
+        reserved   : Unsigned_32;
+    end record with Size => 16 * 8, Convention => C;
 
     for MBModule use
     record
         mod_start  at 0 range 0..31;
         mod_end    at 4 range 0..31;
         mod_string at 8 range 0..31;
-        reserved   at 12 range 0..7;
+        reserved   at 12 range 0..31;
     end record;
+
+    -- Scalar entry arguments are validated before constructing a raw overlay.
+    -- Produces a kernel-owned snapshot of only advertised/consumed fields.
+    procedure Read_Information
+      (Magic, Physical : Unsigned_32; Info : out MultibootInfo);
+
+    -- Published only after complete module/map admission. Never returns loader
+    -- pointers to descriptors or names; payload physical pages stay reserved.
+    function Boot_Module_Count return Boot_Modules.Module_Count;
+    function Boot_Module (Index : Positive) return Boot_Modules.Image;
+    -- Frozen geometry, published with the boot catalog after range exclusion.
+    function Has_Graphics return Boolean;
+    function Framebuffer return Boot_Framebuffer.Description;
     
-    MEMORY_USABLE       : constant := 1;
-    MEMORY_RESERVED     : constant := 2;
-    MEMORY_ACPI         : constant := 3;
-    MEMORY_HIBER        : constant := 4;
-    MEMORY_DEFECTIVE    : constant := 5;
+    -- Fixed kernel workspace, independent of untrusted mmap_length. The
+    -- decoder itself accepts caller-sized output; this is a boot resource budget.
+    subtype Boot_Memory_Map is MemoryAreas.MemoryAreaArray
+      (1 .. Config.MAX_BOOT_MEMORY_REGIONS + 2);
 
-    type MBMemoryArea is
-        record 
-            size : Unsigned_32;
-            addr : Unsigned_64;
-            length : Unsigned_64;
-            kind : Unsigned_32;
-        end record with 
-            Size => 24*8,
-            Convention => C;
-    
-    for MBMemoryArea use
-        record
-            size    at 0 range 0 .. 31;
-            addr    at 4 range 0 .. 63;
-            length  at 12 range 0 .. 63;
-            kind    at 20 range 0 .. 31;
-        end record;
-
-
-    ---------------------------------------------------------------------------
-    -- getMemoryAreas - using the memory map provided by Multiboot, identify
-    --  areas of usable memory and location of ACPI tables.
-    -- Note: this function returns an extra memory area for the framebuffer,
-    --  to ensure we map it into memory even when it does not show up as part
-    --  of the other memory areas.
-    ---------------------------------------------------------------------------
-    function getMemoryAreas(mbinfo : in MultibootInfo)
-        return MemoryAreas.MemoryAreaArray with
-        Pre => mbinfo.flags.hasMemoryMap;
-    
-
-    ---------------------------------------------------------------------------
-    -- numAreas - 
-    --  Return the number of memory areas described in the Multiboot info
-    --  structure. This does not add any extra areas that aren't explicitly in
-    --  the 
-    ---------------------------------------------------------------------------
-    function numAreas(mbinfo : in MultibootInfo) 
-        return Natural with
-        Pre => mbinfo.flags.hasMemoryMap;
+    -- Last includes the retained-boot and optional framebuffer records. Only
+    -- that initialized prefix is passed to normalization and allocator setup.
+    procedure getMemoryAreas
+      (mbinfo : MultibootInfo; Areas : out Boot_Memory_Map; Last : out Natural);
 
 end Multiboot;

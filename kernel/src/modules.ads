@@ -9,7 +9,6 @@
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
-with Multiboot;
 
 package Modules with
     SPARK_Mode => On
@@ -31,6 +30,6 @@ is
     -- See if GRUB has loaded any modules, and if so, print any information
     -- about them.
     ---------------------------------------------------------------------------
-    procedure setup (mbinfo : in Multiboot.MultibootInfo);
+    procedure setup;
 
 end Modules;

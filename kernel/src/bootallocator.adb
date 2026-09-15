@@ -3,23 +3,27 @@
 -- Copyright (C) 2019 Jon Andrew
 -- Boot Physical Memory Allocator
 -------------------------------------------------------------------------------
+with Firmware_Frames;
 package body BootAllocator with
     Refined_State => (BitmapState => reservations),
     SPARK_Mode => On
 is
-    procedure setup (areas : in MemoryAreas.MemoryAreaArray) with
+    procedure setup (areas : in MemoryAreas.MemoryAreaArray;
+                     Map : Firmware_Frames.Region_Array) with
         SPARK_Mode => Off -- firmware addresses and physical/virtual translation
     is
         use MemoryAreas;
-        startPFN : Virtmem.PFN;
-        endPFN : Virtmem.PFN;
+        package FF renames Firmware_Frames;
+        use type FF.Count;
+        use type FF.Region_Kind;
+        use type FF.Decision;
         -- Depends on the linear physical -> higher-half mapping.
         stackEnd : constant Virtmem.PFN := Virtmem.vaddrToPFN (Virtmem.STACK_TOP);
     begin
         Frames.Initialize (reservations);
+        Virtmem.MAX_PHYS_ADDRESSABLE := 0;
+        Virtmem.MAX_PHYS_USABLE := 0;
         for area of areas loop
-            startPFN := Virtmem.addrToPFN (area.startAddr);
-            endPFN := Virtmem.addrToPFN (area.endAddr);
             if area.endAddr > Virtmem.MAX_PHYS_ADDRESSABLE then
                 Virtmem.MAX_PHYS_ADDRESSABLE := area.endAddr;
             end if;
@@ -27,15 +31,24 @@ is
                 if area.endAddr > Virtmem.MAX_PHYS_USABLE then
                     Virtmem.MAX_PHYS_USABLE := area.endAddr;
                 end if;
-                -- Keep the existing firmware admission policy. Restrict the
-                -- scan to our arena instead of visiting all RAM above 64 MiB.
-                for frame in startPFN .. Virtmem.PFN'Min (endPFN, MAX_BOOT_PFN) loop
-                    -- Frame zero is never admitted: it denotes exhaustion.
-                    -- Kernel/stack frames remain reserved as before.
-                    if frame > stackEnd then
-                        Frames.Admit (reservations, Frames.Payload_Frame (frame));
-                    end if;
-                end loop;
+            end if;
+        end loop;
+        for Owner in Map'Range loop
+            if Map (Owner).Kind = FF.Usable then
+                declare
+                    Cursor : FF.Boundary := FF.First (Map (Owner).Pages);
+                    Limit : constant FF.Boundary := FF.Boundary'Min
+                      (FF.Limit (Map (Owner).Pages), MAX_BOOT_PFN + 1);
+                begin
+                    while Cursor < Limit loop
+                        if Cursor > FF.Count (stackEnd) and then
+                          FF.Classify (Map, Owner, Cursor, Cursor) = FF.Admit
+                        then
+                            Frames.Admit (reservations, Frames.Payload_Frame (Cursor));
+                        end if;
+                        Cursor := Cursor + 1;
+                    end loop;
+                end;
             end if;
         end loop;
         initialized := True;

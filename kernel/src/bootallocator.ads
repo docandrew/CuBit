@@ -11,6 +11,7 @@ with Config;
 with Buddy_Boot_Admission;
 with Boot_Frame_Allocator;
 with MemoryAreas;
+with Firmware_Frames;
 with Virtmem; use Virtmem;
 
 package BootAllocator with
@@ -27,7 +28,8 @@ is
     OutOfMemoryException : exception;
     OutOfBoundsException : exception;
 
-    procedure setup (areas : in MemoryAreas.MemoryAreaArray) with
+    procedure setup (areas : in MemoryAreas.MemoryAreaArray;
+                     Map : Firmware_Frames.Region_Array) with
         Global => (Output => (BitmapState, initialized,
                               Virtmem.MAX_PHYS_ADDRESSABLE, Virtmem.MAX_PHYS_USABLE)),
         Post => initialized;

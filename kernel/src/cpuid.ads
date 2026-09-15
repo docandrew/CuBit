@@ -884,6 +884,10 @@ is
     ---------------------------------------------------------------------------
     function getMaxExtendedFunction return Unsigned_32;
 
+    -- Exclusive CPU physical-address limit, or zero if not advertised/valid.
+    -- Independent of setupCPUID: usable during boot descriptor admission.
+    function Physical_Address_Limit return Unsigned_64;
+
 private
     ---------------------------------------------------------------------------
     -- getVendor - called by setupCPUID, get the manufacturer string

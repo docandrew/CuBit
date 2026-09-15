@@ -1,5 +1,6 @@
 with Interfaces;
 with CCL.Ownership;
+with CCL.Host_Values;
 
 package body CCL.Compiler with
    SPARK_Mode => On
@@ -8,7 +9,7 @@ is
    use type CCL.Language.Node_Kind;
    use type CCL.Language.Static_Type;
    use type CCL.VM.Program_Length;
-   use type CCL.VM.Value_Kind;
+   use type CCL.Host_Values.Value_Kind;
    use type CCL.Debug_Maps.Add_Result;
    use type CCL.Catalog.Intern_Result;
 
@@ -102,6 +103,8 @@ is
          First_PC    : constant CCL.VM.Program_Length := Program.Length;
          Map_Result  : CCL.Debug_Maps.Add_Result;
          Import_Position : CCL.VM.Import_Index := 0;
+         Bytecode_Import : CCL.VM.Import_Declaration;
+         Scalar_Import : Boolean;
          Interned        : CCL.Catalog.Intern_Result;
          Argument_Node   : CCL.Language.Node;
       begin
@@ -257,9 +260,12 @@ is
                end if;
 
             when CCL.Language.Host_Import_Form =>
-               if (Item.Host_Call.Import.Result = CCL.VM.Integer_Value and then
+               CCL.Host_Values.To_Bytecode (Item.Host_Call.Import, Bytecode_Import, Scalar_Import);
+               if not Scalar_Import then
+                  Fail (Unsupported_Form, Index, Item.Source_Position);
+               elsif (Item.Host_Call.Import.Result = CCL.Host_Values.Integer_Value and then
                    Item.Static_Kind /= CCL.Language.Integer_Type) or else
-                 (Item.Host_Call.Import.Result = CCL.VM.Boolean_Value and then
+                 (Item.Host_Call.Import.Result = CCL.Host_Values.Boolean_Value and then
                    Item.Static_Kind /= CCL.Language.Boolean_Type)
                then
                   Fail (Malformed_Typed_Tree, Index, Item.Source_Position);
@@ -270,7 +276,7 @@ is
                      Fail (Too_Many_Imports, Index, Item.Source_Position);
                   elsif Interned = CCL.Catalog.Linkage_Added then
                      Program.Imports (Import_Position) :=
-                       Item.Host_Call.Import;
+                       Bytecode_Import;
                      Program.Imports_Length := CCL.Catalog.Length (Linkage);
                   end if;
 
@@ -290,11 +296,11 @@ is
                         Argument_Node := CCL.Language.Analysis_Node
                           (Analysis, CCL.Language.Node_Index (Item.First));
                         if (Item.Host_Call.Import.Argument =
-                              CCL.VM.Integer_Value and then
+                              CCL.Host_Values.Integer_Value and then
                             Argument_Node.Static_Kind /=
                               CCL.Language.Integer_Type) or else
                           (Item.Host_Call.Import.Argument =
-                              CCL.VM.Boolean_Value and then
+                              CCL.Host_Values.Boolean_Value and then
                             Argument_Node.Static_Kind /=
                               CCL.Language.Boolean_Type)
                         then

@@ -21,6 +21,23 @@ package body CCL.Periodic_Programs with SPARK_Mode is
       Complete (Item, Ticket, Now (Context), Outcome, Updated);
    end Evaluate_Due;
 
+   procedure Evaluate_Values_Due
+     (Item : in out Program; Catalog : CCL.Catalog.Interface_Catalog;
+      Grants : CCL.Catalog.Granted_Bindings; Context : in out Host_Context;
+      Updated : out Boolean)
+   is
+      procedure Evaluate is new CCL.Language.Interpret_With_Values (Host_Context, Invoke);
+      Ticket : Invocation;
+      Ready : Boolean;
+      Outcome : CCL.Language.Interpretation_Result;
+   begin
+      Updated := False;
+      Claim_Due (Item, Now (Context), Ticket, Ready);
+      if not Ready then return; end if;
+      Evaluate (Source_Text (Item), Fuel (Item), Catalog, Grants, Context, Outcome);
+      Complete (Item, Ticket, Now (Context), Outcome, Updated);
+   end Evaluate_Values_Due;
+
    procedure Load
      (Item : in out Program; Source : String; Now : Timestamp;
       Interval : Interval_Ms; Fuel : Fuel_Budget; Result : out Load_Result)

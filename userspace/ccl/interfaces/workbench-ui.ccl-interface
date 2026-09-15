@@ -1,0 +1,44 @@
+CCL-INTERFACE-DESCRIPTOR 1
+name 2:ui
+version 1 1
+operations 3
+operation 0
+name 11:label-value
+parameters 1
+argument integer
+result boolean
+authority control
+ownership-argument false
+transfer copy
+cancellation not-cancellable
+success-verb 0
+failure-verb 0
+cancel-verb 0
+end-operation
+operation 1
+name 13:label-visible
+parameters 1
+argument boolean
+result boolean
+authority control
+ownership-argument false
+transfer copy
+cancellation not-cancellable
+success-verb 0
+failure-verb 0
+cancel-verb 0
+end-operation
+operation 2
+name 10:label-text
+parameters 1
+argument string 1024
+result boolean
+authority control
+ownership-argument false
+transfer copy
+cancellation not-cancellable
+success-verb 0
+failure-verb 0
+cancel-verb 0
+end-operation
+end-interface

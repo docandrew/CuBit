@@ -17,6 +17,23 @@ is
     maxStdLeaf : Unsigned_32;
     maxExtLeaf : Unsigned_32;
 
+    function Physical_Address_Limit return Unsigned_64
+      with SPARK_Mode => Off -- architectural CPUID observation
+    is
+        eax, ebx, ecx, edx : Unsigned_32;
+        bits : Unsigned_32;
+    begin
+        if getMaxExtendedFunction < 16#8000_0008# then
+            return 0;
+        end if;
+        cpuid (16#8000_0008#, eax, ebx, ecx, edx);
+        bits := eax and 16#FF#;
+        if bits not in 32 .. 52 then
+            return 0;
+        end if;
+        return Shift_Left (Unsigned_64 (1), Natural (bits));
+    end Physical_Address_Limit;
+
     ---------------------------------------------------------------------------
     -- printCacheInfo
     ---------------------------------------------------------------------------

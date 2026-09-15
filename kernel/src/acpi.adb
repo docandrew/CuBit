@@ -436,14 +436,42 @@ package body acpi is
                     parseFADT : declare
                     fadt : FADTRecord
                         with Import, Volatile, Address => descHdr'Address;
+                    tableLength : constant Unsigned_32 := descHdr.length;
+                    -- End offsets derive from the wire representation. ACPI
+                    -- 1.0 stops after Flags; X_DSDT is an optional later field.
+                    legacyBytes : constant Unsigned_32 :=
+                      fadt.flags'Position + fadt.flags'Size / 8;
+                    extendedDSDTEnd : constant Unsigned_32 :=
+                      fadt.exDsdt'Position + fadt.exDsdt'Size / 8;
+                    dsdtPhysical : Unsigned_64;
                     begin
-                        print (" DSDT Address:          "); println (fadt.dsdt);
-                        print (" DSDT extended Address: "); println (fadt.exDsdt);
+                        if tableLength < legacyBytes then
+                            println ("ACPI: truncated FADT");
+                            return False;
+                        end if;
+                        dsdtPhysical := Unsigned_64 (fadt.dsdt);
+                        if tableLength >= extendedDSDTEnd then
+                            declare
+                                extended : constant Unsigned_64 := fadt.exDsdt;
+                            begin
+                                if extended /= 0 then
+                                    dsdtPhysical := extended;
+                                end if;
+                            end;
+                        end if;
+                        print (" DSDT selected address: "); println (dsdtPhysical);
 
                         -- @TODO this will be how we can shutdown/sleep the machine
                         print (" PM1A Control Block:    "); println (fadt.PM1AEventBlock);
 
-                        parseDSDT (To_Address(virtmem.P2V(Integer_Address(fadt.exDsdt))));
+                        if dsdtPhysical = 0 or else
+                          dsdtPhysical > Unsigned_64 (virtmem.PhysAddress'Last) -
+                            (SDTRecordHeader'Size / 8 - 1)
+                        then
+                            println ("ACPI: invalid DSDT physical extent");
+                            return False;
+                        end if;
+                        parseDSDT (To_Address(virtmem.P2V(Integer_Address(dsdtPhysical))));
                     end parseFADT;
 
                 elsif descHdr.signature = "APIC" then

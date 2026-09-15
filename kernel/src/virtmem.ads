@@ -15,6 +15,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with Interfaces; use Interfaces;
 
 with Config;
+with Multiboot_Entry;
 with Util; use Util;
 
 package Virtmem 
@@ -529,6 +530,11 @@ is
     -- Virtual mem constants and addresses
     ---------------------------------------------------------------------------
 
+    -- boot.asm initially maps 512 * 2 MiB in the identity and linear windows.
+    -- Validate loader-buffer extents before overlaying them during early boot.
+    BOOTSTRAP_PHYSICAL_LIMIT : constant Integer_Address :=
+      Integer_Address (Multiboot_Entry.Bootstrap_Limit);
+
     -- Kernel stacks, make sure this matches boot.asm. 
     -- @NOTE: since RSP is decremented first during PUSHes, the actual top
     --  address used is < STACK_TOP, so [STACK_TOP] itself can be used as the
@@ -553,8 +559,9 @@ is
     -- The linear region has all physical memory in the system linearly-mapped
     -- to the higher-half. We will use this during page faults to determine whether
     -- to demand-load a page into memory.
-    LINEAR_REGION_PHYS : Integer_Address range 0 .. 16#0FFF_FFFF_FFFF#;
-    LINEAR_REGION_VIRT : Integer_Address range LINEAR_BASE .. (LINEAR_BASE + 16#0FFF_FFFF_FFFF#);
+    LINEAR_PHYSICAL_LIMIT : constant := 2 ** 44; -- exclusive direct-map limit
+    LINEAR_REGION_PHYS : Integer_Address range 0 .. LINEAR_PHYSICAL_LIMIT - 1;
+    LINEAR_REGION_VIRT : Integer_Address range LINEAR_BASE .. (LINEAR_BASE + LINEAR_PHYSICAL_LIMIT - 1);
 
     --DEVICE_REGION_VIRT : Unsigned_64 range ?? .. ??
 

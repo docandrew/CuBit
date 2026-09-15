@@ -2,8 +2,12 @@ with Interfaces; use Interfaces;
 with System;
 with CCL.Catalog;
 with CCL.Interfaces.Clock;
+with CCL.Interfaces.Workbench_UI;
+with CCL.UI_Labels;
 with CCL.Language;
 with CCL.Compiler;
+with CCL.Language.Views;
+with CCL.Host_Values;
 with CCL.Debug_Maps;
 with CCL.Ownership;
 with CCL.VM;
@@ -39,6 +43,9 @@ package body CCL_Workbench is
    use type CCL.Catalog.Link_Result;
    use type CCL.Language.Analysis_Status;
    use type CCL.Compiler.Compilation_Status;
+   use type CCL.Language.Views.Surface;
+   use type CCL.Language.Views.Conversion_Status;
+   use type CCL.Host_Values.Value_Kind;
    use type CCL.Debug_Maps.Validation_Error;
    use type CCL.VM.Validation_Error;
    use type CCL.VM.Execution_Status;
@@ -46,7 +53,6 @@ package body CCL_Workbench is
    use type CCL.VM.Program_Length;
    use type CCL.VM.Stack_Depth;
    use type CCL.VM.Value_Kind;
-   use type CCL.VM.Authority_Class;
    use type CuBit.UI.Editor.Documents.Edit_Result;
    use type CuBit.UI.Editor.Cursors.Toggle_Result;
    use type CuBit.UI.Editor.Cursors.Add_Result;
@@ -86,10 +92,13 @@ package body CCL_Workbench is
    Locals_Columns : CuBit.UI.Table_Column_Layout :=
      (First_Width => 54, Second_Width => 44, Cell_Padding => 2);
 
-   --  HOSTED/LINUX adapter binding.  This is deliberately not part of the
-   --  language, compiler, or VM: a CuBit linker will resolve the same pinned
-   --  interface operation to an authorized service endpoint.
+   --  Runtime-local bindings, deliberately outside the language/compiler.
+   --  Native clock uses its endpoint; UI bindings control one host-owned label.
    CLOCK_HOST_BINDING : constant Unsigned_32 := 16#0001_0001#;
+   UI_BINDINGS : constant array (CCL.UI_Labels.Operation) of Unsigned_32 :=
+     [CCL.UI_Labels.Set_Value => 16#0002_0001#,
+      CCL.UI_Labels.Set_Visible => 16#0002_0002#,
+      CCL.UI_Labels.Set_Text => 16#0002_0003#];
    type Pixel_Buffer is
      array (Natural range 0 .. MAXIMUM_WIDTH * MAXIMUM_HEIGHT - 1)
      of aliased Unsigned_32;
@@ -99,7 +108,7 @@ package body CCL_Workbench is
      (addr => Pixels'Address, width => WIDTH, height => HEIGHT,
       pitch => MAXIMUM_WIDTH * 4,
       clipEnabled => False, clip => (others => 0));
-   Colors : constant CuBit.UI.Theme := CuBit.UI.CuBit_Alloy;
+   function Colors return CuBit.UI.Theme is (CuBit.UI.Current_Theme);
    Visible_Interfaces : CCL.Catalog.Interface_Catalog;
    Granted_Interfaces : CCL.Catalog.Granted_Bindings;
 
@@ -138,6 +147,11 @@ package body CCL_Workbench is
    Diagnostic_Line : Natural := 0;
    Diagnostic_Column : Natural := 0;
    Source : CuBit.UI.Editor.Documents.Document (SOURCE_CAPACITY);
+   Source_Syntax : CCL.Language.Views.Surface := CCL.Language.Views.Lisp;
+   Source_Nodes : CCL.Language.Views.Node_Spans := [others => (others => 0)];
+   Syntax_Toggle : CuBit.UI.Rect := (others => 0);
+   Syntax_Toggle_Pressed : Boolean := False;
+   Debug_Source_First, Debug_Source_End : Natural := 0;
    Saved_Source : CCL_Workspace.Source_Buffer := [others => ' '];
    Saved_Length : CCL_Workspace.Source_Length := 0;
    File_Dialog : CuBit.UI.File_Dialogs.Dialog_State;
@@ -235,12 +249,16 @@ package body CCL_Workbench is
       Hover_Step_Over, Hover_Inspector_Splitter,
       Hover_Disassembly_Splitter, Hover_First_Column,
       Hover_Second_Column, Hover_First_Local_Column,
-      Hover_Second_Local_Column, Hover_Bytecode, Hover_Source);
+      Hover_Second_Local_Column, Hover_Bytecode, Hover_Source, Hover_Syntax);
 
    function Current_Hover_Target return Hover_Target is
    begin
       if not Pointer_Known then
          return Hover_None;
+      elsif not REPL_Visible and then CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Syntax_Toggle)
+      then
+         return Hover_Syntax;
       elsif CuBit.UI.Point_In_Rect
         (Pointer_X, Pointer_Y, Open_Button_Bounds)
       then
@@ -322,6 +340,10 @@ package body CCL_Workbench is
    begin
       if not Pointer_Known then
          return "CCL Workbench";
+      elsif not REPL_Visible and then CuBit.UI.Point_In_Rect
+        (Pointer_X, Pointer_Y, Syntax_Toggle)
+      then
+         return "F8: switch Lisp / BASIC; Shift+F8: format current view; execution unchanged";
       elsif CuBit.UI.Point_In_Rect (Pointer_X, Pointer_Y, Watch_Button_Bounds) then
          return (if Watching then "Stop live label (F7); retain its last value"
                  else "Watch source every second (F7); edits do not change the snapshot. Save source with Ctrl+S.");
@@ -429,7 +451,9 @@ package body CCL_Workbench is
    procedure Window_Close (Handle : System.Address)
    with Import, Convention => C, External_Name => "ccl_window_close";
 
-   type Live_Context is null record;
+   type Live_Context is record
+      Label : CCL.UI_Labels.Model;
+   end record;
    Live_Host : Live_Context;
    function Live_Now (Context : Live_Context) return Unsigned_64 is
       pragma Unreferenced (Context);
@@ -439,39 +463,56 @@ package body CCL_Workbench is
 
    procedure Invoke_Live
      (Context : in out Live_Context; Binding : Unsigned_32;
-      Argument : CCL.VM.Value; Value : out CCL.VM.Value; Success : out Boolean)
+      Argument : CCL.Host_Values.Value; Value : out CCL.Host_Values.Value; Success : out Boolean)
    is
-      pragma Unreferenced (Context);
       Available : aliased Integer_32 := 0;
       Milliseconds : Unsigned_64;
    begin
-      Value := CCL.VM.Integer_Constant (0);
+      Value := CCL.Host_Values.Integer_Constant (0);
       Success := False;
+      for Op in CCL.UI_Labels.Operation loop
+         if Binding = UI_BINDINGS (Op) then
+            CCL.UI_Labels.Apply_Value (Context.Label, Op, Argument, Success);
+            Value := CCL.Host_Values.Boolean_Constant (Success);
+            return;
+         end if;
+      end loop;
       if Binding /= CLOCK_HOST_BINDING or else
-        Argument.Kind /= CCL.VM.Integer_Value or else Argument.Integer /= 0
+        Argument.Kind /= CCL.Host_Values.Integer_Value or else Argument.Integer /= 0
       then
          return;
       end if;
       Milliseconds := Window_Clock_Monotonic (Available'Access);
       Success := Available /= 0 and then Milliseconds <= Unsigned_64 (Integer_64'Last);
-      if Success then Value := CCL.VM.Integer_Constant (Integer_64 (Milliseconds)); end if;
+      if Success then Value := CCL.Host_Values.Integer_Constant (Integer_64 (Milliseconds)); end if;
    end Invoke_Live;
-   procedure Interpret_Live is new CCL.Language.Interpret_With_Host
+   procedure Interpret_Live is new CCL.Language.Interpret_With_Values
      (Live_Context, Invoke_Live);
-   procedure Pump_Live is new CCL.Periodic_Programs.Evaluate_Due
+   procedure Submit_Live is new CCL.Sessions.Submit_With_Values (Live_Context, Invoke_Live);
+   procedure Submit_REPL
+     (Item : in out CCL.Sessions.Session; Source : String;
+      Fuel : CCL.Sessions.Fuel_Budget; Outcome : out CCL.Language.Interpretation_Result) is
+   begin
+      Submit_Live (Item, Source, Fuel, Granted_Interfaces, Live_Host, Outcome);
+   end Submit_REPL;
+   procedure Handle_REPL_Event is new CCL_REPL_View.Handle_With_Executor (Submit_REPL);
+   procedure Pump_Live is new CCL.Periodic_Programs.Evaluate_Values_Due
      (Live_Context, Live_Now, Invoke_Live);
 
    procedure Set_Result (Text : String);
+   function Prepare_Source (Result : out CCL.Language.Views.Conversion) return Boolean;
 
    procedure Toggle_Watch is
       Result : CCL.Periodic_Programs.Load_Result;
+      View : CCL.Language.Views.Conversion;
    begin
       if Watching then
          CCL.Periodic_Programs.Stop (Live_Program);
          CCL_Workbench_Platform.Live_Label_Changed (CCL_Workbench_Platform.Stopped);
       else
+         if not Prepare_Source (View) then return; end if;
          CCL.Periodic_Programs.Load
-           (Live_Program, CuBit.UI.Editor.Documents.Content (Source), Window_Ticks,
+           (Live_Program, View.Canonical.Data (1 .. View.Canonical.Length), Window_Ticks,
             1_000, CCL.Sessions.Default_Fuel, Result);
          if Result /= CCL.Periodic_Programs.Loaded then
             Set_Result
@@ -497,13 +538,16 @@ package body CCL_Workbench is
       CuBit.UI.Fill_Rect (Clipped, Bounds, Colors.face);
       CuBit.UI.Widgets.Label
         (Clipped, (Bounds.x + 4, Bounds.y + 5, Bounds.w - 8, Bounds.h - 10), Colors,
-         (if State = CCL.Periodic_Programs.Empty then "Live label: click Watch"
+         (if CCL.UI_Labels.Visible (Live_Host.Label) then
+             "CCL label:" & CCL.UI_Labels.Image (Live_Host.Label)
+          elsif State = CCL.Periodic_Programs.Empty then "Live label: click Watch"
           elsif State = CCL.Periodic_Programs.Faulted then
              "Stopped: " & CCL.Sessions.Result_Image (Outcome)
           elsif CCL.Periodic_Programs.Completed_Runs (Live_Program) = 0 then "Waiting for sample"
           else (if Watching then "Live: " else "Stopped: ") &
             (if Outcome.Has_Text then Outcome.Result_Text.Data (1 .. Outcome.Result_Text.Length)
              else CCL.Sessions.Result_Image (Outcome))));
+      CCL.UI_Labels.Painted (Live_Host.Label);
    end Render_Live_Label;
 
    procedure Set_Result (Text : String) is
@@ -537,6 +581,78 @@ package body CCL_Workbench is
    end Invalidate_Run_Result;
 
    procedure Reveal_Source_Cursor;
+
+   procedure View_Error (View : CCL.Language.Views.Conversion) is
+      Position : CuBit.UI.Editor.Documents.Document_Position;
+      Line, Column : Positive;
+   begin
+      if View.Status = CCL.Language.Views.Capacity_Exceeded then
+         Set_Result ("Syntax view exceeds bounded source capacity; edits retained");
+      else
+         Set_Result ("Cannot convert source: " &
+           CCL.Language.Diagnostic_Code'Image (View.Diagnostic) &
+           " at" & Natural'Image (View.Position) & "; edits retained");
+      end if;
+      if View.Position > 0 then
+         Position := CuBit.UI.Editor.Documents.Document_Position'Min
+           (View.Position, CuBit.UI.Editor.Documents.Length (Source) + 1);
+         CuBit.UI.Editor.Documents.Position_To_Line_Column (Source, Position, Line, Column);
+         Diagnostic_Line := Line;
+         Diagnostic_Column := Column;
+      end if;
+   end View_Error;
+
+   function Prepare_Source (Result : out CCL.Language.Views.Conversion) return Boolean is
+   begin
+      CCL.Language.Views.Convert
+        (CuBit.UI.Editor.Documents.Content (Source), Source_Syntax, Source_Syntax,
+         Visible_Interfaces, Result);
+      if Result.Status /= CCL.Language.Views.Converted then
+         View_Error (Result);
+         return False;
+      end if;
+      return True;
+   end Prepare_Source;
+
+   procedure Update_Active_Debug;
+
+   procedure Toggle_Syntax (Format_Only : Boolean := False) is
+      View : CCL.Language.Views.Conversion;
+      Target : constant CCL.Language.Views.Surface :=
+        (if Format_Only then Source_Syntax
+         elsif Source_Syntax = CCL.Language.Views.Lisp then CCL.Language.Views.Basic
+         else CCL.Language.Views.Lisp);
+      Candidate : CuBit.UI.Editor.Documents.Document (SOURCE_CAPACITY);
+      Edit : CuBit.UI.Editor.Documents.Edit_Result;
+   begin
+      if REPL_Visible then
+         Set_Result ("F8 switches the source editor; the REPL currently uses Lisp");
+         return;
+      end if;
+      CCL.Language.Views.Convert
+        (CuBit.UI.Editor.Documents.Content (Source), Source_Syntax, Target,
+         Visible_Interfaces, View);
+      if View.Status /= CCL.Language.Views.Converted then View_Error (View); return; end if;
+      CuBit.UI.Editor.Documents.Initialize
+        (Candidate, View.Rendered.Data (1 .. View.Rendered.Length), Edit);
+      if Edit /= CuBit.UI.Editor.Documents.Applied then
+         Set_Result ("Converted source does not fit; original edits retained");
+         return;
+      end if;
+      Source_Histories.Save_Before_Edit (Source_History, Source, Source_Cursors);
+      Source := Candidate;
+      Source_Syntax := Target;
+      Source_Nodes := View.Output_Nodes;
+      CuBit.UI.Editor.Cursors.Initialize (Source_Cursors, 1);
+      Diagnostic_Line := 0;
+      Diagnostic_Column := 0;
+      Find_Active := False;
+      --  No compile, VM initialization, host invocation, or watch reload.
+      Update_Active_Debug;
+      Reveal_Source_Cursor;
+      Set_Result ((if Target = CCL.Language.Views.Basic then "BASIC" else "Lisp") &
+        " source view; execution state unchanged");
+   end Toggle_Syntax;
 
    procedure Show_Source_Dialog (Mode : CuBit.UI.File_Dialogs.Dialog_Mode) is
       Files : CuBit.File_Selection.File_List;
@@ -605,6 +721,7 @@ package body CCL_Workbench is
                Result := CCL_Workspace.Limit_Reached;
             else
                Source := Candidate;
+               Source_Syntax := CCL.Language.Views.Detect (Text (1 .. Length));
                Saved_Source := Text;
                Saved_Length := Length;
                CuBit.UI.Editor.Cursors.Initialize (Source_Cursors, 1);
@@ -654,20 +771,33 @@ package body CCL_Workbench is
       if Grant /= CCL.Catalog.Grant_Added then
          raise Program_Error with "hosted clock authority not installed";
       end if;
+      CCL.Interfaces.Workbench_UI.Publish (Visible_Interfaces, Error);
+      if Error /= CCL.Catalog.Catalog_Valid then
+         raise Program_Error with "invalid Workbench UI descriptor";
+      end if;
+      for Op in CCL.UI_Labels.Operation loop
+         CCL.Catalog.Resolve (Visible_Interfaces, "ui." & CCL.UI_Labels.Name (Op), Resolved, Found);
+         if not Found then raise Program_Error with "missing Workbench UI operation"; end if;
+         CCL.Catalog.Install (Granted_Interfaces, Resolved, UI_BINDINGS (Op), Grant);
+         if Grant /= CCL.Catalog.Grant_Added then
+            raise Program_Error with "Workbench label binding not installed";
+         end if;
+      end loop;
    end Initialize_Visible_Interfaces;
 
    procedure Run_Source is
       Outcome : CCL.Language.Interpretation_Result;
       Position : CuBit.UI.Editor.Documents.Document_Position;
       Line, Column : Positive;
-      Text : constant String :=
-        CuBit.UI.Editor.Documents.Content (Source);
+      View : CCL.Language.Views.Conversion;
    begin
+      if not Prepare_Source (View) then return; end if;
       VM_Continuous := False;
       VM_Has_Run := False;
       REPL_Visible := False;
       Interpret_Live
-        (Text, CCL.Sessions.Default_Fuel, Visible_Interfaces,
+        (View.Canonical.Data (1 .. View.Canonical.Length),
+         CCL.Sessions.Default_Fuel, Visible_Interfaces,
          Granted_Interfaces, Live_Host, Outcome);
       Last_Outcome := Outcome;
       Has_Run := True;
@@ -710,7 +840,6 @@ package body CCL_Workbench is
       end if;
    end Run_Source;
 
-   procedure Update_Active_Debug;
    procedure Update_VM_Inspection;
 
    procedure Compile_Source is
@@ -720,9 +849,10 @@ package body CCL_Workbench is
       Debug_Error : CCL.Debug_Maps.Validation_Error;
       Position : CuBit.UI.Editor.Documents.Document_Position;
       Line, Column : Positive;
-      Text : constant String :=
-        CuBit.UI.Editor.Documents.Content (Source);
+      View : CCL.Language.Views.Conversion;
    begin
+      if not Prepare_Source (View) then return; end if;
+      Source_Nodes := View.Input_Nodes;
       Has_Run := False;
       VM_Has_Run := False;
       VM_Has_State := False;
@@ -739,7 +869,8 @@ package body CCL_Workbench is
       Diagnostic_Line := 0;
       Diagnostic_Column := 0;
 
-      CCL.Language.Analyze (Text, Visible_Interfaces, Analysis);
+      CCL.Language.Analyze
+        (View.Canonical.Data (1 .. View.Canonical.Length), Visible_Interfaces, Analysis);
       if CCL.Language.Analysis_Status_Of (Analysis) /=
         CCL.Language.Analysis_Succeeded
       then
@@ -767,7 +898,9 @@ package body CCL_Workbench is
       if not Has_Compiled then
          if Compiled_Artifact.Source_Position > 0 then
             Position := CuBit.UI.Editor.Documents.Document_Position'Min
-              (Compiled_Artifact.Source_Position,
+              ((if Compiled_Artifact.Diagnostic_Node /= CCL.Language.NO_NODE then
+                   Source_Nodes (Compiled_Artifact.Diagnostic_Node).First
+                else Compiled_Artifact.Source_Position),
                CuBit.UI.Editor.Documents.Length (Source) + 1);
             CuBit.UI.Editor.Documents.Position_To_Line_Column
               (Source, Position, Line, Column);
@@ -825,17 +958,23 @@ package body CCL_Workbench is
       Line, Column : Positive;
    begin
       Has_Active_Debug_Entry := False;
+      Debug_Source_First := 0;
+      Debug_Source_End := 0;
       if not Debug_Map_Valid or else not VM_Has_State then
          return;
       end if;
       CCL.Debug_Maps.Find_Innermost
         (Compiled_Artifact.Debug, VM_Snapshot.Instruction,
          Active_Debug_Entry, Has_Active_Debug_Entry);
+      if Has_Active_Debug_Entry and then Active_Debug_Entry.Node /= CCL.Language.NO_NODE then
+         Debug_Source_First := Source_Nodes (Active_Debug_Entry.Node).First;
+         Debug_Source_End := Source_Nodes (Active_Debug_Entry.Node).After_Last;
+      end if;
       if Has_Active_Debug_Entry and then
-        Active_Debug_Entry.Source_First > 0
+        Debug_Source_First > 0
       then
          Position := CuBit.UI.Editor.Documents.Document_Position'Min
-           (Active_Debug_Entry.Source_First,
+           (Debug_Source_First,
             CuBit.UI.Editor.Documents.Length (Source) + 1);
          CuBit.UI.Editor.Documents.Position_To_Line_Column
            (Source, Position, Line, Column);
@@ -889,22 +1028,20 @@ package body CCL_Workbench is
       end if;
       CCL.VM.Continue_Execution_For
         (Verified_Artifact, VM_State, Instructions, Last_VM_Outcome);
-      if Last_VM_Outcome.Status = CCL.VM.Waiting_For_Host and then
-        Last_VM_Outcome.Requested_Authority = CCL.VM.Observe_Authority and then
-        Last_VM_Outcome.Requested_Binding = CLOCK_HOST_BINDING
-      then
+      if Last_VM_Outcome.Status = CCL.VM.Waiting_For_Host then
          declare
-            Clock_OK : aliased Integer_32 := 0;
-            Clock_Value : constant Unsigned_64 :=
-              Window_Clock_Monotonic (Clock_OK'Access);
+            Value : CCL.VM.Value;
+            Returned : CCL.Host_Values.Value;
+            Accepted : Boolean;
          begin
+            Invoke_Live (Live_Host, Last_VM_Outcome.Requested_Binding,
+                         CCL.Host_Values.From_Scalar (Last_VM_Outcome.Request_Argument), Returned, Accepted);
+            if Accepted then
+               CCL.Host_Values.To_Scalar (Returned, Value, Accepted);
+            else Value := CCL.VM.Integer_Constant (0);
+            end if;
             CCL.VM.Complete_Host_Call
-              (Verified_Artifact, VM_State,
-               CCL.VM.Integer_Constant
-                 (Integer_64
-                    (Unsigned_64'Min
-                       (Clock_Value, Unsigned_64 (Integer_64'Last)))),
-               Clock_OK /= 0);
+              (Verified_Artifact, VM_State, Value, Accepted);
          end;
          CCL.VM.Continue_Execution_For
            (Verified_Artifact, VM_State, 0, Last_VM_Outcome);
@@ -1693,11 +1830,14 @@ package body CCL_Workbench is
    procedure Build_Source_Styles (Text : String) is
       Offset : Natural := 0;
 
-      COMMENT_COLOR : constant CuBit.UI.Color := 16#55705A#;
-      FORM_COLOR : constant CuBit.UI.Color := 16#704A7C#;
-      LITERAL_COLOR : constant CuBit.UI.Color := 16#8B4A19#;
-      BOOLEAN_COLOR : constant CuBit.UI.Color := 16#245F88#;
-      DELIMITER_COLOR : constant CuBit.UI.Color := 16#42515A#;
+      Dark_Field : constant Boolean :=
+        (Colors.field and 255) + (Shift_Right (Colors.field, 8) and 255) +
+        (Shift_Right (Colors.field, 16) and 255) < 384;
+      COMMENT_COLOR : constant CuBit.UI.Color := (if Dark_Field then 16#93B79B# else 16#55705A#);
+      FORM_COLOR : constant CuBit.UI.Color := (if Dark_Field then 16#C6A2D5# else 16#704A7C#);
+      LITERAL_COLOR : constant CuBit.UI.Color := (if Dark_Field then 16#E4B889# else 16#8B4A19#);
+      BOOLEAN_COLOR : constant CuBit.UI.Color := (if Dark_Field then 16#8DBFE3# else 16#245F88#);
+      DELIMITER_COLOR : constant CuBit.UI.Color := Colors.muted;
       MATCH_COLOR : constant CuBit.UI.Color := 16#C8AD63#;
 
       function Is_Name_Character (Item : Character) return Boolean is
@@ -1738,7 +1878,7 @@ package body CCL_Workbench is
                   Offset := Offset + 1;
                end loop;
                Add_Style (Start, Offset, COMMENT_COLOR);
-            elsif Item = '(' or else Item = ')' then
+            elsif Item in '(' | ')' | ',' | '*' | '/' | '%' then
                Offset := Offset + 1;
                Add_Style (Start, Offset, DELIMITER_COLOR);
             elsif Item >= '0' and then Item <= '9' then
@@ -1773,7 +1913,10 @@ package body CCL_Workbench is
                begin
                   if Name = "true" or else Name = "false" then
                      Add_Style (Start, Offset, BOOLEAN_COLOR);
-                  elsif Name = "let" or else Name = "if" or else
+                  elsif Name = "let" or else Name = "LET" or else
+                    Name = "IN" or else Name = "END" or else Name = "if" or else
+                    Name = "IF" or else Name = "THEN" or else Name = "ELSE" or else
+                    Name = "MOD" or else
                     Name = "not" or else Name = "+" or else Name = "="
                   then
                      Add_Style (Start, Offset, FORM_COLOR);
@@ -2385,15 +2528,22 @@ package body CCL_Workbench is
       CuBit.UI.Draw_Button (Canvas, REPL_Toggle, Colors,
         (if REPL_Toggle_Pressed then CuBit.UI.Button_Pressed else CuBit.UI.Button_Normal),
         (if REPL_Visible then "Source [F6]" else "REPL [F6]"));
+      Syntax_Toggle := (Editor_Content.x + Editor_Content.w - 176,
+        Editor_Content.y, 86, 22);
+      if not REPL_Visible then
+         CuBit.UI.Draw_Button (Canvas, Syntax_Toggle, Colors,
+           (if Syntax_Toggle_Pressed then CuBit.UI.Button_Pressed else CuBit.UI.Button_Normal),
+           (if Source_Syntax = CCL.Language.Views.Lisp then "Lisp [F8]" else "BASIC [F8]"));
+      end if;
       if REPL_Visible then
          CuBit.UI.Widgets.Label (Canvas,
            (Editor_Content.x, Editor_Content.y, Editor_Content.w - 94, 22), Colors,
-           "CCL session");
+           "CCL session - Lisp");
          CCL_REPL_View.Draw (REPL, Canvas, REPL_Bounds, Colors);
       else
       CuBit.UI.Draw_UI_Text
         (CuBit.UI.With_Clip (Canvas,
-           (Editor_Content.x, Editor_Content.y, Editor_Content.w - 94, 22)),
+           (Editor_Content.x, Editor_Content.y, Editor_Content.w - 184, 22)),
          Editor_Content.x, Editor_Content.y,
          (if Current_Filename.Length = 0 then "untitled.ccl"
           else CuBit.File_Selection.Value (Current_Filename)) &
@@ -2499,19 +2649,19 @@ package body CCL_Workbench is
       end loop;
       if Has_Active_Debug_Entry and then
         Visual_Count < CuBit.UI.Editor.Cursors.MAX_CURSORS and then
-        Active_Debug_Entry.Source_First > 0 and then
-        Active_Debug_Entry.Source_End > Active_Debug_Entry.Source_First
+        Debug_Source_First > 0 and then
+        Debug_Source_End > Debug_Source_First
       then
          declare
             Debug_First : constant
               CuBit.UI.Editor.Documents.Document_Position :=
                 CuBit.UI.Editor.Documents.Document_Position'Min
-                  (Active_Debug_Entry.Source_First,
+                  (Debug_Source_First,
                    CuBit.UI.Editor.Documents.Length (Source) + 1);
             Debug_End : constant
               CuBit.UI.Editor.Documents.Document_Position :=
                 CuBit.UI.Editor.Documents.Document_Position'Min
-                  (Active_Debug_Entry.Source_End,
+                  (Debug_Source_End,
                    CuBit.UI.Editor.Documents.Length (Source) + 1);
          begin
             if Debug_End > Debug_First then
@@ -2901,12 +3051,14 @@ begin
                when 9 => Delete, when 10 => Select_All, when 11 | 14 | 15 => Pointer_Down,
                when 12 => Pointer_Drag, when 13 => Pointer_Up,
                when 16 => Previous, when 17 => Next, when 18 => Wheel_Up, when 19 => Wheel_Down,
+               when CCL_Workbench_Platform.Complete_Operation_Event => Complete,
+               when CCL_Workbench_Platform.Tab_Event => Accept_Completion,
                when others => No_Event);
          if Code <= 127 then Event.Character_Value := Character'Val (Code); end if;
          Event.X := Pointer_X; Event.Y := Pointer_Y;
          Event.Shift := (Modifiers and 1) /= 0;
          Event.Control := (Modifiers and 2) /= 0;
-         CCL_REPL_View.Handle (REPL, Event, REPL_Bounds, Submitted);
+         Handle_REPL_Event (REPL, Event, REPL_Bounds, Submitted);
          if Submitted then CCL_Workbench_Platform.REPL_Completed; end if;
       end Handle_REPL;
 
@@ -2968,6 +3120,15 @@ begin
                Toggle_REPL;
             elsif Kind = CCL_Workbench_Platform.Toggle_Watch_Event then
                Toggle_Watch;
+            elsif Kind = CCL_Workbench_Platform.Toggle_Syntax_Event then
+               Toggle_Syntax (Format_Only => (Modifiers and 1) /= 0);
+            elsif not REPL_Visible and then Kind in 11 | 14 | 15 and then
+              CuBit.UI.Point_In_Rect (Pointer_X, Pointer_Y, Syntax_Toggle)
+            then
+               Syntax_Toggle_Pressed := True;
+            elsif Kind = 13 and then Syntax_Toggle_Pressed then
+               if CuBit.UI.Point_In_Rect (Pointer_X, Pointer_Y, Syntax_Toggle) then Toggle_Syntax; end if;
+               Syntax_Toggle_Pressed := False;
             elsif Kind in 11 | 14 | 15 and then
               CuBit.UI.Point_In_Rect (Pointer_X, Pointer_Y, REPL_Toggle)
             then
@@ -2979,6 +3140,7 @@ begin
                Toggle_REPL;
             elsif REPL_Visible and then
               (Kind in 2 .. 10 | 16 .. 21 | 23 .. 25 | 27 .. 33 | 36 or else
+               Kind = CCL_Workbench_Platform.Complete_Operation_Event or else
                (Kind in 11 | 14 | 15 and then
                 CuBit.UI.Point_In_Rect (Pointer_X, Pointer_Y, REPL_Bounds)) or else
                (Kind in 12 .. 13 and then REPL_Pointer_Down))
@@ -3500,6 +3662,8 @@ begin
                   then
                      Source_Histories.Undo
                        (Source_History, Source, Source_Cursors);
+                     Source_Syntax := CCL.Language.Views.Detect
+                       (CuBit.UI.Editor.Documents.Content (Source));
                      Invalidate_Run_Result;
                      Reveal_Source_Cursor;
                   end if;
@@ -3509,6 +3673,8 @@ begin
                   then
                      Source_Histories.Redo
                        (Source_History, Source, Source_Cursors);
+                     Source_Syntax := CCL.Language.Views.Detect
+                       (CuBit.UI.Editor.Documents.Content (Source));
                      Invalidate_Run_Result;
                      Reveal_Source_Cursor;
                   end if;
@@ -3670,6 +3836,17 @@ begin
                end;
             end if;
          end;
+         if CCL.UI_Labels.Changed (Live_Host.Label) and then
+           not CuBit.UI.File_Dialogs.Is_Open (File_Dialog)
+         then
+            Render_Live_Label;
+            declare Damage : constant CuBit.UI.Rect := Live_Label_Bounds; begin
+               exit when Window_Present
+                 (Handle, Pixels'Address, Integer_32 (MAXIMUM_WIDTH * 4),
+                  Integer_32 (Damage.x), Integer_32 (Damage.y),
+                  Integer_32 (Damage.w), Integer_32 (Damage.h)) /= 0;
+            end;
+         end if;
          if Needs_Render then
             declare
                Damage : CuBit.UI.Rect := (0, 0, Canvas.width, Canvas.height);

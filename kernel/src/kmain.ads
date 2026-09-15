@@ -5,14 +5,13 @@
 -- CuBitOS Entry Point / Main routine
 -------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
-with Multiboot; use Multiboot;
 
 package kmain is
 
     ---------------------------------------------------------------------------
     -- Our kernel's Ada entry point. Jumped to from boot.asm
     ---------------------------------------------------------------------------
-    procedure kmain(magic : Unsigned_32; mbInfo_orig : in MultibootInfo)
+    procedure kmain(magic : Unsigned_32; mbInfoPhysical : Unsigned_32)
         with Export => True, Convention => C, External_Name => "kmain";
 
     ---------------------------------------------------------------------------

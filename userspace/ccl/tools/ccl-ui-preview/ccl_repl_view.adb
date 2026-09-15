@@ -1,9 +1,14 @@
-with CCL.Language;
+with CCL.Host_Values;
+with CCL.Call_Context;
 with CuBit.UI.Widgets;
 
 package body CCL_REPL_View is
    use CuBit.UI;
    Entry_Height : constant := 48;
+   function Type_Name (Kind : CCL.Host_Values.Value_Kind) return String is
+     (case Kind is when CCL.Host_Values.Integer_Value => "Integer",
+                   when CCL.Host_Values.Boolean_Value => "Boolean",
+                   when CCL.Host_Values.Text_Value => "String");
    type Geometry is record
       Input, Transcript, Clear : Rect;
       Capacity : Positive := 1;
@@ -34,7 +39,7 @@ package body CCL_REPL_View is
       State.Capture := No_Capture;
    end Deactivate;
 
-   procedure Handle
+   procedure Handle_With_Executor
      (State : in out View_State; Event : View_Event; Bounds : CuBit.UI.Rect;
       Submitted : out Boolean)
    is
@@ -65,9 +70,103 @@ package body CCL_REPL_View is
          end loop;
          CuBit.UI.Editor.Place_Cursor (State.Input, Position, Extend);
       end Place_Cursor;
+      procedure Refresh_Completion (Explain : Boolean := False) is
+         use CCL.Catalog.Completion;
+         Text : constant String := CuBit.UI.Editor.Content (State.Input);
+         Cursor : constant Positive := CuBit.UI.Editor.Cursor (State.Input);
+         Context : CCL.Call_Context.Context;
+         Matches : Match_List;
+         function Name_Character (C : Character) return Boolean is
+           (C in 'a' .. 'z' | '0' .. '9' | '-' | '.');
+         procedure Hint (Text : String) is
+         begin
+            if not Explain then return; end if;
+            State.Completion_Hint_Length := Natural'Min
+              (Text'Length, State.Completion_Hint'Length);
+            State.Completion_Hint (1 .. State.Completion_Hint_Length) :=
+              Text (Text'First .. Text'First + State.Completion_Hint_Length - 1);
+         end Hint;
+      begin
+         State.Suggested_Length := 0;
+         State.Signature_Visible := False;
+         if CuBit.UI.Editor.Selection_First (State.Input) /=
+           CuBit.UI.Editor.Selection_Last (State.Input)
+         then return; end if;
+         CCL.Call_Context.Inspect (Text, Cursor - 1, Context);
+         if not Context.Available then
+            Hint ("Ctrl+Space: complete an operation after '('");
+            return;
+         end if;
+         if not Context.Arguments_Started and then Cursor <= Text'Length and then
+           Name_Character (Text (Cursor))
+         then return; end if;
+         if Context.Arguments_Started then
+            Matches := (others => <>);
+            CCL.Sessions.Describe
+              (State.Session, Context.Name (1 .. Context.Length),
+               Matches.Items (1).Contract, Found);
+            if Found then
+               Matches.Items (1).Name := Context.Name;
+               Matches.Items (1).Length := Context.Length;
+               Matches.Count := 1;
+               Matches.Total := 1;
+            end if;
+         else
+            CCL.Sessions.Complete (State.Session, Context.Name (1 .. Context.Length), Matches);
+         end if;
+         if Matches.Total = 0 then
+            Hint ("No matching operation in this session's visible catalog");
+         else
+            declare
+               S : Suggestion renames Matches.Items (1);
+               Name : constant String := S.Name (1 .. S.Length);
+            begin
+               if Matches.Total = 1 then
+                  State.Signature := S;
+                  State.Signature_Visible := True;
+                  State.Signature_Arguments := Context.Arguments_Started;
+                  if not Context.Arguments_Started and then S.Length - Context.Length >
+                    CuBit.UI.Editor.MAX_TEXT_LENGTH - Text'Length
+                  then
+                     Hint ("Not enough input space for the complete operation name");
+                     return;
+                  end if;
+                  --  Inline suggestions are only shown at the end of input;
+                  --  never cover or displace existing source after the caret.
+                  if not Context.Arguments_Started and then Cursor = Text'Length + 1 then
+                     State.Suggested_Length := S.Length - Context.Length;
+                     State.Suggested_Suffix (1 .. State.Suggested_Length) :=
+                       Name (Context.Length + 1 .. Name'Last);
+                  end if;
+               end if;
+               Hint (Name & "(" &
+                 (if S.Contract.Parameters = 0 then "" else Type_Name (S.Contract.Import.Argument)) &
+                 ") -> " & Type_Name (S.Contract.Import.Result) &
+                 (if Matches.Total = 1 then " | invocation requires an explicit grant"
+                  else " |" & Matches.Total'Image & " matches; refine prefix"));
+            end;
+         end if;
+      end Refresh_Completion;
+      procedure Accept_Suggestion is
+      begin
+         if State.Suggested_Length > 0 then
+            CuBit.UI.Editor.Insert
+              (State.Input, State.Suggested_Suffix (1 .. State.Suggested_Length), Changed);
+            if Changed then State.Recalled := 0; end if;
+         end if;
+      end Accept_Suggestion;
    begin
       Submitted := False;
+      if Event.Kind /= Complete and Event.Kind /= No_Event then
+         State.Completion_Hint_Length := 0;
+      end if;
       case Event.Kind is
+         when Complete => Refresh_Completion (Explain => True);
+         when Accept_Completion =>
+            if not Event.Shift and not Event.Control then
+               Refresh_Completion;
+               Accept_Suggestion;
+            end if;
          when Text_Input | Backspace | Delete =>
             State.Recalled := 0;
             case Event.Kind is
@@ -90,7 +189,7 @@ package body CCL_REPL_View is
          when Select_All => CuBit.UI.Editor.Select_All (State.Input);
          when Submit =>
             if CuBit.UI.Editor.Length (State.Input) > 0 then
-               CCL.Sessions.Submit (State.Session, CuBit.UI.Editor.Content (State.Input),
+               Execute (State.Session, CuBit.UI.Editor.Content (State.Input),
                  CCL.Sessions.Default_Fuel, Outcome);
                Submitted := True;
                CuBit.UI.Editor.Initialize (State.Input, "", Changed);
@@ -141,6 +240,22 @@ package body CCL_REPL_View is
             State.Capture := No_Capture;
          when others => null;
       end case;
+      --  Query only when editing/navigation changes the prefix, never during
+      --  paint, pointer hover, or transcript scrolling. This is read-only data.
+      if Event.Kind in Text_Input | Backspace | Delete | Left | Right | Home |
+        End_Key | Select_All | Accept_Completion | Submit | Previous | Next |
+        Pointer_Down | Pointer_Drag | Pointer_Up
+      then
+         Refresh_Completion;
+      end if;
+   end Handle_With_Executor;
+
+   procedure Handle_Pure is new Handle_With_Executor (CCL.Sessions.Submit);
+   procedure Handle
+     (State : in out View_State; Event : View_Event; Bounds : CuBit.UI.Rect;
+      Submitted : out Boolean) is
+   begin
+      Handle_Pure (State, Event, Bounds, Submitted);
    end Handle;
 
    function One_Line (Text : String) return String is
@@ -174,8 +289,10 @@ package body CCL_REPL_View is
       Draw_Button (C, G.Clear, Colors,
         (if State.Capture = Clear_Capture then Button_Pressed else Button_Normal), "Clear");
       CuBit.UI.Widgets.Label (C, (Bounds.x, Bounds.y + 27, Bounds.w, 20), Colors,
-        "Catalog:" & Natural'Image (Natural (State.Visible_Interfaces)) &
-          " visible; service calls need VM.");
+        (if State.Completion_Hint_Length > 0 then
+           State.Completion_Hint (1 .. State.Completion_Hint_Length)
+         else "Catalog:" & Natural'Image (Natural (State.Visible_Interfaces)) &
+          " visible | Tab: accept | Ctrl+Space: inspect"));
       Fill_Rect (C, G.Transcript, Colors.field);
       Stroke_Rect (C, G.Transcript, Colors.shadow, Colors.edge);
       if State.Follow_Latest then State.First_Entry := Maximum;
@@ -217,6 +334,52 @@ package body CCL_REPL_View is
         Cursor - State.First_Character,
         Natural'Max (State.First_Character, CuBit.UI.Editor.Selection_First (State.Input)) - State.First_Character,
         Natural'Max (State.First_Character, CuBit.UI.Editor.Selection_Last (State.Input)) - State.First_Character,
-        True, False);
+        True, False,
+        Suggestion => State.Suggested_Suffix (1 .. State.Suggested_Length));
+      if State.Signature_Visible then
+         declare
+            S : CCL.Catalog.Completion.Suggestion renames State.Signature;
+            Head : constant String := S.Name (1 .. S.Length) & "(";
+            Argument : constant String :=
+              (if S.Contract.Parameters = 0 then "" else Type_Name (S.Contract.Import.Argument));
+            Tail : constant String := ") -> " & Type_Name (S.Contract.Import.Result);
+            Detail : constant String :=
+              (if State.Signature_Arguments then
+                 (if S.Contract.Parameters = 0 then "No arguments expected"
+                  else "Argument 1 expects " & Argument)
+               elsif State.Suggested_Length > 0 then "Tab accepts the suggested name"
+               else "Advertised signature; not an execution grant");
+            W : constant Natural := Natural'Min (G.Input.w,
+              Natural'Max (UI_Text_Width (Head & Argument & Tail),
+                           UI_Text_Width (Detail)) + 16);
+            H : constant Natural := Natural'Min
+              (UI_Text_Height * 2 + 16, G.Input.y - Bounds.y - 4);
+            Caret_X : constant Natural := G.Input.x + 8 +
+              UI_Text_Width (Text (State.First_Character .. Cursor - 1));
+            Popup : constant Rect :=
+              (Natural'Min (Caret_X, G.Input.x + G.Input.w - W),
+               G.Input.y - H - 4, W, H);
+            PC : constant CuBit.UI.Canvas := With_Clip (C, Popup);
+            Text_X : constant Natural := Popup.x + 8;
+            Text_Y : constant Natural := Popup.y + 5;
+            Inner : constant CuBit.UI.Canvas := With_Clip
+              (PC, (Popup.x + 4, Popup.y + 3, Popup.w - 8, Popup.h - 6));
+         begin
+            Fill_Rect (PC, Popup, Colors.face);
+            Stroke_Rect (PC, Popup, Colors.highlight, Colors.shadow);
+            if State.Signature_Arguments and then S.Contract.Parameters > 0 then
+               Fill_Rect (Inner,
+                 (Text_X + UI_Text_Width (Head), Text_Y,
+                  UI_Text_Width (Argument), UI_Text_Height), Colors.selection);
+            end if;
+            Draw_UI_Text_Transparent (Inner, Text_X, Text_Y, Head, Colors.text);
+            Draw_UI_Text_Transparent (Inner, Text_X + UI_Text_Width (Head), Text_Y,
+              Argument, (if State.Signature_Arguments then Colors.selectionText else Colors.text));
+            Draw_UI_Text_Transparent (Inner, Text_X + UI_Text_Width (Head & Argument),
+              Text_Y, Tail, Colors.text);
+            Draw_UI_Text_Transparent (Inner, Text_X, Text_Y + UI_Text_Height + 5,
+              Detail, Colors.muted);
+         end;
+      end if;
    end Draw;
 end CCL_REPL_View;

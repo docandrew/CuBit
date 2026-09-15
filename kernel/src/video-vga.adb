@@ -8,7 +8,7 @@ with Ada.Unchecked_Conversion;
 with System.Storage_Elements;
 
 with BuddyAllocator;
-with Multiboot;
+with Boot_Framebuffer;
 with TextIO; use TextIO;
 with Util;
 with Video;
@@ -16,6 +16,8 @@ with Virtmem;
 with x86;
 
 package body Video.VGA is
+    use type System.Address;
+    layout : Boot_Framebuffer.Description;
 
     type BitmapCharacter is array (Natural range 1..13) of Unsigned_8;
     type FontMapT is array (Natural range 1..95) of BitmapCharacter;
@@ -229,29 +231,17 @@ package body Video.VGA is
     ---------------------------------------------------------------------------
     -- setup
     ---------------------------------------------------------------------------
-    procedure setup (mbInfo : Multiboot.MultibootInfo) is
+    procedure setup (Item : Boot_Framebuffer.Description) is
         use System.Storage_Elements;
     begin
-        w                := Natural(mbInfo.framebuffer_width);
-        h                := Natural(mbInfo.framebuffer_height);
-
-        framebufferAddr  := To_Address (mbInfo.framebuffer_addr + Virtmem.LINEAR_BASE);
-        framebufferDepth := Storage_Offset(mbInfo.framebuffer_bpp);
-        framebufferPitch := Storage_Offset(mbInfo.framebuffer_pitch);
-        framebufferSize  := framebufferPitch * Storage_Offset (h);
-
-        case mbInfo.framebuffer_bpp is
-            when 8 =>
-                format := Video.Format_RGB332;
-            when 16 =>
-                format := Video.Format_RGB565;
-            when 24 =>
-                format := Video.Format_RGB8;
-            when 32 =>
-                format := Video.Format_RGBA8;
-            when others =>
-                raise VideoException with "Unsupported bit depth";
-        end case;
+        layout := Item;
+        w := Item.Width;
+        h := Item.Height;
+        framebufferAddr := Virtmem.P2Va (Integer_Address (Item.Base));
+        framebufferDepth := 32;
+        framebufferPitch := Storage_Offset (Item.Pitch);
+        framebufferSize := Storage_Offset (Item.Bytes);
+        format := Video.Format_RGBA8;
 
         rows := Natural(h / (FONT_HEIGHT + VDIST)) - 1;
         cols := Natural(w / (FONT_WIDTH + HDIST));
@@ -259,6 +249,9 @@ package body Video.VGA is
         -- Allocate memory for a back-buffer so we can do double-buffering.
         BuddyAllocator.alloc (ord  => BuddyAllocator.getOrder (framebufferSize),
                               addr => backbufferAddr);
+        if backbufferAddr = System.Null_Address then
+            raise VideoException with "Boot console backbuffer allocation failed";
+        end if;
     end setup;
 
     ---------------------------------------------------------------------------
@@ -328,7 +321,7 @@ package body Video.VGA is
     function getOffset (x, y : Natural) return System.Storage_Elements.Storage_Offset is
         use System.Storage_Elements;
     begin
-        return Storage_Offset((w * y) + (x)) * (framebufferDepth / 8);
+        return Storage_Offset (Boot_Framebuffer.Pixel_Offset (layout, x, y));
     end getOffset;
 
     ---------------------------------------------------------------------------
@@ -428,10 +421,10 @@ package body Video.VGA is
         declare
             bitmap : BitmapCharacter := fontMap(Character'Pos(c) - 31);
         begin
-            for i in 0..bitmap'Last - 1 loop                 -- each element is one row, starting at bottom
+            for i in 0..bitmap'Last - 1 loop                 -- bottom-up glyph rows
                 for j in 0..FONT_WIDTH - 1 loop
-                    if Util.isBitSet(bitmap(i), j - 1) then
-                        putPixel (fg, x + (FONT_WIDTH+1-j), y + (FONT_HEIGHT + 1 - i));
+                    if Util.isBitSet(bitmap(i+1), j) then
+                        putPixel (fg, x + (FONT_WIDTH-1-j), y + (FONT_HEIGHT-1-i));
                     end if;
                 end loop;
             end loop;
@@ -455,9 +448,9 @@ package body Video.VGA is
             for i in 0..bitmap'Last - 1 loop                 -- each element is one row, starting at bottom
                 for j in 0..FONT_WIDTH - 1 loop
                     if Util.isBitSet(bitmap(i+1), j) then
-                        putPixel (fg, x + (FONT_WIDTH + 1-j), y + (FONT_HEIGHT + 1-i));
+                        putPixel (fg, x + (FONT_WIDTH-1-j), y + (FONT_HEIGHT-1-i));
                     else
-                        putPixel (bg, x + (FONT_WIDTH + 1-j), y + (FONT_HEIGHT + 1-i));
+                        putPixel (bg, x + (FONT_WIDTH-1-j), y + (FONT_HEIGHT-1-i));
                     end if;
                 end loop;
             end loop;

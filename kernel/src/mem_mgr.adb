@@ -290,7 +290,38 @@ package body Mem_mgr is
     is
         procedure mapIOArea is new Mem_mgr.mapIOArea(BootAllocator.allocFrame);
         procedure mapArea is new Mem_mgr.mapArea(BootAllocator.allocFrame);
+        videoArea : MemoryAreas.MemoryArea := MemoryAreas.Empty_Area;
+
+        procedure mapOutsideVideo (area : MemoryAreas.MemoryArea) is
+        begin
+            if videoArea.kind /= MemoryAreas.VIDEO or else
+              area.endAddr < videoArea.startAddr or else
+              area.startAddr > videoArea.endAddr
+            then
+                mapArea (area);
+            else
+                -- Never install a huge RAM mapping over the scanout pages,
+                -- nor give one physical page conflicting cache attributes.
+                if area.startAddr < videoArea.startAddr then
+                    mapArea ((kind => area.kind, startAddr => area.startAddr,
+                              endAddr => videoArea.startAddr - 1));
+                end if;
+                if area.endAddr > videoArea.endAddr then
+                    mapArea ((kind => area.kind, startAddr => videoArea.endAddr + 1,
+                              endAddr => area.endAddr));
+                end if;
+            end if;
+        end mapOutsideVideo;
     begin
+        -- Current boot publication has exactly zero or one firmware output.
+        for area of areas loop
+            if area.kind = MemoryAreas.VIDEO then
+                if videoArea.kind = MemoryAreas.VIDEO then
+                    raise RemapException with "Multiple boot framebuffer regions";
+                end if;
+                videoArea := area;
+            end if;
+        end loop;
 
         -- Zeroize the top-level page table
         for i in kernelP4'Range loop
@@ -309,7 +340,7 @@ package body Mem_mgr is
             elsif area.kind = MemoryAreas.VIDEO then
                 mapIOArea (area, Virtmem.PG_IO_WC);
             else
-                mapArea (area);
+                mapOutsideVideo (area);
             end if;
         end loop;
 

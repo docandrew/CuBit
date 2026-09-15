@@ -37,6 +37,7 @@ package body CCL_Workbench_Platform is
 
    KEY_BACKSPACE : constant Unsigned_64 := 16#0E#;
    KEY_TAB       : constant Unsigned_64 := 16#0F#;
+   KEY_SPACE     : constant Unsigned_64 := 16#39#;
    KEY_ENTER     : constant Unsigned_64 := 16#1C#;
    KEY_A         : constant Unsigned_64 := 16#1E#;
    KEY_D         : constant Unsigned_64 := 16#20#;
@@ -51,6 +52,7 @@ package body CCL_Workbench_Platform is
    KEY_F5        : constant Unsigned_64 := 16#3F#;
    KEY_F6        : constant Unsigned_64 := 16#40#;
    KEY_F7        : constant Unsigned_64 := 16#41#;
+   KEY_F8        : constant Unsigned_64 := 16#42#;
    KEY_HOME      : constant Unsigned_64 := 16#47#;
    KEY_UP        : constant Unsigned_64 := 16#48#;
    KEY_PAGE_UP   : constant Unsigned_64 := 16#49#;
@@ -277,6 +279,10 @@ package body CCL_Workbench_Platform is
                Kind.all := Toggle_REPL_Event;
             elsif Key = KEY_F7 then
                Kind.all := Toggle_Watch_Event;
+            elsif Key = KEY_F8 then
+               Kind.all := Toggle_Syntax_Event;
+            elsif Key = KEY_SPACE and then (Mods and 2) /= 0 then
+               Kind.all := Complete_Operation_Event;
             elsif Key = KEY_F5 or else
               (Key = KEY_ENTER and then (Mods and 2) /= 0)
             then

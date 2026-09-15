@@ -3,6 +3,8 @@
 # Deliberately omit config.store: a live boot must not persist configuration
 # or write to an internal disk merely because a block driver recognizes it.
 (system-config v1
+  (setting "desktop.appearance.theme.light" "(theme v1 (base alloy-light))")
+  (setting "desktop.appearance.theme.dark" "(theme v1 (base alloy-dark))")
   (setting "clock.time-zone" "UTC")
   (setting "scheme.fs.driver" 6)
   (setting "scheme.fs.slot" 1)

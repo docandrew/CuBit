@@ -27,6 +27,10 @@ is
     -- Amount of memory that BootAllocator can allocate (in whole frames)
     MAX_BOOT_ALLOC : constant := 2**26; -- (64 MiB)
 
+    -- Explicit early-boot workspace budget, not a Multiboot format limit.
+    -- Decoder output is caller-sized; excess records fail closed, never truncate.
+    MAX_BOOT_MEMORY_REGIONS : constant := 1024;
+
     -- Physical allocators will ignore everything below this address.
     MIN_PHYS_ALLOC : constant := 16#100000#;
 

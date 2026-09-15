@@ -11,6 +11,7 @@ with System.Storage_Elements;
 with acpi;
 with BuddyAllocator;
 with Modules;
+with Multiboot;
 with TextIO; use TextIO;
 with Util;
 with Video.VGA;
@@ -51,13 +52,13 @@ package body Sysinfo is
             when RAMDISK_SIZE =>
                 return Unsigned_64 (Modules.MAGIC_RAMDISK_SIZE);
             when FB_WIDTH =>
-                return Unsigned_64(Video.VGA.w);
+                return (if Multiboot.Has_Graphics then Unsigned_64 (Multiboot.Framebuffer.Width) else 0);
             when FB_HEIGHT =>
-                return Unsigned_64(Video.VGA.h);
+                return (if Multiboot.Has_Graphics then Unsigned_64 (Multiboot.Framebuffer.Height) else 0);
             when FB_PITCH =>
-                return Unsigned_64(Video.VGA.framebufferPitch);
+                return (if Multiboot.Has_Graphics then Unsigned_64 (Multiboot.Framebuffer.Pitch) else 0);
             when FB_BPP =>
-                return Unsigned_64(Video.VGA.framebufferDepth);
+                return (if Multiboot.Has_Graphics then 32 else 0);
             when NET_IOBASE =>
                 return netIOBase;
             when NVME_BAR0 =>

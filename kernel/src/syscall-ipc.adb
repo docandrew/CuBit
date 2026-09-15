@@ -11,6 +11,8 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with acpi;
 with BuddyAllocator;
+with Boot_Framebuffer;
+with Multiboot;
 with Capabilities;
 with Capabilities.IRQ;
 with Capabilities.Operations;
@@ -586,21 +588,25 @@ package body Syscall.IPC is
         FB_USER_BASE : constant Integer_Address :=
             16#0000_6000_0000_0000#;
 
-        fbSize   : constant Storage_Count := Video.VGA.framebufferSize;
-        numPages : constant Storage_Count :=
-            (fbSize + Virtmem.PAGE_SIZE - 1) / Virtmem.PAGE_SIZE;
-        fbPhys   : constant Virtmem.PhysAddress :=
-            Virtmem.PhysAddress(
-                To_Integer(Video.VGA.framebufferAddr) -
-                Virtmem.LINEAR_BASE);
+        Item : Boot_Framebuffer.Description;
+        numPages : Storage_Count;
+        fbPhys : Virtmem.PhysAddress;
 
         ok : Boolean := True;
         capAllowed : Boolean;
     begin
+        retval := reterr;
+        if not Multiboot.Has_Graphics then
+            return;
+        end if;
+        Item := Multiboot.Framebuffer;
+        fbPhys := Virtmem.PhysAddress (Item.Map_First);
+        numPages := (Storage_Count (Item.Map_Limit) - Storage_Count (Item.Map_First)) /
+          Virtmem.PAGE_SIZE;
         Capabilities.Operations.checkDeviceMemAccess (
             table   => Process.proctab(callerPID).caps,
             base    => 0,
-            size    => Unsigned_64(fbSize),
+            size    => Unsigned_64(Item.Bytes),
             allowed => capAllowed);
 
         if not capAllowed then
@@ -630,7 +636,8 @@ package body Syscall.IPC is
                 --  userspace owner.  Stop mirroring diagnostics to video so
                 --  later service output cannot scribble over the desktop.
                 TextIO.disableVideo;
-                retval := Unsigned_64(FB_USER_BASE);
+                retval := Unsigned_64(FB_USER_BASE) +
+                  Unsigned_64 (Item.Base) - Unsigned_64 (Item.Map_First);
             else
                 retval := reterr;
             end if;

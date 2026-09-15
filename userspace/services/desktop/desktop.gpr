@@ -7,10 +7,10 @@ project Desktop is
     case Test_Mode is
         when "production" =>
             for Object_Dir use "build";
-            for Source_Dirs use (".", "../../lib/theme", "../display/production");
+            for Source_Dirs use (".", "../../lib/theme", "../../lib/ui", "../../ccl/src", "../display/production");
         when "delayed" =>
             for Object_Dir use "build-delayed";
-            for Source_Dirs use (".", "../../lib/theme", "../display/test-delayed");
+            for Source_Dirs use (".", "../../lib/theme", "../../lib/ui", "../../ccl/src", "../display/test-delayed");
     end case;
 
     for Main use ("main.adb");
@@ -65,7 +65,8 @@ project Desktop is
             "-T", "../../c/link.ld",
             "../../c/build/crt0.o",
             "build/manifest.o",
-            "build/wallpaper.o"
+            "build/wallpaper.o",
+            "build/wallpaper_cubie.o"
         );
     end Linker;
 

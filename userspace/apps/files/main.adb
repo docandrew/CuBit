@@ -391,7 +391,7 @@ procedure main is
    procedure Render
      (win : in out CuBit.UI.App.Window; damage : CuBit.UI.Rect)
    is
-      colors : constant CuBit.UI.Theme := CuBit.UI.CuBit_Alloy;
+      colors : constant CuBit.UI.Theme := CuBit.UI.Current_Theme;
       c : constant CuBit.UI.Canvas := CuBit.UI.App.Canvas (win, damage);
       full : constant CuBit.UI.Rect := CuBit.UI.App.Full_Rect (win);
       toolbar : CuBit.UI.Rect;

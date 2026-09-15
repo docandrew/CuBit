@@ -16,6 +16,8 @@
 # Display scanout service
 # Network interface configuration
 (system-config v1
+  (setting "desktop.appearance.theme.light" "(theme v1 (base alloy-light))")
+  (setting "desktop.appearance.theme.dark" "(theme v1 (base alloy-dark))")
   (setting "clock.time-zone" "UTC")
   (setting "config.store" "@nvme:0/config.dat")
   (setting "scheme.fs.driver" 6)

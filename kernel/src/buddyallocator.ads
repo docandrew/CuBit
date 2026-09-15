@@ -55,7 +55,7 @@ with Interfaces; use Interfaces;
 
 with BootAllocator;
 with Config;
-with MemoryAreas;
+with Firmware_Frames;
 with Spinlocks;
 with Virtmem;
 with x86;
@@ -163,20 +163,18 @@ is
     ---------------------------------------------------------------------------
     -- setup
     -- Add frames of memory to be managed by this allocator.
-    -- As mentioned in the package comments, memory not strictly within the
-    -- boundaries of max-order sized blocks will not be allocatable using this
-    -- package. In doing so, this means that this allocator ignores the first
-    -- FRAME_SIZE * 2^MAX_BUDDY_ORDER bytes of memory.
+    -- Uses the kernel-owned normalized firmware map. Edge spans are tiled
+    -- with smaller aligned blocks instead of being discarded.
     -- Regardless of Config.MAX_BUDDY_ORDER, this procedure will not attempt to
     -- use any memory < Config.MIN_PHYS_ALLOC.
     ---------------------------------------------------------------------------
-    procedure setup (areas : in MemoryAreas.MemoryAreaArray) with
+    procedure setup (Map : Firmware_Frames.Region_Array) with
         Global  => (In_Out      => (freeLists, BuddyAllocator.initialized,
                                     BootAllocator.BitmapState,
                                     x86.interruptsEnabled),
                     Input       => Virtmem.MAX_PHYS_USABLE,
                     Proof_In    => BootAllocator.initialized),
-        Depends => (freeLists                  => (areas,
+        Depends => (freeLists                  => (Map,
                                                    BootAllocator.BitmapState,
                                                    Virtmem.MAX_PHYS_USABLE),
                     BootAllocator.BitmapState   =>+ Virtmem.MAX_PHYS_USABLE,

@@ -2,6 +2,7 @@ with Ada.Text_IO;
 with CCL.Sessions; use CCL.Sessions;
 with CCL.Language; use CCL.Language;
 with CCL.Catalog;
+with CCL.Catalog.Completion;
 with CCL.Interfaces.Clock;
 with Interfaces; use Interfaces;
 
@@ -69,6 +70,18 @@ begin
    CCL.Interfaces.Clock.Publish (Catalog, Error);
    pragma Assert (Error = CCL.Catalog.Catalog_Valid);
    Initialize (A, Catalog);
+   declare Matches : CCL.Catalog.Completion.Match_List; begin
+      Complete (A, "clock.mon", Matches);
+      pragma Assert (Matches.Total = 1 and Length (A) = 0);
+      Complete (B, "clock.mon", Matches);
+      pragma Assert (Matches.Total = 0 and Length (B) = 0);
+      Describe (A, "clock.monotonic-ms", Matches.Items (1).Contract, Found);
+      pragma Assert (Found and Matches.Items (1).Contract.Import.Binding = 0);
+      Describe (B, "clock.monotonic-ms", Matches.Items (1).Contract, Found);
+      pragma Assert (not Found);
+      Describe (A, "clock.mon", Matches.Items (1).Contract, Found);
+      pragma Assert (not Found); -- argument hints require an exact call head
+   end;
    Submit (A, "(clock.monotonic-ms)", Default_Fuel, Outcome);
    pragma Assert (Outcome.Status = Host_Import_Required);
    Submit (B, "(clock.monotonic-ms)", Default_Fuel, Outcome);

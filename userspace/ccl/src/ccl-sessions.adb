@@ -1,5 +1,3 @@
-with CCL.VM;
-with Interfaces;
 with CCL.Diagnostics;
 
 package body CCL.Sessions with SPARK_Mode is
@@ -31,6 +29,20 @@ package body CCL.Sessions with SPARK_Mode is
 
    function Length (Item : Session) return History_Count is (Item.Count);
 
+   procedure Complete
+     (Item : Session; Prefix : String;
+      Matches : out CCL.Catalog.Completion.Match_List) is
+   begin
+      CCL.Catalog.Completion.Find (Item.Catalog, Prefix, Matches);
+   end Complete;
+
+   procedure Describe
+     (Item : Session; Name : String;
+      Operation : out CCL.Catalog.Resolved_Operation; Found : out Boolean) is
+   begin
+      CCL.Catalog.Resolve (Item.Catalog, Name, Operation, Found);
+   end Describe;
+
    procedure Recall
      (Item : Session; Index : History_Index; Entry_Value : out Submission;
       Found : out Boolean) is
@@ -40,9 +52,9 @@ package body CCL.Sessions with SPARK_Mode is
       if Found then Entry_Value := Item.Entries (Slot (Item.Oldest, Index - 1)); end if;
    end Recall;
 
-   procedure Submit
+   procedure Record_Submission
      (Item : in out Session; Source : String; Fuel : Fuel_Budget;
-      Outcome : out CCL.Language.Interpretation_Result)
+      Outcome : CCL.Language.Interpretation_Result)
    is
       Value : Submission;
       Target : History_Index;
@@ -54,9 +66,6 @@ package body CCL.Sessions with SPARK_Mode is
          Value.Source (1 .. Value.Source_Length) :=
            Source (Source'First .. Source'First + (Value.Source_Length - 1));
       end if;
-      --  The frontend checks the ORIGINAL length before parsing. Do not pass
-      --  the history's bounded copy: a valid prefix must not become a command.
-      CCL.Language.Interpret (Source, Fuel, Item.Catalog, Outcome);
       Value.Outcome := Outcome;
       Target := Slot (Item.Oldest, Item.Count);
       Item.Entries (Target) := Value;
@@ -65,7 +74,38 @@ package body CCL.Sessions with SPARK_Mode is
       else
          Item.Count := Item.Count + 1;
       end if;
+   end Record_Submission;
+
+   procedure Submit
+     (Item : in out Session; Source : String; Fuel : Fuel_Budget;
+      Outcome : out CCL.Language.Interpretation_Result) is
+   begin
+      CCL.Language.Interpret (Source, Fuel, Item.Catalog, Outcome);
+      Record_Submission (Item, Source, Fuel, Outcome);
    end Submit;
+
+   procedure Submit_With_Host
+     (Item : in out Session; Source : String; Fuel : Fuel_Budget;
+      Grants : CCL.Catalog.Granted_Bindings; Context : in out Host_Context;
+      Outcome : out CCL.Language.Interpretation_Result)
+   is
+      procedure Evaluate is new CCL.Language.Interpret_With_Host (Host_Context, Invoke);
+   begin
+      --  Evaluate the original source, never a truncated history copy.
+      Evaluate (Source, Fuel, Item.Catalog, Grants, Context, Outcome);
+      Record_Submission (Item, Source, Fuel, Outcome);
+   end Submit_With_Host;
+
+   procedure Submit_With_Values
+     (Item : in out Session; Source : String; Fuel : Fuel_Budget;
+      Grants : CCL.Catalog.Granted_Bindings; Context : in out Host_Context;
+      Outcome : out CCL.Language.Interpretation_Result)
+   is
+      procedure Evaluate is new CCL.Language.Interpret_With_Values (Host_Context, Invoke);
+   begin
+      Evaluate (Source, Fuel, Item.Catalog, Grants, Context, Outcome);
+      Record_Submission (Item, Source, Fuel, Outcome);
+   end Submit_With_Values;
 
    function Result_Type (Outcome : CCL.Language.Interpretation_Result)
      return CCL.Language.Static_Type is

@@ -8,14 +8,16 @@ package CuBit.Desktop_Protocol with SPARK_Mode, Pure is
    type Operation is
      (Hello, Goodbye, Get_Information, Create_Surface, Destroy_Surface,
       Present_Surface, Resize_Surface, Attach_Buffer, Set_Pointer_Cursor,
-      Poll_Input, Wait_Input, Set_Window_Limits, Set_Window_Title);
+      Poll_Input, Wait_Input, Set_Window_Limits, Set_Window_Title,
+      Get_Appearance);
    for Operation use
      (Hello => 16#0800#, Goodbye => 16#0801#, Get_Information => 16#0802#,
       Create_Surface => 16#0810#, Destroy_Surface => 16#0811#,
       Present_Surface => 16#0812#, Resize_Surface => 16#0813#,
       Attach_Buffer => 16#0814#, Set_Pointer_Cursor => 16#0815#,
       Poll_Input => 16#0821#, Wait_Input => 16#0822#,
-      Set_Window_Limits => 16#0841#, Set_Window_Title => 16#0842#);
+      Set_Window_Limits => 16#0841#, Set_Window_Title => 16#0842#,
+      Get_Appearance => 16#0850#);
    function Code (Item : Operation) return Unsigned_32 is
      (Operation'Enum_Rep (Item));
    type Operation_Decoding (Valid : Boolean := False) is record

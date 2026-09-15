@@ -8,8 +8,10 @@
 with Interfaces; use Interfaces;
 with System;
 with CuBit.Theme;
+with CuBit.Appearance;
 
 package CuBit.UI is
+   use type CuBit.Appearance.Color_Scheme;
    subtype Color is Unsigned_32;
 
    type Rect is record
@@ -28,26 +30,27 @@ package CuBit.UI is
       clip : Rect := (others => 0);
    end record;
 
+   subtype Theme_Color is Color range 0 .. 16#FFFFFF#;
    type Theme is record
-      desktop : Color := 16#2D3343#;
-      panel   : Color := 16#343B4D#;
-      face    : Color := 16#3D465C#;
-      edge    : Color := 16#596172#;
-      shadow  : Color := 16#1F2430#;
-      text    : Color := 16#D9DEE8#;
-      muted   : Color := 16#9AA5B5#;
-      accent  : Color := 16#FFCC66#;
-      good    : Color := 16#95E6CB#;
-      danger  : Color := 16#F28779#;
-      field   : Color := 16#FFFFFF#;
-      selection : Color := 16#000080#;
-      selectionText : Color := 16#FFFFFF#;
-      highlight : Color := 16#FFFFFF#;
-      darkShadow : Color := 16#404040#;
-      activeTitleTop : Color := 16#4D668F#;
-      activeTitleBottom : Color := 16#343B4D#;
-      inactiveTitleTop : Color := 16#596172#;
-      inactiveTitleBottom : Color := 16#343B4D#;
+      desktop : Theme_Color := 16#2D3343#;
+      panel   : Theme_Color := 16#343B4D#;
+      face    : Theme_Color := 16#3D465C#;
+      edge    : Theme_Color := 16#596172#;
+      shadow  : Theme_Color := 16#1F2430#;
+      text    : Theme_Color := 16#D9DEE8#;
+      muted   : Theme_Color := 16#9AA5B5#;
+      accent  : Theme_Color := 16#FFCC66#;
+      good    : Theme_Color := 16#95E6CB#;
+      danger  : Theme_Color := 16#F28779#;
+      field   : Theme_Color := 16#FFFFFF#;
+      selection : Theme_Color := 16#000080#;
+      selectionText : Theme_Color := 16#FFFFFF#;
+      highlight : Theme_Color := 16#FFFFFF#;
+      darkShadow : Theme_Color := 16#404040#;
+      activeTitleTop : Theme_Color := 16#4D668F#;
+      activeTitleBottom : Theme_Color := 16#343B4D#;
+      inactiveTitleTop : Theme_Color := 16#596172#;
+      inactiveTitleBottom : Theme_Color := 16#343B4D#;
    end record;
 
    Mirage : constant Theme :=
@@ -133,6 +136,27 @@ package CuBit.UI is
       activeTitleBottom => 16#294E68#,
       inactiveTitleTop => 16#AAB1B5#,
       inactiveTitleBottom => 16#8D969C#);
+
+   CuBit_Alloy_Dark : constant Theme :=
+     (desktop => 16#20282E#, panel => 16#303A42#, face => 16#303A42#,
+      edge => 16#53616B#, shadow => 16#1C242A#, text => 16#E7ECEF#,
+      muted => 16#ACBAC3#, accent => 16#69B2C1#, good => 16#81C7A3#,
+      danger => 16#F09187#, field => 16#232C33#, selection => 16#306B7D#,
+      selectionText => 16#FFFFFF#, highlight => 16#63727D#,
+      darkShadow => 16#151C21#, activeTitleTop => 16#416A80#,
+      activeTitleBottom => 16#233E53#, inactiveTitleTop => 16#414D57#,
+      inactiveTitleBottom => 16#2E3942#);
+
+   function Default_Palette (Scheme : CuBit.Appearance.Color_Scheme) return Theme is
+     (if Scheme = CuBit.Appearance.Alloy_Light then CuBit_Alloy
+      else CuBit_Alloy_Dark);
+   function Palette (Scheme : CuBit.Appearance.Color_Scheme) return Theme;
+   procedure Install_Palette (Scheme : CuBit.Appearance.Color_Scheme; Value : Theme);
+   --  Native harness updates this only on the application's UI dispatch thread.
+   --  Explicit palettes remain available for custom-themed content/previews.
+   procedure Set_Color_Scheme (Scheme : CuBit.Appearance.Color_Scheme);
+   procedure Set_Theme (Value : Theme);
+   function Current_Theme return Theme;
 
    type Button_Style is (Button_Normal, Button_Hot, Button_Pressed,
                          Button_Disabled, Button_Active);
@@ -262,7 +286,9 @@ package CuBit.UI is
    procedure Draw_Text_Edit_Field
       (c : Canvas; r : Rect; colors : Theme; text : String;
        cursor, selectionStart, selectionEnd : Natural;
-       focused : Boolean; hot : Boolean);
+       focused : Boolean; hot : Boolean; suggestion : String := "");
+   --  Optional display-only suffix, clipped inside the field and drawn in the
+   --  muted theme color. It never participates in selection or caret geometry.
    procedure Draw_Multiline_Text_Edit
       (c : Canvas; r : Rect; colors : Theme; text : String;
        firstLine, visibleLines, cursor, selectionStart, selectionEnd : Positive;

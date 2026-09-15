@@ -22,7 +22,14 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Too_Many_Bindings => "Too many local bindings",
          when Unterminated_String => "String is missing its closing quote",
          when Invalid_String_Escape => "Unsupported escape sequence in string",
-         when Text_Storage_Full => "Expression text storage limit exceeded");
+         when Text_Storage_Full => "Expression text storage limit exceeded",
+         when Expected_Type_Name => "Expected Integer, Boolean, String or Character",
+         when Too_Many_Functions => "Program exceeds the 16-function limit",
+         when Too_Many_Parameters => "Function exceeds the 8-parameter limit",
+         when Duplicate_Declaration => "Duplicate or reserved function/parameter name",
+         when Function_Arity_Mismatch => "Function argument count does not match its declaration",
+         when Function_Argument_Mismatch => "Argument type does not match the function parameter",
+         when Function_Result_Mismatch => "Function body does not match its declared return type");
    end Message;
 
    function Message (Status : CCL.Language.Interpretation_Status) return String is
@@ -41,6 +48,7 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Host_Authority_Denied => "Service operation has no granted runtime binding",
          when Host_Call_Failed => "Service call failed; no value returned",
          when Host_Result_Type_Mismatch => "Service returned a value with the wrong type",
-         when Host_Contract_Unsupported => "Interpreter host supports only synchronous scalar-copy operations");
+         when Host_Argument_Out_Of_Bounds => "Argument exceeds the service's declared text bound",
+         when Host_Contract_Unsupported => "This interpreter host does not support the operation's value or lifecycle contract");
    end Message;
 end CCL.Diagnostics;

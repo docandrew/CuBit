@@ -11,6 +11,7 @@
 ;------------------------------------------------------------------------------
 
 %include "cubit.inc"
+%include "multiboot_entry.inc"
 
 global MultiBootHeader
 global bootstrap_stack_top
@@ -93,10 +94,12 @@ start:
     mov edi, eax 		                    ; argument 1 (magic #) to kmain2 in boot64.asm (64-bit calling convention)
     mov esi, ebx 		                    ; arg 2 (multiboot header struct address)
 
+    ; Admit the entire header window BEFORE the first loader-memory read.
+    ; Physical backing remains a loader assumption, not proved by this gate.
+    ADMIT_MULTIBOOT_ENTRY invalid_multiboot_entry
+
     ; Allocation-free breadcrumbs for the explicit legacy text diagnostic
     ; entry only. Never write VGA text memory for a graphical framebuffer.
-    cmp edi, 0x2BADB002
-    jne .no_text_breadcrumb
     test dword [esi], 1 << 12
     jz .no_text_breadcrumb
     cmp byte [esi + 109], 2
@@ -149,6 +152,20 @@ enable_paging:
     ; trampoline to 64-bit
 
     jmp gdt64_code:(trampoline - KERNEL_BASE)
+
+invalid_multiboot_entry:
+    ; Do not guess whether video memory is safe from an invalid header.
+    ; QEMU debugcon breadcrumb; no RAM read, serial setup or Ada runtime needed.
+    mov al, 'M'
+    out 0xe9, al
+    mov al, 'B'
+    out 0xe9, al
+    mov al, '!'
+    out 0xe9, al
+    cli
+.halt:
+    hlt
+    jmp .halt
 
 ; error handler
 ;  error:

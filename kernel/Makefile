@@ -63,14 +63,20 @@ build/init.bin: src/init.asm
 #	ld --omagic -e start -Ttext 0 -o build/init.out build/init.o
 #	objcopy -I binary -O elf64-x86-64 -B i386
 
+# GPR's custom assembler does not track include dependencies. Keep this entry
+# gate current when its shared, hosted-tested macro changes.
+build/boot.o: src/boot.asm src/cubit.inc src/multiboot_entry.inc
+	mkdir -p build
+	cd src && yasm --arch=x86 -felf64 --dformat=dwarf2 boot.asm -o ../build/boot.o
+
 # Maximum allowed stack usage for any single kernel function (bytes).
 # Kernel stacks are 4KB (usable ~3.3KB). Leave headroom for interrupt frames.
 MAX_STACK_USAGE := 2048
 
 # kernel ELF object
-cubit_kernel: build/libcubit.a build/init.bin cubit.gpr linker.ld Makefile \
+cubit_kernel: build/libcubit.a build/init.bin build/boot.o cubit.gpr linker.ld Makefile \
               $(wildcard src/*.ads src/*.adb src/*.asm src/*.adc \
-                         src/services/*.ads src/services/*.adb)
+                         src/services/*.ads src/services/*.adb src/*.inc)
 # Compile and bind only
 	$(ALR) gprbuild -b -c -Pcubit.gpr
 # Check kernel stack usage - fail if any function exceeds threshold.
@@ -123,6 +129,13 @@ prove-process-lifetime:
 	$(ALR) gnatprove -Pcubit.gpr -u process_lifetime.adb \
 		--subdirs=proof-process-lifetime --mode=all --level=1 -j2
 	@cat build/proof-process-lifetime/gnatprove/gnatprove.out
+
+.PHONY: test-boot-framebuffer prove-boot-framebuffer
+test-boot-framebuffer:
+	bash ../tests/boot-framebuffer/test.sh
+
+prove-boot-framebuffer:
+	bash ../tests/boot-framebuffer/prove.sh
 
 .PHONY : prove-frame-pins
 prove-frame-pins:
@@ -382,6 +395,17 @@ capability-test: user_runtime ccl-manifest
 		isodir/boot/capability-test.app ../tests/process-construction/build
 
 # Portable protocol checks and an unprivileged native desktop adversary.
+.PHONY: test-appearance prove-appearance
+test-appearance:
+	$(ALR) gprbuild -p -P ../tests/appearance/appearance.gpr
+	../tests/appearance/build/main
+
+prove-appearance:
+	$(ALR) gnatprove -P ../tests/appearance/appearance.gpr -u \
+		cubit-ui-theme_ccl.adb cubit-ui-theme_data.adb cubit-appearance.adb \
+		ccl-declarations.adb \
+		--mode=all --level=1 --timeout=5 -j2
+
 .PHONY : desktop-check prepare-desktop-protocol test-desktop-protocol prove-desktop-protocol
 desktop-check: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/desktop-check/build
@@ -567,6 +591,16 @@ ccl-ui-preview:
 	cd .. && userspace/ccl/build/ccl-ui-preview/ccl-ui-preview
 
 .PHONY : ccl-workspace-test ccl-workspace-prove
+.PHONY : ccl-completion-test ccl-completion-prove
+ccl-completion-test:
+	$(ALR) gprbuild -p -P ../tests/ccl-completion/completion_tests.gpr
+	../tests/ccl-completion/build/main
+
+ccl-completion-prove:
+	$(ALR) gnatprove -P ../tests/ccl-completion/completion_tests.gpr \
+		-u ccl-catalog-completion.adb ccl-call_context.adb --mode=all --level=1 --timeout=5 --checks-as-errors=on -j2
+	@cat ../tests/ccl-completion/build/gnatprove/gnatprove.out
+
 ccl-workspace-test:
 	$(ALR) gprbuild -p -P ../tests/ccl-workspace/workspace_tests.gpr
 	../tests/ccl-workspace/build/main
@@ -831,7 +865,7 @@ logstore: user_runtime ccl-manifest
 
 # Build the userspace desktop compositor/session service prototype
 .PHONY : desktop
-desktop: user_runtime ccl-manifest ../userspace/services/desktop/build/wallpaper.o
+desktop: user_runtime ccl-manifest ../userspace/services/desktop/build/wallpaper.o ../userspace/services/desktop/build/wallpaper_cubie.o
 	mkdir -p ../userspace/services/desktop/build
 	$(call compile_ccl_manifest,../userspace/services/desktop)
 	$(ALR) gprbuild -p -P ../userspace/services/desktop/desktop.gpr -XCUBIT_DISPLAY_TEST_MODE=$(CUBIT_DISPLAY_TEST_MODE)
@@ -841,6 +875,11 @@ desktop: user_runtime ccl-manifest ../userspace/services/desktop/build/wallpaper
 	mkdir -p ../userspace/services/desktop/build
 	$(ALR) python3 ../tools/prepare_wallpaper.py $< ../userspace/services/desktop/build
 	$(ALR) gcc -c ../userspace/services/desktop/build/wallpaper.S -o $@
+
+../userspace/services/desktop/build/wallpaper_cubie.o: ../assets/wallpapers/cubit-girl-wallpaper-4k-3840x2160.png ../tools/prepare_wallpaper.py
+	mkdir -p ../userspace/services/desktop/build
+	$(ALR) python3 ../tools/prepare_wallpaper.py $< ../userspace/services/desktop/build --asset cubie
+	$(ALR) gcc -c ../userspace/services/desktop/build/wallpaper_cubie.S -o $@
 
 # Build the userspace display scanout service prototype
 .PHONY : display

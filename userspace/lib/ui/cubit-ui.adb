@@ -11,6 +11,24 @@ with CuBit.UI.Fonts_IBM_Plex_Mono_11;
 with CuBit.UI.Fonts_IBM_Plex_Sans_11;
 
 package body CuBit.UI is
+   Selected_Theme : Theme := CuBit_Alloy;
+   Palettes : array (CuBit.Appearance.Color_Scheme) of Theme :=
+     [CuBit_Alloy, CuBit_Alloy_Dark];
+   function Palette (Scheme : CuBit.Appearance.Color_Scheme) return Theme is
+     (Palettes (Scheme));
+   procedure Install_Palette (Scheme : CuBit.Appearance.Color_Scheme; Value : Theme) is
+   begin
+      Palettes (Scheme) := Value;
+   end Install_Palette;
+   procedure Set_Color_Scheme (Scheme : CuBit.Appearance.Color_Scheme) is
+   begin
+      Selected_Theme := Palette (Scheme);
+   end Set_Color_Scheme;
+   procedure Set_Theme (Value : Theme) is
+   begin
+      Selected_Theme := Value;
+   end Set_Theme;
+   function Current_Theme return Theme is (Selected_Theme);
    use type System.Address;
    package UI_Font renames CuBit.UI.Fonts_IBM_Plex_Sans_11;
    package Code_Font renames CuBit.UI.Fonts_IBM_Plex_Mono_11;
@@ -1137,7 +1155,7 @@ package body CuBit.UI is
    procedure Draw_Text_Edit_Field
       (c : Canvas; r : Rect; colors : Theme; text : String;
        cursor, selectionStart, selectionEnd : Natural;
-       focused : Boolean; hot : Boolean)
+       focused : Boolean; hot : Boolean; suggestion : String := "")
    is
       face : Color := colors.field;
       textX : Natural := r.x + 8;
@@ -1188,6 +1206,12 @@ package body CuBit.UI is
 
       if cursor >= text'Length then
          cursorX := textX;
+      end if;
+
+      if focused and then cursor = text'Length and then
+        selectionStart = selectionEnd
+      then
+         Draw_UI_Text_Transparent (textCanvas, textX, textY, suggestion, colors.muted);
       end if;
 
       if focused then

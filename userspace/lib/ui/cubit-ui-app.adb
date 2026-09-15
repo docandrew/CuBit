@@ -12,6 +12,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Desktop_Protocol;
 with CuBit.Desktop_Messages;
 with CuBit.Memory_Grants;
+with CuBit.UI.Theme_Data;
 
 package body CuBit.UI.App is
    use ASCII;
@@ -194,6 +195,8 @@ package body CuBit.UI.App is
       end if;
    end Ensure_Buffer;
 
+   procedure Refresh_Theme;
+
    procedure Open
       (win : in out Window;
        width, height : Natural;
@@ -248,6 +251,7 @@ package body CuBit.UI.App is
          return;
       end if;
 
+      Refresh_Theme;
       info := CuBit.Desktop_Messages.From_Wire
         (DP.Encode_Empty_Request (DP.Get_Information));
       info.tag := capCall (CAP_SLOT_DESKTOP, info);
@@ -314,6 +318,33 @@ package body CuBit.UI.App is
       end if;
    end Set_Title;
 
+   procedure Refresh_Theme is
+      Response : Message;
+      Candidate : Theme_Data.Palette_Colors := Theme_Data.Colors (Current_Theme);
+      Revision : Unsigned_64 := 0;
+      Valid : Boolean;
+   begin
+      for Index in Theme_Data.Chunk_Index loop
+         Response := NULL_MESSAGE;
+         Response.tag := (DP.Code (DP.Get_Appearance), 1, 0, 0);
+         Response.words (0) := Unsigned_64 (Index);
+         Response.tag := capCall (CAP_SLOT_DESKTOP, Response);
+         if Response.tag.label /= DP.Code (DP.Get_Appearance) or else
+           Response.tag.length /= 4 or else Response.tag.flags /= 0 or else
+           Response.tag.reserved /= 0 or else Response.words (0) = 0
+         then return; end if;
+         if Index = 0 then Revision := Response.words (0);
+         elsif Revision /= Response.words (0) then return;
+         end if;
+         Theme_Data.Merge (Candidate, Index,
+           [Response.words (1), Response.words (2), Response.words (3)], Valid);
+         if not Valid then return; end if;
+      end loop;
+      --  Publish only a complete, same-generation snapshot. A later change
+      --  already has another notification queued; never install mixed colors.
+      Set_Theme (Theme_Data.To_Theme (Candidate));
+   end Refresh_Theme;
+
    procedure Receive_Input
       (win : in out Window;
        operation : DP.Input_Operation;
@@ -353,6 +384,7 @@ package body CuBit.UI.App is
          payload0 => decoded.Value.Payload0,
          payload1 => decoded.Value.Payload1);
       if event.kind = INPUT_CONFIGURE then
+         Refresh_Theme;
          declare
             newW : constant Natural :=
                Content_Size_From_Surface (win, event.payload0, True);
@@ -364,6 +396,8 @@ package body CuBit.UI.App is
             event.payload0 := Unsigned_64 (win.width);
             event.payload1 := Unsigned_64 (win.height);
          end;
+      elsif event.kind = INPUT_RESYNC then
+         Refresh_Theme;
       end if;
       found := True;
    end Receive_Input;

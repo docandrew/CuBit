@@ -24,6 +24,7 @@ with TLB_Shootdown;
 with Lapic;
 with Mem_mgr;
 with MemoryAreas;
+with Firmware_Frames;
 with InterruptNumbers;
 with Modules;
 with Pci;
@@ -32,6 +33,7 @@ with Pic;
 with Process;
 with Scheduler;
 with Serial;
+with Multiboot; use Multiboot;
 with Services.Idle;
 with StoragePools;
 with TextIO; use TextIO;
@@ -65,10 +67,13 @@ apicBase        : virtmem.PhysAddress := 0;
 ioapicBase      : virtmem.PhysAddress := 0;
 ioapicVirtBase  : virtmem.VirtAddress := 0;
 
-NoMultibootException : exception;
-NoMemoryMapException : exception;
 NoACPIException      : exception;
 NoAPICException      : exception;
+
+-- Bootloader lengths must not size the entry stack. Keep the bounded decoded
+-- map in kernel-owned storage and pass only its published prefix downstream.
+bootMemoryAreas : Multiboot.Boot_Memory_Map;
+bootAllocationMap : Firmware_Frames.Region_Array (bootMemoryAreas'Range);
 
 -------------------------------------------------------------------------------
 -- kmain
@@ -76,14 +81,12 @@ NoAPICException      : exception;
 -- Entry point for the kernel.
 -------------------------------------------------------------------------------
 procedure kmain (magic       : Unsigned_32;
-                 mbInfo_orig : in MultibootInfo)
+                 mbInfoPhysical : Unsigned_32)
 is
-    mbOK     : constant Boolean := (magic = 16#2BADB002#);
-    mbInfo   : constant MultibootInfo := mbInfo_orig;
+    mbInfo   : MultibootInfo;
     ssPtr    : System.Secondary_Stack.SS_Stack_Ptr;
-    memAreas : MemoryAreas.MemoryAreaArray(1..Multiboot.numAreas(mbInfo) + 2);
-    earlyText : constant Boolean := mbInfo.flags.hasFramebuffer and then
-      mbInfo.framebuffer_type = 2 and then mbInfo.framebuffer_width = 80;
+    memAreaCount : Natural := 0;
+    earlyText : Boolean := False;
 
     --  Diagnostic-only VGA text output needs neither allocation nor a
     --  framebuffer mapping: boot tables already map physical B8000.
@@ -109,24 +112,18 @@ is
     end showBootStage;
 begin
 
-    if earlyText then
-        TextIO.setVideo (Video.EGA.getTextInterface);
-        TextIO.clear (BLACK);
-        earlyCheckpoint ("Ada entered; initializing serial");
-    end if;
-
     if (config.serialMirror) then
         Serial.init (serial.COM1);
         TextIO.enableSerial;
         print ("CuBit v0.0.1");
     end if;
 
-    if not mbOK then
-        raise NoMultibootException with "Not loaded by multiboot-compliant loader.";
-    end if;
-
-    if not mbInfo.flags.hasMemoryMap then
-        raise NoMemoryMapException with "No memory map available from bootloader";
+    Multiboot.Read_Information (magic, mbInfoPhysical, mbInfo);
+    earlyText := mbInfo.framebuffer_type = 2;
+    if earlyText then
+        TextIO.setVideo (Video.EGA.getTextInterface);
+        TextIO.clear (BLACK);
+        earlyCheckpoint ("Ada entered; boot information admitted");
     end if;
 
     earlyCheckpoint ("CPU features");
@@ -165,15 +162,18 @@ begin
     Interrupts.setup;
 
     earlyCheckpoint ("normalize boot memory map");
-    memAreas := Multiboot.getMemoryAreas (mbInfo);
+    Multiboot.getMemoryAreas (mbInfo, bootMemoryAreas, memAreaCount);
+    MemoryAreas.Allocation_Map (bootMemoryAreas (1 .. memAreaCount),
+                                bootAllocationMap (1 .. memAreaCount));
 
     earlyCheckpoint ("bootstrap allocator");
-    BootAllocator.setup (memAreas);
+    BootAllocator.setup (bootMemoryAreas (1 .. memAreaCount),
+                         bootAllocationMap (1 .. memAreaCount));
 
     earlyCheckpoint ("kernel page tables");
-    Mem_mgr.setup (memAreas);
+    Mem_mgr.setup (bootMemoryAreas (1 .. memAreaCount));
     earlyCheckpoint ("buddy allocator");
-    BuddyAllocator.setup (memAreas);
+    BuddyAllocator.setup (bootAllocationMap (1 .. memAreaCount));
     earlyCheckpoint ("storage pools");
     StoragePools.setup;
     earlyCheckpoint ("process tables");
@@ -181,13 +181,13 @@ begin
     earlyCheckpoint ("memory initialization complete");
 
     -- Use video driver chosen by GRUB
-    if mbInfo.framebuffer_width = 80 then
+    if earlyText then
         println ("Using EGA driver");
         TextIO.setVideo (Video.EGA.getTextInterface);
         TextIO.clear (BLUE);
     else
         println ("Using VGA driver");
-        Video.VGA.setup (mbInfo);
+        Video.VGA.setup (Multiboot.Framebuffer);
         TextIO.setVideo (Video.VGA.getTextInterface);
     end if;
 
@@ -251,7 +251,7 @@ begin
     println ("                     Memory Areas                    ", LT_BLUE, BLACK);
     println ("-----------------------------------------------------");
     println ("      Start                 End            Type");
-    for area of memAreas loop
+    for area of bootMemoryAreas (1 .. memAreaCount) loop
         print (area.startAddr); print (" - "); print (area.endAddr);
         print ("   ");
         case area.kind is
@@ -496,7 +496,7 @@ begin
         println ("                   CuBit Modules                     ", LT_BLUE, BLACK);
         println ("-----------------------------------------------------");
 
-        Modules.setup (mbInfo);
+        Modules.setup;
     end initModules;
     showBootStage ("Live system image loaded");
 

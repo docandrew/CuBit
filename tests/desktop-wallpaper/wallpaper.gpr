@@ -1,7 +1,9 @@
 project Wallpaper is
-   for Source_Dirs use (".", "../../userspace/services/desktop");
+   for Source_Dirs use (".", "../../userspace/services/desktop",
+     "../../userspace/lib/theme", "../../userspace/ccl/tools/ccl-ui-preview/host");
    for Source_Files use
-     ("main.adb", "desktop_wallpaper.ads", "desktop_wallpaper.adb");
+     ("main.adb", "desktop_wallpaper.ads", "desktop_wallpaper.adb",
+      "cubit.ads", "cubit-appearance.ads", "cubit-appearance.adb");
    for Object_Dir use "build";
    for Exec_Dir use "build";
    for Main use ("main.adb");
@@ -11,6 +13,7 @@ project Wallpaper is
    end Compiler;
    package Linker is
       for Default_Switches ("Ada") use
-        ("../../userspace/services/desktop/build/wallpaper.o");
+        ("../../userspace/services/desktop/build/wallpaper.o",
+         "../../userspace/services/desktop/build/wallpaper_cubie.o");
    end Linker;
 end Wallpaper;

@@ -29,17 +29,18 @@ package body CCL.Declarations with SPARK_Mode => On is
 
    function Next_Position (Item : Scanner) return Positive is
       Cursor : Positive range 1 .. MAX_SOURCE + 1 := Item.Cursor;
+      Comment : Boolean := False;
    begin
       while Cursor <= Item.Last loop
-         if Space (Item.Text (Cursor)) then
-            Cursor := Cursor + 1;
+         pragma Loop_Variant (Increases => Cursor);
+         if Comment then
+            if Item.Text (Cursor) = ASCII.LF then Comment := False; end if;
          elsif Item.Text (Cursor) = '#' then
-            while Cursor <= Item.Last and then Item.Text (Cursor) /= ASCII.LF loop
-               Cursor := Cursor + 1;
-            end loop;
-         else
+            Comment := True;
+         elsif not Space (Item.Text (Cursor)) then
             exit;
          end if;
+         Cursor := Cursor + 1;
       end loop;
       return Cursor;
    end Next_Position;

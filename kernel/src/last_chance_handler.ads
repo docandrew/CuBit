@@ -12,18 +12,20 @@
 with System;
 
 package Last_Chance_Handler with
-    SPARK_Mode => On
+    SPARK_Mode => Off -- runtime message pointers and hardware diagnostic output
 is
     ---------------------------------------------------------------------------
     -- Last_Chance_Handler is inserted by the compiler into the same subprogram
     -- where an exception is raised, if not immediately caught by the same
     -- subprogram.
     --
-    -- TODO: Make this halt all the other processors.
+    -- Stops this CPU with interrupts disabled. No stack unwinding is attempted.
+    -- TODO: coordinate panic shutdown of the other processors.
     ---------------------------------------------------------------------------
     procedure Last_Chance_Handler (msg : System.Address; line : Integer)
     with
         Export => True,
         Convention => C,
+        No_Return => True,
         External_Name => "__gnat_last_chance_handler";
 end Last_Chance_Handler;

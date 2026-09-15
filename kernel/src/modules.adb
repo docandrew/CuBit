@@ -19,7 +19,8 @@ with Cpio;
 with ELF;
 with Process;
 with Process.Loader;
-with Strings;
+with Multiboot;
+with Boot_Modules;
 with Sysinfo;
 with TextIO; use TextIO;
 with Virtmem;
@@ -29,6 +30,7 @@ package body Modules with SPARK_Mode => Off is
     initrdAddr  : Virtmem.PhysAddress := 0;
     initrdSize  : Storage_Count := 0;
     devmgrPID   : Process.ProcessID;
+    setupStarted : Boolean := False;
 
     -- Package-level to avoid 2KB+ stack usage from FileIndex array
     cpioArchive : Cpio.Archive;
@@ -72,6 +74,11 @@ package body Modules with SPARK_Mode => Off is
 
         elfAddr := ar.files (idx).dataAddr;
         elfSize := ar.files (idx).dataSize;
+
+        if elfSize < ELF.ELFFileHeader'Size / System.Storage_Unit then
+            print ("Modules: truncated ELF header: "); println (name);
+            return Process.NO_PROCESS;
+        end if;
 
         declare
             hdr : ELF.ELFFileHeader with Import, Address => elfAddr;
@@ -131,8 +138,7 @@ package body Modules with SPARK_Mode => Off is
             if not ok then
                 print ("Modules: Error mapping initrd page ");
                 print (Integer(i));
-                println (" a successful boot is unlikely.");
-                return;
+                raise ModuleException with "Initrd mapping failed; device manager remains suspended";
             end if;
         end loop;
 
@@ -148,16 +154,20 @@ package body Modules with SPARK_Mode => Off is
     -- devmgr.svc, map the initrd into it, grant it CAP_PROCESS + CAP_IOPORT,
     -- and resume it. The device manager handles all remaining boot policy.
     ---------------------------------------------------------------------------
-    procedure setup (mbinfo : in Multiboot.MultibootInfo)
+    procedure setup
     is
         cpioOk : Boolean;
     begin
+        if setupStarted then
+            raise ModuleException with "Boot module startup is one-shot";
+        end if;
+        setupStarted := True;
         MAGIC_RAMDISK_ADDRESS := System.Null_Address;
         initrdAddr  := 0;
         initrdSize  := 0;
         devmgrPID   := Process.NO_PROCESS;
 
-        if not mbinfo.flags.hasModules then
+        if Multiboot.Boot_Module_Count = 0 then
             println ("Modules: No boot modules found.");
             return;
         end if;
@@ -165,43 +175,20 @@ package body Modules with SPARK_Mode => Off is
         -- ---------------------------------------------------------------
         -- Phase 1: Find the init.img CPIO archive among multiboot modules
         -- ---------------------------------------------------------------
-        declare
-            type ModuleList is
-                array (Unsigned_32 range 1..mbinfo.mods_count)
-                    of Multiboot.MBModule
-                with Convention => C;
-
-            mods : ModuleList
-                with Import,
-                     Address => Virtmem.P2Va (
-                         Integer_Address(mbinfo.mods_addr));
-
-            modName : String(1..16);
-        begin
-            for m of mods loop
-                declare
-                    strAddr  : constant System.Address :=
-                        Virtmem.P2Va (Integer_Address(m.mod_string));
-                    modStart : constant System.Address :=
-                        Virtmem.P2Va (Integer_Address(m.mod_start));
-                    modEnd   : constant System.Address :=
-                        Virtmem.P2Va (Integer_Address(m.mod_end));
-                    size     : constant Storage_Count :=
-                        modEnd - modStart;
-                begin
-                    Strings.toAda(strAddr, modName);
-
-                    print ("Module: "); print (modName);
-                    print (" ("); print (Integer(size));
-                    println (" bytes)");
-
-                    if modName(1..8) = "init.img" then
-                        initrdAddr := Virtmem.PhysAddress(m.mod_start);
-                        initrdSize := size;
-                    end if;
-                end;
-            end loop;
-        end;
+        for I in 1 .. Multiboot.Boot_Module_Count loop
+            declare
+                Item : constant Boot_Modules.Image := Multiboot.Boot_Module (I);
+                Size : constant Storage_Count := Storage_Count (Item.Limit - Item.First);
+                Name : constant String := Item.Name.Text (1 .. Item.Name.Length);
+            begin
+                print ("Module: "); print (Name);
+                print (" ("); print (Integer (Size)); println (" bytes)");
+                if Name = "init.img" then
+                    initrdAddr := Virtmem.PhysAddress (Item.First);
+                    initrdSize := Size;
+                end if;
+            end;
+        end loop;
 
         if initrdAddr = 0 or initrdSize = 0 then
             println ("Modules: No init.img found among boot modules.");

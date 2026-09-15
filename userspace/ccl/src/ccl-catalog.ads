@@ -1,5 +1,6 @@
 with Interfaces;
 with CCL.VM;
+with CCL.Host_Values;
 
 package CCL.Catalog with
    SPARK_Mode => On
@@ -30,7 +31,8 @@ is
       Interface_Full,
       Catalog_Full,
       Runtime_Binding_In_Descriptor,
-      Invalid_Zero_Parameter_Import);
+      Invalid_Zero_Parameter_Import,
+      Invalid_Host_Contract);
 
    type Operation_Descriptor is private;
    type Interface_Descriptor is private;
@@ -61,13 +63,18 @@ is
       Operation : Operation_Descriptor;
       Error     : out Catalog_Error);
 
+   procedure Define_Host_Operation
+     (Name : String; Parameters : Parameter_Count;
+      Import : CCL.Host_Values.Import_Declaration;
+      Item : out Operation_Descriptor; Error : out Catalog_Error);
+
    type Resolved_Operation is record
       Interface_Digest : Descriptor_Digest := EMPTY_DIGEST;
       Interface_Major  : Unsigned_16 := 0;
       Interface_Minor  : Unsigned_16 := 0;
       Operation        : Operation_Index := 0;
       Parameters       : Parameter_Count := 0;
-      Import           : CCL.VM.Import_Declaration := (others => <>);
+      Import           : CCL.Host_Values.Import_Declaration := (others => <>);
    end record;
 
    type Interface_Catalog is private;
@@ -168,7 +175,7 @@ private
    type Operation_Descriptor is record
       Name       : Bounded_Name;
       Parameters : Parameter_Count := 0;
-      Import     : CCL.VM.Import_Declaration := (others => <>);
+      Import     : CCL.Host_Values.Import_Declaration := (others => <>);
       Defined    : Boolean := False;
    end record;
 

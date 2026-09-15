@@ -12,6 +12,8 @@ package CCL_Workbench_Platform is
    Tab_Event : constant := 36;
    Toggle_REPL_Event : constant := 37;
    Toggle_Watch_Event : constant := 38;
+   Complete_Operation_Event : constant := 39;
+   Toggle_Syntax_Event : constant := 40;
    type Live_Label_Event is (Started, Stopped, Sampled, Faulted);
    procedure Live_Label_Changed (Event : Live_Label_Event);
    procedure Activate;

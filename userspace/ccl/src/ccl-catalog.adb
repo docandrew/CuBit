@@ -3,8 +3,8 @@ with CCL.Imports;
 package body CCL.Catalog with
    SPARK_Mode => On
 is
-   use type CCL.VM.Import_Declaration;
-   use type CCL.VM.Value_Kind;
+   use type CCL.Host_Values.Import_Declaration;
+   use type CCL.Host_Values.Value_Kind;
    use type CCL.VM.Authority_Class;
    use type CCL.Imports.Transfer_Mode;
    use type CCL.Imports.Cancellation_Mode;
@@ -97,18 +97,30 @@ is
       Item       : out Operation_Descriptor;
       Error      : out Catalog_Error)
    is
+   begin
+      Define_Host_Operation
+        (Name, Parameters, CCL.Host_Values.From_Bytecode (Import), Item, Error);
+   end Define_Operation;
+
+   procedure Define_Host_Operation
+     (Name : String; Parameters : Parameter_Count;
+      Import : CCL.Host_Values.Import_Declaration;
+      Item : out Operation_Descriptor; Error : out Catalog_Error)
+   is
       Valid : Boolean;
    begin
       Item := (others => <>);
       Make_Name (Name, False, Item.Name, Valid);
       if not Valid then
          Error := Invalid_Operation_Name;
+      elsif not CCL.Host_Values.Well_Formed (Import) then
+         Error := Invalid_Host_Contract;
       elsif Import.Binding /= 0 or else Import.Local /= 0 then
          --  Runtime-local bindings and local-variable positions are assigned
          --  after compilation and are never descriptor identity.
          Error := Runtime_Binding_In_Descriptor;
       elsif Parameters = 0 and then
-        (Import.Argument /= CCL.VM.Integer_Value or else
+        (Import.Argument /= CCL.Host_Values.Integer_Value or else
          Import.Ownership_Argument or else
          Import.Transfer /= CCL.Imports.Copy_Argument)
       then
@@ -120,7 +132,7 @@ is
          Item.Defined := True;
          Error := Catalog_Valid;
       end if;
-   end Define_Operation;
+   end Define_Host_Operation;
 
    procedure Add_Operation
      (Item      : in out Interface_Descriptor;
@@ -329,14 +341,15 @@ is
      (Digest_Present (Item.Interface_Digest) and then
       Item.Interface_Major > 0 and then
       Item.Import.Binding = 0 and then
-      Item.Import.Local = 0);
+      Item.Import.Local = 0 and then CCL.Host_Values.Well_Formed (Item.Import));
 
    function Contracts_Match
-     (Compiled, Declared : CCL.VM.Import_Declaration) return Boolean
+     (Compiled : CCL.VM.Import_Declaration;
+      Declared : CCL.Host_Values.Import_Declaration) return Boolean
    is
-     (Compiled.Binding = 0 and then
-      Compiled.Argument = Declared.Argument and then
-      Compiled.Result = Declared.Result and then
+     (CCL.Host_Values.Scalar_Only (Declared) and then Compiled.Binding = 0 and then
+      CCL.Host_Values.Kind_Of (Compiled.Argument) = Declared.Argument and then
+      CCL.Host_Values.Kind_Of (Compiled.Result) = Declared.Result and then
       Compiled.Authority = Declared.Authority and then
       Compiled.Ownership_Argument = Declared.Ownership_Argument and then
       Compiled.Transfer = Declared.Transfer and then

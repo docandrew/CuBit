@@ -1,0 +1,4 @@
+# Interpret (F5), or Watch (F7) for a live host-owned uptime label.
+(ui.label-text
+  (concat "Uptime seconds: "
+    (to-string (/ (clock.monotonic-ms) 1000))))
