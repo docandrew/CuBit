@@ -55,7 +55,8 @@ package body CCL.Language.Views with SPARK_Mode => On is
 
       function Keyword (S : String) return Boolean is
         (S = "LET" or S = "IN" or S = "END" or S = "IF" or
-         S = "THEN" or S = "ELSE" or S = "MOD");
+         S = "THEN" or S = "ELSE" or S = "MOD" or S = "FUNCTION" or
+         S = "AS" or S = "RETURN");
 
       type Infix_Operator is (No_Operator, Equality, Addition, Multiplication,
                               Division, Modulo);
@@ -285,6 +286,48 @@ package body CCL.Language.Views with SPARK_Mode => On is
          end loop;
       end Expression;
 
+      procedure Program is
+         Token, Type_Name : Text;
+         Start : Positive;
+      begin
+         loop
+            Skip;
+            exit when Failed or else Full or else Cursor + 7 > Input.Length or else
+              Input.Data (Cursor .. Cursor + 7) /= "FUNCTION" or else
+              (Cursor + 8 <= Input.Length and then
+               Basic_Name_Character (Input.Data (Cursor + 8)));
+            Start := Cursor;
+            Expect ("FUNCTION");
+            Name_Token (Token);
+            Put ("(define (" & Token.Data (1 .. Token.Length), Start);
+            Expect ("("); Skip;
+            if Cursor <= Input.Length and then Input.Data (Cursor) /= ')' then
+               loop
+                  Name_Token (Token); Expect ("AS"); Name_Token (Type_Name);
+                  Put (" (" & Token.Data (1 .. Token.Length) & " " &
+                       Type_Name.Data (1 .. Type_Name.Length) & ")", Cursor);
+                  Skip;
+                  exit when Failed or else Full or else Cursor > Input.Length or else Input.Data (Cursor) /= ',';
+                  Cursor := Cursor + 1;
+               end loop;
+            end if;
+            Expect (")"); Expect ("AS"); Name_Token (Type_Name);
+            Put (") " & Type_Name.Data (1 .. Type_Name.Length) & " ", Cursor);
+            Expect ("RETURN");
+            Expression (1);
+            Expect ("END");
+            Put (")", Cursor - 1);
+            if Lowered.Length > 0 then Ends (Lowered.Length) := Cursor; end if;
+            Put (" ", Cursor);
+         end loop;
+         Expression (0);
+      end Program;
+
+      function Type_Name (Kind : Static_Type) return String is
+        (case Kind is when Integer_Type => "Integer", when Boolean_Type => "Boolean",
+         when String_Type => "String", when Character_Type => "Character",
+         when Handler_Type => "Handler", when Invalid_Type => "Invalid");
+
       function Builtin
         (Kind : Node_Kind; Style : Surface; Compact : Boolean) return String is
         (case Kind is
@@ -380,6 +423,45 @@ package body CCL.Language.Views with SPARK_Mode => On is
             New_Line (Depth); Emit ("END");
          else
          case N.Kind is
+            when Function_Definition =>
+               declare
+                  Decl : constant Function_Declaration := Analysis.Tree.Functions (N.Function_Id);
+               begin
+                  Emit ((if Style = Lisp then "(define (" else "FUNCTION "));
+                  Identifier (Decl.Identifier);
+                  if Style = Basic then Emit ("("); end if;
+                  for P in 1 .. Decl.Count loop
+                     if Style = Lisp then Emit (" (");
+                     elsif P > 1 then Emit (", "); end if;
+                     Identifier (Decl.Parameters (P).Identifier);
+                     Emit ((if Style = Lisp then " " else " AS ") & Type_Name (Decl.Parameters (P).Kind));
+                     if Style = Lisp then Emit (")"); end if;
+                  end loop;
+                  Emit ((if Style = Lisp then ") " else ") AS ") & Type_Name (Decl.Result_Kind));
+                  if Style = Basic then Emit (" RETURN"); end if;
+                  if Pretty then New_Line (Depth + 1); else Emit (" "); end if;
+                  Child (N.First);
+                  if Style = Lisp then Emit (")");
+                  else New_Line (Depth); Emit ("END"); end if;
+                  Spans (Ref).After_Last := Buffer.Length + 1;
+                  if Pretty then New_Line (Depth); New_Line (Depth); else Emit (" "); end if;
+                  Print (N.Second, Style, Buffer, Spans, Depth, Pretty);
+                  return;
+               end;
+            when Handler_Form =>
+               Emit ((if Style = Lisp then "(handler " else "handler("));
+               Identifier (N.Identifier);
+               Emit (")");
+            when Function_Call =>
+               if Style = Lisp then Emit ("("); end if;
+               Identifier (N.Identifier);
+               if Style = Basic then Emit ("("); end if;
+               for P in 1 .. N.Argument_Count loop
+                  if Style = Lisp then Emit (" ");
+                  elsif P > 1 then Emit (", "); end if;
+                  Child (N.Arguments (P));
+               end loop;
+               Emit (")");
             when Integer_Literal =>
                declare
                   S : constant String := Interfaces.Integer_64'Image (N.Integer_Value);
@@ -443,7 +525,7 @@ package body CCL.Language.Views with SPARK_Mode => On is
       end if;
       Append (Input, Source);
       if From = Basic then
-         Expression (0);
+         Program;
          Skip;
          Failed := Failed or Cursor <= Input.Length;
       else

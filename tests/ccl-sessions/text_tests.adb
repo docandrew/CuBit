@@ -167,7 +167,9 @@ begin
       Loaded : CCL.Periodic_Programs.Load_Result;
       Updated : Boolean;
    begin
-      CCL.Periodic_Programs.Load (Program, "(ui.label-text ""watched"")", 1000, 1000, 4096, Loaded);
+      CCL.Periodic_Programs.Load (Program,
+        "(define (caption) String ""watched"") (ui.label-text (caption))",
+        1000, 1000, 4096, Loaded);
       pragma Assert (Loaded = CCL.Periodic_Programs.Loaded);
       Pump (Program, Catalog, Grants, Host, Updated);
       pragma Assert (Updated and CCL.UI_Labels.Image (Host.Label) = " watched");

@@ -23,6 +23,9 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Display_Protocol;
 with CuBit.Desktop_Messages;
 with CuBit.Memory_Grants;
+with CuBit.Logging;
+with CuBit.Log_Protocol;
+with CuBit.Log_Records;
 with CuBit.Streams;
 with CuBit.Protocols;
 with Font8x16;
@@ -3393,133 +3396,44 @@ procedure main is
    end cmdStreams;
 
    ---------------------------------------------------------------------------
-   --  cmdLogs - query the log store service for recent log entries
-   --  Uses async submit + Poll_Completion to get full reply message
-   --  Completion delivery carries the full reply message.
-   --  Logstore creates a temporary read-only grant to us, writes entries,
-   --  then replies with the grant ID.
+   --  cmdLogs - inspect typed diagnostics through an observer authority.
+   --  The reader owns its output page for the lifetime of this process.
    ---------------------------------------------------------------------------
-   CAP_SLOT_LOGSTORE : constant CapabilitySlot := 23;
-   LOG_QUERY_TOKEN : constant Unsigned_64 := 99;
+   Log_Reader : CuBit.Logging.Reader;
 
    procedure cmdLogs is
-      OP_LOG_QUERY : constant Unsigned_32 := 16#0800#;
-      LOG_MAX_ENTRIES : constant := 50;
+      use CuBit.Log_Protocol;
+      Value : Event;
+      Lost : Unsigned_64;
+      Result : Status;
    begin
-      --  Submit async OP_LOG_QUERY
-      declare
-         qMsg : constant Message := (
-            tag => (label  => OP_LOG_QUERY,
-                    length => 2,
-                    flags  => 0,
-                    reserved  => 0),
-            authorityTag => 0,
-            words    => (0 => LOG_MAX_ENTRIES,
-                         1 => 0,  --  filter: all PIDs
-                         others => 0));
-         ok : Boolean;
-      begin
-         ok := capSubmit (CAP_SLOT_LOGSTORE, qMsg, LOG_QUERY_TOKEN);
-         if not ok then
-            putStr ("error: submit failed" & LF);
-            return;
+      CuBit.Logging.Subscribe (Log_Reader, Result);
+      if Result /= OK then
+         putStr ("logs: observer unavailable or not authorized: " &
+                 Status'Image (Result) & LF);
+         return;
+      end if;
+      for Attempt in 1 .. 50 loop
+         CuBit.Logging.Read_Next (Log_Reader, Value, Lost, Result);
+         exit when Result = Empty;
+         if Result = OK then
+            putStr ("[PID ");
+            putDec64 (Value.Source);
+            putStr ("] ");
+            putDec64 (Value.Monotonic_Ms);
+            putStr (" " & CuBit.Log_Records.Severity'Image
+                      (CuBit.Log_Records.Level (Value.Data)) & ": " &
+                    CuBit.Log_Records.Text (Value.Data) & LF);
+         elsif Result = Gap then
+            putStr ("logs: dropped ");
+            putDec64 (Lost);
+            putStr (" records" & LF);
+         else
+            putStr ("logs: " & Status'Image (Result) & LF);
+            exit;
          end if;
-      end;
-
-      --  Poll for completion (with brief timeout)
-      for attempt in 1 .. 200 loop
-         declare
-            comp : CompletionEntry;
-            ret  : Unsigned_64;
-            ignore : Unsigned_64;
-         begin
-            ret := Poll_Completion (comp'Address);
-            if ret = 1 and then comp.token = LOG_QUERY_TOKEN then
-               if comp.msg.tag.label /= 16#F000# then
-                  putStr ("error: log query failed" & LF);
-                  return;
-               end if;
-
-               declare
-                  written : constant Natural :=
-                    Natural (comp.msg.words (0));
-                  gid     : constant Unsigned_64 := comp.msg.words (2);
-               begin
-                  if written = 0 then
-                     putStr ("no log entries" & LF);
-                     return;
-                  end if;
-
-                  --  Read entries from grant region
-                  declare
-                     grantAddr : constant System.Address := To_Address (
-                       Integer_Address (
-                         GRANT_REGION_BASE + gid * GRANT_SLOT_SIZE));
-                     eBuf   : array (0 .. 4095) of Unsigned_8
-                       with Import, Address => grantAddr;
-                     off    : Natural := 8;
-                     maxOff : constant Natural := 4096;
-                  begin
-                     for i in 0 .. written - 1 loop
-                        exit when off + 8 > maxOff;
-                        declare
-                           ePID : constant Unsigned_16 :=
-                             Unsigned_16 (eBuf (off)) or
-                             Shift_Left (Unsigned_16 (eBuf (off + 1)), 8);
-                           eDataLen : constant Natural := Natural (
-                             Unsigned_16 (eBuf (off + 2)) or
-                             Shift_Left (
-                                Unsigned_16 (eBuf (off + 3)), 8));
-                           eTS : constant Unsigned_32 :=
-                             Unsigned_32 (eBuf (off + 4)) or
-                             Shift_Left (
-                                Unsigned_32 (eBuf (off + 5)), 8) or
-                             Shift_Left (
-                                Unsigned_32 (eBuf (off + 6)), 16) or
-                             Shift_Left (
-                                Unsigned_32 (eBuf (off + 7)), 24);
-                        begin
-                           exit when off + 8 + eDataLen > maxOff;
-
-                           putStr ("[PID ");
-                           putDec (Unsigned_32 (ePID));
-                           putStr ("] ");
-                           putDec (eTS);
-                           putStr (": ");
-
-                           for j in 0 .. eDataLen - 1 loop
-                              declare
-                                 ch : constant Unsigned_8 :=
-                                   eBuf (off + 8 + j);
-                              begin
-                                 if ch = 10 then
-                                    putChar (LF);
-                                 elsif ch >= 32 and ch < 127 then
-                                    putChar (
-                                       Character'Val (Natural (ch)));
-                                 end if;
-                              end;
-                           end loop;
-
-                           if eDataLen = 0 or else
-                              eBuf (off + 8 + eDataLen - 1) /= 10
-                           then
-                              putChar (LF);
-                           end if;
-
-                           off := off + 8 + eDataLen;
-                        end;
-                     end loop;
-                  end;
-               end;
-               return;
-            end if;
-
-            ignore := syscall (SYSCALL_SLEEP, 10);
-         end;
       end loop;
-
-      putStr ("logs: timeout waiting for response" & LF);
+      CuBit.Logging.Close (Log_Reader, Result);
    end cmdLogs;
 
    procedure dispatchCommand is

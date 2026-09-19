@@ -4,6 +4,8 @@ with CCL.Catalog;
 with CCL.Interfaces.Clock;
 with CCL.Interfaces.Workbench_UI;
 with CCL.UI_Labels;
+with CCL.UI_Buttons;
+with CCL.Callbacks;
 with CCL.Language;
 with CCL.Compiler;
 with CCL.Language.Views;
@@ -36,6 +38,7 @@ with CuBit.UI.Widgets;
 package body CCL_Workbench is
    use type System.Address;
    use type CCL.Language.Interpretation_Status;
+   use type CCL.Callbacks.Events.Enqueue_Result;
    use type CCL.Periodic_Programs.Lifecycle;
    use type CCL.Periodic_Programs.Load_Result;
    use type CCL.Catalog.Catalog_Error;
@@ -99,6 +102,11 @@ package body CCL_Workbench is
      [CCL.UI_Labels.Set_Value => 16#0002_0001#,
       CCL.UI_Labels.Set_Visible => 16#0002_0002#,
       CCL.UI_Labels.Set_Text => 16#0002_0003#];
+   BUTTON_BINDINGS : constant array (CCL.UI_Buttons.Operation) of Unsigned_32 :=
+     [CCL.UI_Buttons.On_Click => 16#0002_0004#,
+      CCL.UI_Buttons.Set_Text => 16#0002_0005#,
+      CCL.UI_Buttons.Close_Button => 16#0002_0006#];
+   Live_Button : CCL.UI_Buttons.Model;
    type Pixel_Buffer is
      array (Natural range 0 .. MAXIMUM_WIDTH * MAXIMUM_HEIGHT - 1)
      of aliased Unsigned_32;
@@ -228,6 +236,9 @@ package body CCL_Workbench is
    Watch_Button_Bounds : constant CuBit.UI.Rect :=
      (x => 296, y => CLIENT_TITLE_HEIGHT + 25, w => 62, h => 27);
    Watch_Button_Pressed : Boolean := False;
+   Handler_Button_Bounds : constant CuBit.UI.Rect :=
+     (x => 366, y => CLIENT_TITLE_HEIGHT + 25, w => 118, h => 27);
+   Handler_Button_Pressed : Boolean := False;
 
    function Watching return Boolean is
      (CCL.Periodic_Programs.State (Live_Program) in
@@ -235,8 +246,8 @@ package body CCL_Workbench is
         CCL.Periodic_Programs.Stopping);
 
    function Live_Label_Bounds return CuBit.UI.Rect is
-     (x => 366, y => CLIENT_TITLE_HEIGHT + 25,
-      w => Canvas.width - 374, h => 27);
+     (x => (if CCL.UI_Buttons.Visible (Live_Button) then 490 else 366), y => CLIENT_TITLE_HEIGHT + 25,
+      w => Canvas.width - (if CCL.UI_Buttons.Visible (Live_Button) then 498 else 374), h => 27);
    Pointer_X, Pointer_Y : Natural := 0;
    Pointer_Known : Boolean := False;
 
@@ -244,7 +255,7 @@ package body CCL_Workbench is
    --  these semantic regions.  Keeping this state independent of raw pointer
    --  coordinates prevents an editor-sized repaint for every mouse report.
    type Hover_Target is
-     (Hover_None, Hover_Open, Hover_Save, Hover_Compile, Hover_Interpret, Hover_Watch,
+     (Hover_None, Hover_Open, Hover_Save, Hover_Compile, Hover_Interpret, Hover_Watch, Hover_Handler,
       Hover_VM_Run, Hover_Pause, Hover_Stop, Hover_Step_Into,
       Hover_Step_Over, Hover_Inspector_Splitter,
       Hover_Disassembly_Splitter, Hover_First_Column,
@@ -271,6 +282,9 @@ package body CCL_Workbench is
         (Pointer_X, Pointer_Y, Watch_Button_Bounds)
       then
          return Hover_Watch;
+      elsif CCL.UI_Buttons.Visible (Live_Button) and then
+        CuBit.UI.Point_In_Rect (Pointer_X, Pointer_Y, Handler_Button_Bounds)
+      then return Hover_Handler;
       elsif CuBit.UI.Point_In_Rect
         (Pointer_X, Pointer_Y, Compile_Button_Bounds)
       then
@@ -347,6 +361,9 @@ package body CCL_Workbench is
       elsif CuBit.UI.Point_In_Rect (Pointer_X, Pointer_Y, Watch_Button_Bounds) then
          return (if Watching then "Stop live label (F7); retain its last value"
                  else "Watch source every second (F7); edits do not change the snapshot. Save source with Ctrl+S.");
+      elsif CCL.UI_Buttons.Visible (Live_Button) and then
+        CuBit.UI.Point_In_Rect (Pointer_X, Pointer_Y, Handler_Button_Bounds)
+      then return "Run the retained CCL handler; Stop closes this button. Editor edits do not replace its code.";
       elsif CuBit.UI.Point_In_Rect
         (Pointer_X, Pointer_Y, Open_Button_Bounds)
       then
@@ -380,7 +397,7 @@ package body CCL_Workbench is
       elsif CuBit.UI.Point_In_Rect
         (Pointer_X, Pointer_Y, Stop_Button_Bounds)
       then
-         return "Stop - available during resumable bytecode execution";
+         return "Stop bytecode and close the registered CCL button";
       elsif CuBit.UI.Point_In_Rect
         (Pointer_X, Pointer_Y, Step_Into_Button_Bounds)
       then
@@ -470,6 +487,16 @@ package body CCL_Workbench is
    begin
       Value := CCL.Host_Values.Integer_Constant (0);
       Success := False;
+      for Op in CCL.UI_Buttons.Operation loop
+         if Binding = BUTTON_BINDINGS (Op) then
+            declare Accepted : Boolean; begin
+               CCL.UI_Buttons.Apply (Live_Button, Op, Argument, Visible_Interfaces, Granted_Interfaces, Accepted);
+               Value := CCL.Host_Values.Boolean_Constant (Accepted);
+               Success := True;
+            end;
+            return;
+         end if;
+      end loop;
       for Op in CCL.UI_Labels.Operation loop
          if Binding = UI_BINDINGS (Op) then
             CCL.UI_Labels.Apply_Value (Context.Label, Op, Argument, Success);
@@ -498,6 +525,7 @@ package body CCL_Workbench is
    procedure Handle_REPL_Event is new CCL_REPL_View.Handle_With_Executor (Submit_REPL);
    procedure Pump_Live is new CCL.Periodic_Programs.Evaluate_Values_Due
      (Live_Context, Live_Now, Invoke_Live);
+   procedure Dispatch_Button is new CCL.UI_Buttons.Dispatch_One (Live_Context, Invoke_Live);
 
    procedure Set_Result (Text : String);
    function Prepare_Source (Result : out CCL.Language.Views.Conversion) return Boolean;
@@ -549,6 +577,19 @@ package body CCL_Workbench is
              else CCL.Sessions.Result_Image (Outcome))));
       CCL.UI_Labels.Painted (Live_Host.Label);
    end Render_Live_Label;
+
+   procedure Render_Handler_Button is
+      Clipped : constant CuBit.UI.Canvas := CuBit.UI.With_Clip (Canvas, Handler_Button_Bounds);
+   begin
+      if CCL.UI_Buttons.Visible (Live_Button) then
+         CuBit.UI.Draw_Button
+           (Clipped, Handler_Button_Bounds, Colors,
+            (if not CCL.UI_Buttons.Enabled (Live_Button) then CuBit.UI.Button_Disabled
+             elsif Handler_Button_Pressed then CuBit.UI.Button_Pressed else CuBit.UI.Button_Normal),
+            CCL.UI_Buttons.Caption (Live_Button));
+      end if;
+      CCL.UI_Buttons.Painted (Live_Button);
+   end Render_Handler_Button;
 
    procedure Set_Result (Text : String) is
       Length : constant Natural := Natural'Min (Text'Length, Result_Text'Length);
@@ -782,6 +823,12 @@ package body CCL_Workbench is
          if Grant /= CCL.Catalog.Grant_Added then
             raise Program_Error with "Workbench label binding not installed";
          end if;
+      end loop;
+      for Op in CCL.UI_Buttons.Operation loop
+         CCL.Catalog.Resolve (Visible_Interfaces, "ui." & CCL.UI_Buttons.Name (Op), Resolved, Found);
+         if not Found then raise Program_Error with "missing Workbench button operation"; end if;
+         CCL.Catalog.Install (Granted_Interfaces, Resolved, BUTTON_BINDINGS (Op), Grant);
+         if Grant /= CCL.Catalog.Grant_Added then raise Program_Error with "button binding not installed"; end if;
       end loop;
    end Initialize_Visible_Interfaces;
 
@@ -1087,6 +1134,8 @@ package body CCL_Workbench is
 
    procedure Stop_Bytecode is
    begin
+      CCL.UI_Buttons.Close (Live_Button);
+      Handler_Button_Pressed := False;
       if VM_Has_State and then not VM_Snapshot.Terminal then
          CCL.VM.Stop (VM_State);
          VM_Continuous := False;
@@ -2269,7 +2318,7 @@ package body CCL_Workbench is
       CuBit.UI.Widgets.Toolbar_Button
         (Canvas, Stop_Button_Bounds, Colors,
          CuBit.UI.Widgets.Stop_Program,
-         enabled => VM_Has_State and then not VM_Snapshot.Terminal,
+         enabled => (VM_Has_State and then not VM_Snapshot.Terminal) or else CCL.UI_Buttons.Visible (Live_Button),
          pressed => Stop_Button_Pressed);
       CuBit.UI.Widgets.Toolbar_Separator
         (Canvas, (x => 218, y => CLIENT_TITLE_HEIGHT + 25,
@@ -2292,6 +2341,7 @@ package body CCL_Workbench is
          (if Watch_Button_Pressed then CuBit.UI.Button_Pressed else CuBit.UI.Button_Normal),
          (if Watching then "Unwatch" else "Watch"));
       Render_Live_Label;
+      Render_Handler_Button;
 
       CuBit.UI.Widgets.Group_Box
         (Canvas, Inspector_Bounds, Colors,
@@ -3282,6 +3332,11 @@ begin
                   then
                      Watch_Button_Pressed := True;
                      Dragging := False;
+                  elsif CCL.UI_Buttons.Enabled (Live_Button) and then Mouse_X >= 0 and then Mouse_Y >= 0 and then
+                    CuBit.UI.Point_In_Rect (Natural (Mouse_X), Natural (Mouse_Y), Handler_Button_Bounds)
+                  then
+                     Handler_Button_Pressed := True;
+                     Dragging := False;
                   elsif Mouse_X >= 0 and then Mouse_Y >= 0 and then
                     CuBit.UI.Point_In_Rect
                       (Natural (Mouse_X), Natural (Mouse_Y),
@@ -3311,7 +3366,8 @@ begin
                   then
                      Pause_Button_Pressed := True;
                      Dragging := False;
-                  elsif VM_Has_State and then not VM_Snapshot.Terminal and then
+                  elsif ((VM_Has_State and then not VM_Snapshot.Terminal) or else
+                         CCL.UI_Buttons.Visible (Live_Button)) and then
                     Mouse_X >= 0 and then Mouse_Y >= 0 and then
                     CuBit.UI.Point_In_Rect
                       (Natural (Mouse_X), Natural (Mouse_Y), Stop_Button_Bounds)
@@ -3528,6 +3584,17 @@ begin
                      Toggle_Watch;
                   end if;
                   Watch_Button_Pressed := False;
+                  if Handler_Button_Pressed and then Mouse_X >= 0 and then Mouse_Y >= 0 and then
+                    CuBit.UI.Point_In_Rect (Natural (Mouse_X), Natural (Mouse_Y), Handler_Button_Bounds)
+                  then
+                     declare Enqueued : CCL.Callbacks.Events.Enqueue_Result; begin
+                        CCL.UI_Buttons.Click (Live_Button, Enqueued);
+                        if Enqueued /= CCL.Callbacks.Events.Enqueued then
+                           Set_Result ("Button event: " & Enqueued'Image);
+                        end if;
+                     end;
+                  end if;
+                  Handler_Button_Pressed := False;
                   if Compile_Button_Pressed and then
                     Mouse_X >= 0 and then Mouse_Y >= 0 and then
                     CuBit.UI.Point_In_Rect
@@ -3699,6 +3766,18 @@ begin
          end loop;
          exit when not Running;
          declare
+            Ran : Boolean;
+            Outcome : CCL.Language.Interpretation_Result;
+         begin
+            Dispatch_Button (Live_Button, Granted_Interfaces, Live_Host, Ran, Outcome);
+            if Ran then
+               Set_Result ("Button: " & CCL.Sessions.Result_Image (Outcome));
+               Needs_Render := True;
+               REPL_Only_Render := False;
+               Dialog_Background_Dirty := True;
+            end if;
+         end;
+         declare
             Desired : constant Integer_32 := Desired_Pointer_Cursor;
          begin
             if Desired /= Last_Pointer_Cursor then
@@ -3836,6 +3915,20 @@ begin
                end;
             end if;
          end;
+         if CCL.UI_Buttons.Changed (Live_Button) and then
+           not CuBit.UI.File_Dialogs.Is_Open (File_Dialog)
+         then
+            --  Restore both the previous and current label positions.
+            declare Area : constant CuBit.UI.Rect := (366, CLIENT_TITLE_HEIGHT + 25, Canvas.width - 374, 27); begin
+               CuBit.UI.Fill_Rect (Canvas, Area, Colors.face);
+               Render_Live_Label;
+               Render_Handler_Button;
+               exit when Window_Present (Handle, Pixels'Address, Integer_32 (MAXIMUM_WIDTH * 4),
+                 Integer_32 (Area.x), Integer_32 (Area.y), Integer_32 (Area.w), Integer_32 (Area.h)) /= 0;
+            end;
+            Needs_Render := True; -- also update Stop's enabled state
+            REPL_Only_Render := False;
+         end if;
          if CCL.UI_Labels.Changed (Live_Host.Label) and then
            not CuBit.UI.File_Dialogs.Is_Open (File_Dialog)
          then
@@ -3916,7 +4009,7 @@ begin
             then
                Wakeup := Unsigned_64'Min (Wakeup, Next_Scrollbar_Repeat);
             end if;
-            if VM_Continuous then
+            if VM_Continuous or else CCL.UI_Buttons.Pending (Live_Button) > 0 then
                Window_Wait (0); -- VM has runnable work; yield between slices.
             elsif Wakeup /= Unsigned_64'Last then
                Window_Wait_Until (Wakeup);
@@ -3926,6 +4019,7 @@ begin
          end;
       end loop;
       CCL.Periodic_Programs.Stop (Live_Program);
+      CCL.UI_Buttons.Close (Live_Button);
       Window_Close (Handle);
    end;
 end Run;

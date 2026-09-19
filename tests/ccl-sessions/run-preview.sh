@@ -6,6 +6,7 @@ alr exec -- gprbuild -p -P ../tests/ccl-sessions/sessions_tests.gpr
 ../tests/ccl-sessions/build/main
 ../tests/ccl-sessions/build/host_tests
 ../tests/ccl-sessions/build/text_tests
+../tests/ccl-sessions/build/function_tests
 alr exec -- gprbuild -p -P ../userspace/ccl/ccl_ui_preview.gpr
 alr exec -- gcc -shared -fPIC -Wall -Wextra -Werror \
     $(pkg-config --cflags sdl2) ../tests/ccl-file-dialog/workbench_events.c \

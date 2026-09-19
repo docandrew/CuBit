@@ -17,11 +17,11 @@ package body CCL.Host_Values with SPARK_Mode => On is
    procedure To_Scalar (Item : Value; Scalar : out CCL.VM.Value; Success : out Boolean) is
    begin
       Scalar := CCL.VM.Integer_Constant (0);
-      Success := Item.Kind /= Text_Value;
+      Success := Item.Kind in Integer_Value | Boolean_Value;
       case Item.Kind is
          when Integer_Value => Scalar := CCL.VM.Integer_Constant (Item.Integer);
          when Boolean_Value => Scalar := CCL.VM.Boolean_Constant (Item.Boolean);
-         when Text_Value => null;
+         when Text_Value | Handler_Value => null;
       end case;
    end To_Scalar;
    function From_Bytecode (Item : CCL.VM.Import_Declaration) return Import_Declaration is

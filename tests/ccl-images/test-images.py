@@ -26,6 +26,9 @@ PROFILE = '''(system-image v1 (catalog "test-v1")
   (layout bootstrap-only) (provider "resident") (settings "settings")
   (file bootstrap "a" "a.app"))'''
 
+SAMPLES = {"button-clock.ccl", "clock-label.ccl",
+           "function-clock-label.ccl", "monotonic-clock.ccl"}
+
 
 class Images(unittest.TestCase):
     def setUp(self):
@@ -87,6 +90,22 @@ class Images(unittest.TestCase):
         result = self.compile(PROFILE.replace('"a.app"', '(concat "a" ".app")'))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("\ta.app\n", result.stdout)
+
+    def test_live_ccl_samples(self):
+        _, rows, _ = realizer.compile_plan(
+            ROOT / "images/artifacts.ccl", ROOT / "images/laptop-usb.ccl")
+        samples = [row for row in rows if row[5].startswith("samples/ccl/")]
+        self.assertEqual({Path(row[5]).name for row in samples}, SAMPLES)
+        for region, role, _, kind, source, destination in samples:
+            with self.subTest(sample=destination):
+                self.assertEqual((region, role, kind), ("OPTICAL", "CONTENT", "REPOSITORY_FILE"))
+                original = (ROOT / source).read_bytes()
+                self.assertLessEqual(len(original), 1024)
+                # Check actual filesystem bytes, not just recipe membership.
+                copied = subprocess.run(
+                    ["debugfs", "-R", f"cat /work/{Path(destination).name}",
+                     ROOT / "kernel/laptop_live_rw.img"], capture_output=True, check=True)
+                self.assertEqual(copied.stdout, original)
 
     def test_bootstrap_and_catalog_checks(self):
         self.reject(PROFILE.replace('"test-v1"', '"wrong-v1"'), diagnostic="CATALOG_MISMATCH")

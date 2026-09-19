@@ -211,10 +211,6 @@ int cubit_poll_completion(cubit_completion_t *completion);
 #define OP_CONFIG_LOAD    0x0604
 #define OP_CONFIG_SAVE    0x0605
 
-/* Log store IPC labels */
-#define OP_LOG_QUERY      0x0800
-#define OP_LOG_CLEAR      0x0801
-
 /* Stream IPC labels */
 #define OP_STREAM_SUBSCRIBE   0x0700
 #define OP_STREAM_UNSUBSCRIBE 0x0701

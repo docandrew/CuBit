@@ -9,7 +9,8 @@ def frame(n):
 shown = 2 + len('(ui.label-value 42)')
 hidden = shown + 1 + len('(ui.label-visible false)')
 clock = hidden + 1 + len('(clock.monotonic-ms)')
-text = clock + 1 + len('(ui.label-text (concat "Hello, " "Cubie"))')
+text = clock + 1 + len('(define (greet (name String)) String (concat "Hello, " name)) '
+                       '(ui.label-text (greet "Cubie"))')
 label = (366, 47, 1190, 74)
 assert ImageChops.difference(frame(1).crop(label), frame(shown).crop(label)).getbbox(), 'CCL did not paint its label'
 assert not ImageChops.difference(frame(1).crop(label), frame(hidden).crop(label)).getbbox(), 'hide did not restore the host label area'

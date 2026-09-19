@@ -1,0 +1,18 @@
+project Logging is
+   for Source_Dirs use (".", "build/source");
+   for Source_Files use
+     ("main.adb", "demo.adb", "cubit.ads", "cubit-protocols.ads",
+      "cubit-log_records.ads", "cubit-log_records.adb",
+      "cubit-text_to_log.ads", "cubit-text_to_log.adb",
+      "cubit-authority_policy.ads", "cubit-protocols-stream_policies.ads",
+      "cubit-protocols-stream_connections.ads",
+      "cubit-protocols-stream_bindings.ads",
+      "cubit-protocols-stream_bindings.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb", "demo.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Logging;

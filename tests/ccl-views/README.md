@@ -20,6 +20,9 @@ Infix tests cover precedence, left/right grouping, negative literals, nested
 conditional expressions, keyword boundaries, overflow-sensitive grouping,
 untaken division-by-zero branches, denied host admission before effects, and
 exactly-once left-to-right host invocation. Prior call spellings remain valid.
+Typed `define`/`FUNCTION` declarations and calls have canonical/source-span
+round trips, including zero parameters, string results, earlier-function calls,
+and escaped BASIC keyword names. There are currently 36 round-trip fixtures.
 The UI exercises F8, both interpreter surfaces, and a paused bytecode VM
 whose inspection must remain unchanged across F8 and Shift+F8.
 

@@ -395,6 +395,21 @@ capability-test: user_runtime ccl-manifest
 		isodir/boot/capability-test.app ../tests/process-construction/build
 
 # Portable protocol checks and an unprivileged native desktop adversary.
+.PHONY: prepare-stream-policies test-stream-policies prove-stream-policies
+prepare-stream-policies:
+	mkdir -p ../tests/stream-policies/build/source
+	cp ../userspace/runtime/gnat/cubit.ads ../userspace/runtime/gnat/cubit-protocols.ads \
+		../userspace/runtime/gnat/cubit-protocols-stream_policies.ads ../tests/stream-policies/build/source/
+
+test-stream-policies: prepare-stream-policies
+	$(ALR) gprbuild -p -P ../tests/stream-policies/policies.gpr
+	../tests/stream-policies/build/main
+
+prove-stream-policies: prepare-stream-policies
+	$(ALR) gnatprove -P ../tests/stream-policies/policies.gpr \
+		-u cubit-protocols-stream_policies.ads proof_cases.adb --level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/stream-policies/build/obj/gnatprove/gnatprove.out
+
 .PHONY: test-appearance prove-appearance
 test-appearance:
 	$(ALR) gprbuild -p -P ../tests/appearance/appearance.gpr
@@ -856,6 +871,13 @@ config: user_runtime
 	cp ../userspace/services/config/build/config.svc isodir/boot/config.svc
 
 # Build the userspace log store service
+.PHONY : log-check
+log-check: user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/log-check/build
+	$(call compile_ccl_manifest,../userspace/apps/log-check)
+	$(ALR) gprbuild -P ../userspace/apps/log-check/log_check.gpr
+	cp ../userspace/apps/log-check/build/log-check.app isodir/boot/log-check.app
+
 .PHONY : logstore
 logstore: user_runtime ccl-manifest
 	mkdir -p ../userspace/services/logstore/build
@@ -1055,6 +1077,11 @@ LAPTOP_LIVE_STAGE1 := filesystem ata nvme netstack virtio-net virtio-gpu hda \
 LAPTOP_LIVE_STAGE2 := logstore clock display desktop ccl-workbench devices files \
 	storage-check doom sameboy
 LAPTOP_LIVE_RW_DISK := laptop_live_rw.img
+# Deliberate demo set, not every future/experimental script in the directory.
+CCL_WORKSPACE_SAMPLES := ../userspace/ccl/samples/button-clock.ccl \
+	../userspace/ccl/samples/clock-label.ccl \
+	../userspace/ccl/samples/function-clock-label.ccl \
+	../userspace/ccl/samples/monotonic-clock.ccl
 
 # Native USB optical edition. Keep the original initrd-only laptop image as
 # an independent fallback; no ATA/NVMe driver is admitted in this profile.
@@ -1072,11 +1099,18 @@ run-usb-live: usb-live-iso
 		-audiodev sdl,id=snd0 -device ich9-intel-hda -device hda-output,audiodev=snd0 \
 		-serial file:/tmp/cubit-usb-live-serial.log -display sdl -no-reboot
 
-$(LAPTOP_LIVE_RW_DISK):
+# This is the generated boot template, never an attached persistent user disk.
+# Both laptop images copy it into RAM; rebuilding refreshes the demo workspace.
+$(LAPTOP_LIVE_RW_DISK): $(CCL_WORKSPACE_SAMPLES) Makefile
 	dd if=/dev/zero of=$(LAPTOP_LIVE_RW_DISK) bs=1M count=8
 	mke2fs -t ext2 -F -m 0 $(LAPTOP_LIVE_RW_DISK)
 	debugfs -w -R "mkdir work" $(LAPTOP_LIVE_RW_DISK)
 	debugfs -w -R "mkdir tmp" $(LAPTOP_LIVE_RW_DISK)
+	for sample in $(CCL_WORKSPACE_SAMPLES); do \
+		debugfs -w -R "write $$sample /work/$${sample##*/}" $(LAPTOP_LIVE_RW_DISK); \
+	done
+
+test-ccl-images: $(LAPTOP_LIVE_RW_DISK)
 
 .PHONY : laptop-live-initrd
 laptop-live-initrd: ccl-image ../images/laptop-initrd.ccl $(CCL_IMAGE_CATALOG) $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) $(LAPTOP_LIVE_RW_DISK)

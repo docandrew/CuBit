@@ -55,10 +55,11 @@ is
       To_String_Form,
       Host_Import_Form,
       Function_Definition,
-      Function_Call);
+      Function_Call,
+      Handler_Form);
 
    type Static_Type is
-     (Invalid_Type, Integer_Type, Boolean_Type, String_Type, Character_Type);
+     (Invalid_Type, Integer_Type, Boolean_Type, String_Type, Character_Type, Handler_Type);
 
    subtype Parameter_Count is Natural range 0 .. MAX_PARAMETERS;
    subtype Parameter_Index is Positive range 1 .. MAX_PARAMETERS;
@@ -128,7 +129,8 @@ is
       Host_Call_Failed,
       Host_Result_Type_Mismatch,
       Host_Argument_Out_Of_Bounds,
-      Host_Contract_Unsupported);
+      Host_Contract_Unsupported,
+      Evaluation_Depth_Exhausted);
 
    type Diagnostic_Code is
      (No_Diagnostic,
@@ -157,7 +159,10 @@ is
       Duplicate_Declaration,
       Function_Arity_Mismatch,
       Function_Argument_Mismatch,
-      Function_Result_Mismatch);
+      Function_Result_Mismatch,
+      Expected_Handler,
+      Invalid_Handler_Profile,
+      Handler_Result_Not_Exportable);
 
    type Text_Result is record
       Length : Natural range 0 .. MAX_TEXT_BYTES := 0;
@@ -261,10 +266,34 @@ is
      with Post => Result.Fuel_Remaining <= Fuel;
 
 private
+   --  Shared with the retained-handler child package. Only checked, private
+   --  frontend results may enter the analyze-free execution path.
+   generic
+      type Host_Context is limited private;
+      with procedure Invoke
+        (Context : in out Host_Context; Binding : Interfaces.Unsigned_32;
+         Argument : CCL.Host_Values.Value; Value : out CCL.Host_Values.Value;
+         Success : out Boolean);
+   procedure Process_Source_With_Host
+     (Source : String; Fuel : Natural;
+      Visible_Interfaces : CCL.Catalog.Interface_Catalog;
+      Grants : CCL.Catalog.Granted_Bindings;
+      Context : in out Host_Context; Host_Enabled : Boolean;
+      Analyze_Input : Boolean; Evaluate : Boolean;
+      Result : out Interpretation_Result; Tree : in out Syntax_Tree)
+     with Post => Result.Fuel_Remaining <= Fuel;
+
+   procedure Admit
+     (Tree : Syntax_Tree; Grants : CCL.Catalog.Granted_Bindings;
+      Allow_Text : Boolean; Status : out Interpretation_Status;
+      Position : out Source_Position);
+
    type Analysis_Result is record
       Status              : Analysis_Status := Analysis_Parse_Failed;
       Diagnostic          : Diagnostic_Code := No_Diagnostic;
       Diagnostic_Position : Natural range 0 .. MAX_SOURCE_LENGTH + 1 := 0;
       Tree                : Syntax_Tree;
+      Source_Length : Natural range 0 .. MAX_SOURCE_LENGTH := 0;
+      Source_Text : String (1 .. MAX_SOURCE_LENGTH) := [others => ' '];
    end record;
 end CCL.Language;

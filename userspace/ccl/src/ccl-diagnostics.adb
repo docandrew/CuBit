@@ -7,7 +7,7 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Source_Too_Long => "Source exceeds the 1024-byte limit",
          when Unexpected_End => "Expression ended before it was complete",
          when Unexpected_Token => "Unexpected token",
-         when Unknown_Form => "Unknown operation in this session's visible catalog",
+         when Unknown_Form => "Unknown operation or function; functions must be defined before use",
          when Expected_Close => "Expected a closing parenthesis",
          when Expected_Name => "Expected a binding or operation name",
          when Invalid_Integer => "Invalid or out-of-range integer",
@@ -29,7 +29,10 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Duplicate_Declaration => "Duplicate or reserved function/parameter name",
          when Function_Arity_Mismatch => "Function argument count does not match its declaration",
          when Function_Argument_Mismatch => "Argument type does not match the function parameter",
-         when Function_Result_Mismatch => "Function body does not match its declared return type");
+         when Function_Result_Mismatch => "Function body does not match its declared return type",
+         when Expected_Handler => "Expected a typed handler value",
+         when Invalid_Handler_Profile => "Handler must take no arguments and return Boolean",
+         when Handler_Result_Not_Exportable => "Pass the handler to a service; it cannot be returned from this invocation");
    end Message;
 
    function Message (Status : CCL.Language.Interpretation_Status) return String is
@@ -49,6 +52,7 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Host_Call_Failed => "Service call failed; no value returned",
          when Host_Result_Type_Mismatch => "Service returned a value with the wrong type",
          when Host_Argument_Out_Of_Bounds => "Argument exceeds the service's declared text bound",
-         when Host_Contract_Unsupported => "This interpreter host does not support the operation's value or lifecycle contract");
+         when Host_Contract_Unsupported => "This interpreter host does not support the operation's value or lifecycle contract",
+         when Evaluation_Depth_Exhausted => "Execution call/expression depth limit exceeded");
    end Message;
 end CCL.Diagnostics;

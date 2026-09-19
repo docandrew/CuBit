@@ -48,6 +48,7 @@ Options:
 The suite boots the NVMe profile headlessly and checks serial output for
 stable pass markers.
 Performance fixtures: bench-ipc, bench-audio, bench-storage, bench-input, bench-scheduler.
+Logging fixture: log-authority (build logstore procmgr clock log-check first).
 Use --timeout 100 for network-authority: it includes an intentional 30-second
 accept deadline and a seven-second backlog expiry wait, plus traffic checks.
 EOF
@@ -162,6 +163,8 @@ case "$TIMEOUT_SECONDS" in
 esac
 
 case "$TEST_NAME" in
+    log-authority)
+        ;;
     boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
         ;;
     *)
@@ -285,6 +288,9 @@ fi
 DISK_IMAGE="$BASE_DISK"
 INIT_PROFILE=""
 case "$TEST_NAME" in
+    log-authority)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-log-authority.ccl"
+        ;;
     async-ipc)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-async-ipc.ccl"
         ;;
@@ -635,6 +641,21 @@ if [ -n "$INIT_PROFILE" ]; then
               "write $INPUT_TEST_IMAGE $INPUT_TEST_IMAGE_NAME" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $INPUT_TEST_IMAGE_NAME" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "log-authority" ]; then
+        for LOG_IMAGE_NAME in logstore.svc clock.svc log-check.app; do
+            LOG_IMAGE="$KERNEL_DIR/isodir/boot/$LOG_IMAGE_NAME"
+            if [ ! -f "$LOG_IMAGE" ]; then
+                echo "headless: build logstore clock log-check first" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $LOG_IMAGE_NAME" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $LOG_IMAGE $LOG_IMAGE_NAME" \
+                "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $LOG_IMAGE_NAME" >&2
                 exit 1
             fi
         done
@@ -1302,6 +1323,14 @@ devmgr: startup complete, entering service loop
 procmgr: ready, entering receive loop
 shell: cwd=@nvme:0/
 ps2: consumer registered, entering event loop
+"
+        ;;
+    log-authority)
+        required_markers="
+logstore: authorized typed diagnostics ready
+TEST: PASS log-unapproved
+TEST: PASS log-quota
+TEST: PASS log-authority
 "
         ;;
     ccl-remote)

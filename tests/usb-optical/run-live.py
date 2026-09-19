@@ -28,7 +28,8 @@ parser.add_argument('--without-audio', action='store_true',
                     help='omit HDA hardware and verify optional audio cannot block boot')
 parser.add_argument('--sameboy', action='store_true', help='also exercise the native Game Boy frontend')
 parser.add_argument('--settings', action='store_true', help='exercise Settings and live shared-toolkit theme changes')
-parser.add_argument('--ccl-ui-hooks', action='store_true', help='exercise native REPL clock and scoped label hooks')
+parser.add_argument('--ccl-ui-hooks', action='store_true', help='exercise native REPL clock, label hooks and retained button callback')
+parser.add_argument('--ccl-samples', action='store_true', help='open an ISO-seeded workspace sample and invoke its button')
 parser.add_argument('--sameboy-audio', action='store_true',
                     help='capture the original test ROM tone and verify volume, mute and pause')
 parser.add_argument('--taskbar', action='store_true',
@@ -142,8 +143,7 @@ with (run / 'qemu.log').open('w') as log:
         wait_for('desktop: display info ready')
         time.sleep(2)
         hmp(f'screendump {run}/desktop.ppm')
-        if args.taskbar:
-            wait_for('clock: RTC-derived UTC ready')
+        if args.taskbar or args.ccl_ui_hooks or args.ccl_samples:
             from PIL import Image, ImageChops
             width, height = Image.open(run / 'desktop.ppm').size
 
@@ -170,6 +170,8 @@ with (run / 'qemu.log').open('w') as log:
                 hmp(f'screendump {path}')
                 return Image.open(path).convert('RGB')
 
+        if args.taskbar:
+            wait_for('clock: RTC-derived UTC ready')
             move_to(0, 0)
             original = screenshot('wallpaper-clean')
             move_to(width - 130, height - 18); click()
@@ -342,12 +344,32 @@ with (run / 'qemu.log').open('w') as log:
         wait_for('ccl-workbench: native window ready')
         time.sleep(2)
         hmp(f'screendump {run}/workbench.ppm')
+        if args.ccl_samples:
+            key('ctrl-o')
+            screenshot('ccl-sample-picker')
+            # The demo workspace places button-clock first. No source typing
+            # or mock file reads: native directory enumeration and FS IPC.
+            key('ret')
+            wait_for('ccl-workbench: workspace opened button-clock.ccl')
+            screenshot('ccl-sample-loaded')
+            key('f5')
+            registered = screenshot('ccl-sample-registered')
+            move_to(540, 162); click(); move_to(0, 0)
+            clicked = screenshot('ccl-sample-clicked')
+            label_bounds = (610, 149, 1000, 176)
+            if ImageChops.difference(registered.crop(label_bounds),
+                                     clicked.crop(label_bounds)).getbbox() is None:
+                raise RuntimeError('loaded clock sample did not update its label on click')
+            print('CCL SAMPLE PASS: file-picker load from live workspace, registration and clock callback.', flush=True)
+            # Close registration before other optional callback tests.
+            move_to(322, 162); click(); move_to(0, 0)
         if args.ccl_ui_hooks:
             key('f6')
             def repl_command(source):
                 for ch in source:
                     key({'(': 'shift-9', ')': 'shift-0', '.': 'dot',
-                         '-': 'minus', ' ': 'spc', '"': 'shift-apostrophe'}.get(ch, ch))
+                         '-': 'minus', ' ': 'spc', '"': 'shift-apostrophe'}.get(
+                             ch, 'shift-' + ch.lower() if ch.isupper() else ch))
                 key('ret')
                 time.sleep(1)
             repl_command('(ui.label-value 42)')
@@ -355,10 +377,25 @@ with (run / 'qemu.log').open('w') as log:
             repl_command('(ui.label-visible false)')
             repl_command('(clock.monotonic-ms)')
             hmp(f'screendump {run}/ccl-clock-repl.ppm')
-            repl_command('(ui.label-text "hello cubit")')
+            repl_command('(define (greet (name String)) String (concat "hello " name)) '
+                         '(ui.label-text (greet "cubit"))')
             hmp(f'screendump {run}/ccl-text-label.ppm')
             if serial.read_text(errors='replace').count('ccl-workbench: REPL completed') < 4:
                 raise RuntimeError('native REPL did not complete all four submissions')
+            repl_command('(define (clicked) Boolean (ui.label-text "Clicked!")) '
+                         '(ui.button-on-click (handler clicked))')
+            registered = screenshot('ccl-button-registered')
+            # Workbench's native client origin is (120, 124); the shared
+            # button is at client (366, 25); Desktop owns native title chrome.
+            move_to(540, 162)
+            click()
+            move_to(0, 0)
+            clicked = screenshot('ccl-button-clicked')
+            label_bounds = (610, 149, 1000, 176)
+            if ImageChops.difference(registered.crop(label_bounds),
+                                     clicked.crop(label_bounds)).getbbox() is None:
+                raise RuntimeError('native CCL button click did not change its label')
+            print('CCL BUTTON PASS: native input dispatched retained CCL and repainted its label.', flush=True)
         key('meta_l')
         for _ in range(5):
             key('down')

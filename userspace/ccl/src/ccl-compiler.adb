@@ -321,6 +321,11 @@ is
                   end if;
                end if;
 
+            when CCL.Language.Function_Definition | CCL.Language.Function_Call | CCL.Language.Handler_Form =>
+               --  No CCLB call-frame representation yet. Never silently inline
+               --  functions or drop their type/effect admission requirements.
+               Fail (Unsupported_Form, Index, Item.Source_Position);
+
             when CCL.Language.String_Literal |
                  CCL.Language.String_Length_Form |
                  CCL.Language.String_Index_Form |

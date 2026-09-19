@@ -22,6 +22,8 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Audio_Control;
+with CuBit.Authority_Policy;
+with CuBit.Log_Protocol;
 with CuBit.Authority; use CuBit.Authority;
 with CuBit.Memory_Grants;
 with CuBit.Filesystems;
@@ -31,6 +33,9 @@ with CuBit.Launch_Policy; use CuBit.Launch_Policy;
 
 procedure main is
    use ASCII;
+   --  Never reuse issuance identities within this bootstrap issuer lifetime.
+   --  Independent procmgr restart requires an epoch protocol, not yet supported.
+   Next_Log_Issuance : Unsigned_32 := 1;
 
    --  IPC label constants
    OP_SPAWN   : constant Unsigned_32 := 16#0100#;
@@ -854,34 +859,83 @@ procedure main is
                                  MAX_RETRIES : constant := 20;
                                  isAudioControl : constant Boolean :=
                                    Unsigned_64 (param0) = CuBit.Audio_Control.Service_Role;
+                                 isLogObserver : constant Boolean :=
+                                   Unsigned_64 (param0) = CuBit.Log_Protocol.Observer_Service_Role;
+                                 isLogPublisher : constant Boolean :=
+                                   Unsigned_64 (param0) = DRIVER_LOGSTORE;
+                                 use CuBit.Authority_Policy;
+                                 Authority : constant Bootstrap_Authority :=
+                                   (if isAudioControl then Master_Audio
+                                    elsif isLogObserver then Log_Observation
+                                    else Log_Publication);
+                                 Approval : constant Decision := Evaluate
+                                   (Requested => True,
+                                    Installation_Approved => Bootstrap_Approves
+                                      (Authority, systemStartup),
+                                    Session_Approved => True,
+                                    Issuer_Allowed => True);
+                                 Issued_Tag : Unsigned_64 := 0;
                               begin
                                  --  Only the trusted startup-plan path can
                                  --  approve this declared system authority.
                                  --  OP_SPAWN cannot supply systemStartup.
-                                 if isAudioControl and then not systemStartup then
+                                 if (isAudioControl or isLogObserver)
+                                   and then Approval /= Approved
+                                 then
                                     recordAuthority
                                       (childPID, Unsigned_64 (slotNum),
                                        AUTH_SOURCE_MANIFEST,
                                        AUTH_REASON_STARTUP_REQUIRED,
                                        CAP_TYPE_ENDPOINT, True, False,
                                        rightsMask, Unsigned_64 (param0), 0);
-                                    debugPrint ("procmgr: master audio authority denied" & LF);
+                                    debugPrint ("procmgr: startup-only authority denied" & LF);
                                  else
                                  for attempt in 1 .. MAX_RETRIES loop
                                     driverPID := getInfo (
                                        SYSINFO_REGISTERED_DRIVER,
                                        (if isAudioControl then DRIVER_MIXER
+                                        elsif isLogObserver then DRIVER_LOGSTORE
                                         else Unsigned_64 (param0)));
                                     exit when driverPID /= 0;
                                     ignore := syscall (
                                        SYSCALL_SLEEP, 50);
                                  end loop;
 
-                                 if driverPID /= 0 then
+                                 if isAudioControl then
+                                    Issued_Tag := CuBit.Audio_Control.Authority_Tag;
+                                 elsif (isLogObserver or isLogPublisher)
+                                   and then Next_Log_Issuance /= 0
+                                 then
+                                    if isLogObserver then
+                                       Issued_Tag := CuBit.Log_Protocol.Observer_Tag_Base +
+                                         Unsigned_64 (Next_Log_Issuance);
+                                    else
+                                       Issued_Tag := CuBit.Log_Protocol.Publisher_Tag
+                                         (CuBit.Log_Protocol.Bootstrap_Budget,
+                                          Unsigned_64 (Next_Log_Issuance));
+                                    end if;
+                                    if Next_Log_Issuance = Unsigned_32
+                                      (CuBit.Log_Protocol.Publication_Issuance'Last)
+                                    then
+                                       Next_Log_Issuance := 0;
+                                    else
+                                       Next_Log_Issuance := Next_Log_Issuance + 1;
+                                    end if;
+                                 end if;
+                                 if (isLogObserver or isLogPublisher)
+                                   and then Issued_Tag = 0
+                                 then
+                                    recordAuthority
+                                      (childPID, Unsigned_64 (slotNum),
+                                       AUTH_SOURCE_MANIFEST,
+                                       AUTH_REASON_MINT_FAILED,
+                                       CAP_TYPE_ENDPOINT, True, False,
+                                       rightsMask, Unsigned_64 (param0), 0);
+                                    debugPrint ("procmgr: log issuance exhausted" & LF);
+                                 elsif driverPID /= 0 then
                                     mintRecorded
                                       (childPID, CAP_TYPE_ENDPOINT, driverPID,
-                                       (if isAudioControl then CuBit.Audio_Control.Authority_Tag
-                                        else 0), rightsMask, Unsigned_64 (slotNum),
+                                       Issued_Tag, rightsMask, Unsigned_64 (slotNum),
                                        AUTH_SOURCE_MANIFEST,
                                        AUTH_REASON_MANIFEST_REQUEST, True,
                                        ignore);
@@ -1766,7 +1820,7 @@ procedure main is
       printDec (Unsigned_32 (newPID));
       debugPrint ("" & LF);
 
-      --  Notify requester and logstore about declared streams (after resume)
+      --  Notify requester about declared streams (after resume).
       if streamBitmask /= 0 then
          declare
             evMsg : Message := NULL_MESSAGE;
@@ -1784,22 +1838,6 @@ procedure main is
                debugPrint ("procmgr: sent stream available" & LF);
             end if;
 
-            --  Notify logstore only through an already-held endpoint.
-            declare
-               logPID : constant Unsigned_64 :=
-                  getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_LOGSTORE);
-               ignore : Boolean;
-               endpointSlot : CapabilitySlot;
-               hasEndpoint : Boolean;
-            begin
-               if logPID /= 0 and logPID /= Unsigned_64'Last then
-                  Find_Endpoint_Capability
-                    (ProcessID (logPID), endpointSlot, hasEndpoint);
-                  ignore := hasEndpoint and then capSubmit
-                    (endpointSlot, evMsg, Unsigned_64'Last);
-                  debugPrint ("procmgr: notified logstore" & LF);
-               end if;
-            end;
          end;
       end if;
 

@@ -52,6 +52,10 @@ begin
    CCL.Interfaces.Clock.Publish (Catalog, Error);
    Check ("""hello world""");
    Check ("42");
+   Check ("(define (answer) Integer 42) (answer)");
+   Check ("(define (seconds (ms Integer)) Integer (/ ms 1000)) (seconds 3661000)");
+   Check ("(define (a (s String)) String s) (define (b (s String)) String (a s)) (b ""Cubie"")");
+   Check ("(define (FUNCTION (AS Integer) (RETURN Integer)) Integer (+ AS RETURN)) (FUNCTION 20 22)");
    Check ("-9223372036854775808");
    Check ("(let ((name ""Cubie"")) (concat ""Hello, "" name))");
    Check ("(let ((LET 42)) LET)");

@@ -96,10 +96,16 @@ package body Control_Wire with SPARK_Mode is
       begin
          Flag (Item.Status = CCL.Language.Succeeded);
          Text (CCL.Sessions.Result_Image (Item));
-         Number (case CCL.Sessions.Result_Type (Item) is
-           when CCL.Language.Invalid_Type => 0, when CCL.Language.Integer_Type => 1,
-           when CCL.Language.Boolean_Type => 2, when CCL.Language.String_Type => 3,
-           when CCL.Language.Character_Type => 4);
+         case CCL.Sessions.Result_Type (Item) is
+            when CCL.Language.Invalid_Type => Number (0);
+            when CCL.Language.Integer_Type => Number (1);
+            when CCL.Language.Boolean_Type => Number (2);
+            when CCL.Language.String_Type => Number (3);
+            when CCL.Language.Character_Type => Number (4);
+            --  Not representable in today's Interpretation_Result. If that
+            --  expands later, owner-local handler code still has no wire tag.
+            when CCL.Language.Handler_Type => Failed := True;
+         end case;
          Number (Interfaces.Unsigned_64 (Item.Diagnostic_Position));
          Number (Interfaces.Unsigned_64 (Item.Fuel_Remaining));
       end Outcome;

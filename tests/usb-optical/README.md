@@ -37,6 +37,20 @@ IDs, not ambiguous human-monitor prompts. Do not run image-building/headless
 tests concurrently against shared kernel staging. run-hid.sh uses the original
 NVMe Devices fixture and validates mouse-only regression, not CD reads.
 
+Bundled Workbench samples, loaded through native directory/file IPC:
+
+```sh
+nix develop -c make -C kernel test-ccl-images usb-live-iso
+nix develop -c python3 tests/usb-optical/run-live.py --cpus 4 --ccl-samples
+```
+
+The image test compares all four RAM-workspace copies with their repository
+sources. The boot test opens `button-clock.ccl` using Ctrl+O/Enter, interprets it
+with F5, clicks Refresh, and checks that its clock label changes. Screenshots of
+the picker, loaded document and callback result are retained. These tests use
+the ISO's fresh `@mem:0/work`, never a persistent user workspace. See the
+[sample instructions](../../userspace/ccl/samples/README.md).
+
 Taskbar/clock/audio regression (uses the original, freely bundled test ROM):
 
 ```sh

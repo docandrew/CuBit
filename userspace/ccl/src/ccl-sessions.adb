@@ -141,6 +141,7 @@ package body CCL.Sessions with SPARK_Mode is
          when CCL.Language.Character_Type =>
             return "Character: " & Outcome.Result_Character;
          when CCL.Language.Invalid_Type => return "ok";
+         when CCL.Language.Handler_Type => return "Handler";
       end case;
    end Result_Image;
 end CCL.Sessions;

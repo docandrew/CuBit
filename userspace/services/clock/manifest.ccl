@@ -3,4 +3,5 @@
   (identity "com.cubit.clock")
   (version "0.1.0")
   (request-service config read-write config)
+  (request-service logstore read-write logstore)
   (config-scope (rights read) "clock."))

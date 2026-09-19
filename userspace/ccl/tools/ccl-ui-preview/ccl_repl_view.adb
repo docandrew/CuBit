@@ -8,7 +8,8 @@ package body CCL_REPL_View is
    function Type_Name (Kind : CCL.Host_Values.Value_Kind) return String is
      (case Kind is when CCL.Host_Values.Integer_Value => "Integer",
                    when CCL.Host_Values.Boolean_Value => "Boolean",
-                   when CCL.Host_Values.Text_Value => "String");
+                   when CCL.Host_Values.Text_Value => "String",
+                   when CCL.Host_Values.Handler_Value => "Handler() -> Boolean");
    type Geometry is record
       Input, Transcript, Clear : Rect;
       Capacity : Positive := 1;

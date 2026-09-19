@@ -32,6 +32,11 @@
   (file optical "sameboy" "apps/sameboy.app")
   (file optical "doom-wad" "apps/doom1.wad")
   (file optical "sameboy-test" "apps/sameboy/00.gb")
+  # Read-only originals; editable copies also seed live-rw.ext2's /work.
+  (file optical "ccl-button-clock" "samples/ccl/button-clock.ccl")
+  (file optical "ccl-clock-label" "samples/ccl/clock-label.ccl")
+  (file optical "ccl-function-clock-label" "samples/ccl/function-clock-label.ccl")
+  (file optical "ccl-monotonic-clock" "samples/ccl/monotonic-clock.ccl")
   (file optical "sameboy-license" "licenses/SameBoy.txt")
   (file optical "openlibm-notices" "licenses/openlibm")
 )

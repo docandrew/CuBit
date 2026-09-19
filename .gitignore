@@ -1,5 +1,6 @@
 build
 __pycache__/
+/tests/performance/results/
 /userspace/services/display/build-delayed/
 /userspace/services/desktop/build-delayed/
 cubit_kernel

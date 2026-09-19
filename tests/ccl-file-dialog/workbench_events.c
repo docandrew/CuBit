@@ -64,6 +64,32 @@ int SDL_WaitEvent(SDL_Event *event)
     memset(event, 0, sizeof(*event));
     event->type = SDL_KEYDOWN;
     const char *syntax_source = getenv("CCL_TEST_SYNTAX");
+    const char *button_source = getenv("CCL_TEST_BUTTON");
+    if (button_source != NULL) {
+        unsigned length = (unsigned)strlen(button_source);
+        if (stage == 0) { event->key.keysym.sym = SDLK_a; event->key.keysym.mod = KMOD_CTRL; }
+        else if (stage <= length) {
+            event->type = SDL_TEXTINPUT;
+            event->text.text[0] = button_source[stage - 1];
+        } else {
+            unsigned action = stage - length - 1;
+            if (action == 0 || action == 6) event->key.keysym.sym = SDLK_F5;
+            else if (action == 3) { event->key.keysym.sym = SDLK_a; event->key.keysym.mod = KMOD_CTRL; }
+            else if (action == 4 || action == 5) {
+                event->type = SDL_TEXTINPUT;
+                event->text.text[0] = action == 4 ? '4' : '2';
+            } else if (action <= 12) {
+                int down = action == 1 || action == 7 || action == 9 || action == 11;
+                event->type = down ? SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
+                event->button.button = SDL_BUTTON_LEFT;
+                event->button.x = action == 9 || action == 10 ? 200 : 410;
+                event->button.y = 60;
+            } else event->type = SDL_QUIT;
+        }
+        ++stage;
+        generated_event = 1;
+        return 1;
+    }
     if (syntax_source != NULL) {
         unsigned length = (unsigned)strlen(syntax_source);
         if (stage == 0) { event->key.keysym.sym = SDLK_a; event->key.keysym.mod = KMOD_CTRL; }
@@ -94,7 +120,8 @@ int SDL_WaitEvent(SDL_Event *event)
         static const char *commands[] = {
             "(ui.label-value 42)", "(ui.label-visible false)",
             "(clock.monotonic-ms)",
-            "(ui.label-text (concat \"Hello, \" \"Cubie\"))"
+            "(define (greet (name String)) String (concat \"Hello, \" name)) "
+            "(ui.label-text (greet \"Cubie\"))"
         };
         unsigned offset = 1;
         if (stage == 0) event->key.keysym.sym = SDLK_F6;

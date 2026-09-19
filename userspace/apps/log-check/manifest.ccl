@@ -1,0 +1,6 @@
+(executable-manifest v1
+  (identity "com.cubit.log-check")
+  (version "0.1.0")
+  (request-service logstore read-write logstore)
+  (request-service log-observer read-write log-observer)
+  (request-service process-manager read-write process-manager))

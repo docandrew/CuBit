@@ -1,0 +1,8 @@
+# Interpret (F5), or Watch (F7). Functions use the runtime's explicit grants.
+(define (seconds (ms Integer)) Integer
+  (/ ms 1000))
+
+(define (clock-label (elapsed Integer)) String
+  (concat "Uptime seconds: " (to-string elapsed)))
+
+(ui.label-text (clock-label (seconds (clock.monotonic-ms))))

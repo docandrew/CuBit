@@ -12,7 +12,7 @@
   (request-service display read-write display)
   (request-notification keyboard manage keyboard)
   (request-notification mouse manage mouse)
-  (request-service logstore read-write logstore)
+  (request-service log-observer read-write log-observer)
   # Preserve the old shell's broad, explicitly declared access requests.
   (filesystem-scope (rights read) all)
   (config-scope (rights read write) all))
