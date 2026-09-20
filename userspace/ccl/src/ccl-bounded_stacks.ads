@@ -32,6 +32,11 @@ is
       Value  : out Element_Type;
       Result : out Operation_Result);
 
+   -- Zero selects the top. Checked access never exposes backing storage.
+   procedure Peek_At
+     (Item : Stack; Depth : Unsigned_32; Value : out Element_Type;
+      Result : out Operation_Result);
+
    function "=" (Left, Right : Stack) return Boolean;
 
 private

@@ -48,7 +48,7 @@ package body CuBit.Logging is
       Msg : Message := Request (Publish);
    begin
       Submitted := False;
-      if Item.State in In_Flight | Disabled then
+      if Item.Disconnecting or else Item.State in In_Flight | Disabled then
          Drop (Item);
          return;
       end if;
@@ -61,6 +61,7 @@ package body CuBit.Logging is
             return;
          end if;
          Item.State := Ready;
+         Item.Has_Grant := True;
       end if;
       Logs.Encode (Value, Bytes, Used);
       for I in Bytes'Range loop
@@ -101,6 +102,24 @@ package body CuBit.Logging is
          Drop (Item);
       end if;
    end Complete;
+
+   procedure Disconnect (Item : in out Publisher; Done : out Boolean) is
+      Accepted : Boolean;
+   begin
+      Item.Disconnecting := True;
+      if Item.Has_Grant then
+         --  Repetition is harmless, including already-retired references.
+         --  Accepted alone is deliberately not used as the release condition.
+         Grants.Revoke (Item.Grant, Accepted);
+         if Grants.Retirement_Confirmed (Item.Grant) then
+            Item.Has_Grant := False;
+         end if;
+      end if;
+      Done := not Item.Has_Grant and then not Pending (Item);
+      if Done then
+         Item.State := Disabled;
+      end if;
+   end Disconnect;
 
    procedure Subscribe (Item : in out Reader; Result : out Status) is
       Msg : Message := Request (CuBit.Log_Protocol.Subscribe);

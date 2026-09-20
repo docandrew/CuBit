@@ -11,4 +11,10 @@ package CuBit.Grant_References with Pure, SPARK_Mode is
       slot : Global_Slot := 0;
       generation : Grant_References.Generation := 1;
    end record;
+   --  Kernel query: zero = owned inactive slot, live generation otherwise;
+   --  errors/foreign slots return U64'Last. Generations never wrap.
+   function Retirement_Confirmed
+     (Item : Reference; Observed : Unsigned_64) return Boolean is
+     (Observed = 0 or else
+      (Observed in Generation and then Observed > Item.generation));
 end CuBit.Grant_References;

@@ -1,0 +1,10 @@
+# Use Interpret: this example also uses functions and strings (not yet CCLB).
+(type Color (enum Red Blue Green))
+
+(define (caption (color Color)) String
+  (concat "Selected color: " (to-string color)))
+
+(let ((selected Color.Blue))
+  (if (= selected Color.Red)
+    (caption Color.Green)
+    (caption selected)))

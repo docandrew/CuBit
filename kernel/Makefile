@@ -872,7 +872,14 @@ config: user_runtime
 
 # Build the userspace log store service
 .PHONY : log-check
-log-check: user_runtime ccl-manifest
+.PHONY : log-retire
+log-retire: user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/log-retire/build
+	$(call compile_ccl_manifest,../userspace/apps/log-retire)
+	$(ALR) gprbuild -P ../userspace/apps/log-retire/log_retire.gpr
+	cp ../userspace/apps/log-retire/build/log-retire.app isodir/boot/log-retire.app
+
+log-check: user_runtime ccl-manifest log-retire
 	mkdir -p ../userspace/apps/log-check/build
 	$(call compile_ccl_manifest,../userspace/apps/log-check)
 	$(ALR) gprbuild -P ../userspace/apps/log-check/log_check.gpr
@@ -1077,31 +1084,36 @@ LAPTOP_LIVE_STAGE1 := filesystem ata nvme netstack virtio-net virtio-gpu hda \
 LAPTOP_LIVE_STAGE2 := logstore clock display desktop ccl-workbench devices files \
 	storage-check doom sameboy
 LAPTOP_LIVE_RW_DISK := laptop_live_rw.img
-# Deliberate demo set, not every future/experimental script in the directory.
-CCL_WORKSPACE_SAMPLES := ../userspace/ccl/samples/button-clock.ccl \
-	../userspace/ccl/samples/clock-label.ccl \
-	../userspace/ccl/samples/function-clock-label.ccl \
-	../userspace/ccl/samples/monotonic-clock.ccl
+# All runnable examples belong in the live workspace. The image regression
+# also requires matching explicit optical placements in the CCL profile.
+CCL_WORKSPACE_SAMPLES := $(sort $(wildcard ../userspace/ccl/samples/*.ccl))
 
 # Native USB optical edition. Keep the original initrd-only laptop image as
 # an independent fallback; no ATA/NVMe driver is admitted in this profile.
-.PHONY: usb-live-iso run-usb-live
+.PHONY: usb-live-iso run-usb-live run-usb-live-fast
 usb-live-iso: ccl-image ../images/laptop-usb.ccl $(CCL_IMAGE_CATALOG) cubit_kernel $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) $(LAPTOP_LIVE_RW_DISK)
 	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)"
 
 run-usb-live: usb-live-iso
-	qemu-system-x86_64 $(QEMU_ACCEL_ARGS) -machine q35 -cpu host -smp 4 -m 8G \
+	$(MAKE) run-usb-live-fast
+
+# Match the working desktop frontend: SDL's native Wayland display can leave
+# a running guest without a visible window on the development workstation.
+# This target only reuses the completed ISO; it never refreshes its contents.
+run-usb-live-fast:
+	@test -f cubit_laptop_usb.iso || (echo "missing cubit_laptop_usb.iso; run make -C kernel usb-live-iso first" && false)
+	GDK_BACKEND=x11 qemu-system-x86_64 $(QEMU_ACCEL_ARGS) -machine q35 -cpu host -smp 4 -m 8G \
 		-nodefaults -device VGA -device qemu-xhci,id=xhci \
 		-drive file=cubit_laptop_usb.iso,if=none,id=livecd,media=cdrom,format=raw,readonly=on \
 		-device usb-bot,id=usbcd,bus=xhci.0,port=1 \
 		-device scsi-cd,bus=usbcd.0,lun=0,drive=livecd,bootindex=1 \
 		-device usb-mouse,bus=xhci.0,port=2 \
 		-audiodev sdl,id=snd0 -device ich9-intel-hda -device hda-output,audiodev=snd0 \
-		-serial file:/tmp/cubit-usb-live-serial.log -display sdl -no-reboot
+		-serial file:/tmp/cubit-usb-live-serial.log -display gtk,zoom-to-fit=on -no-reboot
 
 # This is the generated boot template, never an attached persistent user disk.
 # Both laptop images copy it into RAM; rebuilding refreshes the demo workspace.
-$(LAPTOP_LIVE_RW_DISK): $(CCL_WORKSPACE_SAMPLES) Makefile
+$(LAPTOP_LIVE_RW_DISK): $(CCL_WORKSPACE_SAMPLES) ../userspace/ccl/samples Makefile
 	dd if=/dev/zero of=$(LAPTOP_LIVE_RW_DISK) bs=1M count=8
 	mke2fs -t ext2 -F -m 0 $(LAPTOP_LIVE_RW_DISK)
 	debugfs -w -R "mkdir work" $(LAPTOP_LIVE_RW_DISK)

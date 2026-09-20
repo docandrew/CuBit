@@ -7,6 +7,8 @@ with CCL.Handler_References;
 package body CCL.Language with
    SPARK_Mode => On
 is
+   use type CCL.Types.Type_Reference;
+   use type CCL.Types.Definition_Result;
    use type CCL.Host_Values.Value_Kind;
    use type CCL.Checked_Arithmetic.Arithmetic_Error;
    use type CCL.Imports.Transfer_Mode;
@@ -24,6 +26,7 @@ is
       Text      : Text_Regions.String_Value;
       Character_Item : Character := Character'Val (0);
       Handler_Id : Function_Reference := NO_FUNCTION;
+      Alternative : CCL.Types.Component_Index := 1;
    end record;
 
    function Analysis_Status_Of
@@ -41,6 +44,7 @@ is
 
    function Analysis_Root
      (Result : Analysis_Result) return Node_Reference is (Result.Tree.Root);
+   function Analysis_Types (Result : Analysis_Result) return CCL.Types.Registry is (Result.Tree.Types);
 
    function Analysis_Node
      (Result : Analysis_Result;
@@ -347,6 +351,8 @@ is
          Host_Found    : Boolean;
          Arguments     : Argument_Array := [others => NO_NODE];
          Count         : Parameter_Count := 0;
+         Variant_Type : Static_Type;
+         Choice : CCL.Types.Component_Count;
       begin
          Read_Name (Operator_Name, Ok);
          if not Ok then
@@ -354,7 +360,50 @@ is
             return;
          end if;
 
-         if Name_Is (Operator_Name, "+") or else
+         Index := NO_NODE;
+         if Name_Is (Operator_Name, "match") then
+            Parse_Expression (Depth + 1, A);
+            declare
+               Previous, Arm : Node_Reference := NO_NODE;
+               Pattern_Name, Bound_Name : Name;
+               Arms : CCL.Types.Component_Count := 0;
+            begin
+               Skip_Trivia;
+               while Diagnostic = No_Diagnostic and then Cursor < Source'Length and then
+                 Source (Source'First + Cursor) /= ')'
+               loop
+                  if Arms = CCL.Types.Maximum_Components then
+                     Diagnostic := Invalid_Match_Pattern; return;
+                  end if;
+                  Arms := Arms + 1;
+                  Expect ('(', Ok); if not Ok then return; end if;
+                  Expect ('(', Ok); if not Ok then return; end if;
+                  Read_Name (Pattern_Name, Ok); if not Ok then return; end if;
+                  CCL.Types.Resolve_Alternative (Tree.Types, Pattern_Name, Variant_Type, Choice);
+                  if Choice = 0 then Diagnostic := Invalid_Match_Pattern; return; end if;
+                  Bound_Name := (others => <>);
+                  Skip_Trivia;
+                  if Cursor < Source'Length and then Source (Source'First + Cursor) /= ')' then
+                     Read_Name (Bound_Name, Ok); if not Ok then return; end if;
+                  end if;
+                  Expect (')', Ok); if not Ok then return; end if;
+                  Parse_Expression (Depth + 1, C);
+                  if Diagnostic /= No_Diagnostic then return; end if;
+                  Expect (')', Ok); if not Ok then return; end if;
+                  Add_Node ((Kind => Match_Arm, Identifier => Bound_Name, Pattern => Pattern_Name,
+                    Declared_Kind => Variant_Type, Alternative => Choice, First => C, others => <>), Arm);
+                  if Diagnostic /= No_Diagnostic then return; end if;
+                  if Previous = NO_NODE then B := Arm;
+                  else Tree.Nodes (Previous).Second := Arm; end if;
+                  Previous := Arm;
+                  Skip_Trivia;
+               end loop;
+               Expect (')', Ok);
+               if Diagnostic = No_Diagnostic and then Ok then
+                  Add_Node ((Kind => Match_Form, First => A, Second => B, others => <>), Index);
+               end if;
+            end;
+         elsif Name_Is (Operator_Name, "+") or else
            Name_Is (Operator_Name, "add") or else
            Name_Is (Operator_Name, "*") or else
            Name_Is (Operator_Name, "multiply") or else
@@ -499,7 +548,21 @@ is
                Operator_Name.Data (1 .. Operator_Name.Length),
                Host_Call,
                Host_Found);
-            if not Host_Found and then
+            CCL.Types.Resolve_Alternative (Tree.Types, Operator_Name, Variant_Type, Choice);
+            if Choice > 0 then
+               if Host_Found then Diagnostic := Duplicate_Declaration; return; end if;
+               if CCL.Types.Describe (Tree.Types, Variant_Type).Parts (Choice).Payload = Unit_Type then
+                  -- Nullary alternatives are values, not function calls.
+                  Diagnostic := Unknown_Form; return;
+               end if;
+               Parse_Expression (Depth + 1, A);
+               if Diagnostic /= No_Diagnostic then return; end if;
+               Expect (')', Ok);
+               if Ok then
+                  Add_Node ((Kind => Variant_Construct, Identifier => Operator_Name,
+                    Declared_Kind => Variant_Type, Alternative => Choice, First => A, others => <>), Index);
+               end if;
+            elsif not Host_Found and then
               (for some C of Operator_Name.Data (1 .. Operator_Name.Length) => C = '.')
             then
                --  Qualified names belong to advertised services, never local
@@ -632,6 +695,10 @@ is
          Decl : Function_Declaration;
          Id : Function_Reference;
          Tail : Node_Reference;
+         Definition : CCL.Types.Description;
+         Defined_Type : Static_Type;
+         Definition_Status : CCL.Types.Definition_Result;
+         Is_Enum : Boolean;
          procedure Read_Type (Kind : out Static_Type) is
             Token : Name;
             Good : Boolean;
@@ -639,11 +706,9 @@ is
             Read_Name (Token, Good);
             Kind := Invalid_Type;
             if Good then
-               if Name_Is (Token, "Integer") then Kind := Integer_Type;
-               elsif Name_Is (Token, "Boolean") then Kind := Boolean_Type;
-               elsif Name_Is (Token, "String") then Kind := String_Type;
-               elsif Name_Is (Token, "Character") then Kind := Character_Type;
-               else Diagnostic := Expected_Type_Name;
+               Kind := CCL.Types.Find (Tree.Types, Token);
+               if Kind in Invalid_Type | Handler_Type | Unit_Type then
+                  Diagnostic := Expected_Type_Name;
                end if;
             end if;
          end Read_Type;
@@ -658,7 +723,67 @@ is
             Read_Name (Token, Ok);
             if not Ok then return; end if;
          end if;
-         if not Name_Is (Token, "define") then
+         if Name_Is (Token, "type") then
+            Read_Name (Definition.Identifier, Ok);
+            if not Ok then return; end if;
+            Expect ('(', Ok);
+            if not Ok then return; end if;
+            Read_Name (Token, Ok);
+            if not Ok then return; end if;
+            Is_Enum := Name_Is (Token, "enum");
+            if not Is_Enum and then not Name_Is (Token, "variant") then
+               Diagnostic := Invalid_Type_Declaration; return;
+            end if;
+            Definition.Form := CCL.Types.Sum;
+            Skip_Trivia;
+            while Cursor < Source'Length and then
+              Source (Source'First + Cursor) /= ')'
+            loop
+               if Definition.Count = CCL.Types.Maximum_Components then
+                  Diagnostic := Invalid_Type_Declaration; return;
+               end if;
+               if not Is_Enum then
+                  Expect ('(', Ok);
+                  if not Ok then return; end if;
+               end if;
+               Definition.Count := Definition.Count + 1;
+               Read_Name (Definition.Parts (Definition.Count).Identifier, Ok);
+               if not Ok then return; end if;
+               if Definition.Identifier.Length + 1 +
+                 Definition.Parts (Definition.Count).Identifier.Length > MAX_NAME_LENGTH
+               then Diagnostic := Invalid_Type_Declaration; return; end if;
+               Definition.Parts (Definition.Count).Payload := Unit_Type;
+               if not Is_Enum then
+                  Skip_Trivia;
+                  if Cursor < Source'Length and then Source (Source'First + Cursor) /= ')' then
+                     Read_Type (Definition.Parts (Definition.Count).Payload);
+                     if Diagnostic /= No_Diagnostic then return; end if;
+                     if Definition.Parts (Definition.Count).Payload not in Integer_Type | Boolean_Type then
+                        Diagnostic := Invalid_Variant_Payload; return;
+                     end if;
+                  end if;
+                  Expect (')', Ok);
+                  if not Ok then return; end if;
+               end if;
+               Skip_Trivia;
+            end loop;
+            Expect (')', Ok);
+            if not Ok then return; end if;
+            Expect (')', Ok);
+            if not Ok then return; end if;
+            CCL.Types.Define (Tree.Types, Definition, Defined_Type, Definition_Status);
+            if Definition_Status /= CCL.Types.Defined then
+               Diagnostic := Invalid_Type_Declaration; return;
+            end if;
+            Add_Node
+              ((Kind => Type_Definition, Declared_Kind => Defined_Type,
+                Source_Position => To_Diagnostic_Position (Start),
+                Source_End_Position => To_Diagnostic_Position (Cursor), others => <>), Index);
+            if Diagnostic /= No_Diagnostic then return; end if;
+            Parse_Program (Depth + 1, Tail);
+            Tree.Nodes (Index).Second := Tail;
+            return;
+         elsif not Name_Is (Token, "define") then
             Cursor := Start;
             Parse_Expression (Depth, Index);
             return;
@@ -709,6 +834,7 @@ is
       Type_Env : Type_Environment := [others => (others => <>)];
       Type_Env_Length : Natural range 0 .. MAX_BINDINGS := 0;
       Visible_Functions : Natural range 0 .. MAX_FUNCTIONS := 0;
+      Visible_Types : Static_Type := Unit_Type;
 
       function Referenceable (Item : Name) return Boolean is
         (Item.Length > 0 and then Item.Data (1) not in '-' | '0' .. '9' and then
@@ -716,7 +842,8 @@ is
 
       function Reserved (Item : Name) return Boolean is
         (not Referenceable (Item) or else
-         Name_Is (Item, "define") or else Name_Is (Item, "handler") or else Name_Is (Item, "let") or else
+         Name_Is (Item, "type") or else Name_Is (Item, "define") or else Name_Is (Item, "handler") or else Name_Is (Item, "let") or else
+         Name_Is (Item, "match") or else
          Name_Is (Item, "if") or else Name_Is (Item, "not") or else
          Name_Is (Item, "true") or else Name_Is (Item, "false") or else
          Name_Is (Item, "+") or else Name_Is (Item, "add") or else
@@ -750,6 +877,62 @@ is
          end if;
 
          case Tree.Nodes (Node_Index (Index)).Kind is
+            when Type_Definition =>
+               Visible_Types := Tree.Nodes (Index).Declared_Kind;
+               Check_Node (Tree.Nodes (Index).Second, Depth + 1, Kind);
+            when Variant_Literal =>
+               Kind := Tree.Nodes (Index).Declared_Kind;
+            when Variant_Construct =>
+               Check_Node (Tree.Nodes (Index).First, Depth + 1, Left_Type);
+               Kind := Tree.Nodes (Index).Declared_Kind;
+               if Kind > Visible_Types or else Left_Type /= CCL.Types.Describe (Tree.Types, Kind).
+                 Parts (Tree.Nodes (Index).Alternative).Payload
+               then Diagnostic := Invalid_Variant_Payload; end if;
+            when Match_Form =>
+               Check_Node (Tree.Nodes (Index).First, Depth + 1, Left_Type);
+               if Diagnostic /= No_Diagnostic then return; end if;
+               if not CCL.Types.Is_Scalar_Sum (Tree.Types, Left_Type) then
+                  Diagnostic := Invalid_Match_Pattern; return;
+               end if;
+               declare
+                  D : constant CCL.Types.Description := CCL.Types.Describe (Tree.Types, Left_Type);
+                  Seen : array (CCL.Types.Component_Index) of Boolean := [others => False];
+                  Arm : Node_Reference := Tree.Nodes (Index).Second;
+                  N : Node;
+                  Payload : Static_Type;
+               begin
+                  while Arm < Tree.Length and then Diagnostic = No_Diagnostic loop
+                     N := Tree.Nodes (Arm);
+                     if N.Kind /= Match_Arm or else N.Declared_Kind /= Left_Type then
+                        Diagnostic := Invalid_Match_Pattern; exit;
+                     elsif Seen (N.Alternative) then Diagnostic := Duplicate_Match_Arm; exit;
+                     end if;
+                     Seen (N.Alternative) := True;
+                     Payload := D.Parts (N.Alternative).Payload;
+                     if Payload = Unit_Type then
+                        if N.Identifier.Length /= 0 then Diagnostic := Invalid_Match_Pattern; exit; end if;
+                     elsif not Referenceable (N.Identifier) then
+                        Diagnostic := Invalid_Match_Pattern; exit;
+                     elsif Type_Env_Length = MAX_BINDINGS then
+                        Diagnostic := Too_Many_Bindings; exit;
+                     else
+                        Type_Env (Type_Env_Length) := (N.Identifier, Payload);
+                        Type_Env_Length := Type_Env_Length + 1;
+                     end if;
+                     Check_Node (N.First, Depth + 1, Right_Type);
+                     Type_Env_Length := Entry_Environment_Length;
+                     if Kind = Invalid_Type then Kind := Right_Type;
+                     elsif Diagnostic = No_Diagnostic and then Kind /= Right_Type then
+                        Diagnostic := Branch_Type_Mismatch;
+                     end if;
+                     Tree.Nodes (Arm).Static_Kind := Right_Type;
+                     Arm := N.Second;
+                  end loop;
+                  if Diagnostic = No_Diagnostic and then
+                    (for some A in 1 .. D.Count => not Seen (A))
+                  then Diagnostic := Nonexhaustive_Match; end if;
+               end;
+            when Match_Arm => Diagnostic := Invalid_Match_Pattern;
             when Function_Definition =>
                declare
                   Decl : constant Function_Declaration :=
@@ -838,6 +1021,41 @@ is
                   end loop;
                end if;
                if not Found then
+                  declare
+                     Identifier : constant Name := Tree.Nodes (Index).Identifier;
+                     Ref : Static_Type;
+                     D : CCL.Types.Description;
+                  begin
+                     for Dot in 2 .. Identifier.Length loop
+                        if Identifier.Data (Dot) = '.' then
+                           Ref := CCL.Types.Find (Tree.Types,
+                             CCL.Types.Named (Identifier.Data (1 .. Dot - 1)));
+                           if Ref <= Visible_Types and then
+                             CCL.Types.Is_Scalar_Sum (Tree.Types, Ref)
+                           then
+                              D := CCL.Types.Describe (Tree.Types, Ref);
+                              for I in 1 .. D.Count loop
+                                 if CCL.Types.Image (D.Parts (I).Identifier) =
+                                   Identifier.Data (Dot + 1 .. Identifier.Length)
+                                 then
+                                    if D.Parts (I).Payload /= Unit_Type then
+                                       Diagnostic := Invalid_Variant_Payload;
+                                       return;
+                                    end if;
+                                    Tree.Nodes (Index).Kind := Variant_Literal;
+                                    Tree.Nodes (Index).Declared_Kind := Ref;
+                                    Tree.Nodes (Index).Alternative := I;
+                                    Kind := Ref; Found := True;
+                                    exit;
+                                 end if;
+                              end loop;
+                           end if;
+                           exit;
+                        end if;
+                     end loop;
+                  end;
+               end if;
+               if not Found then
                   Diagnostic := Unknown_Name;
                end if;
             when Add_Form | Multiply_Form | Divide_Form | Modulo_Form |
@@ -846,7 +1064,14 @@ is
                            Depth + 1, Left_Type);
                Check_Node (Tree.Nodes (Node_Index (Index)).Second,
                            Depth + 1, Right_Type);
-               if Diagnostic = No_Diagnostic and then
+               if Tree.Nodes (Index).Kind = Equal_Form then
+                  if Diagnostic = No_Diagnostic and then
+                    (Left_Type /= Right_Type or else
+                     (Left_Type /= Integer_Type and then
+                      not CCL.Types.Is_Enumeration (Tree.Types, Left_Type)))
+                  then Diagnostic := Expected_Comparable; end if;
+                  Kind := Boolean_Type;
+               elsif Diagnostic = No_Diagnostic and then
                  (Left_Type /= Integer_Type or else Right_Type /= Integer_Type)
                then
                   Diagnostic := Expected_Integer;
@@ -943,9 +1168,10 @@ is
                Check_Node (Tree.Nodes (Node_Index (Index)).First,
                            Depth + 1, Left_Type);
                if Diagnostic = No_Diagnostic and then
-                 Left_Type /= Integer_Type
+                 Left_Type /= Integer_Type and then
+                 not CCL.Types.Is_Enumeration (Tree.Types, Left_Type)
                then
-                  Diagnostic := Expected_Integer;
+                  Diagnostic := Expected_Printable;
                else
                   Kind := String_Type;
                end if;
@@ -1049,7 +1275,7 @@ is
                Item.Kind := Handler_Type;
                Item.Handler_Id := Tree.Nodes (Index).Function_Id;
                Ok := True;
-            when Function_Definition =>
+            when Type_Definition | Function_Definition =>
                --  Definitions are checked before execution; only the final
                --  expression executes, never an unused function body.
                Evaluate_Node (Tree.Nodes (Index).Second, Depth + 1, Item, Ok);
@@ -1087,6 +1313,47 @@ is
                Item.Scalar := CCL.VM.Integer_Constant
                  (Tree.Nodes (Node_Index (Index)).Integer_Value);
                Ok := True;
+            when Variant_Literal =>
+               Item.Kind := Tree.Nodes (Index).Declared_Kind;
+               Item.Alternative := Tree.Nodes (Index).Alternative;
+               Ok := True;
+            when Variant_Construct =>
+               Evaluate_Node (Tree.Nodes (Index).First, Depth + 1, Left, Good);
+               if Good then
+                  Item.Kind := Tree.Nodes (Index).Declared_Kind;
+                  Item.Alternative := Tree.Nodes (Index).Alternative;
+                  Item.Scalar := Left.Scalar;
+               end if;
+               Ok := Good;
+            when Match_Form =>
+               Evaluate_Node (Tree.Nodes (Index).First, Depth + 1, Left, Good);
+               if Good then
+                  declare
+                     Arm : Node_Reference := Tree.Nodes (Index).Second;
+                     N : Node;
+                     Payload : constant Static_Type := CCL.Types.Describe (Tree.Types, Left.Kind).
+                       Parts (Left.Alternative).Payload;
+                  begin
+                     while Arm < Tree.Length loop
+                        N := Tree.Nodes (Arm);
+                        if N.Alternative = Left.Alternative then
+                           if Payload /= Unit_Type then
+                              if Value_Env_Length = MAX_BINDINGS then
+                                 Eval_Status := Evaluation_Depth_Exhausted; return;
+                              end if;
+                              Value_Env (Value_Env_Length) := (Identifier => N.Identifier,
+                                Item => (Kind => Payload, Scalar => Left.Scalar, others => <>));
+                              Value_Env_Length := Value_Env_Length + 1;
+                           end if;
+                           Evaluate_Node (N.First, Depth + 1, Item, Ok);
+                           Value_Env_Length := Entry_Environment_Length;
+                           exit;
+                        end if;
+                        Arm := N.Second;
+                     end loop;
+                  end;
+               end if;
+            when Match_Arm => Eval_Status := Type_Check_Failed;
             when Boolean_Literal =>
                Item.Kind := Boolean_Type;
                Item.Scalar := CCL.VM.Boolean_Constant
@@ -1190,7 +1457,9 @@ is
                if Good then
                   Item.Kind := Boolean_Type;
                   Item.Scalar := CCL.VM.Boolean_Constant
-                    (Left.Scalar.Integer = Right.Scalar.Integer);
+                    (if Left.Kind = Integer_Type then
+                        Left.Scalar.Integer = Right.Scalar.Integer
+                     else Left.Alternative = Right.Alternative);
                end if;
                Ok := Good;
             when Not_Form =>
@@ -1315,7 +1584,10 @@ is
                               Depth + 1, Left, Good);
                if Good then
                   Text_Regions.Allocate_String
-                    (Text_Region, Decimal_Image (Left.Scalar.Integer),
+                    (Text_Region,
+                     (if Left.Kind = Integer_Type then Decimal_Image (Left.Scalar.Integer)
+                      else CCL.Types.Image (CCL.Types.Describe
+                        (Tree.Types, Left.Kind).Parts (Left.Alternative).Identifier)),
                      Item.Text, Region_Result);
                   if Region_Result = Text_Regions.Operation_Ok then
                      Item.Kind := String_Type;
@@ -1493,7 +1765,15 @@ is
                Result.Result_Character := Value.Character_Item;
             when Integer_Type | Boolean_Type =>
                Result.Result_Value := Value.Scalar;
-            when Invalid_Type | Handler_Type =>
+            when CCL.Types.Declared_Type =>
+               Result.Variant_Type := Value.Kind;
+               Result.Variant_Type_Name := CCL.Types.Describe (Tree.Types, Value.Kind).Identifier;
+               Result.Variant_Member_Name := CCL.Types.Describe
+                 (Tree.Types, Value.Kind).Parts (Value.Alternative).Identifier;
+               Result.Variant_Payload_Type := CCL.Types.Describe
+                 (Tree.Types, Value.Kind).Parts (Value.Alternative).Payload;
+               Result.Result_Value := Value.Scalar;
+            when Invalid_Type | Handler_Type | Unit_Type =>
                Result.Status := Type_Check_Failed;
                Result.Has_Value := False;
          end case;
@@ -1598,7 +1878,11 @@ is
       begin
          CCL.Host_Values.To_Scalar (Argument, A, Success);
          Value := CCL.Host_Values.Integer_Constant (0);
-         if Success then Invoke (Context, Binding, A, R, Success); Value := CCL.Host_Values.From_Scalar (R); end if;
+         if Success then
+            Invoke (Context, Binding, A, R, Success);
+            if R.Kind not in CCL.VM.Scalar_Kind then Success := False;
+            else Value := CCL.Host_Values.From_Scalar (R); end if;
+         end if;
       end Invoke_Scalar;
       procedure Run is new Interpret_With_Values (Host_Context, Invoke_Scalar, Allow_Text => False);
    begin

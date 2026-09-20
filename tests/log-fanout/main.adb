@@ -3,6 +3,7 @@ with Interfaces; use Interfaces;
 with CuBit.Log_Protocol; use CuBit.Log_Protocol;
 with Log_Fanout;
 with Log_Budgets;
+with CuBit.Grant_References;
 with CuBit.Authority_Policy; use CuBit.Authority_Policy;
 with CuBit.Log_Records;
 procedure Main is
@@ -20,6 +21,19 @@ procedure Main is
         (Store, Caller, Observer_Authority_Tag, Handle, Value, Lost, Result);
    end Read;
 begin
+   declare
+      use CuBit.Grant_References;
+      Ref : constant Reference := (slot => 48, generation => 10);
+   begin
+      pragma Assert (Retirement_Confirmed (Ref, 0));
+      pragma Assert (not Retirement_Confirmed (Ref, 9));
+      pragma Assert (not Retirement_Confirmed (Ref, 10));
+      pragma Assert (Retirement_Confirmed (Ref, 11));
+      pragma Assert (Retirement_Confirmed (Ref, Maximum_Generation));
+      pragma Assert (not Retirement_Confirmed (Ref, Maximum_Generation + 1));
+      pragma Assert (not Retirement_Confirmed (Ref, Unsigned_64'Last));
+      Put_Line ("PASS: retirement distinguishes inactive, live/revoking, newer generations and query failures");
+   end;
    declare
       Limits, Sustained : Log_Budgets.Limiter;
       Accepted : Boolean;

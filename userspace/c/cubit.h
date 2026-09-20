@@ -107,6 +107,7 @@ typedef long                ssize_t;
 #define SYSCALL_REVOKE_SHARED_MEMORY_GRANT                     103
 #define SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY      106
 #define SYSCALL_SET_WELL_KNOWN  107
+/* Owned inactive slot => 0; active/revoking => generation; error => -1. */
 #define SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION       108
 #define SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT                    109
 #define SYSCALL_REVOKE_SHARED_MEMORY_GRANT_REFERENCE           110

@@ -77,6 +77,12 @@ begin
       Control_Wire.Decode (Monitor_Query (2, 0, "7"), Q, Valid); pragma Assert (not Valid);
    end;
    Control_Wire.Decode (Query (2, "x") & Encoding.Encode_Unsigned (0), Q, Valid); pragma Assert (not Valid);
+   Control_Wire.Decode (Query (2, "(type Color (enum Red)) Color.Red"), Q, Valid);
+   pragma Assert (Valid);
+   CCL.Control.Execute (Session, Q.Op, Q.Source (1 .. Q.Length), (others => <>), Value);
+   pragma Assert (CCL.Sessions.Result_Image (Value.Outcome) = "Color.Red");
+   Control_Wire.Encode (Q, Value, Encoded);
+   pragma Assert (Encoded.Length = 0); -- no nominal-type erasure on the wire
    declare B : constant Byte_Array := Query (2, "(+ 20 22)"); begin
       for I in 0 .. B'Length - 1 loop
          Control_Wire.Decode (B (B'First .. B'First + SE_Offset (I) - 1), Q, Valid);

@@ -1,4 +1,5 @@
 with CCL.Diagnostics;
+with CCL.Types;
 
 package body CCL.Sessions with SPARK_Mode is
    use type CCL.Language.Interpretation_Status;
@@ -114,6 +115,7 @@ package body CCL.Sessions with SPARK_Mode is
          return CCL.Language.Invalid_Type;
       elsif Outcome.Has_Text then return CCL.Language.String_Type;
       elsif Outcome.Has_Character then return CCL.Language.Character_Type;
+      elsif Outcome.Variant_Type in CCL.Types.Declared_Type then return Outcome.Variant_Type;
       elsif Outcome.Result_Value.Kind = CCL.VM.Integer_Value then return CCL.Language.Integer_Type;
       elsif Outcome.Result_Value.Kind = CCL.VM.Boolean_Value then return CCL.Language.Boolean_Type;
       else return CCL.Language.Invalid_Type;
@@ -142,6 +144,14 @@ package body CCL.Sessions with SPARK_Mode is
             return "Character: " & Outcome.Result_Character;
          when CCL.Language.Invalid_Type => return "ok";
          when CCL.Language.Handler_Type => return "Handler";
+         when CCL.Language.Unit_Type => return "Unit";
+         when CCL.Types.Declared_Type =>
+            return CCL.Types.Image (Outcome.Variant_Type_Name) & "." &
+              CCL.Types.Image (Outcome.Variant_Member_Name) &
+              (case Outcome.Variant_Payload_Type is
+                when CCL.Language.Integer_Type => "(" & Interfaces.Integer_64'Image (Outcome.Result_Value.Integer) & ")",
+                when CCL.Language.Boolean_Type => (if Outcome.Result_Value.Boolean then "(true)" else "(false)"),
+                when others => "");
       end case;
    end Result_Image;
 end CCL.Sessions;

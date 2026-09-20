@@ -271,6 +271,9 @@ package Process.IPC is
 
     ---------------------------------------------------------------------------
     -- getOwnedGrantGeneration
+    -- Success with zero means the owned slot is inactive (fully retired).
+    -- A pending revocation still returns its nonzero generation. Foreign slots
+    -- fail; callers must never interpret query failure as proof of retirement.
     -- Return the generation for an active grant slot owned by the caller.
     ---------------------------------------------------------------------------
     procedure getOwnedGrantGeneration

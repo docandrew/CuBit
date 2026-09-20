@@ -102,6 +102,66 @@ begin
       All_Passed := False;
    end if;
 
+   CCL.Language.Interpret
+     ("(type Color (enum Red Blue Green)) " &
+      "(define (caption (color Color)) String (to-string color)) " &
+      "(caption (if (= Color.Red Color.Blue) Color.Red Color.Green))",
+      64, Source_Result);
+   if Source_Result.Status = CCL.Language.Succeeded and then
+     Source_Result.Has_Text and then
+     Source_Result.Result_Text.Data (1 .. Source_Result.Result_Text.Length) = "Green"
+   then
+      debugPrint ("ccl-vm: enum source PASS" & LF);
+   else
+      debugPrint ("ccl-vm: enum source FAIL" & LF);
+      All_Passed := False;
+   end if;
+   CCL.Language.Interpret
+     ("(type Color (enum Red)) (type Other (enum Red)) (= Color.Red Other.Red)",
+      64, Source_Result);
+   if Source_Result.Status = CCL.Language.Type_Check_Failed then
+      debugPrint ("ccl-vm: enum isolation PASS" & LF);
+   else
+      debugPrint ("ccl-vm: enum isolation FAIL" & LF);
+      All_Passed := False;
+   end if;
+
+   declare
+      Source : constant String :=
+        "(type Reading (variant (Value Integer) (Unavailable))) " &
+        "(match (Reading.Value 41) ((Reading.Value n) (+ n 1)) ((Reading.Unavailable) 0))";
+      Analysis : CCL.Language.Analysis_Result;
+      Compiled : CCL.Compiler.Compilation_Result;
+      Data : CCL.Format.Byte_Array;
+      Length : CCL.Format.Module_Length;
+      Format_Error : CCL.Format.Format_Error;
+      Limits : CCL.Format.Resource_Limits;
+      Passed : Boolean;
+   begin
+      CCL.Language.Interpret (Source, 256, Source_Result);
+      Passed := Source_Result.Status = CCL.Language.Succeeded and then
+        Source_Result.Result_Value.Integer = 42;
+      CCL.Language.Analyze (Source, Analysis);
+      CCL.Compiler.Compile (Analysis, Compiled);
+      Passed := Passed and then Compiled.Status = CCL.Compiler.Compilation_Succeeded;
+      if Passed then
+         CCL.Format.Encode (Compiled.Program, (256, 4096, 1), Data, Length, Format_Error, Error);
+         Passed := Format_Error = CCL.Format.Format_Valid;
+      end if;
+      if Passed then
+         CCL.Format.Decode (Data, Length, Checked, Limits, Format_Error, Error);
+         Passed := Format_Error = CCL.Format.Format_Valid;
+      end if;
+      if Passed then
+         Execute (Checked, 256, VM_Result);
+         Passed := VM_Result.Status = Completed and then VM_Result.Has_Value and then
+           VM_Result.Result_Value.Kind = Integer_Value and then VM_Result.Result_Value.Integer = 42;
+      end if;
+      if Passed then debugPrint ("ccl-vm: variant bytecode PASS" & LF);
+      else debugPrint ("ccl-vm: variant bytecode FAIL" & LF); All_Passed := False;
+      end if;
+   end;
+
    declare
       IMPORT_SLOT : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Test_Host;
       OP_INCREMENT : constant Unsigned_32 :=

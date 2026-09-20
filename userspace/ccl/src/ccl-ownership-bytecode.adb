@@ -92,12 +92,22 @@ is
          Item := Candidate.Code (PC);
          Falls_Through := True;
 
-         if Item.Op not in No_Ownership_Op | Halt | Jump | Jump_If and then
+         if Item.Op not in No_Ownership_Op | Halt | Jump | Jump_If | Switch and then
            Natural (Item.Local) >= Candidate.Locals_Length
          then
             Result.Error := Invalid_Local;
          else
             case Item.Op is
+               when Switch =>
+                  Error := Ownership_Valid;
+                  Falls_Through := False;
+                  if Item.Target_Count = 0 then Result.Error := Invalid_Target; end if;
+                  for A in 1 .. Item.Target_Count loop
+                     if Natural (Item.Targets (A)) >= Candidate.Length then Result.Error := Invalid_Target;
+                     elsif Item.Targets (A) <= PC then Result.Error := Backward_Jump;
+                     else Merge (States, Item.Targets (A), Current, Result);
+                     end if;
+                  end loop;
                when No_Ownership_Op =>
                   Error := Ownership_Valid;
                when Halt =>

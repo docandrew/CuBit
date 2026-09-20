@@ -6,7 +6,9 @@ with CuBit.Log_Protocol;
 with CuBit.Log_Records;
 
 --  Native adapter, not part of the portable SPARK proof. Keep these limited
---  objects alive for the process lifetime: their aligned pages back grants.
+--  objects alive while connected: their aligned pages back grants. Publishers
+--  may be destroyed after Disconnect reports Done.
+--  Readers remain process-lived.
 --  Calls on each object are serialized by its application event loop.
 package CuBit.Logging is
    type Publisher
@@ -26,6 +28,12 @@ package CuBit.Logging is
       Handled : out Boolean);
    function Dropped (Item : Publisher) return Unsigned_64;
    function Pending (Item : Publisher) return Boolean;
+   --  Terminal disconnect: prohibits further Emit calls from submitting work.
+   --  No service RPC wait. Revoke, then query retirement; repeat after
+   --  handling completions. Done requires BOTH grant retirement and no CQE
+   --  outstanding. Failure/death alone never releases the buffer.
+   --  No discovery/rebind/retry or automatic reconnection is performed.
+   procedure Disconnect (Item : in out Publisher; Done : out Boolean);
 
    type Reader
      (Slot : CuBit.Messages.CapabilitySlot := CuBit.Log_Protocol.Observer_Slot)
@@ -53,6 +61,8 @@ private
       State : Writer_State := Uninitialized;
       Token : Unsigned_64 := 0;
       Loss : Unsigned_64 := 0;
+      Has_Grant : Boolean := False;
+      Disconnecting : Boolean := False;
    end record;
    type Reader
      (Slot : CuBit.Messages.CapabilitySlot := CuBit.Log_Protocol.Observer_Slot)

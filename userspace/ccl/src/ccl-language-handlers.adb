@@ -1,5 +1,6 @@
 package body CCL.Language.Handlers with SPARK_Mode is
    use type Interfaces.Unsigned_32;
+   use type CCL.Types.Type_Reference;
    procedure Prepare
      (Source, Entry_Name : String; Expected : Profile;
       Catalog : CCL.Catalog.Interface_Catalog;

@@ -3,6 +3,7 @@ with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 
 with CCL.Language;
+with CCL.Sessions;
 with CCL.VM;
 
 procedure Main is
@@ -27,6 +28,8 @@ procedure Main is
                end if;
             elsif Result.Has_Character then
                Put_Line (String'(1 => Result.Result_Character));
+            elsif not CCL.Language.Has_Scalar (Result) then
+               Put_Line (CCL.Sessions.Result_Image (Result));
             elsif Result.Result_Value.Kind = CCL.VM.Integer_Value then
                Put_Line (Integer_64'Image (Result.Result_Value.Integer));
             else

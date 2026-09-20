@@ -305,7 +305,7 @@ package body CCL.Manifests with SPARK_Mode => On is
          Number := Low;
          Expression;
          if Failed then return; end if;
-         if not Value.Has_Value or else Value.Has_Text or else Value.Has_Character
+         if not CCL.Language.Has_Scalar (Value)
            or else Value.Result_Value.Kind /= CCL.VM.Integer_Value
            or else Value.Result_Value.Integer not in Low .. High
          then
@@ -398,7 +398,7 @@ package body CCL.Manifests with SPARK_Mode => On is
          Slot := Slot_Number'First;
          Expression;
          if Failed then return; end if;
-         if not Value.Has_Value or else Value.Has_Text or else Value.Has_Character
+         if not CCL.Language.Has_Scalar (Value)
            or else Value.Result_Value.Kind /= CCL.VM.Integer_Value
            or else Value.Result_Value.Integer not in
              Integer_64 (Slot_Number'First) .. Integer_64 (Slot_Number'Last)
@@ -530,7 +530,7 @@ package body CCL.Manifests with SPARK_Mode => On is
          end if;
          Expression;
          if Failed then return; end if;
-         if not Value.Has_Value or else Value.Has_Text or else Value.Has_Character
+         if not CCL.Language.Has_Scalar (Value)
            or else Value.Result_Value.Kind /= CCL.VM.Integer_Value
            or else Value.Result_Value.Integer not in 1 .. 256
          then Fail (Invalid_Stream_Pages, Cursor); return;
@@ -604,7 +604,7 @@ package body CCL.Manifests with SPARK_Mode => On is
                Atom (Item.Name);
                Expression;
                if Failed then return; end if;
-               if not Value.Has_Value or else Value.Has_Text or else Value.Has_Character
+               if not CCL.Language.Has_Scalar (Value)
                  or else Value.Result_Value.Kind /= CCL.VM.Integer_Value
                  or else Value.Result_Value.Integer not in 1 .. Integer_64 (Unsigned_32'Last)
                then

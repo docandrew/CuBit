@@ -11,6 +11,7 @@ with CCL.Format; use CCL.Format;
 with CCL.Ownership; use CCL.Ownership;
 with CCL.Ownership.Bytecode;
 with CCL.Imports;
+with CCL.Host_Values;
 
 procedure Main is
    use type CCL.Language.Interpretation_Status;
@@ -750,7 +751,7 @@ procedure Main is
          Compiled.Program.Code (2).Op = Multiply_Integer and then
          Compiled.Program.Code (5).Op = Modulo_Integer and then
          Compiled.Program.Code (6).Op = Add_Integer,
-         "compile extended arithmetic to CCLB v3");
+         "compile extended arithmetic to CCLB");
       Verify (Compiled.Program, Checked, Error);
       if Error = Valid then
          Execute (Checked, 16, Outcome);
@@ -778,7 +779,7 @@ procedure Main is
       CCL.Compiler.Compile (Analysis, Compiled);
       Check
         (Compiled.Status = CCL.Compiler.Unsupported_Form,
-         "keep strings out of scalar CCLB v3");
+         "reject strings until CCLB has a variable-sized value representation");
 
       CCL.Language.Analyze ("(if false 1 (+ 20 22))", Analysis);
       CCL.Compiler.Compile (Analysis, Compiled);
@@ -1192,7 +1193,7 @@ procedure Main is
          Interface_Minor => 0,
          Operation => 0,
          Parameters => 1,
-         Import => Candidate.Imports (0));
+         Import => CCL.Host_Values.From_Bytecode (Candidate.Imports (0)));
       CCL.Catalog.Intern (Linkage, Resolution, Link_Index, Interned);
       Candidate.Imports (0).Binding := 42;
       Encode
@@ -1321,7 +1322,7 @@ procedure Main is
          Interface_Minor => 0,
          Operation => 1,
          Parameters => 1,
-         Import => Candidate.Imports (0));
+         Import => CCL.Host_Values.From_Bytecode (Candidate.Imports (0)));
       CCL.Catalog.Intern (Linkage, Resolution, Link_Index, Interned);
       Encode
         (Candidate, Linkage, Limits, Data, Length, Error, Validation);

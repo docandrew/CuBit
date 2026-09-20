@@ -44,7 +44,7 @@ nix develop -c make -C kernel test-ccl-images usb-live-iso
 nix develop -c python3 tests/usb-optical/run-live.py --cpus 4 --ccl-samples
 ```
 
-The image test compares all four RAM-workspace copies with their repository
+The image test compares all `.ccl` RAM-workspace copies with their repository
 sources. The boot test opens `button-clock.ccl` using Ctrl+O/Enter, interprets it
 with F5, clicks Refresh, and checks that its clock label changes. Screenshots of
 the picker, loaded document and callback result are retained. These tests use

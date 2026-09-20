@@ -19,6 +19,64 @@ package body CuBit.UI.Widgets is
       return CuBit.UI.With_Clip (c, parent);
    end Parent_Canvas;
 
+   procedure Output_Box
+     (c : CuBit.UI.Canvas;
+      st : in out CuBit.UI.State.UI_State;
+      controls : in out CuBit.UI.Controls.Control_Map;
+      clearId, verticalId, horizontalId : CuBit.UI.Controls.Control_ID;
+      bounds : CuBit.UI.Rect; colors : CuBit.UI.Theme; text : String;
+      firstLine, firstColumn : in out Natural;
+      maxFirstLine : out Natural; cleared : out Boolean)
+   is
+      content, field : CuBit.UI.Rect;
+      result : CuBit.UI.Widget_Result;
+      lines, columns, column : Positive := 1;
+      visibleLines, visibleColumns : Positive;
+   begin
+      cleared := False;
+      maxFirstLine := 1;
+      if bounds.w < 100 or else
+        bounds.h < CuBit.UI.UI_Text_Height + 58
+      then return; end if;
+      Group_Box (c, bounds, colors, "Output", content, 8);
+      Button (c, st, controls, clearId,
+        (content.x + content.w - 48, content.y, 48, 20), bounds,
+        colors, "Clear", result);
+      cleared := result.activated;
+      field := (content.x, content.y + 23, content.w - 18,
+                content.h - 41);
+      for ch of text loop
+         if ch = ASCII.LF then
+            lines := lines + 1;
+            columns := Positive'Max (columns, column);
+            column := 1;
+         else
+            column := column + 1;
+         end if;
+      end loop;
+      columns := Positive'Max (columns, column);
+      visibleLines := Positive'Max (1,
+        (field.h - Natural'Min (field.h, 10)) /
+          (CuBit.UI.Code_Text_Height + 2));
+      visibleColumns := Positive'Max (1,
+        (field.w - Natural'Min (field.w, 12)) /
+          Positive'Max (1, CuBit.UI.Code_Text_Width ("M")));
+      maxFirstLine := lines - Natural'Min (lines, visibleLines) + 1;
+      firstLine := Natural'Max (1, Natural'Min (firstLine, maxFirstLine));
+      firstColumn := Natural'Max (1, Natural'Min (firstColumn,
+        columns - Natural'Min (columns, visibleColumns) + 1));
+      Vertical_Scrollbar (c, st, controls, verticalId,
+        (field.x + field.w + 2, field.y, 16, field.h), bounds,
+        colors, 1, lines, firstLine, result, pageSize => visibleLines);
+      Horizontal_Scrollbar (c, st, controls, horizontalId,
+        (field.x, field.y + field.h + 2, field.w, 16), bounds,
+        colors, 1, columns, firstColumn, result, pageSize => visibleColumns);
+      CuBit.UI.Draw_Multiline_Text_Edit
+        (c, field, colors, text, Positive (firstLine), visibleLines,
+         1, 1, 1, focused => False, hot => False,
+         firstColumn => Positive (firstColumn));
+   end Output_Box;
+
    procedure Label
       (c : CuBit.UI.Canvas;
        bounds : CuBit.UI.Rect;

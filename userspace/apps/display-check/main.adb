@@ -173,7 +173,7 @@ procedure Main is
             Wire := Send (Encode_Open_Session);
             Check (Wire.Words (0) /= 0, "revoked grant cannot reopen session");
          end;
-         Check (Generation (First) = Unsigned_64'Last, "replacement returns old pin");
+         Check (Generation (First) = 0, "replacement returns old pin");
          MG.Create_Via_Capability
            (CAP_SLOT_DISPLAY, To_Address (Address), 1, False, Reused, Ok);
          Check (Ok, "create reused slot");
@@ -197,7 +197,7 @@ procedure Main is
             Check (Generation (Second) = Second.generation, "malformed release retains pin");
          end loop;
          Expect (Encode_Lease_Request (Release_Display), DP.Success, "release lease");
-         Check (Generation (Second) = Unsigned_64'Last, "release returns final pin");
+         Check (Generation (Second) = 0, "release returns final pin");
          Expect (Encode_Lease_Request (Release_Display), DP.Success, "idempotent release");
          Expect (Encode_Lease_Request (Acquire_Display), DP.Success, "lease reusable");
          Expect ((Code (Present_Rectangle), 4, 0, 0, [0, 0, 4, 2]), DP.Bad_State,

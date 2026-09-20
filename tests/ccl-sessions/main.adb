@@ -7,6 +7,7 @@ with CCL.Interfaces.Clock;
 with Interfaces; use Interfaces;
 
 procedure Main is
+   use type Static_Type;
    A, B : Session;
    Outcome : Interpretation_Result;
    Item : Submission;

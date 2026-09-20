@@ -2,13 +2,14 @@ with Interfaces;
 with CCL.VM;
 with CCL.Ownership;
 with CCL.Catalog;
+with CCL.Types.Encoding;
 
 package CCL.Format with
    SPARK_Mode => On
 is
    use Interfaces;
 
-   FORMAT_VERSION  : constant := 3;
+   FORMAT_VERSION  : constant := 4;
    HEADER_SIZE     : constant := 32;
    TYPE_SIZE       : constant := 36;
    LOCAL_SIZE      : constant := 4;
@@ -17,7 +18,7 @@ is
    IMPORT_SIZE     : constant := 56;
    INSTRUCTION_SIZE : constant := 16;
 
-   --  Named offsets are part of the canonical CCLB v3 ABI. Keeping them here
+   --  Named offsets are part of the canonical CCLB v4 ABI. Keeping them here
    --  prevents the codec, validation logic, and corruption tests from
    --  independently inventing byte positions.
    MAGIC_OFFSET                    : constant := 0;
@@ -32,7 +33,14 @@ is
    LOCAL_COUNT_OFFSET              : constant := 26;
    TYPE_COUNT_OFFSET               : constant := 27;
    DYNAMIC_LOCAL_COUNT_OFFSET      : constant := 28;
-   HEADER_RESERVED_OFFSET          : constant := 29;
+   DATA_TYPE_COUNT_OFFSET          : constant := 29;
+   MATCH_COUNT_OFFSET              : constant := 30;
+   HEADER_RESERVED_OFFSET          : constant := 31;
+   DATA_TYPE_SIZE : constant := CCL.Types.Encoding.Definition_Size;
+   MATCH_SIZE : constant := 2 + CCL.Types.Maximum_Components * 2;
+   MATCH_TYPE_OFFSET : constant := 0;
+   MATCH_RESERVED_OFFSET : constant := 1;
+   MATCH_TARGETS_OFFSET : constant := 2;
 
    TYPE_MODE_OFFSET                : constant := 0;
    TYPE_DISPOSITION_COUNT_OFFSET   : constant := 1;
@@ -46,7 +54,8 @@ is
 
    LOCAL_KIND_OFFSET               : constant := 0;
    LOCAL_TYPE_OFFSET               : constant := 1;
-   LOCAL_RESERVED_OFFSET           : constant := 2;
+   LOCAL_DATA_TYPE_OFFSET           : constant := 2;
+   LOCAL_RESERVED_OFFSET           : constant := 3;
 
    IMPORT_ARGUMENT_OFFSET       : constant := 0;
    IMPORT_RESULT_OFFSET         : constant := 1;
@@ -70,13 +79,14 @@ is
    INSTRUCTION_OPCODE_OFFSET       : constant := 0;
    INSTRUCTION_LOCAL_OFFSET        : constant := 1;
    INSTRUCTION_VERB_OFFSET         : constant := 2;
-   INSTRUCTION_RESERVED_OFFSET     : constant := 3;
+   INSTRUCTION_DATA_TYPE_OFFSET    : constant := 3;
    INSTRUCTION_IMMEDIATE_OFFSET    : constant := 4;
    INSTRUCTION_TARGET_OFFSET       : constant := 12;
    INSTRUCTION_IMPORT_OFFSET       : constant := 14;
-   INSTRUCTION_TRAILING_RESERVED_OFFSET : constant := 15;
+   INSTRUCTION_ALTERNATIVE_OFFSET : constant := 15;
    MAX_MODULE_SIZE : constant :=
      HEADER_SIZE + CCL.Ownership.MAX_TYPES * TYPE_SIZE +
+     CCL.Types.Maximum_Declarations * DATA_TYPE_SIZE + CCL.VM.Maximum_Matches * MATCH_SIZE +
      CCL.Ownership.MAX_BINDINGS * LOCAL_SIZE +
      CCL.VM.MAX_IMPORTS * IMPORT_SIZE +
      CCL.VM.MAX_INSTRUCTIONS * INSTRUCTION_SIZE;
@@ -109,6 +119,7 @@ is
       Invalid_Transfer_Mode,
       Invalid_Cancellation_Mode,
       Invalid_Ownership_Metadata,
+      Invalid_Type_Metadata,
       Invalid_Linkage,
       Runtime_Binding_In_Module,
       Invalid_Opcode,

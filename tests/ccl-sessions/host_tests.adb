@@ -71,6 +71,10 @@ begin
    Grant ("ui.label-value", 78); Grant ("ui.label-visible", 79);
    Run ("(ui.label-value true)");
    pragma Assert (Outcome.Status = Type_Check_Failed and Host.Calls = 0);
+   Run ("(type Color (enum Red)) (ui.label-value Color.Red)");
+   pragma Assert (Outcome.Status = Type_Check_Failed and Host.Calls = 0);
+   Run ("(type Color (enum Red)) (ui.label-visible Color.Red)");
+   pragma Assert (Outcome.Status = Type_Check_Failed and Host.Calls = 0);
    Run ("(ui.label-value 42)", 0);
    pragma Assert (Outcome.Status = Evaluation_Fuel_Exhausted and Host.Calls = 0);
    Run ("(ui.label-value (clock.monotonic-ms))");

@@ -65,6 +65,59 @@ int SDL_WaitEvent(SDL_Event *event)
     event->type = SDL_KEYDOWN;
     const char *syntax_source = getenv("CCL_TEST_SYNTAX");
     const char *button_source = getenv("CCL_TEST_BUTTON");
+    const char *unsaved = getenv("CCL_TEST_UNSAVED");
+    if (unsaved != NULL) {
+        if (stage == 0) { event->key.keysym.sym = SDLK_a; event->key.keysym.mod = KMOD_CTRL; }
+        else if (stage <= 3) { event->type = SDL_TEXTINPUT; event->text.text[0] = '7'; }
+        else if (stage == 4) { event->key.keysym.sym = SDLK_o; event->key.keysym.mod = KMOD_CTRL; }
+        else {
+            event->type = SDL_QUIT;
+            SDL_Keycode key = SDLK_UNKNOWN;
+            SDL_Keymod mod = KMOD_NONE;
+            if (strcmp(unsaved, "cancel") == 0) {
+                if (stage == 5) key = SDLK_ESCAPE;
+                if (stage == 6) { key = SDLK_o; mod = KMOD_CTRL; }
+            } else if (strcmp(unsaved, "discard") == 0) {
+                if (stage == 5 || stage == 9) key = SDLK_TAB;
+                if (stage == 6 || stage == 10 || stage == 11) key = SDLK_RETURN;
+                if (stage == 7) key = SDLK_ESCAPE;
+                if (stage == 8 || stage == 12) { key = SDLK_o; mod = KMOD_CTRL; }
+            } else if (strcmp(unsaved, "save") == 0) {
+                if (stage == 5 || stage == 6 || stage == 11) key = SDLK_RETURN;
+                if (stage == 7) key = SDLK_ESCAPE;
+                if (stage == 8 || stage == 12) { key = SDLK_o; mod = KMOD_CTRL; }
+                if (stage == 9 || stage == 10) key = SDLK_DOWN;
+            } else if (strcmp(unsaved, "save-cancel") == 0) {
+                if (stage == 5 || stage == 10) key = SDLK_RETURN;
+                if (stage == 6 || stage == 8) key = SDLK_ESCAPE;
+                if (stage == 7) { key = SDLK_o; mod = KMOD_CTRL; }
+                if (stage == 9) { key = SDLK_s; mod = KMOD_CTRL; }
+            } else if (strcmp(unsaved, "save-fail") == 0) {
+                if (stage == 5 || stage == 16) key = SDLK_RETURN;
+                if (stage == 6) { key = SDLK_a; mod = KMOD_CTRL; }
+                if (stage >= 7 && stage <= 15) {
+                    event->type = SDL_TEXTINPUT; event->text.text[0] = "hello.ccl"[stage - 7];
+                }
+                if (stage == 17) key = SDLK_ESCAPE;
+                if (stage == 18) { key = SDLK_o; mod = KMOD_CTRL; }
+            } else if (strcmp(unsaved, "open-fail") == 0) {
+                if (stage == 5 || stage == 7) key = SDLK_TAB;
+                if (stage == 6 || stage == 20) key = SDLK_RETURN;
+                if (stage == 8) { key = SDLK_a; mod = KMOD_CTRL; }
+                if (stage >= 9 && stage <= 19) {
+                    event->type = SDL_TEXTINPUT; event->text.text[0] = "missing.ccl"[stage - 9];
+                }
+                if (stage == 21) key = SDLK_ESCAPE;
+                if (stage == 22) { key = SDLK_o; mod = KMOD_CTRL; }
+            }
+            if (key != SDLK_UNKNOWN) {
+                event->type = SDL_KEYDOWN; event->key.keysym.sym = key; event->key.keysym.mod = mod;
+            }
+        }
+        ++stage;
+        generated_event = 1;
+        return 1;
+    }
     if (button_source != NULL) {
         unsigned length = (unsigned)strlen(button_source);
         if (stage == 0) { event->key.keysym.sym = SDLK_a; event->key.keysym.mod = KMOD_CTRL; }
@@ -121,7 +174,11 @@ int SDL_WaitEvent(SDL_Event *event)
             "(ui.label-value 42)", "(ui.label-visible false)",
             "(clock.monotonic-ms)",
             "(define (greet (name String)) String (concat \"Hello, \" name)) "
-            "(ui.label-text (greet \"Cubie\"))"
+            "(ui.label-text (greet \"Cubie\"))",
+            "(ui.output-append \"Hello from CCL!\")",
+            "(ui.output-append (to-string (clock.monotonic-ms)))",
+            "(ui.output-clear)",
+            "(ui.output-append \"line 01\\nline 02\\nline 03\\nline 04\\nline 05\\nline 06\\nline 07\\nline 08\\nline 09\\nline 10\")"
         };
         unsigned offset = 1;
         if (stage == 0) event->key.keysym.sym = SDLK_F6;
@@ -140,6 +197,33 @@ int SDL_WaitEvent(SDL_Event *event)
                     break;
                 }
                 offset += length + 1;
+            }
+            if (event->type == SDL_QUIT && stage >= offset) {
+                unsigned action = stage - offset;
+                if (action < 2 || action == 3 || action == 5 ||
+                    (action >= 6 && action < 10)) {
+                    int down = action == 0 || action == 3 || action == 6 || action == 8;
+                    event->type = down ? SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
+                    event->button.button = SDL_BUTTON_LEFT;
+                    event->button.x = action == 3 || action == 5 ? 910 :
+                        action == 6 || action == 7 ? 890 : 300;
+                    event->button.y = action == 3 ? 560 : action == 5 ? 535 :
+                        action == 6 || action == 7 ? 503 : 530;
+                } else if (action == 2) {
+                    event->type = SDL_MOUSEWHEEL;
+                    event->wheel.y = 1;
+                } else if (action == 4) {
+                    event->type = SDL_MOUSEMOTION;
+                    event->motion.state = SDL_BUTTON_LMASK;
+                    event->motion.x = 910;
+                    event->motion.y = 535;
+                } else if (action == 10) {
+                    event->type = SDL_TEXTINPUT;
+                    event->text.text[0] = 'X';
+                } else if (action == 11) {
+                    event->type = SDL_KEYDOWN;
+                    event->key.keysym.sym = SDLK_F6;
+                }
             }
         }
         ++stage;

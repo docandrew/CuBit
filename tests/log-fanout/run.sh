@@ -4,6 +4,7 @@ cd "$(dirname "$0")/../../kernel"
 mkdir -p ../tests/log-fanout/build/source
 cp ../userspace/runtime/gnat/cubit.ads ../userspace/runtime/gnat/cubit-log_protocol.ads \
    ../userspace/runtime/gnat/cubit-authority_policy.ads \
+   ../userspace/runtime/gnat/cubit-grant_references.ads \
    ../userspace/runtime/gnat/cubit-protocols.ads \
    ../userspace/runtime/gnat/cubit-log_records.ads \
    ../userspace/runtime/gnat/cubit-log_records.adb \
@@ -12,6 +13,9 @@ cp ../userspace/runtime/gnat/cubit.ads ../userspace/runtime/gnat/cubit-log_proto
    ../tests/log-fanout/build/source/
 alr exec -- gprbuild -p -P ../tests/log-fanout/fanout.gpr
 ../tests/log-fanout/build/main
+alr exec -- gnatprove -P ../tests/log-fanout/fanout.gpr \
+    -u cubit-grant_references.ads retirement_proof.adb \
+    --level=2 --report=all --checks-as-errors=on -j2
 alr exec -- gnatprove -P ../tests/log-fanout/fanout.gpr -u log_budgets.adb \
     --level=2 --report=all --checks-as-errors=on -j2
 alr exec -- gnatprove -P ../tests/log-fanout/fanout.gpr -u cubit-log_protocol.ads \

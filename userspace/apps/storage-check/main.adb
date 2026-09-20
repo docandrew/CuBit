@@ -78,7 +78,7 @@ procedure main is
       end if;
 
       Revoke (firstRef, ok);
-      if not ok then
+      if not ok or else Retirement_Confirmed (firstRef) then
          return False;
       end if;
 
@@ -96,6 +96,9 @@ procedure main is
       end if;
 
       --  One borrower remains, so revocation is still pending.
+      if Retirement_Confirmed (firstRef) then
+         return False;
+      end if;
       Acquire
         (firstRef, pid, 0, 16, Read_Access, mapped, ok);
       if ok then
@@ -108,6 +111,11 @@ procedure main is
       end if;
 
       --  The final return completes revocation and retires this generation.
+      if not Retirement_Confirmed (firstRef) or else
+        Retirement_Confirmed ((slot => 0, generation => 1))
+      then
+         return False;
+      end if;
       Acquire
         (firstRef, pid, 0, 16, Read_Access, mapped, ok);
       if ok then
@@ -127,6 +135,11 @@ procedure main is
          return False;
       end if;
 
+      if not Retirement_Confirmed (firstRef) or else
+        Retirement_Confirmed (secondRef)
+      then
+         return False;
+      end if;
       Acquire
         (firstRef, pid, 0, 16, Read_Access, mapped, ok);
       if ok then

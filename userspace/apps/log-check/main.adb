@@ -128,6 +128,76 @@ procedure Main is
       Publish_Record;
       debugPrint ("TEST: PASS log-quota" & ASCII.LF);
    end Check_Quota;
+
+   procedure Check_Disconnect is
+      Logger : CuBit.Logging.Publisher;
+      Fresh : CuBit.Logging.Publisher;
+      Record_Value : constant L.Decoded := L.Make ("disconnect check");
+      Done : Boolean;
+      Deadline : constant Unsigned_64 := syscall (SYSCALL_GETTIME) + 2000;
+   begin
+      CuBit.Logging.Disconnect (Fresh, Done);
+      Check (Done, "unused publisher disconnects immediately");
+      CuBit.Logging.Emit (Fresh, Record_Value.Value, 9000, Submitted);
+      Check (not Submitted, "disconnected publisher cannot reconnect");
+      CuBit.Logging.Emit (Logger, Record_Value.Value, 9001, Submitted);
+      Check (Submitted, "disconnect fixture submitted");
+      CuBit.Logging.Disconnect (Logger, Done);
+      Check (not Done, "outstanding completion prevents premature release");
+      CuBit.Logging.Emit (Logger, Record_Value.Value, 9002, Submitted);
+      Check (not Submitted, "disconnect stops new publication");
+      loop
+         if Poll_Completion (Completion'Address) = 1 then
+            CuBit.Logging.Complete (Logger, Completion, Handled);
+            Check (Handled, "disconnect drains original completion");
+         end if;
+         CuBit.Logging.Disconnect (Logger, Done);
+         exit when Done;
+         Check (syscall (SYSCALL_GETTIME) < Deadline, "disconnect timeout");
+         Ignore := syscall (SYSCALL_SLEEP, 1);
+      end loop;
+      CuBit.Logging.Disconnect (Logger, Done);
+      Check (Done, "disconnect idempotent");
+      --  Both local objects may now leave scope: their pages are unshared and
+      --  no completion belonging to them remains in the application's queue.
+      debugPrint ("TEST: PASS log-disconnect" & ASCII.LF);
+   end Check_Disconnect;
+
+   procedure Check_Collector_Death is
+      Logger : CuBit.Logging.Publisher (Slot => 18);
+      Stale : CuBit.Logging.Publisher (Slot => 18);
+      Record_Value : constant L.Decoded := L.Make ("collector death check");
+      Done : Boolean;
+      Deadline : constant Unsigned_64 := syscall (SYSCALL_GETTIME) + 2000;
+   begin
+      CuBit.Logging.Emit (Logger, Record_Value.Value, 9010, Submitted);
+      Check (Submitted, "death fixture submitted");
+      loop
+         if Poll_Completion (Completion'Address) = 1 then
+            Check (Completion.token = 9010 and then
+                   Completion.status = COMPLETION_TARGET_DIED,
+                   "collector death completes pending publication");
+            CuBit.Logging.Complete (Logger, Completion, Handled);
+            Check (Handled and then CuBit.Logging.Dropped (Logger) = 1,
+                   "dead collector loss counted once");
+            exit;
+         end if;
+         Check (syscall (SYSCALL_GETTIME) < Deadline, "death timeout");
+         Ignore := syscall (SYSCALL_SLEEP, 1);
+      end loop;
+      --  TARGET_DIED need not imply mapping retirement has completed yet.
+      loop
+         CuBit.Logging.Disconnect (Logger, Done);
+         exit when Done;
+         Check (syscall (SYSCALL_GETTIME) < Deadline, "retirement timeout");
+         Ignore := syscall (SYSCALL_SLEEP, 1);
+      end loop;
+      CuBit.Logging.Emit (Stale, Record_Value.Value, 9011, Submitted);
+      Check (not Submitted, "dead endpoint cannot create a new grant");
+      CuBit.Logging.Disconnect (Stale, Done);
+      Check (Done, "failed fresh binding has no grant to retire");
+      debugPrint ("TEST: PASS log-collector-death" & ASCII.LF);
+   end Check_Collector_Death;
 begin
    --  The ordinary child requests exactly the same ELF manifest, but cannot
    --  opt into trusted-startup approval. Its observer endpoint stays absent.
@@ -141,6 +211,8 @@ begin
              Msg.words = [0, 0, 0, 0], "forged observer tag denied");
       Publish_Record;
       Check_Quota;
+      Check_Disconnect;
+      Check_Collector_Death;
       debugPrint ("TEST: PASS log-unapproved" & ASCII.LF);
       return;
    end if;

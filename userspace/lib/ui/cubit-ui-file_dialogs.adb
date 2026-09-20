@@ -28,6 +28,34 @@ package body CuBit.UI.File_Dialogs is
 
    function Bounds (Width, Height : Natural) return Rect is (Layout (Width, Height).Frame);
 
+   function Confirmation_Layout (Width, Height : Natural) return Geometry is
+      G : Geometry := Layout (Width, Height);
+   begin
+      if Is_Empty (G.Frame) then return G; end if;
+      G.Frame.w := Natural'Min (480, G.Frame.w);
+      G.Frame.h := 196;
+      G.Frame.x := (Width - G.Frame.w) / 2;
+      G.Frame.y := (Height - G.Frame.h) / 2;
+      G.Confirm.y := G.Frame.y + G.Frame.h - 39;
+      return G;
+   end Confirmation_Layout;
+
+   function Decision_Bounds (G : Geometry; Choice : Decision) return Rect is
+      W : constant Natural := Natural'Min (92, (G.Frame.w - 40) / 3);
+   begin
+      return (G.Frame.x + G.Frame.w - 12 - 3 * W - 16 +
+                (W + 8) * (Decision'Pos (Choice) - Decision'Pos (Decision'First)),
+              G.Confirm.y, W, 27);
+   end Decision_Bounds;
+
+   function Hit_Decision (G : Geometry; X, Y : Natural) return Dialog_Action is
+   begin
+      for Choice in Decision loop
+         if Point_In_Rect (X, Y, Decision_Bounds (G, Choice)) then return Choice; end if;
+      end loop;
+      return No_Action;
+   end Hit_Decision;
+
    function Is_Open (State : Dialog_State) return Boolean is (State.Visible);
    function Mode (State : Dialog_State) return Dialog_Mode is (State.Operation);
    function Filename (State : Dialog_State) return String is (Editor.Content (State.Name));
@@ -35,6 +63,7 @@ package body CuBit.UI.File_Dialogs is
    begin
       State.Visible := False;
       State.Press := No_Press;
+      State.Decision_Press := No_Action;
    end Close;
    procedure Set_Error (State : in out Dialog_State; Message : String) is
    begin
@@ -71,6 +100,42 @@ package body CuBit.UI.File_Dialogs is
          Editor.Select_All (State.Name);
       end if;
    end Show;
+
+   procedure Confirm_Unsaved (State : out Dialog_State; Filename : String) is
+      Files : CuBit.File_Selection.File_List;
+   begin
+      Show (State, Unsaved_Changes, Files, "", Filename);
+   end Confirm_Unsaved;
+
+   procedure Handle_Decision
+     (State : in out Dialog_State; Event : Dialog_Event;
+      G : Geometry; Action : out Dialog_Action) is
+      Hit : constant Dialog_Action := Hit_Decision (G, Event.X, Event.Y);
+   begin
+      Action := No_Action;
+      case Event.Kind is
+         when Tab | Left | Right =>
+            if Event.Kind = Left or else (Event.Kind = Tab and then Event.Shift) then
+               State.Decision_Focus := (if State.Decision_Focus = Decision'First then Decision'Last
+                 else Decision'Pred (State.Decision_Focus));
+            else
+               State.Decision_Focus := (if State.Decision_Focus = Decision'Last then Decision'First
+                 else Decision'Succ (State.Decision_Focus));
+            end if;
+         when Enter => Action := State.Decision_Focus;
+         when Pointer_Down | Double_Click =>
+            State.Decision_Press := Hit;
+            if Hit in Decision then State.Decision_Focus := Hit; end if;
+         when Pointer_Drag =>
+            -- Releasing outside the original button cancels the click.
+            if Hit /= State.Decision_Press then State.Decision_Press := No_Action; end if;
+         when Pointer_Up =>
+            if Hit = State.Decision_Press and then Hit in Decision then Action := Hit; end if;
+            State.Decision_Press := No_Action;
+         when others => null;
+      end case;
+      if Action in Decision then Close (State); end if;
+   end Handle_Decision;
 
    procedure Handle
      (State : in out Dialog_State; Event : Dialog_Event;
@@ -113,6 +178,10 @@ package body CuBit.UI.File_Dialogs is
          return;
       end if;
       if Is_Empty (G.Frame) then return; end if;
+      if State.Operation = Unsaved_Changes then
+         Handle_Decision (State, Event, Confirmation_Layout (Width, Height), Action);
+         return;
+      end if;
       State.First_Row := Natural'Min (State.First_Row, Maximum);
       case Event.Kind is
          when Tab =>
@@ -214,7 +283,8 @@ package body CuBit.UI.File_Dialogs is
    end Handle;
 
    procedure Draw (C : Canvas; State : Dialog_State; Colors : Theme) is
-      G : constant Geometry := Layout (C.width, C.height);
+      G : constant Geometry := (if State.Operation = Unsaved_Changes then
+        Confirmation_Layout (C.width, C.height) else Layout (C.width, C.height));
       Header : constant Rect := Layout_Table (G.List).Header;
       Columns : constant Table_Column_Layout :=
         (First_Width => (if G.Rows.w > 110 then G.Rows.w - 110 else 0),
@@ -230,8 +300,33 @@ package body CuBit.UI.File_Dialogs is
          Colors.activeTitleTop, Colors.activeTitleBottom);
       Draw_UI_Text_Transparent
         (With_Clip (C, G.Frame), G.Frame.x + 10, G.Frame.y + 5,
-         (if State.Operation = Open_File then "Open CCL source" else "Save CCL source as a new file"),
+         (case State.Operation is
+            when Open_File => "Open CCL source",
+            when Save_New_File => "Save CCL source as a new file",
+            when Unsaved_Changes => "Unsaved changes"),
          Colors.selectionText);
+      if State.Operation = Unsaved_Changes then
+         Widgets.Label (C, (G.Frame.x + 16, G.Frame.y + 50, G.Frame.w - 32, 24), Colors,
+           "Save changes before opening another file?");
+         Widgets.Label (C, (G.Frame.x + 16, G.Frame.y + 84, G.Frame.w - 32, 24), Colors,
+           (if Filename (State)'Length = 0 then "Untitled CCL source" else Filename (State)));
+         Widgets.Label (C, (G.Frame.x + 16, G.Frame.y + 124, G.Frame.w - 32, 24), Colors,
+           "Discard loses these edits when another file opens.");
+         for Choice in Decision loop
+            declare
+               B : constant Rect := Decision_Bounds (G, Choice);
+            begin
+               Draw_Button (C, B, Colors,
+                 (if State.Decision_Press = Choice then Button_Pressed else Button_Normal),
+                 (case Choice is when Save_Changes => "Save", when Discard_Changes => "Discard",
+                                 when Cancelled => "Cancel"));
+               if State.Decision_Focus = Choice then
+                  Stroke_Rect (C, (B.x + 3, B.y + 3, B.w - 6, B.h - 6), Colors.accent, Colors.accent);
+               end if;
+            end;
+         end loop;
+         return;
+      end if;
       Widgets.Label (C, (G.Frame.x + 12, G.Frame.y + 34, G.Frame.w - 24, 20), Colors,
         State.Location_Text (1 .. State.Location_Length));
       Draw_Table_Viewport (C, G.List, Colors);

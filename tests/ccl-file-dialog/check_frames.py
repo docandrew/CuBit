@@ -11,9 +11,9 @@ def frame(number):
 
 
 initial, hover = frame(0), frame(1)
-assert initial.size == hover.size == (900, 400)
-assert ImageChops.difference(initial.crop((0, 374, 900, 400)),
-                            hover.crop((0, 374, 900, 400))).getbbox(), "hover hint did not repaint"
+assert initial.size == hover.size == (900, 500)
+assert ImageChops.difference(initial.crop((0, 474, 900, 500)),
+                            hover.crop((0, 474, 900, 500))).getbbox(), "hover hint did not repaint"
 assert not ImageChops.difference(initial.crop((250, 145, 580, 330)),
                                 hover.crop((250, 145, 580, 330))).getbbox(), "hover repainted source"
 assert ImageChops.difference(hover, frame(2)).getbbox(), "Open dialog did not appear"

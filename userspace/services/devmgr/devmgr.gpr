@@ -25,6 +25,7 @@ project Devmgr is
       "ccl-handler_references.ads", "ccl-handler_references.adb",
        "ccl-catalog.ads", "ccl-catalog.adb",
        "ccl-language.ads", "ccl-language.adb",
+       "ccl-types.ads", "ccl-types.adb",
        "ccl-declarations.ads", "ccl-declarations.adb",
        "ccl-configurations.ads", "ccl-configurations.adb");
 

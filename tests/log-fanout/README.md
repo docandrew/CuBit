@@ -9,6 +9,8 @@ nix develop -c bash tests/log-fanout/run.sh
 The runner builds a Linux-hosted assertion-enabled test and runs GNATprove on
 `Log_Fanout`, `Log_Budgets`, tag helpers, the pure authority-policy evaluator,
 and ghost policy properties.
+It also proves the pure retirement-query classifier and ghost checks that query
+errors/current generations cannot be mistaken for confirmed retirement.
 The live CuBit log service uses this core. This runner tests the core on Linux;
 it does not boot the native adapter or build an ISO.
 
@@ -91,7 +93,11 @@ publisher identities, local busy drops, collector overflow, forged tags,
 publisher-only observation denial, observer-only publication denial, invalid
 headers/records/grant generations, read-only output grants, stale handles, and
 ordinary-launch denial of observer authority, rate limiting, forged budget tags,
-and client recovery/drop accounting. Cross-owner handles, PID reuse,
+and client recovery/drop accounting. A dedicated `log-retire.app` fixture uses
+the test endpoint role and deliberately exits with an acquired grant and pending
+publication. Tests require TARGET_DIED completion, confirmed grant retirement,
+safe explicit disconnect, and denial of a new grant through the dead endpoint.
+The fixture is not part of normal image/startup plans. Cross-owner handles, PID reuse,
 lease expiry, and exhaustion are currently hosted core regressions, not native
 lifecycle tests. Service restart, persistence, producer fairness, kernel boot-log
 capture and broad service instrumentation remain follow-up work.

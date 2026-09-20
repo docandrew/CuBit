@@ -102,9 +102,9 @@ package body Control_Wire with SPARK_Mode is
             when CCL.Language.Boolean_Type => Number (2);
             when CCL.Language.String_Type => Number (3);
             when CCL.Language.Character_Type => Number (4);
-            --  Not representable in today's Interpretation_Result. If that
-            --  expands later, owner-local handler code still has no wire tag.
-            when CCL.Language.Handler_Type => Failed := True;
+            --  Snapshot-local enum identities and owner-local handler code
+            --  have no portable wire schema yet. Never export them as integers.
+            when others => Failed := True;
          end case;
          Number (Interfaces.Unsigned_64 (Item.Diagnostic_Position));
          Number (Interfaces.Unsigned_64 (Item.Fuel_Remaining));

@@ -1,0 +1,9 @@
+# F5 installs a button; every click appends a line to the Output pane.
+# Clear erases only this pane, not system logs. Stop closes the button.
+(define (clicked) Boolean
+  (ui.output-append
+    (concat "Uptime milliseconds: " (to-string (clock.monotonic-ms)))))
+
+(let ((closed (ui.button-close)))
+  (let ((caption (ui.button-text "Print uptime")))
+    (ui.button-on-click (handler clicked))))

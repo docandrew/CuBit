@@ -3,6 +3,7 @@ with CCL.Ownership;
 with CCL.Imports;
 with CCL.Bounded_Stacks;
 with CCL.Execution_Budgets;
+with CCL.Types;
 
 package CCL.VM with
    SPARK_Mode => On
@@ -24,32 +25,42 @@ is
    type Local_Type_Array is
      array (CCL.Ownership.Binding_Id) of CCL.Ownership.Type_Id;
 
-   type Value_Kind is (Integer_Value, Boolean_Value);
-   for Value_Kind use (Integer_Value => 0, Boolean_Value => 1);
+   type Value_Kind is (Integer_Value, Boolean_Value, Variant_Value);
+   for Value_Kind use (Integer_Value => 0, Boolean_Value => 1, Variant_Value => 2);
    for Value_Kind'Size use 8;
+   subtype Scalar_Kind is Value_Kind range Integer_Value .. Boolean_Value;
 
    type Value is record
       Kind    : Value_Kind := Integer_Value;
       Integer : Integer_64 := 0;
       Boolean : Standard.Boolean := False;
       Type_Tag : CCL.Ownership.Type_Id := 0;
+      Data_Type : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
+      Alternative : CCL.Types.Component_Index := 1;
+      Copyable : Standard.Boolean := True;
    end record;
 
    function Integer_Constant (Item : Integer_64) return Value is
-     ((Kind => Integer_Value, Integer => Item, Boolean => False, Type_Tag => 0));
+     ((Kind => Integer_Value, Integer => Item, others => <>));
 
    function Boolean_Constant (Item : Standard.Boolean) return Value is
-     ((Kind => Boolean_Value, Integer => 0, Boolean => Item, Type_Tag => 0));
+     ((Kind => Boolean_Value, Boolean => Item, others => <>));
 
    function With_Type
      (Item : Value; Type_Tag : CCL.Ownership.Type_Id) return Value is
      ((Kind => Item.Kind, Integer => Item.Integer, Boolean => Item.Boolean,
-       Type_Tag => Type_Tag));
+       Type_Tag => Type_Tag, Data_Type => Item.Data_Type, Alternative => Item.Alternative,
+       Copyable => Item.Copyable));
+
+   function Value_Image (Types : CCL.Types.Registry; Item : Value) return String;
+   function Well_Typed (Types : CCL.Types.Registry; Item : Value) return Boolean;
 
    type Local_Value_Array is
      array (CCL.Ownership.Binding_Id) of Value;
    type Local_Kind_Array is
      array (CCL.Ownership.Binding_Id) of Value_Kind;
+   type Local_Data_Type_Array is
+     array (CCL.Ownership.Binding_Id) of CCL.Types.Type_Reference;
 
    type Op_Code is
      (Halt,
@@ -73,7 +84,12 @@ is
       Initialize_Local,
       Multiply_Integer,
       Divide_Integer,
-      Modulo_Integer);
+      Modulo_Integer,
+      Make_Variant,
+      Equal_Variant,
+      Switch_Variant,
+      Copy_Stack,
+      Drop_Under_Top);
    for Op_Code use
      (Halt                    => 0,
       Push_Integer            => 1,
@@ -96,7 +112,12 @@ is
       Initialize_Local        => 18,
       Multiply_Integer        => 19,
       Divide_Integer          => 20,
-      Modulo_Integer          => 21);
+      Modulo_Integer          => 21,
+      Make_Variant            => 22,
+      Equal_Variant           => 23,
+      Switch_Variant          => 24,
+      Copy_Stack              => 25,
+      Drop_Under_Top          => 26);
    for Op_Code'Size use 8;
 
    type Authority_Class is
@@ -114,8 +135,8 @@ is
    for Authority_Class'Size use 8;
 
    type Import_Declaration is record
-      Argument  : Value_Kind := Integer_Value;
-      Result    : Value_Kind := Integer_Value;
+      Argument  : Scalar_Kind := Integer_Value;
+      Result    : Scalar_Kind := Integer_Value;
       Authority : Authority_Class := No_Authority;
       Binding   : Unsigned_32 := 0;
       Ownership_Argument : Boolean := False;
@@ -137,9 +158,21 @@ is
       Import    : Import_Index := 0;
       Local     : CCL.Ownership.Binding_Id := 0;
       Verb      : CCL.Ownership.Disposition_Id := 0;
+      Data_Type : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
+      Alternative : CCL.Types.Component_Count := 0;
    end record;
 
    type Instruction_Array is array (Instruction_Index) of Instruction;
+
+   Maximum_Matches : constant := 16;
+   subtype Match_Count is Natural range 0 .. Maximum_Matches;
+   subtype Match_Index is Natural range 0 .. Maximum_Matches - 1;
+   type Alternative_Targets is array (CCL.Types.Component_Index) of Instruction_Index;
+   type Match_Table is record
+      Data_Type : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
+      Targets : Alternative_Targets := [others => 0];
+   end record;
+   type Match_Tables is array (Match_Index) of Match_Table;
 
    type Program is record
       Length : Program_Length := 0;
@@ -152,6 +185,10 @@ is
       Local_Types : Local_Type_Array := [others => 0];
       Local_Kinds : Local_Kind_Array := [others => Integer_Value];
       Types : CCL.Ownership.Type_Table := [others => (others => <>)];
+      Data_Types : CCL.Types.Registry;
+      Local_Data_Types : Local_Data_Type_Array := [others => CCL.Types.Invalid_Type];
+      Matches_Length : Match_Count := 0;
+      Matches : Match_Tables := [others => (others => <>)];
    end record;
 
    type Validation_Error is
@@ -166,6 +203,8 @@ is
       Type_Mismatch,
       Inconsistent_Stack,
       Invalid_Import,
+      Invalid_Data_Type,
+      Invalid_Match,
       Invalid_Ownership);
 
    type Validated_Program is private;

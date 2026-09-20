@@ -38,6 +38,33 @@ procedure Main is
       Handle (Dialog, (Kind => Pointer_Up, X => X, Y => Y, others => <>), 900, 400, Action);
    end Click;
 begin
+   Confirm_Unsaved (Dialog, "edited.ccl");
+   pragma Assert (Is_Open (Dialog) and Mode (Dialog) = Unsaved_Changes);
+   Key (Enter);
+   pragma Assert (Action = Save_Changes and not Is_Open (Dialog));
+   Confirm_Unsaved (Dialog, "edited.ccl");
+   Key (Tab); Key (Enter);
+   pragma Assert (Action = Discard_Changes and not Is_Open (Dialog));
+   Confirm_Unsaved (Dialog, "edited.ccl");
+   Key (Tab, Shift => True); Key (Enter);
+   pragma Assert (Action = Cancelled and not Is_Open (Dialog));
+   Confirm_Unsaved (Dialog, "edited.ccl");
+   Key (Escape);
+   pragma Assert (Action = Cancelled and not Is_Open (Dialog));
+   Confirm_Unsaved (Dialog, "edited.ccl");
+   Handle (Dialog, (Kind => Pointer_Down, X => 540, Y => 270, others => <>), 900, 400, Action);
+   Handle (Dialog, (Kind => Pointer_Up, X => 10, Y => 10, others => <>), 900, 400, Action);
+   pragma Assert (Action = No_Action and Is_Open (Dialog));
+   Click (540, 270);
+   pragma Assert (Action = Discard_Changes and not Is_Open (Dialog));
+   Confirm_Unsaved (Dialog, "");
+   Draw (C, Dialog, CuBit_Alloy_Dark);
+   declare
+      Small : constant Canvas := (Buffer'Address, 320, 280, 3600, others => <>);
+   begin
+      Draw (Small, Dialog, CuBit_Alloy_Dark);
+   end;
+   Key (Escape);
    pragma Assert (Valid_Leaf ("clock.ccl"));
    pragma Assert (not Valid_Leaf ("../secrets.ccl"));
    pragma Assert (not Valid_Leaf ("@nvme:0/private.ccl"));
@@ -147,6 +174,7 @@ begin
    Load ("test.ccl", Text, Length, Result);
    pragma Assert (Result = Succeeded and Text (1 .. Length) = "(+ 20 22)");
    --  Optional visual capture of the same reusable widget used by Workbench.
+   Buffer := [others => [others => 16#526272#]];
    Show (Dialog, Save_New_File, Files, Location, "clock.ccl");
    Draw (C, Dialog, CuBit_Alloy);
    for Y in Buffer'Range (1) loop

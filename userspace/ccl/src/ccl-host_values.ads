@@ -31,9 +31,10 @@ package CCL.Host_Values with SPARK_Mode => On is
    function Handler_Constant (Item : CCL.Handler_References.Reference) return Value is
      ((Kind => Handler_Value, Action => Item));
    procedure Copy_Text (Source : String; Item : out Text; Success : out Boolean);
-   function From_Scalar (Item : CCL.VM.Value) return Value;
+   function From_Scalar (Item : CCL.VM.Value) return Value
+     with Pre => Item.Kind in CCL.VM.Scalar_Kind;
    procedure To_Scalar (Item : Value; Scalar : out CCL.VM.Value; Success : out Boolean);
-   function Kind_Of (Item : CCL.VM.Value_Kind) return Value_Kind;
+   function Kind_Of (Item : CCL.VM.Scalar_Kind) return Value_Kind;
 
    --  Source interface contracts are not bytecode import records. Text limits
    --  participate in exact grant matching, including zero-length-only text.

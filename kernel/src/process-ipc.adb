@@ -1717,16 +1717,19 @@ package body Process.IPC is
 
         Spinlocks.enterCriticalSection (grantLock);
 
-        if slotOwner /= owner or else
-           not Memory_Grants.Is_Active (value.lifecycle) or else
-           value.granterPID /= owner
-        then
+        if slotOwner /= owner then
             Spinlocks.exitCriticalSection (grantLock);
             return;
         end if;
 
-        generation := value.generation;
-        success := True;
+        if not Memory_Grants.Is_Active (value.lifecycle) then
+            --  Zero is an owned, retired slot, not a lookup failure. All
+            --  invalidation paths retire mappings/TLBs before marking inactive.
+            success := True;
+        elsif value.granterPID = owner then
+            generation := value.generation;
+            success := True;
+        end if;
         Spinlocks.exitCriticalSection (grantLock);
     end getOwnedGrantGeneration;
 

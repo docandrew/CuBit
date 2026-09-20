@@ -5,8 +5,8 @@ with CuBit.UI.State;
 --  Reusable, application-modal selection UI. The caller supplies names and
 --  performs I/O after Submit; this widget cannot enumerate or grant access.
 package CuBit.UI.File_Dialogs is
-   type Dialog_Mode is (Open_File, Save_New_File);
-   type Dialog_Action is (No_Action, Submit, Cancelled);
+   type Dialog_Mode is (Open_File, Save_New_File, Unsaved_Changes);
+   type Dialog_Action is (No_Action, Submit, Save_Changes, Discard_Changes, Cancelled);
    type Event_Kind is
      (No_Event, Text_Input, Backspace, Delete, Left, Right, Home, End_Key,
       Select_All, Up, Down, Page_Up, Page_Down, Enter, Escape, Tab,
@@ -23,6 +23,8 @@ package CuBit.UI.File_Dialogs is
      (State : out Dialog_State; Mode : Dialog_Mode;
       Files : CuBit.File_Selection.File_List; Location : String;
       Suggested_Name : String := "");
+   -- Returns a decision only; the caller owns saving and deferred opening.
+   procedure Confirm_Unsaved (State : out Dialog_State; Filename : String);
    function Is_Open (State : Dialog_State) return Boolean;
    function Mode (State : Dialog_State) return Dialog_Mode;
    function Filename (State : Dialog_State) return String;
@@ -34,6 +36,7 @@ package CuBit.UI.File_Dialogs is
       Width, Height : Natural; Action : out Dialog_Action);
    procedure Draw (C : Canvas; State : Dialog_State; Colors : Theme);
 private
+   subtype Decision is Dialog_Action range Save_Changes .. Cancelled;
    type Focus_Target is (File_List, Name_Field, Accept_Button, Cancel_Button);
    type Press_Target is (No_Press, Accept_Press, Cancel_Press, Name_Press);
    type Dialog_State is record
@@ -49,6 +52,8 @@ private
       Error_Length : Natural range 0 .. 128 := 0;
       Focus : Focus_Target := File_List;
       Press : Press_Target := No_Press;
+      Decision_Focus : Decision := Save_Changes;
+      Decision_Press : Dialog_Action := No_Action;
       Scroll_State : CuBit.UI.State.UI_State;
    end record;
 end CuBit.UI.File_Dialogs;

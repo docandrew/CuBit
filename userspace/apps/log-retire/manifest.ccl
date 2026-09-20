@@ -1,0 +1,4 @@
+(executable-manifest v1
+  (identity "com.cubit.log-retire-test")
+  (version "0.1.0")
+  (request-notification ipc-test-registration manage registration))

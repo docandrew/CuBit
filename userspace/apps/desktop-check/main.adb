@@ -205,7 +205,7 @@ procedure Main is
             Check (Send (Encode_Empty_Request (Goodbye)) = Encode_Status (Goodbye, Success),
                    "valid goodbye acknowledged");
             if Acquired then
-               Check (syscall (SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION, Grant.slot) = Unsigned_64'Last,
+               Check (syscall (SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION, Grant.slot) = 0,
                       "goodbye releases pending acquisition");
             end if;
             Result := Send (Encode_Present ((Fixture.Surface, (0, 0, 0, 0))));
@@ -513,7 +513,7 @@ begin
                   Response := Send (Encode_Attachment ((Surface, Second, (4, 2, 16))));
                   Check (Response.Words (0) = 0, "replacement acquisition");
                   Check (syscall (SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION,
-                                  First.slot) = Unsigned_64'Last, "replacement completes old revoke");
+                                  First.slot) = 0, "replacement completes old revoke");
                   MG.Create_Via_Capability
                     (CAP_SLOT_DESKTOP, To_Address (Address), 1, False, Reused, Ok);
                   Check (Ok and then Reused.slot = First.slot and then
@@ -556,7 +556,7 @@ begin
    end loop;
    if Has_Held then
       Check (syscall (SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION,
-                      Held.slot) = Unsigned_64'Last, "destroy returns held acquisition");
+                      Held.slot) = 0, "destroy returns held acquisition");
    end if;
    Check_Input_Boundaries;
    Check_Session_Boundaries;

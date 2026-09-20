@@ -1,7 +1,7 @@
 CCL-INTERFACE-DESCRIPTOR 1
 name 2:ui
-version 1 2
-operations 6
+version 1 3
+operations 8
 operation 0
 name 11:label-value
 parameters 1
@@ -69,6 +69,32 @@ cancel-verb 0
 end-operation
 operation 5
 name 12:button-close
+parameters 0
+argument integer
+result boolean
+authority control
+ownership-argument false
+transfer copy
+cancellation not-cancellable
+success-verb 0
+failure-verb 0
+cancel-verb 0
+end-operation
+operation 6
+name 13:output-append
+parameters 1
+argument string 1024
+result boolean
+authority control
+ownership-argument false
+transfer copy
+cancellation not-cancellable
+success-verb 0
+failure-verb 0
+cancel-verb 0
+end-operation
+operation 7
+name 12:output-clear
 parameters 0
 argument integer
 result boolean

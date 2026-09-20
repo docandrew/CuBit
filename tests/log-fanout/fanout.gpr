@@ -4,6 +4,8 @@ project Fanout is
                         "cubit-authority_policy.ads", "cubit-protocols.ads",
                         "cubit-log_records.ads", "cubit-log_records.adb",
                         "policy_proof.ads", "log_budgets.ads", "log_budgets.adb",
+                        "cubit-grant_references.ads",
+                        "retirement_proof.ads", "retirement_proof.adb",
                         "policy_proof.adb", "log_fanout.ads", "log_fanout.adb");
    for Object_Dir use "build/obj";
    for Exec_Dir use "build";

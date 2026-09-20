@@ -1,5 +1,6 @@
 with CCL.UI_Labels;
 with CCL.UI_Buttons;
+with CCL.UI_Outputs;
 with CCL.VM;
 with CCL.Host_Values;
 package body CCL.Interfaces.Workbench_UI with SPARK_Mode is
@@ -11,7 +12,7 @@ package body CCL.Interfaces.Workbench_UI with SPARK_Mode is
       Descriptor : CCL.Catalog.Interface_Descriptor;
       Operation : CCL.Catalog.Operation_Descriptor;
    begin
-      CCL.Catalog.Define_Interface ("ui", 1, 2, Descriptor_Digest, Descriptor, Error);
+      CCL.Catalog.Define_Interface ("ui", 1, 3, Descriptor_Digest, Descriptor, Error);
       if Error /= CCL.Catalog.Catalog_Valid then return; end if;
       for Op in CCL.UI_Labels.Operation loop
          if Op = CCL.UI_Labels.Set_Text then
@@ -43,6 +44,25 @@ package body CCL.Interfaces.Workbench_UI with SPARK_Mode is
                    when CCL.UI_Buttons.Close_Button => CCL.Host_Values.Integer_Value),
                 Argument_Text_Limit => (if Op = CCL.UI_Buttons.Set_Text then CCL.Host_Values.Maximum_Text_Length else 0),
                 Result => CCL.Host_Values.Boolean_Value, Authority => CCL.VM.Control_Authority, others => <>),
+               Operation, Error);
+            if Error /= CCL.Catalog.Catalog_Valid then return; end if;
+            CCL.Catalog.Add_Operation (Descriptor, Operation, Error);
+            if Error /= CCL.Catalog.Catalog_Valid then return; end if;
+         end;
+      end loop;
+      for Op in CCL.UI_Outputs.Operation loop
+         declare
+            use type CCL.UI_Outputs.Operation;
+            Has_Text : constant Boolean := Op = CCL.UI_Outputs.Append_Line;
+         begin
+            CCL.Catalog.Define_Host_Operation
+              (CCL.UI_Outputs.Name (Op), (if Has_Text then 1 else 0),
+               (Argument => (if Has_Text then CCL.Host_Values.Text_Value
+                             else CCL.Host_Values.Integer_Value),
+                Argument_Text_Limit => (if Has_Text then
+                  CCL.Host_Values.Maximum_Text_Length else 0),
+                Result => CCL.Host_Values.Boolean_Value,
+                Authority => CCL.VM.Control_Authority, others => <>),
                Operation, Error);
             if Error /= CCL.Catalog.Catalog_Valid then return; end if;
             CCL.Catalog.Add_Operation (Descriptor, Operation, Error);

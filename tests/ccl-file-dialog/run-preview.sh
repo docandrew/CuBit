@@ -10,8 +10,17 @@ alr exec -- gcc -shared -fPIC -Wall -Wextra -Werror \
     -o ../tests/ccl-file-dialog/build/workbench-events.so -ldl $(pkg-config --libs sdl2)
 dialog_captures=$(mktemp -d /tmp/cubit-file-dialog.XXXXXX)
 timeout 15 env SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software \
-    CCL_UI_WINDOW_WIDTH=900 CCL_UI_WINDOW_HEIGHT=400 \
+    CCL_UI_WINDOW_WIDTH=900 CCL_UI_WINDOW_HEIGHT=500 \
     CCL_TEST_CAPTURE="$dialog_captures" \
     LD_PRELOAD="$PWD/../tests/ccl-file-dialog/build/workbench-events.so" \
     ../userspace/ccl/build/ccl-ui-preview/ccl-ui-preview
 python3 ../tests/ccl-file-dialog/check_frames.py "$dialog_captures"
+for scenario in cancel discard save save-cancel save-fail open-fail; do
+    unsaved_captures=$(mktemp -d /tmp/cubit-unsaved.XXXXXX)
+    timeout 15 env SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software \
+        CCL_UI_WINDOW_WIDTH=900 CCL_UI_WINDOW_HEIGHT=500 \
+        CCL_TEST_UNSAVED="$scenario" CCL_TEST_CAPTURE="$unsaved_captures" \
+        LD_PRELOAD="$PWD/../tests/ccl-file-dialog/build/workbench-events.so" \
+        ../userspace/ccl/build/ccl-ui-preview/ccl-ui-preview
+    python3 ../tests/ccl-file-dialog/check_unsaved.py "$unsaved_captures" "$scenario"
+done

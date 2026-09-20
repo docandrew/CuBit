@@ -13,6 +13,8 @@ is
       Malformed_Typed_Tree,
       Too_Many_Locals,
       Too_Many_Imports,
+      Too_Many_Matches,
+      Stack_Limit,
       Debug_Map_Full,
       Program_Full);
 

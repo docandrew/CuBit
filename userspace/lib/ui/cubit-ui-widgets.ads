@@ -100,6 +100,18 @@ package CuBit.UI.Widgets is
        minSecond : Natural := 96;
        retainedInput : Boolean := False);
 
+   --  Read-only, monospace output with shared scrollbars and a Clear button.
+   --  The caller owns the text. No keyboard events mutate it. Set firstLine
+   --  to Natural'Last to reveal newly appended output; drawing clamps it.
+   procedure Output_Box
+     (c : CuBit.UI.Canvas;
+      st : in out CuBit.UI.State.UI_State;
+      controls : in out CuBit.UI.Controls.Control_Map;
+      clearId, verticalId, horizontalId : CuBit.UI.Controls.Control_ID;
+      bounds : CuBit.UI.Rect; colors : CuBit.UI.Theme; text : String;
+      firstLine, firstColumn : in out Natural;
+      maxFirstLine : out Natural; cleared : out Boolean);
+
    procedure Scroll_Area
       (c : CuBit.UI.Canvas;
        st : in out CuBit.UI.State.UI_State;

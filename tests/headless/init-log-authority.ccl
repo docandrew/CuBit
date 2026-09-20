@@ -1,0 +1,5 @@
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "log-retire.app" (priority 5))
+  (start "log-check.app" (priority 5)))

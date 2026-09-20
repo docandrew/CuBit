@@ -19,6 +19,7 @@
   (service log-observer 21 read-write)
   (notification keyboard 1 publish-and-manage)
   (notification mouse 10 publish-and-manage)
+  (notification ipc-test-registration 14 publish-and-manage)
   (fixed-binding framebuffer 4)
   (fixed-binding gpu 9)
   (fixed-binding network 11)

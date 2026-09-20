@@ -646,7 +646,7 @@ if [ -n "$INIT_PROFILE" ]; then
         done
     fi
     if [ "$TEST_NAME" = "log-authority" ]; then
-        for LOG_IMAGE_NAME in logstore.svc clock.svc log-check.app; do
+        for LOG_IMAGE_NAME in logstore.svc clock.svc log-retire.app log-check.app; do
             LOG_IMAGE="$KERNEL_DIR/isodir/boot/$LOG_IMAGE_NAME"
             if [ ! -f "$LOG_IMAGE" ]; then
                 echo "headless: build logstore clock log-check first" >&2
@@ -1330,6 +1330,9 @@ ps2: consumer registered, entering event loop
 logstore: authorized typed diagnostics ready
 TEST: PASS log-unapproved
 TEST: PASS log-quota
+TEST: PASS log-disconnect
+TEST: log collector exiting with acquired grant
+TEST: PASS log-collector-death
 TEST: PASS log-authority
 "
         ;;
@@ -1407,10 +1410,12 @@ ccl-test-host: registered
 ccl-vm: bytecode PASS
 ccl-vm: module PASS
 ccl-vm: source PASS
+ccl-vm: enum source PASS
+ccl-vm: enum isolation PASS
+ccl-vm: variant bytecode PASS
 ccl-test-host: import invoked
 ccl-vm: import IPC PASS
 clock: registered
-clock: monotonic query
 ccl-vm: clock source/link PASS
 ccl-vm: clock IPC PASS
 ccl-vm: scheduler PASS

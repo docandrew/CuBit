@@ -54,7 +54,7 @@ package body CCL.Configurations with SPARK_Mode => On is
          Number := Low;
          Evaluate (Reader, Value);
          if Stopped then return; end if;
-         if not Value.Has_Value or else Value.Has_Text or else Value.Has_Character
+         if not CCL.Language.Has_Scalar (Value)
            or else Value.Result_Value.Kind /= CCL.VM.Integer_Value
            or else Value.Result_Value.Integer not in Low .. High
          then Fail (Invalid_Value);
@@ -106,7 +106,7 @@ package body CCL.Configurations with SPARK_Mode => On is
                if C not in ' ' .. '~' then Fail (Invalid_Value); end if;
             end loop;
             Store_Value (Value.Result_Text.Data (1 .. Value.Result_Text.Length));
-         elsif Value.Has_Value and then not Value.Has_Character then
+         elsif CCL.Language.Has_Scalar (Value) then
             case Value.Result_Value.Kind is
                when CCL.VM.Integer_Value =>
                   declare
@@ -117,6 +117,8 @@ package body CCL.Configurations with SPARK_Mode => On is
                   end;
                when CCL.VM.Boolean_Value =>
                   Store_Value ((if Value.Result_Value.Boolean then "true" else "false"));
+               when CCL.VM.Variant_Value =>
+                  Fail (Invalid_Value);
             end case;
          else Fail (Invalid_Value);
          end if;

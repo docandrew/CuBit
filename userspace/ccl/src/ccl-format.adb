@@ -1,6 +1,7 @@
 with Interfaces; use Interfaces;
 with CCL.VM; use CCL.VM;
 with CCL.Imports;
+with CCL.Host_Values;
 
 package body CCL.Format with
    SPARK_Mode => On
@@ -10,6 +11,9 @@ is
    use type CCL.Imports.Transfer_Mode;
    use type CCL.Imports.Cancellation_Mode;
    use type CCL.Catalog.Intern_Result;
+   use type CCL.Host_Values.Import_Declaration;
+   use type CCL.Types.Type_Reference;
+   use type CCL.Types.Definition_Result;
 
    type Wire_Boolean is (Wire_False, Wire_True);
    for Wire_Boolean use (Wire_False => 0, Wire_True => 1);
@@ -185,7 +189,7 @@ is
          for I in 0 .. Item.Imports_Length - 1 loop
             Resolved := CCL.Catalog.Element (Linkage, I);
             if Item.Imports (I).Binding /= 0 or else
-              Resolved.Import /= Item.Imports (I) or else
+              Resolved.Import /= CCL.Host_Values.From_Bytecode (Item.Imports (I)) or else
               Resolved.Interface_Major = 0 or else
               not Digest_Present (Resolved.Interface_Digest)
             then
@@ -221,14 +225,25 @@ is
      (Item.Fuel > 0);
 
    function Canonical (Item : Instruction) return Boolean is
-     (case Item.Op is
-         when Push_Integer => Item.Target = 0 and then Item.Import = 0,
+     ((if Item.Op in Make_Variant | Equal_Variant then
+          Item.Data_Type in CCL.Types.Declared_Type
+       else Item.Data_Type = CCL.Types.Invalid_Type and then Item.Alternative = 0) and then
+      (case Item.Op is
+         when Make_Variant | Equal_Variant =>
+           Item.Immediate = 0 and then Item.Target = 0 and then Item.Import = 0 and then
+           Item.Local = 0 and then Item.Verb = 0 and then
+           (if Item.Op = Make_Variant then Item.Alternative > 0 else Item.Alternative = 0),
+         when Switch_Variant | Copy_Stack =>
+           Item.Immediate >= 0 and then Item.Target = 0 and then Item.Import = 0 and then
+           Item.Local = 0 and then Item.Verb = 0,
+         when Push_Integer => Item.Target = 0 and then Item.Import = 0 and then
+           Item.Local = 0 and then Item.Verb = 0,
          when Push_Boolean =>
            (Item.Immediate = 0 or else Item.Immediate = 1) and then
-           Item.Target = 0 and then Item.Import = 0,
+           Item.Target = 0 and then Item.Import = 0 and then Item.Local = 0 and then Item.Verb = 0,
          when Jump | Jump_If_False =>
-           Item.Immediate = 0 and then Item.Import = 0,
-         when Invoke_Import => Item.Immediate = 0 and then Item.Target = 0,
+           Item.Immediate = 0 and then Item.Import = 0 and then Item.Local = 0 and then Item.Verb = 0,
+         when Invoke_Import => Item.Immediate = 0 and then Item.Target = 0 and then Item.Local = 0 and then Item.Verb = 0,
          when Initialize_Local | Copy_Local | Move_Local | Drop_Local |
               Borrow_Local_RO |
               Return_Local_RO | Borrow_Local_RW | Return_Local_RW =>
@@ -238,7 +253,7 @@ is
            Item.Immediate = 0 and then Item.Target = 0 and then Item.Import = 0,
          when others =>
            Item.Immediate = 0 and then Item.Target = 0 and then
-           Item.Import = 0 and then Item.Local = 0 and then Item.Verb = 0);
+           Item.Import = 0 and then Item.Local = 0 and then Item.Verb = 0));
 
    procedure Encode
      (Candidate  : Program;
@@ -274,6 +289,8 @@ is
       end if;
 
       Needed := HEADER_SIZE + Candidate.Types_Length * TYPE_SIZE +
+        Natural (CCL.Types.Last (Candidate.Data_Types) - CCL.Types.Unit_Type) * DATA_TYPE_SIZE +
+        Candidate.Matches_Length * MATCH_SIZE +
         Candidate.Locals_Length * LOCAL_SIZE +
         Candidate.Imports_Length * IMPORT_SIZE +
         Natural (Candidate.Length) * INSTRUCTION_SIZE;
@@ -297,6 +314,8 @@ is
       Data (TYPE_COUNT_OFFSET) := Unsigned_8 (Candidate.Types_Length);
       Data (DYNAMIC_LOCAL_COUNT_OFFSET) :=
         Unsigned_8 (Candidate.Dynamic_Locals_Length);
+      Data (DATA_TYPE_COUNT_OFFSET) := Unsigned_8 (CCL.Types.Last (Candidate.Data_Types) - CCL.Types.Unit_Type);
+      Data (MATCH_COUNT_OFFSET) := Unsigned_8 (Candidate.Matches_Length);
 
       Offset := HEADER_SIZE;
       if Candidate.Types_Length > 0 then
@@ -324,12 +343,30 @@ is
             Offset := Offset + TYPE_SIZE;
          end loop;
       end if;
+      for T in CCL.Types.Declared_Type'First .. CCL.Types.Last (Candidate.Data_Types) loop
+         declare
+            Schema : constant CCL.Types.Encoding.Bytes := CCL.Types.Encoding.Encode
+              (CCL.Types.Describe (Candidate.Data_Types, T));
+         begin
+            for B in Schema'Range loop Data (Offset + B) := Schema (B); end loop;
+         end;
+         Offset := Offset + DATA_TYPE_SIZE;
+      end loop;
+      for M in 1 .. Candidate.Matches_Length loop
+         Data (Offset + MATCH_TYPE_OFFSET) := Unsigned_8 (Candidate.Matches (M - 1).Data_Type);
+         for A in CCL.Types.Component_Index loop
+            Put_U16 (Data, Offset + MATCH_TARGETS_OFFSET + (A - 1) * 2,
+                     Unsigned_16 (Candidate.Matches (M - 1).Targets (A)));
+         end loop;
+         Offset := Offset + MATCH_SIZE;
+      end loop;
       if Candidate.Locals_Length > 0 then
          for Local in 0 .. Candidate.Locals_Length - 1 loop
             Data (Offset + LOCAL_KIND_OFFSET) :=
               Kind_Number (Candidate.Local_Kinds (Local));
             Data (Offset + LOCAL_TYPE_OFFSET) :=
               Unsigned_8 (Candidate.Local_Types (Local));
+            Data (Offset + LOCAL_DATA_TYPE_OFFSET) := Unsigned_8 (Candidate.Local_Data_Types (Local));
             Offset := Offset + LOCAL_SIZE;
          end loop;
       end if;
@@ -393,6 +430,8 @@ is
            (Candidate.Code (Instruction_Index (I)).Local);
          Data (Offset + INSTRUCTION_VERB_OFFSET) :=
            Candidate.Code (Instruction_Index (I)).Verb;
+         Data (Offset + INSTRUCTION_DATA_TYPE_OFFSET) := Unsigned_8 (Candidate.Code (Instruction_Index (I)).Data_Type);
+         Data (Offset + INSTRUCTION_ALTERNATIVE_OFFSET) := Unsigned_8 (Candidate.Code (Instruction_Index (I)).Alternative);
          Put_U64
            (Data, Offset + INSTRUCTION_IMMEDIATE_OFFSET,
             To_Wire (Candidate.Code (Instruction_Index (I)).Immediate));
@@ -446,6 +485,7 @@ is
       Resolution : CCL.Catalog.Resolved_Operation;
       Link_Index : CCL.VM.Import_Index;
       Interned   : CCL.Catalog.Intern_Result;
+      Data_Type_Count, Match_Length : Natural;
    begin
       Program := (others => <>);
       CCL.Catalog.Initialize (Linkage);
@@ -472,16 +512,20 @@ is
       Local_Count := Natural (Data (LOCAL_COUNT_OFFSET));
       Type_Count := Natural (Data (TYPE_COUNT_OFFSET));
       Dynamic_Local_Count := Natural (Data (DYNAMIC_LOCAL_COUNT_OFFSET));
+      Data_Type_Count := Natural (Data (DATA_TYPE_COUNT_OFFSET));
+      Match_Length := Natural (Data (MATCH_COUNT_OFFSET));
       if Instruction_Count > MAX_INSTRUCTIONS or else
         Import_Count > MAX_IMPORTS or else
         Local_Count > CCL.Ownership.MAX_BINDINGS or else
         Type_Count > CCL.Ownership.MAX_TYPES or else
-        Dynamic_Local_Count > Local_Count
+        Dynamic_Local_Count > Local_Count or else
+        Data_Type_Count > CCL.Types.Maximum_Declarations or else Match_Length > Maximum_Matches
       then
          Error := Bad_Total_Length;
          return;
       end if;
       Expected := HEADER_SIZE + Type_Count * TYPE_SIZE +
+        Data_Type_Count * DATA_TYPE_SIZE + Match_Length * MATCH_SIZE +
         Local_Count * LOCAL_SIZE + Import_Count * IMPORT_SIZE +
         Instruction_Count * INSTRUCTION_SIZE;
       if Get_U32 (Data, TOTAL_LENGTH_OFFSET) /= Unsigned_32 (Length) or else
@@ -489,9 +533,7 @@ is
       then
          Error := Bad_Total_Length;
          return;
-      elsif Data (HEADER_RESERVED_OFFSET) /= 0 or else
-        Data (HEADER_RESERVED_OFFSET + 1) /= 0 or else
-        Data (HEADER_RESERVED_OFFSET + 2) /= 0
+      elsif Data (HEADER_RESERVED_OFFSET) /= 0
       then
          Error := Bad_Reserved_Field;
          return;
@@ -514,6 +556,7 @@ is
       Candidate.Locals_Length := Local_Count;
       Candidate.Dynamic_Locals_Length := Dynamic_Local_Count;
       Candidate.Types_Length := Type_Count;
+      Candidate.Matches_Length := Match_Length;
 
       Offset := HEADER_SIZE;
       if Type_Count > 0 then
@@ -568,6 +611,36 @@ is
             Offset := Offset + TYPE_SIZE;
          end loop;
       end if;
+      for T in 1 .. Data_Type_Count loop
+         declare
+            Schema : CCL.Types.Encoding.Bytes;
+            Description : CCL.Types.Description;
+            Valid : Boolean;
+            Ref : CCL.Types.Type_Reference;
+            Status : CCL.Types.Definition_Result;
+         begin
+            for B in Schema'Range loop Schema (B) := Data (Offset + B); end loop;
+            CCL.Types.Encoding.Decode (Schema, Description, Valid);
+            if not Valid then Error := Invalid_Type_Metadata; return; end if;
+            CCL.Types.Define (Candidate.Data_Types, Description, Ref, Status);
+            if Status /= CCL.Types.Defined then Error := Invalid_Type_Metadata; return; end if;
+         end;
+         Offset := Offset + DATA_TYPE_SIZE;
+      end loop;
+      for M in 1 .. Match_Length loop
+         if Data (Offset + MATCH_RESERVED_OFFSET) /= 0 or else
+           Data (Offset + MATCH_TYPE_OFFSET) > Unsigned_8 (CCL.Types.Type_Reference'Last)
+         then Error := Invalid_Type_Metadata; return; end if;
+         Candidate.Matches (M - 1).Data_Type := CCL.Types.Type_Reference (Data (Offset + MATCH_TYPE_OFFSET));
+         for A in CCL.Types.Component_Index loop
+            if Get_U16 (Data, Offset + MATCH_TARGETS_OFFSET + (A - 1) * 2) > MAX_INSTRUCTIONS - 1 then
+               Error := Invalid_Operand; return;
+            end if;
+            Candidate.Matches (M - 1).Targets (A) := Instruction_Index
+              (Get_U16 (Data, Offset + MATCH_TARGETS_OFFSET + (A - 1) * 2));
+         end loop;
+         Offset := Offset + MATCH_SIZE;
+      end loop;
       if Local_Count > 0 then
          if Type_Count = 0 then
             Error := Invalid_Ownership_Metadata;
@@ -577,7 +650,8 @@ is
             if Data (Offset + LOCAL_KIND_OFFSET) > Unsigned_8
               (Value_Kind'Enum_Rep (Value_Kind'Last)) or else
               Natural (Data (Offset + LOCAL_TYPE_OFFSET)) >= Type_Count or else
-              Get_U16 (Data, Offset + LOCAL_RESERVED_OFFSET) /= 0
+              Data (Offset + LOCAL_RESERVED_OFFSET) /= 0 or else
+              Data (Offset + LOCAL_DATA_TYPE_OFFSET) > Unsigned_8 (CCL.Types.Type_Reference'Last)
             then
                Error := Invalid_Ownership_Metadata;
                return;
@@ -586,6 +660,7 @@ is
               Value_Kind'Enum_Val (Data (Offset + LOCAL_KIND_OFFSET));
             Candidate.Local_Types (Local) :=
               CCL.Ownership.Type_Id (Data (Offset + LOCAL_TYPE_OFFSET));
+            Candidate.Local_Data_Types (Local) := CCL.Types.Type_Reference (Data (Offset + LOCAL_DATA_TYPE_OFFSET));
             Offset := Offset + LOCAL_SIZE;
          end loop;
       end if;
@@ -593,9 +668,9 @@ is
          for I in 0 .. Import_Count - 1 loop
             Kind := Data (Offset + IMPORT_ARGUMENT_OFFSET);
             if Kind > Unsigned_8
-              (Value_Kind'Enum_Rep (Value_Kind'Last)) or else
+              (Value_Kind'Enum_Rep (Scalar_Kind'Last)) or else
               Data (Offset + IMPORT_RESULT_OFFSET) > Unsigned_8
-                (Value_Kind'Enum_Rep (Value_Kind'Last))
+                (Value_Kind'Enum_Rep (Scalar_Kind'Last))
             then
                Error := Invalid_Value_Kind;
                return;
@@ -683,7 +758,7 @@ is
                  (Data (Offset + IMPORT_OPERATION_OFFSET)),
                Parameters => CCL.Catalog.Parameter_Count
                  (Data (Offset + IMPORT_PARAMETER_COUNT_OFFSET)),
-               Import => Candidate.Imports (I));
+               Import => CCL.Host_Values.From_Bytecode (Candidate.Imports (I)));
             if not Digest_Present (Resolution.Interface_Digest) then
                Error := Invalid_Linkage;
                return;
@@ -705,10 +780,10 @@ is
             if Op > Unsigned_8 (Op_Code'Enum_Rep (Op_Code'Last)) then
                Error := Invalid_Opcode;
                return;
-            elsif Data (Offset + INSTRUCTION_RESERVED_OFFSET) /= 0 or else
-              Data (Offset + INSTRUCTION_TRAILING_RESERVED_OFFSET) /= 0
+            elsif Data (Offset + INSTRUCTION_DATA_TYPE_OFFSET) > Unsigned_8 (CCL.Types.Type_Reference'Last) or else
+              Data (Offset + INSTRUCTION_ALTERNATIVE_OFFSET) > CCL.Types.Maximum_Components
             then
-               Error := Bad_Reserved_Field;
+               Error := Invalid_Operand;
                return;
             elsif Get_U16 (Data, Offset + INSTRUCTION_TARGET_OFFSET) >
               MAX_INSTRUCTIONS - 1 or else
@@ -729,7 +804,9 @@ is
                  (Data (Offset + INSTRUCTION_IMPORT_OFFSET)),
                Local => CCL.Ownership.Binding_Id
                  (Data (Offset + INSTRUCTION_LOCAL_OFFSET)),
-               Verb => Data (Offset + INSTRUCTION_VERB_OFFSET));
+               Verb => Data (Offset + INSTRUCTION_VERB_OFFSET),
+               Data_Type => CCL.Types.Type_Reference (Data (Offset + INSTRUCTION_DATA_TYPE_OFFSET)),
+               Alternative => Natural (Data (Offset + INSTRUCTION_ALTERNATIVE_OFFSET)));
             if not Canonical
               (Candidate.Code (Instruction_Index (I)))
             then

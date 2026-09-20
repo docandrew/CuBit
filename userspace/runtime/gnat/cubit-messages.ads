@@ -91,6 +91,8 @@ package CuBit.Messages is
 
    --  Transitional service discovery syscall
    SYSCALL_SET_WELL_KNOWN  : constant Unsigned_64 := 107;
+   --  Returns zero for an owned inactive slot; Last for invalid/foreign slots.
+   --  Nonzero generation includes pending revocation, not just available use.
    SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION :
       constant Unsigned_64 := 108;
    SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT : constant Unsigned_64 := 109;

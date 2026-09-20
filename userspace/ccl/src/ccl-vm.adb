@@ -4,6 +4,38 @@ with CCL.Checked_Arithmetic;
 package body CCL.VM with
    SPARK_Mode => On
 is
+   use type CCL.Types.Type_Reference;
+   type Stack_Type is record
+      Kind : Value_Kind := Integer_Value;
+      Data_Type : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
+      Copyable : Boolean := True;
+   end record;
+
+   function Well_Typed (Types : CCL.Types.Registry; Item : Value) return Boolean is
+   begin
+      if Item.Kind /= Variant_Value then
+         return Item.Data_Type = CCL.Types.Invalid_Type;
+      end if;
+      return CCL.Types.Is_Scalar_Sum (Types, Item.Data_Type) and then
+        Item.Alternative <= CCL.Types.Describe (Types, Item.Data_Type).Count;
+   end Well_Typed;
+
+   function Value_Image (Types : CCL.Types.Registry; Item : Value) return String is
+      D : constant CCL.Types.Description := CCL.Types.Describe (Types, Item.Data_Type);
+   begin
+      if not Well_Typed (Types, Item) then return "<invalid value>"; end if;
+      case Item.Kind is
+         when Integer_Value => return Integer_64'Image (Item.Integer);
+         when Boolean_Value => return (if Item.Boolean then "true" else "false");
+         when Variant_Value =>
+            return CCL.Types.Image (D.Identifier) & "." &
+              CCL.Types.Image (D.Parts (Item.Alternative).Identifier) &
+              (case D.Parts (Item.Alternative).Payload is
+                when CCL.Types.Integer_Type => "(" & Integer_64'Image (Item.Integer) & ")",
+                when CCL.Types.Boolean_Type => (if Item.Boolean then "(true)" else "(false)"),
+                when others => "");
+      end case;
+   end Value_Image;
    use type CCL.Ownership.Bytecode.Verification_Error;
    use type CCL.Ownership.Ownership_Error;
    use type CCL.Imports.Import_Error;
@@ -11,8 +43,8 @@ is
    type Abstract_Stack_Index is mod MAX_STACK_DEPTH;
    package Abstract_Stacks is new CCL.Bounded_Stacks
      (Index_Type    => Abstract_Stack_Index,
-      Element_Type  => Value_Kind,
-      Default_Value => Integer_Value);
+      Element_Type  => Stack_Type,
+      Default_Value => (others => <>));
    use type Abstract_Stacks.Operation_Result;
    use type Abstract_Stacks.Stack;
    use type Runtime_Stacks.Operation_Result;
@@ -46,14 +78,16 @@ is
    procedure Push_Kind
      (State : in out Abstract_State;
       Kind  : Value_Kind;
-      Error : in out Validation_Error)
+      Error : in out Validation_Error;
+      Data_Type : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
+      Copyable : Boolean := True)
    is
       Stack_Result : Abstract_Stacks.Operation_Result;
    begin
       if Error /= Valid then
          null;
       else
-         Abstract_Stacks.Push (State.Values, Kind, Stack_Result);
+         Abstract_Stacks.Push (State.Values, (Kind, Data_Type, Copyable), Stack_Result);
          if Stack_Result /= Abstract_Stacks.Stack_Ok then
             Error := Stack_Overflow;
          end if;
@@ -63,10 +97,11 @@ is
    procedure Pop_Kind
      (State    : in out Abstract_State;
       Expected : Value_Kind;
-      Error    : in out Validation_Error)
+      Error    : in out Validation_Error;
+      Data_Type : CCL.Types.Type_Reference := CCL.Types.Invalid_Type)
    is
-      Actual       : Value_Kind;
-      Ignored      : Value_Kind;
+      Actual       : Stack_Type;
+      Ignored      : Stack_Type;
       Stack_Result : Abstract_Stacks.Operation_Result;
    begin
       if Error /= Valid then
@@ -76,8 +111,12 @@ is
            (State.Values, Actual, Stack_Result);
          if Stack_Result /= Abstract_Stacks.Stack_Ok then
             Error := Stack_Underflow;
-         elsif Actual /= Expected then
+         elsif Actual.Kind /= Expected or else Actual.Data_Type /= Data_Type then
             Error := Type_Mismatch;
+         elsif not Actual.Copyable then
+            -- Moved ownership values may be returned, but cannot be laundered
+            -- through arithmetic, scalar imports, or a new unrestricted local.
+            Error := Invalid_Ownership;
          else
             Abstract_Stacks.Pop (State.Values, Ignored, Stack_Result);
             if Stack_Result /= Abstract_Stacks.Stack_Ok then
@@ -99,9 +138,36 @@ is
       Ownership_Candidate : CCL.Ownership.Bytecode.Program;
       Ownership_Result : CCL.Ownership.Bytecode.Verification_Result;
       Length : constant Program_Length := Candidate.Length;
+      Abstract_Value, Discarded : Stack_Type;
+      Stack_Result : Abstract_Stacks.Operation_Result;
+      D : CCL.Types.Description;
+      Branch : Abstract_State;
    begin
       Result := (Checked => False, Content => Candidate);
       Error := Valid;
+
+      for Ref in CCL.Types.Declared_Type'First .. CCL.Types.Last (Candidate.Data_Types) loop
+         if not CCL.Types.Is_Scalar_Sum (Candidate.Data_Types, Ref) then
+            Error := Invalid_Data_Type; return;
+         end if;
+      end loop;
+      for L in 1 .. Candidate.Locals_Length loop
+         if (Candidate.Local_Kinds (L - 1) = Variant_Value and then
+              not CCL.Types.Is_Scalar_Sum (Candidate.Data_Types, Candidate.Local_Data_Types (L - 1))) or else
+            (Candidate.Local_Kinds (L - 1) /= Variant_Value and then
+              Candidate.Local_Data_Types (L - 1) /= CCL.Types.Invalid_Type)
+         then Error := Invalid_Data_Type; return; end if;
+      end loop;
+      for M in 1 .. Candidate.Matches_Length loop
+         if not CCL.Types.Is_Scalar_Sum (Candidate.Data_Types, Candidate.Matches (M - 1).Data_Type)
+         then Error := Invalid_Match; return; end if;
+         D := CCL.Types.Describe (Candidate.Data_Types, Candidate.Matches (M - 1).Data_Type);
+         for A in D.Count + 1 .. CCL.Types.Maximum_Components loop
+            if Candidate.Matches (M - 1).Targets (A) /= 0 then
+               Error := Invalid_Match; return;
+            end if;
+         end loop;
+      end loop;
 
       if Length = 0 then
          Error := Empty_Program;
@@ -123,6 +189,10 @@ is
          Instruction := Candidate.Code (PC);
          Falls_Through := True;
 
+         if Instruction.Op not in Make_Variant | Equal_Variant and then
+           (Instruction.Data_Type /= CCL.Types.Invalid_Type or else Instruction.Alternative /= 0)
+         then Error := Invalid_Data_Type; exit; end if;
+
          case Instruction.Op is
             when Halt =>
                Falls_Through := False;
@@ -132,6 +202,98 @@ is
 
             when Push_Boolean =>
                Push_Kind (State, Boolean_Value, Error);
+
+            when Make_Variant =>
+               D := CCL.Types.Describe (Candidate.Data_Types, Instruction.Data_Type);
+               if not CCL.Types.Is_Scalar_Sum (Candidate.Data_Types, Instruction.Data_Type) or else
+                 Instruction.Alternative not in 1 .. D.Count
+               then Error := Invalid_Data_Type;
+               else
+                  if D.Parts (Instruction.Alternative).Payload /= CCL.Types.Unit_Type then
+                     Abstract_Stacks.Peek_Top (State.Values, Abstract_Value, Stack_Result);
+                     if Stack_Result = Abstract_Stacks.Stack_Ok and then not Abstract_Value.Copyable then
+                        Error := Invalid_Ownership;
+                     end if;
+                     Pop_Kind (State, (if D.Parts (Instruction.Alternative).Payload = CCL.Types.Integer_Type
+                                      then Integer_Value else Boolean_Value), Error);
+                  end if;
+                  Push_Kind (State, Variant_Value, Error, Instruction.Data_Type);
+               end if;
+
+            when Equal_Variant =>
+               if not CCL.Types.Is_Enumeration (Candidate.Data_Types, Instruction.Data_Type) or else
+                 Instruction.Alternative /= 0
+               then Error := Invalid_Data_Type;
+               else
+                  for Operand in 1 .. 2 loop
+                     Abstract_Stacks.Peek_Top (State.Values, Abstract_Value, Stack_Result);
+                     if Stack_Result = Abstract_Stacks.Stack_Ok and then not Abstract_Value.Copyable then
+                        Error := Invalid_Ownership;
+                     end if;
+                     Pop_Kind (State, Variant_Value, Error, Instruction.Data_Type);
+                  end loop;
+                  Push_Kind (State, Boolean_Value, Error);
+               end if;
+
+            when Copy_Stack =>
+               if Instruction.Immediate not in 0 .. MAX_STACK_DEPTH - 1 then Error := Stack_Underflow;
+               else
+                  Abstract_Stacks.Peek_At (State.Values, Unsigned_32 (Instruction.Immediate),
+                                          Abstract_Value, Stack_Result);
+                  if Stack_Result /= Abstract_Stacks.Stack_Ok then Error := Stack_Underflow;
+                  elsif not Abstract_Value.Copyable then Error := Invalid_Ownership;
+                  else Push_Kind (State, Abstract_Value.Kind, Error, Abstract_Value.Data_Type);
+                  end if;
+               end if;
+
+            when Drop_Under_Top =>
+               Abstract_Stacks.Pop (State.Values, Abstract_Value, Stack_Result);
+               if Stack_Result /= Abstract_Stacks.Stack_Ok then Error := Stack_Underflow;
+               else
+                  Abstract_Stacks.Pop (State.Values, Discarded, Stack_Result);
+                  if Stack_Result /= Abstract_Stacks.Stack_Ok then Error := Stack_Underflow;
+                  elsif not Discarded.Copyable then Error := Invalid_Ownership;
+                  else Push_Kind (State, Abstract_Value.Kind, Error, Abstract_Value.Data_Type, Abstract_Value.Copyable);
+                  end if;
+               end if;
+
+            when Switch_Variant =>
+               Falls_Through := False;
+               if Instruction.Immediate < 0 or else
+                 Instruction.Immediate >= Integer_64 (Candidate.Matches_Length)
+               then Error := Invalid_Match;
+               else
+                  declare
+                     M : constant Match_Table := Candidate.Matches (Match_Index (Instruction.Immediate));
+                  begin
+                     -- Capture ownership control flow while the table index is
+                     -- structurally in range; the second pass need not recast
+                     -- an unchecked signed instruction operand.
+                     Ownership_Candidate.Code (CCL.Ownership.Bytecode.Code_Index (PC)) :=
+                       (Op => CCL.Ownership.Bytecode.Switch,
+                        Target_Count => CCL.Types.Describe (Candidate.Data_Types, M.Data_Type).Count,
+                        Targets => [for A in CCL.Types.Component_Index =>
+                          CCL.Ownership.Bytecode.Code_Index (M.Targets (A))], others => <>);
+                     Abstract_Stacks.Peek_Top (State.Values, Abstract_Value, Stack_Result);
+                     if Stack_Result = Abstract_Stacks.Stack_Ok and then not Abstract_Value.Copyable then
+                        Error := Invalid_Ownership;
+                     end if;
+                     Pop_Kind (State, Variant_Value, Error, M.Data_Type);
+                     D := CCL.Types.Describe (Candidate.Data_Types, M.Data_Type);
+                     for A in 1 .. D.Count loop
+                        if M.Targets (A) <= PC then Error := Backward_Jump;
+                        elsif Program_Length (M.Targets (A)) >= Length then Error := Invalid_Jump_Target;
+                        else
+                           Branch := State;
+                           if D.Parts (A).Payload /= CCL.Types.Unit_Type then
+                              Push_Kind (Branch, (if D.Parts (A).Payload = CCL.Types.Integer_Type
+                                                 then Integer_Value else Boolean_Value), Error);
+                           end if;
+                           Merge_State (States, M.Targets (A), Branch, Error);
+                        end if;
+                     end loop;
+                  end;
+               end if;
 
             when Add_Integer =>
                Pop_Kind (State, Integer_Value, Error);
@@ -168,13 +330,15 @@ is
 
             when Drop =>
                declare
-                  Ignored : Value_Kind;
+                  Ignored : Stack_Type;
                   Stack_Result : Abstract_Stacks.Operation_Result;
                begin
                   Abstract_Stacks.Pop
                     (State.Values, Ignored, Stack_Result);
                   if Stack_Result /= Abstract_Stacks.Stack_Ok then
                      Error := Stack_Underflow;
+                  elsif not Ignored.Copyable then
+                     Error := Invalid_Ownership;
                   end if;
                end;
 
@@ -231,7 +395,8 @@ is
                   Error := Invalid_Ownership;
                else
                   Pop_Kind
-                    (State, Candidate.Local_Kinds (Instruction.Local), Error);
+                    (State, Candidate.Local_Kinds (Instruction.Local), Error,
+                     Candidate.Local_Data_Types (Instruction.Local));
                end if;
 
             when Copy_Local | Move_Local | Drop_Local |
@@ -242,7 +407,9 @@ is
                   Error := Invalid_Ownership;
                elsif Instruction.Op in Copy_Local | Move_Local then
                   Push_Kind
-                    (State, Candidate.Local_Kinds (Instruction.Local), Error);
+                    (State, Candidate.Local_Kinds (Instruction.Local), Error,
+                     Candidate.Local_Data_Types (Instruction.Local),
+                     Instruction.Op = Copy_Local);
                end if;
          end case;
 
@@ -284,6 +451,8 @@ is
                      Target => CCL.Ownership.Bytecode.Code_Index
                        (Candidate.Code (PC).Target),
                      others => <>),
+                  when Switch_Variant =>
+                    Ownership_Candidate.Code (CCL.Ownership.Bytecode.Code_Index (PC)),
                   when Initialize_Local =>
                     (Op => CCL.Ownership.Bytecode.Initialize_Local,
                      Local => Candidate.Code (PC).Local,
@@ -405,7 +574,9 @@ is
       if Accepted and then Count > 0 then
          for Local in 0 .. Count - 1 loop
             if Values (Local).Kind /= Item.Content.Local_Kinds (Local) or else
-              Values (Local).Type_Tag /= Item.Content.Local_Types (Local)
+              Values (Local).Type_Tag /= Item.Content.Local_Types (Local) or else
+              Values (Local).Data_Type /= Item.Content.Local_Data_Types (Local) or else
+              not Well_Typed (Item.Content.Data_Types, Values (Local))
             then
                Accepted := False;
                exit;
@@ -500,6 +671,98 @@ is
             Done := True;
          else
          case Item.Content.Code (PC).Op is
+            when Make_Variant | Equal_Variant | Switch_Variant | Copy_Stack | Drop_Under_Top =>
+               declare
+                  Ins : constant Instruction := Item.Content.Code (PC);
+                  D : constant CCL.Types.Description := CCL.Types.Describe (Item.Content.Data_Types, Ins.Data_Type);
+                  Good : Boolean := True;
+                  Next_PC : Instruction_Index := PC + 1;
+               begin
+                  case Ins.Op is
+                     when Make_Variant =>
+                        Right_Value := Integer_Constant (0);
+                        if Ins.Alternative not in 1 .. D.Count then Good := False;
+                        elsif D.Parts (Ins.Alternative).Payload /= CCL.Types.Unit_Type then
+                           Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+                           Good := Stack_Result = Runtime_Stacks.Stack_Ok and then Right_Value.Copyable and then
+                             Right_Value.Kind = (if D.Parts (Ins.Alternative).Payload = CCL.Types.Integer_Type
+                                                 then Integer_Value else Boolean_Value);
+                        end if;
+                        if Good then
+                           Right_Value := (Kind => Variant_Value, Data_Type => Ins.Data_Type,
+                             Alternative => Ins.Alternative, Integer => Right_Value.Integer,
+                             Boolean => Right_Value.Boolean, others => <>);
+                           Runtime_Stacks.Push (Stack, Right_Value, Stack_Result);
+                           Good := Stack_Result = Runtime_Stacks.Stack_Ok;
+                        end if;
+                     when Equal_Variant =>
+                        Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+                        Good := Stack_Result = Runtime_Stacks.Stack_Ok and then Right_Value.Kind = Variant_Value and then
+                          Right_Value.Data_Type = Ins.Data_Type and then Right_Value.Copyable;
+                        if Good then
+                           Runtime_Stacks.Pop (Stack, Left_Value, Stack_Result);
+                           Good := Stack_Result = Runtime_Stacks.Stack_Ok and then Left_Value.Kind = Variant_Value and then
+                             Left_Value.Data_Type = Ins.Data_Type and then Left_Value.Copyable;
+                        end if;
+                        if Good then
+                           Runtime_Stacks.Push (Stack, Boolean_Constant
+                             (Left_Value.Alternative = Right_Value.Alternative), Stack_Result);
+                           Good := Stack_Result = Runtime_Stacks.Stack_Ok;
+                        end if;
+                     when Copy_Stack =>
+                        if Ins.Immediate not in 0 .. MAX_STACK_DEPTH - 1 then Good := False;
+                        else
+                           Runtime_Stacks.Peek_At (Stack, Unsigned_32 (Ins.Immediate), Right_Value, Stack_Result);
+                           Good := Stack_Result = Runtime_Stacks.Stack_Ok and then Right_Value.Copyable;
+                           if Good then
+                              Runtime_Stacks.Push (Stack, Right_Value, Stack_Result);
+                              Good := Stack_Result = Runtime_Stacks.Stack_Ok;
+                           end if;
+                        end if;
+                     when Drop_Under_Top =>
+                        Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+                        Good := Stack_Result = Runtime_Stacks.Stack_Ok;
+                        if Good then
+                           Runtime_Stacks.Pop (Stack, Left_Value, Stack_Result);
+                           Good := Stack_Result = Runtime_Stacks.Stack_Ok and then Left_Value.Copyable;
+                        end if;
+                        if Good then
+                           Runtime_Stacks.Push (Stack, Right_Value, Stack_Result);
+                           Good := Stack_Result = Runtime_Stacks.Stack_Ok;
+                        end if;
+                     when Switch_Variant =>
+                        if Ins.Immediate < 0 or else Ins.Immediate >= Integer_64 (Item.Content.Matches_Length) then
+                           Good := False;
+                        else
+                           declare
+                              M : constant Match_Table := Item.Content.Matches (Match_Index (Ins.Immediate));
+                              Schema : constant CCL.Types.Description := CCL.Types.Describe (Item.Content.Data_Types, M.Data_Type);
+                           begin
+                              Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+                              Good := Stack_Result = Runtime_Stacks.Stack_Ok and then Right_Value.Copyable and then
+                                Right_Value.Kind = Variant_Value and then Right_Value.Data_Type = M.Data_Type and then
+                                Well_Typed (Item.Content.Data_Types, Right_Value);
+                              if Good then
+                                 Next_PC := M.Targets (Right_Value.Alternative);
+                                 case Schema.Parts (Right_Value.Alternative).Payload is
+                                    when CCL.Types.Integer_Type =>
+                                       Runtime_Stacks.Push (Stack, Integer_Constant (Right_Value.Integer), Stack_Result);
+                                    when CCL.Types.Boolean_Type =>
+                                       Runtime_Stacks.Push (Stack, Boolean_Constant (Right_Value.Boolean), Stack_Result);
+                                    when others => null;
+                                 end case;
+                                 Good := Stack_Result = Runtime_Stacks.Stack_Ok;
+                              end if;
+                           end;
+                        end if;
+                     when others => null;
+                  end case;
+                  if not Good or else Next_PC <= PC or else Program_Length (Next_PC) >= Item.Content.Length then
+                     Status := Invalid_Bytecode; State.Terminal := True;
+                     State.Terminal_Status := Invalid_Bytecode; Done := True;
+                  else PC := Next_PC;
+                  end if;
+               end;
             when Halt =>
                CCL.Ownership.Check_Scope
                  (State.Ownership, Item.Content.Types, Own_Error);
@@ -855,6 +1118,8 @@ is
                    (Item.Content.Code (PC).Local) or else
                  Right_Value.Type_Tag /= Item.Content.Local_Types
                    (Item.Content.Code (PC).Local) or else
+                 Right_Value.Data_Type /= Item.Content.Local_Data_Types
+                   (Item.Content.Code (PC).Local) or else
                  Program_Length (PC) + 1 >= Item.Content.Length
                then
                   Status := Invalid_Bytecode;
@@ -939,9 +1204,11 @@ is
                      Done := True;
                   else
                      if Item.Content.Code (PC).Op in Copy_Local | Move_Local then
+                        Right_Value := State.Locals (Item.Content.Code (PC).Local);
+                        Right_Value.Copyable := Item.Content.Code (PC).Op = Copy_Local;
                         Runtime_Stacks.Push
                           (Stack,
-                           State.Locals (Item.Content.Code (PC).Local),
+                           Right_Value,
                            Stack_Result);
                         if Stack_Result /= Runtime_Stacks.Stack_Ok then
                            Status := Invalid_Bytecode;

@@ -2,6 +2,7 @@ with Interfaces;
 with CCL.Catalog;
 with CCL.VM;
 with CCL.Host_Values;
+with CCL.Types;
 
 package CCL.Language with
    SPARK_Mode => On
@@ -9,7 +10,7 @@ is
 
    MAX_SOURCE_LENGTH : constant := 1_024;
    MAX_AST_NODES     : constant := 128;
-   MAX_NAME_LENGTH   : constant := 32;
+   MAX_NAME_LENGTH   : constant := CCL.Types.Maximum_Name_Length;
    MAX_BINDINGS      : constant := 32;
    MAX_NESTING       : constant := 32;
    MAX_TEXT_BYTES    : constant := CCL.Host_Values.Maximum_Text_Length;
@@ -28,10 +29,7 @@ is
 
    subtype Name_Buffer is String (1 .. MAX_NAME_LENGTH);
 
-   type Name is record
-      Length : Natural range 0 .. MAX_NAME_LENGTH := 0;
-      Data   : Name_Buffer := [others => ' '];
-   end record;
+   subtype Name is CCL.Types.Name;
 
    function Names_Equal (Left, Right : Name) return Boolean;
 
@@ -54,12 +52,23 @@ is
       String_Concat_Form,
       To_String_Form,
       Host_Import_Form,
+      Type_Definition,
+      Variant_Literal,
+      Variant_Construct,
+      Match_Form,
+      Match_Arm,
       Function_Definition,
       Function_Call,
       Handler_Form);
 
-   type Static_Type is
-     (Invalid_Type, Integer_Type, Boolean_Type, String_Type, Character_Type, Handler_Type);
+   subtype Static_Type is CCL.Types.Type_Reference;
+   Invalid_Type : constant Static_Type := CCL.Types.Invalid_Type;
+   Integer_Type : constant Static_Type := CCL.Types.Integer_Type;
+   Boolean_Type : constant Static_Type := CCL.Types.Boolean_Type;
+   String_Type : constant Static_Type := CCL.Types.String_Type;
+   Character_Type : constant Static_Type := CCL.Types.Character_Type;
+   Handler_Type : constant Static_Type := CCL.Types.Handler_Type;
+   Unit_Type : constant Static_Type := CCL.Types.Unit_Type;
 
    subtype Parameter_Count is Natural range 0 .. MAX_PARAMETERS;
    subtype Parameter_Index is Positive range 1 .. MAX_PARAMETERS;
@@ -84,6 +93,8 @@ is
    type Node is record
       Kind            : Node_Kind := Invalid_Node;
       Static_Kind     : Static_Type := Invalid_Type;
+      Declared_Kind   : Static_Type := Invalid_Type;
+      Alternative    : CCL.Types.Component_Index := 1;
       Source_Position : CCL.Language.Source_Position := 0;
       Source_End_Position : CCL.Language.Source_Position := 0;
       Integer_Value   : Interfaces.Integer_64 := 0;
@@ -93,6 +104,7 @@ is
       Text_First      : Positive range 1 .. MAX_TEXT_BYTES + 1 := 1;
       Text_Last       : Natural range 0 .. MAX_TEXT_BYTES := 0;
       Identifier      : Name;
+      Pattern         : Name;
       First           : Node_Reference := NO_NODE;
       Second          : Node_Reference := NO_NODE;
       Third           : Node_Reference := NO_NODE;
@@ -110,6 +122,7 @@ is
       Root   : Node_Reference := NO_NODE;
       Function_Count : Natural range 0 .. MAX_FUNCTIONS := 0;
       Functions : Function_Array := [others => (others => <>)];
+      Types : CCL.Types.Registry;
       Text_Bytes_Used : Natural range 0 .. MAX_TEXT_BYTES := 0;
       Text_Data : String (1 .. MAX_TEXT_BYTES) :=
         [others => Character'Val (0)];
@@ -148,6 +161,13 @@ is
       Expected_Integer,
       Expected_Boolean,
       Expected_String,
+      Expected_Comparable,
+      Expected_Printable,
+      Invalid_Type_Declaration,
+      Invalid_Variant_Payload,
+      Invalid_Match_Pattern,
+      Nonexhaustive_Match,
+      Duplicate_Match_Arm,
       Branch_Type_Mismatch,
       Too_Many_Bindings,
       Unterminated_String,
@@ -191,6 +211,7 @@ is
 
    function Analysis_Root
      (Result : Analysis_Result) return Node_Reference;
+   function Analysis_Types (Result : Analysis_Result) return CCL.Types.Registry;
 
    function Analysis_Node
      (Result : Analysis_Result;
@@ -213,11 +234,20 @@ is
       Has_Value      : Boolean := False;
       Has_Text       : Boolean := False;
       Has_Character  : Boolean := False;
+      Variant_Type : Static_Type := Invalid_Type;
+      Variant_Type_Name : Name;
+      Variant_Member_Name : Name;
+      Variant_Payload_Type : Static_Type := Unit_Type;
       Result_Value   : CCL.VM.Value := (others => <>);
       Result_Text    : Text_Result := (others => <>);
       Result_Character : Character := Character'Val (0);
       Fuel_Remaining : Natural := 0;
    end record;
+
+   function Has_Scalar (Item : Interpretation_Result) return Boolean is
+     (Item.Status = Succeeded and then Item.Has_Value and then
+      not Item.Has_Text and then not Item.Has_Character and then
+      CCL.Types."=" (Item.Variant_Type, Invalid_Type));
 
    procedure Interpret
      (Source : String;

@@ -26,8 +26,7 @@ PROFILE = '''(system-image v1 (catalog "test-v1")
   (layout bootstrap-only) (provider "resident") (settings "settings")
   (file bootstrap "a" "a.app"))'''
 
-SAMPLES = {"button-clock.ccl", "clock-label.ccl",
-           "function-clock-label.ccl", "monotonic-clock.ccl"}
+SAMPLES = {path.name for path in (ROOT / "userspace/ccl/samples").glob("*.ccl")}
 
 
 class Images(unittest.TestCase):
@@ -92,10 +91,12 @@ class Images(unittest.TestCase):
         self.assertIn("\ta.app\n", result.stdout)
 
     def test_live_ccl_samples(self):
+        self.assertTrue(SAMPLES, "the LiveCD must include runnable CCL examples")
         _, rows, _ = realizer.compile_plan(
             ROOT / "images/artifacts.ccl", ROOT / "images/laptop-usb.ccl")
         samples = [row for row in rows if row[5].startswith("samples/ccl/")]
         self.assertEqual({Path(row[5]).name for row in samples}, SAMPLES)
+        self.assertEqual(len(samples), len(SAMPLES))
         for region, role, _, kind, source, destination in samples:
             with self.subTest(sample=destination):
                 self.assertEqual((region, role, kind), ("OPTICAL", "CONTENT", "REPOSITORY_FILE"))

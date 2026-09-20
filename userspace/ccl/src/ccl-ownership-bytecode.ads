@@ -1,3 +1,4 @@
+with CCL.Types;
 package CCL.Ownership.Bytecode with
    SPARK_Mode => On
 is
@@ -20,12 +21,14 @@ is
       Apply_Local_Disposition,
       Import_Local,
       Jump,
-      Jump_If);
+      Jump_If,
+      Switch);
 
    type Import_Transfer_Mode is
      (Copy_Argument, Move_Argument, Borrowed_RO_Argument,
       Borrowed_RW_Argument);
 
+   type Switch_Targets is array (CCL.Types.Component_Index) of Code_Index;
    type Instruction is record
       Op      : Op_Code := Halt;
       Local   : Binding_Id := 0;
@@ -34,6 +37,8 @@ is
       Success_Verb : Disposition_Id := 0;
       Failure_Verb : Disposition_Id := 0;
       Target  : Code_Index := 0;
+      Target_Count : CCL.Types.Component_Count := 0;
+      Targets : Switch_Targets := [others => 0];
    end record;
 
    type Instruction_Array is array (Code_Index) of Instruction;

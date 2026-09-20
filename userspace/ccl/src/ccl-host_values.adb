@@ -1,6 +1,6 @@
 package body CCL.Host_Values with SPARK_Mode => On is
    use type CCL.VM.Value_Kind;
-   function Kind_Of (Item : CCL.VM.Value_Kind) return Value_Kind is
+   function Kind_Of (Item : CCL.VM.Scalar_Kind) return Value_Kind is
      (if Item = CCL.VM.Integer_Value then Integer_Value else Boolean_Value);
    function From_Scalar (Item : CCL.VM.Value) return Value is
      (if Item.Kind = CCL.VM.Integer_Value then Integer_Constant (Item.Integer)

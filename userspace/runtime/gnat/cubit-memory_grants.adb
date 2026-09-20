@@ -169,4 +169,13 @@ package body CuBit.Memory_Grants is
    begin
       success := result = 1;
    end Revoke;
+
+   function Retirement_Confirmed (reference : Grant_Reference) return Boolean
+   is
+      observed : constant Unsigned_64 := CuBit.Messages.syscall
+        (CuBit.Messages.SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION,
+         reference.slot);
+   begin
+      return CuBit.Grant_References.Retirement_Confirmed (reference, observed);
+   end Retirement_Confirmed;
 end CuBit.Memory_Grants;

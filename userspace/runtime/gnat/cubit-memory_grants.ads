@@ -68,4 +68,9 @@ package CuBit.Memory_Grants is
    procedure Revoke
      (reference : Grant_Reference;
       success   : out Boolean);
+   --  Revoke success means accepted, not necessarily completed. Only the
+   --  owner can confirm retirement. False includes pending and query failure.
+   --  A retired reference has no remaining mapping/acquisition; its identity
+   --  cannot become live again. This says nothing about other grants/aliases.
+   function Retirement_Confirmed (reference : Grant_Reference) return Boolean;
 end CuBit.Memory_Grants;

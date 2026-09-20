@@ -34,6 +34,9 @@
   (file optical "sameboy-test" "apps/sameboy/00.gb")
   # Read-only originals; editable copies also seed live-rw.ext2's /work.
   (file optical "ccl-button-clock" "samples/ccl/button-clock.ccl")
+  (file optical "ccl-button-output" "samples/ccl/button-output.ccl")
+  (file optical "ccl-enums" "samples/ccl/enums.ccl")
+  (file optical "ccl-variants" "samples/ccl/variants.ccl")
   (file optical "ccl-clock-label" "samples/ccl/clock-label.ccl")
   (file optical "ccl-function-clock-label" "samples/ccl/function-clock-label.ccl")
   (file optical "ccl-monotonic-clock" "samples/ccl/monotonic-clock.ccl")

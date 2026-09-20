@@ -13,6 +13,19 @@ Save, filename typing, and load events through the shared Workbench loop.
 Pillow checks status-bar changes, selection/filename updates, and unchanged
 source pixels after modal typing and save/load. PNGs are left for inspection.
 
+Six additional real-event-loop scenarios cover unsaved-edit confirmation:
+Cancel, Discard, Save, canceled Save, a save-name conflict, and a missing-file
+load. They check deferred opening only after successful saving, preservation
+of edits on cancel/failure, retained dirty state, and saved source roundtrips.
+The prompt belongs to the shared file-dialog widget; it returns a decision and
+does not perform I/O or change authority. Tab/Shift+Tab and arrows navigate,
+Enter activates the focused choice (Save initially), and Escape cancels.
+Mouse activation requires a press and release on the same button.
+
+Saving still uses the existing create-new-file operation, not overwrite.
+Discard authorizes replacing the editor only after a replacement loads;
+canceling the subsequent Open picker keeps the current edits.
+
 The separate Ada test covers invalid/path names, non-1 string bounds, empty and
 maximum-size source, invalid source bytes, duplicate-name rejection, capacity
 failure without overwriting earlier files, modal keyboard/mouse interaction,

@@ -55,21 +55,29 @@ is
       Value  : out Element_Type;
       Result : out Operation_Result)
    is
+   begin
+      Peek_At (Item, 0, Value, Result);
+   end Peek_Top;
+
+   procedure Peek_At
+     (Item : Stack; Depth : Unsigned_32; Value : out Element_Type;
+      Result : out Operation_Result)
+   is
       Current_Count : constant Unsigned_32 := Item.Count;
       Top           : Index_Type;
    begin
       if Current_Count > Capacity then
          Value := Item.Elements (Index_Type'First);
          Result := Stack_Invalid;
-      elsif Current_Count = 0 then
+      elsif Depth >= Current_Count then
          Value := Item.Elements (Index_Type'First);
          Result := Stack_Empty;
       else
-         Top := Item.Next - 1;
+         Top := Item.Next - 1 - Index_Type (Depth);
          Value := Item.Elements (Top);
          Result := Stack_Ok;
       end if;
-   end Peek_Top;
+   end Peek_At;
 
    function "=" (Left, Right : Stack) return Boolean is
       Left_Count  : constant Unsigned_32 := Left.Count;
