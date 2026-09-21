@@ -20,6 +20,7 @@ with InterruptNumbers;
 with IPC_Labels;
 with ELF;
 with Heap_Admission;
+with Heap_Growth;
 with Interrupts;
 with Memory_Grants;
 with PerCpuData;
@@ -31,6 +32,7 @@ with Spinlocks;
 with Process_Lifetime;
 with Sysinfo;
 with TextIO; use TextIO;
+with TLB_Shootdown;
 with Util;
 with User_Buffer_Copy;
 with Video.VGA;
@@ -536,12 +538,41 @@ package body Syscall.IPC is
                  To_Integer (Process.proctab(callerPID).stackBottom)) and Virtmem.PAGE_MASK),
            Increment => arg0,
            Used_Frames => Unsigned_64 (Process.proctab(callerPID).frames.length),
-           Tracking_Capacity => Unsigned_64 (Process.proctab(callerPID).frames.capacity),
+           Tracking_Capacity => Unsigned_64 (Natural'Last),
            Quota => Unsigned_64 (Process.proctab(callerPID).quota.maxFrames));
-        storage   : System.Address;
-        curPage   : System.Address;
-        remaining : Unsigned_64;
-        allocation : Process.Page_Allocation_Result;
+        frames : Process.FrameLists.List renames Process.proctab(callerPID).frames;
+        oldCapacity : constant Natural := frames.capacity;
+        success : Boolean;
+
+        procedure Add (Index : Natural; Success : out Boolean) is
+            storage : System.Address;
+            allocation : Process.Page_Allocation_Result;
+        begin
+            Process.tryAddPage
+              (proc => Process.proctab(callerPID),
+               mapTo => To_Address (Integer_Address (plan.First_Page) +
+                                    Integer_Address (Index) * Virtmem.PAGE_SIZE),
+               storage => storage, result => allocation, flags => Virtmem.PG_USERDATA);
+            Success := allocation = Process.Page_Added;
+        end Add;
+        procedure Unmap (Index : Natural) is
+            removed : Boolean;
+        begin
+            Virtmem.unmapPage
+              (Integer_Address (plan.First_Page) + Integer_Address (Index) * Virtmem.PAGE_SIZE,
+               Process.addrtab(Process.proctab(callerPID).pgTable), removed);
+            if not removed then
+                raise Process.ProcessException with "Heap rollback lost a new mapping";
+            end if;
+        end Unmap;
+        procedure Release_Latest is
+            frame : constant Virtmem.PhysAddress := Process.FrameLists.front (frames);
+        begin
+            Process.FrameLists.popFront (frames);
+            BuddyAllocator.freeFrame (frame);
+        end Release_Latest;
+        procedure Grow is new Heap_Growth.Apply
+          (Add, Unmap, TLB_Shootdown.Invalidate_All, Release_Latest);
     begin
         retval := reterr;
         if plan.Result /= Heap_Admission.Ready then return; end if;
@@ -550,25 +581,16 @@ package body Syscall.IPC is
         --  its execution pin prevents reaping while this syscall runs. Shared
         --  address spaces will require reservation/serialization before they
         --  can be enabled. No new global allocator lock is introduced here.
-        curPage := To_Address (Integer_Address (plan.First_Page));
-        remaining := plan.Page_Count;
-        while remaining > 0 loop
-            Process.tryAddPage
-              (proc => Process.proctab(callerPID), mapTo => curPage,
-               storage => storage, result => allocation, flags => Virtmem.PG_USERDATA);
-            if allocation /= Process.Page_Added then
-                -- Nothing mapped: ordinary allocation failure, break unchanged.
-                -- Partial growth: stop this process through normal retirement.
-                -- Do not free published pages without SMP TLB/pin coordination,
-                -- or return to userspace with writable pages beyond its break.
-                if remaining /= plan.Page_Count then
-                    Process.kill (callerPID);
-                end if;
-                return;
-            end if;
-            curPage := curPage + Virtmem.PAGE_SIZE;
-            remaining := remaining - 1;
-        end loop;
+        -- List nodes are supplied on demand, not preallocated by capacity.
+        -- Representation and policy quota were checked for the whole request;
+        -- physical/node/page-table failures are rolled back before returning.
+        frames.capacity := Natural'Max
+          (oldCapacity, frames.length + Natural (plan.Page_Count));
+        Grow (Natural (plan.Page_Count), success);
+        if not success then
+            frames.capacity := oldCapacity;
+            return;
+        end if;
         Process.proctab(callerPID).heapEnd :=
           To_Address (Integer_Address (plan.New_Break));
         retval := plan.Old_Break;

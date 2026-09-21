@@ -117,6 +117,21 @@ class Manifests(unittest.TestCase):
         self.assertIn('Slot_clock : constant Interfaces.Unsigned_64 := 24;', bindings.read_text())
         self.assertIn('Slot_test_host : constant Interfaces.Unsigned_64 := 25;', bindings.read_text())
 
+    def test_rust_bindings_share_the_validated_manifest(self):
+        for base in (24, 30):
+            with self.subTest(base=base):
+                ada = self.compile(catalog=CATALOG.replace(
+                    'application-slots 24 62', f'application-slots {base} 62'))
+                output = self.directory / 'bindings.rs'
+                result = subprocess.run([
+                    TOOL, self.directory / 'catalog.ccl',
+                    self.directory / 'manifest.ccl', '--rust-output', output],
+                    capture_output=True, text=True, timeout=5)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, ada.stdout)
+                self.assertIn(f'pub const SLOT_TEST_HOST : u64 = {base};', output.read_text())
+                self.assertIn(f'pub const SLOT_CLOCK : u64 = {base + 1};', output.read_text())
+
     def test_binding_name_validation(self):
         for name in ['25', 'bad_name', 'Clock', 'a--b', 'a-', '-a', '"clock"', 'x;bad']:
             with self.subTest(name=name):

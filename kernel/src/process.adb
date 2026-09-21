@@ -23,6 +23,7 @@ with Capabilities.Operations;
 with IPC_Labels;
 with IPI;
 with Config;
+with ELF_Admission;
 with Interrupt_State;
 with Mem_mgr;
 with Page_Admission;
@@ -535,6 +536,7 @@ package body Process is
                      priority     : in ProcessPriority;
                      procStack    : in System.Address;
                      stackSize    : in UserStackSize;
+                     imageFrames  : in Natural;
                      thread       : in Boolean := False;
                      requestedPID : in ProcessID := NO_PROCESS) return ProcessID
 
@@ -545,7 +547,10 @@ package body Process is
         allocation : Page_Allocation_Result;
 
         procedure zeroize is new Virtmem.zeroize (Virtmem.P4);
+        frameCapacity : constant Natural := ELF_Admission.Frame_Capacity
+          (imageFrames, Positive (stackSize / Virtmem.PAGE_SIZE), INITIAL_HEAP_FRAME_HEADROOM);
     begin
+        if frameCapacity = 0 then return NO_PROCESS; end if;
         if thread then
             -- This dormant path never set isThread and has no live syscall
             -- consumer. Do not admit shared address spaces without lifetime
@@ -663,8 +668,7 @@ package body Process is
         end allocGuardedStack;
 
         FrameLists.create
-            (proctab(pid).frames,
-             Natural (stackSize / Virtmem.FRAME_SIZE) + MAX_HEAP_FRAMES);
+            (proctab(pid).frames, frameCapacity);
 
         proctab(pid).kernelStackTop := proctab(pid).kernelStack.all'Address +
                                        ProcessKernelStack'Size / 8;
@@ -1124,7 +1128,8 @@ package body Process is
                        name        => "init            ",
                        priority    => 3,
                        procStack   => PROCESS_STACK_TOP_VIRT,
-                       stackSize   => INIT_PROCESS_STACK_SIZE);
+                       stackSize   => INIT_PROCESS_STACK_SIZE,
+                       imageFrames => 1);
 
         if pid = NO_PROCESS then
             raise ProcessException with "Insufficient memory for bootstrap process";

@@ -1,4 +1,23 @@
 package body ELF_Admission with SPARK_Mode is
+   procedure Add_Image_Pages
+     (Pages : in out Natural; Bytes : Unsigned_64; Success : out Boolean)
+   is
+      Total : constant Unsigned_64 := Unsigned_64 (Pages) + Pages_For (Bytes);
+   begin
+      Success := Total <= Unsigned_64 (Natural'Last);
+      if Success then Pages := Natural (Total); end if;
+   end Add_Image_Pages;
+
+   function Frame_Capacity
+     (Image_Pages : Natural; Stack_Pages : Positive; Heap_Pages : Natural)
+      return Natural
+   is
+      Total : constant Unsigned_64 := Unsigned_64 (Image_Pages) +
+        Unsigned_64 (Stack_Pages) + Unsigned_64 (Heap_Pages);
+   begin
+      return (if Total <= Unsigned_64 (Natural'Last) then Natural (Total) else 0);
+   end Frame_Capacity;
+
    function Segment_Fits (H : Program_Header; Image_Size, Limit : Unsigned_64)
      return Boolean
    is

@@ -2,6 +2,10 @@
   description = "CuBitOS development and QEMU environment";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  inputs.rust-overlay = {
+    url = "github:oxalica/rust-overlay";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
   inputs.doomgeneric = {
     url = "github:ozkl/doomgeneric/dcb7a8dbc7a16ce3dda29382ac9aae9d77d21284";
     flake = false;
@@ -21,14 +25,23 @@
     flake = false;
   };
 
-  outputs = { self, nixpkgs, doomgeneric, stb, cbor_ada, sameboy }:
+  outputs = { self, nixpkgs, rust-overlay, doomgeneric, stb, cbor_ada, sameboy }:
     let
       supportedSystems = [ "x86_64-linux" ];
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
     in {
       devShells = forAllSystems (system:
         let
-          pkgs = import nixpkgs { inherit system; };
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [ rust-overlay.overlays.default ];
+          };
+          # The overlay revision in flake.lock pins this stable toolchain and
+          # its prebuilt freestanding core/alloc. No rustup or Linux libc in
+          # native CuBit executables; host tools still use the Linux target.
+          cubitRust = pkgs.rust-bin.stable.latest.default.override {
+            targets = [ "x86_64-unknown-none" ];
+          };
           # Freestanding math library: no Linux TLS canary or fortified libc
           # dependency. Native CuBit supplies process isolation/ELF runtime.
           sameboyMath = pkgs.openlibm.overrideAttrs (previous: {
@@ -49,6 +62,7 @@
               binutils
               cvc5
               cpio
+              cubitRust
               e2fsprogs
               expat
               freedoom
@@ -58,6 +72,9 @@
               gnumake
               grub2
               ibm-plex
+              jemalloc
+              mimalloc
+              gperftools
               libjpeg_turbo
               libpng
               librsvg
@@ -76,6 +93,10 @@
             ];
 
             shellHook = ''
+              # Hosted allocator references only, never native CuBit linkage.
+              export CUBIT_BENCH_MIMALLOC="${pkgs.mimalloc}/lib/libmimalloc.so"
+              export CUBIT_BENCH_JEMALLOC="${pkgs.jemalloc}/lib/libjemalloc.so"
+              export CUBIT_BENCH_TCMALLOC="${pkgs.gperftools}/lib/libtcmalloc.so"
               export PYTHONTZPATH="${pkgs.tzdata}/share/zoneinfo"
               export DOOMGENERIC_SRC="${doomgeneric}"
               export DOOM_WAD="${pkgs.freedoom}/share/games/doom/freedoom1.wad"

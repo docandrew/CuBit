@@ -1,0 +1,5 @@
+# Identical executable code; only its attached authority request differs.
+(executable-manifest v1
+  (identity "com.cubit.rust-probe-denied")
+  (version "0.1.0")
+  (request-service ccl-test-host read-write test-host))

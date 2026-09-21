@@ -636,6 +636,11 @@ ccl-test-native:
 	../userspace/ccl/build/native/main
 
 .PHONY : ccl-vm
+.PHONY: rust-probe
+rust-probe: ccl-manifest
+	$(MAKE) -C ../userspace/rust
+	cp ../userspace/rust/build/rust-probe.app isodir/boot/rust-probe.app
+	cp ../userspace/rust/build/rust-probe-denied.app isodir/boot/rust-probe-denied.app
 .PHONY : ccl-manifest
 ccl-manifest:
 	$(ALR) gprbuild -p -P ../userspace/ccl/ccl_manifest.gpr

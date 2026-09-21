@@ -527,7 +527,13 @@ is
                                 myP1 : P1 with
                                     Import, Address => To_Address(P2V (p1Addr));
                             begin
-                                return pfnToAddr (myP1 (p1Index).pgNum);
+                                -- Unmapping retains the PFN for retirement,
+                                -- but a non-present leaf is not a mapping.
+                                -- Reporting its stale address prevents safe
+                                -- reuse after heap rollback / grant teardown.
+                                return (if myP1 (p1Index).present then
+                                          pfnToAddr (myP1 (p1Index).pgNum)
+                                        else 0);
                             end addNewEntry;
                         end if;
                     end doP2;

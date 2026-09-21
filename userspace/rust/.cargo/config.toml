@@ -1,0 +1,6 @@
+[build]
+target = "x86_64-unknown-none"
+target-dir = "build/cargo"
+
+[target.x86_64-unknown-none]
+rustflags = ["-C", "code-model=small", "-C", "relocation-model=static"]

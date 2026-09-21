@@ -89,7 +89,9 @@ package Process is
     -- than an ELF, so its stack reservation is necessarily kernel-owned.
     INIT_PROCESS_STACK_SIZE : constant UserStackSize := 16 * 1024 * 1024;
 
-    MAX_HEAP_FRAMES : constant Natural :=
+    -- Initial tracking headroom, separate from the ELF image and declared
+    -- stack. sbrk extends it on demand; it is neither a BSS nor a heap quota.
+    INITIAL_HEAP_FRAME_HEADROOM : constant Natural :=
         Natural (16 * 1024 * 1024 / Virtmem.FRAME_SIZE);
 
     BAD_HEAP_ADDRESS       : constant System.Address := To_Address (16#DEAD_DEAD_DEAD_DEAD#);
@@ -791,6 +793,7 @@ package Process is
                      priority     : in ProcessPriority;
                      procStack    : in System.Address;
                      stackSize    : in UserStackSize;
+                     imageFrames  : in Natural;
                      thread       : in Boolean := False;
                      requestedPID : in ProcessID := NO_PROCESS) return ProcessID;
 

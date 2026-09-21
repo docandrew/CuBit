@@ -49,6 +49,7 @@ The suite boots the NVMe profile headlessly and checks serial output for
 stable pass markers.
 Performance fixtures: bench-ipc, bench-audio, bench-storage, bench-input, bench-scheduler.
 Logging fixture: log-authority (build logstore procmgr clock log-check first).
+Rust fixture: rust-native (build rust-probe ccl-test-host clock first).
 Use --timeout 100 for network-authority: it includes an intentional 30-second
 accept deadline and a seven-second backlog expiry wait, plus traffic checks.
 EOF
@@ -163,7 +164,7 @@ case "$TIMEOUT_SECONDS" in
 esac
 
 case "$TEST_NAME" in
-    log-authority)
+    log-authority|rust-native)
         ;;
     boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
         ;;
@@ -288,6 +289,9 @@ fi
 DISK_IMAGE="$BASE_DISK"
 INIT_PROFILE=""
 case "$TEST_NAME" in
+    rust-native)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-rust-native.ccl"
+        ;;
     log-authority)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-log-authority.ccl"
         ;;
@@ -376,6 +380,16 @@ if [ -n "$INIT_PROFILE" ]; then
     if ! debugfs -w -R "write $INIT_PROFILE init.ccl" "$TEMP_DISK" >/dev/null 2>&1; then
         echo "headless: failed to install $TEST_NAME init.ccl" >&2
         exit 1
+    fi
+    if [ "$TEST_NAME" = "rust-native" ]; then
+        for app in rust-probe.app rust-probe-denied.app ccl-test-host.svc clock.svc; do
+            if [ ! -f "$KERNEL_DIR/isodir/boot/$app" ]; then
+                echo "headless: build rust-probe ccl-test-host clock first ($app missing)" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $app" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "write $KERNEL_DIR/isodir/boot/$app $app" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        done
     fi
     if [ "$TEST_NAME" = "async-ipc" ]; then
         for ipc_image in ipctest-server.app ipctest-client.app ipctest-departing.app; do
@@ -1323,6 +1337,21 @@ devmgr: startup complete, entering service loop
 procmgr: ready, entering receive loop
 shell: cwd=@nvme:0/
 ps2: consumer registered, entering event loop
+"
+        ;;
+    rust-native)
+        required_markers="
+ccl-test-host: registered
+clock: registered
+procmgr: pkg id=com.cubit.rust-probe
+procmgr: pkg id=com.cubit.rust-probe-denied
+rust-probe: Hello from Rust! (IPC)
+TEST: PASS rust-allocator peer 1
+TEST: PASS rust-allocator peer 2
+TEST: PASS rust-clock-authorized
+TEST: PASS rust-clock-denied
+TEST: PASS rust-heap-rollback
+TEST: PASS rust-native
 "
         ;;
     log-authority)

@@ -1,0 +1,9 @@
+project Diagnostics is
+   for Source_Dirs use (".", "../../userspace/allocator/src");
+   for Object_Dir use "build/diagnostics";
+   for Exec_Dir use "build/diagnostics";
+   for Main use ("diagnostics.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnato", "-O2", "-g");
+   end Compiler;
+end Diagnostics;

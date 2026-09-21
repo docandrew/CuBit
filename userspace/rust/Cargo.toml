@@ -1,0 +1,12 @@
+[workspace]
+members = ["cubit", "allocator", "probe"]
+resolver = "2"
+
+[profile.release]
+panic = "abort"
+opt-level = 2
+overflow-checks = true
+debug = 1
+
+[profile.dev]
+panic = "abort"

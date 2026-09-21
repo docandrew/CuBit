@@ -22,6 +22,30 @@ package ELF_Admission with SPARK_Mode, Pure is
    end record;
    type Header_Table is array (Unsigned_16 range <>) of Program_Header;
 
+   -- Ceiling division without a potentially wrapping Bytes + Page_Size - 1.
+   subtype Page_Count is Unsigned_64 range 0 .. 2 ** 52;
+   function Pages_For (Bytes : Unsigned_64) return Page_Count is
+     (Bytes / Page_Size + (if Bytes mod Page_Size = 0 then 0 else 1));
+
+   -- The frame tracker uses Natural counts. Accumulate the actual ELF memory
+   -- sizes, including zero-filled BSS, without borrowing stack/heap capacity.
+   procedure Add_Image_Pages
+     (Pages : in out Natural; Bytes : Unsigned_64; Success : out Boolean)
+   with Post =>
+     Success = (Unsigned_64 (Pages'Old) + Pages_For (Bytes) <= Unsigned_64 (Natural'Last)) and then
+     (if Success then Unsigned_64 (Pages) = Unsigned_64 (Pages'Old) + Pages_For (Bytes)
+      else Pages = Pages'Old);
+
+   function Frame_Capacity
+     (Image_Pages : Natural; Stack_Pages : Positive; Heap_Pages : Natural)
+      return Natural
+   with Post =>
+     (if Unsigned_64 (Image_Pages) + Unsigned_64 (Stack_Pages) +
+           Unsigned_64 (Heap_Pages) <= Unsigned_64 (Natural'Last)
+      then Unsigned_64 (Frame_Capacity'Result) = Unsigned_64 (Image_Pages) +
+             Unsigned_64 (Stack_Pages) + Unsigned_64 (Heap_Pages)
+      else Frame_Capacity'Result = 0);
+
    function Table_Fits (Image_Size, Offset, Count, Entry_Size : Unsigned_64)
      return Boolean is
      (Entry_Size = Header_Size and then Count in 1 .. Max_Headers and then

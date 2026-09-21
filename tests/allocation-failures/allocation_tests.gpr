@@ -5,6 +5,8 @@ project Allocation_Tests is
       "linkedlists.ads", "linkedlists.adb", "page_admission.ads", "page_admission.adb",
       "page_allocation.ads", "page_allocation.adb", "check_page_allocation.adb",
       "allocation_proof.ads", "allocation_proof.adb",
+      "heap_growth.ads", "heap_growth.adb", "check_heap_growth.adb",
+      "heap_growth_proof.ads", "heap_growth_proof.adb",
       "elf_admission.ads", "elf_admission.adb", "check_elf_admission.adb",
       "buddyallocator.ads", "buddyallocator.adb", "spinlocks.ads", "spinlocks.adb",
       "config.ads", "textio.ads", "virtmem.ads");

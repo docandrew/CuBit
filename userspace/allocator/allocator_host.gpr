@@ -1,0 +1,11 @@
+library project Allocator_Host is
+   for Source_Dirs use ("src", "host");
+   for Object_Dir use "build/objects";
+   for Library_Dir use "build/lib";
+   for Library_Name use "cubit_heap";
+   for Library_Kind use "static";
+   package Compiler is
+      -- Ghost proof predicates are not executable allocator overhead.
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnatp", "-gnatn2", "-O2", "-g");
+   end Compiler;
+end Allocator_Host;

@@ -9,6 +9,7 @@ with LinkedLists;
 with Page_Admission; use Page_Admission;
 with Check_Page_Allocation;
 with Check_ELF_Admission;
+with Check_Heap_Growth;
 
 procedure Main is
    procedure Ignore (Value : Natural) is null;
@@ -46,6 +47,7 @@ procedure Main is
 begin
    Check_Page_Allocation;
    Check_ELF_Admission;
+   Check_Heap_Growth;
    -- Bootstrap failure is still an exception, but no lock/storage is retained.
    BuddyAllocator.Allow_Allocation := False;
    begin

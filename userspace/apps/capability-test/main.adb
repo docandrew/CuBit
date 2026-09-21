@@ -75,11 +75,10 @@ procedure Main is
       Allocation := syscall (SYSCALL_SBRK, Unsigned_64'Last);
       Check (Allocation = ERROR_RESULT and then syscall (SYSCALL_SBRK, 0) = Before,
              "heap wrapping request rejected without growth");
-      --  The 16 MiB stack fixture has at most 8192 tracked frames, including
-      --  its ELF. This must reject BEFORE allocating anything, not panic in
-      --  LinkedLists or return a partially advanced break as success.
+      -- Address-space overflow must reject before allocation. A normal large
+      -- request is no longer rejected merely by an old fixed tracking budget.
       for Attempt in 1 .. 2 loop
-         Allocation := syscall (SYSCALL_SBRK, 64 * 1024 * 1024);
+         Allocation := syscall (SYSCALL_SBRK, 16#0000_8000_0000_0000#);
          Check (Allocation = ERROR_RESULT and then syscall (SYSCALL_SBRK, 0) = Before,
                 "heap oversized request rejected without growth");
       end loop;

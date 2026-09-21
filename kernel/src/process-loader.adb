@@ -275,7 +275,7 @@ package body Process.Loader is
                 requestedStackSize : Storage_Count := 0;
                 entryFound : Boolean := False;
                 success : Boolean;
-                imagePages : Unsigned_64 := 0;
+                imagePages : Natural := 0;
                 imageLimit : Unsigned_64;
             begin
                 Strings.toAda(strAddr, procName);
@@ -336,7 +336,11 @@ package body Process.Loader is
                             println ("Process.Loader: invalid load-segment geometry or flags");
                             return NO_PROCESS;
                         end if;
-                        imagePages := imagePages + (segment.p_memsz + 4095) / 4096;
+                        ELF_Admission.Add_Image_Pages (imagePages, segment.p_memsz, success);
+                        if not success then
+                            println ("Process.Loader: image frame count is not representable");
+                            return NO_PROCESS;
+                        end if;
                         if (segment.p_flags and Unsigned_32 (ELF.PF_X)) /= 0 and then
                           Unsigned_64 (To_Integer (elfHeader.e_entry)) >= segment.p_vaddr and then
                           Unsigned_64 (To_Integer (elfHeader.e_entry)) - segment.p_vaddr < segment.p_memsz then
@@ -344,9 +348,13 @@ package body Process.Loader is
                         end if;
                     end if;
                 end loop;
-                if not entryFound or else imagePages + 1 >
-                  Unsigned_64 (requestedStackSize / Virtmem.PAGE_SIZE) + Unsigned_64 (MAX_HEAP_FRAMES) then
-                    println ("Process.Loader: entry or total frame budget rejected");
+                if not entryFound then
+                    println ("Process.Loader: entry is outside executable segments");
+                    return NO_PROCESS;
+                end if;
+                if ELF_Admission.Frame_Capacity
+                  (imagePages, Positive (requestedStackSize / Virtmem.PAGE_SIZE), INITIAL_HEAP_FRAME_HEADROOM) = 0 then
+                    println ("Process.Loader: total frame count is not representable");
                     return NO_PROCESS;
                 end if;
 
@@ -359,6 +367,7 @@ package body Process.Loader is
                                priority     => priority,
                                procStack    => PROCESS_STACK_TOP_VIRT,
                                stackSize    => UserStackSize (requestedStackSize),
+                               imageFrames  => imagePages,
                                requestedPID => requestedPID);
 
                 if pid = NO_PROCESS then return NO_PROCESS; end if;

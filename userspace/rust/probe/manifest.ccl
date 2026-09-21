@@ -1,0 +1,5 @@
+(executable-manifest v1
+  (identity "com.cubit.rust-probe")
+  (version "0.1.0")
+  (request-service ccl-test-host read-write test-host)
+  (request-service clock read-write clock))

@@ -2,6 +2,7 @@ with Ada.Command_Line;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
 with Ada.Text_IO;
+with Ada.Characters.Handling;
 with Interfaces;
 with CCL.Manifests;
 with CCL.Language;
@@ -73,12 +74,34 @@ procedure Main is
       Put_Line (Ada_Output, "end CCL_Manifest_Bindings;");
       Close (Ada_Output);
    end Emit_Ada;
+
+   procedure Emit_Rust is
+      Output : Ada.Text_IO.File_Type;
+   begin
+      Create (Output, Out_File, Argument (4));
+      Put_Line (Output, "// Generated with the ELF manifest; do not edit.");
+      for Binding of Result.Bindings (1 .. Result.Binding_Count) loop
+         declare
+            Name : String := Binding.Name.Data (1 .. Binding.Name.Length);
+         begin
+            for C of Name loop
+               if C = '-' then C := '_';
+               else C := Ada.Characters.Handling.To_Upper (C);
+               end if;
+            end loop;
+            Put_Line (Output, "pub const SLOT_" & Name & " : u64 =" &
+                      Natural'Image (Binding.Slot) & ";");
+         end;
+      end loop;
+      Close (Output);
+   end Emit_Rust;
 begin
    if Argument_Count not in 2 | 4 or else
-     (Argument_Count = 4 and then Argument (3) /= "--ada-output")
+     (Argument_Count = 4 and then
+      Argument (3) not in "--ada-output" | "--rust-output")
    then
       Put_Line (Standard_Error,
-        "usage: ccl-manifest CATALOG.ccl MANIFEST.ccl [--ada-output bindings.ads] > manifest.S");
+        "usage: ccl-manifest CATALOG.ccl MANIFEST.ccl [--ada-output bindings.ads | --rust-output bindings.rs] > manifest.S");
       Set_Exit_Status (Failure);
       return;
    end if;
@@ -95,7 +118,11 @@ begin
       Set_Exit_Status (Failure);
       return;
    end if;
-   if Argument_Count = 4 then Emit_Ada; end if;
+   if Argument_Count = 4 then
+      if Argument (3) = "--rust-output" then Emit_Rust;
+      else Emit_Ada;
+      end if;
+   end if;
    Emit (".cubit.id", Result.Identity);
    Emit (".cubit.caps", Result.Capabilities);
    Emit (".cubit.access", Result.Access_Scopes);
