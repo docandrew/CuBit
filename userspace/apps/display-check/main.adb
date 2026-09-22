@@ -5,13 +5,19 @@ with CuBit.Memory_Grants;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Display_Protocol; use CuBit.Display_Protocol;
 with CuBit.Desktop_Messages; use CuBit.Desktop_Messages;
+with CuBit.Output_Discovery;
+with Presentation_Test_Policy;
+with GPU_Test_Policy;
 
 --  Dedicated fixture: never starts alongside a desktop session. Only authority
 --  is an endpoint to display.svc (including grants addressed to that service).
 procedure Main is
    package MG renames CuBit.Memory_Grants;
+   package OD renames CuBit.Output_Discovery;
+   use type OD.Output_Role, OD.Query;
+   Initial_Catalog : OD.Summary_Decoding;
    Passed : Boolean := True;
-   First, Second, Reused : MG.Grant_Reference;
+   First, Second, Reused, Rebinding : MG.Grant_Reference;
    Ok : Boolean;
    Wire : Wire_Message;
    Raw : Unsigned_64;
@@ -38,12 +44,76 @@ procedure Main is
              Response.Flags = 0 and then Response.Reserved = 0 and then
              Response.Words (0) = DP.Status_Code'Enum_Rep (Status), Name);
    end Expect;
+   function Source_Name (Source : OD.Output_Source) return String is
+     (case Source is
+        when OD.Boot_Framebuffer => "BOOT_FRAMEBUFFER",
+        when OD.Virtio_GPU => "VIRTIO_GPU");
+   function Role_Name (Role : OD.Output_Role) return String is
+     (case Role is
+        when OD.Detected_Only => "DETECTED_ONLY",
+        when OD.Backend_Ready => "BACKEND_READY",
+        when OD.Selected_For_Desktop => "SELECTED_FOR_DESKTOP");
+   procedure Discover is
+      Item : OD.Description_Decoding;
+      Selected : Natural := 0;
+   begin
+      Initial_Catalog := OD.Decode_Summary (OD.Display_Broker,
+        Send (OD.Catalog_Request (OD.Display_Broker)));
+      Check (Initial_Catalog.Valid and then Initial_Catalog.Value.Count > 0,
+             "catalog before display lease");
+      if not Initial_Catalog.Valid then
+         return;
+      end if;
+      for Index in 1 .. Initial_Catalog.Value.Count loop
+         Item := OD.Decode_Description (OD.Display_Broker,
+           Send (OD.Encode_Query (OD.Display_Broker,
+             (Initial_Catalog.Value.Revision, Index))));
+         Check (Item.Valid and then Item.Value.Requested =
+           (Initial_Catalog.Value.Revision, Index), "catalog identity");
+         if not Item.Valid then
+            return;
+         end if;
+         if Item.Value.Item.Role = OD.Selected_For_Desktop then
+            Selected := Selected + 1;
+         end if;
+         debugPrint ("display-check: output " &
+           Source_Name (Item.Value.Item.Source) &
+           Item.Value.Item.Native_Number'Image & " " &
+           Role_Name (Item.Value.Item.Role) & " advertised" &
+           Item.Value.Item.Advertised_Width'Image & " x" &
+           Item.Value.Item.Advertised_Height'Image & ASCII.LF);
+         if Item.Value.Item.Role /= OD.Detected_Only then
+            debugPrint ("display-check: active " &
+              Source_Name (Item.Value.Item.Source) &
+              Item.Value.Item.Native_Number'Image &
+              Item.Value.Item.Current_Width'Image & " x" &
+              Item.Value.Item.Current_Height'Image & ASCII.LF);
+         end if;
+      end loop;
+      Check (Selected = 1, "exactly one desktop-selected output");
+      Wire := OD.Catalog_Request (OD.Display_Broker);
+      Wire.Words (3) := 1;
+      Expect (Wire, DP.Bad_Object, "reserved discovery field rejected");
+      Expect (OD.Encode_Query (OD.Display_Broker,
+        ((if Initial_Catalog.Value.Revision = 1 then 2 else 1), 1)),
+        DP.Bad_State, "wrong catalog revision rejected");
+      if Initial_Catalog.Value.Count < OD.Output_Count'Last then
+         Expect (OD.Encode_Query (OD.Display_Broker,
+           (Initial_Catalog.Value.Revision, Initial_Catalog.Value.Count + 1)),
+           DP.Bad_Object, "missing output rejected");
+      end if;
+      if Passed then
+         debugPrint ("DISPLAY-DISCOVERY-CHECK: PASS" & ASCII.LF);
+      end if;
+   end Discover;
    function Generation (Ref : MG.Grant_Reference) return Unsigned_64 is
      (syscall (SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION, Ref.slot));
    procedure Frame (Session, ID : Live_ID; Outcome : Frame_Outcome;
                     Disposition : Buffer_Disposition;
-                    Area : DP.Rectangle := (0, 0, 4, 2)) is
-      Msg : constant Message := From_Wire (Encode_Frame ((Session, ID, Area)));
+                    Area : DP.Rectangle := (0, 0, 4, 2);
+                    Output : Output_Number := 0) is
+      Msg : constant Message := From_Wire
+        (With_Output (Encode_Frame ((Session, ID, Area)), Output));
       Completion : CompletionEntry := NULL_COMPLETION;
       Deadline : constant Unsigned_64 := syscall (SYSCALL_GETTIME) + 5000;
       Event : Message;
@@ -76,6 +146,7 @@ procedure Main is
    end Frame;
    procedure Exercise is
    begin
+      Discover;
       Raw := syscall (SYSCALL_SBRK, 8192);
       Check (Raw /= Unsigned_64'Last, "allocate pixels");
       if Raw = Unsigned_64'Last then return; end if;
@@ -107,7 +178,7 @@ procedure Main is
             case Fault is
                when 1 => Wire.Length := 3;
                when 2 => Wire.Flags := 1;
-               when 3 => Wire.Reserved := 1;
+               when 3 => Wire.Reserved := 16; -- Outside output routing range.
                when 4 => Wire.Words (1) := 0;
                when 5 => Wire.Words (3) := Unsigned_64'Last;
             end case;
@@ -143,6 +214,62 @@ procedure Main is
             Session := Opened.Words (1);
             Frame (Old_Session, 142, Rejected, Not_Acquired);
             Frame (Session, 1, Published, Released);
+            if Presentation_Test_Policy.Rebind_Enabled then
+               Old_Session := Session;
+               Frame (Session, Presentation_Test_Policy.Rebind_After_Frame,
+                      Published, Released);
+               if Initial_Catalog.Valid then
+                  Expect (OD.Encode_Query (OD.Display_Broker,
+                    (Initial_Catalog.Value.Revision, 1)), DP.Bad_State,
+                    "old discovery revision rejected after output rebind");
+                  declare
+                     Updated : constant OD.Summary_Decoding :=
+                       OD.Decode_Summary (OD.Display_Broker,
+                         Send (OD.Catalog_Request (OD.Display_Broker)));
+                  begin
+                     Check (Updated.Valid and then Updated.Value.Revision >
+                       Initial_Catalog.Value.Revision, "new catalog revision");
+                  end;
+               end if;
+               Frame (Session, Presentation_Test_Policy.Rebind_After_Frame + 1,
+                      Rejected, Not_Acquired);
+               Opened := Send (Encode_Open_Session);
+               Check (Opened.Words (0) = DP.Status_Code'Enum_Rep (DP.Denied),
+                      "stale output lease cannot reopen");
+               Expect (Encode_Lease_Request (Acquire_Display), DP.Success,
+                       "reacquire new output generation");
+               -- A fresh lease alone must not revive the old session.
+               Frame (Session, Presentation_Test_Policy.Rebind_After_Frame + 1,
+                      Rejected, Not_Acquired);
+               MG.Revoke (First, Ok);
+               Check (Ok, "revoke source after output invalidation");
+               -- Only a remaining acquisition can retain a revoked grant.
+               Check (Generation (First) = First.generation,
+                      "output invalidation does not release attachment pin");
+               Opened := Send (Encode_Open_Session);
+               Check (Opened.Words (0) = DP.Status_Code'Enum_Rep (DP.Bad_State),
+                      "stale attachment cannot reopen");
+               MG.Create_Via_Capability
+                 (CAP_SLOT_DISPLAY, To_Address (Address), 1, False, Rebinding, Ok);
+               Check (Ok, "replacement grant after output invalidation");
+               if not Ok then return; end if;
+               Expect (Encode_Attachment ((Rebinding, (4, 2, 16))), DP.Success,
+                       "reattach to new output generation");
+               Check (Generation (First) = 0,
+                      "reattachment returns invalidated output's source pin");
+               First := Rebinding;
+               Opened := Send (Encode_Open_Session);
+               Check (Opened.Words (0) = 0 and then Opened.Words (1) > Old_Session,
+                      "rebound output gets fresh session");
+               if Opened.Words (1) = 0 then return; end if;
+               Session := Opened.Words (1);
+               Frame (Old_Session, Presentation_Test_Policy.Rebind_After_Frame + 2,
+                      Rejected, Not_Acquired);
+               Frame (Session, 1, Published, Released);
+               if Passed then
+                  debugPrint ("DISPLAY-OUTPUT-REBIND-CHECK: PASS" & ASCII.LF);
+               end if;
+            end if;
             -- A new attachment invalidates the session, including queued old
             -- requests, while retaining the existing legacy grant tests below.
             Expect (Encode_Attachment ((First, (4, 2, 16))), DP.Success,
@@ -190,7 +317,7 @@ procedure Main is
             case Fault is
                when 1 => Wire.Length := 0;
                when 2 => Wire.Flags := 1;
-               when 3 => Wire.Reserved := 1;
+               when 3 => Wire.Reserved := 16;
                when 4 => Wire.Words (0) := 1;
             end case;
             Expect (Wire, DP.Bad_Object, "malformed release rejected");
@@ -206,8 +333,152 @@ procedure Main is
          if Passed then debugPrint ("DISPLAY-ASYNC-CHECK: PASS" & ASCII.LF); end if;
       end;
    end Exercise;
+
+   procedure Exercise_Outputs is
+      Info : constant Wire_Message := Send
+        (With_Output ((Code (Get_Information), 4, 0, 0, [others => 0]), 1));
+      subtype Head is Output_Number range 0 .. 1;
+      Grants : array (Head) of MG.Grant_Reference;
+      Sessions : array (Head) of Live_ID := [others => 1];
+      Addresses : array (Head) of Integer_Address;
+      procedure Paint (Output : Head; Color : Unsigned_32) is
+         Pixels : array (0 .. 1023) of Unsigned_32
+           with Address => To_Address (Addresses (Output)), Volatile;
+      begin
+         Pixels := [others => Color];
+      end Paint;
+      procedure Concurrent_Frames is
+         Tokens : array (Head) of Unsigned_64;
+         Finished : array (Head) of Boolean := [others => False];
+         Completion : aliased CompletionEntry;
+         Started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+         Deadline : constant Unsigned_64 := Started + 5000;
+         Event : Message;
+         Output : Head;
+         Activity : Activity_Result;
+      begin
+         for H in Head loop
+            Frame_Token := Frame_Token + 1;
+            Tokens (H) := Frame_Token;
+            Check (capSubmit (CAP_SLOT_DISPLAY, From_Wire
+              (With_Output (Encode_Frame ((Sessions (H), 1, (0, 0, 32, 32))), H)),
+               Tokens (H)), "concurrent frame admission");
+         end loop;
+         --  A synchronous query must return while head 0 is pending; neither
+         --  the broker nor the shared GPU service may block behind that head.
+         Wire := Send (With_Output
+           ((Code (Get_Information), 4, 0, 0, [others => 0]), 1));
+         Check (Wire.Length = 4 and then Wire.Words (0) = 1024,
+                "broker query while frames outstanding");
+         if GPU_Test_Policy.Delay_First_Output_Ms /= 0 then
+            Check (syscall (SYSCALL_GETTIME) < Started + GPU_Test_Policy.Delay_First_Output_Ms,
+                   "query returned before delayed output");
+            Expect (Encode_Lease_Request (Release_Display), DP.Bad_State,
+                    "pending output cannot release lease");
+            Expect (Encode_Attachment ((Grants (0), (32, 32, 128))),
+                    DP.Bad_State, "pending output cannot replace attachment");
+         end if;
+         while not (Finished (0) and Finished (1)) loop
+            if Poll_Completion (Completion'Address) = 1 then
+               if Completion.token = Tokens (0) then Output := 0;
+               elsif Completion.token = Tokens (1) then Output := 1;
+               else
+                  Check (False, "unrelated concurrent completion");
+                  return;
+               end if;
+               declare
+                  Result : constant Frame_Result_Decoding :=
+                    Decode_Frame_Result (To_Wire (Completion.msg));
+               begin
+                  Check (not Finished (Output) and then Completion.valid and then
+                    Completion.status = COMPLETION_OK and then Result.Valid and then
+                    Result.Value = (Sessions (Output), 1, Published, Released),
+                    "concurrent result identity and acquisition return");
+               end;
+               if Output = 0 and then GPU_Test_Policy.Delay_First_Output_Ms /= 0 then
+                  Check (Finished (1), "other output completed before stalled output");
+               end if;
+               Finished (Output) := True;
+            else
+               if Poll_Event (Event) then null; end if;
+               Activity := Wait_For_Activity_Until (Deadline);
+               if Activity /= Work_Available or else syscall (SYSCALL_GETTIME) >= Deadline then
+                  Check (False, "concurrent completion deadline");
+                  return;
+               end if;
+            end if;
+         end loop;
+         if Passed then
+            debugPrint ("DISPLAY-CONCURRENT-CHECK: PASS" & ASCII.LF);
+            if GPU_Test_Policy.Delay_First_Output_Ms /= 0 then
+               debugPrint ("DISPLAY-STALLED-OUTPUT-CHECK: PASS" & ASCII.LF);
+            end if;
+         end if;
+      end Concurrent_Frames;
+   begin
+      if Info.Length /= 4 or else Info.Words (0) /= 1024 or else
+        Info.Words (1) /= 768 or else Presentation_Test_Policy.Rebind_Enabled
+      then
+         return;
+      end if;
+      for Output in Head loop
+         Raw := syscall (SYSCALL_SBRK, 8192);
+         Check (Raw /= Unsigned_64'Last, "per-output pixels");
+         if Raw = Unsigned_64'Last then return; end if;
+         Addresses (Output) :=
+           Integer_Address ((Raw + 4095) and not Unsigned_64'(4095));
+         Paint (Output, (if Output = 0 then 16#00E0_3020# else 16#0020_50E0#));
+         MG.Create_Via_Capability
+           (CAP_SLOT_DISPLAY, To_Address (Addresses (Output)), 1, False,
+            Grants (Output), Ok);
+         Check (Ok, "per-output grant");
+         if not Ok then return; end if;
+         Expect (With_Output (Encode_Attachment
+           ((Grants (Output), (32, 32, 128))), Output), DP.Denied,
+           "output lease required independently");
+         Expect (With_Output (Encode_Lease_Request (Acquire_Display), Output),
+                 DP.Success, "per-output lease");
+         Expect (With_Output (Encode_Attachment
+           ((Grants (Output), (32, 32, 128))), Output), DP.Success,
+           "per-output attachment");
+         Wire := Send (With_Output (Encode_Open_Session, Output));
+         Check (Wire.Length = 4 and then Wire.Words (0) = 0 and then
+                Wire.Words (1) /= 0, "per-output session");
+         if not Passed then return; end if;
+         Sessions (Output) := Wire.Words (1);
+      end loop;
+      Check (Sessions (0) /= Sessions (1), "output-bound session identity");
+      Frame (Sessions (0), 1, Rejected, Not_Acquired, (0, 0, 32, 32), 1);
+      Frame (Sessions (1), 1, Rejected, Not_Acquired, (0, 0, 32, 32), 0);
+      Concurrent_Frames;
+      if not Passed then return; end if;
+      debugPrint ("DISPLAY-DUAL: phase-a" & ASCII.LF);
+      Ignored := syscall (SYSCALL_SLEEP, 2000);
+      Paint (1, 16#0030_D050#);
+      Frame (Sessions (1), 2, Published, Released, (0, 0, 32, 32), 1);
+      Expect (Encode_Lease_Request (Release_Display), DP.Success,
+              "release first output alone");
+      MG.Revoke (Grants (0), Ok);
+      Check (Ok and then Generation (Grants (0)) = 0, "first output unpinned");
+      if not Passed then return; end if;
+      debugPrint ("DISPLAY-DUAL: phase-b" & ASCII.LF);
+      Ignored := syscall (SYSCALL_SLEEP, 2000);
+      Frame (Sessions (0), 2, Rejected, Not_Acquired, (0, 0, 32, 32), 0);
+      Frame (Sessions (1), 1, Rejected, Not_Acquired, (0, 0, 32, 32), 1);
+      Paint (1, 16#00E0_C030#);
+      Frame (Sessions (1), 3, Published, Released, (0, 0, 32, 32), 1);
+      if not Passed then return; end if;
+      debugPrint ("DISPLAY-DUAL: phase-c" & ASCII.LF);
+      Ignored := syscall (SYSCALL_SLEEP, 2000);
+      Expect (With_Output (Encode_Lease_Request (Release_Display), 1),
+              DP.Success, "release second output");
+      MG.Revoke (Grants (1), Ok);
+      Check (Ok and then Generation (Grants (1)) = 0, "second output unpinned");
+      if Passed then debugPrint ("DISPLAY-DUAL-CHECK: PASS" & ASCII.LF); end if;
+   end Exercise_Outputs;
 begin
    Exercise;
+   if Passed then Exercise_Outputs; end if;
    if Passed then
       debugPrint ("DISPLAY-GRANTS-CHECK: PASS" & ASCII.LF);
    end if;

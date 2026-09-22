@@ -1,5 +1,5 @@
 [workspace]
-members = ["cubit", "allocator", "probe"]
+members = ["cubit", "allocator", "probe", "fonts"]
 resolver = "2"
 
 [profile.release]

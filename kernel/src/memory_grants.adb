@@ -56,9 +56,10 @@ package body Memory_Grants with SPARK_Mode => On is
     end Range_Attenuates;
 
     function Is_Valid (value : Lifecycle) return Boolean is
-      ((if value.state = Inactive then value.acquisitions = 0 else True) and
+      ((if value.state = Inactive then
+           value.acquisitions = 0 and value.forwarding /= Retained) and
        (if value.state = Revocation_Requested then
-            value.acquisitions /= 0
+            value.acquisitions /= 0 or value.forwarding = Retained
         else True));
 
     function Is_Active (value : Lifecycle) return Boolean is
@@ -78,6 +79,21 @@ package body Memory_Grants with SPARK_Mode => On is
       (value.state = Available and then
        value.acquisitions < Acquisition_Count'Last);
 
+    function Has_Forwarding_Hold (value : Lifecycle) return Boolean is
+      (value.forwarding = Retained);
+
+    function Can_Retain_Forwarding_Hold (value : Lifecycle) return Boolean is
+      (value.state = Available and value.forwarding = Unused);
+
+    procedure Retain_Forwarding_Hold
+      (value : in out Lifecycle; applied : out Boolean) is
+    begin
+        applied := Can_Retain_Forwarding_Hold (value);
+        if applied then
+            value.forwarding := Retained;
+        end if;
+    end Retain_Forwarding_Hold;
+
     procedure Record_Acquire (value : in out Lifecycle) is
     begin
         value.acquisitions := value.acquisitions + 1;
@@ -90,7 +106,7 @@ package body Memory_Grants with SPARK_Mode => On is
     begin
         if value.state = Inactive then
             result := Revocation_Rejected;
-        elsif value.acquisitions = 0 then
+        elsif value.acquisitions = 0 and value.forwarding /= Retained then
             value := Inactive_Lifecycle;
             result := Revocation_Completed;
         else
@@ -107,7 +123,7 @@ package body Memory_Grants with SPARK_Mode => On is
         if value.acquisitions = 0 then
             result := Return_Rejected;
         elsif value.state = Revocation_Requested and then
-              value.acquisitions = 1
+              value.acquisitions = 1 and then value.forwarding /= Retained
         then
             value := Inactive_Lifecycle;
             result := Revocation_Completed_On_Return;
@@ -117,12 +133,33 @@ package body Memory_Grants with SPARK_Mode => On is
         end if;
     end Record_Return;
 
-    procedure Force_Close
+    procedure Release_Forwarding_Hold
+      (value : in out Lifecycle; result : out Hold_Release_Result) is
+    begin
+        if value.forwarding /= Retained then
+            result := Hold_Release_Rejected;
+        else
+            value.forwarding := Released;
+            if value.state = Revocation_Requested and value.acquisitions = 0 then
+                value.state := Inactive;
+                result := Revocation_Completed_On_Hold_Release;
+            else
+                result := Forwarding_Hold_Released;
+            end if;
+        end if;
+    end Release_Forwarding_Hold;
+
+    procedure Close_Receiver
       (value            : in out Lifecycle;
        had_acquisitions : out Boolean)
     is
     begin
         had_acquisitions := value.acquisitions /= 0;
-        value := Inactive_Lifecycle;
-    end Force_Close;
+        value.acquisitions := 0;
+        if value.forwarding = Retained then
+            value.state := Revocation_Requested;
+        else
+            value.state := Inactive;
+        end if;
+    end Close_Receiver;
 end Memory_Grants;

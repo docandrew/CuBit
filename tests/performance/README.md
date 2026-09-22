@@ -1,5 +1,61 @@
 # Native performance measurements
 
+## Graphics copy baseline
+
+See [initial native measurements and GPU wakeup tradeoffs](graphics-results.md).
+
+The desktop, display broker and virtio driver report cumulative `GRAPHICS:`
+records at periodic diagnostic boundaries (at most once per second per stage,
+and only when changed). Counters distinguish compositor staging, backend copies,
+previous-buffer damage repair, legacy GPU copies and GPU upload **requests**.
+They count actual copy spans, including row padding when copied. Upload requests
+are not evidence of physical host transfers or GPU memory bandwidth.
+
+```sh
+nix develop -c make -C kernel display desktop virtio-gpu bench-input bench-load
+nix develop -c bash tests/performance/test.sh
+nix develop -c bash tests/headless/run.sh --test bench-input --accel kvm --cpus 1 \
+  --input-backend linear --timeout 35 --keep-logs --serial /tmp/graphics-linear.log
+nix develop -c bash tests/headless/run.sh --test bench-input --accel kvm --cpus 1 \
+  --input-backend virtio --timeout 35 --keep-logs --serial /tmp/graphics-virtio.log
+nix develop -c python3 tests/performance/report.py /tmp/graphics-virtio.log \
+  --require-input-integrity --require-reference-clock --require-graphics
+```
+
+Use `--load --timeout 75` for the same test with a CPU-bound peer. Run fixtures
+sequentially. Both backends use one vCPU here to avoid changing that variable.
+The linear fixture also discovers a secondary virtio adapter; its initial
+resource uploads are counted even though the desktop uses the boot framebuffer.
+
+These are **latest observed cumulative snapshots**, including startup. Reporting
+is asynchronous; an idle service may block before publishing its final counters.
+Totals therefore omit some tail work and are not phase-aligned. Do not divide
+them by fixture duration to claim bandwidth or compare them as equal-work totals.
+Composition/render writes and unrelated copies are excluded. The display's
+`present_ms` diagnostic includes waits; it is not exclusive CPU-copy time.
+The parser rejects malformed, missing, wrapped or overflowed counters rather
+than treating missing measurements as zero-copy.
+
+The counter's exact increment/overflow behavior is SPARK-proved (Nix, after
+`test.sh` stages sources):
+
+```sh
+nix develop -c bash -c 'cd kernel && alr exec -- gnatprove \
+  -P ../tests/performance/histogram.gpr -u cubit-graphics_metrics.adb \
+  --level=2 --checks-as-errors=on --report=all -j2'
+```
+
+That proof does not prove instrumentation coverage, rendering correctness or
+performance. Instrumentation adds counter operations, a GPU-loop clock read and
+periodic serial diagnostics; use identical instrumentation for comparisons.
+
+For a defensible Linux comparison we still need a matched workload with fixed
+resolution, refresh, damage, buffering and completion semantics, repeated
+interleaved runs on the same hardware, and CPU-residency/frame-deadline data.
+KVM input publication-to-app measurements are neither hardware input latency
+nor key-to-photon latency. A physical display/camera or equivalent external
+measurement is needed for the latter. No Linux performance claim is made here.
+
 See [methodology, initial results, and findings](../../docs/performance-baseline.md).
 These run **inside CuBit**, not the Linux Workbench. Linux hosts QEMU and
 analyzes artifacts. The small histogram test alone is Linux-hosted.

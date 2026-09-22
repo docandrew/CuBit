@@ -1,4 +1,5 @@
 --  HOSTED/LINUX Workbench adapter.  SDL is not part of the CuBit runtime.
+with "../lib/ui/fonts_host.gpr";
 project CCL_UI_Preview is
    for Languages use ("Ada", "C");
    for Source_Dirs use

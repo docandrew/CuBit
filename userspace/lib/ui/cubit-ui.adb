@@ -7,8 +7,7 @@
 ------------------------------------------------------------------------------
 with System.Storage_Elements; use System.Storage_Elements;
 with Font8x16;
-with CuBit.UI.Fonts_IBM_Plex_Mono_11;
-with CuBit.UI.Fonts_IBM_Plex_Sans_11;
+with CuBit.Fonts;
 
 package body CuBit.UI is
    Selected_Theme : Theme := CuBit_Alloy;
@@ -30,8 +29,6 @@ package body CuBit.UI is
    end Set_Theme;
    function Current_Theme return Theme is (Selected_Theme);
    use type System.Address;
-   package UI_Font renames CuBit.UI.Fonts_IBM_Plex_Sans_11;
-   package Code_Font renames CuBit.UI.Fonts_IBM_Plex_Mono_11;
 
    function Is_Empty (r : Rect) return Boolean is
    begin
@@ -384,28 +381,22 @@ package body CuBit.UI is
 
    function UI_Text_Width (text : String) return Natural is
       width : Natural := 0;
-      code  : Natural;
    begin
       for i in text'Range loop
-         code := Character'Pos (text (i));
-         if code >= UI_Font.FIRST_GLYPH and then code <= UI_Font.LAST_GLYPH then
-            width := width + UI_Font.Widths (code);
-         else
-            width := width + UI_Font.Widths (Character'Pos ('?'));
-         end if;
+         width := width + CuBit.Fonts.Width (CuBit.Fonts.Sans, text (i));
       end loop;
       return width;
    end UI_Text_Width;
 
    function UI_Text_Height return Natural is
    begin
-      return UI_Font.LINE_HEIGHT;
+      return CuBit.Fonts.Line_Height;
    end UI_Text_Height;
 
    procedure Draw_UI_Glyph
       (c : Canvas; x, y : Natural; ch : Character; fg, bg : Color)
    is
-      code : Natural := Character'Pos (ch);
+      glyph : constant CuBit.Fonts.Glyph_Access := CuBit.Fonts.Get (CuBit.Fonts.Sans, ch);
       width : Natural;
       alpha : Unsigned_8;
       clipped : Rect;
@@ -413,24 +404,20 @@ package body CuBit.UI is
       srcX : Natural;
       srcY : Natural;
    begin
-      if code < UI_Font.FIRST_GLYPH or else code > UI_Font.LAST_GLYPH then
-         code := Character'Pos ('?');
-      end if;
-
-      width := UI_Font.Widths (code);
+      width := Natural (glyph.Advance);
       clipped := Clamp_Rect
-        (c, (x => x, y => y, w => width, h => UI_Font.LINE_HEIGHT));
+        (c, (x => x, y => y, w => width, h => CuBit.Fonts.Line_Height));
 
       if c.addr = System.Null_Address or else Is_Empty (clipped) then
          return;
       end if;
 
-      Fill_Rect (c, (x => x, y => y, w => width, h => UI_Font.LINE_HEIGHT), bg);
+      Fill_Rect (c, (x => x, y => y, w => width, h => CuBit.Fonts.Line_Height), bg);
       for yy in clipped.y .. clipped.y + clipped.h - 1 loop
          srcY := yy - y;
          for xx in clipped.x .. clipped.x + clipped.w - 1 loop
             srcX := xx - x;
-            alpha := UI_Font.Alpha (code) (srcY) (srcX);
+            alpha := glyph.Alpha (srcY, srcX);
             if alpha = 255 then
                offset := Storage_Offset (yy * c.pitch + xx * 4);
                declare
@@ -461,7 +448,7 @@ package body CuBit.UI is
           x >= c.clip.x + c.clip.w or else
           x + width <= c.clip.x or else
           y >= c.clip.y + c.clip.h or else
-          y + UI_Font.LINE_HEIGHT <= c.clip.y)
+          y + CuBit.Fonts.Line_Height <= c.clip.y)
       then
          return;
       end if;
@@ -470,19 +457,12 @@ package body CuBit.UI is
          exit when cx >= c.width;
          if not c.clipEnabled or else
             (cx < c.clip.x + c.clip.w and then
-             cx + UI_Font.MAX_GLYPH_WIDTH > c.clip.x)
+             cx + CuBit.Fonts.Max_Width > c.clip.x)
          then
             Draw_UI_Glyph (c, cx, y, text (i), fg, bg);
          end if;
 
-         declare
-            code : Natural := Character'Pos (text (i));
-         begin
-            if code < UI_Font.FIRST_GLYPH or else code > UI_Font.LAST_GLYPH then
-               code := Character'Pos ('?');
-            end if;
-            cx := cx + UI_Font.Widths (code);
-         end;
+         cx := cx + CuBit.Fonts.Width (CuBit.Fonts.Sans, text (i));
       end loop;
    end Draw_UI_Text;
 
@@ -491,7 +471,7 @@ package body CuBit.UI is
    is
       cx : Natural := x;
       width : constant Natural := UI_Text_Width (text);
-      code : Natural;
+      glyph : CuBit.Fonts.Glyph_Access;
       glyphWidth : Natural;
       clipped : Rect;
       alpha : Unsigned_8;
@@ -504,27 +484,24 @@ package body CuBit.UI is
          x >= c.clip.x + c.clip.w or else
          x + width <= c.clip.x or else
          y >= c.clip.y + c.clip.h or else
-         y + UI_Font.LINE_HEIGHT <= c.clip.y)
+         y + CuBit.Fonts.Line_Height <= c.clip.y)
       then
          return;
       end if;
 
       for i in text'Range loop
          exit when cx >= c.width;
-         code := Character'Pos (text (i));
-         if code < UI_Font.FIRST_GLYPH or else code > UI_Font.LAST_GLYPH then
-            code := Character'Pos ('?');
-         end if;
-         glyphWidth := UI_Font.Widths (code);
+         glyph := CuBit.Fonts.Get (CuBit.Fonts.Sans, text (i));
+         glyphWidth := Natural (glyph.Advance);
          clipped := Clamp_Rect
            (c, (x => cx, y => y, w => glyphWidth,
-                h => UI_Font.LINE_HEIGHT));
+                h => CuBit.Fonts.Line_Height));
          if c.addr /= System.Null_Address and then not Is_Empty (clipped) then
             for yy in clipped.y .. clipped.y + clipped.h - 1 loop
                srcY := yy - y;
                for xx in clipped.x .. clipped.x + clipped.w - 1 loop
                   srcX := xx - cx;
-                  alpha := UI_Font.Alpha (code) (srcY) (srcX);
+                  alpha := glyph.Alpha (srcY, srcX);
                   if alpha > 0 then
                      offset := Storage_Offset (yy * c.pitch + xx * 4);
                      declare
@@ -543,40 +520,35 @@ package body CuBit.UI is
    end Draw_UI_Text_Transparent;
 
    function Code_Text_Width (text : String) return Natural is
-     (text'Length * Code_Font.GLYPH_WIDTH);
+     (text'Length * CuBit.Fonts.Mono_Width);
 
    function Code_Text_Height return Natural is
-     (Code_Font.LINE_HEIGHT);
+     (CuBit.Fonts.Line_Height);
 
    procedure Draw_Code_Glyph
       (c : Canvas; x, y : Natural; ch : Character; fg, bg : Color)
    is
-      code : Natural := Character'Pos (ch);
+      glyph : constant CuBit.Fonts.Glyph_Access := CuBit.Fonts.Get (CuBit.Fonts.Monospace, ch);
       alpha : Unsigned_8;
       clipped : Rect;
       offset : Storage_Offset;
       srcX : Natural;
       srcY : Natural;
    begin
-      if code < Code_Font.FIRST_GLYPH or else
-        code > Code_Font.LAST_GLYPH
-      then
-         code := Character'Pos ('?');
-      end if;
       clipped := Clamp_Rect
-        (c, (x => x, y => y, w => Code_Font.GLYPH_WIDTH,
-             h => Code_Font.LINE_HEIGHT));
+        (c, (x => x, y => y, w => CuBit.Fonts.Mono_Width,
+             h => CuBit.Fonts.Line_Height));
       if c.addr = System.Null_Address or else Is_Empty (clipped) then
          return;
       end if;
       Fill_Rect
-        (c, (x => x, y => y, w => Code_Font.GLYPH_WIDTH,
-             h => Code_Font.LINE_HEIGHT), bg);
+        (c, (x => x, y => y, w => CuBit.Fonts.Mono_Width,
+             h => CuBit.Fonts.Line_Height), bg);
       for yy in clipped.y .. clipped.y + clipped.h - 1 loop
          srcY := yy - y;
          for xx in clipped.x .. clipped.x + clipped.w - 1 loop
             srcX := xx - x;
-            alpha := Code_Font.Alpha (code) (srcY) (srcX);
+            alpha := glyph.Alpha (srcY, srcX);
             if alpha > 0 then
                offset := Storage_Offset (yy * c.pitch + xx * 4);
                declare
@@ -601,7 +573,7 @@ package body CuBit.UI is
          x >= c.clip.x + c.clip.w or else
          x + width <= c.clip.x or else
          y >= c.clip.y + c.clip.h or else
-         y + Code_Font.LINE_HEIGHT <= c.clip.y)
+         y + CuBit.Fonts.Line_Height <= c.clip.y)
       then
          return;
       end if;
@@ -609,11 +581,11 @@ package body CuBit.UI is
          exit when cx >= c.width;
          if not c.clipEnabled or else
            (cx < c.clip.x + c.clip.w and then
-            cx + Code_Font.GLYPH_WIDTH > c.clip.x)
+            cx + CuBit.Fonts.Mono_Width > c.clip.x)
          then
             Draw_Code_Glyph (c, cx, y, text (i), fg, bg);
          end if;
-         cx := cx + Code_Font.GLYPH_WIDTH;
+         cx := cx + CuBit.Fonts.Mono_Width;
       end loop;
    end Draw_Code_Text;
 

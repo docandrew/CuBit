@@ -8,10 +8,24 @@ use core::arch::asm;
 enum Syscall {
     Exit = 0,
     GrowHeap = 8,
+    DebugWrite = 12,
     CallViaEndpointCapability = 41,
 }
 
-/// The only raw machine boundary in this initial runtime.
+/// Early runtime diagnostics through CuBit's existing debug output route.
+/// This is not ambient application stdout or a replacement for typed stdlog.
+pub fn debug_write(text: &str) {
+    // SAFETY: the kernel copies the borrowed bytes synchronously; no pointer
+    // survives the syscall. Descriptor 1 is the existing Ada debug route.
+    unsafe {
+        asm!("syscall",
+            inlateout("rax") Syscall::DebugWrite as u64 => _,
+            in("rdi") 1_u64, in("rsi") text.as_ptr(), in("rdx") text.len(),
+            lateout("rcx") _, lateout("r11") _, options(nostack));
+    }
+}
+
+/// Two-argument raw machine boundary for native operations.
 ///
 /// Safety: the caller must satisfy the selected syscall's pointer/lifetime
 /// requirements. Do not mark this asm `nomem`, `readonly`, or `preserves_flags`.

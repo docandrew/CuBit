@@ -102,8 +102,8 @@ is
 
     --  A grant's usable lifetime is represented as one state machine rather
     --  than independent active/pending/count fields.  Revocation completes
-    --  immediately when there is no borrower, otherwise it prevents new
-    --  acquisitions until the final return.
+    --  immediately when there is no borrower or forwarding hold; otherwise
+    --  it prevents new acquisitions until both kinds of use have ended.
     Maximum_Acquisition_Count : constant Natural := 127;
     subtype Acquisition_Count is
       Natural range 0 .. Maximum_Acquisition_Count;
@@ -120,9 +120,26 @@ is
       (value : Lifecycle) return Acquisition_Count;
     function Can_Acquire (value : Lifecycle) return Boolean;
 
+    --  One kernel-owned hold per forwarding scope, separate from user returns.
+    --  Retention is one-shot for this grant identity. These operations do not
+    --  authenticate forwarding authority, map pages or establish DMA quiescence.
+    function Has_Forwarding_Hold (value : Lifecycle) return Boolean;
+    function Can_Retain_Forwarding_Hold (value : Lifecycle) return Boolean;
+    procedure Retain_Forwarding_Hold
+      (value : in out Lifecycle; applied : out Boolean)
+      with Pre => Is_Valid (value),
+           Post => Is_Valid (value) and then
+             applied = Can_Retain_Forwarding_Hold (value'Old) and then
+             Acquisition_Total (value) = Acquisition_Total (value'Old) and then
+             (if applied then
+                Is_Available (value) and Has_Forwarding_Hold (value) and
+                not Can_Retain_Forwarding_Hold (value)
+              else value = value'Old);
+
     procedure Record_Acquire (value : in out Lifecycle)
       with Pre  => Is_Valid (value) and then Can_Acquire (value),
            Post => Is_Valid (value) and then Is_Available (value) and then
+             Has_Forwarding_Hold (value) = Has_Forwarding_Hold (value'Old) and then
              Acquisition_Total (value) =
                Acquisition_Total (value'Old) + 1;
 
@@ -134,9 +151,11 @@ is
        result : out Revocation_Result)
       with Pre  => Is_Valid (value),
            Post => Is_Valid (value) and then
+             Has_Forwarding_Hold (value) = Has_Forwarding_Hold (value'Old) and then
              (if not Is_Active (value'Old) then
                   result = Revocation_Rejected and then value = value'Old
-              elsif Acquisition_Total (value'Old) = 0 then
+              elsif Acquisition_Total (value'Old) = 0 and then
+                    not Has_Forwarding_Hold (value'Old) then
                   result = Revocation_Completed and then
                   not Is_Active (value)
               else
@@ -153,10 +172,12 @@ is
        result : out Return_Result)
       with Pre  => Is_Valid (value),
            Post => Is_Valid (value) and then
+             Has_Forwarding_Hold (value) = Has_Forwarding_Hold (value'Old) and then
              (if Acquisition_Total (value'Old) = 0 then
                   result = Return_Rejected and then value = value'Old
               elsif Is_Revocation_Pending (value'Old) and then
-                    Acquisition_Total (value'Old) = 1
+                    Acquisition_Total (value'Old) = 1 and then
+                    not Has_Forwarding_Hold (value'Old)
               then
                   result = Revocation_Completed_On_Return and then
                   not Is_Active (value)
@@ -166,11 +187,42 @@ is
                   Acquisition_Total (value) =
                     Acquisition_Total (value'Old) - 1);
 
-    procedure Force_Close
+    type Hold_Release_Result is
+      (Hold_Release_Rejected, Forwarding_Hold_Released,
+       Revocation_Completed_On_Hold_Release);
+
+    --  Only after the associated scope is closed and every child mapping has
+    --  retired. This is NOT the userspace return-grant operation.
+    procedure Release_Forwarding_Hold
+      (value : in out Lifecycle; result : out Hold_Release_Result)
+      with Pre => Is_Valid (value),
+           Post => Is_Valid (value) and then
+             Acquisition_Total (value) = Acquisition_Total (value'Old) and then
+             (if not Has_Forwarding_Hold (value'Old) then
+                result = Hold_Release_Rejected and value = value'Old
+              else not Has_Forwarding_Hold (value) and
+                not Can_Retain_Forwarding_Hold (value) and
+                (if Is_Revocation_Pending (value'Old) and
+                    Acquisition_Total (value'Old) = 0 then
+                   result = Revocation_Completed_On_Hold_Release and
+                   not Is_Active (value)
+                 else result = Forwarding_Hold_Released and
+                   Is_Active (value) and
+                   Is_Available (value) = Is_Available (value'Old)));
+
+    --  Receiver death ends its ordinary acquisitions, not downstream use.
+    --  The adapter still unmaps/shoots down the dead receiver's mappings;
+    --  a retained lifecycle protects the parent identity and owner resources.
+    procedure Close_Receiver
       (value            : in out Lifecycle;
        had_acquisitions : out Boolean)
       with Pre  => Is_Valid (value),
-           Post => Is_Valid (value) and then not Is_Active (value) and then
+           Post => Is_Valid (value) and then
+             Acquisition_Total (value) = 0 and then
+             Has_Forwarding_Hold (value) = Has_Forwarding_Hold (value'Old) and then
+             Is_Active (value) = Has_Forwarding_Hold (value'Old) and then
+             (if Has_Forwarding_Hold (value'Old) then
+                Is_Revocation_Pending (value)) and then
              had_acquisitions =
                (Acquisition_Total (value'Old) /= 0);
 
@@ -181,13 +233,16 @@ private
       (Inactive => 0, Available => 1, Revocation_Requested => 2);
     for Lifecycle_State'Size use 8;
 
+    type Forwarding_Hold_State is (Unused, Retained, Released);
     type Lifecycle is record
+        -- Group the small state fields before the aligned reader count.
         state        : Lifecycle_State := Inactive;
+        forwarding   : Forwarding_Hold_State := Unused;
         acquisitions : Acquisition_Count := 0;
     end record;
 
     Inactive_Lifecycle : constant Lifecycle :=
-      (state => Inactive, acquisitions => 0);
+      (state => Inactive, acquisitions => 0, forwarding => Unused);
     Available_Lifecycle : constant Lifecycle :=
-      (state => Available, acquisitions => 0);
+      (state => Available, acquisitions => 0, forwarding => Unused);
 end Memory_Grants;

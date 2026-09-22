@@ -27,6 +27,7 @@ package body Sysinfo is
     hdaDma    : Unsigned_64 := 0;
     gpuBar0   : Unsigned_64 := 0;
     gpuDma    : Unsigned_64 := 0;
+    gpuSecondDma : Unsigned_64 := 0;
     gpuCommonOff : Unsigned_64 := 0;
     gpuNotifyOff : Unsigned_64 := 0;
     gpuIsrOff    : Unsigned_64 := 0;
@@ -73,6 +74,8 @@ package body Sysinfo is
                 return gpuBar0;
             when GPU_DMA_PHYS =>
                 return gpuDma;
+            when GPU_SECOND_DMA_PHYS =>
+                return gpuSecondDma;
             when GPU_COMMON_OFF =>
                 return gpuCommonOff;
             when GPU_NOTIFY_OFF =>
@@ -180,6 +183,9 @@ package body Sysinfo is
                 return True;
             when GPU_DMA_PHYS =>
                 gpuDma := value;
+                return True;
+            when GPU_SECOND_DMA_PHYS =>
+                gpuSecondDma := value;
                 return True;
             when GPU_COMMON_OFF =>
                 gpuCommonOff := value;

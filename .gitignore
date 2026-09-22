@@ -2,6 +2,8 @@ build
 __pycache__/
 /tests/performance/results/
 /userspace/services/display/build-delayed/
+/userspace/services/display/build-output-rebind/
+/userspace/apps/display-check/build-output-rebind/
 /userspace/services/desktop/build-delayed/
 cubit_kernel
 cubit_kernel.iso
@@ -38,3 +40,5 @@ src/build.ads
 /local-roms/
 *.[gG][bB]
 *.[gG][bB][cC]
+userspace/services/virtio-gpu/build-delayed/
+userspace/apps/display-check/build-gpu-delayed/

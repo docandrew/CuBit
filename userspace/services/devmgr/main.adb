@@ -1145,8 +1145,11 @@ procedure main is
       dmaPhys : Unsigned_64;
       ret : Unsigned_64;
 
-      DMA_ORDER : constant Unsigned_64 := 11; -- 8 MiB
-      DMA_PAGES : constant Unsigned_64 := 2048;
+      -- Two independently owned 8 MiB banks, within the allocator's supported
+      -- block size. A missing second bank must not prevent the boot output.
+      secondDmaPhys : Unsigned_64;
+      DMA_ORDER : constant Unsigned_64 := 11;
+      DMA_PAGES : constant Unsigned_64 := 2 ** Natural (DMA_ORDER);
       DMA_SIZE  : constant Unsigned_64 := DMA_PAGES * 4096;
       BAR_MAP_SIZE : constant Unsigned_64 := 65536;
 
@@ -1236,13 +1239,22 @@ procedure main is
          return;
       end if;
 
+      secondDmaPhys := allocDma
+        (virtioGpuPID, DMA_ORDER, DMA_VIRT_BASE + DMA_SIZE);
+      if secondDmaPhys = reterr then
+         secondDmaPhys := 0;
+         debugPrint ("devmgr: second GPU DMA bank unavailable" & LF);
+      end if;
+      ret := setSysinfo (SYSINFO_GPU_SECOND_DMA_PHYS, secondDmaPhys);
+
       --  Slot 4: virtio modern MMIO BAR.
       mintCap (virtioGpuPID, CAP_DEVICE_MEM, barPhys, BAR_MAP_SIZE,
                RIGHT_READ or RIGHT_WRITE, 4);
       --  Slot 5: IRQ.
       mintCap (virtioGpuPID, CAP_IRQ, irqVector, 0, RIGHT_READ, 5);
-      --  Slot 6: DMA region.
-      mintCap (virtioGpuPID, CAP_DEVICE_MEM, 0, DMA_SIZE,
+      --  Slot 6: mapped DMA banks; actual frame ownership is tracked per bank.
+      mintCap (virtioGpuPID, CAP_DEVICE_MEM, 0,
+               (if secondDmaPhys = 0 then DMA_SIZE else DMA_SIZE * 2),
                RIGHT_READ or RIGHT_WRITE, 6);
 
       ret := setSysinfo (SYSINFO_GPU_BAR0, barPhys);

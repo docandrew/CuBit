@@ -11,6 +11,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Display_Protocol;
+with CuBit.Display_Layouts;
 with CuBit.Desktop_Messages;
 with CuBit.Input;
 with CuBit.Audio_Control;
@@ -19,7 +20,7 @@ with CuBit.Click_Sequences;
 with CuBit.Theme;
 with Desktop_Cursors;
 with Desktop_Icons;
-with Desktop_UI_Font;
+with CuBit.Fonts;
 with Desktop_Window_Icons;
 with Desktop_Wallpaper;
 with Desktop_Settings;
@@ -30,12 +31,20 @@ with CuBit.UI.Theme_CCL;
 with CuBit.UI.Theme_Data;
 with CuBit.Desktop_Protocol;
 with CuBit.Memory_Grants;
-with Font8x16;
+with CuBit.Graphics_Metrics;
+with CuBit.Graphics_Metrics_IO;
 with Presentation_Test_Policy;
 
 procedure main is
    package DSP renames CuBit.Display_Protocol;
+   package DL renames CuBit.Display_Layouts;
+   package DG renames DL.G;
+   use type DSP.Output_Number, DL.Admission_Status;
+   use type DG.Pixel_Edge;
    package MG renames CuBit.Memory_Grants;
+   package GM renames CuBit.Graphics_Metrics;
+   stagingCopies : GM.Counter;
+   stagingReporter : CuBit.Graphics_Metrics_IO.Reporter;
    use ASCII;
    package DP renames CuBit.Desktop_Protocol;
    use type DP.Status_Code;
@@ -112,6 +121,7 @@ procedure main is
 
    REQUEST_BUDGET_FRAME : constant Natural := 32;
    REQUEST_BUDGET_IDLE  : constant Natural := 96;
+   EVENT_BUDGET : constant Positive := 64;
 
    KEYMOD_SHIFT : constant Unsigned_64 := 1;
    KEYMOD_CTRL  : constant Unsigned_64 := 2;
@@ -131,22 +141,18 @@ procedure main is
    PS_BUF_SIZE : constant Unsigned_64 := 8192;
    PS_ENTRY_SIZE : constant Storage_Offset := 32;
 
+   -- Once the session is active these describe the private logical scene,
+   -- not any one scanout. Output-local pitches and storage live below.
    fbWidth  : Natural := 0;
    fbHeight : Natural := 0;
    fbPitch  : Natural := 0;
    fbBpp    : Natural := 0;
    backBufferAddr : System.Address := System.Null_Address;
-   transferBufferAddr : System.Address := System.Null_Address;
    type Transfer_Phase is (Available, In_Flight, Quarantined);
-   transferPhase : Transfer_Phase := Available;
-   presentationSession : Unsigned_64 := 0;
    frameSequence : Unsigned_64 := 0;
-   presentationStarted : Unsigned_64 := 0;
    asyncAnnounced, releaseAnnounced : Boolean := False;
    inputWhileHeldFrame : Unsigned_64 := 0;
    retiredThrough : Unsigned_64 := 0;
-   backBufferGrant : MG.Grant_Reference;
-   backBufferGranted : Boolean := False;
    dragBaseBufferAddr : System.Address := System.Null_Address;
    dragBaseReady : Boolean := False;
    dragCacheAnnounced : Boolean := False;
@@ -171,7 +177,34 @@ procedure main is
       w : Natural := 0;
       h : Natural := 0;
    end record;
-   transferDamage : Rect;
+   --  Initial native arrangement: adjacent, equal-size, unit-scale outputs.
+   --  Scene storage is private. Each output owns an immutable transfer buffer
+   --  while its non-reused completion token is outstanding.
+   --  The shared geometry/layout packages admit richer layouts, but this copy
+   --  renderer must not silently claim support for rotation or resampling.
+   subtype Output_Index is DSP.Output_Number range 0 .. 1;
+   type Output_Presentation is record
+      Enabled, Leased, Granted : Boolean := False;
+      Geometry : DG.Output := (Width => 1, Height => 1, others => <>);
+      Pitch : Natural := 0;
+      Buffer : System.Address := System.Null_Address;
+      Grant : MG.Grant_Reference;
+      Session, Token, Started : Unsigned_64 := 0;
+      Phase : Transfer_Phase := Available;
+      Damage : Rect;
+   end record;
+   presentations : array (Output_Index) of Output_Presentation;
+   primaryOutput : Output_Index := 0;
+   --  Desktop preference, not a property of the display/GPU service. Config
+   --  publication and named-monitor matching will replace this initial value.
+   preferredPrimary : constant DL.Named_Display_ID := 1;
+
+   function primaryBounds return Rect is
+     (if presentations (primaryOutput).Enabled then
+        (Natural (presentations (primaryOutput).Geometry.X), 0,
+         Natural (presentations (primaryOutput).Geometry.Width),
+         Natural (presentations (primaryOutput).Geometry.Height))
+      else (0, 0, fbWidth, fbHeight));
 
    --  Damage clipping for compositor redraws. A full scene redraw with a clip
    --  rectangle lets existing drawing code repaint correct background/window
@@ -203,9 +236,9 @@ procedure main is
       Convention => C,
       External_Name => "memcpy";
 
-   type App_Kind is (APP_CLIENT, APP_CONSOLE, APP_DOOM, APP_SETTINGS);
+   type App_Kind is (APP_CLIENT, APP_DOOM, APP_SETTINGS);
    for App_Kind use
-     (APP_CLIENT => 0, APP_CONSOLE => 1, APP_DOOM => 2, APP_SETTINGS => 3);
+     (APP_CLIENT => 0, APP_DOOM => 1, APP_SETTINGS => 2);
    for App_Kind'Size use 8;
 
    type Pointer_Cursor_Style is
@@ -355,21 +388,6 @@ procedure main is
    desktopAltDown   : Boolean := False;
    desktopCapsLockOn : Boolean := False;
 
-   CONSOLE_INPUT_MAX : constant Natural := 56;
-   consoleInput : String (1 .. CONSOLE_INPUT_MAX) := (others => ' ');
-   consoleInputLen : Natural := 0;
-   consoleLast : String (1 .. CONSOLE_INPUT_MAX) := (others => ' ');
-   consoleLastLen : Natural := 0;
-   consoleResult : String (1 .. 72) := (others => ' ');
-   consoleResultLen : Natural := 0;
-   CONSOLE_LINE_MAX : constant Natural := 72;
-   CONSOLE_HISTORY_ROWS : constant Natural := 5;
-   subtype ConsoleLine is String (1 .. CONSOLE_LINE_MAX);
-   type ConsoleHistoryTable is array (1 .. CONSOLE_HISTORY_ROWS) of ConsoleLine;
-   type ConsoleHistoryLengths is array (1 .. CONSOLE_HISTORY_ROWS) of Natural;
-   consoleHistory : ConsoleHistoryTable := (others => (others => ' '));
-   consoleHistoryLen : ConsoleHistoryLengths := (others => 0);
-
    type ScanTable is array (Unsigned_8 range 0 .. 16#39#) of Unsigned_8;
    scancodeNormal : constant ScanTable :=
      (16#02# => Character'Pos ('1'),
@@ -478,15 +496,15 @@ procedure main is
       others => 0);
 
    type Launch_Action is
-     (LAUNCH_NONE, LAUNCH_CONSOLE, LAUNCH_WORKBENCH, LAUNCH_DOOM,
+     (LAUNCH_NONE, LAUNCH_WORKBENCH, LAUNCH_DOOM,
       LAUNCH_DEVICES, LAUNCH_BROWSER, LAUNCH_FILES, LAUNCH_SAMEBOY, LAUNCH_SETTINGS, LAUNCH_POWER);
    for Launch_Action use
-     (LAUNCH_NONE => 0, LAUNCH_CONSOLE => 1, LAUNCH_WORKBENCH => 2,
-      LAUNCH_DOOM => 3, LAUNCH_DEVICES => 4, LAUNCH_BROWSER => 5,
-      LAUNCH_FILES => 6, LAUNCH_SAMEBOY => 7, LAUNCH_SETTINGS => 8, LAUNCH_POWER => 9);
+     (LAUNCH_NONE => 0, LAUNCH_WORKBENCH => 1, LAUNCH_DOOM => 2,
+      LAUNCH_DEVICES => 3, LAUNCH_BROWSER => 4, LAUNCH_FILES => 5,
+      LAUNCH_SAMEBOY => 6, LAUNCH_SETTINGS => 7, LAUNCH_POWER => 8);
    for Launch_Action'Size use 8;
 
-   launchMenuSelection : Launch_Action := LAUNCH_CONSOLE;
+   launchMenuSelection : Launch_Action := LAUNCH_WORKBENCH;
 
    function nextLaunchSelection
       (current : Launch_Action;
@@ -495,27 +513,25 @@ procedure main is
    begin
       if upward then
          case current is
-            when LAUNCH_CONSOLE   => return LAUNCH_SETTINGS;
-            when LAUNCH_WORKBENCH => return LAUNCH_CONSOLE;
+            when LAUNCH_WORKBENCH => return LAUNCH_SETTINGS;
             when LAUNCH_DOOM      => return LAUNCH_WORKBENCH;
             when LAUNCH_DEVICES   => return LAUNCH_DOOM;
             when LAUNCH_BROWSER   => return LAUNCH_DEVICES;
             when LAUNCH_FILES     => return LAUNCH_BROWSER;
             when LAUNCH_SAMEBOY   => return LAUNCH_FILES;
             when LAUNCH_SETTINGS  => return LAUNCH_SAMEBOY;
-            when others           => return LAUNCH_CONSOLE;
+            when others           => return LAUNCH_WORKBENCH;
          end case;
       else
          case current is
-            when LAUNCH_CONSOLE   => return LAUNCH_WORKBENCH;
             when LAUNCH_WORKBENCH => return LAUNCH_DOOM;
             when LAUNCH_DOOM      => return LAUNCH_DEVICES;
             when LAUNCH_DEVICES   => return LAUNCH_BROWSER;
             when LAUNCH_BROWSER   => return LAUNCH_FILES;
             when LAUNCH_FILES     => return LAUNCH_SAMEBOY;
             when LAUNCH_SAMEBOY   => return LAUNCH_SETTINGS;
-            when LAUNCH_SETTINGS  => return LAUNCH_CONSOLE;
-            when others           => return LAUNCH_CONSOLE;
+            when LAUNCH_SETTINGS  => return LAUNCH_WORKBENCH;
+            when others           => return LAUNCH_WORKBENCH;
          end case;
       end if;
    end nextLaunchSelection;
@@ -556,7 +572,7 @@ procedure main is
    LAUNCH_W     : constant Natural := 88;
    LAUNCH_H     : constant Natural := 24;
    MENU_W       : constant Natural := 250;
-   MENU_H       : constant Natural := 354;
+   MENU_H       : constant Natural := 320;
    TASK_BUTTON_W : constant Natural := 156;
    TASK_BUTTON_H : constant Natural := 24;
    TASK_BUTTON_GAP : constant Natural := 6;
@@ -636,7 +652,6 @@ procedure main is
    function C_TEXT return Unsigned_32 is (CuBit.UI.Current_Theme.text);
    function C_MUTED return Unsigned_32 is (CuBit.UI.Current_Theme.muted);
    function C_ACCENT return Unsigned_32 is (CuBit.UI.Current_Theme.selection);
-   function C_GOOD return Unsigned_32 is (CuBit.UI.Current_Theme.good);
    C_WHITE  : constant Unsigned_32 := CuBit.Theme.White;
    C_BLACK  : constant Unsigned_32 := CuBit.Theme.Black;
    function C_DESK return Unsigned_32 is (CuBit.UI.Current_Theme.desktop);
@@ -764,6 +779,8 @@ procedure main is
 
       statsStartMs := now;
       statsEvents := 0;
+      CuBit.Graphics_Metrics_IO.Publish
+        (GM.Desktop_Staging, stagingCopies, stagingReporter);
       statsKeyboardEvents := 0;
       statsMouseEvents := 0;
       statsButtonTransitions := 0;
@@ -961,17 +978,21 @@ procedure main is
    end cursorRect;
 
    function taskbarY return Natural is
+      Bounds : constant Rect := primaryBounds;
    begin
-      if fbHeight > TASKBAR_H then
-         return fbHeight - TASKBAR_H;
+      if Bounds.h > TASKBAR_H then
+         return Bounds.y + Bounds.h - TASKBAR_H;
       else
-         return 0;
+         return Bounds.y;
       end if;
    end taskbarY;
 
+   function taskbarRect return Rect is
+     (primaryBounds.x, taskbarY, primaryBounds.w, TASKBAR_H);
+
    function launchButtonRect return Rect is
    begin
-      return clampRect ((x => 6, y => taskbarY + 6,
+      return clampRect ((x => primaryBounds.x + 6, y => taskbarY + 6,
                          w => LAUNCH_W, h => LAUNCH_H));
    end launchButtonRect;
 
@@ -982,36 +1003,35 @@ procedure main is
          y := taskbarY - MENU_H;
       end if;
 
-      return clampRect ((x => 6, y => y, w => MENU_W, h => MENU_H));
+      return clampRect ((x => primaryBounds.x + 6, y => y,
+                         w => MENU_W, h => MENU_H));
    end launchMenuRect;
 
    function launchItemRect (action : Launch_Action) return Rect is
       menu : constant Rect := launchMenuRect;
-      y    : Natural := menu.y + 34;
+      y    : Natural;
    begin
       if isEmpty (menu) or else action = LAUNCH_NONE or else menu.w <= 16 then
          return (others => 0);
       end if;
 
       case action is
-         when LAUNCH_CONSOLE =>
-            y := menu.y + 42;
          when LAUNCH_WORKBENCH =>
-            y := menu.y + 76;
+            y := menu.y + 42;
          when LAUNCH_DOOM =>
-            y := menu.y + 110;
+            y := menu.y + 76;
          when LAUNCH_DEVICES =>
-            y := menu.y + 144;
+            y := menu.y + 110;
          when LAUNCH_BROWSER =>
-            y := menu.y + 178;
+            y := menu.y + 144;
          when LAUNCH_FILES =>
-            y := menu.y + 212;
+            y := menu.y + 178;
          when LAUNCH_SAMEBOY =>
-            y := menu.y + 246;
+            y := menu.y + 212;
          when LAUNCH_POWER =>
-            y := menu.y + 320;
+            y := menu.y + 286;
          when LAUNCH_SETTINGS =>
-            y := menu.y + 280;
+            y := menu.y + 246;
          when others =>
             return (others => 0);
       end case;
@@ -1027,7 +1047,7 @@ procedure main is
       if isEmpty (menu) or else menu.w <= 24 then
          return (others => 0);
       end if;
-      y := menu.y + 312;
+      y := menu.y + 278;
       return clampRect ((x => menu.x + 12, y => y,
                          w => menu.w - 24, h => 1));
    end launchSeparatorRect;
@@ -1049,15 +1069,17 @@ procedure main is
 
    function taskButtonRect (slot : SurfaceIndex) return Rect is
       ordinal : constant Natural := taskButtonOrdinal (slot);
-      x       : Natural := 104 + ordinal * (TASK_BUTTON_W + TASK_BUTTON_GAP);
+      x       : Natural := primaryBounds.x + 104 +
+        ordinal * (TASK_BUTTON_W + TASK_BUTTON_GAP);
+      right   : constant Natural := primaryBounds.x + primaryBounds.w;
       maxW    : Natural := TASK_BUTTON_W;
    begin
-      if fbWidth < 160 or else x >= fbWidth - 160 then
+      if primaryBounds.w < 160 or else x >= right - 160 then
          return (others => 0);
       end if;
 
-      if x + maxW + 6 > fbWidth - 160 then
-         maxW := fbWidth - 160 - x;
+      if x + maxW + 6 > right - 160 then
+         maxW := right - 160 - x;
       end if;
 
       return clampRect ((x => x, y => taskbarY + 6,
@@ -1065,7 +1087,8 @@ procedure main is
    end taskButtonRect;
 
    function statusRect return Rect is
-     (clampRect ((x => (if fbWidth >= 160 then fbWidth - 160 else 0),
+     (clampRect ((x => primaryBounds.x +
+                    (if primaryBounds.w >= 160 then primaryBounds.w - 160 else 0),
                   y => taskbarY + 4, w => 154, h => 28)));
 
    function speakerRect return Rect is
@@ -1073,7 +1096,8 @@ procedure main is
                   w => 56, h => 24)));
 
    function audioPopupRect return Rect is
-     (clampRect ((x => (if fbWidth >= 250 then fbWidth - 250 else 0),
+     (clampRect ((x => primaryBounds.x +
+                    (if primaryBounds.w >= 250 then primaryBounds.w - 250 else 0),
                   y => (if taskbarY >= 124 then taskbarY - 124 else 0),
                   w => 244, h => 118)));
 
@@ -1094,9 +1118,7 @@ procedure main is
 
    function hitLaunchItem (x, y : Natural) return Launch_Action is
    begin
-      if pointInRect (x, y, launchItemRect (LAUNCH_CONSOLE)) then
-         return LAUNCH_CONSOLE;
-      elsif pointInRect (x, y, launchItemRect (LAUNCH_WORKBENCH)) then
+      if pointInRect (x, y, launchItemRect (LAUNCH_WORKBENCH)) then
          return LAUNCH_WORKBENCH;
       elsif pointInRect (x, y, launchItemRect (LAUNCH_DOOM)) then
          return LAUNCH_DOOM;
@@ -1466,20 +1488,72 @@ procedure main is
       return POINTER_DEFAULT;
    end cursorStyleAtPointer;
 
-   procedure flushBackBufferRect (dirty : Rect)
-   is
+   function localDamage (Output : Output_Index; Area : Rect) return Rect is
+      R : constant DG.Physical_Rectangle := DG.Damage
+        (presentations (Output).Geometry,
+         (DG.Logical_Coordinate (Area.x), DG.Logical_Coordinate (Area.y),
+          DG.Logical_Coordinate (Area.x + Area.w),
+          DG.Logical_Coordinate (Area.y + Area.h)));
+   begin
+      return (Natural (R.Left), Natural (R.Top),
+              Natural (R.Right - R.Left), Natural (R.Bottom - R.Top));
+   end localDamage;
+
+   function windowWorkArea (Bounds : Rect) return Rect is
+      Winner : Output_Index := primaryOutput;
+      Largest : Unsigned_64 := 0;
+      Result : Rect;
+   begin
+      for Output in Output_Index loop
+         if presentations (Output).Enabled then
+            declare
+               R : constant Rect := localDamage (Output, Bounds);
+               Area : constant Unsigned_64 :=
+                 Unsigned_64 (R.w) * Unsigned_64 (R.h);
+            begin
+               if Area > Largest or else
+                 (Area = Largest and then Output = primaryOutput)
+               then
+                  Winner := Output;
+                  Largest := Area;
+               end if;
+            end;
+         end if;
+      end loop;
+      Result := (Natural (presentations (Winner).Geometry.X),
+                 Natural (presentations (Winner).Geometry.Y),
+                 Natural (presentations (Winner).Geometry.Width),
+                 Natural (presentations (Winner).Geometry.Height));
+      if Winner = primaryOutput and then Result.h > TASKBAR_H then
+         Result.h := Result.h - TASKBAR_H;
+      end if;
+      return Result;
+   end windowWorkArea;
+
+   procedure flushBackBufferRect (dirty : Rect) is
       r : constant Rect := clampRect (dirty);
    begin
       if backBufferReady and then fbBpp = 32 and then not isEmpty (r) then
-         -- One bounded union, not an unbounded frame queue. Paint remains
-         -- private while the immutable transfer buffer belongs to display.
-         transferDamage := unionRect (transferDamage, r);
+         for Output in Output_Index loop
+            if presentations (Output).Enabled then
+               presentations (Output).Damage := unionRect
+                 (presentations (Output).Damage, localDamage (Output, r));
+            end if;
+         end loop;
       end if;
    end flushBackBufferRect;
+
+   procedure quarantinePresentations is
+   begin
+      for P of presentations loop
+         P.Phase := Quarantined;
+      end loop;
+   end quarantinePresentations;
 
    procedure collectPresentations is
       completion : CompletionEntry;
       count : Unsigned_64;
+      matched : Boolean;
       use type DSP.Frame_Outcome, DSP.Buffer_Disposition;
    begin
       loop
@@ -1487,81 +1561,106 @@ procedure main is
          count := Poll_Completion (completion'Address);
          exit when count = 0;
          if count /= 1 then
-            transferPhase := Quarantined;
+            quarantinePresentations;
             debugPrint ("desktop: completion queue unavailable" & LF);
             exit;
          end if;
          if completion.token > retiredThrough then
-            declare
-               result : constant DSP.Frame_Result_Decoding :=
-                 DSP.Decode_Frame_Result (CuBit.Desktop_Messages.To_Wire (completion.msg));
-            begin
-               -- The kernel binds this non-reused token to the submitted endpoint
-               -- and only its reserved reply authority can complete the request.
-               -- A payload claiming release is insufficient without that envelope.
-               if not completion.valid or else
-                 completion.status /= COMPLETION_OK or else
-                 transferPhase /= In_Flight or else completion.token /= frameSequence or else
-                 not result.Valid or else result.Value.Session /= presentationSession or else
-                 result.Value.Frame /= frameSequence or else
-                 result.Value.Outcome /= DSP.Published or else
-                 result.Value.Buffer_State /= DSP.Released
-               then
-                  transferPhase := Quarantined;
-                  debugPrint ("desktop: asynchronous transfer quarantined" & LF);
-               else
-                  transferPhase := Available;
-                  statsCompletionMs := statsCompletionMs + nowMs - presentationStarted;
-                  if not releaseAnnounced then
-                     releaseAnnounced := True;
-                     debugPrint ("desktop: asynchronous frame released" & LF);
-                  end if;
+            matched := False;
+            for P of presentations loop
+               if P.Enabled and then completion.token = P.Token then
+                  matched := True;
+                  declare
+                     result : constant DSP.Frame_Result_Decoding :=
+                       DSP.Decode_Frame_Result
+                         (CuBit.Desktop_Messages.To_Wire (completion.msg));
+                  begin
+                     -- The non-reused kernel completion token selects the
+                     -- output. Payload session/frame values only validate it.
+                     if not completion.valid or else
+                       completion.status /= COMPLETION_OK or else
+                       P.Phase /= In_Flight or else not result.Valid or else
+                       result.Value.Session /= P.Session or else
+                       result.Value.Frame /= P.Token or else
+                       result.Value.Outcome /= DSP.Published or else
+                       result.Value.Buffer_State /= DSP.Released
+                     then
+                        P.Phase := Quarantined;
+                        debugPrint ("desktop: asynchronous transfer quarantined" & LF);
+                     else
+                        P.Phase := Available;
+                        statsCompletionMs := statsCompletionMs + nowMs - P.Started;
+                        if not releaseAnnounced then
+                           releaseAnnounced := True;
+                           debugPrint ("desktop: asynchronous frame released" & LF);
+                        end if;
+                     end if;
+                  end;
+                  exit;
                end if;
-            end;
+            end loop;
+            if not matched then
+               -- No buffer may be reused on an unrecognized completion.
+               quarantinePresentations;
+               debugPrint ("desktop: unknown presentation completion" & LF);
+            end if;
          end if;
       end loop;
    end collectPresentations;
 
-   procedure pumpPresentation is
-      r : constant Rect := transferDamage;
+   procedure pumpOutput (Output : Output_Index) is
+      P : Output_Presentation renames presentations (Output);
+      r : constant Rect := P.Damage;
       ignored : System.Address;
       request : Message;
    begin
-      if not backBufferReady or else transferPhase /= Available or else isEmpty (r) then
+      if not P.Enabled or else P.Phase /= Available or else isEmpty (r) then
          return;
       end if;
-      -- Last is the IPC no-completion sentinel. Never use it as our token,
-      -- and never reset the sequence when replacing a display session.
       if frameSequence >= Unsigned_64'Last - 1 then
-         transferPhase := Quarantined;
+         quarantinePresentations;
          debugPrint ("desktop: frame identifiers exhausted" & LF);
          return;
       end if;
+      -- Source is desktop-local, destination is output-local. This initial
+      -- copy path admits only unrotated unit scale; no resampling is implied.
       for row in r.y .. r.y + r.h - 1 loop
          ignored := memcpy
-           (transferBufferAddr + Storage_Offset (row * fbPitch + r.x * 4),
-            backBufferAddr + Storage_Offset (row * fbPitch + r.x * 4),
+           (P.Buffer + Storage_Offset (row * P.Pitch + r.x * 4),
+            backBufferAddr + Storage_Offset
+              ((row + Natural (P.Geometry.Y)) * fbPitch +
+               (r.x + Natural (P.Geometry.X)) * 4),
             Storage_Count (r.w * 4));
       end loop;
+      GM.Add (stagingCopies, Unsigned_64 (r.w) * Unsigned_64 (r.h) * 4);
       frameSequence := frameSequence + 1;
-      request := CuBit.Desktop_Messages.From_Wire (DSP.Encode_Frame
-        ((presentationSession, frameSequence,
-          (DP.Pixel_Coordinate (r.x), DP.Pixel_Coordinate (r.y),
-           DP.Pixel_Extent (r.w), DP.Pixel_Extent (r.h)))));
-      transferPhase := In_Flight;
-      presentationStarted := nowMs;
-      if capSubmit (CAP_SLOT_DISPLAY, request, frameSequence) then
-         transferDamage := (others => 0);
+      P.Token := frameSequence;
+      request := CuBit.Desktop_Messages.From_Wire (DSP.With_Output
+        (DSP.Encode_Frame
+           ((P.Session, P.Token,
+             (DP.Pixel_Coordinate (r.x), DP.Pixel_Coordinate (r.y),
+              DP.Pixel_Extent (r.w), DP.Pixel_Extent (r.h)))), Output));
+      P.Phase := In_Flight;
+      P.Started := nowMs;
+      if capSubmit (CAP_SLOT_DISPLAY, request, P.Token) then
+         P.Damage := (others => 0);
          statsPresentOps := statsPresentOps + 1;
          if not asyncAnnounced then
             asyncAnnounced := True;
             debugPrint ("desktop: asynchronous presentation active" & LF);
          end if;
       else
-         -- No completion is promised on failed admission. Do not spin waiting
-         -- for one, or fall back to untracked reads of the same shared pixels.
-         transferPhase := Quarantined;
+         P.Phase := Quarantined;
          debugPrint ("desktop: asynchronous submission unavailable" & LF);
+      end if;
+   end pumpOutput;
+
+   procedure pumpPresentation is
+   begin
+      if backBufferReady then
+         for Output in Output_Index loop
+            pumpOutput (Output);
+         end loop;
       end if;
    end pumpPresentation;
 
@@ -1654,16 +1753,29 @@ procedure main is
    procedure drawWallpaper is
       Area : Rect := (0, 0, fbWidth, fbHeight);
    begin
-      if clipEnabled then
-         --  The compositor damage rectangle is already clipped to the screen.
-         Area := clipRect;
-      end if;
+      if clipEnabled then Area := clipRect; end if;
       if backBufferAddr = System.Null_Address or else isEmpty (Area) then
          return;
       end if;
-      Desktop_Wallpaper.Paint
-        (backBufferAddr, fbWidth, fbHeight, fbPitch,
-         Area.x, Area.y, Area.w, Area.h, appearance);
+      -- Aspect-fill each monitor independently. The backing scene has a
+      -- wider row pitch, but this call touches only its clipped local pixels.
+      for Output in Output_Index loop
+         if presentations (Output).Enabled then
+            declare
+               P : Output_Presentation renames presentations (Output);
+               R : constant Rect := localDamage (Output, Area);
+            begin
+               if not isEmpty (R) then
+                  Desktop_Wallpaper.Paint
+                    (backBufferAddr + Storage_Offset
+                       (Natural (P.Geometry.Y) * fbPitch +
+                        Natural (P.Geometry.X) * 4),
+                     Natural (P.Geometry.Width), Natural (P.Geometry.Height),
+                     fbPitch, R.x, R.y, R.w, R.h, appearance);
+               end if;
+            end;
+         end if;
+      end loop;
    end drawWallpaper;
 
    procedure drawDappledShadow (x, y, w, h : Natural) is
@@ -1707,72 +1819,6 @@ procedure main is
       fillRect (x + w - 1, y, 1, h, dark);
    end strokeRect;
 
-   procedure drawGlyph
-      (x, y : Natural;
-       ch   : Character;
-       fg   : Unsigned_32;
-       bg   : Unsigned_32)
-   is
-      glyph : Font8x16.GlyphData renames Font8x16.font (Character'Pos (ch));
-      minX : Natural := x;
-      minY : Natural := y;
-      maxX : Natural := x + Font8x16.GLYPH_WIDTH;
-      maxY : Natural := y + Font8x16.GLYPH_HEIGHT;
-      offset : Storage_Offset;
-      row : Natural;
-      bit : Natural;
-   begin
-      if backBufferAddr = System.Null_Address or else
-         x >= fbWidth or else y >= fbHeight
-      then
-         return;
-      end if;
-
-      if maxX > fbWidth then
-         maxX := fbWidth;
-      end if;
-      if maxY > fbHeight then
-         maxY := fbHeight;
-      end if;
-
-      for yy in minY .. maxY - 1 loop
-         row := yy - y;
-         declare
-            bits : constant Unsigned_8 := glyph (row);
-         begin
-            for xx in minX .. maxX - 1 loop
-               bit := xx - x;
-               offset := Storage_Offset (yy * fbPitch + xx * 4);
-               declare
-                  pixel : Unsigned_32 with
-                     Import, Address => backBufferAddr + offset;
-               begin
-               if (bits and Shift_Right (16#80#, bit)) /= 0 then
-                     pixel := fg;
-               else
-                     pixel := bg;
-               end if;
-               end;
-            end loop;
-         end;
-      end loop;
-   end drawGlyph;
-
-   procedure drawText
-      (x, y : Natural;
-       s    : String;
-       fg   : Unsigned_32;
-       bg   : Unsigned_32)
-   is
-      cx : Natural := x;
-   begin
-      for i in s'Range loop
-         if cx + Font8x16.GLYPH_WIDTH <= fbWidth then
-            drawGlyph (cx, y, s (i), fg, bg);
-         end if;
-         cx := cx + Font8x16.GLYPH_WIDTH;
-      end loop;
-   end drawText;
 
    function blendPixel
       (src : Unsigned_32;
@@ -1898,17 +1944,9 @@ procedure main is
 
    function uiTextWidth (s : String) return Natural is
       width : Natural := 0;
-      code  : Natural;
    begin
       for i in s'Range loop
-         code := Character'Pos (s (i));
-         if code >= Desktop_UI_Font.FIRST_GLYPH and then
-            code <= Desktop_UI_Font.LAST_GLYPH
-         then
-            width := width + Desktop_UI_Font.Widths (code);
-         else
-            width := width + Desktop_UI_Font.Widths (Character'Pos ('?'));
-         end if;
+         width := width + CuBit.Fonts.Width (CuBit.Fonts.Sans, s (i));
       end loop;
       return width;
    end uiTextWidth;
@@ -1917,28 +1955,27 @@ procedure main is
       (x, y : Natural;
        ch   : Character;
        fg   : Unsigned_32;
-       bg   : Unsigned_32)
+       bg   : Unsigned_32;
+       transparent : Boolean := False)
    is
-      code  : Natural := Character'Pos (ch);
+      glyph : constant CuBit.Fonts.Glyph_Access := CuBit.Fonts.Get (CuBit.Fonts.Sans, ch);
       width : Natural;
       alpha : Natural;
    begin
-      if code < Desktop_UI_Font.FIRST_GLYPH or else
-         code > Desktop_UI_Font.LAST_GLYPH
-      then
-         code := Character'Pos ('?');
+      width := Natural (glyph.Advance);
+      if not transparent then
+         fillRect (x, y, width, CuBit.Fonts.Line_Height, bg);
       end if;
 
-      width := Desktop_UI_Font.Widths (code);
-      fillRect (x, y, width, Desktop_UI_Font.LINE_HEIGHT, bg);
-
-      for yy in 0 .. Desktop_UI_Font.GLYPH_HEIGHT - 1 loop
+      for yy in 0 .. CuBit.Fonts.Line_Height - 1 loop
          for xx in 0 .. width - 1 loop
-            alpha := Natural (Desktop_UI_Font.Alpha (code) (yy) (xx));
+            alpha := Natural (glyph.Alpha (yy, xx));
             if alpha = 255 then
                putPixel (x + xx, y + yy, fg);
             elsif alpha /= 0 then
-               putPixel (x + xx, y + yy, blendPixel (fg, bg, alpha));
+               putPixel (x + xx, y + yy, blendPixel
+                 (fg, (if transparent then readBackPixel (x + xx, y + yy)
+                       else bg), alpha));
             end if;
          end loop;
       end loop;
@@ -1948,12 +1985,13 @@ procedure main is
       (x, y : Natural;
        s    : String;
        fg   : Unsigned_32;
-       bg   : Unsigned_32)
+       bg   : Unsigned_32;
+       transparent : Boolean := False)
    is
       cx : Natural := x;
    begin
       for i in s'Range loop
-         drawUIGlyph (cx, y, s (i), fg, bg);
+         drawUIGlyph (cx, y, s (i), fg, bg, transparent);
          cx := cx + uiTextWidth (s (i .. i));
       end loop;
    end drawUIText;
@@ -1961,21 +1999,20 @@ procedure main is
    procedure drawSurfaceTitle
       (s       : Surface;
        x, y    : Natural;
-       fg, bg  : Unsigned_32)
+       fg, bg  : Unsigned_32;
+       transparent : Boolean := False)
    is
    begin
       case s.appKind is
-         when APP_CONSOLE =>
-            drawUIText (x, y, "CuBASIC Console", fg, bg);
          when APP_DOOM =>
-            drawUIText (x, y, "DOOM", fg, bg);
+            drawUIText (x, y, "DOOM", fg, bg, transparent);
          when APP_SETTINGS =>
-            drawUIText (x, y, "Settings", fg, bg);
+            drawUIText (x, y, "Settings", fg, bg, transparent);
          when others =>
             if s.title.Length > 0 then
-               drawUIText (x, y, s.title.Text, fg, bg);
+               drawUIText (x, y, s.title.Text, fg, bg, transparent);
             else
-               drawUIText (x, y, "Application", fg, bg);
+               drawUIText (x, y, "Application", fg, bg, transparent);
             end if;
       end case;
    end drawSurfaceTitle;
@@ -2072,40 +2109,6 @@ procedure main is
          end if;
       end loop;
    end drawStreamBadges;
-
-   procedure drawConsoleText (x, y : Natural; bg : Unsigned_32) is
-   begin
-      drawText (x, y, "CuBASIC 0.1", C_ACCENT, bg);
-      drawText (x, y + 24, "READY.", C_GOOD, bg);
-
-      for row in 1 .. CONSOLE_HISTORY_ROWS loop
-         if consoleHistoryLen (row) > 0 then
-            drawText
-              (x, y + 48 + (row - 1) * 18,
-               consoleHistory (row) (1 .. consoleHistoryLen (row)),
-               C_TEXT, bg);
-         end if;
-      end loop;
-
-      drawText (x, y + 148, "]", C_GOOD, bg);
-      if consoleInputLen > 0 then
-         drawText (x + 24, y + 148, consoleInput (1 .. consoleInputLen),
-                   C_TEXT, bg);
-         drawText (x + 24 + consoleInputLen * Font8x16.GLYPH_WIDTH,
-                   y + 148, "_", C_GOOD, bg);
-      else
-         drawText (x + 24, y + 148, "_", C_GOOD, bg);
-      end if;
-
-      if consoleLastLen > 0 then
-         drawText (x, y + 182, "last:", C_MUTED, bg);
-         drawText (x + 48, y + 182, consoleLast (1 .. consoleLastLen),
-                   C_TEXT, bg);
-      else
-         drawText (x, y + 182, "type HELP, LIST SERVICES, SHOW CAPS",
-                   C_MUTED, bg);
-      end if;
-   end drawConsoleText;
 
    procedure drawClientBuffer (s : Surface; x, y, w, h : Natural) is
       copyW : Natural := w;
@@ -2404,7 +2407,11 @@ procedure main is
       minBtn  : Rect;
       maxBtn  : Rect;
       closeBtn : Rect;
-      titleColor : Unsigned_32 := C_PANEL;
+      theme : constant CuBit.UI.Theme := CuBit.UI.Current_Theme;
+      titleTop : constant Unsigned_32 :=
+        (if active then theme.activeTitleTop else theme.inactiveTitleTop);
+      titleBottom : constant Unsigned_32 :=
+        (if active then theme.activeTitleBottom else theme.inactiveTitleBottom);
       titleText  : Unsigned_32 := C_TEXT;
       x      : Natural := s.x;
       y      : Natural := s.y;
@@ -2427,7 +2434,6 @@ procedure main is
       end if;
 
       if active then
-         titleColor := C_BLUE;
          titleText := C_WHITE;
       end if;
 
@@ -2439,8 +2445,11 @@ procedure main is
       drawDappledShadow (x, y, w, h);
       fillRect (x, y, w, h, C_WIN);
       strokeRect (x, y, w, h, C_EDGE, C_SHADOW);
-      fillRect (x + 3, y + 3, w - 6, titleH, titleColor);
-      drawSurfaceTitle (s, x + 10, y + 7, titleText, titleColor);
+      for row in 0 .. titleH - 1 loop
+         fillRect (x + 3, y + 3 + row, w - 6, 1,
+                   blendPixel (titleBottom, titleTop, row * 255 / (titleH - 1)));
+      end loop;
+      drawSurfaceTitle (s, x + 10, y + 7, titleText, titleTop, True);
       drawStreamBadges (s, y + 3);
 
       --  Window controls are compositor-owned because they mutate focus,
@@ -2493,9 +2502,6 @@ procedure main is
                    (bounds.x, bounds.y, bounds.w, bounds.h)),
                   (bounds.x, bounds.y, bounds.w, bounds.h));
             end;
-         when APP_CONSOLE =>
-            fillRect (x + 14, y + 40, w - 28, h - 56, C_SHADOW);
-            drawConsoleText (x + 24, y + 50, C_SHADOW);
          when others =>
             if s.bufferAttached then
                declare
@@ -2604,8 +2610,6 @@ procedure main is
       drawIcon (Desktop_Icons.Start, r.x + 12, r.y + 10, C_PANEL);
       drawUIText (r.x + 44, r.y + 14, "CuBit", C_TEXT, C_PANEL);
       drawLaunchItem
-        (LAUNCH_CONSOLE, Desktop_Icons.Console, "CuBASIC", C_TEXT);
-      drawLaunchItem
         (LAUNCH_WORKBENCH, Desktop_Icons.UILab, "CCL Workbench", C_TEXT);
       drawLaunchItem (LAUNCH_DOOM, Desktop_Icons.Doom, "DOOM", C_TEXT);
       drawLaunchItem
@@ -2694,8 +2698,8 @@ procedure main is
           else 0);
       launchTextY : constant Natural :=
          launch.y +
-         (if launch.h > Desktop_UI_Font.LINE_HEIGHT
-          then (launch.h - Desktop_UI_Font.LINE_HEIGHT) / 2
+         (if launch.h > CuBit.Fonts.Line_Height
+          then (launch.h - CuBit.Fonts.Line_Height) / 2
           else 0);
    begin
       if fbWidth = 0 or else fbHeight = 0 then
@@ -2707,9 +2711,9 @@ procedure main is
       --  Shared client buffers can replace this drawing path later without
       --  changing the surface/session shape.
       drawWallpaper;
-      fillRect (0, barY, fbWidth, TASKBAR_H, C_BAR);
-      strokeRect (0, barY, fbWidth, TASKBAR_H, C_EDGE, C_SHADOW);
-      fillRect (0, barY, fbWidth, 2, C_ACCENT);
+      fillRect (primaryBounds.x, barY, primaryBounds.w, TASKBAR_H, C_BAR);
+      strokeRect (primaryBounds.x, barY, primaryBounds.w, TASKBAR_H, C_EDGE, C_SHADOW);
+      fillRect (primaryBounds.x, barY, primaryBounds.w, 2, C_ACCENT);
 
       fillRect (launch.x, launch.y, launch.w, launch.h, C_BAR);
       if launchMenuOpen then
@@ -3281,7 +3285,7 @@ procedure main is
    is
       oldBounds : constant Rect := surfaceRect (surfaces (idx));
       newBounds : Rect;
-      workH     : Natural := fbHeight;
+      workArea  : constant Rect := windowWorkArea (oldBounds);
       nextW     : Natural;
       nextH     : Natural;
    begin
@@ -3289,10 +3293,6 @@ procedure main is
          hasWindowFlag (surfaces (idx), WINDOW_FLAG_FIXED_SIZE)
       then
          return;
-      end if;
-
-      if fbHeight > TASKBAR_H then
-         workH := fbHeight - TASKBAR_H;
       end if;
 
       if surfaces (idx).maximized then
@@ -3306,11 +3306,11 @@ procedure main is
          surfaces (idx).restoreY := surfaces (idx).y;
          surfaces (idx).restoreW := surfaces (idx).w;
          surfaces (idx).restoreH := surfaces (idx).h;
-         nextW := fbWidth;
-         nextH := workH;
+         nextW := workArea.w;
+         nextH := workArea.h;
          clampSurfaceSize (surfaces (idx), nextW, nextH);
-         surfaces (idx).x := 0;
-         surfaces (idx).y := 0;
+         surfaces (idx).x := workArea.x;
+         surfaces (idx).y := workArea.y;
          surfaces (idx).w := nextW;
          surfaces (idx).h := nextH;
          surfaces (idx).maximized := True;
@@ -3331,8 +3331,7 @@ procedure main is
       damage := unionRect
         (damage, inflateRect (unionRect (oldBounds, newBounds), 4));
       damage := unionRect
-        (damage, inflateRect ((x => 0, y => taskbarY,
-                               w => fbWidth, h => TASKBAR_H), 2));
+        (damage, inflateRect (taskbarRect, 2));
    end toggleMaximizeSurface;
 
    procedure releaseSurfaceBuffer (s : in out Surface) is
@@ -3434,8 +3433,7 @@ procedure main is
             focusTopmostVisibleWindow (damage);
          end if;
          damage := unionRect
-           (damage, inflateRect ((x => 0, y => taskbarY,
-                                  w => fbWidth, h => TASKBAR_H), 2));
+           (damage, inflateRect (taskbarRect, 2));
       end if;
    end reapDeadClientSurfaces;
 
@@ -3478,21 +3476,18 @@ procedure main is
             winW := 610;
             winH := 420;
             Desktop_Settings.Open (settingsView, appearance);
-         when APP_CONSOLE =>
-            winX := 86;
-            winY := 76;
-            winW := 620;
-            winH := 330;
          when others =>
             null;
       end case;
 
-      if winX + winW > fbWidth then
-         winW := Natural'Max (MIN_WIN_W, fbWidth - winX);
+      if winX + winW > primaryBounds.w then
+         winW := Natural'Max (MIN_WIN_W, primaryBounds.w - winX);
       end if;
-      if winY + winH > fbHeight then
-         winH := Natural'Max (MIN_WIN_H, fbHeight - winY);
+      if winY + winH > primaryBounds.h then
+         winH := Natural'Max (MIN_WIN_H, primaryBounds.h - winY);
       end if;
+      winX := winX + primaryBounds.x;
+      winY := winY + primaryBounds.y;
 
       createInternalSurface
         (SURFACE_FLAG_WINDOW, winX, winY, winW, winH, appKind, id);
@@ -3512,8 +3507,7 @@ procedure main is
             inflateRect ((x => winX, y => winY, w => winW, h => winH), 4));
          damage := unionRect
            (damage,
-            inflateRect ((x => 0, y => taskbarY, w => fbWidth,
-                          h => TASKBAR_H), 2));
+            inflateRect (taskbarRect, 2));
       end if;
    end openInternalApp;
 
@@ -4184,7 +4178,8 @@ procedure main is
        w0    : Unsigned_64 := 0;
        w1    : Unsigned_64 := 0;
        w2    : Unsigned_64 := 0;
-       w3    : Unsigned_64 := 0) return Message;
+       w3    : Unsigned_64 := 0;
+       Output : DSP.Output_Number := 0) return Message;
 
    procedure setupDisplayBuffer (ok : out Boolean);
    procedure releaseDisplayBuffer;
@@ -4377,16 +4372,16 @@ procedure main is
                                         DP.Surface_Capacity (MAX_SURFACES))));
 
          when OP_DESKTOP_GET_INFO =>
-            if fbWidth not in 1 .. Natural (DP.Positive_Extent'Last) or else
-              fbHeight not in 1 .. Natural (DP.Positive_Extent'Last)
+            if primaryBounds.w not in 1 .. Natural (DP.Positive_Extent'Last) or else
+              primaryBounds.h not in 1 .. Natural (DP.Positive_Extent'Last)
             then
                replyMsg := CuBit.Desktop_Messages.From_Wire
                  (DP.Encode_Information_Result ((Status => DP.Bad_State)));
             else
                replyMsg := CuBit.Desktop_Messages.From_Wire
                  (DP.Encode_Information_Result
-                    ((DP.Success, DP.Positive_Extent (fbWidth),
-                      DP.Positive_Extent (fbHeight), DP.BGRA_8888, DP.Unit_Scale)));
+                    ((DP.Success, DP.Positive_Extent (primaryBounds.w),
+                      DP.Positive_Extent (primaryBounds.h), DP.BGRA_8888, DP.Unit_Scale)));
             end if;
 
          when OP_SURFACE_CREATE =>
@@ -4417,30 +4412,32 @@ procedure main is
                   replyMsg := CuBit.Desktop_Messages.From_Wire
                     (DP.Encode_Creation_Result ((Status => DP.Resources_Exhausted)));
                else
-                  if reqW = 0 or else reqW > fbWidth then
-                     reqW := fbWidth;
+                  if reqW = 0 or else reqW > primaryBounds.w then
+                     reqW := primaryBounds.w;
                   end if;
-                  if reqH = 0 or else reqH > fbHeight then
-                     reqH := fbHeight;
+                  if reqH = 0 or else reqH > primaryBounds.h then
+                     reqH := primaryBounds.h;
                   end if;
 
                   if (request.words (2) and SURFACE_FLAG_WINDOW) /= 0 then
                      surfX := 80 + Natural (slot) * 18;
                      surfY := 64 + Natural (slot) * 18;
-                     if reqW = fbWidth or else reqW < 220 then
+                     if reqW = primaryBounds.w or else reqW < 220 then
                         reqW := 360;
                      end if;
-                     if reqH = fbHeight or else reqH < 140 then
+                     if reqH = primaryBounds.h or else reqH < 140 then
                         reqH := 220;
                      end if;
-                     if surfX + reqW > fbWidth then
-                        reqW := fbWidth - surfX;
+                     if surfX + reqW > primaryBounds.w then
+                        reqW := primaryBounds.w - surfX;
                      end if;
-                     if surfY + reqH > fbHeight then
-                        reqH := fbHeight - surfY;
+                     if surfY + reqH > primaryBounds.h then
+                        reqH := primaryBounds.h - surfY;
                      end if;
                   end if;
 
+                  surfX := surfX + primaryBounds.x;
+                  surfY := surfY + primaryBounds.y;
                   surfaces (SurfaceIndex (slot)) :=
                     (used   => True,
                      owner  => from,
@@ -4919,7 +4916,7 @@ procedure main is
    begin
       --  Keep compositor-side modifier state for internal desktop surfaces.
       --  Client surfaces still receive the raw key events; this state is only
-      --  used by compositor-owned widgets such as the CuBASIC prototype.
+      --  used by desktop shortcuts and compositor-owned Settings controls.
       if code = 16#2A# or else code = 16#36# then
          desktopShiftDown := not release;
          return True;
@@ -4964,80 +4961,6 @@ procedure main is
       return Character'Val (pos);
    end keyChar;
 
-   function upperChar (ch : Character) return Character is
-   begin
-      if ch >= 'a' and then ch <= 'z' then
-         return Character'Val
-           (Character'Pos (ch) - Character'Pos ('a') + Character'Pos ('A'));
-      end if;
-
-      return ch;
-   end upperChar;
-
-   function consoleMatches (pattern : String) return Boolean is
-   begin
-      if consoleInputLen /= pattern'Length then
-         return False;
-      end if;
-
-      for i in pattern'Range loop
-         if upperChar (consoleInput (i)) /= pattern (i) then
-            return False;
-         end if;
-      end loop;
-
-      return True;
-   end consoleMatches;
-
-   function consoleStartsWith (pattern : String) return Boolean is
-   begin
-      if consoleInputLen < pattern'Length then
-         return False;
-      end if;
-
-      for i in pattern'Range loop
-         if upperChar (consoleInput (i)) /= pattern (i) then
-            return False;
-         end if;
-      end loop;
-
-      return True;
-   end consoleStartsWith;
-
-   procedure setConsoleResult (text : String) is
-      count : Natural := text'Length;
-   begin
-      if count > consoleResult'Length then
-         count := consoleResult'Length;
-      end if;
-
-      consoleResult := (others => ' ');
-      consoleResultLen := count;
-      if count > 0 then
-         consoleResult (1 .. count) := text (text'First .. text'First + count - 1);
-      end if;
-   end setConsoleResult;
-
-   procedure setConsoleSpawned (pid : Unsigned_64) is
-      buf : String (1 .. 20);
-      pos : Natural := buf'Last;
-      v   : Unsigned_64 := pid;
-   begin
-      if v = 0 then
-         setConsoleResult ("SPAWNED PID 0");
-         return;
-      end if;
-
-      while v > 0 loop
-         buf (pos) := Character'Val (Character'Pos ('0') +
-                                      Natural (v mod 10));
-         v := v / 10;
-         pos := pos - 1;
-      end loop;
-
-      setConsoleResult ("SPAWNED PID " & buf (pos + 1 .. buf'Last));
-   end setConsoleSpawned;
-
    procedure ensureSpawnGrant is
       raw : Unsigned_64;
       aligned : Unsigned_64;
@@ -5049,7 +4972,7 @@ procedure main is
 
       raw := syscall (SYSCALL_SBRK, 8192);
       if raw = Unsigned_64'Last then
-         setConsoleResult ("SPAWN BUFFER ALLOCATION FAILED");
+         debugPrint ("desktop: spawn buffer allocation failed" & LF);
          return;
       end if;
 
@@ -5066,60 +4989,11 @@ procedure main is
       if grantOk then
          spawnGrantReady := True;
       else
-         setConsoleResult ("SPAWN GRANT TO PROCMGR FAILED");
+         debugPrint ("desktop: spawn grant to procmgr failed" & LF);
       end if;
    end ensureSpawnGrant;
 
-   function lowerChar (ch : Character) return Character is
-   begin
-      if ch >= 'A' and then ch <= 'Z' then
-         return Character'Val
-           (Character'Pos (ch) - Character'Pos ('A') + Character'Pos ('a'));
-      end if;
-
-      return ch;
-   end lowerChar;
-
-   procedure normalizeAppName
-      (source : String;
-       dest   : out String;
-       len    : out Natural)
-   is
-      first : Natural := source'First;
-      last  : Natural := source'Last;
-   begin
-      dest := (others => ' ');
-      len := 0;
-
-      while first <= source'Last and then source (first) = ' ' loop
-         first := first + 1;
-      end loop;
-      while last >= first and then source (last) = ' ' loop
-         last := last - 1;
-      end loop;
-
-      if first > last then
-         return;
-      end if;
-
-      for i in first .. last loop
-         exit when len = dest'Length;
-         len := len + 1;
-         dest (len) := lowerChar (source (i));
-      end loop;
-   end normalizeAppName;
-
-   function hasExtension (name : String) return Boolean is
-   begin
-      for i in name'Range loop
-         if name (i) = '.' then
-            return True;
-         end if;
-      end loop;
-      return False;
-   end hasExtension;
-
-   procedure trySpawnFromConsole (name : String; ok : out Boolean) is
+   procedure trySpawnApplication (name : String; ok : out Boolean) is
       msg : Message := NULL_MESSAGE;
       tag : MessageTag;
       len : Natural := name'Length;
@@ -5156,160 +5030,9 @@ procedure main is
 
       if tag.label = REPLY_OK then
          lastSpawnedPid := ProcessID (msg.words (0) and 16#FFFF#);
-         setConsoleSpawned (msg.words (0));
          ok := True;
       end if;
-   end trySpawnFromConsole;
-
-   procedure spawnFromConsole (name : String) is
-      normalized : String (1 .. 64);
-      len : Natural;
-      ok : Boolean := False;
-   begin
-      normalizeAppName (name, normalized, len);
-      if len = 0 then
-         setConsoleResult ("SPAWN NEEDS AN APP NAME");
-         return;
-      elsif len > 60 then
-         setConsoleResult ("SPAWN NAME TOO LONG");
-         return;
-      end if;
-
-      if hasExtension (normalized (1 .. len)) then
-         trySpawnFromConsole (normalized (1 .. len), ok);
-      else
-         trySpawnFromConsole (normalized (1 .. len) & ".app", ok);
-         if not ok then
-            trySpawnFromConsole (normalized (1 .. len) & ".elf", ok);
-         end if;
-      end if;
-
-      if not ok then
-         setConsoleResult ("SPAWN FAILED: " & normalized (1 .. len));
-      end if;
-   end spawnFromConsole;
-
-   procedure pushConsoleLine (text : String) is
-      count : Natural := text'Length;
-   begin
-      if count > CONSOLE_LINE_MAX then
-         count := CONSOLE_LINE_MAX;
-      end if;
-
-      for row in 1 .. CONSOLE_HISTORY_ROWS - 1 loop
-         consoleHistory (row) := consoleHistory (row + 1);
-         consoleHistoryLen (row) := consoleHistoryLen (row + 1);
-      end loop;
-
-      consoleHistory (CONSOLE_HISTORY_ROWS) := (others => ' ');
-      consoleHistoryLen (CONSOLE_HISTORY_ROWS) := count;
-      if count > 0 then
-         consoleHistory (CONSOLE_HISTORY_ROWS) (1 .. count) :=
-            text (text'First .. text'First + count - 1);
-      end if;
-   end pushConsoleLine;
-
-   procedure pushConsoleInputLine is
-      line : ConsoleLine := (others => ' ');
-      count : Natural := consoleInputLen + 2;
-   begin
-      if count > CONSOLE_LINE_MAX then
-         count := CONSOLE_LINE_MAX;
-      end if;
-
-      line (1) := ']';
-      line (2) := ' ';
-      if count > 2 then
-         line (3 .. count) := consoleInput (1 .. count - 2);
-      end if;
-
-      pushConsoleLine (line (1 .. count));
-   end pushConsoleInputLine;
-
-   procedure evalConsoleLine is
-   begin
-      if consoleInputLen = 0 then
-         setConsoleResult ("READY.");
-      elsif consoleMatches ("HELP") then
-         setConsoleResult ("TRY: SERVICES, CAPS, SECRETS, SPAWN <APP>");
-      elsif consoleMatches ("LIST SERVICES") then
-         setConsoleResult ("desktop.svc display.svc procmgr secrets.svc");
-      elsif consoleMatches ("SERVICES") then
-         setConsoleResult ("desktop.svc display.svc procmgr secrets.svc");
-      elsif consoleMatches ("SHOW CAPS") then
-         setConsoleResult ("CAP DISPLAY.INPUT CAP DISPLAY.PRESENT CAP SESSION.OWN");
-      elsif consoleMatches ("CAPS") then
-         setConsoleResult ("CAP DISPLAY.INPUT CAP DISPLAY.PRESENT CAP SESSION.OWN");
-      elsif consoleMatches ("SECRETS") then
-         setConsoleResult ("SECRET VALUES ARE OBJECTS, NOT STRINGS");
-      elsif consoleStartsWith ("PRINT ") then
-         consoleResult := (others => ' ');
-         consoleResultLen := consoleInputLen - 6;
-         if consoleResultLen > consoleResult'Length then
-            consoleResultLen := consoleResult'Length;
-         end if;
-         if consoleResultLen > 0 then
-            consoleResult (1 .. consoleResultLen) :=
-               consoleInput (7 .. 6 + consoleResultLen);
-         end if;
-      elsif consoleStartsWith ("LET ") then
-         setConsoleResult ("BOUND VALUE IN THIS REPL SESSION");
-      elsif consoleStartsWith ("SPAWN ") then
-         spawnFromConsole (consoleInput (7 .. consoleInputLen));
-      elsif consoleMatches ("CLS") then
-         consoleLast := (others => ' ');
-         consoleLastLen := 0;
-         consoleHistory := (others => (others => ' '));
-         consoleHistoryLen := (others => 0);
-         setConsoleResult ("READY.");
-      else
-         setConsoleResult ("?SYNTAX ERROR");
-      end if;
-   end evalConsoleLine;
-
-   procedure handleConsoleKey (raw : Unsigned_8; damage : in out Rect) is
-      release : constant Boolean := (raw and 16#80#) /= 0;
-      code    : constant Unsigned_8 := raw and 16#7F#;
-      ch      : Character;
-      idx     : constant Integer := findSurface (focusSurface);
-   begin
-      if release then
-         return;
-      end if;
-
-      ch := keyChar (code);
-      if ch = Character'Val (0) then
-         return;
-      elsif ch = Character'Val (8) then
-         if consoleInputLen > 0 then
-            consoleInput (consoleInputLen) := ' ';
-            consoleInputLen := consoleInputLen - 1;
-         end if;
-      elsif ch = LF then
-         pushConsoleInputLine;
-         consoleLast := (others => ' ');
-         consoleLastLen := consoleInputLen;
-         if consoleInputLen > 0 then
-            consoleLast (1 .. consoleInputLen) :=
-               consoleInput (1 .. consoleInputLen);
-         end if;
-         evalConsoleLine;
-         if consoleResultLen > 0 then
-            pushConsoleLine (consoleResult (1 .. consoleResultLen));
-         end if;
-         consoleInput := (others => ' ');
-         consoleInputLen := 0;
-      elsif consoleInputLen < CONSOLE_INPUT_MAX then
-         consoleInputLen := consoleInputLen + 1;
-         consoleInput (consoleInputLen) := ch;
-      end if;
-
-      if idx >= 0 then
-         damage := unionRect
-           (damage,
-            inflateRect (surfaceRect (surfaces (SurfaceIndex (idx))), 4));
-      end if;
-   end handleConsoleKey;
+   end trySpawnApplication;
 
    procedure Apply_Appearance (damage : in out Rect) is
       Text : constant CuBit.Appearance.Encoding := CuBit.Appearance.Encode (settingsView.Pending);
@@ -5371,9 +5094,6 @@ procedure main is
                end;
             end if;
             return True;
-         when APP_CONSOLE =>
-            handleConsoleKey (raw, damage);
-            return True;
          when others =>
             return False;
       end case;
@@ -5386,29 +5106,27 @@ procedure main is
       ok : Boolean;
    begin
       case action is
-         when LAUNCH_CONSOLE =>
-            openInternalApp (APP_CONSOLE, damage);
          when LAUNCH_WORKBENCH =>
-            trySpawnFromConsole ("ccl-workbench.app", ok);
+            trySpawnApplication ("ccl-workbench.app", ok);
          when LAUNCH_SETTINGS =>
             openInternalApp (APP_SETTINGS, damage);
          when LAUNCH_DOOM =>
             if doomPid /= NO_PROCESS and then processAlive (doomPid) then
-               setConsoleResult ("DOOM IS ALREADY RUNNING");
+               debugPrint ("desktop: DOOM is already running" & LF);
             else
-               trySpawnFromConsole ("doom.elf", ok);
+               trySpawnApplication ("doom.elf", ok);
                if ok then
                   doomPid := lastSpawnedPid;
                end if;
             end if;
          when LAUNCH_DEVICES =>
-            trySpawnFromConsole ("devices.app", ok);
+            trySpawnApplication ("devices.app", ok);
          when LAUNCH_BROWSER =>
-            trySpawnFromConsole ("netsurf.app", ok);
+            trySpawnApplication ("netsurf.app", ok);
          when LAUNCH_FILES =>
-            trySpawnFromConsole ("files.app", ok);
+            trySpawnApplication ("files.app", ok);
          when LAUNCH_SAMEBOY =>
-            trySpawnFromConsole ("sameboy.app", ok);
+            trySpawnApplication ("sameboy.app", ok);
          when others =>
             null;
       end case;
@@ -5686,7 +5404,7 @@ procedure main is
          then
             launchMenuOpen := not launchMenuOpen;
             if launchMenuOpen then
-               launchMenuSelection := LAUNCH_CONSOLE;
+               launchMenuSelection := LAUNCH_WORKBENCH;
             end if;
             damage := unionRect
               (damage,
@@ -6080,7 +5798,7 @@ procedure main is
                then
                   if not release and then shellSurfaceVisible then
                      launchMenuOpen := not launchMenuOpen;
-                     launchMenuSelection := LAUNCH_CONSOLE;
+                     launchMenuSelection := LAUNCH_WORKBENCH;
                      damage := unionRect
                        (damage,
                         inflateRect
@@ -6170,10 +5888,12 @@ procedure main is
        w0    : Unsigned_64 := 0;
        w1    : Unsigned_64 := 0;
        w2    : Unsigned_64 := 0;
-       w3    : Unsigned_64 := 0) return Message
+       w3    : Unsigned_64 := 0;
+       Output : DSP.Output_Number := 0) return Message
    is
       msg : Message :=
-        (tag      => (label => label, length => 4, flags => 0, reserved => 0),
+        (tag      => (label => label, length => 4, flags => 0,
+                     reserved => Unsigned_16 (Output)),
          authorityTag => 0,
          words    => (w0, w1, w2, w3));
       tag : MessageTag;
@@ -6183,35 +5903,37 @@ procedure main is
       return msg;
    end callDisplay;
 
-   procedure releaseDisplayBuffer is
+   procedure closeOutput (Output : Output_Index) is
+      P : Output_Presentation renames presentations (Output);
       released : Message;
       revoked : Boolean;
    begin
-      if not backBufferReady then
-         return;
+      if P.Leased then
+         released := callDisplay (OP_DISPLAY_RELEASE, Output => Output);
+         if released.tag.length /= 1 or else released.words (0) /= 0 then
+            debugPrint ("desktop: display release failed" & LF);
+         end if;
       end if;
-
-      restoreCursorOverlay;
-      released := callDisplay (OP_DISPLAY_RELEASE);
-      if released.tag.length >= 1 and then released.words (0) /= 0 then
-         debugPrint ("desktop: display release failed" & LF);
-      end if;
-      if backBufferGranted then
-         --  Revocation prevents new acquisitions. If the service could not
-         --  acknowledge release, its existing pin still protects these pages.
-         MG.Revoke (backBufferGrant, revoked);
+      if P.Granted then
+         MG.Revoke (P.Grant, revoked);
          if not revoked then
             debugPrint ("desktop: display grant revoke failed" & LF);
          end if;
-         backBufferGranted := False;
       end if;
+      -- Old pages are never recycled here. A failed release can retain pins,
+      -- but cannot expose this storage to a later session's writes.
+      P := (others => <>);
+   end closeOutput;
 
+   procedure releaseDisplayBuffer is
+   begin
+      if not backBufferReady then return; end if;
+      restoreCursorOverlay;
+      for Output in Output_Index loop
+         closeOutput (Output);
+      end loop;
       backBufferReady := False;
-      -- Old storage is revoked, not recycled. Late completions for that
-      -- retired session cannot change ownership of a newly allocated buffer.
       retiredThrough := frameSequence;
-      presentationSession := 0;
-      transferDamage := (others => 0);
       drawingBackBuffer := False;
       cursorSaveValid := False;
       framePending := False;
@@ -6220,169 +5942,192 @@ procedure main is
       clearInputQueue;
    end releaseDisplayBuffer;
 
+   function validDisplayInfo (Info : Message) return Boolean is
+   begin
+      if Info.tag.label /= OP_DISPLAY_GET_INFO or else Info.tag.length /= 4 or else
+        Info.tag.flags /= 0 or else Info.tag.reserved /= 0 or else
+        Info.words (0) not in 1 .. Unsigned_64 (DP.Positive_Extent'Last) or else
+        Info.words (1) not in 1 .. Unsigned_64 (DP.Positive_Extent'Last) or else
+        Info.words (2) > DP.Maximum_Buffer_Bytes or else Info.words (3) /= 32
+      then
+         return False;
+      end if;
+      return DP.Valid_Layout
+        ((DP.Positive_Extent (Info.words (0)),
+          DP.Positive_Extent (Info.words (1)), DP.Buffer_Pitch (Info.words (2))));
+   end validDisplayInfo;
+
+   procedure prepareOutput
+     (Output : Output_Index; Info : Message; Ok : out Boolean)
+   is
+      P : Output_Presentation renames presentations (Output);
+      Response : Message;
+      Layout : DP.Buffer_Layout;
+      Pages, Raw : Unsigned_64;
+      Ignored : Unsigned_64;
+      Granted : Boolean;
+   begin
+      Ok := False;
+      if not validDisplayInfo (Info) then return; end if;
+      -- Output zero retains the bounded shell-to-Desktop handoff retry.
+      -- An optional output must not delay startup behind an existing owner.
+      for Attempt in 1 .. (if Output = 0 then 100 else 1) loop
+         Response := callDisplay (OP_DISPLAY_ACQUIRE, Output => Output);
+         exit when Response.tag.label = OP_DISPLAY_ACQUIRE and then
+           Response.tag.length = 1 and then Response.words (0) = 0;
+         Ignored := syscall (SYSCALL_SLEEP, 2);
+      end loop;
+      if Response.tag.label /= OP_DISPLAY_ACQUIRE or else
+        Response.tag.length /= 1 or else Response.words (0) /= 0
+      then
+         return;
+      end if;
+      P.Leased := True;
+      Layout := (DP.Positive_Extent (Info.words (0)),
+                 DP.Positive_Extent (Info.words (1)),
+                 DP.Buffer_Pitch (Info.words (2)));
+      Pages := (DP.Byte_Length (Layout) + 4095) / 4096;
+      Raw := syscall (SYSCALL_SBRK, Pages * 4096 + 4096);
+      if Raw = Unsigned_64'Last then
+         closeOutput (Output);
+         return;
+      end if;
+      P.Buffer := To_Address (Integer_Address (alignUpPage (Raw)));
+      P.Pitch := Natural (Layout.Pitch);
+      P.Geometry := (Width => DG.Physical_Extent (Layout.Width),
+                     Height => DG.Physical_Extent (Layout.Height), others => <>);
+      MG.Create_Via_Capability
+        (CAP_SLOT_DISPLAY, P.Buffer, Natural (Pages), False, P.Grant, Granted);
+      P.Granted := Granted;
+      if not Granted then
+         closeOutput (Output);
+         return;
+      end if;
+      Response := CuBit.Desktop_Messages.From_Wire (DSP.With_Output
+        (DSP.Encode_Attachment ((P.Grant, Layout)), Output));
+      Response.tag := capCall (CAP_SLOT_DISPLAY, Response);
+      if Response.tag.label /= OP_DISPLAY_ATTACH_BUFFER or else
+        Response.tag.length /= 1 or else Response.words (0) /= 0
+      then
+         closeOutput (Output);
+         return;
+      end if;
+      Response := CuBit.Desktop_Messages.From_Wire
+        (DSP.With_Output (DSP.Encode_Open_Session, Output));
+      Response.tag := capCall (CAP_SLOT_DISPLAY, Response);
+      if Response.tag.label /= DSP.Code (DSP.Open_Presentation_Session) or else
+        Response.tag.length /= 4 or else Response.tag.flags /= 0 or else
+        Response.tag.reserved /= 0 or else Response.words (0) /= 0 or else
+        Response.words (1) = 0 or else Response.words (2) /= 0 or else
+        Response.words (3) /= 0
+      then
+         closeOutput (Output);
+         return;
+      end if;
+      P.Session := Response.words (1);
+      P.Enabled := True;
+      Ok := True;
+   end prepareOutput;
+
    procedure setupDisplayBuffer (ok : out Boolean) is
-      info : constant Message := callDisplay (OP_DISPLAY_GET_INFO);
-      acquire : Message;
-      ignored : Unsigned_64;
-      bytes : Unsigned_64;
-      pages : Unsigned_64;
-      raw   : Unsigned_64;
-      aligned : Unsigned_64;
-      dragRaw : Unsigned_64;
-      grantOk : Boolean;
-      attach  : Message;
-      status  : Message;
-      layout : DP.Buffer_Layout;
-      tag : MessageTag;
+      First_Info : constant Message := callDisplay (OP_DISPLAY_GET_INFO);
+      Second_Info : constant Message := callDisplay (OP_DISPLAY_GET_INFO, Output => 1);
+      Prepared : Boolean;
+      Layout : DP.Buffer_Layout;
+      Candidate : DL.Layout;
+      Choice : DL.Primary_Selection;
+      Raw, Pages, Drag_Raw : Unsigned_64;
+      Total_Width : Natural;
    begin
       ok := False;
-
-      --  When desktop.svc is spawned from the CLI shell, both processes run
-      --  briefly in parallel: the shell releases its display lease only after
-      --  procmgr returns the spawn reply. Retry for a short bounded window so
-      --  normal foreground handoff is race-free without making display.svc
-      --  block indefinitely on a stale owner.
-      for attempt in 1 .. 100 loop
-         acquire := callDisplay (OP_DISPLAY_ACQUIRE);
-         exit when acquire.tag.length >= 1 and then acquire.words (0) = 0;
-         ignored := syscall (SYSCALL_SLEEP, 2);
+      prepareOutput (0, First_Info, Prepared);
+      if not Prepared then
+         debugPrint ("desktop: display setup failed" & LF);
+         return;
+      end if;
+      Total_Width := Natural (First_Info.words (0));
+      if validDisplayInfo (Second_Info) and then
+        Second_Info.words (0) = First_Info.words (0) and then
+        Second_Info.words (1) = First_Info.words (1) and then
+        Total_Width <= Natural (DP.Positive_Extent'Last) / 2
+      then
+         -- Admit the combined private scene before acquiring optional storage.
+         Layout := (DP.Positive_Extent (Total_Width * 2),
+                    DP.Positive_Extent (First_Info.words (1)),
+                    DP.Buffer_Pitch (Total_Width * 8));
+         if DP.Valid_Layout (Layout) then
+            prepareOutput (1, Second_Info, Prepared);
+            if Prepared then
+               presentations (1).Geometry.X := DG.Output_Origin (Total_Width);
+               Total_Width := Total_Width * 2;
+            end if;
+         end if;
+      end if;
+      Candidate.Count := (if presentations (1).Enabled then 2 else 1);
+      for Output in Output_Index loop
+         if presentations (Output).Enabled then
+            Candidate.Items (Natural (Output) + 1) :=
+              (DL.Named_Display_ID (Natural (Output) + 1),
+               presentations (Output).Geometry);
+         end if;
       end loop;
-
-      if acquire.tag.length < 1 or else acquire.words (0) /= 0 then
-         debugPrint ("desktop: display acquire failed" & LF);
+      if DL.Validate (Candidate).Status /= DL.Accepted then
+         for Output in Output_Index loop closeOutput (Output); end loop;
+         debugPrint ("desktop: disconnected layout rejected" & LF);
          return;
       end if;
-
-      if info.tag.length /= 4 or else info.tag.label /= OP_DISPLAY_GET_INFO or else
-        info.words (0) not in 1 .. Unsigned_64 (DP.Positive_Extent'Last) or else
-        info.words (1) not in 1 .. Unsigned_64 (DP.Positive_Extent'Last) or else
-        info.words (2) > DP.Maximum_Buffer_Bytes or else info.words (3) /= 32
-      then
-         debugPrint ("desktop: display info unsupported" & LF);
-         status := callDisplay (OP_DISPLAY_RELEASE);
+      Choice := DL.Select_Primary (Candidate, preferredPrimary);
+      if not Choice.Available then
+         for Output in Output_Index loop closeOutput (Output); end loop;
          return;
       end if;
-      layout := (DP.Positive_Extent (info.words (0)),
-                 DP.Positive_Extent (info.words (1)),
-                 DP.Buffer_Pitch (info.words (2)));
-      if not DP.Valid_Layout (layout) then
-         debugPrint ("desktop: display buffer layout unsupported" & LF);
-         status := callDisplay (OP_DISPLAY_RELEASE);
+      primaryOutput := Output_Index (Choice.Index - 1);
+      Layout := (DP.Positive_Extent (Total_Width),
+                 DP.Positive_Extent (First_Info.words (1)),
+                 DP.Buffer_Pitch (Total_Width * 4));
+      if not DP.Valid_Layout (Layout) then
+         for Output in Output_Index loop closeOutput (Output); end loop;
          return;
       end if;
-
-      fbWidth  := Natural (info.words (0));
-      fbHeight := Natural (info.words (1));
-      fbPitch  := Natural (info.words (2));
-      fbBpp    := Natural (info.words (3));
-
-      status := callDisplay (OP_DISPLAY_GET_STATUS);
-      bytes := DP.Byte_Length (layout);
-      pages := (bytes + 4095) / 4096;
-      raw := syscall (SYSCALL_SBRK, pages * 4096 + 4096);
-      if raw = Unsigned_64'Last then
-         debugPrint ("desktop: backbuffer alloc failed" & LF);
-         status := callDisplay (OP_DISPLAY_RELEASE);
+      Pages := (DP.Byte_Length (Layout) + 4095) / 4096;
+      Raw := syscall (SYSCALL_SBRK, Pages * 4096 + 4096);
+      if Raw = Unsigned_64'Last then
+         for Output in Output_Index loop closeOutput (Output); end loop;
+         debugPrint ("desktop: scene allocation failed" & LF);
          return;
       end if;
-
-      aligned := alignUpPage (raw);
-      backBufferAddr := To_Address (Integer_Address (aligned));
-      raw := syscall (SYSCALL_SBRK, pages * 4096 + 4096);
-      if raw = Unsigned_64'Last then
-         debugPrint ("desktop: transfer buffer alloc failed" & LF);
-         status := callDisplay (OP_DISPLAY_RELEASE);
-         return;
-      end if;
-      transferBufferAddr := To_Address (Integer_Address (alignUpPage (raw)));
-      MG.Create_Via_Capability
-        (slot      => CAP_SLOT_DISPLAY,
-         localAddr => transferBufferAddr,
-         numPages  => Natural (pages),
-         readWrite => False,
-         reference => backBufferGrant,
-         success   => grantOk);
-      if not grantOk then
-         debugPrint ("desktop: display grant failed" & LF);
-         status := callDisplay (OP_DISPLAY_RELEASE);
-         return;
-      end if;
-
-      backBufferGranted := True;
-      attach := CuBit.Desktop_Messages.From_Wire
-        (DSP.Encode_Attachment ((backBufferGrant, layout)));
-      tag := capCall (CAP_SLOT_DISPLAY, attach);
-      attach.tag := tag;
-      if attach.tag.label /= OP_DISPLAY_ATTACH_BUFFER or else
-        attach.tag.length /= 1 or else attach.words (0) /= 0
-      then
-         debugPrint ("desktop: display attach failed" & LF);
-         status := callDisplay (OP_DISPLAY_RELEASE);
-         MG.Revoke (backBufferGrant, grantOk);
-         backBufferGranted := False;
-         return;
-      end if;
-
-      attach := CuBit.Desktop_Messages.From_Wire (DSP.Encode_Open_Session);
-      attach.tag := capCall (CAP_SLOT_DISPLAY, attach);
-      if attach.tag.label /= DSP.Code (DSP.Open_Presentation_Session) or else
-        attach.tag.length /= 4 or else attach.tag.flags /= 0 or else
-        attach.tag.reserved /= 0 or else attach.words (0) /= 0 or else
-        attach.words (1) = 0 or else attach.words (2) /= 0 or else attach.words (3) /= 0
-      then
-         debugPrint ("desktop: presentation session failed" & LF);
-         status := callDisplay (OP_DISPLAY_RELEASE);
-         MG.Revoke (backBufferGrant, grantOk);
-         backBufferGranted := False;
-         return;
-      end if;
-      presentationSession := attach.words (1);
-      transferPhase := Available;
-      transferDamage := (others => 0);
-
-      --  A retained, compositor-private scene without the actively dragged
-      --  window turns movement into bounded rectangle copies plus one window
-      --  blit. Failure is non-fatal: the compositor retains its complete
-      --  redraw fallback on memory-constrained systems.
-      dragRaw := syscall (SYSCALL_SBRK, pages * 4096 + 4096);
-      if dragRaw /= Unsigned_64'Last then
-         dragBaseBufferAddr := To_Address
-           (Integer_Address (alignUpPage (dragRaw)));
+      backBufferAddr := To_Address (Integer_Address (alignUpPage (Raw)));
+      fbWidth := Total_Width;
+      fbHeight := Natural (Layout.Height);
+      fbPitch := Natural (Layout.Pitch);
+      fbBpp := 32;
+      dragBaseReady := False;
+      dragBaseBufferAddr := System.Null_Address;
+      Drag_Raw := syscall (SYSCALL_SBRK, Pages * 4096 + 4096);
+      if Drag_Raw /= Unsigned_64'Last then
+         dragBaseBufferAddr := To_Address (Integer_Address (alignUpPage (Drag_Raw)));
       else
          debugPrint ("desktop: retained drag layer unavailable" & LF);
       end if;
-
-      debugPrint ("desktop: wallpaper uses retained scene layers" & LF);
       backBufferReady := True;
-      if status.tag.length >= 2 then
-         debugPrint ("desktop: display backend=" & Decimal (status.words (0)) &
-           " caps=" & Decimal (status.words (1)) & LF);
-      end if;
+      debugPrint ("desktop: wallpaper uses retained scene layers" & LF);
+      debugPrint ("desktop: active outputs=" & Candidate.Count'Image &
+        " primary=" & primaryOutput'Image & LF);
       ok := True;
    end setupDisplayBuffer;
 
    procedure queryDisplayInfo (ok : out Boolean) is
-      info : constant Message := callDisplay (OP_DISPLAY_GET_INFO);
+      Info : constant Message := callDisplay (OP_DISPLAY_GET_INFO);
    begin
-      ok := False;
-      if info.tag.length < 4 then
+      ok := validDisplayInfo (Info);
+      if ok then
+         fbWidth := Natural (Info.words (0));
+         fbHeight := Natural (Info.words (1));
+         fbPitch := Natural (Info.words (2));
+         fbBpp := 32;
+      else
          debugPrint ("desktop: display info unsupported" & LF);
-         return;
       end if;
-
-      fbWidth  := Natural (info.words (0));
-      fbHeight := Natural (info.words (1));
-      fbPitch  := Natural (info.words (2));
-      fbBpp    := Natural (info.words (3));
-
-      if fbWidth = 0 or else fbHeight = 0 or else fbPitch = 0 or else
-         fbBpp /= 32
-      then
-         debugPrint ("desktop: display info unsupported" & LF);
-         return;
-      end if;
-
-      ok := True;
    end queryDisplayInfo;
 
    procedure activateInternalSession (ok : out Boolean) is
@@ -6435,10 +6180,8 @@ begin
       debugPrint ("desktop: register failed" & LF);
    end if;
 
-   --  Do not attach a display buffer yet. During manual bring-up the CLI
-   --  shell needs to remain visible long enough for the user to run
-   --  `spawn desktop-shell.app`; the desktop takes over scanout lazily when
-   --  the first real surface is created.
+   --  Validate the initial output before acquiring presentation buffers and
+   --  starting the desktop session. Applications launch through Apps.
    queryDisplayInfo (displayInfoOk);
    if not displayInfoOk or else fbWidth not in 1 .. Natural (DP.Pixel_Extent'Last) or else
      fbHeight not in 1 .. Natural (DP.Pixel_Extent'Last)
@@ -6466,20 +6209,26 @@ begin
          eventFound : Boolean;
          requestsThisPass : Natural := 0;
          activity : Activity_Result;
+         eventsRemaining : Natural range 0 .. EVENT_BUDGET := EVENT_BUDGET;
+         procedure Drain_Events is
+         begin
+            while eventsRemaining > 0 and then running loop
+               eventFound := Poll_Event (eventMsg);
+               exit when not eventFound;
+               eventsRemaining := eventsRemaining - 1;
+               if Presentation_Test_Policy.Enabled and then
+                 presentations (primaryOutput).Phase = In_Flight and then
+                 inputWhileHeldFrame /= presentations (primaryOutput).Token
+               then
+                  inputWhileHeldFrame := presentations (primaryOutput).Token;
+                  debugPrint ("desktop: input during frame" & inputWhileHeldFrame'Image & LF);
+               end if;
+               handleEvent (eventMsg, running);
+            end loop;
+         end Drain_Events;
       begin
          collectPresentations;
-         loop
-            eventFound := Poll_Event (eventMsg);
-            exit when not eventFound;
-            if Presentation_Test_Policy.Enabled and then transferPhase = In_Flight and then
-              inputWhileHeldFrame /= frameSequence
-            then
-               inputWhileHeldFrame := frameSequence;
-               debugPrint ("desktop: input during frame" & frameSequence'Image & LF);
-            end if;
-            handleEvent (eventMsg, running);
-            exit when not running;
-         end loop;
+         Drain_Events;
 
          loop
             Poll_Service_Request (from, msg, found);
@@ -6496,6 +6245,11 @@ begin
                else REQUEST_BUDGET_IDLE);
          end loop;
 
+         --  A reply can hand execution to an app that publishes input before
+         --  we resume. Dispatch those arrivals before painting, not one full
+         --  repaint later. Both drains share a finite budget: input floods
+         --  must still permit requests and rendering to make progress.
+         Drain_Events;
          refreshStatus;
          flushFrame;
          flushCursorPresent;

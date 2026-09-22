@@ -1,7 +1,25 @@
 project Display_Check is
    for Languages use ("Ada");
-   for Source_Dirs use (".");
-   for Object_Dir use "build";
+   type Test_Mode_Type is ("production", "delayed", "output-rebind");
+   Test_Mode : Test_Mode_Type := external ("CUBIT_DISPLAY_TEST_MODE", "production");
+   type GPU_Test_Mode_Type is ("production", "delayed");
+   GPU_Test_Mode : GPU_Test_Mode_Type := external ("CUBIT_GPU_TEST_MODE", "production");
+   GPU_Test_Dir := "../../services/virtio-gpu/production";
+   case GPU_Test_Mode is
+      when "delayed" => GPU_Test_Dir := "../../services/virtio-gpu/test-delayed";
+      when "production" => null;
+   end case;
+   case Test_Mode is
+      when "production" | "delayed" =>
+         for Source_Dirs use (".", "../../services/display/production", GPU_Test_Dir);
+         case GPU_Test_Mode is
+            when "production" => for Object_Dir use "build";
+            when "delayed" => for Object_Dir use "build-gpu-delayed";
+         end case;
+      when "output-rebind" =>
+         for Source_Dirs use (".", "../../services/display/test-output", GPU_Test_Dir);
+         for Object_Dir use "build-output-rebind";
+   end case;
    for Main use ("main.adb");
    for Runtime ("Ada") use "../../runtime";
    package Builder is

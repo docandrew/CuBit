@@ -25,7 +25,13 @@ unsafe extern "C" {
 
 // Independent backing permits using only the slab arena or only the large
 // arena. Metadata remains bounded; payload no longer occupies static BSS.
-static BACKING: [AtomicPtr<u8>; 2] = [const { AtomicPtr::new(ptr::null_mut()) }; 2];
+static LARGE_BACKING: AtomicPtr<u8> = AtomicPtr::new(ptr::null_mut());
+// A slab never spans a 64 KiB boundary, and small requests have alignment at
+// most 4 KiB. Native small-object payload can therefore be backed in separate
+// 1 MiB chunks without changing the proved metadata's logical offsets.
+const SMALL_CHUNK_BYTES: usize = 1024 * 1024;
+static SMALL_BACKING: [AtomicPtr<u8>; ARENA_BYTES / SMALL_CHUNK_BYTES] =
+    [const { AtomicPtr::new(ptr::null_mut()) }; ARENA_BYTES / SMALL_CHUNK_BYTES];
 static LOCKED: AtomicBool = AtomicBool::new(false);
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
@@ -61,8 +67,8 @@ pub struct BoundedAllocator;
 
 // Called with Guard held. Native heap users outside this allocator must obey
 // the same serialization rule; CuBit currently has one executing thread/process.
-unsafe fn backing(region: usize) -> *mut u8 {
-    let existing = BACKING[region].load(Ordering::Relaxed);
+unsafe fn large_backing() -> *mut u8 {
+    let existing = LARGE_BACKING.load(Ordering::Relaxed);
     if !existing.is_null() {
         return existing;
     }
@@ -80,19 +86,62 @@ unsafe fn backing(region: usize) -> *mut u8 {
     let result = unsafe {
         std::alloc::System.alloc(Layout::from_size_align(ARENA_BYTES, MAX_ALIGNMENT).unwrap())
     };
-    BACKING[region].store(result, Ordering::Relaxed);
+    LARGE_BACKING.store(result, Ordering::Relaxed);
     result
 }
 
 // GlobalAlloc requires a live pointer from this heap. Determine which separate
 // arena owns it before pointer subtraction; never subtract unrelated pointers.
 unsafe fn offset_of(pointer: *mut u8) -> u64 {
-    let small = BACKING[0].load(Ordering::Relaxed);
-    if !small.is_null() && pointer.addr().wrapping_sub(small.addr()) < ARENA_BYTES {
-        return unsafe { pointer.offset_from(small) } as u64;
+    for (index, chunk) in SMALL_BACKING.iter().enumerate() {
+        let base = chunk.load(Ordering::Relaxed);
+        if !base.is_null() && pointer.addr().wrapping_sub(base.addr()) < SMALL_CHUNK_BYTES {
+            return (index * SMALL_CHUNK_BYTES + unsafe { pointer.offset_from(base) } as usize)
+                as u64;
+        }
     }
-    let large = BACKING[1].load(Ordering::Relaxed);
+    let large = LARGE_BACKING.load(Ordering::Relaxed);
     ARENA_BYTES as u64 + unsafe { pointer.offset_from(large) } as u64
+}
+
+// Called under Guard. The returned pointer belongs to the backing allocation
+// selected by the logical metadata offset (not a fabricated contiguous arena).
+unsafe fn payload_at(offset: usize) -> *mut u8 {
+    if offset < ARENA_BYTES {
+        let chunk = &SMALL_BACKING[offset / SMALL_CHUNK_BYTES];
+        let mut base = chunk.load(Ordering::Relaxed);
+        if base.is_null() {
+            const ALIGNMENT: usize = 4096;
+            #[cfg(target_os = "none")]
+            {
+                let Some(raw) = (unsafe { cubit::grow_heap(SMALL_CHUNK_BYTES + ALIGNMENT - 1) })
+                else {
+                    return ptr::null_mut();
+                };
+                let address = (raw.as_ptr().addr() + ALIGNMENT - 1) & !(ALIGNMENT - 1);
+                base = raw.as_ptr().with_addr(address);
+            }
+            #[cfg(not(target_os = "none"))]
+            {
+                base = unsafe {
+                    std::alloc::System
+                        .alloc(Layout::from_size_align(SMALL_CHUNK_BYTES, ALIGNMENT).unwrap())
+                };
+                if base.is_null() {
+                    return base;
+                }
+            }
+            chunk.store(base, Ordering::Relaxed);
+        }
+        // SAFETY: metadata small blocks cannot cross a slab/chunk boundary.
+        return unsafe { base.add(offset % SMALL_CHUNK_BYTES) };
+    }
+    let base = unsafe { large_backing() };
+    if base.is_null() {
+        base
+    } else {
+        unsafe { base.add(offset % ARENA_BYTES) }
+    }
 }
 
 // Called only while holding Guard; returns null without changing live payload.
@@ -105,9 +154,8 @@ unsafe fn allocate(layout: Layout) -> *mut u8 {
     if offset == u64::MAX {
         return ptr::null_mut();
     }
-    let region = offset as usize / ARENA_BYTES;
-    let base = unsafe { backing(region) };
-    if base.is_null() {
+    let payload = unsafe { payload_at(offset as usize) };
+    if payload.is_null() {
         // No payload was published. Return metadata ownership on provider
         // failure so a later retry has the full capacity available.
         unsafe {
@@ -116,7 +164,7 @@ unsafe fn allocate(layout: Layout) -> *mut u8 {
         return ptr::null_mut();
     }
     // SAFETY: the core returns disjoint offsets within the selected arena.
-    unsafe { base.add(offset as usize % ARENA_BYTES) }
+    payload
 }
 
 // SAFETY: Guard serializes the singleton metadata and initialization. Every

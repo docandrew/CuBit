@@ -342,6 +342,18 @@ prove-memory-grants:
 		--mode=all --level=1 --function-sandboxing=off --checks-as-errors=on -j2
 	@cat build/gnatprove/gnatprove.out
 
+.PHONY: test-grant-loans prove-grant-loans
+test-grant-loans:
+	$(ALR) gprbuild -p -P ../tests/grant-loans/loans.gpr
+	../tests/grant-loans/build/main
+	../tests/grant-loans/build/parent_lifetime_test
+	../tests/grant-loans/build/output_lifetime_test
+
+prove-grant-loans:
+	$(ALR) gnatprove -P ../tests/grant-loans/loans.gpr \
+		-u loan_proof.ads memory_grants.adb --level=2 --timeout=15 --report=all --checks-as-errors=on -j2
+	python3 ../tests/grant-loans/check-proof.py
+
 .PHONY : clean
 clean:
 	$(ALR) gprclean -Pcubit.gpr
@@ -411,7 +423,7 @@ prove-stream-policies: prepare-stream-policies
 	@cat ../tests/stream-policies/build/obj/gnatprove/gnatprove.out
 
 .PHONY: test-appearance prove-appearance
-test-appearance:
+test-appearance: ui-fonts-host
 	$(ALR) gprbuild -p -P ../tests/appearance/appearance.gpr
 	../tests/appearance/build/main
 
@@ -432,8 +444,8 @@ desktop-check: user_runtime ccl-manifest
 display-check: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/display-check/build
 	$(call compile_ccl_manifest,../userspace/apps/display-check)
-	$(ALR) gprbuild -p -P ../userspace/apps/display-check/display_check.gpr
-	cp ../userspace/apps/display-check/build/display-check.app isodir/boot/display-check.app
+	$(ALR) gprbuild -p -P ../userspace/apps/display-check/display_check.gpr -XCUBIT_DISPLAY_TEST_MODE=$(CUBIT_DISPLAY_TEST_MODE) -XCUBIT_GPU_TEST_MODE=$(CUBIT_GPU_TEST_MODE)
+	cp ../userspace/apps/display-check/$(if $(filter output-rebind,$(CUBIT_DISPLAY_TEST_MODE)),build-output-rebind,$(if $(filter delayed,$(CUBIT_GPU_TEST_MODE)),build-gpu-delayed,build))/display-check.app isodir/boot/display-check.app
 
 prepare-desktop-protocol:
 	mkdir -p ../tests/desktop-protocol/build/source
@@ -601,7 +613,112 @@ test-ccl-web-preview:
 	cd ../userspace/ccl/tools/ccl-observatory && npm test
 
 .PHONY : ccl-ui-preview
-ccl-ui-preview:
+.PHONY: ui-fonts-host ui-fonts-native
+.PHONY: test-ui-fonts
+.PHONY: test-procmgr-reads
+.PHONY: prepare-display-geometry test-display-geometry prove-display-geometry
+prepare-display-geometry:
+	mkdir -p ../tests/display-geometry/build/source
+	cp ../userspace/runtime/gnat/cubit.ads \
+		../userspace/runtime/gnat/cubit-display_geometry.ads \
+		../userspace/runtime/gnat/cubit-display_geometry.adb \
+		../tests/display-geometry/build/source/
+
+test-display-geometry: prepare-display-geometry
+	$(ALR) gprbuild -p -P ../tests/display-geometry/geometry.gpr
+	../tests/display-geometry/build/main
+
+prove-display-geometry: prepare-display-geometry
+	$(ALR) gnatprove -P ../tests/display-geometry/geometry.gpr \
+		-u cubit-display_geometry.adb --level=2 --report=all --checks-as-errors=on -j2
+	python3 ../tests/display-geometry/check-proof.py
+
+test-procmgr-reads:
+	$(ALR) gprbuild -p -P ../tests/procmgr-reads/read_tests.gpr
+	../tests/procmgr-reads/build/read_tests
+
+.PHONY: prepare-display-layouts test-display-layouts prove-display-layouts
+prepare-display-layouts: prepare-display-geometry
+	mkdir -p ../tests/display-layouts/build/source
+	cp ../tests/display-geometry/build/source/*.ad? \
+		../userspace/runtime/gnat/cubit-display_layouts.ads \
+		../userspace/runtime/gnat/cubit-display_layouts.adb \
+		../tests/display-layouts/build/source/
+
+test-display-layouts: prepare-display-layouts
+	$(ALR) gprbuild -p -P ../tests/display-layouts/layouts.gpr
+	../tests/display-layouts/build/main
+	../tests/display-layouts/build/primary_test
+
+prove-display-layouts: prepare-display-layouts
+	$(ALR) gnatprove -P ../tests/display-layouts/layouts.gpr \
+		-u cubit-display_layouts.adb --level=2 --report=all --checks-as-errors=on -j2
+	python3 ../tests/display-layouts/check-proof.py
+
+.PHONY: prepare-window-placement test-window-placement prove-window-placement
+prepare-window-placement: prepare-display-layouts
+	mkdir -p ../tests/window-placement/build/source
+	cp ../tests/display-layouts/build/source/*.ad? \
+		../userspace/runtime/gnat/cubit-window_placement.ads \
+		../userspace/runtime/gnat/cubit-window_placement.adb \
+		../tests/window-placement/build/source/
+
+test-window-placement: prepare-window-placement
+	$(ALR) gprbuild -p -P ../tests/window-placement/placement.gpr
+	../tests/window-placement/build/main
+
+prove-window-placement: prepare-window-placement
+	$(ALR) gnatprove -P ../tests/window-placement/placement.gpr \
+		-u cubit-window_placement.adb --level=2 --report=all --checks-as-errors=on -j2
+	python3 ../tests/window-placement/check-proof.py
+
+.PHONY: prepare-output-registry test-output-registry prove-output-registry
+prepare-output-registry: prepare-window-placement
+	mkdir -p ../tests/output-registry/build/source
+	cp ../tests/window-placement/build/source/*.ad? \
+		../userspace/runtime/gnat/cubit-output_registry.ad? \
+		../userspace/runtime/gnat/cubit-display_outputs.ads \
+		../userspace/runtime/gnat/cubit-placement_tickets.ad? \
+		../tests/output-registry/build/source/
+
+test-output-registry: prepare-output-registry
+	$(ALR) gprbuild -p -P ../tests/output-registry/registry.gpr
+	../tests/output-registry/build/main
+
+prove-output-registry: prepare-output-registry
+	$(ALR) gnatprove -P ../tests/output-registry/registry.gpr \
+		-u cubit-display_outputs.ads registry_proof.ads cubit-placement_tickets.adb \
+		--level=2 --report=all --checks-as-errors=on -j2
+	python3 ../tests/output-registry/check-proof.py
+
+.PHONY: prepare-output-discovery test-output-discovery prove-output-discovery
+prepare-output-discovery: prepare-desktop-protocol
+	mkdir -p ../tests/output-discovery/build/source
+	cp ../tests/desktop-protocol/build/source/*.ad? \
+		../userspace/runtime/gnat/cubit-output_discovery.ad? \
+		../tests/output-discovery/build/source/
+
+test-output-discovery: prepare-output-discovery
+	$(ALR) gprbuild -p -P ../tests/output-discovery/discovery.gpr
+	../tests/output-discovery/build/main
+
+prove-output-discovery: prepare-output-discovery
+	$(ALR) gnatprove -P ../tests/output-discovery/discovery.gpr \
+		-u cubit-output_discovery.adb --level=2 --report=all --checks-as-errors=on -j2
+	python3 ../tests/output-discovery/check-proof.py
+
+test-ui-fonts: ui-fonts-host
+	$(MAKE) -C ../userspace/rust fonts-test fonts-bench
+	$(ALR) gprbuild -p -P ../tests/ui-fonts/fonts_tests.gpr
+	../tests/ui-fonts/build/main
+
+ui-fonts-host:
+	$(MAKE) -C ../userspace/rust fonts-host
+
+ui-fonts-native: user_runtime
+	$(MAKE) -C ../userspace/rust fonts-native
+
+ccl-ui-preview: ui-fonts-host
 	$(ALR) gprbuild -P ../userspace/ccl/ccl_ui_preview.gpr -p
 	cd .. && userspace/ccl/build/ccl-ui-preview/ccl-ui-preview
 
@@ -626,7 +743,7 @@ ccl-workspace-prove:
 	@cat ../tests/ccl-workspace/build/gnatprove/gnatprove.out
 
 .PHONY : ui-editor-test
-ui-editor-test:
+ui-editor-test: ui-fonts-host
 	$(ALR) gprbuild -P ../userspace/lib/ui/tests/editor/editor_test.gpr -p
 	../userspace/lib/ui/tests/editor/build/main
 
@@ -708,7 +825,7 @@ ccl-vm: user_runtime ccl-manifest
 
 # Native CCL editor/compiler/debugger application.
 .PHONY : ccl-workbench
-ccl-workbench: user_runtime ccl-manifest
+ccl-workbench: user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/ccl/apps/ccl-workbench/build
 	$(call compile_ccl_manifest,../userspace/ccl/apps/ccl-workbench)
 	$(ALR) gprbuild -P ../userspace/ccl/apps/ccl-workbench/ccl_workbench.gpr
@@ -773,11 +890,12 @@ virtio-net: user_runtime
 	cp ../userspace/services/virtio-net/build/virtio-net.drv isodir/boot/virtio-net.drv
 
 # Build the userspace virtio-gpu driver
+CUBIT_GPU_TEST_MODE ?= production
+GPU_BUILD_DIR = $(if $(filter delayed,$(CUBIT_GPU_TEST_MODE)),build-delayed,build)
 .PHONY : virtio-gpu
 virtio-gpu: user_runtime
-	mkdir -p ../userspace/services/virtio-gpu/build
-	$(ALR) gprbuild -P ../userspace/services/virtio-gpu/virtio_gpu.gpr
-	cp ../userspace/services/virtio-gpu/build/virtio-gpu.drv isodir/boot/virtio-gpu.drv
+	$(ALR) gprbuild -p -P ../userspace/services/virtio-gpu/virtio_gpu.gpr -XCUBIT_GPU_TEST_MODE=$(CUBIT_GPU_TEST_MODE)
+	cp ../userspace/services/virtio-gpu/$(GPU_BUILD_DIR)/virtio-gpu.drv isodir/boot/virtio-gpu.drv
 
 # Build the userspace network stack service
 .PHONY : netstack
@@ -796,7 +914,7 @@ wget: user_runtime ccl-manifest
 
 # Build the unified hardware inventory and diagnostics app
 .PHONY : devices
-devices: user_runtime ccl-manifest
+devices: user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/apps/devices/build
 	$(call compile_ccl_manifest,../userspace/apps/devices)
 	$(ALR) gprbuild -P ../userspace/apps/devices/devices.gpr
@@ -804,7 +922,7 @@ devices: user_runtime ccl-manifest
 
 # Build the read-only, authority-scoped filesystem browser.
 .PHONY : files
-files: user_runtime ccl-manifest
+files: user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/apps/files/build
 	$(call compile_ccl_manifest,../userspace/apps/files)
 	$(ALR) gprbuild -P ../userspace/apps/files/files.gpr
@@ -827,7 +945,7 @@ filesystem-scope-check: user_runtime ccl-manifest
 
 # Build the first desktop shell client
 .PHONY : desktop-shell
-desktop-shell: user_runtime ccl-manifest
+desktop-shell: user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/apps/desktop-shell/build
 	$(call compile_ccl_manifest,../userspace/apps/desktop-shell)
 	$(ALR) gprbuild -P ../userspace/apps/desktop-shell/desktop_shell.gpr
@@ -899,7 +1017,7 @@ logstore: user_runtime ccl-manifest
 
 # Build the userspace desktop compositor/session service prototype
 .PHONY : desktop
-desktop: user_runtime ccl-manifest ../userspace/services/desktop/build/wallpaper.o ../userspace/services/desktop/build/wallpaper_cubie.o
+desktop: user_runtime ccl-manifest ui-fonts-native ../userspace/services/desktop/build/wallpaper.o ../userspace/services/desktop/build/wallpaper_cubie.o
 	mkdir -p ../userspace/services/desktop/build
 	$(call compile_ccl_manifest,../userspace/services/desktop)
 	$(ALR) gprbuild -p -P ../userspace/services/desktop/desktop.gpr -XCUBIT_DISPLAY_TEST_MODE=$(CUBIT_DISPLAY_TEST_MODE)
@@ -918,7 +1036,7 @@ desktop: user_runtime ccl-manifest ../userspace/services/desktop/build/wallpaper
 # Build the userspace display scanout service prototype
 .PHONY : display
 CUBIT_DISPLAY_TEST_MODE ?= production
-PRESENTATION_BUILD_DIR = $(if $(filter delayed,$(CUBIT_DISPLAY_TEST_MODE)),build-delayed,build)
+PRESENTATION_BUILD_DIR = $(if $(filter output-rebind,$(CUBIT_DISPLAY_TEST_MODE)),build-output-rebind,$(if $(filter delayed,$(CUBIT_DISPLAY_TEST_MODE)),build-delayed,build))
 display: user_runtime ccl-manifest
 	mkdir -p ../userspace/services/display/build
 	$(call compile_ccl_manifest,../userspace/services/display)
@@ -979,70 +1097,15 @@ desktop-session-content: $(INITRD_SERVICES) desktop display logstore \
 
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.ccl, shell.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
-ata_disk.img: $(DISK_CONTENTS)
-	dd if=/dev/zero of=ata_disk.img bs=1K count=65536
-	mke2fs -t ext2 ata_disk.img
-	debugfs -w -R "write $(DOOM_WAD) doom1.wad" ata_disk.img
-	debugfs -w -R "write ../userspace/motd.txt motd.txt" ata_disk.img
-	debugfs -w -R "write ../init.ccl init.ccl" ata_disk.img
-	debugfs -w -R "write isodir/boot/shell.app shell.app" ata_disk.img
-	debugfs -w -R "write isodir/boot/doom.elf doom.elf" ata_disk.img
-	debugfs -w -R "write isodir/boot/sameboy.app sameboy.app" ata_disk.img
-	debugfs -w -R "mkdir sameboy" ata_disk.img
-	debugfs -w -R "write ../userspace/c/sameboy_build/test.gb sameboy/00.gb" ata_disk.img
-	debugfs -w -R "write isodir/boot/netsurf.app netsurf.app" ata_disk.img
-	debugfs -w -R "write isodir/boot/sleep.app sleep.app" ata_disk.img
-	debugfs -w -R "write isodir/boot/capability-test.app capability-test.app" ata_disk.img
-	debugfs -w -R "write isodir/boot/wget.app wget.app" ata_disk.img
-	debugfs -w -R "write isodir/boot/devices.app devices.app" ata_disk.img
-	debugfs -w -R "write isodir/boot/files.app files.app" ata_disk.img
-	debugfs -w -R "write isodir/boot/desktop-shell.app desktop-shell.app" ata_disk.img
-	debugfs -w -R "write isodir/boot/ipctest-server.app ipctest-server.app" ata_disk.img
-	debugfs -w -R "write isodir/boot/ipctest-client.app ipctest-client.app" ata_disk.img
-	debugfs -w -R "write isodir/boot/bench-ipc-server.app bench-ipc-server.app" ata_disk.img
-	debugfs -w -R "write isodir/boot/bench-ipc-client.app bench-ipc-client.app" ata_disk.img
-	debugfs -w -R "write isodir/boot/ccl-vm.app ccl-vm.app" ata_disk.img
-	debugfs -w -R "write isodir/boot/ccl-workbench.app ccl-workbench.app" ata_disk.img
-	debugfs -w -R "write isodir/boot/ccl-test-host.svc ccl-test-host.svc" ata_disk.img
-	debugfs -w -R "write isodir/boot/clock.svc clock.svc" ata_disk.img
-	debugfs -w -R "write isodir/boot/logstore.svc logstore.svc" ata_disk.img
-	debugfs -w -R "write isodir/boot/display.svc display.svc" ata_disk.img
-	debugfs -w -R "write isodir/boot/desktop.svc desktop.svc" ata_disk.img
-	debugfs -w -R "write ../userspace/motd.txt config.dat" ata_disk.img
-
-# Create ext2 NVMe disk image containing motd.txt, doom1.wad, doom.elf, init.ccl, shell.app, wget.app
-# Requires: mke2fs, debugfs (from e2fsprogs)
-nvme_disk.img: $(DISK_CONTENTS)
-	dd if=/dev/zero of=nvme_disk.img bs=1K count=65536
-	mke2fs -t ext2 nvme_disk.img
-	debugfs -w -R "mkdir work" nvme_disk.img
-	debugfs -w -R "write ../userspace/motd.txt motd.txt" nvme_disk.img
-	debugfs -w -R "write $(DOOM_WAD) doom1.wad" nvme_disk.img
-	debugfs -w -R "write isodir/boot/doom.elf doom.elf" nvme_disk.img
-	debugfs -w -R "write isodir/boot/sameboy.app sameboy.app" nvme_disk.img
-	debugfs -w -R "mkdir sameboy" nvme_disk.img
-	debugfs -w -R "write ../userspace/c/sameboy_build/test.gb sameboy/00.gb" nvme_disk.img
-	debugfs -w -R "write isodir/boot/netsurf.app netsurf.app" nvme_disk.img
-	debugfs -w -R "write isodir/boot/sleep.app sleep.app" nvme_disk.img
-	debugfs -w -R "write isodir/boot/capability-test.app capability-test.app" nvme_disk.img
-	debugfs -w -R "write isodir/boot/logstore.svc logstore.svc" nvme_disk.img
-	debugfs -w -R "write ../init.ccl init.ccl" nvme_disk.img
-	debugfs -w -R "write isodir/boot/shell.app shell.app" nvme_disk.img
-	debugfs -w -R "write isodir/boot/wget.app wget.app" nvme_disk.img
-	debugfs -w -R "write isodir/boot/devices.app devices.app" nvme_disk.img
-	debugfs -w -R "write isodir/boot/files.app files.app" nvme_disk.img
-	debugfs -w -R "write isodir/boot/desktop-shell.app desktop-shell.app" nvme_disk.img
-	debugfs -w -R "write isodir/boot/ipctest-server.app ipctest-server.app" nvme_disk.img
-	debugfs -w -R "write isodir/boot/ipctest-client.app ipctest-client.app" nvme_disk.img
-	debugfs -w -R "write isodir/boot/bench-ipc-server.app bench-ipc-server.app" nvme_disk.img
-	debugfs -w -R "write isodir/boot/bench-ipc-client.app bench-ipc-client.app" nvme_disk.img
-	debugfs -w -R "write isodir/boot/ccl-vm.app ccl-vm.app" nvme_disk.img
-	debugfs -w -R "write isodir/boot/ccl-workbench.app ccl-workbench.app" nvme_disk.img
-	debugfs -w -R "write isodir/boot/ccl-test-host.svc ccl-test-host.svc" nvme_disk.img
-	debugfs -w -R "write isodir/boot/clock.svc clock.svc" nvme_disk.img
-	debugfs -w -R "write isodir/boot/display.svc display.svc" nvme_disk.img
-	debugfs -w -R "write isodir/boot/desktop.svc desktop.svc" nvme_disk.img
-	debugfs -w -R "write ../userspace/motd.txt config.dat" nvme_disk.img
+# Both generated development disks use the same verified payload builder.
+ata_disk.img nvme_disk.img: $(DISK_CONTENTS) ../tools/build_development_disk.py
+	$(ALR) python3 ../tools/build_development_disk.py $@ \
+		--boot $(filter isodir/boot/%,$(DISK_CONTENTS)) \
+		--file "motd.txt=../userspace/motd.txt" \
+		--file "config.dat=../userspace/motd.txt" \
+		--file "doom1.wad=$(DOOM_WAD)" \
+		--file "sameboy/00.gb=../userspace/c/sameboy_build/test.gb" \
+		--file "init.ccl=../init.ccl"
 
 # Convenience aliases for manual rebuilds (e.g. make ata_disk)
 .PHONY : ata_disk nvme_disk
@@ -1274,7 +1337,12 @@ run: nvme_disk.img
 		-no-reboot
 
 # Run QEMU with an init profile that starts display.svc + desktop.svc.
-# This keeps GUI iteration out of the CuBASIC/CLI launch path.
+# Start the native desktop directly, without the CLI launch path.
+QEMU_DESKTOP_DEVICE ?= virtio-vga,xres=1024,yres=768
+.PHONY: run-desktop-dual
+run-desktop-dual: QEMU_DESKTOP_DEVICE = '{"driver":"virtio-vga","id":"multi-gpu","max_outputs":2,"outputs":[{"name":"CuBit Main","xres":1024,"yres":768},{"name":"CuBit Side","xres":1024,"yres":768}]}'
+run-desktop-dual: run-desktop
+
 .PHONY : run-desktop
 run-desktop: cubit_kernel desktop-session-content
 	$(MAKE) nvme_disk.img
@@ -1297,7 +1365,7 @@ run-desktop: cubit_kernel desktop-session-content
 		-cdrom cubit_kernel.iso \
 		-serial file:serial_output.log \
 		-vga none \
-		-device virtio-vga,xres=1024,yres=768 \
+		-device $(QEMU_DESKTOP_DEVICE) \
 		-display gtk,zoom-to-fit=on \
 		-drive file=desktop_disk.img,if=none,id=nvme0,format=raw \
 		-device nvme,serial=cubitnvme,drive=nvme0 \

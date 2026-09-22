@@ -1,0 +1,14 @@
+with "../../userspace/lib/ui/fonts_host.gpr";
+project Fonts_Tests is
+   for Source_Dirs use (".", "../../userspace/lib/ui", "../../userspace/lib/theme",
+                        "../../userspace/ccl/tools/ccl-ui-preview/host");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa");
+      for Switches ("main.adb") use
+        ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Fonts_Tests;

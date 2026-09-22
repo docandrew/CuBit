@@ -1,3 +1,4 @@
+with "../../lib/ui/fonts_native.gpr";
 project Desktop_Shell is
 
     for Languages use ("Ada");

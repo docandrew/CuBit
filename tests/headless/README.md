@@ -110,12 +110,14 @@ The suite currently includes:
   liveness. It also enters `lost+found/nested`, refreshes in that folder, and
   navigates Back through retained directory handles.
 - `desktop-display`: boots a test init profile that starts `display.svc` and
-  `desktop.svc`, verifies the display backend status handshake, and injects
+  `desktop.svc`, verifies linear-backend and single-output initialization, and injects
   QEMU i8042 keyboard and pointer input through the real PS/2 driver path.
-  It opens the internal console through Apps, drags its caption to y=0, then
+  It opens CCL Workbench through Apps, drags its caption to y=0, then
   requires a stationary triple-click to maximize exactly once and a subsequent
   double-click to restore exactly once. Both normal and maximized captions
-  must consume the gesture. Build the current `desktop` and `shell` first.
+  must consume the gesture. Build the current `desktop`, `shell` and
+  `ccl-workbench` first. Workbench is staged from the current build, not taken
+  from an old development disk.
 - `input-stream`: publishes authenticated, sequenced keyboard and relative-
   pointer reports through the kernel event lane, forces one explicit recovery
   boundary, and checks that motion over the CCL Workbench editor does not
@@ -316,5 +318,137 @@ tests/headless/run.sh --test desktop-doom --timeout 45 --keep-logs
 Useful lines include `desktop: stats`, `display: stats`, and `mixer: stats`.
 For graphics work, compare compositor `frames`, `fast`, `present_req`,
 `input_req`, `draw_ms`, and `submit_ms` against display `presents` and
-`copy_ms`. The profile is deliberately headless, so treat the numbers as
+`present_ms` (includes backend waits, not exclusive copy time). The profile
+is deliberately headless, so treat the numbers as
 relative regression signals for QEMU/TCG rather than final hardware claims.
+
+## Two native display outputs
+
+```sh
+nix develop -c make -C kernel virtio-gpu display devmgr display-check
+nix develop -c bash tests/headless/run.sh --test display-dual-output \
+  --accel kvm --cpus 4 --timeout 35 \
+  --serial /tmp/cubit-dual-output.log --keep-logs
+```
+
+This boots real CuBit services with two 1024x768 virtio-vga outputs. The native
+display-check fixture leases/attaches/opens each output independently and submits
+different content using ordinary display IPC. It rejects cross-output session
+reuse and replay, releases/revokes the first output, then keeps updating the
+second. A QMP observer captures both actual scanouts in three phases and checks
+the colored regions: the first stays red; the second changes blue/green/yellow.
+Screenshots are written beside the requested serial log. The ordinary malformed
+message and grant lifetime checks also run. QEMU 11.1 per-output mode hints are
+required by this fixture.
+
+This is native broker/driver regression evidence, not a Linux renderer, two
+independent Desktop instances, native hotplug, stall isolation or a latency
+guarantee. Mixed-mode discovery retains
+its separate test, and firmware-only/single-output tests remain supported.
+
+Validated with QEMU 11.1/KVM at one and four vCPUs. The four-vCPU
+`display-grants-virtio-vga`, `display-discovery-boot-only`,
+`display-discovery-multi-output` and `desktop-protocol` regressions also passed.
+See [graphics measurements](../performance/graphics-results.md#native-per-output-brokerdriver-follow-up)
+for the separate single-output loaded-input check; these pixel tests are not
+a two-output throughput benchmark.
+
+## Native extended Desktop
+
+```sh
+nix develop -c make -C kernel desktop display devmgr virtio-gpu ccl-workbench
+nix develop -c tests/headless/run.sh --test desktop-dual-output \
+  --accel kvm --cpus 4 --timeout 45 \
+  --serial /tmp/cubit-desktop-dual.log --keep-logs
+# Interactive QEMU session, with the current applications rebuilt/staged:
+nix develop -c make -C kernel run-desktop-dual
+```
+
+This is one native CuBit Desktop spanning two adjacent 1024x768 outputs, not a
+Linux-hosted preview. Head zero is the initial Desktop-selected primary; only it
+has the taskbar. The fixture injects ordinary PS/2 mouse/keyboard events to open
+CCL Workbench, drag it across the output boundary, move it completely
+onto head one, maximize there, then close it. QMP reads both real scanouts.
+Pixel comparisons verify both fragments of the spanning window, primary
+wallpaper restoration, secondary-only maximize, and exact restoration of the
+entire secondary image after cursor movement and close. Captures remain beside
+the serial log. Observer failure fails the test, even if startup markers pass.
+Validated under QEMU 11.1/KVM with one and four vCPUs; the existing four-vCPU
+single-output `desktop-protocol` regression also passes. Geometry/layout hosted
+tests and their strict proof checks were rerun in the Nix environment.
+
+After retiring the embedded BASIC prototype, the Workbench-based fixture was
+rerun at one/four vCPUs and with GTK at four vCPUs. Single-output
+`desktop-display` and `CUBIT_DOOM_MULTIAPP=1 desktop-doom` also pass with the
+CCL-first menu order. USB-live keyboard navigation was updated and syntax
+checked; a full USB-live boot was not rerun for this removal.
+
+Desktop uses a packed private scene, optional retained drag layer, and one
+grant-backed transfer buffer per enabled output. Damage is clipped through the
+shared geometry core before copying only the affected rows into each local
+transfer. Each output retains its own session, pending damage and in-flight
+completion state; the private scene is not shared with the backend. Completion
+tokens are globally non-reused, and a payload cannot choose another output's
+buffer. This preserves the asynchronous reader boundary; it is **not zero-copy**.
+
+The geometry/layout helpers are SPARK-proved separately. These native pixel and
+input checks are regression evidence, not a proof of the whole compositor or of
+timing. Session-frame GPU calls are now nonblocking; the delayed-head fixture
+below checks independent progress. Mixed DPI/resolution/rotation, arbitrary arrangements,
+runtime primary selection, persistent identities/configuration and hotplug are
+not exposed by this initial launcher. Normal `run-desktop` remains single-output.
+
+### Graphical frontend regression
+
+```sh
+GDK_BACKEND=x11 nix develop -c tests/headless/run.sh --test desktop-dual-output \
+  --display gtk,zoom-to-fit=on --accel kvm --cpus 4 --timeout 45 \
+  --serial /tmp/cubit-desktop-dual-gtk.log --keep-logs
+```
+
+This opens a real GTK QEMU window and runs the same pixel/input observer before
+closing the test VM. Do not interact with it during the automated mouse test.
+GTK can report initial 640x480 viewport hints even when the device command line
+requests 1024x768. The driver must activate each connected supported head using
+its bounded resources, not reject the head because that hint differs. Discovery
+preserves the advertised size separately from the actual active 1024x768 mode.
+
+In an interactive run, GTK normally groups the displays in one window. Select
+`multi-gpu.1` in View to see the secondary; View → Detach Tab can give it a
+separate window. Neither selecting a view nor resizing the host window should
+be required to activate the guest's second scanout. The inactive-output message
+is not an expected part of this workflow.
+
+### Nonblocking GPU session presentation
+
+The production path uses one asynchronous broker operation and one fenced GPU
+command chain per output. The ordinary `display-dual-output` fixture now submits
+both initial frames concurrently and checks their separate session/frame results.
+The delayed fixture holds head 0 between transfer and scanout for 250 ms while
+head 1, broker information queries and busy-output rejections must progress:
+
+```sh
+nix develop -c make -C kernel display virtio-gpu display-check CUBIT_GPU_TEST_MODE=delayed
+nix develop -c env CUBIT_GPU_TEST_MODE=delayed tests/headless/run.sh \
+  --test display-dual-output --accel kvm --cpus 4 --timeout 75 \
+  --serial /tmp/cubit-gpu-delayed.log --keep-logs
+# Restore production artifacts before an interactive run or benchmark:
+nix develop -c make -C kernel display virtio-gpu display-check
+```
+
+The long fixture deadline also covers 140 deliberately delayed acquisition/
+return cycles. No GPU test opcode, timer delay or policy flag is exposed by the
+production executable. QMP checks actual scanout pixels; the delay is injected
+in a separately built native driver, not a Linux rendering simulation. This
+demonstrates software progress independence, not isolation from an adapter-wide
+hardware stall or a photon-latency guarantee. Run these boot tests sequentially:
+they share ISO/initrd staging.
+
+Validated in Nix on 2026-09-21: native Desktop dual-output pixel/input checks on
+one and four KVM CPUs, the four-CPU GTK frontend, the four-CPU delayed-head
+adversary, output-generation rebinding, and the multi-app DOOM regression.
+The existing presentation/loan proof gate still passes 200 diagnostics with no
+skips or assumptions; its hosted regressions pass 4,532,184 loan checks,
+6,084,701 parent checks and 14,926 output-lifetime checks. Those pure-core proofs
+do not prove this new native IRQ/MMIO adapter. Device-timeout/bad-fence/death
+injection remains follow-up coverage.

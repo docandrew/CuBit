@@ -52,10 +52,13 @@ No SPARK or other formal proof is claimed for this Rust boundary.
 
 The [portable SPARK allocator](../allocator/README.md) supplies slab and extent
 metadata through a small Ada ABI, linked statically with the Rust GlobalAlloc
-adapter. Its small/large arenas are acquired separately on first use through
-`sbrk`; heap payload no longer occupies BSS. Neither this
+adapter. Its small-object arena is backed incrementally in independent 1 MiB
+chunks through `sbrk`; the large-object arena is acquired separately on first
+use. Heap payload no longer occupies BSS. Neither this
 boundary nor its spinlock/payload copying is covered by the metadata proofs.
-The bootstrap still has no external Cargo dependencies or C allocator.
+The allocator/probe still have no external Cargo dependencies or C allocator.
+The shared font library now uses pinned pure-Rust rasterizer/parser dependencies;
+see [runtime typography](fonts/README.md).
 
 ## Native test
 
@@ -82,11 +85,11 @@ uses its current diagnostic path to make test results visible in the host log.
 
 ## Next steps
 
-1. Smaller incremental backing, additional arenas/reclamation, and a real
-   workload. Recoverable growth is implemented; native threading remains separate.
+1. Incremental large-object backing and additional arenas/reclamation.
+   Small-object backing is incremental; native threading remains separate.
 2. Async IPC/completions, ownership-aware grant wrappers, and typed log output.
-3. Evaluate pure-Rust font engines in the Linux preview, then native CuBit.
-   Keep parsing/rasterization out of hot repaint paths; use bounded caches.
+3. Extend the integrated TrueType renderer with per-output DPI and text shaping.
+   The shared native/hosted path uses immutable bounded glyph caches.
 4. A dedicated CuBit target and broader SDK/`std` support as the native APIs mature.
 
 ### Legacy diagnostic syscall audit (follow-up, not implemented)

@@ -2,6 +2,7 @@
 # Run with nix develop -c bash tests/ccl-file-dialog/run-preview.sh
 set -euo pipefail
 cd "$(dirname "$0")/../../kernel"
+make ui-fonts-host
 alr exec -- gprbuild -p -P ../userspace/ccl/ccl_ui_preview.gpr
 alr exec -- gprbuild -p -P ../tests/ccl-file-dialog/dialog_tests.gpr
 ../tests/ccl-file-dialog/build/main

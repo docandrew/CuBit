@@ -27,6 +27,7 @@ with CuBit.Log_Protocol;
 with CuBit.Authority; use CuBit.Authority;
 with CuBit.Memory_Grants;
 with CuBit.Filesystems;
+with Windowed_Reads;
 with CuBit.File_Access;
 with CuBit.Network_Authority;
 with CuBit.Launch_Policy; use CuBit.Launch_Policy;
@@ -92,6 +93,9 @@ procedure main is
 
    --  Grant to FS server covering elfBuf
    fsGrant : CuBit.Memory_Grants.Grant_Reference;
+   --  A failed retirement quarantines the entire buffer until restart.
+   --  Never overwrite pages which might still be lent to a failed peer.
+   fileBufferUsable : Boolean := True;
 
    --  Grant to config service covering elfBuf
    configGrantId : Unsigned_64 := 0;
@@ -198,19 +202,21 @@ procedure main is
    end clearAuthorityForPID;
 
    ---------------------------------------------------------------------------
-   --  ensureBuffer - grow elfBuf if needed for a file of the given size.
-   --  Extends via sbrk (contiguous from previous heap end), then re-grants
-   --  the enlarged buffer to the FS server.
+   --  Heap capacity and IPC transfer size are independent. Keep the small
+   --  permanent FS grant for paths/ACLs; lend file destinations in windows.
    ---------------------------------------------------------------------------
-   procedure ensureBuffer (needed : Unsigned_64) is
+   function ensureBuffer (needed : Unsigned_64) return Boolean is
       newPages      : Natural;
       extra         : Natural;
       ret           : Unsigned_64;
-      ok            : Boolean;
-      candidateGrant : CuBit.Memory_Grants.Grant_Reference;
    begin
       if needed <= Unsigned_64 (bufCapacity) then
-         return;
+         return True;
+      end if;
+
+      if needed > Unsigned_64 (Natural'Last / PAGE_SIZE * PAGE_SIZE) then
+         debugPrint ("procmgr: image exceeds addressable buffer size" & LF);
+         return False;
       end if;
 
       --  Round up to page-aligned size
@@ -227,48 +233,18 @@ procedure main is
                          Unsigned_64 (PAGE_SIZE));
          if ret = Unsigned_64'Last then
             debugPrint ("procmgr: sbrk grow failed" & LF);
-            return;
+            return False;
          end if;
 
-         --  Track the allocation separately from the range currently lent to
-         --  the filesystem. If a later grant operation fails, a retry must
-         --  not extend the heap a second time.
          bufPages := newPages;
       end if;
-
-      --  Establish the replacement before disturbing the working reference.
-      --  Both grants may temporarily name the same owner pages, but only the
-      --  reference carried by a request can be resolved by filesystem.svc.
-      CuBit.Memory_Grants.Create_Via_Capability (
-         slot      => CAP_SLOT_FS_LOCAL,
-         localAddr => elfBuf,
-         numPages  => newPages,
-         readWrite => True,
-         reference => candidateGrant,
-         success   => ok);
-
-      if not ok then
-         debugPrint ("procmgr: re-grant failed" & LF);
-         return;
-      end if;
-
-      CuBit.Memory_Grants.Revoke (fsGrant, ok);
-      if not ok then
-         debugPrint ("procmgr: old grant revocation failed" & LF);
-         CuBit.Memory_Grants.Revoke (candidateGrant, ok);
-         if not ok then
-            debugPrint ("procmgr: replacement grant cleanup failed" & LF);
-         end if;
-         return;
-      end if;
-
-      fsGrant     := candidateGrant;
       bufCapacity := newPages * PAGE_SIZE;
+      return True;
    end ensureBuffer;
 
    ---------------------------------------------------------------------------
    --  readFileFromFS - open and read an entire file via FS IPC
-   --  Reads into elfBuf. Uses ioBuf as the grant-backed I/O buffer.
+   --  Reads directly into elfBuf through page-aligned, bounded loans.
    --  Returns number of bytes read, or 0 on failure.
    ---------------------------------------------------------------------------
    function readFileFromFS (name : String) return Unsigned_64
@@ -277,9 +253,46 @@ procedure main is
       tag       : MessageTag;
       handle    : CuBit.Filesystems.File_Handle;
       fileSize  : Unsigned_64;
-      totalRead : Unsigned_64 := 0;
-      chunkRead : Unsigned_64;
+      Complete : Boolean := False;
+
+      procedure Transfer
+        (Offset : Natural; Count : Positive;
+         Transferred : out Natural; Success : out Boolean)
+      is
+         Loan : CuBit.Memory_Grants.Grant_Reference;
+         Ok : Boolean;
+      begin
+         Transferred := 0;
+         Success := False;
+         CuBit.Memory_Grants.Create_Via_Capability
+           (slot => CAP_SLOT_FS_LOCAL,
+            localAddr => elfBuf + Storage_Offset (Offset),
+            numPages => (Count + PAGE_SIZE - 1) / PAGE_SIZE,
+            readWrite => True, reference => Loan, success => Ok);
+         if not Ok then
+            debugPrint ("procmgr: file window grant failed" & LF);
+            return;
+         end if;
+         msg := CuBit.Filesystems.Read_Request (handle, Loan, Unsigned_64 (Count));
+         tag := capCall (CAP_SLOT_FS_LOCAL, msg);
+         CuBit.Memory_Grants.Revoke (Loan, Ok);
+         if not Ok or else not CuBit.Memory_Grants.Retirement_Confirmed (Loan) then
+            fileBufferUsable := False;
+            debugPrint ("procmgr: file window retirement failed; buffer quarantined" & LF);
+            return;
+         end if;
+         if tag.label /= REPLY_OK or else msg.words (0) /= Unsigned_64 (Count) then
+            debugPrint ("procmgr: incomplete file window, refusing image" & LF);
+            return;
+         end if;
+         Transferred := Count;
+         Success := True;
+      end Transfer;
+      package Reader is new Windowed_Reads (1024 * 1024, Transfer);
    begin
+      if not fileBufferUsable then
+         return 0;
+      end if;
       if name'Length = 0 or else
          name'Length > CuBit.Filesystems.MAXIMUM_PATH_BYTES
       then
@@ -310,40 +323,17 @@ procedure main is
       handle   := CuBit.Filesystems.File_Handle (msg.words (0));
       fileSize := msg.words (1);
 
-      --  Grow buffer if file is larger than current capacity
-      if fileSize > 0 then
-         ensureBuffer (fileSize);
+      if fileSize > 0 and then ensureBuffer (fileSize) then
+         --  The 1 MiB windows are page multiples; only the last is short.
+         --  A short backend read is a failure, never a partially loaded ELF.
+         Complete := Reader.Read_All (Natural (fileSize));
       end if;
-
-      --  Read entire file via grant (zero-copy). Loop handles partial reads.
-      loop
-         declare
-            remaining : constant Unsigned_64 :=
-               Unsigned_64 (bufCapacity) - totalRead;
-         begin
-            exit when remaining = 0;
-
-            msg := CuBit.Filesystems.Read_Request
-              (handle, fsGrant, remaining);
-            tag := capCall (CAP_SLOT_FS_LOCAL, msg);
-         end;
-
-         if tag.label /= REPLY_OK then
-            debugPrint ("procmgr: OP_READ failed" & LF);
-            exit;
-         end if;
-
-         chunkRead := msg.words (0);
-         exit when chunkRead = 0;
-
-         totalRead := totalRead + chunkRead;
-      end loop;
 
       --  Close file handle
       msg := CuBit.Filesystems.Close_Request (handle);
       tag := capCall (CAP_SLOT_FS_LOCAL, msg);
 
-      return totalRead;
+      return (if Complete and then tag.label = REPLY_OK then fileSize else 0);
    end readFileFromFS;
 
    ---------------------------------------------------------------------------

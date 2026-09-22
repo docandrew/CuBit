@@ -11,6 +11,7 @@ import sys
 import struct
 import wave
 from pathlib import Path
+from graphics import graphics_report
 
 
 def fields(line):
@@ -60,6 +61,7 @@ def serial_report(text, load_workers=1):
                            for r in rates))
     input_valid = valid_input_run(text, rate, timings, inputs) and "CLOCK: FAIL" not in text
     return dict(ticks_per_guest_ms=rate, timings=timings, audio=audio, inputs=inputs,
+                graphics=graphics_report(text),
                 reference_clock_valid=reference_valid,
                 execution_accounting=accounting,
                 execution_accounting_valid=valid_accounting(accounting),
@@ -250,6 +252,7 @@ def main():
     parser.add_argument("--require-load", action="store_true")
     parser.add_argument("--load-workers", type=int, default=1, choices=range(1, 5))
     parser.add_argument("--require-input-integrity", action="store_true")
+    parser.add_argument("--require-graphics", action="store_true")
     parser.add_argument("--require-reference-clock", action="store_true")
     parser.add_argument("--require-execution-accounting", action="store_true")
     parser.add_argument("--require-compute-control", action="store_true")
@@ -265,6 +268,8 @@ def main():
         sys.exit("benchmark load did not cover measurement; not a valid loaded result")
     if args.require_input_integrity and not result["input_integrity_valid"]:
         sys.exit("input benchmark incomplete or invalid")
+    if args.require_graphics and not (result["graphics"] or {}).get("valid"):
+        sys.exit("graphics counters missing, malformed, reset or overflowed")
     if args.require_reference_clock and not result["reference_clock_valid"]:
         sys.exit("guest calibration does not match the independent PIT reference clock")
     if args.require_execution_accounting and not result["execution_accounting_valid"]:

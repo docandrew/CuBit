@@ -8,17 +8,31 @@
 --  This is a real modern virtio-pci control-queue path: devmgr discovers the
 --  PCI transport capabilities, maps the common/notify/device BAR, allocates
 --  DMA, then this driver creates a 2D resource, attaches backing memory,
---  assigns scanout 0, transfers pixels to the host, and flushes the resource.
+--  assigns bounded per-output scanout resources, transfers pixels to the host,
+--  and flushes the resources. The Desktop, not this driver, chooses a primary.
 ------------------------------------------------------------------------------
+pragma Ada_2022;
 with Interfaces; use Interfaces;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
+with System.Machine_Code;
 
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
+with CuBit.Output_Discovery;
+with CuBit.Desktop_Messages;
+with CuBit.Graphics_Metrics;
+with CuBit.Graphics_Metrics_IO;
+with GPU_Test_Policy;
 
 procedure main is
    use ASCII;
+   package OD renames CuBit.Output_Discovery;
+   scanouts : OD.Catalog;
+   package GM renames CuBit.Graphics_Metrics;
+   uploads, legacyCopies : GM.Counter;
+   uploadReporter, legacyReporter : CuBit.Graphics_Metrics_IO.Reporter;
+   metricsAt : Unsigned_64 := 0;
 
    BAR_VIRT_BASE : constant Unsigned_64 := 16#0000_6000_4000_0000#;
    DMA_BASE      : constant System.Address :=
@@ -33,11 +47,14 @@ procedure main is
    CMD_OFF   : constant Storage_Offset := 16#3000#;
    RESP_OFF  : constant Storage_Offset := 16#4000#;
    FB0_OFF   : constant Storage_Offset := 16#100000#;
-   FB1_OFF   : constant Storage_Offset := 16#400000#;
+   DMA_BANK_BYTES : constant Storage_Offset := 16#800000#;
 
    FB_W : constant Unsigned_32 := 1024;
    FB_H : constant Unsigned_32 := 768;
    FB_BYTES : constant Unsigned_32 := FB_W * FB_H * 4;
+   pragma Compile_Time_Error
+     (FB0_OFF + 2 * Storage_Offset (FB_BYTES) > DMA_BANK_BYTES,
+      "GPU double buffers exceed their owned DMA bank");
 
    VIRTIO_STATUS_ACKNOWLEDGE : constant Unsigned_8 := 1;
    VIRTIO_STATUS_DRIVER      : constant Unsigned_8 := 2;
@@ -71,14 +88,16 @@ procedure main is
 
    RESP_OK_NODATA       : constant Unsigned_32 := 16#1100#;
    RESP_OK_DISPLAY_INFO : constant Unsigned_32 := 16#1101#;
+   --  GET_DISPLAY_INFO has sixteen fixed-size entries, independent of how
+   --  many outputs are currently connected. Discovery is not modesetting.
+   type Scanout_Number is range 0 .. 15;
+   DISPLAY_ENTRY_BYTES : constant Storage_Offset := 24;
+   DISPLAY_HEADER_BYTES : constant Storage_Offset := 24;
 
    OP_GPU_GET_INFO      : constant Unsigned_32 := 16#0A00#;
-   OP_GPU_ATTACH_BUFFER : constant Unsigned_32 := 16#0A01#;
-   OP_GPU_PRESENT_RECT  : constant Unsigned_32 := 16#0A02#;
    OP_GPU_CLEAR         : constant Unsigned_32 := 16#0A03#;
    OP_GPU_GET_STATUS    : constant Unsigned_32 := 16#0A04#;
    OP_GPU_MAP_FRAMEBUFFER : constant Unsigned_32 := 16#0A05#;
-   OP_GPU_FLUSH_RECT    : constant Unsigned_32 := 16#0A06#;
    OP_GPU_PRESENT_BUFFER : constant Unsigned_32 := 16#0A07#;
 
    GPU_OK              : constant Unsigned_64 := 0;
@@ -94,8 +113,6 @@ procedure main is
    --  text path. Keep startup/error logging live and leave this off by default.
    TRACE_COMMANDS : constant Boolean := False;
 
-   GRANT_REGION_BASE : constant Unsigned_64 := 16#0000_4000_0000_0000#;
-   GRANT_SLOT_SIZE   : constant Unsigned_64 := 4096 * 4096;
 
    type VringDesc is record
       addr  : Unsigned_64;
@@ -150,6 +167,7 @@ procedure main is
    used  : VringUsed with Import, Address => DMA_BASE + USED_OFF, Volatile;
 
    dmaPhys : Unsigned_64 := 0;
+   secondDmaPhys : Unsigned_64 := 0;
    barPhys : Unsigned_64 := 0;
    commonOff : Unsigned_64 := 0;
    notifyOff : Unsigned_64 := 0;
@@ -158,28 +176,45 @@ procedure main is
    gpuPrimary : Boolean := False;
    lastUsedIdx : Unsigned_16 := 0;
    nextDesc : Natural := 0;
-   srcAddr : System.Address := System.Null_Address;
-   srcWidth : Natural := 0;
-   srcHeight : Natural := 0;
-   srcPitch : Natural := 0;
-   activeBuffer : Natural range 0 .. 1 := 0;
-   flipAnnounced : Boolean := False;
+   subtype Head_Index is Natural range 0 .. 1;
+   selectedHead : Head_Index := 0;
+   readyHeads : array (Head_Index) of Boolean := [others => False];
+   flipsAnnounced : Boolean := False;
+
+   type Command_Phase is
+     (Idle, Transfer, Awaiting_Scanout, Set_Scanout, Flush, Quarantined);
+   subtype Buffer_Index is Natural range 0 .. 1;
+   type Pending_Presentation is record
+      Phase : Command_Phase := Idle;
+      Buffer : Buffer_Index := 0;
+      X, Y, W, H : Natural := 0;
+      Clearing : Boolean := False;
+      Label : Unsigned_32 := OP_GPU_PRESENT_BUFFER;
+      Fence : Unsigned_64 := 0;
+      Deadline : Unsigned_64 := 0;
+   end record;
+   Pending : array (Head_Index) of Pending_Presentation;
+   Fence_Sequence : Unsigned_64 := 0;
+   Command_Timeout_Ms : constant Unsigned_64 := 500;
+   Command_Stride : constant Storage_Offset := 512;
+   function Command_Offset (Head : Head_Index) return Storage_Offset is
+     (CMD_OFF + Storage_Offset (Head) * Command_Stride);
+   function Response_Offset (Head : Head_Index) return Storage_Offset is
+     (RESP_OFF + Storage_Offset (Head) * Command_Stride);
+   function Reply_Slot (Head : Head_Index) return CapabilitySlot is
+     (CapabilitySlot (32 + Head));
 
    function framebufferOffset
      (index : Natural) return Storage_Offset is
-     (if index = 0 then FB0_OFF else FB1_OFF);
+     (Storage_Offset (selectedHead) * DMA_BANK_BYTES + FB0_OFF +
+        Storage_Offset (index) * Storage_Offset (FB_BYTES));
+
+   function framebufferPhysical (index : Natural) return Unsigned_64 is
+     ((if selectedHead = 0 then dmaPhys else secondDmaPhys) +
+        Unsigned_64 (FB0_OFF) + Unsigned_64 (index) * Unsigned_64 (FB_BYTES));
 
    function resourceId (index : Natural) return Unsigned_32 is
-     (if index = 0 then 1 else 2);
-
-   function memcpy
-      (dest : System.Address;
-       src  : System.Address;
-       len  : Storage_Count)
-      return System.Address with
-      Import => True,
-      Convention => C,
-      External_Name => "memcpy";
+     (Unsigned_32 (1 + selectedHead * 2 + index));
 
    procedure printDec (val : Unsigned_64) is
       buf : String (1 .. 20);
@@ -205,7 +240,7 @@ procedure main is
       ignore := capSend (15,
          (tag      => (label => label, length => 0, flags => 0, reserved => 0),
           authorityTag => 0,
-          words    => (others => 0)));
+          words    => [others => 0]));
    end signalReady;
 
    procedure fail (why : String) is
@@ -317,15 +352,10 @@ procedure main is
 
    function get32 (base : Storage_Offset; off : Storage_Offset)
                    return Unsigned_32 is
-      v : Unsigned_32 with Import, Address => DMA_BASE + base + off;
+      v : Unsigned_32 with Import, Volatile, Address => DMA_BASE + base + off;
    begin
       return v;
    end get32;
-
-   function toAddr (x : Unsigned_64) return System.Address is
-   begin
-      return To_Address (Integer_Address (x));
-   end toAddr;
 
    procedure beginCmd (cmd : Unsigned_32) is
    begin
@@ -525,9 +555,11 @@ procedure main is
 
    procedure initGpu is
       ok : Boolean;
-      width : Unsigned_32;
-      height : Unsigned_32;
-      enabled : Unsigned_32;
+      function Decimal (Value : Unsigned_32) return String is
+         Text : constant String := Value'Image;
+      begin
+         return Text (Text'First + 1 .. Text'Last);
+      end Decimal;
    begin
       trace ("cmd GET_DISPLAY_INFO");
       beginCmd (CMD_GET_DISPLAY_INFO);
@@ -537,229 +569,149 @@ procedure main is
          return;
       end if;
 
-      width := get32 (RESP_OFF, 24 + 8);
-      height := get32 (RESP_OFF, 24 + 12);
-      enabled := get32 (RESP_OFF, 24 + 16);
-      debugPrint ("virtio-gpu: scanout0 ");
-      printDec (Unsigned_64 (width));
-      debugPrint ("x");
-      printDec (Unsigned_64 (height));
-      debugPrint (" enabled=");
-      printDec (Unsigned_64 (enabled));
-      debugPrint ("" & LF);
-
-      trace ("paint test framebuffer");
-      paintFramebuffer (0);
-      paintFramebuffer (1);
-      trace ("test framebuffer painted");
-
-      --  Keep two complete 2D resources. display.svc updates the inactive
-      --  backing and asks us to switch scanout only after the transfer has
-      --  completed, so the host never scans a resource while it is changing.
-      for index in 0 .. 1 loop
-         trace ("cmd RESOURCE_CREATE_2D");
-         beginCmd (CMD_RESOURCE_CREATE_2D);
-         put32 (CMD_OFF, 24, resourceId (index));
-         put32 (CMD_OFF, 28, FORMAT_B8G8R8X8_UNORM);
-         put32 (CMD_OFF, 32, FB_W);
-         put32 (CMD_OFF, 36, FB_H);
-         ok := submitCmd (40, 24, RESP_OK_NODATA);
-         if not ok then
-            fail ("RESOURCE_CREATE_2D failed");
-            return;
-         end if;
-
-         trace ("cmd RESOURCE_ATTACH_BACKING");
-         beginCmd (CMD_RESOURCE_ATTACH);
-         put32 (CMD_OFF, 24, resourceId (index));
-         put32 (CMD_OFF, 28, 1);
-         put64
-           (CMD_OFF, 32,
-            dmaPhys + Unsigned_64 (framebufferOffset (index)));
-         put32 (CMD_OFF, 40, FB_BYTES);
-         put32 (CMD_OFF, 44, 0);
-         ok := submitCmd (48, 24, RESP_OK_NODATA);
-         if not ok then
-            fail ("RESOURCE_ATTACH_BACKING failed");
-            return;
-         end if;
-
-         trace ("cmd TRANSFER_TO_HOST_2D");
-         beginCmd (CMD_TRANSFER_TO_HOST_2D);
-         put32 (CMD_OFF, 24, 0);
-         put32 (CMD_OFF, 28, 0);
-         put32 (CMD_OFF, 32, FB_W);
-         put32 (CMD_OFF, 36, FB_H);
-         put64 (CMD_OFF, 40, 0);
-         put32 (CMD_OFF, 48, resourceId (index));
-         put32 (CMD_OFF, 52, 0);
-         ok := submitCmd (56, 24, RESP_OK_NODATA);
-         if not ok then
-            fail ("TRANSFER_TO_HOST_2D failed");
-            return;
-         end if;
+      for Index in Scanout_Number loop
+         declare
+            Offset : constant Storage_Offset :=
+              DISPLAY_HEADER_BYTES + Storage_Offset (Index) * DISPLAY_ENTRY_BYTES;
+            Width : constant Unsigned_32 := get32 (RESP_OFF, Offset + 8);
+            Height : constant Unsigned_32 := get32 (RESP_OFF, Offset + 12);
+            Enabled : constant Unsigned_32 := get32 (RESP_OFF, Offset + 16);
+         begin
+            if Index = 0 or else Enabled /= 0 then
+               debugPrint ("virtio-gpu: scanout" & Decimal (Unsigned_32 (Index)) &
+                 " " & Decimal (Width) & "x" & Decimal (Height) &
+                 " enabled=" & Decimal (Enabled) & LF);
+            end if;
+            if Enabled /= 0 then
+               if Width not in 1 .. Unsigned_32 (OD.Extent'Last) or else
+                  Height not in 1 .. Unsigned_32 (OD.Extent'Last)
+               then
+                  fail ("invalid scanout dimensions");
+                  return;
+               end if;
+               scanouts.Count := scanouts.Count + 1;
+               scanouts.Items (scanouts.Count) :=
+                 (OD.Detected_Only, OD.Virtio_GPU,
+                  OD.Native_Output_Number (Index),
+                  OD.Extent (Width), OD.Extent (Height));
+            end if;
+         end;
       end loop;
 
-      trace ("cmd SET_SCANOUT");
-      beginCmd (CMD_SET_SCANOUT);
-      put32 (CMD_OFF, 24, 0);
-      put32 (CMD_OFF, 28, 0);
-      put32 (CMD_OFF, 32, FB_W);
-      put32 (CMD_OFF, 36, FB_H);
-      put32 (CMD_OFF, 40, 0);
-      put32 (CMD_OFF, 44, resourceId (0));
-      ok := submitCmd (48, 24, RESP_OK_NODATA);
-      if not ok then
-         fail ("SET_SCANOUT failed");
-         return;
-      end if;
+      for Head in Head_Index loop
+         selectedHead := Head;
+         -- GET_DISPLAY_INFO advertises the host's preferred viewport, not a
+         -- required resource size. In particular GTK can replace the command
+         -- line hint with its initial 640x480 widget size. Activate connected
+         -- supported heads with our bounded 1024x768 resources independently
+         -- of that hint; retain both advertised and active sizes in discovery.
+         -- Never size DMA allocations or copy spans from host preferences.
+         if Head = 0 or else (secondDmaPhys /= 0 and then
+           (for some Index in 1 .. scanouts.Count =>
+              scanouts.Items (Index).Native_Number = Head))
+         then
+            trace ("paint test framebuffer");
+            paintFramebuffer (0);
+            paintFramebuffer (1);
+            trace ("test framebuffer painted");
 
-      trace ("cmd RESOURCE_FLUSH");
-      beginCmd (CMD_RESOURCE_FLUSH);
-      put32 (CMD_OFF, 24, 0);
-      put32 (CMD_OFF, 28, 0);
-      put32 (CMD_OFF, 32, FB_W);
-      put32 (CMD_OFF, 36, FB_H);
-      put32 (CMD_OFF, 40, resourceId (0));
-      put32 (CMD_OFF, 44, 0);
-      ok := submitCmd (48, 24, RESP_OK_NODATA);
-      if not ok then
-         fail ("RESOURCE_FLUSH failed");
-         return;
-      end if;
+            --  Keep two complete 2D resources. display.svc updates the inactive
+            --  backing and asks us to switch scanout only after the transfer has
+            --  completed, so the host never scans a resource while it is changing.
+            for index in 0 .. 1 loop
+               trace ("cmd RESOURCE_CREATE_2D");
+               beginCmd (CMD_RESOURCE_CREATE_2D);
+               put32 (CMD_OFF, 24, resourceId (index));
+               put32 (CMD_OFF, 28, FORMAT_B8G8R8X8_UNORM);
+               put32 (CMD_OFF, 32, FB_W);
+               put32 (CMD_OFF, 36, FB_H);
+               ok := submitCmd (40, 24, RESP_OK_NODATA);
+               if not ok then
+                  fail ("RESOURCE_CREATE_2D failed");
+                  return;
+               end if;
 
-      debugPrint ("virtio-gpu: scanout test frame presented" & LF);
-      activeBuffer := 0;
+               trace ("cmd RESOURCE_ATTACH_BACKING");
+               beginCmd (CMD_RESOURCE_ATTACH);
+               put32 (CMD_OFF, 24, resourceId (index));
+               put32 (CMD_OFF, 28, 1);
+               put64
+                 (CMD_OFF, 32,
+                  framebufferPhysical (index));
+               put32 (CMD_OFF, 40, FB_BYTES);
+               put32 (CMD_OFF, 44, 0);
+               ok := submitCmd (48, 24, RESP_OK_NODATA);
+               if not ok then
+                  fail ("RESOURCE_ATTACH_BACKING failed");
+                  return;
+               end if;
+
+               trace ("cmd TRANSFER_TO_HOST_2D");
+               beginCmd (CMD_TRANSFER_TO_HOST_2D);
+               put32 (CMD_OFF, 24, 0);
+               put32 (CMD_OFF, 28, 0);
+               put32 (CMD_OFF, 32, FB_W);
+               put32 (CMD_OFF, 36, FB_H);
+               put64 (CMD_OFF, 40, 0);
+               put32 (CMD_OFF, 48, resourceId (index));
+               put32 (CMD_OFF, 52, 0);
+               GM.Add (uploads, Unsigned_64 (FB_BYTES));
+               ok := submitCmd (56, 24, RESP_OK_NODATA);
+               if not ok then
+                  fail ("TRANSFER_TO_HOST_2D failed");
+                  return;
+               end if;
+            end loop;
+
+            trace ("cmd SET_SCANOUT");
+            beginCmd (CMD_SET_SCANOUT);
+            put32 (CMD_OFF, 24, 0);
+            put32 (CMD_OFF, 28, 0);
+            put32 (CMD_OFF, 32, FB_W);
+            put32 (CMD_OFF, 36, FB_H);
+            put32 (CMD_OFF, 40, Unsigned_32 (selectedHead));
+            put32 (CMD_OFF, 44, resourceId (0));
+            ok := submitCmd (48, 24, RESP_OK_NODATA);
+            if not ok then
+               fail ("SET_SCANOUT failed");
+               return;
+            end if;
+
+            trace ("cmd RESOURCE_FLUSH");
+            beginCmd (CMD_RESOURCE_FLUSH);
+            put32 (CMD_OFF, 24, 0);
+            put32 (CMD_OFF, 28, 0);
+            put32 (CMD_OFF, 32, FB_W);
+            put32 (CMD_OFF, 36, FB_H);
+            put32 (CMD_OFF, 40, resourceId (0));
+            put32 (CMD_OFF, 44, 0);
+            ok := submitCmd (48, 24, RESP_OK_NODATA);
+            if not ok then
+               fail ("RESOURCE_FLUSH failed");
+               return;
+            end if;
+
+            debugPrint ("virtio-gpu: scanout test frame presented" & LF);
+            for Index in 1 .. scanouts.Count loop
+               if scanouts.Items (Index).Native_Number =
+                 OD.Native_Output_Number (selectedHead) then
+                  declare
+                     Detected : constant OD.Description := scanouts.Items (Index);
+                  begin
+                     scanouts.Items (Index) :=
+                       (OD.Backend_Ready, OD.Virtio_GPU,
+                        OD.Native_Output_Number (selectedHead),
+                        Detected.Advertised_Width, Detected.Advertised_Height,
+                        OD.Extent (FB_W), OD.Extent (FB_H));
+                  end;
+               end if;
+            end loop;
+            readyHeads (Head) := True;
+         end if;
+      end loop;
+      selectedHead := 0;
    end initGpu;
 
-   procedure copySourceRect
-     (bufferIndex : Natural;
-      x, y, w, h : Natural)
-   is
-      maxX : Natural := x + w;
-      maxY : Natural := y + h;
-      ignore : System.Address;
-   begin
-      if srcAddr = System.Null_Address then
-         return;
-      end if;
-      if w = 0 or else h = 0 or else x >= Natural (FB_W) or else
-         y >= Natural (FB_H)
-      then
-         return;
-      end if;
-
-      if maxX > Natural (FB_W) then
-         maxX := Natural (FB_W);
-      end if;
-      if maxY > Natural (FB_H) then
-         maxY := Natural (FB_H);
-      end if;
-      if maxX > srcWidth then
-         maxX := srcWidth;
-      end if;
-      if maxY > srcHeight then
-         maxY := srcHeight;
-      end if;
-      if x >= maxX or else y >= maxY then
-         return;
-      end if;
-
-      if x = 0 and then maxX = Natural (FB_W) and then
-         srcPitch = Natural (FB_W) * 4
-      then
-         ignore := memcpy
-           (DMA_BASE + framebufferOffset (bufferIndex) +
-              Storage_Offset (y * Natural (FB_W) * 4),
-            srcAddr + Storage_Offset (y * srcPitch),
-            Storage_Count ((maxY - y) * srcPitch));
-         return;
-      end if;
-
-      for row in y .. maxY - 1 loop
-         ignore := memcpy
-           (DMA_BASE + framebufferOffset (bufferIndex) +
-              Storage_Offset ((row * Natural (FB_W) + x) * 4),
-            srcAddr + Storage_Offset (row * srcPitch + x * 4),
-            Storage_Count ((maxX - x) * 4));
-      end loop;
-   end copySourceRect;
-
-   function transferAndFlush
-     (bufferIndex : Natural;
-      x, y, w, h : Natural;
-      switchScanout : Boolean := False) return Boolean
-   is
-      maxX : Natural := x + w;
-      maxY : Natural := y + h;
-      backingOffset : Unsigned_64;
-      ok : Boolean;
-   begin
-      if w = 0 or else h = 0 or else x >= Natural (FB_W) or else
-         y >= Natural (FB_H)
-      then
-         return True;
-      end if;
-
-      if maxX > Natural (FB_W) then
-         maxX := Natural (FB_W);
-      end if;
-      if maxY > Natural (FB_H) then
-         maxY := Natural (FB_H);
-      end if;
-
-      backingOffset :=
-        Unsigned_64 ((y * Natural (FB_W) + x) * 4);
-
-      beginCmd (CMD_TRANSFER_TO_HOST_2D);
-      put32 (CMD_OFF, 24, Unsigned_32 (x));
-      put32 (CMD_OFF, 28, Unsigned_32 (y));
-      put32 (CMD_OFF, 32, Unsigned_32 (maxX - x));
-      put32 (CMD_OFF, 36, Unsigned_32 (maxY - y));
-      --  The transfer rectangle is in resource coordinates, and the backing
-      --  offset must point at the same top-left pixel inside the linear host
-      --  backing. Using zero here for partial damage copies the beginning of
-      --  the framebuffer into arbitrary screen rectangles, which looks like
-      --  cursor/window movement erasing or smearing unrelated pixels.
-      put64 (CMD_OFF, 40, backingOffset);
-      put32 (CMD_OFF, 48, resourceId (bufferIndex));
-      put32 (CMD_OFF, 52, 0);
-      ok := submitCmd (56, 24, RESP_OK_NODATA);
-      if not ok then
-         return False;
-      end if;
-
-      if switchScanout then
-         beginCmd (CMD_SET_SCANOUT);
-         put32 (CMD_OFF, 24, 0);
-         put32 (CMD_OFF, 28, 0);
-         put32 (CMD_OFF, 32, FB_W);
-         put32 (CMD_OFF, 36, FB_H);
-         put32 (CMD_OFF, 40, 0);
-         put32 (CMD_OFF, 44, resourceId (bufferIndex));
-         ok := submitCmd (48, 24, RESP_OK_NODATA);
-         if not ok then
-            return False;
-         end if;
-      end if;
-
-      beginCmd (CMD_RESOURCE_FLUSH);
-      put32 (CMD_OFF, 24, Unsigned_32 (x));
-      put32 (CMD_OFF, 28, Unsigned_32 (y));
-      put32 (CMD_OFF, 32, Unsigned_32 (maxX - x));
-      put32 (CMD_OFF, 36, Unsigned_32 (maxY - y));
-      put32 (CMD_OFF, 40, resourceId (bufferIndex));
-      put32 (CMD_OFF, 44, 0);
-      ok := submitCmd (48, 24, RESP_OK_NODATA);
-      if ok and then switchScanout then
-         activeBuffer := bufferIndex;
-         if not flipAnnounced then
-            debugPrint ("virtio-gpu: page flipping active" & LF);
-            flipAnnounced := True;
-         end if;
-      end if;
-      return ok;
-   end transferAndFlush;
 
    procedure clearFb (bufferIndex : Natural; color : Unsigned_32) is
       pixels : array (0 .. Natural (FB_W * FB_H) - 1) of Unsigned_32
@@ -770,11 +722,209 @@ procedure main is
       end loop;
    end clearFb;
 
-   procedure handleRequest (from : ProcessID; request : Message) is
+   procedure finishPresentation (Head : Head_Index; Success : Boolean) is
+      Item : Pending_Presentation renames Pending (Head);
+      Response : constant Message :=
+        (tag => (Item.Label, 1, 0, 0), authorityTag => 0,
+         words => [(if Success then GPU_OK else GPU_ERR_BAD_STATE), 0, 0, 0]);
+      Ignored : Unsigned_64;
+   begin
+      if Success then
+         if not flipsAnnounced and then not Item.Clearing then
+            debugPrint ("virtio-gpu: page flipping active" & LF);
+            flipsAnnounced := True;
+         end if;
+      end if;
+      if Item.Phase in Transfer | Awaiting_Scanout | Set_Scanout | Flush then
+         Ignored := replyCap (Reply_Slot (Head), Response);
+      end if;
+      Item.Phase := (if Success then Idle else Quarantined);
+      --  Failure is permanent until a separately designed adapter reset.
+      --  In particular a timeout does NOT return DMA ownership or authorize
+      --  rewriting the descriptor, response buffer or scanout backing.
+   end finishPresentation;
+
+   procedure issueCommand (Head : Head_Index) is
+      Item : Pending_Presentation renames Pending (Head);
+      Cmd : constant Storage_Offset := Command_Offset (Head);
+      Resp : constant Storage_Offset := Response_Offset (Head);
+      ID : constant Natural := Head * 2;
+      Resource : constant Unsigned_32 := Unsigned_32 (1 + Head * 2 + Item.Buffer);
+      Length : Unsigned_32 := 48;
+      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+   begin
+      if Fence_Sequence = Unsigned_64'Last or else
+        Now > Unsigned_64'Last - Command_Timeout_Ms
+      then
+         finishPresentation (Head, False);
+         return;
+      end if;
+      for Offset in Storage_Offset range 0 .. Command_Stride - 1 loop
+         declare
+            C : Unsigned_8 with Import, Address => DMA_BASE + Cmd + Offset;
+            R : Unsigned_8 with Import, Address => DMA_BASE + Resp + Offset;
+         begin
+            C := 0;
+            R := 0;
+         end;
+      end loop;
+      Fence_Sequence := Fence_Sequence + 1;
+      Item.Fence := Fence_Sequence;
+      Item.Deadline := Now + Command_Timeout_Ms;
+      --  Fence completion is the backend boundary, not a photon timestamp.
+      put32 (Cmd, 4, 1); -- VIRTIO_GPU_FLAG_FENCE
+      put64 (Cmd, 8, Item.Fence);
+      case Item.Phase is
+         when Transfer | Flush =>
+            put32 (Cmd, 0, (if Item.Phase = Transfer then
+                            CMD_TRANSFER_TO_HOST_2D else CMD_RESOURCE_FLUSH));
+            put32 (Cmd, 24, Unsigned_32 (Item.X));
+            put32 (Cmd, 28, Unsigned_32 (Item.Y));
+            put32 (Cmd, 32, Unsigned_32 (Item.W));
+            put32 (Cmd, 36, Unsigned_32 (Item.H));
+            if Item.Phase = Transfer then
+               put64 (Cmd, 40, Unsigned_64 ((Item.Y * Natural (FB_W) + Item.X) * 4));
+               put32 (Cmd, 48, Resource);
+               Length := 56;
+               GM.Add (uploads, Unsigned_64 (Item.W) * Unsigned_64 (Item.H) * 4);
+            else
+               put32 (Cmd, 40, Resource);
+            end if;
+         when Set_Scanout =>
+            put32 (Cmd, 0, CMD_SET_SCANOUT);
+            put32 (Cmd, 32, FB_W);
+            put32 (Cmd, 36, FB_H);
+            put32 (Cmd, 40, Unsigned_32 (Head));
+            put32 (Cmd, 44, Resource);
+         when Idle | Awaiting_Scanout | Quarantined =>
+            return;
+      end case;
+      descs (ID) :=
+        (dmaPhys + Unsigned_64 (Cmd), Length, VRING_DESC_F_NEXT, Unsigned_16 (ID + 1));
+      descs (ID + 1) :=
+        (dmaPhys + Unsigned_64 (Resp), 24, VRING_DESC_F_WRITE, 0);
+      avail.ring (Natural (avail.idx mod Unsigned_16 (QUEUE_SIZE))) := Unsigned_16 (ID);
+      --  x86 coherent DMA: publish all command/pixel/descriptor writes before
+      --  the producer index, and the index before notifying the device.
+      System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
+      avail.idx := avail.idx + 1;
+      System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
+      notifyQueue;
+   end issueCommand;
+
+   procedure collectCommands is
+      Entry_Value : VringUsedElem;
+      Head : Head_Index;
+      Resp : Storage_Offset;
+      Fence : Unsigned_64;
+      Now : Unsigned_64;
+   begin
+      if used.idx - lastUsedIdx > Unsigned_16 (QUEUE_SIZE) then
+         for H in Head_Index loop finishPresentation (H, False); end loop;
+         lastUsedIdx := used.idx;
+         debugPrint ("virtio-gpu: invalid used ring distance" & LF);
+         return;
+      end if;
+      --  Bounded even if the peer produces completions continuously.
+      for Count in 1 .. QUEUE_SIZE loop
+         exit when used.idx = lastUsedIdx;
+         System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
+         Entry_Value := used.ring (Natural (lastUsedIdx mod Unsigned_16 (QUEUE_SIZE)));
+         lastUsedIdx := lastUsedIdx + 1;
+         if Entry_Value.id /= 0 and then Entry_Value.id /= 2 then
+            for H in Head_Index loop finishPresentation (H, False); end loop;
+            debugPrint ("virtio-gpu: invalid used descriptor" & LF);
+            return;
+         end if;
+         Head := Natural (Entry_Value.id / 2);
+         if Pending (Head).Phase /= Quarantined then
+            Resp := Response_Offset (Head);
+            Fence := Unsigned_64 (get32 (Resp, 8)) or
+              Shift_Left (Unsigned_64 (get32 (Resp, 12)), 32);
+            if Pending (Head).Phase in Idle | Awaiting_Scanout or else Entry_Value.len /= 24 or else
+              get32 (Resp, 0) /= RESP_OK_NODATA or else
+              get32 (Resp, 4) /= 1 or else Fence /= Pending (Head).Fence
+            then
+               finishPresentation (Head, False);
+               debugPrint ("virtio-gpu: invalid fenced completion" & LF);
+            else
+               case Pending (Head).Phase is
+                  when Transfer =>
+                     if Head = 0 and then not Pending (Head).Clearing and then
+                       GPU_Test_Policy.Delay_First_Output_Ms /= 0
+                     then
+                        Pending (Head).Phase := Awaiting_Scanout;
+                        Pending (Head).Deadline := syscall (SYSCALL_GETTIME) +
+                          GPU_Test_Policy.Delay_First_Output_Ms;
+                     else
+                        Pending (Head).Phase :=
+                          (if Pending (Head).Clearing and Pending (Head).Buffer = 1
+                           then Flush else Set_Scanout);
+                        issueCommand (Head);
+                     end if;
+                  when Set_Scanout =>
+                     Pending (Head).Phase := Flush;
+                     issueCommand (Head);
+                  when Flush =>
+                     if Pending (Head).Clearing and Pending (Head).Buffer = 1 then
+                        Pending (Head).Buffer := 0;
+                        Pending (Head).Phase := Transfer;
+                        issueCommand (Head);
+                     else
+                        finishPresentation (Head, True);
+                     end if;
+                  when Idle | Awaiting_Scanout | Quarantined => null;
+               end case;
+            end if;
+         end if;
+      end loop;
+      Now := syscall (SYSCALL_GETTIME);
+      for H in Head_Index loop
+         if Pending (H).Phase = Awaiting_Scanout and then Now >= Pending (H).Deadline then
+            Pending (H).Phase := Set_Scanout;
+            issueCommand (H);
+         elsif Pending (H).Phase in Transfer | Set_Scanout | Flush and then
+           Now >= Pending (H).Deadline
+         then
+            finishPresentation (H, False);
+            debugPrint ("virtio-gpu: asynchronous command timeout" & LF);
+         end if;
+      end loop;
+   end collectCommands;
+
+   procedure handleRequest (from : ProcessID; incoming : Message) is
+      request : Message := incoming;
       replyMsg : Message := NULL_MESSAGE;
       ignore : Unsigned_64;
-      ok : Boolean;
    begin
+      if request.tag.label = OD.Code (OD.GPU_Backend, OD.Get_Catalog) or else
+         request.tag.label = OD.Code (OD.GPU_Backend, OD.Get_Description)
+      then
+         replyMsg := CuBit.Desktop_Messages.From_Wire (OD.Respond
+           (OD.GPU_Backend, scanouts, 1,
+            CuBit.Desktop_Messages.To_Wire (request)));
+         ignore := reply (from, replyMsg);
+         return;
+      end if;
+      if request.tag.length /= 4 or else request.tag.flags /= 0 or else
+        request.tag.reserved > Unsigned_16 (Head_Index'Last) or else
+        not readyHeads (Natural (request.tag.reserved))
+      then
+         replyMsg.tag := (request.tag.label, 1, 0, 0);
+         replyMsg.words (0) := GPU_ERR_UNSUPPORTED;
+         ignore := reply (from, replyMsg);
+         return;
+      end if;
+      selectedHead := Natural (request.tag.reserved);
+      request.tag.reserved := 0;
+      if Pending (selectedHead).Phase /= Idle and then
+        request.tag.label not in OP_GPU_GET_INFO | OP_GPU_GET_STATUS
+      then
+         replyMsg.tag := (request.tag.label, 1, 0, 0);
+         replyMsg.words (0) := GPU_ERR_BAD_STATE;
+         ignore := reply (from, replyMsg);
+         return;
+      end if;
       case request.tag.label is
          when OP_GPU_GET_INFO =>
             replyMsg.tag := (label => OP_GPU_GET_INFO,
@@ -787,8 +937,11 @@ procedure main is
          when OP_GPU_GET_STATUS =>
             replyMsg.tag := (label => OP_GPU_GET_STATUS,
                              length => 4, flags => 0, reserved => 0);
-            replyMsg.words (0) := GPU_OK;
-            replyMsg.words (1) := 1; -- scanout resource initialized
+            replyMsg.words (0) :=
+              (if Pending (selectedHead).Phase = Quarantined
+               then GPU_ERR_BAD_STATE else GPU_OK);
+            replyMsg.words (1) :=
+              (if Pending (selectedHead).Phase = Quarantined then 0 else 1);
             replyMsg.words (2) := Unsigned_64 (FB_W);
             replyMsg.words (3) := Unsigned_64 (FB_H);
 
@@ -831,65 +984,6 @@ procedure main is
                end if;
             end;
 
-         when OP_GPU_ATTACH_BUFFER =>
-            replyMsg.tag := (label => OP_GPU_ATTACH_BUFFER,
-                             length => 1, flags => 0, reserved => 0);
-            if request.words (1) = 0 or else request.words (2) = 0 or else
-               request.words (1) > Unsigned_64 (FB_W) or else
-               request.words (2) > Unsigned_64 (FB_H) or else
-               request.words (3) < request.words (1) * 4
-            then
-               replyMsg.words (0) := GPU_ERR_UNSUPPORTED;
-            else
-               srcAddr := toAddr
-                 (GRANT_REGION_BASE + request.words (0) * GRANT_SLOT_SIZE);
-               srcWidth := Natural (request.words (1));
-               srcHeight := Natural (request.words (2));
-               srcPitch := Natural (request.words (3));
-               replyMsg.words (0) := GPU_OK;
-               debugPrint ("virtio-gpu: display buffer attached" & LF);
-            end if;
-
-         when OP_GPU_PRESENT_RECT =>
-            replyMsg.tag := (label => OP_GPU_PRESENT_RECT,
-                             length => 1, flags => 0, reserved => 0);
-            if srcAddr = System.Null_Address then
-               replyMsg.words (0) := GPU_ERR_BAD_STATE;
-            else
-               copySourceRect
-                 (activeBuffer,
-                  Natural (request.words (0)),
-                  Natural (request.words (1)),
-                  Natural (request.words (2)),
-                  Natural (request.words (3)));
-               ok := transferAndFlush
-                 (activeBuffer,
-                  Natural (request.words (0)),
-                  Natural (request.words (1)),
-                  Natural (request.words (2)),
-                  Natural (request.words (3)));
-               if ok then
-                  replyMsg.words (0) := GPU_OK;
-               else
-                  replyMsg.words (0) := GPU_ERR_BAD_STATE;
-               end if;
-            end if;
-
-         when OP_GPU_FLUSH_RECT =>
-            replyMsg.tag := (label => OP_GPU_FLUSH_RECT,
-                             length => 1, flags => 0, reserved => 0);
-            ok := transferAndFlush
-              (activeBuffer,
-               Natural (request.words (0)),
-               Natural (request.words (1)),
-               Natural (request.words (2)),
-               Natural (request.words (3)));
-            if ok then
-               replyMsg.words (0) := GPU_OK;
-            else
-               replyMsg.words (0) := GPU_ERR_BAD_STATE;
-            end if;
-
          when OP_GPU_PRESENT_BUFFER =>
             declare
                bufferIndexRaw : constant Unsigned_64 := request.words (0);
@@ -899,39 +993,49 @@ procedure main is
             begin
                replyMsg.tag := (label => OP_GPU_PRESENT_BUFFER,
                                 length => 1, flags => 0, reserved => 0);
-               if bufferIndexRaw > 1 then
+               if bufferIndexRaw > 1 or else request.words (3) /= 0 or else
+                 (packedXY and 16#FFFF_FFFF#) >= Unsigned_64 (FB_W) or else
+                 Shift_Right (packedXY, 32) >= Unsigned_64 (FB_H) or else
+                 (packedWH and 16#FFFF_FFFF#) not in 1 .. Unsigned_64 (FB_W) or else
+                 Shift_Right (packedWH, 32) not in 1 .. Unsigned_64 (FB_H)
+               then
                   replyMsg.words (0) := GPU_ERR_UNSUPPORTED;
                else
                   bufferIndex := Natural (bufferIndexRaw);
-                  ok := transferAndFlush
-                    (bufferIndex,
-                     Natural (packedXY and 16#FFFF_FFFF#),
-                     Natural (Shift_Right (packedXY, 32)),
-                     Natural (packedWH and 16#FFFF_FFFF#),
-                     Natural (Shift_Right (packedWH, 32)),
-                     switchScanout => True);
-                  replyMsg.words (0) :=
-                    (if ok then GPU_OK else GPU_ERR_BAD_STATE);
+                  if saveReplyCap (Unsigned_64 (Reply_Slot (selectedHead))) = 1 then
+                     Pending (selectedHead) :=
+                       (Phase => Transfer, Buffer => bufferIndex,
+                        X => Natural (packedXY and 16#FFFF_FFFF#),
+                        Y => Natural (Shift_Right (packedXY, 32)),
+                        W => Natural (packedWH and 16#FFFF_FFFF#),
+                        H => Natural (Shift_Right (packedWH, 32)),
+                        Clearing => False, Label => OP_GPU_PRESENT_BUFFER,
+                        others => <>);
+                     Pending (selectedHead).W := Natural'Min
+                       (Pending (selectedHead).W, Natural (FB_W) - Pending (selectedHead).X);
+                     Pending (selectedHead).H := Natural'Min
+                       (Pending (selectedHead).H, Natural (FB_H) - Pending (selectedHead).Y);
+                     issueCommand (selectedHead);
+                     return; -- saved reply consumed only by completion/failure
+                  end if;
+                  replyMsg.words (0) := GPU_ERR_BAD_STATE;
                end if;
             end;
 
          when OP_GPU_CLEAR =>
             replyMsg.tag := (label => OP_GPU_CLEAR,
                              length => 1, flags => 0, reserved => 0);
-            clearFb (0, Unsigned_32 (request.words (0) and 16#FFFF_FFFF#));
-            clearFb (1, Unsigned_32 (request.words (0) and 16#FFFF_FFFF#));
-            ok := transferAndFlush
-              (1, 0, 0, Natural (FB_W), Natural (FB_H));
-            if ok then
-               ok := transferAndFlush
-                 (0, 0, 0, Natural (FB_W), Natural (FB_H),
-                  switchScanout => activeBuffer /= 0);
+            if saveReplyCap (Unsigned_64 (Reply_Slot (selectedHead))) = 1 then
+               clearFb (0, Unsigned_32 (request.words (0) and 16#FFFF_FFFF#));
+               clearFb (1, Unsigned_32 (request.words (0) and 16#FFFF_FFFF#));
+               Pending (selectedHead) :=
+                 (Phase => Transfer, Buffer => 1, X => 0, Y => 0,
+                  W => Natural (FB_W), H => Natural (FB_H),
+                  Clearing => True, Label => OP_GPU_CLEAR, others => <>);
+               issueCommand (selectedHead);
+               return;
             end if;
-            if ok then
-               replyMsg.words (0) := GPU_OK;
-            else
-               replyMsg.words (0) := GPU_ERR_BAD_STATE;
-            end if;
+            replyMsg.words (0) := GPU_ERR_BAD_STATE;
 
          when others =>
             replyMsg.tag := (label => request.tag.label,
@@ -953,6 +1057,7 @@ begin
    trace ("read devmgr sysinfo");
    barPhys := getInfo (SYSINFO_GPU_BAR0);
    dmaPhys := getInfo (SYSINFO_GPU_DMA_PHYS);
+   secondDmaPhys := getInfo (SYSINFO_GPU_SECOND_DMA_PHYS);
    commonOff := getInfo (SYSINFO_GPU_COMMON_OFF);
    notifyOff := getInfo (SYSINFO_GPU_NOTIFY_OFF);
    isrOff := getInfo (SYSINFO_GPU_ISR_OFF);
@@ -997,13 +1102,27 @@ begin
    signalReady (16#FF00#);
 
    loop
-      loop
+      collectCommands;
+      for Count in 1 .. 8 loop
          Poll_Service_Request (from, msg, found);
          exit when not found;
          handleRequest (from, msg);
       end loop;
 
       eventFound := Poll_Event (eventMsg);
+      declare
+         Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      begin
+         if Now /= Unsigned_64'Last and then Now >= metricsAt and then
+            Now - metricsAt >= 1000
+         then
+            metricsAt := Now;
+            CuBit.Graphics_Metrics_IO.Publish
+              (GM.GPU_Upload_Request, uploads, uploadReporter);
+            CuBit.Graphics_Metrics_IO.Publish
+              (GM.GPU_Legacy_Copy, legacyCopies, legacyReporter);
+         end if;
+      end;
       if eventFound then
          declare
             isr : Unsigned_8 with
@@ -1015,10 +1134,25 @@ begin
                null;
             end if;
          end;
-      elsif not found then
-         if syscall (SYSCALL_SLEEP, 10) = Unsigned_64'Last then
-            null;
-         end if;
+      else
+         --  Requests and latched IRQs wake this wait atomically: work arriving
+         --  after the polls above cannot be stranded behind a polling sleep.
+         --  The deadline is for periodic diagnostics, not presentation pacing.
+         declare
+            Deadline : Unsigned_64 :=
+              (if metricsAt > Unsigned_64'Last - 1000 then Unsigned_64'Last
+               else metricsAt + 1000);
+         begin
+            for Item of Pending loop
+               if Item.Phase in Transfer | Awaiting_Scanout | Set_Scanout | Flush then
+                  Deadline := Unsigned_64'Min (Deadline, Item.Deadline);
+               end if;
+            end loop;
+            if Wait_For_Activity_Until (Deadline) = Unavailable then
+               fail ("activity wait unavailable");
+               return;
+            end if;
+         end;
       end if;
    end loop;
 end main;

@@ -1,3 +1,4 @@
+with "../../userspace/lib/ui/fonts_host.gpr";
 project Dialog_Tests is
    for Source_Dirs use
      (".", "../../userspace/ccl/src", "../../userspace/ccl/tools/ccl-ui-preview/host",

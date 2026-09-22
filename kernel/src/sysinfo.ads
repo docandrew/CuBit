@@ -45,6 +45,7 @@ package Sysinfo is
     GPU_DEVICE_OFF        : constant QueryID := 1705;
     GPU_NOTIFY_MULT       : constant QueryID := 1706;
     GPU_IS_PRIMARY        : constant QueryID := 1707;
+    GPU_SECOND_DMA_PHYS   : constant QueryID := 1708;
 
     -- CPU info
     NUM_CPUS              : constant QueryID := 1400;

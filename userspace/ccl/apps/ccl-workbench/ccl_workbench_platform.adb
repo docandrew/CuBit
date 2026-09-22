@@ -108,7 +108,8 @@ package body CCL_Workbench_Platform is
       CuBit.UI.App.Open
         (Native_Window, Requested_Width, Requested_Height, Flags, OK,
          maximum_width => MAXIMUM_WIDTH,
-         maximum_height => MAXIMUM_HEIGHT);
+         maximum_height => MAXIMUM_HEIGHT,
+         title => "CCL Workbench");
       Native_Open := OK;
       if OK then
          debugPrint ("ccl-workbench: native window ready" & ASCII.LF);

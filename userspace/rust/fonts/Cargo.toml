@@ -1,0 +1,21 @@
+[package]
+name = "cubit-fonts"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["rlib", "staticlib"]
+
+[dependencies]
+ab_glyph_rasterizer = { version = "=0.1.10", default-features = false, features = ["libm"] }
+ttf-parser = { version = "=0.25.1", default-features = false, features = ["no-std-float"] }
+libm = "=0.2.16"
+
+[dev-dependencies]
+# Pixel-equivalence oracle; not part of the native font engine.
+ab_glyph = { version = "=0.2.32", default-features = false, features = ["libm"] }
+
+[target.'cfg(target_os = "none")'.dependencies]
+cubit-allocator = { path = "../allocator" }
+cubit = { path = "../cubit" }

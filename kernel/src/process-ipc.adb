@@ -1667,8 +1667,10 @@ package body Process.IPC is
     -- revokeAllGrantsTo
     -- Teardown must retire received mappings while the page tables exist.
     -- INVALID is a scheduler state, not proof of remote TLB quiescence.
-    -- Force-close stops acquisitions, then the ordinary acknowledged mapping
-    -- retirement path drops the lifetime pins before invalidating the record.
+    -- Receiver close stops its acquisitions. Retire its mappings while the
+    -- page tables exist, but do not discard a kernel-owned forwarding hold.
+    -- Every downstream mapping must own independent frame pins; such mappings
+    -- are not implemented yet, and no caller currently creates these holds.
     ---------------------------------------------------------------------------
     procedure revokeAllGrantsTo (pid : ProcessID)
 
@@ -1684,11 +1686,19 @@ package body Process.IPC is
                     declare
                         hadAcquisitions : Boolean;
                     begin
-                        Memory_Grants.Force_Close
+                        Memory_Grants.Close_Receiver
                           (proctab(owner).grants(slot).lifecycle,
                            hadAcquisitions);
                         unmapGrantPages (proctab(owner).grants(slot));
-                        invalidateGrant (proctab(owner).grants(slot));
+                        --  Zero means there is no remaining receiver mapping.
+                        --  A retained parent record can later retire without
+                        --  touching these now-destroyed/reused page tables.
+                        proctab(owner).grants(slot).numPages := 0;
+                        if not Memory_Grants.Is_Active
+                          (proctab(owner).grants(slot).lifecycle)
+                        then
+                            invalidateGrant (proctab(owner).grants(slot));
+                        end if;
                     end;
                 end if;
             end loop;

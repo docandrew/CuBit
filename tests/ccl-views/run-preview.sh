@@ -4,6 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../../kernel"
 alr exec -- gprbuild -p -P ../tests/ccl-views/views_tests.gpr
 ../tests/ccl-views/build/main
+make ui-fonts-host
 alr exec -- gprbuild -p -P ../userspace/ccl/ccl_ui_preview.gpr
 alr exec -- gcc -shared -fPIC -Wall -Wextra -Werror \
   $(pkg-config --cflags sdl2) ../tests/ccl-file-dialog/workbench_events.c \

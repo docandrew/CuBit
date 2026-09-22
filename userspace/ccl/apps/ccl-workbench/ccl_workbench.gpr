@@ -1,3 +1,4 @@
+with "../../../lib/ui/fonts_native.gpr";
 project CCL_Workbench is
    for Languages use ("Ada");
    for Source_Dirs use

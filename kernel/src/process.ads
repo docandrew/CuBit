@@ -407,6 +407,8 @@ package Process is
         granterAddr  : System.Address  := System.Null_Address;
         -- Where it was mapped in grantee's space
         granteeAddr  : System.Address  := System.Null_Address;
+        -- Installed receiver pages. Zero after receiver death even if a
+        -- kernel forwarding hold retains the grant identity/resources.
         numPages     : StoredGrantPageCount := 0;
         permission   : GrantPermission := GRANT_READ;
     end record;

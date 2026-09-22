@@ -24,6 +24,20 @@ package CuBit.Display_Protocol with SPARK_Mode, Pure is
    function Code (Item : Operation) return Unsigned_32 is
      (Operation'Enum_Rep (Item));
    subtype Wire_Message is DP.Wire_Message;
+   --  Untrusted routing metadata, never authority. The service validates the
+   --  destination, then the normalized payload, owner and session binding.
+   --  Existing single-output requests name output zero. This selector is local
+   --  to an authenticated service incarnation, not a persistent monitor ID.
+   type Output_Number is range 0 .. 15;
+   function Valid_Output (Wire : Wire_Message) return Boolean is
+     (Wire.Reserved <= Unsigned_16 (Output_Number'Last));
+   function Output_Of (Wire : Wire_Message) return Output_Number is
+     (Output_Number (Wire.Reserved)) with Pre => Valid_Output (Wire);
+   function With_Output (Wire : Wire_Message; Output : Output_Number)
+      return Wire_Message is
+     (Wire with delta Reserved => Unsigned_16 (Output));
+   function Without_Output (Wire : Wire_Message) return Wire_Message is
+     (Wire with delta Reserved => 0);
    subtype Buffer_Layout is DP.Buffer_Layout;
    subtype Lease_Operation is Operation
      range Acquire_Display .. Release_Display;
@@ -72,7 +86,8 @@ package CuBit.Display_Protocol with SPARK_Mode, Pure is
          when False => null;
       end case;
    end record;
-   --  The session binds the current acquired attachment and its generation.
+   --  The session binds the acquired attachment and the selected output's
+   --  registry publication. Output changes cannot silently retarget a session.
    --  No mutable shared command list: all damage is an inline wire snapshot.
    --  Codec only: the service must reject empty/out-of-layout areas, stale
    --  sessions and replayed frames against its authenticated owner state.

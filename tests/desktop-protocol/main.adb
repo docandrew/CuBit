@@ -33,6 +33,22 @@ begin
       Canonical : Wire_Message := DSP.Encode_Attachment (Item);
    begin
       pragma Assert (DSP.Decode_Attachment (Canonical) = (True, Item));
+      -- Routing is a separate envelope, not permission and not part of the
+      -- normalized attachment payload. Exhaust the untrusted 16-bit field.
+      for Selector in Unsigned_16 loop
+         Wire := Canonical;
+         Wire.Reserved := Selector;
+         pragma Assert (DSP.Valid_Output (Wire) = (Selector <= 15));
+         if DSP.Valid_Output (Wire) then
+            pragma Assert
+              (Unsigned_16 (DSP.Output_Of (Wire)) = Selector);
+            pragma Assert
+              (DSP.With_Output (Canonical, DSP.Output_Of (Wire)) = Wire);
+            pragma Assert (DSP.Without_Output (Wire) = Canonical);
+            pragma Assert
+              (DSP.Decode_Attachment (DSP.Without_Output (Wire)) = (True, Item));
+         end if;
+      end loop;
       pragma Assert (DSP.Valid_Open_Session (DSP.Encode_Open_Session));
       for Length in Unsigned_8 loop
          Wire := DSP.Encode_Open_Session; Wire.Length := Length;

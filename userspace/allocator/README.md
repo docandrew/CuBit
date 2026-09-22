@@ -67,8 +67,9 @@ process-wide `malloc` replacement.
 
 ## Native Rust trial
 
-`userspace/rust/allocator` acquires two independent 16 MiB regions on first use:
-one for the existing slabs and one for the new page-run allocator. Native CuBit
+`userspace/rust/allocator` has two independent 16 MiB logical regions:
+one for slabs and one for the page-run allocator. Slab payload is supplied in
+separate 1 MiB chunks on demand; the large region is acquired on first use. Native CuBit
 backing comes from failure-atomic `sbrk`; Linux tests use `System` only to supply
 arena backing, not to serve individual allocations. Requests up
 to 4096 bytes/alignment use slabs; larger/over-aligned requests use page runs.
@@ -83,10 +84,15 @@ Failed allocation returns null; failed realloc retains the original allocation.
 `alloc_zeroed` clears requested payload bytes. Rust fallible containers can
 report exhaustion; infallible allocation remains subject to Rust's abort policy.
 
-No payload arena is stored in BSS. Acquisition currently commits a whole arena
-plus up to 1 MiB of alignment slack per native request; smaller incremental
-commit, additional arenas, and returning backing to the kernel remain future
-work. A failed provider request returns the tentative metadata allocation before
+No payload arena is stored in BSS. A small-object backing acquisition requests
+1 MiB plus 4095 bytes of alignment slack, rather than eagerly committing 16 MiB.
+Every slab lies within one chunk, so the proved logical offsets are unchanged.
+The Rust adapter maps offsets to chunk pointers and finds the owning chunk on
+release (a bounded scan of at most 16 entries). Hosted runtime tests exercise
+the same segmented layout, including all 4096 page-sized objects and reuse.
+The large region still commits 16 MiB plus up to 1 MiB of alignment slack;
+incremental large backing, more arenas and returning backing remain future work.
+A failed provider request returns the tentative metadata allocation before
 returning null. Regions remain available for reuse until process exit. The prior hosted benchmark
 timings do not measure this new Rust boundary/lock or the large-allocation path.
 

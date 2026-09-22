@@ -1,3 +1,4 @@
+with "../../fonts_host.gpr";
 project Editor_Test is
    for Languages use ("Ada");
    for Source_Dirs use (".", "../..", "../../../theme");

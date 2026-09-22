@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/../../kernel"
+make ui-fonts-host
 alr exec -- gprbuild -p -P ../userspace/ccl/ccl_ui_preview.gpr
 mkdir -p ../tests/ccl-callbacks/build
 alr exec -- gcc -shared -fPIC -Wall -Wextra -Werror \

@@ -188,7 +188,7 @@ with (run / 'qemu.log').open('w') as log:
             print('WALLPAPER DAMAGE PASS: popup and pointer restore exact background.', flush=True)
         if args.sameboy:
             key('meta_l')
-            for _ in range(6):
+            for _ in range(5):
                 key('down')
             key('ret')
             wait_for('sameboy: loaded ROM 00')
@@ -327,8 +327,8 @@ with (run / 'qemu.log').open('w') as log:
                     raise RuntimeError('SameBoy exit left the audio hardware running')
                 print('SAMEBOY AUDIO CLOSE PASS: final stream stopped hardware.', flush=True)
             print('SAMEBOY PASS: cartridge read from USB CD, frames and keyboard response, clean exit.', flush=True)
-        # Apps menu starts on Console, followed by Workbench and DOOM.
-        key('meta_l'); key('down'); key('down'); key('ret')
+        # Apps menu starts on CCL Workbench, followed by DOOM.
+        key('meta_l'); key('down'); key('ret')
         wait_for('doom.elf')
         for _ in range(100):
             hmp('mouse_move 2 1')
@@ -340,7 +340,7 @@ with (run / 'qemu.log').open('w') as log:
         time.sleep(5)
         hmp(f'screendump {run}/doom-game.ppm')
         wait_for('I_InitGraphics: DOOM screen size:')
-        key('meta_l'); key('down'); key('ret')
+        key('meta_l'); key('ret')
         wait_for('ccl-workbench: native window ready')
         time.sleep(2)
         hmp(f'screendump {run}/workbench.ppm')
@@ -397,7 +397,7 @@ with (run / 'qemu.log').open('w') as log:
                 raise RuntimeError('native CCL button click did not change its label')
             print('CCL BUTTON PASS: native input dispatched retained CCL and repainted its label.', flush=True)
         key('meta_l')
-        for _ in range(5):
+        for _ in range(4):
             key('down')
         key('ret')
         wait_for('files: native window ready')
@@ -440,14 +440,14 @@ with (run / 'qemu.log').open('w') as log:
             if cubie.getpixel(point) != dark.getpixel(point):
                 raise RuntimeError('wallpaper change unexpectedly changed the theme')
             # Reopen an already-running Workbench to inspect its repainted UI.
-            key('meta_l'); key('down'); key('ret')
+            key('meta_l'); key('ret')
             time.sleep(2)
             hmp(f'screendump {run}/workbench-dark.ppm')
             print('SETTINGS PASS: keyboard selection, Apply, live palette and Cubie wallpaper.', flush=True)
         if args.eject:
             qmp('eject', {'device': 'cd', 'force': True})
             key('meta_l')
-            for _ in range(3):
+            for _ in range(2):
                 key('down')
             key('ret')
             # A fresh Devices launch must need directory/image reads. The

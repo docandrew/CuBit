@@ -12,6 +12,8 @@ BUILD_WORLD=0
 KEEP_LOGS=0
 QEMU_ACCEL=""
 QEMU_CPUS=4
+QEMU_DISPLAY=none
+INPUT_BACKEND=linear
 VCPU_CPUS=""
 BENCH_LOAD=0
 LOAD_WORKERS=1
@@ -36,6 +38,8 @@ Options:
   --timeout SECONDS    QEMU runtime before timeout is treated as success
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
   --cpus COUNT         Virtual CPUs, 1..4 (default: 4)
+  --display MODE       QEMU frontend (default: none; gtk,zoom-to-fit=on for UI regression)
+  --input-backend MODE bench-input: linear or virtio (default: linear)
   --vcpu-cpus LIST     Pin vCPU 0,1,... to distinct Linux CPUs (e.g. 2,3,4,5; KVM only)
   --load               Add one busy peer (bench-ipc / bench-audio / bench-input)
   --load-workers COUNT Add 1..4 busy peers (bench-input only)
@@ -50,6 +54,15 @@ stable pass markers.
 Performance fixtures: bench-ipc, bench-audio, bench-storage, bench-input, bench-scheduler.
 Logging fixture: log-authority (build logstore procmgr clock log-check first).
 Rust fixture: rust-native (build rust-probe ccl-test-host clock first).
+Multi-output discovery: virtio-gpu-multi-output (QEMU 11.1 per-head modes;
+build virtio-gpu first). This does not yet test a multi-monitor desktop.
+Native catalog IPC: display-discovery-multi-output (build display, virtio-gpu,
+and display-check first). Walks three GPU heads plus the selected boot output.
+Firmware-only catalog: display-discovery-boot-only (same builds, no virtio GPU).
+Two-output presentation: display-dual-output (build devmgr, virtio-gpu, display,
+and display-check first). Native IPC plus pixel checks on both QEMU heads.
+Native extended Desktop: desktop-dual-output (build desktop, display, devmgr,
+virtio-gpu and ccl-workbench first). Checks drag, maximize, taskbar and cleanup on both heads.
 Use --timeout 100 for network-authority: it includes an intentional 30-second
 accept deadline and a seven-second backlog expiry wait, plus traffic checks.
 EOF
@@ -85,12 +98,28 @@ while [ "$#" -gt 0 ]; do
             QEMU_ACCEL="$2"
             shift 2
             ;;
+        --display)
+            if [ "$#" -lt 2 ] || [ -z "$2" ]; then
+                echo "headless: --display requires a value" >&2
+                exit 2
+            fi
+            QEMU_DISPLAY="$2"
+            shift 2
+            ;;
         --cpus)
             if [ "$#" -lt 2 ] || ! [[ "$2" =~ ^[1-4]$ ]]; then
                 echo "headless: --cpus requires 1..4" >&2
                 exit 2
             fi
             QEMU_CPUS="$2"
+            shift 2
+            ;;
+        --input-backend)
+            if [ "$#" -lt 2 ] || ! [[ "$2" =~ ^(linear|virtio)$ ]]; then
+                echo "headless: --input-backend requires linear or virtio" >&2
+                exit 2
+            fi
+            INPUT_BACKEND="$2"
             shift 2
             ;;
         --load)
@@ -164,9 +193,9 @@ case "$TIMEOUT_SECONDS" in
 esac
 
 case "$TEST_NAME" in
-    log-authority|rust-native)
+    log-authority|rust-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -186,6 +215,10 @@ if [ -n "$VCPU_CPUS" ]; then
     PIN_ARGS+=(--)
 fi
 
+if [ "$INPUT_BACKEND" != linear ] && [ "$TEST_NAME" != bench-input ]; then
+    echo "headless: --input-backend requires bench-input" >&2
+    exit 2
+fi
 if [ "$BENCH_LOAD" = 1 ] && [ "$TEST_NAME" != "bench-ipc" ] && [ "$TEST_NAME" != "bench-audio" ] && [ "$TEST_NAME" != "bench-input" ]; then
     echo "headless: --load only supports bench-ipc, bench-audio and bench-input" >&2
     exit 2
@@ -337,10 +370,13 @@ case "$TEST_NAME" in
     bench-audio)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-bench-audio.ccl"
         ;;
+    desktop-dual-output)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-desktop-dual.ccl"
+        ;;
     desktop-protocol)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-desktop-protocol.ccl"
         ;;
-    display-grants|display-grants-virtio-vga)
+    display-grants|display-grants-virtio-vga|display-dual-output|display-discovery-multi-output|display-discovery-boot-only)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-display-grants.ccl"
         ;;
     devices)
@@ -458,9 +494,20 @@ if [ -n "$INIT_PROFILE" ]; then
             done
         fi
     fi
+    if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "desktop-dual-output" ]; then
+        app=ccl-workbench.app
+        if [ ! -f "$KERNEL_DIR/isodir/boot/$app" ]; then
+            echo "headless: build ccl-workbench before desktop window tests" >&2
+            exit 1
+        fi
+        debugfs -w -R "rm $app" "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "write $KERNEL_DIR/isodir/boot/$app $app" \
+            "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+    fi
     if [ "$TEST_NAME" = "desktop-display" ] ||
        [ "$TEST_NAME" = "bench-input" ] ||
        [ "$TEST_NAME" = "desktop-protocol" ] ||
+       [ "$TEST_NAME" = "desktop-dual-output" ] ||
        [ "$TEST_NAME" = "ccl-workbench" ] ||
        [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
        [ "$TEST_NAME" = "ccl-workspace" ] ||
@@ -470,7 +517,7 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "desktop-virtio-vga" ] ||
        [ "$TEST_NAME" = "desktop-doom" ] ||
        [ "$TEST_NAME" = "virtio-vga-primary" ]; then
-        for DESKTOP_TEST_IMAGE_NAME in display.svc desktop.svc; do
+        for DESKTOP_TEST_IMAGE_NAME in display.svc desktop.svc virtio-gpu.drv; do
             DESKTOP_TEST_IMAGE="$KERNEL_DIR/isodir/boot/$DESKTOP_TEST_IMAGE_NAME"
             if [ ! -f "$DESKTOP_TEST_IMAGE" ]; then
                 echo "headless: missing current desktop test image: $DESKTOP_TEST_IMAGE" >&2
@@ -510,8 +557,11 @@ if [ -n "$INIT_PROFILE" ]; then
             exit 1
         fi
     fi
-    if [ "$TEST_NAME" = "display-grants" ] || [ "$TEST_NAME" = "display-grants-virtio-vga" ]; then
-        for DISPLAY_TEST_IMAGE_NAME in display.svc display-check.app; do
+    if [ "$TEST_NAME" = "display-grants" ] || [ "$TEST_NAME" = "display-grants-virtio-vga" ] ||
+       [ "$TEST_NAME" = "display-dual-output" ] ||
+       [ "$TEST_NAME" = "display-discovery-multi-output" ] ||
+       [ "$TEST_NAME" = "display-discovery-boot-only" ]; then
+        for DISPLAY_TEST_IMAGE_NAME in display.svc display-check.app virtio-gpu.drv; do
             DISPLAY_TEST_IMAGE="$KERNEL_DIR/isodir/boot/$DISPLAY_TEST_IMAGE_NAME"
             if [ ! -f "$DISPLAY_TEST_IMAGE" ]; then
                 echo "headless: build display and display-check first" >&2
@@ -775,18 +825,36 @@ if ! grub-mkrescue -o "$KERNEL_DIR/cubit_kernel.iso" "$KERNEL_DIR/isodir" >/dev/
 fi
 cp "$GRUB_BAK" "$GRUB_CFG"
 
-VIDEO_ARGS="-device virtio-gpu-pci"
+VIDEO_ARGS=(-device virtio-gpu-pci)
+if [ "$TEST_NAME" = bench-input ] && [ "$INPUT_BACKEND" = virtio ]; then
+    VIDEO_ARGS=(-vga none -device virtio-vga,xres=1024,yres=768)
+fi
+if [ "$TEST_NAME" = "display-discovery-boot-only" ]; then
+    VIDEO_ARGS=()
+fi
 if [ "$TEST_NAME" = "virtio-vga-primary" ] ||
    [ "$TEST_NAME" = "display-grants-virtio-vga" ] ||
    [ "$TEST_NAME" = "ccl-workspace" ] ||
    [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
    [ "$TEST_NAME" = "desktop-virtio-vga" ] ||
    [ "$TEST_NAME" = "desktop-doom" ]; then
-    VIDEO_ARGS="-vga none -device virtio-vga,xres=1024,yres=768"
+    VIDEO_ARGS=(-vga none -device virtio-vga,xres=1024,yres=768)
+fi
+if [ "$TEST_NAME" = "virtio-gpu-multi-output" ] ||
+   [ "$TEST_NAME" = "display-discovery-multi-output" ]; then
+    # QEMU 11.1 supports per-head initial modes. These are native mode hints;
+    # CuBit owns UI scale, desktop placement and content rotation separately.
+    # The current guest presents only on head zero: this tests discovery.
+    VIDEO_ARGS=(-device '{"driver":"virtio-gpu-pci","id":"multi-gpu","max_outputs":3,"outputs":[{"name":"CuBit Main","xres":1024,"yres":768},{"name":"CuBit Wide","xres":1920,"yres":1080},{"name":"CuBit Tall","xres":1080,"yres":1920}]}')
+fi
+
+if [ "$TEST_NAME" = "display-dual-output" ] || [ "$TEST_NAME" = "desktop-dual-output" ]; then
+    VIDEO_ARGS=(-vga none -device '{"driver":"virtio-vga","id":"multi-gpu","max_outputs":2,"outputs":[{"name":"CuBit Main","xres":1024,"yres":768},{"name":"CuBit Side","xres":1024,"yres":768}]}')
 fi
 
 echo "headless: running $TEST_NAME for ${TIMEOUT_SECONDS}s"
 echo "headless: cpus=$QEMU_CPUS accel=${QEMU_ACCEL:-qemu-default} busy_peer=$BENCH_LOAD"
+echo "headless: display=$QEMU_DISPLAY"
 if [ "$BENCH_LOAD" = 1 ]; then echo "headless: load_workers=$LOAD_WORKERS"; fi
 "$QEMU_BIN" --version | head -1
 
@@ -883,8 +951,6 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] ||
                 {
                     printf 'sendkey meta_l\n'
                     sleep 0.3
-                    printf 'sendkey down\n'
-                    sleep 0.2
                     printf 'sendkey ret\n'
                     sleep 4
                     printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-workbench.ppm"
@@ -898,7 +964,7 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] ||
                     move_pointer -910 -14
                     printf 'sendkey meta_l\n'
                     sleep 0.3
-                    for key in down down down down ret; do
+                    for key in down down down ret; do
                         printf 'sendkey %s\n' "$key"
                         sleep 0.2
                     done
@@ -929,8 +995,6 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] ||
             {
                 printf 'sendkey meta_l\n'
                 sleep 0.3
-                printf 'sendkey down\n'
-                sleep 0.2
                 printf 'sendkey down\n'
                 sleep 0.2
                 printf 'sendkey ret\n'
@@ -1013,9 +1077,12 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] ||
                 sleep 0.2
                 printf 'sendkey 2\n'
                 sleep 0.2
-                # Unsaved changes must prevent Open from restoring revision 1.
+                # Open now prompts Save/Discard/Cancel. Cancel must preserve
+                # the edits before we explicitly save revision 2.
                 printf 'sendkey ctrl-o\n'
                 sleep 0.4
+                printf 'sendkey esc\n'
+                sleep 0.2
                 printf 'sendkey ctrl-s\n'
                 sleep 0.5
                 printf 'sendkey ret\n'
@@ -1222,15 +1289,15 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] ||
                     printf 'sendkey meta_l\n'
                     sleep 0.2
                     printf 'sendkey ret\n'
-                    sleep 0.4
-                    # Cursor (128,104) -> internal console caption (148,88).
-                    printf 'mouse_move 20 -16\n'
+                    sleep 2
+                    # Cursor (128,104) -> Workbench caption (148,94).
+                    printf 'mouse_move 20 -10\n'
                     sleep 0.2
                     # Move the caption to y=0 first: all three subsequent
                     # clicks stay on the caption even after maximizing.
                     printf 'mouse_button 1\n'
                     sleep 0.1
-                    printf 'mouse_move 0 -76\n'
+                    printf 'mouse_move 0 -82\n'
                     sleep 0.2
                     printf 'mouse_button 0\n'
                     sleep 0.6
@@ -1253,6 +1320,19 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] ||
             } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
         fi
     ) &
+    INPUT_INJECTOR_PID=$!
+fi
+
+if [ "$TEST_NAME" = "display-dual-output" ] || [ "$TEST_NAME" = "desktop-dual-output" ]; then
+    QMP_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-qmp-$$.sock"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    if [ "$TEST_NAME" = "desktop-dual-output" ]; then
+        observer=check-dual-desktop.py
+    else
+        observer=check-dual-display.py
+    fi
+    python3 "$ROOT_DIR/tests/headless/$observer" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" &
     INPUT_INJECTOR_PID=$!
 fi
 
@@ -1283,13 +1363,13 @@ fi
         -m 128M \
         -cdrom cubit_kernel.iso \
         -serial "file:$SERIAL_LOG" \
-        -display none \
+        -display "$QEMU_DISPLAY" \
         "${MONITOR_ARGS[@]}" \
         "${QMP_ARGS[@]}" \
         -drive "file=$DISK_IMAGE,if=none,id=nvme0,format=raw" \
         -device nvme,serial=cubitnvme,drive=nvme0 \
         -device virtio-net-pci,netdev=net0 \
-        $VIDEO_ARGS \
+        "${VIDEO_ARGS[@]}" \
         -netdev "$NETDEV_CONFIG" \
         -object "filter-dump,id=f0,netdev=net0,file=$NET_PCAP" \
         "${AUDIO_ARGS[@]}" \
@@ -1455,7 +1535,7 @@ ccl-vm: all tests passed
     ccl-workbench)
         required_markers="
 clock: registered
-desktop: display backend=1 caps=1
+desktop: active outputs= 1 primary= 0
 ccl-workbench: native window ready
 ccl-workbench: first frame presented
 "
@@ -1463,7 +1543,8 @@ ccl-workbench: first frame presented
     ccl-workbench-virtio-vga)
         required_markers="
 clock: registered
-desktop: display backend=3 caps=13
+display: backend virtio-gpu
+desktop: active outputs= 1 primary= 0
 virtio-gpu: page flipping active
 ccl-workbench: native window ready
 ccl-workbench: first frame presented
@@ -1472,7 +1553,8 @@ ccl-workbench: first frame presented
     ccl-workspace)
         required_markers="
 clock: registered
-desktop: display backend=3 caps=13
+display: backend virtio-gpu
+desktop: active outputs= 1 primary= 0
 ccl-workbench: native window ready
 ccl-workbench: first frame presented
 ccl-workbench: workspace saved ccl-0001.ccl
@@ -1558,9 +1640,18 @@ mixer: HDA period IRQ active
     desktop-display)
         required_markers="
 display: gpu not primary, using linear-fb
-desktop: display backend=1 caps=1
+desktop: active outputs= 1 primary= 0
 desktop: internal shell active
 shell: cwd=@nvme:0/
+ccl-workbench: native window ready
+"
+        ;;
+    desktop-dual-output)
+        required_markers="
+desktop: active outputs= 2 primary= 0
+desktop: internal shell active
+desktop: asynchronous frame released
+ccl-workbench: native window ready
 "
         ;;
     desktop-protocol)
@@ -1570,14 +1661,44 @@ DESKTOP-PROTOCOL-CHECK: PASS
 desktop: dead client buffer acquisition released
 "
         ;;
+    display-discovery-boot-only)
+        required_markers="
+display: backend linear-fb
+display: output catalog ready
+display-check: output BOOT_FRAMEBUFFER 0 SELECTED_FOR_DESKTOP advertised 1024 x 768
+DISPLAY-GRANTS-CHECK: PASS
+"
+        ;;
+    display-discovery-multi-output)
+        required_markers="
+display: output catalog ready
+display-check: output BOOT_FRAMEBUFFER 0 SELECTED_FOR_DESKTOP advertised 1024 x 768
+display-check: output VIRTIO_GPU 0 BACKEND_READY advertised 1024 x 768
+display-check: output VIRTIO_GPU 1 BACKEND_READY advertised 1920 x 1080
+display-check: active VIRTIO_GPU 1 1024 x 768
+display-check: output VIRTIO_GPU 2 DETECTED_ONLY advertised 1080 x 1920
+DISPLAY-GRANTS-CHECK: PASS
+"
+        ;;
     display-grants)
         required_markers="
+display: boot output registered
 display: gpu not primary, using linear-fb
+DISPLAY-GRANTS-CHECK: PASS
+"
+        ;;
+    display-dual-output)
+        required_markers="
+display: backend virtio-gpu
+display: second output ready
+DISPLAY-CONCURRENT-CHECK: PASS
+DISPLAY-DUAL-CHECK: PASS
 DISPLAY-GRANTS-CHECK: PASS
 "
         ;;
     display-grants-virtio-vga)
         required_markers="
+display: boot output registered
 display: backend virtio-gpu
 display: gpu copy buffer attached
 DISPLAY-GRANTS-CHECK: PASS
@@ -1636,7 +1757,7 @@ desktop: retained move path active
 display: backend virtio-gpu
 display: gpu copy buffer attached
 virtio-gpu: page flipping active
-desktop: display backend=3 caps=13
+desktop: active outputs= 1 primary= 0
 desktop: internal shell active
 shell: cwd=@nvme:0/
 "
@@ -1650,6 +1771,17 @@ desktop: stats
 display: stats
 mixer: stats
 mixer: HDA period IRQ active
+"
+        ;;
+    virtio-gpu-multi-output)
+        required_markers="
+devmgr: virtio-gpu setup complete
+virtio-gpu: scanout0 1024x768 enabled=1
+virtio-gpu: scanout1 1920x1080 enabled=1
+virtio-gpu: scanout2 1080x1920 enabled=1
+virtio-gpu: scanout test frame presented
+virtio-gpu: ready
+shell: cwd=@nvme:0/
 "
         ;;
     virtio-gpu)
@@ -1684,15 +1816,29 @@ if [ "$BENCH_LOAD" = 1 ]; then
 BENCH-LOAD: START
 BENCH-LOAD: COMPLETE"
 fi
+if [ "$TEST_NAME" = "desktop-doom" ] && [ "${CUBIT_DOOM_MULTIAPP:-0}" = 1 ]; then
+    required_markers="$required_markers
+ccl-workbench: native window ready"
+fi
 case "$TEST_NAME" in
-    display-grants|display-grants-virtio-vga)
+    display-grants|display-grants-virtio-vga|display-dual-output|display-discovery-multi-output|display-discovery-boot-only)
         required_markers="$required_markers
+DISPLAY-DISCOVERY-CHECK: PASS
 DISPLAY-ASYNC-CHECK: PASS" ;;
     input-stream|bench-input|desktop-protocol|desktop-doom|desktop-display|desktop-virtio-vga)
         required_markers="$required_markers
 desktop: asynchronous presentation active
 desktop: asynchronous frame released" ;;
 esac
+if [ "${CUBIT_GPU_TEST_MODE:-production}" = delayed ] && [ "$TEST_NAME" = display-dual-output ]; then
+    required_markers="$required_markers
+DISPLAY-STALLED-OUTPUT-CHECK: PASS"
+fi
+if [ "${CUBIT_DISPLAY_TEST_MODE:-production}" = output-rebind ]; then
+    required_markers="$required_markers
+display: test output generation advanced
+DISPLAY-OUTPUT-REBIND-CHECK: PASS"
+fi
 if [ "${CUBIT_DISPLAY_TEST_MODE:-production}" = delayed ] && [ "$TEST_NAME" = input-stream ]; then
     # Input must be dispatched between the delayed reader's two fingerprints,
     # for the SAME frame, not merely while a submission was queued somewhere.

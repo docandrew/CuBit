@@ -2,6 +2,7 @@
 # Run inside nix develop. This uses an isolated SDL window, not a user session.
 set -euo pipefail
 cd "$(dirname "$0")/../../kernel"
+make ui-fonts-host
 alr exec -- gprbuild -p -P ../userspace/ccl/ccl_ui_preview.gpr
 mkdir -p ../tests/ccl-completion/build
 alr exec -- gcc -shared -fPIC -Wall -Wextra -Werror \

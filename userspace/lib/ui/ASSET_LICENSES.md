@@ -2,13 +2,15 @@
 
 This directory contains generated UI assets used by CuBit userspace apps.
 
-## IBM Plex Bitmap Fonts
+## IBM Plex TrueType Fonts
 
-`cubit-ui-fonts_ibm_plex_sans_11.ads` and
-`cubit-ui-fonts_ibm_plex_mono_11.ads` were generated from IBM Plex Sans
-Regular and IBM Plex Mono Regular with `tools/generate_ui_font.py`. They
-contain rasterized ASCII glyphs 32..126 at 13 pixels in a 17-pixel line.
-CuBit does not parse or load the TTF files at runtime.
+The shared toolkit and native desktop use unmodified IBM Plex Sans Regular
+and IBM Plex Mono Regular TrueType files from Nix's pinned `ibm-plex` package.
+The files are embedded into `userspace/rust/fonts` and rasterized at runtime
+by pure-Rust `ttf-parser` and `ab_glyph_rasterizer`. The default remains a 13-pixel em in a
+17-pixel line; the editor uses an 8-pixel monospace cell. Grayscale coverage
+is blended by Ada against the actual background. The retired generated
+IBM Plex/Noto tables are no longer shipped.
 
 Upstream source:
 
@@ -17,34 +19,9 @@ https://github.com/IBM/plex
 IBM Plex is licensed under the SIL Open Font License 1.1. The complete
 copyright notice and license are in `licenses/IBM_PLEX_OFL.txt`.
 
-## Noto Sans Bitmap Font
-
-`cubit-ui-fonts_noto_sans_11.ads` and
-`userspace/services/desktop/desktop_ui_font.ads` were generated from
-Noto Sans Regular:
-
-https://github.com/notofonts/latin-greek-cyrillic
-
-The generated Ada packages are bitmap renderings of ASCII glyphs 32..126 at
-11 pt. CuBit does not parse or load the TTF at runtime.
-
-Noto Sans is licensed under the SIL Open Font License 1.1.
-
-```text
-Copyright 2022 The Noto Project Authors
-
-This Font Software is licensed under the SIL Open Font License, Version 1.1.
-```
-
-## Noto Sans Mono Bitmap Font
-
-`cubit-ui-fonts_noto_sans_mono_11.ads` was generated from Noto Sans Mono
-Regular with `tools/generate_ui_font.py`. It contains a fixed-width rendering
-of ASCII glyphs 32..126 for source editors, disassembly, logs, and other code
-surfaces. CuBit does not parse or load the TTF at runtime.
-
-Noto Sans Mono is part of the Noto project and is licensed under the SIL Open
-Font License 1.1.
+Rust component versions and checksums are pinned in `userspace/rust/Cargo.lock`.
+See `userspace/rust/fonts/THIRD_PARTY.md` and its `licenses/` directory for
+the rasterizer, TrueType parser, and math implementation notices.
 
 ## Bluecurve Icon Atlas
 

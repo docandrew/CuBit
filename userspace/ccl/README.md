@@ -44,8 +44,8 @@ when invoked without arguments. Both paths use the same checked, fuel-bounded
 
 The BASIC-like interactive syntax and Lisp-like structured syntax are both CCL.
 They elaborate into the same typed core and do not identify separate languages.
-`CuBASIC` is the existing desktop prototype and historical predecessor of the
-CCL console.
+The old embedded `CuBASIC` prototype has been removed from the Desktop. CCL
+Workbench provides the supported editor and REPL; CCL's BASIC syntax is retained.
 
 The target ownership vocabulary is unrestricted, move-only (affine),
 must-handle (linear), borrowed-ro, borrowed-rw, and explicitly shared.

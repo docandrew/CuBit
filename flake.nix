@@ -42,6 +42,9 @@
           cubitRust = pkgs.rust-bin.stable.latest.default.override {
             targets = [ "x86_64-unknown-none" ];
           };
+          cubitRustVendor = pkgs.rustPlatform.importCargoLock {
+            lockFile = ./userspace/rust/Cargo.lock;
+          };
           # Freestanding math library: no Linux TLS canary or fortified libc
           # dependency. Native CuBit supplies process isolation/ELF runtime.
           sameboyMath = pkgs.openlibm.overrideAttrs (previous: {
@@ -93,6 +96,7 @@
             ];
 
             shellHook = ''
+              export CUBIT_RUST_VENDOR="${cubitRustVendor}"
               # Hosted allocator references only, never native CuBit linkage.
               export CUBIT_BENCH_MIMALLOC="${pkgs.mimalloc}/lib/libmimalloc.so"
               export CUBIT_BENCH_JEMALLOC="${pkgs.jemalloc}/lib/libjemalloc.so"
