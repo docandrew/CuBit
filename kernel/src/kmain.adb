@@ -42,7 +42,7 @@ with Timer_pit;
 with Timer_Expiry_Probe;
 with Video;
 with Video.EGA;
-with Video.VGA;
+with Boot_Diagnostics;
 with Virtmem; use Virtmem;
 with x86;
 
@@ -98,17 +98,11 @@ is
         end if;
     end earlyCheckpoint;
 
-    --  Keep the physical-screen boot display intentionally sparse.  The VGA
-    --  text renderer scrolls by moving and repainting the whole framebuffer,
-    --  which is painfully slow on firmware framebuffers (and under QEMU
-    --  emulation).  Detailed diagnostics continue to use the serial mirror.
+    --  Serial keeps the milestone record; graphics updates a fixed slot.
     procedure showBootStage (message : String) is
     begin
-        TextIO.enableVideo;
+        Boot_Diagnostics.Complete_Step (message);
         println ("[ OK ] " & message, LT_GREEN, BLACK);
-        if not earlyText then
-            TextIO.disableVideo;
-        end if;
     end showBootStage;
 begin
 
@@ -186,17 +180,13 @@ begin
         TextIO.setVideo (Video.EGA.getTextInterface);
         TextIO.clear (BLUE);
     else
-        println ("Using VGA driver");
-        Video.VGA.setup (Multiboot.Framebuffer);
-        TextIO.setVideo (Video.VGA.getTextInterface);
+        Boot_Diagnostics.Setup (Multiboot.Framebuffer);
     end if;
 
-    TextIO.clear (BLACK);
+    if earlyText then TextIO.clear (BLACK); end if;
 
-    --  Show only a compact progress display on the firmware framebuffer.
-    --  Verbose output remains available through the serial mirror.  Each
-    --  milestone temporarily re-enables video without ever reaching the
-    --  expensive framebuffer-scroll path.
+    --  Graphical diagnostics use fixed rows, never terminal scrolling. The
+    --  complete byte stream still reaches the existing serial mirror.
     println ("CuBitOS v0.0.1", LT_BLUE, BLACK);
     println ("Booting...");
     if not earlyText then
@@ -301,12 +291,14 @@ begin
 
     initACPI: declare
     begin
+        Boot_Diagnostics.Begin_Step ("Reading ACPI tables");
         println("Setting up ACPI", LT_BLUE, BLACK);
         if not acpi.setup then
             raise NoACPIException with "ACPI Setup Failed, MP tables for SMP data not implemented.";
         end if;
     end initACPI;
     showBootStage ("ACPI tables loaded");
+    Boot_Diagnostics.Begin_Step ("Configuring interrupt routing");
 
 
     initPIC: declare
@@ -449,6 +441,7 @@ begin
         end if;
     end initIOAPIC;
     showBootStage ("Interrupt routing ready");
+    Boot_Diagnostics.Begin_Step ("Enumerating PCI devices");
 
 
     initPCI: declare
@@ -471,6 +464,7 @@ begin
         PCI.enumerateDevicesPCIe (Virtmem.P2Va (startAddr));
     end initPCI;
     showBootStage ("PCI devices enumerated");
+    Boot_Diagnostics.Begin_Step ("Loading the live system image");
 
 
     -- @TODO not sure if it makes sense to map the entire configuration space here,
@@ -499,6 +493,7 @@ begin
         Modules.setup;
     end initModules;
     showBootStage ("Live system image loaded");
+    Boot_Diagnostics.Begin_Step ("Starting secondary CPUs");
 
     TLB_Shootdown.Register_CPU (0);
     if acpi.numCPUs > 1 then
@@ -541,6 +536,7 @@ begin
     begin
         Process.startReaper;
         showBootStage ("Starting userspace...");
+        Boot_Diagnostics.Begin_Step ("Starting services / waiting for display owner");
         println("Starting scheduler on CPU 0");
         Scheduler.schedule(cpu0Data);
     end initScheduler;
@@ -565,8 +561,6 @@ procedure apEnter (cpuNum : in Unsigned_32) is
     idlePID         : constant Process.ProcessID :=
         Process.ProcessID(Config.IDLE_PID_BASE + Natural(cpuNum));
 begin
-    print ("CPU started: ", GREEN, BLACK); printdln (cpuNum);
-
     PerCPUData.setup (Integer(cpuNum),
                       cpuData,
                       cpuData'Address,
@@ -582,6 +576,10 @@ begin
 
     -- switch to the kernel's primary page tables.
     Mem_mgr.switchAddressSpace;
+
+    -- Diagnostic rendering needs both CPU-local lock bookkeeping and the
+    -- kernel framebuffer mapping, not the AP's bootstrap page tables.
+    print ("CPU started: ", GREEN, BLACK); printdln (cpuNum);
 
     -- Enable SMEP/SMAP on this AP
     enableAPSMEPSMAP : declare

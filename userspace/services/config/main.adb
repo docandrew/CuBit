@@ -1,3 +1,4 @@
+pragma Ada_2022;
 ------------------------------------------------------------------------------
 --  CuBit
 --  Copyright (C) 2026 Jon Andrew
@@ -9,99 +10,41 @@
 --  access. Follows the same IPC loop + ACL pattern as the FS server.
 --
 --  Capability slots:
---    1 = CAP_ENDPOINT to filesystem server (granted by devmgr)
 --    7 = CAP_NOTIFICATION for DRIVER_CONFIG registration
 --   15 = CAP_ENDPOINT to devmgr (for OP_READY signal)
 ------------------------------------------------------------------------------
-with Ada.Unchecked_Conversion;
 with Interfaces; use Interfaces;
 with System; use System;
-with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
-with CuBit.Filesystems;
+with CuBit.Config_Inspection;
+with Config_Authority;
+with Config_Store;
+with CuBit.Config_Protocol;
 
 procedure main is
    use ASCII;
-   use type CuBit.Filesystems.Open_Options;
 
    --  IPC operation labels
-   OP_CONFIG_GET    : constant Unsigned_32 := 16#0600#;
-   OP_CONFIG_SET    : constant Unsigned_32 := 16#0601#;
-   OP_CONFIG_DELETE : constant Unsigned_32 := 16#0602#;
-   OP_CONFIG_LIST   : constant Unsigned_32 := 16#0603#;
-   OP_CONFIG_LOAD   : constant Unsigned_32 := 16#0604#;
-   OP_CONFIG_SAVE   : constant Unsigned_32 := 16#0605#;
    OP_SET_ACL       : constant Unsigned_32 := 16#0080#;
    OP_REVOKE_ACL    : constant Unsigned_32 := 16#0081#;
    REPLY_OK            : constant Unsigned_32 := 16#F000#;
    REPLY_ERR           : constant Unsigned_32 := 16#F001#;
    REPLY_ACCESS_DENIED : constant Unsigned_32 := 16#F007#;
 
-   --  Grant region constants (must match kernel process.ads)
-   GRANT_REGION_BASE : constant Unsigned_64 := 16#0000_4000_0000_0000#;
-   GRANT_SLOT_SIZE   : constant Unsigned_64 := 4096 * 4096; -- 16 MiB
-
-   --  FS endpoint is at slot 1 (granted by devmgr)
-   CAP_SLOT_FS_LOCAL : constant Unsigned_64 := 1;
-
    PAGE_SIZE : constant := 4096;
 
-   --  FS grant state for persistence
-   fsGrantBuf  : System.Address := System.Null_Address;
-   fsGrant     : CuBit.Memory_Grants.Grant_Reference;
-   fsReady     : Boolean := False;
-
-   --  Persistence backing store path (read from "config.store" key)
-   storePath    : String (1 .. 128);
-   storePathLen : Natural := 0;
-
-   --  KV store limits
-   MAX_KEY_LEN   : constant := 128;
-   MAX_VALUE_LEN : constant := 4096;
-   MAX_ENTRIES   : constant := 256;
-
-   type ValueArray is array (0 .. MAX_VALUE_LEN - 1) of Unsigned_8;
-
-   type ConfigEntry is record
-      active   : Boolean   := False;
-      key      : String (1 .. MAX_KEY_LEN);
-      keyLen   : Natural   := 0;
-      value    : ValueArray := (others => 0);
-      valueLen : Natural   := 0;
-   end record;
-
-   store : array (0 .. MAX_ENTRIES - 1) of ConfigEntry;
+   MAX_KEY_LEN : constant := Config_Store.Maximum_Key;
+   store : Config_Store.State;
 
    ---------------------------------------------------------------------------
    --  Per-process ACL infrastructure (same pattern as FS server)
    ---------------------------------------------------------------------------
 
-   ACL_READ  : constant Unsigned_8 := 1;
-   ACL_WRITE : constant Unsigned_8 := 2;
-
-   MAX_ACL_PREFIX   : constant := 64;
-   MAX_ACL_ENTRIES  : constant := 16;
-   MAX_ACL_PROFILES : constant := 32;
-
-   type ACLEntry is record
-      prefix    : String (1 .. MAX_ACL_PREFIX);
-      prefixLen : Natural    := 0;  --  0 = wildcard (matches everything)
-      rights    : Unsigned_8 := 0;
-   end record;
-
-   type ACLEntryArray is
-     array (0 .. MAX_ACL_ENTRIES - 1) of ACLEntry;
-
-   type ACLProfile is record
-      pid     : ProcessID := NO_PROCESS;
-      active  : Boolean   := False;
-      count   : Natural   := 0;
-      entries : ACLEntryArray;
-   end record;
-
-   aclProfiles : array (0 .. MAX_ACL_PROFILES - 1) of ACLProfile;
+   ACL_READ : constant Config_Authority.Operation := Config_Authority.Read_Config;
+   ACL_WRITE : constant Config_Authority.Operation := Config_Authority.Write_Config;
+   Authorities : Config_Authority.Authority_State;
 
    --  Resolve administrative roles on each check. These operations are
    --  control-plane traffic, and a live registry lookup avoids turning a
@@ -123,69 +66,22 @@ procedure main is
    function checkAccess
      (sender : ProcessID;
       key    : String;
-      rights : Unsigned_8) return Boolean
+      rights : Config_Authority.Operation) return Boolean
    is
+      use type Config_Authority.Operation;
    begin
       if isAdmin (sender) then
          return True;
       end if;
 
       if key'Length >= 11 and then key (key'First .. key'First + 10) = "clock.boot-"
-        and then (rights and ACL_WRITE) /= 0
+        and then rights = ACL_WRITE
       then
          return False;
       end if;
 
-      for i in aclProfiles'Range loop
-         if aclProfiles (i).active and then
-            aclProfiles (i).pid = sender
-         then
-            --  Profile found; scan entries for prefix match
-            for j in 0 .. aclProfiles (i).count - 1 loop
-               if (aclProfiles (i).entries (j).rights and rights) = rights
-               then
-                  --  Wildcard entry matches everything
-                  if aclProfiles (i).entries (j).prefixLen = 0 then
-                     return True;
-                  end if;
-
-                  --  Prefix match
-                  if key'Length >=
-                     aclProfiles (i).entries (j).prefixLen
-                  then
-                     declare
-                        pLen : constant Natural :=
-                          aclProfiles (i).entries (j).prefixLen;
-                        match : Boolean := True;
-                     begin
-                        for k in 0 .. pLen - 1 loop
-                           if key (key'First + k) /=
-                              aclProfiles (i).entries (j).prefix (1 + k)
-                           then
-                              match := False;
-                              exit;
-                           end if;
-                        end loop;
-                        if match then
-                           return True;
-                        end if;
-                     end;
-                  end if;
-               end if;
-            end loop;
-
-            --  Profile found but no matching entry
-            return False;
-         end if;
-      end loop;
-
-      --  No profile found: default deny
-      return False;
+      return Config_Authority.Allows (Authorities, sender, key, rights);
    end checkAccess;
-
-   --  Conversion helpers
-   function toAddr is new Ada.Unchecked_Conversion
-     (Unsigned_64, System.Address);
 
    --  Send a reply with the given label and word0 value
    procedure sendReply
@@ -205,90 +101,71 @@ procedure main is
    end sendReply;
 
    ---------------------------------------------------------------------------
-   --  Handle OP_SET_ACL (same protocol as FS server)
+   --  Handle OP_SET_ACL using a checked Config grant reference
    --  words(0) = target PID
    --  words(1) = entry count (0 = wildcard full access)
-   --  words(2) = grant_id (when count > 0)
+   --  words(2..3) = grant slot and generation (zero when count = 0)
    ---------------------------------------------------------------------------
    procedure handleSetACL (sender : ProcessID; msg : Message) is
-      targetPID  : constant ProcessID := msg.words (0);
-      entryCount : constant Natural := Natural (msg.words (1));
-      slotIdx    : Integer := -1;
+      use type Config_Authority.Install_Result;
+      Candidate : Config_Authority.Rule_Set;
+      Result : Config_Authority.Install_Result;
+      Accepted, Acquired, Returned : Boolean;
+      Reference : CuBit.Memory_Grants.Grant_Reference;
+      Address : System.Address;
+      Count : Natural;
    begin
       if not isAdmin (sender) then
-         sendReply (sender, REPLY_ACCESS_DENIED, 0);
-         return;
+         sendReply (sender, REPLY_ACCESS_DENIED, 0); return;
       end if;
-
-      if entryCount > MAX_ACL_ENTRIES then
-         sendReply (sender, REPLY_ERR, 0);
-         return;
-      end if;
-
-      --  Find existing profile or allocate a free slot
-      for i in aclProfiles'Range loop
-         if aclProfiles (i).active and then
-            aclProfiles (i).pid = targetPID
-         then
-            slotIdx := i;
-            exit;
+      if msg.tag.length /= 4 or else msg.words (0) = NO_PROCESS or else
+        msg.words (0) = Unsigned_64'Last or else
+        msg.words (1) > Config_Authority.Maximum_Rules
+      then sendReply (sender, REPLY_ERR, 0); return; end if;
+      Count := Natural (msg.words (1));
+      if Count = 0 then
+         if msg.words (2) /= 0 or msg.words (3) /= 0 then
+            sendReply (sender, REPLY_ERR, 0); return;
          end if;
-      end loop;
-
-      if slotIdx < 0 then
-         for i in aclProfiles'Range loop
-            if not aclProfiles (i).active then
-               slotIdx := i;
-               exit;
-            end if;
-         end loop;
-      end if;
-
-      if slotIdx < 0 then
-         sendReply (sender, REPLY_ERR, 0);
-         return;
-      end if;
-
-      aclProfiles (slotIdx).pid    := targetPID;
-      aclProfiles (slotIdx).active := True;
-
-      if entryCount = 0 then
-         --  Wildcard: single entry with prefixLen=0, rights=all
-         aclProfiles (slotIdx).count := 1;
-         aclProfiles (slotIdx).entries (0).prefixLen := 0;
-         aclProfiles (slotIdx).entries (0).rights := 16#FF#;
+         Config_Authority.Append (Candidate, "", Config_Authority.Read_Write, Accepted);
       else
-         --  Read entries from grant buffer
-         --  Each entry: 1 byte rights, 1 byte prefixLen, 6 reserved,
-         --  64 bytes prefix = 72 bytes total
+         if msg.words (2) > CuBit.Memory_Grants.MAXIMUM_GLOBAL_SLOT or else
+           msg.words (3) not in CuBit.Memory_Grants.Grant_Generation
+         then sendReply (sender, REPLY_ERR, 0); return; end if;
+         Reference := (slot => msg.words (2), generation => msg.words (3));
+         CuBit.Memory_Grants.Acquire
+           (Reference, sender, 0, Unsigned_64 (Count * 72),
+            CuBit.Memory_Grants.Read_Access, Address, Acquired);
+         if not Acquired then sendReply (sender, REPLY_ERR, 0); return; end if;
          declare
-            grantId   : constant Unsigned_64 := msg.words (2);
-            grantAddr : constant Unsigned_64 :=
-              GRANT_REGION_BASE + grantId * GRANT_SLOT_SIZE;
-            buf : array (0 .. entryCount * 72 - 1) of Unsigned_8
-              with Import, Address => toAddr (grantAddr);
-            base : Natural;
-            pLen : Natural;
+            Shared : String (1 .. Count * 72) with Import, Address => Address;
+            -- Snapshot once; subsequent authorization never rereads client bytes.
+            Data : constant String := Shared;
+            Base, Length, Mask : Natural;
          begin
-            aclProfiles (slotIdx).count := entryCount;
-            for e in 0 .. entryCount - 1 loop
-               base := e * 72;
-               aclProfiles (slotIdx).entries (e).rights := buf (base);
-               pLen := Natural (buf (base + 1));
-               if pLen > MAX_ACL_PREFIX then
-                  pLen := MAX_ACL_PREFIX;
-               end if;
-               aclProfiles (slotIdx).entries (e).prefixLen := pLen;
-               for c in 0 .. pLen - 1 loop
-                  aclProfiles (slotIdx).entries (e).prefix (1 + c) :=
-                    Character'Val (buf (base + 8 + c));
-               end loop;
+            CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
+            if not Returned then sendReply (sender, REPLY_ERR, 0); return; end if;
+            for I in 0 .. Count - 1 loop
+               Base := I * 72;
+               Mask := Character'Pos (Data (Base + 1));
+               Length := Character'Pos (Data (Base + 2));
+               if Length > Config_Authority.Maximum_Scope or else Mask > 3 or else
+                 (for some J in Base + 3 .. Base + 8 => Data (J) /= ASCII.NUL)
+               then sendReply (sender, REPLY_ERR, 0); return; end if;
+               Config_Authority.Append
+                 (Candidate, Data (Base + 9 .. Base + 8 + Length),
+                  (Config_Authority.Read_Config => Mask mod 2 = 1,
+                   Config_Authority.Write_Config => Mask >= 2), Accepted);
+               if not Accepted then sendReply (sender, REPLY_ERR, 0); return; end if;
             end loop;
          end;
       end if;
-
-      debugPrint ("Config: ACL set for PID" & LF);
-      sendReply (sender, REPLY_OK, 0);
+      Config_Authority.Install (Authorities, msg.words (0), Candidate, Result);
+      if Result = Config_Authority.Installed then
+         debugPrint ("Config: ACL set for PID" & LF);
+         sendReply (sender, REPLY_OK, 0);
+      else sendReply (sender, REPLY_ERR, 0);
+      end if;
    end handleSetACL;
 
    --  Handle OP_REVOKE_ACL
@@ -301,15 +178,8 @@ procedure main is
          return;
       end if;
 
-      for i in aclProfiles'Range loop
-         if aclProfiles (i).active and then
-            aclProfiles (i).pid = targetPID
-         then
-            aclProfiles (i).active := False;
-            aclProfiles (i).pid    := NO_PROCESS;
-            aclProfiles (i).count  := 0;
-         end if;
-      end loop;
+      if msg.tag.length /= 1 then sendReply (sender, REPLY_ERR, 0); return; end if;
+      Config_Authority.Revoke (Authorities, targetPID);
 
       sendReply (sender, REPLY_OK, 0);
    end handleRevokeACL;
@@ -333,687 +203,177 @@ procedure main is
              key (key'First + 6) = '/';
    end isSystemKey;
 
-   --  Find a store entry by key. Returns index or -1 if not found.
-   function findEntry (key : String) return Integer is
-   begin
-      for i in store'Range loop
-         if store (i).active and then store (i).keyLen = key'Length then
-            declare
-               match : Boolean := True;
-            begin
-               for c in 0 .. key'Length - 1 loop
-                  if store (i).key (1 + c) /= key (key'First + c) then
-                     match := False;
-                     exit;
-                  end if;
-               end loop;
-               if match then
-                  return i;
-               end if;
-            end;
-         end if;
-      end loop;
-      return -1;
-   end findEntry;
-
-   --  Find a free store slot. Returns index or -1 if full.
-   function allocEntry return Integer is
-   begin
-      for i in store'Range loop
-         if not store (i).active then
-            return i;
-         end if;
-      end loop;
-      return -1;
-   end allocEntry;
-
-   ---------------------------------------------------------------------------
-   --  Handle OP_CONFIG_GET
-   --  words(0) = grantId
-   --  words(1) = keyLen
-   --  Reply: word0 = valueLen (or REPLY_ERR)
-   ---------------------------------------------------------------------------
-   procedure handleGet (sender : ProcessID; msg : Message) is
-      grantId   : constant Unsigned_64 := msg.words (0);
-      keyLen    : constant Natural := Natural (msg.words (1));
-      grantAddr : constant Unsigned_64 :=
-        GRANT_REGION_BASE + grantId * GRANT_SLOT_SIZE;
-      idx : Integer;
-   begin
-      if keyLen = 0 or keyLen > MAX_KEY_LEN then
-         sendReply (sender, REPLY_ERR, 0);
-         return;
-      end if;
-
-      --  Read key from grant buffer
-      declare
-         keyBuf : String (1 .. keyLen)
-           with Import, Address => toAddr (grantAddr);
+   --  Inspector protocol: bounded owned text, no raw slot-to-address math.
+   --  words = (slot, generation, key length, context).
+   procedure handleInspection (sender : ProcessID; msg : Message) is
+      use CuBit.Config_Inspection;
+      Reference : CuBit.Memory_Grants.Grant_Reference;
+      Address : System.Address;
+      Acquired, Returned : Boolean;
+      Result : Status := OK;
+      Output : Text;
+      Key_Length : Natural;
+      Stored_Value : Config_Store.Value_Text;
+      Found : Boolean;
+      procedure Respond (Value : Status; Length : Natural := 0) is
       begin
-         if not checkAccess (sender, keyBuf, ACL_READ) then
-            sendReply (sender, REPLY_ACCESS_DENIED, 0);
-            return;
-         end if;
-
-         idx := findEntry (keyBuf);
-      end;
-
-      if idx < 0 then
-         sendReply (sender, REPLY_ERR, 0);
+         sendReply (sender, Status'Enum_Rep (Value), Unsigned_64 (Length));
+      end Respond;
+   begin
+      if msg.tag.length /= 4 or else
+        msg.words (3) /= Unsigned_64 (Machine_Context)
+      then Respond (Invalid_Request); return; end if;
+      if msg.tag.label = Operation'Enum_Rep (Probe) then
+         -- A global inspector must have an explicit wildcard read grant.
+         Respond ((if checkAccess (sender, "", ACL_READ) then OK else Denied));
          return;
       end if;
-
-      --  Write value to grant buffer
+      if msg.words (0) > CuBit.Memory_Grants.MAXIMUM_GLOBAL_SLOT or else
+        msg.words (1) not in CuBit.Memory_Grants.Grant_Generation or else
+        msg.words (2) > MAX_KEY_LEN
+      then Respond (Invalid_Request); return; end if;
+      Key_Length := Natural (msg.words (2));
+      if msg.tag.label = Operation'Enum_Rep (Read_Value) and Key_Length = 0 then
+         Respond (Invalid_Request); return;
+      end if;
+      Reference := (slot => msg.words (0), generation => msg.words (1));
+      CuBit.Memory_Grants.Acquire
+        (Reference, sender, 0, PAGE_SIZE, CuBit.Memory_Grants.Write_Access,
+         Address, Acquired);
+      if not Acquired then Respond (Invalid_Request); return; end if;
       declare
-         outBuf : array (0 .. store (idx).valueLen - 1) of Unsigned_8
-           with Import, Address => toAddr (grantAddr);
+         Buffer : String (1 .. PAGE_SIZE) with Import, Address => Address;
+         Key : constant String := Buffer (1 .. Key_Length);
       begin
-         for v in 0 .. store (idx).valueLen - 1 loop
-            outBuf (v) := store (idx).value (v);
-         end loop;
-      end;
-
-      sendReply (sender, REPLY_OK, Unsigned_64 (store (idx).valueLen));
-   end handleGet;
-
-   ---------------------------------------------------------------------------
-   --  Handle OP_CONFIG_SET
-   --  words(0) = grantId
-   --  words(1) = keyLen
-   --  words(2) = valueLen
-   ---------------------------------------------------------------------------
-   procedure handleSet (sender : ProcessID; msg : Message) is
-      grantId   : constant Unsigned_64 := msg.words (0);
-      keyLen    : constant Natural := Natural (msg.words (1));
-      valueLen  : constant Natural := Natural (msg.words (2));
-      grantAddr : constant Unsigned_64 :=
-        GRANT_REGION_BASE + grantId * GRANT_SLOT_SIZE;
-      idx : Integer;
-   begin
-      if keyLen = 0 or keyLen > MAX_KEY_LEN or valueLen > MAX_VALUE_LEN then
-         sendReply (sender, REPLY_ERR, 0);
-         return;
-      end if;
-
-      --  Read key and value from grant buffer: key at offset 0, value at
-      --  offset keyLen (packed sequentially).
-      declare
-         grantBuf : array (0 .. keyLen + valueLen - 1) of Unsigned_8
-           with Import, Address => toAddr (grantAddr);
-         keyStr : String (1 .. keyLen);
-      begin
-         --  Extract key
-         for c in 0 .. keyLen - 1 loop
-            keyStr (1 + c) := Character'Val (grantBuf (c));
-         end loop;
-
-         if not checkAccess (sender, keyStr, ACL_WRITE) then
-            sendReply (sender, REPLY_ACCESS_DENIED, 0);
-            return;
-         end if;
-
-         --  System namespace: reject writes unless admin
-         if isSystemKey (keyStr) and then not isAdmin (sender) then
-            sendReply (sender, REPLY_ACCESS_DENIED, 0);
-            return;
-         end if;
-
-         --  Upsert: find existing or allocate new
-         idx := findEntry (keyStr);
-         if idx < 0 then
-            idx := allocEntry;
-            if idx < 0 then
-               sendReply (sender, REPLY_ERR, 0);
-               return;
-            end if;
-         end if;
-
-         store (idx).active := True;
-         store (idx).keyLen := keyLen;
-         for c in 0 .. keyLen - 1 loop
-            store (idx).key (1 + c) := keyStr (1 + c);
-         end loop;
-
-         store (idx).valueLen := valueLen;
-         for v in 0 .. valueLen - 1 loop
-            store (idx).value (v) := grantBuf (keyLen + v);
-         end loop;
-      end;
-
-      sendReply (sender, REPLY_OK, 0);
-   end handleSet;
-
-   ---------------------------------------------------------------------------
-   --  Handle OP_CONFIG_DELETE
-   --  words(0) = grantId
-   --  words(1) = keyLen
-   ---------------------------------------------------------------------------
-   procedure handleDelete (sender : ProcessID; msg : Message) is
-      grantId   : constant Unsigned_64 := msg.words (0);
-      keyLen    : constant Natural := Natural (msg.words (1));
-      grantAddr : constant Unsigned_64 :=
-        GRANT_REGION_BASE + grantId * GRANT_SLOT_SIZE;
-      idx : Integer;
-   begin
-      if keyLen = 0 or keyLen > MAX_KEY_LEN then
-         sendReply (sender, REPLY_ERR, 0);
-         return;
-      end if;
-
-      declare
-         keyBuf : String (1 .. keyLen)
-           with Import, Address => toAddr (grantAddr);
-      begin
-         if not checkAccess (sender, keyBuf, ACL_WRITE) then
-            sendReply (sender, REPLY_ACCESS_DENIED, 0);
-            return;
-         end if;
-
-         --  System namespace: reject deletes unless admin
-         if isSystemKey (keyBuf) and then not isAdmin (sender) then
-            sendReply (sender, REPLY_ACCESS_DENIED, 0);
-            return;
-         end if;
-
-         idx := findEntry (keyBuf);
-      end;
-
-      if idx < 0 then
-         sendReply (sender, REPLY_ERR, 0);
-         return;
-      end if;
-
-      store (idx).active := False;
-      sendReply (sender, REPLY_OK, 0);
-   end handleDelete;
-
-   ---------------------------------------------------------------------------
-   --  Handle OP_CONFIG_LIST
-   --  words(0) = grantId
-   --  words(1) = prefixLen (0 = list all)
-   --  Reply: word0 = count of matching keys
-   --  Grant buffer filled with NUL-separated key strings.
-   ---------------------------------------------------------------------------
-   procedure handleList (sender : ProcessID; msg : Message) is
-      grantId   : constant Unsigned_64 := msg.words (0);
-      prefixLen : constant Natural := Natural (msg.words (1));
-      grantAddr : constant Unsigned_64 :=
-        GRANT_REGION_BASE + grantId * GRANT_SLOT_SIZE;
-      writeOff  : Natural := 0;
-      count     : Natural := 0;
-      maxWrite  : constant Natural := Natural (GRANT_SLOT_SIZE);
-   begin
-      if prefixLen > MAX_KEY_LEN then
-         sendReply (sender, REPLY_ERR, 0);
-         return;
-      end if;
-
-      --  Read prefix from grant buffer (if any) before we start writing
-      declare
-         prefix : String (1 .. Natural'Max (prefixLen, 1));
-      begin
-         if prefixLen > 0 then
-            declare
-               prefBuf : String (1 .. prefixLen)
-                 with Import, Address => toAddr (grantAddr);
-            begin
-               for c in 1 .. prefixLen loop
-                  prefix (c) := prefBuf (c);
-               end loop;
-            end;
-
-            if not checkAccess (sender, prefix (1 .. prefixLen), ACL_READ)
-            then
-               sendReply (sender, REPLY_ACCESS_DENIED, 0);
-               return;
-            end if;
-         else
-            --  Empty prefix: check wildcard read access with empty string
-            prefix (1) := Character'Val (0);  -- unused
-            if not checkAccess (sender, "", ACL_READ) then
-               sendReply (sender, REPLY_ACCESS_DENIED, 0);
-               return;
-            end if;
-         end if;
-
-         --  Write matching keys to grant buffer as NUL-separated strings
-         declare
-            outBuf : array (0 .. maxWrite - 1) of Unsigned_8
-              with Import, Address => toAddr (grantAddr);
-         begin
-            for i in store'Range loop
-               if store (i).active then
-                  declare
-                     match : Boolean := True;
-                  begin
-                     if prefixLen > 0 then
-                        if store (i).keyLen < prefixLen then
-                           match := False;
-                        else
-                           for c in 0 .. prefixLen - 1 loop
-                              if store (i).key (1 + c) /=
-                                 prefix (1 + c)
-                              then
-                                 match := False;
-                                 exit;
-                              end if;
-                           end loop;
-                        end if;
-                     end if;
-
-                     if match then
-                        --  Check we have room: keyLen + NUL
-                        if writeOff + store (i).keyLen + 1 > maxWrite then
-                           exit;
-                        end if;
-
-                        for c in 0 .. store (i).keyLen - 1 loop
-                           outBuf (writeOff + c) :=
-                             Unsigned_8 (Character'Pos (
-                               store (i).key (1 + c)));
-                        end loop;
-                        writeOff := writeOff + store (i).keyLen;
-                        outBuf (writeOff) := 0;  --  NUL separator
-                        writeOff := writeOff + 1;
-                        count := count + 1;
-                     end if;
-                  end;
-               end if;
-            end loop;
-         end;
-      end;
-
-      sendReply (sender, REPLY_OK, Unsigned_64 (count));
-   end handleList;
-
-   ---------------------------------------------------------------------------
-   --  Internal set (no ACL check, used by handleLoad)
-   ---------------------------------------------------------------------------
-   procedure internalSet (key : String; val : String) is
-      idx : Integer;
-   begin
-      if key'Length = 0 or key'Length > MAX_KEY_LEN or
-         val'Length > MAX_VALUE_LEN
-      then
-         return;
-      end if;
-
-      idx := findEntry (key);
-      if idx < 0 then
-         idx := allocEntry;
-         if idx < 0 then
-            return;
-         end if;
-      end if;
-
-      store (idx).active := True;
-      store (idx).keyLen := key'Length;
-      for c in 0 .. key'Length - 1 loop
-         store (idx).key (1 + c) := key (key'First + c);
-      end loop;
-
-      store (idx).valueLen := val'Length;
-      for v in 0 .. val'Length - 1 loop
-         store (idx).value (v) :=
-           Unsigned_8 (Character'Pos (val (val'First + v)));
-      end loop;
-   end internalSet;
-
-   ---------------------------------------------------------------------------
-   --  FS grant initialization (lazy, called from handleLoad/handleSave)
-   ---------------------------------------------------------------------------
-   procedure ensureFsGrant is
-      rawAddr : Unsigned_64;
-      aligned : Unsigned_64;
-      ok      : Boolean;
-   begin
-      if fsReady then
-         return;
-      end if;
-
-      --  Allocate 2 pages for page-alignment
-      rawAddr := syscall (SYSCALL_SBRK, 2 * PAGE_SIZE);
-      if rawAddr = Unsigned_64'Last then
-         debugPrint ("Config: sbrk failed for FS grant" & LF);
-         return;
-      end if;
-
-      aligned := (rawAddr + PAGE_SIZE - 1) and
-                 not Unsigned_64 (PAGE_SIZE - 1);
-      fsGrantBuf := To_Address (Integer_Address (aligned));
-
-      --  Create grant to FS server (1 page RW)
-      CuBit.Memory_Grants.Create_Via_Capability
-        (slot      => CAP_SLOT_FS_LOCAL,
-         localAddr => fsGrantBuf,
-         numPages  => 1,
-         readWrite => True,
-         reference => fsGrant,
-         success   => ok);
-
-      if not ok then
-         debugPrint ("Config: FS grant creation failed" & LF);
-         return;
-      end if;
-
-      fsReady := True;
-      debugPrint ("Config: FS grant ready" & LF);
-   end ensureFsGrant;
-
-   ---------------------------------------------------------------------------
-   --  Parse key=value lines from a buffer of the given length.
-   --  Skips blank lines and lines starting with '#'.
-   ---------------------------------------------------------------------------
-   procedure parseKeyValueLines (buf : System.Address; len : Natural) is
-      data : array (0 .. len - 1) of Unsigned_8
-        with Import, Address => buf;
-      pos      : Natural := 0;
-      lineStart : Natural;
-      lineEnd   : Natural;
-      eqPos     : Integer;
-   begin
-      while pos < len loop
-         --  Find line start (skip any leftover)
-         lineStart := pos;
-
-         --  Find end of line (LF or end of data)
-         lineEnd := pos;
-         while lineEnd < len and then data (lineEnd) /= 16#0A# loop
-            lineEnd := lineEnd + 1;
-         end loop;
-
-         --  Trim trailing CR
-         declare
-            eol : Natural := lineEnd;
-         begin
-            if eol > lineStart and then data (eol - 1) = 16#0D# then
-               eol := eol - 1;
-            end if;
-
-            --  Skip past newline for next iteration
-            if lineEnd < len then
-               pos := lineEnd + 1;
+         if not checkAccess (sender, Key, ACL_READ) then
+            Result := Denied;
+         elsif msg.tag.label = Operation'Enum_Rep (Read_Value) then
+            Config_Store.Read (store, Key, Stored_Value, Found);
+            if not Found then Result := Missing;
+            elsif Stored_Value.Length > Maximum_Text then Result := Too_Large;
             else
-               pos := len;
+               Output.Length := Stored_Value.Length;
+               Output.Data (1 .. Output.Length) :=
+                 Stored_Value.Data (1 .. Output.Length);
             end if;
-
-            --  Skip blank lines and comments
-            if eol > lineStart and then data (lineStart) /= 16#23# then
-               --  Find '=' separator
-               eqPos := -1;
-               for e in lineStart .. eol - 1 loop
-                  if data (e) = 16#3D# then  --  '='
-                     eqPos := e;
-                     exit;
-                  end if;
-               end loop;
-
-               if eqPos > Integer (lineStart) and eqPos < Integer (eol) then
-                  declare
-                     kLen : constant Natural :=
-                       Natural (eqPos) - lineStart;
-                     vLen : constant Natural :=
-                       eol - Natural (eqPos) - 1;
-                     key : String (1 .. kLen);
-                     val : String (1 .. vLen);
-                  begin
-                     for c in 0 .. kLen - 1 loop
-                        key (1 + c) :=
-                          Character'Val (data (lineStart + c));
-                     end loop;
-                     for c in 0 .. vLen - 1 loop
-                        val (1 + c) :=
-                          Character'Val (data (Natural (eqPos) + 1 + c));
-                     end loop;
-                     internalSet (key, val);
-                  end;
-               end if;
-            end if;
-         end;
-      end loop;
-   end parseKeyValueLines;
-
-   ---------------------------------------------------------------------------
-   --  Handle OP_CONFIG_LOAD
-   --  Triggered by devmgr after seeding. Reads config.store key to find
-   --  the backing file, then loads key=value pairs from disk.
-   ---------------------------------------------------------------------------
-   procedure handleLoad (sender : ProcessID) is
-      fsMsg     : Message;
-      fileHandle : CuBit.Filesystems.File_Handle;
-      fileSize   : Unsigned_64;
-      bytesRead  : Unsigned_64;
-   begin
-      if not isAdmin (sender) then
-         sendReply (sender, REPLY_ACCESS_DENIED, 0);
-         return;
-      end if;
-
-      --  Read "config.store" from own store to get the file path
-      declare
-         storeKey : constant String := "config.store";
-         idx      : Integer;
-      begin
-         idx := findEntry (storeKey);
-         if idx < 0 then
-            debugPrint ("Config: no config.store key, skip load" & LF);
-            sendReply (sender, REPLY_OK, 0);
-            return;
-         end if;
-
-         storePathLen := store (idx).valueLen;
-         if storePathLen > storePath'Length then
-            storePathLen := storePath'Length;
-         end if;
-         for c in 0 .. storePathLen - 1 loop
-            storePath (1 + c) :=
-              Character'Val (store (idx).value (c));
-         end loop;
-      end;
-
-      ensureFsGrant;
-      if not fsReady then
-         debugPrint ("Config: FS not ready, skip load" & LF);
-         sendReply (sender, REPLY_OK, 0);
-         return;
-      end if;
-
-      --  Open file: write path to fsGrantBuf, send OP_OPEN
-      declare
-         pathBuf : String (1 .. storePathLen)
-           with Import, Address => fsGrantBuf;
-      begin
-         for c in 1 .. storePathLen loop
-            pathBuf (c) := storePath (c);
-         end loop;
-      end;
-
-      fsMsg := CuBit.Filesystems.Open_Request
-        (fsGrant, CuBit.Filesystems.Nonempty_Path_Byte_Count (storePathLen));
-      fsMsg.tag := capCall (CAP_SLOT_FS_LOCAL, fsMsg);
-
-      if fsMsg.tag.label /= REPLY_OK then
-         debugPrint ("Config: load open failed" & LF);
-         sendReply (sender, REPLY_OK, 0);
-         return;
-      end if;
-
-      fileHandle := CuBit.Filesystems.File_Handle (fsMsg.words (0));
-      fileSize   := fsMsg.words (1);
-
-      --  Clamp to grant buffer size
-      if fileSize > PAGE_SIZE then
-         fileSize := PAGE_SIZE;
-      end if;
-
-      --  Read file contents into fsGrantBuf
-      fsMsg := CuBit.Filesystems.Read_Request
-        (fileHandle, fsGrant, fileSize);
-      fsMsg.tag := capCall (CAP_SLOT_FS_LOCAL, fsMsg);
-
-      if fsMsg.tag.label /= REPLY_OK then
-         debugPrint ("Config: load read failed" & LF);
-         --  Close file before returning
-         fsMsg := CuBit.Filesystems.Close_Request (fileHandle);
-         fsMsg.tag := capCall (CAP_SLOT_FS_LOCAL, fsMsg);
-         sendReply (sender, REPLY_OK, 0);
-         return;
-      end if;
-
-      bytesRead := fsMsg.words (0);
-
-      --  Parse loaded data (overwrites seeded defaults)
-      if bytesRead > 0 then
-         parseKeyValueLines (fsGrantBuf, Natural (bytesRead));
-         debugPrint ("Config: loaded from disk" & LF);
-      end if;
-
-      --  Close file
-      fsMsg := CuBit.Filesystems.Close_Request (fileHandle);
-      fsMsg.tag := capCall (CAP_SLOT_FS_LOCAL, fsMsg);
-
-      sendReply (sender, REPLY_OK, 0);
-   end handleLoad;
-
-   ---------------------------------------------------------------------------
-   --  Handle OP_CONFIG_SAVE
-   --  Serializes all active config entries to disk as key=value lines.
-   ---------------------------------------------------------------------------
-   procedure handleSave (sender : ProcessID) is
-      fsMsg     : Message;
-      fileHandle : CuBit.Filesystems.File_Handle;
-      writeOff   : Natural := 0;
-   begin
-      if not isAdmin (sender) then
-         sendReply (sender, REPLY_ACCESS_DENIED, 0);
-         return;
-      end if;
-
-      --  Read "config.store" from own store
-      if storePathLen = 0 then
-         declare
-            storeKey : constant String := "config.store";
-            idx      : Integer;
-         begin
-            idx := findEntry (storeKey);
-            if idx < 0 then
-               debugPrint ("Config: no config.store, skip save" & LF);
-               sendReply (sender, REPLY_OK, 0);
-               return;
-            end if;
-
-            storePathLen := store (idx).valueLen;
-            if storePathLen > storePath'Length then
-               storePathLen := storePath'Length;
-            end if;
-            for c in 0 .. storePathLen - 1 loop
-               storePath (1 + c) :=
-                 Character'Val (store (idx).value (c));
-            end loop;
-         end;
-      end if;
-
-      ensureFsGrant;
-      if not fsReady then
-         debugPrint ("Config: FS not ready, skip save" & LF);
-         sendReply (sender, REPLY_OK, 0);
-         return;
-      end if;
-
-      --  Open file for writing
-      declare
-         pathBuf : String (1 .. storePathLen)
-           with Import, Address => fsGrantBuf;
-      begin
-         for c in 1 .. storePathLen loop
-            pathBuf (c) := storePath (c);
-         end loop;
-      end;
-
-      fsMsg := CuBit.Filesystems.Open_Request
-        (fsGrant,
-         CuBit.Filesystems.Nonempty_Path_Byte_Count (storePathLen),
-         CuBit.Filesystems.OPEN_WRITE_ONLY or
-           CuBit.Filesystems.OPEN_CREATE or
-           CuBit.Filesystems.OPEN_TRUNCATE);
-      fsMsg.tag := capCall (CAP_SLOT_FS_LOCAL, fsMsg);
-
-      if fsMsg.tag.label /= REPLY_OK then
-         debugPrint ("Config: save open failed" & LF);
-         sendReply (sender, REPLY_ERR, 0);
-         return;
-      end if;
-
-      fileHandle := CuBit.Filesystems.File_Handle (fsMsg.words (0));
-
-      --  Seek to beginning
-      fsMsg := CuBit.Filesystems.Seek_Request
-        (fileHandle, 0, CuBit.Filesystems.From_Start);
-      fsMsg.tag := capCall (CAP_SLOT_FS_LOCAL, fsMsg);
-
-      --  Serialize all active entries into the grant buffer, then write
-      --  in a single chunk. This keeps it simple and avoids per-entry IPC.
-      declare
-         outBuf : array (0 .. PAGE_SIZE - 1) of Unsigned_8
-           with Import, Address => fsGrantBuf;
-      begin
-         writeOff := 0;
-
-         for i in store'Range loop
-            if store (i).active then
-               --  Check we have room: key + '=' + value + LF
-               declare
-                  needed : constant Natural :=
-                    store (i).keyLen + 1 + store (i).valueLen + 1;
-               begin
-                  if writeOff + needed > PAGE_SIZE then
-                     exit;
-                  end if;
-
-                  --  Write key
-                  for c in 0 .. store (i).keyLen - 1 loop
-                     outBuf (writeOff + c) :=
-                       Unsigned_8 (Character'Pos (store (i).key (1 + c)));
-                  end loop;
-                  writeOff := writeOff + store (i).keyLen;
-
-                  --  Write '='
-                  outBuf (writeOff) := 16#3D#;
-                  writeOff := writeOff + 1;
-
-                  --  Write value
-                  for v in 0 .. store (i).valueLen - 1 loop
-                     outBuf (writeOff + v) := store (i).value (v);
-                  end loop;
-                  writeOff := writeOff + store (i).valueLen;
-
-                  --  Write LF
-                  outBuf (writeOff) := 16#0A#;
-                  writeOff := writeOff + 1;
-               end;
-            end if;
-         end loop;
-      end;
-
-      --  Write the serialized data
-      if writeOff > 0 then
-         fsMsg := CuBit.Filesystems.Write_Request
-           (fileHandle, fsGrant, Unsigned_64 (writeOff));
-         fsMsg.tag := capCall (CAP_SLOT_FS_LOCAL, fsMsg);
-
-         if fsMsg.tag.label /= REPLY_OK then
-            debugPrint ("Config: save write failed" & LF);
          else
-            debugPrint ("Config: saved to disk" & LF);
+            for I in Config_Store.Slot loop
+               declare
+                  Item : constant Config_Store.Key_Text := Config_Store.Key_At (store, I);
+               begin
+                  if Item.Length > 0 and then Contains (Key, Item.Data (1 .. Item.Length))
+                    and then checkAccess (sender, Item.Data (1 .. Item.Length), ACL_READ)
+                  then
+                     if Item.Length + 1 > Maximum_Text - Output.Length then
+                        Result := Too_Large; exit;
+                     end if;
+                     Output.Data (Output.Length + 1 .. Output.Length + Item.Length) :=
+                       Item.Data (1 .. Item.Length);
+                     Output.Length := Output.Length + Item.Length + 1;
+                     Output.Data (Output.Length) := ASCII.LF;
+                  end if;
+               end;
+            end loop;
          end if;
-      end if;
+         if Result = OK then Buffer (1 .. Output.Length) := Output.Data (1 .. Output.Length); end if;
+      end;
+      CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
+      if not Returned then Result := Unavailable; end if;
+      Respond (Result, (if Result = OK then Output.Length else 0));
+   end handleInspection;
 
-      --  Close file
-      fsMsg := CuBit.Filesystems.Close_Request (fileHandle);
-      fsMsg.tag := capCall (CAP_SLOT_FS_LOCAL, fsMsg);
-
-      sendReply (sender, REPLY_OK, 0);
-   end handleSave;
+   -- All data messages carry an owned, generation-bearing grant reference.
+   procedure Handle_Data
+     (Sender : ProcessID; Msg : Message; Op : CuBit.Config_Protocol.Operation)
+   is
+      use CuBit.Config_Protocol;
+      use type Config_Store.Update_Result;
+      Bounds : Request_Bounds;
+      Valid, Acquired, Returned : Boolean;
+      Reference : CuBit.Memory_Grants.Grant_Reference;
+      Address : System.Address;
+      Input : String (1 .. Maximum_Key + Maximum_Value);
+      Output : String (1 .. Maximum_Value) := [others => ASCII.NUL];
+      Output_Length, Count : Natural := 0;
+      Stored_Value : Config_Store.Value_Text;
+      Found : Boolean;
+      Update : Config_Store.Update_Result;
+      Status : Unsigned_32 := REPLY_OK;
+      Writes_Output : constant Boolean := Op in Get_Value | List_Keys;
+   begin
+      Decode (Op, Natural (Msg.tag.length), Msg.words (2), Msg.words (3), Bounds, Valid);
+      if not Valid or else Msg.words (0) > CuBit.Memory_Grants.MAXIMUM_GLOBAL_SLOT or else
+        Msg.words (1) not in CuBit.Memory_Grants.Grant_Generation
+      then sendReply (Sender, REPLY_ERR, 0); return; end if;
+      Reference := (slot => Msg.words (0), generation => Msg.words (1));
+      CuBit.Memory_Grants.Acquire
+        (Reference, Sender, 0, Unsigned_64 (Bounds.Mapping_Bytes),
+         (if Writes_Output then CuBit.Memory_Grants.Write_Access else CuBit.Memory_Grants.Read_Access),
+         Address, Acquired);
+      if not Acquired then sendReply (Sender, REPLY_ERR, 0); return; end if;
+      declare
+         Shared : String (1 .. Bounds.Mapping_Bytes) with Import, Address => Address;
+      begin
+         Input (1 .. Bounds.Input_Bytes) := Shared (1 .. Bounds.Input_Bytes);
+         if not Writes_Output then
+            CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
+            if not Returned then sendReply (Sender, REPLY_ERR, 0); return; end if;
+         end if;
+         declare
+            Key : constant String := Input (1 .. Bounds.Key);
+         begin
+            if not checkAccess (Sender, Key, (if Writes_Output then ACL_READ else ACL_WRITE)) or else
+              (not Writes_Output and then isSystemKey (Key) and then not isAdmin (Sender))
+            then Status := REPLY_ACCESS_DENIED;
+            else
+               case Op is
+                  when Get_Value =>
+                     Config_Store.Read (store, Key, Stored_Value, Found);
+                     if not Found then Status := 16#F060#;
+                     else
+                        Output_Length := Stored_Value.Length;
+                        Output (1 .. Output_Length) := Stored_Value.Data (1 .. Output_Length);
+                     end if;
+                  when Set_Value =>
+                     Config_Store.Put
+                       (store, Key, Input (Bounds.Key + 1 .. Bounds.Input_Bytes), Update);
+                     if Update /= Config_Store.Stored then Status := REPLY_ERR; end if;
+                  when Delete_Value =>
+                     Config_Store.Remove (store, Key, Found);
+                     if not Found then Status := 16#F060#; end if;
+                  when List_Keys =>
+                     for I in Config_Store.Slot loop
+                        declare
+                           Item : constant Config_Store.Key_Text := Config_Store.Key_At (store, I);
+                        begin
+                           if Item.Length > 0 and then CuBit.Config_Inspection.Contains
+                             (Key, Item.Data (1 .. Item.Length)) and then
+                             checkAccess (Sender, Item.Data (1 .. Item.Length), ACL_READ)
+                           then
+                              if Item.Length + 1 > Maximum_Value - Output_Length then
+                                 Status := 16#F061#; exit;
+                              end if;
+                              Output (Output_Length + 1 .. Output_Length + Item.Length) :=
+                                Item.Data (1 .. Item.Length);
+                              Output_Length := Output_Length + Item.Length + 1;
+                              Output (Output_Length) := ASCII.NUL;
+                              Count := Count + 1;
+                           end if;
+                        end;
+                     end loop;
+               end case;
+            end if;
+         end;
+         if Writes_Output then
+            if Status = REPLY_OK then Shared (1 .. Output_Length) := Output (1 .. Output_Length); end if;
+            CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
+            if not Returned then Status := REPLY_ERR; end if;
+         end if;
+      end;
+      sendReply (Sender, Status,
+        (if Status /= REPLY_OK then 0 elsif Op = List_Keys then Unsigned_64 (Count)
+         else Unsigned_64 (Output_Length)));
+   end Handle_Data;
 
    ---------------------------------------------------------------------------
    --  Main message loop variables
@@ -1050,18 +410,18 @@ begin
       receive (sender, msg);
 
       case msg.tag.label is
-         when OP_CONFIG_GET =>
-            handleGet (sender, msg);
-         when OP_CONFIG_SET =>
-            handleSet (sender, msg);
-         when OP_CONFIG_DELETE =>
-            handleDelete (sender, msg);
-         when OP_CONFIG_LIST =>
-            handleList (sender, msg);
-         when OP_CONFIG_LOAD =>
-            handleLoad (sender);
-         when OP_CONFIG_SAVE =>
-            handleSave (sender);
+         when CuBit.Config_Inspection.Operation'Enum_Rep (CuBit.Config_Inspection.Read_Value) |
+              CuBit.Config_Inspection.Operation'Enum_Rep (CuBit.Config_Inspection.List_Keys) |
+              CuBit.Config_Inspection.Operation'Enum_Rep (CuBit.Config_Inspection.Probe) =>
+            handleInspection (sender, msg);
+         when CuBit.Config_Protocol.Operation'Enum_Rep (CuBit.Config_Protocol.Get_Value) =>
+            Handle_Data (sender, msg, CuBit.Config_Protocol.Get_Value);
+         when CuBit.Config_Protocol.Operation'Enum_Rep (CuBit.Config_Protocol.Set_Value) =>
+            Handle_Data (sender, msg, CuBit.Config_Protocol.Set_Value);
+         when CuBit.Config_Protocol.Operation'Enum_Rep (CuBit.Config_Protocol.Delete_Value) =>
+            Handle_Data (sender, msg, CuBit.Config_Protocol.Delete_Value);
+         when CuBit.Config_Protocol.Operation'Enum_Rep (CuBit.Config_Protocol.List_Keys) =>
+            Handle_Data (sender, msg, CuBit.Config_Protocol.List_Keys);
          when OP_SET_ACL =>
             handleSetACL (sender, msg);
          when OP_REVOKE_ACL =>

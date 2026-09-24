@@ -1,0 +1,4 @@
+(executable-manifest v1
+  (identity "com.cubit.turso-native-probe")
+  (version "0.1.0")
+  (request-service clock read-write clock))

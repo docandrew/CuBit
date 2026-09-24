@@ -42,3 +42,5 @@ src/build.ads
 *.[gG][bB][cC]
 userspace/services/virtio-gpu/build-delayed/
 userspace/apps/display-check/build-gpu-delayed/
+userspace/services/virtio-gpu/build-clear-failure/
+userspace/apps/display-check/build-gpu-clear-failure/

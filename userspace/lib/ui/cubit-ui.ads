@@ -266,12 +266,14 @@ package CuBit.UI is
    procedure Draw_Vertical_Splitter
       (c : Canvas; r : Rect; colors : Theme;
        hot : Boolean; active : Boolean);
+   type Tab_Orientation is (Horizontal, Vertical);
    procedure Draw_Tab_Strip
       (c : Canvas; r : Rect; colors : Theme);
    procedure Draw_Tab
       (c : Canvas; r : Rect; colors : Theme;
        selected : Boolean; hot : Boolean; active : Boolean;
-       label : String);
+       label : String;
+       orientation : Tab_Orientation := Horizontal);
    procedure Draw_Natural_Value
       (c : Canvas; r : Rect; colors : Theme; value : Natural);
    procedure Draw_Progress_Bar

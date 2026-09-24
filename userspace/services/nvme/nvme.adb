@@ -11,6 +11,7 @@
 --  memory lives in the DMA region at DMA_VIRT_BASE, pre-mapped by kernel.
 ------------------------------------------------------------------------------
 with System.Storage_Elements; use System.Storage_Elements;
+with System.Machine_Code;
 
 with CuBit.Messages; use CuBit.Messages;
 
@@ -41,6 +42,7 @@ package body NVMe is
    ioCqHead  : Natural := 0;
    ioPhase   : Unsigned_16 := 1;
    ioCmdId   : Unsigned_16 := 0;
+   ioFailed  : Boolean := False;
 
    ---------------------------------------------------------------------------
    --  Volatile MMIO read/write via overlay
@@ -86,6 +88,9 @@ package body NVMe is
         DOORBELL_BASE +
         Storage_Offset (2 * queueId) * Storage_Offset (doorbellStride);
    begin
+      --  Publish payload/SQ writes before notifying this x86 coherent-DMA
+      --  device. x86 provides store ordering; prohibit compiler reordering.
+      System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
       writeReg32 (offset, Unsigned_32 (tail));
    end ringSqDoorbell;
 
@@ -109,7 +114,7 @@ package body NVMe is
    ioSq : SQArray with Import,
      Address => System.Storage_Elements.To_Address (DMA_VIRT_BASE + IO_SQ_OFFSET);
 
-   ioCq : CQArray with Import,
+   ioCq : CQArray with Import, Volatile,
      Address => System.Storage_Elements.To_Address (DMA_VIRT_BASE + IO_CQ_OFFSET);
 
    ---------------------------------------------------------------------------
@@ -126,8 +131,10 @@ package body NVMe is
 
       --  Poll completion queue
       for attempt in 1 .. ADMIN_SLEEP_POLLS loop
-         cqe := adminCq (adminCqHead);
-         if (cqe.status and 1) = adminPhase then
+         if (adminCq (adminCqHead).status and 1) = adminPhase then
+            System.Machine_Code.Asm
+              ("", Clobber => "memory", Volatile => True);
+            cqe := adminCq (adminCqHead);
             --  Advance CQ head
             adminCqHead := (adminCqHead + 1) mod QUEUE_DEPTH;
             if adminCqHead = 0 then
@@ -237,6 +244,7 @@ package body NVMe is
       ioCqHead    := 0;
       ioPhase     := 1;
       ioCmdId     := 0;
+      ioFailed    := False;
    end initController;
 
    ---------------------------------------------------------------------------
@@ -397,8 +405,7 @@ package body NVMe is
    begin
       --  Spin-poll: NVMe typically completes in microseconds
       for spin in 1 .. IO_SPIN_POLLS loop
-         cqe := ioCq (ioCqHead);
-         if (cqe.status and 1) = ioPhase then
+         if (ioCq (ioCqHead).status and 1) = ioPhase then
             found := True;
             exit;
          end if;
@@ -407,8 +414,7 @@ package body NVMe is
       --  Fallback: sleep-poll for slow completions
       if not found then
          for attempt in 1 .. IO_SLEEP_POLLS loop
-            cqe := ioCq (ioCqHead);
-            if (cqe.status and 1) = ioPhase then
+            if (ioCq (ioCqHead).status and 1) = ioPhase then
                found := True;
                exit;
             end if;
@@ -417,6 +423,24 @@ package body NVMe is
       end if;
 
       if not found then
+         --  The command may still own the DMA buffer. Keep it allocated and
+         --  refuse all later I/O until reset rather than overwrite it.
+         ioFailed := True;
+         return False;
+      end if;
+
+      --  Read the controller's phase publication BEFORE copying other fields.
+      --  A whole-record read while polling could mix an old CID with the new
+      --  phase. x86 coherent DMA supplies load ordering; this compiler barrier
+      --  prevents the snapshot from being hoisted before the phase check.
+      --  The controller cannot reuse this entry until our CQ doorbell below.
+      System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
+      cqe := ioCq (ioCqHead);
+
+      --  Exactly one I/O command is outstanding in this driver. Only its
+      --  completion may acknowledge either data I/O or a durability barrier.
+      if cqe.sqId /= 1 or else cqe.cid /= ioCmdId then
+         ioFailed := True;
          return False;
       end if;
 
@@ -429,6 +453,21 @@ package body NVMe is
       --  Check status (bits 15:1 = status code)
       return (Shift_Right (cqe.status, 1) and 16#7FFF#) = 0;
    end pollIOCompletion;
+
+   function flush return Boolean is
+      cmd : SubmissionEntry := NULL_SUBMISSION;
+   begin
+      if ioFailed or else nsBlockCount = 0 then
+         return False;
+      end if;
+      ioCmdId := ioCmdId + 1;
+      cmd.cdw0 := makeCdw0 (IO_FLUSH, ioCmdId);
+      cmd.nsid := 1;
+      ioSq (ioSqTail) := cmd;
+      ioSqTail := (ioSqTail + 1) mod QUEUE_DEPTH;
+      ringSqDoorbell (1, ioSqTail);
+      return pollIOCompletion;
+   end flush;
 
    ---------------------------------------------------------------------------
    --  readBlocks - multi-page reads via PRP lists
@@ -451,7 +490,7 @@ package body NVMe is
         System.Storage_Elements.To_Address
           (Integer_Address (DMA_VIRT_BASE + DATA_BUF_OFFSET));
    begin
-      if nsSectorSize = 0 or maxTransferBytes = 0 then
+      if ioFailed or else nsSectorSize = 0 or else maxTransferBytes = 0 then
          return 0;
       end if;
 
@@ -544,7 +583,7 @@ package body NVMe is
         System.Storage_Elements.To_Address
           (Integer_Address (DMA_VIRT_BASE + DATA_BUF_OFFSET));
    begin
-      if nsSectorSize = 0 or maxTransferBytes = 0 then
+      if ioFailed or else nsSectorSize = 0 or else maxTransferBytes = 0 then
          return 0;
       end if;
 

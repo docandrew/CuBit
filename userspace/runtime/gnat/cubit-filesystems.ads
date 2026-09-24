@@ -19,7 +19,8 @@ is
    type Filesystem_Operation is
      (Open_File, Close_File, Read_File, Write_File, Open_Directory,
       Seek_File, Read_Directory_Page, Rename_File, Close_Directory,
-      Open_Child_Directory, Rewind_Directory, Set_Access_Profile,
+      Open_Child_Directory, Rewind_Directory, Flush_File,
+      Read_File_At, Write_File_At, Set_Access_Profile,
       Revoke_Access_Profile);
    for Filesystem_Operation use
      (Open_File             => 16#0001#,
@@ -33,6 +34,9 @@ is
       Close_Directory       => 16#0009#,
       Open_Child_Directory  => 16#000A#,
       Rewind_Directory      => 16#000B#,
+      Flush_File            => 16#000C#,
+      Read_File_At          => 16#000D#,
+      Write_File_At         => 16#000E#,
       Set_Access_Profile    => 16#0080#,
       Revoke_Access_Profile => 16#0081#);
 
@@ -49,6 +53,9 @@ is
    OP_CLOSE_DIRECTORY : constant Unsigned_32 := 16#0009#;
    OP_OPEN_CHILD_DIRECTORY : constant Unsigned_32 := 16#000A#;
    OP_REWIND_DIRECTORY : constant Unsigned_32 := 16#000B#;
+   OP_FLUSH_FILE : constant Unsigned_32 := 16#000C#;
+   OP_READ_AT : constant Unsigned_32 := 16#000D#;
+   OP_WRITE_AT : constant Unsigned_32 := 16#000E#;
    OP_SET_ACL    : constant Unsigned_32 := 16#0080#;
    OP_REVOKE_ACL : constant Unsigned_32 := 16#0081#;
 
@@ -66,6 +73,7 @@ is
    REPLY_ALREADY_EXISTS       : constant Unsigned_32 := 16#F00A#;
    REPLY_NOT_FOUND            : constant Unsigned_32 := 16#F00B#;
    REPLY_RECOVERY_REQUIRED    : constant Unsigned_32 := 16#F00C#;
+   REPLY_DURABILITY_UNSUPPORTED : constant Unsigned_32 := 16#F00D#;
 
    MAXIMUM_PATH_BYTES : constant := CuBit.Directory_Paths.Maximum_Bytes;
    subtype Path_Byte_Count is Natural range 0 .. MAXIMUM_PATH_BYTES;
@@ -177,6 +185,13 @@ is
    function Close_Request
      (handle : File_Handle) return CuBit.Messages.Message;
 
+   --  Requires an owned, write-authorized file handle. Success means prior
+   --  completed writes and metadata reached the backing device's flush
+   --  completion. It does not make ext2 metadata changes crash-atomic.
+   --  Volatile RAM/unsupported media must not report durable success.
+   function Flush_Request
+     (handle : File_Handle) return CuBit.Messages.Message;
+
    function Read_Request
      (handle : File_Handle;
       loan   : CuBit.Memory_Grants.Grant_Reference;
@@ -186,6 +201,28 @@ is
      (handle : File_Handle;
       loan   : CuBit.Memory_Grants.Grant_Reference;
       count  : Unsigned_64) return CuBit.Messages.Message;
+
+   --  Positioned transfers never read or modify the handle's seek cursor.
+   --  words = [handle, canonical packed grant reference, count, file offset].
+   --  Payload starts at grant byte zero, with no header or new authority.
+   --  A wrapping offset+count is OUT_OF_RANGE before any I/O. Empty transfers
+   --  still validate handle, rights and wire reference, but borrow no memory.
+   --  EOF reads may be short; errors report any completed prefix in words(0).
+   --  Completion returns the acquisition; callers must not reuse the buffer
+   --  while a request is in flight. Revocation is neither completion nor
+   --  cancellation.
+   --  Write success does not imply flush.
+   function Read_At_Request
+     (handle : File_Handle;
+      loan   : CuBit.Memory_Grants.Grant_Reference;
+      count  : Unsigned_64;
+      offset : Unsigned_64) return CuBit.Messages.Message;
+
+   function Write_At_Request
+     (handle : File_Handle;
+      loan   : CuBit.Memory_Grants.Grant_Reference;
+      count  : Unsigned_64;
+      offset : Unsigned_64) return CuBit.Messages.Message;
 
    function Seek_Request
      (handle : File_Handle;

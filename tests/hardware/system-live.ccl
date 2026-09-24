@@ -1,7 +1,7 @@
 # CuBit live-system configuration
 #
-# Deliberately omit config.store: a live boot must not persist configuration
-# or write to an internal disk merely because a block driver recognizes it.
+# Authoritative live-boot CCL profile. Config has no filesystem authority and
+# cannot load overrides or write to an internal disk behind this declaration.
 (system-config v1
   (setting "desktop.appearance.theme.light" "(theme v1 (base alloy-light))")
   (setting "desktop.appearance.theme.dark" "(theme v1 (base alloy-dark))")

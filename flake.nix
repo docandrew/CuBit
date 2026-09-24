@@ -41,6 +41,9 @@
           # native CuBit executables; host tools still use the Linux target.
           cubitRust = pkgs.rust-bin.stable.latest.default.override {
             targets = [ "x86_64-unknown-none" ];
+            # Native std/Turso bring-up builds the pinned library sources;
+            # existing no_std apps continue using prebuilt core/alloc.
+            extensions = [ "rust-src" ];
           };
           cubitRustVendor = pkgs.rustPlatform.importCargoLock {
             lockFile = ./userspace/rust/Cargo.lock;
@@ -76,6 +79,7 @@
               grub2
               ibm-plex
               jemalloc
+              jq
               mimalloc
               gperftools
               libjpeg_turbo

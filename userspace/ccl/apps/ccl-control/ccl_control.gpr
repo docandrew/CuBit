@@ -1,6 +1,6 @@
 project CCL_Control is
    for Languages use ("Ada");
-   for Source_Dirs use (".", "../../src", "../../remote", external ("CBOR_ADA_SRC") & "/src");
+   for Source_Dirs use (".", "../../src", "../../native", "../../remote", external ("CBOR_ADA_SRC") & "/src");
    for Object_Dir use "build";
    for Main use ("main.adb");
    for Runtime ("Ada") use "../../../runtime";

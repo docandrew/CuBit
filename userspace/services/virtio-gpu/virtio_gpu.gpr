@@ -1,15 +1,18 @@
 project Virtio_GPU is
 
     for Languages use ("Ada");
-    type Test_Mode_Type is ("production", "delayed");
+    type Test_Mode_Type is ("production", "delayed", "clear-failure");
     Test_Mode : Test_Mode_Type := external ("CUBIT_GPU_TEST_MODE", "production");
     case Test_Mode is
         when "production" =>
             for Object_Dir use "build";
-            for Source_Dirs use (".", "production");
+            for Source_Dirs use ("../../lib/display", ".", "production");
         when "delayed" =>
             for Object_Dir use "build-delayed";
-            for Source_Dirs use (".", "test-delayed");
+            for Source_Dirs use ("../../lib/display", ".", "test-delayed");
+        when "clear-failure" =>
+            for Object_Dir use "build-clear-failure";
+            for Source_Dirs use ("../../lib/display", ".", "test-clear-failure");
     end case;
     for Main use ("main.adb");
     for Runtime ("Ada") use "../../runtime";

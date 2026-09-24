@@ -206,10 +206,8 @@ is
                     with "Unexpected #NM under eager FPU switching";
 
             when PAGE_FAULT =>
-                print ("Page Fault at ");
-                print (frame.rip);
-                print (" PID ");
-                println (PerCPUData.getCurrentPID);
+                -- Demand paging is ordinary execution, not a boot diagnostic.
+                -- Report only rejected accesses in the handlers below.
                 handlePageFault (frame.errorCode);
 
             when TIMER =>
@@ -388,8 +386,6 @@ is
                                 -- user wrote non-present page. see if it's in their
                                 -- allocated range and page in if it is. If it's not,
                                 -- then may be a stack overflow or OoM.
-                                print ("User non-present page write: ");
-                                println (faultAddr);
                                 Process.pageFault (pid, faultAddr);
                             when False =>
                                 -- kernel wrote non-present page. see if it's something
@@ -404,8 +400,6 @@ is
                                 -- user read non-present page. see if it's in their
                                 -- allocated range and page in if it is. If it's not,
                                 -- may be a stack overflow or OoM.
-                                print ("User non-present page read: ");
-                                println (faultAddr);
                                 Process.pageFault (pid, faultAddr);
                             when False =>
                                 -- kernel read non-present page. see if it's something

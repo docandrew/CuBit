@@ -1,0 +1,7 @@
+# Test-only writer confined to its fixture namespace; globally read-only otherwise.
+(executable-manifest v1
+  (identity "com.cubit.config-check")
+  (version "0.1.0")
+  (request-service config read-write config)
+  (config-scope (rights read) all)
+  (config-scope (rights write) "test.config"))

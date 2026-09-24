@@ -175,6 +175,7 @@ procedure main is
    --  Service PIDs
    filesystemPID : Unsigned_64 := 0;
    ataPID        : Unsigned_64 := 0;
+   ramdiskPID    : Unsigned_64 := 0;
    nvmePID       : Unsigned_64 := 0;
    netstackPID   : Unsigned_64 := 0;
    virtioNetPID  : Unsigned_64 := 0;
@@ -638,7 +639,8 @@ procedure main is
 
       --  Storage/FS/input services pinned to CPU 0
       if strEq (name, "filesystem.svc") or strEq (name, "ata.drv") or
-         strEq (name, "nvme.drv") or strEq (name, "procmgr.svc") or
+         strEq (name, "nvme.drv") or strEq (name, "ramdisk.drv") or
+         strEq (name, "procmgr.svc") or
          strEq (name, "ps2.drv") or strEq (name, "xhci.drv")
       then
          cpu := 0;
@@ -1715,6 +1717,51 @@ begin
 
    debugPrint ("devmgr: CPIO initrd parsed" & LF);
 
+   --  Bootstrap endpoint authority is established before any child runs.
+   ret := registerDriver (DRIVER_DEVMGR);
+   myPID := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DEVMGR);
+
+   --  A writable live image is served by a separate Block.Device.V1 driver.
+   --  It starts before FS, so FS never calls a not-yet-running provider.
+   if Cpio.findFile (cpioArchive, "live-rw.ext2") < cpioArchive.count then
+      ramdiskPID := spawnFromBootStorage ("ramdisk.drv", 5);
+      if ramdiskPID /= 0 and then ramdiskPID /= reterr then
+         initrdPhys := virtToPhys (To_Address (Integer_Address (INITRD_BASE)));
+         initrdPages := (initrdSize + 4095) / 4096;
+         declare
+            Mapped : Unsigned_64 := 0;
+            Count : Unsigned_64;
+         begin
+            while Mapped < initrdPages loop
+               Count := Unsigned_64'Min
+                 (MAX_MAP_INTO_PAGES_PER_CALL, initrdPages - Mapped);
+               ret := mapInto
+                 (ramdiskPID, initrdPhys + Mapped * 4096,
+                  INITRD_BASE + Mapped * 4096, Count, MAP_FLAG_RO);
+               exit when ret = reterr;
+               Mapped := Mapped + Count;
+            end loop;
+            if Mapped /= initrdPages then
+               debugPrint ("devmgr: RAM block-driver seed mapping failed" & LF);
+               ret := syscall (SYSCALL_EXIT);
+               return;
+            end if;
+         end;
+         assignCPU (ramdiskPID, "ramdisk.drv");
+         mintCap (ramdiskPID, CAP_ENDPOINT, myPID, 0,
+                  RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
+         resumeProc (ramdiskPID);
+         if not waitReady (ramdiskPID) then
+            ret := syscall (SYSCALL_EXIT);
+            return;
+         end if;
+      else
+         debugPrint ("devmgr: RAM block driver unavailable" & LF);
+         ret := syscall (SYSCALL_EXIT);
+         return;
+      end if;
+   end if;
+
    --  Scan PCI bus for devices
    scanPCI;
 
@@ -1772,10 +1819,11 @@ begin
       mintCap (filesystemPID, CAP_NOTIFICATION, DRIVER_FS, 0,
                RIGHT_WRITE, 7);
 
-      --  Register early to discover our own PID
-      ret := registerDriver (DRIVER_DEVMGR);
-      myPID := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DEVMGR);
 
+      if ramdiskPID /= 0 then
+         grantEndpoint
+           (filesystemPID, ramdiskPID, CAP_SLOT_RAMDISK, filesystemPID);
+      end if;
       assignCPU (filesystemPID, "filesystem.svc");
       mintCap (filesystemPID, CAP_ENDPOINT, myPID, 0,
                RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
@@ -1910,13 +1958,6 @@ begin
          grantEndpoint (myPID, configPID, 2, myPID);
       end if;
 
-      --  Grant FS endpoint to config.svc at slot 1 (for persistence)
-      if configPID /= 0 and filesystemPID /= 0 then
-         grantEndpoint (configPID, filesystemPID, 1, configPID);
-         --  Grant FS ACL for config.svc (wildcard RW)
-         sendWildcardACL (configPID);
-      end if;
-
       --  Grant config ACL for devmgr itself (wildcard, so we can SET)
       if configPID /= 0 then
          sendWildcardACLConfig (myPID);
@@ -1926,7 +1967,6 @@ begin
       if configPID /= 0 then
          declare
             OP_CONFIG_SET  : constant Unsigned_32 := 16#0601#;
-            OP_CONFIG_LOAD : constant Unsigned_32 := 16#0604#;
             CONFIG_REPLY_OK : constant Unsigned_32 := 16#F000#;
             Plan : CCL.Configurations.Compilation_Result;
             use type CCL.Configurations.Profile_Kind;
@@ -1937,7 +1977,7 @@ begin
             cfgRawAddr : Unsigned_64;
             cfgAligned : Unsigned_64;
             cfgBufAddr : System.Address;
-            cfgGid     : Unsigned_64;
+            Config_Grant : CuBit.Memory_Grants.Grant_Reference;
             cfgOk      : Boolean;
             cfgMsg     : Message;
          begin
@@ -1969,21 +2009,15 @@ begin
                   return;
                end if;
 
-               --  Allocate grant buffer (2 pages for alignment)
-               cfgRawAddr := syscall (SYSCALL_SBRK, 2 * 4096);
+               --  Allocate 3 pages for a 2-page aligned payload buffer.
+               cfgRawAddr := syscall (SYSCALL_SBRK, 3 * 4096);
                if cfgRawAddr /= Unsigned_64'Last then
                   cfgAligned := (cfgRawAddr + 4095) and
                     not Unsigned_64 (4095);
                   cfgBufAddr := To_Address (Integer_Address (cfgAligned));
 
-                  --  Create grant to config.svc (1 page RW)
-                  createGrant
-                    (grantee   => configPID,
-                     localAddr => cfgBufAddr,
-                     numPages  => 1,
-                     readWrite => True,
-                     grantId   => cfgGid,
-                     success   => cfgOk);
+                  CuBit.Memory_Grants.Create_Via_Capability
+                    (2, cfgBufAddr, 2, True, Config_Grant, cfgOk);
 
                   if cfgOk then
                      --  Only checked, owned entries reach the IPC adapter.
@@ -1998,13 +2032,13 @@ begin
                            Buffer (Key_Length + 1 .. Buffer'Last) :=
                              Item.Value.Data (1 .. Value_Length);
                            cfgMsg :=
-                             (tag => (label => OP_CONFIG_SET, length => 3,
+                             (tag => (label => OP_CONFIG_SET, length => 4,
                                       flags => 0, reserved => 0),
                               authorityTag => 0,
-                              words => [0 => cfgGid,
-                                        1 => Unsigned_64 (Key_Length),
-                                        2 => Unsigned_64 (Value_Length),
-                                        others => 0]);
+                              words => [0 => Config_Grant.slot,
+                                        1 => Config_Grant.generation,
+                                        2 => Unsigned_64 (Key_Length),
+                                        3 => Unsigned_64 (Value_Length)]);
                            cfgMsg.tag := capCall (2, cfgMsg);
                            if cfgMsg.tag.label /= CONFIG_REPLY_OK then
                               debugPrint ("devmgr: config seed failed; boot denied" & LF);
@@ -2017,16 +2051,8 @@ begin
                      debugPrint (
                        "devmgr: system.ccl seeded into config" & LF);
 
-                     --  Send OP_CONFIG_LOAD to trigger disk load
-                     cfgMsg :=
-                       (tag => (label  => OP_CONFIG_LOAD,
-                                length => 0,
-                                flags  => 0,
-                                reserved  => 0),
-                        authorityTag => 0,
-                        words => (others => 0));
-                     cfgMsg.tag := capCall (2, cfgMsg);
-                     --  Replace any persisted prior-boot sample atomically.
+                     -- The CCL seed is authoritative; no implicit disk overlay.
+                     -- Seed this boot's hardware time sample separately.
                      --  This namespace is writable only by Config admins.
                      declare
                         UTC, Mono : Unsigned_64;
@@ -2044,8 +2070,8 @@ begin
                         begin
                            Buffer := Key & Value;
                            cfgMsg :=
-                             (tag => (OP_CONFIG_SET, 3, 0, 0), authorityTag => 0,
-                              words => [cfgGid, Key'Length, Value'Length, 0]);
+                             (tag => (OP_CONFIG_SET, 4, 0, 0), authorityTag => 0,
+                              words => [Config_Grant.slot, Config_Grant.generation, Key'Length, Value'Length]);
                            cfgMsg.tag := capCall (2, cfgMsg);
                            if cfgMsg.tag.label /= CONFIG_REPLY_OK then
                               debugPrint ("devmgr: clock seed rejected; boot denied" & LF);
@@ -2055,6 +2081,7 @@ begin
                            debugPrint ("devmgr: RTC seed " & Value & LF);
                         end;
                      end;
+                     CuBit.Memory_Grants.Revoke (Config_Grant, cfgOk);
                   else
                      debugPrint ("devmgr: config seed grant failed; boot denied" & LF);
                      ret := syscall (SYSCALL_EXIT);

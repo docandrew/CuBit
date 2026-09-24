@@ -1,0 +1,12 @@
+project CBOR_Crosscheck is
+   Source := external ("CBOR_ADA_SRC");
+   for Source_Dirs use ("ada", Source & "/src");
+   for Object_Dir use "target/ada-cbor";
+   for Exec_Dir use "target/ada-cbor";
+   for Main use ("crosscheck.adb");
+   package Compiler is
+      -- Hosted regression fixture, not production/kernel assertion policy.
+      for Default_Switches ("Ada") use
+        ("-O2", "-g", "-gnat2022", "-gnata", "-gnato", "-gnatVa", "-I-");
+   end Compiler;
+end CBOR_Crosscheck;

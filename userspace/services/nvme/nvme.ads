@@ -52,6 +52,7 @@ package NVMe is
    ---------------------------------------------------------------------------
    IO_READ  : constant Unsigned_8 := 16#02#;
    IO_WRITE : constant Unsigned_8 := 16#01#;
+   IO_FLUSH : constant Unsigned_8 := 16#00#;
 
    ---------------------------------------------------------------------------
    --  Identify CNS values
@@ -130,10 +131,10 @@ package NVMe is
    --  Queue Arrays
    ---------------------------------------------------------------------------
    type SQArray is array (Natural range 0 .. QUEUE_DEPTH - 1) of SubmissionEntry
-     with Convention => C;
+     with Convention => C, Volatile_Components;
 
    type CQArray is array (Natural range 0 .. QUEUE_DEPTH - 1) of CompletionEntry
-     with Convention => C;
+     with Convention => C, Volatile_Components;
 
    ---------------------------------------------------------------------------
    --  DMA Layout offsets (within 1 MiB at DMA_VIRT_BASE = 0x7000_0000_0000)
@@ -204,6 +205,11 @@ package NVMe is
      (lba   : Unsigned_64;
       count : Unsigned_32;
       buf   : System.Address) return Unsigned_64;
+
+   --  Commit namespace 1's completed writes to nonvolatile media. A timeout
+   --  retires the queue until controller reinitialization; never reuse a late
+   --  completion as acknowledgement of a different command.
+   function flush return Boolean;
 
    --  Namespace info (populated after identifyNamespace)
    nsBlockCount : Unsigned_64 := 0;

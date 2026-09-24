@@ -60,11 +60,12 @@ class Images(unittest.TestCase):
         return realizer.prepare(self.catalog, self.profile, inputs or {}, root=self.root, **kwargs)
 
     def test_existing_membership_preserved(self):
-        stage1 = {"devmgr.svc", "filesystem.svc", "ata.drv", "nvme.drv",
+        stage1 = {"devmgr.svc", "filesystem.svc", "ramdisk.drv", "ata.drv", "nvme.drv",
                   "netstack.svc", "virtio-net.drv", "virtio-gpu.drv", "hda.drv",
                   "mixer.svc", "ps2.drv", "xhci.drv", "config.svc", "netmgr.svc", "procmgr.svc"}
         stage2 = {"logstore.svc", "clock.svc", "display.svc", "desktop.svc",
-                  "ccl-workbench.app", "devices.app", "files.app", "storage-check.app", "doom.elf"}
+                  "ccl-workbench.app", "devices.app", "files.app", "config-inspector.app",
+                  "storage-check.app", "doom.elf"}
         for name in ("development-initrd", "laptop-initrd", "laptop-usb"):
             with self.subTest(profile=name):
                 header, rows, _ = realizer.compile_plan(
@@ -77,11 +78,11 @@ class Images(unittest.TestCase):
                                      {"system.ccl", "init.ccl", "live-rw.ext2", "doom1.wad"})
                 else:
                     self.assertEqual(header[1], "OPTICAL_IMAGE")
-                    self.assertEqual(bootstrap, {"devmgr.svc", "filesystem.svc", "ps2.drv",
+                    self.assertEqual(bootstrap, {"devmgr.svc", "filesystem.svc", "ramdisk.drv", "ps2.drv",
                                                 "xhci.drv", "system.ccl", "init.ccl", "live-rw.ext2"})
                     apps = {row[5].removeprefix("apps/") for row in rows if row[5].startswith("apps/")}
                     self.assertEqual(apps, (stage1 | stage2 | {"sameboy.app", "sameboy/00.gb", "doom1.wad"})
-                                     - {"devmgr.svc", "filesystem.svc", "ps2.drv", "xhci.drv",
+                                     - {"devmgr.svc", "filesystem.svc", "ramdisk.drv", "ps2.drv", "xhci.drv",
                                         "ata.drv", "nvme.drv", "storage-check.app"})
                     self.assertFalse(any("network-check" in row[2] or "ccl-control" in row[2] for row in rows))
 

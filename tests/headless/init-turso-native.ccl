@@ -1,0 +1,4 @@
+# Isolated Rust std / Turso probe, not a replacement Config service.
+(startup v1
+  (start "clock.svc" (priority 5))
+  (start "turso-native-probe.app" (priority 5)))

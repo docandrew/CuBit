@@ -12,6 +12,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Display_Protocol;
 with CuBit.Display_Layouts;
+with CuBit.Display_Arrangement;
 with CuBit.Desktop_Messages;
 with CuBit.Input;
 with CuBit.Audio_Control;
@@ -41,6 +42,8 @@ procedure main is
    package DG renames DL.G;
    use type DSP.Output_Number, DL.Admission_Status;
    use type DG.Pixel_Edge;
+   use type DG.Logical_Coordinate;
+   use type Desktop_Settings.Page;
    package MG renames CuBit.Memory_Grants;
    package GM renames CuBit.Graphics_Metrics;
    stagingCopies : GM.Counter;
@@ -148,6 +151,7 @@ procedure main is
    fbPitch  : Natural := 0;
    fbBpp    : Natural := 0;
    backBufferAddr : System.Address := System.Null_Address;
+   sceneCapacityBytes : Natural := 0;
    type Transfer_Phase is (Available, In_Flight, Quarantined);
    frameSequence : Unsigned_64 := 0;
    asyncAnnounced, releaseAnnounced : Boolean := False;
@@ -177,11 +181,11 @@ procedure main is
       w : Natural := 0;
       h : Natural := 0;
    end record;
-   --  Initial native arrangement: adjacent, equal-size, unit-scale outputs.
+   --  Initial native arrangement: adjacent, mixed-size, unit-scale outputs.
    --  Scene storage is private. Each output owns an immutable transfer buffer
    --  while its non-reused completion token is outstanding.
-   --  The shared geometry/layout packages admit richer layouts, but this copy
-   --  renderer must not silently claim support for rotation or resampling.
+   --  Unit scale uses row copies; scaled outputs sample logical app pixels.
+   --  Native-density client buffers and rotation remain separate work.
    subtype Output_Index is DSP.Output_Number range 0 .. 1;
    type Output_Presentation is record
       Enabled, Leased, Granted : Boolean := False;
@@ -195,15 +199,21 @@ procedure main is
    end record;
    presentations : array (Output_Index) of Output_Presentation;
    primaryOutput : Output_Index := 0;
+   desktopLayout : DL.Layout;
    --  Desktop preference, not a property of the display/GPU service. Config
    --  publication and named-monitor matching will replace this initial value.
-   preferredPrimary : constant DL.Named_Display_ID := 1;
+   preferredPrimary : DL.Named_Display_ID := 1;
+
+   function logicalBounds (Geometry : DG.Output) return Rect is
+      B : constant DG.Logical_Rectangle := DG.Bounds (Geometry);
+   begin
+      return (Natural (B.Left), Natural (B.Top),
+              Natural (B.Right - B.Left), Natural (B.Bottom - B.Top));
+   end logicalBounds;
 
    function primaryBounds return Rect is
      (if presentations (primaryOutput).Enabled then
-        (Natural (presentations (primaryOutput).Geometry.X), 0,
-         Natural (presentations (primaryOutput).Geometry.Width),
-         Natural (presentations (primaryOutput).Geometry.Height))
+        logicalBounds (presentations (primaryOutput).Geometry)
       else (0, 0, fbWidth, fbHeight));
 
    --  Damage clipping for compositor redraws. A full scene redraw with a clip
@@ -497,11 +507,12 @@ procedure main is
 
    type Launch_Action is
      (LAUNCH_NONE, LAUNCH_WORKBENCH, LAUNCH_DOOM,
-      LAUNCH_DEVICES, LAUNCH_BROWSER, LAUNCH_FILES, LAUNCH_SAMEBOY, LAUNCH_SETTINGS, LAUNCH_POWER);
+      LAUNCH_DEVICES, LAUNCH_BROWSER, LAUNCH_FILES, LAUNCH_SAMEBOY, LAUNCH_SETTINGS,
+      LAUNCH_CONFIG_INSPECTOR, LAUNCH_POWER);
    for Launch_Action use
      (LAUNCH_NONE => 0, LAUNCH_WORKBENCH => 1, LAUNCH_DOOM => 2,
       LAUNCH_DEVICES => 3, LAUNCH_BROWSER => 4, LAUNCH_FILES => 5,
-      LAUNCH_SAMEBOY => 6, LAUNCH_SETTINGS => 7, LAUNCH_POWER => 8);
+      LAUNCH_SAMEBOY => 6, LAUNCH_SETTINGS => 7, LAUNCH_CONFIG_INSPECTOR => 8, LAUNCH_POWER => 9);
    for Launch_Action'Size use 8;
 
    launchMenuSelection : Launch_Action := LAUNCH_WORKBENCH;
@@ -513,7 +524,8 @@ procedure main is
    begin
       if upward then
          case current is
-            when LAUNCH_WORKBENCH => return LAUNCH_SETTINGS;
+            when LAUNCH_WORKBENCH => return LAUNCH_CONFIG_INSPECTOR;
+            when LAUNCH_CONFIG_INSPECTOR => return LAUNCH_SETTINGS;
             when LAUNCH_DOOM      => return LAUNCH_WORKBENCH;
             when LAUNCH_DEVICES   => return LAUNCH_DOOM;
             when LAUNCH_BROWSER   => return LAUNCH_DEVICES;
@@ -530,7 +542,8 @@ procedure main is
             when LAUNCH_BROWSER   => return LAUNCH_FILES;
             when LAUNCH_FILES     => return LAUNCH_SAMEBOY;
             when LAUNCH_SAMEBOY   => return LAUNCH_SETTINGS;
-            when LAUNCH_SETTINGS  => return LAUNCH_WORKBENCH;
+            when LAUNCH_SETTINGS  => return LAUNCH_CONFIG_INSPECTOR;
+            when LAUNCH_CONFIG_INSPECTOR => return LAUNCH_WORKBENCH;
             when others           => return LAUNCH_WORKBENCH;
          end case;
       end if;
@@ -572,7 +585,7 @@ procedure main is
    LAUNCH_W     : constant Natural := 88;
    LAUNCH_H     : constant Natural := 24;
    MENU_W       : constant Natural := 250;
-   MENU_H       : constant Natural := 320;
+   MENU_H       : constant Natural := 354;
    TASK_BUTTON_W : constant Natural := 156;
    TASK_BUTTON_H : constant Natural := 24;
    TASK_BUTTON_GAP : constant Natural := 6;
@@ -1029,9 +1042,11 @@ procedure main is
          when LAUNCH_SAMEBOY =>
             y := menu.y + 212;
          when LAUNCH_POWER =>
-            y := menu.y + 286;
+            y := menu.y + 320;
          when LAUNCH_SETTINGS =>
             y := menu.y + 246;
+         when LAUNCH_CONFIG_INSPECTOR =>
+            y := menu.y + 280;
          when others =>
             return (others => 0);
       end case;
@@ -1047,7 +1062,7 @@ procedure main is
       if isEmpty (menu) or else menu.w <= 24 then
          return (others => 0);
       end if;
-      y := menu.y + 278;
+      y := menu.y + 312;
       return clampRect ((x => menu.x + 12, y => y,
                          w => menu.w - 24, h => 1));
    end launchSeparatorRect;
@@ -1132,6 +1147,8 @@ procedure main is
          return LAUNCH_SAMEBOY;
       elsif pointInRect (x, y, launchItemRect (LAUNCH_SETTINGS)) then
          return LAUNCH_SETTINGS;
+      elsif pointInRect (x, y, launchItemRect (LAUNCH_CONFIG_INSPECTOR)) then
+         return LAUNCH_CONFIG_INSPECTOR;
       elsif pointInRect (x, y, launchItemRect (LAUNCH_POWER)) then
          return LAUNCH_POWER;
       else
@@ -1499,6 +1516,17 @@ procedure main is
               Natural (R.Right - R.Left), Natural (R.Bottom - R.Top));
    end localDamage;
 
+   function localLogicalDamage (Output : Output_Index; Area : Rect) return Rect is
+      B : constant Rect := logicalBounds (presentations (Output).Geometry);
+      Left : constant Natural := Natural'Max (Area.x, B.x);
+      Top : constant Natural := Natural'Max (Area.y, B.y);
+      Right : constant Natural := Natural'Min (Area.x + Area.w, B.x + B.w);
+      Bottom : constant Natural := Natural'Min (Area.y + Area.h, B.y + B.h);
+   begin
+      if Left >= Right or Top >= Bottom then return (others => 0); end if;
+      return (Left - B.x, Top - B.y, Right - Left, Bottom - Top);
+   end localLogicalDamage;
+
    function windowWorkArea (Bounds : Rect) return Rect is
       Winner : Output_Index := primaryOutput;
       Largest : Unsigned_64 := 0;
@@ -1507,7 +1535,7 @@ procedure main is
       for Output in Output_Index loop
          if presentations (Output).Enabled then
             declare
-               R : constant Rect := localDamage (Output, Bounds);
+               R : constant Rect := localLogicalDamage (Output, Bounds);
                Area : constant Unsigned_64 :=
                  Unsigned_64 (R.w) * Unsigned_64 (R.h);
             begin
@@ -1520,10 +1548,7 @@ procedure main is
             end;
          end if;
       end loop;
-      Result := (Natural (presentations (Winner).Geometry.X),
-                 Natural (presentations (Winner).Geometry.Y),
-                 Natural (presentations (Winner).Geometry.Width),
-                 Natural (presentations (Winner).Geometry.Height));
+      Result := logicalBounds (presentations (Winner).Geometry);
       if Winner = primaryOutput and then Result.h > TASKBAR_H then
          Result.h := Result.h - TASKBAR_H;
       end if;
@@ -1613,6 +1638,7 @@ procedure main is
       r : constant Rect := P.Damage;
       ignored : System.Address;
       request : Message;
+      use type DG.Scale_Component;
    begin
       if not P.Enabled or else P.Phase /= Available or else isEmpty (r) then
          return;
@@ -1622,16 +1648,51 @@ procedure main is
          debugPrint ("desktop: frame identifiers exhausted" & LF);
          return;
       end if;
-      -- Source is desktop-local, destination is output-local. This initial
-      -- copy path admits only unrotated unit scale; no resampling is implied.
-      for row in r.y .. r.y + r.h - 1 loop
+      if P.Geometry.Scale.Numerator = P.Geometry.Scale.Denominator then
+         -- Preserve the bulk-copy fast path for unscaled outputs.
+         for row in r.y .. r.y + r.h - 1 loop
          ignored := memcpy
            (P.Buffer + Storage_Offset (row * P.Pitch + r.x * 4),
             backBufferAddr + Storage_Offset
               ((row + Natural (P.Geometry.Y)) * fbPitch +
                (r.x + Natural (P.Geometry.X)) * 4),
             Storage_Count (r.w * 4));
-      end loop;
+         end loop;
+      else
+         -- Compatibility sampling of logical-pixel surfaces. Map each column
+         -- once per damage rectangle, not once per pixel. This writes directly
+         -- into the existing transfer buffer; no extra intermediate image.
+         declare
+            Columns : array (r.x .. r.x + r.w - 1) of Natural;
+            Source : array (0 .. sceneCapacityBytes / 4 - 1) of Unsigned_32
+              with Import, Address => backBufferAddr;
+         begin
+            for X in Columns'Range loop
+               declare M : constant DG.Point_Mapping := DG.To_Desktop
+                 (P.Geometry, (DG.Pixel_Index (X), 0));
+               begin
+                  if not M.Valid then quarantinePresentations; return; end if;
+                  Columns (X) := Natural (M.Value.X);
+               end;
+            end loop;
+            for Y in r.y .. r.y + r.h - 1 loop
+               declare
+                  M : constant DG.Point_Mapping := DG.To_Desktop
+                    (P.Geometry, (0, DG.Pixel_Index (Y)));
+                  Target_Row : array (0 .. Natural (P.Geometry.Width) - 1) of Unsigned_32
+                    with Import, Address => P.Buffer + Storage_Offset (Y * P.Pitch),
+                    Alignment => 1;
+                  Row : Natural;
+               begin
+                  if not M.Valid then quarantinePresentations; return; end if;
+                  Row := Natural (M.Value.Y) * (fbPitch / 4);
+                  for X in Columns'Range loop
+                     Target_Row (X) := Source (Row + Columns (X));
+                  end loop;
+               end;
+            end loop;
+         end;
+      end if;
       GM.Add (stagingCopies, Unsigned_64 (r.w) * Unsigned_64 (r.h) * 4);
       frameSequence := frameSequence + 1;
       P.Token := frameSequence;
@@ -1763,14 +1824,15 @@ procedure main is
          if presentations (Output).Enabled then
             declare
                P : Output_Presentation renames presentations (Output);
-               R : constant Rect := localDamage (Output, Area);
+               R : constant Rect := localLogicalDamage (Output, Area);
+               B : constant Rect := logicalBounds (P.Geometry);
             begin
                if not isEmpty (R) then
                   Desktop_Wallpaper.Paint
                     (backBufferAddr + Storage_Offset
                        (Natural (P.Geometry.Y) * fbPitch +
                         Natural (P.Geometry.X) * 4),
-                     Natural (P.Geometry.Width), Natural (P.Geometry.Height),
+                     B.w, B.h,
                      fbPitch, R.x, R.y, R.w, R.h, appearance);
                end if;
             end;
@@ -2622,6 +2684,8 @@ procedure main is
         (LAUNCH_SAMEBOY, Desktop_Icons.Doom, "SameBoy", C_TEXT);
       drawLaunchItem
         (LAUNCH_SETTINGS, Desktop_Icons.UILab, "Settings", C_TEXT);
+      drawLaunchItem
+        (LAUNCH_CONFIG_INSPECTOR, Desktop_Icons.Files, "Config Inspector", C_TEXT);
       declare
          sep : constant Rect := launchSeparatorRect;
       begin
@@ -3451,6 +3515,7 @@ procedure main is
       winY     : Natural := 72;
       winW     : Natural := 420;
       winH     : Natural := 240;
+      Work_Area : constant Rect := windowWorkArea (primaryBounds);
    begin
       for i in surfaces'Range loop
          if surfaces (i).used and then
@@ -3473,18 +3538,23 @@ procedure main is
 
       case appKind is
          when APP_SETTINGS =>
-            winW := 610;
+            winW := 742;
             winH := 420;
-            Desktop_Settings.Open (settingsView, appearance);
+            Desktop_Settings.Open (settingsView, appearance, desktopLayout,
+              desktopLayout.Items (Natural (primaryOutput) + 1).Display);
          when others =>
             null;
       end case;
 
-      if winX + winW > primaryBounds.w then
+      if winW <= primaryBounds.w then
+         winX := Natural'Min (winX, primaryBounds.w - winW);
+      elsif winX + winW > primaryBounds.w then
          winW := Natural'Max (MIN_WIN_W, primaryBounds.w - winX);
       end if;
-      if winY + winH > primaryBounds.h then
-         winH := Natural'Max (MIN_WIN_H, primaryBounds.h - winY);
+      if winH <= Work_Area.h then
+         winY := Natural'Min (winY, Work_Area.h - winH);
+      elsif winY + winH > Work_Area.h then
+         winH := Natural'Max (MIN_WIN_H, Work_Area.h - Natural'Min (winY, Work_Area.h));
       end if;
       winX := winX + primaryBounds.x;
       winY := winY + primaryBounds.y;
@@ -5034,6 +5104,167 @@ procedure main is
       end if;
    end trySpawnApplication;
 
+   procedure Apply_Arrangement (damage : in out Rect) is
+      Candidate : constant DL.Layout := settingsView.Pending_Layout;
+      Width, Height : Natural := 0;
+      Layout : DP.Buffer_Layout;
+      Pointer : DL.Pointer_Position;
+      Choice : DL.Primary_Selection;
+      use type DG.UI_Scale, DG.Scale_Component, DG.Orientation, DL.Named_Display_ID;
+      function Translate (Value : Natural; Old_Origin, New_Origin : DG.Output_Origin;
+                          Extent, Object_Extent : Natural) return Natural is
+         Low : constant Integer := Integer (New_Origin);
+         High : constant Integer := Low + Integer'Max (0, Integer (Extent) - Integer (Object_Extent));
+      begin
+         return Natural (Integer'Max (Low, Integer'Min (High,
+           Integer (Value) - Integer (Old_Origin) + Low)));
+      end Translate;
+   begin
+      settingsView.Layout_Status := Desktop_Settings.Rejected;
+      if not backBufferReady or else Candidate.Count /= desktopLayout.Count or else
+        Candidate.Count = 0 or else DL.Validate (Candidate).Status /= DL.Accepted
+      then return; end if;
+      Choice := DL.Select_Primary
+        (Candidate, settingsView.Pending_Primary, Policy => DL.Apply_Primary_Preference);
+      if not Choice.Available or else Choice.Display /= settingsView.Pending_Primary then
+         return;
+      end if;
+      -- Mode/identity/rotation are unchanged. Scale affects logical composition,
+      -- never scanout mode, transfer-buffer size or driver ownership.
+      for I in 1 .. Candidate.Count loop
+         declare
+            Old : DG.Output renames desktopLayout.Items (I).Geometry;
+            New_G : DG.Output renames Candidate.Items (I).Geometry;
+            B : constant DG.Logical_Rectangle := DG.Bounds (New_G);
+         begin
+            if Candidate.Items (I).Display /= desktopLayout.Items (I).Display or
+              Old.Width /= New_G.Width or Old.Height /= New_G.Height or
+              Old.Rotation /= New_G.Rotation or
+              New_G.Scale.Numerator < New_G.Scale.Denominator or
+              New_G.X < 0 or New_G.Y < 0
+            then return; end if;
+            if Old.Scale /= New_G.Scale and then
+              (B.Right - B.Left < CuBit.Display_Arrangement.Minimum_Width or
+               B.Bottom - B.Top < CuBit.Display_Arrangement.Minimum_Height)
+            then return; end if;
+            Width := Natural'Max (Width, Natural (B.Right));
+            Height := Natural'Max (Height, Natural (B.Bottom));
+         end;
+      end loop;
+      if Width not in 1 .. Natural (DP.Positive_Extent'Last) or
+         Height not in 1 .. Natural (DP.Positive_Extent'Last)
+      then return; end if;
+      Layout := (DP.Positive_Extent (Width), DP.Positive_Extent (Height), Width * 4);
+      if not DP.Valid_Layout (Layout) or else DP.Byte_Length (Layout) > Unsigned_64 (sceneCapacityBytes)
+      then return; end if;
+
+      restoreCursorOverlay;
+      Pointer := DL.Confine (desktopLayout,
+        (DG.Logical_Coordinate (cursorX), DG.Logical_Coordinate (cursorY)));
+      -- Keep each title bar (and minimized/maximized restore position) on its
+      -- existing monitor. Scale changes may shrink their logical work area;
+      -- use the usual configure path when an existing client needs resizing.
+      for S of surfaces loop
+         if S.used and then (S.flags and SURFACE_FLAG_WINDOW) /= 0 then
+            declare
+               Owner : constant DL.Pointer_Position := DL.Confine (desktopLayout,
+                 (DG.Logical_Coordinate (S.x + Natural'Min (S.w / 2, 64)),
+                  DG.Logical_Coordinate (S.y + Natural'Min (S.h / 2, 12))));
+               Old : DG.Output renames desktopLayout.Items (Owner.Screen).Geometry;
+               New_G : DG.Output renames Candidate.Items (Owner.Screen).Geometry;
+               B : constant Rect := logicalBounds (New_G);
+               Work_Height : constant Natural := B.h -
+                 (if Owner.Screen = Choice.Index then
+                     Natural'Min (B.h, TASKBAR_H) else 0);
+            begin
+               if Old.Scale /= New_G.Scale and not S.maximized then
+                  declare
+                     W : Natural := Natural'Min (S.w, B.w);
+                     H : Natural := Natural'Min (S.h, Work_Height);
+                  begin
+                     clampSurfaceSize (S, W, H);
+                     if W /= S.w or H /= S.h then
+                        S.w := W; S.h := H; S.serial := S.serial + 1;
+                        if S.owner /= NO_PROCESS then
+                           queueConfigure (S.id, Unsigned_64 (W), Unsigned_64 (H));
+                        end if;
+                     end if;
+                  end;
+               end if;
+               S.x := Translate (S.x, Old.X, New_G.X, B.w, S.w);
+               S.y := Translate (S.y, Old.Y, New_G.Y, Work_Height, Natural'Min (S.h, Work_Height));
+               S.restoreX := Translate (S.restoreX, Old.X, New_G.X, B.w, S.restoreW);
+               S.restoreY := Translate (S.restoreY, Old.Y, New_G.Y, Work_Height, Natural'Min (S.restoreH, TITLE_HEIGHT));
+               S.dirty := True;
+            end;
+         elsif S.used and then (S.flags and SURFACE_FLAG_SHELL) /= 0 then
+            S.x := 0; S.y := 0; S.w := Width; S.h := Height;
+         end if;
+      end loop;
+      cursorX := Translate (cursorX, desktopLayout.Items (Pointer.Screen).Geometry.X,
+        Candidate.Items (Pointer.Screen).Geometry.X, logicalBounds (Candidate.Items (Pointer.Screen).Geometry).w, 1);
+      cursorY := Translate (cursorY, desktopLayout.Items (Pointer.Screen).Geometry.Y,
+        Candidate.Items (Pointer.Screen).Geometry.Y, logicalBounds (Candidate.Items (Pointer.Screen).Geometry).h, 1);
+      fbWidth := Width; fbHeight := Height; fbPitch := Width * 4;
+      desktopLayout := Candidate;
+      primaryOutput := Output_Index (Choice.Index - 1);
+      preferredPrimary := Choice.Display;
+      for Output in Output_Index loop
+         if presentations (Output).Enabled then
+            presentations (Output).Geometry := Candidate.Items (Natural (Output) + 1).Geometry;
+         end if;
+      end loop;
+      -- A primary change changes work areas, not client ownership or restore
+      -- placement. Resize maximized windows in place without unmaximizing them.
+      for S of surfaces loop
+         if S.used and then (S.flags and SURFACE_FLAG_WINDOW) /= 0 and then S.maximized then
+            declare
+               Area : constant Rect := windowWorkArea (surfaceRect (S));
+               W : Natural := Area.w;
+               H : Natural := Area.h;
+            begin
+               clampSurfaceSize (S, W, H);
+               S.x := Area.x; S.y := Area.y;
+               if S.w /= W or S.h /= H then
+                  S.w := W; S.h := H;
+                  S.serial := S.serial + 1;
+                  if S.owner /= NO_PROCESS then
+                     queueConfigure (S.id, Unsigned_64 (W), Unsigned_64 (H));
+                  end if;
+               end if;
+            end;
+         end if;
+      end loop;
+      for Output in Output_Index loop
+         if presentations (Output).Enabled then
+            -- In-flight transfers remain immutable. Queue a full replacement
+            -- in output-local coordinates for after their matching completion.
+            presentations (Output).Damage := (0, 0,
+              Natural (presentations (Output).Geometry.Width), Natural (presentations (Output).Geometry.Height));
+         end if;
+      end loop;
+      dragBaseReady := False;
+      cursorSaveValid := False;
+      cursorPresentPending := False;
+      launchMenuOpen := False;
+      audioPopupOpen := False;
+      settingsView.Applied_Layout := Candidate;
+      settingsView.Applied_Primary := Choice.Display;
+      settingsView.Dragging := False;
+      settingsView.Layout_Status := Desktop_Settings.Session_Only;
+      damage := (0, 0, fbWidth, fbHeight);
+      scheduleRedraw;
+      debugPrint ("desktop: arrangement applied" & LF);
+      debugPrint ("desktop: primary display" & Choice.Display'Image & LF);
+      for I in 1 .. Candidate.Count loop
+         debugPrint ("desktop: display" & I'Image & " origin" &
+           Candidate.Items (I).Geometry.X'Image & "," & Candidate.Items (I).Geometry.Y'Image & LF);
+         debugPrint ("desktop: display" & I'Image & " scale" &
+           Candidate.Items (I).Geometry.Scale.Numerator'Image & "/" &
+           Candidate.Items (I).Geometry.Scale.Denominator'Image & LF);
+      end loop;
+   end Apply_Arrangement;
+
    procedure Apply_Appearance (damage : in out Rect) is
       Text : constant CuBit.Appearance.Encoding := CuBit.Appearance.Encode (settingsView.Pending);
       Status : CuBit.Config.ConfigStatus;
@@ -5066,7 +5297,9 @@ procedure main is
    begin
       Desktop_Settings.Pointer (settingsView, (Bounds.x, Bounds.y, Bounds.w, Bounds.h),
         (cursorX, cursorY, Down, Pressed, Released, True), Apply);
-      if Apply then Apply_Appearance (damage);
+      if Apply then
+         if settingsView.Current_Page = Desktop_Settings.Displays then Apply_Arrangement (damage);
+         else Apply_Appearance (damage); end if;
       elsif Before /= settingsView then damage := unionRect (damage, Bounds);
       end if;
    end Settings_Pointer;
@@ -5089,7 +5322,9 @@ procedure main is
             if raw < 128 then
                declare Apply : Boolean; begin
                   Desktop_Settings.Key (settingsView, Natural (raw), desktopShiftDown, Apply);
-                  if Apply then Apply_Appearance (damage);
+                  if Apply then
+                     if settingsView.Current_Page = Desktop_Settings.Displays then Apply_Arrangement (damage);
+                     else Apply_Appearance (damage); end if;
                   else damage := unionRect (damage, surfaceRect (surfaces (SurfaceIndex (idx)))); end if;
                end;
             end if;
@@ -5121,6 +5356,8 @@ procedure main is
             end if;
          when LAUNCH_DEVICES =>
             trySpawnApplication ("devices.app", ok);
+         when LAUNCH_CONFIG_INSPECTOR =>
+            trySpawnApplication ("config-inspector.app", ok);
          when LAUNCH_BROWSER =>
             trySpawnApplication ("netsurf.app", ok);
          when LAUNCH_FILES =>
@@ -5301,6 +5538,15 @@ procedure main is
       --  downward.
       cursorX := clampPointerCoord (Integer (cursorX) + dx, maxX);
       cursorY := clampPointerCoord (Integer (cursorY) - dy, maxY);
+      if desktopLayout.Count > 0 then
+         declare
+            Visible : constant DL.Pointer_Position := DL.Confine
+              (desktopLayout, (DG.Logical_Coordinate (cursorX), DG.Logical_Coordinate (cursorY)));
+         begin
+            cursorX := Natural (Visible.Point.X);
+            cursorY := Natural (Visible.Point.Y);
+         end;
+      end if;
       damage := unionRect (damage, cursorRect);
 
       --  Popup input belongs to the desktop, including the release outside
@@ -6037,7 +6283,7 @@ procedure main is
       Candidate : DL.Layout;
       Choice : DL.Primary_Selection;
       Raw, Pages, Drag_Raw : Unsigned_64;
-      Total_Width : Natural;
+      Total_Width, Total_Height : Natural;
    begin
       ok := False;
       prepareOutput (0, First_Info, Prepared);
@@ -6046,20 +6292,20 @@ procedure main is
          return;
       end if;
       Total_Width := Natural (First_Info.words (0));
+      Total_Height := Natural (First_Info.words (1));
       if validDisplayInfo (Second_Info) and then
-        Second_Info.words (0) = First_Info.words (0) and then
-        Second_Info.words (1) = First_Info.words (1) and then
-        Total_Width <= Natural (DP.Positive_Extent'Last) / 2
+        Natural (Second_Info.words (0)) <= Natural (DP.Positive_Extent'Last) - Total_Width
       then
          -- Admit the combined private scene before acquiring optional storage.
-         Layout := (DP.Positive_Extent (Total_Width * 2),
-                    DP.Positive_Extent (First_Info.words (1)),
-                    DP.Buffer_Pitch (Total_Width * 8));
+         Layout := (DP.Positive_Extent (Total_Width + Natural (Second_Info.words (0))),
+                    DP.Positive_Extent (Natural'Max (Total_Height, Natural (Second_Info.words (1)))),
+                    DP.Buffer_Pitch ((Total_Width + Natural (Second_Info.words (0))) * 4));
          if DP.Valid_Layout (Layout) then
             prepareOutput (1, Second_Info, Prepared);
             if Prepared then
                presentations (1).Geometry.X := DG.Output_Origin (Total_Width);
-               Total_Width := Total_Width * 2;
+               Total_Width := Natural (Layout.Width);
+               Total_Height := Natural (Layout.Height);
             end if;
          end if;
       end if;
@@ -6083,20 +6329,32 @@ procedure main is
       end if;
       primaryOutput := Output_Index (Choice.Index - 1);
       Layout := (DP.Positive_Extent (Total_Width),
-                 DP.Positive_Extent (First_Info.words (1)),
+                 DP.Positive_Extent (Total_Height),
                  DP.Buffer_Pitch (Total_Width * 4));
       if not DP.Valid_Layout (Layout) then
          for Output in Output_Index loop closeOutput (Output); end loop;
          return;
       end if;
       Pages := (DP.Byte_Length (Layout) + 4095) / 4096;
+      -- Reusable private scene capacity, bounded by the existing scene budget.
+      -- Rearrangement changes stride/extents but never allocates on drag/Apply.
+      -- Scanout buffers/grants keep their original sizes and lifetimes.
+      if Candidate.Count = 2 then
+         Pages := (Unsigned_64'Min (DP.Maximum_Buffer_Bytes,
+           Unsigned_64 (Total_Width) * (First_Info.words (1) + Second_Info.words (1)) * 4) + 4095) / 4096;
+      end if;
       Raw := syscall (SYSCALL_SBRK, Pages * 4096 + 4096);
+      if Raw = Unsigned_64'Last and then Pages > (DP.Byte_Length (Layout) + 4095) / 4096 then
+         Pages := (DP.Byte_Length (Layout) + 4095) / 4096;
+         Raw := syscall (SYSCALL_SBRK, Pages * 4096 + 4096);
+      end if;
       if Raw = Unsigned_64'Last then
          for Output in Output_Index loop closeOutput (Output); end loop;
          debugPrint ("desktop: scene allocation failed" & LF);
          return;
       end if;
       backBufferAddr := To_Address (Integer_Address (alignUpPage (Raw)));
+      sceneCapacityBytes := Natural (Pages * 4096);
       fbWidth := Total_Width;
       fbHeight := Natural (Layout.Height);
       fbPitch := Natural (Layout.Pitch);
@@ -6113,6 +6371,7 @@ procedure main is
       debugPrint ("desktop: wallpaper uses retained scene layers" & LF);
       debugPrint ("desktop: active outputs=" & Candidate.Count'Image &
         " primary=" & primaryOutput'Image & LF);
+      desktopLayout := Candidate;
       ok := True;
    end setupDisplayBuffer;
 

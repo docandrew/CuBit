@@ -3,13 +3,14 @@ with CuBit.Protocols;
 with CCL.Catalog;
 with CCL.Interfaces.Clock;
 with CCL.Sessions;
-with CCL.VM;
+with CCL.Host_Values;
+with CCL_Config_Bindings;
 
 package body Control_Host is
    use Interfaces;
    use type CCL.Catalog.Catalog_Error;
    use type CCL.Catalog.Grant_Result;
-   use type CCL.VM.Value_Kind;
+   use type CCL.Host_Values.Value_Kind;
    type Host_Binding is (Clock_Monotonic);
    for Host_Binding use (Clock_Monotonic => 1);
    Catalog : CCL.Catalog.Interface_Catalog;
@@ -31,27 +32,31 @@ package body Control_Host is
 
    procedure Invoke
      (Context : in out Context_Type; Binding : Unsigned_32;
-      Argument : CCL.VM.Value; Value : out CCL.VM.Value; Success : out Boolean)
+      Argument : CCL.Host_Values.Value; Value : out CCL.Host_Values.Value; Success : out Boolean)
    is
       pragma Unreferenced (Context);
       Milliseconds : Unsigned_64;
    begin
-      Value := CCL.VM.Integer_Constant (0); Success := False;
+      Value := CCL.Host_Values.Integer_Constant (0); Success := False;
+      if CCL_Config_Bindings.Handles (Binding) then
+         CCL_Config_Bindings.Invoke (Binding, Argument, Value, Success);
+         return;
+      end if;
       if Binding /= Host_Binding'Enum_Rep (Clock_Monotonic) or else
-        Argument.Kind /= CCL.VM.Integer_Value or else Argument.Integer /= 0 then return; end if;
+        Argument.Kind /= CCL.Host_Values.Integer_Value or else Argument.Integer /= 0 then return; end if;
       Read_Clock (Success, Milliseconds);
       if Success and then Milliseconds <= Unsigned_64 (Integer_64'Last) then
-         Value := CCL.VM.Integer_Constant (Integer_64 (Milliseconds));
+         Value := CCL.Host_Values.Integer_Constant (Integer_64 (Milliseconds));
       else Success := False;
       end if;
    end Invoke;
-   procedure Interpret_Live is new CCL.Language.Interpret_With_Host (Context_Type, Invoke);
+   procedure Interpret_Live is new CCL.Language.Interpret_With_Values (Context_Type, Invoke);
    function Now (Context : Context_Type) return Unsigned_64 is
       pragma Unreferenced (Context);
    begin
       return syscall (SYSCALL_GETTIME);
    end Now;
-   procedure Pump_Periodic is new CCL.Periodic_Programs.Evaluate_Due
+   procedure Pump_Periodic is new CCL.Periodic_Programs.Evaluate_Values_Due
      (Context_Type, Now, Invoke);
 
    procedure Initialize (Success : out Boolean) is
@@ -63,6 +68,8 @@ package body Control_Host is
    begin
       Initialized := False; Success := False;
       CCL.Catalog.Initialize (Catalog); CCL.Catalog.Initialize (Grants);
+      CCL_Config_Bindings.Install (Catalog, Grants, Available);
+      if not Available then return; end if;
       CCL.Interfaces.Clock.Publish (Catalog, Error);
       if Error /= CCL.Catalog.Catalog_Valid then return; end if;
       CCL.Interfaces.Clock.Resolve_Monotonic_Ms (Catalog, Operation, Found);

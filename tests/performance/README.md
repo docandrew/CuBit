@@ -32,7 +32,9 @@ is asynchronous; an idle service may block before publishing its final counters.
 Totals therefore omit some tail work and are not phase-aligned. Do not divide
 them by fixture duration to claim bandwidth or compare them as equal-work totals.
 Composition/render writes and unrelated copies are excluded. The display's
-`present_ms` diagnostic includes waits; it is not exclusive CPU-copy time.
+`present_ms` measures CPU staging/submission for asynchronous session frames,
+excluding deferred GPU waiting. Legacy synchronous requests can still include
+waits. It is neither exclusive CPU-copy time nor end-to-end presentation latency.
 The parser rejects malformed, missing, wrapped or overflowed counters rather
 than treating missing measurements as zero-copy.
 
@@ -139,13 +141,28 @@ nix develop -c python3 tests/performance/report.py /tmp/storage.serial
 
 This creates `@nvme:0/cubit-latency.dat` exclusively on the disposable disk,
 initializes 64 KiB, then measures 512 operations after 32 warmups for each of
-open, 4 KiB sequential reads, seeded random reads, and overwrites. It verifies
+open, 4 KiB sequential reads, seeded random reads, positioned random reads,
+overwrites, and overwrite
+followed by explicit filesystem/device flush. It verifies
 every read and the final overwritten contents. Seek, buffer preparation,
 verification and grant creation are outside the timed calls. One outstanding
 synchronous operation, one reused capability-directed grant, native FS IPC.
-These are warm-working-set completion latencies, not cold-device latency,
-async throughput or durable-write guarantees. Outside the runner the app
+The positioned-read phase uses `Read_At_Request` without a separate Seek.
+The old random-read timer excludes its preceding Seek, so the difference
+between those two histograms is not the end-to-end savings of removing Seek.
+These are warm-working-set completion latencies, not cold-device latency or
+async throughput. `fs-write-4k-overwrite-flush` includes both write and flush
+acknowledgements; ordinary overwrite does not. Unsupported/failed flush fails
+the fixture, rather than silently measuring a weaker operation. Even successful
+guest flush does not establish ext2 crash consistency or physical-media timing
+in QEMU. TCG runs are regression evidence, not competitive latency measurements.
+Outside the runner the app
 leaves its scratch file and refuses to reuse an existing one.
+
+The [Turso backend comparison](../config-turso/README.md#io-backend-comparison)
+provides a separate Linux UnixIO/io_uring baseline and a reusable Turso File
+workload. Do not compare its cache-hot host numbers directly with this guest
+fixture: working sets, request boundaries, virtualization and durability differ.
 
 Histogram proof (run `test.sh` first to stage production sources):
 

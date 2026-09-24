@@ -204,14 +204,6 @@ int cubit_poll_completion(cubit_completion_t *completion);
 #define DRIVER_GPU                17
 #define DRIVER_CCL_TEST           18
 
-/* Config store IPC labels */
-#define OP_CONFIG_GET     0x0600
-#define OP_CONFIG_SET     0x0601
-#define OP_CONFIG_DELETE  0x0602
-#define OP_CONFIG_LIST    0x0603
-#define OP_CONFIG_LOAD    0x0604
-#define OP_CONFIG_SAVE    0x0605
-
 /* Stream IPC labels */
 #define OP_STREAM_SUBSCRIBE   0x0700
 #define OP_STREAM_UNSUBSCRIBE 0x0701
@@ -468,25 +460,6 @@ static inline void cubit_puts(const char *s)
     while (s[len]) len++;
     cubit_write(STDOUT, s, len);
 }
-
-/* Config store client API */
-int cubit_config_get(const char *key, void *buf,
-                     size_t buf_size, size_t *out_len);
-int cubit_config_set(const char *key, const void *value,
-                     size_t value_len);
-int cubit_config_delete(const char *key);
-int cubit_config_list(const char *prefix, char *buf,
-                      size_t buf_size, int *out_count);
-
-/* Scheme resolution */
-typedef struct {
-    uint64_t driver_id;
-    uint64_t cap_slot;
-    uint64_t pid;
-    int      found;
-} cubit_scheme_info_t;
-
-int cubit_resolve_scheme(const char *name, cubit_scheme_info_t *info);
 
 /* File open flags */
 #define O_RDONLY   0

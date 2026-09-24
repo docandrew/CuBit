@@ -1,0 +1,2 @@
+clock.time-zone=hostile-disk-overlay
+config.store=@nvme:0/another-implicit-overlay

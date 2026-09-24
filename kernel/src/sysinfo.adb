@@ -14,7 +14,7 @@ with Modules;
 with Multiboot;
 with TextIO; use TextIO;
 with Util;
-with Video.VGA;
+with Boot_Output;
 
 package body Sysinfo is
 
@@ -203,6 +203,10 @@ package body Sysinfo is
                 gpuNotifyMult := value;
                 return True;
             when GPU_IS_PRIMARY =>
+                --  Privileged boot-adapter publication precedes starting its
+                --  native driver. Retire the firmware renderer before that
+                --  driver can reset or reprogram the display, not afterward.
+                if value /= 0 then Boot_Output.Retire; end if;
                 gpuIsPrimary := value;
                 return True;
             when RAMDISK_SIZE =>

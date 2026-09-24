@@ -15,6 +15,7 @@ procedure Main is
    package MG renames CuBit.Memory_Grants;
    package OD renames CuBit.Output_Discovery;
    use type OD.Output_Role, OD.Query;
+   use type DP.Wire_Message;
    Initial_Catalog : OD.Summary_Decoding;
    Passed : Boolean := True;
    First, Second, Reused, Rebinding : MG.Grant_Reference;
@@ -476,9 +477,40 @@ procedure Main is
       Check (Ok and then Generation (Grants (1)) = 0, "second output unpinned");
       if Passed then debugPrint ("DISPLAY-DUAL-CHECK: PASS" & ASCII.LF); end if;
    end Exercise_Outputs;
+
+   procedure Exercise_Backend_Failure is
+      Info, Status : Wire_Message;
+   begin
+      Discover;
+      for Output in Output_Number range 0 .. 1 loop
+         Info := Send (With_Output ((Label => Code (Get_Information), others => <>), Output));
+         Check (Info.Length = 4 and then Info.Words (0) = 1024 and then
+                Info.Words (1) = 768, "ready output before backend failure");
+         Expect (With_Output (Encode_Lease_Request (Acquire_Display), Output),
+                 DP.Success, "acquire before injected failure");
+         Expect (With_Output ((Label => Code (Clear), Length => 1,
+                               Words => [16#00123456#, 0, 0, 0], others => <>), Output),
+                 DP.Bad_State, "GPU clear failure must not fall back to firmware");
+         Status := Send (With_Output ((Label => Code (Get_Status), others => <>), Output));
+         Check (Status.Label = Code (Get_Status) and then Status.Length = 4 and then
+                Status.Words (0) = 3, "failed GPU retains native backend identity");
+         Expect (With_Output ((Label => Code (Clear), Length => 1,
+                               Words => [0, 0, 0, 0], others => <>), Output),
+                 DP.Bad_State, "backend fault is sticky");
+         Expect (With_Output (Encode_Lease_Request (Acquire_Display), Output),
+                 DP.Bad_State, "cannot reacquire failed backend");
+         Check (Send (With_Output ((Label => Code (Get_Information), others => <>), Output)) = Info,
+                "failure cannot change output geometry");
+      end loop;
+      if Passed then debugPrint ("DISPLAY-BACKEND-FAILURE-CHECK: PASS" & ASCII.LF); end if;
+   end Exercise_Backend_Failure;
 begin
-   Exercise;
-   if Passed then Exercise_Outputs; end if;
+   if GPU_Test_Policy.Reject_Client_Clear then
+      Exercise_Backend_Failure;
+   else
+      Exercise;
+      if Passed then Exercise_Outputs; end if;
+   end if;
    if Passed then
       debugPrint ("DISPLAY-GRANTS-CHECK: PASS" & ASCII.LF);
    end if;

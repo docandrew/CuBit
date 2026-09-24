@@ -35,7 +35,7 @@ with TextIO; use TextIO;
 with TLB_Shootdown;
 with Util;
 with User_Buffer_Copy;
-with Video.VGA;
+with Boot_Output;
 with Virtmem;
 with x86;
 
@@ -542,6 +542,7 @@ package body Syscall.IPC is
            Quota => Unsigned_64 (Process.proctab(callerPID).quota.maxFrames));
         frames : Process.FrameLists.List renames Process.proctab(callerPID).frames;
         oldCapacity : constant Natural := frames.capacity;
+        newCapacity : Natural;
         success : Boolean;
 
         procedure Add (Index : Natural; Success : out Boolean) is
@@ -577,6 +578,10 @@ package body Syscall.IPC is
         retval := reterr;
         if plan.Result /= Heap_Admission.Ready then return; end if;
 
+        newCapacity := Heap_Admission.Expanded_Capacity
+          (oldCapacity, Natural (plan.Page_Count));
+        if newCapacity = 0 then return; end if;
+
         --  One executing member per user address space is enforced by create;
         --  its execution pin prevents reaping while this syscall runs. Shared
         --  address spaces will require reservation/serialization before they
@@ -584,8 +589,9 @@ package body Syscall.IPC is
         -- List nodes are supplied on demand, not preallocated by capacity.
         -- Representation and policy quota were checked for the whole request;
         -- physical/node/page-table failures are rolled back before returning.
-        frames.capacity := Natural'Max
-          (oldCapacity, frames.length + Natural (plan.Page_Count));
+        -- Heap growth must not consume capacity reserved for future stack
+        -- faults. The list is node-allocated, so headroom costs no pages here.
+        frames.capacity := newCapacity;
         Grow (Natural (plan.Page_Count), success);
         if not success then
             frames.capacity := oldCapacity;
@@ -634,6 +640,10 @@ package body Syscall.IPC is
         if not capAllowed then
             retval := reterr;
         else
+            --  Close and drain kernel rendering BEFORE any usable mapping is
+            --  published, including a partially successful mapping attempt.
+            Boot_Output.Retire;
+            TextIO.disableVideo;
             for i in 0 .. numPages - 1 loop
                 declare
                     pageOk : Boolean;
@@ -653,11 +663,6 @@ package body Syscall.IPC is
             end loop;
 
             if ok then
-                --  The capability check above makes this the explicit
-                --  handoff from the early framebuffer console to its
-                --  userspace owner.  Stop mirroring diagnostics to video so
-                --  later service output cannot scribble over the desktop.
-                TextIO.disableVideo;
                 retval := Unsigned_64(FB_USER_BASE) +
                   Unsigned_64 (Item.Base) - Unsigned_64 (Item.Map_First);
             else

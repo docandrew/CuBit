@@ -6,6 +6,7 @@
 -------------------------------------------------------------------------------
 with TextIO; use TextIO;
 with x86;
+with Boot_Output;
 
 package body Last_Chance_Handler with
     SPARK_Mode => Off -- trusted runtime/output boundary, not a proved unwinder
@@ -20,10 +21,11 @@ is
         -- Stop local scheduling before reporting. Other CPUs and NMIs require
         -- a separate coordinated panic protocol; this is a local fatal stop.
         x86.cli;
-        --  Normal boot hands the framebuffer to the display service and
-        --  disables kernel video logging.  A fatal kernel exception must take
-        --  the diagnostic surface back: real hardware may have no serial
-        --  console at all.  enableVideo is harmless before a driver is set.
+        --  Best effort before retirement only. Never block on another CPU's
+        --  painter or revive a graphical surface after ownership transfer.
+        Boot_Output.Panic (msg);
+        --  Only the explicit legacy text-mode diagnostic boot installs a
+        --  TextIO video adapter now; graphics is exclusively Boot_Diagnostics.
         TextIO.enableVideo;
         TextIO.setCursor (0, 0);
         println ("CUBIT KERNEL PANIC", LT_RED, BLACK);

@@ -131,6 +131,20 @@ prove-process-lifetime:
 	@cat build/proof-process-lifetime/gnatprove/gnatprove.out
 
 .PHONY: test-boot-framebuffer prove-boot-framebuffer
+.PHONY: test-boot-panel prove-boot-panel
+test-boot-panel:
+	$(ALR) gprbuild -p -P ../tests/boot-panel/panel_tests.gpr
+	../tests/boot-panel/build/main
+	$(ALR) gprbuild -p -P ../tests/boot-panel/adapter/adapter_tests.gpr
+	../tests/boot-panel/adapter/build/main 1 1
+	../tests/boot-panel/adapter/build/main 1 1 retired
+	../tests/boot-panel/adapter/build/main 640 480
+	../tests/boot-panel/adapter/build/main 1024 768
+	../tests/boot-panel/adapter/build/main 1920 1080
+
+prove-boot-panel:
+	$(ALR) gnatprove -P ../tests/boot-panel/panel_tests.gpr -u boot_panel.adb boot_font.adb --mode=all --level=1 --report=all --checks-as-errors=on -j2
+
 test-boot-framebuffer:
 	bash ../tests/boot-framebuffer/test.sh
 
@@ -445,7 +459,7 @@ display-check: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/display-check/build
 	$(call compile_ccl_manifest,../userspace/apps/display-check)
 	$(ALR) gprbuild -p -P ../userspace/apps/display-check/display_check.gpr -XCUBIT_DISPLAY_TEST_MODE=$(CUBIT_DISPLAY_TEST_MODE) -XCUBIT_GPU_TEST_MODE=$(CUBIT_GPU_TEST_MODE)
-	cp ../userspace/apps/display-check/$(if $(filter output-rebind,$(CUBIT_DISPLAY_TEST_MODE)),build-output-rebind,$(if $(filter delayed,$(CUBIT_GPU_TEST_MODE)),build-gpu-delayed,build))/display-check.app isodir/boot/display-check.app
+	cp ../userspace/apps/display-check/$(if $(filter output-rebind,$(CUBIT_DISPLAY_TEST_MODE)),build-output-rebind,$(if $(filter production,$(CUBIT_GPU_TEST_MODE)),build,build-gpu-$(CUBIT_GPU_TEST_MODE)))/display-check.app isodir/boot/display-check.app
 
 prepare-desktop-protocol:
 	mkdir -p ../tests/desktop-protocol/build/source
@@ -617,11 +631,24 @@ test-ccl-web-preview:
 .PHONY: test-ui-fonts
 .PHONY: test-procmgr-reads
 .PHONY: prepare-display-geometry test-display-geometry prove-display-geometry
+.PHONY: prepare-monitor-edid test-monitor-edid prove-monitor-edid
+prepare-monitor-edid:
+	mkdir -p ../tests/monitor-edid/build/source
+	cp ../userspace/runtime/gnat/cubit.ads ../userspace/lib/display/cubit-monitor_edid.ad? ../tests/monitor-edid/build/source/
+
+test-monitor-edid: prepare-monitor-edid
+	$(ALR) gprbuild -p -P ../tests/monitor-edid/edid.gpr
+	../tests/monitor-edid/build/main
+
+prove-monitor-edid: prepare-monitor-edid
+	$(ALR) gnatprove -P ../tests/monitor-edid/edid.gpr -u cubit-monitor_edid.adb --level=2 --report=all --checks-as-errors=on -j2
+	python3 ../tests/monitor-edid/check-proof.py
+
 prepare-display-geometry:
 	mkdir -p ../tests/display-geometry/build/source
 	cp ../userspace/runtime/gnat/cubit.ads \
-		../userspace/runtime/gnat/cubit-display_geometry.ads \
-		../userspace/runtime/gnat/cubit-display_geometry.adb \
+		../userspace/lib/display/cubit-display_geometry.ads \
+		../userspace/lib/display/cubit-display_geometry.adb \
 		../tests/display-geometry/build/source/
 
 test-display-geometry: prepare-display-geometry
@@ -641,14 +668,25 @@ test-procmgr-reads:
 prepare-display-layouts: prepare-display-geometry
 	mkdir -p ../tests/display-layouts/build/source
 	cp ../tests/display-geometry/build/source/*.ad? \
-		../userspace/runtime/gnat/cubit-display_layouts.ads \
-		../userspace/runtime/gnat/cubit-display_layouts.adb \
+		../userspace/lib/display/cubit-display_layouts.ads \
+		../userspace/lib/display/cubit-display_layouts.adb \
+		../userspace/lib/display/cubit-display_arrangement.ads \
+		../userspace/lib/display/cubit-display_arrangement.adb \
 		../tests/display-layouts/build/source/
 
 test-display-layouts: prepare-display-layouts
 	$(ALR) gprbuild -p -P ../tests/display-layouts/layouts.gpr
 	../tests/display-layouts/build/main
 	../tests/display-layouts/build/primary_test
+	../tests/display-layouts/build/pointer_test
+	../tests/display-layouts/build/arrangement_test
+
+.PHONY: prove-display-arrangement
+prove-display-arrangement: prepare-display-layouts
+	$(ALR) gnatprove -P ../tests/display-layouts/layouts.gpr \
+		-u cubit-display_arrangement.adb --level=1 --no-inlining --no-loop-unrolling \
+		--report=all --checks-as-errors=on -j2
+	python3 ../tests/display-layouts/check-arrangement-proof.py
 
 prove-display-layouts: prepare-display-layouts
 	$(ALR) gnatprove -P ../tests/display-layouts/layouts.gpr \
@@ -659,8 +697,8 @@ prove-display-layouts: prepare-display-layouts
 prepare-window-placement: prepare-display-layouts
 	mkdir -p ../tests/window-placement/build/source
 	cp ../tests/display-layouts/build/source/*.ad? \
-		../userspace/runtime/gnat/cubit-window_placement.ads \
-		../userspace/runtime/gnat/cubit-window_placement.adb \
+		../userspace/lib/display/cubit-window_placement.ads \
+		../userspace/lib/display/cubit-window_placement.adb \
 		../tests/window-placement/build/source/
 
 test-window-placement: prepare-window-placement
@@ -676,9 +714,9 @@ prove-window-placement: prepare-window-placement
 prepare-output-registry: prepare-window-placement
 	mkdir -p ../tests/output-registry/build/source
 	cp ../tests/window-placement/build/source/*.ad? \
-		../userspace/runtime/gnat/cubit-output_registry.ad? \
-		../userspace/runtime/gnat/cubit-display_outputs.ads \
-		../userspace/runtime/gnat/cubit-placement_tickets.ad? \
+		../userspace/lib/display/cubit-output_registry.ad? \
+		../userspace/lib/display/cubit-display_outputs.ads \
+		../userspace/lib/display/cubit-placement_tickets.ad? \
 		../tests/output-registry/build/source/
 
 test-output-registry: prepare-output-registry
@@ -695,7 +733,7 @@ prove-output-registry: prepare-output-registry
 prepare-output-discovery: prepare-desktop-protocol
 	mkdir -p ../tests/output-discovery/build/source
 	cp ../tests/desktop-protocol/build/source/*.ad? \
-		../userspace/runtime/gnat/cubit-output_discovery.ad? \
+		../userspace/lib/display/cubit-output_discovery.ad? \
 		../tests/output-discovery/build/source/
 
 test-output-discovery: prepare-output-discovery
@@ -861,6 +899,13 @@ user_runtime:
 	mkdir -p ../userspace/runtime/adalib
 	$(ALR) gprbuild -P ../userspace/runtime/user_runtime.gpr
 
+# RAM storage uses the same block-device protocol as hardware drivers.
+.PHONY : ramdisk
+ramdisk: user_runtime
+	mkdir -p ../userspace/services/ramdisk/build
+	$(ALR) gprbuild -P ../userspace/services/ramdisk/ramdisk.gpr
+	cp ../userspace/services/ramdisk/build/ramdisk.drv isodir/boot/ramdisk.drv
+
 # Build the userspace filesystem server
 .PHONY : filesystem
 filesystem: user_runtime
@@ -891,7 +936,7 @@ virtio-net: user_runtime
 
 # Build the userspace virtio-gpu driver
 CUBIT_GPU_TEST_MODE ?= production
-GPU_BUILD_DIR = $(if $(filter delayed,$(CUBIT_GPU_TEST_MODE)),build-delayed,build)
+GPU_BUILD_DIR = $(if $(filter production,$(CUBIT_GPU_TEST_MODE)),build,build-$(CUBIT_GPU_TEST_MODE))
 .PHONY : virtio-gpu
 virtio-gpu: user_runtime
 	$(ALR) gprbuild -p -P ../userspace/services/virtio-gpu/virtio_gpu.gpr -XCUBIT_GPU_TEST_MODE=$(CUBIT_GPU_TEST_MODE)
@@ -914,6 +959,13 @@ wget: user_runtime ccl-manifest
 
 # Build the unified hardware inventory and diagnostics app
 .PHONY : devices
+.PHONY : config-inspector
+config-inspector: user_runtime ccl-manifest ui-fonts-native
+	mkdir -p ../userspace/apps/config-inspector/build
+	$(call compile_ccl_manifest,../userspace/apps/config-inspector)
+	$(ALR) gprbuild -P ../userspace/apps/config-inspector/config_inspector.gpr
+	cp ../userspace/apps/config-inspector/build/config-inspector.app isodir/boot/config-inspector.app
+
 devices: user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/apps/devices/build
 	$(call compile_ccl_manifest,../userspace/apps/devices)
@@ -988,10 +1040,24 @@ xhci: user_runtime
 
 # Build the userspace config store service
 .PHONY : config
+.PHONY: config-check
+config-check: user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/config-check/build
+	$(call compile_ccl_manifest,../userspace/apps/config-check)
+	$(ALR) gprbuild -P ../userspace/apps/config-check/config_check.gpr
+	cp ../userspace/apps/config-check/build/config-check.app isodir/boot/config-check.app
+	mkdir -p ../userspace/apps/config-denied/build
+	$(call compile_ccl_manifest,../userspace/apps/config-denied)
+	$(ALR) gprbuild -P ../userspace/apps/config-denied/config_denied.gpr
+	cp ../userspace/apps/config-denied/build/config-denied.app isodir/boot/config-denied.app
+
 config: user_runtime
 	mkdir -p ../userspace/services/config/build
 	$(ALR) gprbuild -P ../userspace/services/config/config.gpr
-	cp ../userspace/services/config/build/config.svc isodir/boot/config.svc
+	$(ALR) objcopy \
+		--add-section .cubit.interfaces=../userspace/ccl/interfaces/config.ccl-interface \
+		--set-section-flags .cubit.interfaces=readonly,data \
+		../userspace/services/config/build/config.svc isodir/boot/config.svc
 
 # Build the userspace log store service
 .PHONY : log-check
@@ -1072,7 +1138,7 @@ DOOM_WAD ?= ../doom1.wad
 DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/netsurf.app isodir/boot/sleep.app \
 	isodir/boot/sameboy.app ../userspace/c/sameboy_build/test.gb \
 	isodir/boot/capability-test.app \
-	isodir/boot/wget.app isodir/boot/devices.app isodir/boot/files.app \
+	isodir/boot/wget.app isodir/boot/devices.app isodir/boot/files.app isodir/boot/config-inspector.app \
 	isodir/boot/ccl-vm.app isodir/boot/ccl-workbench.app \
 	isodir/boot/ccl-test-host.svc \
 	isodir/boot/clock.svc \
@@ -1085,7 +1151,7 @@ DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/netsurf.
 # Every stage-1 binary copied into initrd.img.  Keep this dependency list next
 # to the staging targets: copying an old service beside a newly rebuilt driver
 # can silently violate their capability/protocol contract.
-INITRD_SERVICES := filesystem ata nvme netstack virtio-net virtio-gpu hda \
+INITRD_SERVICES := filesystem ramdisk ata nvme netstack virtio-net virtio-gpu hda \
 	mixer ps2 xhci config netmgr procmgr devmgr
 
 # Binaries used by the graphical desktop session. Keep this as a separate
@@ -1093,7 +1159,7 @@ INITRD_SERVICES := filesystem ata nvme netstack virtio-net virtio-gpu hda \
 # rebuild the ext2 disk image from those freshly staged files.
 .PHONY : desktop-session-content
 desktop-session-content: $(INITRD_SERVICES) desktop display logstore \
-	desktop-shell devices files ccl-workbench clock doom netsurf sameboy
+	desktop-shell devices files config-inspector ccl-workbench clock doom netsurf sameboy
 
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.ccl, shell.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
@@ -1102,7 +1168,6 @@ ata_disk.img nvme_disk.img: $(DISK_CONTENTS) ../tools/build_development_disk.py
 	$(ALR) python3 ../tools/build_development_disk.py $@ \
 		--boot $(filter isodir/boot/%,$(DISK_CONTENTS)) \
 		--file "motd.txt=../userspace/motd.txt" \
-		--file "config.dat=../userspace/motd.txt" \
 		--file "doom1.wad=$(DOOM_WAD)" \
 		--file "sameboy/00.gb=../userspace/c/sameboy_build/test.gb" \
 		--file "init.ccl=../init.ccl"
@@ -1127,7 +1192,7 @@ $(CAPABILITY_SECURITY_DISK): capability-test ../tests/headless/init-capability-s
 # payload needed by the capability test.  The recipe creates the initrd after
 # all services have been staged so a parallel caller cannot capture a partial
 # archive.
-CAPABILITY_SECURITY_STAGE1 := filesystem ata nvme netstack virtio-net \
+CAPABILITY_SECURITY_STAGE1 := filesystem ramdisk ata nvme netstack virtio-net \
 	virtio-gpu hda mixer ps2 config netmgr procmgr devmgr
 
 .PHONY : capability-security-image
@@ -1147,9 +1212,9 @@ initrd: $(INITRD_SERVICES) ccl-image ../images/development-initrd.ccl $(CCL_IMAG
 # Self-contained, read-only userspace image for real-hardware bring-up.  Keep
 # this separate from the normal two-stage image: the laptop must reach a
 # desktop and diagnostic UI before AHCI or any other block driver works.
-LAPTOP_LIVE_STAGE1 := filesystem ata nvme netstack virtio-net virtio-gpu hda \
+LAPTOP_LIVE_STAGE1 := filesystem ramdisk ata nvme netstack virtio-net virtio-gpu hda \
 	mixer ps2 xhci config netmgr procmgr devmgr
-LAPTOP_LIVE_STAGE2 := logstore clock display desktop ccl-workbench devices files \
+LAPTOP_LIVE_STAGE2 := logstore clock display desktop ccl-workbench devices files config-inspector \
 	storage-check doom sameboy
 LAPTOP_LIVE_RW_DISK := laptop_live_rw.img
 # All runnable examples belong in the live workspace. The image regression
@@ -1292,7 +1357,7 @@ iso: cubit_kernel initrd
 
 # Build everything including DOOM, then create ISO and disk images
 .PHONY : world
-world: cubit_kernel doom sameboy netsurf sleep capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices files desktop-shell procmgr shell hda mixer ps2 xhci config netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: cubit_kernel doom sameboy netsurf sleep capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices files config-inspector desktop-shell procmgr shell hda mixer ps2 xhci config netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world
@@ -1342,6 +1407,10 @@ QEMU_DESKTOP_DEVICE ?= virtio-vga,xres=1024,yres=768
 .PHONY: run-desktop-dual
 run-desktop-dual: QEMU_DESKTOP_DEVICE = '{"driver":"virtio-vga","id":"multi-gpu","max_outputs":2,"outputs":[{"name":"CuBit Main","xres":1024,"yres":768},{"name":"CuBit Side","xres":1024,"yres":768}]}'
 run-desktop-dual: run-desktop
+
+.PHONY: test-desktop-mixed
+test-desktop-mixed: desktop display virtio-gpu display-check ccl-workbench
+	CUBIT_TEST_MIXED_OUTPUTS=1 ../tests/headless/run.sh --test desktop-dual-output --accel kvm --cpus 4 --timeout 60 --keep-logs
 
 .PHONY : run-desktop
 run-desktop: cubit_kernel desktop-session-content
@@ -1393,6 +1462,7 @@ run-desktop-fast:
 	-debugfs -w -R "rm netstack.svc" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm desktop-shell.app" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm devices.app" desktop_disk.img >/dev/null 2>&1
+	-debugfs -w -R "rm config-inspector.app" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm files.app" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm doom.elf" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm netsurf.app" desktop_disk.img >/dev/null 2>&1
@@ -1402,6 +1472,7 @@ run-desktop-fast:
 	debugfs -w -R "write isodir/boot/netstack.svc netstack.svc" desktop_disk.img
 	debugfs -w -R "write isodir/boot/desktop-shell.app desktop-shell.app" desktop_disk.img
 	debugfs -w -R "write isodir/boot/devices.app devices.app" desktop_disk.img
+	debugfs -w -R "write isodir/boot/config-inspector.app config-inspector.app" desktop_disk.img
 	debugfs -w -R "write isodir/boot/files.app files.app" desktop_disk.img
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" desktop_disk.img
 	debugfs -w -R "write isodir/boot/netsurf.app netsurf.app" desktop_disk.img
@@ -1445,6 +1516,7 @@ run-desktop-inspect:
 	-debugfs -w -R "rm netstack.svc" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm desktop-shell.app" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm devices.app" desktop_disk.img >/dev/null 2>&1
+	-debugfs -w -R "rm config-inspector.app" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm files.app" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm doom.elf" desktop_disk.img >/dev/null 2>&1
 	-debugfs -w -R "rm netsurf.app" desktop_disk.img >/dev/null 2>&1
@@ -1454,6 +1526,7 @@ run-desktop-inspect:
 	debugfs -w -R "write isodir/boot/netstack.svc netstack.svc" desktop_disk.img
 	debugfs -w -R "write isodir/boot/desktop-shell.app desktop-shell.app" desktop_disk.img
 	debugfs -w -R "write isodir/boot/devices.app devices.app" desktop_disk.img
+	debugfs -w -R "write isodir/boot/config-inspector.app config-inspector.app" desktop_disk.img
 	debugfs -w -R "write isodir/boot/files.app files.app" desktop_disk.img
 	debugfs -w -R "write isodir/boot/doom.elf doom.elf" desktop_disk.img
 	debugfs -w -R "write isodir/boot/netsurf.app netsurf.app" desktop_disk.img

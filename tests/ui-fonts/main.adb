@@ -2,9 +2,13 @@ with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CuBit.Fonts;
 with CuBit.UI; use CuBit.UI;
+with CuBit.UI.Controls;
+with CuBit.UI.State;
+with CuBit.UI.Trees;
 
 procedure Main is
    use type CuBit.Fonts.Glyph_Access;
+   use type CuBit.UI.Trees.Tree_Item_Icon;
    type Pixels is array (0 .. 49, 0 .. 95) of Color;
    Sentinel : constant Color := 16#335577#;
    Buffer : aliased Pixels := [others => [others => Sentinel]];
@@ -71,5 +75,60 @@ begin
          end if;
       end loop;
    end loop;
-   Ada.Text_IO.Put_Line ("PASS TrueType ABI, metrics, cache, grayscale, clipping, pitch and transparency");
+   -- Shared tabs are page selectors; ordinary list rows retain field colors.
+   for Dark in Boolean loop
+      declare
+         Colors : constant Theme := (if Dark then CuBit_Alloy_Dark else CuBit_Alloy);
+         R : constant Rect := (5, 5, 40, 25);
+      begin
+         Buffer := [others => [others => Sentinel]];
+         Draw_Tab (C, R, Colors, True, False, False, "", Vertical);
+         pragma Assert (Buffer (15, 44) = Colors.face);
+         pragma Assert (Buffer (15, 5) = Colors.accent);
+         pragma Assert (Buffer (29, 20) = Colors.shadow);
+         Draw_Tab (C, R, Colors, True, False, False, "", Horizontal);
+         pragma Assert (Buffer (29, 20) = Colors.face);
+         pragma Assert (Buffer (15, 44) = Colors.shadow);
+         Draw_List_Item (C, R, Colors, False, False, "");
+         pragma Assert (Buffer (15, 20) = Colors.field);
+         Draw_List_Item (C, R, Colors, True, False, "");
+         pragma Assert (Buffer (15, 20) = Colors.selection);
+         Draw_Tab (C, R, Colors, False, True, False, "this label must not escape", Vertical);
+         for Y in Buffer'Range (1) loop
+            for X in Buffer'Range (2) loop
+               if not Point_In_Rect (X, Y, R) then
+                  pragma Assert (Buffer (Y, X) = Sentinel);
+               end if;
+            end loop;
+         end loop;
+      end;
+   end loop;
+   declare
+      State : CuBit.UI.State.UI_State;
+      Controls : CuBit.UI.Controls.Control_Map;
+      Selected : Natural := 0;
+      Result : Widget_Result;
+      R : constant Rect := (5, 5, 60, 24);
+      Painted : Boolean;
+   begin
+      for Icon in CuBit.UI.Trees.Tree_Item_Icon loop
+         Buffer := [others => [others => Sentinel]];
+         CuBit.UI.State.Begin_Frame (State);
+         CuBit.UI.Controls.Clear (Controls);
+         CuBit.UI.Trees.Tree_Item
+           (C, State, Controls, 1, R, R, CuBit_Alloy, "", 1, Selected,
+            icon => Icon, result => Result, retainedInput => True);
+         Painted := False;
+         for Y in Buffer'Range (1) loop
+            for X in Buffer'Range (2) loop
+               if not Point_In_Rect (X, Y, R) then pragma Assert (Buffer (Y, X) = Sentinel); end if;
+               if X in 22 .. 37 and Y in 9 .. 24 then
+                  Painted := Painted or Buffer (Y, X) /= CuBit_Alloy.field;
+               end if;
+            end loop;
+         end loop;
+         pragma Assert (Painted = (Icon /= CuBit.UI.Trees.No_Icon));
+      end loop;
+   end;
+   Ada.Text_IO.Put_Line ("PASS TrueType, clipping, tabs, list colors and shared tree icons");
 end Main;

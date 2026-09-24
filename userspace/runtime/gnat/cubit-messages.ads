@@ -128,6 +128,7 @@ package CuBit.Messages is
    CAP_SLOT_KEYBOARD  : constant Unsigned_64 := 2;
    CAP_SLOT_SELF_PROC : constant Unsigned_64 := 3;
    CAP_SLOT_ATA       : constant Unsigned_64 := 10;
+   CAP_SLOT_RAMDISK   : constant Unsigned_64 := 13;
    CAP_SLOT_NVME      : constant Unsigned_64 := 11;
    CAP_SLOT_NET       : constant Unsigned_64 := 11;
    CAP_SLOT_PROCMGR   : constant Unsigned_64 := 12;

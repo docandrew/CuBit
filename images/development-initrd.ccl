@@ -6,6 +6,7 @@
   (settings "system-default")
   (file bootstrap "devmgr" "devmgr.svc")
   (file bootstrap "filesystem" "filesystem.svc")
+  (file bootstrap "ramdisk" "ramdisk.drv")
   (file bootstrap "ata" "ata.drv")
   (file bootstrap "nvme" "nvme.drv")
   (file bootstrap "netstack" "netstack.svc")

@@ -6,6 +6,14 @@ package Heap_Admission with SPARK_Mode, Pure is
    User_Limit : constant Unsigned_64 := 16#0000_8000_0000_0000#;
    type Status is (Ready, Invalid_Range, Address_Limit,
                    Tracking_Limit, Quota_Limit);
+   -- Preserve all existing tracking headroom (including demand-mapped stack
+   -- pages). Zero means the expanded capacity is not representable.
+   function Expanded_Capacity
+     (Current : Positive; Additional : Natural) return Natural
+     with Post =>
+       (if Additional <= Natural'Last - Current then
+          Expanded_Capacity'Result = Current + Additional
+        else Expanded_Capacity'Result = 0);
    type Growth_Plan (Result : Status := Invalid_Range) is record
       case Result is
          when Ready =>

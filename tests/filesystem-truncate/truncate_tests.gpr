@@ -1,0 +1,28 @@
+project Truncate_Tests is
+   for Languages use ("Ada");
+   for Source_Dirs use
+     (".", "fixture", "../../userspace/services/filesystem",
+      "../../userspace/runtime/gnat");
+   for Source_Files use
+     ("main.adb", "indirect_reads.adb", "path_reads.adb", "admission.adb",
+      "overwrites.adb",
+      "volume_admission.ads",
+      "ext2.ads", "ext2.adb", "cubit.ads",
+      "cubit-messages.ads", "cubit-messages.adb", "cubit-memory_grants.ads",
+      "cubit-grant_references.ads",
+      "cubit-block_devices.ads", "cubit-block_devices.adb",
+      "cubit-filesystems.ads", "cubit-filesystems.adb",
+      "cubit-file_access.ads", "cubit-file_access.adb",
+      "cubit-directory_paths.ads", "cubit-directory_paths.adb",
+      "directory_blocks.ads", "directory_blocks.adb",
+      "directory_commit.ads", "directory_commit.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use
+     ("main.adb", "indirect_reads.adb", "path_reads.adb", "admission.adb",
+      "overwrites.adb");
+   package Compiler is
+      --  Never resolve host runtime units from CuBit's source directory.
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-I-");
+   end Compiler;
+end Truncate_Tests;

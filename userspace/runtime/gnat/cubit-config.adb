@@ -9,8 +9,11 @@ with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Memory_Grants;
+with CuBit.Config_Protocol;
 
 package body CuBit.Config is
+   use type System.Address;
 
    --  IPC labels (must match config service main.adb)
    OP_CONFIG_GET    : constant Unsigned_32 := 16#0600#;
@@ -18,14 +21,13 @@ package body CuBit.Config is
    OP_CONFIG_DELETE : constant Unsigned_32 := 16#0602#;
    OP_CONFIG_LIST   : constant Unsigned_32 := 16#0603#;
    REPLY_OK            : constant Unsigned_32 := 16#F000#;
-   REPLY_ERR           : constant Unsigned_32 := 16#F001#;
    REPLY_ACCESS_DENIED : constant Unsigned_32 := 16#F007#;
 
    PAGE_SIZE : constant := 4096;
 
    --  Lazy-init state
    grantBuf    : System.Address := System.Null_Address;
-   grantId     : Unsigned_64 := 0;
+   Grant : CuBit.Memory_Grants.Grant_Reference;
    initialized : Boolean := False;
 
    procedure ensureInit;
@@ -35,22 +37,19 @@ package body CuBit.Config is
 
    ---------------------------------------------------------------------------
    --  ensureInit
-   --  Lazy initialization: allocate grant buffer, discover config PID,
-   --  create grant. Same pattern as CuBit.Audio / FS client.
+   --  Allocate a buffer and create a generation-bearing endpoint grant.
    ---------------------------------------------------------------------------
    procedure ensureInit is
       rawAddr    : Unsigned_64;
       aligned    : Unsigned_64;
-      configPID  : Unsigned_64;
-      gid        : Unsigned_64;
       ok         : Boolean;
    begin
       if initialized then
          return;
       end if;
 
-      --  Allocate 2 pages (to guarantee page alignment)
-      rawAddr := syscall (SYSCALL_SBRK, 2 * PAGE_SIZE);
+      --  Allocate 3 pages to obtain 2 page-aligned payload pages.
+      rawAddr := syscall (SYSCALL_SBRK, 3 * PAGE_SIZE);
       if rawAddr = Unsigned_64'Last then
          return;
       end if;
@@ -59,26 +58,11 @@ package body CuBit.Config is
                  not Unsigned_64 (PAGE_SIZE - 1);
       grantBuf := To_Address (Integer_Address (aligned));
 
-      --  Discover config service PID
-      configPID := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_CONFIG);
-      if configPID = 0 then
-         return;
-      end if;
-
-      --  Create a read-write grant to the config service (1 page)
-      createGrant
-        (grantee   => configPID,
-         localAddr => grantBuf,
-         numPages  => 1,
-         readWrite => True,
-         grantId   => gid,
-         success   => ok);
-
+      CuBit.Memory_Grants.Create_Via_Capability
+        (CAP_SLOT_CONFIG, grantBuf, 2, True, Grant, ok);
       if not ok then
          return;
       end if;
-
-      grantId := gid;
       initialized := True;
    end ensureInit;
 
@@ -91,7 +75,7 @@ package body CuBit.Config is
          return OK;
       elsif label = REPLY_ACCESS_DENIED then
          return AccessDenied;
-      elsif label = REPLY_ERR then
+      elsif label = 16#F060# then
          return NotFound;
       else
          return Error;
@@ -112,6 +96,9 @@ package body CuBit.Config is
       value    := System.Null_Address;
       valueLen := 0;
 
+      if key'Length not in 1 .. CuBit.Config_Protocol.Maximum_Key then
+         status := Error; return;
+      end if;
       ensureInit;
       if not initialized then
          status := Error;
@@ -129,17 +116,24 @@ package body CuBit.Config is
       end;
 
       msg := (tag => (label  => OP_CONFIG_GET,
-                      length => 2,
+                      length => 4,
                       flags  => 0,
                       reserved  => 0),
               authorityTag => 0,
-              words => (0 => grantId,
-                        1 => Unsigned_64 (key'Length),
+              words => (0 => Grant.slot,
+                        1 => Grant.generation,
+                        2 => Unsigned_64 (key'Length),
                         others => 0));
 
       msg.tag := capCall (CAP_SLOT_CONFIG, msg);
 
       status := mapStatus (msg.tag.label);
+      if status = OK and then
+        (msg.tag.length /= 1 or else
+         msg.words (0) > CuBit.Config_Protocol.Maximum_Value)
+      then
+         status := Error;
+      end if;
       if status = OK then
          value    := grantBuf;
          valueLen := Natural (msg.words (0));
@@ -158,6 +152,13 @@ package body CuBit.Config is
       msg    : Message;
       keyLen : constant Natural := key'Length;
    begin
+      if keyLen not in 1 .. CuBit.Config_Protocol.Maximum_Key or else
+        valueLen > CuBit.Config_Protocol.Maximum_Value or else
+        (valueLen > 0 and value = System.Null_Address)
+      then
+         status := Error;
+         return;
+      end if;
       ensureInit;
       if not initialized then
          status := Error;
@@ -183,14 +184,14 @@ package body CuBit.Config is
       end;
 
       msg := (tag => (label  => OP_CONFIG_SET,
-                      length => 3,
+                      length => 4,
                       flags  => 0,
                       reserved  => 0),
               authorityTag => 0,
-              words => (0 => grantId,
-                        1 => Unsigned_64 (keyLen),
-                        2 => Unsigned_64 (valueLen),
-                        others => 0));
+              words => (0 => Grant.slot,
+                        1 => Grant.generation,
+                        2 => Unsigned_64 (keyLen),
+                        3 => Unsigned_64 (valueLen)));
 
       msg.tag := capCall (CAP_SLOT_CONFIG, msg);
 
@@ -206,6 +207,9 @@ package body CuBit.Config is
    is
       msg : Message;
    begin
+      if key'Length not in 1 .. CuBit.Config_Protocol.Maximum_Key then
+         status := Error; return;
+      end if;
       ensureInit;
       if not initialized then
          status := Error;
@@ -223,12 +227,13 @@ package body CuBit.Config is
       end;
 
       msg := (tag => (label  => OP_CONFIG_DELETE,
-                      length => 2,
+                      length => 4,
                       flags  => 0,
                       reserved  => 0),
               authorityTag => 0,
-              words => (0 => grantId,
-                        1 => Unsigned_64 (key'Length),
+              words => (0 => Grant.slot,
+                        1 => Grant.generation,
+                        2 => Unsigned_64 (key'Length),
                         others => 0));
 
       msg.tag := capCall (CAP_SLOT_CONFIG, msg);
@@ -250,6 +255,9 @@ package body CuBit.Config is
       keys  := System.Null_Address;
       count := 0;
 
+      if prefix'Length > CuBit.Config_Protocol.Maximum_Key then
+         status := Error; return;
+      end if;
       ensureInit;
       if not initialized then
          status := Error;
@@ -269,17 +277,23 @@ package body CuBit.Config is
       end if;
 
       msg := (tag => (label  => OP_CONFIG_LIST,
-                      length => 2,
+                      length => 4,
                       flags  => 0,
                       reserved  => 0),
               authorityTag => 0,
-              words => (0 => grantId,
-                        1 => Unsigned_64 (prefix'Length),
+              words => (0 => Grant.slot,
+                        1 => Grant.generation,
+                        2 => Unsigned_64 (prefix'Length),
                         others => 0));
 
       msg.tag := capCall (CAP_SLOT_CONFIG, msg);
 
       status := mapStatus (msg.tag.label);
+      if status = OK and then
+        (msg.tag.length /= 1 or else msg.words (0) > 256)
+      then
+         status := Error;
+      end if;
       if status = OK then
          keys  := grantBuf;
          count := Natural (msg.words (0));
@@ -301,6 +315,10 @@ package body CuBit.Config is
       for i in 0 .. len - 1 loop
          ch := data (i);
          if ch >= 16#30# and ch <= 16#39# then  --  '0'..'9'
+            if result > (Unsigned_64'Last - Unsigned_64 (ch - 16#30#)) / 10
+            then
+               return 0;
+            end if;
             result := result * 10 + Unsigned_64 (ch - 16#30#);
          else
             return 0;
@@ -329,7 +347,7 @@ package body CuBit.Config is
       slotSuffix : constant String := ".slot";
    begin
       if name'Length = 0 or
-         prefix'Length + name'Length + drvSuffix'Length > MAX_SCHEME_KEY
+         name'Length > MAX_SCHEME_KEY - prefix'Length - drvSuffix'Length
       then
          return info;
       end if;

@@ -173,7 +173,8 @@ package body PerCPUData is
             x86.wrmsr (x86.MSRs.STAR, starVal);
         end makeStar;
 
-        print ("LSTAR = "); println (syscallEntryPoint'Address);
+        -- AP setup still uses bootstrap page tables. Do not invoke diagnostic
+        -- renderers until the CPU has switched to the kernel direct mapping.
         x86.wrmsr (x86.MSRs.LSTAR, Util.addrToNum(syscallEntryPoint'Address));
 
         -- Compatibility-mode not supported (CSTAR), but we'll load it anyway

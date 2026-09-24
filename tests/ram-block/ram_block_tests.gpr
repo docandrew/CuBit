@@ -1,0 +1,15 @@
+project Ram_Block_Tests is
+   for Languages use ("Ada");
+   for Source_Dirs use
+     (".", "fixture", "../../userspace/services/ramdisk",
+      "../../userspace/runtime/gnat");
+   for Source_Files use
+     ("main.adb", "ram_device.ads", "ram_device.adb", "cubit.ads",
+      "cubit-messages.ads", "cubit-memory_grants.ads", "cubit-memory_grants.adb",
+      "cubit-grant_references.ads", "cubit-block_devices.ads", "cubit-block_devices.adb");
+   for Object_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-I-");
+   end Compiler;
+end Ram_Block_Tests;

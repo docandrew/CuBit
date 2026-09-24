@@ -45,6 +45,10 @@ package body CuBit.Block_Devices is
          physicalSize < logicalSize or else
          mediaValue > Unsigned_64 (Media_Kind'Pos (Media_Kind'Last)) or else
          (word3 and 16#0000_FF00_0000_0000#) /= 0 or else
+         --  A volatile provider cannot advertise a persistence barrier.
+         (Device_Features (word3 and 16#FFFF_FFFF#) and
+            (FEATURE_VOLATILE or FEATURE_FLUSH)) =
+              (FEATURE_VOLATILE or FEATURE_FLUSH) or else
          version /= Unsigned_64 (PROTOCOL_VERSION)
       then
          return False;
@@ -63,4 +67,9 @@ package body CuBit.Block_Devices is
    begin
       return (description.features and FEATURE_READ_ONLY) /= 0;
    end Is_Read_Only;
+
+   function Is_Volatile (description : Device_Description) return Boolean is
+   begin
+      return (description.features and FEATURE_VOLATILE) /= 0;
+   end Is_Volatile;
 end CuBit.Block_Devices;

@@ -1,0 +1,10 @@
+project Protocol is
+   for Source_Dirs use (".", "build/source");
+   for Source_Files use ("protocol_tests.adb", "cubit.ads", "cubit-config_protocol.ads", "cubit-config_protocol.adb");
+   for Object_Dir use "build/protocol";
+   for Exec_Dir use "build/protocol";
+   for Main use ("protocol_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Protocol;

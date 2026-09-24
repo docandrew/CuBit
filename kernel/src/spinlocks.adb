@@ -78,6 +78,23 @@ package body Spinlocks with SPARK_Mode => Off is
         end if;
     end enterCriticalSection;
 
+    procedure tryEnterCriticalSection (S : in out Spinlock; Acquired : out Boolean) is
+        Before, After : Locks.State;
+        Result : Locks.Acquire_Result;
+    begin
+        PerCPUData.pushCLI;
+        Before := S.Owner;
+        After := Before;
+        Locks.Acquire (After, PerCPUData.getCPUNumber, Result);
+        if Result = Locks.Acquired and then Compare_Exchange (S, Before, After) then
+            S.Measure_Hold := False;
+            Acquired := True;
+            return;
+        end if;
+        PerCPUData.popCLI;
+        Acquired := False;
+    end tryEnterCriticalSection;
+
     procedure exitCriticalSection (S : in out Spinlock) is
         Before : constant Locks.State := S.Owner;
         After : Locks.State := Before;

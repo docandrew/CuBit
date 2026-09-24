@@ -15,7 +15,7 @@ package CuBit.UI.Trees is
    type Tree_Item_Icon is
      (No_Icon, Computer_Icon, Bus_Icon, Device_Icon, Input_Icon,
       Storage_Icon, Network_Icon, Display_Icon, Audio_Icon,
-      Service_Icon, Warning_Icon);
+      Service_Icon, Warning_Icon, Folder_Icon, Setting_Icon);
 
    procedure View_Frame
       (c : CuBit.UI.Canvas;

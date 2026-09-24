@@ -3,19 +3,17 @@
 --  Copyright (C) 2026 Jon Andrew
 --
 --  @summary
---  Ext2 filesystem types and operations for userspace ramdisk server.
+--  Ext2 filesystem types and operations over authorized block-device sessions.
 --  Simplified from kernel/src/filesystem/filesystem-ext2.ads.
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with System;
-with System.Storage_Elements;
 with CuBit.Block_Devices;
 with CuBit.Filesystems;
 with CuBit.Memory_Grants;
+with Volume_Admission;
 
 package Ext2 is
-   use System.Storage_Elements;
-
    SUPERBLOCK_OFFSET : constant := 1024;
    EXT2_SIGNATURE    : constant := 16#EF53#;
    ROOT_INODE        : constant := 2;
@@ -110,6 +108,24 @@ package Ext2 is
       osSpecific2C         : Unsigned_32;
    end record with Convention => C;
 
+   NULL_INODE : constant Inode :=
+     (typeAndPermissions => 0,
+      uid => 0, sizeLo => 0,
+      accessedTime => 0, creationTime => 0,
+      modifiedTime => 0, deletedTime => 0,
+      gid => 0, numHardLinks => 0,
+      numDiskSectors => 0, flags => 0,
+      osSpecific1 => 0,
+      directBlocks => [others => 0],
+      singleIndirectBlock => 0,
+      doubleIndirectBlock => 0,
+      tripleIndirectBlock => 0,
+      generationNumber => 0,
+      fileACL => 0, sizeHi_DirACL => 0,
+      fragmentBlockAddr => 0,
+      osSpecific2A => 0, osSpecific2B => 0,
+      osSpecific2C => 0);
+
    --  Directory Entry (variable-length, read from disk)
    type DirectoryEntry is record
       inode      : Unsigned_32;
@@ -127,11 +143,6 @@ package Ext2 is
    --  Get file size (combining sizeLo and sizeHi)
    function fileSize (ino : Inode) return Unsigned_64;
 
-   --  MEMORY accesses a bounded image directly.  Every hardware transport
-   --  uses the same typed block-device session; ext2 never switches on driver
-   --  kind.
-   type BlockBackend is (MEMORY, BLOCK_DEVICE);
-
    --  File writes have an explicit terminal state.  In particular, a zero
    --  byte result is not sufficient to distinguish an empty write from an
    --  allocation, range, or transport failure.
@@ -140,6 +151,8 @@ package Ext2 is
       Write_Read_Only,
       Write_Out_Of_Range,
       Write_Device_Error,
+      Write_Recovery_Required,
+      Write_Already_Exists,
       Write_No_Space,
       Write_File_Range_Unsupported);
 
@@ -167,24 +180,21 @@ package Ext2 is
       Rename_Read_Only, Rename_Out_Of_Range, Rename_IO_Error,
       Rename_Recovery_Required);
 
+   type Flush_Status is
+     (Flush_Complete, Flush_Unsupported, Flush_IO_Error,
+      Flush_Recovery_Required);
+
    --  Context for an Ext2 filesystem
    type Filesystem is record
-      base         : System.Address;     --  Base address (unused for disk)
-      imageSize    : Unsigned_64 := 0;   --  Memory image bound (zero for disk)
       sb           : Superblock;         --  Cached superblock
       blkSize      : Unsigned_32;        --  Block size in bytes
-      backend      : BlockBackend := BLOCK_DEVICE;
       device       : CuBit.Block_Devices.Device_Session;
       --  Uncertain metadata after failed rollback requires offline recovery.
       writeQuarantined : Boolean := False;
    end record;
 
-   --  Initialize an Ext2 filesystem in a bounded writable memory image.
-   procedure initMemory
-     (fs         : out Filesystem;
-      base       : System.Address;
-      imageSize  : Unsigned_64;
-      ok         : out Boolean);
+   --  Flush completed writes; volatile/unsupported backends fail explicitly.
+   procedure Flush (fs : Filesystem; status : out Flush_Status);
 
    --  Initialize a filesystem over any Block.Device.V1 endpoint.
    procedure initBlockDevice
@@ -193,40 +203,18 @@ package Ext2 is
       grant      : CuBit.Memory_Grants.Grant_Reference;
       grantBuf   : System.Address;
       grantBytes : Unsigned_32;
-      ok         : out Boolean);
+      result     : out Volume_Admission.Admission_Result);
 
    --  Read an inode by number
-   procedure readInode
-     (fs     : Filesystem;
-      inodeNum : Unsigned_32;
-      ino    : out Inode);
-
    procedure readInode
      (fs : Filesystem; inodeNum : Unsigned_32;
       ino : out Inode; status : out Read_Status);
 
-   --  Write an inode back to disk
-   procedure writeInode
-     (fs       : Filesystem;
-      inodeNum : Unsigned_32;
-      ino      : Inode);
-
-   --  Look up a filename in a directory inode, return the inode number.
-   --  Returns 0 if not found.
-   function lookupInDir
-     (fs      : Filesystem;
-      dirIno  : Inode;
-      name    : String) return Unsigned_32;
-
+   --  Lookup failures and missing names are distinct; inodeNum is zero
+   --  unless lookup succeeds.
    procedure lookupInDir
      (fs : Filesystem; dirIno : Inode; name : String;
       inodeNum : out Unsigned_32; status : out Directory_Lookup_Status);
-
-   --  Resolve a full path (e.g., "/DOOM1.WAD") to an inode number.
-   --  Returns 0 if not found.
-   function resolvePath
-     (fs   : Filesystem;
-      path : String) return Unsigned_32;
 
    --  Creation must distinguish a missing name from unreadable metadata.
    procedure resolvePath
@@ -257,15 +245,6 @@ package Ext2 is
       bytesRead : out Unsigned_64;
       status    : out Read_Status);
 
-   --  Write bytes to the filesystem at a raw byte offset.
-   --  Uses Block.Device.V1 IPC for hardware-backed sessions.
-   --  Handles non-aligned writes via read-modify-write.
-   procedure writeBytes
-     (fs     : Filesystem;
-      offset : Storage_Offset;
-      src    : System.Address;
-      len    : Storage_Count);
-
    --  Write file data to an inode starting at the given offset.  A failure
    --  may follow a committed prefix, reported in bytesWritten.
    procedure writeData
@@ -279,58 +258,48 @@ package Ext2 is
       status       : out Write_Status);
 
    --  Allocate a free block from any block group.
-   --  Sets blockNum to the allocated block, ok to True on success.
+   --  Returns a block only after all reservation metadata writes complete.
    procedure allocateBlock
      (fs       : in out Filesystem;
       blockNum : out Unsigned_32;
-      ok       : out Boolean);
+      status   : out Write_Status);
 
    --  Free a previously allocated block.
    procedure freeBlock
      (fs       : in out Filesystem;
       blockNum : Unsigned_32);
 
-   --  Allocate a free inode from block group 0.
-   --  Sets inodeNum to the allocated inode (1-based), ok to True on success.
+   --  Allocate a free inode from any block group.
+   --  Returns an initialized inode (1-based) only on complete reservation.
    procedure allocateInode
      (fs       : in out Filesystem;
       inodeNum : out Unsigned_32;
-      ok       : out Boolean);
+      status   : out Write_Status);
 
-   --  Free a previously allocated inode.
-   procedure freeInode
-     (fs       : in out Filesystem;
-      inodeNum : Unsigned_32);
-
-   --  Create a new file in a directory.
-   --  Returns the new file's inode number, or 0 on failure.
-   function createFile
+   --  Create an empty regular file. Returns no inode on failure; an error
+   --  does not imply absence of on-disk side effects.
+   procedure createFile
      (fs         : in out Filesystem;
       dirInodeNum : Unsigned_32;
       name       : String;
-      fileType   : Unsigned_8) return Unsigned_32;
+      inodeNum   : out Unsigned_32;
+      status     : out Write_Status);
 
-   --  Truncate a file to newSize bytes. Frees blocks beyond the new size.
-   procedure truncateFile
+   type Truncate_Status is
+     (Truncate_Complete, Truncate_Read_Only, Truncate_IO_Error,
+      Truncate_Unsupported, Truncate_Durability_Unsupported,
+      Truncate_Invalid, Truncate_Recovery_Required);
+
+   --  OPEN_TRUNCATE only requires emptying a regular file. Detach its block
+   --  tree and persist that detachment before making any block reusable.
+   --  A failed publication/reclamation quarantines further volume writes.
+   --  This is not an atomic, journaled transaction: interrupted reclamation
+   --  may leak blocks and requires offline recovery.
+   procedure truncateToEmpty
      (fs       : in out Filesystem;
       inodeNum : Unsigned_32;
-      newSize  : Unsigned_64);
-
-   --  Add a directory entry pointing to an existing inode.
-   --  Returns True on success.
-   function addDirectoryEntry
-     (fs          : in out Filesystem;
-      dirInodeNum : Unsigned_32;
-      inodeNum    : Unsigned_32;
-      name        : String;
-      fileType    : Unsigned_8) return Boolean;
-
-   --  Remove a directory entry by name.
-   --  Returns the inode number of the removed entry, or 0 on failure.
-   function removeDirectoryEntry
-     (fs          : in out Filesystem;
-      dirInodeNum : Unsigned_32;
-      name        : String) return Unsigned_32;
+      emptyInode : out Inode;
+      status   : out Truncate_Status);
 
    --  Non-overwriting rename within one directory. The replacement is prepared
    --  in memory and must fit in the source directory block. Multi-block moves
@@ -342,14 +311,5 @@ package Ext2 is
    procedure renamePath
      (fs : in out Filesystem; oldPath, newPath : String;
       status : out Rename_Status);
-
-   --  Write the superblock back to disk
-   procedure writeSuperblock (fs : Filesystem);
-
-   --  Write a block group descriptor back to disk
-   procedure writeBGD
-     (fs         : Filesystem;
-      blockGroup : Unsigned_32;
-      bgd        : BlockGroupDescriptor);
 
 end Ext2;

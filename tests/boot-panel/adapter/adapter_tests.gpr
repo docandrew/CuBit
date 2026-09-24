@@ -1,0 +1,13 @@
+project Adapter_Tests is
+   for Source_Dirs use (".", "../../../kernel/src");
+   for Source_Files use ("main.adb", "spinlocks.ads", "spinlocks.adb",
+      "virtmem.ads", "boot_diagnostics.ads", "boot_diagnostics.adb",
+      "boot_output.ads", "boot_output.adb",
+      "boot_panel.ads", "boot_panel.adb", "boot_font.ads", "boot_font.adb",
+      "boot_framebuffer.ads", "boot_framebuffer.adb");
+   for Object_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2", "-g");
+   end Compiler;
+end Adapter_Tests;

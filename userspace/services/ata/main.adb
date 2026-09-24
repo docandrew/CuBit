@@ -56,8 +56,9 @@ procedure main is
    SECTOR_SIZE    : constant := 512;
    ATA_POLL_LIMIT : constant Positive := 100_000;
 
-   --  Drive detected flag
-   drivePresent : Boolean := False;
+   --  No offered device is distinct from a failed IDENTIFY transaction.
+   type Identification_Result is (Identified, No_Device, Identification_Failed);
+   identification : Identification_Result := No_Device;
    driveBlockCount : Unsigned_64 := 0;
 
    ---------------------------------------------------------------------------
@@ -127,9 +128,10 @@ procedure main is
 
    ---------------------------------------------------------------------------
    --  doIdentify - run ATA IDENTIFY on primary master
-   --  Returns True if a drive is present.
+   --  No_Device means absent hardware or an explicitly recognized ATAPI device
+   --  outside this ATA provider. Timeouts/errors must not masquerade as absence.
    ---------------------------------------------------------------------------
-   function doIdentify return Boolean is
+   function doIdentify return Identification_Result is
       st   : Unsigned_8;
       mid  : Unsigned_8;
       hi   : Unsigned_8;
@@ -156,27 +158,31 @@ procedure main is
       st := inb (REG_STATUS);
       if st = 0 or st = STATUS_FLOAT then
          debugPrint ("ATA: No drive on primary master." & LF);
-         return False;
+         return No_Device;
       end if;
 
       --  Wait for BSY to clear
       if not waitBSY then
          debugPrint ("ATA: BSY timeout during IDENTIFY." & LF);
-         return False;
+         return Identification_Failed;
       end if;
 
       --  Check for ATAPI/SATA by reading LBA mid/hi
       mid := inb (REG_LBA_MID);
       hi := inb (REG_LBA_HI);
-      if mid /= 0 or hi /= 0 then
+      if (mid = 16#14# and hi = 16#EB#) or else
+         (mid = 16#69# and hi = 16#96#)
+      then
          debugPrint ("ATA: Non-ATA device detected (ATAPI/SATA)." & LF);
-         return False;
+         return No_Device;
+      elsif mid /= 0 or hi /= 0 then
+         return Identification_Failed;
       end if;
 
       --  Poll until DRQ or ERR
       if not waitDRQ then
          debugPrint ("ATA: IDENTIFY failed (error bit set)." & LF);
-         return False;
+         return Identification_Failed;
       end if;
 
       --  Read 256 words of identify data via individual portInp16 calls.
@@ -193,11 +199,11 @@ procedure main is
          driveBlockCount := 16#1000_0000#;
       end if;
       if driveBlockCount = 0 then
-         return False;
+         return Identification_Failed;
       end if;
 
       debugPrint ("ATA: Drive detected on primary master." & LF);
-      return True;
+      return Identified;
    end doIdentify;
 
 
@@ -374,7 +380,7 @@ procedure main is
       bytesRead : Unsigned_64;
       expectedBytes : Unsigned_64;
    begin
-      if not drivePresent then
+      if identification /= Identified then
          sendReply (sender, REPLY_ERROR, 0);
          return;
       end if;
@@ -445,7 +451,7 @@ procedure main is
       bytesWritten : Unsigned_64;
       expectedBytes : Unsigned_64;
    begin
-      if not drivePresent then
+      if identification /= Identified then
          sendReply (sender, REPLY_ERROR, 0);
          return;
       end if;
@@ -508,7 +514,7 @@ procedure main is
       replyMsg : Message;
       ignore   : Unsigned_64;
    begin
-      if drivePresent then
+      if identification = Identified then
          replyMsg.tag := (label => REPLY_OK, length => 4,
                           flags => 0, reserved => 0);
          replyMsg.authorityTag := 0;
@@ -518,6 +524,8 @@ procedure main is
             2 => 255,
             3 => Pack_Properties (0, Fixed_Media));
          ignore := reply (sender, replyMsg);
+      elsif identification = No_Device then
+         sendReply (sender, REPLY_NO_DEVICE, 0);
       else
          sendReply (sender, REPLY_ERROR, 0);
       end if;
@@ -530,9 +538,9 @@ begin
    debugPrint ("ATA Driver: Starting..." & LF);
 
    --  Run IDENTIFY to detect primary master drive
-   drivePresent := doIdentify;
+   identification := doIdentify;
 
-   if not drivePresent then
+   if identification /= Identified then
       debugPrint ("ATA Driver: No drive found, entering message loop anyway." & LF);
    end if;
 

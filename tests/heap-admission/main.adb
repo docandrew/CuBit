@@ -10,6 +10,24 @@ procedure Main is
       pragma Assert (P.Result = Expected);
    end Check;
 begin
+   pragma Assert (Expanded_Capacity (8192, 0) = 8192);
+   pragma Assert (Expanded_Capacity (8192, 9000) = 17192);
+   pragma Assert (Expanded_Capacity (Natural'Last, 0) = Natural'Last);
+   pragma Assert (Expanded_Capacity (Natural'Last, 1) = 0);
+   pragma Assert (Expanded_Capacity (1, Natural'Last) = 0);
+   -- A successful heap allocation preserves every slot previously available
+   -- for untouched stack/image pages, across repeated growth operations.
+   for Used in 0 .. 64 loop
+      for Added in Natural range 0 .. 128 loop
+         declare
+            Capacity : constant Natural := Expanded_Capacity (64, Added);
+         begin
+            pragma Assert (Capacity - (Used + Natural (Added)) = 64 - Used);
+            pragma Assert (Expanded_Capacity (Capacity, 17) -
+                             (Used + Natural (Added) + 17) = 64 - Used);
+         end;
+      end loop;
+   end loop;
    Check (0, 8192, 8192, 0, Ready);
    Check (Page_Size, 8192, 8192, 0, Tracking_Limit);
    Check (2 * Page_Size, 8191, 8192, 0, Tracking_Limit);

@@ -54,6 +54,7 @@ stable pass markers.
 Performance fixtures: bench-ipc, bench-audio, bench-storage, bench-input, bench-scheduler.
 Logging fixture: log-authority (build logstore procmgr clock log-check first).
 Rust fixture: rust-native (build rust-probe ccl-test-host clock first).
+Native Turso: turso-native-std or turso-native; see tests/config-turso/native/README.md.
 Multi-output discovery: virtio-gpu-multi-output (QEMU 11.1 per-head modes;
 build virtio-gpu first). This does not yet test a multi-monitor desktop.
 Native catalog IPC: display-discovery-multi-output (build display, virtio-gpu,
@@ -193,7 +194,7 @@ case "$TIMEOUT_SECONDS" in
 esac
 
 case "$TEST_NAME" in
-    log-authority|rust-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
+    config-tree|config-inspection|log-authority|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
     boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
         ;;
@@ -325,6 +326,15 @@ case "$TEST_NAME" in
     rust-native)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-rust-native.ccl"
         ;;
+    turso-native-std|turso-native)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-turso-native.ccl"
+        ;;
+    config-inspection)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-config-inspection.ccl"
+        ;;
+    config-tree)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-config-tree.ccl"
+        ;;
     log-authority)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-log-authority.ccl"
         ;;
@@ -427,6 +437,17 @@ if [ -n "$INIT_PROFILE" ]; then
             debugfs -w -R "write $KERNEL_DIR/isodir/boot/$app $app" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
         done
     fi
+    if [ "$TEST_NAME" = "turso-native-std" ] || [ "$TEST_NAME" = "turso-native" ]; then
+        TURSO_PROBE="$ROOT_DIR/tests/config-turso/target/native/turso-native-probe.app"
+        if [ ! -f "$TURSO_PROBE" ]; then
+            echo "headless: build tests/config-turso/native/build.sh first" >&2
+            exit 1
+        fi
+        debugfs -w -R "rm turso-native-probe.app" "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "write $TURSO_PROBE turso-native-probe.app" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        debugfs -w -R "rm clock.svc" "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "write $KERNEL_DIR/isodir/boot/clock.svc clock.svc" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+    fi
     if [ "$TEST_NAME" = "async-ipc" ]; then
         for ipc_image in ipctest-server.app ipctest-client.app ipctest-departing.app; do
             if [ ! -f "$KERNEL_DIR/isodir/boot/$ipc_image" ]; then
@@ -513,6 +534,7 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "ccl-workspace" ] ||
        [ "$TEST_NAME" = "input-stream" ] ||
        [ "$TEST_NAME" = "devices" ] ||
+       [ "$TEST_NAME" = "config-tree" ] ||
        [ "$TEST_NAME" = "files" ] ||
        [ "$TEST_NAME" = "desktop-virtio-vga" ] ||
        [ "$TEST_NAME" = "desktop-doom" ] ||
@@ -614,6 +636,10 @@ if [ -n "$INIT_PROFILE" ]; then
             fi
         done
     fi
+    if [ "$TEST_NAME" = "config-tree" ]; then
+        debugfs -w -R "rm config-inspector.app" "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "write $KERNEL_DIR/isodir/boot/config-inspector.app config-inspector.app" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+    fi
     if [ "$TEST_NAME" = "files" ]; then
         debugfs -w -R "mkdir lost+found/nested" "$TEMP_DISK" >/dev/null 2>&1
         for FILES_TEST_IMAGE_NAME in files.app desktop.svc; do
@@ -708,6 +734,19 @@ if [ -n "$INIT_PROFILE" ]; then
                 exit 1
             fi
         done
+    fi
+    if [ "$TEST_NAME" = "config-inspection" ]; then
+      for CONFIG_IMAGE_NAME in config-check.app config-denied.app; do
+        if [ ! -f "$KERNEL_DIR/isodir/boot/$CONFIG_IMAGE_NAME" ]; then
+            echo "headless: build config and config-check first" >&2
+            exit 1
+        fi
+        debugfs -w -R "rm $CONFIG_IMAGE_NAME" "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "write $KERNEL_DIR/isodir/boot/$CONFIG_IMAGE_NAME $CONFIG_IMAGE_NAME" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+      done
+      # An obsolete disk overlay must not override the declarative boot seed.
+      debugfs -w -R "rm config.dat" "$TEMP_DISK" >/dev/null 2>&1
+      debugfs -w -R "write $ROOT_DIR/tests/config-inspection/ignored-config.dat config.dat" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
     fi
     if [ "$TEST_NAME" = "log-authority" ]; then
         for LOG_IMAGE_NAME in logstore.svc clock.svc log-retire.app log-check.app; do
@@ -819,6 +858,15 @@ if ! make -C "$KERNEL_DIR" initrd >/dev/null; then
     echo "headless: failed to refresh stage-1 initrd" >&2
     exit 1
 fi
+if [ "$TEST_NAME" = "storage-grants" ]; then
+    if ! make -C "$KERNEL_DIR" laptop_live_rw.img >/dev/null ||
+       ! python3 "$ROOT_DIR/userspace/ccl/tools/ccl-image/realize.py" \
+          "$ROOT_DIR/tests/headless/storage-initrd.ccl" \
+          --output "$KERNEL_DIR/isodir/boot/initrd.img" >/dev/null; then
+        echo "headless: failed to prepare volatile block-storage fixture" >&2
+        exit 1
+    fi
+fi
 if ! grub-mkrescue -o "$KERNEL_DIR/cubit_kernel.iso" "$KERNEL_DIR/isodir" >/dev/null 2>&1; then
     echo "headless: grub-mkrescue failed" >&2
     exit 1
@@ -833,6 +881,7 @@ if [ "$TEST_NAME" = "display-discovery-boot-only" ]; then
     VIDEO_ARGS=()
 fi
 if [ "$TEST_NAME" = "virtio-vga-primary" ] ||
+   [ "$TEST_NAME" = "config-tree" ] ||
    [ "$TEST_NAME" = "display-grants-virtio-vga" ] ||
    [ "$TEST_NAME" = "ccl-workspace" ] ||
    [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
@@ -850,6 +899,12 @@ fi
 
 if [ "$TEST_NAME" = "display-dual-output" ] || [ "$TEST_NAME" = "desktop-dual-output" ]; then
     VIDEO_ARGS=(-vga none -device '{"driver":"virtio-vga","id":"multi-gpu","max_outputs":2,"outputs":[{"name":"CuBit Main","xres":1024,"yres":768},{"name":"CuBit Side","xres":1024,"yres":768}]}')
+    if [ "$TEST_NAME" = "desktop-dual-output" ] && [ "${CUBIT_TEST_MIXED_OUTPUTS:-0}" = 1 ]; then
+        VIDEO_ARGS=(-vga none -device '{"driver":"virtio-vga","id":"multi-gpu","max_outputs":2,"outputs":[{"name":"CuBit Main","xres":1024,"yres":768},{"name":"CuBit Wide","xres":1280,"yres":720}]}')
+    fi
+    if [ "$TEST_NAME" = "desktop-dual-output" ] && [ "${CUBIT_TEST_BOOT_HANDOFF:-0}" = 1 ]; then
+        VIDEO_ARGS=(-vga none -device '{"driver":"virtio-vga","id":"multi-gpu","max_outputs":2,"outputs":[{"name":"CuBit Wide","xres":1280,"yres":720},{"name":"CuBit Side","xres":1024,"yres":768}]}')
+    fi
 fi
 
 echo "headless: running $TEST_NAME for ${TIMEOUT_SECONDS}s"
@@ -1323,7 +1378,8 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] ||
     INPUT_INJECTOR_PID=$!
 fi
 
-if [ "$TEST_NAME" = "display-dual-output" ] || [ "$TEST_NAME" = "desktop-dual-output" ]; then
+if { [ "$TEST_NAME" = "display-dual-output" ] || [ "$TEST_NAME" = "desktop-dual-output" ]; } &&
+   [ "${CUBIT_GPU_TEST_MODE:-production}" != clear-failure ]; then
     QMP_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-qmp-$$.sock"
     QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
     if [ "$TEST_NAME" = "desktop-dual-output" ]; then
@@ -1337,6 +1393,13 @@ if [ "$TEST_NAME" = "display-dual-output" ] || [ "$TEST_NAME" = "desktop-dual-ou
 fi
 
 NETDEV_CONFIG="user,id=net0"
+if [ "$TEST_NAME" = "config-tree" ]; then
+    QMP_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-qmp-$$.sock"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    python3 "$ROOT_DIR/tests/headless/check-config-tree.py" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" &
+    INPUT_INJECTOR_PID=$!
+fi
 if [ "$TEST_NAME" = "ccl-remote" ]; then
     NETDEV_CONFIG="user,id=net0,hostfwd=tcp:127.0.0.1:18445-10.0.2.15:8080"
 fi
@@ -1432,6 +1495,32 @@ TEST: PASS rust-clock-authorized
 TEST: PASS rust-clock-denied
 TEST: PASS rust-heap-rollback
 TEST: PASS rust-native
+"
+        ;;
+    turso-native-std|turso-native)
+        required_markers="
+clock: registered
+procmgr: pkg id=com.cubit.turso-native-probe
+TURSO-NATIVE: std probe PASS
+"
+        if [ "$TEST_NAME" = "turso-native" ]; then
+            required_markers="$required_markers
+TURSO-NATIVE: volatile SQL transaction PASS
+TURSO-NATIVE: typed Config CBOR/revision/reopen PASS (volatile)
+TURSO-NATIVE: shared File workload PASS (volatile)
+"
+        fi
+        ;;
+    config-inspection)
+        required_markers="
+TEST: PASS config-inspection
+TEST: PASS config-denied
+"
+        ;;
+    config-tree)
+        required_markers="
+config-inspector: snapshot ready
+config-inspector: native window ready
 "
         ;;
     log-authority)
@@ -1608,6 +1697,12 @@ capability-test: all tests passed
         required_markers="
 GRANT-REFERENCE-CHECK: PASS
 GRANT-RECLAMATION-CHECK: PASS
+RAM-VOLUME-CHECK: PASS
+VOLUME-ISOLATION-CHECK: PASS
+ramdisk: volatile block device ready
+STORAGE-FLUSH-CHECK: PASS
+POSITIONED-IO-CHECK: PASS
+FILE-COHERENCE-CHECK: PASS
 MALFORMED-DIRECTORY-CHECK: PASS
 RENAME-CHECK: PASS
 DIRECTORY-NAVIGATION-CHECK: PASS
@@ -1621,7 +1716,9 @@ STORAGE-BENCH: COMPLETE
 TIMING: fs-open-existing count= 512
 TIMING: fs-read-4k-sequential-warm count= 512
 TIMING: fs-read-4k-random-warm count= 512
+TIMING: fs-read-at-4k-random-warm count= 512
 TIMING: fs-write-4k-overwrite count= 512
+TIMING: fs-write-4k-overwrite-flush count= 512
 "
         ;;
     audio-grants)
@@ -1833,6 +1930,16 @@ esac
 if [ "${CUBIT_GPU_TEST_MODE:-production}" = delayed ] && [ "$TEST_NAME" = display-dual-output ]; then
     required_markers="$required_markers
 DISPLAY-STALLED-OUTPUT-CHECK: PASS"
+fi
+if [ "${CUBIT_GPU_TEST_MODE:-production}" = clear-failure ] && [ "$TEST_NAME" = display-dual-output ]; then
+    required_markers="
+display: backend virtio-gpu
+display: second output ready
+virtio-gpu: injected clear rejection head 0
+virtio-gpu: injected clear rejection head 1
+DISPLAY-DISCOVERY-CHECK: PASS
+DISPLAY-BACKEND-FAILURE-CHECK: PASS
+DISPLAY-GRANTS-CHECK: PASS"
 fi
 if [ "${CUBIT_DISPLAY_TEST_MODE:-production}" = output-rebind ]; then
     required_markers="$required_markers

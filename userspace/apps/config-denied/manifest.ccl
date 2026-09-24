@@ -1,0 +1,5 @@
+(executable-manifest v1
+  (identity "com.cubit.config-denied")
+  (version "0.1.0")
+  (request-service config read-write config)
+  (config-scope (rights read) "test.denied"))

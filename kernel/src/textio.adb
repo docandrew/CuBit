@@ -12,6 +12,7 @@
 with Interfaces; use Interfaces;
 
 with Strings; use Strings;
+with Boot_Output;
 
 package body TextIO is
 
@@ -151,6 +152,7 @@ package body TextIO is
     procedure print (ch : in Character; fg,bg : in TextIO.Color) is
         use ASCII;
     begin
+        Boot_Output.Append (ch);
         if output = VIDEO_ONLY or output = SERIAL_VIDEO then
             case ch is
                 when LF | CR =>

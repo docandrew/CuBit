@@ -98,7 +98,8 @@ procedure main is
    fileBufferUsable : Boolean := True;
 
    --  Grant to config service covering elfBuf
-   configGrantId : Unsigned_64 := 0;
+   Config_Grant : CuBit.Memory_Grants.Grant_Reference;
+   Config_Grant_Ready : Boolean := False;
 
    ---------------------------------------------------------------------------
    --  printDec - print a small unsigned number in decimal
@@ -1316,7 +1317,7 @@ procedure main is
                         end if;
 
                         --  Pass 2: Write CONFIG entries and send
-                        if configCount > 0 and configGrantId /= 0 then
+                        if configCount > 0 and Config_Grant_Ready then
                            declare
                               grantBuf : array
                                  (0 .. configCount * 72 - 1)
@@ -1359,8 +1360,8 @@ procedure main is
                               aclMsg.words := (
                                  0 => childPID,
                                  1 => Unsigned_64 (configCount),
-                                 2 => configGrantId,
-                                 3 => 0);
+                                 2 => Config_Grant.slot,
+                                 3 => Config_Grant.generation);
                               aclTag := capCall (
                                  CAP_SLOT_CONFIG_LOCAL, aclMsg);
                            end;
@@ -1385,7 +1386,7 @@ procedure main is
    ---------------------------------------------------------------------------
    --  queryConfigQuota
    --  Query the config store for resource quotas keyed by package ID.
-   --  Uses configGrantId (which maps elfBuf). Safe to call after all ELF
+   --  Uses Config_Grant (which maps elfBuf). Safe to call after all ELF
    --  section parsing is done, since this overwrites elfBuf.
    ---------------------------------------------------------------------------
    procedure queryConfigQuota
@@ -1402,7 +1403,7 @@ procedure main is
       begin
          result := 0;
 
-         if configGrantId = 0 or totalLen > PAGE_SIZE then
+         if not Config_Grant_Ready or totalLen > 128 then
             return;
          end if;
 
@@ -1433,14 +1434,17 @@ procedure main is
 
          cfgMsg := NULL_MESSAGE;
          cfgMsg.tag := (label  => OP_CONFIG_GET,
-                        length => 2,
+                        length => 4,
                         flags  => 0,
                         reserved  => 0);
-         cfgMsg.words (0) := configGrantId;
-         cfgMsg.words (1) := Unsigned_64 (totalLen);
+         cfgMsg.words (0) := Config_Grant.slot;
+         cfgMsg.words (1) := Config_Grant.generation;
+         cfgMsg.words (2) := Unsigned_64 (totalLen);
          cfgMsg.tag := capCall (CAP_SLOT_CONFIG_LOCAL, cfgMsg);
 
-         if cfgMsg.tag.label /= REPLY_OK then
+         if cfgMsg.tag.label /= REPLY_OK or else cfgMsg.tag.length /= 1 or else
+           cfgMsg.words (0) > PAGE_SIZE
+         then
             return;
          end if;
 
@@ -1762,6 +1766,26 @@ procedure main is
             ignored := syscall (SYSCALL_KILL, newPID);
             return 0;
          end if;
+         -- Config scopes are also keyed by PID. Reset even when the new ELF
+         -- declares no Config scopes; absence must mean deny, not inheritance.
+         declare
+            Config_PID : constant Unsigned_64 :=
+              getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_CONFIG);
+            Config_Reset : Message := NULL_MESSAGE;
+         begin
+            if Config_PID /= 0 and Config_PID /= Unsigned_64'Last then
+               Config_Reset.tag :=
+                 (label => CuBit.Filesystems.OP_REVOKE_ACL, length => 1,
+                  flags => 0, reserved => 0);
+               Config_Reset.words (0) := newPID;
+               resetTag := capCall (CAP_SLOT_CONFIG_LOCAL, Config_Reset);
+               if resetTag.label /= CuBit.Filesystems.REPLY_OK then
+                  debugPrint ("procmgr: config policy reset failed" & LF);
+                  ignored := syscall (SYSCALL_KILL, newPID);
+                  return 0;
+               end if;
+            end if;
+         end;
       end;
 
       --  Parse .cubit.access and install only its validated scopes.
@@ -2038,28 +2062,13 @@ begin
       end if;
    end;
 
-   --  Create grant to config service (if present) for ACL delivery.
-   --  Config PID discovered via sysinfo; grant covers same elfBuf.
-   declare
-      configPID : Unsigned_64;
-      ok : Boolean;
-   begin
-      configPID := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_CONFIG);
-      if configPID /= 0 and configPID /= Unsigned_64'Last then
-         createGrant (
-            grantee   => configPID,
-            localAddr => elfBuf,
-            numPages  => INITIAL_BUF_PAGES,
-            readWrite => True,
-            grantId   => configGrantId,
-            success   => ok);
-
-         if not ok then
-            debugPrint ("procmgr: config grant failed" & LF);
-            configGrantId := 0;
-         end if;
-      end if;
-   end;
+   -- Generation-bearing Config loan. All callers supply owner-checked metadata.
+   CuBit.Memory_Grants.Create_Via_Capability
+     (CAP_SLOT_CONFIG_LOCAL, elfBuf, INITIAL_BUF_PAGES, True,
+      Config_Grant, Config_Grant_Ready);
+   if not Config_Grant_Ready then
+      debugPrint ("procmgr: config grant unavailable" & LF);
+   end if;
 
    --  Process init.ccl to spawn Stage 2 programs
    processInitCCL;

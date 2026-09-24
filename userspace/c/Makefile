@@ -24,7 +24,7 @@ BUILDDIR = build
 CRT_OBJ = $(BUILDDIR)/crt0.o
 
 # Runtime library objects
-LIB_SRCS = cubit_syscalls.c cubit_mem.c cubit_time.c cubit_video.c cubit_input.c stdio.c string.c iconv.c libc_stubs.c cubit_config.c cubit_streams.c
+LIB_SRCS = cubit_syscalls.c cubit_mem.c cubit_time.c cubit_video.c cubit_input.c stdio.c string.c iconv.c libc_stubs.c cubit_streams.c
 LIB_OBJS = $(patsubst %.c,$(BUILDDIR)/%.o,$(LIB_SRCS))
 LIB      = $(BUILDDIR)/libcubit.a
 
@@ -49,8 +49,9 @@ $(BUILDDIR)/%.o: %.c cubit.h | $(BUILDDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Static library of runtime functions
-$(LIB): $(LIB_OBJS)
-	$(AR) rcs $@ $^
+$(LIB): $(LIB_OBJS) Makefile
+	$(RM) $@
+	$(AR) rcs $@ $(LIB_OBJS)
 
 # Programs link: crt0 + program object + libcubit
 # Programs link: crt0 + program object + libcubit

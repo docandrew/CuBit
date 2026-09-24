@@ -19,6 +19,9 @@ package Spinlocks with SPARK_Mode => On is
     -- Trusted hardware adapter. No sequential postcondition on the released
     -- word: another CPU may acquire it before exitCriticalSection returns.
     procedure enterCriticalSection (S : in out Spinlock);
+    -- One attempt, including recursive ownership: failure restores the prior
+    -- interrupt state and takes no lock. Intended for best-effort diagnostics.
+    procedure tryEnterCriticalSection (S : in out Spinlock; Acquired : out Boolean);
     procedure exitCriticalSection (S : in out Spinlock);
 
 private

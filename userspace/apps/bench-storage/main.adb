@@ -25,7 +25,8 @@ procedure Main is
       Handle : File_Handle;
       Opened : Boolean := False;
       Msg : Message;
-      Opening, Sequential, Random_Read, Overwrite : Timing.Histogram;
+      Opening, Sequential, Random_Read, Overwrite, Flushed_Overwrite : Timing.Histogram;
+      Positioned_Read : Timing.Histogram;
       Before, After : Unsigned_64;
       Seed : Unsigned_32 := 17;
 
@@ -138,6 +139,24 @@ procedure Main is
       end loop;
 
       for I in 1 .. Samples + 32 loop
+         declare
+            Block : Natural;
+            Request : Message;
+         begin
+            Seed := Seed * 1664525 + 1013904223;
+            Block := Natural (Shift_Right (Seed, 16) mod Block_Count);
+            Buffer := [others => Character'Val (0)];
+            Request := Read_At_Request
+              (Handle, Loan, Block_Bytes, Unsigned_64 (Block * Block_Bytes));
+            OK := (if I <= 32 then Call (Request)
+                   else Timed_Call (Request, Positioned_Read));
+            if not OK or else Msg.words (0) /= Block_Bytes or else
+              (for some C of Buffer => C /= Character'Val (65 + Block))
+            then return Fail ("positioned read"); end if;
+         end;
+      end loop;
+
+      for I in 1 .. Samples + 32 loop
          if not Call (Seek_Request (Handle, 0, From_Start)) then
             return Fail ("overwrite seek");
          end if;
@@ -151,6 +170,24 @@ procedure Main is
             return Fail ("overwrite");
          end if;
       end loop;
+      --  Unlike ordinary write acknowledgement, include the filesystem's
+      --  device-flush completion. This measures the guest flush contract, not
+      --  power-loss recovery or physical-media timing under QEMU.
+      for I in 1 .. Samples + 32 loop
+         if not Call (Seek_Request (Handle, 0, From_Start)) then
+            return Fail ("flushed overwrite seek");
+         end if;
+         Before := Clock.Read_Counter;
+         if not Call (Write_Request (Handle, Loan, Block_Bytes)) or else
+           Msg.words (0) /= Block_Bytes
+         then return Fail ("flushed overwrite"); end if;
+         if not Call (Flush_Request (Handle)) then
+            return Fail ("flush unsupported or failed");
+         end if;
+         After := Clock.Read_Counter;
+         if After < Before then return Fail ("flush counter"); end if;
+         if I > 32 then Timing.Add (Flushed_Overwrite, After - Before); end if;
+      end loop;
       if not Call (Seek_Request (Handle, 0, From_Start)) then
          return Fail ("verify seek");
       end if;
@@ -162,7 +199,9 @@ procedure Main is
       Clock.Report ("fs-open-existing", Opening);
       Clock.Report ("fs-read-4k-sequential-warm", Sequential);
       Clock.Report ("fs-read-4k-random-warm", Random_Read);
+      Clock.Report ("fs-read-at-4k-random-warm", Positioned_Read);
       Clock.Report ("fs-write-4k-overwrite", Overwrite);
+      Clock.Report ("fs-write-4k-overwrite-flush", Flushed_Overwrite);
       return True;
    end Run;
 begin

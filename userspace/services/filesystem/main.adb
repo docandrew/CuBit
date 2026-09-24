@@ -17,16 +17,23 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Filesystems; use CuBit.Filesystems;
+with CuBit.Grant_References;
 with CuBit.Directory_Paths;
 with CuBit.File_Access;
 with Cpio;
 with Ext2;
 with ISO_Records;
 with ISO9660;
+with Shared_Objects;
+with Volume_List; use Volume_List;
+with Volume_Admission; use Volume_Admission;
 
 procedure main is
    use ASCII;
    use type Ext2.Read_Status;
+   use type Ext2.Write_Status;
+   use type Ext2.Truncate_Status;
+   use type Ext2.Directory_Lookup_Status;
 
    --  Sysinfo query for ramdisk address
    --  (uses SYSINFO_RAMDISK_ADDRESS from CuBit.Messages)
@@ -34,23 +41,31 @@ procedure main is
    --  Maximum open files and path length
    MAX_OPEN_FILES : constant := 32;
 
-   --  Backend kind for file handles
-   type BackendKind is
-     (CPIO_RAMDISK, ISO_OPTICAL, EXT2_MEMORY, EXT2_ATA, EXT2_NVME);
+   --  Filesystem format is independent of the block provider.
+   type Filesystem_Kind is (CPIO_ARCHIVE, ISO_FILESYSTEM, EXT2_FILESYSTEM);
 
-   type SchemeKind is
-     (AUTOMATIC_SCHEME, MEMORY_SCHEME, ATA_SCHEME, NVME_SCHEME);
+   type Inode_Identity is record
+      volume : Volume_Index;
+      number : Unsigned_32;
+   end record;
+   package Open_Inodes is new Shared_Objects
+     (Capacity => MAX_OPEN_FILES, Object_Key => Inode_Identity,
+      Empty_Key => (Volume_Index'First, 0), Object_Value => Ext2.Inode,
+      Empty_Value => Ext2.NULL_INODE);
+   use type Open_Inodes.Attach_Result;
+   inodeObjects : Open_Inodes.State;
 
    type Open_Object_Kind is (FILE_OBJECT, DIRECTORY_OBJECT);
 
-   --  File handle entry (tracks which backend each file uses)
+   --  File handles retain format, volume identity, ownership and rights.
    type FileEntry is record
       active      : Boolean      := False;
       retired     : Boolean      := False;
       generation  : Unsigned_32  := 1;
-      backend     : BackendKind  := CPIO_RAMDISK;
+      filesystemKind     : Filesystem_Kind  := CPIO_ARCHIVE;
+      volume      : Volume_Index := Volume_Index'First;
       inodeNum    : Unsigned_32  := 0;      --  ext2 only
-      ino         : Ext2.Inode;             --  ext2 only
+      directoryInode : Ext2.Inode; -- Directory enumeration snapshot only.
       opticalFile : ISO_Records.File_Record;
       cpioFileIdx : Natural      := 0;      --  cpio only
       offset      : Unsigned_64  := 0;
@@ -67,28 +82,17 @@ procedure main is
    cpioArchive : Cpio.Archive;
    cpioOk      : Boolean := False;
 
-   --  Optional writable Ext2 image carried in the trusted bootstrap archive.
-   memoryFs          : Ext2.Filesystem;
-   memoryInitialized : Boolean := False;
-
-   --  ATA-backed filesystem context (lazy initialized)
-   ataFs          : Ext2.Filesystem;
-   ataInitialized : Boolean := False;
-   ataInitFailed  : Boolean := False;  --  true after a real init attempt fails
-
-   --  ATA grant buffer (8 pages = 32KB for multi-sector bulk reads)
-   ATA_GRANT_PAGES : constant := 8;
-   ataGrantBuf     : System.Address := System.Null_Address;
-   ataGrant        : CuBit.Memory_Grants.Grant_Reference;
-
-   --  NVMe-backed filesystem context (lazy initialized)
-   nvmeFs          : Ext2.Filesystem;
-   nvmeInitialized : Boolean := False;
-
-   --  NVMe grant buffer (128 pages = 512KB for large PRP transfers)
-   NVME_GRANT_PAGES : constant := 128;
-   nvmeGrantBuf     : System.Address := System.Null_Address;
-   nvmeGrant        : CuBit.Memory_Grants.Grant_Reference;
+   --  Append-only identities and per-volume storage sessions. No slot reuse
+   --  while handles or cached metadata can refer to an entry.
+   Volumes : Volume_List.State;
+   type Volume_Context is record
+      Status : Admission_Result := Provider_Not_Ready;
+      Fs : Ext2.Filesystem;
+      Buffer : System.Address := System.Null_Address;
+      Grant : CuBit.Memory_Grants.Grant_Reference;
+   end record;
+   Contexts : array (Volume_Index) of Volume_Context;
+   Default_Write_Volume : Volume_Reference := No_Volume;
 
    ---------------------------------------------------------------------------
    --  Per-process file ACL infrastructure
@@ -201,6 +205,7 @@ procedure main is
 
    procedure releaseHandle (slot : Integer) is
    begin
+      Open_Inodes.Detach (inodeObjects, Open_Inodes.Owner_Index (slot));
       files (slot).active := False;
       files (slot).ownerPID := NO_PROCESS;
       files (slot).openRights := 0;
@@ -411,203 +416,58 @@ procedure main is
       sendReply (sender, REPLY_OK, 0);
    end handleRevokeACL;
 
-   --  ATA driver PID (discovered at runtime via sysinfo)
-   ataDriverPID  : Unsigned_64 := 0;
-
-   --  NVMe driver PID (discovered at runtime via sysinfo)
-   nvmeDriverPID : Unsigned_64 := 0;
-
-   --  Page size for grant buffer allocation
    FS_PAGE_SIZE : constant := 4096;
 
-   --  Parse an explicit backend selector and return the first path byte after
-   --  it.  An unqualified path uses the unified bootstrap/overlay namespace.
-   procedure parseScheme
-     (pathStr  : String;
-      scheme   : out SchemeKind;
-      relStart : out Natural)
-   is
+   --  Generic endpoint admission. The registry role is only a boot-order hint;
+   --  grant creation is authorized by the endpoint already installed by devmgr.
+   procedure ensureVolume (Volume : Volume_Index; Result : out Admission_Result) is
+      Device : constant Device_Binding := Binding (Volumes, Volume);
+      Context : Volume_Context renames Contexts (Volume);
+      Grant_OK, Revoked : Boolean;
+      Provider : Unsigned_64;
+      Raw : Unsigned_64;
    begin
-      scheme   := AUTOMATIC_SCHEME;
-      relStart := pathStr'First;
-
-      if pathStr'Length >= 6 and then
-         pathStr (pathStr'First)     = '@' and then
-         pathStr (pathStr'First + 1) = 'n' and then
-         pathStr (pathStr'First + 2) = 'v' and then
-         pathStr (pathStr'First + 3) = 'm' and then
-         pathStr (pathStr'First + 4) = 'e' and then
-         pathStr (pathStr'First + 5) = ':'
-      then
-         scheme   := NVME_SCHEME;
-         relStart := pathStr'First + 6;
-      elsif pathStr'Length >= 5 and then
-         pathStr (pathStr'First)     = '@' and then
-         pathStr (pathStr'First + 1) = 'a' and then
-         pathStr (pathStr'First + 2) = 't' and then
-         pathStr (pathStr'First + 3) = 'a' and then
-         pathStr (pathStr'First + 4) = ':'
-      then
-         scheme   := ATA_SCHEME;
-         relStart := pathStr'First + 5;
-      elsif pathStr'Length >= 5 and then
-         pathStr (pathStr'First)     = '@' and then
-         pathStr (pathStr'First + 1) = 'm' and then
-         pathStr (pathStr'First + 2) = 'e' and then
-         pathStr (pathStr'First + 3) = 'm' and then
-         pathStr (pathStr'First + 4) = ':'
-      then
-         scheme   := MEMORY_SCHEME;
-         relStart := pathStr'First + 5;
-      end if;
-   end parseScheme;
-
-   --  Lazy-initialize the ATA filesystem on first @ata: open.
-   --  Creates a grant buffer and reads the superblock via ATA IPC.
-   procedure ensureATA (ok : out Boolean) is
-      grantOk : Boolean;
-   begin
-      if ataInitialized then
-         ok := True;
+      Result := Context.Status;
+      if Context.Status /= Provider_Not_Ready then
          return;
       end if;
-
-      if ataInitFailed then
-         ok := False;
-         return;
-      end if;
-
-      --  Discover ATA driver PID via sysinfo
-      if ataDriverPID = 0 then
-         ataDriverPID := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_ATA);
-         if ataDriverPID = 0 or ataDriverPID = Unsigned_64'Last then
-            debugPrint ("FS Server: ATA driver not registered." & LF);
-            ataDriverPID := 0;
-            ok := False;
-            return;
+      if Device.Ready_Role /= 0 then
+         Provider := getInfo (SYSINFO_REGISTERED_DRIVER, Device.Ready_Role);
+         if Provider = 0 or else Provider = Unsigned_64'Last then
+            return; -- not supplied yet; no session or identity was replaced
          end if;
       end if;
-
-      --  Allocate a page-aligned grant buffer via sbrk
-      if ataGrantBuf = System.Null_Address then
-         declare
-            raw : Unsigned_64;
-            aligned : Unsigned_64;
-            allocSize : constant Unsigned_64 :=
-              Unsigned_64 (ATA_GRANT_PAGES) * FS_PAGE_SIZE + FS_PAGE_SIZE;
-         begin
-            raw := syscall (SYSCALL_SBRK, allocSize);
-            if raw = Unsigned_64'Last then
-               debugPrint ("FS Server: sbrk failed for ATA grant buffer." & LF);
-               ok := False;
-               return;
-            end if;
-            aligned := (raw + FS_PAGE_SIZE - 1) and not (FS_PAGE_SIZE - 1);
-            ataGrantBuf := toAddr (aligned);
-         end;
-      end if;
-
-      --  Create a grant to the ATA driver for data transfer
-      CuBit.Memory_Grants.Create_Via_Capability
-        (slot      => CAP_SLOT_ATA,
-         localAddr => ataGrantBuf,
-         numPages  => ATA_GRANT_PAGES,
-         readWrite => True,
-         reference => ataGrant,
-         success   => grantOk);
-
-      if not grantOk then
-         debugPrint ("FS Server: Failed to create ATA grant." & LF);
-         ok := False;
-         return;
-      end if;
-
-      debugPrint ("FS Server: ATA grant reference ready." & LF);
-      debugPrint ("FS Server: Initializing ATA ext2 filesystem..." & LF);
-
-      Ext2.initBlockDevice
-        (ataFs, CAP_SLOT_ATA, ataGrant, ataGrantBuf,
-         ATA_GRANT_PAGES * 4096, ok);
-
-      if ok then
-         ataInitialized := True;
-         debugPrint ("FS Server: ATA ext2 filesystem initialized." & LF);
-      else
-         ataInitFailed := True;
-         debugPrint ("FS Server: ATA ext2 init failed (no ext2?)." & LF);
-         CuBit.Memory_Grants.Revoke (ataGrant, grantOk);
-      end if;
-   end ensureATA;
-
-   --  Lazy-initialize the second transitional block endpoint on first
-   --  @nvme: open. Both disk drivers now expose Block.Device.V1; the hardware
-   --  name and fixed endpoint slot remain boot-wiring debt in this unit only.
-   procedure ensureNVMe (ok : out Boolean) is
-      grantOk : Boolean;
-   begin
-      if nvmeInitialized then
-         ok := True;
-         return;
-      end if;
-
-      --  Discover NVMe driver PID via sysinfo
-      if nvmeDriverPID = 0 then
-         nvmeDriverPID := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_NVME);
-         if nvmeDriverPID = 0 or nvmeDriverPID = Unsigned_64'Last then
-            nvmeDriverPID := 0;
-            ok := False;
+      if Context.Buffer = System.Null_Address then
+         Raw := syscall
+           (SYSCALL_SBRK, Unsigned_64 (Device.Transfer_Pages + 1) * FS_PAGE_SIZE);
+         if Raw = 0 or else Raw = Unsigned_64'Last then
+            Result := Insufficient_Resources;
             return;
          end if;
+         Context.Buffer := toAddr
+           ((Raw + FS_PAGE_SIZE - 1) and not (FS_PAGE_SIZE - 1));
       end if;
-
-      --  Allocate a page-aligned grant buffer via sbrk
-      if nvmeGrantBuf = System.Null_Address then
-         declare
-            raw       : Unsigned_64;
-            aligned   : Unsigned_64;
-            allocSize : constant Unsigned_64 :=
-              Unsigned_64 (NVME_GRANT_PAGES) * FS_PAGE_SIZE + FS_PAGE_SIZE;
-         begin
-            raw := syscall (SYSCALL_SBRK, allocSize);
-            if raw = Unsigned_64'Last then
-               debugPrint ("FS Server: sbrk failed for NVMe grant buffer." & LF);
-               ok := False;
-               return;
-            end if;
-            aligned := (raw + FS_PAGE_SIZE - 1) and not (FS_PAGE_SIZE - 1);
-            nvmeGrantBuf := toAddr (aligned);
-         end;
-      end if;
-
-      --  Create a grant to the NVMe driver for data transfer
       CuBit.Memory_Grants.Create_Via_Capability
-        (slot      => CAP_SLOT_NVME,
-         localAddr => nvmeGrantBuf,
-         numPages  => NVME_GRANT_PAGES,
-         readWrite => True,
-         reference => nvmeGrant,
-         success   => grantOk);
-
-      if not grantOk then
-         debugPrint ("FS Server: Failed to create NVMe grant." & LF);
-         ok := False;
+        (Device.Endpoint, Context.Buffer, Device.Transfer_Pages, True,
+         Context.Grant, Grant_OK);
+      if not Grant_OK then
+         Result := Grant_Rejected;
          return;
       end if;
-
-      debugPrint ("FS Server: NVMe grant OK, initializing ext2..." & LF);
-
       Ext2.initBlockDevice
-        (nvmeFs, CAP_SLOT_NVME, nvmeGrant, nvmeGrantBuf,
-         NVME_GRANT_PAGES * 4096, ok);
-
-      if ok then
-         nvmeInitialized := True;
-         debugPrint ("FS Server: NVMe ext2 filesystem initialized." & LF);
+        (Context.Fs, Device.Endpoint, Context.Grant, Context.Buffer,
+         Unsigned_32 (Device.Transfer_Pages) * FS_PAGE_SIZE, Result);
+      Context.Status := Result;
+      if Result = Admitted then
+         debugPrint ("FS Server: volume " & Volume_List.Name (Volumes, Volume) & " ready." & LF);
       else
-         debugPrint ("FS Server: NVMe ext2 init failed." & LF);
-         CuBit.Memory_Grants.Revoke (nvmeGrant, grantOk);
+         CuBit.Memory_Grants.Revoke (Context.Grant, Revoked);
+         --  No rebinding/retry after admission uncertainty. A pending revoked
+         --  grant must not be overwritten with a new reference.
+         debugPrint ("FS Server: volume " & Volume_List.Name (Volumes, Volume) &
+                     " rejected: " & Description (Result) & LF);
       end if;
-   end ensureNVMe;
+   end ensureVolume;
 
    --  Reject paths containing ".." traversal components.
    --  Checks for: exact "..", leading "../", trailing "/..", and "/../".
@@ -637,11 +497,44 @@ procedure main is
       return False;
    end hasTraversal;
 
-   --  Handle OP_OPEN
-   --  words(0) = grant slot (where path string is)
-   --  words(1) = path_length
-   --  words(2) = flags (unused for now)
-   --  words(3) = grant generation
+   function Lookup_Reply_Label
+     (status : Ext2.Directory_Lookup_Status) return Unsigned_32 is
+   begin
+      case status is
+         when Ext2.Lookup_Found => return REPLY_OK;
+         when Ext2.Lookup_Not_Found => return REPLY_NOT_FOUND;
+         when Ext2.Lookup_Malformed => return REPLY_MALFORMED_FILESYSTEM;
+         when Ext2.Lookup_Device_Error => return REPLY_IO_ERROR;
+         when Ext2.Lookup_Out_Of_Range => return REPLY_OUT_OF_RANGE;
+         when Ext2.Lookup_Range_Unsupported => return REPLY_FILE_RANGE_UNSUPPORTED;
+      end case;
+   end Lookup_Reply_Label;
+
+   function replyForWrite
+     (status : Ext2.Write_Status) return Unsigned_32
+   is
+   begin
+      case status is
+         when Ext2.Write_Complete =>
+            return REPLY_OK;
+         when Ext2.Write_Read_Only =>
+            return REPLY_READ_ONLY;
+         when Ext2.Write_Out_Of_Range =>
+            return REPLY_OUT_OF_RANGE;
+         when Ext2.Write_Device_Error =>
+            return REPLY_IO_ERROR;
+         when Ext2.Write_Recovery_Required =>
+            return REPLY_RECOVERY_REQUIRED;
+         when Ext2.Write_Already_Exists =>
+            return REPLY_ALREADY_EXISTS;
+         when Ext2.Write_No_Space =>
+            return REPLY_NO_SPACE;
+         when Ext2.Write_File_Range_Unsupported =>
+            return REPLY_FILE_RANGE_UNSUPPORTED;
+      end case;
+   end replyForWrite;
+
+   --  Handle OP_OPEN: path grant, path length, open options, grant generation.
    procedure handleOpen (sender : ProcessID; msg : Message) is
       pathLen   : constant Unsigned_64 := msg.words (1);
       openFlags : constant Open_Options := Open_Options (msg.words (2));
@@ -654,12 +547,20 @@ procedure main is
       handleId   : Unsigned_64;
       allocated  : Boolean;
       inodeNum   : Unsigned_32 := 0;
-      scheme     : SchemeKind;
+      selection  : Path_Selection;
+      reference  : Volume_Reference;
+      useVolume  : Volume_Index := Volume_Index'First;
       relStart   : Natural;
-      useBackend : BackendKind := CPIO_RAMDISK;
+      selectedKind : Filesystem_Kind := CPIO_ARCHIVE;
       cpioIdx    : Natural := 0;
       opticalFile : ISO_Records.File_Record;
       opticalFound : Boolean;
+      objectInode : Ext2.Inode := Ext2.NULL_INODE;
+      inodeStatus : Ext2.Read_Status;
+      truncateStatus : Ext2.Truncate_Status;
+      createStatus : Ext2.Write_Status := Ext2.Write_File_Range_Unsupported;
+      pathStatus : Ext2.Directory_Lookup_Status := Ext2.Lookup_Not_Found;
+      attached : Open_Inodes.Attach_Result;
    begin
       if msg.tag.length /= 4 or else
          pathLen = 0 or else pathLen > MAXIMUM_PATH_BYTES or else
@@ -689,28 +590,10 @@ procedure main is
          return;
       end if;
 
-      --  Read path from grant buffer and parse scheme prefix
+      --  Read the path and select an authorized volume binding.
       declare
          pathStr : String renames pathBuffer (1 .. Natural (pathLen));
 
-         --  Helper: skip optional device selector "0/" after scheme prefix
-         procedure skipSelector
-           (relPath : String;
-            skipIdx : out Natural)
-         is
-         begin
-            skipIdx := relPath'First;
-            if relPath'Length > 0 and then
-               relPath (relPath'First) in '0' .. '9'
-            then
-               skipIdx := relPath'First + 1;
-               if skipIdx <= relPath'Last and then
-                  relPath (skipIdx) = '/'
-               then
-                  skipIdx := skipIdx + 1;
-               end if;
-            end if;
-         end skipSelector;
       begin
          if hasTraversal (pathStr) then
             sendReply (sender, REPLY_ERR, Unsigned_64'Last);
@@ -738,155 +621,87 @@ procedure main is
             end if;
          end;
 
-         parseScheme (pathStr, scheme, relStart);
-
-         if scheme = MEMORY_SCHEME then
-            if not memoryInitialized then
-               sendReply (sender, REPLY_ERR, Unsigned_64'Last);
-               return;
-            end if;
-
-            useBackend := EXT2_MEMORY;
+         Select_Path (Volumes, pathStr, selection, reference, relStart);
+         if selection in Unknown_Volume | Invalid_Path then
+            sendReply (sender, REPLY_NOT_FOUND, 0);
+            return;
+         elsif selection = Known_Volume then
+            selectedKind := EXT2_FILESYSTEM;
+            useVolume := Volume_Index (reference);
             declare
-               relPath : String renames
-                 pathStr (relStart .. Natural (pathLen));
-               skipIdx : Natural;
+               admission : Admission_Result;
             begin
-               skipSelector (relPath, skipIdx);
-               if skipIdx > relPath'Last then
-                  inodeNum := Ext2.ROOT_INODE;
-               else
-                  inodeNum := Ext2.resolvePath
-                    (memoryFs, relPath (skipIdx .. relPath'Last));
-               end if;
-            end;
-
-         elsif scheme = NVME_SCHEME then
-            useBackend := EXT2_NVME;
-
-            --  Lazy-init NVMe filesystem
-            declare
-               ok : Boolean;
-            begin
-               ensureNVMe (ok);
-               if not ok then
-                  sendReply (sender, REPLY_ERR, Unsigned_64'Last);
+               ensureVolume (useVolume, admission);
+               if admission /= Admitted then
+                  sendReply (sender, REPLY_IO_ERROR, 0);
                   return;
                end if;
             end;
-
-            --  Resolve path on NVMe filesystem
-            declare
-               relPath : String renames
-                 pathStr (relStart .. Natural (pathLen));
-               skipIdx : Natural;
-            begin
-               skipSelector (relPath, skipIdx);
-               if skipIdx > relPath'Last then
-                  inodeNum := Ext2.ROOT_INODE;
-               else
-                  inodeNum := Ext2.resolvePath
-                    (nvmeFs, relPath (skipIdx .. relPath'Last));
-               end if;
-            end;
-
-         elsif scheme = ATA_SCHEME then
-            useBackend := EXT2_ATA;
-
-            --  Lazy-init ATA filesystem
-            declare
-               ok : Boolean;
-            begin
-               ensureATA (ok);
-               if not ok then
-                  sendReply (sender, REPLY_ERR, Unsigned_64'Last);
-                  return;
-               end if;
-            end;
-
-            --  Resolve path on ATA filesystem (skip selector/prefix)
-            declare
-               relPath : String renames
-                 pathStr (relStart .. Natural (pathLen));
-               skipIdx : Natural;
-            begin
-               skipSelector (relPath, skipIdx);
-               if skipIdx > relPath'Last then
-                  inodeNum := Ext2.ROOT_INODE;
-               else
-                  inodeNum := Ext2.resolvePath
-                    (ataFs, relPath (skipIdx .. relPath'Last));
-               end if;
-            end;
+            Ext2.resolvePath
+              (Contexts (useVolume).Fs, pathStr (relStart .. pathStr'Last),
+               inodeNum, pathStatus);
          else
-            --  No scheme prefix: immutable bootstrap first, then the writable
-            --  memory overlay, followed by persistent disks.
+            --  Preserve bootstrap lookup order. Names confer no authority:
+            --  the caller's original path was checked before selection.
             if cpioOk then
                cpioIdx := Cpio.findFile (cpioArchive, pathStr);
                if cpioIdx < cpioArchive.count then
-                  useBackend := CPIO_RAMDISK;
+                  selectedKind := CPIO_ARCHIVE;
                   inodeNum := 1;
                end if;
             end if;
-
             if inodeNum = 0 then
                ISO9660.Find (pathStr, opticalFile, opticalFound);
                if opticalFound then
-                  useBackend := ISO_OPTICAL;
+                  selectedKind := ISO_FILESYSTEM;
                   inodeNum := 1;
                elsif ISO9660.Media_Failed then
-                  --  Unreadable immutable boot media is not "not found".
-                  --  Never substitute a writable shadow for an admitted
-                  --  image. Explicit @mem paths remain independently usable.
                   sendReply (sender, REPLY_IO_ERROR, 0);
                   return;
                end if;
             end if;
-
-            if inodeNum = 0 and then memoryInitialized then
-               useBackend := EXT2_MEMORY;
-               inodeNum := Ext2.resolvePath (memoryFs, pathStr);
-            end if;
-
-            --  Fallback to disk if not found in ramdisk
-            if inodeNum = 0 then
+            for V in 1 .. Count (Volumes) loop
+               exit when inodeNum /= 0 or else pathStatus /= Ext2.Lookup_Not_Found;
                declare
-                  ok : Boolean;
+                  admission : Admission_Result;
                begin
-                  ensureATA (ok);
-                  if ok then
-                     inodeNum := Ext2.resolvePath (ataFs, pathStr);
+                  ensureVolume (V, admission);
+                  if admission = Admitted then
+                     Ext2.resolvePath (Contexts (V).Fs, pathStr, inodeNum, pathStatus);
                      if inodeNum /= 0 then
-                        useBackend := EXT2_ATA;
+                        selectedKind := EXT2_FILESYSTEM;
+                        useVolume := V;
                      end if;
+                  elsif not May_Search_Next (admission) then
+                     sendReply (sender, REPLY_IO_ERROR, 0);
+                     return;
                   end if;
                end;
-            end if;
-
-            if inodeNum = 0 then
-               declare
-                  ok : Boolean;
-               begin
-                  ensureNVMe (ok);
-                  if ok then
-                     inodeNum := Ext2.resolvePath (nvmeFs, pathStr);
-                     if inodeNum /= 0 then
-                        useBackend := EXT2_NVME;
-                     end if;
-                  end if;
-               end;
+            end loop;
+            --  Automatic creation retains its existing RAM-workspace default,
+            --  rather than selecting an arbitrary disk that missed the name.
+            if inodeNum = 0 and then Default_Write_Volume /= No_Volume and then
+              Contexts (Volume_Index (Default_Write_Volume)).Status = Admitted
+            then
+               selectedKind := EXT2_FILESYSTEM;
+               useVolume := Volume_Index (Default_Write_Volume);
             end if;
          end if;
       end;
 
-      if inodeNum /= 0 and then useBackend in CPIO_RAMDISK | ISO_OPTICAL and then
+      if pathStatus not in Ext2.Lookup_Found | Ext2.Lookup_Not_Found then
+         sendReply (sender, Lookup_Reply_Label (pathStatus), 0);
+         return;
+      end if;
+
+      if inodeNum /= 0 and then selectedKind in CPIO_ARCHIVE | ISO_FILESYSTEM and then
         (Requests_Write (openFlags) or else
          (openFlags and (OPEN_CREATE or OPEN_TRUNCATE or OPEN_EXCLUSIVE)) /= 0)
       then
          sendReply (sender, REPLY_READ_ONLY, 0);
          return;
       end if;
-      if useBackend = ISO_OPTICAL and then opticalFile.Directory then
+      if selectedKind = ISO_FILESYSTEM and then opticalFile.Directory then
          sendReply (sender, REPLY_WRONG_OBJECT_TYPE, 0);
          return;
       end if;
@@ -895,76 +710,40 @@ procedure main is
          --  Lookup and creation execute in one request in this single-threaded
          --  service. A future concurrent dispatcher must preserve that
          --  serialization; a client-side exists-then-create is not equivalent.
-         if useBackend in CPIO_RAMDISK | ISO_OPTICAL then
+         if selectedKind in CPIO_ARCHIVE | ISO_FILESYSTEM then
             sendReply (sender, REPLY_READ_ONLY, 0);
             return;
          end if;
-         declare
-            first : Natural := relStart;
-            lookup : Ext2.Directory_Lookup_Status;
-            use type Ext2.Directory_Lookup_Status;
-         begin
-            if scheme /= AUTOMATIC_SCHEME and then first <= Natural (pathLen)
-              and then pathBuffer (first) in '0' .. '9'
-            then
-               if Natural (pathLen) - first < 1 or else
-                 pathBuffer (first .. first + 1) /= "0/"
-               then
-                  sendReply (sender, REPLY_FILE_RANGE_UNSUPPORTED, 0);
-                  return;
-               end if;
-               first := first + 2;
-            end if;
-            case useBackend is
-               when EXT2_MEMORY =>
-                  Ext2.resolvePath (memoryFs, pathBuffer (first .. Natural (pathLen)), inodeNum, lookup);
-               when EXT2_NVME =>
-                  Ext2.resolvePath (nvmeFs, pathBuffer (first .. Natural (pathLen)), inodeNum, lookup);
-               when EXT2_ATA =>
-                  Ext2.resolvePath (ataFs, pathBuffer (first .. Natural (pathLen)), inodeNum, lookup);
-               when CPIO_RAMDISK | ISO_OPTICAL => lookup := Ext2.Lookup_Malformed;
-            end case;
-            if lookup = Ext2.Lookup_Found then
-               sendReply (sender, REPLY_ALREADY_EXISTS, 0);
-               return;
-            elsif lookup /= Ext2.Lookup_Not_Found then
-               sendReply (sender,
-                 (if lookup = Ext2.Lookup_Malformed then REPLY_MALFORMED_FILESYSTEM
-                  else REPLY_IO_ERROR), 0);
-               return;
-            end if;
-         end;
+         if inodeNum /= 0 then
+            sendReply (sender, REPLY_ALREADY_EXISTS, 0);
+            return;
+         end if;
+      end if;
+
+      --  Check handle capacity before create/truncate can mutate storage.
+      --  This is a preflight, not a reservation: dispatch is still serialized.
+      allocHandle (handleId, handle, allocated);
+      if not allocated then
+         sendReply (sender, REPLY_ERR, Unsigned_64'Last);
+         return;
       end if;
 
       if inodeNum = 0 then
          --  OPEN_CREATE: create the file if it doesn't exist
          if (openFlags and OPEN_CREATE) /= 0 and
-            useBackend in EXT2_MEMORY | EXT2_ATA | EXT2_NVME
+            selectedKind = EXT2_FILESYSTEM
          then
             declare
                pathStr : String renames
                  pathBuffer (1 .. Natural (pathLen));
 
-               --  Strip scheme prefix (@ata:, @nvme:) and device selector
-               --  (0/) to get the pure filesystem path.
+               --  Select_Path already removed the complete volume name.
                relPath   : String renames
                  pathStr (relStart .. Natural (pathLen));
                fileStart : Natural := relPath'First;
                dirEnd    : Natural := 0;
                nameFirst : Natural;
             begin
-               --  Skip device selector (e.g. "0/")
-               if scheme /= AUTOMATIC_SCHEME and then relPath'Length > 0 and then
-                  relPath (relPath'First) in '0' .. '9'
-               then
-                  fileStart := relPath'First + 1;
-                  if fileStart <= relPath'Last and then
-                     relPath (fileStart) = '/'
-                  then
-                     fileStart := fileStart + 1;
-                  end if;
-               end if;
-
                if fileStart > relPath'Last then
                   sendReply (sender, REPLY_ERR, Unsigned_64'Last);
                   return;
@@ -994,39 +773,26 @@ procedure main is
                begin
                   --  Resolve parent directory (relative path only)
                   if dirEnd > 0 then
-                     if useBackend = EXT2_MEMORY then
-                        dirInodeNum := Ext2.resolvePath
-                          (memoryFs, relPath (fileStart .. dirEnd - 1));
-                     elsif useBackend = EXT2_ATA then
-                        dirInodeNum := Ext2.resolvePath
-                          (ataFs, relPath (fileStart .. dirEnd - 1));
-                     elsif useBackend = EXT2_NVME then
-                        dirInodeNum := Ext2.resolvePath
-                          (nvmeFs, relPath (fileStart .. dirEnd - 1));
-                     end if;
+                     Ext2.resolvePath
+                       (Contexts (useVolume).Fs, relPath (fileStart .. dirEnd - 1),
+                        dirInodeNum, pathStatus);
                   end if;
 
-                  if dirInodeNum = 0 then
+                  if dirEnd > 0 and then pathStatus /= Ext2.Lookup_Found then
+                     sendReply (sender, Lookup_Reply_Label (pathStatus), 0);
+                     return;
+                  elsif dirInodeNum = 0 then
                      debugPrint ("FS: parent dir not found" & LF);
                      sendReply (sender, REPLY_ERR, Unsigned_64'Last);
                      return;
                   end if;
 
-                  if useBackend = EXT2_MEMORY then
-                     inodeNum := Ext2.createFile
-                       (memoryFs, dirInodeNum,
-                        relPath (nameFirst .. relPath'Last),
-                        Ext2.FILETYPE_REGULAR);
-                  elsif useBackend = EXT2_ATA then
-                     inodeNum := Ext2.createFile
-                       (ataFs, dirInodeNum,
-                        relPath (nameFirst .. relPath'Last),
-                        Ext2.FILETYPE_REGULAR);
-                  elsif useBackend = EXT2_NVME then
-                     inodeNum := Ext2.createFile
-                       (nvmeFs, dirInodeNum,
-                        relPath (nameFirst .. relPath'Last),
-                        Ext2.FILETYPE_REGULAR);
+                  Ext2.createFile
+                    (Contexts (useVolume).Fs, dirInodeNum,
+                     relPath (nameFirst .. relPath'Last), inodeNum, createStatus);
+                  if createStatus /= Ext2.Write_Complete then
+                     sendReply (sender, replyForWrite (createStatus), 0);
+                     return;
                   end if;
                end;
             end;
@@ -1034,57 +800,74 @@ procedure main is
 
          if inodeNum = 0 then
             debugPrint ("FS: file not found" & LF);
-            sendReply (sender, REPLY_ERR, Unsigned_64'Last);
+            sendReply (sender, REPLY_NOT_FOUND, Unsigned_64'Last);
             return;
          end if;
       end if;
 
-      --  A file handle must never be an alternate spelling of directory
-      --  authority. Directories are opened only through OP_OPEN_DIRECTORY.
-      if useBackend not in CPIO_RAMDISK | ISO_OPTICAL then
-         declare
-            objectInode : Ext2.Inode;
-         begin
-            case useBackend is
-               when EXT2_MEMORY =>
-                  Ext2.readInode (memoryFs, inodeNum, objectInode);
-               when EXT2_ATA =>
-                  Ext2.readInode (ataFs, inodeNum, objectInode);
-               when EXT2_NVME =>
-                  Ext2.readInode (nvmeFs, inodeNum, objectInode);
-               when CPIO_RAMDISK | ISO_OPTICAL => null;
-            end case;
-            if Ext2.inodeType (objectInode) = Ext2.INODE_DIRECTORY then
-               sendReply (sender, REPLY_WRONG_OBJECT_TYPE, 0);
+      --  Resolve metadata with checked I/O, then join the shared object.
+      --  Ownership, rights and cursor remain in the per-process handle.
+      if selectedKind = EXT2_FILESYSTEM then
+         Ext2.readInode (Contexts (useVolume).Fs, inodeNum, objectInode, inodeStatus);
+         if inodeStatus /= Ext2.Read_Complete then
+            sendReply (sender, REPLY_IO_ERROR, 0);
+            return;
+         elsif Ext2.inodeType (objectInode) = Ext2.INODE_DIRECTORY then
+            sendReply (sender, REPLY_WRONG_OBJECT_TYPE, 0);
+            return;
+         end if;
+         Open_Inodes.Attach
+           (inodeObjects, Open_Inodes.Owner_Index (handle),
+            (useVolume, inodeNum), objectInode, attached);
+         if attached not in Open_Inodes.Created | Open_Inodes.Shared then
+            sendReply (sender, REPLY_ERR, 0);
+            return;
+         end if;
+
+         if (openFlags and OPEN_TRUNCATE) /= 0 then
+            Ext2.truncateToEmpty
+              (Contexts (useVolume).Fs, inodeNum, objectInode, truncateStatus);
+            if truncateStatus /= Ext2.Truncate_Complete then
+               --  Never leave old, possibly freed block mappings reachable.
+               for Other in files'Range loop
+                  if truncateStatus = Ext2.Truncate_Recovery_Required and then
+                    files (Other).active and then
+                    files (Other).objectKind = FILE_OBJECT and then
+                    files (Other).filesystemKind = selectedKind and then
+                    files (Other).volume = useVolume and then
+                    files (Other).inodeNum = inodeNum
+                  then
+                     releaseHandle (Other);
+                  end if;
+               end loop;
+               Open_Inodes.Detach
+                 (inodeObjects, Open_Inodes.Owner_Index (handle));
+               case truncateStatus is
+                  when Ext2.Truncate_Recovery_Required =>
+                     sendReply (sender, REPLY_RECOVERY_REQUIRED, 0);
+                  when Ext2.Truncate_Read_Only =>
+                     sendReply (sender, REPLY_READ_ONLY, 0);
+                  when Ext2.Truncate_Unsupported =>
+                     sendReply (sender, REPLY_FILE_RANGE_UNSUPPORTED, 0);
+                  when Ext2.Truncate_Durability_Unsupported =>
+                     sendReply (sender, REPLY_DURABILITY_UNSUPPORTED, 0);
+                  when others =>
+                     sendReply (sender, REPLY_IO_ERROR, 0);
+               end case;
                return;
             end if;
-         end;
-      end if;
-
-      --  OPEN_TRUNCATE: truncate existing file to zero length
-      if (openFlags and OPEN_TRUNCATE) /= 0 and inodeNum /= 0 then
-         if useBackend = EXT2_MEMORY then
-            Ext2.truncateFile (memoryFs, inodeNum, 0);
-         elsif useBackend = EXT2_ATA then
-            Ext2.truncateFile (ataFs, inodeNum, 0);
-         elsif useBackend = EXT2_NVME then
-            Ext2.truncateFile (nvmeFs, inodeNum, 0);
+            Open_Inodes.Replace
+              (inodeObjects, Open_Inodes.Owner_Index (handle), objectInode);
          end if;
       end if;
 
-      --  Allocate file handle
-      allocHandle (handleId, handle, allocated);
-      if not allocated then
-         sendReply (sender, REPLY_ERR, Unsigned_64'Last);
-         return;
-      end if;
-
-      --  Set up file entry with backend tracking
+      --  Publish the per-client handle only after admission succeeds.
       files (handle).active      := True;
       files (handle).inodeNum    := inodeNum;
       files (handle).offset      := 0;
       files (handle).ownerPID    := sender;
-      files (handle).backend     := useBackend;
+      files (handle).filesystemKind     := selectedKind;
+      files (handle).volume      := useVolume;
       files (handle).cpioFileIdx := cpioIdx;
       files (handle).opticalFile := opticalFile;
       files (handle).openRights := 0;
@@ -1098,53 +881,48 @@ procedure main is
            files (handle).openRights or ACL_WRITE;
       end if;
 
-      case useBackend is
-         when CPIO_RAMDISK | ISO_OPTICAL =>
-            null;  --  cpio files don't need inode
-         when EXT2_MEMORY =>
-            Ext2.readInode (memoryFs, inodeNum, files (handle).ino);
-         when EXT2_ATA =>
-            Ext2.readInode (ataFs, inodeNum, files (handle).ino);
-         when EXT2_NVME =>
-            Ext2.readInode (nvmeFs, inodeNum, files (handle).ino);
-      end case;
-
       --  Reply with handle in words(0) and file size in words(1)
       declare
          fsize    : Unsigned_64 := 0;
          replyMsg : Message;
          ignore   : Unsigned_64;
       begin
-         case useBackend is
-            when ISO_OPTICAL =>
+         case selectedKind is
+            when ISO_FILESYSTEM =>
                fsize := Unsigned_64 (opticalFile.Bytes);
-            when CPIO_RAMDISK =>
+            when CPIO_ARCHIVE =>
                fsize := cpioArchive.files (cpioIdx).dataSize;
-            when EXT2_MEMORY =>
-               fsize := Ext2.fileSize (files (handle).ino);
-            when EXT2_ATA =>
-               fsize := Ext2.fileSize (files (handle).ino);
-            when EXT2_NVME =>
-               fsize := Ext2.fileSize (files (handle).ino);
+            when EXT2_FILESYSTEM =>
+               fsize := Ext2.fileSize (Open_Inodes.Value
+                 (inodeObjects, Open_Inodes.Owner_Index (handle)));
          end case;
 
          replyMsg.tag := (label  => REPLY_OK,
                           length => 2,
                           flags  => 0,
                           reserved  => 0);
-         replyMsg.words := (0 => handleId,
+         replyMsg.words := [0 => handleId,
                             1 => fsize,
-                            others => 0);
+                            others => 0];
          ignore := reply (sender, replyMsg);
       end;
    end handleOpen;
 
+   type File_Position_Mode is (Advance_Cursor, Explicit_Offset);
+
+   --  Shared execution paths: positioned requests do not temporarily seek.
    --  Handle OP_READ
    --  words(0) = file_handle
    --  words(1) = grant slot (buffer to write data into)
    --  words(2) = count (bytes to read)
    --  words(3) = grant generation
-   procedure handleRead (sender : ProcessID; msg : Message) is
+   procedure handleRead
+     (sender : ProcessID; msg : Message;
+      mode : File_Position_Mode := Advance_Cursor;
+      explicitOffset : Unsigned_64 := 0)
+   is
+      transferOffset : Unsigned_64;
+      currentInode : Ext2.Inode;
       handle    : constant Integer :=
         resolveHandle (msg.words (0), sender, FILE_OBJECT);
       count     : constant Unsigned_64 := msg.words (2);
@@ -1180,6 +958,13 @@ procedure main is
          return;
       end if;
 
+      transferOffset := (if mode = Explicit_Offset then explicitOffset
+                         else files (handle).offset);
+      if count > Unsigned_64'Last - transferOffset then
+         sendReply (sender, REPLY_OUT_OF_RANGE, 0);
+         return;
+      end if;
+
       if count = 0 then
          sendReply (sender, REPLY_OK, 0);
          return;
@@ -1194,54 +979,42 @@ procedure main is
          return;
       end if;
 
-      case files (handle).backend is
-         when ISO_OPTICAL =>
+      if files (handle).filesystemKind = EXT2_FILESYSTEM then
+         currentInode := Open_Inodes.Value
+           (inodeObjects, Open_Inodes.Owner_Index (handle));
+      end if;
+      case files (handle).filesystemKind is
+         when ISO_FILESYSTEM =>
             declare
                ok : Boolean;
             begin
-               ISO9660.Read (files (handle).opticalFile, files (handle).offset,
+               ISO9660.Read (files (handle).opticalFile, transferOffset,
                              count, grantAddr, bytesRead, ok);
                readStatus := (if ok then Ext2.Read_Complete
                               else Ext2.Read_Device_Error);
             end;
-         when CPIO_RAMDISK =>
+         when CPIO_ARCHIVE =>
             bytesRead := Cpio.readData
               (cpioArchive,
                files (handle).cpioFileIdx,
-               files (handle).offset,
+               transferOffset,
                grantAddr,
                count);
             readStatus := Ext2.Read_Complete;
-         when EXT2_MEMORY =>
+         when EXT2_FILESYSTEM =>
             Ext2.readData
-              (memoryFs,
-               files (handle).ino,
-               files (handle).offset,
-               grantAddr,
-               count,
-               bytesRead,
-               readStatus);
-         when EXT2_ATA =>
-            Ext2.readData
-              (ataFs,
-               files (handle).ino,
-               files (handle).offset,
-               grantAddr,
-               count,
-               bytesRead,
-               readStatus);
-         when EXT2_NVME =>
-            Ext2.readData
-              (nvmeFs,
-               files (handle).ino,
-               files (handle).offset,
+              (Contexts (files (handle).volume).Fs,
+               currentInode,
+               transferOffset,
                grantAddr,
                count,
                bytesRead,
                readStatus);
       end case;
 
-      files (handle).offset := files (handle).offset + bytesRead;
+      if mode = Advance_Cursor then
+         files (handle).offset := transferOffset + bytesRead;
+      end if;
 
       returnClientMemory (msg.words (1), msg.words (3), returned);
       if not returned then
@@ -1258,7 +1031,13 @@ procedure main is
    --  words(1) = grant slot (buffer containing data to write)
    --  words(2) = count (bytes to write)
    --  words(3) = grant generation
-   procedure handleWrite (sender : ProcessID; msg : Message) is
+   procedure handleWrite
+     (sender : ProcessID; msg : Message;
+      mode : File_Position_Mode := Advance_Cursor;
+      explicitOffset : Unsigned_64 := 0)
+   is
+      transferOffset : Unsigned_64;
+      currentInode : Ext2.Inode;
       handle       : constant Integer :=
         resolveHandle (msg.words (0), sender, FILE_OBJECT);
       count        : constant Unsigned_64 := msg.words (2);
@@ -1268,25 +1047,6 @@ procedure main is
       writeStatus  : Ext2.Write_Status := Ext2.Write_Complete;
       returned     : Boolean := False;
 
-      function replyForWrite
-        (status : Ext2.Write_Status) return Unsigned_32
-      is
-      begin
-         case status is
-            when Ext2.Write_Complete =>
-               return REPLY_OK;
-            when Ext2.Write_Read_Only =>
-               return REPLY_READ_ONLY;
-            when Ext2.Write_Out_Of_Range =>
-               return REPLY_OUT_OF_RANGE;
-            when Ext2.Write_Device_Error =>
-               return REPLY_IO_ERROR;
-            when Ext2.Write_No_Space =>
-               return REPLY_NO_SPACE;
-            when Ext2.Write_File_Range_Unsupported =>
-               return REPLY_FILE_RANGE_UNSUPPORTED;
-         end case;
-      end replyForWrite;
    begin
       if msg.tag.length /= 4 or else handle < 0 then
          sendReply (sender, REPLY_ERR, 0);
@@ -1298,12 +1058,19 @@ procedure main is
          return;
       end if;
 
+      transferOffset := (if mode = Explicit_Offset then explicitOffset
+                         else files (handle).offset);
+      if count > Unsigned_64'Last - transferOffset then
+         sendReply (sender, REPLY_OUT_OF_RANGE, 0);
+         return;
+      end if;
+
       if count = 0 then
          sendReply (sender, REPLY_OK, 0);
          return;
       end if;
 
-      if files (handle).backend in CPIO_RAMDISK | ISO_OPTICAL then
+      if files (handle).filesystemKind in CPIO_ARCHIVE | ISO_FILESYSTEM then
          -- Immutable bootstrap storage is immutable; reject before acquiring the
          -- caller's memory so every successful acquisition has one exit.
          sendReply (sender, REPLY_ERR, 0);
@@ -1319,44 +1086,53 @@ procedure main is
          return;
       end if;
 
-      case files (handle).backend is
-         when CPIO_RAMDISK | ISO_OPTICAL =>
+      if files (handle).filesystemKind = EXT2_FILESYSTEM then
+         currentInode := Open_Inodes.Value
+           (inodeObjects, Open_Inodes.Owner_Index (handle));
+      end if;
+      case files (handle).filesystemKind is
+         when CPIO_ARCHIVE | ISO_FILESYSTEM =>
             bytesWritten := 0; -- Rejected above.
-         when EXT2_MEMORY =>
+         when EXT2_FILESYSTEM =>
             Ext2.writeData
-              (memoryFs,
+              (Contexts (files (handle).volume).Fs,
                files (handle).inodeNum,
-               files (handle).ino,
-               files (handle).offset,
-               grantAddr,
-               count,
-               bytesWritten,
-               writeStatus);
-         when EXT2_ATA =>
-            Ext2.writeData
-              (ataFs,
-               files (handle).inodeNum,
-               files (handle).ino,
-               files (handle).offset,
-               grantAddr,
-               count,
-               bytesWritten,
-               writeStatus);
-         when EXT2_NVME =>
-            Ext2.writeData
-              (nvmeFs,
-               files (handle).inodeNum,
-               files (handle).ino,
-               files (handle).offset,
+               currentInode,
+               transferOffset,
                grantAddr,
                count,
                bytesWritten,
                writeStatus);
       end case;
 
+      if writeStatus = Ext2.Write_Recovery_Required then
+         declare
+            volume : constant Volume_Index := files (handle).volume;
+            number : constant Unsigned_32 := files (handle).inodeNum;
+         begin
+            for Other in files'Range loop
+               if files (Other).active and then
+                 files (Other).objectKind = FILE_OBJECT and then
+                 files (Other).filesystemKind = EXT2_FILESYSTEM and then
+                 files (Other).volume = volume and then
+                 files (Other).inodeNum = number
+               then
+                  releaseHandle (Other);
+               end if;
+            end loop;
+         end;
+         returnClientMemory (msg.words (1), msg.words (3), returned);
+         sendReply (sender, REPLY_RECOVERY_REQUIRED, 0);
+         return;
+      end if;
+      Open_Inodes.Replace
+        (inodeObjects, Open_Inodes.Owner_Index (handle), currentInode);
+
       --  The completed prefix is part of the file even when a later block
       --  fails.  Keep the handle synchronized with that committed progress.
-      files (handle).offset := files (handle).offset + bytesWritten;
+      if mode = Advance_Cursor then
+         files (handle).offset := transferOffset + bytesWritten;
+      end if;
 
       returnClientMemory (msg.words (1), msg.words (3), returned);
       if not returned then
@@ -1367,6 +1143,32 @@ procedure main is
 
       sendReply (sender, replyForWrite (writeStatus), bytesWritten);
    end handleWrite;
+
+   --  Decode transport metadata once, then use the identical authorization,
+   --  grant acquisition, filesystemKind I/O and return path as cursor-based requests.
+   procedure handlePositioned (sender : ProcessID; msg : Message) is
+      request : Message := msg;
+      loan : CuBit.Grant_References.Reference;
+   begin
+      if msg.tag.length /= 4 or else msg.tag.flags /= 0 or else
+        msg.tag.reserved /= 0 or else
+        not CuBit.Grant_References.Valid_Wire (msg.words (1))
+      then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+      loan := CuBit.Grant_References.Decode (msg.words (1));
+      request.words (1) := loan.slot;
+      request.words (3) := loan.generation;
+      case msg.tag.label is
+         when OP_READ_AT =>
+            handleRead (sender, request, Explicit_Offset, msg.words (3));
+         when OP_WRITE_AT =>
+            handleWrite (sender, request, Explicit_Offset, msg.words (3));
+         when others =>
+            sendReply (sender, REPLY_ERR, 0);
+      end case;
+   end handlePositioned;
 
    --  Handle OP_SEEK
    --  words(0) = file_handle
@@ -1385,13 +1187,14 @@ procedure main is
          return;
       end if;
 
-      case files (handle).backend is
-         when ISO_OPTICAL =>
+      case files (handle).filesystemKind is
+         when ISO_FILESYSTEM =>
             size := Unsigned_64 (files (handle).opticalFile.Bytes);
-         when CPIO_RAMDISK =>
+         when CPIO_ARCHIVE =>
             size := cpioArchive.files (files (handle).cpioFileIdx).dataSize;
-         when EXT2_MEMORY | EXT2_ATA | EXT2_NVME =>
-            size := Ext2.fileSize (files (handle).ino);
+         when EXT2_FILESYSTEM =>
+            size := Ext2.fileSize (Open_Inodes.Value
+              (inodeObjects, Open_Inodes.Owner_Index (handle)));
       end case;
 
       case whence is
@@ -1425,6 +1228,36 @@ procedure main is
       sendReply (sender, REPLY_OK, 0);
    end handleClose;
 
+   procedure handleFlush (sender : ProcessID; msg : Message) is
+      handle : constant Integer :=
+        resolveHandle (msg.words (0), sender, FILE_OBJECT);
+      status : Ext2.Flush_Status;
+   begin
+      if msg.tag.length /= 1 or else msg.tag.flags /= 0 or else
+        msg.tag.reserved /= 0 or else handle < 0
+      then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      elsif (files (handle).openRights and ACL_WRITE) = 0 then
+         sendReply (sender, REPLY_ACCESS_DENIED, 0);
+         return;
+      end if;
+      case files (handle).filesystemKind is
+         when CPIO_ARCHIVE | ISO_FILESYSTEM =>
+            status := Ext2.Flush_Unsupported;
+         when EXT2_FILESYSTEM =>
+            Ext2.Flush (Contexts (files (handle).volume).Fs, status);
+      end case;
+      case status is
+         when Ext2.Flush_Complete => sendReply (sender, REPLY_OK, 0);
+         when Ext2.Flush_Unsupported =>
+            sendReply (sender, REPLY_DURABILITY_UNSUPPORTED, 0);
+         when Ext2.Flush_IO_Error => sendReply (sender, REPLY_IO_ERROR, 0);
+         when Ext2.Flush_Recovery_Required =>
+            sendReply (sender, REPLY_RECOVERY_REQUIRED, 0);
+      end case;
+   end handleFlush;
+
    --  Open a directory by bootstrap path.  The returned object is a distinct
    --  PID-bound directory handle; subsequent enumeration carries no path.
    procedure handleOpenDirectory (sender : ProcessID; msg : Message) is
@@ -1433,34 +1266,19 @@ procedure main is
       grantOk : Boolean := False;
       returned : Boolean := False;
       pathBuffer : String (1 .. Natural (MAXIMUM_PATH_BYTES));
-      scheme : SchemeKind := AUTOMATIC_SCHEME;
+      selection : Path_Selection := Unqualified;
+      reference : Volume_Reference;
+      selectedVolume : Volume_Index := Volume_Index'First;
       relStart : Natural := 1;
-      backend : BackendKind := CPIO_RAMDISK;
+      filesystemKind : Filesystem_Kind := CPIO_ARCHIVE;
       inodeNum : Unsigned_32 := 0;
       dirIno : Ext2.Inode;
+      pathStatus : Ext2.Directory_Lookup_Status := Ext2.Lookup_Found;
+      inodeStatus : Ext2.Read_Status;
       handleSlot : Integer;
       handleId : Unsigned_64;
       allocated : Boolean;
 
-      procedure resolveExt2Directory
-        (theFs : Ext2.Filesystem;
-         path : String)
-      is
-         first : Natural := path'First;
-      begin
-         if path'Length > 0 and then path (path'First) in '0' .. '9' then
-            first := path'First + 1;
-            if first <= path'Last and then path (first) = '/' then
-               first := first + 1;
-            end if;
-         end if;
-
-         if first > path'Last then
-            inodeNum := Ext2.ROOT_INODE;
-         else
-            inodeNum := Ext2.resolvePath (theFs, path (first .. path'Last));
-         end if;
-      end resolveExt2Directory;
    begin
       if msg.tag.length /= 3 or else pathLen > MAXIMUM_PATH_BYTES then
          sendReply (sender, REPLY_ERR, 0);
@@ -1501,7 +1319,7 @@ procedure main is
                sendReply (sender, REPLY_ACCESS_DENIED, 0);
                return;
             end if;
-            parseScheme (path, scheme, relStart);
+            Select_Path (Volumes, path, selection, reference, relStart);
             for index in path'Range loop
                if path (index) /= '/' then
                   onlySeparators := False;
@@ -1514,64 +1332,55 @@ procedure main is
          end if;
 
          if pathLen = 0 or else
-           (scheme = AUTOMATIC_SCHEME and then onlySeparators)
+           (selection = Unqualified and then onlySeparators)
          then
             if not cpioOk then
                sendReply (sender, REPLY_ERR, 0);
                return;
             end if;
-            backend := CPIO_RAMDISK;
+            filesystemKind := CPIO_ARCHIVE;
             inodeNum := 1;
-         elsif scheme = MEMORY_SCHEME then
-            if not memoryInitialized then
-               sendReply (sender, REPLY_ERR, 0);
-               return;
-            end if;
-            backend := EXT2_MEMORY;
-            resolveExt2Directory
-              (memoryFs, path (relStart .. path'Last));
-         elsif scheme = ATA_SCHEME then
+         elsif selection = Known_Volume then
+            selectedVolume := Volume_Index (reference);
             declare
-               ok : Boolean;
+               admission : Admission_Result;
             begin
-               ensureATA (ok);
-               if not ok then
+               ensureVolume (selectedVolume, admission);
+               if admission /= Admitted then
                   sendReply (sender, REPLY_IO_ERROR, 0);
                   return;
                end if;
             end;
-            backend := EXT2_ATA;
-            resolveExt2Directory (ataFs, path (relStart .. path'Last));
-         elsif scheme = NVME_SCHEME then
-            declare
-               ok : Boolean;
-            begin
-               ensureNVMe (ok);
-               if not ok then
-                  sendReply (sender, REPLY_IO_ERROR, 0);
-                  return;
-               end if;
-            end;
-            backend := EXT2_NVME;
-            resolveExt2Directory (nvmeFs, path (relStart .. path'Last));
+            filesystemKind := EXT2_FILESYSTEM;
+            Ext2.resolvePath
+              (Contexts (selectedVolume).Fs, path (relStart .. path'Last),
+               inodeNum, pathStatus);
+         elsif selection in Unknown_Volume | Invalid_Path then
+            sendReply (sender, REPLY_NOT_FOUND, 0);
+            return;
          else
             sendReply (sender, REPLY_WRONG_OBJECT_TYPE, 0);
             return;
          end if;
       end;
 
-      if inodeNum = 0 then
-         sendReply (sender, REPLY_ERR, 0);
+      if pathStatus /= Ext2.Lookup_Found then
+         sendReply (sender, Lookup_Reply_Label (pathStatus), 0);
          return;
       end if;
 
-      if backend /= CPIO_RAMDISK then
-         case backend is
-            when EXT2_MEMORY => Ext2.readInode (memoryFs, inodeNum, dirIno);
-            when EXT2_ATA => Ext2.readInode (ataFs, inodeNum, dirIno);
-            when EXT2_NVME => Ext2.readInode (nvmeFs, inodeNum, dirIno);
-            when CPIO_RAMDISK | ISO_OPTICAL => null;
+      if filesystemKind /= CPIO_ARCHIVE then
+         case filesystemKind is
+            when EXT2_FILESYSTEM =>
+               Ext2.readInode (Contexts (selectedVolume).Fs, inodeNum, dirIno, inodeStatus);
+            when CPIO_ARCHIVE | ISO_FILESYSTEM => null;
          end case;
+         if inodeStatus /= Ext2.Read_Complete then
+            sendReply (sender,
+              (if inodeStatus = Ext2.Read_Out_Of_Range then REPLY_OUT_OF_RANGE
+               else REPLY_IO_ERROR), 0);
+            return;
+         end if;
          if Ext2.inodeType (dirIno) /= Ext2.INODE_DIRECTORY then
             sendReply (sender, REPLY_WRONG_OBJECT_TYPE, 0);
             return;
@@ -1584,10 +1393,11 @@ procedure main is
          return;
       end if;
       files (handleSlot).active := True;
-      files (handleSlot).backend := backend;
+      files (handleSlot).filesystemKind := filesystemKind;
+      files (handleSlot).volume := selectedVolume;
       files (handleSlot).inodeNum := inodeNum;
-      if backend /= CPIO_RAMDISK then
-         files (handleSlot).ino := dirIno;
+      if filesystemKind /= CPIO_ARCHIVE then
+         files (handleSlot).directoryInode := dirIno;
       end if;
       files (handleSlot).offset := 0;
       files (handleSlot).ownerPID := sender;
@@ -1605,7 +1415,7 @@ procedure main is
            (label => REPLY_OK, length => 2, flags => 0, reserved => 0);
          replyMsg.words (0) := handleId;
          replyMsg.words (1) :=
-           (if backend = CPIO_RAMDISK then 0 else
+           (if filesystemKind = CPIO_ARCHIVE then 0 else
               Unsigned_64 (dirIno.generationNumber));
          ignored := reply (sender, replyMsg);
       end;
@@ -1714,11 +1524,9 @@ procedure main is
          return;
       end if;
 
-      case files (parent).backend is
-         when EXT2_MEMORY => Lookup (memoryFs);
-         when EXT2_ATA => Lookup (ataFs);
-         when EXT2_NVME => Lookup (nvmeFs);
-         when CPIO_RAMDISK | ISO_OPTICAL =>
+      case files (parent).filesystemKind is
+         when EXT2_FILESYSTEM => Lookup (Contexts (files (parent).volume).Fs);
+         when CPIO_ARCHIVE | ISO_FILESYSTEM =>
             --  The bootstrap archive exposes flat names, not directory objects.
             sendReply (sender, REPLY_WRONG_OBJECT_TYPE, 0);
             return;
@@ -1736,9 +1544,10 @@ procedure main is
          sendReply (sender, REPLY_NO_SPACE, 0);
          return;
       end if;
-      files (slot).backend := files (parent).backend;
+      files (slot).filesystemKind := files (parent).filesystemKind;
+      files (slot).volume := files (parent).volume;
       files (slot).inodeNum := inodeNum;
-      files (slot).ino := ino;
+      files (slot).directoryInode := ino;
       files (slot).offset := 0;
       files (slot).ownerPID := sender;
       files (slot).openRights := ACL_READ;
@@ -1758,25 +1567,21 @@ procedure main is
          sendReply (sender, REPLY_WRONG_OBJECT_TYPE, 0);
          return;
       end if;
-      case files (handle).backend is
-         when EXT2_MEMORY =>
-            Ext2.readInode (memoryFs, files (handle).inodeNum, candidate, status);
-         when EXT2_ATA =>
-            Ext2.readInode (ataFs, files (handle).inodeNum, candidate, status);
-         when EXT2_NVME =>
-            Ext2.readInode (nvmeFs, files (handle).inodeNum, candidate, status);
-         when CPIO_RAMDISK | ISO_OPTICAL => null;
+      case files (handle).filesystemKind is
+         when EXT2_FILESYSTEM =>
+            Ext2.readInode (Contexts (files (handle).volume).Fs, files (handle).inodeNum, candidate, status);
+         when CPIO_ARCHIVE | ISO_FILESYSTEM => null;
       end case;
       if status /= Ext2.Read_Complete then
          sendReply (sender, Read_Reply_Label (status), 0);
          return;
       end if;
-      if files (handle).backend /= CPIO_RAMDISK then
+      if files (handle).filesystemKind /= CPIO_ARCHIVE then
          if Ext2.inodeType (candidate) /= Ext2.INODE_DIRECTORY then
             sendReply (sender, REPLY_WRONG_OBJECT_TYPE, 0);
             return;
          end if;
-         files (handle).ino := candidate;
+         files (handle).directoryInode := candidate;
       end if;
       files (handle).offset := 0;
       sendReply (sender, REPLY_OK, 0);
@@ -1823,7 +1628,7 @@ procedure main is
       begin
          rawPage := (others => Character'Val (0));
 
-         if files (handle).backend = CPIO_RAMDISK then
+         if files (handle).filesystemKind = CPIO_ARCHIVE then
             if files (handle).offset > Unsigned_64 (cpioArchive.count) then
                replyLabel := REPLY_MALFORMED_FILESYSTEM;
             else
@@ -1868,20 +1673,12 @@ procedure main is
                atEnd := nextCursor = Unsigned_64 (cpioArchive.count);
             end if;
          else
-            case files (handle).backend is
-               when EXT2_MEMORY =>
+            case files (handle).filesystemKind is
+               when EXT2_FILESYSTEM =>
                   Ext2.readDirectoryPage
-                    (memoryFs, files (handle).ino, files (handle).offset,
+                    (Contexts (files (handle).volume).Fs, files (handle).directoryInode, files (handle).offset,
                      pageEntries, entryCount, nextCursor, readStatus);
-               when EXT2_ATA =>
-                  Ext2.readDirectoryPage
-                    (ataFs, files (handle).ino, files (handle).offset,
-                     pageEntries, entryCount, nextCursor, readStatus);
-               when EXT2_NVME =>
-                  Ext2.readDirectoryPage
-                    (nvmeFs, files (handle).ino, files (handle).offset,
-                     pageEntries, entryCount, nextCursor, readStatus);
-               when CPIO_RAMDISK | ISO_OPTICAL => null;
+               when CPIO_ARCHIVE | ISO_FILESYSTEM => null;
             end case;
 
             case readStatus is
@@ -1906,8 +1703,8 @@ procedure main is
          header.reserved := 0;
          header.nextCursor := nextCursor;
          header.snapshot :=
-           (if files (handle).backend = CPIO_RAMDISK then 0 else
-              Unsigned_64 (files (handle).ino.generationNumber));
+           (if files (handle).filesystemKind = CPIO_ARCHIVE then 0 else
+              Unsigned_64 (files (handle).directoryInode.generationNumber));
       end;
 
       returnClientMemory (msg.words (1), msg.words (3), returned);
@@ -1999,7 +1796,8 @@ procedure main is
          newPath : String renames
            bothPaths (Natural (oldPathLen) + 1 .. totalLen);
 
-         oldScheme, newScheme : SchemeKind;
+         oldSelection, newSelection : Path_Selection;
+         oldVolume, newVolume : Volume_Reference;
          oldRelStart, newRelStart : Natural;
       begin
          if hasTraversal (oldPath) or else hasTraversal (newPath) then
@@ -2014,98 +1812,39 @@ procedure main is
             return;
          end if;
 
-         parseScheme (oldPath, oldScheme, oldRelStart);
-         parseScheme (newPath, newScheme, newRelStart);
-
-         if oldScheme /= newScheme then
+         Select_Path (Volumes, oldPath, oldSelection, oldVolume, oldRelStart);
+         Select_Path (Volumes, newPath, newSelection, newVolume, newRelStart);
+         if oldSelection = Unqualified then
+            oldVolume := Default_Write_Volume;
+         end if;
+         if newSelection = Unqualified then
+            newVolume := Default_Write_Volume;
+         end if;
+         if oldSelection in Unknown_Volume | Invalid_Path or else
+           newSelection in Unknown_Volume | Invalid_Path
+         then
+            sendReply (sender, REPLY_NOT_FOUND, 0);
+            return;
+         elsif oldSelection /= newSelection or else oldVolume /= newVolume then
             sendReply (sender, REPLY_ERR, 0);
             return;
+         elsif oldVolume = No_Volume then
+            sendReply (sender, REPLY_READ_ONLY, 0);
+            return;
          end if;
-
          declare
-            procedure skipSel (path : String; idx : out Natural) is
-            begin
-               idx := path'First;
-               if oldScheme /= AUTOMATIC_SCHEME and then path'Length > 0 and then
-                  path (path'First) in '0' .. '9'
-               then
-                  --  Only device zero exists in each current backend. Never
-                  --  silently turn a different selector into that device, or
-                  --  strip the first digit of an unqualified filename.
-                  if path'Length < 2 or else
-                    path (path'First .. path'First + 1) /= "0/"
-                  then
-                     idx := 0;
-                  else
-                     idx := path'First + 2;
-                  end if;
-               end if;
-            end skipSel;
-
-            oldSkip, newSkip : Natural;
             status : Ext2.Rename_Status;
+            admission : Admission_Result;
          begin
-            skipSel (oldPath (oldRelStart .. oldPath'Last), oldSkip);
-            skipSel (newPath (newRelStart .. newPath'Last), newSkip);
-            if oldSkip = 0 or else newSkip = 0 then
-               sendReply (sender, REPLY_FILE_RANGE_UNSUPPORTED, 0);
+            ensureVolume (Volume_Index (oldVolume), admission);
+            if admission /= Admitted then
+               sendReply (sender, REPLY_IO_ERROR, 0);
                return;
             end if;
-            if oldScheme in MEMORY_SCHEME | AUTOMATIC_SCHEME and then
-               memoryInitialized
-            then
-               declare
-                  oldRel : String renames
-                    oldPath (oldSkip .. oldPath'Last);
-                  newRel : String renames
-                    newPath (newSkip .. newPath'Last);
-               begin
-                  Ext2.renamePath
-                    (memoryFs, oldRel, newRel, status);
-               end;
-            elsif oldScheme = NVME_SCHEME then
-               declare
-                  okInit : Boolean;
-               begin
-                  ensureNVMe (okInit);
-                  if not okInit then
-                     sendReply (sender, REPLY_ERR, 0);
-                     return;
-                  end if;
-               end;
-
-               declare
-                  oldRel : String renames
-                    oldPath (oldSkip .. oldPath'Last);
-                  newRel : String renames
-                    newPath (newSkip .. newPath'Last);
-               begin
-                  Ext2.renamePath
-                    (nvmeFs, oldRel, newRel, status);
-               end;
-            elsif oldScheme = ATA_SCHEME then
-               declare
-                  okInit : Boolean;
-               begin
-                  ensureATA (okInit);
-                  if not okInit then
-                     sendReply (sender, REPLY_ERR, 0);
-                     return;
-                  end if;
-               end;
-
-               declare
-                  oldRel : String renames
-                    oldPath (oldSkip .. oldPath'Last);
-                  newRel : String renames
-                    newPath (newSkip .. newPath'Last);
-               begin
-                  Ext2.renamePath
-                    (ataFs, oldRel, newRel, status);
-               end;
-            else
-               status := Ext2.Rename_Read_Only;
-            end if;
+            Ext2.renamePath
+              (Contexts (Volume_Index (oldVolume)).Fs,
+               oldPath (oldRelStart .. oldPath'Last),
+               newPath (newRelStart .. newPath'Last), status);
 
             declare
                label : Unsigned_32;
@@ -2152,46 +1891,46 @@ begin
       if not cpioOk then
          debugPrint ("FS Server: Invalid CPIO archive on ramdisk." & LF);
       else
-         declare
-            imageIndex : constant Natural :=
-              Cpio.findFile (cpioArchive, "live-rw.ext2");
-            imageBase : System.Address;
-            imageSize : Unsigned_64;
-            viewOk : Boolean;
-            writableBase : Unsigned_64;
-         begin
-            if imageIndex < cpioArchive.count then
-               Cpio.fileView
-                 (cpioArchive, imageIndex, imageBase, imageSize, viewOk);
-               if viewOk then
-                  writableBase := syscall (SYSCALL_SBRK, imageSize);
-                  if writableBase /= Unsigned_64'Last then
-                     declare
-                        source : String (1 .. Natural (imageSize))
-                          with Import, Address => imageBase;
-                        destination : String (1 .. Natural (imageSize))
-                          with Import, Address => toAddr (writableBase);
-                     begin
-                        destination := source;
-                     end;
-
-                     Ext2.initMemory
-                       (memoryFs, toAddr (writableBase), imageSize,
-                        memoryInitialized);
+         if Cpio.findFile (cpioArchive, "live-rw.ext2") < cpioArchive.count then
+            declare
+               Result : Registration_Result;
+               admission : Admission_Result;
+            begin
+               Register
+                 (Volumes, "mem:0",
+                  (Endpoint => CAP_SLOT_RAMDISK, Ready_Role => 0, Transfer_Pages => 128),
+                  Default_Write_Volume, Result);
+               if Result = Registered then
+                  ensureVolume (Volume_Index (Default_Write_Volume), admission);
+                  if admission = Admitted then
+                     debugPrint ("FS Server: Writable memory filesystem ready." & LF);
                   end if;
                end if;
-
-               if memoryInitialized then
-                  debugPrint
-                    ("FS Server: Writable memory filesystem ready." & LF);
-               else
-                  debugPrint
-                    ("FS Server: Invalid writable memory filesystem." & LF);
-               end if;
-            end if;
-         end;
+            end;
+         end if;
       end if;
    end if;
+
+   --  Bootstrap bindings only. File operations never test these driver roles.
+   declare
+      Volume : Volume_Reference;
+      Result : Registration_Result;
+   begin
+      Register (Volumes, "ata:0",
+        (Endpoint => CAP_SLOT_ATA, Ready_Role => DRIVER_ATA, Transfer_Pages => 8),
+        Volume, Result);
+      if Result /= Registered then
+         debugPrint ("FS Server: volume list initialization failed." & LF);
+         return;
+      end if;
+      Register (Volumes, "nvme:0",
+        (Endpoint => CAP_SLOT_NVME, Ready_Role => DRIVER_NVME, Transfer_Pages => 128),
+        Volume, Result);
+      if Result /= Registered then
+         debugPrint ("FS Server: volume list initialization failed." & LF);
+         return;
+      end if;
+   end;
 
    --  Register as DRIVER_FS so other services can discover us
    declare
@@ -2229,10 +1968,14 @@ begin
             handleRead (sender, msg);
          when OP_WRITE =>
             handleWrite (sender, msg);
+         when OP_READ_AT | OP_WRITE_AT =>
+            handlePositioned (sender, msg);
          when OP_SEEK =>
             handleSeek (sender, msg);
          when OP_CLOSE =>
             handleClose (sender, msg);
+         when OP_FLUSH_FILE =>
+            handleFlush (sender, msg);
          when OP_OPEN_DIRECTORY =>
             handleOpenDirectory (sender, msg);
          when OP_READ_DIRECTORY_PAGE =>

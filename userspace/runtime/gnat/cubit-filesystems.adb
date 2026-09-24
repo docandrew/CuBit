@@ -2,6 +2,8 @@
 --  CuBit
 --  Copyright (C) 2026 Jon Andrew
 ------------------------------------------------------------------------------
+with CuBit.Grant_References;
+
 package body CuBit.Filesystems with
    SPARK_Mode => On
 is
@@ -84,6 +86,17 @@ is
          words    => (0 => Unsigned_64 (handle), others => 0));
    end Close_Request;
 
+   function Flush_Request
+     (handle : File_Handle) return CuBit.Messages.Message
+   is
+   begin
+      return
+        (tag => (label => OP_FLUSH_FILE, length => 1,
+                 flags => 0, reserved => 0),
+         authorityTag => 0,
+         words => (0 => Unsigned_64 (handle), others => 0));
+   end Flush_Request;
+
    function Read_Request
      (handle : File_Handle;
       loan   : CuBit.Memory_Grants.Grant_Reference;
@@ -101,6 +114,34 @@ is
    begin
       return Grant_Message (OP_WRITE, Unsigned_64 (handle), loan, count);
    end Write_Request;
+
+   function Read_At_Request
+     (handle : File_Handle;
+      loan   : CuBit.Memory_Grants.Grant_Reference;
+      count  : Unsigned_64;
+      offset : Unsigned_64) return CuBit.Messages.Message
+   is
+   begin
+      return
+        (tag => (label => OP_READ_AT, length => 4, flags => 0, reserved => 0),
+         authorityTag => 0,
+         words => (0 => Unsigned_64 (handle),
+                   1 => CuBit.Grant_References.Encode (loan),
+                   2 => count, 3 => offset));
+   end Read_At_Request;
+
+   function Write_At_Request
+     (handle : File_Handle;
+      loan   : CuBit.Memory_Grants.Grant_Reference;
+      count  : Unsigned_64;
+      offset : Unsigned_64) return CuBit.Messages.Message
+   is
+      Result : CuBit.Messages.Message :=
+        Read_At_Request (handle, loan, count, offset);
+   begin
+      Result.tag.label := OP_WRITE_AT;
+      return Result;
+   end Write_At_Request;
 
    function Seek_Request
      (handle : File_Handle;

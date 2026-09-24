@@ -5,6 +5,7 @@
 --  @summary
 --  Tree controls
 ------------------------------------------------------------------------------
+with CuBit.UI.Widgets;
 package body CuBit.UI.Trees is
    procedure View_Frame
       (c : CuBit.UI.Canvas;
@@ -65,7 +66,13 @@ package body CuBit.UI.Trees is
    begin
       case icon is
          when No_Icon       => return;
-         when Computer_Icon => fill := colors.accent;
+         when Computer_Icon =>
+            CuBit.UI.Fill_Rect (c, (x, y, 12, 8), colors.darkShadow);
+            CuBit.UI.Fill_Rect (c, (x + 1, y + 1, 10, 6), colors.highlight);
+            CuBit.UI.Fill_Rect (c, (x + 2, y + 2, 8, 4), colors.accent);
+            CuBit.UI.Fill_Rect (c, (x + 5, y + 8, 2, 2), colors.darkShadow);
+            CuBit.UI.Fill_Rect (c, (x + 3, y + 10, 6, 1), colors.darkShadow);
+            return;
          when Bus_Icon      => fill := colors.muted;
          when Device_Icon   => fill := colors.shadow;
          when Input_Icon    => fill := 16#866A3A#;
@@ -75,6 +82,12 @@ package body CuBit.UI.Trees is
          when Audio_Icon    => fill := 16#94683F#;
          when Service_Icon  => fill := 16#527782#;
          when Warning_Icon  => fill := colors.danger;
+         when Folder_Icon | Setting_Icon =>
+            CuBit.UI.Widgets.Draw_Stock_Icon
+              (c, x, y,
+               (if icon = Folder_Icon then CuBit.UI.Widgets.Open_Document
+                else CuBit.UI.Widgets.Compile_Program));
+            return;
       end case;
       --  A restrained 12 px pictogram: colored face, one-pixel outline, and
       --  a small highlight. It remains legible without introducing an asset
@@ -114,6 +127,8 @@ package body CuBit.UI.Trees is
       centerY : constant Natural := bounds.y + bounds.h / 2;
       iconX : Natural;
       textX : Natural;
+      iconHeight : constant Positive :=
+        (if icon in Folder_Icon | Setting_Icon then CuBit.UI.Widgets.STOCK_ICON_SIZE else 12);
       clipped : constant CuBit.UI.Canvas := CuBit.UI.With_Clip (c, bounds);
    begin
       if retainedInput then
@@ -182,8 +197,11 @@ package body CuBit.UI.Trees is
 
       iconX := bounds.x + indent + 17;
       if icon /= No_Icon then
-         Draw_Item_Icon (clipped, iconX, centerY - 6, colors, icon, bg);
-         textX := iconX + 17;
+         Draw_Item_Icon
+           (clipped, iconX,
+            bounds.y + (if bounds.h >= iconHeight then (bounds.h - iconHeight) / 2 else 0),
+            colors, icon, bg);
+         textX := iconX + 20;
       else
          textX := iconX;
       end if;

@@ -17,6 +17,12 @@ package CuBit.UI.Widgets is
      (Open_Document, Save_Document, Interpret_Source, Compile_Program,
       Run_Program, Pause_Program, Stop_Program, Step_Into, Step_Over);
 
+   --  Shared Bluecurve artwork without button chrome (for trees, lists, etc.).
+   STOCK_ICON_SIZE : constant Positive := 16;
+   procedure Draw_Stock_Icon
+     (c : CuBit.UI.Canvas; x, y : Natural; icon : Toolbar_Icon;
+      enabled : Boolean := True);
+
    subtype Tab_Title is String;
    type Tab_Title_Access is access constant Tab_Title;
    type Tab_Title_List is array (Positive range <>) of Tab_Title_Access;

@@ -10,7 +10,7 @@ with Virtmem;
 with Multiboot_Memory_Map;
 with Multiboot_Entry;
 with CPUID;
-with Video.VGA;
+with Boot_Font;
 
 package body Multiboot with SPARK_Mode => On is
     use type Boot_Framebuffer.Status;
@@ -140,12 +140,12 @@ package body Multiboot with SPARK_Mode => On is
            Framebuffer_Budget);
         case bootFramebuffer.State is
             when Boot_Framebuffer.Success =>
-                -- Existing emergency text renderer requires at least one
-                -- column and two glyph rows. Not a restriction on future GPUs.
-                if bootFramebuffer.Value.Width < Video.VGA.FONT_WIDTH + Video.VGA.HDIST or else
-                  bootFramebuffer.Value.Height < 2 * (Video.VGA.FONT_HEIGHT + Video.VGA.VDIST)
+                -- Retain the bootstrap diagnostic mode admission floor.
+                -- The fixed panel clips within it; native GPUs are separate.
+                if bootFramebuffer.Value.Width < Boot_Font.Width + 1 or else
+                  bootFramebuffer.Value.Height < 2 * Boot_Font.Height
                 then
-                    raise MemoryAreas.InvalidMemoryMap with "Boot framebuffer too small for console";
+                    raise MemoryAreas.InvalidMemoryMap with "Boot framebuffer too small for diagnostics";
                 end if;
             when Boot_Framebuffer.Text_Mode => null;
             when Boot_Framebuffer.Unsupported_Format =>

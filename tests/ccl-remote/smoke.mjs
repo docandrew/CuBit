@@ -42,6 +42,8 @@ const result = await invoke('evaluate','(+ 20 22)',{split:true});
 assert.equal(result.ok,true); assert.equal(result.message,'Integer: 42');
 assert.equal((await invoke('evaluate','(concat "Hello, " "CuBit!")')).message,'String: Hello, CuBit!');
 assert.equal((await invoke('evaluate','(+ true 1)')).ok,false);
+// The default plaintext lab endpoint has no Config inspection grant.
+assert.equal((await invoke('evaluate','(config.keys "")')).ok,false);
 assert.ok(BigInt((await invoke('clock')).clock.monotonicMs) >= BigInt(snapshot.clock.monotonicMs));
 const before = BigInt((await invoke('clock')).clock.monotonicMs);
 const inlineClock = await invoke('evaluate','(clock.monotonic-ms)');

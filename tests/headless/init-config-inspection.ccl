@@ -1,0 +1,3 @@
+(startup v1
+  (start "config-check.app" (priority 5))
+  (start "config-denied.app" (priority 5)))

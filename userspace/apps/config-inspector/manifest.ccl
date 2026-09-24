@@ -1,0 +1,7 @@
+# Read-only inspection of non-secret machine configuration. No FS or network.
+(executable-manifest v1
+  (identity "com.cubit.config-inspector")
+  (version "0.1.0")
+  (request-service desktop read-write desktop)
+  (request-service config read-write config)
+  (config-scope (rights read) all))

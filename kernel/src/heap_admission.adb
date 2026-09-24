@@ -1,4 +1,9 @@
 package body Heap_Admission with SPARK_Mode is
+   function Expanded_Capacity
+     (Current : Positive; Additional : Natural) return Natural is
+     (if Additional <= Natural'Last - Current
+      then Current + Additional else 0);
+
    function Plan
      (Heap_Start, Current_Break, Exclusive_Limit, Increment : Unsigned_64;
       Used_Frames, Tracking_Capacity, Quota : Unsigned_64) return Growth_Plan

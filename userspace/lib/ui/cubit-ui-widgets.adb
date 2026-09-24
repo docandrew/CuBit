@@ -258,8 +258,15 @@ package body CuBit.UI.Widgets is
         Natural'Max (0, Integer (Content.h) - Bluecurve.Icon_Size) / 2 + Offset;
    begin
       CuBit.UI.Draw_Button (c, bounds, colors, Style, "");
-      CuBit.UI.Draw_Bitmap (Icon_Canvas, X, Y, Bluecurve.Pixels (icon), enabled);
+      Draw_Stock_Icon (Icon_Canvas, X, Y, icon, enabled);
    end Toolbar_Button;
+
+   procedure Draw_Stock_Icon
+     (c : CuBit.UI.Canvas; x, y : Natural; icon : Toolbar_Icon;
+      enabled : Boolean := True) is
+   begin
+      CuBit.UI.Draw_Bitmap (c, x, y, Bluecurve.Pixels (icon), enabled);
+   end Draw_Stock_Icon;
 
    procedure Toolbar_Separator
       (c : CuBit.UI.Canvas;

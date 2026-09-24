@@ -2,6 +2,13 @@
 
 Status: current
 
+For the isolated native Rust std/Turso fixtures (`turso-native-std` and
+`turso-native`), see [native Config backend bring-up](../config-turso/native/README.md).
+These run real SQL/typed CBOR transactions in CuBit against volatile MemoryIO;
+they do not replace `config.svc` or test reboot persistence. `storage-grants`
+also checks native filesystem/NVMe flush plus malformed, stale and read-only
+handle rejection. Device flush does not make ext2 metadata crash-atomic.
+
 The headless suite boots CuBit under QEMU without a display and treats the
 serial log as the test oracle. It is meant to cover regressions that unit tests
 cannot see: boot sequencing, service registration, process spawning, disk image
@@ -44,6 +51,16 @@ CI explicitly selects QEMU's multithreaded TCG accelerator, so the gate does
 not depend on nested virtualization or access to `/dev/kvm`.
 
 The suite currently includes:
+
+- `config-tree`: build `config-inspector desktop` first. Launches the native
+  Config Inspector from Apps, exercises tree expansion, selection, refresh and
+  keyboard scrolling through real guest input, and checks QEMU screenshots.
+  Screenshots are saved beside the serial log when using `--keep-logs`.
+- `config-inspection`: build `config config-check` first. Checks native Config
+  global-read and namespace-scoped grants, write denial, unsupported contexts,
+  invalid/stale/read-only grant rejection, bounded results, and source CCL
+  inspection through the shared adapter. Test apps are not in the normal
+  startup plan or Apps menu.
 
 - `boot-shell-nvme`: boots the normal NVMe shell profile.
 - `async-ipc`: boots a test server, a departing caller, and a surviving client.
@@ -95,6 +112,12 @@ The suite currently includes:
   malformed lookup/page results, and an independently manifest-scoped client:
   read-only versus read/write/create scopes, sibling-prefix denial, rejection of
   self-grant attempts, and independence from ext2 user/group/world mode bits.
+  Positioned-I/O checks cover read/write-at, cursor preservation, partial EOF,
+  overflow and malformed requests, stale handles/grants, file and buffer access
+  modes, and async IPC submission. `POSITIONED-IO-CHECK: PASS` is mandatory.
+  `FILE-COHERENCE-CHECK: PASS` checks independently opened regular-file aliases,
+  interleaved growth, cursor/rights separation, zero-progress writes, truncate,
+  and close/reopen lifetime.
   Rename checks cover collision preservation, nested paths, open-handle
   continuity, and rejection of unsupported moves/selectors. Hosted
   `make -C kernel test-filesystem-policy prove-filesystem-policy` also exercises
@@ -402,16 +425,70 @@ not exposed by this initial launcher. Normal `run-desktop` remains single-output
 
 ```sh
 GDK_BACKEND=x11 nix develop -c tests/headless/run.sh --test desktop-dual-output \
-  --display gtk,zoom-to-fit=on --accel kvm --cpus 4 --timeout 45 \
+  --display gtk,zoom-to-fit=on --accel kvm --cpus 4 --timeout 60 \
   --serial /tmp/cubit-desktop-dual-gtk.log --keep-logs
 ```
 
 This opens a real GTK QEMU window and runs the same pixel/input observer before
 closing the test VM. Do not interact with it during the automated mouse test.
 GTK can report initial 640x480 viewport hints even when the device command line
-requests 1024x768. The driver must activate each connected supported head using
-its bounded resources, not reject the head because that hint differs. Discovery
-preserves the advertised size separately from the actual active 1024x768 mode.
+requests 1024x768. GTK also rewrites the synthesized EDID. The driver retains its
+1024x768 startup fallback for those undersized preferences and must activate both
+heads, not reject the head because that hint differs. Discovery preserves the
+advertised size separately from the actual active mode. The observer also opens
+Settings, switches to its live Displays page, captures a PNG, and checks keyboard
+navigation back to Appearance. Allow 60 seconds for this expanded fixture.
+
+For actual mixed-resolution composition, use the frontend-free fixture (GTK can
+overwrite the requested modes before boot):
+
+```sh
+nix develop -c make -C kernel test-desktop-mixed
+```
+
+It drives real 1024x768 and 1280x720 scanouts, checks pointer confinement below
+the short output, and exercises the same spanning-window, maximize, restoration
+and Settings checks. This is native CuBit, not the Linux Workbench preview.
+
+For the broker's **boot-resolution handoff**, use the same observer with the
+primary set to 1280x720 and the secondary to 1024x768. GRUB still supplies a
+1024x768 boot framebuffer; the observer requires the explicit changed-mode
+handoff marker and checks the real scanout dimensions, spanning drag, restoration
+and Settings view. Run frontend-free so GTK cannot rewrite the EDID preference:
+
+```sh
+nix develop -c make -C kernel display virtio-gpu display-check desktop ccl-workbench
+nix develop -c env CUBIT_TEST_BOOT_HANDOFF=1 tests/headless/run.sh \
+  --test desktop-dual-output --accel kvm --cpus 4 --timeout 60 \
+  --serial /tmp/cubit-boot-handoff.log --keep-logs
+```
+
+This checks native startup, not live modesetting or kernel panic-console
+retirement. MAPFB still suppresses normal kernel mirroring; the broker discards
+that returned address for native rendering, without unmapping it.
+
+An independent build-only fault fixture accepts the startup clears, then rejects
+client clears on both GPU heads. The broker must return Bad_State, keep its native
+backend identity/geometry, reject subsequent clear/acquire operations, and remain
+queryable. It must never report success via a firmware fallback (head one has no
+such framebuffer at all):
+
+```sh
+nix develop -c bash tests/headless/run-display-backend-failure.sh \
+  --accel kvm --cpus 4 --timeout 35 \
+  --serial /tmp/cubit-backend-failure.log --keep-logs
+```
+
+The wrapper restores production driver/checker artifacts on exit. This is a
+deterministic rejected-operation test, not a malformed fence, timeout, driver
+death or adapter-reset test. Run boot fixtures sequentially.
+
+Validated in Nix/QEMU 11.1/KVM on 2026-09-22 (four vCPUs): both arrangements
+(1024x768 + 1280x720 and changed-boot-primary 1280x720 + 1024x768), the normal
+firmware-backed desktop, injected clear rejection on both heads, and the delayed
+head's concurrent presentation/grant checks. The EDID, geometry and layout hosted
+tests and strict SPARK gates were rerun successfully; those prove the existing
+pure models, not the broker's address accesses or the GPU's hardware behavior.
 
 In an interactive run, GTK normally groups the displays in one window. Select
 `multi-gpu.1` in View to see the secondary; View → Detach Tab can give it a

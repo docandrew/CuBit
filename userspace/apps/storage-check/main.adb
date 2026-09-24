@@ -10,6 +10,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
+with CuBit.Grant_References;
 with CuBit.Filesystems; use CuBit.Filesystems;
 
 procedure main is
@@ -24,6 +25,134 @@ procedure main is
    aligned  : Unsigned_64;
    grantRef : CuBit.Memory_Grants.Grant_Reference;
    grantOk  : Boolean;
+
+   function exerciseRAMVolume return Boolean is
+      Name : constant String := "@mem:0/work/block-protocol-check.dat";
+      Handle : File_Handle;
+      M : Message;
+      Buffer : String (1 .. 4096)
+        with Import, Address => To_Address (Integer_Address (aligned));
+
+      function Open_File (Options : Open_Options) return Boolean is
+      begin
+         Buffer (1 .. Name'Length) := Name;
+         M := Open_Request (grantRef, Name'Length, Options);
+         M.tag := capCall (CAP_SLOT_FS, M);
+         Handle := File_Handle (M.words (0));
+         return M.tag.label = REPLY_OK;
+      end Open_File;
+   begin
+      if not Open_File (OPEN_READ_WRITE or OPEN_CREATE or OPEN_TRUNCATE) then
+         return False;
+      end if;
+      --  Cross a device-sector boundary and grow through a sparse prefix.
+      Buffer (1 .. PAYLOAD'Length) := PAYLOAD;
+      M := Write_At_Request (Handle, grantRef, PAYLOAD'Length, 509);
+      M.tag := capCall (CAP_SLOT_FS, M);
+      if M.tag.label /= REPLY_OK or else M.words (0) /= PAYLOAD'Length then
+         return False;
+      end if;
+      M := Flush_Request (Handle);
+      M.tag := capCall (CAP_SLOT_FS, M);
+      if M.tag.label /= REPLY_DURABILITY_UNSUPPORTED then
+         return False;
+      end if;
+      M := Close_Request (Handle);
+      M.tag := capCall (CAP_SLOT_FS, M);
+      if M.tag.label /= REPLY_OK or else not Open_File (OPEN_READ_ONLY) then
+         return False;
+      end if;
+      Buffer := [others => '?'];
+      M := Read_At_Request (Handle, grantRef, 509 + PAYLOAD'Length, 0);
+      M.tag := capCall (CAP_SLOT_FS, M);
+      if M.tag.label /= REPLY_OK or else
+        M.words (0) /= 509 + PAYLOAD'Length or else
+        Buffer (1 .. 509) /= [1 .. 509 => Character'Val (0)] or else
+        Buffer (510 .. 509 + PAYLOAD'Length) /= PAYLOAD
+      then
+         return False;
+      end if;
+      M := Close_Request (Handle);
+      M.tag := capCall (CAP_SLOT_FS, M);
+      if M.tag.label /= REPLY_OK or else
+        not Open_File (OPEN_READ_WRITE or OPEN_TRUNCATE)
+      then
+         return False;
+      end if;
+      M := Read_Request (Handle, grantRef, 1);
+      M.tag := capCall (CAP_SLOT_FS, M);
+      if M.tag.label /= REPLY_OK or else M.words (0) /= 0 then
+         return False;
+      end if;
+      M := Close_Request (Handle);
+      M.tag := capCall (CAP_SLOT_FS, M);
+      return M.tag.label = REPLY_OK;
+   end exerciseRAMVolume;
+
+   function exerciseVolumeIsolation return Boolean is
+      type File_Handle_Array is array (Positive range <>) of File_Handle;
+      RAM_Name : constant String := "@mem:0/work/block-protocol-check.dat";
+      RAM, Disk, Alias : File_Handle;
+      M : Message;
+      Buffer : String (1 .. 4096)
+        with Import, Address => To_Address (Integer_Address (aligned));
+
+      function Open_File
+        (Name : String; Options : Open_Options; Handle : out File_Handle)
+         return Boolean
+      is
+      begin
+         Buffer (1 .. Name'Length) := Name;
+         M := Open_Request (grantRef, Name'Length, Options);
+         M.tag := capCall (CAP_SLOT_FS, M);
+         Handle := File_Handle (M.words (0));
+         return M.tag.label = REPLY_OK;
+      end Open_File;
+
+      function Write_File (Handle : File_Handle; Value : String) return Boolean is
+      begin
+         Buffer (1 .. Value'Length) := Value;
+         M := Write_At_Request (Handle, grantRef, Value'Length, 0);
+         M.tag := capCall (CAP_SLOT_FS, M);
+         return M.tag.label = REPLY_OK and then M.words (0) = Value'Length;
+      end Write_File;
+
+      function Read_File (Handle : File_Handle; Value : String) return Boolean is
+      begin
+         Buffer := [others => '?'];
+         M := Read_At_Request (Handle, grantRef, 16, 0);
+         M.tag := capCall (CAP_SLOT_FS, M);
+         return M.tag.label = REPLY_OK and then M.words (0) >= Value'Length
+           and then Buffer (1 .. Value'Length) = Value;
+      end Read_File;
+   begin
+      if not Open_File (RAM_Name, OPEN_READ_WRITE, RAM) or else
+         not Open_File (PATH, OPEN_READ_WRITE, Disk) or else
+         not Write_File (RAM, "RAM") or else
+         not Write_File (Disk, "DISK") or else
+         not Read_File (RAM, "RAM") or else
+         not Read_File (Disk, "DISK") or else
+         not Open_File (RAM_Name, OPEN_READ_WRITE or OPEN_TRUNCATE, Alias)
+      then
+         return False;
+      end if;
+      --  Truncating a RAM alias must update RAM's other handle, not disk state.
+      M := Read_At_Request (RAM, grantRef, 1, 0);
+      M.tag := capCall (CAP_SLOT_FS, M);
+      if M.tag.label /= REPLY_OK or else M.words (0) /= 0 or else
+        not Read_File (Disk, "DISK")
+      then
+         return False;
+      end if;
+      for Handle of File_Handle_Array'[RAM, Disk, Alias] loop
+         M := Close_Request (Handle);
+         M.tag := capCall (CAP_SLOT_FS, M);
+         if M.tag.label /= REPLY_OK then
+            return False;
+         end if;
+      end loop;
+      return True;
+   end exerciseVolumeIsolation;
 
    function exerciseGrantReferences return Boolean is
       use CuBit.Memory_Grants;
@@ -171,6 +300,286 @@ procedure main is
       Revoke (secondRef, ok);
       return ok;
    end exerciseGrantReferences;
+
+   function exerciseCoherence return Boolean is
+      Name : constant String := "@nvme:0/cubit-coherence.dat";
+      Text : constant String := "shared metadata";
+      Buffer : String (1 .. Natural (PAGE_SIZE))
+        with Import, Address => To_Address (Integer_Address (aligned));
+      A, B, C : File_Handle;
+      Response : Message;
+      function Check
+        (Request : Message; Count : Unsigned_64 := Unsigned_64'Last;
+         Label : Unsigned_32 := REPLY_OK) return Boolean is
+      begin
+         Response := Request;
+         Response.tag := capCall (CAP_SLOT_FS, Response);
+         if Response.tag.label /= Label or else
+           (Count /= Unsigned_64'Last and then Response.words (0) /= Count)
+         then
+            debugPrint ("FILE-COHERENCE-CHECK: op" &
+              Unsigned_32'Image (Request.tag.label) & " reply" &
+              Unsigned_32'Image (Response.tag.label) & " bytes" &
+              Unsigned_64'Image (Response.words (0)) & LF);
+            return False;
+         end if;
+         return True;
+      end Check;
+      function Open (Options : Open_Options; Handle : out File_Handle)
+        return Boolean is
+      begin
+         Buffer (Name'Range) := Name;
+         if not Check (Open_Request (grantRef, Name'Length, Options)) then
+            Handle := INVALID_FILE_HANDLE;
+            return False;
+         end if;
+         Handle := File_Handle (Response.words (0));
+         return True;
+      end Open;
+   begin
+      if not Open (OPEN_READ_WRITE or OPEN_CREATE or OPEN_EXCLUSIVE, A) or else
+        not Open (OPEN_READ_WRITE, B)
+      then return False; end if;
+      Buffer (Text'Range) := Text;
+      if not Check (Write_At_Request (A, grantRef, Text'Length, 0), Text'Length)
+      then return False; end if;
+      Buffer := [others => '?'];
+      --  B was opened before A grew the file: size and block mapping must be live.
+      if not Check (Read_At_Request (B, grantRef, Text'Length, 0), Text'Length)
+        or else Buffer (Text'Range) /= Text
+      then return False; end if;
+      if not Check (Seek_Request (A, 3, From_Start), 3) or else
+        not Check (Seek_Request (B, 5, From_Start), 5)
+      then return False; end if;
+      Buffer (Text'Range) := Text;
+      if not Check (Write_At_Request (B, grantRef, Text'Length, PAGE_SIZE),
+                    Text'Length) or else
+        not Check (Seek_Request (A, 0, From_Current), 3) or else
+        not Check (Seek_Request (B, 0, From_Current), 5)
+      then return False; end if;
+      Buffer := [others => '?'];
+      if not Check (Read_At_Request (A, grantRef, Text'Length, PAGE_SIZE),
+                    Text'Length) or else Buffer (Text'Range) /= Text or else
+        not Check (Read_At_Request (A, grantRef, Text'Length, 0), Text'Length)
+        or else Buffer (Text'Range) /= Text
+      then return False; end if;
+      --  A rejected zero-progress write must not synthesize a larger file.
+      if not Check (Write_At_Request (A, grantRef, 1, 16#0100_0000#),
+                    0, REPLY_FILE_RANGE_UNSUPPORTED) or else
+        not Check (Seek_Request (B, 0, From_End), PAGE_SIZE + Text'Length) or else
+        not Check (Seek_Request (A, 0, From_End), PAGE_SIZE + Text'Length)
+      then return False; end if;
+      if not Open (OPEN_READ_ONLY, C) or else
+        not Check (Write_At_Request (C, grantRef, 1, 0), 0, REPLY_ACCESS_DENIED)
+        or else not Check (Close_Request (C))
+      then return False; end if;
+      --  Truncation through a third handle invalidates every old block mapping.
+      if not Open (OPEN_READ_WRITE or OPEN_TRUNCATE, C) or else
+        not Check (Read_At_Request (A, grantRef, 1, 0), 0) or else
+        not Check (Seek_Request (B, 0, From_End), 0) or else
+        not Check (Close_Request (A))
+      then return False; end if;
+      Buffer (Text'Range) := Text;
+      if not Check (Write_At_Request (B, grantRef, Text'Length, 0), Text'Length)
+      then return False; end if;
+      Buffer := [others => '?'];
+      if not Check (Read_At_Request (C, grantRef, Text'Length, 0), Text'Length)
+        or else Buffer (Text'Range) /= Text or else
+        not Check (Close_Request (B)) or else not Check (Close_Request (C))
+      then return False; end if;
+      if not Open (OPEN_READ_ONLY, A) or else
+        not Check (Read_At_Request (A, grantRef, Text'Length, 0), Text'Length)
+        or else Buffer (Text'Range) /= Text or else not Check (Close_Request (A))
+      then return False; end if;
+      debugPrint ("FILE-COHERENCE-CHECK: PASS" & LF);
+      return True;
+   end exerciseCoherence;
+
+   function exercisePositioned return Boolean is
+      Test_Path : constant String := "@nvme:0/cubit-positioned.dat";
+      Second : constant String := "Independent offset";
+      Buffer : String (1 .. Natural (PAGE_SIZE))
+        with Import, Address => To_Address (Integer_Address (aligned));
+      Handle : File_Handle;
+      Response : Message;
+      Bad : Message;
+      Stale : CuBit.Memory_Grants.Grant_Reference := grantRef;
+
+      function Check
+        (Request : Message; Label : Unsigned_32 := REPLY_OK;
+         Count : Unsigned_64 := Unsigned_64'Last) return Boolean
+      is
+      begin
+         Response := Request;
+         Response.tag := capCall (CAP_SLOT_FS, Response);
+         if Response.tag.label /= Label or else
+           (Count /= Unsigned_64'Last and then Response.words (0) /= Count)
+         then
+            debugPrint ("POSITIONED-IO-CHECK: request" &
+              Unsigned_32'Image (Request.tag.label) & " reply" &
+              Unsigned_32'Image (Response.tag.label) & " count" &
+              Unsigned_64'Image (Response.words (0)) & LF);
+            return False;
+         end if;
+         return True;
+      end Check;
+
+      function Cursor_Unchanged return Boolean is
+        (Check (Seek_Request (Handle, 0, From_Current), REPLY_OK, 3));
+   begin
+      Buffer (Test_Path'Range) := Test_Path;
+      if not Check (Open_Request
+        (grantRef, Test_Path'Length,
+         OPEN_READ_WRITE or OPEN_CREATE or OPEN_EXCLUSIVE))
+      then return False; end if;
+      Handle := File_Handle (Response.words (0));
+      Buffer (PAYLOAD'Range) := PAYLOAD;
+      if not Check (Write_Request (Handle, grantRef, PAYLOAD'Length),
+                    REPLY_OK, PAYLOAD'Length) or else
+        not Check (Seek_Request (Handle, 3, From_Start), REPLY_OK, 3)
+      then return False; end if;
+
+      Buffer (Second'Range) := Second;
+      if not Check (Write_At_Request (Handle, grantRef, Second'Length, 64),
+                    REPLY_OK, Second'Length) or else not Cursor_Unchanged
+      then return False; end if;
+      Buffer := [others => '?'];
+      if not Check (Read_At_Request (Handle, grantRef, Second'Length, 64),
+                    REPLY_OK, Second'Length) or else
+        Buffer (Second'Range) /= Second or else not Cursor_Unchanged
+      then return False; end if;
+
+      --  Read the last two bytes followed by EOF: a short successful prefix,
+      --  untouched buffer tail, and no modification of the seek cursor.
+      Buffer := [others => '?'];
+      if not Check (Read_At_Request
+        (Handle, grantRef, 10, 64 + Second'Length - 2), REPLY_OK, 2) or else
+        Buffer (1 .. 2) /= Second (Second'Last - 1 .. Second'Last) or else
+        Buffer (3 .. 10) /= "????????" or else not Cursor_Unchanged or else
+        not Check (Read_At_Request
+          (Handle, grantRef, 1, 64 + Second'Length), REPLY_OK, 0)
+      then return False; end if;
+
+      --  Repeated acquisitions must be returned; payload contains no header.
+      for I in 1 .. 128 loop
+         Buffer := [others => '?'];
+         if not Check (Read_At_Request (Handle, grantRef, PAYLOAD'Length, 0),
+                       REPLY_OK, PAYLOAD'Length) or else
+           Buffer (PAYLOAD'Range) /= PAYLOAD
+         then return False; end if;
+      end loop;
+      if not Cursor_Unchanged or else
+        not Check (Read_Request (Handle, grantRef, 3), REPLY_OK, 3) or else
+        Buffer (1 .. 3) /= PAYLOAD (4 .. 6) or else
+        not Check (Seek_Request (Handle, 3, From_Start), REPLY_OK, 3)
+      then return False; end if;
+
+      Stale.generation := (if Stale.generation = 1 then 2
+                           else Stale.generation - 1);
+      if not Check (Read_At_Request (Handle, Stale, 1, 0),
+                    REPLY_ACCESS_DENIED, 0) or else
+        not Check (Write_At_Request (Handle, Stale, 1, 0),
+                   REPLY_ACCESS_DENIED, 0) or else
+        not Check (Read_At_Request (Handle, grantRef, PAGE_SIZE + 1, 0),
+                   REPLY_ACCESS_DENIED, 0) or else
+        not Check (Write_At_Request (Handle, grantRef, PAGE_SIZE + 1, 0),
+                   REPLY_ACCESS_DENIED, 0)
+      then return False; end if;
+      if not Check (Read_At_Request
+          (Handle, grantRef, 1, Unsigned_64'Last), REPLY_OUT_OF_RANGE, 0) or else
+        not Check (Write_At_Request
+          (Handle, grantRef, 1, Unsigned_64'Last), REPLY_OUT_OF_RANGE, 0) or else
+        not Check (Read_At_Request
+          (Handle, grantRef, 0, Unsigned_64'Last), REPLY_OK, 0) or else
+        not Check (Write_At_Request
+          (Handle, grantRef, 0, Unsigned_64'Last), REPLY_OK, 0)
+      then return False; end if;
+
+      Bad := Read_At_Request (Handle, grantRef, 1, 0);
+      Bad.words (1) := 0; -- generation zero
+      if not Check (Bad, REPLY_ERR, 0) then return False; end if;
+      Bad.words (1) := CuBit.Grant_References.Wire_Field_Base +
+        CuBit.Grant_References.Maximum_Slot + 1;
+      if not Check (Bad, REPLY_ERR, 0) then return False; end if;
+      Bad := Write_At_Request (Handle, grantRef, 1, 0);
+      Bad.tag.length := 3;
+      if not Check (Bad, REPLY_ERR, 0) then return False; end if;
+      Bad.tag.length := 4;
+      Bad.tag.flags := 1;
+      if not Check (Bad, REPLY_ERR, 0) then return False; end if;
+      Bad.tag.flags := 0;
+      Bad.tag.reserved := 1;
+      if not Check (Bad, REPLY_ERR, 0) or else not Cursor_Unchanged
+      then return False; end if;
+
+      declare
+         Read_Only_Loan : CuBit.Memory_Grants.Grant_Reference;
+         Granted, Released : Boolean;
+         Correct : Boolean;
+      begin
+         CuBit.Memory_Grants.Create_Via_Capability
+           (CAP_SLOT_FS, To_Address (Integer_Address (aligned)), 1, False,
+            Read_Only_Loan, Granted);
+         if not Granted then return False; end if;
+         Buffer (PAYLOAD'Range) := PAYLOAD;
+         --  Reading a file writes the destination grant; writing a file only
+         --  reads the source grant. The new wire encoding must preserve this.
+         Correct := Check (Read_At_Request (Handle, Read_Only_Loan, 1, 0),
+                           REPLY_ACCESS_DENIED, 0) and then
+           Check (Write_At_Request (Handle, Read_Only_Loan, PAYLOAD'Length, 0),
+                  REPLY_OK, PAYLOAD'Length);
+         CuBit.Memory_Grants.Revoke (Read_Only_Loan, Released);
+         if not Correct or else not Released then return False; end if;
+      end;
+
+      declare
+         Completion : aliased CompletionEntry := NULL_COMPLETION;
+         Token : constant Unsigned_64 := 16#504F_5349#;
+      begin
+         Buffer := [others => '?'];
+         if not capSubmit
+           (CAP_SLOT_FS,
+            Read_At_Request (Handle, grantRef, Second'Length, 64), Token)
+         then return False; end if;
+         --  Do not touch the accepted request's buffer until completion.
+         if waitCompletion (Completion'Address, 1, 1) /= 1 or else
+           Completion.status /= COMPLETION_OK or else Completion.token /= Token or else
+           Completion.msg.tag.label /= REPLY_OK or else
+           Completion.msg.words (0) /= Second'Length or else
+           Buffer (Second'Range) /= Second or else not Cursor_Unchanged
+         then return False; end if;
+      end;
+
+      --  Rejected writes must not have changed the original data.
+      if not Check (Read_At_Request (Handle, grantRef, PAYLOAD'Length, 0),
+                    REPLY_OK, PAYLOAD'Length) or else
+        Buffer (PAYLOAD'Range) /= PAYLOAD or else
+        not Check (Close_Request (Handle)) or else
+        not Check (Read_At_Request (Handle, grantRef, 1, 0), REPLY_ERR, 0) or else
+        not Check (Write_At_Request (Handle, grantRef, 1, 0), REPLY_ERR, 0)
+      then return False; end if;
+
+      Buffer (Test_Path'Range) := Test_Path;
+      if not Check (Open_Request (grantRef, Test_Path'Length, OPEN_READ_ONLY))
+      then return False; end if;
+      Handle := File_Handle (Response.words (0));
+      if not Check (Write_At_Request (Handle, grantRef, 0, 0),
+                    REPLY_ACCESS_DENIED, 0) or else
+        not Check (Write_At_Request (Handle, grantRef, 1, 0),
+                   REPLY_ACCESS_DENIED, 0) or else not Check (Close_Request (Handle))
+      then return False; end if;
+      Buffer (Test_Path'Range) := Test_Path;
+      if not Check (Open_Request (grantRef, Test_Path'Length, OPEN_WRITE_ONLY))
+      then return False; end if;
+      Handle := File_Handle (Response.words (0));
+      if not Check (Read_At_Request (Handle, grantRef, 0, 0),
+                    REPLY_ACCESS_DENIED, 0) or else
+        not Check (Read_At_Request (Handle, grantRef, 1, 0),
+                   REPLY_ACCESS_DENIED, 0) or else not Check (Close_Request (Handle))
+      then return False; end if;
+      debugPrint ("POSITIONED-IO-CHECK: PASS" & LF);
+      return True;
+   end exercisePositioned;
 
    function exerciseStorage return Boolean is
       msg       : Message := NULL_MESSAGE;
@@ -679,6 +1088,23 @@ procedure main is
          return False;
       end if;
 
+      --  A flush must acknowledge the real NVMe barrier, not close() or RAM.
+      msg := Flush_Request (handle);
+      msg.tag := capCall (CAP_SLOT_FS, msg);
+      if msg.tag.label /= REPLY_OK or else msg.tag.length /= 1 or else
+        msg.words (0) /= 0
+      then
+         debugPrint ("STORAGE-FLUSH-CHECK: write flush failed" & LF);
+         return False;
+      end if;
+      msg := Flush_Request (handle);
+      msg.tag.length := 0;
+      msg.tag := capCall (CAP_SLOT_FS, msg);
+      if msg.tag.label /= REPLY_ERR then
+         debugPrint ("STORAGE-FLUSH-CHECK: malformed request accepted" & LF);
+         return False;
+      end if;
+
       --  The current writer deliberately supports direct and single-indirect
       --  blocks only.  A range it cannot represent must be reported as such,
       --  never as a successful zero-byte write.
@@ -730,6 +1156,13 @@ procedure main is
          return False;
       end if;
 
+      msg := Flush_Request (handle);
+      msg.tag := capCall (CAP_SLOT_FS, msg);
+      if msg.tag.label /= REPLY_ERR then
+         debugPrint ("STORAGE-FLUSH-CHECK: stale handle accepted" & LF);
+         return False;
+      end if;
+
       --  The just-closed handle must remain invalid even though the next open
       --  is likely to reuse the same table slot.
       msg := Read_Request (handle, grantRef, 1);
@@ -753,6 +1186,14 @@ procedure main is
          return False;
       end if;
       handle := File_Handle (msg.words (0));
+
+      msg := Flush_Request (handle);
+      msg.tag := capCall (CAP_SLOT_FS, msg);
+      if msg.tag.label /= REPLY_ACCESS_DENIED then
+         debugPrint ("STORAGE-FLUSH-CHECK: read-only handle accepted" & LF);
+         return False;
+      end if;
+      debugPrint ("STORAGE-FLUSH-CHECK: PASS" & LF);
 
       --  One page was granted.  The service must not trust the protocol's
       --  requested count as if the entire 16 MiB aperture slot were mapped.
@@ -893,7 +1334,21 @@ begin
       return;
    end if;
 
-   if exerciseStorage then
+   if exerciseRAMVolume then
+      debugPrint ("RAM-VOLUME-CHECK: PASS" & LF);
+   else
+      debugPrint ("RAM-VOLUME-CHECK: FAIL" & LF);
+      return;
+   end if;
+
+   if exerciseVolumeIsolation then
+      debugPrint ("VOLUME-ISOLATION-CHECK: PASS" & LF);
+   else
+      debugPrint ("VOLUME-ISOLATION-CHECK: FAIL" & LF);
+      return;
+   end if;
+
+   if exerciseStorage and then exercisePositioned and then exerciseCoherence then
       debugPrint ("STORAGE-CHECK: PASS" & LF);
    else
       debugPrint ("STORAGE-CHECK: FAIL" & LF);

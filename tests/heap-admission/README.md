@@ -15,6 +15,17 @@ quota and virtual-address boundaries. The native authorityless app submits
 wrapping and oversized requests, verifies no partial break advance, and then
 checks a successful allocation is zeroed and writable.
 
+Heap growth also preserves existing frame-tracking headroom. Previously, growing
+the limit to `max(old capacity, used + new pages)` could leave no slots for a
+later demand-mapped stack page. Mixed-resolution Desktop buffers reproduced this
+as a rejected fault at the secondary-stack base. `Expanded_Capacity` now adds
+the new heap-page count to the old capacity, rejecting an unrepresentable sum;
+the syscall restores the old capacity on allocation rollback. Capacity is only
+a list limit, not preallocated physical memory or an override of resource quotas.
+Its exact-sum/rejection contract is checked by GNATprove. Hosted tests cover
+boundary values and preservation of unused slots across repeated growth; the
+native mixed-output arrangement fixture exercises the originally failing path.
+
 The postcondition covers successful range/non-wrap, exact page accounting,
 tracking capacity and quota admission. This is not a proof of `Process.addPage`,
 the slab/buddy allocators, page tables, or failure cleanup. Runtime frame

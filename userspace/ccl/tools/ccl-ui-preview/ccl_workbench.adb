@@ -2,6 +2,7 @@ with Interfaces; use Interfaces;
 with System;
 with CCL.Catalog;
 with CCL.Interfaces.Clock;
+with CCL_Config_Bindings;
 with CCL.Interfaces.Workbench_UI;
 with CCL.UI_Labels;
 with CCL.UI_Buttons;
@@ -502,6 +503,10 @@ package body CCL_Workbench is
    begin
       Value := CCL.Host_Values.Integer_Constant (0);
       Success := False;
+      if CCL_Config_Bindings.Handles (Binding) then
+         CCL_Config_Bindings.Invoke (Binding, Argument, Value, Success);
+         return;
+      end if;
       for Op in CCL.UI_Outputs.Operation loop
          if Binding = OUTPUT_BINDINGS (Op) then
             declare
@@ -858,9 +863,12 @@ package body CCL_Workbench is
       Error      : CCL.Catalog.Catalog_Error;
       Grant      : CCL.Catalog.Grant_Result;
       Found      : Boolean;
+      Config_Installed : Boolean;
    begin
       CCL.Catalog.Initialize (Visible_Interfaces);
       CCL.Catalog.Initialize (Granted_Interfaces);
+      CCL_Config_Bindings.Install (Visible_Interfaces, Granted_Interfaces, Config_Installed);
+      if not Config_Installed then raise Program_Error with "invalid Config inspector catalog"; end if;
       CCL.Interfaces.Clock.Publish (Visible_Interfaces, Error);
       if Error /= CCL.Catalog.Catalog_Valid then
          raise Program_Error with "invalid hosted CCL interface catalog";

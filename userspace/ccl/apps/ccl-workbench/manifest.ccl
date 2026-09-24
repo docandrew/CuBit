@@ -4,6 +4,9 @@
   (version "0.1.0")
   (request-service desktop read-write desktop)
   (request-service clock read-write clock)
+  # Development inspector: global non-secret Config read, never write/admin.
+  (request-service config read-write config)
+  (config-scope (rights read) all)
   (request-service filesystem read-write filesystem)
   (filesystem-scope (rights read write create) "@nvme:0/work")
   (filesystem-scope (rights read write create) "@mem:0/work"))

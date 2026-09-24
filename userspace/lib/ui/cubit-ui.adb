@@ -983,12 +983,15 @@ package body CuBit.UI is
    procedure Draw_Tab
       (c : Canvas; r : Rect; colors : Theme;
        selected : Boolean; hot : Boolean; active : Boolean;
-       label : String)
+       label : String;
+       orientation : Tab_Orientation := Horizontal)
    is
       bg : Color := colors.panel;
       fg : Color := colors.text;
       ty : Natural := r.y;
+      clipped : constant Canvas := With_Clip (c, r);
    begin
+      if Is_Empty (r) then return; end if;
       if selected then
          bg := colors.face;
       elsif hot then
@@ -1006,12 +1009,24 @@ package body CuBit.UI is
          Stroke_Rect (c, r, colors.panel, colors.shadow);
       end if;
       ty := Center_Text_Y (r);
-      Draw_UI_Text (c, r.x + 10, ty, label, fg, bg);
-      if selected and then r.h > 0 then
-         Fill_Rect
-           (c, (x => r.x + 1, y => r.y + r.h - 1,
-                w => (if r.w > 2 then r.w - 2 else r.w), h => 1),
-            colors.face);
+      Draw_UI_Text (clipped, r.x + 10, ty, label, fg, bg);
+      if selected then
+         case orientation is
+            when Horizontal =>
+               if r.w > 2 then
+                  Fill_Rect
+                    (c, (r.x + 1, r.y + r.h - 1, r.w - 2, 1), bg);
+               end if;
+            when Vertical =>
+               if r.h > 2 then
+                  --  The selected tab opens into its page on the right.
+                  Fill_Rect
+                    (c, (r.x + r.w - 1, r.y + 1, 1, r.h - 2), bg);
+                  Fill_Rect
+                    (c, (r.x, r.y + 1, Natural'Min (2, r.w), r.h - 2),
+                     colors.accent);
+               end if;
+         end case;
       end if;
    end Draw_Tab;
 
@@ -1428,18 +1443,18 @@ package body CuBit.UI is
       (c : Canvas; r : Rect; colors : Theme;
        selected : Boolean; hot : Boolean; label : String)
    is
-      bg : Color := colors.panel;
+      bg : Color := colors.field;
       fg : Color := colors.text;
    begin
       if selected then
-         bg := colors.accent;
-         fg := colors.shadow;
+         bg := colors.selection;
+         fg := colors.selectionText;
       elsif hot then
-         bg := colors.face;
+         bg := colors.edge;
       end if;
 
       Fill_Rect (c, r, bg);
-      Draw_UI_Text (c, r.x + 8, Center_Text_Y (r), label, fg, bg);
+      Draw_UI_Text (With_Clip (c, r), r.x + 8, Center_Text_Y (r), label, fg, bg);
    end Draw_List_Item;
 
    procedure Draw_Menu_Item

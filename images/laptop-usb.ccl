@@ -10,6 +10,7 @@
   (startup "init-usb-live")
   (file bootstrap "devmgr" "devmgr.svc")
   (file bootstrap "filesystem" "filesystem.svc")
+  (file bootstrap "ramdisk" "ramdisk.drv")
   (file bootstrap "ps2" "ps2.drv")
   (file bootstrap "xhci" "xhci.drv")
   (file bootstrap "live-rw" "live-rw.ext2")
@@ -27,6 +28,7 @@
   (file optical "desktop" "apps/desktop.svc")
   (file optical "ccl-workbench" "apps/ccl-workbench.app")
   (file optical "devices" "apps/devices.app")
+  (file optical "config-inspector" "apps/config-inspector.app")
   (file optical "files" "apps/files.app")
   (file optical "doom" "apps/doom.elf")
   (file optical "sameboy" "apps/sameboy.app")
@@ -35,6 +37,7 @@
   # Read-only originals; editable copies also seed live-rw.ext2's /work.
   (file optical "ccl-button-clock" "samples/ccl/button-clock.ccl")
   (file optical "ccl-button-output" "samples/ccl/button-output.ccl")
+  (file optical "ccl-config-inspector" "samples/ccl/config-inspector.ccl")
   (file optical "ccl-enums" "samples/ccl/enums.ccl")
   (file optical "ccl-variants" "samples/ccl/variants.ccl")
   (file optical "ccl-clock-label" "samples/ccl/clock-label.ccl")

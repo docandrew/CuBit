@@ -210,7 +210,7 @@ procedure main is
               (Logical_Block_Size (NVMe.nsSectorSize),
                Logical_Block_Size (NVMe.nsSectorSize)),
             2 => maxBlocks64,
-            3 => Pack_Properties (0, Fixed_Media));
+            3 => Pack_Properties (FEATURE_FLUSH, Fixed_Media));
          ignore := reply (sender, replyMsg);
       else
          sendReply (sender, REPLY_ERROR, 0);
@@ -293,6 +293,14 @@ begin
             handleWriteBlock (sender, msg);
          when OP_DESCRIBE_DEVICE =>
             handleDescribe (sender);
+         when OP_FLUSH_DEVICE =>
+            if msg.tag.length = 0 and then msg.tag.flags = 0 and then
+              msg.tag.reserved = 0 and then NVMe.flush
+            then
+               sendReply (sender, REPLY_OK, 0);
+            else
+               sendReply (sender, REPLY_ERROR, 0);
+            end if;
          when others =>
             sendReply (sender, REPLY_ERROR, 0);
       end case;

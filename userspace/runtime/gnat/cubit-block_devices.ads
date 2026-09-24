@@ -29,6 +29,9 @@ package CuBit.Block_Devices is
 
    REPLY_OK    : constant Unsigned_32 := 16#F000#;
    REPLY_ERROR : constant Unsigned_32 := 16#F001#;
+   --  Describe only: this provider offers no device. Canonical reply has one
+   --  zero word, zero flags/reserved. Not for I/O or identification faults.
+   REPLY_NO_DEVICE : constant Unsigned_32 := 16#F002#;
 
    type Media_Kind is
      (Fixed_Media, Removable_Media, Optical_Media, Memory_Media);
@@ -43,6 +46,9 @@ package CuBit.Block_Devices is
    FEATURE_REMOVABLE : constant Device_Features := 2#0010#;
    FEATURE_FLUSH     : constant Device_Features := 2#0100#;
    FEATURE_SCATTER_GATHER : constant Device_Features := 2#1000#;
+   --  Contents have no persistence obligation and disappear with the driver.
+   --  Completed writes remain visible to subsequent reads. Not a flush claim.
+   FEATURE_VOLATILE : constant Device_Features := 2#1_0000#;
 
    subtype Logical_Block_Size is Unsigned_32 range 512 .. 65_536;
 
@@ -71,6 +77,7 @@ package CuBit.Block_Devices is
       description : out Device_Description) return Boolean;
 
    function Is_Read_Only (description : Device_Description) return Boolean;
+   function Is_Volatile (description : Device_Description) return Boolean;
 
    --  OP_READ_BLOCKS and OP_WRITE_BLOCKS request words:
    --    0 = starting logical block address

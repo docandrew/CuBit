@@ -1,0 +1,22 @@
+[package]
+name = "cubit-config-turso-spike"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Deliberately outside the native, no_std userspace workspace. This is a
+# Linux-hosted backend evaluation, not a dependency of config.svc.
+[workspace]
+
+[features]
+linux-uring = ["turso_core/io_uring"]
+
+[dependencies]
+minicbor = { version = "=2.3.0", features = ["std"] }
+sha2 = "=0.10.9"
+turso_core = { version = "=0.8.0-pre.12", default-features = false, features = ["fs", "uuid", "json", "pure-rust-crypto"] }
+
+[profile.release]
+opt-level = 2
+overflow-checks = true
+debug = 1

@@ -20,6 +20,7 @@ with System.Machine_Code;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Output_Discovery;
+with CuBit.Monitor_EDID;
 with CuBit.Desktop_Messages;
 with CuBit.Graphics_Metrics;
 with CuBit.Graphics_Metrics_IO;
@@ -46,15 +47,20 @@ procedure main is
    USED_OFF  : constant Storage_Offset := 16#2000#;
    CMD_OFF   : constant Storage_Offset := 16#3000#;
    RESP_OFF  : constant Storage_Offset := 16#4000#;
-   FB0_OFF   : constant Storage_Offset := 16#100000#;
+   --  Rings and command responses occupy the first 64 KiB. Keep framebuffer
+   --  pages separate without wasting almost a MiB of each bounded DMA bank.
+   FB0_OFF   : constant Storage_Offset := 16#10000#;
    DMA_BANK_BYTES : constant Storage_Offset := 16#800000#;
 
-   FB_W : constant Unsigned_32 := 1024;
-   FB_H : constant Unsigned_32 := 768;
-   FB_BYTES : constant Unsigned_32 := FB_W * FB_H * 4;
+   package EDID renames CuBit.Monitor_EDID;
+   use type EDID.Decode_Status;
+   FALLBACK_WIDTH : constant EDID.Extent := 1024;
+   FALLBACK_HEIGHT : constant EDID.Extent := 768;
    pragma Compile_Time_Error
-     (FB0_OFF + 2 * Storage_Offset (FB_BYTES) > DMA_BANK_BYTES,
-      "GPU double buffers exceed their owned DMA bank");
+     (FB0_OFF + 2 * Storage_Offset
+        ((FALLBACK_WIDTH * FALLBACK_HEIGHT * 4 + 4095) / 4096 * 4096) > DMA_BANK_BYTES,
+      "Fallback GPU double buffers exceed their owned DMA bank");
+   edidSupported : Boolean := False;
 
    VIRTIO_STATUS_ACKNOWLEDGE : constant Unsigned_8 := 1;
    VIRTIO_STATUS_DRIVER      : constant Unsigned_8 := 2;
@@ -85,9 +91,11 @@ procedure main is
    CMD_RESOURCE_FLUSH      : constant Unsigned_32 := 16#0104#;
    CMD_TRANSFER_TO_HOST_2D : constant Unsigned_32 := 16#0105#;
    CMD_RESOURCE_ATTACH     : constant Unsigned_32 := 16#0106#;
+   CMD_GET_EDID            : constant Unsigned_32 := 16#010A#;
 
    RESP_OK_NODATA       : constant Unsigned_32 := 16#1100#;
    RESP_OK_DISPLAY_INFO : constant Unsigned_32 := 16#1101#;
+   RESP_OK_EDID         : constant Unsigned_32 := 16#1104#;
    --  GET_DISPLAY_INFO has sixteen fixed-size entries, independent of how
    --  many outputs are currently connected. Discovery is not modesetting.
    type Scanout_Number is range 0 .. 15;
@@ -178,6 +186,20 @@ procedure main is
    nextDesc : Natural := 0;
    subtype Head_Index is Natural range 0 .. 1;
    selectedHead : Head_Index := 0;
+   Test_Startup_Clear_Seen : array (Head_Index) of Boolean := [others => False];
+   type Head_Geometry is record
+      Width : EDID.Extent := FALLBACK_WIDTH;
+      Height : EDID.Extent := FALLBACK_HEIGHT;
+   end record;
+   geometry : array (Head_Index) of Head_Geometry;
+   function Frame_Width (Head : Head_Index) return Unsigned_32 is
+     (Unsigned_32 (geometry (Head).Width));
+   function Frame_Height (Head : Head_Index) return Unsigned_32 is
+     (Unsigned_32 (geometry (Head).Height));
+   function Frame_Bytes (Head : Head_Index) return Unsigned_32 is
+     (Frame_Width (Head) * Frame_Height (Head) * 4);
+   function Buffer_Bytes (Head : Head_Index) return Unsigned_32 is
+     (Unsigned_32 (EDID.Buffer_Bytes (geometry (Head).Width, geometry (Head).Height)));
    readyHeads : array (Head_Index) of Boolean := [others => False];
    flipsAnnounced : Boolean := False;
 
@@ -207,11 +229,11 @@ procedure main is
    function framebufferOffset
      (index : Natural) return Storage_Offset is
      (Storage_Offset (selectedHead) * DMA_BANK_BYTES + FB0_OFF +
-        Storage_Offset (index) * Storage_Offset (FB_BYTES));
+        Storage_Offset (index) * Storage_Offset (Buffer_Bytes (selectedHead)));
 
    function framebufferPhysical (index : Natural) return Unsigned_64 is
      ((if selectedHead = 0 then dmaPhys else secondDmaPhys) +
-        Unsigned_64 (FB0_OFF) + Unsigned_64 (index) * Unsigned_64 (FB_BYTES));
+        Unsigned_64 (FB0_OFF) + Unsigned_64 (index) * Unsigned_64 (Buffer_Bytes (selectedHead)));
 
    function resourceId (index : Natural) return Unsigned_32 is
      (Unsigned_32 (1 + selectedHead * 2 + index));
@@ -426,6 +448,19 @@ procedure main is
          return False;
       end if;
 
+      --  Boot commands have one outstanding chain. Do not parse a short reply.
+      System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
+      declare
+         Completion : constant VringUsedElem :=
+           used.ring (Natural (lastUsedIdx mod Unsigned_16 (QUEUE_SIZE)));
+      begin
+         if used.idx /= lastUsedIdx + 1 or else
+           Completion.id /= Unsigned_32 (id) or else Completion.len /= respLen
+         then
+            fail ("invalid boot command completion");
+            return False;
+         end if;
+      end;
       lastUsedIdx := lastUsedIdx + 1;
       typ := get32 (RESP_OFF, 0);
       if typ /= expected then
@@ -488,12 +523,13 @@ procedure main is
          pragma Warnings (On, "variable * is read but never assigned");
       begin
          debugPrint ("virtio-gpu: features0=");
+         edidSupported := (devFeatures and 2) /= 0;
          printDec (Unsigned_64 (devFeatures));
          debugPrint ("" & LF);
       end;
-      trace ("publish empty feature set");
+      trace ("publish supported feature set");
       write32 (REG_DRIVER_FEATURE_SELECT, 0);
-      write32 (REG_DRIVER_FEATURE, 0);
+      write32 (REG_DRIVER_FEATURE, (if edidSupported then 2 else 0));
       status := status or VIRTIO_STATUS_FEATURES_OK;
       trace ("set FEATURES_OK");
       write8 (REG_DEVICE_STATUS, status);
@@ -529,22 +565,22 @@ procedure main is
    end initTransport;
 
    procedure paintFramebuffer (index : Natural) is
-      pixels : array (0 .. Natural (FB_W * FB_H) - 1) of Unsigned_32
+      pixels : array (0 .. Natural (Frame_Width (selectedHead) * Frame_Height (selectedHead)) - 1) of Unsigned_32
         with Import, Address => DMA_BASE + framebufferOffset (index);
       color : Unsigned_32;
       x : Natural;
       y : Natural;
    begin
       for i in pixels'Range loop
-         x := i mod Natural (FB_W);
-         y := i / Natural (FB_W);
+         x := i mod Natural (Frame_Width (selectedHead));
+         y := i / Natural (Frame_Width (selectedHead));
          if x < 8 or else y < 8 or else
-            x >= Natural (FB_W) - 8 or else y >= Natural (FB_H) - 8
+            x >= Natural (Frame_Width (selectedHead)) - 8 or else y >= Natural (Frame_Height (selectedHead)) - 8
          then
             color := 16#00FF_FFFF#;
-         elsif x < Natural (FB_W) / 3 then
+         elsif x < Natural (Frame_Width (selectedHead)) / 3 then
             color := 16#0030_6FE0#;
-         elsif x < (Natural (FB_W) * 2) / 3 then
+         elsif x < (Natural (Frame_Width (selectedHead)) * 2) / 3 then
             color := 16#00E0_D040#;
          else
             color := 16#00D040_40#;
@@ -552,6 +588,54 @@ procedure main is
          pixels (i) := color;
       end loop;
    end paintFramebuffer;
+
+   procedure selectPreferredMode (Head : Head_Index) is
+      Raw : EDID.Base_Block with Import, Volatile,
+        Address => DMA_BASE + RESP_OFF + 32;
+      Snapshot : EDID.Base_Block;
+      Parsed : EDID.Result;
+      Size : Unsigned_32;
+   begin
+      if not edidSupported then return; end if;
+      beginCmd (CMD_GET_EDID);
+      put32 (CMD_OFF, 24, Unsigned_32 (Head));
+      if not submitCmd (32, 1056, RESP_OK_EDID) then
+         --  A transport timeout is uncertain ownership, not permission to
+         --  reuse its command/response storage for another request.
+         fail ("GET_EDID transport failure");
+         return;
+      end if;
+      Size := get32 (RESP_OFF, 24);
+      if Size < 128 or else Size > 1024 or else Size mod 128 /= 0 then
+         debugPrint ("virtio-gpu: invalid EDID length; using fallback" & LF);
+         return;
+      end if;
+      for I in Snapshot'Range loop Snapshot (I) := Raw (I); end loop;
+      Parsed := EDID.Decode (Snapshot);
+      if Parsed.Status /= EDID.Accepted then
+         debugPrint ("virtio-gpu: EDID " & Parsed.Status'Image & "; using fallback" & LF);
+         return;
+      end if;
+      declare
+         Mode : constant EDID.Timing := Parsed.Preferred;
+         Bytes : constant Positive := EDID.Buffer_Bytes (Mode.Width, Mode.Height);
+      begin
+         --  This is a virtual resource-size choice, not physical link training
+         --  or a claim that EDID alone authorizes a hardware mode. Keep the
+         --  current desktop minimum and the actual owned DMA budget explicit.
+         if Mode.Width < 800 or else Mode.Height < 600 then
+            debugPrint ("virtio-gpu: EDID preference below startup UI minimum; using fallback" & LF);
+            return;
+         elsif Storage_Offset (Bytes) > (DMA_BANK_BYTES - FB0_OFF) / 2 then
+            debugPrint ("virtio-gpu: EDID mode exceeds scanout budget; using fallback" & LF);
+            return;
+         end if;
+         geometry (Head) := (Mode.Width, Mode.Height);
+         debugPrint ("virtio-gpu: EDID head" & Head'Image &
+           " active" & Mode.Width'Image & "x" & Mode.Height'Image &
+           " nominal_millihz" & EDID.Refresh_Millihertz (Mode)'Image & LF);
+      end;
+   end selectPreferredMode;
 
    procedure initGpu is
       ok : Boolean;
@@ -602,14 +686,14 @@ procedure main is
          selectedHead := Head;
          -- GET_DISPLAY_INFO advertises the host's preferred viewport, not a
          -- required resource size. In particular GTK can replace the command
-         -- line hint with its initial 640x480 widget size. Activate connected
-         -- supported heads with our bounded 1024x768 resources independently
-         -- of that hint; retain both advertised and active sizes in discovery.
-         -- Never size DMA allocations or copy spans from host preferences.
+         -- line hint with its initial 640x480 widget size. Prefer validated
+         -- EDID geometry within owned storage; otherwise retain 1024x768.
+         -- Never size DMA allocations or copy spans from unchecked hints.
          if Head = 0 or else (secondDmaPhys /= 0 and then
            (for some Index in 1 .. scanouts.Count =>
               scanouts.Items (Index).Native_Number = Head))
          then
+            selectPreferredMode (Head);
             trace ("paint test framebuffer");
             paintFramebuffer (0);
             paintFramebuffer (1);
@@ -623,8 +707,8 @@ procedure main is
                beginCmd (CMD_RESOURCE_CREATE_2D);
                put32 (CMD_OFF, 24, resourceId (index));
                put32 (CMD_OFF, 28, FORMAT_B8G8R8X8_UNORM);
-               put32 (CMD_OFF, 32, FB_W);
-               put32 (CMD_OFF, 36, FB_H);
+               put32 (CMD_OFF, 32, Frame_Width (selectedHead));
+               put32 (CMD_OFF, 36, Frame_Height (selectedHead));
                ok := submitCmd (40, 24, RESP_OK_NODATA);
                if not ok then
                   fail ("RESOURCE_CREATE_2D failed");
@@ -638,7 +722,7 @@ procedure main is
                put64
                  (CMD_OFF, 32,
                   framebufferPhysical (index));
-               put32 (CMD_OFF, 40, FB_BYTES);
+               put32 (CMD_OFF, 40, Frame_Bytes (selectedHead));
                put32 (CMD_OFF, 44, 0);
                ok := submitCmd (48, 24, RESP_OK_NODATA);
                if not ok then
@@ -650,12 +734,12 @@ procedure main is
                beginCmd (CMD_TRANSFER_TO_HOST_2D);
                put32 (CMD_OFF, 24, 0);
                put32 (CMD_OFF, 28, 0);
-               put32 (CMD_OFF, 32, FB_W);
-               put32 (CMD_OFF, 36, FB_H);
+               put32 (CMD_OFF, 32, Frame_Width (selectedHead));
+               put32 (CMD_OFF, 36, Frame_Height (selectedHead));
                put64 (CMD_OFF, 40, 0);
                put32 (CMD_OFF, 48, resourceId (index));
                put32 (CMD_OFF, 52, 0);
-               GM.Add (uploads, Unsigned_64 (FB_BYTES));
+               GM.Add (uploads, Unsigned_64 (Frame_Bytes (selectedHead)));
                ok := submitCmd (56, 24, RESP_OK_NODATA);
                if not ok then
                   fail ("TRANSFER_TO_HOST_2D failed");
@@ -667,8 +751,8 @@ procedure main is
             beginCmd (CMD_SET_SCANOUT);
             put32 (CMD_OFF, 24, 0);
             put32 (CMD_OFF, 28, 0);
-            put32 (CMD_OFF, 32, FB_W);
-            put32 (CMD_OFF, 36, FB_H);
+            put32 (CMD_OFF, 32, Frame_Width (selectedHead));
+            put32 (CMD_OFF, 36, Frame_Height (selectedHead));
             put32 (CMD_OFF, 40, Unsigned_32 (selectedHead));
             put32 (CMD_OFF, 44, resourceId (0));
             ok := submitCmd (48, 24, RESP_OK_NODATA);
@@ -681,8 +765,8 @@ procedure main is
             beginCmd (CMD_RESOURCE_FLUSH);
             put32 (CMD_OFF, 24, 0);
             put32 (CMD_OFF, 28, 0);
-            put32 (CMD_OFF, 32, FB_W);
-            put32 (CMD_OFF, 36, FB_H);
+            put32 (CMD_OFF, 32, Frame_Width (selectedHead));
+            put32 (CMD_OFF, 36, Frame_Height (selectedHead));
             put32 (CMD_OFF, 40, resourceId (0));
             put32 (CMD_OFF, 44, 0);
             ok := submitCmd (48, 24, RESP_OK_NODATA);
@@ -702,7 +786,7 @@ procedure main is
                        (OD.Backend_Ready, OD.Virtio_GPU,
                         OD.Native_Output_Number (selectedHead),
                         Detected.Advertised_Width, Detected.Advertised_Height,
-                        OD.Extent (FB_W), OD.Extent (FB_H));
+                        OD.Extent (Frame_Width (selectedHead)), OD.Extent (Frame_Height (selectedHead)));
                   end;
                end if;
             end loop;
@@ -714,7 +798,7 @@ procedure main is
 
 
    procedure clearFb (bufferIndex : Natural; color : Unsigned_32) is
-      pixels : array (0 .. Natural (FB_W * FB_H) - 1) of Unsigned_32
+      pixels : array (0 .. Natural (Frame_Width (selectedHead) * Frame_Height (selectedHead)) - 1) of Unsigned_32
         with Import, Address => DMA_BASE + framebufferOffset (bufferIndex);
    begin
       for i in pixels'Range loop
@@ -783,7 +867,7 @@ procedure main is
             put32 (Cmd, 32, Unsigned_32 (Item.W));
             put32 (Cmd, 36, Unsigned_32 (Item.H));
             if Item.Phase = Transfer then
-               put64 (Cmd, 40, Unsigned_64 ((Item.Y * Natural (FB_W) + Item.X) * 4));
+               put64 (Cmd, 40, Unsigned_64 ((Item.Y * Natural (Frame_Width (Head)) + Item.X) * 4));
                put32 (Cmd, 48, Resource);
                Length := 56;
                GM.Add (uploads, Unsigned_64 (Item.W) * Unsigned_64 (Item.H) * 4);
@@ -792,8 +876,8 @@ procedure main is
             end if;
          when Set_Scanout =>
             put32 (Cmd, 0, CMD_SET_SCANOUT);
-            put32 (Cmd, 32, FB_W);
-            put32 (Cmd, 36, FB_H);
+            put32 (Cmd, 32, Frame_Width (Head));
+            put32 (Cmd, 36, Frame_Height (Head));
             put32 (Cmd, 40, Unsigned_32 (Head));
             put32 (Cmd, 44, Resource);
          when Idle | Awaiting_Scanout | Quarantined =>
@@ -929,9 +1013,9 @@ procedure main is
          when OP_GPU_GET_INFO =>
             replyMsg.tag := (label => OP_GPU_GET_INFO,
                              length => 4, flags => 0, reserved => 0);
-            replyMsg.words (0) := Unsigned_64 (FB_W);
-            replyMsg.words (1) := Unsigned_64 (FB_H);
-            replyMsg.words (2) := Unsigned_64 (FB_W) * 4;
+            replyMsg.words (0) := Unsigned_64 (Frame_Width (selectedHead));
+            replyMsg.words (1) := Unsigned_64 (Frame_Height (selectedHead));
+            replyMsg.words (2) := Unsigned_64 (Frame_Width (selectedHead)) * 4;
             replyMsg.words (3) := 32;
 
          when OP_GPU_GET_STATUS =>
@@ -942,15 +1026,15 @@ procedure main is
                then GPU_ERR_BAD_STATE else GPU_OK);
             replyMsg.words (1) :=
               (if Pending (selectedHead).Phase = Quarantined then 0 else 1);
-            replyMsg.words (2) := Unsigned_64 (FB_W);
-            replyMsg.words (3) := Unsigned_64 (FB_H);
+            replyMsg.words (2) := Unsigned_64 (Frame_Width (selectedHead));
+            replyMsg.words (3) := Unsigned_64 (Frame_Height (selectedHead));
 
          when OP_GPU_MAP_FRAMEBUFFER =>
             declare
                bufferIndexRaw : constant Unsigned_64 := request.words (0);
                bufferIndex : Natural range 0 .. 1 := 0;
                pages : constant Natural :=
-                  Natural ((Unsigned_64 (FB_BYTES) + 4095) / 4096);
+                  Natural ((Unsigned_64 (Frame_Bytes (selectedHead)) + 4095) / 4096);
                reference : CuBit.Memory_Grants.Grant_Reference;
                grantOk : Boolean;
             begin
@@ -975,9 +1059,9 @@ procedure main is
                   -- numerically ambiguous slot-or-status word.
                   replyMsg.words (0) := reference.slot;
                   replyMsg.words (1) := reference.generation;
-                  replyMsg.words (2) := Unsigned_64 (FB_W) or
-                     Shift_Left (Unsigned_64 (FB_H), 32);
-                  replyMsg.words (3) := Unsigned_64 (FB_W) * 4;
+                  replyMsg.words (2) := Unsigned_64 (Frame_Width (selectedHead)) or
+                     Shift_Left (Unsigned_64 (Frame_Height (selectedHead)), 32);
+                  replyMsg.words (3) := Unsigned_64 (Frame_Width (selectedHead)) * 4;
                else
                   replyMsg.tag.length := 1;
                   replyMsg.words (0) := GPU_ERR_BAD_STATE;
@@ -994,10 +1078,10 @@ procedure main is
                replyMsg.tag := (label => OP_GPU_PRESENT_BUFFER,
                                 length => 1, flags => 0, reserved => 0);
                if bufferIndexRaw > 1 or else request.words (3) /= 0 or else
-                 (packedXY and 16#FFFF_FFFF#) >= Unsigned_64 (FB_W) or else
-                 Shift_Right (packedXY, 32) >= Unsigned_64 (FB_H) or else
-                 (packedWH and 16#FFFF_FFFF#) not in 1 .. Unsigned_64 (FB_W) or else
-                 Shift_Right (packedWH, 32) not in 1 .. Unsigned_64 (FB_H)
+                 (packedXY and 16#FFFF_FFFF#) >= Unsigned_64 (Frame_Width (selectedHead)) or else
+                 Shift_Right (packedXY, 32) >= Unsigned_64 (Frame_Height (selectedHead)) or else
+                 (packedWH and 16#FFFF_FFFF#) not in 1 .. Unsigned_64 (Frame_Width (selectedHead)) or else
+                 Shift_Right (packedWH, 32) not in 1 .. Unsigned_64 (Frame_Height (selectedHead))
                then
                   replyMsg.words (0) := GPU_ERR_UNSUPPORTED;
                else
@@ -1012,9 +1096,9 @@ procedure main is
                         Clearing => False, Label => OP_GPU_PRESENT_BUFFER,
                         others => <>);
                      Pending (selectedHead).W := Natural'Min
-                       (Pending (selectedHead).W, Natural (FB_W) - Pending (selectedHead).X);
+                       (Pending (selectedHead).W, Natural (Frame_Width (selectedHead)) - Pending (selectedHead).X);
                      Pending (selectedHead).H := Natural'Min
-                       (Pending (selectedHead).H, Natural (FB_H) - Pending (selectedHead).Y);
+                       (Pending (selectedHead).H, Natural (Frame_Height (selectedHead)) - Pending (selectedHead).Y);
                      issueCommand (selectedHead);
                      return; -- saved reply consumed only by completion/failure
                   end if;
@@ -1025,12 +1109,19 @@ procedure main is
          when OP_GPU_CLEAR =>
             replyMsg.tag := (label => OP_GPU_CLEAR,
                              length => 1, flags => 0, reserved => 0);
-            if saveReplyCap (Unsigned_64 (Reply_Slot (selectedHead))) = 1 then
+            if GPU_Test_Policy.Reject_Client_Clear and then
+              Test_Startup_Clear_Seen (selectedHead)
+            then
+               debugPrint ("virtio-gpu: injected clear rejection head" & selectedHead'Image & LF);
+            elsif saveReplyCap (Unsigned_64 (Reply_Slot (selectedHead))) = 1 then
+               if GPU_Test_Policy.Reject_Client_Clear then
+                  Test_Startup_Clear_Seen (selectedHead) := True;
+               end if;
                clearFb (0, Unsigned_32 (request.words (0) and 16#FFFF_FFFF#));
                clearFb (1, Unsigned_32 (request.words (0) and 16#FFFF_FFFF#));
                Pending (selectedHead) :=
                  (Phase => Transfer, Buffer => 1, X => 0, Y => 0,
-                  W => Natural (FB_W), H => Natural (FB_H),
+                  W => Natural (Frame_Width (selectedHead)), H => Natural (Frame_Height (selectedHead)),
                   Clearing => True, Label => OP_GPU_CLEAR, others => <>);
                issueCommand (selectedHead);
                return;

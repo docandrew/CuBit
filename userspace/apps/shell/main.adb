@@ -2906,44 +2906,6 @@ procedure main is
             end if;
          end;
 
-      elsif strEqual (arg, "save") then
-         declare
-            OP_CONFIG_SAVE : constant Unsigned_32 := 16#0605#;
-            saveMsg : Message :=
-              (tag => (label  => OP_CONFIG_SAVE,
-                       length => 0,
-                       flags  => 0,
-                       reserved  => 0),
-               authorityTag => 0,
-               words => (others => 0));
-         begin
-            saveMsg.tag := capCall (CAP_SLOT_CONFIG, saveMsg);
-            if saveMsg.tag.label = REPLY_OK then
-               putStr ("config saved" & LF);
-            else
-               putStr ("config save failed" & LF);
-            end if;
-         end;
-
-      elsif strEqual (arg, "load") then
-         declare
-            OP_CONFIG_LOAD : constant Unsigned_32 := 16#0604#;
-            loadMsg : Message :=
-              (tag => (label  => OP_CONFIG_LOAD,
-                       length => 0,
-                       flags  => 0,
-                       reserved  => 0),
-               authorityTag => 0,
-               words => (others => 0));
-         begin
-            loadMsg.tag := capCall (CAP_SLOT_CONFIG, loadMsg);
-            if loadMsg.tag.label = REPLY_OK then
-               putStr ("config loaded" & LF);
-            else
-               putStr ("config load failed" & LF);
-            end if;
-         end;
-
       elsif startsWith (arg, "resolve ") and arg'Length > 8 then
          declare
             schemeName : String renames
@@ -3011,13 +2973,11 @@ procedure main is
          end;
 
       else
-         putStr ("usage: config get|set|delete|list|save|load|resolve" & LF);
+         putStr ("usage: config get|set|delete|list|resolve" & LF);
          putStr ("  config get <key>" & LF);
          putStr ("  config set <key> <value>" & LF);
          putStr ("  config delete <key>" & LF);
          putStr ("  config list [prefix]" & LF);
-         putStr ("  config save" & LF);
-         putStr ("  config load" & LF);
          putStr ("  config resolve <scheme>" & LF);
       end if;
    end cmdConfig;

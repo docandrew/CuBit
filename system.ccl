@@ -1,6 +1,6 @@
 # CuBit System Configuration
 # Loaded by devmgr at boot, seeded into config.svc
-# Persistence backing store (config.dat on disk)
+# This CCL profile is authoritative at boot; runtime edits are volatile.
 # Scheme registry: scheme.<name>.driver=<driver_id>
 #                  scheme.<name>.slot=<cap_slot>
 #
@@ -19,7 +19,6 @@
   (setting "desktop.appearance.theme.light" "(theme v1 (base alloy-light))")
   (setting "desktop.appearance.theme.dark" "(theme v1 (base alloy-dark))")
   (setting "clock.time-zone" "UTC")
-  (setting "config.store" "@nvme:0/config.dat")
   (setting "scheme.fs.driver" 6)
   (setting "scheme.fs.slot" 1)
   (setting "scheme.ata.driver" 6)

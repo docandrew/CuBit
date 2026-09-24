@@ -1,0 +1,10 @@
+project Tree_Tests is
+   for Source_Dirs use (".", "../../userspace/apps/config-inspector");
+   for Source_Files use ("tree_tests.adb", "config_tree.ads", "config_tree.adb");
+   for Object_Dir use "build/tree";
+   for Exec_Dir use "build/tree";
+   for Main use ("tree_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Tree_Tests;

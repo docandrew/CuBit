@@ -3,4 +3,5 @@
   (identity "com.cubit.storage-check")
   (version "0.1.0")
   (request-service filesystem read-write filesystem)
-  (filesystem-scope (rights read write create) "@nvme:0/"))
+  (filesystem-scope (rights read write create) "@nvme:0/")
+  (filesystem-scope (rights read write create) "@mem:0/work/"))

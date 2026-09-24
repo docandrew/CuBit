@@ -83,6 +83,18 @@ procedure main is
    type Gpu_Address_Array is
      array (Gpu_Buffer_Index) of System.Address;
 
+   --  Selection and health are independent. A failed native backend never
+   --  becomes a firmware backend. In particular, a GPU output carries no
+   --  firmware address which an error path could accidentally write through.
+   type Backend_Kind is (Not_Configured, Firmware_Framebuffer, Native_GPU);
+   type Backend_Selection (Kind : Backend_Kind := Not_Configured) is record
+      case Kind is
+         when Firmware_Framebuffer =>
+            Address : System.Address;
+         when Not_Configured | Native_GPU => null;
+      end case;
+   end record;
+
    --  This is an owner-local routing number, not a primary-display role.
    --  Request handlers are serialized, but GPU replies are deferred. Their
    --  continuations carry captured output/session identity explicitly.
@@ -92,8 +104,7 @@ procedure main is
       fbWidth  : Natural := 0;
       fbHeight : Natural := 0;
       fbPitch  : Natural := 0;
-      fbBpp    : Natural := 0;
-      fbAddr   : System.Address := System.Null_Address;
+      backend : Backend_Selection;
       srcAddr   : System.Address := System.Null_Address;
       srcWidth  : Natural := 0;
       srcHeight : Natural := 0;
@@ -105,12 +116,7 @@ procedure main is
       lastFrame : Unsigned_64 := 0;
       frameState : PS.State;
       presentationFault : Boolean := False;
-      gpuAvailable : Boolean := False;
-      gpuCopyActive  : Boolean := False;
       gpuScanoutAddr : Gpu_Address_Array := [others => System.Null_Address];
-      gpuScanoutWidth   : Natural := 0;
-      gpuScanoutHeight  : Natural := 0;
-      gpuScanoutPitch   : Natural := 0;
       gpuActiveBuffer : Gpu_Buffer_Index := 0;
       displayOwner : ProcessID := NO_PROCESS;
       currentOutput : Outputs.Output_Reference := Outputs.No_Output;
@@ -190,7 +196,7 @@ procedure main is
 
    function backendId return Unsigned_64 is
    begin
-      if outputStates (selectedOutput).gpuAvailable then
+      if outputStates (selectedOutput).backend.Kind = Native_GPU then
          return DISPLAY_BACKEND_VIRTIO_GPU;
       else
          return DISPLAY_BACKEND_LINEAR_FB;
@@ -199,7 +205,7 @@ procedure main is
 
    function backendCaps return Unsigned_64 is
    begin
-      if outputStates (selectedOutput).gpuAvailable then
+      if outputStates (selectedOutput).backend.Kind = Native_GPU then
          --  Directly handing the GPU's received framebuffer grant to a
          --  client would be an untracked re-grant. Until CuBit has an
          --  explicit attenuating derived-loan operation, display.svc owns
@@ -238,30 +244,59 @@ procedure main is
    procedure setupBackend is
       status : Message;
       gpuPrimary : constant Boolean := getInfo (SYSINFO_GPU_IS_PRIMARY) /= 0;
+      State : Output_State renames outputStates (selectedOutput);
+      Width, Height, Pitch, Bits, Mapping : Unsigned_64;
+      Layout : DSP.Buffer_Layout;
    begin
       status := callGpu (OP_GPU_GET_STATUS);
-      gpuDetected := status.tag.label = OP_GPU_GET_STATUS and then
-        status.tag.length = 4 and then status.words (0) = 0 and then
+      gpuDetected := status.tag = (OP_GPU_GET_STATUS, 4, 0, 0) and then status.words (0) = 0 and then
         status.words (1) = 1;
-      if status.tag.length >= 4 and then status.words (0) = 0 and then
-         gpuPrimary and then
-         status.words (2) = Unsigned_64 (outputStates (selectedOutput).fbWidth) and then
-         status.words (3) = Unsigned_64 (outputStates (selectedOutput).fbHeight)
-      then
-         outputStates (selectedOutput).gpuAvailable := True;
-         debugPrint ("display: backend virtio-gpu" & LF);
-      elsif status.tag.length >= 1 and then status.words (0) = 0 then
-         --  QEMU can expose a separate virtio-gpu-pci scanout while the
-         --  visible console is still the bootloader framebuffer. In that
-         --  shape the GPU service is real, but presenting the desktop through
-         --  it makes the UI disappear from the window the user is watching.
-         debugPrint ("display: gpu not primary, using linear-fb" & LF);
+      if gpuPrimary then
+         --  Once the boot adapter is driven natively its old firmware mode is
+         --  not a fallback, even if driver startup failed part-way through.
+         if not gpuDetected then return; end if;
+         Width := status.words (2);
+         Height := status.words (3);
+         Pitch := Width * 4;
+         Bits := 32;
       else
-         --  Keep the fallback path on the bootloader-provided linear
-         --  framebuffer. This remains useful for hardware without virtio-gpu
-         --  and for debugging the GPU service itself.
-         debugPrint ("display: backend linear-fb" & LF);
+         Width := getInfo (SYSINFO_FB_WIDTH);
+         Height := getInfo (SYSINFO_FB_HEIGHT);
+         Pitch := getInfo (SYSINFO_FB_PITCH);
+         Bits := getInfo (SYSINFO_FB_BPP);
       end if;
+      if Width not in 1 .. Unsigned_64 (DSP.DP.Positive_Extent'Last) or else
+        Height not in 1 .. Unsigned_64 (DSP.DP.Positive_Extent'Last) or else
+        Pitch > Unsigned_64 (DSP.DP.Buffer_Pitch'Last) or else Bits /= 32
+      then
+         return;
+      end if;
+      Layout := (DSP.DP.Positive_Extent (Width), DSP.DP.Positive_Extent (Height),
+                 Natural (Pitch));
+      if not DSP.DP.Valid_Layout (Layout) then return; end if;
+      if gpuPrimary then
+         --  Publishing GPU_IS_PRIMARY retires kernel boot drawing before
+         --  driver startup. Native outputs need no firmware mapping, even
+         --  for diagnostics: kernel panic cannot reactivate that renderer.
+         State.backend := (Kind => Native_GPU);
+         debugPrint ("display: backend virtio-gpu" & LF);
+         debugPrint ("display: native boot handoff" &
+           getInfo (SYSINFO_FB_WIDTH)'Image & " x" & getInfo (SYSINFO_FB_HEIGHT)'Image &
+           " ->" & Width'Image & " x" & Height'Image & "; firmware rendering retired" & LF);
+      else
+         Mapping := syscall (SYSCALL_MAPFB);
+         if Mapping = 0 or else Mapping = Unsigned_64'Last then return; end if;
+         State.backend :=
+           (Firmware_Framebuffer, To_Address (Integer_Address (Mapping)));
+         if gpuDetected then
+            debugPrint ("display: gpu not primary, using linear-fb" & LF);
+         else
+            debugPrint ("display: backend linear-fb" & LF);
+         end if;
+      end if;
+      State.fbWidth := Natural (Width);
+      State.fbHeight := Natural (Height);
+      State.fbPitch := Natural (Pitch);
    end setupBackend;
 
    procedure discoverOutputs is
@@ -272,7 +307,7 @@ procedure main is
       Summary : OD.Summary_Decoding;
       Item : OD.Description_Decoding;
    begin
-      if not outputStates (selectedOutput).gpuAvailable then
+      if outputStates (selectedOutput).backend.Kind /= Native_GPU then
          if outputStates (selectedOutput).fbWidth not in OD.Extent or else outputStates (selectedOutput).fbHeight not in OD.Extent then
             return;
          end if;
@@ -304,7 +339,7 @@ procedure main is
                return;
             end if;
             Seen (Item.Value.Item.Native_Number) := True;
-            if outputStates (selectedOutput).gpuAvailable and then Item.Value.Item.Native_Number = 0 then
+            if outputStates (selectedOutput).backend.Kind = Native_GPU and then Item.Value.Item.Native_Number = 0 then
                if Item.Value.Item.Role /= OD.Backend_Ready or else
                   Item.Value.Item.Current_Width /= outputStates (selectedOutput).fbWidth or else
                   Item.Value.Item.Current_Height /= outputStates (selectedOutput).fbHeight
@@ -418,7 +453,6 @@ procedure main is
       outputStates (selectedOutput).srcOwner := NO_PROCESS;
       outputStates (selectedOutput).pendingPresent := False;
       outputStates (selectedOutput).pendingRect := (others => 0);
-      outputStates (selectedOutput).gpuCopyActive := False;
       outputStates (selectedOutput).gpuPreviousDamage := (others => 0);
       if outputStates (selectedOutput).srcAcquired then
          MG.Return_Acquisition (outputStates (selectedOutput).srcGrant, returned);
@@ -484,16 +518,12 @@ procedure main is
       return Natural (Shift_Right (x, 32));
    end unpackHi32;
 
-   procedure clear (color : Unsigned_32) is
+   procedure clearFirmware (Address : System.Address; color : Unsigned_32) is
       line : array (Natural range 0 .. 1023) of Unsigned_32;
       ignore : System.Address;
    begin
-      if outputStates (selectedOutput).fbBpp /= 32 then
-         return;
-      end if;
-
-      --  The current QEMU mode is 1024 pixels wide. Keep this conservative so
-      --  clear never writes beyond the stack buffer if a later mode changes.
+      --  Use a bounded line buffer for small modes; wider firmware modes must
+      --  not index it using the output width.
       if outputStates (selectedOutput).fbWidth <= line'Length then
          for x in 0 .. outputStates (selectedOutput).fbWidth - 1 loop
             line (x) := color;
@@ -501,7 +531,7 @@ procedure main is
 
          for y in 0 .. outputStates (selectedOutput).fbHeight - 1 loop
             ignore := memcpy
-              (outputStates (selectedOutput).fbAddr + Storage_Offset (y * outputStates (selectedOutput).fbPitch),
+              (Address + Storage_Offset (y * outputStates (selectedOutput).fbPitch),
                line'Address,
                Storage_Count (outputStates (selectedOutput).fbWidth * 4));
          end loop;
@@ -513,39 +543,47 @@ procedure main is
             declare
                pixel : Unsigned_32 with
                   Import, Address =>
-                     outputStates (selectedOutput).fbAddr + Storage_Offset (y * outputStates (selectedOutput).fbPitch + x * 4);
+                     Address + Storage_Offset (y * outputStates (selectedOutput).fbPitch + x * 4);
             begin
                pixel := color;
             end;
          end loop;
       end loop;
-   end clear;
+   end clearFirmware;
 
    function clearGpu (color : Unsigned_64) return Boolean is
       reply : Message;
    begin
-      if not outputStates (selectedOutput).gpuAvailable then
-         return False;
-      end if;
-
       reply := callGpu (OP_GPU_CLEAR, color, 0, 0, 0);
-      if reply.tag.length >= 1 and then reply.words (0) = 0 then
+      if reply.tag = (OP_GPU_CLEAR, 1, 0, 0) and then reply.words (0) = 0 then
          outputStates (selectedOutput).gpuActiveBuffer := 0;
          outputStates (selectedOutput).gpuPreviousDamage := (others => 0);
          return True;
       end if;
 
       debugPrint ("display: gpu clear failed" & LF);
-      outputStates (selectedOutput).gpuAvailable := False;
+      outputStates (selectedOutput).presentationFault := True;
       return False;
    end clearGpu;
 
-   procedure presentRect (x, y, w, h : Natural) is
+   function clearOutput (color : Unsigned_64) return Boolean is
+   begin
+      case outputStates (selectedOutput).backend.Kind is
+         when Native_GPU => return clearGpu (color);
+         when Firmware_Framebuffer =>
+            clearFirmware (outputStates (selectedOutput).backend.Address,
+                           Unsigned_32 (color and 16#FFFF_FFFF#));
+            return True;
+         when Not_Configured => return False;
+      end case;
+   end clearOutput;
+
+   procedure presentFirmwareRect (Address : System.Address; x, y, w, h : Natural) is
       maxX : Natural := x + w;
       maxY : Natural := y + h;
       ignore : System.Address;
    begin
-      if outputStates (selectedOutput).fbBpp /= 32 or else outputStates (selectedOutput).srcAddr = System.Null_Address then
+      if outputStates (selectedOutput).srcAddr = System.Null_Address then
          return;
       end if;
       if w = 0 or else h = 0 or else x >= outputStates (selectedOutput).fbWidth or else y >= outputStates (selectedOutput).fbHeight then
@@ -574,7 +612,7 @@ procedure main is
       --  startup, shell switches, and simple compositor redraws.
       if x = 0 and then maxX = outputStates (selectedOutput).fbWidth and then outputStates (selectedOutput).srcPitch = outputStates (selectedOutput).fbPitch then
          ignore := memcpy
-           (outputStates (selectedOutput).fbAddr + Storage_Offset (y * outputStates (selectedOutput).fbPitch),
+           (Address + Storage_Offset (y * outputStates (selectedOutput).fbPitch),
             outputStates (selectedOutput).srcAddr + Storage_Offset (y * outputStates (selectedOutput).srcPitch),
             Storage_Count ((maxY - y) * outputStates (selectedOutput).fbPitch));
          GM.Add (backendCopies, Unsigned_64 (maxY - y) * Unsigned_64 (outputStates (selectedOutput).fbPitch));
@@ -583,13 +621,13 @@ procedure main is
 
       for row in y .. maxY - 1 loop
          ignore := memcpy
-           (outputStates (selectedOutput).fbAddr + Storage_Offset (row * outputStates (selectedOutput).fbPitch + x * 4),
+           (Address + Storage_Offset (row * outputStates (selectedOutput).fbPitch + x * 4),
             outputStates (selectedOutput).srcAddr + Storage_Offset (row * outputStates (selectedOutput).srcPitch + x * 4),
             Storage_Count ((maxX - x) * 4));
       end loop;
       GM.Add (backendCopies,
               Unsigned_64 (maxX - x) * Unsigned_64 (maxY - y) * 4);
-   end presentRect;
+   end presentFirmwareRect;
 
    function ensureGpuScanout return Boolean is
       gpuMap : Message;
@@ -597,7 +635,6 @@ procedure main is
       mapped : System.Address;
       acquired : Boolean;
    begin
-      if not outputStates (selectedOutput).gpuAvailable then return False; end if;
       for index in Gpu_Buffer_Index loop
          if outputStates (selectedOutput).gpuScanoutAddr (index) = System.Null_Address then
             gpuMap := callGpu
@@ -612,12 +649,14 @@ procedure main is
                   debugPrint ("display: invalid GPU mapping" & LF);
                   return False;
                end if;
-               if index /= Gpu_Buffer_Index'First and then
-                 (outputStates (selectedOutput).gpuScanoutWidth /= Natural (decoded.Value.Layout.Width) or else
-                  outputStates (selectedOutput).gpuScanoutHeight /= Natural (decoded.Value.Layout.Height) or else
-                  outputStates (selectedOutput).gpuScanoutPitch /= decoded.Value.Layout.Pitch)
+               if Natural (decoded.Value.Layout.Width) /= outputStates (selectedOutput).fbWidth or else
+                 Natural (decoded.Value.Layout.Height) /= outputStates (selectedOutput).fbHeight or else
+                 decoded.Value.Layout.Pitch /= outputStates (selectedOutput).fbPitch
                then
-                  debugPrint ("display: gpu swapchain geometry mismatch" & LF);
+                  --  Status and both owned mappings must describe one mode.
+                  --  A backend cannot resize an already advertised output by
+                  --  returning a different grant on attachment.
+                  debugPrint ("display: GPU mapping differs from selected mode" & LF);
                   return False;
                end if;
                MG.Acquire_Via_Capability
@@ -630,11 +669,6 @@ procedure main is
                -- Retain both acquisitions for this display instance. GPU death
                -- or grant revocation cannot recycle memory beneath a CPU copy.
                outputStates (selectedOutput).gpuScanoutAddr (index) := mapped;
-               if index = Gpu_Buffer_Index'First then
-                  outputStates (selectedOutput).gpuScanoutWidth := Natural (decoded.Value.Layout.Width);
-                  outputStates (selectedOutput).gpuScanoutHeight := Natural (decoded.Value.Layout.Height);
-                  outputStates (selectedOutput).gpuScanoutPitch := decoded.Value.Layout.Pitch;
-               end if;
             end;
          end if;
       end loop;
@@ -642,8 +676,8 @@ procedure main is
    end ensureGpuScanout;
 
    function clampGpuRect (r : Rect) return Rect is
-      limitW : constant Natural := Natural'Min (outputStates (selectedOutput).srcWidth, outputStates (selectedOutput).gpuScanoutWidth);
-      limitH : constant Natural := Natural'Min (outputStates (selectedOutput).srcHeight, outputStates (selectedOutput).gpuScanoutHeight);
+      limitW : constant Natural := Natural'Min (outputStates (selectedOutput).srcWidth, outputStates (selectedOutput).fbWidth);
+      limitH : constant Natural := Natural'Min (outputStates (selectedOutput).srcHeight, outputStates (selectedOutput).fbHeight);
    begin
       if r.w = 0 or else r.h = 0 or else
         r.x >= limitW or else r.y >= limitH
@@ -671,7 +705,7 @@ procedure main is
          return;
       end if;
 
-      if r.x = 0 and then r.w = outputStates (selectedOutput).gpuScanoutWidth and then
+      if r.x = 0 and then r.w = outputStates (selectedOutput).fbWidth and then
          sourcePitch = destPitch
       then
          ignore := memcpy
@@ -698,7 +732,7 @@ procedure main is
       packedXY : Unsigned_64;
       packedWH : Unsigned_64;
    begin
-      if not outputStates (selectedOutput).gpuCopyActive or else outputStates (selectedOutput).srcAddr = System.Null_Address or else
+      if outputStates (selectedOutput).backend.Kind /= Native_GPU or else outputStates (selectedOutput).srcAddr = System.Null_Address or else
         isEmpty (r)
       then
          return NULL_MESSAGE;
@@ -710,14 +744,14 @@ procedure main is
       --  full-screen copy merely because the scanout resource alternates.
       if not isEmpty (previous) then
          copyGpuRect
-           (outputStates (selectedOutput).gpuScanoutAddr (target), outputStates (selectedOutput).gpuScanoutPitch,
-            outputStates (selectedOutput).gpuScanoutAddr (outputStates (selectedOutput).gpuActiveBuffer), outputStates (selectedOutput).gpuScanoutPitch,
+           (outputStates (selectedOutput).gpuScanoutAddr (target), outputStates (selectedOutput).fbPitch,
+            outputStates (selectedOutput).gpuScanoutAddr (outputStates (selectedOutput).gpuActiveBuffer), outputStates (selectedOutput).fbPitch,
             previous, repairCopies);
          transfer := unionRect (previous, r);
       end if;
 
       copyGpuRect
-        (outputStates (selectedOutput).gpuScanoutAddr (target), outputStates (selectedOutput).gpuScanoutPitch,
+        (outputStates (selectedOutput).gpuScanoutAddr (target), outputStates (selectedOutput).fbPitch,
          outputStates (selectedOutput).srcAddr, outputStates (selectedOutput).srcPitch, r, backendCopies);
 
       packedXY := Unsigned_64 (transfer.x) or
@@ -735,10 +769,13 @@ procedure main is
       request : Message := prepareGpuRect (damage);
       tag : MessageTag;
    begin
-      if request.tag.length = 0 then return False; end if;
+      if request.tag.length = 0 then
+         outputStates (selectedOutput).presentationFault := True;
+         return False;
+      end if;
       tag := capCall (CAP_SLOT_GPU, request);
       request.tag := tag;
-      if request.tag.length = 1 and then request.words (0) = 0 then
+      if request.tag = (OP_GPU_PRESENT_BUFFER, 1, 0, 0) and then request.words (0) = 0 then
          outputStates (selectedOutput).gpuActiveBuffer :=
            1 - outputStates (selectedOutput).gpuActiveBuffer;
          outputStates (selectedOutput).gpuPreviousDamage := clampGpuRect (damage);
@@ -746,7 +783,7 @@ procedure main is
       end if;
 
       debugPrint ("display: gpu page flip failed" & LF);
-      outputStates (selectedOutput).gpuCopyActive := False;
+      outputStates (selectedOutput).presentationFault := True;
       return False;
    end copyAndFlipGpuRect;
 
@@ -763,21 +800,22 @@ procedure main is
       outputStates (selectedOutput).pendingPresent := False;
       outputStates (selectedOutput).pendingRect := (others => 0);
 
-      --  All scanout timing lives here. Clients submit damage and keep
-      --  rendering; display.svc coalesces pending rectangles and copies one
-      --  display-owned frame during vblank. The backend case is deliberately
-      --  centralized so a future VirtIO/real-GPU backend can turn this
-      --  operation into a page flip or command submission without changing
-      --  desktop.svc.
+      --  Legacy queued presentation. The selected backend is fixed for this
+      --  output lifetime; an unsuccessful GPU operation cannot authorize
+      --  writes to a different target. Neither backend promises vblank here.
       waitStart := syscall (SYSCALL_GETTIME);
-      if outputStates (selectedOutput).gpuCopyActive then
+      if outputStates (selectedOutput).presentationFault then return; end if;
+      if outputStates (selectedOutput).backend.Kind = Native_GPU then
          copyStart := syscall (SYSCALL_GETTIME);
          if not copyAndFlipGpuRect (r) then
-            presentRect (r.x, r.y, r.w, r.h);
+            return;
          end if;
-      else
+      elsif outputStates (selectedOutput).backend.Kind = Firmware_Framebuffer then
          copyStart := syscall (SYSCALL_GETTIME);
-         presentRect (r.x, r.y, r.w, r.h);
+         presentFirmwareRect (outputStates (selectedOutput).backend.Address,
+                              r.x, r.y, r.w, r.h);
+      else
+         return;
       end if;
       copyEnd := syscall (SYSCALL_GETTIME);
 
@@ -816,7 +854,7 @@ procedure main is
       waitStart := syscall (SYSCALL_GETTIME);
       copyStart := syscall (SYSCALL_GETTIME);
 
-      if outputStates (selectedOutput).gpuCopyActive then
+      if outputStates (selectedOutput).backend.Kind = Native_GPU then
          --  A packed region is one visual frame. The current wire format can
          --  carry several rectangles but the swapchain flips once, so merge
          --  them here and preserve atomic presentation. Future display lists
@@ -839,7 +877,7 @@ procedure main is
          if not isEmpty (r) then
             pixels := Unsigned_64 (r.w) * Unsigned_64 (r.h);
             if not copyAndFlipGpuRect (r) then
-               presentRect (r.x, r.y, r.w, r.h);
+               return;
             end if;
          end if;
          copyEnd := syscall (SYSCALL_GETTIME);
@@ -866,7 +904,8 @@ procedure main is
             w => Natural (Shift_Right (packed, 32) and 16#FFFF#),
             h => Natural (Shift_Right (packed, 48) and 16#FFFF#));
          if not isEmpty (r) then
-            presentRect (r.x, r.y, r.w, r.h);
+            presentFirmwareRect (outputStates (selectedOutput).backend.Address,
+                                 r.x, r.y, r.w, r.h);
             pixels := pixels + Unsigned_64 (r.w) * Unsigned_64 (r.h);
          end if;
       end loop;
@@ -1073,7 +1112,7 @@ procedure main is
            decoded.Value.Frame)
       then
          State.presentationFault := True;
-      elsif State.gpuCopyActive then
+      elsif State.backend.Kind = Native_GPU then
          backendRequest := prepareGpuRect (r);
          if backendRequest.tag.length /= 0 and then
            saveReplyCap (Unsigned_64 (frameReplySlot (selectedOutput))) = 1
@@ -1101,8 +1140,8 @@ procedure main is
             end;
             return;
          end if;
-      else
-         presentRect (r.x, r.y, r.w, r.h);
+      elsif State.backend.Kind = Firmware_Framebuffer then
+         presentFirmwareRect (State.backend.Address, r.x, r.y, r.w, r.h);
          published := True;
       end if;
       statsPresents := statsPresents + 1;
@@ -1222,7 +1261,9 @@ procedure main is
               (CuBit.Desktop_Messages.To_Wire (request), DSP.Acquire_Display)
             then
                replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
-            elsif not outputUsable (outputStates (selectedOutput).currentOutput) then
+            elsif outputStates (selectedOutput).presentationFault or else
+              not outputUsable (outputStates (selectedOutput).currentOutput)
+            then
                replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
             elsif outputStates (selectedOutput).displayOwner = NO_PROCESS or else outputStates (selectedOutput).displayOwner = from then
                outputStates (selectedOutput).displayOwner := from;
@@ -1271,14 +1312,9 @@ procedure main is
                     Natural (decoded.Value.Layout.Height) > outputStates (selectedOutput).fbHeight
                   then
                      replyMsg.words (0) := DISPLAY_ERR_UNSUPPORTED;
-                  elsif outputStates (selectedOutput).gpuAvailable and then not ensureGpuScanout then
+                  elsif outputStates (selectedOutput).backend.Kind = Native_GPU and then not ensureGpuScanout then
                      outputStates (selectedOutput).presentationFault := True;
                      replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
-                  elsif outputStates (selectedOutput).gpuAvailable and then
-                    (Natural (decoded.Value.Layout.Width) > outputStates (selectedOutput).gpuScanoutWidth or else
-                     Natural (decoded.Value.Layout.Height) > outputStates (selectedOutput).gpuScanoutHeight)
-                  then
-                     replyMsg.words (0) := DISPLAY_ERR_UNSUPPORTED;
                   else
                      MG.Acquire
                        (decoded.Value.Grant, from, 0,
@@ -1299,8 +1335,7 @@ procedure main is
                         outputStates (selectedOutput).srcPitch := decoded.Value.Layout.Pitch;
                         outputStates (selectedOutput).srcOwner := from;
                         outputStates (selectedOutput).sourceOutput := outputStates (selectedOutput).currentOutput;
-                        if outputStates (selectedOutput).gpuAvailable then
-                           outputStates (selectedOutput).gpuCopyActive := True;
+                        if outputStates (selectedOutput).backend.Kind = Native_GPU then
                            debugPrint ("display: gpu copy buffer attached" & LF);
                         end if;
                         replyMsg.words (0) := DISPLAY_OK;
@@ -1357,7 +1392,9 @@ procedure main is
                       w => unpackLo32 (request.words (1)),
                       h => unpackHi32 (request.words (1))));
                end if;
-               replyMsg.words (0) := DISPLAY_OK;
+               replyMsg.words (0) :=
+                 (if outputStates (selectedOutput).presentationFault then
+                    DISPLAY_ERR_BAD_STATE else DISPLAY_OK);
             end if;
 
          when OP_DISPLAY_PRESENT_REGION |
@@ -1377,7 +1414,9 @@ procedure main is
                replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
             else
                presentPackedRegion (request);
-               replyMsg.words (0) := DISPLAY_OK;
+               replyMsg.words (0) :=
+                 (if outputStates (selectedOutput).presentationFault then
+                    DISPLAY_ERR_BAD_STATE else DISPLAY_OK);
             end if;
 
          when OP_DISPLAY_CLEAR =>
@@ -1387,18 +1426,10 @@ procedure main is
                replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
             elsif not ownsDisplay (from) then
                replyMsg.words (0) := DISPLAY_ERR_DENIED;
-            elsif not clearGpu (request.words (0)) then
-               if outputStates (selectedOutput).fbAddr /= System.Null_Address then
-                  clear (Unsigned_32 (request.words (0) and 16#FFFF_FFFF#));
-                  replyMsg.words (0) := DISPLAY_OK;
-               else
-                  -- A secondary GPU output has no firmware framebuffer to
-                  -- fall back to. Do not turn backend failure into a null write.
-                  outputStates (selectedOutput).presentationFault := True;
-                  replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
-               end if;
-            else
+            elsif clearOutput (request.words (0)) then
                replyMsg.words (0) := DISPLAY_OK;
+            else
+               replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
             end if;
 
          when others =>
@@ -1443,22 +1474,11 @@ begin
       debugPrint ("display: register failed" & LF);
    end if;
 
-   ret := syscall (SYSCALL_MAPFB);
-   if ret = Unsigned_64'Last then
-      debugPrint ("display: MAPFB failed" & LF);
-      ret := syscall (SYSCALL_EXIT, 1);
-      return;
-   end if;
-
-   outputStates (selectedOutput).fbAddr   := To_Address (Integer_Address (ret));
-   outputStates (selectedOutput).fbWidth  := Natural (getInfo (SYSINFO_FB_WIDTH));
-   outputStates (selectedOutput).fbHeight := Natural (getInfo (SYSINFO_FB_HEIGHT));
-   outputStates (selectedOutput).fbPitch  := Natural (getInfo (SYSINFO_FB_PITCH));
-   outputStates (selectedOutput).fbBpp    := Natural (getInfo (SYSINFO_FB_BPP));
-
    setupBackend;
-   if not registerOutput then
-      debugPrint ("display: boot output registration failed" & LF);
+   if (outputStates (0).backend.Kind = Native_GPU and then not ensureGpuScanout) or else
+     not clearOutput (16#0013_1518#) or else not registerOutput
+   then
+      debugPrint ("display: boot output initialization failed" & LF);
       ret := syscall (SYSCALL_EXIT, 1);
       return;
    end if;
@@ -1470,15 +1490,10 @@ begin
    else
       debugPrint ("display: output catalog unavailable" & LF);
    end if;
-   if clearGpu (16#0013_1518#) then
-      debugPrint ("display: gpu scanout cleared" & LF);
-   else
-      clear (16#0013_1518#);
-   end if;
-   --  Initial native multi-output milestone: two equal-mode virtio outputs.
+   --  Two independently sized native outputs.
    --  Firmware-only and independently detected PCI outputs keep their existing
    --  behavior. Logical arrangement and the primary role belong to Desktop.
-   if outputStates (0).gpuAvailable and then catalogReady then
+   if outputStates (0).backend.Kind = Native_GPU and then catalogReady then
       for Item of outputCatalog.Items loop
          if Item.Source = OD.Virtio_GPU and then Item.Native_Number = 1 and then
            Item.Role = OD.Backend_Ready
@@ -1487,9 +1502,8 @@ begin
             outputStates (1).fbWidth := Item.Current_Width;
             outputStates (1).fbHeight := Item.Current_Height;
             outputStates (1).fbPitch := Item.Current_Width * 4;
-            outputStates (1).fbBpp := 32;
-            outputStates (1).gpuAvailable := True;
-            if clearGpu (16#0013_1518#) and then registerOutput then
+            outputStates (1).backend := (Kind => Native_GPU);
+            if ensureGpuScanout and then clearOutput (16#0013_1518#) and then registerOutput then
                readyOutputs (1) := True;
                debugPrint ("display: second output ready" & LF);
             end if;

@@ -8,11 +8,13 @@
 --  @description
 --  Provides typed access to the config store service for userspace
 --  applications. Connects via capCall on CAP_SLOT_CONFIG. A single
---  page-aligned grant buffer (1 page = 4KB) is lazily allocated and
---  shared with the config service for key/value transfer.
+--  page-aligned two-page grant buffer is lazily allocated and shared with
+--  Config using an owner- and generation-checked reference. Two pages allow
+--  the full 4096-byte value plus its key without overrunning the buffer.
 --
 --  get and list return System.Address pointers into the internal grant
 --  buffer. Callers must copy data before the next config call.
+--  This borrowed-buffer API is not reentrant; callers must serialize access.
 ------------------------------------------------------------------------------
 with Interfaces;
 with System;
