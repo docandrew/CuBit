@@ -37,4 +37,43 @@ begin
    Attach (S, 0, (NVMe_Volume, 1), 999, R);
    pragma Assert (R = Shared and then Value (S, 0) = 1_000);
    Put_Line ("PASS: shared file metadata lifecycle and volume identity");
+   --  Every ordered pair of distinct handle slots, both request modes and
+   --  both existing modes. Sharing is independent of the client PID.
+   for First in Owner_Index loop
+      for Second in Owner_Index loop
+         if First /= Second then
+            for Existing in Sharing_Mode loop
+               for Requested in Sharing_Mode loop
+                  declare
+                     T : State;
+                     Key_A : constant Identity := (NVMe_Volume, 7);
+                  begin
+                     pragma Assert (Exclusive_Owners_Isolated (T));
+                     Attach (T, First, Key_A, 42, R, Existing);
+                     pragma Assert (R = Created);
+                     Attach (T, Second, Key_A, 99, R, Requested);
+                     if Existing = Allow_Sharing and Requested = Allow_Sharing then
+                        pragma Assert (R = Shared and Value (T, Second) = 42);
+                        Detach (T, Second);
+                     else
+                        pragma Assert (R = Sharing_Conflict and not Attached (T, Second));
+                     end if;
+                     pragma Assert (Exclusive_Owners_Isolated (T));
+                     pragma Assert (Value (T, First) = 42);
+                     pragma Assert (Exclusively_Held (T, Key_A) = (Existing = Deny_Sharing));
+                     Attach (T, Second, (Memory_Volume, 7), 19, R, Deny_Sharing);
+                     pragma Assert (R = Created); -- same inode, different volume
+                     Replace (T, First, 23);
+                     pragma Assert (Value (T, Second) = 19 and Exclusive_Owners_Isolated (T));
+                     Detach (T, First);
+                     pragma Assert (not Exclusively_Held (T, Key_A));
+                     Attach (T, First, Key_A, 17, R, Deny_Sharing);
+                     pragma Assert (R = Created and Exclusive_Owners_Isolated (T));
+                  end;
+               end loop;
+            end loop;
+         end if;
+      end loop;
+   end loop;
+   Put_Line ("PASS: exclusive ownership, 3968 admission/lifecycle scenarios");
 end Main;

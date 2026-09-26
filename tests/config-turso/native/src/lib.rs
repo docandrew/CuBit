@@ -1,11 +1,19 @@
 //! Isolated native bring-up, not the Config service or a general std port.
 #![deny(unsafe_op_in_unsafe_fn)]
 
-use core::{
-    alloc::{GlobalAlloc, Layout},
-    arch::global_asm,
-};
-use cubit::{EndpointSlot, Message};
+use core::arch::global_asm;
+
+#[cfg(feature = "turso")]
+#[path = "../../../../userspace/lib/storage/native/bridge.rs"]
+mod storage;
+
+#[cfg(feature = "turso")]
+mod threaded_io;
+
+#[cfg(feature = "bench")]
+mod benchmark;
+#[cfg(feature = "sql-bench")]
+mod sql_benchmark;
 
 #[global_allocator]
 static ALLOCATOR: cubit_allocator::BoundedAllocator = cubit_allocator::BoundedAllocator;
@@ -26,66 +34,20 @@ global_asm!(
 "#
 );
 
-// All bridge pointers originate in the matching patched std and are borrowed
-// only for the duration of the call. No Rust unwind crosses this ABI.
-#[unsafe(no_mangle)]
-unsafe extern "C" fn cubit_std_allocate(size: usize, alignment: usize) -> *mut u8 {
-    let Ok(layout) = Layout::from_size_align(size, alignment) else {
-        return core::ptr::null_mut();
-    };
-    unsafe { ALLOCATOR.alloc(layout) }
-}
-#[unsafe(no_mangle)]
-unsafe extern "C" fn cubit_std_release(ptr: *mut u8, size: usize, alignment: usize) {
-    let layout = Layout::from_size_align(size, alignment).expect("invalid std allocation layout");
-    unsafe { ALLOCATOR.dealloc(ptr, layout) };
-}
-#[unsafe(no_mangle)]
-unsafe extern "C" fn cubit_std_random(ptr: *mut u8, len: usize) -> bool {
-    let bytes = unsafe { core::slice::from_raw_parts_mut(ptr, len) };
-    getrandom::fill(bytes).is_ok()
-}
-#[unsafe(no_mangle)]
-unsafe extern "C" fn cubit_std_diagnostic(ptr: *const u8, len: usize) {
-    let bytes = unsafe { core::slice::from_raw_parts(ptr, len) };
-    if let Ok(text) = core::str::from_utf8(bytes) {
-        cubit::debug_write(text);
-    }
-}
-#[unsafe(no_mangle)]
-unsafe extern "C" fn cubit_std_time(wall: bool, secs: *mut u64, nanos: *mut u32) -> bool {
-    let Some(clock) = EndpointSlot::new(SLOT_CLOCK) else {
-        return false;
-    };
-    let operation = if wall { 0x0b01 } else { 0x0b00 };
-    let Ok(reply) = clock.call(Message::new(operation, if wall { 0 } else { 1 }, [0; 4])) else {
-        return false;
-    };
-    if reply.tag.label != 0xf000
-        || reply.tag.length != if wall { 4 } else { 1 }
-        || reply.tag.flags != 0
-        || reply.tag.reserved != 0
-        || (wall && !(1..=3).contains(&reply.words[3]))
-    {
-        return false;
-    }
-    let (seconds, fraction) = if wall {
-        (reply.words[0], 0)
-    } else {
-        (
-            reply.words[0] / 1000,
-            ((reply.words[0] % 1000) * 1_000_000) as u32,
-        )
-    };
-    unsafe {
-        secs.write(seconds);
-        nanos.write(fraction);
-    }
-    true
-}
+#[path = "../../../../userspace/services/config-storage/std_hooks.rs"]
+mod std_hooks;
 
 #[unsafe(no_mangle)]
 extern "C" fn rust_main() -> ! {
+    #[cfg(feature = "turso")]
+    {
+        unsafe extern "C" {
+            fn config_worker_probeinit();
+        }
+        // SAFETY: called once before any Ada entrypoint, including its native
+        // storage dependencies. Zero-filled BSS is not Ada package elaboration.
+        unsafe { config_worker_probeinit() };
+    }
     use std::{
         collections::HashMap,
         sync::{Arc, Mutex, OnceLock},
@@ -114,14 +76,26 @@ extern "C" fn rust_main() -> ! {
     });
     LOCAL.with(|n| assert_eq!(n.get(), 8));
     // Unsupported facilities must fail, not grant ambient filesystem/network
-    // access or silently claim to have created a native thread.
+    // access. Threads now use the shared CuBit std runtime.
     assert!(std::fs::File::open("/ungranted").is_err());
-    assert!(std::thread::Builder::new().spawn(|| ()).is_err());
+    let worker = std::thread::Builder::new()
+        .spawn(|| {
+            LOCAL.with(|n| {
+                assert_eq!(n.get(), 7);
+                n.set(99);
+            });
+            42
+        })
+        .unwrap();
+    assert_eq!(worker.join().unwrap(), 42);
+    LOCAL.with(|n| assert_eq!(n.get(), 8));
     assert!(Instant::now() >= start);
     assert!(std::time::SystemTime::now() >= std::time::UNIX_EPOCH);
     cubit::debug_write("TURSO-NATIVE: std probe PASS\n");
     #[cfg(feature = "turso")]
     run_database();
+    #[cfg(feature = "turso")]
+    run_persistent();
     cubit::exit(0)
 }
 
@@ -210,4 +184,178 @@ fn run_database() {
         }
     }
     cubit::debug_write("TURSO-NATIVE: shared File workload PASS (volatile)\n");
+}
+
+#[cfg(feature = "turso")]
+fn run_persistent() {
+    use config_storage::{
+        Commit, Setting, Store,
+        io_workload::{self, Operation},
+        native_io::NativeIO,
+    };
+    use std::sync::Arc;
+    use turso_core::{IO, OpenFlags};
+    const DATABASE: &str = "@nvme:0/turso-native/profile.sqlite";
+    const WORKLOAD: &str = "@nvme:0/turso-native/workload.bin";
+    const THREADED_WORKLOAD: &str = "@nvme:0/turso-native/threaded.bin";
+    let bridge = storage::Bridge::new(SLOT_FILESYSTEM);
+    #[cfg(feature = "sql-bench")]
+    let (bridge, metrics) =
+        config_storage::transport_metrics::Meter::new(bridge, sql_benchmark::counter);
+    let transfer_bytes = config_storage::native_io::Transport::transfer_capacity(&bridge).get();
+    let io = Arc::new(NativeIO::new(
+        bridge,
+        &[
+            DATABASE,
+            "@nvme:0/turso-native/profile.sqlite-wal",
+            WORKLOAD,
+            THREADED_WORKLOAD,
+            #[cfg(feature = "sql-bench")]
+            "@nvme:0/turso-native/transactions.sqlite",
+            #[cfg(feature = "sql-bench")]
+            "@nvme:0/turso-native/transactions.sqlite-wal",
+        ],
+    ));
+    cubit::debug_write("TURSO-NATIVE: filesystem adapter starting\n");
+    assert!(
+        io.open_file("@nvme:0/ungranted", OpenFlags::Create, false)
+            .is_err()
+    );
+    let file = io.open_file(WORKLOAD, OpenFlags::Create, false).unwrap();
+    io_workload::initialize(io.as_ref(), file.as_ref(), 4096, 32).unwrap();
+    for operation in [
+        Operation::SequentialRead,
+        Operation::RandomRead,
+        Operation::Overwrite,
+        Operation::VectoredWrite,
+        Operation::WriteThenFlush,
+    ] {
+        let m =
+            io_workload::measure(io.as_ref(), file.as_ref(), operation, 4096, 32, 1, 1).unwrap();
+        assert_eq!(m.latencies_ns.len(), 1);
+        assert_eq!(m.peak_deferred, 0);
+    }
+    drop(file);
+    cubit::debug_write("TURSO-NATIVE: shared File workload PASS (filesystem)\n");
+    threaded_io::run(
+        io.open_file(THREADED_WORKLOAD, OpenFlags::Create, false)
+            .unwrap(),
+        transfer_bytes,
+    );
+    #[cfg(feature = "bench")]
+    {
+        let scratch = io.open_file(WORKLOAD, OpenFlags::None, false).unwrap();
+        benchmark::run(io.as_ref(), scratch.as_ref(), transfer_bytes);
+    }
+    if cfg!(feature = "reopen") {
+        let existing = io
+            .open_file(DATABASE, OpenFlags::None, false)
+            .expect("fresh boot requires an existing database");
+        assert!(existing.size().unwrap() > 0);
+        drop(existing);
+    }
+    let store = Store::open_with_io(io.clone(), DATABASE).unwrap();
+    assert!(io.open_file(DATABASE, OpenFlags::None, false).is_err());
+    assert!(
+        io.open_file(
+            "@nvme:0/turso-native/profile.sqlite-wal",
+            OpenFlags::None,
+            false
+        )
+        .is_err()
+    );
+    cubit::debug_write("TURSO-NATIVE: database and WAL exclusion PASS\n");
+    let mut entries = vec![
+        ("theme".to_string(), Setting::Text("Alloy".to_string())),
+        ("scale".to_string(), Setting::Integer(125)),
+        ("enabled".to_string(), Setting::Boolean(true)),
+    ];
+    let previous = store.read("com.cubit.desktop", "laptop").unwrap();
+    let expected = if cfg!(feature = "reopen") {
+        let restored = previous.expect("fresh boot must restore the existing profile");
+        assert_eq!(restored.revision, 1);
+        assert_eq!(restored.entries.len(), entries.len());
+        for entry in &entries {
+            assert!(restored.entries.contains(entry));
+        }
+        cubit::debug_write("TURSO-NATIVE: fresh boot restored revision 1 PASS\n");
+        entries[1].1 = Setting::Integer(150);
+        1
+    } else {
+        assert!(previous.is_none(), "seed run requires a fresh profile");
+        0
+    };
+    assert_eq!(
+        store
+            .commit("com.cubit.desktop", "laptop", expected, 1, &entries)
+            .unwrap(),
+        Commit::Saved(expected + 1)
+    );
+    assert_eq!(
+        store
+            .commit("com.cubit.desktop", "laptop", expected, 1, &entries)
+            .unwrap(),
+        Commit::Conflict {
+            actual: expected + 1
+        }
+    );
+    let snapshot = store.read("com.cubit.desktop", "laptop").unwrap().unwrap();
+    assert_eq!(snapshot.revision, expected + 1);
+    assert_eq!(snapshot.entries.len(), entries.len());
+    for entry in entries {
+        assert!(snapshot.entries.contains(&entry));
+    }
+    store.checkpoint().unwrap();
+    store.close().unwrap();
+    let reopened = Store::open_with_io(io.clone(), DATABASE).unwrap();
+    assert_eq!(
+        reopened.read("com.cubit.desktop", "laptop").unwrap(),
+        Some(snapshot)
+    );
+    reopened.close().unwrap();
+    cubit::debug_write("TURSO-NATIVE: typed Config CBOR/revision/reopen PASS (filesystem)\n");
+    if cfg!(feature = "reopen") {
+        cubit::debug_write("TURSO-NATIVE: fresh boot committed revision 2 PASS\n");
+    }
+
+    // Exercise the actual Ada publication/worker/codec and Rust database ABI,
+    // not just the earlier Rust-only scalar profile. One database owner at a
+    // time, and an explicit native IO allow-list; no Linux filesystem fallback.
+    unsafe extern "C" {
+        fn cubit_config_worker_probe(database: *mut core::ffi::c_void, phase: u32) -> u32;
+    }
+    let mut worker =
+        config_storage::worker::Database::new(Store::open_with_io(io.clone(), DATABASE).unwrap());
+    // SAFETY: the local worker is live and exclusively borrowed until return.
+    // Ada does not retain the pointer. The phase is Seed=0 or Advance=1.
+    assert_eq!(
+        unsafe {
+            cubit_config_worker_probe(
+                (&mut worker as *mut config_storage::worker::Database).cast(),
+                u32::from(cfg!(feature = "reopen")),
+            )
+        },
+        0
+    );
+    worker.close().unwrap();
+    if cfg!(feature = "reopen") {
+        let mut restored = config_storage::worker::Database::new(
+            Store::open_with_io(io.clone(), DATABASE).unwrap(),
+        );
+        // SAFETY: same exclusive-lifetime contract; phase 2 only reads.
+        assert_eq!(
+            unsafe {
+                cubit_config_worker_probe(
+                    (&mut restored as *mut config_storage::worker::Database).cast(),
+                    2,
+                )
+            },
+            0
+        );
+        restored.close().unwrap();
+    }
+    cubit::debug_write("TURSO-NATIVE: Ada typed worker publication PASS (filesystem)\n");
+    #[cfg(feature = "sql-bench")]
+    sql_benchmark::run(io.clone(), metrics);
+    drop(io);
 }

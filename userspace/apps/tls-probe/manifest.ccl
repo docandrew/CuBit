@@ -1,0 +1,8 @@
+# Native SPARKTLS probe for the headless tls-probe regression. Test scope:
+# loopback fixture ports on the QEMU host only; needs network=declared.
+(executable-manifest v1
+  (identity "com.cubit.tls-probe")
+  (version "0.1.0")
+  (request-service clock read-write clock)
+  (request-network tcp-connect (ipv4 "10.0.2.2" 32)
+    (ports 18460 18463) (dns deny) tls-test))

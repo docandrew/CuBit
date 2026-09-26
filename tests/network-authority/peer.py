@@ -2,7 +2,45 @@
 import socket
 import sys
 import time
+import threading
 from pathlib import Path
+
+# Connected-UDP peer on 18446. The guest's scope names 10.0.2.2:18446 only.
+# For each PING, a datagram from another host port is sent first; the guest
+# must discard it and receive only the PONG from the connected peer port.
+udp_result = {"done": False, "error": None}
+
+
+def udp_peer():
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as peer, \
+             socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as stranger:
+            peer.bind(("127.0.0.1", 18446))
+            stranger.bind(("127.0.0.1", 18447))
+            peer.settimeout(120)
+            pings = 0
+            while True:
+                data, guest = peer.recvfrom(2048)
+                if data == b"PING":
+                    pings += 1
+                    stranger.sendto(b"SPOOF", guest)
+                    time.sleep(0.05)
+                    peer.sendto(b"PONG", guest)
+                elif data == b"LONG":
+                    peer.sendto(b"L" * 32, guest)
+                elif data == b"DONE":
+                    if pings < 2:
+                        raise RuntimeError("guest finished before two PING rounds")
+                    udp_result["done"] = True
+                    return
+                else:
+                    raise RuntimeError(f"unexpected UDP payload {data!r}")
+    except Exception as error:  # reported by the main thread
+        udp_result["error"] = error
+
+
+udp_thread = threading.Thread(target=udp_peer, daemon=True)
+udp_thread.start()
 
 with socket.socket() as listener:
     listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -11,7 +49,7 @@ with socket.socket() as listener:
     listener.settimeout(120)
     # More cycles than both bounded tables: stale channel handles must not
     # resolve after reuse, and TCP reservations/grants must return capacity.
-    for cycle in range(12):
+    for cycle in range(40):
         with listener.accept()[0] as connection:
             connection.settimeout(15)
             request = bytearray()
@@ -28,7 +66,7 @@ with socket.socket() as listener:
             # the host socket against the next test connection.
             if connection.recv(1) != b"":
                 raise RuntimeError("unexpected bytes after PING")
-    print("network peer: PASS (12 channel lifetimes)", flush=True)
+    print("network peer: PASS (40 channel lifetimes)", flush=True)
 
 # QEMU's host forward is a loopback-only test fixture, not an application relay.
 # Wait for guest markers rather than probing a closed port with real sessions.
@@ -82,3 +120,10 @@ for cycle in range(1, 5):
         if response != b"ACCEPTED":
             raise RuntimeError(f"unexpected inbound reply: {response!r}")
 print("network peer: PASS (4 native inbound accepts, fragmentation and half-close)", flush=True)
+
+udp_thread.join(timeout=60)
+if udp_result["error"] is not None:
+    raise RuntimeError(f"UDP peer failed: {udp_result['error']}")
+if not udp_result["done"]:
+    raise RuntimeError("guest did not complete the UDP exchange")
+print("network peer: PASS (connected UDP exchange, foreign source filtered)", flush=True)

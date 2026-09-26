@@ -122,7 +122,7 @@ package body CCL.Types with SPARK_Mode is
          if Definition.Form = Product then
             if Size > Maximum_Value_Cells - Layout then return; end if;
             Layout := Layout + Size;
-         else
+         elsif Definition.Form = Sum then
             if Size = Maximum_Value_Cells then return; end if;
             Layout := Cell_Count'Max (Layout, Size + 1);
          end if;
@@ -135,4 +135,132 @@ package body CCL.Types with SPARK_Mode is
       Item.Used := Ref;
       Result := Defined;
    end Define;
+
+   function Same_Description (Left, Right : Description) return Boolean is
+   begin
+      if not Same (Left.Identifier, Right.Identifier) or else
+        Left.Form /= Right.Form or else Left.Count /= Right.Count
+      then
+         return False;
+      end if;
+      for I in 1 .. Left.Count loop
+         if not Same (Left.Parts (I).Identifier, Right.Parts (I).Identifier)
+           or else Left.Parts (I).Payload /= Right.Parts (I).Payload
+         then
+            return False;
+         end if;
+      end loop;
+      return True;
+   end Same_Description;
+
+   procedure Specialize_Unary_Resource
+     (Item : in out Registry; Family, Parameter_Label : Name;
+      Parameter : Type_Reference; Ref : out Type_Reference;
+      Result : out Unary_Resource_Result)
+   is
+      Candidate : Description;
+      Existing : Type_Reference;
+      Defined_As : Definition_Result;
+   begin
+      Ref := Invalid_Type;
+      Result := Invalid_Resource_Family;
+      if not Valid_Name (Family) then
+         return;
+      end if;
+      Result := Invalid_Resource_Parameter;
+      if not Valid_Name (Parameter_Label) or else not Known (Item, Parameter) then
+         return;
+      end if;
+      Candidate :=
+        (Identifier => Named (Image (Family) & "-" &
+             Image (Describe (Item, Parameter).Identifier)),
+         Form => Resource,
+         Count => 1,
+         Parts => [1 => (Parameter_Label, Parameter), others => <>]);
+      Result := Resource_Name_Too_Long;
+      if not Valid_Name (Candidate.Identifier) then
+         return;
+      end if;
+      Existing := Find (Item, Candidate.Identifier);
+      if Existing /= Invalid_Type then
+         Result := Resource_Definition_Conflict;
+         if Same_Description (Describe (Item, Existing), Candidate) then
+            Ref := Existing;
+            Result := Resource_Already_Specialized;
+         end if;
+         return;
+      end if;
+      Define (Item, Candidate, Ref, Defined_As);
+      case Defined_As is
+         when Defined => Result := Resource_Specialized;
+         when Registry_Full => Result := Resource_Registry_Full;
+         when others =>
+            -- Candidate was validated above; retain a precise failure if the
+            -- ordinary definition rules become more restrictive later.
+            Result := Resource_Definition_Conflict;
+      end case;
+   end Specialize_Unary_Resource;
+
+   procedure Import_Definition
+     (Source : Registry; Root : Type_Reference; Target : in out Registry;
+      Ref : out Type_Reference; Result : out Import_Result)
+   is
+      Needed : array (Type_Reference) of Boolean := [others => False];
+      Mapping : array (Type_Reference) of Type_Reference := [others => Invalid_Type];
+      Staged : Registry := Target;
+      Translated, Existing : Description;
+      Candidate : Type_Reference;
+      Defined_As : Definition_Result;
+   begin
+      Ref := Invalid_Type;
+      Result := Invalid_Root;
+      if not Known (Source, Root) then return; end if;
+      if Root <= Unit_Type then
+         Ref := Root; Result := Imported; return;
+      end if;
+      Needed (Root) := True;
+      --  Published definitions only refer backwards. Reverse traversal marks
+      --  the closure; forward traversal below translates it without recursion.
+      for Index in reverse Declared_Type'First .. Root loop
+         if Needed (Index) then
+            declare
+               D : constant Description := Describe (Source, Index);
+            begin
+               for Part in 1 .. D.Count loop
+                  Needed (D.Parts (Part).Payload) := True;
+               end loop;
+            end;
+         end if;
+      end loop;
+      for Index in Integer_Type .. Unit_Type loop Mapping (Index) := Index; end loop;
+      Result := Conflicting_Definition;
+      for Index in Declared_Type'First .. Root loop
+         if Needed (Index) then
+            Translated := Describe (Source, Index);
+            for Part in 1 .. Translated.Count loop
+               Translated.Parts (Part).Payload := Mapping (Translated.Parts (Part).Payload);
+            end loop;
+            Candidate := Find (Staged, Translated.Identifier);
+            if Candidate = Invalid_Type then
+               Define (Staged, Translated, Candidate, Defined_As);
+               if Defined_As /= Defined then
+                  if Defined_As = Registry_Full then Result := Import_Full; end if;
+                  return;
+               end if;
+            else
+               Existing := Describe (Staged, Candidate);
+               if Existing.Form /= Translated.Form or Existing.Count /= Translated.Count then return; end if;
+               for Part in 1 .. Translated.Count loop
+                  if not Same (Existing.Parts (Part).Identifier, Translated.Parts (Part).Identifier)
+                    or else Existing.Parts (Part).Payload /= Translated.Parts (Part).Payload
+                  then return; end if;
+               end loop;
+            end if;
+            Mapping (Index) := Candidate;
+         end if;
+      end loop;
+      Target := Staged;
+      Ref := Mapping (Root);
+      Result := Imported;
+   end Import_Definition;
 end CCL.Types;

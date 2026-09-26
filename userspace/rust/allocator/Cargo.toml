@@ -7,5 +7,5 @@ publish = false
 [lib]
 path = "src/lib.rs"
 
-[target.'cfg(target_os = "none")'.dependencies]
+[target.'cfg(any(target_os = "none", target_os = "cubit"))'.dependencies]
 cubit = { path = "../cubit" }

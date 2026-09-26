@@ -116,8 +116,10 @@ begin
    declare
       use type CCL.Catalog.Grant_Result;
       use type CCL.VM.Value_Kind;
+      type Reply_Mode is (Normal, With_Tag, Noncopyable, Variant, Wrong_Kind, Failed);
       type Host_State is record
          Calls : Natural := 0;
+         Mode : Reply_Mode := Normal;
       end record;
       procedure Invoke
         (Context : in out Host_State; Binding : Interfaces.Unsigned_32;
@@ -128,6 +130,18 @@ begin
          Value := CCL.VM.Integer_Constant (Interfaces.Integer_64 (Context.Calls));
          Success := Binding = 77 and then Argument.Kind = CCL.VM.Integer_Value and then
            Argument.Integer = 0;
+         if Binding = 78 then
+            Success := Argument.Kind = CCL.VM.Boolean_Value;
+            Value := CCL.VM.Boolean_Constant (Argument.Boolean);
+         end if;
+         case Context.Mode is
+            when Normal => null;
+            when With_Tag => Value.Type_Tag := 1;
+            when Noncopyable => Value.Copyable := False;
+            when Variant => Value.Kind := CCL.VM.Variant_Value;
+            when Wrong_Kind => Value := CCL.VM.Boolean_Constant (True);
+            when Failed => Success := False;
+         end case;
       end Invoke;
       procedure Run is new CCL.Language.Interpret_With_Host (Host_State, Invoke);
       Grants : CCL.Catalog.Granted_Bindings;
@@ -156,6 +170,47 @@ begin
       Run (View.Canonical.Data (1 .. View.Canonical.Length), 4096, Catalog, Grants, Host, Outcome);
       pragma Assert (Outcome.Status = CCL.Language.Succeeded and Host.Calls = 2);
       pragma Assert (Outcome.Result_Value.Integer = 42);
+      -- Scalar-copy imports must not silently erase ownership metadata or
+      -- reinterpret a nominal variant as a primitive. Failed calls export no
+      -- value; a plain but wrong primitive retains the type-mismatch outcome.
+      for Mode in Reply_Mode range With_Tag .. Failed loop
+         Host.Mode := Mode;
+         Run ("(clock.monotonic-ms)", 4096, Catalog, Grants, Host, Outcome);
+         pragma Assert
+           (Outcome.Status = (if Mode = Wrong_Kind then CCL.Language.Host_Result_Type_Mismatch
+                              else CCL.Language.Host_Call_Failed));
+         pragma Assert (not Outcome.Has_Value);
+      end loop;
+      declare
+         Interface_Item : CCL.Catalog.Interface_Descriptor;
+         Method : CCL.Catalog.Operation_Descriptor;
+         use type CCL.Catalog.Catalog_Error;
+      begin
+         Host.Mode := Normal;
+         CCL.Catalog.Define_Interface ("scalar", 1, 0, [1, 2, 3, 4], Interface_Item, Error);
+         pragma Assert (Error = CCL.Catalog.Catalog_Valid);
+         CCL.Catalog.Define_Operation
+           ("echo", 1, (Argument => CCL.VM.Boolean_Value, Result => CCL.VM.Boolean_Value,
+                        Authority => CCL.VM.Observe_Authority, others => <>), Method, Error);
+         pragma Assert (Error = CCL.Catalog.Catalog_Valid);
+         CCL.Catalog.Add_Operation (Interface_Item, Method, Error);
+         pragma Assert (Error = CCL.Catalog.Catalog_Valid);
+         CCL.Catalog.Publish (Catalog, Interface_Item, Error);
+         pragma Assert (Error = CCL.Catalog.Catalog_Valid);
+         CCL.Catalog.Resolve (Catalog, "scalar.echo", Operation, Found);
+         pragma Assert (Found);
+         CCL.Catalog.Install (Grants, Operation, 78, Grant);
+         pragma Assert (Grant = CCL.Catalog.Grant_Added);
+         for Expected in Boolean loop
+            Run ("(define (echo (x Boolean)) Boolean (scalar.echo x)) " &
+                 "(echo " & (if Expected then "true" else "false") & ")",
+                 4096, Catalog, Grants, Host, Outcome);
+            pragma Assert (Outcome.Status = CCL.Language.Succeeded and then Outcome.Has_Value);
+            pragma Assert (Outcome.Result_Value.Kind = CCL.VM.Boolean_Value and then
+                           Outcome.Result_Value.Boolean = Expected);
+            pragma Assert (Outcome.Result_Value.Copyable and Outcome.Result_Value.Type_Tag = 0);
+         end loop;
+      end;
    end;
    declare
       View : Conversion;

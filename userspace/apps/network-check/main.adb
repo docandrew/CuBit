@@ -8,6 +8,7 @@ with CuBit.Network_Authority; use CuBit.Network_Authority;
 procedure Main is
    Connect_Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Test_Connect;
    Listen_Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Test_Listen;
+   Datagram_Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Test_Datagram;
    Inspect_Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Network;
    OK_Label : constant Unsigned_32 := 16#F000#;
    Error_Label : constant Unsigned_32 := 16#F001#;
@@ -149,10 +150,12 @@ begin
       Check (Reply_Tag.label = Error_Label, "undeclared DNS denied");
       Open ("@net:tcp:10.0.2.2:18443", Reference.generation + 1);
       Check (Reply_Tag.label = Error_Label, "wrong transfer generation denied");
-      for Round in 1 .. 12 loop
+      --  More lifetimes than netstack's 32 channel handles and 16 TCP
+      --  connections, so slots are reused and stale handles are exercised.
+      for Round in 1 .. 40 loop
          --  Half the lifetimes retain synchronous coverage; the other half
          --  exercise the full async open/write/read/close path used by NetSurf.
-         Async_Mode := Round > 6;
+         Async_Mode := Round > 20;
          Open ("@net:tcp:10.0.2.2:18443");
          Check (Reply_Tag.label = OK_Label, "permitted outbound connects");
          if Async_Mode then
@@ -201,9 +204,126 @@ begin
             Previous_Channel := Channel;
          end if;
       end loop;
-      Check (Previous_Channel > 8, "channel handles are not bounded table indices");
+      Check (Previous_Channel > 32, "channel handles are not bounded table indices");
       CuBit.Memory_Grants.Revoke (Reference, Success);
       Check (Success, "transfer revoke");
+   end;
+   --  Connected UDP to the loopback-only host peer at 10.0.2.2:18446.
+   declare
+      Allocation : constant Unsigned_64 := syscall (SYSCALL_SBRK, 4096);
+      Buffer : String (1 .. 4096) with Import,
+        Address => To_Address (Integer_Address (Allocation));
+      Reference : CuBit.Memory_Grants.Grant_Reference;
+      Success : Boolean;
+      Datagram, Stale : Unsigned_64 := 0;
+      Started : Unsigned_64;
+      Completion : CompletionEntry;
+      procedure Open (Slot : CapabilitySlot; Name : String) is
+      begin
+         Buffer (1 .. Name'Length) := Name;
+         Request := NULL_MESSAGE; Request.tag.label := Open_Label;
+         Request.tag.length := Unsigned_8 (Name'Length);
+         Request.words (0) := Reference.slot; Request.words (1) := 4096;
+         Request.words (3) := Reference.generation;
+         Reply_Tag := capCall (Slot, Request);
+      end Open;
+      procedure Send (Slot : CapabilitySlot; Text : String; Length : Natural := 0) is
+      begin
+         Buffer (1 .. Text'Length) := Text;
+         Request := NULL_MESSAGE; Request.tag.label := Write_Label;
+         Request.tag.length := 3; Request.words (0) := Datagram;
+         Request.words (2) := Unsigned_64 (if Length = 0 then Text'Length else Length);
+         Reply_Tag := capCall (Slot, Request);
+      end Send;
+      procedure Prepare_Receive (Max : Natural; Wait_MS : Unsigned_64) is
+      begin
+         Request := NULL_MESSAGE; Request.tag.label := Read_Label;
+         Request.tag.length := 4; Request.words (0) := Datagram;
+         Request.words (2) := Unsigned_64 (Max);
+         Request.words (3) := syscall (SYSCALL_GETTIME) + Wait_MS;
+      end Prepare_Receive;
+      procedure Receive (Max : Natural; Wait_MS : Unsigned_64 := 5_000) is
+      begin
+         Prepare_Receive (Max, Wait_MS);
+         Reply_Tag := capCall (Datagram_Slot, Request);
+      end Receive;
+   begin
+      Check (Allocation /= Unsigned_64'Last, "datagram transfer allocation");
+      if Allocation = Unsigned_64'Last then return; end if;
+      CuBit.Memory_Grants.Create_Via_Capability
+        (Datagram_Slot, Buffer'Address, 1, True, Reference, Success);
+      Check (Success, "datagram transfer grant");
+      if not Success then return; end if;
+      Open (Datagram_Slot, "@net:udp:10.0.2.2:18447");
+      Check (Reply_Tag.label = Error_Label, "udp wrong port denied");
+      Open (Datagram_Slot, "@net:udp:10.0.2.3:18446");
+      Check (Reply_Tag.label = Error_Label, "udp wrong address denied");
+      Open (Datagram_Slot, "@net:udp:example.com:18446");
+      Check (Reply_Tag.label = Error_Label, "udp undeclared DNS denied");
+      Open (Datagram_Slot, "@net:tcp:10.0.2.2:18446");
+      Check (Reply_Tag.label = Error_Label, "udp scope cannot open tcp");
+      Open (Connect_Slot, "@net:udp:10.0.2.2:18443");
+      Check (Reply_Tag.label = Error_Label, "tcp scope cannot open udp");
+      for Round in 1 .. 2 loop
+         Open (Datagram_Slot, "@net:udp:10.0.2.2:18446");
+         Check (Reply_Tag.label = OK_Label, "udp channel opens");
+         if Reply_Tag.label /= OK_Label then return; end if;
+         Datagram := Request.words (0);
+         Check (Datagram /= Stale, "udp channel handle is fresh");
+         if Stale /= 0 then
+            declare
+               Current : constant Unsigned_64 := Datagram;
+            begin
+               Datagram := Stale;
+               Send (Datagram_Slot, "PING");
+               Check (Reply_Tag.label = Error_Label, "stale udp handle cannot send");
+               Datagram := Current;
+            end;
+         end if;
+         Send (Connect_Slot, "PING");
+         Check (Reply_Tag.label = Error_Label, "wrong grant cannot send udp");
+         Send (Datagram_Slot, "PING", 1473); -- one byte over the UDP limit
+         Check (Reply_Tag.label = Error_Label, "oversized datagram denied");
+         Send (Datagram_Slot, "PING");
+         Check (Reply_Tag.label = OK_Label and Request.words (0) = 4, "udp datagram sent");
+         Receive (64);
+         Check (Reply_Tag.label = OK_Label and then Request.words (0) = 4 and then
+                Request.words (1) = 0 and then Buffer (1 .. 4) = "PONG",
+                "udp reply received, foreign source filtered");
+         Send (Datagram_Slot, "LONG");
+         Receive (8);
+         Check (Reply_Tag.label = OK_Label and then Request.words (0) = 8 and then
+                Request.words (1) = 1 and then Buffer (1 .. 8) = "LLLLLLLL",
+                "udp truncation reported");
+         Started := syscall (SYSCALL_GETTIME);
+         Receive (64, 300);
+         Check (Reply_Tag.label = Error_Label and then
+                syscall (SYSCALL_GETTIME) - Started >= 250,
+                "udp read deadline, truncated datagram consumed whole");
+         Prepare_Receive (64, 10_000);
+         Success := capSubmit (Datagram_Slot, Request, 202);
+         Check (Success, "deferred udp read submitted");
+         Receive (64);
+         Check (Reply_Tag.label = Error_Label, "second concurrent udp read denied");
+         Request := NULL_MESSAGE; Request.tag.label := Shut_Label;
+         Request.tag.length := 1; Request.words (0) := Datagram;
+         Reply_Tag := capCall (Datagram_Slot, Request);
+         Check (Reply_Tag.label = OK_Label, "udp channel closes");
+         Result := waitCompletion (Completion'Address, 1, 1);
+         Check (Result = 1 and then Completion.token = 202 and then
+                Completion.msg.tag.label = 16#F006#,
+                "close ends pending udp read with EOF");
+         Stale := Datagram;
+      end loop;
+      Open (Datagram_Slot, "@net:udp:10.0.2.2:18446");
+      Datagram := Request.words (0);
+      Send (Datagram_Slot, "DONE");
+      Check (Reply_Tag.label = OK_Label, "udp peer finished");
+      Request := NULL_MESSAGE; Request.tag.label := Shut_Label;
+      Request.tag.length := 1; Request.words (0) := Datagram;
+      Reply_Tag := capCall (Datagram_Slot, Request);
+      CuBit.Memory_Grants.Revoke (Reference, Success);
+      Check (Success, "datagram transfer revoke");
    end;
    declare
       Allocation : constant Unsigned_64 := syscall (SYSCALL_SBRK, 4096);

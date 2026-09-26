@@ -8,6 +8,7 @@ with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
 
+with Build;
 with Mem_mgr;
 with Process.Queues;
 with Process_Lifetime;
@@ -32,30 +33,31 @@ package body Scheduler is
         checkCanary : declare
             use type Process.ProcessKernelStackPtr;
             cpuData : PerCPUData.PerCPUData with Import, Volatile, Address => perCPUAddr;
-            pid : constant Process.ProcessID := cpuData.currentPID;
+            tid : constant Process.ThreadID := cpuData.currentThread;
         begin
-            if pid /= Process.NO_PROCESS and then
-               Process.proctab(pid).kernelStack /= null and then
-               Process.proctab(pid).kernelStack.canary /= Process.KSTACK_CANARY
+            if Process."/=" (tid, Process.NO_THREAD) and then
+               Process.threadtab (tid).kernelStack /= null and then
+               Process.threadtab (tid).kernelStack.canary /= Process.KSTACK_CANARY
             then
                 raise SchedulerException with
                     "Kernel stack overflow detected (canary corrupted)";
             end if;
         end checkCanary;
 
-        -- Eagerly preserve user FP/SIMD state before leaving the process.
+        -- Eagerly preserve user FP/SIMD state and FS base before leaving the
+        -- process.
         -- Kernel scheduler code is compiled without MMX/SSE, so no restore is
         -- needed until immediately before the next user process runs.
         saveFPU : declare
             cpuData : PerCPUData.PerCPUData with
                 Import, Volatile, Address => perCPUAddr;
-            pid : constant Process.ProcessID := cpuData.currentPID;
+            tid : constant Process.ThreadID := cpuData.currentThread;
         begin
-            if pid /= Process.NO_PROCESS and then
-               Process.proctab(pid).state /= Process.INVALID and then
-               Process.proctab(pid).mode = Process.USER
+            if Process."/=" (tid, Process.NO_THREAD) and then
+               Process.threadtab (tid).state /= Process.INVALID and then
+               Process.threadtab (tid).mode = Process.USER
             then
-                Process.saveFPUState (pid);
+                Process.saveUserCPUState (tid);
             end if;
         end saveFPU;
 
@@ -80,7 +82,8 @@ package body Scheduler is
         use Process;
 
         pid : ProcessID;
-        ign : ProcessID;
+        tid : ThreadID;
+        ign : ThreadID;
         runStartTSC : Unsigned_64;
     begin
 
@@ -101,6 +104,11 @@ package body Scheduler is
             -- coming back here to the scheduler.
             --
             -- println ("Scheduler.schedule: acquiring proctab lock");
+            -- Quiescent point: this CPU holds no process-table record here.
+            Process.cpuOnline (cpuData.cpuNum) := True;
+            Process.Process_Table.Quiescent (cpuData.cpuNum);
+            Process.Thread_Table.Quiescent (cpuData.cpuNum);
+
             enterCriticalSection (Process.lock);
 
             -- Remove this process from the ready list. This makes it easier to put on a
@@ -108,11 +116,33 @@ package body Scheduler is
             -- println ("Scheduler - Ready List: ");
             -- Process.Queues.print (Process.cpuReadyLists(cpuData.cpuNum));
 
-            loop
-                Process.Queues.dequeue (Process.cpuReadyLists(cpuData.cpuNum), pid);
-                exit when pid = NO_PROCESS or else
-                  not Process_Lifetime.Closing (proctab(pid).lifetime);
-            end loop;
+            -- Work stealing: with nothing but the idle thread to run here,
+            -- take ready work from a busy CPU. The stolen process now belongs
+            -- to this CPU's list for later wakeups.
+            tid := NO_THREAD;
+            if Build.Work_Stealing and then
+               not Process.Queues.hasReadyPeer (Process.cpuReadyLists(cpuData.cpuNum), 0)
+            then
+                for Offset in 1 .. Process.cpuReadyLists'Length - 1 loop
+                    Process.Queues.stealFrom
+                      (Process.cpuReadyLists
+                         ((cpuData.cpuNum + Offset) mod Process.cpuReadyLists'Length),
+                       tid);
+                    if tid /= NO_THREAD then
+                        Process.threadtab (tid).cpu := cpuData.cpuNum;
+                        exit;
+                    end if;
+                end loop;
+            end if;
+
+            if tid = NO_THREAD then
+                loop
+                    Process.Queues.dequeue (Process.cpuReadyLists(cpuData.cpuNum), tid);
+                    exit when tid = NO_THREAD or else
+                      not Process_Lifetime.Closing (threadtab (tid).lifetime);
+                end loop;
+            end if;
+            pid := (if tid = NO_THREAD then NO_PROCESS else Process.processOf (tid));
 
             -- print ("Scheduler: running "); print (Process.proctab(pid).name); print(" pid "); println (Integer(pid));
 
@@ -120,45 +150,46 @@ package body Scheduler is
                 raise SchedulerException with "Scheduler.schedule: No idle process in ready list";
             end if;
 
-            Process.proctab(pid).state  := RUNNING;
-            Process.proctab(pid).readiness := Rescheduled;
-            Process.noteContextStarted (pid);
+            Process.threadtab (tid).state  := RUNNING;
+            Process.threadtab (tid).readiness := Rescheduled;
+            Process.noteContextStarted (tid);
 
-            cpuData.currentPID          := pid;
-            cpuData.currentContext      := Process.proctab(pid).context; -- save this address so we can switch back
+            cpuData.currentThread       := tid;
+            cpuData.currentContext      := Process.threadtab (tid).context; -- save this address so we can switch back
 
             -- switch address spaces if appropriate
-            cpuData.savedKernelRSP      := Process.proctab(pid).kernelStackTop;
-            cpuData.tss.rsp0            := Process.proctab(pid).kernelStackTop;
+            cpuData.savedKernelRSP      := Process.threadtab (tid).kernelStackTop;
+            cpuData.tss.rsp0            := Process.threadtab (tid).kernelStackTop;
 
             -- Only change address spaces if we're switching to a user-mode process.
-            if Process.proctab(pid).mode = Process.USER then
+            if Process.threadtab (tid).mode = Process.USER then
                 Process.switchAddressSpace (pid);
             end if;
 
             -- print ("Scheduler: Switching to context "); println (cpuData.currentContext);
 
-            -- Restore initialized FP/SIMD state before any user instruction
-            -- can execute. Kernel threads are compiled without FP/SIMD.
-            if Process.proctab(pid).mode = Process.USER then
-                Process.restoreFPUState (pid);
+            -- Restore initialized FP/SIMD state and FS base before any user
+            -- instruction can execute. Kernel threads are compiled without
+            -- FP/SIMD.
+            if Process.threadtab (tid).mode = Process.USER then
+                Process.restoreUserCPUState (tid);
             end if;
 
-            if Process.proctab(pid).readyTSC /= 0 then
+            if Process.threadtab (tid).readyTSC /= 0 then
                 Trace.ObserveDuration
                     (Trace.EVENT_READY_LATENCY,
-                     x86.rdtsc - Process.proctab(pid).readyTSC);
-                Process.proctab(pid).readyTSC := 0;
+                     x86.rdtsc - Process.threadtab (tid).readyTSC);
+                Process.threadtab (tid).readyTSC := 0;
             end if;
 
             Trace.Emit
                 (Trace.EVENT_SCHEDULE_RUN,
                  Unsigned_64 (pid),
-                 Unsigned_64 (Process.proctab(pid).priority));
+                 Unsigned_64 (Process.threadtab (tid).priority));
 
             runStartTSC := x86.rdtsc;
 
-            Process.accountBoundary (NO_PROCESS, pid, Scheduler_Start);
+            Process.accountBoundary (Process.NO_THREAD, tid, Scheduler_Start);
 
             -- Start executing new process
             Process.switch (cpuData.schedulerContext'Address, cpuData.currentContext);
@@ -166,32 +197,33 @@ package body Scheduler is
             -- when process pauses its run, we return here.
             -- directSwitch may have changed who's running on this CPU,
             -- so refresh pid from per-CPU state before processing.
-            pid := cpuData.currentPID;
+            tid := cpuData.currentThread;
+            pid := Process.processOf (tid);
             -- Charge the LAST direct-handoff owner before acknowledging its
             -- context stop/reaping. The full chain is not this PID's runtime.
-            Process.accountBoundary (pid, NO_PROCESS, Scheduler_Stop);
+            Process.accountBoundary (tid, Process.NO_THREAD, Scheduler_Stop);
             Trace.Emit
                 (Trace.EVENT_SCHEDULE_STOP,
-                 Unsigned_64 (pid),
+                 Unsigned_64 (tid),
                  Unsigned_64 (Process.ProcessState'Pos
-                    (Process.proctab(pid).state)));
+                    (Process.threadtab (tid).state)));
             Trace.ObserveDuration (Trace.EVENT_RUN_TIME,
                                    x86.rdtsc - runStartTSC);
-            cpuData.currentPID := Process.NO_PROCESS;
+            cpuData.currentThread := Process.NO_THREAD;
 
             -- switch back to kernel page tables if we weren't just running a kernel thread
-            if Process.proctab(pid).mode = Process.USER then
+            if Process.threadtab (tid).mode = Process.USER then
                 Mem_mgr.switchAddressSpace;
             end if;
 
             -- We are now on the scheduler stack and kernel page tables.
             -- Process.lock prevents the reaper observing this acknowledgement
             -- until the context handoff has completely finished.
-            Process.noteContextStopped (pid);
+            Process.noteContextStopped (tid);
 
             -- Update the process' context pointer.
-            if not Process_Lifetime.Closing (proctab(pid).lifetime) then
-            case Process.proctab(pid).state is
+            if not Process_Lifetime.Closing (Process.threadtab (tid).lifetime) then
+            case Process.threadtab (tid).state is
 
                 when INVALID =>
                     -- Don't save the context here
@@ -203,18 +235,19 @@ package body Scheduler is
                     -- print ("Scheduler: process "); print (i);
                     -- print (" is interrupted, making READY and saving context: ");
                     -- println (cpuData.oldContext);
-                    Process.proctab(pid).context := cpuData.oldContext;
-                    Process.proctab(pid).state   := READY;
+                    Process.threadtab (tid).context := cpuData.oldContext;
+                    Process.threadtab (tid).state   := READY;
+                    Process.threadtab (tid).queuedTSC := x86.rdtsc;
 
                     -- @TODO adjust priority here if we eat up full time-slice
                     -- put us back on the ready list.
                     Process.Queues.insert (
                         q      => Process.cpuReadyLists(cpuData.cpuNum),
-                        pid    => pid,
-                        key    => Process.proctab(pid).priority,
+                        pid    => tid,
+                        key    => Process.threadtab (tid).priority,
                         result => ign,
                         placement =>
-                          (if Scheduling_Turns.Remaining (proctab(pid).savedTurn) > 0
+                          (if Scheduling_Turns.Remaining (Process.threadtab (tid).savedTurn) > 0
                            then Process.Queues.Resume_Turn else Process.Queues.After_Peers));
 
                 when READY =>
@@ -222,15 +255,15 @@ package body Scheduler is
                     -- notify() which set us back to READY and enqueued us
                     -- before we finished yielding. Already on the ready
                     -- list, just save context.
-                    Process.proctab(pid).context := cpuData.oldContext;
+                    Process.threadtab (tid).context := cpuData.oldContext;
 
                 when WAITING | RECEIVING | SENDING | WAITINGFOREVENT |
                      WAITINGFORREPLY | WAITINGFORCOMPLETION | SUSPENDED |
-                     SLEEPING =>
+                     SLEEPING | FUTEXWAITING =>
                     -- print ("Scheduler: process "); print (i);
                     -- print (" is blocked (waiting), saving context: ");
                     -- println (cpuData.oldContext);
-                    Process.proctab(pid).context := cpuData.oldContext;
+                    Process.threadtab (tid).context := cpuData.oldContext;
 
             end case;
             end if;

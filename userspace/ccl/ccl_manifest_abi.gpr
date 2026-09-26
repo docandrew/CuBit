@@ -2,7 +2,8 @@
 project CCL_Manifest_ABI is
    for Source_Dirs use ("../runtime/gnat");
    for Source_Files use
-     ("cubit.ads", "cubit-network_authority.ads", "cubit-network_authority.adb");
+     ("cubit.ads", "cubit-network_authority.ads", "cubit-network_authority.adb",
+      "cubit-tls_scopes.ads", "cubit-tls_scopes.adb");
    for Object_Dir use "build/manifest-abi";
    package Compiler is
       for Default_Switches ("Ada") use

@@ -19,6 +19,7 @@ package body CCL.Configurations with SPARK_Mode => On is
          when Invalid_Executable => return "INVALID_EXECUTABLE";
          when Invalid_Priority => return "INVALID_PRIORITY";
          when Invalid_Approval => return "INVALID_APPROVAL";
+         when Invalid_Role => return "INVALID_ROLE";
          when Duplicate_Field => return "DUPLICATE_FIELD";
          when Missing_Field => return "MISSING_FIELD";
          when Trailing_Input => return "TRAILING_INPUT";
@@ -31,6 +32,7 @@ package body CCL.Configurations with SPARK_Mode => On is
       Kind : Profile_Kind := System_Profile;
       Value : CCL.Language.Interpretation_Result;
       Count : Natural range 0 .. 128 := 0;
+      Have_Storage : Boolean := False;
 
       procedure Fail (Code : Diagnostic_Code) is
       begin
@@ -117,7 +119,7 @@ package body CCL.Configurations with SPARK_Mode => On is
                   end;
                when CCL.VM.Boolean_Value =>
                   Store_Value ((if Value.Result_Value.Boolean then "true" else "false"));
-               when CCL.VM.Variant_Value =>
+               when CCL.VM.Variant_Value | CCL.VM.Object_Value | CCL.VM.Resource_Value =>
                   Fail (Invalid_Value);
             end case;
          else Fail (Invalid_Value);
@@ -126,9 +128,10 @@ package body CCL.Configurations with SPARK_Mode => On is
 
       procedure Launch is
          Executable : Key_Text;
-         Have_Priority, Have_Network : Boolean := False;
+         Have_Priority, Have_Network, Have_Role : Boolean := False;
          Priority : Integer_64 := 5;
          Approval : Network_Approval := Deny;
+         Role : Startup_Role := Application;
       begin
          if Count = 16 then Fail (Too_Many_Entries); return; end if;
          Read_Key (Executable, True);
@@ -148,6 +151,17 @@ package body CCL.Configurations with SPARK_Mode => On is
                else Fail (Invalid_Approval);
                end if;
                Have_Network := True;
+            elsif Matches (Name, "role") then
+               if Have_Role then Fail (Duplicate_Field); end if;
+               Read_Symbol (Reader, Name);
+               if Matches (Name, "application") then Role := Application;
+               elsif Matches (Name, "config-storage") then
+                  if Have_Storage then Fail (Invalid_Role); end if;
+                  Role := Config_Storage;
+                  Have_Storage := True;
+               else Fail (Invalid_Role);
+               end if;
+               Have_Role := True;
             else Fail (Unknown_Declaration);
             end if;
             Close_Form (Reader);
@@ -159,7 +173,7 @@ package body CCL.Configurations with SPARK_Mode => On is
          Result.Plan.Launches (Count) :=
            (Executable => (Length => Executable.Length,
                            Data => Executable.Data (1 .. 64)),
-            Priority => Startup_Priority (Priority), Approval => Approval);
+            Priority => Startup_Priority (Priority), Approval => Approval, Role => Role);
       end Launch;
    begin
       Result := (others => <>);

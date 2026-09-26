@@ -1,0 +1,28 @@
+[package]
+name = "cubitshell"
+description = "Servo embedded on CuBit: SWGL rendering into a CuBit surface."
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+publish = false
+rust-version.workspace = true
+
+[[bin]]
+name = "cubitshell"
+path = "src/main.rs"
+bench = false
+
+[features]
+default = []
+bundled = ["servo/bundled"]
+
+[dependencies]
+dpi = { workspace = true }
+gleam = { workspace = true }
+glow = { workspace = true }
+log = { workspace = true }
+servo = { workspace = true }
+surfman = { workspace = true }
+swgl = "0.70"
+url = { workspace = true }

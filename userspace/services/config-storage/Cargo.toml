@@ -1,0 +1,30 @@
+[package]
+name = "cubit-config-storage"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+# Backend is still being hardened in its isolated evaluation workspace.
+config-storage = { package = "cubit-config-turso-spike", path = "../../../tests/config-turso" }
+cubit = { path = "../../rust/cubit" }
+cubit-allocator = { path = "../../rust/allocator" }
+getrandom02 = { package = "getrandom", version = "=0.2.17", features = ["rdrand"] }
+getrandom = "=0.3.4"
+
+[patch.crates-io]
+turso_core = { path = "../../../tests/config-turso/target/native-turso" }
+
+[profile.release]
+panic = "abort"
+opt-level = 2
+overflow-checks = true
+debug = 1
+
+[profile.dev]
+panic = "abort"

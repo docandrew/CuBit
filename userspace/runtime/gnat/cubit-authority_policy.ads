@@ -19,7 +19,7 @@ package CuBit.Authority_Policy with Pure, SPARK_Mode is
           Session_Approved and Issuer_Allowed);
 
    type Bootstrap_Authority is
-     (Log_Publication, Log_Observation, Master_Audio);
+     (Log_Publication, Log_Observation, Master_Audio, Clock_Adjustment);
    --  Transitional development-image approval: entry in the trusted startup
    --  plan approves declared privileged requests. OP_SPAWN cannot select it.
    --  Publication preserves the existing manifest-request policy.

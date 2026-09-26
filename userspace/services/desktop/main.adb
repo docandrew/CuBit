@@ -25,6 +25,7 @@ with CuBit.Fonts;
 with Desktop_Window_Icons;
 with Desktop_Wallpaper;
 with Desktop_Settings;
+with Desktop_Launch;
 with CuBit.Appearance;
 with CuBit.Config;
 with CuBit.UI;
@@ -237,6 +238,9 @@ procedure main is
    lastCursorPresentMs  : Unsigned_64 := 0;
    CURSOR_PRESENT_INTERVAL_MS : constant Unsigned_64 := 4;
 
+   --  Priority for applications launched from Apps (see trySpawnApplication).
+   APP_PRIORITY : constant Unsigned_64 := 3;
+
    function memcpy
       (dest : System.Address;
        src  : System.Address;
@@ -357,7 +361,7 @@ procedure main is
    type SurfaceInputChannel is record
       target   : Unsigned_64 := 0;
       nextSerial : Unsigned_64 := 1;
-      events   : PendingInputQueue := (others => (others => <>));
+      events   : PendingInputQueue := [others => (others => <>)];
       snapshot : InputSnapshot;
       waiter   : InputWaiter;
    end record;
@@ -382,7 +386,7 @@ procedure main is
       buttons    : Unsigned_64 := 0;
    end record;
    type InputSourceTable is array (InputSourceIndex) of InputSourceState;
-   inputSources : InputSourceTable := (others => (others => <>));
+   inputSources : InputSourceTable := [others => (others => <>)];
 
    pointerSurfaceId : Unsigned_64 := 0;
    launchMenuOpen : Boolean := False;
@@ -400,7 +404,7 @@ procedure main is
 
    type ScanTable is array (Unsigned_8 range 0 .. 16#39#) of Unsigned_8;
    scancodeNormal : constant ScanTable :=
-     (16#02# => Character'Pos ('1'),
+     [16#02# => Character'Pos ('1'),
       16#03# => Character'Pos ('2'),
       16#04# => Character'Pos ('3'),
       16#05# => Character'Pos ('4'),
@@ -450,10 +454,10 @@ procedure main is
       16#34# => Character'Pos ('.'),
       16#35# => Character'Pos ('/'),
       16#39# => Character'Pos (' '),
-      others => 0);
+      others => 0];
 
    scancodeShifted : constant ScanTable :=
-     (16#02# => Character'Pos ('!'),
+     [16#02# => Character'Pos ('!'),
       16#03# => Character'Pos ('@'),
       16#04# => Character'Pos ('#'),
       16#05# => Character'Pos ('$'),
@@ -503,49 +507,34 @@ procedure main is
       16#34# => Character'Pos ('>'),
       16#35# => Character'Pos ('?'),
       16#39# => Character'Pos (' '),
-      others => 0);
+      others => 0];
 
-   type Launch_Action is
-     (LAUNCH_NONE, LAUNCH_WORKBENCH, LAUNCH_DOOM,
-      LAUNCH_DEVICES, LAUNCH_BROWSER, LAUNCH_FILES, LAUNCH_SAMEBOY, LAUNCH_SETTINGS,
-      LAUNCH_CONFIG_INSPECTOR, LAUNCH_POWER);
-   for Launch_Action use
-     (LAUNCH_NONE => 0, LAUNCH_WORKBENCH => 1, LAUNCH_DOOM => 2,
-      LAUNCH_DEVICES => 3, LAUNCH_BROWSER => 4, LAUNCH_FILES => 5,
-      LAUNCH_SAMEBOY => 6, LAUNCH_SETTINGS => 7, LAUNCH_CONFIG_INSPECTOR => 8, LAUNCH_POWER => 9);
-   for Launch_Action'Size use 8;
+   --  The Apps menu: entries from Config (desktop.launch.*; Desktop_Launch),
+   --  then Power, which is always last.
+   launchMenu : Desktop_Launch.Menu := Desktop_Launch.Defaults;
+   LAUNCH_NONE  : constant := 0;
+   LAUNCH_POWER : constant := Desktop_Launch.Maximum_Entries + 1;
+   subtype Launch_Action is Natural range LAUNCH_NONE .. LAUNCH_POWER;
 
-   launchMenuSelection : Launch_Action := LAUNCH_WORKBENCH;
+   launchMenuSelection : Launch_Action := 1;
+   launchPids : array (1 .. Desktop_Launch.Maximum_Entries) of ProcessID :=
+     [others => NO_PROCESS];
 
+   --  Keyboard selection moves through the entries (not Power), wrapping.
    function nextLaunchSelection
       (current : Launch_Action;
        upward  : Boolean) return Launch_Action
    is
+      count : constant Natural := launchMenu.Count;
    begin
-      if upward then
-         case current is
-            when LAUNCH_WORKBENCH => return LAUNCH_CONFIG_INSPECTOR;
-            when LAUNCH_CONFIG_INSPECTOR => return LAUNCH_SETTINGS;
-            when LAUNCH_DOOM      => return LAUNCH_WORKBENCH;
-            when LAUNCH_DEVICES   => return LAUNCH_DOOM;
-            when LAUNCH_BROWSER   => return LAUNCH_DEVICES;
-            when LAUNCH_FILES     => return LAUNCH_BROWSER;
-            when LAUNCH_SAMEBOY   => return LAUNCH_FILES;
-            when LAUNCH_SETTINGS  => return LAUNCH_SAMEBOY;
-            when others           => return LAUNCH_WORKBENCH;
-         end case;
+      if count = 0 then
+         return LAUNCH_NONE;
+      elsif current not in 1 .. count then
+         return 1;
+      elsif upward then
+         return (if current = 1 then count else current - 1);
       else
-         case current is
-            when LAUNCH_WORKBENCH => return LAUNCH_DOOM;
-            when LAUNCH_DOOM      => return LAUNCH_DEVICES;
-            when LAUNCH_DEVICES   => return LAUNCH_BROWSER;
-            when LAUNCH_BROWSER   => return LAUNCH_FILES;
-            when LAUNCH_FILES     => return LAUNCH_SAMEBOY;
-            when LAUNCH_SAMEBOY   => return LAUNCH_SETTINGS;
-            when LAUNCH_SETTINGS  => return LAUNCH_CONFIG_INSPECTOR;
-            when LAUNCH_CONFIG_INSPECTOR => return LAUNCH_WORKBENCH;
-            when others           => return LAUNCH_WORKBENCH;
-         end case;
+         return (if current = count then 1 else current + 1);
       end if;
    end nextLaunchSelection;
 
@@ -585,7 +574,12 @@ procedure main is
    LAUNCH_W     : constant Natural := 88;
    LAUNCH_H     : constant Natural := 24;
    MENU_W       : constant Natural := 250;
-   MENU_H       : constant Natural := 354;
+   --  Menu layout: entries every 34 pixels from 42, a separator, then Power.
+   LAUNCH_FIRST_Y : constant Natural := 42;
+   LAUNCH_STEP    : constant Natural := 34;
+
+   function MENU_H return Natural is
+     (LAUNCH_FIRST_Y + launchMenu.Count * LAUNCH_STEP - 2 + 8 + LAUNCH_STEP);
    TASK_BUTTON_W : constant Natural := 156;
    TASK_BUTTON_H : constant Natural := 24;
    TASK_BUTTON_GAP : constant Natural := 6;
@@ -597,7 +591,7 @@ procedure main is
 
    type CursorSaveBuffer is array (Natural range 0 .. CURSOR_PIXELS - 1)
       of Unsigned_32;
-   cursorSave      : CursorSaveBuffer := (others => 0);
+   cursorSave      : CursorSaveBuffer := [others => 0];
    cursorSaveValid : Boolean := False;
    cursorSaveRect  : Rect;
 
@@ -660,6 +654,95 @@ procedure main is
       end if;
       Load_Theme;
    end Read_Appearance;
+
+   --  The Apps menu entries from Config: every desktop.launch.* setting, in
+   --  key order. Invalid entries are skipped and reported; without a valid
+   --  one the built-in list stays.
+   procedure Load_Launch_Menu is
+      use type CuBit.Config.ConfigStatus;
+      Keys   : System.Address;
+      Count  : Natural;
+      Status : CuBit.Config.ConfigStatus;
+      Loaded : Desktop_Launch.Menu;
+      MAX_KEY : constant := 64;
+      type Key_Text is record
+         Text   : String (1 .. MAX_KEY) := [others => ' '];
+         Length : Natural range 0 .. MAX_KEY := 0;
+      end record;
+      Names : array (1 .. Desktop_Launch.Maximum_Entries) of Key_Text;
+      Named : Natural := 0;
+   begin
+      CuBit.Config.list ("desktop.launch.", Keys, Count, Status);
+      if Status /= CuBit.Config.OK or else Keys = System.Null_Address or else Count = 0 then
+         return;
+      end if;
+      --  Copy the NUL-separated names before the next Config call reuses
+      --  the buffer; keep at most Maximum_Entries.
+      declare
+         Buffer : String (1 .. 4096) with Import, Address => Keys;
+         Pos    : Positive := 1;
+      begin
+         for I in 1 .. Count loop
+            exit when Pos > Buffer'Last;
+            declare
+               First : constant Positive := Pos;
+            begin
+               while Pos <= Buffer'Last and then Buffer (Pos) /= ASCII.NUL loop
+                  Pos := Pos + 1;
+               end loop;
+               if Named < Names'Last and then Pos - First in 1 .. MAX_KEY then
+                  Named := Named + 1;
+                  Names (Named).Text (1 .. Pos - First) := Buffer (First .. Pos - 1);
+                  Names (Named).Length := Pos - First;
+               end if;
+               Pos := Pos + 1;
+            end;
+         end loop;
+      end;
+      --  Key order (insertion sort; at most Maximum_Entries names).
+      for I in 2 .. Named loop
+         declare
+            Item : constant Key_Text := Names (I);
+            J    : Natural := I - 1;
+         begin
+            while J >= 1 and then
+              Names (J).Text (1 .. Names (J).Length) > Item.Text (1 .. Item.Length)
+            loop
+               Names (J + 1) := Names (J);
+               J := J - 1;
+            end loop;
+            Names (J + 1) := Item;
+         end;
+      end loop;
+      for I in 1 .. Named loop
+         declare
+            Value  : System.Address;
+            Length : Natural;
+            Item   : Desktop_Launch.Entry_Info;
+            OK     : Boolean := False;
+         begin
+            CuBit.Config.get (Names (I).Text (1 .. Names (I).Length), Value, Length, Status);
+            if Status = CuBit.Config.OK and then Value /= System.Null_Address and then
+              Length in 1 .. 512
+            then
+               declare
+                  Source : String (1 .. Length) with Import, Address => Value;
+               begin
+                  Desktop_Launch.Parse (Source, Item, OK);
+               end;
+            end if;
+            if OK then
+               Desktop_Launch.Append (Loaded, Item);
+            else
+               debugPrint ("desktop: invalid launch entry " &
+                           Names (I).Text (1 .. Names (I).Length) & LF);
+            end if;
+         end;
+      end loop;
+      if Loaded.Count > 0 then
+         launchMenu := Loaded;
+      end if;
+   end Load_Launch_Menu;
    function C_BG return Unsigned_32 is (CuBit.UI.Current_Theme.desktop);
    function C_PANEL return Unsigned_32 is (CuBit.UI.Current_Theme.panel);
    function C_TEXT return Unsigned_32 is (CuBit.UI.Current_Theme.text);
@@ -1028,28 +1111,13 @@ procedure main is
          return (others => 0);
       end if;
 
-      case action is
-         when LAUNCH_WORKBENCH =>
-            y := menu.y + 42;
-         when LAUNCH_DOOM =>
-            y := menu.y + 76;
-         when LAUNCH_DEVICES =>
-            y := menu.y + 110;
-         when LAUNCH_BROWSER =>
-            y := menu.y + 144;
-         when LAUNCH_FILES =>
-            y := menu.y + 178;
-         when LAUNCH_SAMEBOY =>
-            y := menu.y + 212;
-         when LAUNCH_POWER =>
-            y := menu.y + 320;
-         when LAUNCH_SETTINGS =>
-            y := menu.y + 246;
-         when LAUNCH_CONFIG_INSPECTOR =>
-            y := menu.y + 280;
-         when others =>
-            return (others => 0);
-      end case;
+      if action = LAUNCH_POWER then
+         y := menu.y + LAUNCH_FIRST_Y + launchMenu.Count * LAUNCH_STEP - 2 + 8;
+      elsif action <= launchMenu.Count then
+         y := menu.y + LAUNCH_FIRST_Y + (action - 1) * LAUNCH_STEP;
+      else
+         return (others => 0);
+      end if;
 
       return clampRect ((x => menu.x + 8, y => y,
                          w => menu.w - 16, h => 30));
@@ -1062,7 +1130,7 @@ procedure main is
       if isEmpty (menu) or else menu.w <= 24 then
          return (others => 0);
       end if;
-      y := menu.y + 312;
+      y := menu.y + LAUNCH_FIRST_Y + launchMenu.Count * LAUNCH_STEP - 2;
       return clampRect ((x => menu.x + 12, y => y,
                          w => menu.w - 24, h => 1));
    end launchSeparatorRect;
@@ -1133,27 +1201,15 @@ procedure main is
 
    function hitLaunchItem (x, y : Natural) return Launch_Action is
    begin
-      if pointInRect (x, y, launchItemRect (LAUNCH_WORKBENCH)) then
-         return LAUNCH_WORKBENCH;
-      elsif pointInRect (x, y, launchItemRect (LAUNCH_DOOM)) then
-         return LAUNCH_DOOM;
-      elsif pointInRect (x, y, launchItemRect (LAUNCH_DEVICES)) then
-         return LAUNCH_DEVICES;
-      elsif pointInRect (x, y, launchItemRect (LAUNCH_BROWSER)) then
-         return LAUNCH_BROWSER;
-      elsif pointInRect (x, y, launchItemRect (LAUNCH_FILES)) then
-         return LAUNCH_FILES;
-      elsif pointInRect (x, y, launchItemRect (LAUNCH_SAMEBOY)) then
-         return LAUNCH_SAMEBOY;
-      elsif pointInRect (x, y, launchItemRect (LAUNCH_SETTINGS)) then
-         return LAUNCH_SETTINGS;
-      elsif pointInRect (x, y, launchItemRect (LAUNCH_CONFIG_INSPECTOR)) then
-         return LAUNCH_CONFIG_INSPECTOR;
-      elsif pointInRect (x, y, launchItemRect (LAUNCH_POWER)) then
+      for action in 1 .. launchMenu.Count loop
+         if pointInRect (x, y, launchItemRect (action)) then
+            return action;
+         end if;
+      end loop;
+      if pointInRect (x, y, launchItemRect (LAUNCH_POWER)) then
          return LAUNCH_POWER;
-      else
-         return LAUNCH_NONE;
       end if;
+      return LAUNCH_NONE;
    end hitLaunchItem;
 
    function hitTaskButton (x, y : Natural) return Integer is
@@ -2671,21 +2727,11 @@ procedure main is
 
       drawIcon (Desktop_Icons.Start, r.x + 12, r.y + 10, C_PANEL);
       drawUIText (r.x + 44, r.y + 14, "CuBit", C_TEXT, C_PANEL);
-      drawLaunchItem
-        (LAUNCH_WORKBENCH, Desktop_Icons.UILab, "CCL Workbench", C_TEXT);
-      drawLaunchItem (LAUNCH_DOOM, Desktop_Icons.Doom, "DOOM", C_TEXT);
-      drawLaunchItem
-        (LAUNCH_DEVICES, Desktop_Icons.Files, "Devices", C_TEXT);
-      drawLaunchItem
-        (LAUNCH_BROWSER, Desktop_Icons.Files, "NetSurf", C_TEXT);
-      drawLaunchItem
-        (LAUNCH_FILES, Desktop_Icons.Files, "Files", C_TEXT);
-      drawLaunchItem
-        (LAUNCH_SAMEBOY, Desktop_Icons.Doom, "SameBoy", C_TEXT);
-      drawLaunchItem
-        (LAUNCH_SETTINGS, Desktop_Icons.UILab, "Settings", C_TEXT);
-      drawLaunchItem
-        (LAUNCH_CONFIG_INSPECTOR, Desktop_Icons.Files, "Config Inspector", C_TEXT);
+      for action in 1 .. launchMenu.Count loop
+         drawLaunchItem
+           (action, launchMenu.Entries (action).Icon,
+            Desktop_Launch.Label_Of (launchMenu.Entries (action)), C_TEXT);
+      end loop;
       declare
          sep : constant Rect := launchSeparatorRect;
       begin
@@ -3796,7 +3842,7 @@ procedure main is
             --  is told that continuity was lost and receives authoritative
             --  pointer/button/modifier state. A stalled surface cannot consume
             --  another surface's queue capacity.
-            queue := (others => (others => <>));
+            queue := [others => (others => <>)];
             snapshot.generation := snapshot.generation + 1;
             inputQueueOverflows := inputQueueOverflows + 1;
             slot := Integer (queue'First);
@@ -4019,7 +4065,7 @@ procedure main is
                   end;
                end if;
 
-               inputChannels (i).events := (others => (others => <>));
+               inputChannels (i).events := [others => (others => <>)];
                inputChannels (i).snapshot.pointerPosition :=
                  packU32Pair (localX, localY);
                inputChannels (i).snapshot.buttons := lastButtons;
@@ -4045,7 +4091,7 @@ procedure main is
 
    procedure clearInputQueue is
    begin
-      inputChannels := (others => (others => <>));
+      inputChannels := [others => (others => <>)];
    end clearInputQueue;
 
    procedure clearInputForTarget (target : Unsigned_64) is
@@ -5093,7 +5139,10 @@ procedure main is
                   flags  => 0,
                   reserved  => 0);
       msg.words (0) := spawnGrantId;
-      msg.words (1) := 5;
+      --  Scheduling priority: higher runs first. Launched applications run
+      --  below desktop.svc (4) so a busy app cannot starve the compositor,
+      --  which also draws the software cursor.
+      msg.words (1) := APP_PRIORITY;
       msg.words (2) := 0;
       msg.words (3) := 0;
       tag := capCall (CAP_SLOT_PROCMGR, msg);
@@ -5340,33 +5389,33 @@ procedure main is
    is
       ok : Boolean;
    begin
-      case action is
-         when LAUNCH_WORKBENCH =>
-            trySpawnApplication ("ccl-workbench.app", ok);
-         when LAUNCH_SETTINGS =>
-            openInternalApp (APP_SETTINGS, damage);
-         when LAUNCH_DOOM =>
-            if doomPid /= NO_PROCESS and then processAlive (doomPid) then
-               debugPrint ("desktop: DOOM is already running" & LF);
-            else
-               trySpawnApplication ("doom.elf", ok);
-               if ok then
-                  doomPid := lastSpawnedPid;
+      if action not in 1 .. launchMenu.Count then
+         return;
+      end if;
+      declare
+         item : Desktop_Launch.Entry_Info renames launchMenu.Entries (action);
+         name : constant String := Desktop_Launch.Program_Of (item);
+      begin
+         case item.Kind is
+            when Desktop_Launch.Internal_Settings =>
+               openInternalApp (APP_SETTINGS, damage);
+            when Desktop_Launch.Launch_Program =>
+               if item.Single_Instance and then launchPids (action) /= NO_PROCESS
+                 and then processAlive (launchPids (action))
+               then
+                  debugPrint ("desktop: " & Desktop_Launch.Label_Of (item) &
+                              " is already running" & LF);
+               else
+                  trySpawnApplication (name, ok);
+                  if ok then
+                     launchPids (action) := lastSpawnedPid;
+                     if name = "doom.elf" then
+                        doomPid := lastSpawnedPid;
+                     end if;
+                  end if;
                end if;
-            end if;
-         when LAUNCH_DEVICES =>
-            trySpawnApplication ("devices.app", ok);
-         when LAUNCH_CONFIG_INSPECTOR =>
-            trySpawnApplication ("config-inspector.app", ok);
-         when LAUNCH_BROWSER =>
-            trySpawnApplication ("netsurf.app", ok);
-         when LAUNCH_FILES =>
-            trySpawnApplication ("files.app", ok);
-         when LAUNCH_SAMEBOY =>
-            trySpawnApplication ("sameboy.app", ok);
-         when others =>
-            null;
-      end case;
+         end case;
+      end;
    end performLaunchAction;
 
    function clampPointerCoord (value, maxValue : Integer) return Natural is
@@ -5454,7 +5503,7 @@ procedure main is
       if now < statusDueMs then return; end if;
       statusDueMs := now + 10_000;
       CuBit.Clocks.Read (stamp, ok);
-      if ok and then stamp.Quality = CuBit.Clocks.RTC_Only then
+      if ok and then CuBit.Clocks.Is_Valid_Wall_Time (stamp.Quality) then
          nextText := [digit (stamp.Hour / 10), digit (stamp.Hour mod 10), ':',
                       digit (stamp.Minute / 10), digit (stamp.Minute mod 10)];
          statusDueMs := now + Unsigned_64'Min
@@ -5650,7 +5699,8 @@ procedure main is
          then
             launchMenuOpen := not launchMenuOpen;
             if launchMenuOpen then
-               launchMenuSelection := LAUNCH_WORKBENCH;
+               Load_Launch_Menu;
+               launchMenuSelection := 1;
             end if;
             damage := unionRect
               (damage,
@@ -6044,7 +6094,10 @@ procedure main is
                then
                   if not release and then shellSurfaceVisible then
                      launchMenuOpen := not launchMenuOpen;
-                     launchMenuSelection := LAUNCH_WORKBENCH;
+                     if launchMenuOpen then
+                        Load_Launch_Menu;
+                     end if;
+                     launchMenuSelection := 1;
                      damage := unionRect
                        (damage,
                         inflateRect
@@ -6141,7 +6194,7 @@ procedure main is
         (tag      => (label => label, length => 4, flags => 0,
                      reserved => Unsigned_16 (Output)),
          authorityTag => 0,
-         words    => (w0, w1, w2, w3));
+         words    => [w0, w1, w2, w3]);
       tag : MessageTag;
    begin
       tag := capCall (CAP_SLOT_DISPLAY, msg);
@@ -6425,6 +6478,7 @@ procedure main is
 begin
    debugPrint ("desktop: starting" & LF);
    Read_Appearance;
+   Load_Launch_Menu;
 
    ret := setLatencyContract
       (LATENCY_INTERACTIVE,

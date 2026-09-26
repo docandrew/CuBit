@@ -257,6 +257,48 @@ int vsnprintf(char *str, size_t size, const char *fmt, va_list ap)
             break;
         }
 
+        case 'f':
+        case 'F': {
+            /* Fixed notation only; precision capped at 9 digits, ties
+             * rounded away from zero. Values beyond the unsigned long
+             * range print as "inf". */
+            double val = va_arg(ap, double);
+            int prec = has_precision ? (precision > 9 ? 9 : precision) : 6;
+            char buf[48];
+            int n = 0, digits = 0;
+            unsigned long scale = 1, ip, frac;
+            char tmp[24];
+            if (val != val) {
+                buf[n++] = 'n'; buf[n++] = 'a'; buf[n++] = 'n';
+            } else {
+                if (val < 0) { buf[n++] = '-'; val = -val; }
+                if (val >= 1.8e19) {
+                    buf[n++] = 'i'; buf[n++] = 'n'; buf[n++] = 'f';
+                } else {
+                    for (int j = 0; j < prec; j++) scale *= 10;
+                    ip = (unsigned long)val;
+                    frac = (unsigned long)((val - (double)ip) * (double)scale + 0.5);
+                    if (frac >= scale) { ip++; frac -= scale; }
+                    do { tmp[digits++] = (char)('0' + ip % 10); ip /= 10; } while (ip);
+                    while (digits) buf[n++] = tmp[--digits];
+                    if (prec > 0) {
+                        buf[n++] = '.';
+                        for (int j = prec - 1; j >= 0; j--) {
+                            tmp[j] = (char)('0' + frac % 10);
+                            frac /= 10;
+                        }
+                        for (int j = 0; j < prec; j++) buf[n++] = tmp[j];
+                    }
+                }
+            }
+            if (!left_justify)
+                for (int j = n; j < width; j++) pos += _emit(str, pos, limit, ' ');
+            for (int j = 0; j < n; j++) pos += _emit(str, pos, limit, buf[j]);
+            if (left_justify)
+                for (int j = n; j < width; j++) pos += _emit(str, pos, limit, ' ');
+            break;
+        }
+
         case 'p': {
             void *ptr = va_arg(ap, void *);
             pos += _emit_str(str, pos, limit, "0x");

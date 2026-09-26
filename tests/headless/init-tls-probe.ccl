@@ -1,0 +1,6 @@
+# Native SPARKTLS probe against the loopback TLS fixture (tests/tls/server.py).
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "tls-probe.app" (priority 5) (network approve-declared))
+)

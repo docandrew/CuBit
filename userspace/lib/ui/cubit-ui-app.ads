@@ -8,22 +8,27 @@
 with Interfaces; use Interfaces;
 with System;
 with CuBit.Grant_References;
+with CuBit.Messages;
+with CuBit.Async_Requests;
 
 with CuBit.UI;
+with CuBit.UI.Input;
 with CuBit.UI.Controls;
 with CuBit.UI.State;
 
 package CuBit.UI.App is
-   INPUT_NONE         : constant Unsigned_64 := 0;
-   INPUT_KEY_DOWN     : constant Unsigned_64 := 1;
-   INPUT_KEY_UP       : constant Unsigned_64 := 2;
-   INPUT_POINTER_MOVE : constant Unsigned_64 := 3;
-   INPUT_POINTER_DOWN : constant Unsigned_64 := 4;
-   INPUT_POINTER_UP   : constant Unsigned_64 := 5;
-   INPUT_TEXT         : constant Unsigned_64 := 6;
-   INPUT_POINTER_WHEEL : constant Unsigned_64 := 7;
-   INPUT_CONFIGURE    : constant Unsigned_64 := 8;
-   INPUT_RESYNC       : constant Unsigned_64 := 9;
+   --  The event encoding lives in the pure CuBit.UI.Input; these names are
+   --  kept for existing applications.
+   INPUT_NONE          : Unsigned_64 renames CuBit.UI.Input.INPUT_NONE;
+   INPUT_KEY_DOWN      : Unsigned_64 renames CuBit.UI.Input.INPUT_KEY_DOWN;
+   INPUT_KEY_UP        : Unsigned_64 renames CuBit.UI.Input.INPUT_KEY_UP;
+   INPUT_POINTER_MOVE  : Unsigned_64 renames CuBit.UI.Input.INPUT_POINTER_MOVE;
+   INPUT_POINTER_DOWN  : Unsigned_64 renames CuBit.UI.Input.INPUT_POINTER_DOWN;
+   INPUT_POINTER_UP    : Unsigned_64 renames CuBit.UI.Input.INPUT_POINTER_UP;
+   INPUT_TEXT          : Unsigned_64 renames CuBit.UI.Input.INPUT_TEXT;
+   INPUT_POINTER_WHEEL : Unsigned_64 renames CuBit.UI.Input.INPUT_POINTER_WHEEL;
+   INPUT_CONFIGURE     : Unsigned_64 renames CuBit.UI.Input.INPUT_CONFIGURE;
+   INPUT_RESYNC        : Unsigned_64 renames CuBit.UI.Input.INPUT_RESYNC;
 
    KEY_ESC : constant Unsigned_64 := 16#01#;
    KEY_Q   : constant Unsigned_64 := 16#10#;
@@ -43,12 +48,7 @@ package CuBit.UI.App is
    WINDOW_FLAG_CLOSEABLE   : constant Unsigned_64 := 16;
    WINDOW_FLAG_FIXED_SIZE  : constant Unsigned_64 := 128;
 
-   type Input_Event is record
-      kind    : Unsigned_64 := INPUT_NONE;
-      serial  : Unsigned_64 := 0;
-      payload0 : Unsigned_64 := 0;
-      payload1 : Unsigned_64 := 0;
-   end record;
+   subtype Input_Event is CuBit.UI.Input.Input_Event;
 
    --  Normal controls repaint only when their visual state can change.
    --  Canvases and similar position-sensitive surfaces can explicitly opt in
@@ -102,6 +102,19 @@ package CuBit.UI.App is
        event : out Input_Event;
        found : out Boolean);
 
+   procedure Submit_Input_Wait
+     (win : in out Window; token : Unsigned_64; accepted : out Boolean;
+      deadline : Unsigned_64 := 0);
+   function Input_Wait_Pending (win : Window) return Boolean;
+   procedure Complete_Input_Wait
+     (win : in out Window; receipt : CuBit.Messages.CompletionEntry;
+      event : out Input_Event; found, consumed, healthy : out Boolean);
+   -- Nonblocking alternative for applications sharing their event loop with
+   -- other IPC. Tokens are process-wide and never reused. Deliver authenticated
+   -- completion-queue entries; foreign entries remain unconsumed. Do not mix a
+   -- synchronous input wait/poll with a pending asynchronous wait. Closing the
+   -- process retires the outstanding request; there is no borrowed buffer.
+
    --  True only when the compositor explicitly reported another queued event
    --  with the last input reply. It is a drain hint, never authority or an
    --  assertion that a later event cannot arrive.
@@ -109,7 +122,8 @@ package CuBit.UI.App is
 
    --  Wheel deltas use a signed 32-bit wire field in payload1. Decode it
    --  without a range-checked modular-to-signed conversion in each app.
-   function Pointer_Wheel_Delta (event : Input_Event) return Integer;
+   function Pointer_Wheel_Delta (event : Input_Event) return Integer
+     renames CuBit.UI.Input.Pointer_Wheel_Delta;
 
    --  Request compositor-owned pointer feedback for this surface.  Widget
    --  applications normally get this automatically from Apply_Pointer_Event.
@@ -128,6 +142,13 @@ package CuBit.UI.App is
        dirty : in out CuBit.UI.Rect;
        repaint : Pointer_Repaint_Policy := Repaint_Changed_Controls);
 
+   --  Defaults for Run's optional timed-work hooks: no deadline.
+   function No_Deadline return Interfaces.Unsigned_64 is (0);
+   procedure No_Deadline_Work
+      (win : in out Window;
+       dirty : in out CuBit.UI.Rect;
+       running : in out Boolean) is null;
+
    generic
       --  Run owns pointer routing and minimal damage. Migrated controls update
       --  retained state before paint; Render declaratively reconciles them by
@@ -142,7 +163,20 @@ package CuBit.UI.App is
           event : Input_Event;
           dirty : in out CuBit.UI.Rect;
           running : in out Boolean);
+      --  Optional timed work (for example an embedded engine's scheduler).
+      --  Next_Deadline returns an absolute monotonic millisecond, or zero
+      --  for none; Run then waits for input only until that deadline and
+      --  calls On_Deadline when it passes. The defaults keep the original
+      --  input-only behaviour.
+      with function Next_Deadline return Interfaces.Unsigned_64
+         is No_Deadline;
+      with procedure On_Deadline
+         (win : in out Window;
+          dirty : in out CuBit.UI.Rect;
+          running : in out Boolean)
+         is No_Deadline_Work;
    procedure Run (win : in out Window);
+
 
    procedure Close (win : in out Window);
 
@@ -167,6 +201,7 @@ private
       pitch : Natural := 0;
       lastEvent : Unsigned_64 := 0;
       inputMayRemain : Boolean := False;
+      inputRequest : CuBit.Async_Requests.Tracker;
       sentBye : Boolean := False;
    end record;
 end CuBit.UI.App;

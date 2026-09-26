@@ -22,6 +22,9 @@ with CuBit.Config_Inspection;
 with Config_Authority;
 with Config_Store;
 with CuBit.Config_Protocol;
+with Config_Typed_Service;
+with Config_Worker_Startup;
+with Config_Object_Messages;
 
 procedure main is
    use ASCII;
@@ -45,6 +48,7 @@ procedure main is
    ACL_READ : constant Config_Authority.Operation := Config_Authority.Read_Config;
    ACL_WRITE : constant Config_Authority.Operation := Config_Authority.Write_Config;
    Authorities : Config_Authority.Authority_State;
+   Typed_Objects : Config_Typed_Service.State;
 
    --  Resolve administrative roles on each check. These operations are
    --  control-plane traffic, and a live registry lookup avoids turning a
@@ -96,7 +100,7 @@ procedure main is
                        length => 1,
                        flags  => 0,
                        reserved  => 0);
-      replyMsg.words := (0 => word0, others => 0);
+      replyMsg.words := [0 => word0, others => 0];
       ignore := reply (dest, replyMsg);
    end sendReply;
 
@@ -154,8 +158,8 @@ procedure main is
                then sendReply (sender, REPLY_ERR, 0); return; end if;
                Config_Authority.Append
                  (Candidate, Data (Base + 9 .. Base + 8 + Length),
-                  (Config_Authority.Read_Config => Mask mod 2 = 1,
-                   Config_Authority.Write_Config => Mask >= 2), Accepted);
+                 [Config_Authority.Read_Config => Mask mod 2 = 1,
+                  Config_Authority.Write_Config => Mask >= 2], Accepted);
                if not Accepted then sendReply (sender, REPLY_ERR, 0); return; end if;
             end loop;
          end;
@@ -180,6 +184,7 @@ procedure main is
 
       if msg.tag.length /= 1 then sendReply (sender, REPLY_ERR, 0); return; end if;
       Config_Authority.Revoke (Authorities, targetPID);
+      Config_Typed_Service.Revoke_Subject (Typed_Objects, targetPID);
 
       sendReply (sender, REPLY_OK, 0);
    end handleRevokeACL;
@@ -400,34 +405,75 @@ begin
          (tag      => (label => OP_READY, length => 0,
                        flags => 0, reserved => 0),
           authorityTag => 0,
-          words    => (others => 0)));
+          words    => [others => 0]));
    end;
 
    debugPrint ("Config: entering message loop" & LF);
 
    --  Main IPC message loop
    loop
-      receive (sender, msg);
+      declare
+         Completion : aliased CompletionEntry;
+         Found : Boolean;
+         Activity : Activity_Result;
+      begin
+         --  One completion and one client per turn: neither queue can starve
+         --  the other. Database waits execute in the separate worker only.
+         if Poll_Completion (Completion'Address) = 1 then
+            Config_Typed_Service.Complete (Typed_Objects, Authorities, Completion);
+         end if;
+         Poll_Service_Request (sender, msg, Found);
+         if not Found then
+            Activity := Wait_For_Activity_Until (Unsigned_64'Last);
+            if Activity = Unavailable then
+               debugPrint ("Config: activity wait unavailable" & LF);
+               exit;
+            end if;
+         else
 
-      case msg.tag.label is
-         when CuBit.Config_Inspection.Operation'Enum_Rep (CuBit.Config_Inspection.Read_Value) |
-              CuBit.Config_Inspection.Operation'Enum_Rep (CuBit.Config_Inspection.List_Keys) |
-              CuBit.Config_Inspection.Operation'Enum_Rep (CuBit.Config_Inspection.Probe) =>
-            handleInspection (sender, msg);
-         when CuBit.Config_Protocol.Operation'Enum_Rep (CuBit.Config_Protocol.Get_Value) =>
-            Handle_Data (sender, msg, CuBit.Config_Protocol.Get_Value);
-         when CuBit.Config_Protocol.Operation'Enum_Rep (CuBit.Config_Protocol.Set_Value) =>
-            Handle_Data (sender, msg, CuBit.Config_Protocol.Set_Value);
-         when CuBit.Config_Protocol.Operation'Enum_Rep (CuBit.Config_Protocol.Delete_Value) =>
-            Handle_Data (sender, msg, CuBit.Config_Protocol.Delete_Value);
-         when CuBit.Config_Protocol.Operation'Enum_Rep (CuBit.Config_Protocol.List_Keys) =>
-            Handle_Data (sender, msg, CuBit.Config_Protocol.List_Keys);
-         when OP_SET_ACL =>
-            handleSetACL (sender, msg);
-         when OP_REVOKE_ACL =>
-            handleRevokeACL (sender, msg);
-         when others =>
-            sendReply (sender, REPLY_ERR, 0);
-      end case;
+            case msg.tag.label is
+               when Config_Worker_Startup.Operation'Enum_Rep (Config_Worker_Startup.Attach_Worker) =>
+                  declare
+                     Manager : constant Unsigned_64 := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_PROCMGR);
+                     Attached : Boolean := False;
+                  begin
+                     if Manager = 0 or Manager = Unsigned_64'Last or sender /= Manager then
+                        sendReply (sender, REPLY_ACCESS_DENIED, 0);
+                     elsif not Config_Worker_Startup.Valid_Attachment (msg) then
+                        sendReply (sender, REPLY_ERR, 0);
+                     else
+                        Config_Typed_Service.Attach (Typed_Objects,
+                          Config_Worker_Startup.Worker_Endpoint, msg.words (0), Attached);
+                        sendReply (sender, (if Attached then REPLY_OK else REPLY_ERR), 0);
+                        if Attached then debugPrint ("Config: storage worker attached" & LF); end if;
+                     end if;
+                  end;
+               when Config_Object_Messages.Operation'Enum_Rep (Config_Object_Messages.Open_Collection) |
+                    Config_Object_Messages.Operation'Enum_Rep (Config_Object_Messages.Get_Object) |
+                    Config_Object_Messages.Operation'Enum_Rep (Config_Object_Messages.Set_Object) |
+                    Config_Object_Messages.Operation'Enum_Rep (Config_Object_Messages.Close_Collection) |
+                    Config_Object_Messages.Operation'Enum_Rep (Config_Object_Messages.Create_Collection) =>
+                  Config_Typed_Service.Handle (Typed_Objects, Authorities, sender, msg);
+               when CuBit.Config_Inspection.Operation'Enum_Rep (CuBit.Config_Inspection.Read_Value) |
+                    CuBit.Config_Inspection.Operation'Enum_Rep (CuBit.Config_Inspection.List_Keys) |
+                    CuBit.Config_Inspection.Operation'Enum_Rep (CuBit.Config_Inspection.Probe) =>
+                  handleInspection (sender, msg);
+               when CuBit.Config_Protocol.Operation'Enum_Rep (CuBit.Config_Protocol.Get_Value) =>
+                  Handle_Data (sender, msg, CuBit.Config_Protocol.Get_Value);
+               when CuBit.Config_Protocol.Operation'Enum_Rep (CuBit.Config_Protocol.Set_Value) =>
+                  Handle_Data (sender, msg, CuBit.Config_Protocol.Set_Value);
+               when CuBit.Config_Protocol.Operation'Enum_Rep (CuBit.Config_Protocol.Delete_Value) =>
+                  Handle_Data (sender, msg, CuBit.Config_Protocol.Delete_Value);
+               when CuBit.Config_Protocol.Operation'Enum_Rep (CuBit.Config_Protocol.List_Keys) =>
+                  Handle_Data (sender, msg, CuBit.Config_Protocol.List_Keys);
+               when OP_SET_ACL =>
+                  handleSetACL (sender, msg);
+               when OP_REVOKE_ACL =>
+                  handleRevokeACL (sender, msg);
+               when others =>
+                  sendReply (sender, REPLY_ERR, 0);
+            end case;
+         end if;
+      end;
    end loop;
 end main;

@@ -1,0 +1,5 @@
+# Ordinary clock read access only; it must not be able to adjust time.
+(executable-manifest v1
+  (identity "com.cubit.timesync-check")
+  (version "0.1.0")
+  (request-service clock read-write clock))

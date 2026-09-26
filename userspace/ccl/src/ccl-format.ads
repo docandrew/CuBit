@@ -9,16 +9,16 @@ package CCL.Format with
 is
    use Interfaces;
 
-   FORMAT_VERSION  : constant := 4;
+   FORMAT_VERSION  : constant := 7;
    HEADER_SIZE     : constant := 32;
    TYPE_SIZE       : constant := 36;
    LOCAL_SIZE      : constant := 4;
    --  Portable imports contain descriptor-pinned linkage and never contain a
    --  runtime binding, capability slot, endpoint, driver ID, or process ID.
-   IMPORT_SIZE     : constant := 56;
+   IMPORT_SIZE     : constant := 120;
    INSTRUCTION_SIZE : constant := 16;
 
-   --  Named offsets are part of the canonical CCLB v4 ABI. Keeping them here
+   --  Named offsets are part of the canonical CCLB v7 ABI. Keeping them here
    --  prevents the codec, validation logic, and corruption tests from
    --  independently inventing byte positions.
    MAGIC_OFFSET                    : constant := 0;
@@ -72,9 +72,13 @@ is
    IMPORT_MAJOR_VERSION_OFFSET  : constant := 12;
    IMPORT_MINOR_VERSION_OFFSET  : constant := 14;
    IMPORT_OPERATION_OFFSET      : constant := 16;
-   IMPORT_IDENTITY_RESERVED_OFFSET : constant := 17;
+   IMPORT_ARGUMENT_DATA_TYPE_OFFSET : constant := 17;
+   IMPORT_RESULT_DATA_TYPE_OFFSET   : constant := 18;
+   IMPORT_IDENTITY_RESERVED_OFFSET : constant := 19;
    IMPORT_DIGEST_OFFSET         : constant := 24;
    DIGEST_WORD_SIZE             : constant := 8;
+   IMPORT_ARGUMENT_SCHEMA_OFFSET : constant := 56;
+   IMPORT_RESULT_SCHEMA_OFFSET : constant := 88;
 
    INSTRUCTION_OPCODE_OFFSET       : constant := 0;
    INSTRUCTION_LOCAL_OFFSET        : constant := 1;

@@ -36,6 +36,16 @@ package Process.IPC is
     -- Victim is closed, off CPU and exclusively claimed by the reaper.
     -- Acquires each mailbox before Process.lock, never the reverse.
     procedure retireMailboxes (pid : ProcessID);
+
+    -- An exiting thread (its process lives on): a client blocked on the
+    -- reply this thread owed is woken with an empty reply.
+    procedure retireThread (tid : ThreadID);
+
+    -- The process and (for a synchronous reply) the thread a reply
+    -- capability answers; NO_PROCESS if it is stale.
+    procedure replyTargetOf (cap : Capabilities.Capability;
+                             pid : out ProcessID;
+                             tid : out ThreadID);
     procedure sendRetirementEvent
       (dest : ProcessID; generation : Capabilities.Generation; msg : Message);
 
@@ -334,7 +344,7 @@ package Process.IPC is
     -- capCall
     -- Like capSend but writes the full reply message back via pointer.
     -- Resolves endpoint cap, stamps authority tag, sends, returns reply tag.
-    -- The caller should read the full reply from proctab(pid).replyMsg.
+    -- The caller should read the full reply from threadOf (pid).replyMsg.
     -- @return the reply message tag (NULL_TAG on capability error).
     ---------------------------------------------------------------------------
     function capCall (capSlot : Capabilities.CapabilitySlot;

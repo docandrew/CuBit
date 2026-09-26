@@ -120,6 +120,22 @@ package body CuBit.UI.Controls is
          enabled      => True);
    end Add;
 
+   procedure Add_Surface
+      (m : in out Control_Map;
+       id : Control_ID;
+       bounds : CuBit.UI.Rect;
+       cursor : CuBit.UI.Pointer_Cursor_Style := CuBit.UI.Pointer_Default)
+   is
+      index : Integer;
+   begin
+      Add (m, id, bounds, bounds, cursor);
+      index := Find (m.entries, m.entryCount, id);
+      if m.valid and then index >= 0 then
+         m.entries (Control_Index (index)).visualDamage := (others => 0);
+         m.entries (Control_Index (index)).actionDamage := (others => 0);
+      end if;
+   end Add_Surface;
+
    procedure Add_Vertical_Scrollbar
       (m : in out Control_Map;
        id : Control_ID;

@@ -11,6 +11,7 @@ with CuBit.String;
 with CuBit.UI;
 with CuBit.UI.App;
 with CCL_Workspace;
+with CCL_Native_Execution;
 
 package body CCL_Workbench_Platform is
 
@@ -77,6 +78,31 @@ package body CCL_Workbench_Platform is
    Pending_Event : CuBit.UI.App.Input_Event;
    Pending_Found : Boolean := False;
    Skip_Empty_Poll : Boolean := False;
+   Completions_Seen : Boolean := False;
+
+   procedure Pump_Completions is
+      Receipt : aliased CompletionEntry;
+      Consumed, Healthy, Found : Boolean;
+      Event : CuBit.UI.App.Input_Event;
+   begin
+      Completions_Seen := False;
+      for Count in 1 .. 32 loop
+         exit when Poll_Completion (Receipt'Address) /= 1;
+         Completions_Seen := True;
+         CuBit.UI.App.Complete_Input_Wait (Native_Window, Receipt, Event, Found, Consumed, Healthy);
+         if Consumed then
+            if not Healthy then
+               Native_Open := False;
+            elsif Found then
+               Pending_Event := Event; Pending_Found := True;
+            end if;
+         else
+            CCL_Native_Execution.Deliver (Receipt, Consumed);
+            if not Consumed then debugPrint ("ccl-workbench: unclaimed IPC completion" & ASCII.LF); end if;
+         end if;
+      end loop;
+      CCL_Native_Execution.Maintain;
+   end Pump_Completions;
 
    procedure Activate is
    begin
@@ -205,6 +231,7 @@ package body CCL_Workbench_Platform is
       Modifiers.all := 0;
       X.all := 0;
       Y.all := 0;
+      Pump_Completions;
       if not Native_Open then
          return 0;
       end if;
@@ -216,6 +243,8 @@ package body CCL_Workbench_Platform is
          Skip_Empty_Poll := not CuBit.UI.App.Input_May_Remain (Native_Window);
       elsif Skip_Empty_Poll then
          Skip_Empty_Poll := False;
+         return 0;
+      elsif CuBit.UI.App.Input_Wait_Pending (Native_Window) then
          return 0;
       else
          CuBit.UI.App.Poll_Input (Native_Window, Event, Found);
@@ -386,18 +415,36 @@ package body CCL_Workbench_Platform is
    procedure Window_Wait (May_Block : Integer_32)
    with Export, Convention => C, External_Name => "ccl_window_wait";
 
+   procedure Wait_Events (Deadline : Unsigned_64) is
+      Accepted : Boolean;
+      Activity : Activity_Result;
+      Wakeup : Unsigned_64 := Deadline;
+   begin
+      Pump_Completions;
+      if not Native_Open or Pending_Found or Completions_Seen then return; end if;
+      if not CuBit.UI.App.Input_Wait_Pending (Native_Window) then
+         CuBit.UI.App.Submit_Input_Wait
+           (Native_Window, CCL_Native_Execution.Next_Token, Accepted);
+         if not Accepted then
+            debugPrint ("ccl-workbench: asynchronous input wait rejected" & ASCII.LF);
+            Native_Open := False; return;
+         end if;
+      end if;
+      if CCL_Native_Execution.Cleanup_Needs_Retry then
+         Wakeup := Unsigned_64'Min (Wakeup, syscall (SYSCALL_GETTIME) + 10);
+      end if;
+      -- Atomic kernel wait covers BOTH the desktop reply and Config receipts.
+      -- A reply queued between Pump and this call prevents sleeping.
+      Activity := Wait_For_Activity_Until (Wakeup);
+      if Activity = Unavailable then Native_Open := False; end if;
+      Pump_Completions;
+   end Wait_Events;
+
    procedure Window_Wait (May_Block : Integer_32) is
       Ignore : Unsigned_64;
    begin
       if May_Block /= 0 and then Native_Open and then not Pending_Found then
-         --  Park on the compositor's deferred one-use reply capability. This
-         --  closes the old 10 ms polling latency without exposing a wakeup
-         --  handle another process can forge or redirect.
-         CuBit.UI.App.Wait_Input
-           (Native_Window, Pending_Event, Pending_Found);
-         if not Pending_Found then
-            Native_Open := False;
-         end if;
+         Wait_Events (Unsigned_64'Last);
       else
          --  Continuous VM execution and scrollbar repeat have local timer
          --  work. Yield briefly rather than blocking indefinitely.
@@ -411,9 +458,7 @@ package body CCL_Workbench_Platform is
    procedure Window_Wait_Until (Deadline : Unsigned_64) is
    begin
       if Native_Open and then not Pending_Found then
-         CuBit.UI.App.Wait_Input_Until
-           (Native_Window, Deadline, Pending_Event, Pending_Found);
-         -- No event means expiry, not a failed/closed window.
+         Wait_Events (Deadline);
       end if;
    end Window_Wait_Until;
 

@@ -6,3 +6,7 @@ publish = false
 
 [lib]
 path = "src/lib.rs"
+
+[features]
+# Threads (spawn/join) need a global allocator.
+alloc = []

@@ -24,6 +24,7 @@ with Heap_Growth;
 with Interrupts;
 with Memory_Grants;
 with PerCpuData;
+with PerCPUData;
 with Process;
 with Process.IPC;
 with Process.Loader;
@@ -211,6 +212,7 @@ package body Syscall.IPC is
             return;
         end if;
 
+        Process.lockAddressSpace (callerPID);
         for i in 0 .. numPages - 1 loop
             declare
                 pageOk : Boolean;
@@ -230,6 +232,7 @@ package body Syscall.IPC is
                 end if;
             end;
         end loop;
+        Process.unlockAddressSpace (callerPID);
 
         if ok then
             retval := 0;
@@ -292,7 +295,7 @@ package body Syscall.IPC is
                    Capabilities.RIGHT_GRANT) and then
                (Process.proctab(callerPID).caps(slot).object.ref = 0 or
                 (Process.proctab(callerPID).caps(slot).gen =
-                     Process.proctab(targetPID).capGeneration and then
+                     Process.generationOf (targetPID) and then
                  Process.proctab(callerPID).caps(slot).object.ref =
                      Unsigned_64 (targetPID)))
             then
@@ -304,7 +307,7 @@ package body Syscall.IPC is
         if not hasCap then
             println ("ALLOC_DMA: denied, no RIGHT_GRANT");
             return;
-        elsif Process.proctab(targetPID).state = Process.INVALID then
+        elsif Process.threadOf (targetPID).state = Process.INVALID then
             println ("ALLOC_DMA: target not valid");
             return;
         end if;
@@ -343,6 +346,7 @@ package body Syscall.IPC is
                 claimedPages := claimedPages + 1;
             end loop;
 
+            Process.lockAddressSpace (targetPID);
             for i in 0 .. numPages - 1 loop
                 mapPage (
                     phys    => dmaPhys +
@@ -372,6 +376,7 @@ package body Syscall.IPC is
                            Unsigned_8 (targetPID));
                     end loop;
                     BuddyAllocator.free (order, dmaAddr);
+                    Process.unlockAddressSpace (targetPID);
                     return;
                 end if;
                 mappedPages := mappedPages + 1;
@@ -402,9 +407,11 @@ package body Syscall.IPC is
                        Unsigned_8 (targetPID));
                 end loop;
                 BuddyAllocator.free (order, dmaAddr);
+                Process.unlockAddressSpace (targetPID);
                 println ("ALLOC_DMA: allocation table full");
                 return;
             end if;
+            Process.unlockAddressSpace (targetPID);
 
             retval := Unsigned_64 (dmaPhys);
         end;
@@ -455,7 +462,7 @@ package body Syscall.IPC is
             procedure performLocked is
             begin
                 if not Process.proctab(targetPID).admitted or else
-                   Process_Lifetime.Closing (Process.proctab(targetPID).lifetime) then
+                   Process_Lifetime.Closing (Process.threadOf (targetPID).lifetime) then
                     retval := reterr;
                     return;
                 end if;
@@ -468,7 +475,7 @@ package body Syscall.IPC is
                            Capabilities.RIGHT_GRANT) and then
                        (Process.proctab(callerPID).caps(slot).object.ref = 0 or
                         (Process.proctab(callerPID).caps(slot).gen =
-                             Process.proctab(targetPID).capGeneration and then
+                             Process.generationOf (targetPID) and then
                          Process.proctab(callerPID).caps(slot).object.ref =
                              Unsigned_64 (targetPID)))
                     then
@@ -480,7 +487,7 @@ package body Syscall.IPC is
                 if not hasCap then
                     println ("MAP_INTO: denied, no RIGHT_GRANT");
                     return;
-                elsif Process.proctab(targetPID).state = Process.INVALID then
+                elsif Process.threadOf (targetPID).state = Process.INVALID then
                     println ("MAP_INTO: target not valid");
                     return;
                 end if;
@@ -493,6 +500,7 @@ package body Syscall.IPC is
                 end case;
 
                 ok := True;
+                Process.lockAddressSpace (targetPID);
                 for i in 0 .. Natural (arg3) - 1 loop
                     mapPage (
                         phys    => Virtmem.PhysAddress (arg1) +
@@ -504,11 +512,13 @@ package body Syscall.IPC is
                         success => ok);
 
                     if not ok then
+                        Process.unlockAddressSpace (targetPID);
                         print ("MAP_INTO: map fail page ");
                         println (i);
                         return;
                     end if;
                 end loop;
+                Process.unlockAddressSpace (targetPID);
 
                 retval := 0;
             end performLocked;
@@ -644,6 +654,7 @@ package body Syscall.IPC is
             --  published, including a partially successful mapping attempt.
             Boot_Output.Retire;
             TextIO.disableVideo;
+            Process.lockAddressSpace (callerPID);
             for i in 0 .. numPages - 1 loop
                 declare
                     pageOk : Boolean;
@@ -661,6 +672,7 @@ package body Syscall.IPC is
                     end if;
                 end;
             end loop;
+            Process.unlockAddressSpace (callerPID);
 
             if ok then
                 retval := Unsigned_64(FB_USER_BASE) +
@@ -819,14 +831,14 @@ package body Syscall.IPC is
         end if;
 
         destPID := Process.ProcessID (arg0);
-        generation := Process.proctab(destPID).capGeneration;
+        generation := Process.generationOf (destPID);
         eventMsg := (
             tag      => u64ToTag (arg1),
             authorityTag => 0,
             words    => (arg2, arg3, arg4, arg5));
 
         -- Kernel-mode threads are exempt
-        if Process.proctab(callerPID).mode = Process.KERNEL then
+        if Process.threadOf (callerPID).mode = Process.KERNEL then
             hasCap := True;
         end if;
 
@@ -867,7 +879,7 @@ package body Syscall.IPC is
                        slot => slot,
                        rights => publishRights,
                        currentGeneration =>
-                         Process.proctab(destPID).capGeneration,
+                         Process.generationOf (destPID),
                        destPID => resolvedPID,
                        authorityTag => resolvedAuthorityTag,
                        status => resolveStatus);
@@ -1031,6 +1043,8 @@ package body Syscall.IPC is
 
         granteePID : Process.ProcessID;
         generation : Capabilities.Generation;
+        replyPID   : Process.ProcessID;
+        replyTID   : Process.ThreadID;
         hasCap : Boolean := False;
         gid : Natural;
         perm : Process.GrantPermission;
@@ -1042,18 +1056,16 @@ package body Syscall.IPC is
         end if;
 
         granteePID := Process.ProcessID (arg0);
-        generation := Process.proctab(granteePID).capGeneration;
+        generation := Process.generationOf (granteePID);
 
         -- Kernel-mode threads exempt
-        if Process.proctab(callerPID).mode = Process.KERNEL then
+        if Process.threadOf (callerPID).mode = Process.KERNEL then
             hasCap := True;
         else
             -- Forward: caller has endpoint or reply cap to grantee
             for slot in Capabilities.CapabilitySlot loop
-                if (Process.proctab(callerPID).caps(slot).capType =
-                   Capabilities.CAP_ENDPOINT or
-                   Process.proctab(callerPID).caps(slot).capType =
-                   Capabilities.CAP_REPLY) and then
+                if Process.proctab(callerPID).caps(slot).capType =
+                   Capabilities.CAP_ENDPOINT and then
                    Process.proctab(callerPID).caps(slot).object.ref =
                    Unsigned_64 (granteePID) and then
                    Process.proctab(callerPID).caps(slot).gen = generation
@@ -1061,7 +1073,24 @@ package body Syscall.IPC is
                     hasCap := True;
                     exit;
                 end if;
+                if Process.proctab(callerPID).caps(slot).capType =
+                   Capabilities.CAP_REPLY
+                then
+                    Process.IPC.replyTargetOf
+                      (Process.proctab(callerPID).caps(slot), replyPID, replyTID);
+                    if replyPID = granteePID then
+                        hasCap := True;
+                        exit;
+                    end if;
+                end if;
             end loop;
+            -- The calling thread's current reply authority.
+            if not hasCap then
+                Process.IPC.replyTargetOf
+                  (Process.threadtab (PerCPUData.getCurrentThread).replyCap,
+                   replyPID, replyTID);
+                hasCap := replyPID = granteePID;
+            end if;
         end if;
 
         -- Reverse: grantee has endpoint to caller
@@ -1074,7 +1103,7 @@ package body Syscall.IPC is
                    Process.proctab(granteePID).caps(slot).object.ref =
                    Unsigned_64 (callerPID) and then
                    Process.proctab(granteePID).caps(slot).gen =
-                     Process.proctab(callerPID).capGeneration and then
+                     Process.generationOf (callerPID) and then
                    Process.proctab(granteePID).caps(slot).rights(
                        Capabilities.RIGHT_GRANT)
                 then
@@ -1234,7 +1263,7 @@ package body Syscall.IPC is
         end if;
 
         ownerPID := Process.ProcessID (cap.object.ref);
-        if cap.gen /= Process.proctab(ownerPID).capGeneration then
+        if cap.gen /= Process.generationOf (ownerPID) then
             retval := reterr;
             return;
         end if;
@@ -1340,7 +1369,7 @@ package body Syscall.IPC is
         end if;
 
         -- Kernel-mode threads exempt
-        if Process.proctab(callerPID).mode = Process.KERNEL then
+        if Process.threadOf (callerPID).mode = Process.KERNEL then
             hasCap := True;
         elsif isDeviceInfo then
             -- Physical addresses require CAP_DEVICE_MEM
@@ -1437,7 +1466,7 @@ package body Syscall.IPC is
         granteePID := Process.ProcessID (cap.object.ref);
 
         -- Validate generation (stale cap check)
-        if cap.gen /= Process.proctab(granteePID).capGeneration then
+        if cap.gen /= Process.generationOf (granteePID) then
             println
               ("CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY: stale " &
                "capability");

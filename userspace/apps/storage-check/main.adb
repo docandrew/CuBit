@@ -26,6 +26,35 @@ procedure main is
    grantRef : CuBit.Memory_Grants.Grant_Reference;
    grantOk  : Boolean;
 
+   function exerciseRejectedObjects return Boolean is
+      Buffer : String (1 .. 4096)
+        with Import, Address => To_Address (Integer_Address (aligned));
+      Options : constant array (Positive range <>) of Open_Options :=
+        [OPEN_READ_ONLY, OPEN_WRITE_ONLY, OPEN_READ_WRITE,
+         OPEN_READ_WRITE or OPEN_TRUNCATE, OPEN_READ_WRITE or OPEN_CREATE];
+
+      function Rejected (Name : String; Expected : Unsigned_32) return Boolean is
+         M : Message;
+      begin
+         for Flags of Options loop
+            Buffer (1 .. Name'Length) := Name;
+            M := Open_Request (grantRef, Name'Length, Flags);
+            M.tag := capCall (CAP_SLOT_FS, M);
+            if M.tag.label /= Expected or else M.words (0) /= 0 then
+               debugPrint ("LINK-POLICY-CHECK: unexpected open result " & Name & LF);
+               return False;
+            end if;
+         end loop;
+         return True;
+      end Rejected;
+   begin
+      return Rejected ("@nvme:0/nav-link", REPLY_WRONG_OBJECT_TYPE) and then
+        Rejected ("@nvme:0/file-link", REPLY_WRONG_OBJECT_TYPE) and then
+        Rejected ("@nvme:0/long-file-link", REPLY_WRONG_OBJECT_TYPE) and then
+        Rejected ("@nvme:0/linked-file", REPLY_UNSUPPORTED_OBJECT) and then
+        Rejected ("@nvme:0/linked-alias", REPLY_UNSUPPORTED_OBJECT);
+   end exerciseRejectedObjects;
+
    function exerciseRAMVolume return Boolean is
       Name : constant String := "@mem:0/work/block-protocol-check.dat";
       Handle : File_Handle;
@@ -301,6 +330,119 @@ procedure main is
       return ok;
    end exerciseGrantReferences;
 
+   function exerciseDoubleOverwrite return Boolean is
+      Name : constant String := "@nvme:0/double-existing";
+      Text : constant String := "double mapping";
+      Offset : constant Unsigned_64 := 8 * 1024 * 1024;
+      Buffer : String (1 .. 4096)
+        with Import, Address => To_Address (Integer_Address (aligned));
+      Handle : File_Handle;
+      M : Message;
+      function Check (Request : Message; Count : Unsigned_64) return Boolean is
+      begin
+         M := Request;
+         M.tag := capCall (CAP_SLOT_FS, M);
+         return M.tag.label = REPLY_OK and then M.words (0) = Count;
+      end Check;
+   begin
+      Buffer (Name'Range) := Name;
+      M := Open_Request (grantRef, Name'Length, OPEN_READ_WRITE);
+      M.tag := capCall (CAP_SLOT_FS, M);
+      if M.tag.label /= REPLY_OK then
+         return False;
+      end if;
+      Handle := File_Handle (M.words (0));
+      Buffer (Text'Range) := Text;
+      if not Check (Write_At_Request (Handle, grantRef, Text'Length, Offset + 11), Text'Length)
+      then return False; end if;
+      Buffer := [others => '?'];
+      if not Check (Read_At_Request (Handle, grantRef, 11 + Text'Length + 11, Offset),
+                    11 + Text'Length + 11) or else
+        Buffer (1 .. 11) /= [1 .. 11 => 'D'] or else
+        Buffer (12 .. 11 + Text'Length) /= Text or else
+        Buffer (12 + Text'Length .. 22 + Text'Length) /=
+          [12 + Text'Length .. 22 + Text'Length => 'D'] or else
+        not Check (Seek_Request (Handle, 0, From_End), Offset + 8192) or else
+        not Check (Flush_Request (Handle), 0) or else
+        not Check (Close_Request (Handle), 0)
+      then return False; end if;
+      debugPrint ("FILE-DOUBLE-OVERWRITE-CHECK: PASS" & LF);
+      return True;
+   end exerciseDoubleOverwrite;
+
+   function exerciseExclusive return Boolean is
+      Name : constant String := "@nvme:0/cubit-exclusive.dat";
+      Renamed : constant String := "@nvme:0/cubit-exclusive-moved.dat";
+      Text : constant String := "exclusive contents";
+      Buffer : String (1 .. Natural (PAGE_SIZE))
+        with Import, Address => To_Address (Integer_Address (aligned));
+      A, B, Stale : File_Handle;
+      Response : Message;
+      function Check (Request : Message; Label : Unsigned_32 := REPLY_OK;
+                      Count : Unsigned_64 := Unsigned_64'Last) return Boolean is
+      begin
+         Response := Request;
+         Response.tag := capCall (CAP_SLOT_FS, Response);
+         if Response.tag.label /= Label or else
+           (Count /= Unsigned_64'Last and then Response.words (0) /= Count)
+         then
+            debugPrint ("FILE-EXCLUSIVE-CHECK: op" & Request.tag.label'Image &
+              " reply" & Response.tag.label'Image & LF);
+            return False;
+         end if;
+         return True;
+      end Check;
+      function Open (Options : Open_Options; Handle : out File_Handle;
+                     Label : Unsigned_32 := REPLY_OK) return Boolean is
+      begin
+         Buffer (Name'Range) := Name;
+         if not Check (Open_Request (grantRef, Name'Length, Options), Label) then
+            Handle := INVALID_FILE_HANDLE;
+            return False;
+         end if;
+         Handle := (if Label = REPLY_OK then File_Handle (Response.words (0))
+                    else INVALID_FILE_HANDLE);
+         return True;
+      end Open;
+      type Options_List is array (Positive range <>) of Open_Options;
+      Conflicts : constant Options_List :=
+        [OPEN_READ_ONLY, OPEN_WRITE_ONLY, OPEN_READ_WRITE,
+         OPEN_READ_WRITE or OPEN_CREATE, OPEN_READ_WRITE or OPEN_TRUNCATE,
+         OPEN_READ_WRITE or OPEN_DENY_SHARING];
+   begin
+      if not Open (OPEN_READ_WRITE or OPEN_CREATE or OPEN_EXCLUSIVE, A) then return False; end if;
+      if not Open (OPEN_READ_WRITE or OPEN_DENY_SHARING or OPEN_TRUNCATE,
+                   B, REPLY_SHARING_VIOLATION) or else
+        not Check (Close_Request (A)) or else
+        not Open (OPEN_READ_ONLY or OPEN_DENY_SHARING, B, REPLY_ERR) or else
+        not Open (OPEN_READ_WRITE or OPEN_DENY_SHARING, A)
+      then return False; end if;
+      Buffer (Text'Range) := Text;
+      if not Check (Write_At_Request (A, grantRef, Text'Length, 0), REPLY_OK, Text'Length)
+      then return False; end if;
+      for Options of Conflicts loop
+         if not Open (Options, B, REPLY_SHARING_VIOLATION) then return False; end if;
+      end loop;
+      Buffer (1 .. Name'Length + Renamed'Length) := Name & Renamed;
+      if not Check (Rename_Request (grantRef, Name'Length, Renamed'Length),
+                    REPLY_SHARING_VIOLATION) or else
+        not Check (Read_At_Request (A, grantRef, Text'Length, 0), REPLY_OK, Text'Length)
+        or else Buffer (Text'Range) /= Text or else
+        not Check (Flush_Request (A))
+      then return False; end if;
+      Stale := A;
+      if not Check (Close_Request (A)) or else
+        not Open (OPEN_READ_WRITE or OPEN_DENY_SHARING, A) or else
+        not Check (Close_Request (Stale), REPLY_ERR) or else
+        not Open (OPEN_READ_ONLY, B, REPLY_SHARING_VIOLATION) or else
+        not Check (Close_Request (A)) or else
+        not Open (OPEN_READ_ONLY, A) or else not Open (OPEN_READ_ONLY, B) or else
+        not Check (Close_Request (A)) or else not Check (Close_Request (B))
+      then return False; end if;
+      debugPrint ("FILE-EXCLUSIVE-CHECK: PASS" & LF);
+      return True;
+   end exerciseExclusive;
+
    function exerciseCoherence return Boolean is
       Name : constant String := "@nvme:0/cubit-coherence.dat";
       Text : constant String := "shared metadata";
@@ -364,15 +506,72 @@ procedure main is
         or else Buffer (Text'Range) /= Text
       then return False; end if;
       --  A rejected zero-progress write must not synthesize a larger file.
-      if not Check (Write_At_Request (A, grantRef, 1, 16#0100_0000#),
+      if not Check (Write_At_Request (A, grantRef, 1, 16#2_0000_0000#),
                     0, REPLY_FILE_RANGE_UNSUPPORTED) or else
         not Check (Seek_Request (B, 0, From_End), PAGE_SIZE + Text'Length) or else
         not Check (Seek_Request (A, 0, From_End), PAGE_SIZE + Text'Length)
       then return False; end if;
       if not Open (OPEN_READ_ONLY, C) or else
         not Check (Write_At_Request (C, grantRef, 1, 0), 0, REPLY_ACCESS_DENIED)
+        or else not Check (Resize_Request (C, 7), 0, REPLY_ACCESS_DENIED)
         or else not Check (Close_Request (C))
       then return False; end if;
+      --  Resizing uses the existing write authority and shared inode identity;
+      --  neither shrink nor growth may silently seek any alias's cursor.
+      if not Check (Seek_Request (A, 3, From_Start), 3) or else
+        not Check (Seek_Request (B, 5, From_Start), 5) or else
+        not Check (Resize_Request (A, 7), 0) or else
+        not Check (Seek_Request (A, 0, From_Current), 3) or else
+        not Check (Seek_Request (B, 0, From_Current), 5) or else
+        not Check (Read_At_Request (B, grantRef, 1, 7), 0) or else
+        not Check (Resize_Request (B, 1025), 0) or else
+        not Check (Seek_Request (A, 0, From_Current), 3) or else
+        not Check (Seek_Request (B, 0, From_Current), 5)
+      then return False; end if;
+      Buffer := [others => '?'];
+      if not Check (Read_At_Request (A, grantRef, 1025, 0), 1025) or else
+        Buffer (1 .. 7) /= Text (1 .. 7)
+      then return False; end if;
+      for I in 8 .. 1025 loop
+         if Buffer (I) /= Character'Val (0) then
+            return False;
+         end if;
+      end loop;
+      declare
+         Malformed : Message := Resize_Request (A, 0);
+      begin
+         Malformed.tag.length := 1;
+         if not Check (Malformed, 0, REPLY_ERR) or else
+           not Check (Resize_Request (A, Unsigned_64'Last),
+                      0, REPLY_FILE_RANGE_UNSUPPORTED) or else
+           not Check (Seek_Request (B, 0, From_End), 1025)
+         then return False; end if;
+      end;
+      debugPrint ("FILE-RESIZE-CHECK: PASS" & LF);
+      --  Sparse double-indirect growth must be coherent through both aliases,
+      --  and a removed tail must stay zero when it becomes visible again.
+      declare
+         Double_Offset : constant Unsigned_64 := 16#0100_0000#;
+      begin
+         Buffer (Text'Range) := Text;
+         if not Check (Write_At_Request (A, grantRef, Text'Length, Double_Offset),
+                       Text'Length) or else
+           not Check (Read_At_Request (B, grantRef, Text'Length, Double_Offset),
+                       Text'Length) or else Buffer (Text'Range) /= Text or else
+           not Check (Resize_Request (B, Double_Offset + 7), 0) or else
+           not Check (Seek_Request (A, 0, From_End), Double_Offset + 7) or else
+           not Check (Resize_Request (A, Double_Offset + 1025), 0)
+         then return False; end if;
+         Buffer := [others => '?'];
+         if not Check (Read_At_Request (B, grantRef, 1025, Double_Offset), 1025)
+           or else Buffer (1 .. 7) /= Text (1 .. 7)
+         then return False; end if;
+         for I in 8 .. 1025 loop
+            if Buffer (I) /= Character'Val (0) then return False; end if;
+         end loop;
+         if not Check (Flush_Request (A), 0) then return False; end if;
+         debugPrint ("FILE-DOUBLE-RESIZE-CHECK: PASS" & LF);
+      end;
       --  Truncation through a third handle invalidates every old block mapping.
       if not Open (OPEN_READ_WRITE or OPEN_TRUNCATE, C) or else
         not Check (Read_At_Request (A, grantRef, 1, 0), 0) or else
@@ -886,7 +1085,8 @@ procedure main is
                msg := Rename_Request (grantRef, oldPath'Length, newPath'Length);
                msg.tag := capCall (CAP_SLOT_FS, msg);
                if msg.tag.label /= expected then
-                  debugPrint ("STORAGE-CHECK: metadata rename misreported" & LF);
+                  debugPrint ("STORAGE-CHECK: metadata rename " & parent &
+                    " expected" & expected'Image & " got" & msg.tag.label'Image & LF);
                end if;
             end Check_Metadata_Rename;
          begin
@@ -905,9 +1105,12 @@ procedure main is
       end rejectsMalformedDirectory;
 
       function exerciseRename return Boolean is
-         renamed : constant String := "@nvme:0/cubit-renamed-longer.dat";
+         --  The runner adds fixtures to the shared root directory. Its
+         --  source block may be completely full: keep this rename the same
+         --  size, and exercise name growth in lost+found below instead.
+         renamed : constant String := "@nvme:0/cubit-alt.dat";
          nested : constant String := "@nvme:0/lost+found/rename-before.dat";
-         nestedAfter : constant String := "@nvme:0/lost+found/rename-after.dat";
+         nestedAfter : constant String := "@nvme:0/lost+found/rename-after-much-longer.dat";
 
          procedure Put (value : String) is
             view : String (value'Range)
@@ -1108,7 +1311,7 @@ procedure main is
       --  The current writer deliberately supports direct and single-indirect
       --  blocks only.  A range it cannot represent must be reported as such,
       --  never as a successful zero-byte write.
-      msg := Seek_Request (handle, 16#0100_0000#, From_Start);
+      msg := Seek_Request (handle, 16#2_0000_0000#, From_Start);
       msg.tag := capCall (CAP_SLOT_FS, msg);
       if msg.tag.label /= REPLY_OK then
          debugPrint ("STORAGE-CHECK: large seek failed" & LF);
@@ -1348,7 +1551,16 @@ begin
       return;
    end if;
 
-   if exerciseStorage and then exercisePositioned and then exerciseCoherence then
+   if exerciseRejectedObjects then
+      debugPrint ("LINK-POLICY-CHECK: PASS" & LF);
+   else
+      debugPrint ("LINK-POLICY-CHECK: FAIL" & LF);
+      return;
+   end if;
+
+   if exerciseStorage and then exercisePositioned and then exerciseCoherence and then
+     exerciseDoubleOverwrite and then exerciseExclusive
+   then
       debugPrint ("STORAGE-CHECK: PASS" & LF);
    else
       debugPrint ("STORAGE-CHECK: FAIL" & LF);

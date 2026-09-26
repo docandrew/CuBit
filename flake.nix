@@ -24,8 +24,42 @@
     url = "github:b-erdem/cbor_ada/ce9897cdd80dea21112c59b80a5c42f2921f59f0";
     flake = false;
   };
+  # SPARKTLS and its SPARK dependencies, compiled in place for CuBit's
+  # userspace runtime by userspace/lib/tls/sparktls_cubit.gpr. To build
+  # against local checkouts, use e.g.
+  #   nix develop --override-input sparktls path:../sparktls
+  inputs.sparktls = {
+    url = "github:docandrew/sparktls/f7ea3a5eba7538e88f485f5ed252a5bd98364206";
+    flake = false;
+  };
+  inputs.sparktlscrypto = {
+    url = "github:docandrew/sparktlscrypto/b89c8bee8013498ac9008f92f4fd5480740e60df";
+    flake = false;
+  };
+  inputs.sparkx509 = {
+    url = "github:docandrew/sparkx509/ba9c37170911a3ef564472187f83a6b38dac8fb2";
+    flake = false;
+  };
+  inputs.sparkentropy = {
+    url = "github:docandrew/sparkentropy/f707e61678576b4748c040d645b8ed427a28f8c8";
+    flake = false;
+  };
+  inputs.sparkmlkem = {
+    url = "github:docandrew/sparkmlkem/5fbd0c9ae7a498f4bd5350547ebaffba381156fa";
+    flake = false;
+  };
+  inputs.sparknacl = {
+    url = "github:rod-chapman/SPARKNaCl/49e3bddf092561ce2b74c134a35acff91a2da9a4";
+    flake = false;
+  };
+  inputs.libkeccak = {
+    url = "github:damaki/libkeccak/f33be1c8120196d90f600b14d669b11d16149bf9";
+    flake = false;
+  };
 
-  outputs = { self, nixpkgs, rust-overlay, doomgeneric, stb, cbor_ada, sameboy }:
+  outputs = { self, nixpkgs, rust-overlay, doomgeneric, stb, cbor_ada, sameboy,
+              sparktls, sparktlscrypto, sparkx509, sparkentropy, sparkmlkem,
+              sparknacl, libkeccak }:
     let
       supportedSystems = [ "x86_64-linux" ];
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
@@ -45,6 +79,16 @@
             # existing no_std apps continue using prebuilt core/alloc.
             extensions = [ "rust-src" ];
           };
+          # One directory of the pinned SPARK crates for sparktls_cubit.gpr.
+          sparkCrates = pkgs.linkFarm "cubit-spark-crates" [
+            { name = "sparktls"; path = sparktls; }
+            { name = "sparktlscrypto"; path = sparktlscrypto; }
+            { name = "sparkx509"; path = sparkx509; }
+            { name = "sparkentropy"; path = sparkentropy; }
+            { name = "sparkmlkem"; path = sparkmlkem; }
+            { name = "sparknacl"; path = sparknacl; }
+            { name = "libkeccak"; path = libkeccak; }
+          ];
           cubitRustVendor = pkgs.rustPlatform.importCargoLock {
             lockFile = ./userspace/rust/Cargo.lock;
           };
@@ -113,6 +157,9 @@
               export SAMEBOY_LIBM="${sameboyMath}/lib/libopenlibm.a"
               export SAMEBOY_LIBM_NOTICES="${sameboyMath}/share/licenses/openlibm"
               export CBOR_ADA_SRC="${cbor_ada}"
+              export CUBIT_SPARK_CRATES="${sparkCrates}/"
+              # Mozilla root set for tls.svc's trust store (tools/pem_bundle_to_der.py).
+              export CUBIT_CA_BUNDLE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
               export IBM_PLEX_SANS_FONT="${pkgs.ibm-plex}/share/fonts/truetype/IBMPlexSans-Regular.ttf"
               export IBM_PLEX_MONO_FONT="${pkgs.ibm-plex}/share/fonts/truetype/IBMPlexMono-Regular.ttf"
               # Hosted developer tools built through Alire/GPRBuild do not

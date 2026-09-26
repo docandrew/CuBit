@@ -208,6 +208,9 @@ is
             when PAGE_FAULT =>
                 -- Demand paging is ordinary execution, not a boot diagnostic.
                 -- Report only rejected accesses in the handlers below.
+                -- Diagnostics only: which instruction faulted.
+                Process.lastFaultRIP := frame.rip;
+                Process.lastFaultRSP := frame.rsp;
                 handlePageFault (frame.errorCode);
 
             when TIMER =>
@@ -390,6 +393,17 @@ is
                             when False =>
                                 -- kernel wrote non-present page. see if it's something
                                 -- that we should have, page it in if it is.
+                                -- A syscall writing or reading user memory the program
+                                -- has not touched yet: demand-page it as the program
+                                -- itself would.
+                                declare
+                                    handled : Boolean;
+                                begin
+                                    Process.kernelUserFault (pid, faultAddr, handled);
+                                    if handled then
+                                        return;
+                                    end if;
+                                end;
                                 print ("Kernel non-present page write: ");
                                 println (faultAddr);
                                 raise PageFaultException;
@@ -405,6 +419,17 @@ is
                                 -- kernel read non-present page. see if it's something
                                 -- that we should have. see if it's something that we should
                                 -- have, page it in if it is.
+                                -- A syscall writing or reading user memory the program
+                                -- has not touched yet: demand-page it as the program
+                                -- itself would.
+                                declare
+                                    handled : Boolean;
+                                begin
+                                    Process.kernelUserFault (pid, faultAddr, handled);
+                                    if handled then
+                                        return;
+                                    end if;
+                                end;
                                 print ("Kernel non-present page read: ");
                                 println (faultAddr);
                                 raise PageFaultException with "Kernel read non-present page.";

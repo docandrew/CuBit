@@ -1,6 +1,7 @@
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Ext2; use Ext2;
+use type Ext2.Inode;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
 with Volume_Admission; use Volume_Admission;
@@ -35,6 +36,7 @@ procedure Overwrites is
       sb.inodeCount := 8;
       sb.inodesPerBlockGroup := 8;
       sb.majorVersion := 1;
+      sb.incompatibleFeatures := 2; -- standard typed directory records
       sb.inodeSize := 128;
       bgd := (blockBitmapAddr => 3, inodeBitmapAddr => 4,
               inodeTableAddr => 5, numFreeBlocks => 0,
@@ -42,6 +44,7 @@ procedure Overwrites is
               padding => 0, reserved => 0);
       ino := NULL_INODE;
       ino.typeAndPermissions := 16#8000#;
+      ino.numHardLinks := 1;
       ino.sizeLo := payload'Length;
       ino.numDiskSectors := payload'Length / 512;
       dataStart := (if Block_Bytes = 1024 then 20 * 1024 else 8 * 4096);
@@ -100,43 +103,43 @@ begin
 
          --  Every completion in aligned and sector-crossing paths: neither a
          --  malformed reply nor a failed write may lead to another I/O request.
-         for Limited in Boolean loop
-         for Unaligned in Boolean loop
-            declare
-               Boundaries : constant Positive :=
-                 (if Unaligned then 4 elsif Limited then payload'Length / Block_Bytes
-                  else 1);
-            begin
-               for Boundary in 1 .. Boundaries loop
-                  for Treatment in Failure_Mode loop
-                     for Reply_Kind in Failure_Reply loop
-                        Setup (Block_Bytes);
-                        if Limited then
-                           fs.device.grantBytes := Unsigned_32 (Block_Bytes);
-                        end if;
-                        Fail_At := Boundary;
-                        Mode := Treatment;
-                        Reply_Style := Reply_Kind;
-                        writeData
-                          (fs, 1, ino, (if Unaligned then 509 else 0),
-                           payload'Address, (if Unaligned then 7 else payload'Length),
-                           written, status);
-                        pragma Assert (Failed and Calls = Boundary);
-                        pragma Assert (status = Write_Device_Error);
-                        pragma Assert (not fs.writeQuarantined and ino = originalInode);
-                        pragma Assert
-                          (written = (if Unaligned then 0 else
-                                        Unsigned_64 ((Boundary - 1) *
-                                          (if Limited then Block_Bytes else payload'Length))));
-                        --  Failure may change data, but no metadata is touched.
-                        pragma Assert
-                          (Disk (0 .. dataStart - 1) = originalDisk (0 .. dataStart - 1));
-                        failures := failures + 1;
+         for Grant_Limited in Boolean loop
+            for Unaligned in Boolean loop
+               declare
+                  Boundaries : constant Positive :=
+                    (if Unaligned then 4 elsif Grant_Limited then payload'Length / Block_Bytes
+                     else 1);
+               begin
+                  for Boundary in 1 .. Boundaries loop
+                     for Treatment in Failure_Mode loop
+                        for Reply_Kind in Failure_Reply loop
+                           Setup (Block_Bytes);
+                           if Grant_Limited then
+                              fs.device.grantBytes := Unsigned_32 (Block_Bytes);
+                           end if;
+                           Fail_At := Boundary;
+                           Mode := Treatment;
+                           Reply_Style := Reply_Kind;
+                           writeData
+                             (fs, 1, ino, (if Unaligned then 509 else 0),
+                              payload'Address, (if Unaligned then 7 else payload'Length),
+                              written, status);
+                           pragma Assert (Failed and Calls = Boundary);
+                           pragma Assert (status = Write_Device_Error);
+                           pragma Assert (not fs.writeQuarantined and ino = originalInode);
+                           pragma Assert
+                             (written = (if Unaligned then 0 else
+                                           Unsigned_64 ((Boundary - 1) *
+                                             (if Grant_Limited then Block_Bytes else payload'Length))));
+                           --  Failure may change data, but no metadata is touched.
+                           pragma Assert
+                             (Disk (0 .. dataStart - 1) = originalDisk (0 .. dataStart - 1));
+                           failures := failures + 1;
+                        end loop;
                      end loop;
                   end loop;
-               end loop;
-            end;
-         end loop;
+               end;
+            end loop;
          end loop;
 
          --  Independent limits: a large grant does not override the provider's
@@ -174,8 +177,8 @@ begin
             for I in Disk'Range loop
                pragma Assert
                  (Disk (I) =
-                    (if I in 20 * 1024 .. 22 * 1024 - 1 or
-                             23 * 1024 .. 24 * 1024 - 1 or
+                    (if I in 20 * 1024 .. 22 * 1024 - 1 |
+                             23 * 1024 .. 24 * 1024 - 1 |
                              26 * 1024 .. 27 * 1024 - 1
                      then Character'Pos ('W') else originalDisk (I)));
             end loop;
@@ -187,6 +190,36 @@ begin
             writeData (fs, 1, ino, 0, payload'Address, payload'Length, written, status);
             pragma Assert (status = Write_No_Space and written = 2048);
             pragma Assert (Calls = 1 and Writes = 1 and ino = originalInode);
+
+            --  Do not inspect unrequested mappings or batch across the old EOF.
+            Setup (Block_Bytes);
+            ino.directBlocks (1) := 64;
+            originalInode := ino;
+            writeData (fs, 1, ino, 0, payload'Address, 1024, written, status);
+            pragma Assert (status = Write_Complete and written = 1024);
+            pragma Assert (Calls = 1 and Writes = 1);
+            Check_Contents (0, 1024);
+            Setup (Block_Bytes);
+            ino.sizeLo := 1024;
+            ino.directBlocks (1) := 64;
+            originalInode := ino;
+            writeData (fs, 1, ino, 0, payload'Address, 2048, written, status);
+            pragma Assert (status = Write_Out_Of_Range and written = 1024);
+            pragma Assert (Calls = 1 and Writes = 1 and ino = originalInode);
+            Check_Contents (0, 1024);
+
+            --  Larger device sectors use the existing RMW path. Filesystem
+            --  adjacency alone is not sufficient to form one sector write.
+            Setup (Block_Bytes);
+            Sector_Bytes := 4096;
+            fs.device.description.logicalBlockSize := 4096;
+            fs.device.description.physicalBlockSize := 4096;
+            fs.device.description.blockCount := Disk'Length / 4096;
+            fs.device.description.maxTransferBlocks := 1;
+            writeData (fs, 1, ino, 0, payload'Address, payload'Length, written, status);
+            pragma Assert (status = Write_Complete and written = payload'Length);
+            pragma Assert (Calls = 8 and Writes = 4);
+            Check_Contents (0, payload'Length);
          end if;
 
          Setup (Block_Bytes);

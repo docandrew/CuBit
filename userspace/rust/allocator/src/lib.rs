@@ -10,7 +10,7 @@ use core::{
     sync::atomic::{AtomicBool, AtomicPtr, Ordering},
 };
 
-#[cfg(not(target_os = "none"))]
+#[cfg(not(any(target_os = "none", target_os = "cubit")))]
 extern crate std;
 
 pub const ARENA_BYTES: usize = 16 * 1024 * 1024;
@@ -61,18 +61,18 @@ impl Drop for Guard {
 }
 
 /// All instances use one serialized process-local heap. The guard makes this
-/// boundary safe to call concurrently, but CuBit userspace threading is still
-/// unsupported and this is not a scalable concurrent-allocator design.
+/// boundary safe to call concurrently. This is not a scalable
+/// concurrent-allocator design.
 pub struct BoundedAllocator;
 
 // Called with Guard held. Native heap users outside this allocator must obey
-// the same serialization rule; CuBit currently has one executing thread/process.
+// the same serialization rule. Growth itself is one kernel operation.
 unsafe fn large_backing() -> *mut u8 {
     let existing = LARGE_BACKING.load(Ordering::Relaxed);
     if !existing.is_null() {
         return existing;
     }
-    #[cfg(target_os = "none")]
+    #[cfg(any(target_os = "none", target_os = "cubit"))]
     let result = {
         // One atomic growth request includes alignment slack; never query then
         // assume a separate growth call returns the same break.
@@ -82,7 +82,7 @@ unsafe fn large_backing() -> *mut u8 {
         let address = (raw.as_ptr().addr() + MAX_ALIGNMENT - 1) & !(MAX_ALIGNMENT - 1);
         raw.as_ptr().with_addr(address)
     };
-    #[cfg(not(target_os = "none"))]
+    #[cfg(not(any(target_os = "none", target_os = "cubit")))]
     let result = unsafe {
         std::alloc::System.alloc(Layout::from_size_align(ARENA_BYTES, MAX_ALIGNMENT).unwrap())
     };
@@ -112,7 +112,7 @@ unsafe fn payload_at(offset: usize) -> *mut u8 {
         let mut base = chunk.load(Ordering::Relaxed);
         if base.is_null() {
             const ALIGNMENT: usize = 4096;
-            #[cfg(target_os = "none")]
+            #[cfg(any(target_os = "none", target_os = "cubit"))]
             {
                 let Some(raw) = (unsafe { cubit::grow_heap(SMALL_CHUNK_BYTES + ALIGNMENT - 1) })
                 else {
@@ -121,7 +121,7 @@ unsafe fn payload_at(offset: usize) -> *mut u8 {
                 let address = (raw.as_ptr().addr() + ALIGNMENT - 1) & !(ALIGNMENT - 1);
                 base = raw.as_ptr().with_addr(address);
             }
-            #[cfg(not(target_os = "none"))]
+            #[cfg(not(any(target_os = "none", target_os = "cubit")))]
             {
                 base = unsafe {
                     std::alloc::System

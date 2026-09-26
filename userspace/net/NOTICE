@@ -1,0 +1,35 @@
+CuBit network protocols (userspace/net)
+=======================================
+
+This directory is part of CuBit, licensed under the GNU General Public
+License version 3 (see the repository's LICENSE). It contains third-party
+and generated material under the terms below.
+
+RecordFlux specifications (specs/)
+----------------------------------
+
+The RecordFlux message specifications in specs/ are taken from AdaCore's
+RecordFlux project, https://github.com/AdaCore/RecordFlux, directory
+examples/specs/ at tag v0.26.0 (commit
+857ac277e2c41a28f86efc23c0c5c47f2f3dce56), which is licensed under the
+Apache License, Version 2.0. A copy of that license is in
+LICENSES/Apache-2.0.txt. The upstream project has no NOTICE file and the
+specification files carry no per-file notices.
+
+Unless listed in specs/CHANGES_FROM_UPSTREAM.md, each specification is
+byte-identical to upstream (SHA-256 sums are recorded there). Modified
+files state their modification in a header comment and in that list, as
+the Apache License requires (section 4(b)).
+
+Generated code (generated/)
+---------------------------
+
+The units in generated/ are the output of AdaCore RecordFlux 0.26.0 run on
+the specifications in specs/ (the exact command is in generated/README.md).
+They carry their own notice:
+
+  Copyright (C) 2018-2026 AdaCore
+  SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+Both licenses are compatible with GPLv3 for this combination (the FSF
+lists the Apache License 2.0 as GPLv3-compatible).

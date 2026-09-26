@@ -6,7 +6,8 @@ package body CuBit.Launch_Policy with SPARK_Mode => On is
       return Network_Approval
    is
      (if Sender /= 0 and then Desktop_PID /= Interfaces.Unsigned_64'Last
-        and then Sender = Desktop_PID and then Name = "netsurf.app"
+        and then Sender = Desktop_PID
+        and then (Name = "netsurf.app" or else Name = "cubitshell.app")
       then Browser_Outbound else No_Network);
 
    function Allows

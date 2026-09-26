@@ -23,25 +23,24 @@ procedure Button_Tests is
    Bindings : constant array (Buttons.Operation) of Unsigned_32 := [101, 102, 103];
    procedure Invoke
      (Context : in out Host_State; Binding : Unsigned_32;
-      Argument : CCL.Host_Values.Value; Value : out CCL.Host_Values.Value;
-      Success : out Boolean) is
+      Argument : CCL.Host_Values.Value; Reply : out CCL.Host_Values.Call_Result) is
       Accepted : Boolean := False;
    begin
       Context.Calls := Context.Calls + 1;
-      Success := True;
+      Reply.Success := True;
       if Binding = 100 then
          Context.Label_Calls := Context.Label_Calls + 1;
          CCL.UI_Labels.Apply_Value (Context.Label, CCL.UI_Labels.Set_Text, Argument, Accepted);
       else
-         Success := False;
+         Reply.Success := False;
          for Op in Buttons.Operation loop
             if Binding = Bindings (Op) then
                Buttons.Apply (Button, Op, Argument, Catalog, Grants, Accepted);
-               Success := True;
+               Reply.Success := True;
             end if;
          end loop;
       end if;
-      Value := CCL.Host_Values.Boolean_Constant (Accepted);
+      Reply.Value := CCL.Host_Values.Boolean_Constant (Accepted);
    end Invoke;
    procedure Run is new Interpret_With_Values (Host_State, Invoke);
    procedure Dispatch is new Buttons.Dispatch_One (Host_State, Invoke);

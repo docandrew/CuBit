@@ -55,8 +55,7 @@ package CCL.Periodic_Programs with SPARK_Mode is
       with function Now (Context : Host_Context) return Timestamp;
       with procedure Invoke
         (Context : in out Host_Context; Binding : Interfaces.Unsigned_32;
-         Argument : CCL.Host_Values.Value; Value : out CCL.Host_Values.Value;
-         Success : out Boolean);
+         Argument : CCL.Host_Values.Value; Reply : out CCL.Host_Values.Call_Result);
    procedure Evaluate_Values_Due
      (Item : in out Program; Catalog : CCL.Catalog.Interface_Catalog;
       Grants : CCL.Catalog.Granted_Bindings; Context : in out Host_Context;

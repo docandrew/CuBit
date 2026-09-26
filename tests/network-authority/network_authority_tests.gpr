@@ -2,7 +2,9 @@ project Network_Authority_Tests is
    for Source_Dirs use (".", "../../userspace/runtime/gnat", "../../userspace/services/netstack");
    for Source_Files use ("main.adb", "cubit.ads", "cubit-network_authority.ads",
                         "cubit-network_authority.adb", "network_grants.ads", "network_grants.adb",
-                        "cubit-launch_policy.ads", "cubit-launch_policy.adb");
+                        "cubit-launch_policy.ads", "cubit-launch_policy.adb",
+                        "network_channel_handles.ads", "network_channel_handles.adb",
+                        "udp_channels.ads", "udp_channels.adb", "udp_tests.ads", "udp_tests.adb");
    for Object_Dir use "build";
    for Exec_Dir use "build";
    for Main use ("main.adb");

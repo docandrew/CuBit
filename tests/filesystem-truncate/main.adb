@@ -3,6 +3,7 @@ with Interfaces; use Interfaces;
 with Ext2; use Ext2;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
+with Volume_Admission; use Volume_Admission;
 procedure Main is
    fs : Filesystem;
    sb : Superblock with Import, Address => Disk (1024)'Address;
@@ -30,8 +31,10 @@ procedure Main is
    lookupStatus : Directory_Lookup_Status;
 
    procedure Setup is
+      Admission : Admission_Result;
    begin
       Reset;
+      sb.signature := EXT2_SIGNATURE;
       sb.inodeCount := 8;
       sb.blockCount := 64;
       sb.freeBlocks := 40;
@@ -39,6 +42,7 @@ procedure Main is
       sb.blocksPerBlockGroup := 64;
       sb.inodesPerBlockGroup := 8;
       sb.majorVersion := 1;
+      sb.incompatibleFeatures := 2; -- standard typed directory records
       sb.inodeSize := 128;
       bgd := (blockBitmapAddr => 3, inodeBitmapAddr => 4,
               inodeTableAddr => 5, numFreeBlocks => 40,
@@ -51,20 +55,18 @@ procedure Main is
       Disk (3079) := 128;
       ino := NULL_INODE;
       ino.typeAndPermissions := 16#8000#;
+      ino.numHardLinks := 1;
       ino.sizeLo := 13 * 1024;
       ino.numDiskSectors := 6;
       ino.directBlocks (0) := 20;
       ino.singleIndirectBlock := 21;
       pointers (0) := 22;
-      fs := (sb => sb, blkSize => 1024,
-             device => (endpointSlot => 1,
-                        grant => (slot => 1, generation => 1),
-                        grantBuffer => Grant_Buffer'Address,
-                        grantBytes => Grant_Buffer'Length,
-                        description => (blockCount => 128,
-                          maxTransferBlocks => 8, features => FEATURE_FLUSH,
-                          others => <>)),
-             writeQuarantined => False);
+      --  Replacing the disk ends the previous volume/cache lifetime. Use the
+      --  real admission boundary, rather than leaving old cached mappings live.
+      initBlockDevice (fs, 1, (slot => 1, generation => 1),
+                       Grant_Buffer'Address, Grant_Buffer'Length, Admission);
+      pragma Assert (Admission = Admitted);
+      Calls := 0;
       Durable := Disk;
    end Setup;
 
@@ -150,7 +152,7 @@ begin
    truncateToEmpty (fs, 1, result, status);
    pragma Assert (status = Truncate_Read_Only and Writes = 0);
    Setup;
-   ino.doubleIndirectBlock := 23;
+   ino.tripleIndirectBlock := 23;
    truncateToEmpty (fs, 1, result, status);
    pragma Assert (status = Truncate_Unsupported and Writes = 0);
    Setup;

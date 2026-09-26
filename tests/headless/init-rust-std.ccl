@@ -1,0 +1,5 @@
+# Rust std on CuBit (docs/rust-std.md): threads, locks, thread-locals, time.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "rust-std-hello.app" (priority 3))
+)

@@ -1314,7 +1314,7 @@ procedure Main is
          Transfer => CCL.Imports.Move_Argument,
          Cancellation => CCL.Imports.Not_Cancellable,
          Success_Verb => SEND, Failure_Verb => SEND,
-         Cancel_Verb => 0);
+         Cancel_Verb => 0, others => <>);
       CCL.Catalog.Initialize (Linkage);
       Resolution :=
         (Interface_Digest => TEST_INTERFACE_DIGEST,
@@ -1687,7 +1687,7 @@ procedure Main is
          Ownership_Argument => True, Local => 0,
          Transfer => CCL.Imports.Move_Argument,
          Cancellation => CCL.Imports.Not_Cancellable,
-         Success_Verb => 1, Failure_Verb => 2, Cancel_Verb => 0);
+         Success_Verb => 1, Failure_Verb => 2, Cancel_Verb => 0, others => <>);
       Candidate.Length := 2;
       Candidate.Code (0) := (Op => Invoke_Import, Import => 0, others => <>);
       Candidate.Code (1) := (Op => Halt, others => <>);

@@ -33,16 +33,16 @@ package body CCL_Config_Bindings is
    end Install;
    procedure Invoke
      (Binding : Interfaces.Unsigned_32; Argument : CCL.Host_Values.Value;
-      Value : out CCL.Host_Values.Value; Success : out Boolean)
+      Reply : out CCL.Host_Values.Call_Result)
    is
       Text : CCL.Host_Values.Text;
    begin
-      Value := CCL.Host_Values.Text_Constant (Text); Success := False;
+      Reply.Value := CCL.Host_Values.Text_Constant (Text); Reply.Success := False;
       if Argument.Kind /= CCL.Host_Values.Text_Value then return; end if;
       for Op in CCL.Interfaces.Config.Operation loop
          if Binding = Bindings (Op) then
-            CCL_Config_IO.Query (Op, Argument.Content.Data (1 .. Argument.Content.Length), Text, Success);
-            Value := CCL.Host_Values.Text_Constant (Text);
+            CCL_Config_IO.Query (Op, Argument.Content.Data (1 .. Argument.Content.Length), Text, Reply.Success);
+            Reply.Value := CCL.Host_Values.Text_Constant (Text);
             return;
          end if;
       end loop;

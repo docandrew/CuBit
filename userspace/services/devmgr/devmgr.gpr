@@ -21,11 +21,18 @@ project Devmgr is
        "ccl-ownership-bytecode.ads", "ccl-ownership-bytecode.adb",
        "ccl-secondary_stacks.ads", "ccl-secondary_stacks.adb",
        "ccl-vm.ads", "ccl-vm.adb",
+       "ccl-resources.ads", "ccl-resources.adb",
+       "ccl-resource_policies.ads", "ccl-resource_policies.adb",
       "ccl-host_values.ads", "ccl-host_values.adb",
       "ccl-handler_references.ads", "ccl-handler_references.adb",
        "ccl-catalog.ads", "ccl-catalog.adb",
        "ccl-language.ads", "ccl-language.adb",
        "ccl-types.ads", "ccl-types.adb",
+       "ccl-types-correspondence.ads", "ccl-types-correspondence.adb",
+       "ccl-objects.ads", "ccl-objects.adb",
+       "ccl-objects-catalog.ads", "ccl-objects-catalog.adb",
+       "ccl-objects-values.ads", "ccl-objects-values.adb",
+       "ccl-objects-views.ads", "ccl-objects-views.adb",
        "ccl-declarations.ads", "ccl-declarations.adb",
        "ccl-configurations.ads", "ccl-configurations.adb");
 

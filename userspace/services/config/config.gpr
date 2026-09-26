@@ -4,7 +4,9 @@ project Config is
 
     for Object_Dir use "build";
 
-    for Source_Dirs use (".");
+    CBOR_Source := external ("CBOR_ADA_SRC");
+    for Source_Dirs use (".", "../../lib/config", "../../ccl/src",
+      "../../ccl/persistence", CBOR_Source & "/src");
 
     for Main use ("main.adb");
 
@@ -32,6 +34,7 @@ project Config is
     package Compiler is
         for Default_Switches ("Ada") use
         (
+            "-gnat2022",
             "-O2",
             "-fstack-usage",
             "-fomit-frame-pointer",

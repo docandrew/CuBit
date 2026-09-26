@@ -1,0 +1,10 @@
+CCL-CONFIG-WRITE-OUTCOME 1
+type ConfigWrite
+variant Committed Integer
+variant InvalidRequest Unit
+variant Denied Unit
+variant Busy Unit
+variant Unavailable Unit
+variant Conflict Unit
+variant Rejected Unit
+variant Uncertain Unit

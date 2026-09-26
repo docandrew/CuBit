@@ -1,0 +1,105 @@
+--- headless/run.sh	2026-09-24 06:08:22.268302550 -0600
++++ headless/run.sh	2026-09-24 06:29:43.484772697 -0600
+@@ -35,7 +35,7 @@
+ 
+ Options:
+   --build              Run make world before booting QEMU
+-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-remote, capability-security, network-authority, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
++  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-remote, capability-security, network-authority, timesync, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
+   --timeout SECONDS    QEMU runtime before timeout is treated as success
+   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
+   --cpus COUNT         Virtual CPUs, 1..4 (default: 4)
+@@ -202,7 +202,7 @@
+ case "$TEST_NAME" in
+     config-tree|config-inspection|log-authority|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
+         ;;
+-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
++    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|timesync|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
+         ;;
+     *)
+         echo "headless: unknown test: $TEST_NAME" >&2
+@@ -379,6 +379,9 @@
+     network-authority)
+         INIT_PROFILE="$ROOT_DIR/tests/headless/init-network-authority.ccl"
+         ;;
++    timesync)
++        INIT_PROFILE="$ROOT_DIR/tests/headless/init-timesync.ccl"
++        ;;
+     storage-grants)
+         INIT_PROFILE="$ROOT_DIR/tests/headless/init-storage-grants.ccl"
+         ;;
+@@ -702,6 +705,22 @@
+             exit 1
+         fi
+     fi
++    if [ "$TEST_NAME" = "timesync" ]; then
++        # timesync-test.svc is timesync.svc with only its capability section
++        # replaced (loopback fixture ports); it is installed under the
++        # production name that init-timesync.ccl starts.
++        for TIMESYNC_IMAGE in logstore.svc clock.svc timesync-test.svc:timesync.svc \
++          timesync-check.app; do
++            TIMESYNC_SOURCE="${TIMESYNC_IMAGE%%:*}"
++            TIMESYNC_TARGET="${TIMESYNC_IMAGE##*:}"
++            debugfs -w -R "rm $TIMESYNC_TARGET" "$TEMP_DISK" >/dev/null 2>&1
++            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$TIMESYNC_SOURCE $TIMESYNC_TARGET" \
++              "$TEMP_DISK" >/dev/null 2>&1; then
++                echo "headless: failed to install $TIMESYNC_TARGET" >&2
++                exit 1
++            fi
++        done
++    fi
+     if [ "$TEST_NAME" = "capability-security" ] || [ "$TEST_NAME" = "network-authority" ]; then
+         CAPABILITY_TEST_IMAGE="$KERNEL_DIR/isodir/boot/capability-test.app"
+         if [ ! -f "$CAPABILITY_TEST_IMAGE" ]; then
+@@ -892,6 +911,15 @@
+         exit 1
+     fi
+ fi
++if [ "$TEST_NAME" = "timesync" ]; then
++    # Development initrd whose settings point time.servers at the fixture.
++    if ! python3 "$ROOT_DIR/userspace/ccl/tools/ccl-image/realize.py" \
++          "$ROOT_DIR/tests/timesync/timesync-initrd.ccl" \
++          --output "$KERNEL_DIR/isodir/boot/initrd.img" >/dev/null; then
++        echo "headless: failed to prepare timesync settings fixture" >&2
++        exit 1
++    fi
++fi
+ if ! grub-mkrescue -o "$KERNEL_DIR/cubit_kernel.iso" "$KERNEL_DIR/isodir" >/dev/null 2>&1; then
+     echo "headless: grub-mkrescue failed" >&2
+     exit 1
+@@ -1433,6 +1461,10 @@
+     python3 "$ROOT_DIR/tests/network-authority/peer.py" "$SERIAL_LOG" &
+     NETWORK_PEER_PID=$!
+ fi
++if [ "$TEST_NAME" = "timesync" ]; then
++    python3 "$ROOT_DIR/tests/timesync/fixture.py" "$SERIAL_LOG" &
++    NETWORK_PEER_PID=$!
++fi
+ 
+ if [ "$TEST_NAME" = "bench-scheduler" ]; then
+     python3 "$ROOT_DIR/tests/performance/clock_reference.py" "$SERIAL_LOG" \
+@@ -1593,6 +1625,24 @@
+             exit 1
+         fi
+         NETWORK_PEER_PID=""
++        ;;
++    timesync)
++        required_markers="
++timesync-check: ordinary clock endpoint cannot adjust time PASS
++timesync-check: undeclared clock-control slot is unusable PASS
++clock: wall time set from sample
++timesync-check: clock reports network-synchronized time PASS
++TEST: PASS timesync
++"
++        if ! grep -qF 'TEST: PASS timesync' "$SERIAL_LOG"; then
++            echo "headless: guest timesync checks did not finish" >&2
++            exit 1
++        fi
++        if ! wait "$NETWORK_PEER_PID"; then
++            echo "headless: timesync fixture failed" >&2
++            exit 1
++        fi
++        NETWORK_PEER_PID=""
+         ;;
+     async-ipc)
+         required_markers="

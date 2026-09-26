@@ -11,6 +11,11 @@ crate-type = ["staticlib"]
 
 [features]
 turso = ["dep:turso_core", "dep:config-storage"]
+# A separate build must find revision 1 on disk; it cannot silently reseed.
+reopen = ["turso"]
+# Opt-in measurements on the disposable probe disk, never on Config's store.
+bench = ["turso"]
+sql-bench = ["turso", "config-storage/measure"]
 
 [dependencies]
 config-storage = { package = "cubit-config-turso-spike", path = "..", optional = true }

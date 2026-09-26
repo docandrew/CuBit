@@ -3,6 +3,7 @@ with Interfaces; use Interfaces;
 with CuBit.Network_Authority; use CuBit.Network_Authority;
 with Network_Grants;
 with CuBit.Launch_Policy;
+with UDP_Tests;
 
 procedure Main is
    Narrow : constant Scope := (Connect_TCP, 16#0A00_0200#, 24, 80, 443, False);
@@ -29,6 +30,12 @@ begin
       pragma Assert (Policy.Desktop_Approval ("netsurf.appx", 42, 42) =
         Policy.No_Network);
       pragma Assert (Policy.Desktop_Approval ("/netsurf.app", 42, 42) =
+        Policy.No_Network);
+      pragma Assert (Policy.Desktop_Approval ("cubitshell.app", 42, 42) =
+        Policy.Browser_Outbound);
+      pragma Assert (Policy.Desktop_Approval ("cubitshell.app", 41, 42) =
+        Policy.No_Network);
+      pragma Assert (Policy.Desktop_Approval ("cubitshell.apps", 42, 42) =
         Policy.No_Network);
       pragma Assert (Policy.Allows (Policy.Browser_Outbound, Broad_Outbound_TCP));
       pragma Assert (Policy.Allows (Policy.Browser_Outbound, Narrow));
@@ -101,5 +108,6 @@ begin
    end loop;
    Network_Grants.Install (Grants, 42, Narrow, New_Tag, Success);
    pragma Assert (not Success and New_Tag = 0);
+   UDP_Tests.Run;
    Ada.Text_IO.Put_Line ("Network authority: scope decoding, CIDR/ports, direction, DNS, owner, stale tags, bounded table PASS");
 end Main;

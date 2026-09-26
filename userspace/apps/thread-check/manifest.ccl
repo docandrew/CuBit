@@ -1,0 +1,4 @@
+# Kernel thread and per-thread CPU state regression checks. No authority.
+(executable-manifest v1
+  (identity "com.cubit.thread-check")
+  (version "0.1.0"))

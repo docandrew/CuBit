@@ -16,7 +16,7 @@ with identical inode numbers, preservation of live aliases when another closes,
 all slots occupied, busy-owner rejection, duplicate detach and 1000 last-close/
 reuse cycles. No refcount arithmetic or heap allocator is involved.
 
-GNATprove on 2026-09-23: **25 checks, zero unproved, zero justified**. Proved
+GNATprove on 2026-09-24: **35 checks, zero unproved, zero justified**. Proved
 contracts establish:
 
 * Attach succeeds with the requested identity or leaves the whole state intact;
@@ -24,10 +24,14 @@ contracts establish:
 * Replace updates every owner linked to that object and preserves all other
   values, identities and attachment state.
 * Detach removes its link without changing another owner's metadata or identity.
+* Exclusive ownership starts isolated, a successful exclusive attach is
+  isolated by object identity, and all table operations preserve that invariant.
+* Conflicting admission leaves the entire state unchanged. Close releases
+  ownership without weakening unrelated holders.
 
 This is a proof of those contracts and runtime safety in the hosted model
 instantiation, not a proof of the native Ext2 instantiation, file-table coupling,
-key uniqueness in all reachable states, policy enforcement, concurrent access,
+general key uniqueness in all reachable states, policy enforcement, concurrent access,
 driver behavior or persistence. Those integration boundaries have regression
 evidence and review, not an end-to-end SPARK proof. No Assume/SPARK-Off escape
 was added. Assertions are enabled for the hosted tests, not native services.
@@ -68,3 +72,18 @@ Indirect file-block lookup and cache replacement now propagate read failures,
 with a separate production-code hosted regression executable.
 Other metadata mutations, remaining inode/path error propagation, persistent recovery state and
 crash ordering still need work before asynchronous mutation is enabled.
+
+## Lifetime-exclusive handles
+
+The table now stores an explicit `Sharing_Mode` per internal handle slot.
+`Deny_Sharing` conflicts with any preexisting alias; all further opens conflict
+while it lives, including opens by the same process. `Allow_Sharing` remains
+the default. This is service-enforced admission, not advisory client locking.
+No extra checks are added to the payload read/write path.
+
+The hosted test runs 3,968 ordered distinct-owner/mode scenarios, checks
+volume separation and close/reacquire, and asserts the Ghost isolation predicate.
+Native `FILE-EXCLUSIVE-CHECK: PASS` covers conflicting opens/truncate, rename
+denial, unchanged contents, flush, close/reacquire and stale-close rejection.
+Both hosted proof/tests and native four-vCPU QEMU TCG storage tests passed.
+See [contract and remaining lifecycle limits](../../docs/filesystem-exclusive-ownership.md).

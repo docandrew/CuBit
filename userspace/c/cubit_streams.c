@@ -159,6 +159,10 @@ static uint32_t get_min_cursor(uint64_t base, uint8_t sub_cnt,
 /*---------------------------------------------------------------------------
  * cubit_stream_create - Create a named stream
  *---------------------------------------------------------------------------*/
+/* Whether writes poll the mailbox for subscription requests (a program
+ * without a mailbox owner); the CuBit libc clears it. */
+int cubit_stream_poll_on_write = 1;
+
 void cubit_stream_create(uint16_t stream_id, unsigned pages,
                          uint16_t type_tag)
 {
@@ -219,6 +223,20 @@ int cubit_stream_handle_subscription(void)
     long from = syscall1(SYSCALL_POLL_ANY_IPC, &msg);
     if (from == 0)
         return 0;
+    return cubit_stream_handle_message(from, &msg);
+}
+
+/*---------------------------------------------------------------------------
+ * cubit_stream_handle_message - Serve one received stream request
+ *
+ * For a process whose mailbox has one owner (the CuBit libc's dispatcher),
+ * which receives every message and passes stream requests here. Returns 1
+ * if the message was a stream request (and has been replied to).
+ *---------------------------------------------------------------------------*/
+int cubit_stream_handle_message(long from, const void *received)
+{
+    stream_msg_t msg;
+    memcpy(&msg, received, sizeof(msg));
 
     if (msg.tag.label == OP_STREAM_SUBSCRIBE) {
         uint16_t req_id = (uint16_t)(msg.words[0] & 0xFFFF);
@@ -357,8 +375,10 @@ uint32_t cubit_stream_write(uint16_t stream_id, const void *data,
     if (idx < 0 || len == 0)
         return 0;
 
-    /* Handle pending subscriptions */
-    cubit_stream_handle_subscription();
+    /* Handle pending subscriptions, unless the process's mailbox has an
+     * owner that routes them here (cubit_stream_handle_message). */
+    if (cubit_stream_poll_on_write)
+        cubit_stream_handle_subscription();
 
     stream_state_t *s = &stream_tab[idx];
     uint64_t base = s->base_addr;

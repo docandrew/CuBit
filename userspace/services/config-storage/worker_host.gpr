@@ -1,0 +1,37 @@
+library project Worker_Host is
+   CBOR_Source := external ("CBOR_ADA_SRC");
+   for Source_Dirs use (".", "../../lib/config", "../../ccl/src",
+      "../../ccl/persistence", "../../lib/storage", "../../lib/storage/native", CBOR_Source & "/src");
+   for Source_Files use
+     ("ccl-types-correspondence.ads", "ccl-types-correspondence.adb") &
+     ("worker_host.ads", "worker_host.adb", "native_storage.ads", "native_storage.adb",
+      "storage_channel.ads", "storage_channel.adb",
+      "config_worker_receiver.ads", "config_worker_receiver.adb",
+      "config_worker.ads", "config_worker.adb", "config_worker_storage.ads",
+      "config_database.ads", "config_database.adb",
+      "config_database-schemas.ads", "config_database-schemas.adb",
+      "ccl-objects-persistence.ads", "ccl-objects-persistence.adb",
+      "ccl-objects-schemas.ads", "ccl-objects-schemas.adb",
+      "ccl-objects-schemas-persistence.ads", "ccl-objects-schemas-persistence.adb",
+      "cbor.ads", "cbor-model.ads", "cbor-decoding.ads", "cbor-decoding.adb",
+      "cbor-encoding.ads", "cbor-encoding.adb",
+      "config_worker_messages.ads", "config_worker_messages.adb",
+      "config_worker_startup.ads", "config_worker_startup.adb",
+      "config_schema_protocol.ads", "config_schema_protocol.adb",
+      "config_schema_worker.ads", "config_schema_worker.adb",
+      "config_worker_protocol.ads", "config_worker_protocol.adb",
+      "ccl.ads", "ccl-types.ads", "ccl-types.adb", "ccl-objects.ads", "ccl-objects.adb",
+      "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb");
+   for Object_Dir use "build/ada";
+   for Library_Dir use "build/ada-lib";
+   for Library_Name use "config_storage_host";
+   for Library_Kind use "static";
+   for Library_Interface use ("worker_host", "native_storage");
+   for Library_Standalone use "standard";
+   for Library_Auto_Init use "false";
+   for Runtime ("Ada") use "../../runtime";
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-g", "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+   end Compiler;
+end Worker_Host;

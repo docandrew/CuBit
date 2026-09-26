@@ -1,0 +1,6 @@
+# CuBit libc (userspace/libc): musl over CuBit system calls, C and C++.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "libc-check.app" (priority 3))
+  (start "cxx-check.app" (priority 3))
+)

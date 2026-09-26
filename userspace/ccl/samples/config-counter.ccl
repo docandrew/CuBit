@@ -1,0 +1,8 @@
+# Native CuBit only: Ctrl+F5 compiles and runs bytecode.
+# The host binds this collection to Workbench's own demo namespace.
+# Read observes the current revision; conflicting writes are not retried.
+(let ((counter (config-values.open)))
+  (let ((previous (config-values.read counter)))
+    (let ((saved (config-values.write counter 42)))
+      (let ((closed (config-values.close counter)))
+        saved))))

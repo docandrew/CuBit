@@ -15,7 +15,7 @@ package Config_Authority with SPARK_Mode, Pure is
    Read_Write : constant Rights := [others => True];
    type Rule_Set is private;
    type Authority_State is private;
-   type Install_Result is (Installed, Invalid_Subject, Capacity_Exceeded);
+   type Install_Result is (Installed, Invalid_Subject, Capacity_Exceeded, Identity_Exhausted);
 
    procedure Append
      (Rules : in out Rule_Set; Scope : String; Allowed : Rights;
@@ -23,6 +23,10 @@ package Config_Authority with SPARK_Mode, Pure is
      with Post => (if not Accepted then Rules = Rules'Old);
    --  Empty Scope explicitly means all keys. An empty rule set grants nothing.
    function Has_Profile (State : Authority_State; Subject : Subject_ID) return Boolean;
+   --  Service-lifetime nonreusing revision of an installed grant set. Zero is
+   --  absent. Replacement/regrant cannot resurrect handles from an old set.
+   function Revision (State : Authority_State; Subject : Subject_ID)
+      return Interfaces.Unsigned_64;
    function Allows
      (State : Authority_State; Subject : Subject_ID; Key : String;
       Requested : Operation) return Boolean;
@@ -54,10 +58,12 @@ private
    end record;
    type Profile is record
       Subject : Subject_ID := No_Subject;
+      Revision : Interfaces.Unsigned_64 := 0;
       Rules : Rule_Set;
    end record;
    type Profile_Array is array (Positive range 1 .. Maximum_Subjects) of Profile;
    type Authority_State is record
       Profiles : Profile_Array;
+      Last_Revision : Interfaces.Unsigned_64 := 0;
    end record;
 end Config_Authority;

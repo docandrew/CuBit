@@ -14,8 +14,7 @@ procedure Output_Tests is
    end record;
    procedure Invoke
      (Context : in out Host_State; Binding : Unsigned_32;
-      Argument : Value; Value : out CCL.Host_Values.Value;
-      Success : out Boolean)
+      Argument : Value; Reply : out CCL.Host_Values.Call_Result)
    is
       Accepted : Boolean;
    begin
@@ -23,8 +22,8 @@ procedure Output_Tests is
       CCL.UI_Outputs.Apply (Context.Output,
         (if Binding = 1 then CCL.UI_Outputs.Append_Line
          else CCL.UI_Outputs.Clear_Output), Argument, Accepted);
-      Value := Boolean_Constant (Accepted);
-      Success := True;
+      Reply.Value := Boolean_Constant (Accepted);
+      Reply.Success := True;
    end Invoke;
    procedure Submit is new CCL.Sessions.Submit_With_Values (Host_State, Invoke);
    Catalog : Interface_Catalog;

@@ -13,6 +13,8 @@ with Interfaces; use Interfaces;
 
 with Strings; use Strings;
 with Boot_Output;
+with System.Machine_Code; use System.Machine_Code;
+with x86;
 
 package body TextIO is
 
@@ -149,7 +151,7 @@ package body TextIO is
     -- Print a single char at the current cursor and update cursor.
     --  This will wrap cursor around to the next row and scroll up
     --  if necessary. Treat LF and CR as the same for text purposes.
-    procedure print (ch : in Character; fg,bg : in TextIO.Color) is
+    procedure putChar (ch : in Character; fg,bg : in TextIO.Color) is
         use ASCII;
     begin
         Boot_Output.Append (ch);
@@ -181,18 +183,111 @@ package body TextIO is
                 Serial.send (Config.serialMirrorPort, ch);
             end if;
         end if;
-    end print;
+    end putChar;
 
     procedure print (ch : in Character) is
     begin
         print (ch, LT_GRAY, BLACK);
     end print;
 
-    procedure print (str : in String; fg,bg : in TextIO.Color) is
+    ---------------------------------------------------------------------------
+    -- Console output lock. TextIO sits at the bottom of the kernel's unit
+    -- graph, so it cannot use Spinlocks/PerCPUData without an elaboration
+    -- cycle; this minimal lock uses only instructions. The owner word holds the
+    -- owning CPU's kernel GS base (its per-CPU data address): unique per CPU
+    -- and never zero once per-CPU data is installed. Interrupts stay masked
+    -- while it is held. The holder only prints and never waits on anything,
+    -- so a CPU spinning here with interrupts masked cannot stall a TLB
+    -- shootdown indefinitely.
+    ---------------------------------------------------------------------------
+    -- Volatile, not Atomic: the CAS intrinsic takes its address. Aligned
+    -- 64-bit loads and stores are atomic on x86-64.
+    outputOwner : aliased Unsigned_64 := 0 with Volatile;
+    outputLocking : Boolean := False with Atomic;
+
+    function compareAndSwap (Ptr : System.Address; Expected, Desired : Unsigned_64)
+      return Unsigned_64
+      with Import, Convention => Intrinsic,
+           External_Name => "__sync_val_compare_and_swap_8";
+
+    function kernelGSBase return Unsigned_64 is
+        Value : Unsigned_64;
     begin
-        for i in str'range loop
-            print (str(i), fg, bg);
+        Asm ("rdgsbase %0", Outputs => Unsigned_64'Asm_Output ("=r", Value),
+             Volatile => True);
+        return Value;
+    end kernelGSBase;
+
+    function saveFlagsAndDisable return Unsigned_64 is
+        Flags : Unsigned_64;
+    begin
+        Asm ("pushfq; popq %0; cli",
+             Outputs => Unsigned_64'Asm_Output ("=r", Flags),
+             Volatile => True, Clobber => "memory");
+        return Flags;
+    end saveFlagsAndDisable;
+
+    procedure restoreFlags (Flags : Unsigned_64) is
+    begin
+        Asm ("pushq %0; popfq",
+             Inputs => Unsigned_64'Asm_Input ("r", Flags),
+             Volatile => True, Clobber => "memory,cc");
+    end restoreFlags;
+
+    procedure enableOutputLocking is
+    begin
+        outputOwner := 0;
+        outputLocking := True;
+    end enableOutputLocking;
+
+    type Output_Hold is record
+        Locked : Boolean := False;
+        Flags  : Unsigned_64 := 0;
+    end record;
+
+    -- Take the output lock unless output is unlocked (see the spec).
+    procedure lockOutput (hold : out Output_Hold) is
+        Me : Unsigned_64;
+    begin
+        hold := (others => <>);
+        if not outputLocking or else x86.panicked then
+            return;
+        end if;
+        Me := kernelGSBase;
+        if Me = 0 or else outputOwner = Me then
+            return;   -- no per-CPU data yet, or a nested print on this CPU
+        end if;
+        hold.Flags := saveFlagsAndDisable;
+        while compareAndSwap (outputOwner'Address, 0, Me) /= 0 loop
+            Asm ("pause", Volatile => True);
         end loop;
+        hold.Locked := True;
+    end lockOutput;
+
+    procedure unlockOutput (hold : Output_Hold) is
+    begin
+        if hold.Locked then
+            outputOwner := 0;
+            restoreFlags (hold.Flags);
+        end if;
+    end unlockOutput;
+
+    procedure print (ch : in Character; fg,bg : in TextIO.Color) is
+        hold : Output_Hold;
+    begin
+        lockOutput (hold);
+        putChar (ch, fg, bg);
+        unlockOutput (hold);
+    end print;
+
+    procedure print (str : in String; fg,bg : in TextIO.Color) is
+        hold : Output_Hold;
+    begin
+        lockOutput (hold);
+        for i in str'range loop
+            putChar (str(i), fg, bg);
+        end loop;
+        unlockOutput (hold);
     end print;
 
     procedure print (str : in String) is
@@ -201,9 +296,13 @@ package body TextIO is
     end print;
 
     procedure println (str : in String; fg,bg : in TextIO.Color) is
+        hold : Output_Hold;
     begin
+        -- Keep the line and its newline together.
+        lockOutput (hold);
         print (str,fg,bg);
         println;
+        unlockOutput (hold);
     end println;
 
     procedure println (str : in String) is

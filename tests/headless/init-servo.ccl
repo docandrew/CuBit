@@ -1,0 +1,9 @@
+# Servo on CuBit (docs/servo-port.md): cubitshell renders the pages listed in
+# @nvme:0/servo/pages with SWGL into memory and reports each frame. Fonts
+# come from @nvme:0/fonts; the host serves one page over HTTP and one over
+# HTTPS (trusted through the test CA installed as the trust store).
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "cubitshell.app" (priority 3) (network approve-declared))
+)

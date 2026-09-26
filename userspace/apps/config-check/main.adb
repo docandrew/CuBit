@@ -5,6 +5,7 @@ with CuBit.Config_Reader;
 with CuBit.Config_Inspection;
 with CuBit.Memory_Grants;
 with CuBit.Config_Protocol;
+with Config_Worker_Startup;
 with System;
 with CCL.Catalog;
 with CCL.Language;
@@ -33,11 +34,10 @@ procedure Main is
    Host : Context;
    procedure Invoke
      (State : in out Context; Binding : Unsigned_32;
-      Argument : CCL.Host_Values.Value; Value : out CCL.Host_Values.Value;
-      Success : out Boolean) is
+      Argument : CCL.Host_Values.Value; Reply : out CCL.Host_Values.Call_Result) is
       pragma Unreferenced (State);
    begin
-      CCL_Config_Bindings.Invoke (Binding, Argument, Value, Success);
+      CCL_Config_Bindings.Invoke (Binding, Argument, Reply);
    end Invoke;
    procedure Evaluate is new CCL.Language.Interpret_With_Values (Context, Invoke);
    procedure Check (Condition : Boolean; Name : String) is
@@ -56,6 +56,13 @@ procedure Main is
       Prefix : constant String := "test.config.";
       Key : constant String := Prefix & String'(1 .. 128 - Prefix'Length => 'k');
    begin
+      Msg := NULL_MESSAGE;
+      Msg.tag := (Config_Worker_Startup.Operation'Enum_Rep
+        (Config_Worker_Startup.Attach_Worker), 1, 0, 0);
+      Msg.words (0) := syscall (SYSCALL_GETPID);
+      Msg.tag := capCall (CAP_SLOT_CONFIG, Msg);
+      Check (Msg.tag.label = 16#F007#, "client cannot nominate storage backend");
+      debugPrint ("TEST: PASS config-backend-nomination-denied" & ASCII.LF);
       CuBit.Config_Reader.Query (Read_Value, "config.store", Value, Result);
       Check (Result = Missing, "no hidden backing path");
       CuBit.Config_Reader.Query (Read_Value, "clock.time-zone", Value, Result);

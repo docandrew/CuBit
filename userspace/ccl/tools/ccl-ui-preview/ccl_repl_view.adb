@@ -1,4 +1,5 @@
 with CCL.Host_Values;
+with CCL.Types;
 with CCL.Call_Context;
 with CuBit.UI.Widgets;
 
@@ -9,7 +10,14 @@ package body CCL_REPL_View is
      (case Kind is when CCL.Host_Values.Integer_Value => "Integer",
                    when CCL.Host_Values.Boolean_Value => "Boolean",
                    when CCL.Host_Values.Text_Value => "String",
-                   when CCL.Host_Values.Handler_Value => "Handler() -> Boolean");
+                   when CCL.Host_Values.Handler_Value => "Handler() -> Boolean",
+                   when CCL.Host_Values.Object_Value => "Typed object",
+                   when CCL.Host_Values.Resource_Value => "Resource handle");
+   function Argument_Types (Operation : CCL.Catalog.Resolved_Operation) return String is
+     (if CCL.Host_Values.Has_Receiver (Operation.Import) then
+        CCL.Types.Image (Operation.Import.Receiver_Resource) &
+          (if Operation.Parameters = 0 then "" else ", " & Type_Name (Operation.Import.Argument))
+      elsif Operation.Parameters = 0 then "" else Type_Name (Operation.Import.Argument));
    type Geometry is record
       Input, Transcript, Clear : Rect;
       Capacity : Positive := 1;
@@ -141,7 +149,7 @@ package body CCL_REPL_View is
                   end if;
                end if;
                Hint (Name & "(" &
-                 (if S.Contract.Parameters = 0 then "" else Type_Name (S.Contract.Import.Argument)) &
+                 Argument_Types (S.Contract) &
                  ") -> " & Type_Name (S.Contract.Import.Result) &
                  (if Matches.Total = 1 then " | invocation requires an explicit grant"
                   else " |" & Matches.Total'Image & " matches; refine prefix"));
@@ -341,12 +349,12 @@ package body CCL_REPL_View is
          declare
             S : CCL.Catalog.Completion.Suggestion renames State.Signature;
             Head : constant String := S.Name (1 .. S.Length) & "(";
-            Argument : constant String :=
-              (if S.Contract.Parameters = 0 then "" else Type_Name (S.Contract.Import.Argument));
+            Argument : constant String := Argument_Types (S.Contract);
             Tail : constant String := ") -> " & Type_Name (S.Contract.Import.Result);
             Detail : constant String :=
               (if State.Signature_Arguments then
-                 (if S.Contract.Parameters = 0 then "No arguments expected"
+                 (if CCL.Host_Values.Has_Receiver (S.Contract.Import) then "Receiver, then typed data if required"
+                  elsif S.Contract.Parameters = 0 then "No arguments expected"
                   else "Argument 1 expects " & Argument)
                elsif State.Suggested_Length > 0 then "Tab accepts the suggested name"
                else "Advertised signature; not an execution grant");
@@ -368,7 +376,9 @@ package body CCL_REPL_View is
          begin
             Fill_Rect (PC, Popup, Colors.face);
             Stroke_Rect (PC, Popup, Colors.highlight, Colors.shadow);
-            if State.Signature_Arguments and then S.Contract.Parameters > 0 then
+            if State.Signature_Arguments and then
+              (S.Contract.Parameters > 0 or CCL.Host_Values.Has_Receiver (S.Contract.Import))
+            then
                Fill_Rect (Inner,
                  (Text_X + UI_Text_Width (Head), Text_Y,
                   UI_Text_Width (Argument), UI_Text_Height), Colors.selection);

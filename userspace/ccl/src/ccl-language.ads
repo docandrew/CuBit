@@ -3,6 +3,8 @@ with CCL.Catalog;
 with CCL.VM;
 with CCL.Host_Values;
 with CCL.Types;
+with CCL.Objects;
+with CCL.Resource_Policies;
 
 package CCL.Language with
    SPARK_Mode => On
@@ -16,6 +18,7 @@ is
    MAX_TEXT_BYTES    : constant := CCL.Host_Values.Maximum_Text_Length;
    MAX_FUNCTIONS     : constant := 16;
    MAX_PARAMETERS    : constant := 8;
+   MAX_OBJECT_VALUES : constant := 16;
 
    --  Shared, bounded frontend representation.  Both direct interpretation
    --  and CCLB compilation consume this tree, so syntax and type semantics
@@ -55,6 +58,8 @@ is
       Type_Definition,
       Variant_Literal,
       Variant_Construct,
+      Record_Construct,
+      Field_Form,
       Match_Form,
       Match_Arm,
       Function_Definition,
@@ -78,9 +83,8 @@ is
    end record;
    type Parameter_Array is array (Parameter_Index) of Parameter;
    type Argument_Array is array (Parameter_Index) of Node_Reference;
+   type Component_Node_Array is array (CCL.Types.Component_Index) of Node_Reference;
    subtype Function_Index is Natural range 0 .. MAX_FUNCTIONS - 1;
-   NO_FUNCTION : constant := MAX_FUNCTIONS;
-   subtype Function_Reference is Natural range 0 .. NO_FUNCTION;
    type Function_Declaration is record
       Identifier : Name;
       Count : Parameter_Count := 0;
@@ -109,9 +113,12 @@ is
       Second          : Node_Reference := NO_NODE;
       Third           : Node_Reference := NO_NODE;
       Host_Call       : CCL.Catalog.Resolved_Operation := (others => <>);
-      Function_Id     : Function_Reference := NO_FUNCTION;
+      --  Relevant only to function definitions, resolved calls and handlers.
+      --  Resolution failure is a diagnostic, not an out-of-table index.
+      Function_Id     : Function_Index := Function_Index'First;
       Argument_Count  : Parameter_Count := 0;
       Arguments       : Argument_Array := [others => NO_NODE];
+      Components      : Component_Node_Array := [others => NO_NODE];
    end record;
 
    type Node_Array is array (Node_Index) of Node;
@@ -137,6 +144,7 @@ is
       Evaluation_Division_By_Zero,
       Evaluation_Index_Error,
       Evaluation_Text_Storage_Exhausted,
+      Evaluation_Object_Storage_Exhausted,
       Host_Import_Required,
       Host_Authority_Denied,
       Host_Call_Failed,
@@ -182,7 +190,10 @@ is
       Function_Result_Mismatch,
       Expected_Handler,
       Invalid_Handler_Profile,
-      Handler_Result_Not_Exportable);
+      Handler_Result_Not_Exportable,
+      Host_Schema_Unavailable,
+      Unsupported_Host_Object,
+      Host_Object_Type_Mismatch);
 
    type Text_Result is record
       Length : Natural range 0 .. MAX_TEXT_BYTES := 0;
@@ -212,6 +223,8 @@ is
    function Analysis_Root
      (Result : Analysis_Result) return Node_Reference;
    function Analysis_Types (Result : Analysis_Result) return CCL.Types.Registry;
+   function Analysis_Resource_Policies (Result : Analysis_Result)
+     return CCL.Resource_Policies.Policy_Table;
 
    function Analysis_Node
      (Result : Analysis_Result;
@@ -285,8 +298,7 @@ is
       type Host_Context is limited private;
       with procedure Invoke
         (Context : in out Host_Context; Binding : Interfaces.Unsigned_32;
-         Argument : CCL.Host_Values.Value; Value : out CCL.Host_Values.Value;
-         Success : out Boolean);
+         Argument : CCL.Host_Values.Value; Reply : out CCL.Host_Values.Call_Result);
       Allow_Text : Boolean := True;
    procedure Interpret_With_Values
      (Source : String; Fuel : Natural;
@@ -295,6 +307,38 @@ is
       Context : in out Host_Context; Result : out Interpretation_Result)
      with Post => Result.Fuel_Remaining <= Fuel;
 
+   type Object_Interpretation_Result is record
+      Status : Interpretation_Status := Parse_Failed;
+      Diagnostic : Diagnostic_Code := No_Diagnostic;
+      Diagnostic_Position : Source_Position := 0;
+      Fuel_Remaining : Natural := 0;
+      Has_Value : Boolean := False;
+      Value : CCL.Objects.Image;
+   end record;
+   -- Separate from the scalar/UI result: ordinary evaluations do not carry
+   -- an extra native image. Output is owned and remains valid after evaluation.
+   -- Expected is independently approved metadata, never a grant. Mismatch is
+   -- rejected before host effects; Has_Value requires validation against it.
+   generic
+      type Host_Context is limited private;
+      with procedure Invoke
+        (Context : in out Host_Context; Binding : Interfaces.Unsigned_32;
+         Argument : CCL.Host_Values.Value; Reply : out CCL.Host_Values.Call_Result);
+   procedure Interpret_Object_With_Values
+     (Source : String; Fuel : Natural;
+      Visible_Interfaces : CCL.Catalog.Interface_Catalog;
+      Grants : CCL.Catalog.Granted_Bindings;
+      Context : in out Host_Context; Expected : CCL.Objects.Binding;
+      Result : out Object_Interpretation_Result)
+     with Post => Result.Fuel_Remaining <= Fuel;
+
+   procedure Interpret_Object
+     (Source : String; Fuel : Natural; Expected : CCL.Objects.Binding;
+      Result : out Object_Interpretation_Result)
+     with Post => Result.Fuel_Remaining <= Fuel;
+   -- Pure evaluation: no visible interfaces or host grants. Source must define
+   -- its own types (which must match Expected), or return a primitive value.
+
 private
    --  Shared with the retained-handler child package. Only checked, private
    --  frontend results may enter the analyze-free execution path.
@@ -302,8 +346,9 @@ private
       type Host_Context is limited private;
       with procedure Invoke
         (Context : in out Host_Context; Binding : Interfaces.Unsigned_32;
-         Argument : CCL.Host_Values.Value; Value : out CCL.Host_Values.Value;
-         Success : out Boolean);
+         Argument : CCL.Host_Values.Value; Reply : out CCL.Host_Values.Call_Result);
+      Export_Native : Boolean := False;
+      with procedure Deliver_Native (Value : CCL.Objects.Image) is null;
    procedure Process_Source_With_Host
      (Source : String; Fuel : Natural;
       Visible_Interfaces : CCL.Catalog.Interface_Catalog;
@@ -319,6 +364,7 @@ private
       Position : out Source_Position);
 
    type Analysis_Result is record
+      Resource_Policies : CCL.Resource_Policies.Policy_Table := [others => (others => <>)];
       Status              : Analysis_Status := Analysis_Parse_Failed;
       Diagnostic          : Diagnostic_Code := No_Diagnostic;
       Diagnostic_Position : Natural range 0 .. MAX_SOURCE_LENGTH + 1 := 0;

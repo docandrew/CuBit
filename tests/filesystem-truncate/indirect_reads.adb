@@ -38,6 +38,7 @@ procedure Indirect_Reads is
       sb.inodeCount := 8;
       sb.inodesPerBlockGroup := 8;
       sb.majorVersion := 1;
+      sb.incompatibleFeatures := 2; -- standard typed directory records
       sb.inodeSize := 128;
       --  Use the real volume admission path to reset volume/cache lifetime.
       initBlockDevice
@@ -47,6 +48,7 @@ procedure Indirect_Reads is
       Calls := 0;
       ino := NULL_INODE;
       ino.typeAndPermissions := 16#8000#;
+      ino.numHardLinks := 1;
       ino.sizeLo := Unsigned_32 (Double_Offset + 1024);
       ino.directBlocks (11) := 20;
       ino.singleIndirectBlock := 21;
@@ -76,6 +78,16 @@ procedure Indirect_Reads is
       pragma Assert (output (1 .. 1024) = [1 .. 1024 => value]);
       pragma Assert (output (1025 .. 4096) = [1025 .. 4096 => '?']);
    end Check_Data;
+
+   procedure Setup_Contiguous_Write is
+   begin
+      Setup;
+      ino.directBlocks (11) := 30;
+      single (0) := 31;
+      single (1) := 32;
+      single (2) := 33;
+      original := Disk;
+   end Setup_Contiguous_Write;
 begin
    for doubleIndirect in Boolean loop
       declare
@@ -246,5 +258,140 @@ begin
    Check_Data (Single_Offset, 'T');
    pragma Assert (Calls = previous + 2); -- revolume reloaded metadata
    Put_Line ("Mapping boundaries, volume isolation and same-endpoint revolume: PASS");
+
+   Setup_Contiguous_Write;
+   writeData (fs, 1, ino, Single_Offset - 1024, output'Address,
+              output'Length, avolume, writeStatus);
+   pragma Assert (writeStatus = Write_Complete and avolume = output'Length);
+   pragma Assert (Calls = 2 and Writes = 1); -- one pointer read, one data write
+   for I in Disk'Range loop
+      pragma Assert
+        (Disk (I) = (if I in 30 * 1024 .. 34 * 1024 - 1
+                     then Character'Pos ('?') else original (I)));
+   end loop;
+
+   --  Include both speculative pointer reads and data-batch completions. A
+   --  smaller grant produces two data batches and a meaningful completed prefix.
+   for Grant_Limited in Boolean loop
+      for Boundary in 1 .. (if Grant_Limited then 3 else 2) loop
+         for Treatment in Failure_Mode loop
+            for Reply_Kind in Failure_Reply loop
+               Setup_Contiguous_Write;
+               if Grant_Limited then
+                  fs.device.grantBytes := 2048;
+               end if;
+               Fail_At := Boundary;
+               CuBit.Messages.Mode := Treatment;
+               Reply_Style := Reply_Kind;
+               writeData (fs, 1, ino, Single_Offset - 1024, output'Address,
+                          output'Length, avolume, writeStatus);
+               pragma Assert (Failed and Calls = Boundary);
+               pragma Assert (writeStatus = Write_Device_Error);
+               pragma Assert (avolume = (if Boundary = 3 then 2048 else 0));
+               pragma Assert (not fs.writeQuarantined);
+               pragma Assert (Disk (0 .. 30 * 1024 - 1) =
+                              original (0 .. 30 * 1024 - 1));
+            end loop;
+         end loop;
+      end loop;
+   end loop;
+
+   Setup_Contiguous_Write;
+   single (1) := 64; -- corrupt mapping in the not-yet-written batch
+   original := Disk;
+   writeData (fs, 1, ino, Single_Offset - 1024, output'Address,
+              output'Length, avolume, writeStatus);
+   pragma Assert (writeStatus = Write_Out_Of_Range and avolume = 0);
+   pragma Assert (Calls = 1 and Writes = 0 and Disk = original);
+
+   --  Existing adjacent mappings batch across single/double tree boundaries.
+   Setup_Contiguous_Write;
+   single (255) := 30;
+   second (0) := 31;
+   writeData (fs, 1, ino, Double_Offset - 1024, output'Address,
+              2048, avolume, writeStatus);
+   pragma Assert (writeStatus = Write_Complete and avolume = 2048);
+   pragma Assert (Calls = 4 and Writes = 1);
+
+   --  Warm double-indirect overwrites have the same one-request payload path
+   --  as direct blocks. Faults never allocate or modify inode/pointer metadata.
+   for Failure in 0 .. 3 loop
+      for Treatment in Failure_Mode loop
+         for Reply_Kind in Failure_Reply loop
+            Setup;
+            ino.sizeLo := Unsigned_32 (Double_Offset + 4096);
+            second (0 .. 3) := [30, 31, 32, 33];
+            original := Disk;
+            Fail_At := Failure;
+            CuBit.Messages.Mode := Treatment;
+            Reply_Style := Reply_Kind;
+            output := [others => 'W'];
+            writeData (fs, 1, ino, Double_Offset, output'Address,
+                       4096, avolume, writeStatus);
+            pragma Assert (Disk (0 .. 30 * 1024 - 1) = original (0 .. 30 * 1024 - 1));
+            pragma Assert (not fs.writeQuarantined);
+            if Failure = 0 then
+               pragma Assert (Calls = 3 and Writes = 1 and avolume = 4096);
+               pragma Assert (writeStatus = Write_Complete);
+               previous := Calls;
+               writeData (fs, 1, ino, Double_Offset, output'Address,
+                          4096, avolume, writeStatus);
+               pragma Assert (Calls = previous + 1 and writeStatus = Write_Complete);
+            else
+               pragma Assert (Failed and Calls = Failure and avolume = 0);
+               pragma Assert (writeStatus /= Write_Complete);
+               Retry;
+               output := [others => 'W'];
+               writeData (fs, 1, ino, Double_Offset, output'Address,
+                          4096, avolume, writeStatus);
+               pragma Assert (writeStatus = Write_Complete and avolume = 4096);
+            end if;
+            pragma Assert (Disk (30 * 1024 .. 34 * 1024 - 1) =
+              Bytes'(0 .. 4095 => Character'Pos ('W')));
+         end loop;
+      end loop;
+   end loop;
+
+   --  Coalescing also crosses double-indirect leaves. A failed lookahead
+   --  must not submit the partially assembled data batch.
+   for Failure in 0 .. 4 loop
+      for Treatment in Failure_Mode loop
+         for Reply_Kind in Failure_Reply loop
+            Setup;
+            ino.sizeLo := Unsigned_32 (Double_Offset + 257 * 1024);
+            first (1) := 27;
+            second (255) := 30;
+            alternateLeaf (0) := 31;
+            original := Disk;
+            Fail_At := Failure;
+            CuBit.Messages.Mode := Treatment;
+            Reply_Style := Reply_Kind;
+            writeData (fs, 1, ino, Double_Offset + 255 * 1024, output'Address,
+                       2048, avolume, writeStatus);
+            if Failure = 0 then
+               pragma Assert (Calls = 4 and Writes = 1 and avolume = 2048);
+               pragma Assert (writeStatus = Write_Complete);
+            else
+               pragma Assert (Failed and Calls = Failure and avolume = 0);
+               pragma Assert (writeStatus /= Write_Complete);
+               if Failure < 4 then
+                  pragma Assert (Writes = 0 and Disk = original);
+               end if;
+            end if;
+         end loop;
+      end loop;
+   end loop;
+
+   --  Double allocation and extension use real bitmap/inode fixtures in
+   --  sector_counts. This data-only fixture checks the triple boundary.
+   Setup;
+   first (255) := 24;
+   second (255) := 25;
+   ino.sizeLo := (12 + 256 + 256 * 256) * 1024;
+   writeData (fs, 1, ino, Unsigned_64 (ino.sizeLo) - 1024,
+              output'Address, 2048, avolume, writeStatus);
+   pragma Assert (writeStatus = Write_File_Range_Unsupported and avolume = 1024);
+   Put_Line ("DOUBLE-OVERWRITE-CHECK: PASS 105 faults, cache/batching and triple boundary");
+   Put_Line ("Coalesced indirect writes: 75 fault cases and boundary checks PASS");
    Put_Line ("INDIRECT-READ-CHECK: PASS");
 end Indirect_Reads;

@@ -1,4 +1,5 @@
 with CCL.Imports;
+with CCL.Types.Correspondence;
 
 package body CCL.Catalog with
    SPARK_Mode => On
@@ -8,6 +9,18 @@ is
    use type CCL.VM.Authority_Class;
    use type CCL.Imports.Transfer_Mode;
    use type CCL.Imports.Cancellation_Mode;
+   use type CCL.Objects.Schema_Key;
+   use type CCL.VM.Value_Kind;
+   use type CCL.Resource_Policies.Description;
+   use type CCL.Ownership.Ownership_Mode;
+   use type CCL.Ownership.Disposition_Effect;
+   use type CCL.Types.Import_Result;
+   use type CCL.Types.Shape;
+   use type CCL.Types.Unary_Resource_Result;
+   use type CCL.Resource_Policies.Layout_Result;
+   use type CCL.Ownership.Type_Table;
+
+   function Empty_Catalog return Interface_Catalog is ((others => <>));
 
    function Valid_Name_Character
      (Item : Character; Interface_Name : Boolean) return Boolean
@@ -98,6 +111,11 @@ is
       Error      : out Catalog_Error)
    is
    begin
+      if not CCL.VM.Scalar_Import (Import) then
+         Item := (others => <>);
+         Error := Invalid_Host_Contract;
+         return;
+      end if;
       Define_Host_Operation
         (Name, Parameters, CCL.Host_Values.From_Bytecode (Import), Item, Error);
    end Define_Operation;
@@ -121,10 +139,12 @@ is
          Error := Runtime_Binding_In_Descriptor;
       elsif Parameters = 0 and then
         (Import.Argument /= CCL.Host_Values.Integer_Value or else
-         Import.Ownership_Argument or else
-         Import.Transfer /= CCL.Imports.Copy_Argument)
+         (not CCL.Host_Values.Has_Receiver (Import) and then
+           (Import.Ownership_Argument or else
+            Import.Transfer /= CCL.Imports.Copy_Argument)))
       then
-         --  The v2 zero-parameter sentinel cannot carry ownership.
+         -- The zero-data sentinel cannot carry ownership. An explicit
+         -- receiver owns its separate local, not this Integer zero.
          Error := Invalid_Zero_Parameter_Import;
       else
          Item.Parameters := Parameters;
@@ -171,6 +191,114 @@ is
    begin
       Item := (others => <>);
    end Initialize;
+
+   procedure Publish_Type
+     (Item : in out Interface_Catalog; Source : CCL.Types.Registry;
+      Root : CCL.Types.Type_Reference; Ref : out CCL.Types.Type_Reference;
+      Result : out CCL.Types.Import_Result) is
+   begin
+      CCL.Objects.Catalog.Publish_Type (Item.Data_Types, Source, Root, Ref, Result);
+   end Publish_Type;
+
+   procedure Publish_Resource
+     (Item : in out Interface_Catalog; Source : CCL.Types.Registry;
+      Root : CCL.Types.Type_Reference; Policy : CCL.Resource_Policies.Description;
+      Ref : out CCL.Types.Type_Reference; Result : out Resource_Publication)
+   is
+      Candidate : CCL.Objects.Catalog.Schema_Catalog := Item.Data_Types;
+      Root_Ref, Target_Ref : CCL.Types.Type_Reference;
+      Imported : CCL.Types.Import_Result;
+   begin
+      Ref := CCL.Types.Invalid_Type; Result := Invalid_Resource_Policy;
+      if not CCL.Resource_Policies.Valid (Source, Root, Policy) then return; end if;
+      CCL.Objects.Catalog.Publish_Type (Candidate, Source, Root, Root_Ref, Imported);
+      if Imported /= CCL.Types.Imported then
+         Result := (if Imported = CCL.Types.Import_Full then Resource_Catalog_Full else Resource_Definition_Conflict);
+         return;
+      end if;
+      for I in 0 .. Policy.Count - 1 loop
+         if Policy.Dispositions (I).Effect = CCL.Ownership.Transition then
+            CCL.Objects.Catalog.Publish_Type
+              (Candidate, Source, CCL.Types.Find (Source, Policy.Dispositions (I).Next_Type), Target_Ref, Imported);
+            if Imported /= CCL.Types.Imported then
+               Result := (if Imported = CCL.Types.Import_Full then Resource_Catalog_Full else Resource_Definition_Conflict);
+               return;
+            end if;
+         end if;
+      end loop;
+      if Item.Resource_Policies (Root_Ref).Mode /= CCL.Ownership.Unrestricted then
+         if Item.Resource_Policies (Root_Ref) /= Policy then Result := Resource_Policy_Conflict; return; end if;
+         Ref := Root_Ref; Result := Resource_Already_Published; return;
+      end if;
+      Item.Data_Types := Candidate;
+      Item.Resource_Policies (Root_Ref) := Policy;
+      Ref := Root_Ref; Result := Resource_Published;
+   end Publish_Resource;
+
+   procedure Specialize_Unary_Resource
+     (Item : in out Interface_Catalog; Source : CCL.Types.Registry;
+      Family, Parameter_Label : String; Parameter : CCL.Types.Type_Reference;
+      Policy : CCL.Resource_Policies.Description;
+      Ref : out CCL.Types.Type_Reference;
+      Result : out Resource_Specialization_Result)
+   is
+      Candidate_Source : CCL.Types.Registry := Source;
+      Candidate : CCL.Types.Type_Reference;
+      Specialized : CCL.Types.Unary_Resource_Result;
+      Published : Resource_Publication;
+   begin
+      Ref := CCL.Types.Invalid_Type;
+      CCL.Types.Specialize_Unary_Resource
+        (Candidate_Source, CCL.Types.Named (Family),
+         CCL.Types.Named (Parameter_Label), Parameter, Candidate, Specialized);
+      if Specialized not in CCL.Types.Resource_Specialized |
+        CCL.Types.Resource_Already_Specialized
+      then
+         Result := (if Specialized = CCL.Types.Resource_Registry_Full then
+                      Specialization_Full else Specialization_Invalid);
+         return;
+      end if;
+      Publish_Resource (Item, Candidate_Source, Candidate, Policy, Ref, Published);
+      case Published is
+         when Resource_Published => Result := Specialization_Ready;
+         when Resource_Already_Published => Result := Specialization_Already_Ready;
+         when Resource_Catalog_Full => Result := Specialization_Full;
+         when Resource_Definition_Conflict | Resource_Policy_Conflict =>
+            Result := Specialization_Conflict;
+         when Invalid_Resource_Policy => Result := Specialization_Invalid;
+      end case;
+   end Specialize_Unary_Resource;
+
+   function Resource_Policy
+     (Item : Interface_Catalog; Ref : CCL.Types.Type_Reference)
+      return CCL.Resource_Policies.Description is (Item.Resource_Policies (Ref));
+
+   procedure Layout_Resources
+     (Item : Interface_Catalog; Roots : CCL.Resource_Policies.Selection;
+      Bindings : out CCL.Resource_Policies.Binding_Map;
+      Definitions : out CCL.Ownership.Type_Table;
+      Count : out CCL.Resource_Policies.Layout_Count;
+      Result : out CCL.Resource_Policies.Layout_Result) is
+   begin
+      CCL.Resource_Policies.Layout (Visible_Types (Item), Item.Resource_Policies, Roots,
+        Bindings, Definitions, Count, Result);
+   end Layout_Resources;
+
+   procedure Publish_Schema
+     (Item : in out Interface_Catalog; Contract : CCL.Objects.Binding;
+      Result : out CCL.Objects.Catalog.Publication_Result) is
+   begin
+      CCL.Objects.Catalog.Publish (Item.Data_Types, Contract, Result);
+   end Publish_Schema;
+   procedure Resolve_Schema
+     (Item : Interface_Catalog; Key : CCL.Objects.Schema_Key;
+      Contract : out CCL.Objects.Binding) is
+   begin
+      CCL.Objects.Catalog.Resolve (Item.Data_Types, Key, Contract);
+   end Resolve_Schema;
+   function Schema_Type (Item : Interface_Catalog; Key : CCL.Objects.Schema_Key)
+     return CCL.Types.Type_Reference is
+     (CCL.Objects.Catalog.Root_Of (Item.Data_Types, Key));
 
    procedure Publish
      (Item       : in out Interface_Catalog;
@@ -311,13 +439,16 @@ is
      (Item      : in out Linkage_Table;
       Operation : Resolved_Operation;
       Index     : out CCL.VM.Import_Index;
-      Result    : out Intern_Result)
+      Result    : out Intern_Result;
+      Local     : CCL.Ownership.Binding_Id := 0)
    is
    begin
       Index := 0;
       if Item.Count > 0 then
          for Position in 0 .. Item.Count - 1 loop
-            if Same_Operation (Item.Entries (Position), Operation) then
+            if Same_Operation (Item.Entries (Position), Operation) and then
+              Item.Locals (Position) = Local
+            then
                Index := Position;
                Result := Linkage_Existing;
                return;
@@ -330,6 +461,7 @@ is
       else
          Index := Item.Count;
          Item.Entries (Item.Count) := Operation;
+         Item.Locals (Item.Count) := Local;
          Item.Count := Item.Count + 1;
          Result := Linkage_Added;
       end if;
@@ -345,18 +477,75 @@ is
 
    function Contracts_Match
      (Compiled : CCL.VM.Import_Declaration;
-      Declared : CCL.Host_Values.Import_Declaration) return Boolean
+      Declared : CCL.Host_Values.Import_Declaration;
+      Types : CCL.Types.Registry) return Boolean
    is
-     (CCL.Host_Values.Scalar_Only (Declared) and then Compiled.Binding = 0 and then
-      CCL.Host_Values.Kind_Of (Compiled.Argument) = Declared.Argument and then
-      CCL.Host_Values.Kind_Of (Compiled.Result) = Declared.Result and then
-      Compiled.Authority = Declared.Authority and then
-      Compiled.Ownership_Argument = Declared.Ownership_Argument and then
-      Compiled.Transfer = Declared.Transfer and then
-      Compiled.Cancellation = Declared.Cancellation and then
-      Compiled.Success_Verb = Declared.Success_Verb and then
-      Compiled.Failure_Verb = Declared.Failure_Verb and then
-      Compiled.Cancel_Verb = Declared.Cancel_Verb);
+     (Compiled.Binding = 0 and then CCL.Host_Values.Matches_Bytecode (Compiled, Declared, Types));
+
+   function Resource_Layout_Matches
+     (Program : CCL.VM.Program; Catalog : Interface_Catalog) return Boolean
+   is
+      Roots : CCL.Resource_Policies.Selection := [others => False];
+      Policies : CCL.Resource_Policies.Policy_Table := [others => (others => <>)];
+      Bindings : CCL.Resource_Policies.Binding_Map;
+      Definitions : CCL.Ownership.Type_Table;
+      Count : CCL.Resource_Policies.Layout_Count;
+      Result : CCL.Resource_Policies.Layout_Result;
+      Expected : CCL.Types.Type_Reference;
+      Visible : constant CCL.Types.Registry := Visible_Types (Catalog);
+      Any_Resource : Boolean := False;
+   begin
+      for I in 0 .. Program.Locals_Length - 1 loop
+         if Program.Local_Kinds (I) = CCL.VM.Resource_Value then
+            Roots (Program.Local_Data_Types (I)) := True;
+            Any_Resource := True;
+         end if;
+      end loop;
+      for I in 0 .. Program.Imports_Length - 1 loop
+         if Program.Imports (I).Argument = CCL.VM.Resource_Value then
+            Roots (Program.Imports (I).Argument_Data_Type) := True;
+            Any_Resource := True;
+         end if;
+         if Program.Imports (I).Result = CCL.VM.Resource_Value then
+            Roots (Program.Imports (I).Result_Data_Type) := True;
+            Any_Resource := True;
+         end if;
+         if CCL.VM.Has_Receiver (Program.Imports (I)) then
+            Roots (Program.Imports (I).Receiver_Data_Type) := True;
+            Any_Resource := True;
+         end if;
+      end loop;
+      if not Any_Resource then return True; end if;
+      -- Reconstruct policy in the program's nominal type order. Numeric type
+      -- IDs in independently published catalog snapshots need not coincide.
+      for Ref in CCL.Types.Type_Reference loop
+         if CCL.Types.Known (Program.Data_Types, Ref) and then
+           CCL.Types.Describe (Program.Data_Types, Ref).Form = CCL.Types.Resource
+         then
+            Expected := CCL.Types.Correspondence.Resolve (Program.Data_Types, Ref, Visible);
+            if Expected /= CCL.Types.Invalid_Type then
+               Policies (Ref) := Catalog.Resource_Policies (Expected);
+            end if;
+         end if;
+      end loop;
+      CCL.Resource_Policies.Layout
+        (Program.Data_Types, Policies, Roots, Bindings, Definitions, Count, Result);
+      if Result /= CCL.Resource_Policies.Ready or else
+        Program.Types_Length /= Count or else Program.Types /= Definitions
+      then return False; end if;
+      for I in 0 .. Program.Locals_Length - 1 loop
+         if Program.Local_Kinds (I) = CCL.VM.Resource_Value then
+            if Program.Local_Types (I) /= Bindings (Program.Local_Data_Types (I)) then return False; end if;
+         elsif Program.Local_Types (I) /= 0 then return False;
+         end if;
+      end loop;
+      for I in 0 .. Program.Imports_Length - 1 loop
+         if Program.Imports (I).Result = CCL.VM.Resource_Value and then
+           Program.Imports (I).Result_Type_Tag /= Bindings (Program.Imports (I).Result_Data_Type)
+         then return False; end if;
+      end loop;
+      return True;
+   end Resource_Layout_Matches;
 
    procedure Initialize (Item : out Granted_Bindings) is
    begin
@@ -426,16 +615,39 @@ is
      (Grants  : Granted_Bindings;
       Linkage : Linkage_Table;
       Program : in out CCL.VM.Program;
-      Result  : out Link_Result)
+      Result  : out Link_Result;
+      Schemas : Interface_Catalog := Empty_Catalog)
    is
       type Runtime_Binding_Array is
         array (CCL.VM.Import_Index) of Unsigned_32;
       Resolved_Bindings : Runtime_Binding_Array := [others => 0];
       Binding : Unsigned_32;
       Found   : Boolean;
+      function Schema_Matches
+        (Kind : CCL.VM.Value_Kind; Local : CCL.Types.Type_Reference;
+         Key : CCL.Objects.Schema_Key; Resource_Name : CCL.Types.Name) return Boolean
+      is
+         Ref : constant CCL.Types.Type_Reference :=
+           (case Kind is when CCL.VM.Integer_Value => CCL.Types.Integer_Type,
+             when CCL.VM.Boolean_Value => CCL.Types.Boolean_Type,
+             when CCL.VM.Variant_Value | CCL.VM.Object_Value | CCL.VM.Resource_Value => Local);
+         Expected : constant CCL.Types.Type_Reference :=
+           (if Kind = CCL.VM.Resource_Value then CCL.Types.Find (Visible_Types (Schemas), Resource_Name)
+            else Schema_Type (Schemas, Key));
+      begin
+         if Key = CCL.Objects.No_Schema and Kind /= CCL.VM.Resource_Value then
+            return Kind in CCL.VM.Scalar_Kind;
+         end if;
+         return Expected /= CCL.Types.Invalid_Type and then
+           CCL.Types.Correspondence.Resolve (Program.Data_Types, Ref, Visible_Types (Schemas)) = Expected;
+      end Schema_Matches;
    begin
       if Program.Imports_Length /= Linkage.Count then
          Result := Linkage_Length_Mismatch;
+         return;
+      end if;
+      if not Resource_Layout_Matches (Program, Schemas) then
+         Result := Import_Contract_Mismatch;
          return;
       end if;
 
@@ -444,7 +656,9 @@ is
          for Position in 0 .. Linkage.Count - 1 loop
             if not Contracts_Match
               (Program.Imports (Position),
-               Linkage.Entries (Position).Import)
+               Linkage.Entries (Position).Import, Program.Data_Types) or else
+              (CCL.Host_Values.Has_Resources (Linkage.Entries (Position).Import) and then
+               Program.Imports (Position).Local /= Linkage.Locals (Position))
             then
                Result := Import_Contract_Mismatch;
                return;
@@ -453,6 +667,22 @@ is
               (Grants, Linkage.Entries (Position), Binding, Found);
             if not Found then
                Result := Authority_Not_Granted;
+               return;
+            end if;
+            if not Schema_Matches
+              (Program.Imports (Position).Argument, Program.Imports (Position).Argument_Data_Type,
+               Linkage.Entries (Position).Import.Argument_Schema,
+               Linkage.Entries (Position).Import.Argument_Resource) or else
+              not Schema_Matches
+              (Program.Imports (Position).Result, Program.Imports (Position).Result_Data_Type,
+               Linkage.Entries (Position).Import.Result_Schema,
+               Linkage.Entries (Position).Import.Result_Resource) or else
+              (CCL.Host_Values.Has_Receiver (Linkage.Entries (Position).Import) and then
+               not Schema_Matches
+                 (CCL.VM.Resource_Value, Program.Imports (Position).Receiver_Data_Type,
+                  CCL.Objects.No_Schema, Linkage.Entries (Position).Import.Receiver_Resource))
+            then
+               Result := Import_Contract_Mismatch;
                return;
             end if;
             Resolved_Bindings (Position) := Binding;

@@ -22,6 +22,7 @@ package CuBit.Messages is
    Disk : Bytes (0 .. 65_535) := [others => 0];
    Durable : Bytes (Disk'Range) := [others => 0];
    Grant_Buffer : Bytes (0 .. 4095) := [others => 0];
+   Sector_Bytes : Positive := 512;
    type Failure_Mode is (Before_IO, Partial_Transfer, After_IO);
    Fail_At : Natural := 0;
    Mode : Failure_Mode := Before_IO;
@@ -32,6 +33,9 @@ package CuBit.Messages is
    Publication_Attempted : Boolean := False;
    Failed : Boolean := False;
    Check_Reclamation : Boolean := True;
+   Check_Resize_Reclamation : Boolean := False;
+   Reclamation_Block_Bytes : Positive := 1024;
+   Reclamation_First_Block : Natural := 1;
    Inode_Write_Call, Pointer_Write_Call : Natural := 0;
    Check_Creation : Boolean := False;
    Override_Description : Boolean := False;

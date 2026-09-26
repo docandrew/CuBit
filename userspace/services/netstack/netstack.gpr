@@ -4,7 +4,7 @@ project Netstack is
 
     for Object_Dir use "build";
 
-    for Source_Dirs use (".", "generated");
+    for Source_Dirs use (".", "../../net/generated");
 
     for Main use ("main.adb");
 

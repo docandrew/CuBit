@@ -1,5 +1,13 @@
 package body User_Page_Walk with SPARK_Mode is
-   function Readable_Frame (Root, Address, Physical_Last : Unsigned_64)
+   generic
+      with procedure Read_Entry
+        (Table_Frame : Unsigned_64; Index : Table_Index; Word : out Unsigned_64);
+      Required : Unsigned_64;
+   function Walk (Root, Address, Physical_Last : Unsigned_64) return Unsigned_64
+     with Post => (if Walk'Result /= 0 then
+       Address < User_Limit and then RAM_Page (Walk'Result, Physical_Last));
+
+   function Walk (Root, Address, Physical_Last : Unsigned_64)
      return Unsigned_64
    is
       Table_Frame : Unsigned_64 := Root;
@@ -18,7 +26,7 @@ package body User_Page_Walk with SPARK_Mode is
          begin
             Read_Entry (Table_Frame, Index, Word);
          end;
-         if (Word and (Present_Bit or User_Bit)) /= (Present_Bit or User_Bit) then
+         if (Word and Required) /= Required then
             return 0;
          elsif L /= P1_Level and then (Word and Large_Page_Bit) /= 0 then
             -- Never interpret a huge/large data page as a next-level table.
@@ -30,5 +38,22 @@ package body User_Page_Walk with SPARK_Mode is
          Table_Frame := Frame;
       end loop;
       return 0;
+   end Walk;
+
+   function Readable_Frame (Root, Address, Physical_Last : Unsigned_64)
+     return Unsigned_64
+   is
+      function Readable is new Walk (Read_Entry, Present_Bit or User_Bit);
+   begin
+      return Readable (Root, Address, Physical_Last);
    end Readable_Frame;
+
+   function Writable_Frame (Root, Address, Physical_Last : Unsigned_64)
+     return Unsigned_64
+   is
+      function Writable is new Walk
+        (Read_Entry, Present_Bit or User_Bit or Writable_Bit);
+   begin
+      return Writable (Root, Address, Physical_Last);
+   end Writable_Frame;
 end User_Page_Walk;

@@ -613,6 +613,22 @@ is
     ---------------------------------------------------------------------------
     -- FXSAVE64 Save floating point state
     ---------------------------------------------------------------------------
+    function rdfsbase return Unsigned_64 is
+        val : Unsigned_64;
+    begin
+        Asm("rdfsbase %0",
+            Outputs => Unsigned_64'Asm_Output("=r", val),
+            Volatile => True);
+        return val;
+    end rdfsbase;
+
+    procedure wrfsbase (val : Unsigned_64) is
+    begin
+        Asm("wrfsbase %0",
+            Inputs => Unsigned_64'Asm_Input("r", val),
+            Volatile => True);
+    end wrfsbase;
+
     procedure fxsave (saveArea : System.Address) is
     begin
         --  FXSAVE writes 512 bytes to the memory pointed to by saveArea.

@@ -5,6 +5,7 @@ with Ext2; use Ext2;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
 with Volume_Admission; use Volume_Admission;
+with Ext2_Support;
 
 procedure Admission is
    use type System.Address;
@@ -23,6 +24,7 @@ procedure Admission is
       sb.inodeCount := 8;
       sb.inodesPerBlockGroup := 8;
       sb.majorVersion := 1;
+      sb.incompatibleFeatures := 2; -- standard typed directory records
       sb.inodeSize := 128;
    end Setup;
 
@@ -124,6 +126,54 @@ begin
    Setup;
    sb.blockShift := 3;
    Check (Unsupported_Filesystem, 2);
+
+   --  Sweep every individual feature bit, including future unknown bits.
+   --  Unknown RO_COMPAT flags cannot accidentally get a writable session.
+   for Bit in 0 .. 31 loop
+      declare
+         Flag : constant Unsigned_32 := Shift_Left (Unsigned_32'(1), Bit);
+      begin
+         Setup;
+         sb.compatibleFeatures := Flag;
+         Check ((if (Flag and Ext2_Support.Supported_Compatible) /= 0
+                 then Admitted else Unsupported_Filesystem), 2);
+         Setup;
+         sb.incompatibleFeatures := sb.incompatibleFeatures or Flag;
+         Check ((if Flag = Ext2_Support.Incompat_Directory_Types
+                 then Admitted else Unsupported_Filesystem), 2);
+         Setup;
+         sb.readOnlyFeatures := Flag;
+         Check ((if (Flag and Ext2_Support.Supported_Read_Only) /= 0
+                 then Admitted else Unsupported_Filesystem), 2);
+      end;
+   end loop;
+   Setup;
+   sb.compatibleFeatures := Ext2_Support.Supported_Compatible;
+   sb.readOnlyFeatures := Ext2_Support.Supported_Read_Only;
+   Check (Admitted, 2); -- common Linux mke2fs ext2 profile
+   Setup;
+   sb.incompatibleFeatures := 0; -- legacy untyped directory records
+   Check (Unsupported_Filesystem, 2);
+   Setup;
+   sb.majorVersion := 0;
+   Check (Unsupported_Filesystem, 2);
+   Setup;
+   sb.majorVersion := 2;
+   Check (Unsupported_Filesystem, 2);
+   Setup;
+   sb.creatorOS := 1;
+   Check (Unsupported_Filesystem, 2);
+
+   --  Independently address the standard on-disk offsets, not Ada fields.
+   Setup;
+   Disk (1024 + 92) := 4; -- HAS_JOURNAL
+   Check (Unsupported_Filesystem, 2);
+   Setup;
+   Disk (1024 + 96) := 6; -- FILETYPE | RECOVER
+   Check (Unsupported_Filesystem, 2);
+   Setup;
+   Disk (1024 + 100) := 16#40#; -- EXTRA_ISIZE
+   Check (Unsupported_Filesystem, 2);
    for malformed in 1 .. 7 loop
       Setup;
       case malformed is
@@ -137,6 +187,10 @@ begin
       end case;
       Check (Invalid_Filesystem, 2);
    end loop;
+
+   Setup;
+   sb.inodeSize := 132; -- aligned is insufficient: slots must be powers of two
+   Check (Invalid_Filesystem, 2);
 
    Setup;
    initBlockDevice (fs, 1, (slot => 1, generation => 1),

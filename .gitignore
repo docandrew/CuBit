@@ -44,3 +44,6 @@ userspace/services/virtio-gpu/build-delayed/
 userspace/apps/display-check/build-gpu-delayed/
 userspace/services/virtio-gpu/build-clear-failure/
 userspace/apps/display-check/build-gpu-clear-failure/
+
+# Advisory cross-session build/test lock; never delete a live lock file.
+/coordination/*.lock

@@ -19,6 +19,7 @@ with InterruptNumbers;
 with IPC_Labels;
 with Interrupts;
 with PerCpuData;
+with PerCPUData;
 with Process;
 with Process.IPC;
 with Spinlocks;
@@ -64,7 +65,7 @@ package body Syscall.Admin is
             if cap.capType = Capabilities.CAP_PROCESS and then
                cap.rights(right) and then
                (cap.object.ref = 0 or
-                (cap.gen = Process.proctab(targetPID).capGeneration
+                (cap.gen = Process.generationOf (targetPID)
                  and then cap.object.ref = Unsigned_64 (targetPID)))
             then
                 return True;
@@ -94,7 +95,7 @@ package body Syscall.Admin is
                cap.rights(Capabilities.RIGHT_GRANT) and then
                (cap.object.ref = 0 or else
                 (cap.object.ref = Unsigned_64 (targetPID) and then
-                 cap.gen = Process.proctab(targetPID).capGeneration))
+                 cap.gen = Process.generationOf (targetPID)))
             then
                 return True;
             end if;
@@ -124,7 +125,7 @@ package body Syscall.Admin is
                cap.rights(Capabilities.RIGHT_GRANT) and then
                (cap.object.ref = 0 or else
                 (cap.object.ref = Unsigned_64 (targetPID) and then
-                 cap.gen = Process.proctab(targetPID).capGeneration)) and then
+                 cap.gen = Process.generationOf (targetPID))) and then
                Capabilities.isSubsetOf (newRights, cap.rights) and then
                (cap.object.ref = 0 or else newRef = cap.object.ref)
             then
@@ -155,7 +156,7 @@ package body Syscall.Admin is
         end if;
 
         -- Kernel-mode threads are exempt
-        if Process.proctab(callerPID).mode = Process.KERNEL then
+        if Process.threadOf (callerPID).mode = Process.KERNEL then
             hasCap := True;
         else
             for slot in Capabilities.CapabilitySlot loop
@@ -323,7 +324,7 @@ package body Syscall.Admin is
         hasCap : Boolean := False;
     begin
         -- Kernel-mode threads exempt
-        if Process.proctab(callerPID).mode = Process.KERNEL then
+        if Process.threadOf (callerPID).mode = Process.KERNEL then
             hasCap := True;
         else
             for slot in Capabilities.CapabilitySlot loop
@@ -381,7 +382,7 @@ package body Syscall.Admin is
             replyTag := Process.IPC.capSend (
                 capSlot => Capabilities.CapabilitySlot(arg0),
                 msg     => sendMsg);
-            Process.proctab(callerPID).replyMsg :=
+            Process.threadtab (PerCPUData.getCurrentThread).replyMsg :=
                 Process.NULL_MESSAGE;
             retval := tagToU64 (replyTag);
         end if;
@@ -419,9 +420,9 @@ package body Syscall.Admin is
             end;
 
             x86.stac;
-            userMsg := Process.proctab(callerPID).replyMsg;
+            userMsg := Process.threadtab (PerCPUData.getCurrentThread).replyMsg;
             x86.clac;
-            Process.proctab(callerPID).replyMsg :=
+            Process.threadtab (PerCPUData.getCurrentThread).replyMsg :=
                 Process.NULL_MESSAGE;
             retval := tagToU64 (replyTag);
         end if;
@@ -548,10 +549,10 @@ package body Syscall.Admin is
         maxEntries := bufSize / ENTRY_SIZE;
 
         x86.stac;
-        for i in Process.proctab'Range loop
+        for i in Process.ProctabRange loop
             exit when count >= maxEntries;
 
-            if Process.proctab(i).state /= Process.INVALID then
+            if Process.threadOf (i).state /= Process.INVALID then
                 declare
                     offset : constant Storage_Offset :=
                         Storage_Offset (count * ENTRY_SIZE);
@@ -578,11 +579,11 @@ package body Syscall.Admin is
                     pidVal := Unsigned_16 (
                         Process.proctab(i).pid);
                     stateVal := Process.ProcessState'Pos (
-                        Process.proctab(i).state);
+                        Process.threadOf (i).state);
                     cpuVal := Unsigned_8 (
-                        Process.proctab(i).cpu);
+                        Process.threadOf (i).cpu);
                     priVal := priToU16 (Integer_16 (
-                        Process.proctab(i).priority));
+                        Process.threadOf (i).priority));
                     padVal := 0;
                     nameField :=
                         Process.proctab(i).name;
@@ -635,7 +636,7 @@ package body Syscall.Admin is
 
         Spinlocks.enterCriticalSection (Process.mailtab(targetPID).lock);
         if not Process.proctab(targetPID).admitted or else
-           Process_Lifetime.Closing (Process.proctab(targetPID).lifetime)
+           Process_Lifetime.Closing (Process.threadOf (targetPID).lifetime)
         then
             Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
             retval := reterr;
@@ -717,7 +718,7 @@ package body Syscall.Admin is
             procedure performLocked is
             begin
                 if not Process.proctab(targetPID).admitted or else
-                   Process_Lifetime.Closing (Process.proctab(targetPID).lifetime) then
+                   Process_Lifetime.Closing (Process.threadOf (targetPID).lifetime) then
                     retval := reterr;
                     return;
                 end if;
@@ -797,13 +798,13 @@ package body Syscall.Admin is
                         end if;
 
                         objectPID := Process.ProcessID (arg2);
-                        if Process.proctab(objectPID).state = Process.INVALID then
+                        if Process.threadOf (objectPID).state = Process.INVALID then
                             println
                               ("POLICY_MINT_CAPABILITY: referenced process not valid");
                             retval := reterr;
                             return;
                         end if;
-                        capGen := Process.proctab(objectPID).capGeneration;
+                        capGen := Process.generationOf (objectPID);
                     else
                         capGen := Capabilities.INITIAL_GENERATION;
                     end if;
@@ -863,7 +864,7 @@ package body Syscall.Admin is
             procedure performLocked is
             begin
                 if not Process.proctab(targetPID).admitted or else
-                   Process_Lifetime.Closing (Process.proctab(targetPID).lifetime) then
+                   Process_Lifetime.Closing (Process.threadOf (targetPID).lifetime) then
                     retval := reterr;
                     return;
                 end if;
@@ -873,7 +874,7 @@ package body Syscall.Admin is
                 then
                     println ("RESUME: denied, no RIGHT_EXECUTE");
                     retval := reterr;
-                elsif Process.proctab(targetPID).state /= Process.SUSPENDED then
+                elsif Process.threadOf (targetPID).state /= Process.SUSPENDED then
                     println ("RESUME: target not suspended");
                     retval := reterr;
                 else
@@ -937,9 +938,9 @@ package body Syscall.Admin is
 
         targetPID := Process.ProcessID (arg0);
 
-        generation := Process.proctab(targetPID).capGeneration;
+        generation := Process.generationOf (targetPID);
 
-        if Process.proctab(targetPID).state = Process.INVALID then
+        if Process.threadOf (targetPID).state = Process.INVALID then
             println ("KILL: target not active");
             retval := reterr;
             return;
@@ -1002,7 +1003,7 @@ package body Syscall.Admin is
             procedure performLocked is
             begin
                 if not Process.proctab(targetPID).admitted or else
-                   Process_Lifetime.Closing (Process.proctab(targetPID).lifetime) then
+                   Process_Lifetime.Closing (Process.threadOf (targetPID).lifetime) then
                     retval := reterr;
                     return;
                 end if;
@@ -1017,7 +1018,7 @@ package body Syscall.Admin is
 
                 Config.wellKnownServices (Config.ServiceRole (arg0)) :=
                     (pid => Natural (targetPID),
-                     gen => Process.proctab(targetPID).capGeneration);
+                     gen => Process.generationOf (targetPID));
 
                 print ("SET_WELL_KNOWN: role ");
                 print (Integer (arg0));
@@ -1067,7 +1068,7 @@ package body Syscall.Admin is
         targetPID := Process.ProcessID (arg1);
         Spinlocks.enterCriticalSection (Process.mailtab(targetPID).lock);
         if not Process.proctab(targetPID).admitted or else
-           Process_Lifetime.Closing (Process.proctab(targetPID).lifetime)
+           Process_Lifetime.Closing (Process.threadOf (targetPID).lifetime)
         then
             retval := reterr;
         else
@@ -1169,7 +1170,7 @@ package body Syscall.Admin is
             procedure performLocked is
             begin
                 if not Process.proctab(targetPID).admitted or else
-                   Process_Lifetime.Closing (Process.proctab(targetPID).lifetime) then
+                   Process_Lifetime.Closing (Process.threadOf (targetPID).lifetime) then
                     retval := reterr;
                     return;
                 end if;
@@ -1179,12 +1180,15 @@ package body Syscall.Admin is
                 then
                     println ("SET_CPU: denied, no RIGHT_GRANT");
                     retval := reterr;
-                elsif Process.proctab(targetPID).state /= Process.SUSPENDED or else
-                      Process_Lifetime.Executing (Process.proctab(targetPID).lifetime) then
+                elsif Process.threadOf (targetPID).state /= Process.SUSPENDED or else
+                      Process_Lifetime.Executing (Process.threadOf (targetPID).lifetime) then
                     println ("SET_CPU: target must be stopped and suspended");
                     retval := reterr;
                 else
-                    Process.proctab(targetPID).cpu := Natural (arg1);
+                    --  Explicit placement is a hard affinity: work stealing
+                    --  never moves this process.
+                    Process.threadOf (targetPID).cpu := Natural (arg1);
+                    Process.threadOf (targetPID).pinned := True;
                     retval := 0;
                 end if;
             end performLocked;
@@ -1197,7 +1201,7 @@ package body Syscall.Admin is
 
     ---------------------------------------------------------------------------
     -- handleSaveReplyCap
-    -- Move CAP_REPLY from slot 63 to the specified destination slot.
+    -- Move the calling thread's CAP_REPLY to the specified process slot.
     -- Used by servers that need to defer replies (e.g. netstack).
     ---------------------------------------------------------------------------
     procedure handleSaveReplyCap (callerPID : Process.ProcessID;
@@ -1225,11 +1229,13 @@ package body Syscall.Admin is
         end if;
 
         -- The same lock serializes authorized cspace edits and inspection.
+        -- The reply capability comes from the calling thread.
         Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
-        Capabilities.Operations.moveReplyCap
-          (table => Process.proctab(callerPID).caps,
-           dest  => destSlot,
-           moved => moved);
+        Capabilities.Operations.moveReplyCapFrom
+          (source => Process.threadtab (PerCPUData.getCurrentThread).replyCap,
+           table  => Process.proctab(callerPID).caps,
+           dest   => destSlot,
+           moved  => moved);
 
         if not moved then
             Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);

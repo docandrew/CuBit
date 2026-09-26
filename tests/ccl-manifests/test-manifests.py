@@ -332,8 +332,16 @@ class Manifests(unittest.TestCase):
                          struct.pack('<BBHIQ', 10, 3, 24, 0x0a00020f, descriptor))
         broad = template.replace('10.0.2.0" 24', '0.0.0.0" 0').replace('80 443', '1 65535')
         self.assertEqual(self.compile(broad).returncode, 0)
+        datagram = template.replace('tcp-connect', 'udp-connect').replace(
+            '10.0.2.0" 24', '10.0.2.2" 32').replace('80 443', '123 123')
+        result = self.compile(datagram)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        descriptor = 123 | (123 << 16) | (32 << 32) | (3 << 40) | (1 << 48)
+        self.assertEqual(self.sections(result.stdout)['.cubit.caps'][8:],
+                         struct.pack('<BBHIQ', 10, 3, 24, 0x0a000202, descriptor))
         for old, bad in [
-                ('tcp-connect', 'udp-connect'), ('"10.0.2.0"', '123'),
+                ('tcp-connect', 'udp-listen'), ('tcp-connect', 'udp'),
+                ('"10.0.2.0"', '123'),
                 ('"10.0.2.0"', '"10.0.2.1"'), ('"10.0.2.0"', '"010.0.2.0"'),
                 ('"10.0.2.0"', '"256.0.2.0"'), ('"10.0.2.0"', '"10.0.2"'),
                 ('"10.0.2.0"', '"10..2.0"'), ('"10.0.2.0"', '"10.0.2.0."'),
@@ -349,6 +357,26 @@ class Manifests(unittest.TestCase):
                          ('10.0.2.15', '224.0.0.1')]:
             self.reject(listener.replace(old, bad), diagnostic='INVALID_NETWORK_SCOPE')
         self.reject(template.replace('network)', 'Network)'), diagnostic='INVALID_BINDING_NAME')
+
+    def test_tls_scope_encoding_and_validation(self):
+        template = '''(executable-manifest v1 (identity "test") (version "1")
+          (tls-scope "tls-test.cubit.internal:18460-18463"))'''
+        result = self.compile(template)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        pattern = b"tls-test.cubit.internal:18460-18463"
+        entry = bytes([1, len(pattern), 2]) + bytes(5) + pattern + bytes(64 - len(pattern)) + bytes(8)
+        self.assertEqual(self.sections(result.stdout)['.cubit.access'][16:], entry)
+        for good in ('*:443', '*.example.com:443', 'a.example:1-65535'):
+            with self.subTest(good=good):
+                self.assertEqual(self.compile(template.replace(
+                    'tls-test.cubit.internal:18460-18463', good)).returncode, 0)
+        for bad in ('tls-test.cubit.internal', '*.com:443', 'Upper.example:443',
+                    '10.0.2.2:443', 'a.example:0', 'a.example:500-400', 'a_b.example:443'):
+            with self.subTest(bad=bad):
+                self.reject(template.replace('tls-test.cubit.internal:18460-18463', bad),
+                            diagnostic='INVALID_PATH')
+        self.reject(template.replace('))', ')\n          (tls-scope "tls-test.cubit.internal:18460-18463"))'),
+                    diagnostic='DUPLICATE_SCOPE')
         # Truncation must fail without exceptions or partial ELF output.
         for end in range(len(template) - 1):
             self.reject(template[:end])

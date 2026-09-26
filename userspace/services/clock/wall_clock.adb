@@ -1,20 +1,23 @@
 with Interfaces; use Interfaces;
 with System;
 with CuBit.Config;
-with CuBit.Clocks;
 with CuBit.Messages; use CuBit.Messages;
 with Civil_Time;
 with Time_Zones;
+with Clock_Discipline;
+with Clock_Floor;
 package body Wall_Clock is
-   Base_UTC, Base_Mono : Unsigned_64 := 0;
-   Seed_Valid : Boolean := False;
+   --  Build-time floor: UTC never falls below the source commit time.
+   Floor_MS : constant Clock_Discipline.UTC_Milliseconds :=
+     Clock_Floor.UTC_Seconds * 1_000;
+   Discipline : Clock_Discipline.State;
    procedure Text (Key : String; Data : out String; Length : out Natural;
                    OK : out Boolean) is
       Address : System.Address;
       Status : CuBit.Config.ConfigStatus;
       use type CuBit.Config.ConfigStatus;
    begin
-      Data := (others => ' ');
+      Data := [others => ' '];
       CuBit.Config.get (Key, Address, Length, Status);
       OK := Status = CuBit.Config.OK and then Length <= Data'Length;
       if OK and then Length > 0 then
@@ -28,6 +31,8 @@ package body Wall_Clock is
       Data : String (1 .. 128);
       Length, Position : Natural;
       OK : Boolean;
+      Base_UTC, Base_Mono : Unsigned_64 := 0;
+      Seed_Valid : Boolean;
       procedure Number (Value : out Unsigned_64) is
          Start : Natural;
       begin
@@ -49,9 +54,26 @@ package body Wall_Clock is
       if OK then Number (Base_UTC); Number (Base_Mono); end if;
       Seed_Valid := OK and then Position = Length + 1 and then
         Base_UTC in 946_684_800 .. 4_102_444_799;
-      debugPrint ((if Seed_Valid then "clock: RTC-derived UTC ready" else
-                   "clock: wall time unavailable") & ASCII.LF);
+      Clock_Discipline.Initialize
+        (Discipline, Seed_Valid, Base_UTC, Base_Mono, Floor_MS);
+      if Clock_Discipline.Available (Discipline) then
+         debugPrint ("clock: RTC-derived UTC ready" & ASCII.LF);
+      elsif Seed_Valid then
+         debugPrint ("clock: RTC below build time floor, wall time unavailable" & ASCII.LF);
+      else
+         debugPrint ("clock: wall time unavailable" & ASCII.LF);
+      end if;
    end Initialize;
+
+   procedure Adjust
+     (Candidate : CuBit.Clock_Control.Sample;
+      Result : out CuBit.Clock_Control.Outcome;
+      Quality : out CuBit.Clocks.Time_Quality) is
+   begin
+      Clock_Discipline.Apply
+        (Discipline, Candidate, syscall (SYSCALL_GETTIME), Floor_MS, Result);
+      Quality := Clock_Discipline.Quality (Discipline);
+   end Adjust;
    function Snapshot return Message is
       Result : Message := NULL_MESSAGE;
       Date : Civil_Time.Date_Time;
@@ -59,13 +81,18 @@ package body Wall_Clock is
       Offset : Integer_32 := 0;
       Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
       UTC : Unsigned_64 := 0;
+      UTC_MS : Clock_Discipline.UTC_Milliseconds;
+      Current : Boolean;
       Name : String (1 .. 128);
       Length : Natural;
       Zone : Time_Zones.Time_Zone;
       OK : Boolean;
    begin
-      if Seed_Valid and then Now /= Unsigned_64'Last and then Now >= Base_Mono then
-         UTC := Base_UTC + (Now - Base_Mono) / 1000;
+      Clock_Discipline.Current (Discipline, Now, UTC_MS, Current);
+      if Clock_Discipline.Available (Discipline) and then not Current then
+         Quality := CuBit.Clocks.Unsupported_Date;
+      elsif Current then
+         UTC := UTC_MS / 1_000;
          Quality := CuBit.Clocks.Unsupported_Date;
          if UTC < 4_102_444_800 then
             Text ("clock.time-zone", Name, Length, OK);
@@ -77,7 +104,7 @@ package body Wall_Clock is
             if OK then
                Offset := Time_Zones.Offset (Zone, Integer_64 (UTC));
                Date := Civil_Time.Split (Integer_64 (UTC) + Integer_64 (Offset));
-               Quality := CuBit.Clocks.RTC_Only;
+               Quality := Clock_Discipline.Quality (Discipline);
             end if;
          end if;
       end if;

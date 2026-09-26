@@ -4,9 +4,14 @@ project Truncate_Tests is
      (".", "fixture", "../../userspace/services/filesystem",
       "../../userspace/runtime/gnat");
    for Source_Files use
-     ("main.adb", "indirect_reads.adb", "path_reads.adb", "admission.adb",
-      "overwrites.adb",
-      "volume_admission.ads",
+     ("main.adb", "open_options_check.adb", "indirect_reads.adb", "path_reads.adb", "admission.adb",
+      "overwrites.adb", "allocation_scan.adb", "sector_counts.adb", "object_admission.adb", "inode_slots.adb",
+      "resizing.adb", "double_resize.adb", "path_decoding.adb", "volume_admission.ads", "block_paths.ads", "block_paths.adb",
+      "sector_accounting.ads", "sector_accounting.adb",
+      "block_inventory.ads", "block_inventory.adb",
+      "double_mappings.ads", "double_mappings.adb",
+      "ext2_inodes.ads", "inode_mappings.ads", "inode_mappings.adb",
+      "ext2_support.ads", "ext2_support.adb",
       "ext2.ads", "ext2.adb", "cubit.ads",
       "cubit-messages.ads", "cubit-messages.adb", "cubit-memory_grants.ads",
       "cubit-grant_references.ads",
@@ -19,8 +24,9 @@ project Truncate_Tests is
    for Object_Dir use "build";
    for Exec_Dir use "build";
    for Main use
-     ("main.adb", "indirect_reads.adb", "path_reads.adb", "admission.adb",
-      "overwrites.adb");
+     ("main.adb", "open_options_check.adb", "indirect_reads.adb", "path_reads.adb", "admission.adb",
+      "overwrites.adb", "allocation_scan.adb", "sector_counts.adb", "object_admission.adb", "inode_slots.adb", "resizing.adb",
+      "path_decoding.adb", "double_resize.adb");
    package Compiler is
       --  Never resolve host runtime units from CuBit's source directory.
       for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-I-");

@@ -32,22 +32,22 @@ package body Control_Host is
 
    procedure Invoke
      (Context : in out Context_Type; Binding : Unsigned_32;
-      Argument : CCL.Host_Values.Value; Value : out CCL.Host_Values.Value; Success : out Boolean)
+      Argument : CCL.Host_Values.Value; Reply : out CCL.Host_Values.Call_Result)
    is
       pragma Unreferenced (Context);
       Milliseconds : Unsigned_64;
    begin
-      Value := CCL.Host_Values.Integer_Constant (0); Success := False;
+      Reply.Value := CCL.Host_Values.Integer_Constant (0); Reply.Success := False;
       if CCL_Config_Bindings.Handles (Binding) then
-         CCL_Config_Bindings.Invoke (Binding, Argument, Value, Success);
+         CCL_Config_Bindings.Invoke (Binding, Argument, Reply);
          return;
       end if;
       if Binding /= Host_Binding'Enum_Rep (Clock_Monotonic) or else
         Argument.Kind /= CCL.Host_Values.Integer_Value or else Argument.Integer /= 0 then return; end if;
-      Read_Clock (Success, Milliseconds);
-      if Success and then Milliseconds <= Unsigned_64 (Integer_64'Last) then
-         Value := CCL.Host_Values.Integer_Constant (Integer_64 (Milliseconds));
-      else Success := False;
+      Read_Clock (Reply.Success, Milliseconds);
+      if Reply.Success and then Milliseconds <= Unsigned_64 (Integer_64'Last) then
+         Reply.Value := CCL.Host_Values.Integer_Constant (Integer_64 (Milliseconds));
+      else Reply.Success := False;
       end if;
    end Invoke;
    procedure Interpret_Live is new CCL.Language.Interpret_With_Values (Context_Type, Invoke);

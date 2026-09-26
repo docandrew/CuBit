@@ -76,6 +76,11 @@ package Interfaces is
    for Unsigned_64'Size use 64;
    --  See comment on Integer_64 above
 
+   type Unsigned_128 is mod 2 ** 128;
+   for Unsigned_128'Size use 128;
+   --  As in GNAT's standard x86-64 runtime. Used for 64x64-bit products by
+   --  SPARKTLSCrypto; division would need libgcc helpers CuBit does not link.
+
    function Shift_Left
      (Value  : Unsigned_8;
       Amount : Natural) return Unsigned_8;
@@ -155,6 +160,26 @@ package Interfaces is
    function Rotate_Right
      (Value  : Unsigned_64;
       Amount : Natural) return Unsigned_64;
+
+   function Shift_Left
+     (Value  : Unsigned_128;
+      Amount : Natural) return Unsigned_128;
+
+   function Shift_Right
+     (Value  : Unsigned_128;
+      Amount : Natural) return Unsigned_128;
+
+   function Shift_Right_Arithmetic
+     (Value  : Unsigned_128;
+      Amount : Natural) return Unsigned_128;
+
+   function Rotate_Left
+     (Value  : Unsigned_128;
+      Amount : Natural) return Unsigned_128;
+
+   function Rotate_Right
+     (Value  : Unsigned_128;
+      Amount : Natural) return Unsigned_128;
 
    pragma Import (Intrinsic, Shift_Left);
    pragma Import (Intrinsic, Shift_Right);

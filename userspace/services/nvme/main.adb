@@ -38,7 +38,7 @@ procedure main is
                        length => 1,
                        flags  => 0,
                        reserved  => 0);
-      replyMsg.words := (0 => word0, others => 0);
+      replyMsg.words := [0 => word0, others => 0];
       ignore := reply (dest, replyMsg);
    end sendReply;
 
@@ -205,12 +205,12 @@ procedure main is
                           flags => 0, reserved => 0);
          replyMsg.authorityTag := 0;
          replyMsg.words :=
-           (0 => NVMe.nsBlockCount,
+           [0 => NVMe.nsBlockCount,
             1 => Pack_Sizes
               (Logical_Block_Size (NVMe.nsSectorSize),
                Logical_Block_Size (NVMe.nsSectorSize)),
             2 => maxBlocks64,
-            3 => Pack_Properties (FEATURE_FLUSH, Fixed_Media));
+            3 => Pack_Properties (FEATURE_FLUSH, Fixed_Media)];
          ignore := reply (sender, replyMsg);
       else
          sendReply (sender, REPLY_ERROR, 0);
@@ -242,7 +242,7 @@ begin
             (tag      => (label => OP_NOT_PRESENT, length => 0,
                           flags => 0, reserved => 0),
              authorityTag => 0,
-             words    => (others => 0)));
+             words    => [others => 0]));
          ignore := syscall (SYSCALL_EXIT);
       end;
       return;
@@ -277,7 +277,7 @@ begin
          (tag      => (label => OP_READY, length => 0,
                        flags => 0, reserved => 0),
           authorityTag => 0,
-          words    => (others => 0)));
+          words    => [others => 0]));
    end;
 
    debugPrint ("NVMe Driver: Ready, entering message loop." & LF);

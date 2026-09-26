@@ -1,0 +1,4 @@
+project Fixture is
+    for Source_Dirs use ("fixture");
+    for Object_Dir use "build/fixture";
+end Fixture;

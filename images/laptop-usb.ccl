@@ -38,6 +38,8 @@
   (file optical "ccl-button-clock" "samples/ccl/button-clock.ccl")
   (file optical "ccl-button-output" "samples/ccl/button-output.ccl")
   (file optical "ccl-config-inspector" "samples/ccl/config-inspector.ccl")
+  (file optical "ccl-config-counter" "samples/ccl/config-counter.ccl")
+  (file optical "ccl-config-counter-read" "samples/ccl/config-counter-read.ccl")
   (file optical "ccl-enums" "samples/ccl/enums.ccl")
   (file optical "ccl-variants" "samples/ccl/variants.ccl")
   (file optical "ccl-clock-label" "samples/ccl/clock-label.ccl")

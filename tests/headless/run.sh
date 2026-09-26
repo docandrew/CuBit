@@ -4,14 +4,19 @@ set -u
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 KERNEL_DIR="$ROOT_DIR/kernel"
 QEMU_BIN="${QEMU_BIN:-qemu-system-x86_64}"
+QEMU_CPU_MODEL="${QEMU_CPU_MODEL:-Broadwell}"
 TIMEOUT_BIN="${TIMEOUT_BIN:-timeout}"
 
 TEST_NAME="boot-shell-nvme"
 TIMEOUT_SECONDS=25
 BUILD_WORLD=0
 KEEP_LOGS=0
+CHECK_EXT2=0
 QEMU_ACCEL=""
 QEMU_CPUS=4
+# Guest memory; cases that need more (servo) raise the default.
+QEMU_MEMORY="${QEMU_MEMORY:-}"
+QEMU_CPUS_EXPLICIT=0
 QEMU_DISPLAY=none
 INPUT_BACKEND=linear
 VCPU_CPUS=""
@@ -22,6 +27,10 @@ SERIAL_LOG=""
 NET_PCAP=""
 BASE_DISK=""
 TEMP_DISK=""
+TURSO_REVISION=1
+TURSO_EXPORT=""
+CONFIG_EXPORT=""
+CONFIG_STORAGE_TEST=0
 TEMP_AUDIO=""
 TEMP_STORAGE_FIXTURE=""
 MONITOR_SOCKET=""
@@ -34,7 +43,7 @@ Usage: tests/headless/run.sh [options]
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-remote, capability-security, network-authority, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-remote, capability-security, network-authority, threads, futex, rust-std, libc, servo, bench-spread, timesync, tls-probe, tls-service, netsurf-https, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
   --timeout SECONDS    QEMU runtime before timeout is treated as success
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
   --cpus COUNT         Virtual CPUs, 1..4 (default: 4)
@@ -47,6 +56,10 @@ Options:
   --serial PATH        Serial log path (default: /tmp/cubit-headless-*.log)
   --pcap PATH          Packet capture path (default: /tmp/cubit-headless-*.pcap)
   --keep-logs          Leave logs in place after a passing run
+  --turso-revision N  turso-native: expected saved revision, 1 (seed) or 2 (fresh boot)
+  --turso-export DIR  turso-native: save validated disk and SQLite in a NEW directory
+  --config-export DIR config-objects/reopen/benchmark: save validated disk and SQLite/WAL in a NEW directory
+  --check-ext2         bench-storage: verify Linux/CuBit/Linux inode reuse, data and e2fsck
   -h, --help           Show this help
 
 The suite boots the NVMe profile headlessly and checks serial output for
@@ -54,7 +67,10 @@ stable pass markers.
 Performance fixtures: bench-ipc, bench-audio, bench-storage, bench-input, bench-scheduler.
 Logging fixture: log-authority (build logstore procmgr clock log-check first).
 Rust fixture: rust-native (build rust-probe ccl-test-host clock first).
-Native Turso: turso-native-std or turso-native; see tests/config-turso/native/README.md.
+Native Turso: turso-native-std, turso-native, config-storage; see tests/config-turso/native/README.md.
+Public typed Config: config-objects, config-objects-reopen, config-objects-benchmark;
+  build tests/config-object-client/native-app/build.sh first.
+QEMU_CPU_MODEL overrides Broadwell; use host with KVM for faithful CPU identification.
 Multi-output discovery: virtio-gpu-multi-output (QEMU 11.1 per-head modes;
 build virtio-gpu first). This does not yet test a multi-monitor desktop.
 Native catalog IPC: display-discovery-multi-output (build display, virtio-gpu,
@@ -64,6 +80,8 @@ Two-output presentation: display-dual-output (build devmgr, virtio-gpu, display,
 and display-check first). Native IPC plus pixel checks on both QEMU heads.
 Native extended Desktop: desktop-dual-output (build desktop, display, devmgr,
 virtio-gpu and ccl-workbench first). Checks drag, maximize, taskbar and cleanup on both heads.
+The threads test defaults to one vCPU (both instances must share a CPU).
+bench-spread: four CPU-bound instances; compare WORK_STEALING=0/1 kernels.
 Use --timeout 100 for network-authority: it includes an intentional 30-second
 accept deadline and a seven-second backlog expiry wait, plus traffic checks.
 EOF
@@ -113,6 +131,7 @@ while [ "$#" -gt 0 ]; do
                 exit 2
             fi
             QEMU_CPUS="$2"
+            QEMU_CPUS_EXPLICIT=1
             shift 2
             ;;
         --input-backend)
@@ -174,6 +193,33 @@ while [ "$#" -gt 0 ]; do
             KEEP_LOGS=1
             shift
             ;;
+        --turso-revision)
+            case "${2:-}" in
+                1|2) TURSO_REVISION="$2" ;;
+                *) echo "headless: --turso-revision requires 1 or 2" >&2; exit 2 ;;
+            esac
+            shift 2
+            ;;
+        --turso-export)
+            if [ "$#" -lt 2 ] || [ -z "$2" ] || [ -e "$2" ] || [ -L "$2" ]; then
+                echo "headless: --turso-export requires a new directory path" >&2
+                exit 2
+            fi
+            TURSO_EXPORT="$2"
+            shift 2
+            ;;
+        --check-ext2)
+            CHECK_EXT2=1
+            shift
+            ;;
+        --config-export)
+            if [ "$#" -lt 2 ] || [ -z "$2" ] || [ -e "$2" ] || [ -L "$2" ]; then
+                echo "headless: --config-export requires a new directory path" >&2
+                exit 2
+            fi
+            CONFIG_EXPORT="$2"
+            shift 2
+            ;;
         -h|--help)
             usage
             exit 0
@@ -193,10 +239,24 @@ case "$TIMEOUT_SECONDS" in
         ;;
 esac
 
+if [ "$TEST_NAME" != "turso-native" ] &&
+   { [ "$TURSO_REVISION" != 1 ] || [ -n "$TURSO_EXPORT" ]; }; then
+    echo "headless: Turso revision/export options require --test turso-native" >&2
+    exit 2
+fi
+
+if [ -n "$CONFIG_EXPORT" ] && [ "$TEST_NAME" != config-objects ] && [ "$TEST_NAME" != config-objects-reopen ] && [ "$TEST_NAME" != config-objects-benchmark ]; then
+    echo "headless: --config-export requires config-objects, config-objects-reopen or config-objects-benchmark" >&2
+    exit 2
+fi
+
 case "$TEST_NAME" in
+    config-objects|config-objects-reopen|config-objects-benchmark|config-storage)
+        CONFIG_STORAGE_TEST=1
+        ;;
     config-tree|config-inspection|log-authority|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|threads|futex|rust-std|libc|servo|bench-spread|timesync|tls-probe|tls-service|netsurf-https|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -226,6 +286,11 @@ if [ "$BENCH_LOAD" = 1 ] && [ "$TEST_NAME" != "bench-ipc" ] && [ "$TEST_NAME" !=
 fi
 if [ "$LOAD_WORKERS" -gt 1 ] && [ "$TEST_NAME" != "bench-input" ]; then
     echo "headless: multiple busy peers currently require bench-input" >&2
+    exit 2
+fi
+
+if [ "$CHECK_EXT2" -eq 1 ] && [ "$TEST_NAME" != "bench-storage" ]; then
+    echo "headless: --check-ext2 requires bench-storage (other fixtures may intentionally corrupt metadata)" >&2
     exit 2
 fi
 
@@ -259,11 +324,16 @@ fi
 
 GRUB_CFG="$KERNEL_DIR/isodir/boot/grub/grub.cfg"
 NETWORK_PEER_PID=""
+SERVO_HTTPS_PID=""
 CLOCK_OBSERVER_PID=""
+TEMP_CONFIG_REJECTED=""
 GRUB_BAK="$(mktemp "${TMPDIR:-/tmp}/cubit-grub.XXXXXX")"
 cp "$GRUB_CFG" "$GRUB_BAK"
 
 cleanup() {
+    if [ -n "$TEMP_CONFIG_REJECTED" ]; then
+        rm -f "$TEMP_CONFIG_REJECTED"
+    fi
     if [ -n "$CLOCK_OBSERVER_PID" ]; then
         kill "$CLOCK_OBSERVER_PID" >/dev/null 2>&1 || true
         wait "$CLOCK_OBSERVER_PID" >/dev/null 2>&1 || true
@@ -274,6 +344,10 @@ cleanup() {
     if [ -n "$NETWORK_PEER_PID" ]; then
         kill "$NETWORK_PEER_PID" >/dev/null 2>&1 || true
         wait "$NETWORK_PEER_PID" >/dev/null 2>&1 || true
+    fi
+    if [ -n "$SERVO_HTTPS_PID" ]; then
+        kill "$SERVO_HTTPS_PID" >/dev/null 2>&1 || true
+        wait "$SERVO_HTTPS_PID" >/dev/null 2>&1 || true
     fi
     if [ -n "$INPUT_INJECTOR_PID" ]; then
         kill "$INPUT_INJECTOR_PID" >/dev/null 2>&1 || true
@@ -326,6 +400,18 @@ case "$TEST_NAME" in
     rust-native)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-rust-native.ccl"
         ;;
+    config-storage)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-config-storage.ccl"
+        ;;
+    config-objects)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-config-objects.ccl"
+        ;;
+    config-objects-reopen)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-config-objects-reopen.ccl"
+        ;;
+    config-objects-benchmark)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-config-objects-benchmark.ccl"
+        ;;
     turso-native-std|turso-native)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-turso-native.ccl"
         ;;
@@ -367,6 +453,53 @@ case "$TEST_NAME" in
         ;;
     network-authority)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-network-authority.ccl"
+        ;;
+    threads)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-threads.ccl"
+        # The per-thread CPU state check needs both instances on one CPU;
+        # with more CPUs, work stealing may separate them.
+        if [ "$QEMU_CPUS_EXPLICIT" = 0 ]; then QEMU_CPUS=1; fi
+        ;;
+    futex)
+        # Threads of one process on every CPU at once (default four).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-futex.ccl"
+        ;;
+    rust-std)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-rust-std.ccl"
+        ;;
+    libc)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-libc.ccl"
+        ;;
+    servo)
+        # Servo (docs/servo-port.md): an 85 MB program whose heap grows
+        # eagerly; fonts are installed on the disk below.
+        # SERVO_DESKTOP=1: launch it from the desktop's Apps menu instead.
+        if [ -n "${SERVO_DESKTOP:-}" ]; then
+            INIT_PROFILE="$ROOT_DIR/tests/headless/init-servo-desktop.ccl"
+        else
+            INIT_PROFILE="$ROOT_DIR/tests/headless/init-servo.ccl"
+        fi
+        QEMU_MEMORY="${QEMU_MEMORY:-4G}"
+        ;;
+    bench-spread)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-bench-spread.ccl"
+        ;;
+    timesync)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-timesync.ccl"
+        ;;
+    tls-probe)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-tls-probe.ccl"
+        ;;
+    tls-service)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-tls-service.ccl"
+        ;;
+    netsurf-https)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-netsurf-https.ccl"
+        ;;
+    wget-https)
+        # Needs internet access from the host: a manual, network-dependent
+        # lane, not a deterministic regression.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-wget-https.ccl"
         ;;
     storage-grants)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-storage-grants.ccl"
@@ -437,6 +570,30 @@ if [ -n "$INIT_PROFILE" ]; then
             debugfs -w -R "write $KERNEL_DIR/isodir/boot/$app $app" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
         done
     fi
+    if [ "$CONFIG_STORAGE_TEST" = 1 ]; then
+        for STORAGE_IMAGE in "$ROOT_DIR/userspace/services/config-storage/build/config-storage.svc" \
+                             "$KERNEL_DIR/isodir/boot/clock.svc"; do
+            if [ ! -f "$STORAGE_IMAGE" ]; then
+                echo "headless: build Config storage/clock first: $STORAGE_IMAGE" >&2
+                exit 1
+            fi
+            STORAGE_NAME=$(basename "$STORAGE_IMAGE")
+            debugfs -w -R "rm $STORAGE_NAME" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "write $STORAGE_IMAGE $STORAGE_NAME" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        done
+        if [ "$TEST_NAME" != "config-storage" ]; then
+            OBJECT_APP=config-objects-check.app
+            if [ "$TEST_NAME" = config-objects-reopen ]; then OBJECT_APP=config-objects-reopen.app; fi
+            if [ "$TEST_NAME" = config-objects-benchmark ]; then OBJECT_APP=config-objects-benchmark.app; fi
+            OBJECT_PROBE="$ROOT_DIR/tests/config-object-client/native-app/build/$OBJECT_APP"
+            if [ ! -f "$OBJECT_PROBE" ]; then
+                echo "headless: build tests/config-object-client/native-app/build.sh first" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $OBJECT_APP" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "write $OBJECT_PROBE $OBJECT_APP" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        fi
+    fi
     if [ "$TEST_NAME" = "turso-native-std" ] || [ "$TEST_NAME" = "turso-native" ]; then
         TURSO_PROBE="$ROOT_DIR/tests/config-turso/target/native/turso-native-probe.app"
         if [ ! -f "$TURSO_PROBE" ]; then
@@ -447,6 +604,27 @@ if [ -n "$INIT_PROFILE" ]; then
         debugfs -w -R "write $TURSO_PROBE turso-native-probe.app" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
         debugfs -w -R "rm clock.svc" "$TEMP_DISK" >/dev/null 2>&1
         debugfs -w -R "write $KERNEL_DIR/isodir/boot/clock.svc clock.svc" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        if [ "$TEST_NAME" = "turso-native" ]; then
+            # debugfs mkdir on an existing directory can leave orphaned inode/
+            # block metadata even though it prints an error. Never use it as
+            # mkdir -p, particularly when restaging a saved first-boot image.
+            TURSO_DIRECTORY=$(debugfs -R 'stat /turso-native' "$TEMP_DISK" 2>/dev/null)
+            if [ -z "$TURSO_DIRECTORY" ]; then
+                if [ "$TURSO_REVISION" = 2 ]; then
+                    echo "headless: fresh-boot fixture directory is missing" >&2
+                    exit 1
+                fi
+                debugfs -w -R 'mkdir /turso-native' "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+            fi
+            if ! debugfs -R 'stat /turso-native' "$TEMP_DISK" 2>/dev/null | grep -q 'Type: directory'; then
+                echo "headless: Turso test directory unavailable" >&2
+                exit 1
+            fi
+            if ! e2fsck -fn "$TEMP_DISK"; then
+                echo "headless: Turso fixture is inconsistent before boot" >&2
+                exit 1
+            fi
+        fi
     fi
     if [ "$TEST_NAME" = "async-ipc" ]; then
         for ipc_image in ipctest-server.app ipctest-client.app ipctest-departing.app; do
@@ -463,7 +641,10 @@ if [ -n "$INIT_PROFILE" ]; then
         # manual build. The kernel/initrd refresh alone does not rebuild apps.
         benchmark_target="$TEST_NAME"
         if [ "$TEST_NAME" = "bench-scheduler" ]; then benchmark_target=bench-load; fi
-        if ! make -s -C "$KERNEL_DIR" "$benchmark_target"; then
+        # bench-ipc has no make target of its own: build its two programs.
+        if [ "$TEST_NAME" = "bench-ipc" ]; then benchmark_target="bench-ipc-client bench-ipc-server"; fi
+        # shellcheck disable=SC2086
+        if ! make -s -C "$KERNEL_DIR" $benchmark_target; then
             echo "headless: failed to build $benchmark_target" >&2
             exit 1
         fi
@@ -691,6 +872,158 @@ if [ -n "$INIT_PROFILE" ]; then
             exit 1
         fi
     fi
+    if [ "$TEST_NAME" = "threads" ] || [ "$TEST_NAME" = "bench-spread" ] ||
+       [ "$TEST_NAME" = "futex" ] || [ "$TEST_NAME" = "rust-std" ] ||
+       [ "$TEST_NAME" = "libc" ]; then
+        for THREADS_IMAGE in logstore.svc thread-check.app bench-spread.app futex-check.app \
+          rust-std-hello.app libc-check.app cxx-check.app; do
+            debugfs -w -R "rm $THREADS_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$THREADS_IMAGE $THREADS_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $THREADS_IMAGE" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "servo" ]; then
+        # Servo (85 MB) is past what 1 KiB ext2 blocks reach without
+        # triple-indirect blocks (~64 MiB), which CuBit's ext2 does not
+        # read: rebuild the copy with the same files, 4 KiB blocks, 512 MiB.
+        SERVO_STAGE="$(mktemp -d "${TMPDIR:-/tmp}/cubit-servo-stage.XXXXXX")"
+        debugfs -R "rdump / $SERVO_STAGE" "$TEMP_DISK" >/dev/null 2>&1
+        rm -rf "$SERVO_STAGE/lost+found"
+        rm -f "$TEMP_DISK"
+        if ! mke2fs -q -t ext2 -b 4096 -F -d "$SERVO_STAGE" "$TEMP_DISK" 512M; then
+            rm -rf "$SERVO_STAGE"
+            echo "headless: failed to rebuild the servo disk" >&2
+            exit 1
+        fi
+        rm -rf "$SERVO_STAGE"
+        for SERVO_IMAGE in logstore.svc clock.svc display.svc desktop.svc cubitshell.app; do
+            debugfs -w -R "rm $SERVO_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$SERVO_IMAGE $SERVO_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $SERVO_IMAGE" >&2
+                exit 1
+            fi
+        done
+        debugfs -w -R "mkdir fonts" "$TEMP_DISK" >/dev/null 2>&1
+        SERVO_FONT_DIR="$(dirname "${IBM_PLEX_SANS_FONT:?run inside nix develop}")"
+        for SERVO_FONT in IBMPlexSans-Regular.ttf IBMPlexSans-Bold.ttf \
+          IBMPlexSerif-Regular.ttf IBMPlexMono-Regular.ttf; do
+            if ! debugfs -w -R "write $SERVO_FONT_DIR/$SERVO_FONT fonts/$SERVO_FONT" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install fonts/$SERVO_FONT" >&2
+                exit 1
+            fi
+        done
+        # The pages cubitshell loads: a data: page, then one the host serves
+        # over HTTP (tests/servo/http_server.py) through netstack.
+        SERVO_PAGES="$(mktemp "${TMPDIR:-/tmp}/cubit-servo-pages.XXXXXX")"
+        cat > "$SERVO_PAGES" <<'SERVO_PAGES_EOF'
+data:text/html,<body style='background:%23fff'><h1 style='color:%23135'>Servo on CuBit</h1><div style='width:200px;height:100px;background:%23e33'></div></body>
+http://10.0.2.2:18470/servo-test.html
+https://tls-test.cubit.internal:18460/
+SERVO_PAGES_EOF
+        # Opt-in extra pages, e.g. public sites (needs the host's internet):
+        # SERVO_EXTRA_PAGES="https://example.com/ https://www.wikipedia.org/"
+        for SERVO_EXTRA_PAGE in ${SERVO_EXTRA_PAGES:-}; do
+            echo "$SERVO_EXTRA_PAGE" >> "$SERVO_PAGES"
+        done
+        debugfs -w -R "mkdir servo" "$TEMP_DISK" >/dev/null 2>&1
+        if ! debugfs -w -R "write $SERVO_PAGES servo/pages" "$TEMP_DISK" >/dev/null 2>&1; then
+            rm -f "$SERVO_PAGES"
+            echo "headless: failed to install servo/pages" >&2
+            exit 1
+        fi
+        rm -f "$SERVO_PAGES"
+        # HTTPS: the trust store is the development disk's root bundle plus
+        # the test CA; the fixture's name maps to the host (the certificate
+        # is still checked against that name).
+        bash "$ROOT_DIR/tests/tls/make-pki.sh"
+        SERVO_ROOTS="$(mktemp "${TMPDIR:-/tmp}/cubit-servo-roots.XXXXXX")"
+        debugfs -R "dump tls/roots.der $SERVO_ROOTS" "$TEMP_DISK" >/dev/null 2>&1 || true
+        cat "$ROOT_DIR/tests/tls/build/pki/ca.der" >> "$SERVO_ROOTS"
+        debugfs -w -R "mkdir tls" "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "rm tls/roots.der" "$TEMP_DISK" >/dev/null 2>&1
+        SERVO_HOSTS="$(mktemp "${TMPDIR:-/tmp}/cubit-servo-hosts.XXXXXX")"
+        echo "10.0.2.2 tls-test.cubit.internal" > "$SERVO_HOSTS"
+        if ! debugfs -w -R "write $SERVO_ROOTS tls/roots.der" \
+          "$TEMP_DISK" >/dev/null 2>&1 ||
+           ! debugfs -w -R "write $SERVO_HOSTS servo/hosts" "$TEMP_DISK" >/dev/null 2>&1; then
+            rm -f "$SERVO_HOSTS" "$SERVO_ROOTS"
+            echo "headless: failed to install the servo trust store or hosts" >&2
+            exit 1
+        fi
+        rm -f "$SERVO_HOSTS" "$SERVO_ROOTS"
+        # Opt-in: dump each frame to the serial log (tests/servo/frame_from_log.py).
+        if [ -n "${SERVO_DUMP_FRAMES:-}" ]; then
+            SERVO_FLAG="$(mktemp "${TMPDIR:-/tmp}/cubit-servo-flag.XXXXXX")"
+            debugfs -w -R "write $SERVO_FLAG servo/dump-frames" "$TEMP_DISK" >/dev/null 2>&1
+            rm -f "$SERVO_FLAG"
+        fi
+    fi
+    if [ "$TEST_NAME" = "timesync" ]; then
+        # timesync-test.svc is timesync.svc with only its capability section
+        # replaced (loopback fixture ports); it is installed under the
+        # production name that init-timesync.ccl starts.
+        for TIMESYNC_IMAGE in logstore.svc clock.svc timesync-test.svc:timesync.svc \
+          timesync-check.app; do
+            TIMESYNC_SOURCE="${TIMESYNC_IMAGE%%:*}"
+            TIMESYNC_TARGET="${TIMESYNC_IMAGE##*:}"
+            debugfs -w -R "rm $TIMESYNC_TARGET" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$TIMESYNC_SOURCE $TIMESYNC_TARGET" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $TIMESYNC_TARGET" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "wget-https" ]; then
+        for WGET_IMAGE in logstore.svc clock.svc timesync.svc tls.svc wget.app; do
+            debugfs -w -R "rm $WGET_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$WGET_IMAGE $WGET_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $WGET_IMAGE" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "netsurf-https" ]; then
+        # netsurf-https-test.app is NetSurf built with the fixture as its
+        # homepage; it runs under the production name.
+        for NS_IMAGE in logstore.svc clock.svc tls.svc display.svc desktop.svc \
+          netsurf-https-test.app:netsurf.app; do
+            NS_SOURCE="${NS_IMAGE%%:*}"
+            NS_TARGET="${NS_IMAGE##*:}"
+            debugfs -w -R "rm $NS_TARGET" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$NS_SOURCE $NS_TARGET" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $NS_TARGET" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "tls-service" ] || [ "$TEST_NAME" = "netsurf-https" ]; then
+        # The test root is the service's trust store for this run.
+        debugfs -w -R "mkdir tls" "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "rm tls/roots.der" "$TEMP_DISK" >/dev/null 2>&1
+        if ! debugfs -w -R "write $ROOT_DIR/tests/tls/build/pki/ca.der tls/roots.der" \
+          "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to install the test trust store" >&2
+            exit 1
+        fi
+    fi
+    if [ "$TEST_NAME" = "tls-probe" ] || [ "$TEST_NAME" = "tls-service" ]; then
+        for TLS_IMAGE in logstore.svc clock.svc tls-probe.app tls.svc tls-check.app; do
+            debugfs -w -R "rm $TLS_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$TLS_IMAGE $TLS_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $TLS_IMAGE" >&2
+                exit 1
+            fi
+        done
+    fi
     if [ "$TEST_NAME" = "capability-security" ] || [ "$TEST_NAME" = "network-authority" ]; then
         CAPABILITY_TEST_IMAGE="$KERNEL_DIR/isodir/boot/capability-test.app"
         if [ ! -f "$CAPABILITY_TEST_IMAGE" ]; then
@@ -736,6 +1069,11 @@ if [ -n "$INIT_PROFILE" ]; then
         done
     fi
     if [ "$TEST_NAME" = "config-inspection" ]; then
+      TEMP_CONFIG_REJECTED="$TEMP_DISK.config-rejected.app"
+      python3 "$ROOT_DIR/tests/config-inspection/make-rejected-image.py" \
+        "$KERNEL_DIR/isodir/boot/config-denied.app" "$TEMP_CONFIG_REJECTED"
+      debugfs -w -R "rm config-rejected.app" "$TEMP_DISK" >/dev/null 2>&1
+      debugfs -w -R "write $TEMP_CONFIG_REJECTED config-rejected.app" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
       for CONFIG_IMAGE_NAME in config-check.app config-denied.app; do
         if [ ! -f "$KERNEL_DIR/isodir/boot/$CONFIG_IMAGE_NAME" ]; then
             echo "headless: build config and config-check first" >&2
@@ -795,6 +1133,14 @@ if [ -n "$INIT_PROFILE" ]; then
         TEMP_STORAGE_FIXTURE="$(mktemp \
           "${TMPDIR:-/tmp}/cubit-storage-sparse.XXXXXX")"
         truncate -s 8192 "$TEMP_STORAGE_FIXTURE"
+        # Genuine Linux-created short/long symlinks and a shared regular inode.
+        # debugfs ln does not update i_links_count; set it explicitly.
+        debugfs -w -R "symlink file-link config.dat" "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "symlink long-file-link deliberately-long-link-target-that-must-not-be-interpreted-as-block-pointers-or-followed" \
+          "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "write $TEMP_STORAGE_FIXTURE linked-file" "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "ln linked-file linked-alias" "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "set_inode_field linked-file links_count 2" "$TEMP_DISK" >/dev/null 2>&1
         for SCOPE_DIR in scope-allowed scope-allowed/nested scope-allowed-other scope-work; do
             debugfs -w -R "mkdir $SCOPE_DIR" "$TEMP_DISK" >/dev/null 2>&1
         done
@@ -814,6 +1160,12 @@ if [ -n "$INIT_PROFILE" ]; then
           "write $TEMP_STORAGE_FIXTURE config.dat" \
           "$TEMP_DISK" >/dev/null 2>&1; then
             echo "headless: failed to install storage fixture" >&2
+            exit 1
+        fi
+        # Seed a separate real Linux double-indirect mapping for in-place I/O.
+        if ! python3 "$ROOT_DIR/tests/filesystem-interop/seed-double.py" \
+          "$TEMP_DISK" "$TEMP_STORAGE_FIXTURE"; then
+            echo "headless: failed to prepare double-indirect overwrite fixture" >&2
             exit 1
         fi
         # Create a directory that resolves normally, then corrupt the first
@@ -864,6 +1216,32 @@ if [ "$TEST_NAME" = "storage-grants" ]; then
           "$ROOT_DIR/tests/headless/storage-initrd.ccl" \
           --output "$KERNEL_DIR/isodir/boot/initrd.img" >/dev/null; then
         echo "headless: failed to prepare volatile block-storage fixture" >&2
+        exit 1
+    fi
+fi
+if [ "$TEST_NAME" = "tls-service" ] || [ "$TEST_NAME" = "netsurf-https" ]; then
+    # Development initrd whose tls.hosts maps the fixture name to the host.
+    if ! python3 "$ROOT_DIR/userspace/ccl/tools/ccl-image/realize.py" \
+          "$ROOT_DIR/tests/tls/tls-initrd.ccl" \
+          --output "$KERNEL_DIR/isodir/boot/initrd.img" >/dev/null; then
+        echo "headless: failed to prepare tls-service settings fixture" >&2
+        exit 1
+    fi
+fi
+if [ "$CONFIG_STORAGE_TEST" = 1 ]; then
+    if ! python3 "$ROOT_DIR/userspace/ccl/tools/ccl-image/realize.py" \
+          "$ROOT_DIR/tests/config-turso/native/storage-initrd.ccl" \
+          --output "$KERNEL_DIR/isodir/boot/initrd.img" >/dev/null; then
+        echo "headless: failed to prepare Config storage settings fixture" >&2
+        exit 1
+    fi
+fi
+if [ "$TEST_NAME" = "timesync" ]; then
+    # Development initrd whose settings point time.servers at the fixture.
+    if ! python3 "$ROOT_DIR/userspace/ccl/tools/ccl-image/realize.py" \
+          "$ROOT_DIR/tests/timesync/timesync-initrd.ccl" \
+          --output "$KERNEL_DIR/isodir/boot/initrd.img" >/dev/null; then
+        echo "headless: failed to prepare timesync settings fixture" >&2
         exit 1
     fi
 fi
@@ -929,7 +1307,8 @@ QMP_ARGS=()
 if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] ||
    [ "$TEST_NAME" = "desktop-protocol" ] ||
    [ "$TEST_NAME" = "ccl-workspace" ] ||
-   [ "$TEST_NAME" = "desktop-doom" ]; then
+   [ "$TEST_NAME" = "desktop-doom" ] ||
+   { [ "$TEST_NAME" = "servo" ] && [ -n "${SERVO_DESKTOP:-}" ]; }; then
     if ! command -v nc >/dev/null 2>&1; then
         echo "headless: desktop input regression requires nc" >&2
         exit 127
@@ -966,6 +1345,31 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] ||
             exit 1
         fi
 
+        if [ "$TEST_NAME" = "servo" ] && [ -n "${SERVO_DESKTOP:-}" ]; then
+            # Launch Servo from the Apps menu (5th entry) once the desktop is
+            # up, then photograph the window after the first page renders.
+            for ((attempt = 0; attempt < 300; attempt++)); do
+                grep -F "desktop: active outputs=" "$SERIAL_LOG" >/dev/null 2>&1 && break
+                sleep 0.1
+            done
+            sleep 2
+            {
+                printf 'sendkey meta_l\n'
+                sleep 0.5
+                for key in down down down down ret; do
+                    printf 'sendkey %s\n' "$key"
+                    sleep 0.3
+                done
+            } | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            for ((attempt = 0; attempt < 1200; attempt++)); do
+                grep -aF "CUBITSHELL: PASS" "$SERIAL_LOG" >/dev/null 2>&1 && break
+                sleep 0.1
+            done
+            sleep 3
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-servo.ppm" |
+                nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            sleep 1
+        fi
         if [ "$TEST_NAME" = "desktop-protocol" ]; then
             protocol_ready=0
             for ((attempt = 0; attempt < 150; attempt++)); do
@@ -1408,11 +1812,37 @@ if [ "$TEST_NAME" = "network-authority" ]; then
     python3 "$ROOT_DIR/tests/network-authority/peer.py" "$SERIAL_LOG" &
     NETWORK_PEER_PID=$!
 fi
+if [ "$TEST_NAME" = "timesync" ]; then
+    python3 "$ROOT_DIR/tests/timesync/fixture.py" "$SERIAL_LOG" &
+    NETWORK_PEER_PID=$!
+fi
+if [ "$TEST_NAME" = "tls-probe" ] || [ "$TEST_NAME" = "tls-service" ]; then
+    python3 "$ROOT_DIR/tests/tls/server.py" "$SERIAL_LOG" "$TEST_NAME" &
+    NETWORK_PEER_PID=$!
+fi
+if [ "$TEST_NAME" = "netsurf-https" ]; then
+    python3 "$ROOT_DIR/tests/tls/https_server.py" "$SERIAL_LOG" "$TIMEOUT_SECONDS" &
+    NETWORK_PEER_PID=$!
+fi
+if [ "$TEST_NAME" = "servo" ]; then
+    python3 "$ROOT_DIR/tests/servo/http_server.py" "$TIMEOUT_SECONDS" &
+    NETWORK_PEER_PID=$!
+    python3 "$ROOT_DIR/tests/tls/https_server.py" "$SERIAL_LOG" "$TIMEOUT_SECONDS" &
+    SERVO_HTTPS_PID=$!
+fi
 
 if [ "$TEST_NAME" = "bench-scheduler" ]; then
     python3 "$ROOT_DIR/tests/performance/clock_reference.py" "$SERIAL_LOG" \
         --timeout "$((TIMEOUT_SECONDS + 5))" > "${SERIAL_LOG}.host-clock.json" &
     CLOCK_OBSERVER_PID=$!
+fi
+
+if [ "$CHECK_EXT2" -eq 1 ]; then
+    if ! python3 "$ROOT_DIR/tests/filesystem-interop/check-native.py" before \
+      "$TEMP_DISK" "${SERIAL_LOG}.ext2.json"; then
+        echo "headless: Ext2 interoperability precheck failed" >&2
+        exit 1
+    fi
 fi
 
 (
@@ -1421,9 +1851,9 @@ fi
     "$TIMEOUT_BIN" "$TIMEOUT_SECONDS" "${PIN_ARGS[@]}" "$QEMU_BIN" \
         "${ACCEL_ARGS[@]}" \
         -machine q35 \
-        -cpu Broadwell \
+        -cpu "$QEMU_CPU_MODEL" \
         -smp "$QEMU_CPUS" \
-        -m 128M \
+        -m "${QEMU_MEMORY:-128M}" \
         -cdrom cubit_kernel.iso \
         -serial "file:$SERIAL_LOG" \
         -display "$QEMU_DISPLAY" \
@@ -1491,11 +1921,49 @@ procmgr: pkg id=com.cubit.rust-probe-denied
 rust-probe: Hello from Rust! (IPC)
 TEST: PASS rust-allocator peer 1
 TEST: PASS rust-allocator peer 2
+RUST-THREADS: PASS
 TEST: PASS rust-clock-authorized
 TEST: PASS rust-clock-denied
 TEST: PASS rust-heap-rollback
 TEST: PASS rust-native
 "
+        ;;
+    config-storage|config-objects|config-objects-reopen|config-objects-benchmark)
+        required_markers="
+clock: registered
+procmgr: pkg id=com.cubit.config-storage
+Config: storage worker attached
+CONFIG-STORAGE: ready
+"
+        if [ "$TEST_NAME" = "config-objects" ]; then
+            required_markers="$required_markers
+TEST: PASS config-objects-scope-denied
+TEST: PASS config-objects-compiled-vm
+TEST: PASS config-objects-resource-vm
+TEST: PASS config-objects-receiver-vm
+TEST: PASS config-objects-discovered-type
+TEST: PASS config-objects-source-host
+TEST: PASS config-objects-async-vm
+TEST: PASS config-objects-equivalent-schema
+TEST: PASS config-objects-nested
+TEST: PASS config-objects-read-outcome
+TEST: PASS config-objects-native
+"
+        elif [ "$TEST_NAME" = config-objects-reopen ]; then
+            required_markers="$required_markers
+TEST: PASS config-objects-reopen
+TEST: PASS config-objects-compiled-vm-reopen
+TEST: PASS config-objects-discovered-type-reopen
+TEST: PASS config-objects-source-host-reopen
+TEST: PASS config-objects-async-vm-reopen
+TEST: PASS config-objects-nested-reopen
+TEST: PASS config-objects-read-outcome-reopen
+"
+        elif [ "$TEST_NAME" = config-objects-benchmark ]; then
+            required_markers="$required_markers
+TEST: PASS config-objects-benchmark
+"
+        fi
         ;;
     turso-native-std|turso-native)
         required_markers="
@@ -1508,13 +1976,28 @@ TURSO-NATIVE: std probe PASS
 TURSO-NATIVE: volatile SQL transaction PASS
 TURSO-NATIVE: typed Config CBOR/revision/reopen PASS (volatile)
 TURSO-NATIVE: shared File workload PASS (volatile)
+TURSO-NATIVE: shared File workload PASS (filesystem)
+TURSO-NATIVE: threaded grant-backed File callbacks PASS
+TURSO-NATIVE: database and WAL exclusion PASS
+TURSO-NATIVE: typed Config CBOR/revision/reopen PASS (filesystem)
+TURSO-NATIVE: Ada typed worker publication PASS (filesystem)
+STORAGE: filesystem grant retired
 "
+            if [ "$TURSO_REVISION" = 2 ]; then
+                required_markers="$required_markers
+TURSO-NATIVE: fresh boot restored revision 1 PASS
+TURSO-NATIVE: fresh boot committed revision 2 PASS
+"
+            fi
         fi
         ;;
     config-inspection)
         required_markers="
+procmgr: config scope installation failed
+procmgr: init spawn failed: config-rejected.app
 TEST: PASS config-inspection
 TEST: PASS config-denied
+TEST: PASS config-backend-nomination-denied
 "
         ;;
     config-tree)
@@ -1551,12 +2034,183 @@ capability-test: retired PID submit rejected PASS
 capability-test: authorityless capability submit rejected PASS
 capability-test: all tests passed
 "
-        if ! rg -q 'TEST: PASS network-authority' "$SERIAL_LOG"; then
+        if ! grep -qF 'TEST: PASS network-authority' "$SERIAL_LOG"; then
             echo "headless: guest network authority checks did not finish" >&2
             exit 1
         fi
         if ! wait "$NETWORK_PEER_PID"; then
             echo "headless: network peer failed" >&2
+            exit 1
+        fi
+        NETWORK_PEER_PID=""
+        ;;
+    bench-spread)
+        required_markers="
+BENCH: spread elapsed_ms
+"
+        if [ "$(grep -caF 'BENCH: spread elapsed_ms' "$SERIAL_LOG")" -ne 4 ]; then
+            echo "headless: not all four bench-spread instances finished" >&2
+            exit 1
+        fi
+        ;;
+    libc)
+        required_markers="
+libc-check: hello from musl on CuBit
+libc-check: malloc large and small PASS
+libc-check: pthread mutex across 8 threads PASS
+libc-check: __thread variables per thread and join values PASS
+libc-check: main thread's __thread initial value PASS
+libc-check: usleep and clock_gettime PASS
+libc-check: printf floats PASS
+libc-check: main thread stack bounds PASS
+libc-check: open and read (DER begins with a SEQUENCE) PASS
+libc-check: lseek, pread and end of file PASS
+libc-check: mmap a file PASS
+libc-check: opendir and readdir PASS
+libc-check: a file outside the scope is denied PASS
+LIBC: PASS
+cxx-check: hello from C++ on CuBit
+cxx-check: exceptions unwind and run destructors PASS
+cxx-check: std::thread, mutex, condition_variable PASS
+cxx-check: thread_local std::string PASS
+cxx-check: streams and map PASS
+CXX: PASS
+"
+        ;;
+    servo)
+        if [ -n "${SERVO_DESKTOP:-}" ]; then
+            required_markers="
+CUBITSHELL: desktop window
+CUBITSHELL: loading page 0
+CUBITSHELL: PASS
+"
+        else
+        required_markers="
+CUBITSHELL: loading page 0
+CUBITSHELL: loading page 1
+CUBITSHELL: loading page 2
+CUBITSHELL: PASS
+"
+        fi
+        ;;
+    rust-std)
+        required_markers="
+rust-std: hello from std on CuBit
+rust-std: mutex and join across threads PASS
+rust-std: condvar handoff PASS
+rust-std: thread-locals are per thread PASS
+rust-std: channels PASS
+rust-std: hashmap with random keys PASS
+rust-std: sleep and Instant PASS
+rust-std: thread with a custom stack PASS
+RUST-STD: PASS
+"
+        ;;
+    futex)
+        required_markers="
+futex-check: wait woken by another thread PASS
+futex-check: mutex counter exact under contention PASS
+futex-check: mutual exclusion held PASS
+futex-check: each thread keeps its own fs base PASS
+futex-check: 320 short-lived threads ran and were joined PASS
+futex-check: thread quota is 128 including the main thread PASS
+futex-check: exited threads reaped and quota returned PASS
+TEST: PASS futex
+futex-check: exiting with live threads
+"
+        # The process exits with threads blocked and spinning; the reaper
+        # must then retire it (all its threads) without a kernel fault.
+        if grep -F 'futex-check: ' "$SERIAL_LOG" | grep -qF ' FAIL' ||
+           ! awk '/futex-check: exiting with live threads/ { seen = 1 }
+                  seen && /reclaimProcess: stopped PID/ { found = 1 }
+                  END { exit !found }' "$SERIAL_LOG"; then
+            echo "headless: futex checks failed, or the process was not reaped" >&2
+            exit 1
+        fi
+        ;;
+    threads)
+        required_markers="
+thread-check: fs base survives context switches PASS
+thread-check: user gs base cleared across context switches PASS
+TEST: PASS thread-cpu-state
+"
+        # Both instances must pass: one passing alone proves no isolation.
+        THREADS_PASSED=$(grep -cF 'TEST: PASS thread-cpu-state' "$SERIAL_LOG")
+        if [ "$THREADS_PASSED" -ne 2 ] ||
+           grep -F 'thread-check: ' "$SERIAL_LOG" | grep -qF ' FAIL'; then
+            echo "headless: thread checks failed or did not finish in both instances" >&2
+            exit 1
+        fi
+        ;;
+    timesync)
+        required_markers="
+timesync-check: ordinary clock endpoint cannot adjust time PASS
+timesync-check: undeclared clock-control slot is unusable PASS
+clock: wall time set from sample
+timesync-check: clock reports network-synchronized time PASS
+TEST: PASS timesync
+"
+        if ! grep -qF 'TEST: PASS timesync' "$SERIAL_LOG"; then
+            echo "headless: guest timesync checks did not finish" >&2
+            exit 1
+        fi
+        if ! wait "$NETWORK_PEER_PID"; then
+            echo "headless: timesync fixture failed" >&2
+            exit 1
+        fi
+        NETWORK_PEER_PID=""
+        ;;
+    tls-probe)
+        # The guest prints TEST: PASS only when every check passed, and the
+        # fixture verifies each case independently. Individual check lines
+        # are not required: concurrent serial output can interleave them.
+        required_markers="
+TEST: PASS tls-probe
+"
+        if ! grep -qF 'TEST: PASS tls-probe' "$SERIAL_LOG"; then
+            echo "headless: guest TLS probe did not finish" >&2
+            exit 1
+        fi
+        if ! wait "$NETWORK_PEER_PID"; then
+            echo "headless: TLS fixture failed" >&2
+            exit 1
+        fi
+        NETWORK_PEER_PID=""
+        ;;
+    wget-https)
+        required_markers="
+tls: ready
+tls: channel 1 established with example.com
+wget: status HTTP/1.1 200 OK
+wget: done
+"
+        ;;
+    netsurf-https)
+        # The fixture is the verdict: it passes only when NetSurf's GET
+        # arrived over a verified TLS session and the page was served. The
+        # shell marker shows the engine is running inside the native chrome.
+        required_markers="
+tls: ready
+netsurf: native shell ready
+"
+        if ! wait "$NETWORK_PEER_PID"; then
+            echo "headless: HTTPS fixture did not see NetSurf's request" >&2
+            exit 1
+        fi
+        NETWORK_PEER_PID=""
+        ;;
+    tls-service)
+        required_markers="
+tls: ready
+TEST: PASS tls-unapproved
+TEST: PASS tls-service
+"
+        if ! grep -qF 'TEST: PASS tls-service' "$SERIAL_LOG"; then
+            echo "headless: guest TLS service checks did not finish" >&2
+            exit 1
+        fi
+        if ! wait "$NETWORK_PEER_PID"; then
+            echo "headless: TLS fixture failed" >&2
             exit 1
         fi
         NETWORK_PEER_PID=""
@@ -1703,6 +2357,10 @@ ramdisk: volatile block device ready
 STORAGE-FLUSH-CHECK: PASS
 POSITIONED-IO-CHECK: PASS
 FILE-COHERENCE-CHECK: PASS
+FILE-RESIZE-CHECK: PASS
+FILE-DOUBLE-RESIZE-CHECK: PASS
+FILE-EXCLUSIVE-CHECK: PASS
+FILE-DOUBLE-OVERWRITE-CHECK: PASS
 MALFORMED-DIRECTORY-CHECK: PASS
 RENAME-CHECK: PASS
 DIRECTORY-NAVIGATION-CHECK: PASS
@@ -2133,7 +2791,7 @@ if [ "$TEST_NAME" = "devices" ]; then
     fi
 fi
 
-FAULT_SIGNATURE='panic|assert|double fault|triple fault|general protection|machine check exception|^EXCEPTION:|deadlock|TEST: FAIL|BENCH: FAIL|CLOCK: FAIL|SCHED-ALARM: fallback'
+FAULT_SIGNATURE='panic|assert|double fault|triple fault|general protection|machine check exception|^EXCEPTION:|deadlock|TEST: FAIL|BENCH: FAIL|CLOCK: FAIL|SCHED-ALARM: fallback|failed launch .*cleanup rejected'
 if grep -Ei "$FAULT_SIGNATURE" "$SERIAL_LOG" >/dev/null 2>&1; then
     echo "headless: fault signature found in serial log: $SERIAL_LOG" >&2
     grep -Ein "$FAULT_SIGNATURE" "$SERIAL_LOG" >&2
@@ -2159,7 +2817,36 @@ fi
 if [ "$TEST_NAME" = "capability-security" ]; then
     python3 "$ROOT_DIR/tests/process-construction/check-log.py" "$SERIAL_LOG"
 fi
+if [ "$CHECK_EXT2" -eq 1 ]; then
+    if ! python3 "$ROOT_DIR/tests/filesystem-interop/check-native.py" after \
+      "$TEMP_DISK" "${SERIAL_LOG}.ext2.json"; then
+        echo "headless: Ext2 interoperability postcheck failed" >&2
+        exit 1
+    fi
+fi
 HEADLESS_TEST_FAILED=0
+if [ "$CONFIG_STORAGE_TEST" = 1 ]; then
+    CONFIG_ORACLE_ARGS=()
+    if [ "$TEST_NAME" != "config-storage" ]; then CONFIG_ORACLE_ARGS+=(--objects); fi
+    if [ "$TEST_NAME" = config-objects-benchmark ]; then
+        CONFIG_ORACLE_ARGS+=(--benchmark)
+        python3 "$ROOT_DIR/tests/config-object-client/native-app/report-benchmark.py" "$SERIAL_LOG" || exit 1
+    fi
+    if [ -n "$CONFIG_EXPORT" ]; then CONFIG_ORACLE_ARGS+=(--export-dir "$CONFIG_EXPORT"); fi
+    if ! python3 "$ROOT_DIR/tests/config-turso/native/check-storage-disk.py" "$TEMP_DISK" "${CONFIG_ORACLE_ARGS[@]}"; then
+        HEADLESS_TEST_FAILED=1
+        echo "headless: Config storage database postcheck failed" >&2
+        exit 1
+    fi
+fi
+if [ "$TEST_NAME" = "turso-native" ]; then
+    if ! python3 "$ROOT_DIR/tests/config-turso/native/check-disk.py" "$TEMP_DISK" \
+      --revision "$TURSO_REVISION" --export-dir "$TURSO_EXPORT"; then
+        HEADLESS_TEST_FAILED=1
+        echo "headless: native Turso disk postcheck failed" >&2
+        exit 1
+    fi
+fi
 echo "headless: PASS $TEST_NAME"
 echo "headless: serial log: $SERIAL_LOG"
 if [ -n "$TEMP_AUDIO" ]; then echo "headless: audio capture: $TEMP_AUDIO"; fi

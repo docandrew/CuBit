@@ -65,6 +65,47 @@ is
          else
              not reusable and then value = value'Old);
 
+    --  Generations are namespaced by the owning process's life
+    --  (docs/threads.md): the high 16 bits are the process generation, the
+    --  low 16 bits count grants within that life, starting at 1. Every reuse
+    --  of a process ID starts in a fresh range, so a reference made for an
+    --  earlier process never matches, without keeping per-ID state after the
+    --  process record is freed.
+    Process_Generation_Limit : constant := 2 ** 16 - 1;
+    subtype Process_Generation is Unsigned_32 range 0 .. Process_Generation_Limit;
+
+    function Life_Base (Life : Process_Generation) return Live_Grant_Generation is
+      (Grant_Generation (Life) * 2 ** 16 + 1);
+
+    function Life_Ceiling (Life : Process_Generation) return Live_Grant_Generation is
+      (Grant_Generation (Life) * 2 ** 16 + (2 ** 16 - 1));
+
+    --  The last generation of the life a generation belongs to (its high half).
+    function Ceiling_Of (G : Live_Grant_Generation) return Live_Grant_Generation is
+      ((G / 2 ** 16) * 2 ** 16 + (2 ** 16 - 1))
+      with Post => Ceiling_Of'Result >= G and then
+                   Ceiling_Of'Result / 2 ** 16 = G / 2 ** 16;
+
+    --  Advance within one life. At the ceiling the slot is retired for this
+    --  life (not reusable) instead of stepping into the next life's range.
+    procedure Advance_Generation_Within
+      (value    : in out Live_Grant_Generation;
+       ceiling  : Live_Grant_Generation;
+       reusable :    out Boolean)
+      with Pre  => value <= ceiling,
+           Post =>
+             value <= ceiling and then
+             (if value'Old < ceiling then
+                  reusable and then value = value'Old + 1
+              else
+                  not reusable and then value = value'Old);
+
+    --  Different lives never share a generation.
+    procedure Prove_Lives_Disjoint (Earlier, Later : Process_Generation)
+      with Ghost,
+           Pre  => Earlier < Later,
+           Post => Life_Ceiling (Earlier) < Life_Base (Later);
+
     --  References use two explicit wire fields. Keeping slot and generation
     --  separate avoids a hidden packing ABI and makes validation mandatory at
     --  the Unsigned_64 boundary.

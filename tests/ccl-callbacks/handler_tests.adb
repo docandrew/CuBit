@@ -19,12 +19,12 @@ procedure Handler_Tests is
    end record;
    procedure Invoke
      (Context : in out Host_State; Binding : Unsigned_32;
-      Argument : CCL.Host_Values.Value; Value : out CCL.Host_Values.Value; Success : out Boolean) is
+      Argument : CCL.Host_Values.Value; Reply : out CCL.Host_Values.Call_Result) is
    begin
       Context.Calls := Context.Calls + 1;
-      Success := Binding = 78 and not Context.Fail;
-      if Success then CCL.UI_Labels.Apply_Value (Context.Label, CCL.UI_Labels.Set_Text, Argument, Success); end if;
-      Value := CCL.Host_Values.Boolean_Constant (Success);
+      Reply.Success := Binding = 78 and not Context.Fail;
+      if Reply.Success then CCL.UI_Labels.Apply_Value (Context.Label, CCL.UI_Labels.Set_Text, Argument, Reply.Success); end if;
+      Reply.Value := CCL.Host_Values.Boolean_Constant (Reply.Success);
    end Invoke;
    procedure Run is new Execute (Host_State, Invoke);
    procedure Dispatch is new C.Dispatch_One (Host_State, Invoke);

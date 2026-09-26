@@ -36,7 +36,7 @@ package body Network_Grants with SPARK_Mode is
      (State : Table; Owner, Tag : Unsigned_64) return Boolean is
      (Owned (State, Owner, Tag) and then
       (for some E of State.Entries => E.Owner = Owner and E.Tag = Tag and
-         E.Item.Action = Connect_TCP and E.Item.Resolve_Names));
+         E.Item.Action in Connect_TCP | Connect_UDP and E.Item.Resolve_Names));
 
    function Allows
      (State : Table; Owner, Tag : Unsigned_64; Action : Operation;

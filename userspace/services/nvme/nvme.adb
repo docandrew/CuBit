@@ -14,6 +14,9 @@ with System.Storage_Elements; use System.Storage_Elements;
 with System.Machine_Code;
 
 with CuBit.Messages; use CuBit.Messages;
+#if nvme_io_profile = "on" then
+with CuBit.Benchmark_Clock;
+#end if;
 
 package body NVMe is
 
@@ -43,6 +46,39 @@ package body NVMe is
    ioPhase   : Unsigned_16 := 1;
    ioCmdId   : Unsigned_16 := 0;
    ioFailed  : Boolean := False;
+
+#if nvme_io_profile = "on" then
+   --  Test-only attribution, compiled out completely in ordinary builds.
+   --  This includes descheduling inside the wait, not just device latency.
+   type IO_Kind is (Read_Command, Write_Command, Flush_Command);
+   type Wait_Metrics is record
+      Commands, Ticks, Slow, Sleeps : Unsigned_64 := 0;
+   end record;
+   Metrics : array (IO_Kind) of Wait_Metrics;
+   Flushes : Natural range 0 .. 64 := 0;
+   Profile_Interval : Unsigned_64 := 0;
+
+   procedure Report_Waits is
+   begin
+      --  Rare diagnostic output still perturbs timing. Do not present these
+      --  runs as production benchmark results; rerun with the profile off.
+      Profile_Interval := Profile_Interval + 1;
+      for Kind in IO_Kind loop
+         debugPrint
+           ("NVME-WAIT: interval=" & Profile_Interval'Image &
+            " kind=" & (case Kind is
+              when Read_Command => "read",
+              when Write_Command => "write",
+              when Flush_Command => "flush") &
+            " commands=" & Metrics (Kind).Commands'Image &
+            " ticks=" & Metrics (Kind).Ticks'Image &
+            " slow=" & Metrics (Kind).Slow'Image &
+            " sleeps=" & Metrics (Kind).Sleeps'Image & ASCII.LF);
+      end loop;
+      Metrics := [others => (others => 0)];
+      Flushes := 0;
+   end Report_Waits;
+#end if;
 
    ---------------------------------------------------------------------------
    --  Volatile MMIO read/write via overlay
@@ -359,7 +395,9 @@ package body NVMe is
       cmd.cdw0  := makeCdw0 (ADMIN_CREATE_IO_CQ, adminCmdId);
       cmd.prp1  := dmaBase + IO_CQ_OFFSET;
       cmd.cdw10 := Shift_Left (Unsigned_32 (QUEUE_DEPTH - 1), 16) or 1;  -- size | QID=1
-      cmd.cdw11 := 1;  -- Physically contiguous, interrupts enabled
+      --  PC=1, IEN=0: physically contiguous, interrupts DISABLED. Completion
+      --  remains polled until the driver has a checked interrupt/wait path.
+      cmd.cdw11 := 1;
 
       ok := submitAdmin (cmd);
       if not ok then
@@ -402,6 +440,16 @@ package body NVMe is
       cqe   : CompletionEntry;
       found : Boolean := False;
       ignore : Unsigned_64;
+#if nvme_io_profile = "on" then
+      Start_Ticks : constant Unsigned_64 := CuBit.Benchmark_Clock.Read_Counter;
+      Sleep_Count : Unsigned_64 := 0;
+      Slow : Boolean := False;
+      Opcode : constant Unsigned_8 := Unsigned_8
+        (ioSq ((ioSqTail + QUEUE_DEPTH - 1) mod QUEUE_DEPTH).cdw0 and 16#FF#);
+      Kind : constant IO_Kind :=
+        (if Opcode = IO_READ then Read_Command
+         elsif Opcode = IO_WRITE then Write_Command else Flush_Command);
+#end if;
    begin
       --  Spin-poll: NVMe typically completes in microseconds
       for spin in 1 .. IO_SPIN_POLLS loop
@@ -413,14 +461,34 @@ package body NVMe is
 
       --  Fallback: sleep-poll for slow completions
       if not found then
+#if nvme_io_profile = "on" then
+         Slow := True;
+#end if;
          for attempt in 1 .. IO_SLEEP_POLLS loop
             if (ioCq (ioCqHead).status and 1) = ioPhase then
                found := True;
                exit;
             end if;
             ignore := syscall (SYSCALL_SLEEP, 1);
+#if nvme_io_profile = "on" then
+            Sleep_Count := Sleep_Count + 1;
+#end if;
          end loop;
       end if;
+
+#if nvme_io_profile = "on" then
+      Metrics (Kind).Ticks := Metrics (Kind).Ticks +
+        (CuBit.Benchmark_Clock.Read_Counter - Start_Ticks);
+      Metrics (Kind).Commands := Metrics (Kind).Commands + 1;
+      Metrics (Kind).Slow := Metrics (Kind).Slow + Boolean'Pos (Slow);
+      Metrics (Kind).Sleeps := Metrics (Kind).Sleeps + Sleep_Count;
+      if Kind = Flush_Command then
+         Flushes := Flushes + 1;
+         if Flushes = 64 then
+            Report_Waits;
+         end if;
+      end if;
+#end if;
 
       if not found then
          --  The command may still own the DMA buffer. Keep it allocated and

@@ -40,7 +40,7 @@ package body PerCPUData is
         function PATtoU64 is new Ada.Unchecked_Conversion (x86.PATRegister, Unsigned_64);
         newPAT : x86.PATRegister;
     begin
-        cpuData.currentPID := Process.NO_PROCESS;
+        cpuData.currentThread := Process.NO_THREAD;
         cpuData.exclusion := Interrupt_State.Initial_State;
         cpuData.nmiCount := 0;
         cpuData.nmiInProgress := False;
@@ -149,9 +149,11 @@ package body PerCPUData is
 
         -- Install the KERNEL_GS_BASE and GS_BASE MSRs. These will get swapgs'd
         -- when the first process to run on this CPU is started. See
-        -- interruptReturn in interrupt_handlers.asm
+        -- interruptReturn in interrupt_handlers.asm. KERNEL_GS_BASE is the user
+        -- GS base, which is unsupported: zero, and re-zeroed on every user
+        -- dispatch (Process.restoreUserCPUState).
         x86.wrmsr (x86.MSRs.GS_BASE, Util.addrToNum(cpuDataAddr));
-        x86.wrmsr (x86.MSRs.KERNEL_GS_BASE, 16#1337d00d#);
+        x86.wrmsr (x86.MSRs.KERNEL_GS_BASE, 0);
 
         -- Install the TSS
         x86.ltr (GDTOffset'Enum_Rep(GDT_OFFSET_TSS));
@@ -228,9 +230,21 @@ package body PerCPUData is
             cpuData : PerCPUData with
                 Import, Volatile, Address => perCPUAddr;
         begin
-            return cpuData.currentPID;
+            return Process.processOf (cpuData.currentThread);
         end getCPUContext;
     end getCurrentPID;
+
+    function getCurrentThread return Process.ThreadID
+    is
+        perCPUAddr : constant System.Address := getPerCPUDataAddr;
+    begin
+        getCPUContext: declare
+            cpuData : PerCPUData with
+                Import, Volatile, Address => perCPUAddr;
+        begin
+            return cpuData.currentThread;
+        end getCPUContext;
+    end getCurrentThread;
 
     ---------------------------------------------------------------------------
     -- intsEnabled

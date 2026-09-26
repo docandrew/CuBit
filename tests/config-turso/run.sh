@@ -5,6 +5,10 @@ cd "$(dirname "$0")"
 cargo test --locked --release -j 4
 cargo fmt --check
 python3 test-benchmark-report.py
+python3 native/test-benchmark-report.py
+python3 native/test-check-storage-disk.py
+python3 native/test-sql-profile.py
+python3 native/test-nvme-waits.py
 (cd ../../kernel && alr exec -- gprbuild -p -j4 -P../tests/config-turso/cbor_crosscheck.gpr)
 target/ada-cbor/crosscheck fixtures/scalar-profile.hex
 mkdir -p results

@@ -3,8 +3,10 @@ with Interfaces; use Interfaces;
 
 --  Typed network scopes. Wire encoding is protocol data, never authority.
 package CuBit.Network_Authority with SPARK_Mode is
-   type Operation is (Connect_TCP, Listen_TCP);
-   for Operation use (Connect_TCP => 1, Listen_TCP => 2);
+   --  Connect_UDP names one remote prefix and port range for a connected
+   --  datagram channel. It never permits binding a chosen local port.
+   type Operation is (Connect_TCP, Listen_TCP, Connect_UDP);
+   for Operation use (Connect_TCP => 1, Listen_TCP => 2, Connect_UDP => 3);
    subtype Prefix_Length is Natural range 0 .. 32;
    type Scope is record
       Action : Operation := Connect_TCP;

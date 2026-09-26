@@ -19,19 +19,18 @@ procedure Function_Tests is
    end record;
    procedure Invoke
      (Context : in out Host_State; Binding : Unsigned_32;
-      Argument : CCL.Host_Values.Value; Value : out CCL.Host_Values.Value;
-      Success : out Boolean) is
+      Argument : CCL.Host_Values.Value; Reply : out CCL.Host_Values.Call_Result) is
    begin
       Context.Calls := Context.Calls + 1;
-      Success := True;
+      Reply.Success := True;
       if Binding = 77 then
-         Value := CCL.Host_Values.Integer_Constant (3661000);
+         Reply.Value := CCL.Host_Values.Integer_Constant (3661000);
       elsif Binding = 78 then
-         CCL.UI_Labels.Apply_Value (Context.Label, CCL.UI_Labels.Set_Text, Argument, Success);
-         Value := CCL.Host_Values.Boolean_Constant (Success);
+         CCL.UI_Labels.Apply_Value (Context.Label, CCL.UI_Labels.Set_Text, Argument, Reply.Success);
+         Reply.Value := CCL.Host_Values.Boolean_Constant (Reply.Success);
       else
-         Value := CCL.Host_Values.Boolean_Constant (False);
-         Success := False;
+         Reply.Value := CCL.Host_Values.Boolean_Constant (False);
+         Reply.Success := False;
       end if;
    end Invoke;
    procedure Run_Host is new Interpret_With_Values (Host_State, Invoke);

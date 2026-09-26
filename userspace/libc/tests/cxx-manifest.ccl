@@ -1,0 +1,4 @@
+# CuBit C++ runtime checks (userspace/libc). No authority.
+(executable-manifest v1
+  (identity "com.cubit.cxx-check")
+  (version "0.1.0"))

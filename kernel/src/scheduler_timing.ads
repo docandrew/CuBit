@@ -3,6 +3,11 @@
 package Scheduler_Timing with Pure, SPARK_Mode is
    Ticks_Per_Millisecond : constant := 4;
    Tick_Microseconds : constant := 1_000 / Ticks_Per_Millisecond;
+   -- Work stealing takes only entries that have waited at least this long
+   -- in a ready list. A freshly woken IPC partner normally runs within
+   -- microseconds on its own CPU; moving it would break the same-CPU direct
+   -- IPC handoff. CPU-bound work that is really waiting still moves.
+   Steal_Age_Microseconds : constant := 500;
    Quantum_Microseconds : constant := 1_500;
    Wakeup_Microseconds : constant := 100;
    OneShot_Ticks_Per_Millisecond : constant := 1_000 / Wakeup_Microseconds;

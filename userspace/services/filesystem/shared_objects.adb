@@ -1,16 +1,22 @@
 package body Shared_Objects with SPARK_Mode is
    procedure Attach
      (S : in out State; Owner : Owner_Index; Identity : Object_Key;
-      Initial : Object_Value; Result : out Attach_Result)
+      Initial : Object_Value; Result : out Attach_Result;
+      Mode : Sharing_Mode := Allow_Sharing)
    is
    begin
       if Attached (S, Owner) then
          Result := Owner_Busy;
          return;
       end if;
+      if not Can_Attach (S, Identity, Mode) then
+         Result := Sharing_Conflict;
+         return;
+      end if;
       for Other in Owner_Index loop
          if Attached (S, Other) and then Key (S, Other) = Identity then
             S.Owners (Owner) := S.Owners (Other);
+            S.Sharing (Owner) := Mode;
             Result := Shared;
             return;
          end if;
@@ -20,6 +26,7 @@ package body Shared_Objects with SPARK_Mode is
             S.Identities (Slot) := Identity;
             S.Metadata (Slot) := Initial;
             S.Owners (Owner) := Slot;
+            S.Sharing (Owner) := Mode;
             Result := Created;
             return;
          end if;

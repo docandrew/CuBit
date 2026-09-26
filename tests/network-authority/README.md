@@ -40,13 +40,14 @@ profile. It launches the same application without and with explicit boot
 approval, exercises denied and accepted bind/close operations, forged policy
 tags, configuration denial, outbound subnet/port/DNS restrictions and stale
 shared-memory generations. An approved connection to 10.0.2.2:18443 exchanges
-PING/PONG with a **loopback-only** host TCP peer. Twelve connection lifetimes
-split between six synchronous and six asynchronous open/write/read/close
+PING/PONG with a **loopback-only** host TCP peer. Forty connection lifetimes
+(more than netstack's 32 channel handles and 16 TCP connections) split
+between 20 synchronous and 20 asynchronous open/write/read/close
 sequences. Async checks preserve full-width completion tokens, deliver the
 fourth payload word (grant generation), reject stale grants and verify one
 completion per request. The pending-accept test explicitly checks that no
 completion exists before listener close, so an early rejection cannot pass
-as successful deferred cancellation. The twelve lifetimes
+as successful deferred cancellation. The forty lifetimes
 exercise channel/connection reuse and grant-acquisition release. Stale handles
 cannot write or close their replacements, and a full-width invalid handle is
 rejected without narrowing to an array index. No internet service is used.
@@ -64,3 +65,29 @@ Both local ports 18443 and 18444 must be free. This is a local functional and
 authority regression, not evidence of internet readiness, complete TCP
 conformance, or owner-death reclamation. The test includes real timeouts, so use
 90 seconds rather than the old shorter outbound-only budget.
+
+## Connected UDP (2026-09-23)
+
+The hosted test also covers `Connect_UDP` scope validation, encoding, direction
+separation and launch policy, plus the `UDP_Channels` core: exact-endpoint
+filtering, FIFO order, truncation, queue bounds, close semantics, and local-port
+uniqueness across 40,000 open/close cycles that wrap the ephemeral range.
+`prove-network-authority` proves `udp_channels.adb` together with the scope and
+grant ADTs.
+
+The headless run adds a loopback-only UDP peer on host port 18446 in
+`peer.py`. network-check (scope `10.0.2.2/32`, port 18446) checks:
+
+- wrong-port, wrong-address, undeclared-DNS and cross-protocol opens are
+  denied;
+- a wrong-grant write, an oversized write and a stale handle are rejected;
+- a datagram round trip works, and a datagram the peer sends first from host
+  port 18447 is discarded (the serial log shows it reaching netstack on the
+  channel's port);
+- truncation is reported, and a truncated datagram is consumed whole;
+- the read deadline expires, a second concurrent read is refused, and closing
+  a channel ends its pending read with EOF.
+
+It runs two channel lifetimes. Only QEMU user networking and a local peer are
+used; these results say nothing about real internet UDP.
+

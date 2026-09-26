@@ -345,15 +345,12 @@ package body CuBit.UI.App is
       Set_Theme (Theme_Data.To_Theme (Candidate));
    end Refresh_Theme;
 
-   procedure Receive_Input
+   procedure Apply_Input_Result
       (win : in out Window;
-       operation : DP.Input_Operation;
+       decoded : DP.Input_Result;
        event : out Input_Event;
-       found : out Boolean;
-       deadline : Unsigned_64 := 0)
+       found : out Boolean)
    is
-      reply : Message;
-      decoded : DP.Input_Result;
    begin
       event := (others => <>);
       found := False;
@@ -361,12 +358,6 @@ package body CuBit.UI.App is
          return;
       end if;
 
-      reply := CuBit.Desktop_Messages.From_Wire
-        ((if operation = DP.Poll_Input then
-            DP.Encode_Input_Request ((DP.Poll_Input, DP.Live_Surface_Name (win.surfaceId), win.lastEvent))
-          else DP.Encode_Input_Request ((DP.Wait_Input, DP.Live_Surface_Name (win.surfaceId), win.lastEvent, deadline))));
-      reply.tag := capCall (CAP_SLOT_DESKTOP, reply);
-      decoded := DP.Decode_Input_Result (CuBit.Desktop_Messages.To_Wire (reply), operation);
       win.inputMayRemain := False;
       if decoded.Status /= DP.Success then
          debugPrint ("ui-app: input request or reply rejected" & LF);
@@ -400,6 +391,67 @@ package body CuBit.UI.App is
          Refresh_Theme;
       end if;
       found := True;
+   end Apply_Input_Result;
+
+   function Input_Wait_Pending (win : Window) return Boolean is
+      use type CuBit.Async_Requests.Phase;
+   begin
+      return CuBit.Async_Requests.State (win.inputRequest) /= CuBit.Async_Requests.Idle;
+   end Input_Wait_Pending;
+
+   procedure Submit_Input_Wait
+     (win : in out Window; token : Unsigned_64; accepted : out Boolean;
+      deadline : Unsigned_64 := 0)
+   is
+      request : Message;
+   begin
+      accepted := False;
+      if win.surfaceId = 0 or else win.sentBye or else
+        not CuBit.Async_Requests.Can_Reserve (win.inputRequest, token)
+      then return; end if;
+      request := CuBit.Desktop_Messages.From_Wire
+        (DP.Encode_Input_Request ((DP.Wait_Input, DP.Live_Surface_Name (win.surfaceId), win.lastEvent, deadline)));
+      CuBit.Async_Requests.Reserve (win.inputRequest, token, accepted);
+      if not accepted then return; end if;
+      accepted := capSubmit (CAP_SLOT_DESKTOP, request, token);
+      CuBit.Async_Requests.Submitted (win.inputRequest, accepted);
+   end Submit_Input_Wait;
+
+   procedure Complete_Input_Wait
+     (win : in out Window; receipt : CompletionEntry;
+      event : out Input_Event; found, consumed, healthy : out Boolean)
+   is
+      decoded : DP.Input_Result;
+   begin
+      event := (others => <>); found := False; healthy := True;
+      CuBit.Async_Requests.Capture (win.inputRequest, receipt.token, receipt.valid, consumed);
+      if not consumed then return; end if;
+      CuBit.Async_Requests.Release (win.inputRequest);
+      healthy := receipt.status = COMPLETION_OK and not win.sentBye;
+      if not healthy then return; end if;
+      decoded := DP.Decode_Input_Result (CuBit.Desktop_Messages.To_Wire (receipt.msg), DP.Wait_Input);
+      healthy := decoded.Status = DP.Success;
+      if healthy then Apply_Input_Result (win, decoded, event, found); end if;
+   end Complete_Input_Wait;
+
+   procedure Receive_Input
+      (win : in out Window;
+       operation : DP.Input_Operation;
+       event : out Input_Event;
+       found : out Boolean;
+       deadline : Unsigned_64 := 0)
+   is
+      reply : Message;
+   begin
+      event := (others => <>); found := False;
+      if win.surfaceId = 0 or else Input_Wait_Pending (win) then return; end if;
+      reply := CuBit.Desktop_Messages.From_Wire
+        ((if operation = DP.Poll_Input then
+            DP.Encode_Input_Request ((DP.Poll_Input, DP.Live_Surface_Name (win.surfaceId), win.lastEvent))
+          else DP.Encode_Input_Request ((DP.Wait_Input, DP.Live_Surface_Name (win.surfaceId), win.lastEvent, deadline))));
+      reply.tag := capCall (CAP_SLOT_DESKTOP, reply);
+      Apply_Input_Result (win,
+        DP.Decode_Input_Result (CuBit.Desktop_Messages.To_Wire (reply), operation), event, found);
    end Receive_Input;
 
    procedure Poll_Input
@@ -433,20 +485,6 @@ package body CuBit.UI.App is
    function Input_May_Remain (win : Window) return Boolean is
      (win.inputMayRemain);
 
-   function Pointer_Wheel_Delta (event : Input_Event) return Integer is
-      raw : constant Unsigned_32 :=
-        Unsigned_32 (event.payload1 and 16#FFFF_FFFF#);
-      negativeMagnitude : Unsigned_64;
-   begin
-      if raw <= Unsigned_32 (Integer'Last) then
-         return Integer (raw);
-      elsif raw = 16#8000_0000# then
-         return Integer'First;
-      end if;
-
-      negativeMagnitude := 16#1_0000_0000# - Unsigned_64 (raw);
-      return -Integer (negativeMagnitude);
-   end Pointer_Wheel_Delta;
 
    function Request_Pointer_Cursor
       (win : Window; cursor : CuBit.UI.Pointer_Cursor_Style)
@@ -797,12 +835,40 @@ package body CuBit.UI.App is
                --  also safe immediately after a drained batch: already-queued
                --  input replies at once, while a later arrival resolves the
                --  installed one-use waiter.
-               Wait_Input (win, pendingEvent, hasPendingEvent);
-               if not hasPendingEvent then
-                  --  INPUT_WAIT returns no event only if the surface is no
-                  --  longer owned by this process. Avoid a failed-wait spin.
-                  running := False;
-               end if;
+               declare
+                  deadline : constant Interfaces.Unsigned_64 := Next_Deadline;
+                  timerDirty : CuBit.UI.Rect := (others => 0);
+               begin
+                  if deadline /= 0 and then
+                    syscall (SYSCALL_GETTIME) >= deadline
+                  then
+                     --  Already due: service it before waiting, so a steady
+                     --  stream of input cannot starve timed work.
+                     On_Deadline (win, timerDirty, running);
+                     if running and then not CuBit.UI.Is_Empty (timerDirty) then
+                        Render (win, timerDirty);
+                        Present (win, timerDirty);
+                     end if;
+                  elsif deadline = 0 then
+                     Wait_Input (win, pendingEvent, hasPendingEvent);
+                     if not hasPendingEvent then
+                        --  INPUT_WAIT returns no event only if the surface is
+                        --  no longer owned by this process. Avoid a spin.
+                        running := False;
+                     end if;
+                  else
+                     Wait_Input_Until (win, deadline, pendingEvent, hasPendingEvent);
+                     if not hasPendingEvent then
+                        --  Expiry (or a lost surface, which the next wait
+                        --  without a deadline reports).
+                        On_Deadline (win, timerDirty, running);
+                        if running and then not CuBit.UI.Is_Empty (timerDirty) then
+                           Render (win, timerDirty);
+                           Present (win, timerDirty);
+                        end if;
+                     end if;
+                  end if;
+               end;
             end if;
          end;
       end loop;

@@ -20,8 +20,7 @@ package CCL.Language.Handlers with SPARK_Mode is
       type Host_Context is limited private;
       with procedure Invoke
         (Context : in out Host_Context; Binding : Interfaces.Unsigned_32;
-         Argument : CCL.Host_Values.Value; Value : out CCL.Host_Values.Value;
-         Success : out Boolean);
+         Argument : CCL.Host_Values.Value; Reply : out CCL.Host_Values.Call_Result);
    procedure Execute
      (Item : Handler; Fuel : Natural;
       Current_Grants : CCL.Catalog.Granted_Bindings;

@@ -1,0 +1,6 @@
+# Thread and futex regression (docs/threads.md): one futex-check process
+# whose threads run on every CPU at once.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "futex-check.app" (priority 3))
+)

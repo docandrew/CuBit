@@ -46,6 +46,15 @@ class Configurations(unittest.TestCase):
                     expected = 'clock.time-zone=UTC\n' + expected
                     expected = ('desktop.appearance.theme.light=(theme v1 (base alloy-light))\n'
                                 'desktop.appearance.theme.dark=(theme v1 (base alloy-dark))\n' + expected)
+                    if relative.as_posix() == 'system.conf':
+                        expected = expected.replace('clock.time-zone=UTC\n',
+                            'clock.time-zone=UTC\ntime.servers=time.cloudflare.com 0.pool.ntp.org 1.pool.ntp.org 2.pool.ntp.org\n')
+                elif relative.as_posix() in ('init.conf', 'tests/headless/init-desktop-session.conf'):
+                    # Explicit, reviewed post-migration service additions.
+                    added = ('timesync.svc pri=5 network=declared\n'
+                             if relative.as_posix() == 'init.conf' else '')
+                    expected = expected.replace('clock.svc pri=5\n',
+                        'clock.svc pri=5\n' + added + 'tls.svc pri=5 network=declared\n')
                 elif relative.as_posix() == 'tests/headless/init-capability-security.conf':
                     # The committed construction-failure tests intentionally
                     # extended this profile after the original migration.
@@ -93,6 +102,15 @@ class Configurations(unittest.TestCase):
             ('(system-config v1 (setting "x" 1)) trailing', 'TRAILING_INPUT')]:
             with self.subTest(text=text):
                 self.reject(text, diagnostic)
+
+    def test_storage_role_is_explicit_and_unique(self):
+        start = '(start "store.svc" (priority 5) (role config-storage))'
+        result = self.compile(f'(startup v1 {start})')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, 'store.svc pri=5 role=config-storage\n')
+        self.reject(f'(startup v1 {start} {start})', 'INVALID_ROLE')
+        self.reject(f'(startup v1 {start.replace("config-storage", "root")})', 'INVALID_ROLE')
+        self.reject('(startup v1 (start "store.svc" (priority 5) (role application) (role config-storage)))', 'DUPLICATE_FIELD')
 
     def test_rejected_launches(self):
         base = '(startup v1 (start "a.app" (priority 5)))'

@@ -7,4 +7,6 @@
   (request-network tcp-connect (ipv4 "10.0.2.0" 24)
     (ports 18443 18443) (dns deny) test-connect)
   (request-network tcp-listen (ipv4 "10.0.2.15" 32)
-    (ports 8080 8080) (dns deny) test-listen))
+    (ports 8080 8080) (dns deny) test-listen)
+  (request-network udp-connect (ipv4 "10.0.2.2" 32)
+    (ports 18446 18446) (dns deny) test-datagram))

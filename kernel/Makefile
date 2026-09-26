@@ -10,6 +10,11 @@ endif
 # Measured adaptive scheduling defaults; zero remains available for A/B runs.
 WAKEUP_SCHEDULING ?= 1
 ONESHOT_SCHEDULING ?= 1
+# Idle CPUs take ready work from busy CPUs (docs/threads.md).
+WORK_STEALING ?= 1
+ifneq ($(filter $(WORK_STEALING),0 1),$(WORK_STEALING))
+$(error WORK_STEALING must be 0 or 1)
+endif
 ifneq ($(filter $(ONESHOT_SCHEDULING),0 1),$(ONESHOT_SCHEDULING))
 $(error ONESHOT_SCHEDULING must be 0 or 1)
 endif
@@ -53,6 +58,7 @@ build/libcubit.a:
 		-e 's/SED_LATENCY_TRACE/$(if $(filter 1,$(LATENCY_TRACE)),True,False)/' \
 		-e 's/SED_WAKEUP_SCHEDULING/$(if $(filter 1,$(WAKEUP_SCHEDULING)),True,False)/' \
 		-e 's/SED_ONESHOT_SCHEDULING/$(if $(filter 1,$(ONESHOT_SCHEDULING)),True,False)/' \
+		-e 's/SED_WORK_STEALING/$(if $(filter 1,$(WORK_STEALING)),True,False)/' \
 		-e 's/SED_SRC_HASH/$(SRC_HASH)/' src/build.pre > src/build.ads
 
 	$(ALR) gprbuild -Pkernel_runtime.gpr
@@ -219,6 +225,53 @@ prove-scheduler-turns:
 		--level=2 --report=all --checks-as-errors=on -j2
 	@cat ../tests/scheduler-turns/build/gnatprove/gnatprove.out
 
+.PHONY : test-object-table
+test-object-table:
+	$(ALR) gprbuild -p -P../tests/object-table/object_table_tests.gpr
+	../tests/object-table/build/main
+
+.PHONY : test-quiescent-reclamation prove-quiescent-reclamation
+test-quiescent-reclamation:
+	$(ALR) gprbuild -p -P../tests/quiescent-reclamation/reclamation.gpr
+	../tests/quiescent-reclamation/build/main
+
+prove-quiescent-reclamation:
+	$(ALR) gnatprove -P../tests/quiescent-reclamation/reclamation.gpr -u quiescent_reclamation.adb \
+		--level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/quiescent-reclamation/build/gnatprove/gnatprove.out
+
+.PHONY : test-id-ledger prove-id-ledger
+test-id-ledger:
+	$(ALR) gprbuild -p -P../tests/id-ledger/ledger.gpr
+	../tests/id-ledger/build/main
+
+prove-id-ledger:
+	$(ALR) gnatprove -P../tests/id-ledger/ledger.gpr -u test_ledger.ads \
+		--level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/id-ledger/build/gnatprove/gnatprove.out
+
+.PHONY : test-work-stealing prove-work-stealing
+test-work-stealing:
+	$(ALR) gprbuild -p -P../tests/work-stealing/stealing.gpr
+	../tests/work-stealing/build/main
+
+prove-work-stealing:
+	$(ALR) gnatprove -P../tests/work-stealing/stealing.gpr -u work_stealing.adb \
+		--level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/work-stealing/build/gnatprove/gnatprove.out
+
+.PHONY : test-futex-queues prove-futex-queues
+test-futex-queues:
+	$(ALR) gprbuild -p -P../tests/futex-queues/futex_queues_tests.gpr
+	../tests/futex-queues/build/main
+	$(ALR) python3 ../tests/futex-queues/explore.py
+
+prove-futex-queues:
+	$(ALR) gnatprove -P../tests/futex-queues/futex_queues_tests.gpr \
+		-u futex_queues_small.ads futex_queues_large.ads futex_keys.adb futex_protocol.adb \
+		--level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/futex-queues/build/gnatprove/gnatprove.out
+
 .PHONY : test-scheduler-timing prove-scheduler-timing
 test-scheduler-timing:
 	$(ALR) gprbuild -p -P../tests/scheduler-timing/timing.gpr
@@ -296,9 +349,25 @@ test-network-authority:
 
 prove-network-authority:
 	$(ALR) gnatprove -P../tests/network-authority/network_authority_tests.gpr \
-		-u cubit-network_authority.adb network_grants.adb --level=2 --report=all --checks-as-errors=on -j2
+		-u cubit-network_authority.adb network_grants.adb udp_channels.adb --level=2 --report=all --checks-as-errors=on -j2
 	@cat ../tests/network-authority/build/gnatprove/gnatprove.out
 
+test-timesync:
+	$(ALR) gprbuild -p -P../tests/timesync/timesync_tests.gpr
+	../tests/timesync/build/main
+
+# The clock-control round trip (Decode's postcondition) needs level 4 for
+# its integer/bit-vector conversion; the other cores prove at level 2.
+prove-timesync:
+	$(ALR) gnatprove -P../tests/timesync/timesync_tests.gpr \
+		-u sntp.adb server_list.adb clock_discipline.adb \
+		--level=2 --report=all --checks-as-errors=on -j2
+	$(ALR) gnatprove -P../tests/timesync/timesync_tests.gpr \
+		-u cubit-clock_control.adb \
+		--level=4 --report=all --checks-as-errors=on -j2
+	@cat ../tests/timesync/build/gnatprove/gnatprove.out
+
+.PHONY: test-timesync prove-timesync
 .PHONY: network-check test-network-authority prove-network-authority
 network-check: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/network-check/build
@@ -397,10 +466,31 @@ sameboy: user_runtime
 	$(ALR) $(MAKE) -C ../userspace/c -f Makefile.sameboy
 	cp ../userspace/c/sameboy_build/sameboy.app isodir/boot/sameboy.app
 
+# NetSurf renders pages; the browser chrome is native Ada (apps/netsurf).
+# The C script builds the engine object; removing the app forces gprbuild
+# to relink against a rebuilt engine.
+define build_netsurf
+../userspace/c/netsurf/build-freestanding-deps.sh
+mkdir -p ../userspace/apps/netsurf/build
+$(call compile_ccl_manifest,../userspace/apps/netsurf)
+rm -f ../userspace/apps/netsurf/build/netsurf.app
+$(ALR) gprbuild -P ../userspace/apps/netsurf/netsurf.gpr
+endef
+
 .PHONY : netsurf
-netsurf:
-	../userspace/c/netsurf/build-freestanding-deps.sh
-	cp ../userspace/c/netsurf/build/freestanding/netsurf.app isodir/boot/netsurf.app
+netsurf: user_runtime ccl-manifest ui-fonts-native
+	$(build_netsurf)
+	cp ../userspace/apps/netsurf/build/netsurf.app isodir/boot/netsurf.app
+
+# Test variant for the netsurf-https regression: homepage on the loopback
+# HTTPS fixture. The engine is recompiled, so the default app is rebuilt
+# and restaged afterwards and never keeps the test homepage.
+.PHONY : netsurf-https-test
+netsurf-https-test: user_runtime ccl-manifest ui-fonts-native
+	CUBIT_NETSURF_HOMEPAGE=https://tls-test.cubit.internal:18460/ $(build_netsurf)
+	cp ../userspace/apps/netsurf/build/netsurf.app isodir/boot/netsurf-https-test.app
+	$(build_netsurf)
+	cp ../userspace/apps/netsurf/build/netsurf.app isodir/boot/netsurf.app
 
 .PHONY : sleep
 sleep: user_runtime ccl-manifest
@@ -785,6 +875,11 @@ ui-editor-test: ui-fonts-host
 	$(ALR) gprbuild -P ../userspace/lib/ui/tests/editor/editor_test.gpr -p
 	../userspace/lib/ui/tests/editor/build/main
 
+.PHONY : ui-surfaces-test
+ui-surfaces-test: ui-fonts-host
+	$(ALR) gprbuild -P ../userspace/lib/ui/tests/surfaces/surfaces_test.gpr -p
+	../userspace/lib/ui/tests/surfaces/build/main
+
 .PHONY : ccl-test-native
 ccl-test-native:
 	$(ALR) gprbuild -P ../userspace/ccl/ccl_native.gpr -p
@@ -833,6 +928,18 @@ $(CCL_IMAGE_TOOL): $(wildcard ../userspace/ccl/src/*.ad?) \
 test-ccl-images: ccl-image
 	$(ALR) python3 ../tests/ccl-images/test-images.py -v
 
+# Wall-clock floor: UTC never falls below the source commit time. Outside Git
+# SOURCE_DATE_EPOCH is used instead. The result is never earlier than
+# 2026-01-01, because the Nix shell exports a 1980 SOURCE_DATE_EPOCH. The file
+# is rewritten only when the value changes, to avoid needless rebuilds.
+define generate_clock_floor
+mkdir -p $(dir $(1))
+floor=$$(git -C .. log -1 --format=%ct 2>/dev/null || echo "$${SOURCE_DATE_EPOCH:-0}"); \
+if [ "$$floor" -lt 1767225600 ]; then floor=1767225600; fi; \
+printf -- '--  Generated by kernel/Makefile: build-time wall-clock floor.\npackage Clock_Floor is\n   UTC_Seconds : constant := %s;\nend Clock_Floor;\n' "$$floor" > $(1).tmp; \
+if cmp -s $(1).tmp $(1); then rm -f $(1).tmp; else mv $(1).tmp $(1); fi
+endef
+
 # One checked result supplies both the ELF requests and optional Ada bindings.
 # Named fixed bindings in this catalog preserve shared-runtime ABI conventions.
 define compile_ccl_manifest
@@ -877,11 +984,147 @@ ccl-test-host: user_runtime ccl-manifest
 	$(ALR) gprbuild -P ../userspace/ccl/services/test-host/ccl_test_host.gpr
 	cp ../userspace/ccl/services/test-host/build/ccl-test-host.svc isodir/boot/ccl-test-host.svc
 
+# SNTP time synchronization service.
+.PHONY : timesync timesync-test
+timesync: user_runtime ccl-manifest
+	mkdir -p ../userspace/services/timesync/build
+	$(call compile_ccl_manifest,../userspace/services/timesync)
+	$(ALR) gprbuild -P ../userspace/services/timesync/timesync.gpr
+	cp ../userspace/services/timesync/build/timesync.svc isodir/boot/timesync.svc
+
+# Headless-test variant: the same executable with only .cubit.caps replaced by
+# tests/timesync/manifest-test.ccl (loopback fixture ports instead of 123).
+# Fails unless slot bindings and the capability section size are identical.
+TIMESYNC_VARIANT := ../tests/timesync/build/variant
+timesync-test: timesync
+	mkdir -p $(TIMESYNC_VARIANT)/build/generated
+	cp ../tests/timesync/manifest-test.ccl $(TIMESYNC_VARIANT)/manifest.ccl
+	$(call compile_ccl_manifest,$(TIMESYNC_VARIANT))
+	cmp $(TIMESYNC_VARIANT)/build/generated/ccl_manifest_bindings.ads \
+		../userspace/services/timesync/build/generated/ccl_manifest_bindings.ads
+	rm -f $(TIMESYNC_VARIANT)/caps-test.bin $(TIMESYNC_VARIANT)/caps-production.bin
+	$(ALR) objcopy --dump-section .cubit.caps=$(TIMESYNC_VARIANT)/caps-test.bin \
+		$(TIMESYNC_VARIANT)/build/manifest.o
+	$(ALR) objcopy --dump-section .cubit.caps=$(TIMESYNC_VARIANT)/caps-production.bin \
+		../userspace/services/timesync/build/timesync.svc
+	test -s $(TIMESYNC_VARIANT)/caps-test.bin
+	test $$(stat -c %s $(TIMESYNC_VARIANT)/caps-test.bin) -eq \
+		$$(stat -c %s $(TIMESYNC_VARIANT)/caps-production.bin)
+	! cmp -s $(TIMESYNC_VARIANT)/caps-test.bin $(TIMESYNC_VARIANT)/caps-production.bin
+	$(ALR) objcopy --update-section .cubit.caps=$(TIMESYNC_VARIANT)/caps-test.bin \
+		../userspace/services/timesync/build/timesync.svc isodir/boot/timesync-test.svc
+	$(ALR) objcopy --dump-section .cubit.caps=$(TIMESYNC_VARIANT)/caps-installed.bin \
+		isodir/boot/timesync-test.svc
+	cmp $(TIMESYNC_VARIANT)/caps-test.bin $(TIMESYNC_VARIANT)/caps-installed.bin
+
+.PHONY : timesync-check
+timesync-check: user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/timesync-check/build
+	$(call compile_ccl_manifest,../userspace/apps/timesync-check)
+	$(ALR) gprbuild -P ../userspace/apps/timesync-check/timesync_check.gpr
+	cp ../userspace/apps/timesync-check/build/timesync-check.app isodir/boot/timesync-check.app
+
+# SPARKTLS and its dependencies are pinned flake inputs; nix develop exports
+# them as one directory in CUBIT_SPARK_CRATES.
+.PHONY : tls-crates tls-roots tls-test-pki tls-probe test-tls-scopes prove-tls-scopes
+test-tls-scopes:
+	$(ALR) gprbuild -p -P../tests/tls/scopes_tests.gpr
+	../tests/tls/build/scopes/scopes_main
+
+prove-tls-scopes:
+	$(ALR) gnatprove -P../tests/tls/scopes_tests.gpr -u cubit-tls_scopes.adb \
+		--level=2 --report=all --checks-as-errors=on -j2
+
+tls-crates:
+	@test -n "$(CUBIT_SPARK_CRATES)" || \
+	  { echo "CUBIT_SPARK_CRATES is unset: build inside nix develop" >&2; exit 1; }
+
+# tls.svc's trust store: the pinned Mozilla root set (nixpkgs cacert) as
+# concatenated DER, installed on the development disk as tls/roots.der.
+build/tls-roots.der: $(CUBIT_CA_BUNDLE) ../tools/pem_bundle_to_der.py
+	@test -n "$(CUBIT_CA_BUNDLE)" || \
+	  { echo "CUBIT_CA_BUNDLE is unset: build inside nix develop" >&2; exit 1; }
+	mkdir -p build
+	python3 ../tools/pem_bundle_to_der.py $(CUBIT_CA_BUNDLE) $@
+tls-roots: build/tls-roots.der
+
+# Test-only PKI (git-ignored) for the TLS regressions.
+tls-test-pki:
+	../tests/tls/make-pki.sh
+
+.PHONY : bench-spread
+bench-spread: user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/bench-spread/build
+	$(call compile_ccl_manifest,../userspace/apps/bench-spread)
+	$(ALR) gprbuild -P ../userspace/apps/bench-spread/bench_spread.gpr
+	cp ../userspace/apps/bench-spread/build/bench-spread.app isodir/boot/bench-spread.app
+
+# CuBit libc (userspace/libc): musl over CuBit system calls, and its checks.
+.PHONY : libc libc-check cxx-check
+libc:
+	bash ../userspace/libc/build.sh
+libc-check: libc ccl-manifest
+	../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl ../userspace/libc/tests/manifest.ccl > ../userspace/libc/build/libc-check-manifest.S
+	as --64 ../userspace/libc/build/libc-check-manifest.S -o ../userspace/libc/build/libc-check-manifest.o
+	../userspace/libc/cubit-cc -O2 -g -pthread -o isodir/boot/libc-check.app ../userspace/libc/tests/libc-check.c --manifest ../userspace/libc/build/libc-check-manifest.o
+cxx-check: libc ccl-manifest
+	../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl ../userspace/libc/tests/cxx-manifest.ccl > ../userspace/libc/build/cxx-check-manifest.S
+	as --64 ../userspace/libc/build/cxx-check-manifest.S -o ../userspace/libc/build/cxx-check-manifest.o
+	../userspace/libc/cubit-c++ -O2 -g -pthread -o isodir/boot/cxx-check.app ../userspace/libc/tests/cxx-check.cpp --manifest ../userspace/libc/build/cxx-check-manifest.o
+
+# Rust std on CuBit (docs/rust-std.md): patched std, built with -Zbuild-std.
+.PHONY : rust-std-hello
+rust-std-hello: ccl-manifest
+	bash ../userspace/rust/std/build-hello.sh
+	cp ../userspace/rust/build/rust-std-hello.app isodir/boot/rust-std-hello.app
+
+.PHONY : futex-check
+futex-check: user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/futex-check/build
+	$(call compile_ccl_manifest,../userspace/apps/futex-check)
+	$(ALR) gprbuild -P ../userspace/apps/futex-check/futex_check.gpr
+	cp ../userspace/apps/futex-check/build/futex-check.app isodir/boot/futex-check.app
+
+.PHONY : thread-check
+thread-check: user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/thread-check/build
+	$(call compile_ccl_manifest,../userspace/apps/thread-check)
+	$(ALR) gprbuild -P ../userspace/apps/thread-check/thread_check.gpr
+	cp ../userspace/apps/thread-check/build/thread-check.app isodir/boot/thread-check.app
+
+.PHONY : tls-check
+tls-check: user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/tls-check/build
+	$(call compile_ccl_manifest,../userspace/apps/tls-check)
+	$(ALR) gprbuild -P ../userspace/apps/tls-check/tls_check.gpr
+	cp ../userspace/apps/tls-check/build/tls-check.app isodir/boot/tls-check.app
+
+# TLS client service.
+.PHONY : tls
+tls: user_runtime ccl-manifest tls-crates
+	mkdir -p ../userspace/services/tls/build
+	$(call compile_ccl_manifest,../userspace/services/tls)
+	$(ALR) gprbuild -j8 -P ../userspace/services/tls/tls.gpr \
+		-XCUBIT_SPARK_CRATES=$(CUBIT_SPARK_CRATES)
+	cp ../userspace/services/tls/build/tls.svc isodir/boot/tls.svc
+
+# Native SPARKTLS probe for the headless tls-probe regression; embeds the
+# generated test root.
+tls-probe: user_runtime ccl-manifest tls-crates tls-test-pki
+	mkdir -p ../userspace/apps/tls-probe/build/generated
+	$(call compile_ccl_manifest,../userspace/apps/tls-probe)
+	python3 ../tools/der_to_ada.py TLS_Probe_Roots DER ../tests/tls/build/pki/ca.der \
+		../userspace/apps/tls-probe/build/generated/tls_probe_roots.ads
+	$(ALR) gprbuild -j8 -P ../userspace/apps/tls-probe/tls_probe.gpr \
+		-XCUBIT_SPARK_CRATES=$(CUBIT_SPARK_CRATES)
+	cp ../userspace/apps/tls-probe/build/tls-probe.app isodir/boot/tls-probe.app
+
 # Capability-addressed monotonic clock service.
 .PHONY : clock
 clock: user_runtime ../userspace/ccl/interfaces/clock.ccl-interface ccl-manifest ../userspace/services/clock/build/generated/time_zones.ads ../userspace/services/clock/build/generated/time_zones.adb
 	mkdir -p ../userspace/services/clock/build
 	$(call compile_ccl_manifest,../userspace/services/clock)
+	$(call generate_clock_floor,../userspace/services/clock/build/generated/clock_floor.ads)
 	$(ALR) gprbuild -P ../userspace/services/clock/clock.gpr
 	$(ALR) objcopy \
 		--add-section .cubit.interfaces=../userspace/ccl/interfaces/clock.ccl-interface \
@@ -1131,22 +1374,70 @@ shell: user_runtime ccl-manifest
 	$(ALR) gprbuild -P ../userspace/apps/shell/shell.gpr
 	cp ../userspace/apps/shell/build/shell.app isodir/boot/shell.app
 
+# The Rust/Turso worker is a stage-2 service, not part of the boot initrd.
+.PHONY : config-storage
+config-storage: user_runtime ccl-manifest
+	bash ../userspace/services/config-storage/build.sh
+	cp ../userspace/services/config-storage/build/config-storage.svc isodir/boot/config-storage.svc
+
 # Files that live on ext2 disk images (stage-2 content).
 # Disk images rebuild automatically when any of these change.
 DOOM_WAD ?= ../doom1.wad
 
+# Servo (docs/servo-port.md) joins the disk once built (`make servo`; it needs
+# the Servo checkout in userspace/rust/build/servo-work): cubitshell.app, the
+# fonts its font list scans (@nvme:0/fonts) and its start page (servo/pages).
+SERVO_DISK_CONTENTS := $(wildcard isodir/boot/cubitshell.app)
 DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/netsurf.app isodir/boot/sleep.app \
 	isodir/boot/sameboy.app ../userspace/c/sameboy_build/test.gb \
 	isodir/boot/capability-test.app \
 	isodir/boot/wget.app isodir/boot/devices.app isodir/boot/files.app isodir/boot/config-inspector.app \
 	isodir/boot/ccl-vm.app isodir/boot/ccl-workbench.app \
 	isodir/boot/ccl-test-host.svc \
-	isodir/boot/clock.svc \
+	isodir/boot/clock.svc isodir/boot/timesync.svc isodir/boot/tls.svc isodir/boot/config-storage.svc \
 	isodir/boot/desktop-shell.app \
 	isodir/boot/ipctest-server.app isodir/boot/ipctest-client.app \
 	isodir/boot/bench-ipc-server.app isodir/boot/bench-ipc-client.app \
 	isodir/boot/logstore.svc isodir/boot/display.svc isodir/boot/desktop.svc \
-	../init.ccl ../userspace/motd.txt $(DOOM_WAD)
+	build/tls-roots.der \
+	../init.ccl ../userspace/motd.txt $(DOOM_WAD) \
+	$(SERVO_DISK_CONTENTS)
+
+SERVO_FONT_DIR = $(dir $(IBM_PLEX_SANS_FONT))
+SERVO_DISK_FILES = $(if $(SERVO_DISK_CONTENTS), \
+	--file "servo/pages=../userspace/servo/start-pages" \
+	$(foreach f,IBMPlexSans-Regular.ttf IBMPlexSans-Bold.ttf IBMPlexSans-Italic.ttf \
+	  IBMPlexSerif-Regular.ttf IBMPlexSerif-Bold.ttf IBMPlexMono-Regular.ttf, \
+	  --file "fonts/$(f)=$(SERVO_FONT_DIR)$(f)"))
+
+# Guest memory for the interactive desktop targets (Servo needs well over
+# the 128 MB the headless tests use).
+DESKTOP_MEMORY ?= 2G
+
+# Shared, verified scratch preparation for all desktop launchers. Each invocation
+# resets the scratch disk from the base; this is NOT persistent across launches.
+# Override both paths for tests; never point the output at a persistent user disk.
+DESKTOP_BASE_DISK ?= nvme_disk.img
+DESKTOP_SCRATCH_DISK ?= desktop_disk.img
+DESKTOP_CONFIG_SAMPLES := ../userspace/ccl/samples/config-counter.ccl \
+	../userspace/ccl/samples/config-counter-read.ccl
+DESKTOP_OVERLAY := isodir/boot/desktop.svc isodir/boot/display.svc \
+	isodir/boot/netstack.svc isodir/boot/tls.svc isodir/boot/desktop-shell.app \
+	isodir/boot/devices.app isodir/boot/config-inspector.app isodir/boot/files.app \
+	isodir/boot/doom.elf isodir/boot/netsurf.app isodir/boot/ccl-workbench.app \
+	isodir/boot/config-storage.svc
+DESKTOP_SAMPLE_ARGS = $(foreach sample,$(DESKTOP_CONFIG_SAMPLES),--file "work/$(notdir $(sample))=$(sample)")
+
+.PHONY : prepare-desktop-disk
+prepare-desktop-disk:
+	python3 ../tools/prepare_desktop_disk.py "$(DESKTOP_BASE_DISK)" "$(DESKTOP_SCRATCH_DISK)" --replace \
+		--boot $(DESKTOP_OVERLAY) \
+		--file "init.ccl=../tests/headless/init-desktop-session.ccl" $(DESKTOP_SAMPLE_ARGS)
+
+.PHONY : servo
+servo: libc ccl-manifest
+	bash ../userspace/servo/build-cubitshell.sh
+	cp ../userspace/rust/build/cubitshell.app isodir/boot/cubitshell.app
 
 # Every stage-1 binary copied into initrd.img.  Keep this dependency list next
 # to the staging targets: copying an old service beside a newly rebuilt driver
@@ -1159,18 +1450,21 @@ INITRD_SERVICES := filesystem ramdisk ata nvme netstack virtio-net virtio-gpu hd
 # rebuild the ext2 disk image from those freshly staged files.
 .PHONY : desktop-session-content
 desktop-session-content: $(INITRD_SERVICES) desktop display logstore \
-	desktop-shell devices files config-inspector ccl-workbench clock doom netsurf sameboy
+	desktop-shell devices files config-inspector ccl-workbench config-storage clock timesync tls doom netsurf sameboy
 
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.ccl, shell.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
 # Both generated development disks use the same verified payload builder.
-ata_disk.img nvme_disk.img: $(DISK_CONTENTS) ../tools/build_development_disk.py
+ata_disk.img nvme_disk.img: $(DISK_CONTENTS) $(DESKTOP_CONFIG_SAMPLES) ../tools/build_development_disk.py
 	$(ALR) python3 ../tools/build_development_disk.py $@ \
 		--boot $(filter isodir/boot/%,$(DISK_CONTENTS)) \
 		--file "motd.txt=../userspace/motd.txt" \
 		--file "doom1.wad=$(DOOM_WAD)" \
 		--file "sameboy/00.gb=../userspace/c/sameboy_build/test.gb" \
-		--file "init.ccl=../init.ccl"
+		--file "tls/roots.der=build/tls-roots.der" \
+		--file "init.ccl=../init.ccl" \
+		$(DESKTOP_SAMPLE_ARGS) \
+		$(SERVO_DISK_FILES)
 
 # Convenience aliases for manual rebuilds (e.g. make ata_disk)
 .PHONY : ata_disk nvme_disk
@@ -1357,7 +1651,7 @@ iso: cubit_kernel initrd
 
 # Build everything including DOOM, then create ISO and disk images
 .PHONY : world
-world: cubit_kernel doom sameboy netsurf sleep capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices files config-inspector desktop-shell procmgr shell hda mixer ps2 xhci config netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: cubit_kernel doom sameboy netsurf sleep thread-check futex-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices files config-inspector desktop-shell procmgr shell hda mixer ps2 xhci config config-storage netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world
@@ -1417,11 +1711,8 @@ run-desktop: cubit_kernel desktop-session-content
 	$(MAKE) nvme_disk.img
 	$(MAKE) initrd
 	cp cubit_kernel isodir/boot/cubit_kernel
-	@rm -f serial_output.log net.pcap desktop_disk.img
-	cp nvme_disk.img desktop_disk.img
-	debugfs -w -R "mkdir work" desktop_disk.img
-	-debugfs -w -R "rm init.ccl" desktop_disk.img >/dev/null 2>&1
-	debugfs -w -R "write ../tests/headless/init-desktop-session.ccl init.ccl" desktop_disk.img
+	@rm -f serial_output.log net.pcap
+	$(MAKE) prepare-desktop-disk
 	sed -i 's/^set default=.*/set default=4/' isodir/boot/grub/grub.cfg
 	grub-mkrescue -o cubit_kernel.iso isodir
 	sed -i 's/^set default=.*/set default=0/' isodir/boot/grub/grub.cfg
@@ -1430,13 +1721,13 @@ run-desktop: cubit_kernel desktop-session-content
 		-machine q35 \
 		-cpu Broadwell \
 		-smp 4 \
-		-m 128M \
+		-m $(DESKTOP_MEMORY) \
 		-cdrom cubit_kernel.iso \
 		-serial file:serial_output.log \
 		-vga none \
 		-device $(QEMU_DESKTOP_DEVICE) \
 		-display gtk,zoom-to-fit=on \
-		-drive file=desktop_disk.img,if=none,id=nvme0,format=raw \
+		-drive file=$(DESKTOP_SCRATCH_DISK),if=none,id=nvme0,format=raw \
 		-device nvme,serial=cubitnvme,drive=nvme0 \
 		-device virtio-net-pci,netdev=net0 \
 		-netdev user,id=net0 \
@@ -1454,40 +1745,20 @@ run-desktop: cubit_kernel desktop-session-content
 run-desktop-fast:
 	@test -f cubit_kernel.iso || (echo "missing cubit_kernel.iso; run make -C kernel run-desktop once first" && false)
 	@test -f nvme_disk.img || (echo "missing nvme_disk.img; run make -C kernel run-desktop once first" && false)
-	@rm -f serial_output.log net.pcap desktop_disk.img
-	cp nvme_disk.img desktop_disk.img
-	-debugfs -w -R "rm init.ccl" desktop_disk.img >/dev/null 2>&1
-	-debugfs -w -R "rm desktop.svc" desktop_disk.img >/dev/null 2>&1
-	-debugfs -w -R "rm display.svc" desktop_disk.img >/dev/null 2>&1
-	-debugfs -w -R "rm netstack.svc" desktop_disk.img >/dev/null 2>&1
-	-debugfs -w -R "rm desktop-shell.app" desktop_disk.img >/dev/null 2>&1
-	-debugfs -w -R "rm devices.app" desktop_disk.img >/dev/null 2>&1
-	-debugfs -w -R "rm config-inspector.app" desktop_disk.img >/dev/null 2>&1
-	-debugfs -w -R "rm files.app" desktop_disk.img >/dev/null 2>&1
-	-debugfs -w -R "rm doom.elf" desktop_disk.img >/dev/null 2>&1
-	-debugfs -w -R "rm netsurf.app" desktop_disk.img >/dev/null 2>&1
-	debugfs -w -R "write ../tests/headless/init-desktop-session.ccl init.ccl" desktop_disk.img
-	debugfs -w -R "write isodir/boot/desktop.svc desktop.svc" desktop_disk.img
-	debugfs -w -R "write isodir/boot/display.svc display.svc" desktop_disk.img
-	debugfs -w -R "write isodir/boot/netstack.svc netstack.svc" desktop_disk.img
-	debugfs -w -R "write isodir/boot/desktop-shell.app desktop-shell.app" desktop_disk.img
-	debugfs -w -R "write isodir/boot/devices.app devices.app" desktop_disk.img
-	debugfs -w -R "write isodir/boot/config-inspector.app config-inspector.app" desktop_disk.img
-	debugfs -w -R "write isodir/boot/files.app files.app" desktop_disk.img
-	debugfs -w -R "write isodir/boot/doom.elf doom.elf" desktop_disk.img
-	debugfs -w -R "write isodir/boot/netsurf.app netsurf.app" desktop_disk.img
+	@rm -f serial_output.log net.pcap
+	$(MAKE) prepare-desktop-disk
 	GDK_BACKEND=x11 qemu-system-x86_64 \
 		$(QEMU_ACCEL_ARGS) \
 		-machine q35 \
 		-cpu Broadwell \
 		-smp 4 \
-		-m 128M \
+		-m $(DESKTOP_MEMORY) \
 		-cdrom cubit_kernel.iso \
 		-serial file:serial_output.log \
 		-vga none \
 		-device virtio-vga,xres=1024,yres=768 \
 		-display gtk,zoom-to-fit=on \
-		-drive file=desktop_disk.img,if=none,id=nvme0,format=raw \
+		-drive file=$(DESKTOP_SCRATCH_DISK),if=none,id=nvme0,format=raw \
 		-device nvme,serial=cubitnvme,drive=nvme0 \
 		-device virtio-net-pci,netdev=net0 \
 		-netdev user,id=net0 \
@@ -1508,34 +1779,14 @@ QEMU_SCREENSHOT ?= /tmp/cubit-screen.ppm
 run-desktop-inspect:
 	@test -f cubit_kernel.iso || (echo "missing cubit_kernel.iso; run make -C kernel run-desktop once first" && false)
 	@test -f nvme_disk.img || (echo "missing nvme_disk.img; run make -C kernel run-desktop once first" && false)
-	@rm -f serial_output.log net.pcap desktop_disk.img $(QEMU_QMP) $(QEMU_MONITOR) $(QEMU_SCREENSHOT)
-	cp nvme_disk.img desktop_disk.img
-	-debugfs -w -R "rm init.ccl" desktop_disk.img >/dev/null 2>&1
-	-debugfs -w -R "rm desktop.svc" desktop_disk.img >/dev/null 2>&1
-	-debugfs -w -R "rm display.svc" desktop_disk.img >/dev/null 2>&1
-	-debugfs -w -R "rm netstack.svc" desktop_disk.img >/dev/null 2>&1
-	-debugfs -w -R "rm desktop-shell.app" desktop_disk.img >/dev/null 2>&1
-	-debugfs -w -R "rm devices.app" desktop_disk.img >/dev/null 2>&1
-	-debugfs -w -R "rm config-inspector.app" desktop_disk.img >/dev/null 2>&1
-	-debugfs -w -R "rm files.app" desktop_disk.img >/dev/null 2>&1
-	-debugfs -w -R "rm doom.elf" desktop_disk.img >/dev/null 2>&1
-	-debugfs -w -R "rm netsurf.app" desktop_disk.img >/dev/null 2>&1
-	debugfs -w -R "write ../tests/headless/init-desktop-session.ccl init.ccl" desktop_disk.img
-	debugfs -w -R "write isodir/boot/desktop.svc desktop.svc" desktop_disk.img
-	debugfs -w -R "write isodir/boot/display.svc display.svc" desktop_disk.img
-	debugfs -w -R "write isodir/boot/netstack.svc netstack.svc" desktop_disk.img
-	debugfs -w -R "write isodir/boot/desktop-shell.app desktop-shell.app" desktop_disk.img
-	debugfs -w -R "write isodir/boot/devices.app devices.app" desktop_disk.img
-	debugfs -w -R "write isodir/boot/config-inspector.app config-inspector.app" desktop_disk.img
-	debugfs -w -R "write isodir/boot/files.app files.app" desktop_disk.img
-	debugfs -w -R "write isodir/boot/doom.elf doom.elf" desktop_disk.img
-	debugfs -w -R "write isodir/boot/netsurf.app netsurf.app" desktop_disk.img
+	@rm -f serial_output.log net.pcap $(QEMU_QMP) $(QEMU_MONITOR) $(QEMU_SCREENSHOT)
+	$(MAKE) prepare-desktop-disk
 	GDK_BACKEND=x11 qemu-system-x86_64 \
 		$(QEMU_ACCEL_ARGS) \
 		-machine q35 \
 		-cpu Broadwell \
 		-smp 4 \
-		-m 128M \
+		-m $(DESKTOP_MEMORY) \
 		-cdrom cubit_kernel.iso \
 		-serial file:serial_output.log \
 		-vga none \
@@ -1543,7 +1794,7 @@ run-desktop-inspect:
 		-display gtk,zoom-to-fit=on \
 		-qmp unix:$(QEMU_QMP),server=on,wait=off \
 		-monitor unix:$(QEMU_MONITOR),server,nowait \
-		-drive file=desktop_disk.img,if=none,id=nvme0,format=raw \
+		-drive file=$(DESKTOP_SCRATCH_DISK),if=none,id=nvme0,format=raw \
 		-device nvme,serial=cubitnvme,drive=nvme0 \
 		-device virtio-net-pci,netdev=net0 \
 		-netdev user,id=net0 \

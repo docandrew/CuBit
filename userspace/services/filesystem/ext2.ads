@@ -12,6 +12,7 @@ with CuBit.Block_Devices;
 with CuBit.Filesystems;
 with CuBit.Memory_Grants;
 with Volume_Admission;
+with Ext2_Inodes;
 
 package Ext2 is
    SUPERBLOCK_OFFSET : constant := 1024;
@@ -19,7 +20,7 @@ package Ext2 is
    ROOT_INODE        : constant := 2;
 
    --  Number of direct block pointers per inode
-   NUM_DIRECT_BLOCKS : constant := 12;
+   NUM_DIRECT_BLOCKS : constant := Ext2_Inodes.NUM_DIRECT_BLOCKS;
 
    --  File type nibble in inode typeAndPermissions (upper 4 bits of Unsigned_16)
    INODE_DIRECTORY    : constant Unsigned_8 := 16#4#;
@@ -60,7 +61,13 @@ package Ext2 is
       --  Extended superblock (major version >= 1)
       firstNonReservedInode   : Unsigned_32;
       inodeSize               : Unsigned_16;
+      blockGroupNumber        : Unsigned_16;
+      compatibleFeatures      : Unsigned_32;
+      incompatibleFeatures    : Unsigned_32;
+      readOnlyFeatures        : Unsigned_32;
    end record with Convention => C;
+   pragma Compile_Time_Error
+     (Superblock'Size /= 104 * 8, "Ext2 superblock prefix layout changed");
 
    --  Block Group Descriptor
    type BlockGroupDescriptor is record
@@ -79,34 +86,9 @@ package Ext2 is
    end record with Convention => C, Size => 16;
 
    --  Inode (128 bytes on-disk)
-   type DirectBlockArray is array (0 .. NUM_DIRECT_BLOCKS - 1) of Unsigned_32
-     with Convention => C;
-
-   type Inode is record
-      typeAndPermissions   : Unsigned_16;
-      uid                  : Unsigned_16;
-      sizeLo               : Unsigned_32;
-      accessedTime         : Unsigned_32;
-      creationTime         : Unsigned_32;
-      modifiedTime         : Unsigned_32;
-      deletedTime          : Unsigned_32;
-      gid                  : Unsigned_16;
-      numHardLinks         : Unsigned_16;
-      numDiskSectors       : Unsigned_32;
-      flags                : Unsigned_32;
-      osSpecific1          : Unsigned_32;
-      directBlocks         : DirectBlockArray;
-      singleIndirectBlock  : Unsigned_32;
-      doubleIndirectBlock  : Unsigned_32;
-      tripleIndirectBlock  : Unsigned_32;
-      generationNumber     : Unsigned_32;
-      fileACL              : Unsigned_32;
-      sizeHi_DirACL        : Unsigned_32;
-      fragmentBlockAddr    : Unsigned_32;
-      osSpecific2A         : Unsigned_32;
-      osSpecific2B         : Unsigned_32;
-      osSpecific2C         : Unsigned_32;
-   end record with Convention => C;
+   subtype DirectBlockArray is Ext2_Inodes.DirectBlockArray;
+   subtype Inode is Ext2_Inodes.Inode;
+   use type Ext2_Inodes.Inode;
 
    NULL_INODE : constant Inode :=
      (typeAndPermissions => 0,
@@ -154,12 +136,14 @@ package Ext2 is
       Write_Recovery_Required,
       Write_Already_Exists,
       Write_No_Space,
+      Write_Object_Unsupported,
       Write_File_Range_Unsupported);
 
    type Read_Status is
      (Read_Complete,
       Read_Out_Of_Range,
       Read_Device_Error,
+      Read_Object_Unsupported,
       Read_File_Range_Unsupported);
 
    type Directory_Read_Status is
@@ -264,11 +248,6 @@ package Ext2 is
       blockNum : out Unsigned_32;
       status   : out Write_Status);
 
-   --  Free a previously allocated block.
-   procedure freeBlock
-     (fs       : in out Filesystem;
-      blockNum : Unsigned_32);
-
    --  Allocate a free inode from any block group.
    --  Returns an initialized inode (1-based) only on complete reservation.
    procedure allocateInode
@@ -300,6 +279,15 @@ package Ext2 is
       inodeNum : Unsigned_32;
       emptyInode : out Inode;
       status   : out Truncate_Status);
+
+   --  Resize within the supported direct/single/double-indirect extent. Growth is
+   --  sparse and exposes zeroes; shrink detaches and flushes before reclaim.
+   --  On failure the output must not be published to shared inode aliases.
+   --  The same quarantine/durability limitations as OPEN_TRUNCATE apply.
+   procedure resizeFile
+     (fs : in out Filesystem; inodeNum : Unsigned_32;
+      newSize : Unsigned_64; resizedInode : out Inode;
+      status : out Truncate_Status);
 
    --  Non-overwriting rename within one directory. The replacement is prepared
    --  in memory and must fit in the source directory block. Multi-block moves

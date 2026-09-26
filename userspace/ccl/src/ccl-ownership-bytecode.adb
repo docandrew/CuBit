@@ -118,9 +118,10 @@ is
                   end if;
                   Falls_Through := False;
                when Initialize_Local =>
-                  if Natural (Item.Local) < Initial_Locals_Length or else
-                    Candidate.Types (Candidate.Local_Types (Item.Local)).Mode /=
-                      Unrestricted
+                  -- The VM's operand checker establishes the incoming value's
+                  -- exact type and transfer eligibility. Here track its new
+                  -- owner, including move-only and must-handle bindings.
+                  if Natural (Item.Local) < Initial_Locals_Length
                   then
                      Result.Error := Ownership_Failure;
                      Error := Binding_Already_Declared;

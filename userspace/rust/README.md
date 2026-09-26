@@ -44,7 +44,11 @@ current kernel's null-tag result, which does not distinguish missing authority,
 stale authority, and an unavailable peer. Never present that alone as a precise
 policy explanation.
 
-There is no `std`, threading, TLS, async completion API, grants,
+Threads and futex locks exist (`cubit::thread`, behind the `alloc` feature,
+and `cubit::sync`: `Mutex`, `Condvar`, raw futexes; `docs/threads.md`), and
+the probe checks them natively (`RUST-THREADS: PASS`). The lock logic is also
+tested on host threads, where futex calls degrade to yielding. There is no
+`std`, thread-local storage, async completion API, grants,
 typed log publisher, or widget binding yet. `alloc` now uses the opt-in bounded
 SPARK-core allocator in the probe. Panics abort the probe
 after attempting a test-service failure report; they do not unwind into Ada.

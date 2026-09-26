@@ -1,0 +1,30 @@
+{
+  "arch": "x86_64",
+  "cpu": "x86-64",
+  "data-layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+  "llvm-target": "x86_64-unknown-none-elf",
+  "os": "cubit",
+  "vendor": "unknown",
+  "target-pointer-width": 64,
+  "max-atomic-width": 64,
+  "code-model": "small",
+  "relocation-model": "static",
+  "position-independent-executables": false,
+  "static-position-independent-executables": false,
+  "disable-redzone": true,
+  "features": "+sse,+sse2",
+  "linker": "rust-lld",
+  "linker-flavor": "gnu-lld",
+  "crt-objects-fallback": "false",
+  "executables": true,
+  "dynamic-linking": false,
+  "has-thread-local": false,
+  "panic-strategy": "abort",
+  "stack-probes": { "kind": "inline" },
+  "metadata": {
+    "description": "CuBit userspace (docs/rust-std.md)",
+    "host_tools": false,
+    "std": true,
+    "tier": 3
+  }
+}

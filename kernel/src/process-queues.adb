@@ -5,6 +5,10 @@
 -- CuBitOS Process Queues
 -------------------------------------------------------------------------------
 with Spinlocks;
+with Scheduler_Timing;
+with Work_Stealing;
+with x86;
+with Time;
 with TextIO; use TextIO;
 
 -- Ada implementation: custom storage, address overlays or live context state.
@@ -12,17 +16,17 @@ with TextIO; use TextIO;
 with Interfaces;
 package body Process.Queues is
 
-    function isInSleepQueue (pid : ProcessID) return Boolean;
-    procedure popItemNoLock (q : in out ProcQueue; pid : ProcessID;
-                            result : out ProcessID);
+    function isInSleepQueue (pid : ThreadID) return Boolean;
+    procedure popItemNoLock (q : in out ProcQueue; pid : ThreadID;
+                            result : out ThreadID);
 
     procedure initQueue (q : in out ProcQueue; locknamePtr : Spinlocks.Lock_Name)
 
     is
     begin
         Spinlocks.Initialize (q.lock, locknamePtr);
-        q.head := NO_PROCESS;
-        q.tail := NO_PROCESS;
+        q.head := NO_THREAD;
+        q.tail := NO_THREAD;
     end initQueue;
 
     ---------------------------------------------------------------------------
@@ -32,7 +36,7 @@ package body Process.Queues is
 
     is
     begin
-        return (q.head = NO_PROCESS);
+        return (q.head = NO_THREAD);
     end isEmpty;
 
     function hasReadyPeer (q : in out ProcQueue; priority : Integer;
@@ -40,34 +44,86 @@ package body Process.Queues is
         result : Boolean;
     begin
         Spinlocks.enterCriticalSection (q.lock);
-        result := q.head /= NO_PROCESS and then
-          (if relation = Strictly_Higher then proctab(q.head).queueKey > priority
-           else proctab(q.head).queueKey >= priority);
+        result := q.head /= NO_THREAD and then
+          (if relation = Strictly_Higher then threadtab (q.head).queueKey > priority
+           else threadtab (q.head).queueKey >= priority);
         Spinlocks.exitCriticalSection (q.lock);
         return result;
     end hasReadyPeer;
 
     function hasAwakenedPeer (q : in out ProcQueue; priority : Integer) return Boolean is
-        Cursor : ProcessID;
+        Cursor : ThreadID;
         Found : Boolean := False;
     begin
         Spinlocks.enterCriticalSection (q.lock);
         Cursor := q.head;
-        while Cursor /= NO_PROCESS and then proctab(Cursor).queueKey >= priority loop
-            if proctab(Cursor).readiness = Awakened then
+        while Cursor /= NO_THREAD and then threadtab (Cursor).queueKey >= priority loop
+            if threadtab (Cursor).readiness = Awakened then
                 Found := True;
                 exit;
             end if;
-            Cursor := proctab(Cursor).next;
+            Cursor := threadtab (Cursor).next;
         end loop;
         Spinlocks.exitCriticalSection (q.lock);
         return Found;
     end hasAwakenedPeer;
 
+    -- The rule itself is Work_Stealing.Eligible (SPARK, proved): ordinary
+    -- work, unpinned, not retiring, not still switching out on another CPU,
+    -- and queued at least Steal_Age_Microseconds. A freshly woken IPC partner
+    -- therefore stays on its CPU.
+    function isStealable (pid : ThreadID) return Boolean is
+      (Work_Stealing.Eligible
+         ((Priority  => threadtab (pid).queueKey,
+           Pinned    => threadtab (pid).pinned,
+           Closing   => Process_Lifetime.Closing (threadtab (pid).lifetime),
+           Executing => Process_Lifetime.Executing (threadtab (pid).lifetime),
+           Queued_At => threadtab (pid).queuedTSC),
+          Now                   => x86.rdtsc,
+          Ticks_Per_Microsecond => Time.tscPerDuration,
+          Age_Microseconds      => Scheduler_Timing.Steal_Age_Microseconds));
+
+    function hasStealable (q : in out ProcQueue) return Boolean is
+        Cursor : ThreadID;
+        Found : Boolean := False;
+    begin
+        Spinlocks.enterCriticalSection (q.lock);
+        Cursor := q.head;
+        while Cursor /= NO_THREAD loop
+            if isStealable (Cursor) then
+                Found := True;
+                exit;
+            end if;
+            Cursor := threadtab (Cursor).next;
+        end loop;
+        Spinlocks.exitCriticalSection (q.lock);
+        return Found;
+    end hasStealable;
+
+    procedure stealFrom (q : in out ProcQueue; result : out ThreadID) is
+        Cursor : ThreadID;
+        Ignored : ThreadID;
+    begin
+        result := NO_THREAD;
+        Spinlocks.enterCriticalSection (q.lock);
+        Cursor := q.head;
+        while Cursor /= NO_THREAD loop
+            if isStealable (Cursor) then
+                popItemNoLock (q, Cursor, Ignored);
+                threadtab (Cursor).prev := NO_THREAD;
+                threadtab (Cursor).next := NO_THREAD;
+                result := Cursor;
+                exit;
+            end if;
+            Cursor := threadtab (Cursor).next;
+        end loop;
+        Spinlocks.exitCriticalSection (q.lock);
+    end stealFrom;
+
     ---------------------------------------------------------------------------
     -- popFront
     ---------------------------------------------------------------------------
-    procedure popFront (q : in out ProcQueue; result : out ProcessID)
+    procedure popFront (q : in out ProcQueue; result : out ThreadID)
 
     is
     begin
@@ -78,17 +134,17 @@ package body Process.Queues is
     ---------------------------------------------------------------------------
     -- popBack
     ---------------------------------------------------------------------------
-    procedure popBack (q : in out ProcQueue; result : out ProcessID)
+    procedure popBack (q : in out ProcQueue; result : out ThreadID)
 
     is
     begin
         Spinlocks.enterCriticalSection (q.lock);
         if isEmpty(q) then
-            result := NO_PROCESS;
+            result := NO_THREAD;
         else
             popItemNoLock (q, q.tail, result);
-            proctab(result).prev := NO_PROCESS;
-            proctab(result).next := NO_PROCESS;
+            threadtab (result).prev := NO_THREAD;
+            threadtab (result).next := NO_THREAD;
         end if;
         Spinlocks.exitCriticalSection (q.lock);
     end popBack;
@@ -101,26 +157,26 @@ package body Process.Queues is
     -- Public clients of the Process.Queues package use popItem which will hold
     -- the lock.
     ---------------------------------------------------------------------------
-    procedure popItemNoLock (q : in out ProcQueue; pid : ProcessID;
-        result : out ProcessID)
+    procedure popItemNoLock (q : in out ProcQueue; pid : ThreadID;
+        result : out ThreadID)
 
     is
-        prev, next : ProcessID;
+        prev, next : ThreadID;
     begin
 
-        next := proctab(pid).next;
-        prev := proctab(pid).prev;
+        next := threadtab (pid).next;
+        prev := threadtab (pid).prev;
 
         -- Unlink this process from its current list
-        if prev /= NO_PROCESS then
-            proctab(prev).next := next;
+        if prev /= NO_THREAD then
+            threadtab (prev).next := next;
         else
             -- first element in list
             q.head := next;
         end if;
 
-        if next /= NO_PROCESS then
-            proctab(next).prev := prev;
+        if next /= NO_THREAD then
+            threadtab (next).prev := prev;
         else
             -- last element
             q.tail := prev;
@@ -132,8 +188,8 @@ package body Process.Queues is
     ---------------------------------------------------------------------------
     -- popItem
     ---------------------------------------------------------------------------
-    procedure popItem (q : in out ProcQueue; pid : ProcessID;
-        result : out ProcessID)
+    procedure popItem (q : in out ProcQueue; pid : ThreadID;
+        result : out ThreadID)
 
     is
     begin
@@ -144,25 +200,25 @@ package body Process.Queues is
         Spinlocks.exitCriticalSection (q.lock);
     end popItem;
 
-    procedure detach (q : in out ProcQueue; pid : ProcessID;
+    procedure detach (q : in out ProcQueue; pid : ThreadID;
                       kind : Removal_Kind := Ordinary_Queue) is
-        current, ignored, following : ProcessID;
+        current, ignored, following : ThreadID;
     begin
         Spinlocks.enterCriticalSection (q.lock);
         current := q.head;
-        while current /= NO_PROCESS loop
+        while current /= NO_THREAD loop
             if current = pid then
-                following := proctab(pid).next;
-                if kind = Delta_Queue and then following /= NO_PROCESS then
-                    proctab(following).queueKey :=
-                        proctab(following).queueKey + proctab(pid).queueKey;
+                following := threadtab (pid).next;
+                if kind = Delta_Queue and then following /= NO_THREAD then
+                    threadtab (following).queueKey :=
+                        threadtab (following).queueKey + threadtab (pid).queueKey;
                 end if;
                 popItemNoLock (q, pid, ignored);
-                proctab(pid).next := NO_PROCESS;
-                proctab(pid).prev := NO_PROCESS;
+                threadtab (pid).next := NO_THREAD;
+                threadtab (pid).prev := NO_THREAD;
                 exit;
             end if;
-            current := proctab(current).next;
+            current := threadtab (current).next;
         end loop;
         Spinlocks.exitCriticalSection (q.lock);
     end detach;
@@ -170,11 +226,11 @@ package body Process.Queues is
     ---------------------------------------------------------------------------
     -- enqueue - add to the back of the list while holding the list's lock
     ---------------------------------------------------------------------------
-    procedure enqueue (q : in out ProcQueue; pid : ProcessID;
-        result : out ProcessID)
+    procedure enqueue (q : in out ProcQueue; pid : ThreadID;
+        result : out ThreadID)
 
     is
-        prev : ProcessID;
+        prev : ThreadID;
     begin
 
         Spinlocks.enterCriticalSection (q.lock);
@@ -182,13 +238,13 @@ package body Process.Queues is
         if isEmpty (q) then
             q.head := pid;
             q.tail := pid;
-            proctab(pid).prev := NO_PROCESS;
-            proctab(pid).next := NO_PROCESS;
+            threadtab (pid).prev := NO_THREAD;
+            threadtab (pid).next := NO_THREAD;
         else
             prev := q.tail;
-            proctab(pid).prev := prev;
-            proctab(pid).next := NO_PROCESS;
-            proctab(prev).next := pid;
+            threadtab (pid).prev := prev;
+            threadtab (pid).next := NO_THREAD;
+            threadtab (prev).next := pid;
             q.tail := pid;
         end if;
 
@@ -200,21 +256,21 @@ package body Process.Queues is
     ---------------------------------------------------------------------------
     -- dequeueNoLock
     ---------------------------------------------------------------------------
-    procedure dequeueNoLock (q : in out ProcQueue; result : out ProcessID)
+    procedure dequeueNoLock (q : in out ProcQueue; result : out ThreadID)
 
     is
-        pid : ProcessID;
+        pid : ThreadID;
     begin
 
         if isEmpty (q) then
-            result := NO_PROCESS;
+            result := NO_THREAD;
             return;
         end if;
 
         popItemNoLock (q, q.head, pid);
 
-        proctab(pid).prev := NO_PROCESS;
-        proctab(pid).next := NO_PROCESS;
+        threadtab (pid).prev := NO_THREAD;
+        threadtab (pid).next := NO_THREAD;
 
         result := pid;
     end dequeueNoLock;
@@ -222,24 +278,24 @@ package body Process.Queues is
     ---------------------------------------------------------------------------
     -- dequeue - remove from front of the list while holding the list's lock
     ---------------------------------------------------------------------------
-    procedure dequeue (q : in out ProcQueue; result : out ProcessID)
+    procedure dequeue (q : in out ProcQueue; result : out ThreadID)
 
     is
-        pid : ProcessID;
+        pid : ThreadID;
     begin
 
         Spinlocks.enterCriticalSection (q.lock);
 
         if isEmpty (q) then
             Spinlocks.exitCriticalSection (q.lock);
-            result := NO_PROCESS;
+            result := NO_THREAD;
             return;
         end if;
 
         popItemNoLock (q, q.head, pid);
 
-        proctab(pid).prev := NO_PROCESS;
-        proctab(pid).next := NO_PROCESS;
+        threadtab (pid).prev := NO_THREAD;
+        threadtab (pid).next := NO_THREAD;
 
         Spinlocks.exitCriticalSection (q.lock);
 
@@ -250,14 +306,14 @@ package body Process.Queues is
     -- Insert in descending key order, FIFO among equal keys.
     ---------------------------------------------------------------------------
     procedure insert (q      : in out ProcQueue;
-                      pid    : ProcessID;
+                      pid    : ThreadID;
                       key    : Integer;
-                      result : out ProcessID;
+                      result : out ThreadID;
                       placement : Equal_Placement := After_Peers)
 
     is
-        curr : ProcessID;
-        prev : ProcessID;
+        curr : ThreadID;
+        prev : ThreadID;
     begin
         Spinlocks.enterCriticalSection (q.lock);
 
@@ -265,9 +321,9 @@ package body Process.Queues is
             -- empty list.
             q.head := pid;
             q.tail := pid;
-            proctab(pid).prev     := NO_PROCESS;
-            proctab(pid).next     := NO_PROCESS;
-            proctab(pid).queueKey := key;
+            threadtab (pid).prev     := NO_THREAD;
+            threadtab (pid).next     := NO_THREAD;
+            threadtab (pid).queueKey := key;
 
             Spinlocks.exitCriticalSection (q.lock);
             result := pid;
@@ -278,34 +334,34 @@ package body Process.Queues is
         curr := q.head;
 
         loop
-            exit when key > proctab(curr).queueKey or else
-              (placement = Resume_Turn and then key = proctab(curr).queueKey) or else
-              proctab(curr).next = NO_PROCESS;
-            curr := proctab(curr).next;
+            exit when key > threadtab (curr).queueKey or else
+              (placement = Resume_Turn and then key = threadtab (curr).queueKey) or else
+              threadtab (curr).next = NO_THREAD;
+            curr := threadtab (curr).next;
         end loop;
 
-        if key > proctab(curr).queueKey or else
-          (placement = Resume_Turn and then key = proctab(curr).queueKey)
+        if key > threadtab (curr).queueKey or else
+          (placement = Resume_Turn and then key = threadtab (curr).queueKey)
         then
             -- Only an unfinished, higher-priority-preempted turn can resume
             -- ahead of equal peers. Ordinary rotation remains FIFO.
-            prev                  := proctab(curr).prev;
-            proctab(pid).next     := curr;
-            proctab(pid).prev     := prev;
-            proctab(pid).queueKey := key;
-            proctab(curr).prev    := pid;
+            prev                  := threadtab (curr).prev;
+            threadtab (pid).next     := curr;
+            threadtab (pid).prev     := prev;
+            threadtab (pid).queueKey := key;
+            threadtab (curr).prev    := pid;
 
-            if prev /= NO_PROCESS then
-                proctab(prev).next := pid;
+            if prev /= NO_THREAD then
+                threadtab (prev).next := pid;
             else
                 q.head := pid;
             end if;
         else
             -- Append AFTER curr (new node has lowest priority, goes at tail)
-            proctab(pid).next     := NO_PROCESS;
-            proctab(pid).prev     := curr;
-            proctab(pid).queueKey := key;
-            proctab(curr).next    := pid;
+            threadtab (pid).next     := NO_THREAD;
+            threadtab (pid).prev     := curr;
+            threadtab (pid).queueKey := key;
+            threadtab (curr).next    := pid;
             q.tail                := pid;
         end if;
 
@@ -318,27 +374,27 @@ package body Process.Queues is
     -- insertDelta
     ---------------------------------------------------------------------------
     procedure insertDelta (q            : in out ProcQueue;
-                           pid          : ProcessID;
+                           pid          : ThreadID;
                            delayFromNow : Integer;
-                           result       : out ProcessID)
+                           result       : out ThreadID)
 
     is
         -- accumDelay tracks the absolute wakeup time of all entries
         -- before the current insertion point.
         accumDelay : Integer := 0;
 
-        prev, curr : ProcessID;
+        prev, curr : ThreadID;
     begin
         Spinlocks.enterCriticalSection (q.lock);
 
         -- Initialize new node's links
-        proctab(pid).next := NO_PROCESS;
-        proctab(pid).prev := NO_PROCESS;
+        threadtab (pid).next := NO_THREAD;
+        threadtab (pid).prev := NO_THREAD;
 
         if isEmpty (q) then
             q.head := pid;
             q.tail := pid;
-            proctab(pid).queueKey := delayFromNow;
+            threadtab (pid).queueKey := delayFromNow;
 
             Spinlocks.exitCriticalSection (q.lock);
             result := pid;
@@ -351,21 +407,21 @@ package body Process.Queues is
         -- absolute wakeup time of curr.  Insert before the first node
         -- whose absolute time exceeds our delay.
         loop
-            if delayFromNow < accumDelay + proctab(curr).queueKey then
+            if delayFromNow < accumDelay + threadtab (curr).queueKey then
                 -- Insert before curr
-                proctab(pid).queueKey := delayFromNow - accumDelay;
+                threadtab (pid).queueKey := delayFromNow - accumDelay;
 
                 -- Reduce curr's delta (now relative to the new node)
-                proctab(curr).queueKey :=
-                    proctab(curr).queueKey - proctab(pid).queueKey;
+                threadtab (curr).queueKey :=
+                    threadtab (curr).queueKey - threadtab (pid).queueKey;
 
-                prev := proctab(curr).prev;
-                proctab(pid).next := curr;
-                proctab(pid).prev := prev;
-                proctab(curr).prev := pid;
+                prev := threadtab (curr).prev;
+                threadtab (pid).next := curr;
+                threadtab (pid).prev := prev;
+                threadtab (curr).prev := pid;
 
-                if prev /= NO_PROCESS then
-                    proctab(prev).next := pid;
+                if prev /= NO_THREAD then
+                    threadtab (prev).next := pid;
                 else
                     q.head := pid;
                 end if;
@@ -375,16 +431,16 @@ package body Process.Queues is
                 return;
             end if;
 
-            accumDelay := accumDelay + proctab(curr).queueKey;
+            accumDelay := accumDelay + threadtab (curr).queueKey;
 
-            exit when proctab(curr).next = NO_PROCESS;
-            curr := proctab(curr).next;
+            exit when threadtab (curr).next = NO_THREAD;
+            curr := threadtab (curr).next;
         end loop;
 
         -- Append at the tail (after curr)
-        proctab(pid).queueKey := delayFromNow - accumDelay;
-        proctab(pid).prev     := curr;
-        proctab(curr).next    := pid;
+        threadtab (pid).queueKey := delayFromNow - accumDelay;
+        threadtab (pid).prev     := curr;
+        threadtab (curr).next    := pid;
         q.tail                := pid;
 
         Spinlocks.exitCriticalSection (q.lock);
@@ -397,19 +453,19 @@ package body Process.Queues is
     ---------------------------------------------------------------------------
     procedure wakeup
     is
-        wakePid : ProcessID;
+        wakePid : ThreadID;
     begin
         loop
             Spinlocks.enterCriticalSection (sleepList.lock);
             if not Queues.isEmpty (sleepList) and then
-               proctab(sleepList.head).queueKey <= 0
+               threadtab (sleepList.head).queueKey <= 0
             then
                 dequeueNoLock (sleepList, wakePid);
             else
-                wakePid := NO_PROCESS;
+                wakePid := NO_THREAD;
             end if;
             Spinlocks.exitCriticalSection (sleepList.lock);
-            exit when wakePid = NO_PROCESS;
+            exit when wakePid = NO_THREAD;
             ready (wakePid);
         end loop;
     end wakeup;
@@ -419,21 +475,21 @@ package body Process.Queues is
     -- Same as insertDelta but caller must already hold q.lock.
     ---------------------------------------------------------------------------
     procedure insertDeltaNoLock (q            : in out ProcQueue;
-                                 pid          : ProcessID;
+                                 pid          : ThreadID;
                                  delayFromNow : Integer;
-                                 result       : out ProcessID)
+                                 result       : out ThreadID)
 
     is
         accumDelay : Integer := 0;
-        prev, curr : ProcessID;
+        prev, curr : ThreadID;
     begin
-        proctab(pid).next := NO_PROCESS;
-        proctab(pid).prev := NO_PROCESS;
+        threadtab (pid).next := NO_THREAD;
+        threadtab (pid).prev := NO_THREAD;
 
         if isEmpty (q) then
             q.head := pid;
             q.tail := pid;
-            proctab(pid).queueKey := delayFromNow;
+            threadtab (pid).queueKey := delayFromNow;
             result := pid;
             return;
         end if;
@@ -441,18 +497,18 @@ package body Process.Queues is
         curr := q.head;
 
         loop
-            if delayFromNow < accumDelay + proctab(curr).queueKey then
-                proctab(pid).queueKey := delayFromNow - accumDelay;
-                proctab(curr).queueKey :=
-                    proctab(curr).queueKey - proctab(pid).queueKey;
+            if delayFromNow < accumDelay + threadtab (curr).queueKey then
+                threadtab (pid).queueKey := delayFromNow - accumDelay;
+                threadtab (curr).queueKey :=
+                    threadtab (curr).queueKey - threadtab (pid).queueKey;
 
-                prev := proctab(curr).prev;
-                proctab(pid).next := curr;
-                proctab(pid).prev := prev;
-                proctab(curr).prev := pid;
+                prev := threadtab (curr).prev;
+                threadtab (pid).next := curr;
+                threadtab (pid).prev := prev;
+                threadtab (curr).prev := pid;
 
-                if prev /= NO_PROCESS then
-                    proctab(prev).next := pid;
+                if prev /= NO_THREAD then
+                    threadtab (prev).next := pid;
                 else
                     q.head := pid;
                 end if;
@@ -461,15 +517,15 @@ package body Process.Queues is
                 return;
             end if;
 
-            accumDelay := accumDelay + proctab(curr).queueKey;
+            accumDelay := accumDelay + threadtab (curr).queueKey;
 
-            exit when proctab(curr).next = NO_PROCESS;
-            curr := proctab(curr).next;
+            exit when threadtab (curr).next = NO_THREAD;
+            curr := threadtab (curr).next;
         end loop;
 
-        proctab(pid).queueKey := delayFromNow - accumDelay;
-        proctab(pid).prev     := curr;
-        proctab(curr).next    := pid;
+        threadtab (pid).queueKey := delayFromNow - accumDelay;
+        threadtab (pid).prev     := curr;
+        threadtab (curr).next    := pid;
         q.tail                := pid;
 
         result := pid;
@@ -480,16 +536,16 @@ package body Process.Queues is
     -- Check whether the process is actually linked in the sleep delta queue.
     -- Must be called while holding sleepList.lock.
     ---------------------------------------------------------------------------
-    function isInSleepQueue (pid : ProcessID) return Boolean
+    function isInSleepQueue (pid : ThreadID) return Boolean
 
     is
-        curr : ProcessID := sleepList.head;
+        curr : ThreadID := sleepList.head;
     begin
-        while curr /= NO_PROCESS loop
+        while curr /= NO_THREAD loop
             if curr = pid then
                 return True;
             end if;
-            curr := proctab(curr).next;
+            curr := threadtab (curr).next;
         end loop;
         return False;
     end isInSleepQueue;
@@ -501,23 +557,23 @@ package body Process.Queues is
     -- Verifies the process is actually in the queue to avoid corruption
     -- from a race with Process.sleep.
     ---------------------------------------------------------------------------
-    procedure wakeFromSleep (pid : ProcessID; woken : out Boolean)
+    procedure wakeFromSleep (pid : ThreadID; woken : out Boolean)
 
     is
-        ignore  : ProcessID;
-        nextPID : ProcessID;
+        ignore  : ThreadID;
+        nextPID : ThreadID;
     begin
         woken := False;
         Spinlocks.enterCriticalSection (lock);
         Spinlocks.enterCriticalSection (sleepList.lock);
 
-        if proctab(pid).state = SLEEPING and then
+        if threadtab (pid).state = SLEEPING and then
            isInSleepQueue (pid)
         then
-            nextPID := proctab(pid).next;
-            if nextPID /= NO_PROCESS then
-                proctab(nextPID).queueKey :=
-                    proctab(nextPID).queueKey + proctab(pid).queueKey;
+            nextPID := threadtab (pid).next;
+            if nextPID /= NO_THREAD then
+                threadtab (nextPID).queueKey :=
+                    threadtab (nextPID).queueKey + threadtab (pid).queueKey;
             end if;
             popItemNoLock (sleepList, pid, ignore);
             woken := True;
@@ -538,7 +594,7 @@ package body Process.Queues is
     is
         use type Interfaces.Unsigned_64;
         remaining : Interfaces.Unsigned_64 := elapsed;
-        cursor : ProcessID;
+        cursor : ThreadID;
     begin
         Spinlocks.enterCriticalSection (lock);
         Spinlocks.enterCriticalSection (sleepList.lock);
@@ -546,17 +602,17 @@ package body Process.Queues is
         -- Work is bounded by queued sleepers, not missed timer ticks. Preserve
         -- the first future delta while marking every passed deadline due.
         cursor := sleepList.head;
-        while cursor /= NO_PROCESS and then remaining > 0 loop
-            if proctab(cursor).queueKey > 0 then
-                if Interfaces.Unsigned_64 (proctab(cursor).queueKey) <= remaining then
-                    remaining := remaining - Interfaces.Unsigned_64 (proctab(cursor).queueKey);
-                    proctab(cursor).queueKey := 0;
+        while cursor /= NO_THREAD and then remaining > 0 loop
+            if threadtab (cursor).queueKey > 0 then
+                if Interfaces.Unsigned_64 (threadtab (cursor).queueKey) <= remaining then
+                    remaining := remaining - Interfaces.Unsigned_64 (threadtab (cursor).queueKey);
+                    threadtab (cursor).queueKey := 0;
                 else
-                    proctab(cursor).queueKey := proctab(cursor).queueKey - Integer (remaining);
+                    threadtab (cursor).queueKey := threadtab (cursor).queueKey - Integer (remaining);
                     remaining := 0;
                 end if;
             end if;
-            cursor := proctab(cursor).next;
+            cursor := threadtab (cursor).next;
         end loop;
 
         Spinlocks.exitCriticalSection (sleepList.lock);
@@ -569,7 +625,7 @@ package body Process.Queues is
     ---------------------------------------------------------------------------
     procedure print (q : ProcQueue)
     is
-        curr : ProcessID := q.head;
+        curr : ThreadID := q.head;
     begin
         println ("Process.Queues: ");
 
@@ -578,9 +634,9 @@ package body Process.Queues is
             return;
         end if;
 
-        while curr /= NO_PROCESS loop
-            println ("* " & proctab(curr).name & " key: " & proctab(curr).queueKey'Image);
-            curr := proctab(curr).next;
+        while curr /= NO_THREAD loop
+            println ("* " & proctab(processOf (curr)).name & " key: " & threadtab (curr).queueKey'Image);
+            curr := threadtab (curr).next;
         end loop;
 
     end print;

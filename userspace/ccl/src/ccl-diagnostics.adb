@@ -9,7 +9,7 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Unexpected_Token => "Unexpected token",
          when Unknown_Form => "Unknown operation or function; functions must be defined before use",
          when Expected_Close => "Expected a closing parenthesis",
-         when Expected_Name => "Expected a binding or operation name",
+         when Expected_Name => "Expected a binding or operation name (at most 32 characters)",
          when Invalid_Integer => "Invalid or out-of-range integer",
          when Nesting_Too_Deep => "Expression nesting limit exceeded",
          when AST_Full => "Expression has too many syntax nodes",
@@ -38,6 +38,9 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Function_Argument_Mismatch => "Argument type does not match the function parameter",
          when Function_Result_Mismatch => "Function body does not match its declared return type",
          when Expected_Handler => "Expected a typed handler value",
+         when Host_Schema_Unavailable => "The host object's approved schema is not visible",
+         when Unsupported_Host_Object => "This object shape is not supported by the interpreter yet",
+         when Host_Object_Type_Mismatch => "The argument does not match the host object's declared type",
          when Invalid_Handler_Profile => "Handler must take no arguments and return Boolean",
          when Handler_Result_Not_Exportable => "Pass the handler to a service; it cannot be returned from this invocation");
    end Message;
@@ -54,6 +57,7 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Evaluation_Division_By_Zero => "Cannot divide by zero",
          when Evaluation_Index_Error => "Index is outside the value's bounds",
          when Evaluation_Text_Storage_Exhausted => "Execution text storage exhausted",
+         when Evaluation_Object_Storage_Exhausted => "Execution object storage exhausted",
          when Host_Import_Required => "Service call needs a host-enabled interpreter or VM; no service was invoked.",
          when Host_Authority_Denied => "Service operation has no granted runtime binding",
          when Host_Call_Failed => "Service call failed; no value returned",
@@ -61,5 +65,21 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Host_Argument_Out_Of_Bounds => "Argument exceeds the service's declared text bound",
          when Host_Contract_Unsupported => "This interpreter host does not support the operation's value or lifecycle contract",
          when Evaluation_Depth_Exhausted => "Execution call/expression depth limit exceeded");
+   end Message;
+   function Message (Status : CCL.VM.Execution_Status) return String is
+      use CCL.VM;
+   begin
+      return (case Status is
+         when Completed => "Completed",
+         when Paused => "Paused",
+         when Stopped => "Stopped",
+         when Fuel_Exhausted => "Execution budget exhausted",
+         when Arithmetic_Overflow => "Arithmetic overflow",
+         when Division_By_Zero => "Division by zero",
+         when Object_Storage_Exhausted => "Object storage exhausted",
+         when Invalid_Bytecode => "Invalid bytecode",
+         when Waiting_For_Host => "Waiting for service",
+         when Host_Call_Failed => "Service call failed",
+         when No_Result => "No result");
    end Message;
 end CCL.Diagnostics;

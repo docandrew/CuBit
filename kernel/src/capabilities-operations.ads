@@ -44,45 +44,6 @@ is
         with Ghost;
 
     ---------------------------------------------------------------------------
-    -- isReplyMoveResult
-    -- Proof-only model for saving the kernel-minted current reply authority.
-    -- A successful save is a move, never a copy: the destination receives the
-    -- exact source capability, the source becomes null, and no other slot is
-    -- changed.  A failed move changes nothing.
-    ---------------------------------------------------------------------------
-    function isReplyMoveResult (updated  : CapabilityTable;
-                                original : CapabilityTable;
-                                dest     : CapabilitySlot;
-                                moved    : Boolean) return Boolean is
-        (if moved then
-             dest /= REPLY_CAP_SLOT
-             and then original(REPLY_CAP_SLOT).capType = CAP_REPLY
-             and then original(dest).capType = CAP_NULL
-             and then updated(dest) = original(REPLY_CAP_SLOT)
-             and then updated(REPLY_CAP_SLOT) = NULL_CAPABILITY
-             and then
-               (for all i in CapabilitySlot =>
-                  (if i /= dest and then i /= REPLY_CAP_SLOT then
-                       updated(i) = original(i)))
-         else
-             updated = original
-             and then
-               (dest = REPLY_CAP_SLOT
-                or else original(REPLY_CAP_SLOT).capType /= CAP_REPLY
-                or else original(dest).capType /= CAP_NULL))
-        with Ghost;
-
-    ---------------------------------------------------------------------------
-    -- moveReplyCap
-    -- Move the current kernel reply capability into an unused deferred slot.
-    -- Existing authority is never overwritten.
-    ---------------------------------------------------------------------------
-    procedure moveReplyCap (table : in out CapabilityTable;
-                            dest  : in     CapabilitySlot;
-                            moved :    out Boolean) with
-        Post => isReplyMoveResult (table, table'Old, dest, moved);
-
-    ---------------------------------------------------------------------------
     -- isReplyTakeResult
     -- Proof-only model for consuming a selected one-use reply capability.
     -- Success returns the exact old capability and clears only its slot;
@@ -129,6 +90,56 @@ is
             (if taken then deferredSlots'Old and
                  not Shift_Left (Unsigned_64'(1), slot)
              else deferredSlots'Old);
+
+    ---------------------------------------------------------------------------
+    -- Per-thread reply authority (docs/threads.md). The reply capability for
+    -- the request a thread is serving lives in that thread's record, not in
+    -- the process table's slot 63, so two threads of one process serving
+    -- requests at once cannot overwrite each other's reply authority. Slot
+    -- 63 still names "my reply capability" in the ABI, resolved per thread.
+    ---------------------------------------------------------------------------
+
+    -- Move a thread's current reply capability into an unused slot of its
+    -- process's table (MOVE_REPLY_CAPABILITY). Existing authority is never
+    -- overwritten; on failure nothing changes.
+    procedure moveReplyCapFrom (source : in out Capability;
+                                table  : in out CapabilityTable;
+                                dest   : in     CapabilitySlot;
+                                moved  :    out Boolean) with
+        Post =>
+          (if moved then
+               dest /= REPLY_CAP_SLOT
+               and then source'Old.capType = CAP_REPLY
+               and then table'Old(dest).capType = CAP_NULL
+               and then source = NULL_CAPABILITY
+               and then isSingleSlotUpdate (table, table'Old, dest, source'Old)
+           else
+               source = source'Old and then table = table'Old
+               and then
+                 (dest = REPLY_CAP_SLOT
+                  or else source'Old.capType /= CAP_REPLY
+                  or else table'Old(dest).capType /= CAP_NULL));
+
+    -- Consume a thread's current reply capability, if present.
+    procedure takeReplyCapFrom (source : in out Capability;
+                                cap    :    out Capability;
+                                taken  :    out Boolean) with
+        Post =>
+          (if source'Old.capType = CAP_REPLY then
+               taken and then cap = source'Old
+               and then source = NULL_CAPABILITY
+           else
+               not taken and then cap = NULL_CAPABILITY
+               and then source = source'Old);
+
+    -- Ghost: a thread's reply authority is single-use, whether it is taken
+    -- directly or moved to a deferred slot first.
+    procedure proveThreadReplySingleUse
+      (source      : in out Capability;
+       firstTaken  :    out Boolean;
+       secondTaken :    out Boolean) with
+        Ghost,
+        Post => not (firstTaken and secondTaken);
 
     ---------------------------------------------------------------------------
     -- proveReplyCapSingleUse

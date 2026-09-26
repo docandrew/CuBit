@@ -26,6 +26,13 @@ and escaped BASIC keyword names. There are currently 36 round-trip fixtures.
 The UI exercises F8, both interpreter surfaces, and a paused bytecode VM
 whose inspection must remain unchanged across F8 and Shift+F8.
 
+The hosted interpreter checks also exercise scalar-copy host results: ownership
+tags, noncopyable values, variants and failed callbacks must not become plain
+scalars. A wrong primitive produces the existing result-type mismatch, while
+valid true/false values round-trip through typed functions and host calls.
+The ownership-tag case failed before the scalar-host adapter fix; these checks
+are semantic regressions, not new F8/UI behavior or a kernel-security proof.
+
 Focused proof command:
 
 ```sh

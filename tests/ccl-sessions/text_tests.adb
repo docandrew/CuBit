@@ -21,20 +21,20 @@ procedure Text_Tests is
    end record;
    procedure Invoke
      (Context : in out Host_State; Binding : Unsigned_32;
-      Argument : Value; Value : out CCL.Host_Values.Value; Success : out Boolean) is
+      Argument : Value; Reply : out CCL.Host_Values.Call_Result) is
       Buffer : Text;
    begin
       Context.Calls := Context.Calls + 1;
-      Value := Boolean_Constant (False);
+      Reply.Value := Boolean_Constant (False);
       case Binding is
-         when 77 => Value := Integer_Constant (3661000); Success := True;
+         when 77 => Reply.Value := Integer_Constant (3661000); Reply.Success := True;
          when 78 =>
-            CCL.UI_Labels.Apply_Value (Context.Label, CCL.UI_Labels.Set_Text, Argument, Success);
-            Value := Boolean_Constant (Success);
+            CCL.UI_Labels.Apply_Value (Context.Label, CCL.UI_Labels.Set_Text, Argument, Reply.Success);
+            Reply.Value := Boolean_Constant (Reply.Success);
          when 79 =>
-            Copy_Text ((if Context.Return_Too_Long then "oversize" else "hello"), Buffer, Success);
-            Value := Text_Constant (Buffer);
-         when others => Success := False;
+            Copy_Text ((if Context.Return_Too_Long then "oversize" else "hello"), Buffer, Reply.Success);
+            Reply.Value := Text_Constant (Buffer);
+         when others => Reply.Success := False;
       end case;
    end Invoke;
    procedure Scalar_Invoke

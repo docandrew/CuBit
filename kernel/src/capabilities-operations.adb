@@ -8,26 +8,49 @@ package body Capabilities.Operations with
     SPARK_Mode => On
 is
 
-    ---------------------------------------------------------------------------
-    -- moveReplyCap
-    ---------------------------------------------------------------------------
-    procedure moveReplyCap (table : in out CapabilityTable;
-                            dest  : in     CapabilitySlot;
-                            moved :    out Boolean)
+    procedure moveReplyCapFrom (source : in out Capability;
+                                table  : in out CapabilityTable;
+                                dest   : in     CapabilitySlot;
+                                moved  :    out Boolean)
     is
     begin
         if dest = REPLY_CAP_SLOT
-          or else table(REPLY_CAP_SLOT).capType /= CAP_REPLY
+          or else source.capType /= CAP_REPLY
           or else table(dest).capType /= CAP_NULL
         then
             moved := False;
             return;
         end if;
-
-        table(dest) := table(REPLY_CAP_SLOT);
-        table(REPLY_CAP_SLOT) := NULL_CAPABILITY;
+        table(dest) := source;
+        source := NULL_CAPABILITY;
         moved := True;
-    end moveReplyCap;
+    end moveReplyCapFrom;
+
+    procedure takeReplyCapFrom (source : in out Capability;
+                                cap    :    out Capability;
+                                taken  :    out Boolean)
+    is
+    begin
+        if source.capType /= CAP_REPLY then
+            cap := NULL_CAPABILITY;
+            taken := False;
+            return;
+        end if;
+        cap := source;
+        source := NULL_CAPABILITY;
+        taken := True;
+    end takeReplyCapFrom;
+
+    procedure proveThreadReplySingleUse
+      (source      : in out Capability;
+       firstTaken  :    out Boolean;
+       secondTaken :    out Boolean)
+    is
+        first, second : Capability;
+    begin
+        takeReplyCapFrom (source, first, firstTaken);
+        takeReplyCapFrom (source, second, secondTaken);
+    end proveThreadReplySingleUse;
 
     ---------------------------------------------------------------------------
     -- takeReplyCap

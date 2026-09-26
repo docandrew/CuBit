@@ -110,6 +110,35 @@ pub fn measure(
     depth: usize,
     batches: usize,
 ) -> Result<Measurement> {
+    let origin = Instant::now();
+    measure_with_clock(
+        io,
+        file,
+        operation,
+        bytes,
+        blocks,
+        depth,
+        batches,
+        move || origin.elapsed().as_nanos(),
+    )
+}
+
+/// Same workload with an explicit monotonic nanosecond clock. Native benchmark
+/// callers can use a calibrated local counter rather than timing clock-service
+/// IPC. A regressing counter aborts the measurement, never wraps into a sample.
+pub fn measure_with_clock<F>(
+    io: &dyn IO,
+    file: &dyn File,
+    operation: Operation,
+    bytes: usize,
+    blocks: usize,
+    depth: usize,
+    batches: usize,
+    now: F,
+) -> Result<Measurement>
+where
+    F: Fn() -> u128 + Copy + Send + Sync + 'static,
+{
     if !matches!(bytes, 4096 | 65536)
         || !matches!(depth, 1 | 8 | 32)
         || !(32..=1024).contains(&blocks)
@@ -181,16 +210,17 @@ pub fn measure(
         } else {
             Vec::new()
         };
-        let batch_start = Instant::now();
+        let batch_start = now();
         for slot in 0..depth {
-            let start = Instant::now();
+            let start = now();
             let results = outcomes.clone();
             let pos = (positions[slot] * bytes) as u64;
             let submitted = match operation {
                 Operation::SequentialRead | Operation::RandomRead => {
                     let c = Completion::new_read(buffers[slot].clone(), move |r| {
                         let ok = r.is_ok_and(|(_, n)| n == bytes as i32);
-                        results.lock().unwrap()[slot] = Some((start.elapsed().as_nanos(), ok));
+                        let elapsed = now().checked_sub(start).expect("benchmark clock regressed");
+                        results.lock().unwrap()[slot] = Some((elapsed, ok));
                         None
                     });
                     file.pread(pos, c)
@@ -198,7 +228,8 @@ pub fn measure(
                 _ => {
                     let c = Completion::new_write(move |r| {
                         let ok = r.is_ok_and(|n| n == bytes as i32);
-                        results.lock().unwrap()[slot] = Some((start.elapsed().as_nanos(), ok));
+                        let elapsed = now().checked_sub(start).expect("benchmark clock regressed");
+                        results.lock().unwrap()[slot] = Some((elapsed, ok));
                     });
                     if matches!(operation, Operation::VectoredWrite) {
                         file.pwritev(pos, vectors[slot].clone(), c)
@@ -235,7 +266,9 @@ pub fn measure(
                 file.sync(Completion::new_sync(|_| {}), FileSyncType::Fsync)?,
             )?;
         }
-        let elapsed = batch_start.elapsed().as_nanos();
+        let elapsed = now()
+            .checked_sub(batch_start)
+            .expect("benchmark clock regressed");
         let outcomes = outcomes.lock().unwrap();
         for slot in 0..depth {
             let (latency, ok) = outcomes[slot].ok_or("missing completion callback")?;
@@ -276,7 +309,48 @@ pub fn measure(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use turso_core::{MemoryIO, OpenFlags};
+
+    #[test]
+    fn injected_clock_measures_completion_and_batch_intervals() -> Result<()> {
+        static TICKS: AtomicU64 = AtomicU64::new(0);
+        let io = MemoryIO::new();
+        let file = io.open_file("clock-fixture", OpenFlags::Create, false)?;
+        initialize(&io, file.as_ref(), 4096, 32)?;
+        let m = measure_with_clock(
+            &io,
+            file.as_ref(),
+            Operation::SequentialRead,
+            4096,
+            32,
+            1,
+            2,
+            || TICKS.fetch_add(10, Ordering::SeqCst) as u128,
+        )?;
+        assert_eq!(m.latencies_ns, vec![10, 10]);
+        assert_eq!(m.elapsed_ns, 60);
+        Ok(())
+    }
+
+    #[test]
+    #[should_panic(expected = "benchmark clock regressed")]
+    fn regressing_clock_cannot_produce_a_latency_sample() {
+        static TICKS: AtomicU64 = AtomicU64::new(0);
+        let io = MemoryIO::new();
+        let file = io.open_file("bad-clock", OpenFlags::Create, false).unwrap();
+        initialize(&io, file.as_ref(), 4096, 32).unwrap();
+        let _ = measure_with_clock(
+            &io,
+            file.as_ref(),
+            Operation::SequentialRead,
+            4096,
+            32,
+            1,
+            1,
+            || u128::MAX - TICKS.fetch_add(1, Ordering::SeqCst) as u128,
+        );
+    }
     #[test]
     fn memory_workload_checks_contents_and_sample_counts() -> Result<()> {
         let io = MemoryIO::new();

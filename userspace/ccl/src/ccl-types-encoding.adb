@@ -1,7 +1,7 @@
 package body CCL.Types.Encoding with SPARK_Mode is
    use Interfaces;
-   type Wire_Shape is (Wire_Product, Wire_Sum);
-   for Wire_Shape use (Wire_Product => 1, Wire_Sum => 2);
+   type Wire_Shape is (Wire_Product, Wire_Sum, Wire_Resource);
+   for Wire_Shape use (Wire_Product => 1, Wire_Sum => 2, Wire_Resource => 3);
    subtype Name_Offset is Natural range 0 .. Definition_Size - Name_Size;
    function Encode (Item : Description) return Bytes is
       Data : Bytes := [others => 0];
@@ -16,7 +16,8 @@ package body CCL.Types.Encoding with SPARK_Mode is
       Put_Name (0, Item.Identifier);
       Data (Shape_Offset) := (case Item.Form is
         when Product => Wire_Shape'Enum_Rep (Wire_Product),
-        when Sum => Wire_Shape'Enum_Rep (Wire_Sum), when Primitive => 0);
+        when Sum => Wire_Shape'Enum_Rep (Wire_Sum),
+        when Resource => Wire_Shape'Enum_Rep (Wire_Resource), when Primitive => 0);
       Data (Count_Offset) := Unsigned_8 (Item.Count);
       for I in 1 .. Item.Count loop
          Put_Name (Parts_Offset + (I - 1) * Part_Size, Item.Parts (I).Identifier);
@@ -45,6 +46,7 @@ package body CCL.Types.Encoding with SPARK_Mode is
       case Data (Shape_Offset) is
          when Wire_Shape'Enum_Rep (Wire_Product) => D.Form := Product;
          when Wire_Shape'Enum_Rep (Wire_Sum) => D.Form := Sum;
+         when Wire_Shape'Enum_Rep (Wire_Resource) => D.Form := Resource;
          when others => return;
       end case;
       D.Count := Natural (Data (Count_Offset));

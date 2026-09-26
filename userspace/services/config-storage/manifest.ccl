@@ -1,0 +1,9 @@
+(executable-manifest v1
+  (identity "com.cubit.config-storage")
+  (version "0.1.0")
+  (request-service clock read-write clock)
+  (request-service filesystem read-write filesystem)
+  (request-service config read-write config)
+  (config-scope (rights read) "cubit.config.storage.database")
+  (filesystem-scope (rights read write create) "@nvme:0/system-config.sqlite")
+  (filesystem-scope (rights read write create) "@nvme:0/system-config.sqlite-wal"))

@@ -1,0 +1,13 @@
+# Requested authority only; clock-control needs trusted startup-plan approval
+# and the network scope needs (network approve-declared).
+(executable-manifest v1
+  (identity "com.cubit.timesync")
+  (version "0.1.0")
+  (request-service config read-write config)
+  (request-service clock read-write clock)
+  (request-service clock-control read-write clock-control)
+  # TEST VARIANT: loopback fixture ports on the QEMU host only. Unprivileged
+  # fixtures cannot bind port 123; the code is identical to timesync.svc.
+  (request-network udp-connect (ipv4 "10.0.2.2" 32)
+    (ports 18123 18125) (dns deny) ntp)
+  (config-scope (rights read) "time."))

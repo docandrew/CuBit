@@ -3,22 +3,22 @@
 --  Copyright (C) 2026 Jon Andrew
 --
 --  @summary
---  Userspace wget app — performs an HTTP GET against example.com and
---  prints the response to the serial console.
+--  Userspace wget app: an HTTPS GET of https://example.com/, printed to
+--  its stdout stream and the serial console.
 --
---  Uses the channel-based networking API:
---    OP_NET_OPEN  → DNS + TCP connect in one deferred call
---    OP_NET_WRITE → send data on channel
---    OP_NET_READ  → receive data (deferred until data arrives)
---    OP_NET_SHUT  → close channel
---
---  Communicates with netstack.svc via IPC on CAP_SLOT_NET (slot 11).
+--  All networking goes through tls.svc (CuBit.TLS_Protocol): OPEN resolves,
+--  connects and verifies the certificate in one deferred call; WRITE, READ
+--  and SHUT relay plaintext. wget holds no network scope and no TLS code,
+--  only its tls-scope for example.com:443.
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Memory_Grants;
+with CuBit.TLS_Protocol;
+with CCL_Manifest_Bindings;
 with CuBit.Streams;
 with CuBit.Protocols;
 
@@ -29,18 +29,17 @@ procedure main is
    DATA_BUF_PAGES : constant := 2;
    DATA_BUF_SIZE  : constant := DATA_BUF_PAGES * 4096;
 
-   --  IPC label constants (channel API)
-   OP_NET_OPEN  : constant Unsigned_32 := 16#0420#;
-   OP_NET_WRITE : constant Unsigned_32 := 16#0421#;
-   OP_NET_READ  : constant Unsigned_32 := 16#0422#;
-   OP_NET_SHUT  : constant Unsigned_32 := 16#0423#;
-   REPLY_OK     : constant Unsigned_32 := 16#F000#;
-   REPLY_EOF    : constant Unsigned_32 := 16#F006#;
+   --  tls.svc operations (see CuBit.TLS_Protocol)
+   OP_NET_OPEN  : Unsigned_32 renames CuBit.TLS_Protocol.Open_Operation;
+   OP_NET_WRITE : Unsigned_32 renames CuBit.TLS_Protocol.Write_Operation;
+   OP_NET_READ  : Unsigned_32 renames CuBit.TLS_Protocol.Read_Operation;
+   OP_NET_SHUT  : Unsigned_32 renames CuBit.TLS_Protocol.Shut_Operation;
+   REPLY_OK     : Unsigned_32 renames CuBit.TLS_Protocol.Reply_OK;
+   REPLY_EOF    : Unsigned_32 renames CuBit.TLS_Protocol.Reply_EOF;
+   CAP_SLOT_NET : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Tls;
 
-   --  Network stack service
-   netstackPID : ProcessID := NO_PROCESS;
    dataBuf     : System.Address := System.Null_Address;
-   grantId     : Unsigned_64 := 0;
+   transfer    : CuBit.Memory_Grants.Grant_Reference;
 
    ---------------------------------------------------------------------------
    --  printDec - print a small unsigned number in decimal
@@ -89,13 +88,15 @@ procedure main is
    --  Variables
    ---------------------------------------------------------------------------
    msg        : Message;
+   statusLogged : Boolean := False;
    tag        : MessageTag;
    chanHandle : Unsigned_64;
 
-   SCHEME   : constant String := "@net:tcp:example.com:80";
+   SCHEME   : constant String := "example.com:443";
    HTTP_REQ : constant String :=
-      "GET / HTTP/1.0" & CR & LF &
+      "GET / HTTP/1.1" & CR & LF &
       "Host: example.com" & CR & LF &
+      "Connection: close" & CR & LF &
       CR & LF;
 
 begin
@@ -108,22 +109,6 @@ begin
 
    CuBit.Streams.streamPrint (
       CuBit.Streams.STREAM_STDOUT, "wget: connecting..." & LF);
-
-   --  1. Discover netstack PID
-   loop
-      netstackPID := ProcessID (
-         getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_NETSTACK));
-      exit when netstackPID /= 0;
-      declare
-         ignore : Unsigned_64;
-      begin
-         ignore := syscall (SYSCALL_SLEEP, 10);
-      end;
-   end loop;
-
-   debugPrint ("wget: found netstack pid=");
-   printDec (Unsigned_32 (netstackPID));
-   debugPrint ("" & LF);
 
    --  2. Allocate data buffer via sbrk
    declare
@@ -152,20 +137,15 @@ begin
       end loop;
    end;
 
-   --  3. Create grant to netstack for our data buffer
+   --  3. Lend our data buffer to tls.svc
    declare
       ok : Boolean;
    begin
-      createGrant (
-         grantee   => netstackPID,
-         localAddr => dataBuf,
-         numPages  => DATA_BUF_PAGES,
-         readWrite => True,
-         grantId   => grantId,
-         success   => ok);
+      CuBit.Memory_Grants.Create_Via_Capability
+        (CAP_SLOT_NET, dataBuf, DATA_BUF_PAGES, True, transfer, ok);
 
       if not ok then
-         debugPrint ("wget: createGrant failed" & LF);
+         debugPrint ("wget: transfer grant to tls.svc failed" & LF);
          declare
             ignore : Unsigned_64;
          begin
@@ -208,17 +188,26 @@ begin
    msg := NULL_MESSAGE;
    msg.tag := (label  => OP_NET_OPEN,
                length => Unsigned_8 (SCHEME'Length),
-               flags  => 0,       -- 0 = client channel
+               flags  => 0,
                reserved  => 0);
-   msg.words (0) := grantId;
+   msg.words (0) := transfer.slot;
    msg.words (1) := Unsigned_64 (DATA_BUF_SIZE);
-   msg.words (3) := syscall (SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION, grantId);
+   msg.words (3) := transfer.generation;
    tag := capCall (CAP_SLOT_NET, msg);
 
    if tag.label /= REPLY_OK then
-      debugPrint ("wget: open failed" & LF);
-      CuBit.Streams.streamPrint (
-         CuBit.Streams.STREAM_STDOUT, "Connection failed" & LF);
+      declare
+         use CuBit.TLS_Protocol;
+         Reason : constant String :=
+           (if tag.label = Reply_Error and then msg.words (0) in
+               1 .. Unsigned_64 (Failure'Enum_Rep (Failure'Last))
+            then CuBit.TLS_Protocol.Name (Failure'Enum_Val (msg.words (0)))
+            else "TLS service unavailable");
+      begin
+         debugPrint ("wget: open failed: " & Reason & LF);
+         CuBit.Streams.streamPrint (
+            CuBit.Streams.STREAM_STDOUT, "Connection failed: " & Reason & LF);
+      end;
       declare
          ignore : Unsigned_64;
       begin
@@ -314,6 +303,21 @@ begin
          streamDec (Unsigned_32 (recvLen));
          CuBit.Streams.streamPrint (
             CuBit.Streams.STREAM_STDOUT, " bytes" & LF);
+
+         --  Log the HTTP status line once, for the serial console.
+         if not statusLogged and then recvLen > 0 then
+            declare
+               text : String (1 .. recvLen) with Import, Address => dataBuf;
+               stop : Natural := 0;
+            begin
+               for i in text'Range loop
+                  exit when text (i) = CR or else text (i) = LF or else i > 80;
+                  stop := i;
+               end loop;
+               debugPrint ("wget: status " & text (1 .. stop) & LF);
+               statusLogged := True;
+            end;
+         end if;
 
          --  Write received data to stdout stream
          if recvLen > 0 then

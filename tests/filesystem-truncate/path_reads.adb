@@ -1,6 +1,7 @@
 with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Ext2; use Ext2;
+use type Ext2.Inode;
 with Volume_Admission; use Volume_Admission;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
@@ -34,6 +35,7 @@ procedure Path_Reads is
       sb.blocksPerBlockGroup := 64;
       sb.inodesPerBlockGroup := 8;
       sb.majorVersion := 1;
+      sb.incompatibleFeatures := 2; -- standard typed directory records
       sb.inodeSize := 128;
       bgd := (blockBitmapAddr => 3, inodeBitmapAddr => 4, inodeTableAddr => 5,
               numFreeBlocks => 0, numFreeInodes => 0, numDirectories => 2,
@@ -46,6 +48,7 @@ procedure Path_Reads is
       folder.directBlocks (0) := 21;
       file := NULL_INODE;
       file.typeAndPermissions := 16#8000#;
+      file.numHardLinks := 1;
       rootEntry := (inode => 3, length => 1024, nameLength => 6,
                     fileType => FILETYPE_DIRECTORY);
       leafEntry := (inode => 4, length => 1024, nameLength => 4,

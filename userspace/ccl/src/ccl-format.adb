@@ -2,16 +2,14 @@ with Interfaces; use Interfaces;
 with CCL.VM; use CCL.VM;
 with CCL.Imports;
 with CCL.Host_Values;
+with CCL.Objects;
 
 package body CCL.Format with
    SPARK_Mode => On
 is
    use type CCL.Ownership.Disposition_Effect;
    use type CCL.Ownership.Disposition;
-   use type CCL.Imports.Transfer_Mode;
-   use type CCL.Imports.Cancellation_Mode;
    use type CCL.Catalog.Intern_Result;
-   use type CCL.Host_Values.Import_Declaration;
    use type CCL.Types.Type_Reference;
    use type CCL.Types.Definition_Result;
 
@@ -189,7 +187,7 @@ is
          for I in 0 .. Item.Imports_Length - 1 loop
             Resolved := CCL.Catalog.Element (Linkage, I);
             if Item.Imports (I).Binding /= 0 or else
-              Resolved.Import /= CCL.Host_Values.From_Bytecode (Item.Imports (I)) or else
+              not CCL.Host_Values.Matches_Bytecode (Item.Imports (I), Resolved.Import) or else
               Resolved.Interface_Major = 0 or else
               not Digest_Present (Resolved.Interface_Digest)
             then
@@ -225,10 +223,14 @@ is
      (Item.Fuel > 0);
 
    function Canonical (Item : Instruction) return Boolean is
-     ((if Item.Op in Make_Variant | Equal_Variant then
+     ((if Item.Op in Make_Variant | Equal_Variant | Project_Field then
           Item.Data_Type in CCL.Types.Declared_Type
        else Item.Data_Type = CCL.Types.Invalid_Type and then Item.Alternative = 0) and then
       (case Item.Op is
+         when Project_Field =>
+           Item.Immediate in 1 .. Integer_64 (CCL.Types.Maximum_Components) and then
+           Item.Target = 0 and then Item.Import = 0 and then Item.Local = 0 and then
+           Item.Verb = 0 and then Item.Alternative = 0,
          when Make_Variant | Equal_Variant =>
            Item.Immediate = 0 and then Item.Target = 0 and then Item.Import = 0 and then
            Item.Local = 0 and then Item.Verb = 0 and then
@@ -407,11 +409,19 @@ is
                   Resolved.Interface_Minor);
                Data (Offset + IMPORT_OPERATION_OFFSET) :=
                  Unsigned_8 (Resolved.Operation);
+               Data (Offset + IMPORT_ARGUMENT_DATA_TYPE_OFFSET) := Unsigned_8 (Candidate.Imports (I).Argument_Data_Type);
+               Data (Offset + IMPORT_RESULT_DATA_TYPE_OFFSET) := Unsigned_8 (Candidate.Imports (I).Result_Data_Type);
                for Word in Resolved.Interface_Digest'Range loop
                   Put_U64
                     (Data,
                      Offset + IMPORT_DIGEST_OFFSET + Word * DIGEST_WORD_SIZE,
                      Resolved.Interface_Digest (Word));
+               end loop;
+               for Word in CCL.Objects.Schema_Key'Range loop
+                  Put_U64 (Data, Offset + IMPORT_ARGUMENT_SCHEMA_OFFSET + Word * DIGEST_WORD_SIZE,
+                    Resolved.Import.Argument_Schema (Word));
+                  Put_U64 (Data, Offset + IMPORT_RESULT_SCHEMA_OFFSET + Word * DIGEST_WORD_SIZE,
+                    Resolved.Import.Result_Schema (Word));
                end loop;
             end;
             Offset := Offset + IMPORT_SIZE;
@@ -484,6 +494,7 @@ is
       Effect : Unsigned_8;
       Resolution : CCL.Catalog.Resolved_Operation;
       Link_Index : CCL.VM.Import_Index;
+      Argument_Key, Result_Key : CCL.Objects.Schema_Key;
       Interned   : CCL.Catalog.Intern_Result;
       Data_Type_Count, Match_Length : Natural;
    begin
@@ -668,9 +679,9 @@ is
          for I in 0 .. Import_Count - 1 loop
             Kind := Data (Offset + IMPORT_ARGUMENT_OFFSET);
             if Kind > Unsigned_8
-              (Value_Kind'Enum_Rep (Scalar_Kind'Last)) or else
+              (Value_Kind'Enum_Rep (Value_Kind'Last)) or else
               Data (Offset + IMPORT_RESULT_OFFSET) > Unsigned_8
-                (Value_Kind'Enum_Rep (Scalar_Kind'Last))
+                (Value_Kind'Enum_Rep (Value_Kind'Last))
             then
                Error := Invalid_Value_Kind;
                return;
@@ -709,11 +720,14 @@ is
               Data (Offset + IMPORT_IDENTITY_RESERVED_OFFSET + 1) /= 0 or else
               Data (Offset + IMPORT_IDENTITY_RESERVED_OFFSET + 2) /= 0 or else
               Data (Offset + IMPORT_IDENTITY_RESERVED_OFFSET + 3) /= 0 or else
-              Data (Offset + IMPORT_IDENTITY_RESERVED_OFFSET + 4) /= 0 or else
-              Data (Offset + IMPORT_IDENTITY_RESERVED_OFFSET + 5) /= 0 or else
-              Data (Offset + IMPORT_IDENTITY_RESERVED_OFFSET + 6) /= 0
+              Data (Offset + IMPORT_IDENTITY_RESERVED_OFFSET + 4) /= 0
             then
                Error := Bad_Reserved_Field;
+               return;
+            elsif Data (Offset + IMPORT_ARGUMENT_DATA_TYPE_OFFSET) > Unsigned_8 (CCL.Types.Type_Reference'Last) or else
+              Data (Offset + IMPORT_RESULT_DATA_TYPE_OFFSET) > Unsigned_8 (CCL.Types.Type_Reference'Last)
+            then
+               Error := Invalid_Type_Metadata;
                return;
             elsif Get_U16
               (Data, Offset + IMPORT_MAJOR_VERSION_OFFSET) = 0
@@ -725,6 +739,8 @@ is
                (Argument => Value_Kind'Enum_Val (Kind),
                Result => Value_Kind'Enum_Val
                  (Data (Offset + IMPORT_RESULT_OFFSET)),
+               Argument_Data_Type => CCL.Types.Type_Reference (Data (Offset + IMPORT_ARGUMENT_DATA_TYPE_OFFSET)),
+               Result_Data_Type => CCL.Types.Type_Reference (Data (Offset + IMPORT_RESULT_DATA_TYPE_OFFSET)),
                Authority => Authority_Class'Enum_Val (Authority),
                Binding => 0,
                Ownership_Argument =>
@@ -738,7 +754,16 @@ is
                  (Data (Offset + IMPORT_CANCELLATION_OFFSET)),
                Success_Verb => Data (Offset + IMPORT_SUCCESS_VERB_OFFSET),
                Failure_Verb => Data (Offset + IMPORT_FAILURE_VERB_OFFSET),
-               Cancel_Verb => Data (Offset + IMPORT_CANCEL_VERB_OFFSET));
+               Cancel_Verb => Data (Offset + IMPORT_CANCEL_VERB_OFFSET), Result_Type_Tag => 0,
+               Receiver_Data_Type => CCL.Types.Invalid_Type);
+            for Word in CCL.Objects.Schema_Key'Range loop
+               Argument_Key (Word) := Get_U64 (Data, Offset + IMPORT_ARGUMENT_SCHEMA_OFFSET + Word * DIGEST_WORD_SIZE);
+               Result_Key (Word) := Get_U64 (Data, Offset + IMPORT_RESULT_SCHEMA_OFFSET + Word * DIGEST_WORD_SIZE);
+            end loop;
+            if not CCL.Host_Values.Portable_Contract (Candidate.Imports (I), Argument_Key, Result_Key) then
+               Error := Invalid_Linkage;
+               return;
+            end if;
             Resolution :=
               (Interface_Digest =>
                  [0 => Get_U64 (Data, Offset + IMPORT_DIGEST_OFFSET),
@@ -758,7 +783,7 @@ is
                  (Data (Offset + IMPORT_OPERATION_OFFSET)),
                Parameters => CCL.Catalog.Parameter_Count
                  (Data (Offset + IMPORT_PARAMETER_COUNT_OFFSET)),
-               Import => CCL.Host_Values.From_Bytecode (Candidate.Imports (I)));
+               Import => CCL.Host_Values.From_Bytecode (Candidate.Imports (I), Argument_Key, Result_Key));
             if not Digest_Present (Resolution.Interface_Digest) then
                Error := Invalid_Linkage;
                return;

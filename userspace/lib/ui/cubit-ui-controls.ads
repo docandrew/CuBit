@@ -77,6 +77,15 @@ package CuBit.UI.Controls is
        cursor : CuBit.UI.Pointer_Cursor_Style := CuBit.UI.Pointer_Default;
        continuousAction : Boolean := False);
 
+   --  An embedded renderer's area (see CuBit.UI.Surfaces). It owns pointer
+   --  hits and the cursor shape there, but hover and press never repaint
+   --  it: the renderer reports its own damage.
+   procedure Add_Surface
+      (m : in out Control_Map;
+       id : Control_ID;
+       bounds : CuBit.UI.Rect;
+       cursor : CuBit.UI.Pointer_Cursor_Style := CuBit.UI.Pointer_Default);
+
    procedure Add_Vertical_Scrollbar
       (m : in out Control_Map;
        id : Control_ID;

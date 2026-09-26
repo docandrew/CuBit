@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Compile and link a C++ program for CuBit: nixpkgs' musl cross g++ (its
+# C++ headers and libstdc++), linked statically with the CuBit libc and
+# start code. Same options as cubit-cc (--manifest, CUBIT_STACK_SIZE).
+set -euo pipefail
+# Nix's gcc wrapper adds hardening flags (stack protector, fortify, PIE).
+# The libc's start code runs before the thread pointer (and so the stack
+# canary at %fs:0x28) exists; CuBit programs are static and non-PIE.
+export NIX_HARDENING_ENABLE=""
+here=$(cd "$(dirname "$0")" && pwd)
+sysroot=$here/build/sysroot
+cross=$(cat "$here/build/cross-gcc")
+gxx=$cross/bin/x86_64-unknown-linux-musl-g++
+manifest=()
+args=()
+while [ $# -gt 0 ]; do
+    case $1 in
+        --manifest) manifest=("$2"); shift 2 ;;
+        *) args+=("$1"); shift ;;
+    esac
+done
+link=1
+for a in "${args[@]}"; do case $a in -c|-S|-E) link=0 ;; esac; done
+# The CuBit headers (<cubit/...>) after the cross toolchain's own.
+common=(-fno-pie -no-pie -mno-red-zone -fno-stack-protector
+        -idirafter "$sysroot/include")
+if [ $link = 0 ]; then
+    exec "$gxx" "${common[@]}" "${args[@]}"
+fi
+lib() { "$gxx" -print-file-name="$1"; }
+exec "$gxx" "${common[@]}" -nostdlib -static \
+    -Wl,-T,"$sysroot/lib/cubit.ld" -Wl,-z,stack-size="${CUBIT_STACK_SIZE:-1048576}" \
+    -Wl,-z,noexecstack -Wl,-z,noseparate-code \
+    "$sysroot/lib/cubit-crt1.o" "$sysroot/lib/crti.o" "$(lib crtbeginT.o)" \
+    "${args[@]}" "${manifest[@]}" \
+    -Wl,--start-group "$(lib libstdc++.a)" "$(lib libsupc++.a)" "$sysroot/lib/libc.a" \
+    "$("$gxx" -print-libgcc-file-name)" "$(lib libgcc_eh.a)" -Wl,--end-group \
+    "$(lib crtend.o)" "$sysroot/lib/crtn.o"

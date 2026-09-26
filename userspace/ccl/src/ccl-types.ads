@@ -31,9 +31,12 @@ package CCL.Types with SPARK_Mode is
      (Image (Left) = Image (Right));
    function Valid_Name (Item : Name) return Boolean;
 
-   type Shape is (Primitive, Product, Sum);
+   type Shape is (Primitive, Product, Sum, Resource);
    --  In a product these are fields; in a sum they are alternatives whose
    --  payload type may itself be a product. Unit is the empty product.
+   --  Resource is an opaque live reference, not a constructible record or an
+   --  integer. Its parts describe named type parameters (for example Value:T
+   --  for a collection), not stored fields. Describing it grants no authority.
    type Component is record
       Identifier : Name;
       Payload : Type_Reference := Invalid_Type;
@@ -69,6 +72,42 @@ package CCL.Types with SPARK_Mode is
      (if Result = Defined then Ref = Last (Item) and
         Last (Item) = Last (Item'Old) + 1
       else Ref = Invalid_Type and Item = Item'Old);
+
+   --  Materialize a nominal unary resource type from an already known value
+   --  type. For example ConfigCollection with Value and Preferences becomes
+   --  ConfigCollection-Preferences. The identifier-safe spelling is internal;
+   --  presentation may render ConfigCollection<Preferences>. This describes a
+   --  resource family only, never an authority or a live resource instance.
+   type Unary_Resource_Result is
+     (Resource_Specialized,
+      Resource_Already_Specialized,
+      Invalid_Resource_Family,
+      Invalid_Resource_Parameter,
+      Resource_Name_Too_Long,
+      Resource_Definition_Conflict,
+      Resource_Registry_Full);
+   procedure Specialize_Unary_Resource
+     (Item : in out Registry; Family, Parameter_Label : Name;
+      Parameter : Type_Reference; Ref : out Type_Reference;
+      Result : out Unary_Resource_Result)
+   with Global => null,
+     Post =>
+       (if Result = Resource_Specialized then Ref = Last (Item) and
+          Last (Item) = Last (Item'Old) + 1
+        elsif Result = Resource_Already_Specialized then
+          Ref /= Invalid_Type and Item = Item'Old
+        else Ref = Invalid_Type and Item = Item'Old);
+
+   type Import_Result is
+     (Imported, Invalid_Root, Conflicting_Definition, Import_Full);
+   --  Import the named root and its transitive dependencies only. Existing
+   --  names must have identical definitions after local-reference translation.
+   --  No partial publication on failure, replacement, constructors or effects.
+   procedure Import_Definition
+     (Source : Registry; Root : Type_Reference; Target : in out Registry;
+      Ref : out Type_Reference; Result : out Import_Result)
+   with Global => null, Post =>
+     (if Result /= Imported then Ref = Invalid_Type and Target = Target'Old);
 private
    type Definition_Array is array (Declared_Type) of Description;
    type Layout_Array is array (Declared_Type) of Cell_Count;

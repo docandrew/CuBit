@@ -49,7 +49,8 @@ package PerCPUData is
     type PerCPUData is
     record
         cpuNum              : Natural range 0..Config.MAX_CPUS - 1;
-        currentPID          : Process.ProcessID;
+        -- The thread running on this CPU (its process: getCurrentPID).
+        currentThread       : Process.ThreadID;
         savedProcessRSP     : System.Address;
         savedKernelRSP      : System.Address;
 
@@ -87,7 +88,7 @@ package PerCPUData is
     for PerCPUData use
     record
         cpuNum              at 0    range 0..31;
-        currentPID          at 4    range 0..31;
+        currentThread       at 4    range 0..31;
         savedProcessRSP     at 8    range 0..63;
         savedKernelRSP      at 16   range 0..63;
         gdt                 at 24   range 0..511;
@@ -151,7 +152,12 @@ package PerCPUData is
     -- Convenience function for getting the currently-running Process ID on
     -- this CPU.
     ---------------------------------------------------------------------------
+    -- The process of the thread running on this CPU (the caller's identity
+    -- for capabilities, IPC and memory).
     function getCurrentPID return Process.ProcessID;
+
+    -- The thread running on this CPU (for scheduling and blocking).
+    function getCurrentThread return Process.ThreadID;
 
     ---------------------------------------------------------------------------
     -- IST (Interrupt Stack Table) stacks for critical exceptions.

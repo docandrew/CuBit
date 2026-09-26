@@ -1,0 +1,9 @@
+# Network-dependent lane: wget fetches https://example.com/ through tls.svc
+# using the production trust store on the development disk.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "timesync.svc" (priority 5) (network approve-declared))
+  (start "tls.svc" (priority 5) (network approve-declared))
+  (start "wget.app" (priority 5) (network approve-declared))
+)

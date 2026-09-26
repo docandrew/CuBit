@@ -495,6 +495,8 @@ uint32_t cubit_stream_write(uint16_t stream_id, const void *data,
                             uint32_t len, uint16_t type_tag);
 void     cubit_stream_print(uint16_t stream_id, const char *msg);
 int      cubit_stream_handle_subscription(void);
+int      cubit_stream_handle_message(long from, const void *msg);
+extern int cubit_stream_poll_on_write;
 void     cubit_stream_flush(uint16_t stream_id);
 
 #endif /* CUBIT_H */

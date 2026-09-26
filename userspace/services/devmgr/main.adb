@@ -146,7 +146,7 @@ procedure main is
    subtype Inventory_Index is
      Positive range 1 .. CuBit.Devices.MAX_PCI_DEVICES;
    type Inventory_Array is array (Inventory_Index) of Inventory_Device;
-   inventory : Inventory_Array := (others => (others => <>));
+   inventory : Inventory_Array := [others => (others => <>)];
    inventoryCount : Natural range 0 .. CuBit.Devices.MAX_PCI_DEVICES := 0;
    inventoryOverflow : Boolean := False;
 
@@ -722,7 +722,7 @@ procedure main is
                       flags  => 0,
                       reserved  => 0);
       aclMsg.authorityTag := 0;
-      aclMsg.words := (0 => targetPID, 1 => 0, 2 => 0, 3 => 0);
+      aclMsg.words := [0 => targetPID, 1 => 0, 2 => 0, 3 => 0];
       ignore := capCall (1, aclMsg);
    end sendWildcardACL;
 
@@ -741,7 +741,7 @@ procedure main is
                       flags  => 0,
                       reserved  => 0);
       aclMsg.authorityTag := 0;
-      aclMsg.words := (0 => targetPID, 1 => 0, 2 => 0, 3 => 0);
+      aclMsg.words := [0 => targetPID, 1 => 0, 2 => 0, 3 => 0];
       ignore := capCall (2, aclMsg);
    end sendWildcardACLConfig;
 
@@ -1640,7 +1640,7 @@ procedure main is
                  length => 4, flags => 0, reserved => 0),
          authorityTag => 0,
          words =>
-           (0 => bar0Phys,
+           [0 => bar0Phys,
             --  Low 32 bits: BAR pages. High 32 bits: allocation's scratchpad
             --  count. Driver checks it against a fresh HCSPARAMS2 read before
             --  accessing DMA; this does not grant arbitrary allocation size.
@@ -1649,7 +1649,7 @@ procedure main is
             3 =>
               Unsigned_64 (XHCI_Interrupt_Mode'Enum_Rep (interruptMode)) or
               Shift_Left (XHCI_MSI_VECTOR, 8) or
-              Shift_Left (msixTableOffset, 16)));
+              Shift_Left (msixTableOffset, 16)]);
       replyTag := capCall (DEVMGR_XHCI_SLOT, cfgMsg);
       if replyTag.label = REPLY_OK then
          if interruptMode = XHCI_INTERRUPT_MSIX then
@@ -2179,9 +2179,9 @@ begin
                          (CuBit.Virtio_Net_Control.Configure_MSIX),
                        length => 3, flags => 0, reserved => 0),
                authorityTag => 0,
-               words => (0 => netIOBase, 1 => netTableOffset,
+               words => [0 => netIOBase, 1 => netTableOffset,
                          2 => CuBit.Virtio_Net_Control.Device_Vector,
-                         others => 0));
+                         others => 0]);
             response : MessageTag;
             control : Unsigned_16;
          begin
@@ -2408,9 +2408,9 @@ begin
                         length => 2, flags => 0, reserved => 0),
                 authorityTag => 0,
                 words =>
-                  (0 => Unsigned_64 (inventoryCount),
+                  [0 => Unsigned_64 (inventoryCount),
                    1 => (if inventoryOverflow then 1 else 0),
-                   others => 0))));
+                   others => 0])));
       elsif msg.tag.label = CuBit.Devices.OP_INVENTORY_ITEM and then
             msg.tag.length >= 1 and then msg.words (0) >= 1 and then
             msg.words (0) <= Unsigned_64 (inventoryCount)
@@ -2472,8 +2472,8 @@ begin
                            length => 4, flags => 0, reserved => 0),
                    authorityTag => 0,
                    words =>
-                     (0 => locationWord, 1 => identityWord,
-                      2 => driverPID, 3 => 1))));
+                     [0 => locationWord, 1 => identityWord,
+                      2 => driverPID, 3 => 1])));
          end;
       elsif msg.tag.label = CuBit.Devices.OP_PUBLISH_XHCI_STATS and then
             from = xhciPID and then msg.tag.length >= 3
@@ -2512,7 +2512,7 @@ begin
                    length => 4, flags => 0, reserved => 0),
                 authorityTag => 0,
                 words =>
-                  (0 => xhciDiagnostics.decodedReports,
+                  [0 => xhciDiagnostics.decodedReports,
                    1 => xhciDiagnostics.motionReports,
                    2 => Unsigned_64 (xhciDiagnostics.buttonTransitions) or
                      Shift_Left
@@ -2526,7 +2526,7 @@ begin
                        (Unsigned_64
                           (CuBit.Devices.Interrupt_Mode'Enum_Rep
                              (xhciDiagnostics.interruptMode)), 48) or
-                     (if xhciDiagnostics.valid then 2**56 else 0)))));
+                     (if xhciDiagnostics.valid then 2**56 else 0)])));
       else
          debugPrint ("devmgr: rejected unknown message" & LF);
          ret := Unsigned_64
@@ -2534,7 +2534,7 @@ begin
               (from,
                (tag => (label => CuBit.Devices.REPLY_ERROR,
                         length => 0, flags => 0, reserved => 0),
-                authorityTag => 0, words => (others => 0))));
+                authorityTag => 0, words => [others => 0])));
       end if;
    end loop;
 

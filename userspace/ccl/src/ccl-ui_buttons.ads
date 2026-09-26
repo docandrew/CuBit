@@ -26,7 +26,7 @@ package CCL.UI_Buttons with SPARK_Mode is
       type Host_Context is limited private;
       with procedure Invoke
         (Context : in out Host_Context; Binding : Interfaces.Unsigned_32;
-         Argument : CCL.Host_Values.Value; Value : out CCL.Host_Values.Value; Success : out Boolean);
+         Argument : CCL.Host_Values.Value; Reply : out CCL.Host_Values.Call_Result);
    procedure Dispatch_One
      (Item : in out Model; Grants : CCL.Catalog.Granted_Bindings;
       Context : in out Host_Context; Ran : out Boolean; Outcome : out CCL.Language.Interpretation_Result);

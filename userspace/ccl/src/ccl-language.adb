@@ -3,6 +3,9 @@ with CCL.Checked_Arithmetic;
 with CCL.Secondary_Stacks;
 with CCL.Imports;
 with CCL.Handler_References;
+with CCL.Objects.Values;
+with CCL.Objects.Views;
+with CCL.Ownership;
 
 package body CCL.Language with
    SPARK_Mode => On
@@ -10,9 +13,16 @@ is
    use type CCL.Types.Type_Reference;
    use type CCL.Types.Definition_Result;
    use type CCL.Host_Values.Value_Kind;
+   use type CCL.VM.Value_Kind;
    use type CCL.Checked_Arithmetic.Arithmetic_Error;
    use type CCL.Imports.Transfer_Mode;
    use type CCL.Imports.Cancellation_Mode;
+   use type CCL.Types.Shape;
+   use type CCL.Objects.Build_Result;
+   use type CCL.Ownership.Ownership_Mode;
+   package Object_Views renames CCL.Objects.Views;
+   subtype Object_Count is Natural range 0 .. MAX_OBJECT_VALUES;
+   subtype Object_Index is Positive range 1 .. MAX_OBJECT_VALUES;
 
    package Text_Regions is new CCL.Secondary_Stacks
      (Capacity => MAX_TEXT_BYTES * 4,
@@ -20,13 +30,36 @@ is
       Max_String_Length => MAX_TEXT_BYTES);
    use type Text_Regions.Operation_Result;
 
+   --  An interpreter scalar payload is not a VM ownership/variant value.
+   --  Nominal identity and alternative belong to Runtime_Value; a payload
+   --  can contain only Integer or Boolean, never resource-transfer metadata.
+   type Scalar_Value is record
+      Kind : CCL.VM.Scalar_Kind := CCL.VM.Integer_Value;
+      Integer : Integer_64 := 0;
+      Boolean : Standard.Boolean := False;
+   end record;
+   function Integer_Scalar (Item : Integer_64) return Scalar_Value is
+     ((Kind => CCL.VM.Integer_Value, Integer => Item, others => <>));
+   function Boolean_Scalar (Item : Standard.Boolean) return Scalar_Value is
+     ((Kind => CCL.VM.Boolean_Value, Boolean => Item, others => <>));
+   function To_VM (Item : Scalar_Value) return CCL.VM.Value is
+     (case Item.Kind is
+        when CCL.VM.Integer_Value => CCL.VM.Integer_Constant (Item.Integer),
+        when CCL.VM.Boolean_Value => CCL.VM.Boolean_Constant (Item.Boolean));
+   function To_Host (Item : Scalar_Value) return CCL.Host_Values.Value is
+     (case Item.Kind is
+        when CCL.VM.Integer_Value => CCL.Host_Values.Integer_Constant (Item.Integer),
+        when CCL.VM.Boolean_Value => CCL.Host_Values.Boolean_Constant (Item.Boolean));
+
    type Runtime_Value is record
       Kind      : Static_Type := Invalid_Type;
-      Scalar    : CCL.VM.Value := (others => <>);
+      Scalar    : Scalar_Value := (others => <>);
       Text      : Text_Regions.String_Value;
       Character_Item : Character := Character'Val (0);
-      Handler_Id : Function_Reference := NO_FUNCTION;
+      Handler_Id : Function_Index := Function_Index'First;
       Alternative : CCL.Types.Component_Index := 1;
+      Object_Owner : Object_Count := 0;
+      Object_Position : Object_Views.Cursor;
    end record;
 
    function Analysis_Status_Of
@@ -45,6 +78,8 @@ is
    function Analysis_Root
      (Result : Analysis_Result) return Node_Reference is (Result.Tree.Root);
    function Analysis_Types (Result : Analysis_Result) return CCL.Types.Registry is (Result.Tree.Types);
+   function Analysis_Resource_Policies (Result : Analysis_Result)
+     return CCL.Resource_Policies.Policy_Table is (Result.Resource_Policies);
 
    function Analysis_Node
      (Result : Analysis_Result;
@@ -353,6 +388,8 @@ is
          Count         : Parameter_Count := 0;
          Variant_Type : Static_Type;
          Choice : CCL.Types.Component_Count;
+         Record_Type : Static_Type;
+         Components : Component_Node_Array := [others => NO_NODE];
       begin
          Read_Name (Operator_Name, Ok);
          if not Ok then
@@ -361,7 +398,15 @@ is
          end if;
 
          Index := NO_NODE;
-         if Name_Is (Operator_Name, "match") then
+         if Name_Is (Operator_Name, "field") then
+            Parse_Expression (Depth + 1, A);
+            if Diagnostic /= No_Diagnostic then return; end if;
+            Read_Name (Binding_Name, Ok); if not Ok then return; end if;
+            Expect (')', Ok);
+            if Diagnostic = No_Diagnostic and then Ok then
+               Add_Node ((Kind => Field_Form, First => A, Identifier => Binding_Name, others => <>), Index);
+            end if;
+         elsif Name_Is (Operator_Name, "match") then
             Parse_Expression (Depth + 1, A);
             declare
                Previous, Arm : Node_Reference := NO_NODE;
@@ -549,7 +594,19 @@ is
                Host_Call,
                Host_Found);
             CCL.Types.Resolve_Alternative (Tree.Types, Operator_Name, Variant_Type, Choice);
-            if Choice > 0 then
+            Record_Type := CCL.Types.Find (Tree.Types, Operator_Name);
+            if CCL.Types.Describe (Tree.Types, Record_Type).Form = CCL.Types.Product then
+               if Host_Found then Diagnostic := Duplicate_Declaration; return; end if;
+               for P in 1 .. CCL.Types.Describe (Tree.Types, Record_Type).Count loop
+                  Parse_Expression (Depth + 1, Components (P));
+                  if Diagnostic /= No_Diagnostic then return; end if;
+               end loop;
+               Expect (')', Ok);
+               if Ok then
+                  Add_Node ((Kind => Record_Construct, Identifier => Operator_Name,
+                    Declared_Kind => Record_Type, Components => Components, others => <>), Index);
+               end if;
+            elsif Choice > 0 then
                if Host_Found then Diagnostic := Duplicate_Declaration; return; end if;
                if CCL.Types.Describe (Tree.Types, Variant_Type).Parts (Choice).Payload = Unit_Type then
                   -- Nullary alternatives are values, not function calls.
@@ -593,7 +650,12 @@ is
                   end if;
                end if;
             else
-               if Host_Call.Parameters = 1 then
+               if CCL.Host_Values.Has_Receiver (Host_Call.Import) then
+                  Parse_Expression (Depth + 1, A);
+                  if Diagnostic = No_Diagnostic and then Host_Call.Parameters = 1 then
+                     Parse_Expression (Depth + 1, B);
+                  end if;
+               elsif Host_Call.Parameters = 1 then
                   Parse_Expression (Depth + 1, A);
                end if;
                if Diagnostic = No_Diagnostic then
@@ -604,6 +666,7 @@ is
                     ((Kind => Host_Import_Form,
                       Identifier => Operator_Name,
                       First => A,
+                      Second => B,
                       Host_Call => Host_Call,
                       others => <>),
                      Index);
@@ -693,13 +756,13 @@ is
          Token : Name;
          Ok : Boolean;
          Decl : Function_Declaration;
-         Id : Function_Reference;
+         Id : Function_Index;
          Tail : Node_Reference;
          Definition : CCL.Types.Description;
          Defined_Type : Static_Type;
          Definition_Status : CCL.Types.Definition_Result;
-         Is_Enum : Boolean;
-         procedure Read_Type (Kind : out Static_Type) is
+         Is_Enum, Is_Record : Boolean;
+         procedure Read_Type (Kind : out Static_Type; Allow_Unit : Boolean := False) is
             Token : Name;
             Good : Boolean;
          begin
@@ -707,7 +770,7 @@ is
             Kind := Invalid_Type;
             if Good then
                Kind := CCL.Types.Find (Tree.Types, Token);
-               if Kind in Invalid_Type | Handler_Type | Unit_Type then
+               if Kind in Invalid_Type | Handler_Type or else (Kind = Unit_Type and not Allow_Unit) then
                   Diagnostic := Expected_Type_Name;
                end if;
             end if;
@@ -731,10 +794,11 @@ is
             Read_Name (Token, Ok);
             if not Ok then return; end if;
             Is_Enum := Name_Is (Token, "enum");
-            if not Is_Enum and then not Name_Is (Token, "variant") then
+            Is_Record := Name_Is (Token, "record");
+            if not Is_Enum and then not Is_Record and then not Name_Is (Token, "variant") then
                Diagnostic := Invalid_Type_Declaration; return;
             end if;
-            Definition.Form := CCL.Types.Sum;
+            Definition.Form := (if Is_Record then CCL.Types.Product else CCL.Types.Sum);
             Skip_Trivia;
             while Cursor < Source'Length and then
               Source (Source'First + Cursor) /= ')'
@@ -749,18 +813,20 @@ is
                Definition.Count := Definition.Count + 1;
                Read_Name (Definition.Parts (Definition.Count).Identifier, Ok);
                if not Ok then return; end if;
-               if Definition.Identifier.Length + 1 +
+               if not Is_Record and then Definition.Identifier.Length + 1 +
                  Definition.Parts (Definition.Count).Identifier.Length > MAX_NAME_LENGTH
                then Diagnostic := Invalid_Type_Declaration; return; end if;
                Definition.Parts (Definition.Count).Payload := Unit_Type;
                if not Is_Enum then
                   Skip_Trivia;
                   if Cursor < Source'Length and then Source (Source'First + Cursor) /= ')' then
-                     Read_Type (Definition.Parts (Definition.Count).Payload);
+                     Read_Type (Definition.Parts (Definition.Count).Payload, Allow_Unit => True);
                      if Diagnostic /= No_Diagnostic then return; end if;
-                     if Definition.Parts (Definition.Count).Payload not in Integer_Type | Boolean_Type then
+                     if not CCL.Objects.Persistable (Tree.Types, Definition.Parts (Definition.Count).Payload) then
                         Diagnostic := Invalid_Variant_Payload; return;
                      end if;
+                  elsif Is_Record then
+                     Diagnostic := Expected_Type_Name; return;
                   end if;
                   Expect (')', Ok);
                   if not Ok then return; end if;
@@ -820,7 +886,9 @@ is
          Expect (')', Ok);
          if not Ok then return; end if;
          Tree.Functions (Id) := Decl;
-         Tree.Function_Count := Tree.Function_Count + 1;
+         --  Publish the slot reserved before parsing the body, rather than
+         --  reading a count through the recursively updated syntax tree.
+         Tree.Function_Count := Id + 1;
          Add_Node
            ((Kind => Function_Definition, Function_Id => Id,
              First => Decl.Body_Node,
@@ -844,6 +912,7 @@ is
         (not Referenceable (Item) or else
          Name_Is (Item, "type") or else Name_Is (Item, "define") or else Name_Is (Item, "handler") or else Name_Is (Item, "let") or else
          Name_Is (Item, "match") or else
+         Name_Is (Item, "field") or else
          Name_Is (Item, "if") or else Name_Is (Item, "not") or else
          Name_Is (Item, "true") or else Name_Is (Item, "false") or else
          Name_Is (Item, "+") or else Name_Is (Item, "add") or else
@@ -855,6 +924,47 @@ is
          Name_Is (Item, "at") or else Name_Is (Item, "concat") or else
          Name_Is (Item, "to-string") or else
          (for some C of Item.Data (1 .. Item.Length) => C = '.'));
+
+      function Resource_Type (Name : CCL.Types.Name) return Static_Type is
+         Types : constant CCL.Types.Registry := CCL.Catalog.Visible_Types (Visible_Interfaces);
+         Ref : constant Static_Type := CCL.Types.Find (Types, Name);
+      begin
+         if CCL.Types.Known (Types, Ref) and then
+           CCL.Types.Describe (Types, Ref).Form = CCL.Types.Resource and then
+           CCL.Catalog.Resource_Policy (Visible_Interfaces, Ref).Mode /= CCL.Ownership.Unrestricted
+         then
+            return Ref;
+         end if;
+         return Invalid_Type;
+      end Resource_Type;
+
+      function Host_Type
+        (Kind : CCL.Host_Values.Value_Kind; Schema : CCL.Objects.Schema_Key;
+         Resource_Name : CCL.Types.Name) return Static_Type is
+        (case Kind is
+           when CCL.Host_Values.Integer_Value => Integer_Type,
+           when CCL.Host_Values.Boolean_Value => Boolean_Type,
+           when CCL.Host_Values.Text_Value => String_Type,
+           when CCL.Host_Values.Handler_Value => Handler_Type,
+           when CCL.Host_Values.Object_Value => CCL.Catalog.Schema_Type (Visible_Interfaces, Schema),
+           when CCL.Host_Values.Resource_Value => Resource_Type (Resource_Name));
+
+      function Supported_Object (Kind : Static_Type) return Boolean is
+        (Kind in Integer_Type | Boolean_Type or else
+         CCL.Types.Is_Scalar_Sum (Tree.Types, Kind));
+
+      function Matches_Host
+        (Value : CCL.Host_Values.Value; Kind : CCL.Host_Values.Value_Kind;
+         Limit : CCL.Host_Values.Text_Length; Schema : CCL.Objects.Schema_Key) return Boolean
+      is
+         Contract : CCL.Objects.Binding;
+      begin
+         if Kind /= CCL.Host_Values.Object_Value then
+            return CCL.Host_Values.Matches (Value, Kind, Limit);
+         end if;
+         CCL.Catalog.Resolve_Schema (Visible_Interfaces, Schema, Contract);
+         return CCL.Host_Values.Matches (Value, Contract);
+      end Matches_Host;
 
       procedure Check_Node
         (Index : Natural;
@@ -878,6 +988,15 @@ is
 
          case Tree.Nodes (Node_Index (Index)).Kind is
             when Type_Definition =>
+               if CCL.Types.Describe (Tree.Types, Tree.Nodes (Index).Declared_Kind).Form = CCL.Types.Product then
+                  declare
+                     Name : constant CCL.Types.Name := CCL.Types.Describe (Tree.Types, Tree.Nodes (Index).Declared_Kind).Identifier;
+                  begin
+                     if Reserved (Name) or else
+                       (for some F in 1 .. Visible_Functions => Names_Equal (Name, Tree.Functions (F - 1).Identifier))
+                     then Diagnostic := Duplicate_Declaration; return; end if;
+                  end;
+               end if;
                Visible_Types := Tree.Nodes (Index).Declared_Kind;
                Check_Node (Tree.Nodes (Index).Second, Depth + 1, Kind);
             when Variant_Literal =>
@@ -885,13 +1004,43 @@ is
             when Variant_Construct =>
                Check_Node (Tree.Nodes (Index).First, Depth + 1, Left_Type);
                Kind := Tree.Nodes (Index).Declared_Kind;
-               if Kind > Visible_Types or else Left_Type /= CCL.Types.Describe (Tree.Types, Kind).
+               if Kind > Visible_Types or else not CCL.Objects.Persistable (Tree.Types, Kind) or else
+                 Left_Type /= CCL.Types.Describe (Tree.Types, Kind).
                  Parts (Tree.Nodes (Index).Alternative).Payload
                then Diagnostic := Invalid_Variant_Payload; end if;
+            when Record_Construct =>
+               Kind := Tree.Nodes (Index).Declared_Kind;
+               if Kind > Visible_Types or else not CCL.Objects.Persistable (Tree.Types, Kind) then
+                  Diagnostic := Invalid_Type_Declaration; return;
+               end if;
+               for P in 1 .. CCL.Types.Describe (Tree.Types, Kind).Count loop
+                  Check_Node (Tree.Nodes (Index).Components (P), Depth + 1, Left_Type);
+                  if Diagnostic /= No_Diagnostic then return; end if;
+                  if Left_Type /= CCL.Types.Describe (Tree.Types, Kind).Parts (P).Payload then
+                     Diagnostic := Host_Object_Type_Mismatch; return;
+                  end if;
+               end loop;
+            when Field_Form =>
+               Check_Node (Tree.Nodes (Index).First, Depth + 1, Left_Type);
+               if Diagnostic /= No_Diagnostic then return; end if;
+               declare
+                  D : constant CCL.Types.Description := CCL.Types.Describe (Tree.Types, Left_Type);
+               begin
+                  if D.Form = CCL.Types.Product then
+                     for P in 1 .. D.Count loop
+                        if Names_Equal (Tree.Nodes (Index).Identifier, D.Parts (P).Identifier) then
+                           Kind := D.Parts (P).Payload;
+                           Tree.Nodes (Index).Alternative := P;
+                           exit;
+                        end if;
+                     end loop;
+                  end if;
+                  if Kind = Invalid_Type then Diagnostic := Unknown_Name; end if;
+               end;
             when Match_Form =>
                Check_Node (Tree.Nodes (Index).First, Depth + 1, Left_Type);
                if Diagnostic /= No_Diagnostic then return; end if;
-               if not CCL.Types.Is_Scalar_Sum (Tree.Types, Left_Type) then
+               if CCL.Types.Describe (Tree.Types, Left_Type).Form /= CCL.Types.Sum then
                   Diagnostic := Invalid_Match_Pattern; return;
                end if;
                declare
@@ -938,7 +1087,9 @@ is
                   Decl : constant Function_Declaration :=
                     Tree.Functions (Tree.Nodes (Index).Function_Id);
                begin
-                  if Reserved (Decl.Identifier) then
+                  if Reserved (Decl.Identifier) or else
+                    CCL.Types.Describe (Tree.Types, CCL.Types.Find (Tree.Types, Decl.Identifier)).Form = CCL.Types.Product
+                  then
                      Diagnostic := Duplicate_Declaration;
                   end if;
                   for F in 1 .. Visible_Functions loop
@@ -967,7 +1118,7 @@ is
                   if Diagnostic = No_Diagnostic then
                      --  Publish only after checking the body: no self calls or
                      --  forward calls, and therefore no recursive call graph.
-                     Visible_Functions := Visible_Functions + 1;
+                     Visible_Functions := Tree.Nodes (Index).Function_Id + 1;
                      Check_Node (Tree.Nodes (Index).Second, Depth + 1, Kind);
                   end if;
                end;
@@ -1031,7 +1182,8 @@ is
                            Ref := CCL.Types.Find (Tree.Types,
                              CCL.Types.Named (Identifier.Data (1 .. Dot - 1)));
                            if Ref <= Visible_Types and then
-                             CCL.Types.Is_Scalar_Sum (Tree.Types, Ref)
+                             CCL.Types.Describe (Tree.Types, Ref).Form = CCL.Types.Sum and then
+                             CCL.Objects.Persistable (Tree.Types, Ref)
                            then
                               D := CCL.Types.Describe (Tree.Types, Ref);
                               for I in 1 .. D.Count loop
@@ -1176,46 +1328,54 @@ is
                   Kind := String_Type;
                end if;
             when Host_Import_Form =>
-               if Tree.Nodes (Node_Index (Index)).Host_Call.Parameters = 1
-               then
-                  Check_Node
-                    (Tree.Nodes (Node_Index (Index)).First,
-                     Depth + 1,
-                     Left_Type);
-                  if Diagnostic = No_Diagnostic and then
-                    ((Tree.Nodes (Node_Index (Index)).Host_Call.Import.Argument =
-                        CCL.Host_Values.Integer_Value and then
-                      Left_Type /= Integer_Type) or else
-                     (Tree.Nodes (Node_Index (Index)).Host_Call.Import.Argument =
-                        CCL.Host_Values.Boolean_Value and then
-                      Left_Type /= Boolean_Type) or else
-                     (Tree.Nodes (Node_Index (Index)).Host_Call.Import.Argument =
-                        CCL.Host_Values.Text_Value and then Left_Type /= String_Type) or else
-                     (Tree.Nodes (Node_Index (Index)).Host_Call.Import.Argument =
-                        CCL.Host_Values.Handler_Value and then Left_Type /= Handler_Type))
+               declare
+                  Op : constant CCL.Catalog.Resolved_Operation := Tree.Nodes (Index).Host_Call;
+                  Argument_Type : constant Static_Type := Host_Type
+                    (Op.Import.Argument, Op.Import.Argument_Schema, Op.Import.Argument_Resource);
+                  Result_Type : constant Static_Type := Host_Type
+                    (Op.Import.Result, Op.Import.Result_Schema, Op.Import.Result_Resource);
+                  Has_Receiver : constant Boolean := CCL.Host_Values.Has_Receiver (Op.Import);
+                  Receiver_Type : constant Static_Type :=
+                    (if Has_Receiver then Resource_Type (Op.Import.Receiver_Resource) else Unit_Type);
+               begin
+                  if Argument_Type = Invalid_Type or Result_Type = Invalid_Type or Receiver_Type = Invalid_Type then
+                     Diagnostic := Host_Schema_Unavailable;
+                  elsif (Op.Import.Argument = CCL.Host_Values.Object_Value and then
+                     not CCL.Objects.Persistable (Tree.Types, Argument_Type)) or else
+                    (Op.Import.Result = CCL.Host_Values.Object_Value and then
+                     not CCL.Objects.Persistable (Tree.Types, Result_Type))
                   then
-                     Diagnostic :=
-                       (if Tree.Nodes (Node_Index (Index)).Host_Call.Import.Argument =
-                           CCL.Host_Values.Integer_Value
-                        then Expected_Integer
-                        elsif Tree.Nodes (Node_Index (Index)).Host_Call.Import.Argument =
-                          CCL.Host_Values.Boolean_Value then Expected_Boolean
-                        elsif Tree.Nodes (Node_Index (Index)).Host_Call.Import.Argument =
-                          CCL.Host_Values.Handler_Value then Expected_Handler
-                        else Expected_String);
+                     Diagnostic := Unsupported_Host_Object;
+                  else
+                     if Has_Receiver then
+                        Check_Node (Tree.Nodes (Index).First, Depth + 1, Left_Type);
+                        if Diagnostic = No_Diagnostic and then Left_Type /= Receiver_Type then
+                           Diagnostic := Host_Object_Type_Mismatch;
+                        end if;
+                     end if;
+                     if Diagnostic = No_Diagnostic and then Op.Parameters = 1 then
+                        Check_Node ((if Has_Receiver then Tree.Nodes (Index).Second else Tree.Nodes (Index).First),
+                          Depth + 1, Left_Type);
+                        if Diagnostic = No_Diagnostic and then Left_Type /= Argument_Type then
+                           Diagnostic := (case Op.Import.Argument is
+                             when CCL.Host_Values.Integer_Value => Expected_Integer,
+                             when CCL.Host_Values.Boolean_Value => Expected_Boolean,
+                             when CCL.Host_Values.Text_Value => Expected_String,
+                             when CCL.Host_Values.Handler_Value => Expected_Handler,
+                             when CCL.Host_Values.Object_Value | CCL.Host_Values.Resource_Value => Host_Object_Type_Mismatch);
+                        end if;
+                     end if;
+                     if Diagnostic = No_Diagnostic then Kind := Result_Type; end if;
                   end if;
-               end if;
-               if Diagnostic = No_Diagnostic then
-                  Kind :=
-                    (if Tree.Nodes (Node_Index (Index)).Host_Call.Import.Result =
-                        CCL.Host_Values.Integer_Value
-                     then Integer_Type
-                     elsif Tree.Nodes (Node_Index (Index)).Host_Call.Import.Result =
-                       CCL.Host_Values.Boolean_Value then Boolean_Type
-                     else String_Type);
-               end if;
+               end;
             when Invalid_Node => Diagnostic := Unexpected_Token;
          end case;
+         -- Export admission belongs to the checked root node. Keeping it here
+         -- also keeps its diagnostic within the established node-index bounds;
+         -- the caller only receives a type, not a validated node reference.
+         if Depth = 0 and then Diagnostic = No_Diagnostic and then Kind = Handler_Type then
+            Diagnostic := Handler_Result_Not_Exportable;
+         end if;
          if Diagnostic = No_Diagnostic then
             Tree.Nodes (Node_Index (Index)).Static_Kind := Kind;
          end if;
@@ -1228,9 +1388,148 @@ is
       Value_Env : Value_Environment := [others => (others => <>)];
       Value_Env_Length : Natural range 0 .. MAX_BINDINGS := 0;
       Text_Region : Text_Regions.Stack;
+      type Object_Array is array (Object_Index) of Object_Views.Snapshot;
+      Objects : Object_Array;
+      Objects_Used : Object_Count := 0;
       subtype Remaining_Fuel is Natural range 0 .. Fuel;
       Fuel_Left : Remaining_Fuel := Fuel;
       Eval_Status : Interpretation_Status := Succeeded;
+
+      procedure Load_View
+        (Owner : Object_Index; Position : Object_Views.Cursor;
+         Item : out Runtime_Value; Good : out Boolean)
+      is
+         Choice : CCL.Types.Component_Count;
+      begin
+         Item := (others => <>); Good := False;
+         Item.Kind := Object_Views.Local_Type (Objects (Owner), Position, Tree.Types);
+         case Item.Kind is
+            when Integer_Type =>
+               Item.Scalar := Integer_Scalar (CCL.Objects.Integer_Of (Object_Views.Scalar (Objects (Owner), Position)));
+            when Boolean_Type =>
+               Item.Scalar := Boolean_Scalar (Object_Views.Scalar (Objects (Owner), Position).First = 1);
+            when String_Type =>
+               Item.Object_Owner := Owner; Item.Object_Position := Position;
+            when Character_Type =>
+               declare
+                  C : constant Unsigned_64 := Object_Views.Scalar (Objects (Owner), Position).First;
+               begin
+                  if C > 255 then return; end if;
+                  Item.Character_Item := Character'Val (C);
+               end;
+            when Unit_Type => null;
+            when CCL.Types.Declared_Type =>
+               Item.Object_Owner := Owner; Item.Object_Position := Position;
+               if CCL.Types.Describe (Tree.Types, Item.Kind).Form = CCL.Types.Sum then
+                  Choice := Object_Views.Alternative (Objects (Owner), Position);
+                  if Choice = 0 then return; end if;
+                  Item.Alternative := Choice;
+                  if CCL.Types.Is_Scalar_Sum (Tree.Types, Item.Kind) then
+                     declare
+                        Payload : constant CCL.Objects.Cell := Object_Views.Scalar
+                          (Objects (Owner), Object_Views.Payload (Objects (Owner), Position));
+                     begin
+                        Item.Scalar := (if CCL.Types.Describe (Tree.Types, Item.Kind).Parts (Choice).Payload = Boolean_Type
+                          then Boolean_Scalar (Payload.First = 1) else Integer_Scalar (CCL.Objects.Integer_Of (Payload)));
+                     end;
+                  end if;
+               end if;
+            when others => return;
+         end case;
+         Good := True;
+      end Load_View;
+
+      function String_Length (Item : Runtime_Value) return Object_Views.Text_Size is
+        (if Item.Object_Owner = 0 then Text_Regions.Length (Item.Text)
+         else Object_Views.Text_Length (Objects (Item.Object_Owner), Item.Object_Position));
+
+      procedure Copy_String (Item : Runtime_Value; Target : out String; Good : out Boolean) is
+         Status : Text_Regions.Operation_Result;
+      begin
+         if Item.Object_Owner /= 0 then
+            Object_Views.Copy_Text (Objects (Item.Object_Owner), Item.Object_Position, Target, Good);
+         else
+            Text_Regions.Copy_To (Text_Region, Item.Text, Target, Status);
+            Good := Status = Text_Regions.Operation_Ok;
+         end if;
+      end Copy_String;
+
+      procedure Append_Runtime
+        (Value : in out CCL.Objects.Image; Item : Runtime_Value; Good : out Boolean)
+      is
+         Built : CCL.Objects.Build_Result := CCL.Objects.Invalid_Image;
+         Text : String (1 .. MAX_TEXT_BYTES);
+         Length : constant Natural := Text_Regions.Length (Item.Text);
+         Copied : Text_Regions.Operation_Result;
+         D : CCL.Types.Description;
+      begin
+         if Item.Object_Owner /= 0 then
+            Object_Views.Append_Value (Objects (Item.Object_Owner), Item.Object_Position, Value, Built);
+         else
+            case Item.Kind is
+               when Integer_Type => CCL.Objects.Append (Value, CCL.Objects.Integer_Cell (Item.Scalar.Integer), Built);
+               when Boolean_Type => CCL.Objects.Append (Value, CCL.Objects.Boolean_Cell (Item.Scalar.Boolean), Built);
+               when Character_Type => CCL.Objects.Append (Value, CCL.Objects.Character_Cell (Item.Character_Item), Built);
+               when Unit_Type => CCL.Objects.Append (Value, CCL.Objects.Unit_Cell, Built);
+               when String_Type =>
+                  Text_Regions.Copy_To (Text_Region, Item.Text, Text (1 .. Length), Copied);
+                  if Copied = Text_Regions.Operation_Ok then
+                     CCL.Objects.Append_Text (Value, Text (1 .. Length), Built);
+                  end if;
+               when CCL.Types.Declared_Type =>
+                  D := CCL.Types.Describe (Tree.Types, Item.Kind);
+                  if D.Form = CCL.Types.Sum and then Item.Alternative <= D.Count then
+                     CCL.Objects.Append (Value, CCL.Objects.Variant_Cell (Item.Alternative), Built);
+                     if Built = CCL.Objects.Added then
+                        case D.Parts (Item.Alternative).Payload is
+                           when Integer_Type => CCL.Objects.Append (Value, CCL.Objects.Integer_Cell (Item.Scalar.Integer), Built);
+                           when Boolean_Type => CCL.Objects.Append (Value, CCL.Objects.Boolean_Cell (Item.Scalar.Boolean), Built);
+                           when Unit_Type => CCL.Objects.Append (Value, CCL.Objects.Unit_Cell, Built);
+                           when others => Built := CCL.Objects.Invalid_Image;
+                        end case;
+                     end if;
+                  end if;
+               when others => null;
+            end case;
+         end if;
+         Good := Built = CCL.Objects.Added;
+         if not Good and then Eval_Status = Succeeded then
+            Eval_Status := Evaluation_Object_Storage_Exhausted;
+         end if;
+      end Append_Runtime;
+
+      procedure Join_Strings (Left, Right : Runtime_Value; Item : out Runtime_Value; Good : out Boolean) is
+         L : constant Object_Views.Text_Size := String_Length (Left);
+         R : constant Object_Views.Text_Size := String_Length (Right);
+         Data : String (1 .. CCL.Objects.Maximum_Text_Bytes);
+         Region_Result : Text_Regions.Operation_Result;
+         Native : CCL.Objects.Image;
+         Built : CCL.Objects.Build_Result;
+      begin
+         Item := (others => <>); Good := False;
+         if L > CCL.Objects.Maximum_Text_Bytes - R then
+            Eval_Status := Evaluation_Text_Storage_Exhausted; return;
+         end if;
+         if L + R > MAX_TEXT_BYTES and then Objects_Used = MAX_OBJECT_VALUES then
+            Eval_Status := Evaluation_Object_Storage_Exhausted; return;
+         end if;
+         Copy_String (Left, Data (1 .. L), Good);
+         if Good then Copy_String (Right, Data (L + 1 .. L + R), Good); end if;
+         if not Good then Eval_Status := Evaluation_Index_Error; return; end if;
+         if L + R <= MAX_TEXT_BYTES then
+            Text_Regions.Allocate_String (Text_Region, Data (1 .. L + R), Item.Text, Region_Result);
+            Good := Region_Result = Text_Regions.Operation_Ok;
+            if Good then Item.Kind := String_Type;
+            else Eval_Status := Evaluation_Text_Storage_Exhausted; end if;
+         else
+            Objects_Used := Objects_Used + 1;
+            CCL.Objects.Append_Text (Native, Data (1 .. L + R), Built);
+            Good := Built = CCL.Objects.Added;
+            if Good then Object_Views.Capture_Local (Objects (Objects_Used), Tree.Types, String_Type, Native, Good); end if;
+            if Good then Load_View (Objects_Used, Object_Views.Root (Objects (Objects_Used)), Item, Good); end if;
+            if not Good then Eval_Status := Evaluation_Text_Storage_Exhausted; end if;
+         end if;
+      end Join_Strings;
 
       procedure Evaluate_Node
         (Index : Natural;
@@ -1247,12 +1546,10 @@ is
          Arithmetic_Error : CCL.Checked_Arithmetic.Arithmetic_Error :=
            CCL.Checked_Arithmetic.Arithmetic_Ok;
          Region_Result : Text_Regions.Operation_Result;
-         Text_Length : Natural;
-         Scratch : String (1 .. MAX_TEXT_BYTES) :=
-           [others => Character'Val (0)];
          Character_Item : Character;
          Entry_Environment_Length : constant Natural range 0 .. MAX_BINDINGS :=
            Value_Env_Length;
+         Reserved_Object : Object_Count := 0;
       begin
          Item := (others => <>);
          Ok := False;
@@ -1310,20 +1607,70 @@ is
                end;
             when Integer_Literal =>
                Item.Kind := Integer_Type;
-               Item.Scalar := CCL.VM.Integer_Constant
+               Item.Scalar := Integer_Scalar
                  (Tree.Nodes (Node_Index (Index)).Integer_Value);
                Ok := True;
             when Variant_Literal =>
                Item.Kind := Tree.Nodes (Index).Declared_Kind;
                Item.Alternative := Tree.Nodes (Index).Alternative;
                Ok := True;
-            when Variant_Construct =>
-               Evaluate_Node (Tree.Nodes (Index).First, Depth + 1, Left, Good);
-               if Good then
-                  Item.Kind := Tree.Nodes (Index).Declared_Kind;
-                  Item.Alternative := Tree.Nodes (Index).Alternative;
-                  Item.Scalar := Left.Scalar;
+            when Variant_Construct | Record_Construct =>
+               if Tree.Nodes (Index).Kind = Variant_Construct and then
+                 CCL.Types.Is_Scalar_Sum (Tree.Types, Tree.Nodes (Index).Declared_Kind)
+               then
+                  Evaluate_Node (Tree.Nodes (Index).First, Depth + 1, Left, Good);
+                  if Good then
+                     Item.Kind := Tree.Nodes (Index).Declared_Kind;
+                     Item.Alternative := Tree.Nodes (Index).Alternative;
+                     Item.Scalar := Left.Scalar;
+                  end if;
+                  Ok := Good;
+               else
+                  if Objects_Used = MAX_OBJECT_VALUES then
+                     Eval_Status := Evaluation_Object_Storage_Exhausted; return;
+                  end if;
+                  -- Reserve before evaluating effectful constructor arguments.
+                  Objects_Used := Objects_Used + 1; Reserved_Object := Objects_Used;
+                  declare
+                     Native : CCL.Objects.Image;
+                     Built : CCL.Objects.Build_Result;
+                     D : constant CCL.Types.Description :=
+                       CCL.Types.Describe (Tree.Types, Tree.Nodes (Index).Declared_Kind);
+                  begin
+                     CCL.Objects.Append (Native,
+                       (if D.Form = CCL.Types.Product then CCL.Objects.Product_Cell (D.Count)
+                        else CCL.Objects.Variant_Cell (Tree.Nodes (Index).Alternative)), Built);
+                     Good := Built = CCL.Objects.Added;
+                     if D.Form = CCL.Types.Product then
+                        for P in 1 .. D.Count loop
+                           exit when not Good;
+                           Evaluate_Node (Tree.Nodes (Index).Components (P), Depth + 1, Left, Good);
+                           if Good then Append_Runtime (Native, Left, Good); end if;
+                        end loop;
+                     elsif Good then
+                        Evaluate_Node (Tree.Nodes (Index).First, Depth + 1, Left, Good);
+                        if Good then Append_Runtime (Native, Left, Good); end if;
+                     end if;
+                     if Good then
+                        Object_Views.Capture_Local (Objects (Reserved_Object), Tree.Types,
+                          Tree.Nodes (Index).Declared_Kind, Native, Good);
+                        if Good then
+                           Load_View (Reserved_Object, Object_Views.Root (Objects (Reserved_Object)), Item, Good);
+                        end if;
+                     end if;
+                     if not Good and Eval_Status = Succeeded then Eval_Status := Host_Result_Type_Mismatch; end if;
+                     Ok := Good;
+                  end;
                end if;
+            when Field_Form =>
+               Evaluate_Node (Tree.Nodes (Index).First, Depth + 1, Left, Good);
+               if Good and then Left.Object_Owner /= 0 then
+                  Load_View (Left.Object_Owner,
+                    Object_Views.Field (Objects (Left.Object_Owner), Left.Object_Position, Tree.Nodes (Index).Alternative),
+                    Item, Good);
+               else Good := False;
+               end if;
+               if not Good and Eval_Status = Succeeded then Eval_Status := Host_Result_Type_Mismatch; end if;
                Ok := Good;
             when Match_Form =>
                Evaluate_Node (Tree.Nodes (Index).First, Depth + 1, Left, Good);
@@ -1341,8 +1688,16 @@ is
                               if Value_Env_Length = MAX_BINDINGS then
                                  Eval_Status := Evaluation_Depth_Exhausted; return;
                               end if;
-                              Value_Env (Value_Env_Length) := (Identifier => N.Identifier,
-                                Item => (Kind => Payload, Scalar => Left.Scalar, others => <>));
+                              if Left.Object_Owner /= 0 then
+                                 Load_View (Left.Object_Owner,
+                                   Object_Views.Payload (Objects (Left.Object_Owner), Left.Object_Position), Right, Good);
+                                 if not Good then
+                                    if Eval_Status = Succeeded then Eval_Status := Host_Result_Type_Mismatch; end if;
+                                    return;
+                                 end if;
+                              else Right := (Kind => Payload, Scalar => Left.Scalar, others => <>);
+                              end if;
+                              Value_Env (Value_Env_Length) := (Identifier => N.Identifier, Item => Right);
                               Value_Env_Length := Value_Env_Length + 1;
                            end if;
                            Evaluate_Node (N.First, Depth + 1, Item, Ok);
@@ -1356,7 +1711,7 @@ is
             when Match_Arm => Eval_Status := Type_Check_Failed;
             when Boolean_Literal =>
                Item.Kind := Boolean_Type;
-               Item.Scalar := CCL.VM.Boolean_Constant
+               Item.Scalar := Boolean_Scalar
                  (Tree.Nodes (Node_Index (Index)).Boolean_Value);
                Ok := True;
             when String_Literal =>
@@ -1400,7 +1755,7 @@ is
                   Good := False;
                elsif Good then
                   Item.Kind := Integer_Type;
-                  Item.Scalar := CCL.VM.Integer_Constant
+                  Item.Scalar := Integer_Scalar
                     (Left.Scalar.Integer + Right.Scalar.Integer);
                end if;
                Ok := Good;
@@ -1443,7 +1798,7 @@ is
                      Good := False;
                   else
                      Item.Kind := Integer_Type;
-                     Item.Scalar := CCL.VM.Integer_Constant (Arithmetic_Value);
+                     Item.Scalar := Integer_Scalar (Arithmetic_Value);
                   end if;
                end if;
                Ok := Good;
@@ -1456,7 +1811,7 @@ is
                end if;
                if Good then
                   Item.Kind := Boolean_Type;
-                  Item.Scalar := CCL.VM.Boolean_Constant
+                  Item.Scalar := Boolean_Scalar
                     (if Left.Kind = Integer_Type then
                         Left.Scalar.Integer = Right.Scalar.Integer
                      else Left.Alternative = Right.Alternative);
@@ -1467,7 +1822,7 @@ is
                               Depth + 1, Left, Good);
                if Good then
                   Item.Kind := Boolean_Type;
-                  Item.Scalar := CCL.VM.Boolean_Constant
+                  Item.Scalar := Boolean_Scalar
                     (not Left.Scalar.Boolean);
                end if;
                Ok := Good;
@@ -1502,8 +1857,8 @@ is
                               Depth + 1, Left, Good);
                if Good then
                   Item.Kind := Integer_Type;
-                  Item.Scalar := CCL.VM.Integer_Constant
-                    (Integer_64 (Text_Regions.Length (Left.Text)));
+                  Item.Scalar := Integer_Scalar
+                    (Integer_64 (String_Length (Left)));
                end if;
                Ok := Good;
             when String_Index_Form =>
@@ -1516,18 +1871,23 @@ is
                if Good and then
                  (Right.Scalar.Integer < 1 or else
                   Right.Scalar.Integer >
-                    Integer_64 (Text_Regions.Last_Index (Left.Text)) or else
+                    Integer_64 (String_Length (Left)) or else
                   Right.Scalar.Integer >
                     Integer_64 (Text_Regions.String_Index'Last))
                then
                   Eval_Status := Evaluation_Index_Error;
                   Good := False;
                elsif Good then
-                  Text_Regions.Read
-                    (Text_Region, Left.Text,
-                     Text_Regions.String_Index (Right.Scalar.Integer),
-                     Character_Item, Region_Result);
-                  if Region_Result = Text_Regions.Operation_Ok then
+                  if Left.Object_Owner /= 0 then
+                     Object_Views.Read_Text (Objects (Left.Object_Owner), Left.Object_Position,
+                       Positive (Right.Scalar.Integer), Character_Item, Good);
+                  else
+                     Text_Regions.Read
+                       (Text_Region, Left.Text, Text_Regions.String_Index (Right.Scalar.Integer),
+                        Character_Item, Region_Result);
+                     Good := Region_Result = Text_Regions.Operation_Ok;
+                  end if;
+                  if Good then
                      Item.Kind := Character_Type;
                      Item.Character_Item := Character_Item;
                   else
@@ -1543,41 +1903,7 @@ is
                   Evaluate_Node (Tree.Nodes (Node_Index (Index)).Second,
                                  Depth + 1, Right, Good);
                end if;
-               if Good and then
-                 Text_Regions.Length (Left.Text) >
-                   MAX_TEXT_BYTES - Text_Regions.Length (Right.Text)
-               then
-                  Eval_Status := Evaluation_Text_Storage_Exhausted;
-                  Good := False;
-               elsif Good then
-                  Text_Length := Text_Regions.Length (Left.Text) +
-                    Text_Regions.Length (Right.Text);
-                  Text_Regions.Copy_To
-                    (Text_Region, Left.Text,
-                     Scratch (1 .. Text_Regions.Length (Left.Text)),
-                     Region_Result);
-                  Good := Region_Result = Text_Regions.Operation_Ok;
-                  if Good then
-                     Text_Regions.Copy_To
-                       (Text_Region, Right.Text,
-                        Scratch (Text_Regions.Length (Left.Text) + 1 ..
-                                   Text_Length), Region_Result);
-                     Good := Region_Result = Text_Regions.Operation_Ok;
-                  end if;
-                  if not Good then
-                     Eval_Status := Evaluation_Index_Error;
-                  else
-                     Text_Regions.Allocate_String
-                       (Text_Region, Scratch (1 .. Text_Length), Item.Text,
-                        Region_Result);
-                     if Region_Result = Text_Regions.Operation_Ok then
-                        Item.Kind := String_Type;
-                     else
-                        Eval_Status := Evaluation_Text_Storage_Exhausted;
-                        Good := False;
-                     end if;
-                  end if;
-               end if;
+               if Good then Join_Strings (Left, Right, Item, Good); end if;
                Ok := Good;
             when To_String_Form =>
                Evaluate_Node (Tree.Nodes (Node_Index (Index)).First,
@@ -1605,24 +1931,45 @@ is
                      Operation : constant CCL.Catalog.Resolved_Operation :=
                        Tree.Nodes (Node_Index (Index)).Host_Call;
                      Binding : Unsigned_32;
-                     Granted, Called : Boolean;
+                     Granted : Boolean;
                      Argument : CCL.Host_Values.Value := CCL.Host_Values.Integer_Constant (0);
-                     Returned : CCL.Host_Values.Value;
+                     Reply : CCL.Host_Values.Call_Result;
+                     Contract : CCL.Objects.Binding;
+                     Native_Object : CCL.Objects.Image;
+                     VM_Value : CCL.VM.Value;
                   begin
                      Good := True;
                      if Operation.Parameters = 1 then
                         Evaluate_Node (Tree.Nodes (Node_Index (Index)).First,
                                        Depth + 1, Left, Good);
                         if Good then
-                           if Left.Kind = String_Type then
-                              Argument := (Kind => CCL.Host_Values.Text_Value, Content =>
-                                (Length => Text_Regions.Length (Left.Text), others => <>));
-                              Text_Regions.Copy_To
-                                (Text_Region, Left.Text,
-                                 Argument.Content.Data (1 .. Argument.Content.Length), Region_Result);
-                              Good := Region_Result = Text_Regions.Operation_Ok;
-                              if not Good then Eval_Status := Evaluation_Text_Storage_Exhausted; end if;
-                           else Argument := CCL.Host_Values.From_Scalar (Left.Scalar);
+                           if Operation.Import.Argument = CCL.Host_Values.Object_Value then
+                              CCL.Catalog.Resolve_Schema
+                                (Visible_Interfaces, Operation.Import.Argument_Schema, Contract);
+                              if Left.Object_Owner /= 0 then
+                                 Object_Views.Copy_Value
+                                   (Objects (Left.Object_Owner), Left.Object_Position,
+                                    Contract, Native_Object, Good);
+                              else
+                                 Native_Object := CCL.Objects.Empty (Contract);
+                                 Good := Left.Kind = Host_Type (Operation.Import.Argument,
+                                   Operation.Import.Argument_Schema, Operation.Import.Argument_Resource);
+                                 if Good then Append_Runtime (Native_Object, Left, Good); end if;
+                                 Good := Good and then CCL.Objects.Validate (Native_Object, Contract);
+                              end if;
+                              if Good then Argument := CCL.Host_Values.Object_Constant (Native_Object);
+                              else Eval_Status := Host_Argument_Out_Of_Bounds; end if;
+                           elsif Left.Kind = String_Type then
+                              if String_Length (Left) > Operation.Import.Argument_Text_Limit then
+                                 Eval_Status := Host_Argument_Out_Of_Bounds; Good := False;
+                              else
+                                 Argument := (Kind => CCL.Host_Values.Text_Value, Content =>
+                                   (Length => String_Length (Left), others => <>));
+                                 Copy_String (Left, Argument.Content.Data (1 .. Argument.Content.Length), Good);
+                                 if not Good then Eval_Status := Evaluation_Index_Error; end if;
+                              end if;
+                           else
+                              Argument := To_Host (Left.Scalar);
                            end if;
                         end if;
                      end if;
@@ -1637,8 +1984,9 @@ is
                            if not Good then Eval_Status := Host_Contract_Unsupported; end if;
                         end;
                      end if;
-                     if Good and then not CCL.Host_Values.Matches
-                       (Argument, Operation.Import.Argument, Operation.Import.Argument_Text_Limit)
+                     if Good and then not Matches_Host
+                       (Argument, Operation.Import.Argument, Operation.Import.Argument_Text_Limit,
+                        Operation.Import.Argument_Schema)
                      then
                         Eval_Status := Host_Argument_Out_Of_Bounds;
                         Good := False;
@@ -1647,31 +1995,67 @@ is
                         CCL.Catalog.Find_Granted_Binding (Grants, Operation, Binding, Granted);
                         if not Granted then
                            Eval_Status := Host_Authority_Denied; Good := False;
-                        else
-                           Invoke (Context, Binding, Argument, Returned, Called);
-                           if not Called then
+                        elsif Operation.Import.Result = CCL.Host_Values.Object_Value and then
+                          not Supported_Object (Tree.Nodes (Index).Static_Kind)
+                        then
+                           if Objects_Used = MAX_OBJECT_VALUES then
+                              Eval_Status := Evaluation_Object_Storage_Exhausted; Good := False;
+                           else
+                              Objects_Used := Objects_Used + 1; Reserved_Object := Objects_Used;
+                           end if;
+                        end if;
+                        if Good then
+                           Invoke (Context, Binding, Argument, Reply);
+                           if not Reply.Success then
                               Eval_Status := Host_Call_Failed; Good := False;
-                           elsif not CCL.Host_Values.Matches
-                             (Returned, Operation.Import.Result, Operation.Import.Result_Text_Limit)
+                           elsif not Matches_Host
+                             (Reply.Value, Operation.Import.Result, Operation.Import.Result_Text_Limit,
+                              Operation.Import.Result_Schema)
                            then
                               Eval_Status := Host_Result_Type_Mismatch; Good := False;
                            else
-                              case Returned.Kind is
+                              case Reply.Value.Kind is
                                  when CCL.Host_Values.Integer_Value =>
                                     Item.Kind := Integer_Type;
-                                    Item.Scalar := CCL.VM.Integer_Constant (Returned.Integer);
+                                    Item.Scalar := Integer_Scalar (Reply.Value.Integer);
                                  when CCL.Host_Values.Boolean_Value =>
                                     Item.Kind := Boolean_Type;
-                                    Item.Scalar := CCL.VM.Boolean_Constant (Returned.Boolean);
+                                    Item.Scalar := Boolean_Scalar (Reply.Value.Boolean);
                                  when CCL.Host_Values.Text_Value =>
                                     Item.Kind := String_Type;
                                     Text_Regions.Allocate_String
-                                      (Text_Region, Returned.Content.Data (1 .. Returned.Content.Length),
+                                      (Text_Region, Reply.Value.Content.Data (1 .. Reply.Value.Content.Length),
                                        Item.Text, Region_Result);
                                     Good := Region_Result = Text_Regions.Operation_Ok;
                                     if not Good then Eval_Status := Evaluation_Text_Storage_Exhausted; end if;
-                                 when CCL.Host_Values.Handler_Value =>
+                                 when CCL.Host_Values.Handler_Value | CCL.Host_Values.Resource_Value =>
                                     Good := False; Eval_Status := Host_Result_Type_Mismatch;
+                                 when CCL.Host_Values.Object_Value =>
+                                    CCL.Catalog.Resolve_Schema
+                                      (Visible_Interfaces, Operation.Import.Result_Schema, Contract);
+                                    if Reserved_Object /= 0 then
+                                       Object_Views.Capture (Objects (Reserved_Object), Contract, Reply.Value.Object, Good);
+                                       if Good then
+                                          Load_View (Reserved_Object, Object_Views.Root (Objects (Reserved_Object)), Item, Good);
+                                       end if;
+                                    else
+                                       CCL.Objects.Values.To_VM (Contract, Tree.Types, Reply.Value.Object, VM_Value, Good);
+                                       if Good then
+                                          Item.Kind := (case VM_Value.Kind is
+                                            when CCL.VM.Integer_Value => Integer_Type,
+                                            when CCL.VM.Boolean_Value => Boolean_Type,
+                                            when CCL.VM.Variant_Value | CCL.VM.Object_Value => VM_Value.Data_Type,
+                                            when CCL.VM.Resource_Value => Invalid_Type);
+                                          Item.Alternative := VM_Value.Alternative;
+                                          Item.Scalar :=
+                                            (if Item.Kind = Boolean_Type or else
+                                              (VM_Value.Kind = CCL.VM.Variant_Value and then
+                                               CCL.Types.Describe (Tree.Types, Item.Kind).Parts (Item.Alternative).Payload = Boolean_Type)
+                                             then Boolean_Scalar (VM_Value.Boolean)
+                                             else Integer_Scalar (VM_Value.Integer));
+                                       end if;
+                                    end if;
+                                    if not Good then Eval_Status := Host_Result_Type_Mismatch; end if;
                               end case;
                            end if;
                         end if;
@@ -1689,7 +2073,6 @@ is
       Root_Type : Static_Type;
       Value     : Runtime_Value;
       Ok        : Boolean;
-      Region_Result : Text_Regions.Operation_Result;
    begin
       Result :=
         (Status => Parse_Failed, Diagnostic => No_Diagnostic,
@@ -1698,6 +2081,8 @@ is
 
       if Analyze_Input then
          Tree := (others => <>);
+         Tree.Types := CCL.Catalog.Visible_Types (Visible_Interfaces);
+         Visible_Types := CCL.Types.Last (Tree.Types);
          if Source'Length > MAX_SOURCE_LENGTH then
             Result.Diagnostic := Source_Too_Long;
             Result.Diagnostic_Position := MAX_SOURCE_LENGTH + 1;
@@ -1719,10 +2104,6 @@ is
          end if;
 
          Check_Node (Root, 0, Root_Type);
-         if Diagnostic = No_Diagnostic and then Root_Type = Handler_Type then
-            Diagnostic := Handler_Result_Not_Exportable;
-            Diagnostic_Position := Tree.Nodes (Root).Source_Position;
-         end if;
          if Diagnostic /= No_Diagnostic or else Root_Type = Invalid_Type then
             Result.Status := Type_Check_Failed;
             Result.Diagnostic := Diagnostic;
@@ -1742,19 +2123,29 @@ is
       Evaluate_Node (Root, 0, Value, Ok);
       Result.Status := Eval_Status;
       Result.Fuel_Remaining := Fuel_Left;
-      if Ok and then Eval_Status = Succeeded then
+      if Ok and then Eval_Status = Succeeded and then Export_Native then
+         declare
+            Native : CCL.Objects.Image;
+         begin
+            -- Schema-less, owned native data. The typed result adapter applies
+            -- the separately approved identity and validates before publication.
+            Append_Runtime (Native, Value, Ok);
+            if Ok then Deliver_Native (Native);
+            else Result.Status := Eval_Status;
+            end if;
+         end;
+      elsif Ok and then Eval_Status = Succeeded then
          Result.Has_Value := True;
          case Value.Kind is
             when String_Type =>
-               Result.Has_Text := True;
-               Result.Result_Text.Length := Text_Regions.Length (Value.Text);
-               if Result.Result_Text.Length > 0 then
-                  Text_Regions.Copy_To
-                    (Text_Region, Value.Text,
-                     Result.Result_Text.Data
-                       (1 .. Result.Result_Text.Length),
-                     Region_Result);
-                  if Region_Result /= Text_Regions.Operation_Ok then
+               if String_Length (Value) > MAX_TEXT_BYTES then
+                  Result.Status := Evaluation_Text_Storage_Exhausted;
+                  Result.Has_Value := False;
+               else
+                  Result.Has_Text := True;
+                  Result.Result_Text.Length := String_Length (Value);
+                  Copy_String (Value, Result.Result_Text.Data (1 .. Result.Result_Text.Length), Ok);
+                  if not Ok then
                      Result.Status := Evaluation_Index_Error;
                      Result.Has_Value := False;
                      Result.Has_Text := False;
@@ -1764,31 +2155,36 @@ is
                Result.Has_Character := True;
                Result.Result_Character := Value.Character_Item;
             when Integer_Type | Boolean_Type =>
-               Result.Result_Value := Value.Scalar;
+               Result.Result_Value := To_VM (Value.Scalar);
             when CCL.Types.Declared_Type =>
+               if not CCL.Types.Is_Scalar_Sum (Tree.Types, Value.Kind) then
+                  Result.Status := Host_Contract_Unsupported; Result.Has_Value := False;
+               else
                Result.Variant_Type := Value.Kind;
                Result.Variant_Type_Name := CCL.Types.Describe (Tree.Types, Value.Kind).Identifier;
                Result.Variant_Member_Name := CCL.Types.Describe
                  (Tree.Types, Value.Kind).Parts (Value.Alternative).Identifier;
                Result.Variant_Payload_Type := CCL.Types.Describe
                  (Tree.Types, Value.Kind).Parts (Value.Alternative).Payload;
-               Result.Result_Value := Value.Scalar;
+               Result.Result_Value := To_VM (Value.Scalar);
+               end if;
             when Invalid_Type | Handler_Type | Unit_Type =>
                Result.Status := Type_Check_Failed;
                Result.Has_Value := False;
          end case;
       end if;
       Text_Regions.Clear (Text_Region);
+      for I in 1 .. Objects_Used loop Object_Views.Clear (Objects (I)); end loop;
    end Process_Source_With_Host;
 
    type No_Host is null record;
    procedure Deny_Host
      (Context : in out No_Host; Binding : Unsigned_32;
-      Argument : CCL.Host_Values.Value; Value : out CCL.Host_Values.Value; Success : out Boolean)
+      Argument : CCL.Host_Values.Value; Reply : out CCL.Host_Values.Call_Result)
    is
       pragma Unreferenced (Context, Binding, Argument);
    begin
-      Value := CCL.Host_Values.Integer_Constant (0); Success := False;
+      Reply.Value := CCL.Host_Values.Integer_Constant (0); Reply.Success := False;
    end Deny_Host;
    procedure Process_Without_Host is new Process_Source_With_Host (No_Host, Deny_Host);
 
@@ -1820,6 +2216,7 @@ is
       for N of Tree.Nodes loop
          if N.Kind = Host_Import_Form then
             if (not Allow_Text and then not CCL.Host_Values.Scalar_Only (N.Host_Call.Import)) or else
+              CCL.Host_Values.Has_Resources (N.Host_Call.Import) or else
               N.Host_Call.Import.Ownership_Argument or else
               N.Host_Call.Import.Transfer /= CCL.Imports.Copy_Argument or else
               N.Host_Call.Import.Cancellation /= CCL.Imports.Not_Cancellable or else
@@ -1863,6 +2260,69 @@ is
       Run (Source, Fuel, Visible_Interfaces, Grants, Context, True, False, True, Result, Tree);
    end Interpret_With_Values;
 
+   procedure Interpret_Object_With_Values
+     (Source : String; Fuel : Natural;
+      Visible_Interfaces : CCL.Catalog.Interface_Catalog;
+      Grants : CCL.Catalog.Granted_Bindings;
+      Context : in out Host_Context; Expected : CCL.Objects.Binding;
+      Result : out Object_Interpretation_Result)
+   is
+      Analysis : Analysis_Result;
+      Tree : Syntax_Tree;
+      Outcome : Interpretation_Result;
+      Delivered : Boolean := False;
+      procedure Deliver (Value : CCL.Objects.Image) is
+         use type CCL.Objects.Schema_Key;
+      begin
+         if Value.Schema /= CCL.Objects.No_Schema then return; end if;
+         Result.Value := Value;
+         Result.Value.Schema := CCL.Objects.Identity (Expected);
+         Delivered := CCL.Objects.Validate (Result.Value, Expected);
+         if not Delivered then Result.Value := CCL.Objects.Empty (Expected); end if;
+      end Deliver;
+      procedure Run is new Process_Source_With_Host
+        (Host_Context, Invoke, Export_Native => True, Deliver_Native => Deliver);
+   begin
+      Result := (Fuel_Remaining => Fuel, Value => CCL.Objects.Empty (Expected), others => <>);
+      Analyze (Source, Visible_Interfaces, Analysis);
+      if Analysis.Status /= Analysis_Succeeded then
+         Result.Status := (if Analysis.Status = Analysis_Type_Check_Failed then Type_Check_Failed else Parse_Failed);
+         Result.Diagnostic := Analysis.Diagnostic;
+         Result.Diagnostic_Position := Analysis.Diagnostic_Position;
+         return;
+      end if;
+      Tree := Analysis.Tree;
+      if Tree.Root >= Tree.Length or else not CCL.Objects.Matches_Type
+        (Expected, Tree.Types, Tree.Nodes (Tree.Root).Static_Kind)
+      then
+         Result.Status := Type_Check_Failed;
+         Result.Diagnostic := Host_Object_Type_Mismatch;
+         if Tree.Root < Tree.Length then Result.Diagnostic_Position := Tree.Nodes (Tree.Root).Source_Position; end if;
+         return;
+      end if;
+      Admit (Tree, Grants, True, Result.Status, Result.Diagnostic_Position);
+      if Result.Status /= Succeeded then return; end if;
+      Run (Source, Fuel, Visible_Interfaces, Grants, Context, True, False, True, Outcome, Tree);
+      Result.Status := Outcome.Status;
+      Result.Diagnostic := Outcome.Diagnostic;
+      Result.Diagnostic_Position := Outcome.Diagnostic_Position;
+      Result.Fuel_Remaining := Outcome.Fuel_Remaining;
+      Result.Has_Value := Outcome.Status = Succeeded and Delivered;
+      if Outcome.Status = Succeeded and not Delivered then Result.Status := Host_Result_Type_Mismatch; end if;
+   end Interpret_Object_With_Values;
+
+   procedure Interpret_Object
+     (Source : String; Fuel : Natural; Expected : CCL.Objects.Binding;
+      Result : out Object_Interpretation_Result)
+   is
+      Catalog : CCL.Catalog.Interface_Catalog;
+      Grants : CCL.Catalog.Granted_Bindings;
+      Context : No_Host;
+      procedure Run is new Interpret_Object_With_Values (No_Host, Deny_Host);
+   begin
+      Run (Source, Fuel, Catalog, Grants, Context, Expected, Result);
+   end Interpret_Object;
+
    procedure Interpret_With_Host
      (Source : String; Fuel : Natural;
       Visible_Interfaces : CCL.Catalog.Interface_Catalog;
@@ -1871,17 +2331,22 @@ is
    is
       procedure Invoke_Scalar
         (Context : in out Host_Context; Binding : Unsigned_32;
-         Argument : CCL.Host_Values.Value; Value : out CCL.Host_Values.Value;
-         Success : out Boolean)
+         Argument : CCL.Host_Values.Value; Reply : out CCL.Host_Values.Call_Result)
       is
          A, R : CCL.VM.Value;
       begin
-         CCL.Host_Values.To_Scalar (Argument, A, Success);
-         Value := CCL.Host_Values.Integer_Constant (0);
-         if Success then
-            Invoke (Context, Binding, A, R, Success);
-            if R.Kind not in CCL.VM.Scalar_Kind then Success := False;
-            else Value := CCL.Host_Values.From_Scalar (R); end if;
+         CCL.Host_Values.To_Scalar (Argument, A, Reply.Success);
+         Reply.Value := CCL.Host_Values.Integer_Constant (0);
+         if Reply.Success then
+            Invoke (Context, Binding, A, R, Reply.Success);
+            --  This boundary admits scalar COPY results only. Do not erase
+            --  ownership/linearity metadata by projecting a resource into an
+            --  ordinary integer or boolean. Transfer imports use a different
+            --  admission path; they cannot be smuggled through this adapter.
+            if not Reply.Success or else R.Kind not in CCL.VM.Scalar_Kind or else
+              not R.Copyable or else R.Type_Tag /= 0
+            then Reply.Success := False;
+            else Reply.Value := CCL.Host_Values.From_Scalar (R); end if;
          end if;
       end Invoke_Scalar;
       procedure Run is new Interpret_With_Values (Host_Context, Invoke_Scalar, Allow_Text => False);
@@ -1925,6 +2390,9 @@ is
          Diagnostic => Outcome.Diagnostic,
          Diagnostic_Position => Outcome.Diagnostic_Position,
          Tree => Tree, others => <>);
+      for Ref in CCL.Types.Type_Reference loop
+         Result.Resource_Policies (Ref) := CCL.Catalog.Resource_Policy (Visible_Interfaces, Ref);
+      end loop;
       if Source'Length <= MAX_SOURCE_LENGTH then
          Result.Source_Length := Source'Length;
          Result.Source_Text (1 .. Source'Length) := Source;

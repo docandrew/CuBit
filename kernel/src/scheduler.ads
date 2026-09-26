@@ -30,8 +30,8 @@ package Scheduler is
     --  scheduler uses FIFO ready order. A process requeued after its quantum
     --  joins behind already-ready peers of equal priority.
     ---------------------------------------------------------------------------
-    procedure schedule(cpuData : in out PerCPUData.PerCPUData) with
-        Global => (In_Out => process.proctab);
+    -- Reads and updates the process table (Process.proctab).
+    procedure schedule(cpuData : in out PerCPUData.PerCPUData);
     pragma No_Return (schedule);
 
 end Scheduler;

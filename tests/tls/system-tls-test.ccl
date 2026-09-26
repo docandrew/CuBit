@@ -1,0 +1,51 @@
+# Headless tls-service regression: system.ccl plus a tls.hosts entry that
+# maps the fixture name to the QEMU host. Keep other settings in sync.
+# CuBit System Configuration
+# Loaded by devmgr at boot, seeded into config.svc
+# This CCL profile is authoritative at boot; runtime edits are volatile.
+# Scheme registry: scheme.<name>.driver=<driver_id>
+#                  scheme.<name>.slot=<cap_slot>
+#
+# driver = the DRIVER_* ID (for PID lookup via sysinfo)
+# slot   = the cap slot clients use to capCall the service
+# Filesystem (bare paths and @fs: prefix)
+# ATA/NVMe disk files — routed through FS server
+# Config store
+# Network (TCP/UDP via netstack)
+# Audio mixer
+# Process manager
+# Desktop compositor/session service
+# Display scanout service
+# Network interface configuration
+(system-config v1
+  (setting "desktop.appearance.theme.light" "(theme v1 (base alloy-light))")
+  (setting "desktop.appearance.theme.dark" "(theme v1 (base alloy-dark))")
+  (setting "clock.time-zone" "UTC")
+  # SNTP servers for timesync.svc (host or host:port). A majority of at least
+  # two must agree before the clock is adjusted.
+  (setting "tls.hosts" "tls-test.cubit.internal=10.0.2.2")
+  (setting "time.servers" "time.cloudflare.com 0.pool.ntp.org 1.pool.ntp.org 2.pool.ntp.org")
+  (setting "scheme.fs.driver" 6)
+  (setting "scheme.fs.slot" 1)
+  (setting "scheme.ata.driver" 6)
+  (setting "scheme.ata.slot" 1)
+  (setting "scheme.nvme.driver" 6)
+  (setting "scheme.nvme.slot" 1)
+  (setting "scheme.config.driver" 11)
+  (setting "scheme.config.slot" 20)
+  (setting "scheme.net.driver" 3)
+  (setting "scheme.net.slot" 11)
+  (setting "scheme.mixer.driver" 9)
+  (setting "scheme.mixer.slot" 14)
+  (setting "scheme.proc.driver" 4)
+  (setting "scheme.proc.slot" 12)
+  (setting "scheme.desktop.driver" 15)
+  (setting "scheme.desktop.slot" 21)
+  (setting "scheme.display.driver" 16)
+  (setting "scheme.display.slot" 22)
+  (setting "net.if0.method" "static")
+  (setting "net.if0.address" "10.0.2.15")
+  (setting "net.if0.netmask" "255.255.255.0")
+  (setting "net.if0.gateway" "10.0.2.2")
+  (setting "net.dns.primary" "10.0.2.3")
+)

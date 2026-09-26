@@ -1,0 +1,18 @@
+# Servo on CuBit (docs/servo-port.md). Reads fonts, its page list and
+# the TLS trust store; wall-clock time from clock.svc;
+# outbound TCP with DNS through netstack, like NetSurf. Network use needs
+# launch approval (network approve-declared).
+(executable-manifest v1
+  (identity "com.cubit.servo")
+  (version "0.1.0")
+  (request-service filesystem read-write filesystem)
+  # A window on the desktop (desktop.svc; lent buffer, surface-scoped input).
+  (request-service desktop read-write desktop)
+  (filesystem-scope (rights read) "@nvme:0/fonts")
+  (filesystem-scope (rights read) "@nvme:0/servo")
+  # The system trust store for TLS (read; later a trust store service).
+  (filesystem-scope (rights read) "@nvme:0/tls")
+  # Wall-clock time (certificate validity, Date headers).
+  (request-service clock read-write clock)
+  (request-network tcp-connect (ipv4 "0.0.0.0" 0)
+    (ports 1 65535) (dns allow) network))

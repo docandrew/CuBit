@@ -8,7 +8,9 @@
 #include <errno.h>
 #include <limits.h>
 
-void *memcpy(void *dest, const void *src, size_t n)
+/* Weak: in a binary that also links the Ada runtime (for example an Ada
+ * application embedding a C library), its strong definitions are used. */
+__attribute__((weak)) void *memcpy(void *dest, const void *src, size_t n)
 {
     unsigned char *d = (unsigned char *)dest;
     const unsigned char *s = (const unsigned char *)src;
@@ -39,7 +41,7 @@ void *memcpy(void *dest, const void *src, size_t n)
     return dest;
 }
 
-void *memmove(void *dest, const void *src, size_t n)
+__attribute__((weak)) void *memmove(void *dest, const void *src, size_t n)
 {
     unsigned char *d = (unsigned char *)dest;
     const unsigned char *s = (const unsigned char *)src;
@@ -77,7 +79,7 @@ void *memmove(void *dest, const void *src, size_t n)
     return dest;
 }
 
-void *memset(void *s, int c, size_t n)
+__attribute__((weak)) void *memset(void *s, int c, size_t n)
 {
     unsigned char *p = (unsigned char *)s;
     unsigned char byte = (unsigned char)c;

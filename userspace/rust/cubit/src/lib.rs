@@ -2,7 +2,16 @@
 #![no_std]
 #![deny(unsafe_op_in_unsafe_fn)]
 
+#[cfg(feature = "alloc")]
+extern crate alloc;
+#[cfg(test)]
+extern crate std;
+
 use core::arch::asm;
+
+pub mod sync;
+#[cfg(feature = "alloc")]
+pub mod thread;
 
 #[repr(u64)]
 enum Syscall {
@@ -10,6 +19,10 @@ enum Syscall {
     GrowHeap = 8,
     DebugWrite = 12,
     CallViaEndpointCapability = 41,
+    ThreadCreate = 90,
+    ThreadExit = 91,
+    FutexWait = 92,
+    FutexWake = 93,
 }
 
 /// Early runtime diagnostics through CuBit's existing debug output route.
@@ -35,6 +48,37 @@ unsafe fn syscall2(number: Syscall, arg0: u64, arg1: u64) -> u64 {
         asm!("syscall",
             inlateout("rax") number as u64 => result,
             in("rdi") arg0, in("rsi") arg1,
+            lateout("rcx") _, lateout("r11") _,
+            options(nostack));
+    }
+    result
+}
+
+/// Three-argument raw machine boundary; same contract as `syscall2`.
+#[allow(dead_code)]
+unsafe fn syscall3(number: Syscall, arg0: u64, arg1: u64, arg2: u64) -> u64 {
+    let result;
+    unsafe {
+        asm!("syscall",
+            inlateout("rax") number as u64 => result,
+            in("rdi") arg0, in("rsi") arg1, in("rdx") arg2,
+            lateout("rcx") _, lateout("r11") _,
+            options(nostack));
+    }
+    result
+}
+
+/// Five-argument raw machine boundary (R10 carries the fourth argument);
+/// same contract as `syscall2`.
+#[allow(dead_code)]
+unsafe fn syscall5(number: Syscall, arg0: u64, arg1: u64, arg2: u64, arg3: u64,
+                   arg4: u64) -> u64 {
+    let result;
+    unsafe {
+        asm!("syscall",
+            inlateout("rax") number as u64 => result,
+            in("rdi") arg0, in("rsi") arg1, in("rdx") arg2, in("r10") arg3,
+            in("r8") arg4,
             lateout("rcx") _, lateout("r11") _,
             options(nostack));
     }

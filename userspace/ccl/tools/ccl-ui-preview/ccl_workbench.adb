@@ -9,12 +9,14 @@ with CCL.UI_Buttons;
 with CCL.UI_Outputs;
 with CCL.Callbacks;
 with CCL.Language;
+with CCL.Diagnostics;
 with CCL.Compiler;
 with CCL.Language.Views;
 with CCL.Host_Values;
 with CCL.Debug_Maps;
 with CCL.Ownership;
 with CCL.VM;
+with CCL_Execution;
 with CCL_Workbench_Platform;
 with CCL_Workspace;
 with CCL.Sessions;
@@ -150,7 +152,6 @@ package body CCL_Workbench is
    Has_Verified : Boolean := False;
    Last_VM_Outcome : CCL.VM.Execution_Result;
    VM_Has_Run : Boolean := False;
-   VM_State : CCL.VM.Machine_State;
    VM_Has_State : Boolean := False;
    VM_Continuous : Boolean := False;
    VM_Snapshot : CCL.VM.Machine_Snapshot;
@@ -496,15 +497,15 @@ package body CCL_Workbench is
 
    procedure Invoke_Live
      (Context : in out Live_Context; Binding : Unsigned_32;
-      Argument : CCL.Host_Values.Value; Value : out CCL.Host_Values.Value; Success : out Boolean)
+      Argument : CCL.Host_Values.Value; Reply : out CCL.Host_Values.Call_Result)
    is
       Available : aliased Integer_32 := 0;
       Milliseconds : Unsigned_64;
    begin
-      Value := CCL.Host_Values.Integer_Constant (0);
-      Success := False;
+      Reply.Value := CCL.Host_Values.Integer_Constant (0);
+      Reply.Success := False;
       if CCL_Config_Bindings.Handles (Binding) then
-         CCL_Config_Bindings.Invoke (Binding, Argument, Value, Success);
+         CCL_Config_Bindings.Invoke (Binding, Argument, Reply);
          return;
       end if;
       for Op in CCL.UI_Outputs.Operation loop
@@ -513,8 +514,8 @@ package body CCL_Workbench is
                Accepted : Boolean;
             begin
                CCL.UI_Outputs.Apply (Context.Output, Op, Argument, Accepted);
-               Value := CCL.Host_Values.Boolean_Constant (Accepted);
-               Success := True;
+               Reply.Value := CCL.Host_Values.Boolean_Constant (Accepted);
+               Reply.Success := True;
             end;
             return;
          end if;
@@ -523,16 +524,16 @@ package body CCL_Workbench is
          if Binding = BUTTON_BINDINGS (Op) then
             declare Accepted : Boolean; begin
                CCL.UI_Buttons.Apply (Live_Button, Op, Argument, Visible_Interfaces, Granted_Interfaces, Accepted);
-               Value := CCL.Host_Values.Boolean_Constant (Accepted);
-               Success := True;
+               Reply.Value := CCL.Host_Values.Boolean_Constant (Accepted);
+               Reply.Success := True;
             end;
             return;
          end if;
       end loop;
       for Op in CCL.UI_Labels.Operation loop
          if Binding = UI_BINDINGS (Op) then
-            CCL.UI_Labels.Apply_Value (Context.Label, Op, Argument, Success);
-            Value := CCL.Host_Values.Boolean_Constant (Success);
+            CCL.UI_Labels.Apply_Value (Context.Label, Op, Argument, Reply.Success);
+            Reply.Value := CCL.Host_Values.Boolean_Constant (Reply.Success);
             return;
          end if;
       end loop;
@@ -542,8 +543,8 @@ package body CCL_Workbench is
          return;
       end if;
       Milliseconds := Window_Clock_Monotonic (Available'Access);
-      Success := Available /= 0 and then Milliseconds <= Unsigned_64 (Integer_64'Last);
-      if Success then Value := CCL.Host_Values.Integer_Constant (Integer_64 (Milliseconds)); end if;
+      Reply.Success := Available /= 0 and then Milliseconds <= Unsigned_64 (Integer_64'Last);
+      if Reply.Success then Reply.Value := CCL.Host_Values.Integer_Constant (Integer_64 (Milliseconds)); end if;
    end Invoke_Live;
 
    procedure Render_Output is
@@ -691,7 +692,7 @@ package body CCL_Workbench is
          Set_Result ("Syntax view exceeds bounded source capacity; edits retained");
       else
          Set_Result ("Cannot convert source: " &
-           CCL.Language.Diagnostic_Code'Image (View.Diagnostic) &
+           CCL.Diagnostics.Message (View.Diagnostic) &
            " at" & Natural'Image (View.Position) & "; edits retained");
       end if;
       if View.Position > 0 then
@@ -869,6 +870,8 @@ package body CCL_Workbench is
       CCL.Catalog.Initialize (Granted_Interfaces);
       CCL_Config_Bindings.Install (Visible_Interfaces, Granted_Interfaces, Config_Installed);
       if not Config_Installed then raise Program_Error with "invalid Config inspector catalog"; end if;
+      CCL_Execution.Install (Visible_Interfaces, Granted_Interfaces, Config_Installed);
+      if not Config_Installed then raise Program_Error with "invalid typed Config catalog"; end if;
       CCL.Interfaces.Clock.Publish (Visible_Interfaces, Error);
       if Error /= CCL.Catalog.Catalog_Valid then
          raise Program_Error with "invalid hosted CCL interface catalog";
@@ -983,6 +986,11 @@ package body CCL_Workbench is
       Line, Column : Positive;
       View : CCL.Language.Views.Conversion;
    begin
+      CCL_Execution.Stop;
+      if not CCL_Execution.Can_Replace then
+         Set_Result ("Waiting for the previous run to drain; compile again when cleanup completes");
+         return;
+      end if;
       if not Prepare_Source (View) then return; end if;
       Source_Nodes := View.Input_Nodes;
       Has_Run := False;
@@ -1019,7 +1027,7 @@ package body CCL_Workbench is
             Reveal_Source_Cursor;
          end if;
          Set_Result
-           ("analysis: " & CCL.Language.Diagnostic_Code'Image
+           ("analysis: " & CCL.Diagnostics.Message
               (CCL.Language.Analysis_Diagnostic (Analysis)));
          return;
       end if;
@@ -1050,7 +1058,7 @@ package body CCL_Workbench is
 
       CCL.Catalog.Link_Program
         (Granted_Interfaces, Compiled_Artifact.Linkage,
-         Compiled_Artifact.Program, Link_Error);
+         Compiled_Artifact.Program, Link_Error, Schemas => Visible_Interfaces);
       if Link_Error /= CCL.Catalog.Link_Valid then
          Has_Compiled := False;
          Set_Result
@@ -1066,9 +1074,9 @@ package body CCL_Workbench is
          Debug_Error);
       Debug_Map_Valid := Debug_Error = CCL.Debug_Maps.Debug_Map_Valid;
       if Has_Verified then
-         CCL.VM.Initialize (Verified_Artifact, 4_096, VM_State);
-         VM_Has_State := True;
-         VM_Snapshot := CCL.VM.Snapshot (VM_State);
+         CCL_Execution.Load (Verified_Artifact, 4_096, VM_Has_State);
+         if not VM_Has_State then Set_Result ("VM is still draining its previous run"); return; end if;
+         VM_Snapshot := CCL_Execution.Snapshot;
          Update_Active_Debug;
          Update_VM_Inspection;
          if Debug_Map_Valid then
@@ -1119,7 +1127,7 @@ package body CCL_Workbench is
    procedure Update_VM_Inspection is
    begin
       if Has_Verified and then VM_Has_State then
-         CCL.VM.Inspect (Verified_Artifact, VM_State, VM_Inspection);
+         CCL_Execution.Inspect (VM_Inspection);
          Has_VM_Inspection := True;
       else
          Has_VM_Inspection := False;
@@ -1141,7 +1149,7 @@ package body CCL_Workbench is
          Set_Result ("VM running");
       else
          Set_Result
-           ("VM: " & CCL.VM.Execution_Status'Image
+           ("VM: " & CCL.Diagnostics.Message
               (Last_VM_Outcome.Status));
       end if;
    end Update_VM_Result;
@@ -1151,30 +1159,38 @@ package body CCL_Workbench is
       if not Has_Verified or else not VM_Has_State then
          return;
       end if;
-      CCL.VM.Continue_Execution_For
-        (Verified_Artifact, VM_State, Instructions, Last_VM_Outcome);
-      if Last_VM_Outcome.Status = CCL.VM.Waiting_For_Host then
+      CCL_Execution.Advance (Instructions, Last_VM_Outcome);
+      if Last_VM_Outcome.Status = CCL.VM.Waiting_For_Host and then
+        not CCL_Execution.Waiting_For_IO
+      then
          declare
             Value : CCL.VM.Value;
-            Returned : CCL.Host_Values.Value;
+            Reply : CCL.Host_Values.Call_Result;
             Accepted : Boolean;
          begin
-            Invoke_Live (Live_Host, Last_VM_Outcome.Requested_Binding,
-                         CCL.Host_Values.From_Scalar (Last_VM_Outcome.Request_Argument), Returned, Accepted);
+            -- Typed/resource calls require their approved service adapter;
+            -- never reinterpret an object position as a scalar host argument.
+            if Last_VM_Outcome.Request_Argument.Kind in CCL.VM.Scalar_Kind and then
+              not Last_VM_Outcome.Request_Owned
+            then
+               Invoke_Live (Live_Host, Last_VM_Outcome.Requested_Binding,
+                            CCL.Host_Values.From_Scalar (Last_VM_Outcome.Request_Argument), Reply);
+            end if;
+            Accepted := Reply.Success;
             if Accepted then
-               CCL.Host_Values.To_Scalar (Returned, Value, Accepted);
+               CCL.Host_Values.To_Scalar (Reply.Value, Value, Accepted);
             else Value := CCL.VM.Integer_Constant (0);
             end if;
-            CCL.VM.Complete_Host_Call
-              (Verified_Artifact, VM_State, Value, Accepted);
+            CCL_Execution.Complete_Scalar (Value, Accepted);
          end;
-         CCL.VM.Continue_Execution_For
-           (Verified_Artifact, VM_State, 0, Last_VM_Outcome);
+         CCL_Execution.Advance (0, Last_VM_Outcome);
       end if;
-      VM_Snapshot := CCL.VM.Snapshot (VM_State);
+      VM_Snapshot := CCL_Execution.Snapshot;
       Update_Active_Debug;
       Update_VM_Inspection;
-      if VM_Snapshot.Terminal or else VM_Snapshot.Waiting then
+      if VM_Snapshot.Terminal or else
+        (VM_Snapshot.Waiting and not CCL_Execution.Waiting_For_IO)
+      then
          VM_Continuous := False;
       end if;
       Update_VM_Result;
@@ -1188,9 +1204,9 @@ package body CCL_Workbench is
       end if;
 
       if not VM_Has_State or else VM_Snapshot.Terminal then
-         CCL.VM.Initialize (Verified_Artifact, 4_096, VM_State);
-         VM_Has_State := True;
-         VM_Snapshot := CCL.VM.Snapshot (VM_State);
+         CCL_Execution.Load (Verified_Artifact, 4_096, VM_Has_State);
+         if not VM_Has_State then Set_Result ("Waiting for cleanup before Run"); return; end if;
+         VM_Snapshot := CCL_Execution.Snapshot;
          Update_Active_Debug;
          Update_VM_Inspection;
       end if;
@@ -1215,10 +1231,16 @@ package body CCL_Workbench is
       CCL.UI_Buttons.Close (Live_Button);
       Handler_Button_Pressed := False;
       if VM_Has_State and then not VM_Snapshot.Terminal then
-         CCL.VM.Stop (VM_State);
+         CCL_Execution.Stop;
          VM_Continuous := False;
          VM_Step_Over_Active := False;
-         Advance_Bytecode (0);
+         VM_Snapshot := CCL_Execution.Snapshot;
+         Last_VM_Outcome :=
+           (Status => VM_Snapshot.Status, Fuel_Remaining => VM_Snapshot.Fuel_Remaining,
+            Steps => VM_Snapshot.Steps, others => <>);
+         Update_Active_Debug;
+         Update_VM_Inspection;
+         Update_VM_Result;
       end if;
    end Stop_Bytecode;
 
@@ -1229,9 +1251,9 @@ package body CCL_Workbench is
          return;
       end if;
       if not VM_Has_State then
-         CCL.VM.Initialize (Verified_Artifact, 4_096, VM_State);
-         VM_Has_State := True;
-         VM_Snapshot := CCL.VM.Snapshot (VM_State);
+         CCL_Execution.Load (Verified_Artifact, 4_096, VM_Has_State);
+         if not VM_Has_State then Set_Result ("Waiting for cleanup before Step"); return; end if;
+         VM_Snapshot := CCL_Execution.Snapshot;
          Update_Active_Debug;
          Update_VM_Inspection;
       end if;
@@ -2248,7 +2270,7 @@ package body CCL_Workbench is
             return "int" & Integer_64'Image (Item.Integer);
          when CCL.VM.Boolean_Value =>
             return "bool " & (if Item.Boolean then "true" else "false");
-         when CCL.VM.Variant_Value =>
+         when CCL.VM.Variant_Value | CCL.VM.Object_Value | CCL.VM.Resource_Value =>
             return CCL.VM.Value_Image (Compiled_Artifact.Program.Data_Types, Item);
       end case;
    end Value_Text;
@@ -2448,9 +2470,9 @@ package body CCL_Workbench is
            (if VM_Continuous then "running"
             elsif Breakpoint_Paused then "breakpoint"
             elsif VM_Has_Run then
-               CCL.VM.Execution_Status'Image (Last_VM_Outcome.Status)
+               CCL.Diagnostics.Message (Last_VM_Outcome.Status)
             elsif Has_Run then
-               CCL.Language.Interpretation_Status'Image (Last_Outcome.Status)
+               CCL.Diagnostics.Message (Last_Outcome.Status)
             elsif Has_Verified then "compiled + verified"
             elsif Has_Compiled then "compiled; verification failed"
             else "not run");
@@ -3007,7 +3029,7 @@ begin
       CuBit.UI.Editor.Documents.Initialize
          (Source,
          "# Strings are immutable and indexes start at one." & ASCII.LF &
-         "# Run with Interpret; string bytecode arrives with CCLB v4." &
+         "# Run with Interpret; string bytecode is not implemented yet." &
            ASCII.LF &
          "# Watch takes a snapshot; stop and restart to apply edits." & ASCII.LF &
          "(let ((elapsed-ms (clock.monotonic-ms)))" & ASCII.LF &
@@ -3903,7 +3925,10 @@ begin
                when CCL_Workbench_Platform.Save_Source_Event =>
                   Save_Source;
                when 25 =>
-                  Run_Source;
+                  if (Modifiers and 2) /= 0 then
+                     Compile_Source;
+                     if Has_Verified and VM_Has_State and CCL_Execution.Can_Replace then Start_Bytecode; end if;
+                  else Run_Source; end if;
                when 26 =>
                   if Current_Hover_Target /= Previous_Hover then
                      Needs_Pointer_Feedback := True;
@@ -4001,7 +4026,18 @@ begin
                end if;
             end;
          end if;
-         if VM_Continuous and then not CuBit.UI.File_Dialogs.Is_Open (File_Dialog) then
+         declare Changed : Boolean; begin
+            CCL_Execution.Take_Changed (Changed);
+            if Changed and VM_Has_State then
+               Advance_Bytecode (0);
+               Needs_Render := True;
+               REPL_Only_Render := False;
+               Dialog_Background_Dirty := True;
+            end if;
+         end;
+         if VM_Continuous and then not CCL_Execution.Waiting_For_IO and then
+           not CuBit.UI.File_Dialogs.Is_Open (File_Dialog)
+         then
             Needs_Render := True;
             declare
                Current_PC : constant CCL.VM.Instruction_Index :=
@@ -4172,7 +4208,9 @@ begin
             then
                Wakeup := Unsigned_64'Min (Wakeup, Next_Scrollbar_Repeat);
             end if;
-            if VM_Continuous or else CCL.UI_Buttons.Pending (Live_Button) > 0 then
+            if (VM_Continuous and not CCL_Execution.Waiting_For_IO) or else
+              CCL.UI_Buttons.Pending (Live_Button) > 0
+            then
                Window_Wait (0); -- VM has runnable work; yield between slices.
             elsif Wakeup /= Unsigned_64'Last then
                Window_Wait_Until (Wakeup);
@@ -4183,6 +4221,7 @@ begin
       end loop;
       CCL.Periodic_Programs.Stop (Live_Program);
       CCL.UI_Buttons.Close (Live_Button);
+      CCL_Execution.Stop;
       Window_Close (Handle);
    end;
 end Run;

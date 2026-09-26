@@ -1,0 +1,10 @@
+# tls.svc with its declared network scope approved, then a client whose only
+# TLS authority is its tls-scope for the fixture name.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "tls.svc" (priority 5) (network approve-declared))
+  # First launch declares a tls-scope but has no network approval: no names.
+  (start "tls-check.app" (priority 5))
+  (start "tls-check.app" (priority 5) (network approve-declared))
+)

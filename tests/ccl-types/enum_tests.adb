@@ -69,8 +69,9 @@ begin
    Reject ("(type Color (enum A B C D E F G H I J K L M N O P Q)) 0", Invalid_Type_Declaration);
    Reject ("(type VeryLongTypeNameForAnEnumeration (enum Red)) 0", Invalid_Type_Declaration);
    Reject ("(type Color (enum Red", Expected_Close);
-   Reject ("(type Color (variant (Red String))) 0", Invalid_Variant_Payload);
-   Reject ("(type Color (record (Red Integer))) 0", Invalid_Type_Declaration);
+   -- Strings are now ordinary payloads; live callbacks remain nonpersistable.
+   Reject ("(type Color (variant (Red Handler))) 0", Expected_Type_Name);
+   Reject ("(type Color (record (Red Integer) (Red Boolean))) 0", Invalid_Type_Declaration);
    Reject ("(type Color (enum Red)) (Color.Red)", Unknown_Form);
    -- Every truncated declaration must fail without an unchecked exception.
    for Last in 0 .. Prefix'Length loop

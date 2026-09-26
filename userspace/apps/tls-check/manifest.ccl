@@ -1,0 +1,7 @@
+# Client of tls.svc for the headless tls-service regression. Its only TLS
+# authority is the fixture name and ports; it has no network scope at all.
+(executable-manifest v1
+  (identity "com.cubit.tls-check")
+  (version "0.1.0")
+  (request-service tls read-write tls)
+  (tls-scope "tls-test.cubit.internal:18460-18463"))

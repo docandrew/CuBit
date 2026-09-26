@@ -1,0 +1,8 @@
+# Kernel thread regression (docs/threads.md): two thread-check instances,
+# both started by procmgr and so sharing one CPU, interleave through every
+# context switch.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "thread-check.app" (priority 3))
+  (start "thread-check.app" (priority 3))
+)

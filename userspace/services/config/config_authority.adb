@@ -23,6 +23,16 @@ package body Config_Authority with SPARK_Mode is
      (Subject /= No_Subject and then
       (for some Item of State.Profiles => Item.Subject = Subject));
 
+   function Revision (State : Authority_State; Subject : Subject_ID)
+      return Interfaces.Unsigned_64 is
+   begin
+      if Subject = No_Subject then return 0; end if;
+      for Item of State.Profiles loop
+         if Item.Subject = Subject then return Item.Revision; end if;
+      end loop;
+      return 0;
+   end Revision;
+
    function Allows
      (State : Authority_State; Subject : Subject_ID; Key : String;
       Requested : Operation) return Boolean is
@@ -52,6 +62,9 @@ package body Config_Authority with SPARK_Mode is
       if Subject = No_Subject or Subject = Subject_ID'Last then
          Result := Invalid_Subject; return;
       end if;
+      if State.Last_Revision = Interfaces.Unsigned_64'Last then
+         Result := Identity_Exhausted; return;
+      end if;
       for I in State.Profiles'Range loop
          if State.Profiles (I).Subject = Subject then Slot := I; exit; end if;
          if Slot = 0 and State.Profiles (I).Subject = No_Subject then Slot := I; end if;
@@ -59,7 +72,8 @@ package body Config_Authority with SPARK_Mode is
            (Slot = 0 or else State.Profiles (Slot).Subject = No_Subject);
       end loop;
       if Slot = 0 then Result := Capacity_Exceeded; return; end if;
-      State.Profiles (Slot) := (Subject, Rules);
+      State.Last_Revision := State.Last_Revision + 1;
+      State.Profiles (Slot) := (Subject, State.Last_Revision, Rules);
       Result := Installed;
    end Install;
 

@@ -48,7 +48,7 @@ package TCPSession with SPARK_Mode is
    ---------------------------------------------------------------------------
    --  Connection table
    ---------------------------------------------------------------------------
-   MAX_TCP_CONNS : constant := 4;
+   MAX_TCP_CONNS : constant := 32;  -- STOPGAP: was 16 (a browser opens many)
    subtype Connection_Index is Natural range 0 .. MAX_TCP_CONNS - 1;
    subtype Connection_Reference is Integer range -1 .. Connection_Index'Last;
    type ConnTable is array (Connection_Index) of Connection;

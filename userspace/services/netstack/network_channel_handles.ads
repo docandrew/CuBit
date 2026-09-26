@@ -6,7 +6,7 @@ with Interfaces; use Interfaces;
 --  or repeat during this service lifetime. A service restart invalidates its
 --  endpoint capabilities; these IDs are not persistent/distributed identities.
 package Network_Channel_Handles with SPARK_Mode is
-   Maximum_Channels : constant := 8;
+   Maximum_Channels : constant := 64;  -- STOPGAP: was 32
    subtype Channel_Index is Natural range 0 .. Maximum_Channels - 1;
    subtype Channel_Reference is Integer range -1 .. Channel_Index'Last;
    No_Channel : constant Channel_Reference := -1;

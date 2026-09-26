@@ -125,6 +125,15 @@ is
     --  This will wrap cursor around to the next row and scroll up
     --  if necessary.
     ---------------------------------------------------------------------------
+    ---------------------------------------------------------------------------
+    -- Output locking. After enableOutputLocking, each string print (and each
+    -- user SYSCALL_WRITE chunk) reaches the console whole instead of
+    -- interleaving character by character with other CPUs. Before it (early
+    -- boot, no per-CPU data yet), after a panic, and when this CPU already
+    -- holds the lock (a nested print), output is unlocked. A leaf lock.
+    ---------------------------------------------------------------------------
+    procedure enableOutputLocking;
+
     procedure print (str : in String; fg,bg : in TextIO.Color);
 
     ---------------------------------------------------------------------------

@@ -1,4 +1,6 @@
 (executable-manifest v1
   (identity "com.cubit.turso-native-probe")
   (version "0.1.0")
-  (request-service clock read-write clock))
+  (request-service clock read-write clock)
+  (request-service filesystem read-write filesystem)
+  (filesystem-scope (rights read write create) "@nvme:0/turso-native/"))

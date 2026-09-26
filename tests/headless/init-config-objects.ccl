@@ -1,0 +1,4 @@
+(startup v1
+  (start "clock.svc" (priority 5))
+  (start "config-storage.svc" (priority 5) (role config-storage))
+  (start "config-objects-check.app" (priority 4)))

@@ -1,0 +1,4 @@
+# First std program on CuBit (docs/rust-std.md). No authority.
+(executable-manifest v1
+  (identity "com.cubit.rust-std-hello")
+  (version "0.1.0"))

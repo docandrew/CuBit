@@ -1,13 +1,23 @@
 # Turso Config backend experiment
 
-This is a working **storage evaluation**, not a dependency of `config.svc`, a
-production native backend, a policy engine, or an importer for untrusted databases.
+This began as a **storage evaluation** and now also supplies the backend library
+for the experimental native `config-storage.svc`. It is not a policy engine or
+an importer for arbitrary untrusted databases; public typed Config creation and
+startup catalog recovery are still being connected.
 No hosted Turso account, network relay, or cloud service is involved.
+
+Current database format is **3** (immutable typed declarations plus revision
+history). Earlier experimental formats are rejected, not silently migrated or
+reseeded. See [schema persistence tests](../ccl-objects/SCHEMA-PERSISTENCE.md)
+and [native worker integration](../../userspace/services/config-storage/README.md).
 
 The main workspace below is **Linux hosted**. An isolated
 [native CuBit probe](native/README.md) now runs the same typed Config/CBOR
-adapter on real Turso with volatile MemoryIO. Persistent native Config is not
-enabled; the probe documents the runtime port and remaining storage requirements.
+adapter on real Turso with both volatile MemoryIO and native filesystem IPC.
+Its ext2-backed database passes an independent Linux SQLite integrity/payload
+check after QEMU exits. Persistent Config is not enabled in normal desktop
+profiles; dedicated native Config tests do start its storage worker. The probe
+documents the runtime port and remaining crash/recovery requirements.
 
 ```sh
 nix develop -c bash tests/config-turso/run.sh
@@ -49,10 +59,45 @@ dependency inventories, and measurement logs are ignored under `results/`.
 Process exit is not power loss: the
 host page cache survives. We have not injected torn writes, failed flushes,
 power loss, or disk exhaustion on a real disk. Nothing here is SPARK-proved.
-On 2026-09-23, all 13 Rust tests, the shared Ada/Rust CBOR fixture, formatting
+On 2026-09-23, all 13 original Rust tests, the shared Ada/Rust CBOR fixture, formatting
 check and dependency-feature inventory passed through `nix develop`.
+On 2026-09-24, all 18 Rust tests pass, including five tests of the native File
+adapter using a hosted model transport. The native QEMU disk round trip passes
+separately; see [the native results](native/README.md).
 
 ## Experimental CBOR payload
+
+### Concurrent native-adapter regression (Linux hosted)
+
+On 2026-09-25, `nix develop -c cargo test --manifest-path
+tests/config-turso/Cargo.toml --lib` passes all 46 tests. The concurrent File
+adapter test also passes ten additional runs. Eight threads share one
+`NativeIO` and two files for eight rounds each. A yielding model transport
+forces scheduling opportunities between chunks. The test checks exact readback,
+contiguous ownership of every multi-chunk write, 192 completion callbacks,
+reentrant file access from write callbacks, and closure of every handle.
+
+This tests the production adapter's shared mutex and release-before-callback
+ordering against a **modeled transport on Linux**. It does not test CuBit's
+futexes, native thread completion queues, disk durability or latency bounds.
+Native adoption is documented separately in [the probe](native/README.md).
+The probe and Config worker now build with the shared `userspace/rust/std`
+port. Hosted tests alone still do not establish native threaded correctness.
+
+The shared CCL object path is now tested separately via
+`nix develop -c bash tests/ccl-objects/run-turso.sh`. It persists native CCL
+records/variants using `CCL.Objects.Persistence`, then checks restoration with
+both Turso and independent SQLite before Ada's schema-checked decoder accepts
+the value. See [typed object tests](../ccl-objects/README.md).
+
+`objects::EncodedObject` verifies the bounded canonical envelope only, not CCL
+schema semantics or caller authority. `commit_object`/`read_object` reuse the
+same private transaction/I/O implementation as the older scalar experiment;
+SQL's schema column must match the object's identity and the read's expected
+identity. Changing an existing collection's schema requires explicit migration;
+neither API silently replaces a typed collection with a different schema.
+The scalar API below remains for the existing native probe and comparison
+fixtures, not as a competing production type model. Live Config is unchanged.
 
 `payload.rs` deliberately supports only the existing scalar profile. It is not
 a general-purpose CCL serializer. The envelope is:
@@ -210,9 +255,14 @@ was not sufficient; see its runtime assumptions and limitations.
 The [I/O interface](https://github.com/tursodatabase/turso/blob/main/core/io/mod.rs)
 offers caller-driven completion, reads/writes, sync, truncate, size and locks.
 A native adapter must provide real semantics for these through scoped CuBit
-filesystem authority. Filesystem IPC now has a flush operation backed by NVMe;
-RAM and unsupported backends explicitly reject durability. Arbitrary file-size
-truncate and exclusive database ownership still need sound native contracts.
+filesystem authority. Filesystem IPC now has positioned I/O, NVMe-backed flush,
+and nonzero resize through owned writable handles; RAM and unsupported backends
+explicitly reject durability. Direct/single/double-indirect growth and resize
+now pass hosted fault injection, Linux content/fsck round-trips and native
+CuBit storage tests. Triple-indirect trees remain unsupported. File handles now
+support service-enforced lifetime exclusivity; see the
+[ownership contract](../../docs/filesystem-exclusive-ownership.md) for sidecar,
+namespace and crash-cleanup limits. This is not yet a persistent native Turso adapter.
 Rename/flush success is not an ext2 power-loss consistency guarantee. Do not
 implement fake sync/lock success to get a demo.
 
@@ -241,3 +291,26 @@ implement fake sync/lock success to get a demo.
 **Recommendation:** keep Turso as a credible candidate and this reproducible
 testbed. Do not enable native persistent Config until the runtime and storage
 contracts exist. The native SPARK store can proceed independently meanwhile.
+
+## Admission hardening (2026-09-24)
+
+Opening a database no longer repairs missing tables or reseeds a missing format
+marker. A completely empty application schema is initialized atomically in one
+SQL transaction. Otherwise the three expected application tables and one
+supported format marker must already exist; partial/foreign stores are rejected.
+This does not validate all possible hostile schema constraints or authenticate
+an externally replaced file. Existing-but-empty storage still requires an
+explicit bootstrap/recovery policy at the caller boundary.
+
+Stored zero/negative/noninteger or duplicate heads are errors, not absence.
+An absent head with remaining revisions is also rejected, preventing reseeding
+over orphaned history. No historical rows are pruned or repaired implicitly.
+The 29 hosted Rust tests pass, including seven schema-damage fixtures, a foreign
+database preservation fixture and five malformed/orphan-head cases. Rejection
+tests inspect schema and marker state afterward. These are regression tests,
+not SPARK proofs of Rust/Turso or power-failure guarantees.
+
+The same adapter now passes the native typed Ada worker two-boot scenario; see
+[native evidence](native/README.md) and the
+[Config integration checklist](../../docs/config-worker-integration-checklist.md).
+Live `config.svc` still uses its volatile store.

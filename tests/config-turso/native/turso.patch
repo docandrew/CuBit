@@ -2,17 +2,17 @@
 +++ b/ext/dynamic.rs
 @@ -8,2 +8,2 @@
 -#[cfg(not(target_family = "wasm"))]
-+#[cfg(not(any(target_family = "wasm", target_os = "none")))]
++#[cfg(not(any(target_family = "wasm", target_os = "cubit")))]
  use libloading::{Library, Symbol};
 @@ -16,9 +16,9 @@
 -#[cfg(not(target_family = "wasm"))]
-+#[cfg(not(any(target_family = "wasm", target_os = "none")))]
++#[cfg(not(any(target_family = "wasm", target_os = "cubit")))]
  type ExtensionStore = Vec<(Arc<Library>, ExtensionApiRef)>;
 -#[cfg(not(target_family = "wasm"))]
-+#[cfg(not(any(target_family = "wasm", target_os = "none")))]
++#[cfg(not(any(target_family = "wasm", target_os = "cubit")))]
  static EXTENSIONS: OnceLock<Arc<Mutex<ExtensionStore>>> = OnceLock::new();
 -#[cfg(not(target_family = "wasm"))]
-+#[cfg(not(any(target_family = "wasm", target_os = "none")))]
++#[cfg(not(any(target_family = "wasm", target_os = "cubit")))]
  pub fn get_extension_libraries() -> Arc<Mutex<ExtensionStore>> {
      EXTENSIONS
          .get_or_init(|| Arc::new(Mutex::new(Vec::new())))
@@ -22,7 +22,7 @@
 -    #[cfg(not(target_family = "wasm"))]
 +    // CuBit deliberately has no ambient dynamic-library loader. Do not turn
 +    // load_extension() into a successful no-op or reinterpret paths as grants.
-+    #[cfg(target_os = "none")]
++    #[cfg(target_os = "cubit")]
 +    pub fn load_extension<P: AsRef<std::ffi::OsStr>>(
 +        self: &Arc<Connection>,
 +        _path: P,
@@ -31,5 +31,5 @@
 +            "dynamic extensions are unavailable on CuBit".to_string(),
 +        ).into())
 +    }
-+    #[cfg(not(any(target_family = "wasm", target_os = "none")))]
++    #[cfg(not(any(target_family = "wasm", target_os = "cubit")))]
      pub fn load_extension<P: AsRef<std::ffi::OsStr>>(

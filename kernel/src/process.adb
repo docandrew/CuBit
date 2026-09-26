@@ -25,10 +25,13 @@ with IPI;
 with Config;
 with ELF_Admission;
 with Interrupt_State;
+with Locks;
 with Mem_mgr;
 with Page_Admission;
 with PerCPUData;
+with Process.Futex;
 with Process.IPC;
+with Process.User_Memory;
 with Process.Queues;
 with Scheduler;
 with Scheduler_Timing;
@@ -56,72 +59,73 @@ package body Process is
     cpuAccounting : array (0 .. Config.MAX_CPUS - 1) of CPU_Accounting_Record;
 
     procedure accountBoundary
-      (From_PID, To_PID : ProcessID; Boundary : Accounting_Boundary)
+      (From_PID, To_PID : ThreadID; Boundary : Accounting_Boundary)
     is
         CPU : CPU_Accounting_Record renames
           cpuAccounting (PerCPUData.getCPUNumber);
         C : Accounting.Charge;
         Now : constant Unsigned_64 := x86.readOrderedTSC;
-        function Observed (PID : ProcessID) return Boolean is
-          (PID /= NO_PROCESS and then
-           PID not in Config.IDLE_PID_BASE .. Config.IDLE_PID_BASE + Config.MAX_SMP_CPUS - 1);
+        -- Idle threads have the reserved idle PIDs' numbers.
+        function Observed (PID : ThreadID) return Boolean is
+          (PID /= NO_THREAD and then
+           Natural (PID) not in Config.IDLE_PID_BASE .. Config.IDLE_PID_BASE + Config.MAX_SMP_CPUS - 1);
     begin
         Accounting.Transition
           (CPU.Clock, From_PID, To_PID, Now, C);
         if C.Accepted then
-            if C.Charged_Owner = NO_PROCESS then
+            if C.Charged_Owner = NO_THREAD then
                 Accounting.Add_Time (CPU.Scheduler_Time, C.Ticks);
             else
-                Accounting.Add_Time (proctab(C.Charged_Owner).execution, C.Ticks);
+                Accounting.Add_Time (threadtab (C.Charged_Owner).execution, C.Ticks);
                 Scheduling_Turns.Charge (CPU.Turn, C.Ticks);
             end if;
             case Boundary is
                 when Scheduler_Start =>
                     CPU.Reason := Relinquish;
-                    if Scheduling_Turns.Remaining (proctab(To_PID).savedTurn) > 0 then
-                        Scheduling_Turns.Move (proctab(To_PID).savedTurn, CPU.Turn);
-                        Scheduling_Turns.Count (proctab(To_PID).turnCounters,
+                    if Scheduling_Turns.Remaining (threadtab (To_PID).savedTurn) > 0 then
+                        Scheduling_Turns.Move (threadtab (To_PID).savedTurn, CPU.Turn);
+                        Scheduling_Turns.Count (threadtab (To_PID).turnCounters,
                           Scheduling_Turns.Resumed_Dispatch);
                     elsif Time.tscPerDuration <= Unsigned_64'Last /
                       Scheduler_Timing.Quantum_Microseconds
                     then
                         CPU.Turn := Scheduling_Turns.Fresh
                           (Time.tscPerDuration * Scheduler_Timing.Quantum_Microseconds);
-                        Scheduling_Turns.Count (proctab(To_PID).turnCounters,
+                        Scheduling_Turns.Count (threadtab (To_PID).turnCounters,
                           Scheduling_Turns.Fresh_Dispatch);
                     else
                         CPU.Turn := Scheduling_Turns.Empty;
                     end if;
-                    Accounting.Dispatch (proctab(To_PID).execution, Accounting.Scheduled);
+                    Accounting.Dispatch (threadtab (To_PID).execution, Accounting.Scheduled);
                 when IPC_Handoff =>
                     Trace.Emit (Trace.EVENT_IPC_HANDOFF,
                       Unsigned_64(From_PID), Unsigned_64(To_PID));
-                    Accounting.Dispatch (proctab(To_PID).execution, Accounting.Direct_IPC);
+                    Accounting.Dispatch (threadtab (To_PID).execution, Accounting.Direct_IPC);
                 when Scheduler_Stop =>
-                    Scheduling_Turns.Count (proctab(From_PID).turnCounters,
+                    Scheduling_Turns.Count (threadtab (From_PID).turnCounters,
                       (case CPU.Reason is
                          when Higher_Priority => Scheduling_Turns.Higher_Preemption,
                          when Quantum_Expired => Scheduling_Turns.Quantum_Rotation,
                          when Awakened_Peer => Scheduling_Turns.Wake_Rotation,
                          when Relinquish => Scheduling_Turns.Relinquishment));
                     if CPU.Reason = Higher_Priority then
-                        Scheduling_Turns.Move (CPU.Turn, proctab(From_PID).savedTurn);
+                        Scheduling_Turns.Move (CPU.Turn, threadtab (From_PID).savedTurn);
                     else
                         CPU.Turn := Scheduling_Turns.Empty;
-                        proctab(From_PID).savedTurn := Scheduling_Turns.Empty;
+                        threadtab (From_PID).savedTurn := Scheduling_Turns.Empty;
                     end if;
                 when Accounting_Checkpoint => null;
             end case;
-            if Build.OneShot_Scheduling and then To_PID /= NO_PROCESS then
+            if Build.OneShot_Scheduling and then To_PID /= NO_THREAD then
                 if Build.Wakeup_Scheduling and then
                   Queues.hasAwakenedPeer (cpuReadyLists(PerCPUData.getCPUNumber),
-                    proctab(To_PID).priority)
+                    threadtab (To_PID).priority)
                 then
                     Scheduler_Alarm.Request_Earlier (Scheduler_Timing.Wakeup_Microseconds);
                 elsif Time.tscPerDuration > 0 and then
                   Scheduling_Turns.Remaining (CPU.Turn) > 0 and then
                   Queues.hasReadyPeer (cpuReadyLists(PerCPUData.getCPUNumber),
-                    proctab(To_PID).priority)
+                    threadtab (To_PID).priority)
                 then
                     remainingTurn : declare
                         Ticks : constant Unsigned_64 := Scheduling_Turns.Remaining (CPU.Turn);
@@ -153,17 +157,17 @@ package body Process is
                         if Boundary = Accounting_Checkpoint then
                             if Observed (From_PID) then
                                 Scheduling_Shadow.Observe
-                                  (CPU.Shadow, proctab(From_PID).shadow, Stamp,
+                                  (CPU.Shadow, threadtab (From_PID).shadow, Stamp,
                                    Scheduling_Shadow.Continue_Execution);
                             end if;
                         else
                             if Observed (From_PID) then
                                 Scheduling_Shadow.Observe
-                                  (CPU.Shadow, proctab(From_PID).shadow, Stamp, Scheduling_Shadow.Stop);
+                                  (CPU.Shadow, threadtab (From_PID).shadow, Stamp, Scheduling_Shadow.Stop);
                             end if;
                             if Observed (To_PID) then
                                 Scheduling_Shadow.Observe
-                                  (CPU.Shadow, proctab(To_PID).shadow, Stamp, Scheduling_Shadow.Dispatch);
+                                  (CPU.Shadow, threadtab (To_PID).shadow, Stamp, Scheduling_Shadow.Dispatch);
                             end if;
                         end if;
                     end;
@@ -171,11 +175,11 @@ package body Process is
             end if;
         else
             CPU.Turn := Scheduling_Turns.Empty;
-            if From_PID /= NO_PROCESS then
-                proctab(From_PID).savedTurn := Scheduling_Turns.Empty;
+            if From_PID /= NO_THREAD then
+                threadtab (From_PID).savedTurn := Scheduling_Turns.Empty;
             end if;
-            if To_PID /= NO_PROCESS then
-                proctab(To_PID).savedTurn := Scheduling_Turns.Empty;
+            if To_PID /= NO_THREAD then
+                threadtab (To_PID).savedTurn := Scheduling_Turns.Empty;
             end if;
             if Build.Observe_Scheduling_Budgets then
                 Scheduling_Shadow.Invalidate (CPU.Shadow);
@@ -185,6 +189,7 @@ package body Process is
 
     procedure printOwnAccounting is
         PID : constant ProcessID := PerCPUData.getCurrentPID;
+        me : constant ThreadID := PerCPUData.getCurrentThread;
         CPU : constant Natural := PerCPUData.getCPUNumber;
         Snapshot : Accounting.Totals;
         Condition : Accounting.Health;
@@ -194,14 +199,14 @@ package body Process is
         Turns : Scheduling_Turns.Counters;
     begin
         Spinlocks.enterCriticalSection (lock);
-        accountBoundary (PID, PID, Accounting_Checkpoint);
-        Snapshot := proctab(PID).execution;
-        Turns := proctab(PID).turnCounters;
+        accountBoundary (PerCPUData.getCurrentThread, PerCPUData.getCurrentThread, Accounting_Checkpoint);
+        Snapshot := threadtab (me).execution;
+        Turns := threadtab (me).turnCounters;
         Condition := Accounting.Status (cpuAccounting(CPU).Clock);
         if Build.Observe_Scheduling_Budgets then
-            Shadow := Scheduling_Shadow.Inspect (proctab(PID).shadow);
+            Shadow := Scheduling_Shadow.Inspect (threadtab (me).shadow);
             Shadow_Health := Scheduling_Shadow.Status (cpuAccounting(CPU).Shadow);
-            Generation := proctab(PID).capGeneration;
+            Generation := generationOf (PID);
         end if;
         Spinlocks.exitCriticalSection (lock);
         -- No global process enumeration or new authority granted by this
@@ -242,8 +247,8 @@ package body Process is
 
     procedure wakeReaper is
     begin
-        if ReaperPID /= NO_PROCESS and then proctab(ReaperPID).state = SUSPENDED then
-            ready (ReaperPID);
+        if ReaperPID /= NO_PROCESS and then threadOf (ReaperPID).state = SUSPENDED then
+            ready (mainThreadOf (ReaperPID));
         end if;
     end wakeReaper;
 
@@ -262,7 +267,7 @@ package body Process is
         procedure zeroize is new Virtmem.zeroize (Virtmem.P4);
     begin
         if pid = NO_PROCESS or else proctab(pid).admitted or else
-          proctab(pid).state /= SUSPENDED then
+          threadOf (pid).state /= SUSPENDED then
             raise ProcessException with "Invalid unpublished-process rollback";
         end if;
         -- No CPU has used this address space, and no endpoint has been opened.
@@ -278,47 +283,48 @@ package body Process is
             FrameLists.popFront (proctab(pid).frames);
         end loop;
         FrameLists.delete (proctab(pid).frames);
-        if proctab(pid).guardPage /= 0 then
-            Mem_mgr.removeGuardPage (proctab(pid).guardPage);
-            BuddyAllocator.free (1, Virtmem.P2Va (proctab(pid).guardPage));
-            proctab(pid).guardPage := 0;
+        if threadOf (pid).guardPage /= 0 then
+            Mem_mgr.removeGuardPage (threadOf (pid).guardPage);
+            BuddyAllocator.free (1, Virtmem.P2Va (threadOf (pid).guardPage));
+            threadOf (pid).guardPage := 0;
         end if;
-        proctab(pid).kernelStack := null;
-        proctab(pid).kernelStackTop := System.Null_Address;
-        proctab(pid).context := System.Null_Address;
-        proctab(pid).fpu := System.Null_Address;
+        threadOf (pid).kernelStack := null;
+        threadOf (pid).kernelStackTop := System.Null_Address;
+        threadOf (pid).context := System.Null_Address;
+        threadOf (pid).fpu := System.Null_Address;
         Capabilities.Operations.clearTable (proctab(pid).caps);
-        proctab(pid).state := INVALID;
+        threadOf (pid).state := INVALID;
         -- No access to this slot after returning its PID to the allocator.
         PIDTracker.freePID (pid);
     end discardUnpublished;
 
-    procedure noteContextStarted (pid : ProcessID) is
+    procedure noteContextStarted (tid : ThreadID) is
         OK : Boolean;
     begin
-        Process_Lifetime.Enter_CPU (proctab(pid).lifetime, OK);
+        Process_Lifetime.Enter_CPU (threadtab (tid).lifetime, OK);
         if not OK then
             raise ProcessException with "Dispatch of executing or retiring process";
         end if;
     end noteContextStarted;
 
-    procedure noteContextStopped (pid : ProcessID) is
+    procedure noteContextStopped (tid : ThreadID) is
         OK : Boolean;
     begin
-        Process_Lifetime.Leave_CPU (proctab(pid).lifetime, OK);
+        Process_Lifetime.Leave_CPU (threadtab (tid).lifetime, OK);
         if not OK then
             raise ProcessException with "Context stop without execution presence";
         end if;
-        if Process_Lifetime.Can_Reap (proctab(pid).lifetime) then
+        if Process_Lifetime.Can_Reap (threadtab (tid).lifetime) then
             wakeReaper;
         end if;
     end noteContextStopped;
 
     procedure checkTermination is
         pid : constant ProcessID := PerCPUData.getCurrentPID;
+        me : constant ThreadID := PerCPUData.getCurrentThread;
     begin
         if pid /= NO_PROCESS and then
-           Process_Lifetime.Closing (proctab(pid).lifetime)
+           Process_Lifetime.Closing (threadtab (me).lifetime)
         then
             Spinlocks.enterCriticalSection (lock);
             Scheduler.enter;
@@ -348,31 +354,37 @@ package body Process is
     ---------------------------------------------------------------------------
     -- setup
     ---------------------------------------------------------------------------
+    addressSpaceLockName : aliased String := "address space";
+
+    -- Threads other than main threads, system-wide (Process.lock). Capped
+    -- so that thread creation can never take the thread IDs every process
+    -- needs for its main thread: 255 stay available for those, above the
+    -- reserved range.
+    MAX_EXTRA_THREADS : constant Natural :=
+      Natural (ThreadID'Last) - 15 - Natural (ProcessID'Last);
+    extraThreads : Natural := 0;
+    threadTableLockName : aliased String := "thread table";
+    threadTableLock : Spinlocks.Spinlock;
+
+    tableLockName : aliased String := "process table";
+    tableLock : Spinlocks.Spinlock;
+
     procedure setup is
     begin
         -- Before AP startup / publication; never reinitialize live locks.
         Spinlocks.Initialize (lock, lockname'Access);
         Spinlocks.Initialize (grantLock, grantLockName'Access);
+        Spinlocks.Initialize (tableLock, tableLockName'Access);
+        Spinlocks.Initialize (threadTableLock, threadTableLockName'Access);
+        Process_Table.Initialize;
+        Thread_Table.Initialize;
+        TextIO.enableOutputLocking;
         Spinlocks.Initialize (sleepList.lock, sleepListLockName'Access);
         -- ProcList.setup (allProcs, Config.MAX_PROCESSES);
         FrameLists.setup (Config.MAX_PROCESSES * Config.PAGES_PER_PROCESS);
         -- MsgQueue.setup (Config.MAX_PROCESSES);
     end setup;
 
-    ---------------------------------------------------------------------------
-    -- addToProctab
-    ---------------------------------------------------------------------------
-    procedure addToProctab (proc : in Process)
-    is
-    begin
-        -- println ("Process.addToProctab: acquiring proctab lock");
-        Spinlocks.enterCriticalSection (lock);
-
-        proctab(proc.pid) := proc;
-
-        -- println ("Process.addToProctab: releasing proctab lock");
-        Spinlocks.exitCriticalSection (lock);
-    end addToProctab;
 
     ---------------------------------------------------------------------------
     -- createKernelThread
@@ -380,61 +392,70 @@ package body Process is
     function createKernelThread (procStart  : in System.Address;
                                  name       : in ProcessName;
                                  pid        : in ProcessID;
-                                 priority   : in ProcessPriority) return Process
+                                 priority   : in ProcessPriority) return ProcessID
     is
-        proc : Process;
+        newPID : ProcessID;
     begin
         if pid = NO_PROCESS then
-            PIDTracker.allocPID (proc.pid);
+            PIDTracker.allocPID (newPID);
+            if newPID = NO_PROCESS then
+                raise ProcessException with "createKernelThread: no free PID";
+            end if;
         else
             PIDTracker.allocSpecificPID (pid);
-            proc.pid := pid;
+            newPID := pid;
         end if;
-        proc.ppid     := proc.pid;
-        proc.admitted := True;
-        proc.name     := name;
-        proc.mode     := KERNEL;
-        proc.state    := SUSPENDED;
-        proc.priority := priority;
 
-        -- Allocate 2 contiguous pages: guard (lower) + stack (upper)
-        allocGuardedStack : declare
-            function toKStackPtr is new Ada.Unchecked_Conversion
-                (System.Address, ProcessKernelStackPtr);
-            baseVirt : System.Address;
+        declare
+            proc : Process renames proctab(newPID).E.all;
+            thr  : Thread renames threadOf(newPID).E.all;
         begin
-            BuddyAllocator.alloc (1, baseVirt);
-            if baseVirt = BuddyAllocator.NO_BLOCK_AVAILABLE then
-                raise ProcessException with
-                    "Unable to allocate kernel stack + guard page";
-            end if;
-            proc.guardPage   := Virtmem.V2P (baseVirt);
-            proc.kernelStack :=
-                toKStackPtr (baseVirt + Virtmem.PAGE_SIZE);
-            proc.kernelStack.canary := KSTACK_CANARY;
-            -- Unmap the guard page so overflow triggers a page fault
-            Mem_mgr.createGuardPage (proc.guardPage);
-        end allocGuardedStack;
-        proc.kernelStackTop := proc.kernelStack.all'Address + ProcessKernelStack'Size / 8;
+            proc.pid      := newPID;
+            proc.ppid     := newPID;
+            proc.admitted := True;
+            proc.name     := name;
+            thr.mode      := KERNEL;
+            thr.state     := SUSPENDED;
+            thr.priority  := priority;
 
-        proc.kernelStack.filler := (others => 0);
+            -- Allocate 2 contiguous pages: guard (lower) + stack (upper)
+            allocGuardedStack : declare
+                function toKStackPtr is new Ada.Unchecked_Conversion
+                    (System.Address, ProcessKernelStackPtr);
+                baseVirt : System.Address;
+            begin
+                BuddyAllocator.alloc (1, baseVirt);
+                if baseVirt = BuddyAllocator.NO_BLOCK_AVAILABLE then
+                    raise ProcessException with
+                        "Unable to allocate kernel stack + guard page";
+                end if;
+                thr.guardPage   := Virtmem.V2P (baseVirt);
+                thr.kernelStack :=
+                    toKStackPtr (baseVirt + Virtmem.PAGE_SIZE);
+                thr.kernelStack.canary := KSTACK_CANARY;
+                -- Unmap the guard page so overflow triggers a page fault
+                Mem_mgr.createGuardPage (thr.guardPage);
+            end allocGuardedStack;
+            thr.kernelStackTop := thr.kernelStack.all'Address + ProcessKernelStack'Size / 8;
 
-        proc.kernelStack.interruptFrame := (
-                interruptNumber => 0,
-                rip             => procStart,
-                rsp             => proc.kernelStackTop,
-                rflags          => x86.FLAGS_INTERRUPT,
-                cs              => Segment.GDTOffset'Enum_Rep(Segment.GDT_OFFSET_KERNEL_CODE) or 0,
-                ss              => Segment.GDTOffset'Enum_Rep(Segment.GDT_OFFSET_KERNEL_DATA) or 0,
-                others          => 0
-            );
+            thr.kernelStack.filler := (others => 0);
 
-        proc.kernelStack.returnAddress := interruptReturn'Address;
-        proc.kernelStack.context       := (rip => start'Address, others => 0);
+            thr.kernelStack.interruptFrame := (
+                    interruptNumber => 0,
+                    rip             => procStart,
+                    rsp             => thr.kernelStackTop,
+                    rflags          => x86.FLAGS_INTERRUPT,
+                    cs              => Segment.GDTOffset'Enum_Rep(Segment.GDT_OFFSET_KERNEL_CODE) or 0,
+                    ss              => Segment.GDTOffset'Enum_Rep(Segment.GDT_OFFSET_KERNEL_DATA) or 0,
+                    others          => 0
+                );
 
-        proc.context := proc.kernelStack.context'Address;
+            thr.kernelStack.returnAddress := interruptReturn'Address;
+            thr.kernelStack.context       := (rip => start'Address, others => 0);
 
-        return proc;
+            thr.context := thr.kernelStack.context'Address;
+        end;
+        return newPID;
     end createKernelThread;
 
     ---------------------------------------------------------------------------
@@ -446,27 +467,24 @@ package body Process is
                                  priority   : in ProcessPriority;
                                  homeCPU    : in Natural := 0)
     is
-        proc : Process := createKernelThread (procStart, name, pid, priority);
+        newPID : constant ProcessID :=
+          createKernelThread (procStart, name, pid, priority);
     begin
-        proc.cpu := homeCPU;
-        if proc.pid /= 0 then
-            addToProctab (proc);
-            resume (proc.pid);
-        else
-            raise ProcessException with "Process.startKernelThread: failed createKernelThread";
-        end if;
+        threadOf(newPID).cpu := homeCPU;
+        threadOf(newPID).pinned := True;
+        resume (newPID);
     end startKernelThread;
 
-    -- Boot-only, like startKernelThread: uses the bootstrap stack for PCB
-    -- construction, never the kernel stack of a retiring application.
+    -- Boot-only, like startKernelThread: never the kernel stack of a
+    -- retiring application.
     procedure startReaper is
-        proc : Process := createKernelThread
+        newPID : constant ProcessID := createKernelThread
           (retirementWorker'Address, "Reaper          ", NO_PROCESS, 5);
     begin
-        proc.cpu := 0;
-        ReaperPID := proc.pid;
-        addToProctab (proc);
-        resume (proc.pid);
+        threadOf(newPID).cpu := 0;
+        threadOf(newPID).pinned := True;
+        ReaperPID := newPID;
+        resume (newPID);
     end startReaper;
 
     ---------------------------------------------------------------------------
@@ -482,7 +500,7 @@ package body Process is
     is
         newFrame : Virtmem.PhysAddress;
         outcome : Page_Allocation.Result;
-        frameOwner : constant ProcessID := (if proc.isThread then proc.ppid else proc.pid);
+        frameOwner : constant ProcessID := proc.pid;
         frames : FrameLists.List renames proctab(frameOwner).frames;
 
         procedure mapPage is new Virtmem.mapPage (BuddyAllocator.allocFrame);
@@ -530,6 +548,80 @@ package body Process is
     -- create
     -- Writes directly to proctab(pid) to avoid 12KB stack allocation.
     ---------------------------------------------------------------------------
+    ---------------------------------------------------------------------------
+    -- allocGuardedKernelStack
+    -- Two contiguous pages: an unmapped guard (lower) and the kernel stack.
+    ---------------------------------------------------------------------------
+    procedure allocGuardedKernelStack (tid : ThreadID; ok : out Boolean) is
+        function toKStackPtr is new Ada.Unchecked_Conversion
+            (System.Address, ProcessKernelStackPtr);
+        baseVirt : System.Address;
+        guarded : Boolean;
+    begin
+        ok := False;
+        BuddyAllocator.alloc (1, baseVirt);
+        if baseVirt = BuddyAllocator.NO_BLOCK_AVAILABLE then
+            return;
+        end if;
+        Mem_mgr.tryCreateGuardPage (Virtmem.V2P (baseVirt), guarded);
+        if not guarded then
+            BuddyAllocator.free (1, baseVirt);
+            return;
+        end if;
+        threadtab (tid).guardPage   := Virtmem.V2P (baseVirt);
+        threadtab (tid).kernelStack :=
+            toKStackPtr (baseVirt + Virtmem.PAGE_SIZE);
+        threadtab (tid).kernelStack.canary := KSTACK_CANARY;
+        threadtab (tid).kernelStackTop :=
+            threadtab (tid).kernelStack.all'Address + ProcessKernelStack'Size / 8;
+        ok := True;
+    end allocGuardedKernelStack;
+
+    -- Release a kernel stack from allocGuardedKernelStack.
+    procedure freeGuardedKernelStack (tid : ThreadID) is
+    begin
+        if threadtab (tid).guardPage /= 0 then
+            Mem_mgr.removeGuardPage (threadtab (tid).guardPage);
+            BuddyAllocator.free (1, Virtmem.P2Va (threadtab (tid).guardPage));
+            threadtab (tid).guardPage := 0;
+        end if;
+        threadtab (tid).kernelStack := null;
+        threadtab (tid).kernelStackTop := System.Null_Address;
+        threadtab (tid).context := System.Null_Address;
+        threadtab (tid).fpu := System.Null_Address;
+    end freeGuardedKernelStack;
+
+    ---------------------------------------------------------------------------
+    -- initializeUserEntry
+    -- Build a user thread's first kernel stack: a clean FPU image, and an
+    -- interrupt frame so the first dispatch enters user mode at entry with
+    -- the given stack and first argument (RDI) through start and IRETQ.
+    ---------------------------------------------------------------------------
+    procedure initializeUserEntry (tid      : ThreadID;
+                                   entryPoint : System.Address;
+                                   userRSP  : System.Address;
+                                   argument : Unsigned_64) is
+    begin
+        initializeFPUState (threadtab (tid).kernelStack.fpuarea);
+        threadtab (tid).fpu := threadtab (tid).kernelStack.fpuarea'Address;
+        threadtab (tid).kernelStack.filler := (others => 0);
+
+        threadtab (tid).kernelStack.interruptFrame := (
+                interruptNumber => 0,
+                rip             => entryPoint,
+                rsp             => userRSP,
+                rdi             => argument,
+                rflags          => x86.FLAGS_INTERRUPT,
+                cs              => Segment.GDTOffset'Enum_Rep(Segment.GDT_OFFSET_USER_CODE) or 3,
+                ss              => Segment.GDTOffset'Enum_Rep(Segment.GDT_OFFSET_USER_DATA) or 3,
+                others          => 0);
+
+        threadtab (tid).kernelStack.returnAddress := interruptReturn'Address;
+        threadtab (tid).kernelStack.context := (rip => start'Address, others => 0);
+
+        threadtab (tid).context := threadtab (tid).kernelStack.context'Address;
+    end initializeUserEntry;
+
     function create (procStart    : in System.Address;
                      ppid         : in ProcessID;
                      name         : in ProcessName;
@@ -537,7 +629,6 @@ package body Process is
                      procStack    : in System.Address;
                      stackSize    : in UserStackSize;
                      imageFrames  : in Natural;
-                     thread       : in Boolean := False;
                      requestedPID : in ProcessID := NO_PROCESS) return ProcessID
 
     is
@@ -551,12 +642,6 @@ package body Process is
           (imageFrames, Positive (stackSize / Virtmem.PAGE_SIZE), INITIAL_HEAP_FRAME_HEADROOM);
     begin
         if frameCapacity = 0 then return NO_PROCESS; end if;
-        if thread then
-            -- This dormant path never set isThread and has no live syscall
-            -- consumer. Do not admit shared address spaces without lifetime
-            -- accounting for every executing member.
-            return NO_PROCESS;
-        end if;
         if To_Integer (procStack) > To_Integer (PROCESS_STACK_TOP_VIRT) or else
           To_Integer (procStack) < Integer_Address (stackSize) or else
           To_Integer (procStack) mod Virtmem.PAGE_SIZE /= 0 or else
@@ -581,53 +666,49 @@ package body Process is
         -- capability generation counter so recycled PIDs don't reset to
         -- INITIAL_GENERATION (which would let stale caps pass gen checks).
         declare
-            savedGen : constant Capabilities.Generation :=
-                proctab(pid).capGeneration;
-            type Grant_Generation_Array is array (GrantID) of
-              Memory_Grants.Live_Grant_Generation;
-            type Grant_Reuse_Array is array (GrantID) of Boolean;
-            savedGrantGenerations : Grant_Generation_Array;
-            savedGrantReuse       : Grant_Reuse_Array;
             ignore   : System.Address;
         begin
-            for slot in GrantID loop
-                savedGrantGenerations(slot) :=
-                  proctab(pid).grants(slot).generation;
-                savedGrantReuse(slot) := proctab(pid).grants(slot).reusable;
-            end loop;
 
-            ignore := Util.memset (proctab(pid)'Address, 0, Process'Size / 8);
+            -- The table reset both records at allocation; reset again in
+            -- case this PID's records were reserved without it.
+            declare
+                mainThread : constant ThreadID := proctab(pid).mainThread;
+            begin
+                resetProcessRecord (proctab(pid).E.all);
+                proctab(pid).mainThread := mainThread;
+                resetThreadRecord (threadOf(pid).E.all);
+                threadOf(pid).process := pid;
+            end;
             proctab(pid).requestSequence := IPC_Request_Ids.Initial_Sequence;
-            proctab(pid).lifetime := Process_Lifetime.Initial_State;
-            proctab(pid).execution := (others => <>);
-            proctab(pid).savedTurn := Scheduling_Turns.Empty;
-            proctab(pid).turnCounters := [others => 0];
-            proctab(pid).shadow := Scheduling_Shadow.Empty_Reservation;
+            threadOf (pid).lifetime := Process_Lifetime.Initial_State;
+            threadOf (pid).execution := (others => <>);
+            threadOf (pid).savedTurn := Scheduling_Turns.Empty;
+            threadOf (pid).turnCounters := [others => 0];
+            threadOf (pid).shadow := Scheduling_Shadow.Empty_Reservation;
             proctab(pid).admitted := False;
-            if savedGen >= Capabilities.INITIAL_GENERATION then
-                proctab(pid).capGeneration := savedGen;
-            else
-                proctab(pid).capGeneration := Capabilities.INITIAL_GENERATION;
-            end if;
-
+            -- Grant generations are namespaced by this life (the PID's
+            -- ledger generation), so references to an earlier process
+            -- with this PID never match (docs/threads.md).
             for slot in GrantID loop
                 proctab(pid).grants(slot).generation :=
-                  savedGrantGenerations(slot);
-                proctab(pid).grants(slot).reusable := savedGrantReuse(slot);
+                  Memory_Grants.Life_Base (Memory_Grants.Process_Generation
+                    (Process_Table.Generation_Of (pid)));
+                proctab(pid).grants(slot).reusable := True;
             end loop;
         end;
 
         proctab(pid).pid          := pid;
         proctab(pid).ppid         := ppid;
+        proctab(pid).threadCount  := 1;
         proctab(pid).svpid        := ppid;
         if ppid /= NO_PROCESS then
-            proctab(pid).parentGeneration := proctab(ppid).capGeneration;
+            proctab(pid).parentGeneration := generationOf (ppid);
         end if;
         proctab(pid).name         := name;
-        proctab(pid).mode         := USER;
-        proctab(pid).state        := SUSPENDED;
-        proctab(pid).priority     := priority;
-        proctab(pid).latency      :=
+        threadOf (pid).mode         := USER;
+        threadOf (pid).state        := SUSPENDED;
+        threadOf (pid).priority     := priority;
+        threadOf (pid).latency      :=
             (class    => LATENCY_NORMAL,
              periodUs => 0,
              budgetUs => 0,
@@ -644,94 +725,57 @@ package body Process is
         proctab(pid).istart       := To_Address (16#FFFF_FFFF_FFFF_FFFF#);
 
         -- Allocate 2 contiguous pages: guard (lower) + stack (upper)
-        allocGuardedStack : declare
-            function toKStackPtr is new Ada.Unchecked_Conversion
-                (System.Address, ProcessKernelStackPtr);
-            baseVirt : System.Address;
-            guarded : Boolean;
+        declare
+            stacked : Boolean;
         begin
-            BuddyAllocator.alloc (1, baseVirt);
-            if baseVirt = BuddyAllocator.NO_BLOCK_AVAILABLE then
+            allocGuardedKernelStack (mainThreadOf (pid), stacked);
+            if not stacked then
                 discardUnpublished (pid);
                 return NO_PROCESS;
             end if;
-            Mem_mgr.tryCreateGuardPage (Virtmem.V2P (baseVirt), guarded);
-            if not guarded then
-                BuddyAllocator.free (1, baseVirt);
-                discardUnpublished (pid);
-                return NO_PROCESS;
-            end if;
-            proctab(pid).guardPage   := Virtmem.V2P (baseVirt);
-            proctab(pid).kernelStack :=
-                toKStackPtr (baseVirt + Virtmem.PAGE_SIZE);
-            proctab(pid).kernelStack.canary := KSTACK_CANARY;
-        end allocGuardedStack;
+        end;
 
         FrameLists.create
             (proctab(pid).frames, frameCapacity);
 
-        proctab(pid).kernelStackTop := proctab(pid).kernelStack.all'Address +
-                                       ProcessKernelStack'Size / 8;
+        initializeUserEntry (mainThreadOf (pid), procStart,
+                             proctab(pid).stackTop, 0);
 
-        -- Build the initial kernel stack.
-        initializeFPUState (proctab(pid).kernelStack.fpuarea);
-        proctab(pid).fpu := proctab(pid).kernelStack.fpuarea'Address;
-        proctab(pid).kernelStack.filler := (others => 0);
+        -- Set up the send/recv queues and the address space.
+        proctab(pid).pgTable := pid;
 
-        -- Since we use iretq to enter usermode initially, we need an "interrupt
-        -- frame" to set up the proper rip, rsp, flags and segments.
-        proctab(pid).kernelStack.interruptFrame := (
-                interruptNumber => 0,
-                rip             => procStart,
-                rsp             => proctab(pid).stackTop,
-                rflags          => x86.FLAGS_INTERRUPT,
-                cs              => Segment.GDTOffset'Enum_Rep(Segment.GDT_OFFSET_USER_CODE) or 3,
-                ss              => Segment.GDTOffset'Enum_Rep(Segment.GDT_OFFSET_USER_DATA) or 3,
-                others          => 0);
+        mailtab(pid).recvQueue := (
+            lock => <>,
+            head => NO_THREAD,
+            tail => NO_THREAD
+        );
 
-        proctab(pid).kernelStack.returnAddress := interruptReturn'Address;
-        proctab(pid).kernelStack.context := (rip => start'Address, others => 0);
+        mailtab(pid).sendQueue := (
+            lock => <>,
+            head => NO_THREAD,
+            tail => NO_THREAD
+        );
 
-        proctab(pid).context := proctab(pid).kernelStack.context'Address;
+        mailtab(pid).notifyQueue := (
+            lock => <>,
+            head => NO_THREAD,
+            tail => NO_THREAD
+        );
 
-        if not thread then
-            -- For heavyweight processes, set up the send/recv queues and the
-            -- address space it (and any child threads) will be using.
-            proctab(pid).pgTable := pid;
+        Spinlocks.enterCriticalSection (mailtab(pid).lock);
+        mailtab(pid).closed := True;
+        mailtab(pid).ring := (others => <>);
+        mailtab(pid).nextReceiveLane := Queued_Messages;
+        Spinlocks.exitCriticalSection (mailtab(pid).lock);
 
-            mailtab(pid).recvQueue := (
-                lock => <>,
-                head => NO_PROCESS,
-                tail => NO_PROCESS
-            );
+        -- Grant initial capabilities for well-known services
+        Capabilities.Operations.grantInitialCaps (
+            table => proctab(pid).caps,
+            pid   => Unsigned_64(pid),
+            gen   => generationOf (pid));
 
-            mailtab(pid).sendQueue := (
-                lock => <>,
-                head => NO_PROCESS,
-                tail => NO_PROCESS
-            );
-
-            proctab(pid).mail := pid;
-            Spinlocks.enterCriticalSection (mailtab(pid).lock);
-            mailtab(pid).closed := True;
-            mailtab(pid).ring := (others => <>);
-            mailtab(pid).nextReceiveLane := Queued_Messages;
-            Spinlocks.exitCriticalSection (mailtab(pid).lock);
-
-            -- Grant initial capabilities for well-known services
-            Capabilities.Operations.grantInitialCaps (
-                table => proctab(pid).caps,
-                pid   => Unsigned_64(pid),
-                gen   => proctab(pid).capGeneration);
-
-            zeroize (addrtab(pid));
-            Mem_mgr.mapKernelMemIntoProcess (addrtab(pid));
-        else
-            -- for threads, point to parent's page table and mailbox
-            proctab(pid).pgTable := ppid;
-            proctab(pid).mail    := ppid;
-        end if;
-
+        zeroize (addrtab(pid));
+        Mem_mgr.mapKernelMemIntoProcess (addrtab(pid));
         -- Add a page for the process' stack
         tryAddPage (proctab(pid), procStack - Virtmem.PAGE_SIZE, storage, allocation);
         if allocation /= Page_Added then
@@ -763,6 +807,13 @@ package body Process is
         Spinlocks.exitCriticalSection (lock);
     end yield;
 
+    -- An idle thread gives way when another CPU has work it could take. Idle
+    -- CPUs find aged work on their timer opportunities (at most every
+    -- millisecond); a fresh wakeup is never stealable, so it is not kicked.
+    function idleWithStealableWork (tid : ThreadID; cpu : Natural) return Boolean is
+      (Build.Work_Stealing and then threadtab (tid).priority < 0 and then
+       stealableWorkElsewhere (cpu));
+
     procedure serviceReschedule is
         cpuData : PerCPUData.PerCPUData with Import, Volatile,
           Address => PerCPUData.getPerCPUDataAddr;
@@ -771,16 +822,17 @@ package body Process is
         Spinlocks.enterCriticalSection (lock);
         cpuData.needReschedule := False;
         if Build.OneShot_Scheduling and then Build.Wakeup_Scheduling and then
-          cpuData.currentPID /= NO_PROCESS and then
+          cpuData.currentThread /= NO_THREAD and then
           Queues.hasAwakenedPeer (cpuReadyLists(cpuData.cpuNum),
-            proctab(cpuData.currentPID).priority)
+            threadtab (cpuData.currentThread).priority)
         then
             Scheduler_Alarm.Request_Earlier (Scheduler_Timing.Wakeup_Microseconds);
         end if;
-        if cpuData.currentPID /= NO_PROCESS and then
-           proctab(cpuData.currentPID).state = RUNNING and then
-           Queues.hasReadyPeer (cpuReadyLists(cpuData.cpuNum),
-             proctab(cpuData.currentPID).priority, Queues.Strictly_Higher)
+        if cpuData.currentThread /= NO_THREAD and then
+           threadtab (cpuData.currentThread).state = RUNNING and then
+           (Queues.hasReadyPeer (cpuReadyLists(cpuData.cpuNum),
+              threadtab (cpuData.currentThread).priority, Queues.Strictly_Higher) or else
+            idleWithStealableWork (cpuData.currentThread, cpuData.cpuNum))
         then
             cpuAccounting(cpuData.cpuNum).Reason := Higher_Priority;
             Scheduler.enter;
@@ -790,21 +842,23 @@ package body Process is
 
     procedure serviceTimerPreemption is
         PID : constant ProcessID := PerCPUData.getCurrentPID;
+        me : constant ThreadID := PerCPUData.getCurrentThread;
         CPU : constant Natural := PerCPUData.getCPUNumber;
     begin
         if PID = NO_PROCESS then return; end if;
         Spinlocks.enterCriticalSection (lock);
-        Scheduling_Turns.Count (proctab(PID).turnCounters, Scheduling_Turns.Timer_Opportunity);
-        accountBoundary (PID, PID, Accounting_Checkpoint);
+        Scheduling_Turns.Count (threadtab (me).turnCounters, Scheduling_Turns.Timer_Opportunity);
+        accountBoundary (PerCPUData.getCurrentThread, PerCPUData.getCurrentThread, Accounting_Checkpoint);
         if Queues.hasReadyPeer
-          (cpuReadyLists(CPU), proctab(PID).priority, Queues.Strictly_Higher)
+          (cpuReadyLists(CPU), threadtab (me).priority, Queues.Strictly_Higher) or else
+           idleWithStealableWork (PerCPUData.getCurrentThread, CPU)
         then
             cpuAccounting(CPU).Reason := Higher_Priority;
             Scheduler.enter;
-        elsif Queues.hasReadyPeer (cpuReadyLists(CPU), proctab(PID).priority) and then
+        elsif Queues.hasReadyPeer (cpuReadyLists(CPU), threadtab (me).priority) and then
           (Scheduling_Turns.Remaining (cpuAccounting(CPU).Turn) = 0 or else
            (Build.Wakeup_Scheduling and then
-            Queues.hasAwakenedPeer (cpuReadyLists(CPU), proctab(PID).priority)))
+            Queues.hasAwakenedPeer (cpuReadyLists(CPU), threadtab (me).priority)))
         then
             cpuAccounting(CPU).Reason :=
               (if Scheduling_Turns.Remaining (cpuAccounting(CPU).Turn) = 0
@@ -818,31 +872,32 @@ package body Process is
     -- ready
     -- Move a process into the ready list and change its state to READY
     ---------------------------------------------------------------------------
-    procedure ready (pid : ProcessID)
+    procedure ready (tid : ThreadID)
     is
-        ret : ProcessID;
-        targetCPU : constant Natural := proctab(pid).cpu;
-        currentPID : constant ProcessID := PerCPUData.getCurrentPID;
+        ret : ThreadID;
+        targetCPU : constant Natural := threadtab (tid).cpu;
+        current : constant ThreadID := PerCPUData.getCurrentThread;
     begin
-        if proctab(pid).state = INVALID or else
-           Process_Lifetime.Closing (proctab(pid).lifetime)
+        if threadtab (tid).state = INVALID or else
+           Process_Lifetime.Closing (threadtab (tid).lifetime)
         then
             return; -- A queued notification cannot restart a retiring task.
         end if;
-        proctab(pid).readyTSC := x86.rdtsc;
-        proctab(pid).readiness := Awakened;
-        Trace.Emit (Trace.EVENT_READY, Unsigned_64(pid), Unsigned_64(targetCPU));
-        proctab(pid).state := READY;
-        Queues.insert (cpuReadyLists(targetCPU), pid,
-                       proctab(pid).priority, ret);
+        threadtab (tid).readyTSC := x86.rdtsc;
+        threadtab (tid).queuedTSC := threadtab (tid).readyTSC;
+        threadtab (tid).readiness := Awakened;
+        Trace.Emit (Trace.EVENT_READY, Unsigned_64(tid), Unsigned_64(targetCPU));
+        threadtab (tid).state := READY;
+        Queues.insert (cpuReadyLists(targetCPU), tid,
+                       threadtab (tid).priority, ret);
 
-        if ret /= pid then
+        if ret /= tid then
             raise ProcessException with "Process.ready: Error adding pid to ready list.";
         end if;
 
         if Build.OneShot_Scheduling and then Build.Wakeup_Scheduling and then
-          targetCPU = PerCPUData.getCPUNumber and then currentPID /= NO_PROCESS and then
-          proctab(pid).priority >= proctab(currentPID).priority
+          targetCPU = PerCPUData.getCPUNumber and then current /= NO_THREAD and then
+          threadtab (tid).priority >= threadtab (current).priority
         then
             Scheduler_Alarm.Request_Earlier (Scheduler_Timing.Wakeup_Microseconds);
         end if;
@@ -851,8 +906,8 @@ package body Process is
         -- currently running one, request preemption at interrupt return.
         -- Only meaningful if targeting THIS CPU.
         if targetCPU = PerCPUData.getCPUNumber and then
-           currentPID /= NO_PROCESS and then
-           proctab(pid).priority > proctab(currentPID).priority
+           current /= NO_THREAD and then
+           threadtab (tid).priority > threadtab (current).priority
         then
             setNeedReschedule : declare
                 perCPUAddr : constant System.Address :=
@@ -869,7 +924,109 @@ package body Process is
         if targetCPU /= PerCPUData.getCPUNumber then
             IPI.sendReschedule (targetCPU);
         end if;
+
     end ready;
+
+
+    function generationOf (pid : ProcessID) return Capabilities.Generation is
+      (if pid = NO_PROCESS then 0
+       else Capabilities.Generation (Process_Table.Generation_Of (pid)) +
+            Capabilities.INITIAL_GENERATION);
+
+    function threadGenerationOf (tid : ThreadID) return Capabilities.Generation is
+      (if tid = NO_THREAD then 0
+       else Capabilities.Generation (Thread_Table.Generation_Of (Natural (tid))) +
+            Capabilities.INITIAL_GENERATION);
+
+    ---------------------------------------------------------------------------
+    -- Process table adapter
+    ---------------------------------------------------------------------------
+    procedure lockProcessTable is
+    begin
+        Spinlocks.enterCriticalSection (tableLock);
+    end lockProcessTable;
+
+    procedure unlockProcessTable is
+    begin
+        Spinlocks.exitCriticalSection (tableLock);
+    end unlockProcessTable;
+
+    procedure allocTablePage (Page_Bytes : Natural; Addr : out System.Address) is
+    begin
+        BuddyAllocator.alloc
+          (BuddyAllocator.getOrder (Storage_Count (Page_Bytes)), Addr);
+    end allocTablePage;
+
+    procedure freeTablePage (Page_Bytes : Natural; Addr : System.Address) is
+    begin
+        BuddyAllocator.free
+          (BuddyAllocator.getOrder (Storage_Count (Page_Bytes)), Addr);
+    end freeTablePage;
+
+    -- The creation-time zero state (see create), without any generation:
+    -- generations live in the table's ledger.
+    procedure resetProcessRecord (P : in out Process) is
+        ignore : System.Address;
+    begin
+        ignore := Util.memset (P'Address, 0, Process'Size / 8);
+        P.requestSequence := IPC_Request_Ids.Initial_Sequence;
+        P.admitted := False;
+        P.mainThread := NO_THREAD;
+        -- A zeroed lock would read as held by CPU 0.
+        Spinlocks.Initialize (P.addressSpaceLock, addressSpaceLockName'Access);
+    end resetProcessRecord;
+
+    procedure lockAddressSpace (pid : ProcessID) is
+    begin
+        Spinlocks.enterCriticalSection (proctab(pid).addressSpaceLock);
+    end lockAddressSpace;
+
+    procedure unlockAddressSpace (pid : ProcessID) is
+    begin
+        Spinlocks.exitCriticalSection (proctab(pid).addressSpaceLock);
+    end unlockAddressSpace;
+
+    procedure resetThreadRecord (T : in out Thread) is
+        ignore : System.Address;
+    begin
+        ignore := Util.memset (T'Address, 0, Thread'Size / 8);
+        T.lifetime := Process_Lifetime.Initial_State;
+        T.execution := (others => <>);
+        T.savedTurn := Scheduling_Turns.Empty;
+        T.turnCounters := [others => 0];
+        T.shadow := Scheduling_Shadow.Empty_Reservation;
+        T.state := INVALID;
+        T.process := NO_PROCESS;
+    end resetThreadRecord;
+
+    procedure lockThreadTable is
+    begin
+        Spinlocks.enterCriticalSection (threadTableLock);
+    end lockThreadTable;
+
+    procedure unlockThreadTable is
+    begin
+        Spinlocks.exitCriticalSection (threadTableLock);
+    end unlockThreadTable;
+
+    procedure reclaimTablePages is
+    begin
+        Process_Table.Reclaim (cpuOnline);
+        Thread_Table.Reclaim (cpuOnline);
+    end reclaimTablePages;
+
+    ---------------------------------------------------------------------------
+    -- stealableWorkElsewhere
+    ---------------------------------------------------------------------------
+    function stealableWorkElsewhere (cpu : Natural) return Boolean is
+    begin
+        for C in cpuReadyLists'Range loop
+            if C /= cpu and then Queues.hasStealable (cpuReadyLists(C)) then
+                return True;
+            end if;
+        end loop;
+        return False;
+    end stealableWorkElsewhere;
 
     ---------------------------------------------------------------------------
     -- setLatencyContract
@@ -883,85 +1040,26 @@ package body Process is
 
     is
     begin
-        proctab(pid).latency :=
+        threadOf (pid).latency :=
             (class    => class,
              periodUs => periodUs,
              budgetUs => budgetUs,
              flags    => flags);
     end setLatencyContract;
 
-    ---------------------------------------------------------------------------
-    -- Release our hold on a resource and go into WAITING state.
-    ---------------------------------------------------------------------------
-    procedure wait (channel      : in WaitChannel;
-                    resourceLock : in out Spinlocks.spinlock)
-    is
-        pid : constant ProcessID := PerCPUData.getCurrentPID;
-    begin
-        -- Need to get process lock, otherwise we may be woken up by another
-        -- thread during their call to schedule once we release our resource
-        -- lock.
-        -- println ("Process.wait: acquiring proctab lock");
-        Spinlocks.enterCriticalSection (lock);
-        Spinlocks.exitCriticalSection (resourceLock);
-
-        -- Begin waiting and reschedule.
-        proctab(pid).state := WAITING;
-        proctab(pid).channel := channel;
-        Scheduler.enter;
-
-        -- Resume here when woken.
-        proctab(pid).channel := NO_CHANNEL;
-
-        -- Should only be woken when we can acquire the resource lock.
-        -- println ("Process.wait: releasing proctab lock");
-        Spinlocks.exitCriticalSection (lock);
-        Spinlocks.enterCriticalSection (resourceLock);
-    end wait;
-
-    ---------------------------------------------------------------------------
-    -- goAheadBody
-    -- @TODO this is probably a poor implementation, may cause thrashing when
-    -- all the woken threads attempt to get the same resource.
-    ---------------------------------------------------------------------------
-    procedure goAheadBody (channel : in WaitChannel)
-    is
-    begin
-        for p of proctab loop
-            if p.state = WAITING and p.channel = channel then
-                p.state := READY;
-            end if;
-        end loop;
-    end goAheadBody;
-
-    ---------------------------------------------------------------------------
-    -- goAhead - public interface for internal goAheadBody, to ensure locks are
-    -- held.
-    ---------------------------------------------------------------------------
-    procedure goAhead (channel : in WaitChannel)
-    is
-    begin
-        -- println ("Process.goAhead: acquiring proctab lock");
-        Spinlocks.enterCriticalSection (lock);
-
-        goAheadBody (channel);
-
-        -- println ("Process.goAhead: releasing proctab lock");
-        Spinlocks.exitCriticalSection (lock);
-    end goAhead;
 
     ---------------------------------------------------------------------------
     -- suspend
     ---------------------------------------------------------------------------
     procedure suspend
     is
-        pid : constant ProcessID := PerCPUData.getCurrentPID;
+        me : constant ThreadID := PerCPUData.getCurrentThread;
     begin
         -- println ("Process.suspend: acquiring proctab lock");
         Spinlocks.enterCriticalSection (lock);
 
         -- Begin suspension and reschedule.
-        proctab(pid).state := SUSPENDED;
+        threadtab (me).state := SUSPENDED;
         Scheduler.enter;
 
         -- Resume here when woken.
@@ -980,15 +1078,15 @@ package body Process is
         -- println ("Process.resume: acquiring proctab lock");
         Spinlocks.enterCriticalSection (lock);
 
-        if Process_Lifetime.Closing (proctab(pid).lifetime) then
+        if Process_Lifetime.Closing (threadOf (pid).lifetime) then
             Spinlocks.exitCriticalSection (lock);
             return;
         end if;
-        if proctab(pid).state /= SUSPENDED then
+        if threadOf (pid).state /= SUSPENDED then
             raise ProcessException with "Process.resume: Attempting to resume non-suspended process.";
         end if;
 
-        ready (pid);
+        ready (mainThreadOf (pid));
 
         -- println ("Process.resume: releasing proctab lock");
         Spinlocks.exitCriticalSection (lock);
@@ -997,24 +1095,24 @@ package body Process is
     ---------------------------------------------------------------------------
     -- notify
     ---------------------------------------------------------------------------
-    procedure notify (pid : ProcessID)
+    procedure notify (tid : ThreadID)
     is
         ignore : ProcessID;
     begin
         Spinlocks.enterCriticalSection (lock);
 
-        if Process_Lifetime.Closing (proctab(pid).lifetime) then
+        if Process_Lifetime.Closing (threadtab (tid).lifetime) then
             Spinlocks.exitCriticalSection (lock);
             return;
         end if;
-        if proctab(pid).state = WAITINGFOREVENT or else
-           proctab(pid).state = WAITINGFORREPLY or else
-           proctab(pid).state = WAITINGFORCOMPLETION or else
-           proctab(pid).state = RECEIVING
+        if threadtab (tid).state = WAITINGFOREVENT or else
+           threadtab (tid).state = WAITINGFORREPLY or else
+           threadtab (tid).state = WAITINGFORCOMPLETION or else
+           threadtab (tid).state = RECEIVING
         then
-            ready (pid);
-        elsif proctab(pid).state = READY or else
-              proctab(pid).state = RUNNING
+            ready (tid);
+        elsif threadtab (tid).state = READY or else
+              threadtab (tid).state = RUNNING
         then
             --  Notification producers commonly perform a lock-free state
             --  observation before arriving here.  Another CPU may win the
@@ -1029,13 +1127,14 @@ package body Process is
         Spinlocks.exitCriticalSection (lock);
     end notify;
 
+
     ---------------------------------------------------------------------------
     -- sleep
     ---------------------------------------------------------------------------
     procedure sleep (us : Time.Duration)
     is
-        pid    : ProcessID := PerCPUData.getCurrentPID;
-        ignore : ProcessID;
+        me : constant ThreadID := PerCPUData.getCurrentThread;
+        ignore : ThreadID;
     begin
         -- Publish the blocked state and hand off the running context under
         -- Process.lock. A remote wakeup cannot enqueue this task before its
@@ -1043,10 +1142,10 @@ package body Process is
         Spinlocks.enterCriticalSection (lock);
         Spinlocks.enterCriticalSection (sleepList.lock);
 
-        proctab(pid).state := SLEEPING;
+        threadtab (me).state := SLEEPING;
 
         Queues.insertDeltaNoLock (q            => sleepList,
-                                  pid          => pid,
+                                  pid          => me,
                                   delayFromNow => Integer(us / 1000),
                                   result       => ignore);
 
@@ -1171,11 +1270,7 @@ package body Process is
     is
         p4addr : System.Address;
     begin
-        if proctab(pid).isThread then
-            p4addr := addrtab(getParent (pid))'Address;
-        else
-            p4addr := addrtab(pid)'Address;
-        end if;
+        p4addr := addrtab(pid)'Address;
 
         Virtmem.setActiveP4 (Virtmem.K2P (p4addr));
     end switchAddressSpace;
@@ -1193,14 +1288,22 @@ package body Process is
         -- used by producers. No resources are reclaimed by this caller.
         Spinlocks.enterCriticalSection (mailtab(pid).lock);
         Spinlocks.enterCriticalSection (lock);
-        if proctab(pid).admitted and then proctab(pid).mode = USER and then
-           proctab(pid).state /= INVALID and then
+        if proctab(pid).admitted and then threadOf (pid).mode = USER and then
+           threadOf (pid).state /= INVALID and then
            (expectedGeneration = 0 or else
-            expectedGeneration = proctab(pid).capGeneration)
+            expectedGeneration = generationOf (pid))
         then
             mailtab(pid).closed := True;
-            Process_Lifetime.Request_Stop (proctab(pid).lifetime);
-            proctab(pid).receiveDeadlineActive := False;
+            -- A fault in any thread ends the process: stop every thread.
+            declare
+                t : ThreadID := mainThreadOf (pid);
+            begin
+                while t /= NO_THREAD loop
+                    Process_Lifetime.Request_Stop (threadtab (t).lifetime);
+                    threadtab (t).receiveDeadlineActive := False;
+                    t := threadtab (t).nextSibling;
+                end loop;
+            end;
             wakeReaper;
             IPI.broadcastReschedule;
             accepted := True;
@@ -1210,34 +1313,117 @@ package body Process is
         return accepted;
     end killProcess;
 
-    procedure retirementWorker is
-        victim : ProcessID;
+    -- Caller holds Process.lock. Every thread of p has stopped and awaits
+    -- retirement (a process is reaped only when none of its threads can
+    -- still be on a CPU using its address space).
+    function allThreadsReapable (p : ProcessID) return Boolean is
+        t : ThreadID := mainThreadOf (p);
+    begin
+        if t = NO_THREAD then
+            return False;
+        end if;
+        while t /= NO_THREAD loop
+            if not Process_Lifetime.Can_Reap (threadtab (t).lifetime) then
+                return False;
+            end if;
+            t := threadtab (t).nextSibling;
+        end loop;
+        return True;
+    end allThreadsReapable;
+
+    -- Caller holds Process.lock; t can be reaped. Take it off every
+    -- scheduler list. INVALID rejects administrative operations.
+    procedure claimThread (t : ThreadID) is
         claimed : Boolean;
     begin
+        Process_Lifetime.Claim_Reap (threadtab (t).lifetime, claimed);
+        if not claimed then
+            raise ProcessException with "Retirement claim lost under process lock";
+        end if;
+        threadtab (t).state := INVALID;
+        Queues.detach (cpuReadyLists(threadtab (t).cpu), t);
+        Queues.detach (sleepList, t, Queues.Delta_Queue);
+    end claimThread;
+
+    -- An exited thread of a live process: free it alone.
+    procedure reclaimThread (t : ThreadID) is
+        finished : Boolean;
+    begin
+        Futex.cancelWait (t);
+        freeGuardedKernelStack (t);
+        Spinlocks.enterCriticalSection (lock);
+        Process_Lifetime.Finish_Reap (threadtab (t).lifetime, finished);
+        if not finished then
+            raise ProcessException with "Thread reclamation without retirement claim";
+        end if;
+        Thread_Table.Release (Natural (t));
+        extraThreads := extraThreads - 1;
+        Spinlocks.exitCriticalSection (lock);
+    end reclaimThread;
+
+    procedure retirementWorker is
+        victim : ProcessID;
+        victimThread : ThreadID;
+    begin
         loop
+            -- Free table pages emptied by earlier retirements whose grace
+            -- period has passed (outside Process.lock; the table lock only
+            -- nests the buddy allocator's lock).
+            reclaimTablePages;
             victim := NO_PROCESS;
+            victimThread := NO_THREAD;
             Spinlocks.enterCriticalSection (lock);
-            for p in ProctabType'Range loop
-                if proctab(p).admitted and then
-                   Process_Lifetime.Can_Reap (proctab(p).lifetime)
-                then
-                    Process_Lifetime.Claim_Reap (proctab(p).lifetime, claimed);
-                    if not claimed then
-                        raise ProcessException with "Retirement claim lost under process lock";
-                    end if;
-                    -- Admission was closed before this claim. INVALID rejects
-                    -- administrative operations; PID storage remains reserved.
-                    proctab(p).state := INVALID;
-                    Queues.detach (cpuReadyLists(proctab(p).cpu), p);
-                    Queues.detach (sleepList, p, Queues.Delta_Queue);
+            for p in ProctabRange loop
+                if proctab(p).admitted and then allThreadsReapable (p) then
+                    -- Admission was closed before this claim; PID storage
+                    -- remains reserved.
+                    declare
+                        t : ThreadID := mainThreadOf (p);
+                    begin
+                        while t /= NO_THREAD loop
+                            claimThread (t);
+                            t := threadtab (t).nextSibling;
+                        end loop;
+                    end;
                     victim := p;
                     exit;
                 end if;
             end loop;
             if victim = NO_PROCESS then
+                -- Threads that called THREAD_EXIT in still-live processes.
+                for n in 1 .. Thread_Table.High_Water loop
+                    if threadtab (ThreadID (n)).exiting and then
+                       Process_Lifetime.Can_Reap (threadtab (ThreadID (n)).lifetime)
+                    then
+                        victimThread := ThreadID (n);
+                        claimThread (victimThread);
+                        -- Unlink from its process (never the main thread).
+                        declare
+                            p : constant ProcessID := processOf (victimThread);
+                            t : ThreadID := mainThreadOf (p);
+                        begin
+                            while t /= NO_THREAD loop
+                                if threadtab (t).nextSibling = victimThread then
+                                    threadtab (t).nextSibling :=
+                                      threadtab (victimThread).nextSibling;
+                                    exit;
+                                end if;
+                                t := threadtab (t).nextSibling;
+                            end loop;
+                            proctab(p).threadCount := proctab(p).threadCount - 1;
+                        end;
+                        exit;
+                    end if;
+                end loop;
+            end if;
+            if victimThread /= NO_THREAD then
+                Spinlocks.exitCriticalSection (lock);
+                reclaimThread (victimThread);
+                yield;
+            elsif victim = NO_PROCESS then
                 -- No polling and no lost wakeup: request/CPU-stop uses this
                 -- same process lock to ready the suspended worker.
-                proctab(ReaperPID).state := SUSPENDED;
+                threadOf (ReaperPID).state := SUSPENDED;
                 Scheduler.enter;
                 Spinlocks.exitCriticalSection (lock);
             else
@@ -1271,9 +1457,12 @@ package body Process is
         -- PID whose generation space is exhausted must never be reused: doing
         -- so would make terminal-generation capabilities valid for the new
         -- process occupying that PID.
-        Capabilities.Operations.advanceGeneration
-          (current  => proctab(pid).capGeneration,
-           reusable => pidReusable);
+        declare
+            saturated : Boolean;
+        begin
+            Process_Table.Invalidate (pid, saturated);
+            pidReusable := not saturated;
+        end;
 
         -- A grant mapping pins its backing frames. Retain this dead process's
         -- PID (and therefore its authoritative grant records) until every
@@ -1294,7 +1483,7 @@ package body Process is
         -- Clear capability table
         Capabilities.Operations.clearTable (proctab(pid).caps);
 
-        if proctab(pid).mode = USER and not proctab(pid).isThread then
+        if threadOf (pid).mode = USER then
 
             while proctab(pid).frames.length > 0 loop
                 BuddyAllocator.freeFrame (FrameLists.front(proctab(pid).frames));
@@ -1311,27 +1500,48 @@ package body Process is
             proctab(pid).pgTable := NO_PROCESS;
         end if;
 
-        -- Remap the guard page so the buddy allocator can reuse it,
-        -- then free the 2-page block (guard + stack).
-        if proctab(pid).guardPage /= 0 then
-            Mem_mgr.removeGuardPage (proctab(pid).guardPage);
-            BuddyAllocator.free (1, Virtmem.P2Va (proctab(pid).guardPage));
-            proctab(pid).kernelStack := null;
-        end if;
-
+        -- Every thread: withdraw futex waits, then free its kernel stack
+        -- (remapping the guard page so the buddy allocator can reuse it).
+        declare
+            t : ThreadID := mainThreadOf (pid);
+        begin
+            while t /= NO_THREAD loop
+                Futex.cancelWait (t);
+                freeGuardedKernelStack (t);
+                t := threadtab (t).nextSibling;
+            end loop;
+        end;
 
         -- Retire before either immediate or grant-deferred PID publication.
         -- No access to proctab(pid) is allowed after publishing the PID free.
+        -- Threads other than the main thread are released now; the main
+        -- thread goes with the PID.
         Spinlocks.enterCriticalSection (lock);
-        Process_Lifetime.Finish_Reap (proctab(pid).lifetime, finished);
-        if not finished then
-            raise ProcessException with "Reclamation without exclusive retirement claim";
-        end if;
+        declare
+            main : constant ThreadID := mainThreadOf (pid);
+            t : ThreadID := main;
+            following : ThreadID;
+        begin
+            while t /= NO_THREAD loop
+                following := threadtab (t).nextSibling;
+                Process_Lifetime.Finish_Reap (threadtab (t).lifetime, finished);
+                if not finished then
+                    raise ProcessException with "Reclamation without exclusive retirement claim";
+                end if;
+                if t /= main then
+                    Thread_Table.Release (Natural (t));
+                    extraThreads := extraThreads - 1;
+                end if;
+                t := following;
+            end loop;
+            threadtab (main).nextSibling := NO_THREAD;
+            proctab(pid).threadCount := 0;
+        end;
         proctab(pid).admitted := False;
         if grantDeferred then
             IPC.finishGrantProtectedTeardown (pid);
         elsif pidReusable then
-            PIDTracker.freePID (pid);
+            PIDTracker.freePID (pid, invalidated => True);
         end if;
         Spinlocks.exitCriticalSection (lock);
 
@@ -1367,6 +1577,129 @@ package body Process is
     end kill;
 
     ---------------------------------------------------------------------------
+    -- createThread
+    ---------------------------------------------------------------------------
+    procedure createThread (entryPoint, userStack : System.Address;
+                            argument, fsBase, clearTidAddress : Unsigned_64;
+                            tid : out ThreadID)
+    is
+        USER_LIMIT : constant Unsigned_64 := 16#0000_8000_0000_0000#;
+        me   : constant ThreadID := PerCPUData.getCurrentThread;
+        pid  : constant ProcessID := processOf (me);
+        main : ThreadID;
+        n    : Natural;
+        ok   : Boolean;
+
+        procedure unreserve is
+        begin
+            Spinlocks.enterCriticalSection (lock);
+            proctab(pid).threadCount := proctab(pid).threadCount - 1;
+            extraThreads := extraThreads - 1;
+            Spinlocks.exitCriticalSection (lock);
+        end unreserve;
+    begin
+        tid := NO_THREAD;
+        if pid = NO_PROCESS or else threadtab (me).mode /= USER or else
+           To_Integer (entryPoint) = 0 or else
+           Unsigned_64 (To_Integer (entryPoint)) >= USER_LIMIT or else
+           To_Integer (userStack) = 0 or else
+           Unsigned_64 (To_Integer (userStack)) > USER_LIMIT or else
+           clearTidAddress mod 4 /= 0 or else clearTidAddress >= USER_LIMIT or else
+           fsBase >= USER_LIMIT
+        then
+            return;
+        end if;
+
+        -- Reserve quota. The caller executes, so its process cannot be
+        -- reaped during this call; it may be killed, which is rechecked.
+        Spinlocks.enterCriticalSection (lock);
+        if Process_Lifetime.Closing (threadtab (me).lifetime) or else
+           proctab(pid).threadCount >= MAX_THREADS_PER_PROCESS or else
+           extraThreads >= MAX_EXTRA_THREADS
+        then
+            Spinlocks.exitCriticalSection (lock);
+            return;
+        end if;
+        proctab(pid).threadCount := proctab(pid).threadCount + 1;
+        extraThreads := extraThreads + 1;
+        Spinlocks.exitCriticalSection (lock);
+
+        Thread_Table.Allocate (n);
+        if n = 0 then
+            unreserve;
+            return;
+        end if;
+        tid := ThreadID (n);
+        allocGuardedKernelStack (tid, ok);
+        if not ok then
+            Thread_Table.Release (n);
+            unreserve;
+            tid := NO_THREAD;
+            return;
+        end if;
+
+        main := mainThreadOf (pid);
+        threadtab (tid).process := pid;
+        threadtab (tid).mode := USER;
+        threadtab (tid).priority := threadtab (main).priority;
+        threadtab (tid).latency := threadtab (main).latency;
+        -- Start on this CPU; an idle CPU may steal it once it has aged.
+        threadtab (tid).cpu := PerCPUData.getCPUNumber;
+        threadtab (tid).pinned := False;
+        threadtab (tid).fsBase := fsBase;
+        threadtab (tid).clearTidAddress := clearTidAddress;
+        threadtab (tid).state := SUSPENDED;
+        initializeUserEntry (tid, entryPoint, userStack, argument);
+
+        -- Publish under the lock a kill takes to stop every thread: either
+        -- the kill sees this thread, or this sees the kill.
+        Spinlocks.enterCriticalSection (lock);
+        if Process_Lifetime.Closing (threadtab (me).lifetime) then
+            Spinlocks.exitCriticalSection (lock);
+            freeGuardedKernelStack (tid);
+            Thread_Table.Release (n);
+            unreserve;
+            tid := NO_THREAD;
+            return;
+        end if;
+        threadtab (tid).nextSibling := threadtab (main).nextSibling;
+        threadtab (main).nextSibling := tid;
+        ready (tid);
+        Spinlocks.exitCriticalSection (lock);
+    end createThread;
+
+    ---------------------------------------------------------------------------
+    -- exitThread
+    ---------------------------------------------------------------------------
+    procedure exitThread is
+        me  : constant ThreadID := PerCPUData.getCurrentThread;
+        pid : constant ProcessID := processOf (me);
+        addr : constant Unsigned_64 := threadtab (me).clearTidAddress;
+        ok : Boolean;
+        ignore : Unsigned_64;
+    begin
+        if me = mainThreadOf (pid) then
+            kill (pid);
+        end if;
+
+        -- Join support: clear the word, then wake whoever waits on it.
+        if addr /= 0 then
+            User_Memory.Store_Word32 (pid, addr, 0, ok);
+            if ok then
+                ignore := Futex.wakeFor (pid, addr, Unsigned_64'Last);
+            end if;
+        end if;
+        IPC.retireThread (me);
+
+        Spinlocks.enterCriticalSection (lock);
+        threadtab (me).exiting := True;
+        Process_Lifetime.Request_Stop (threadtab (me).lifetime);
+        -- Leaving the CPU makes this thread reapable and wakes the reaper.
+        Scheduler.enter;
+        raise ProcessException with "Exited thread resumed";
+    end exitThread;
+
+    ---------------------------------------------------------------------------
     -- getRunningProcess
     ---------------------------------------------------------------------------
     -- function getRunningProcess return ProcPtr
@@ -1378,23 +1711,76 @@ package body Process is
     ---------------------------------------------------------------------------
     -- pageFault
     ---------------------------------------------------------------------------
-    procedure pageFault (pid : ProcessID; addr : System.Address)
+    procedure kernelUserFault (pid : ProcessID; addr : System.Address;
+                               handled : out Boolean)
     is
         ignore : System.Address;
         result : Page_Allocation_Result;
         use type Page_Admission.Decision;
-        admission : constant Page_Admission.Decision := Page_Admission.Check
+        page : constant Integer_Address := To_Integer (addr) and Virtmem.PAGE_MASK;
+    begin
+        handled := False;
+        if pid = NO_PROCESS or else threadOf (pid).mode /= USER or else
+           Unsigned_64 (To_Integer (addr)) >= 16#0000_8000_0000_0000# or else
+           proctab(pid).pgTable = NO_PROCESS or else
+           -- This CPU already changing the address space: a kernel bug.
+           Spinlocks.ownedBy (proctab(pid).addressSpaceLock,
+                              Locks.CPU_ID (PerCPUData.getCPUNumber))
+        then
+            return;
+        end if;
+        lockAddressSpace (pid);
+        if Virtmem.tableWalk (page, addrtab(proctab(pid).pgTable)) /= 0 then
+            handled := True;
+        elsif Page_Admission.Check
+          (Unsigned_64 (To_Integer (proctab(pid).stackBottom)),
+           Unsigned_64 (To_Integer (proctab(pid).stackTop)),
+           Unsigned_64 (To_Integer (proctab(pid).heapStart)),
+           Unsigned_64 (To_Integer (proctab(pid).heapEnd)),
+           Unsigned_64 (To_Integer (addr)), proctab(pid).frames.length,
+           proctab(pid).frames.capacity, Natural (proctab(pid).quota.maxFrames))
+          = Page_Admission.Admitted
+        then
+            tryAddPage (proc => Proctab(pid), mapTo => To_Address (page),
+                        storage => ignore, result => result);
+            handled := result = Page_Added;
+        end if;
+        unlockAddressSpace (pid);
+    end kernelUserFault;
+
+    procedure pageFault (pid : ProcessID; addr : System.Address)
+    is
+        ignore : System.Address;
+        result : Page_Allocation_Result := Page_Added;
+        use type Page_Admission.Decision;
+        admission : Page_Admission.Decision;
+        page : constant Integer_Address := To_Integer (addr) and Virtmem.PAGE_MASK;
+    begin
+        -- Another thread of this process may be faulting on, or growing
+        -- the heap over, the same page. Decide and map under the lock.
+        lockAddressSpace (pid);
+        admission := Page_Admission.Check
           (Unsigned_64 (To_Integer (proctab(pid).stackBottom)),
            Unsigned_64 (To_Integer (proctab(pid).stackTop)),
            Unsigned_64 (To_Integer (proctab(pid).heapStart)),
            Unsigned_64 (To_Integer (proctab(pid).heapEnd)),
            Unsigned_64 (To_Integer (addr)), proctab(pid).frames.length,
            proctab(pid).frames.capacity, Natural (proctab(pid).quota.maxFrames));
-    begin
+        if admission = Page_Admission.Admitted and then
+           Virtmem.tableWalk (page, addrtab(proctab(pid).pgTable)) /= 0
+        then
+            -- A sibling thread mapped it first.
+            unlockAddressSpace (pid);
+            return;
+        end if;
         if admission = Page_Admission.Admitted then
             tryAddPage (proc => Proctab(pid),
-                        mapTo => To_Address (To_Integer (addr) and Virtmem.PAGE_MASK),
+                        mapTo => To_Address (page),
                         storage => ignore, result => result);
+        end if;
+        unlockAddressSpace (pid);
+
+        if admission = Page_Admission.Admitted then
             if result /= Page_Added then
                 IPC.notifySupervisor
                   (pid => pid, faultLabel => IPC_Labels.EVENT_PROCESS_FAULT,
@@ -1407,6 +1793,22 @@ package body Process is
             -- overflow, or heap over/underflow and signal the process either way.
             -- (something like distance to stackBottom < distance to heapEnd = stack overflow)
             print ("Process: Illegal memory access at "); print (addr);
+            print (" rip "); print (lastFaultRIP);
+            -- The words at the user stack pointer: usually return addresses.
+            declare
+                type Words is array (0 .. 7) of Unsigned_64;
+                stack : Words := (others => 0);
+                copied : Boolean;
+            begin
+                User_Memory.Copy (pid, Unsigned_64 (To_Integer (lastFaultRSP)),
+                                  stack'Address, stack'Size / 8, copied);
+                if copied then
+                    print (" stack");
+                    for w of stack loop
+                        print (" "); print (To_Address (Integer_Address (w)));
+                    end loop;
+                end if;
+            end;
             print (" pid "); print (Integer(pid));
             print (" stackTop "); print (Proctab(pid).stackTop);
             print (" stackBottom "); print (Proctab(pid).stackBottom);
@@ -1451,7 +1853,7 @@ package body Process is
     -- Caller MUST hold Process.lock. Target resumes in yield() which
     -- releases Process.lock.
     ---------------------------------------------------------------------------
-    procedure directSwitch (fromPID : ProcessID; toPID : ProcessID)
+    procedure directSwitch (fromT : ThreadID; toT : ThreadID)
     is
         perCPUAddr : constant System.Address := PerCPUData.getPerCPUDataAddr;
     begin
@@ -1461,48 +1863,49 @@ package body Process is
         begin
             -- The IPC fast path bypasses Scheduler.enter, so it must perform
             -- the same eager state transition explicitly.
-            if proctab(fromPID).mode = USER then
-                saveFPUState (fromPID);
+            if threadtab (fromT).mode = USER then
+                saveUserCPUState (fromT);
             end if;
 
             -- Update per-CPU state (what scheduler normally does)
-            cpuData.currentPID     := toPID;
-            cpuData.savedKernelRSP := proctab(toPID).kernelStackTop;
-            cpuData.tss.rsp0       := proctab(toPID).kernelStackTop;
+            cpuData.currentThread  := toT;
+            cpuData.savedKernelRSP := threadtab (toT).kernelStackTop;
+            cpuData.tss.rsp0       := threadtab (toT).kernelStackTop;
 
             -- Switch address space if target is user process
-            if proctab(toPID).mode = USER then
-                switchAddressSpace (toPID);
-                restoreFPUState (toPID);
+            if threadtab (toT).mode = USER then
+                switchAddressSpace (processOf (toT));
+                restoreUserCPUState (toT);
             end if;
 
-            proctab(toPID).state := RUNNING;
-            proctab(toPID).readiness := Rescheduled;
+            threadtab (toT).state := RUNNING;
+            threadtab (toT).readiness := Rescheduled;
 
             -- The lock is transferred with the stack. No reaper can observe
-            -- Leave_CPU until asm_switch_to has stopped using fromPID's stack.
-            accountBoundary (fromPID, toPID, IPC_Handoff);
-            noteContextStopped (fromPID);
-            noteContextStarted (toPID);
+            -- Leave_CPU until asm_switch_to has stopped using fromT's stack.
+            accountBoundary (fromT, toT, IPC_Handoff);
+            noteContextStopped (fromT);
+            noteContextStarted (toT);
 
-            -- asm_switch_to saves fromPID's RSP and loads toPID's RSP.
+            -- asm_switch_to saves fromT's RSP and loads toT's RSP.
             -- Target resumes in yield() which releases Process.lock.
-            switch (proctab(fromPID).context'Address,
-                    proctab(toPID).context);
+            switch (threadtab (fromT).context'Address,
+                    threadtab (toT).context);
 
             -- Resumed: Process.lock is held (by whoever switched back)
         end doSwitch;
     end directSwitch;
 
     ---------------------------------------------------------------------------
-    -- saveFPUState
+    -- saveUserCPUState
     ---------------------------------------------------------------------------
-    procedure saveFPUState (pid : ProcessID)
+    procedure saveUserCPUState (tid : ThreadID)
     is
         perCPUAddr : constant System.Address := PerCPUData.getPerCPUDataAddr;
     begin
-        if proctab(pid).mode = USER then
-            x86.fxsave (proctab(pid).fpu);
+        if threadtab (tid).mode = USER then
+            x86.fxsave (threadtab (tid).fpu);
+            threadtab (tid).fsBase := x86.rdfsbase;
             clearLoadedState : declare
                 cpuData : PerCPUData.PerCPUData with
                     Import, Volatile, Address => perCPUAddr;
@@ -1510,21 +1913,26 @@ package body Process is
                 cpuData.fpuOwner := NO_PROCESS;
             end clearLoadedState;
         end if;
-    end saveFPUState;
+    end saveUserCPUState;
 
     ---------------------------------------------------------------------------
-    -- restoreFPUState
+    -- restoreUserCPUState
     ---------------------------------------------------------------------------
-    procedure restoreFPUState (pid : ProcessID)
+    procedure restoreUserCPUState (tid : ThreadID)
     is
     begin
-        if proctab(pid).mode = USER then
+        if threadtab (tid).mode = USER then
             -- FXRSTOR64 raises #NM while CR0.TS is set, so clear TS before
             -- restoring the process' always-valid initial/saved state image.
             enableFPU;
-            x86.fxrstor (proctab(pid).fpu);
+            x86.fxrstor (threadtab (tid).fpu);
+            x86.wrfsbase (threadtab (tid).fsBase);
+            -- KERNEL_GS_BASE is swapped in as the user GS base on return to
+            -- ring 3. User GS is not supported; zero it so a value written by
+            -- the previous process (WRGSBASE) cannot leak into this one.
+            x86.wrmsr (x86.MSRs.KERNEL_GS_BASE, 0);
         end if;
-    end restoreFPUState;
+    end restoreUserCPUState;
 
     ---------------------------------------------------------------------------
     -- print
@@ -1538,38 +1946,52 @@ package body Process is
     ---------------------------------------------------------------------------
     -- Track which PIDs are in use, allocate new ones.
     ---------------------------------------------------------------------------
-    package body PIDTracker with
-        Refined_State => (PIDTrackerState => (pidMap, pidLock))
-    is
-
-        -- TODO: this is basically cut-n-paste from the bootmem allocator.
-        -- might be kind of nice to genericize these into a "bitmap" package
-
-        -- Find a free PID and mark it as in use. Uses spinlock
-        -- to ensure that two processes don't share the same PID
-        -- if this were called by two threads at once.
-        procedure allocPID(pid : out ProcessID)
-        is
-            use Spinlocks;
+    -- PID allocation is the process table's (Id_Ledger, proved).
+    package body PIDTracker is
+        -- Give pid its main thread. The main thread takes the same number as
+        -- its process when that is free (readable diagnostics); otherwise,
+        -- because another process's thread holds it, any free thread ID.
+        -- Nothing may rely on the numbers matching.
+        procedure attachMainThread (pid : ProcessID; ok : out Boolean) is
+            tid : Natural := Natural (pid);
         begin
-            enterCriticalSection (pidLock);
-            pid := findFreePID;
-            -- if no free PIDs, we'll mark PID 0 as used again, which is true.
-            markUsed (pid);
-            exitCriticalSection (pidLock);
+            Thread_Table.Allocate_Specific (tid, ok);
+            if not ok then
+                Thread_Table.Allocate (tid);
+                ok := tid /= 0;
+            end if;
+            if ok then
+                proctab(pid).mainThread := ThreadID (tid);
+                threadtab(ThreadID (tid)).process := pid;
+            end if;
+        end attachMainThread;
+
+        procedure allocPID (pid : out ProcessID) is
+            ok : Boolean;
+        begin
+            Process_Table.Allocate (pid);
+            if pid /= NO_PROCESS then
+                attachMainThread (pid, ok);
+                if not ok then
+                    Process_Table.Release (pid);
+                    pid := NO_PROCESS;
+                end if;
+            end if;
         end allocPID;
 
-        procedure tryAllocSpecificPID (pid : ProcessID; success : out Boolean)
-        is
-            use Spinlocks;
+        procedure tryAllocSpecificPID (pid : ProcessID; success : out Boolean) is
         begin
-            enterCriticalSection (pidLock);
-
-            success := pidMap (pid);
-            if success then
-                markUsed (pid);
+            if pid = NO_PROCESS then
+                success := False;
+                return;
             end if;
-            exitCriticalSection (pidLock);
+            Process_Table.Allocate_Specific (pid, success);
+            if success then
+                attachMainThread (pid, success);
+                if not success then
+                    Process_Table.Release (pid);
+                end if;
+            end if;
         end tryAllocSpecificPID;
 
         procedure allocSpecificPID (pid : in ProcessID) is
@@ -1581,75 +2003,17 @@ package body Process is
             end if;
         end allocSpecificPID;
 
-
-        -- Mark a PID as free. Acquires pidLock for thread safety.
-        procedure freePID(pid : in ProcessID)
-        is
-            use Spinlocks;
+        procedure freePID (pid : in ProcessID; invalidated : Boolean := False) is
+            tid : ThreadID;
         begin
-            enterCriticalSection (pidLock);
-            markFree(pid);
-            exitCriticalSection (pidLock);
-        end freePID;
-
-
-        -- Find a free PID
-        function findFreePID return ProcessID
-        is
-            --block : Unsigned_64;
-            --retPID : ProcessID := 0;
-        begin
-
-            -- linearly iterate through the list looking for a 0. We reserve
-            -- the first few PIDs for the kernel to use for tasks with specific
-            -- IDs.
-            for i in 16..ProcessID'Last loop
-                if (pidMap(i)) then
-                    return i;
+            if pid /= NO_PROCESS then
+                tid := proctab(pid).mainThread;
+                if tid /= NO_THREAD then
+                    Thread_Table.Release (Natural (tid));
                 end if;
-            end loop;
-
-            return 0;
-        end findFreePID;
-
-
-        -- Mark a particular PID as used.
-        procedure markUsed(pid : in ProcessID)
-        is
-            --block : constant PIDBlock := getBlock(pid);
-            --offset : constant PIDOffset := getOffset(pid);
-        begin
-            --util.setBit(pidMap(block), offset);
-            pidMap(pid) := False;
-        end markUsed;
-
-
-        -- Mark a PID as free.
-        procedure markFree(pid : in ProcessID)
-        is
-            -- block : constant PIDBlock := getBlock(pid);
-            -- offset : constant PIDOffset := getOffset(pid);
-        begin
-            --util.clearBit(pidmap(block), offset);
-            pidMap(pid) := True;
-        end markFree;
-
-
-        -- -- Return the index into bitmap array in which this PID resides.
-        -- function getBlock(pid : in ProcessID) return PIDBlock with
-        --      is
-        -- begin
-        --     return Natural(pid / 64);
-        -- end getBlock;
-
-
-        -- -- Return the bit within a Unsigned_64 representing this single PID.
-        -- function getOffset(pid : in ProcessID) return PIDOffset with
-        --      is
-        -- begin
-        --     return Natural(pid mod 64);
-        -- end getOffset;
-
+                Process_Table.Release (pid, Advance => not invalidated);
+            end if;
+        end freePID;
     end PIDTracker;
 
 end Process;

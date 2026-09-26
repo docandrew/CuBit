@@ -7,6 +7,8 @@
   # Development inspector: global non-secret Config read, never write/admin.
   (request-service config read-write config)
   (config-scope (rights read) all)
+  # Typed Config playground: never write outside Workbench's own demo namespace.
+  (config-scope (rights read write) "com.cubit.ccl-workbench.demo")
   (request-service filesystem read-write filesystem)
   (filesystem-scope (rights read write create) "@nvme:0/work")
   (filesystem-scope (rights read write create) "@mem:0/work"))

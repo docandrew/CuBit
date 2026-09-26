@@ -15,11 +15,37 @@ enum equality and formatting, declaration visibility, malformed declarations,
 cross-type rejection, Lisp/BASIC canonical round-trips, and enum compilation.
 `variant_tests` exercises every scalar alternative, payload bindings/shadowing,
 nested and reordered arms, lazy evaluation, nominal results, source diagnostics,
-Lisp/BASIC roundtrips, compiled execution, and canonical CCLB v4 roundtrips.
+Lisp/BASIC roundtrips, compiled execution, and canonical CCLB v6 roundtrips.
 `variant_rejection_tests` covers hostile schemas, truncation at every byte,
 nominal stack joins, dispatch target completeness/bounds, payload type confusion,
 ownership joins and laundering attempts, and full/wrapped/empty stack access.
 These are Linux-hosted tests of the same core used in CuBit.
+
+## Opaque resource descriptions
+
+`resource_tests` adds 62 checks for `Resource` metadata. Named parts are type
+parameters, not stored fields: a collection of Settings is not a Settings
+record. Discovery and CCLB can carry the description, but it grants no instance
+or authority. The current source constructors and data-value VM imports/locals
+reject it. Import/correspondence retain its nominal shape and parameter types,
+translate local IDs, and reject conflicts atomically. Resources, including any
+product or sum containing one, cannot acquire a persistence binding.
+
+Native schema export now selects the root dependency closure. Unrelated
+resource declarations do not leak onto disk or prevent storing ordinary data.
+The tests also cover malformed resource metadata, zero-parameter resources,
+and large type parameters that do not become an embedded value layout.
+
+Focused proof command (2026-09-25: 281 checks, none unproved/justified):
+
+```sh
+nix develop -c bash -c 'cd kernel && alr exec -- gnatprove -P ../tests/ccl-types/types_tests.gpr -u ccl-types.adb ccl-types-encoding.adb ccl-types-correspondence.adb ccl-objects.adb ccl-objects-schemas.adb ccl-objects-views.adb --subdirs=resource-proof --level=2 -j2 --checks-as-errors=on'
+```
+
+This proves the checked runtime/initialization/termination and existing
+functional contracts, not resource lifetime or a complete type-soundness
+theorem. Resource acquisition/return, source ownership checking, and host
+reference retirement are still required before public `Config.create(type)`.
 
 The registry proof covers runtime checks, initialization, termination, and
 atomic publication/rejection. It is not a proof of type-system soundness or
@@ -68,5 +94,5 @@ No `Assume`, `SPARK_Mode => Off`, or warning suppression was added for this work
 Native regression: `tests/headless/run.sh --test ccl-vm --accel kvm` requires
 `enum source PASS`, `enum isolation PASS`, and `variant bytecode PASS`, in addition
 to the existing bytecode, IPC, scheduler and ownership markers. The variant
-test compiles source, serializes CCLB v4, decodes/verifies it, and executes the
+test compiles source, serializes CCLB v6, decodes/verifies it, and executes the
 match in native CuBit. This is not a Linux-hosted simulation.

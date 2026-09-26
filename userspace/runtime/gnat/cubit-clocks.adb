@@ -15,7 +15,8 @@ package body CuBit.Clocks is
       S := Msg.words (1) and 255;
       Success := Msg.tag.label = 16#F000# and then Msg.tag.length = 4
         and then Msg.tag.flags = 0 and then Msg.tag.reserved = 0
-        and then Msg.words (2) <= 172_800 and then Msg.words (3) <= 3
+        and then Msg.words (2) <= 172_800
+        and then Msg.words (3) <= Time_Quality'Enum_Rep (Time_Quality'Last)
         and then Y in 1970 .. 2399 and then M in 1 .. 12
         and then D in 1 .. 31 and then H <= 23 and then N <= 59
         and then S <= 59;
@@ -24,7 +25,7 @@ package body CuBit.Clocks is
            (Msg.words (0), Natural (Y), Natural (M), Natural (D),
             Natural (H), Natural (N), Natural (S),
             Integer (Msg.words (2)) - 86_400,
-            Time_Quality'Val (Msg.words (3)));
+            Time_Quality'Enum_Val (Msg.words (3)));
       end if;
    end Read;
 end CuBit.Clocks;

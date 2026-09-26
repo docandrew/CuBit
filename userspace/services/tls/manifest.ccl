@@ -1,0 +1,13 @@
+# Requested authority only; the network scope needs (network approve-declared).
+(executable-manifest v1
+  (identity "com.cubit.tls")
+  (version "0.1.0")
+  (request-service config read-write config)
+  (request-service clock read-write clock)
+  (request-service filesystem read-write filesystem)
+  # tls.svc connects on behalf of clients whose own tls-scope names were
+  # checked first; it needs broad outbound TCP with DNS to do so.
+  (request-network tcp-connect (ipv4 "0.0.0.0" 0)
+    (ports 1 65535) (dns allow) tcp)
+  (filesystem-scope (rights read) "@nvme:0/tls/")
+  (config-scope (rights read) "tls."))

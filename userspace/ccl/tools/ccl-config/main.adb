@@ -68,7 +68,8 @@ begin
                   Put_Line (Item.Executable.Data (1 .. Item.Executable.Length) &
                             " pri=" & Pri (Pri'First + 1 .. Pri'Last) &
                             (if Item.Approval = Approve_Declared
-                             then " network=declared" else ""));
+                             then " network=declared" else "") &
+                            (if Item.Role = Config_Storage then " role=config-storage" else ""));
                end;
             end loop;
       end case;

@@ -19,6 +19,12 @@ bounded plans before applying settings or launching applications. The Linux
 [CCL image profiles](../../images/README.md) now drive bootstrap/archive and
 USB ISO membership through a separate pure planner and Linux realization adapter.
 
+For a native, persistent typed-IPC example, see the
+[Config Workbench playground](../../tests/config-workbench/README.md). Its
+dedicated QEMU profile runs the real Config/Turso services and ships read/write
+samples. Ctrl+F5 compiles and runs them in the bytecode VM; Linux preview and
+the interpreted REPL do not emulate these Config operations.
+
 ## Names
 
 The initial naming conventions are:
@@ -285,6 +291,17 @@ contract: the ordinary initializer rejects modules requiring locals, while
 `Initialize_With_Locals` requires an exact host-supplied count and matching
 value-kind and ownership-type tags. A module declaration never instantiates an
 owned value by itself.
+
+Dynamic locals can now take ownership of a moved operand of the exact same
+ownership type. The VM's operand verifier preserves that tag through stack
+operations and joins; the ownership verifier tracks the destination's lifetime.
+An unrestricted literal cannot manufacture a move-only or must-handle local,
+even when the ownership type number is zero. Halt may return the top moved
+value to its host, but cannot abandon another moved operand beneath it. Imports
+using a local argument still reserve space for their completion value.
+See `tests/ccl-owned-locals` for the Linux-hosted transfer regressions. This is
+the generic transfer machinery needed by resource factories, not yet public
+source-level factory syntax or permission to use an integer as a Config handle.
 
 Native behavior tests can be built and run from the repository root with:
 

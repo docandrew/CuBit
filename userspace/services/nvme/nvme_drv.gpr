@@ -1,5 +1,8 @@
 project NVMe_Drv is
 
+    type Profile_Mode is ("off", "on");
+    IO_Profile : Profile_Mode := external ("CUBIT_NVME_IO_PROFILE", "off");
+
     for Languages use ("Ada");
 
     for Object_Dir use "build";
@@ -33,6 +36,8 @@ project NVMe_Drv is
         for Default_Switches ("Ada") use
         (
             "-O2",
+            "-gnat2022",
+            "-gnateDnvme_io_profile=" & IO_Profile,
             "-fstack-usage",
             "-fomit-frame-pointer",
             "-mno-red-zone",

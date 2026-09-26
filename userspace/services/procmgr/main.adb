@@ -14,6 +14,7 @@
 --    4 = CAP_PROCESS with RIGHT_EXECUTE + RIGHT_GRANT
 ------------------------------------------------------------------------------
 with Ada.Unchecked_Conversion;
+with Config_Worker_Startup;
 with Interfaces; use Interfaces;
 with CCL.Configurations;
 with CCL.Declarations;
@@ -22,6 +23,9 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Audio_Control;
+with CuBit.Clock_Control;
+with CuBit.TLS_Protocol;
+with CuBit.TLS_Scopes;
 with CuBit.Authority_Policy;
 with CuBit.Log_Protocol;
 with CuBit.Authority; use CuBit.Authority;
@@ -57,6 +61,7 @@ procedure main is
    --  FS capability slot
    CAP_SLOT_FS_LOCAL     : constant Unsigned_64 := 1;
    CAP_SLOT_CONFIG_LOCAL : constant Unsigned_64 := 2;
+   Config_Storage_Selected : Boolean := False;
 
    --  Bounded launch-authority provenance ledger.  This records why procmgr
    --  attempted or installed authority; live authority remains authoritative
@@ -87,6 +92,7 @@ procedure main is
    --  Service routing identifiers
    SERVICE_FS     : constant Unsigned_8 := 0;
    SERVICE_CONFIG : constant Unsigned_8 := 1;
+   SERVICE_TLS    : constant Unsigned_8 := 2;
 
    --  ELF buffer (also serves as grant buffer to FS for zero-copy reads)
    elfBuf : System.Address := System.Null_Address;
@@ -100,6 +106,13 @@ procedure main is
    --  Grant to config service covering elfBuf
    Config_Grant : CuBit.Memory_Grants.Grant_Reference;
    Config_Grant_Ready : Boolean := False;
+
+   --  procmgr's own policy endpoint to tls.svc (Policy_Tag) and a loan of
+   --  elfBuf for scope lists, minted once tls.svc has registered.
+   CAP_SLOT_TLS_LOCAL : constant Unsigned_64 := 60;
+   TLS_Policy_PID : Unsigned_64 := 0;
+   TLS_Grant : CuBit.Memory_Grants.Grant_Reference;
+   TLS_Policy_Ready : Boolean := False;
 
    ---------------------------------------------------------------------------
    --  printDec - print a small unsigned number in decimal
@@ -137,7 +150,7 @@ procedure main is
                        length => 1,
                        flags  => 0,
                        reserved  => 0);
-      replyMsg.words := (0 => word0, others => 0);
+      replyMsg.words := [0 => word0, others => 0];
       ignore := reply (dest, replyMsg);
    end sendReply;
 
@@ -854,9 +867,12 @@ procedure main is
                                    Unsigned_64 (param0) = CuBit.Log_Protocol.Observer_Service_Role;
                                  isLogPublisher : constant Boolean :=
                                    Unsigned_64 (param0) = DRIVER_LOGSTORE;
+                                 isClockControl : constant Boolean :=
+                                   Unsigned_64 (param0) = CuBit.Clock_Control.Service_Role;
                                  use CuBit.Authority_Policy;
                                  Authority : constant Bootstrap_Authority :=
                                    (if isAudioControl then Master_Audio
+                                    elsif isClockControl then Clock_Adjustment
                                     elsif isLogObserver then Log_Observation
                                     else Log_Publication);
                                  Approval : constant Decision := Evaluate
@@ -870,7 +886,7 @@ procedure main is
                                  --  Only the trusted startup-plan path can
                                  --  approve this declared system authority.
                                  --  OP_SPAWN cannot supply systemStartup.
-                                 if (isAudioControl or isLogObserver)
+                                 if (isAudioControl or isLogObserver or isClockControl)
                                    and then Approval /= Approved
                                  then
                                     recordAuthority
@@ -885,6 +901,7 @@ procedure main is
                                     driverPID := getInfo (
                                        SYSINFO_REGISTERED_DRIVER,
                                        (if isAudioControl then DRIVER_MIXER
+                                        elsif isClockControl then DRIVER_CLOCK
                                         elsif isLogObserver then DRIVER_LOGSTORE
                                         else Unsigned_64 (param0)));
                                     exit when driverPID /= 0;
@@ -894,6 +911,8 @@ procedure main is
 
                                  if isAudioControl then
                                     Issued_Tag := CuBit.Audio_Control.Authority_Tag;
+                                 elsif isClockControl then
+                                    Issued_Tag := CuBit.Clock_Control.Authority_Tag;
                                  elsif (isLogObserver or isLogPublisher)
                                    and then Next_Log_Issuance /= 0
                                  then
@@ -1033,6 +1052,44 @@ procedure main is
    SANDBOX_APP_FOLDER : constant Unsigned_8 := 2;
 
    ---------------------------------------------------------------------------
+   --  ensureTLSPolicy
+   --  Once tls.svc has registered, mint procmgr's own Policy_Tag endpoint to
+   --  it and lend it elfBuf for scope lists. False while tls.svc is absent:
+   --  TLS scopes are then not installed, so clients are denied, never
+   --  broadened. A restarted tls.svc (new PID) is not yet re-bound.
+   ---------------------------------------------------------------------------
+   function ensureTLSPolicy return Boolean is
+      TLS_PID : constant Unsigned_64 :=
+        getInfo (SYSINFO_REGISTERED_DRIVER, CuBit.TLS_Protocol.Service_Role);
+      Minted : Unsigned_64;
+   begin
+      if TLS_Policy_Ready then
+         return TLS_PID = TLS_Policy_PID;
+      end if;
+      if TLS_PID = 0 or else TLS_PID = Unsigned_64'Last then
+         return False;
+      end if;
+      mintRecorded
+        (syscall (SYSCALL_GETPID), CAP_TYPE_ENDPOINT, TLS_PID,
+         CuBit.TLS_Protocol.Policy_Tag, 3, CAP_SLOT_TLS_LOCAL,
+         AUTH_SOURCE_KERNEL_BOOTSTRAP, AUTH_REASON_SELF_BOOTSTRAP, False,
+         Minted);
+      if Minted = Unsigned_64'Last then
+         debugPrint ("procmgr: tls policy endpoint mint failed" & LF);
+         return False;
+      end if;
+      CuBit.Memory_Grants.Create_Via_Capability
+        (CAP_SLOT_TLS_LOCAL, elfBuf, INITIAL_BUF_PAGES, True,
+         TLS_Grant, TLS_Policy_Ready);
+      if TLS_Policy_Ready then
+         TLS_Policy_PID := TLS_PID;
+      else
+         debugPrint ("procmgr: tls policy grant failed" & LF);
+      end if;
+      return TLS_Policy_Ready;
+   end ensureTLSPolicy;
+
+   ---------------------------------------------------------------------------
    --  parseAndSendACL
    --  Parse .cubit.access section from the ELF in elfBuf and send
    --  OP_SET_ACL to the FS server. Missing/malformed sections grant nothing.
@@ -1042,14 +1099,22 @@ procedure main is
    procedure parseAndSendACL
      (childPID        : Unsigned_64;
       elfSize         : Unsigned_64;
+      policyReady     : out Boolean;
       sandboxOverride : Unsigned_8 := SANDBOX_NONE;
       cwd             : String := "";
-      binaryName      : String := "")
+      binaryName      : String := "";
+      --  TLS scopes reach the network through tls.svc, so they need the
+      --  same launch approval as network scopes; a manifest alone never
+      --  grants them.
+      networkApproved : Boolean := False)
    is
       e_shoff     : Unsigned_64;
       e_shentsize : Unsigned_16;
       e_shnum     : Unsigned_16;
    begin
+      -- Missing/malformed policy still grants nothing. Once valid FS/Config
+      -- scopes are requested, failure to install them must fail the launch.
+      policyReady := True;
       if elfSize < 64 then
          goto No_Access_Policy;
       end if;
@@ -1204,6 +1269,7 @@ procedure main is
                         pLen    : Natural;
                         fsCount     : Natural := 0;
                         configCount : Natural := 0;
+                        tlsCount    : Natural := 0;
                      begin
                         for j in 0 .. Natural (count) - 1 loop
                            entBase := sh_offset + 16 +
@@ -1218,7 +1284,8 @@ procedure main is
                            if pLen > 64 then
                               goto No_Access_Policy;
                            end if;
-                           if locals (j).service not in SERVICE_FS | SERVICE_CONFIG
+                           if locals (j).service not in
+                             SERVICE_FS | SERVICE_CONFIG | SERVICE_TLS
                            then
                               goto No_Access_Policy;
                            end if;
@@ -1234,6 +1301,18 @@ procedure main is
                                 (locals (j).prefix (1 .. pLen)))
                            then
                               goto No_Access_Policy;
+                           end if;
+                           if locals (j).service = SERVICE_TLS then
+                              declare
+                                 Parsed : CuBit.TLS_Scopes.Scope;
+                                 Valid : Boolean;
+                              begin
+                                 CuBit.TLS_Scopes.Parse
+                                   (locals (j).prefix (1 .. pLen), Parsed, Valid);
+                                 if not Valid or else locals (j).rights /= 1 then
+                                    goto No_Access_Policy;
+                                 end if;
+                              end;
                            end if;
                         end loop;
 
@@ -1258,10 +1337,12 @@ procedure main is
                            end loop;
                         end if;
 
-                        --  Count FS vs CONFIG entries
+                        --  Count entries per service
                         for j in 0 .. Natural (count) - 1 loop
                            if locals (j).service = SERVICE_CONFIG then
                               configCount := configCount + 1;
+                           elsif locals (j).service = SERVICE_TLS then
+                              tlsCount := tlsCount + 1;
                            else
                               fsCount := fsCount + 1;
                            end if;
@@ -1281,7 +1362,7 @@ procedure main is
                               end loop;
 
                               for j in 0 .. Natural (count) - 1 loop
-                                 if locals (j).service /= SERVICE_CONFIG
+                                 if locals (j).service = SERVICE_FS
                                  then
                                     base := idx * 72;
                                     grantBuf (base) := locals (j).rights;
@@ -1307,17 +1388,29 @@ procedure main is
                                              length => 4,
                                              flags  => 0,
                                              reserved  => 0);
-                              aclMsg.words := (0 => childPID,
+                              aclMsg.words := [0 => childPID,
                                                1 => Unsigned_64 (fsCount),
                                                2 => fsGrant.slot,
-                                               3 => fsGrant.generation);
+                                               3 => fsGrant.generation];
                               aclTag := capCall (
                                  CAP_SLOT_FS_LOCAL, aclMsg);
+                              if aclTag.label /= REPLY_OK or else aclTag.length /= 1 or else
+                                aclTag.flags /= 0 or else aclTag.reserved /= 0
+                              then
+                                 debugPrint ("procmgr: filesystem scope installation failed" & LF);
+                                 policyReady := False;
+                                 return;
+                              end if;
                            end;
                         end if;
 
                         --  Pass 2: Write CONFIG entries and send
-                        if configCount > 0 and Config_Grant_Ready then
+                        if configCount > 0 then
+                           if not Config_Grant_Ready then
+                              debugPrint ("procmgr: config policy grant unavailable" & LF);
+                              policyReady := False;
+                              return;
+                           end if;
                            declare
                               grantBuf : array
                                  (0 .. configCount * 72 - 1)
@@ -1357,14 +1450,71 @@ procedure main is
                                              length => 4,
                                              flags  => 0,
                                              reserved  => 0);
-                              aclMsg.words := (
+                              aclMsg.words := [
                                  0 => childPID,
                                  1 => Unsigned_64 (configCount),
                                  2 => Config_Grant.slot,
-                                 3 => Config_Grant.generation);
+                                 3 => Config_Grant.generation];
                               aclTag := capCall (
                                  CAP_SLOT_CONFIG_LOCAL, aclMsg);
+                              if aclTag.label /= REPLY_OK or else aclTag.length /= 1 or else
+                                aclTag.flags /= 0 or else aclTag.reserved /= 0
+                              then
+                                 debugPrint ("procmgr: config scope installation failed" & LF);
+                                 policyReady := False;
+                                 return;
+                              end if;
                            end;
+                        end if;
+
+                        --  Pass 3: TLS scopes to tls.svc, if it is running.
+                        if tlsCount > 0 then
+                           if not networkApproved then
+                              debugPrint ("procmgr: TLS scopes need network " &
+                                          "approval; not installed" & LF);
+                           elsif not ensureTLSPolicy then
+                              debugPrint ("procmgr: tls.svc unavailable; " &
+                                          "TLS scopes not installed" & LF);
+                           else
+                              declare
+                                 grantBuf : array
+                                    (0 .. tlsCount *
+                                       CuBit.TLS_Protocol.Scope_Entry_Bytes - 1)
+                                    of Unsigned_8 with
+                                    Import, Address => elfBuf;
+                                 base : Natural;
+                                 idx  : Natural := 0;
+                                 tlsMsg : Message := NULL_MESSAGE;
+                                 tlsTag : MessageTag;
+                              begin
+                                 grantBuf := [others => 0];
+                                 for j in 0 .. Natural (count) - 1 loop
+                                    if locals (j).service = SERVICE_TLS then
+                                       base := idx *
+                                         CuBit.TLS_Protocol.Scope_Entry_Bytes;
+                                       grantBuf (base) := locals (j).rights;
+                                       grantBuf (base + 1) :=
+                                          locals (j).prefixLen;
+                                       for c in 0 .. Natural (locals (j).prefixLen) - 1 loop
+                                          grantBuf (base + 8 + c) :=
+                                             Unsigned_8 (Character'Pos (
+                                                locals (j).prefix (1 + c)));
+                                       end loop;
+                                       idx := idx + 1;
+                                    end if;
+                                 end loop;
+                                 tlsMsg.tag :=
+                                   (label => CuBit.TLS_Protocol.Set_Scopes_Operation,
+                                    length => 4, flags => 0, reserved => 0);
+                                 tlsMsg.words :=
+                                   [childPID, Unsigned_64 (tlsCount),
+                                    TLS_Grant.slot, TLS_Grant.generation];
+                                 tlsTag := capCall (CAP_SLOT_TLS_LOCAL, tlsMsg);
+                                 if tlsTag.label /= REPLY_OK then
+                                    debugPrint ("procmgr: tls scopes rejected" & LF);
+                                 end if;
+                              end;
+                           end if;
                         end if;
 
                         return;  -- policy dispatched
@@ -1491,7 +1641,9 @@ procedure main is
       sandboxMode : Unsigned_8 := SANDBOX_NONE;
       cwd         : String := "";
       approveNetwork : Network_Approval := No_Network;
-      systemStartup : Boolean := False) return Unsigned_64
+      systemStartup : Boolean := False;
+      startupRole : CCL.Configurations.Startup_Role := CCL.Configurations.Application)
+      return Unsigned_64
    is
       elfSize       : Unsigned_64;
       newPID        : Unsigned_64;
@@ -1500,7 +1652,39 @@ procedure main is
       pkgId         : String (1 .. 128);
       pkgIdLen      : Natural := 0;
       streamBitmask : Unsigned_64 := 0;
+      use type CCL.Configurations.Startup_Role;
+      procedure Discard_Authorized_Child is
+         type Policy_Service is (Files, Configuration);
+         Ignore : Unsigned_64;
+      begin
+         --  Revoke before releasing the PID. capCall overwrites its message
+         --  with a reply: construct a fresh request for EACH policy service.
+         for Service in Policy_Service loop
+            if Service = Files or (Service = Configuration and Config_Grant_Ready) then
+               declare
+                  Cleanup : Message := NULL_MESSAGE;
+                  Tag : MessageTag;
+               begin
+                  Cleanup.tag := (label => CuBit.Filesystems.OP_REVOKE_ACL,
+                    length => 1, flags => 0, reserved => 0);
+                  Cleanup.words (0) := newPID;
+                  Tag := capCall
+                    ((if Service = Files then CAP_SLOT_FS_LOCAL else CAP_SLOT_CONFIG_LOCAL), Cleanup);
+                  if Tag.label /= REPLY_OK then
+                     debugPrint ("procmgr: failed launch policy cleanup rejected" & LF);
+                  end if;
+               end;
+            end if;
+         end loop;
+         Ignore := syscall (SYSCALL_KILL, newPID);
+      end Discard_Authorized_Child;
    begin
+      if startupRole = CCL.Configurations.Config_Storage and then
+        (not systemStartup or Config_Storage_Selected)
+      then
+         debugPrint ("procmgr: Config storage role not available" & LF);
+         return 0;
+      end if;
       debugPrint ("procmgr: spawn: ");
       debugPrint (name);
       debugPrint ("" & LF);
@@ -1747,6 +1931,23 @@ procedure main is
          end;
       end if;
 
+      --  Registration as tls.svc. Package identity is only self-declared,
+      --  so this also requires the trusted startup plan: an impostor TLS
+      --  service would see every client's plaintext.
+      if pkgIdLen = 13 and then systemStartup and then
+        pkgId (1 .. 13) = "com.cubit.tls"
+      then
+         declare
+            ignore : Unsigned_64;
+         begin
+            mintRecorded
+              (newPID, CAP_TYPE_NOTIFICATION, CuBit.TLS_Protocol.Service_Role,
+               0, 2, CAP_SLOT_SERVICE_REG, AUTH_SOURCE_IDENTITY_POLICY,
+               AUTH_REASON_PACKAGE_ID, False, ignore);
+            debugPrint ("procmgr: minted tls ntf cap" & LF);
+         end;
+      end if;
+
       --  A recycled PID must not inherit the previous occupant's service
       --  policy or open handles, including when this ELF has no access section.
       --  The child is still suspended: failure to establish default-deny is
@@ -1786,11 +1987,41 @@ procedure main is
                end if;
             end if;
          end;
+         --  TLS scopes are keyed by PID too: a reused PID must not inherit
+         --  another program's names.
+         if ensureTLSPolicy then
+            declare
+               TLS_Reset : Message := NULL_MESSAGE;
+            begin
+               TLS_Reset.tag :=
+                 (label => CuBit.TLS_Protocol.Revoke_Operation, length => 1,
+                  flags => 0, reserved => 0);
+               TLS_Reset.words (0) := newPID;
+               resetTag := capCall (CAP_SLOT_TLS_LOCAL, TLS_Reset);
+               if resetTag.label /= REPLY_OK then
+                  debugPrint ("procmgr: tls policy reset failed" & LF);
+                  ignored := syscall (SYSCALL_KILL, newPID);
+                  return 0;
+               end if;
+            end;
+         end if;
       end;
 
       --  Parse .cubit.access and install only its validated scopes.
-      parseAndSendACL (newPID, elfSize,
-                       sandboxMode, cwd, name);
+      declare
+         Policy_Ready : Boolean;
+      begin
+         parseAndSendACL (newPID, elfSize, Policy_Ready,
+                          sandboxMode, cwd, name,
+                          networkApproved => approveNetwork /= No_Network);
+         if not Policy_Ready then
+            -- Child has never run. Remove partial service-side installation
+            -- BEFORE killing it, while its PID is still occupied; cleanup
+            -- must not accidentally address a later occupant of that PID.
+            Discard_Authorized_Child;
+            return 0;
+         end if;
+      end;
 
       --  Query config store for resource quotas (overwrites elfBuf)
       declare
@@ -1823,6 +2054,41 @@ procedure main is
             end;
          end if;
       end;
+
+      if startupRole = CCL.Configurations.Config_Storage then
+         declare
+            Config_PID : constant Unsigned_64 := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_CONFIG);
+            Minted : Unsigned_64;
+            Attachment : Message := NULL_MESSAGE;
+         begin
+            --  Selected by trusted init.ccl, not by executable identity or a
+            --  public spawn request. Never overwrite an installed backend.
+            Config_Storage_Selected := True;
+            if Config_PID = 0 or Config_PID = Unsigned_64'Last then
+               Discard_Authorized_Child;
+               return 0;
+            end if;
+            mintRecorded (Config_PID, CAP_TYPE_ENDPOINT, newPID, 0, 3,
+              Unsigned_64 (Config_Worker_Startup.Worker_Endpoint),
+              AUTH_SOURCE_KERNEL_BOOTSTRAP, AUTH_REASON_STARTUP_REQUIRED, False, Minted);
+            if Minted = Unsigned_64'Last then
+               Discard_Authorized_Child;
+               return 0;
+            end if;
+            Attachment.tag := (label => Config_Worker_Startup.Operation'Enum_Rep
+              (Config_Worker_Startup.Attach_Worker), length => 1, flags => 0, reserved => 0);
+            Attachment.words (0) := newPID;
+            Attachment.tag := capCall (CAP_SLOT_CONFIG_LOCAL, Attachment);
+            if Attachment.tag.label /= REPLY_OK or Attachment.tag.length /= 1
+              or Attachment.tag.flags /= 0 or Attachment.tag.reserved /= 0
+              or Attachment.words /= [0, 0, 0, 0]
+            then
+               debugPrint ("procmgr: Config storage attachment failed" & LF);
+               Discard_Authorized_Child;
+               return 0;
+            end if;
+         end;
+      end if;
 
       declare
          ignore : Unsigned_64;
@@ -1896,7 +2162,7 @@ procedure main is
             getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DESKTOP));
       begin
          if approval = Browser_Outbound then
-            debugPrint ("procmgr: desktop NetSurf outbound approval" & LF);
+            debugPrint ("procmgr: desktop browser outbound approval: " & name & LF);
          end if;
          if cwdLen > 0 then
             declare
@@ -1976,7 +2242,7 @@ procedure main is
          begin
             debugPrint ("procmgr: init spawn: " & Name & LF);
             PID := spawnByName
-              (Name, Unsigned_64 (Item.Priority), systemStartup => True,
+              (Name, Unsigned_64 (Item.Priority), systemStartup => True, startupRole => Item.Role,
                approveNetwork =>
                  (if Item.Approval = Approve_Declared then Declared_Network
                   else No_Network));
@@ -2013,7 +2279,7 @@ begin
          (tag      => (label => OP_READY, length => 0,
                        flags => 0, reserved => 0),
           authorityTag => 0,
-          words    => (others => 0)));
+          words    => [others => 0]));
    end;
 
    debugPrint ("procmgr: registered as driver" & LF);

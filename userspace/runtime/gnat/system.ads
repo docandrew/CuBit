@@ -77,7 +77,9 @@ package System is
    Min_Int               : constant := Long_Long_Integer'First;
    Max_Int               : constant := Long_Long_Integer'Last;
 
-   Max_Binary_Modulus    : constant := 2 ** Long_Long_Integer'Size;
+   --  128-bit modular types (Interfaces.Unsigned_128), as in GNAT's standard
+   --  x86-64 runtime. Signed Min_Int/Max_Int deliberately stay 64-bit.
+   Max_Binary_Modulus    : constant := 2 ** 128;
    Max_Nonbinary_Modulus : constant := 2 ** Integer'Size - 1;
 
    Max_Base_Digits       : constant := Long_Long_Float'Digits;

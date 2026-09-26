@@ -22,6 +22,7 @@ with CuBit.Directory_Paths;
 with CuBit.File_Access;
 with Cpio;
 with Ext2;
+with Ext2_Support;
 with ISO_Records;
 with ISO9660;
 with Shared_Objects;
@@ -531,6 +532,8 @@ procedure main is
             return REPLY_NO_SPACE;
          when Ext2.Write_File_Range_Unsupported =>
             return REPLY_FILE_RANGE_UNSUPPORTED;
+         when Ext2.Write_Object_Unsupported =>
+            return REPLY_UNSUPPORTED_OBJECT;
       end case;
    end replyForWrite;
 
@@ -812,14 +815,27 @@ procedure main is
          if inodeStatus /= Ext2.Read_Complete then
             sendReply (sender, REPLY_IO_ERROR, 0);
             return;
-         elsif Ext2.inodeType (objectInode) = Ext2.INODE_DIRECTORY then
-            sendReply (sender, REPLY_WRONG_OBJECT_TYPE, 0);
-            return;
          end if;
+         --  Gate the actual inode, not the untrusted directory-entry type.
+         --  No handle/alias is attached and no truncate occurs on rejection.
+         case Ext2_Support.Check_File (objectInode) is
+            when Ext2_Support.File_Allowed => null;
+            when Ext2_Support.Not_A_Regular_File =>
+               sendReply (sender, REPLY_WRONG_OBJECT_TYPE, 0);
+               return;
+            when Ext2_Support.Not_A_Single_Link | Ext2_Support.Unsupported_Metadata =>
+               sendReply (sender, REPLY_UNSUPPORTED_OBJECT, 0);
+               return;
+         end case;
          Open_Inodes.Attach
            (inodeObjects, Open_Inodes.Owner_Index (handle),
-            (useVolume, inodeNum), objectInode, attached);
-         if attached not in Open_Inodes.Created | Open_Inodes.Shared then
+            (useVolume, inodeNum), objectInode, attached,
+            (if (openFlags and OPEN_DENY_SHARING) /= 0 then Open_Inodes.Deny_Sharing
+             else Open_Inodes.Allow_Sharing));
+         if attached = Open_Inodes.Sharing_Conflict then
+            sendReply (sender, REPLY_SHARING_VIOLATION, 0);
+            return;
+         elsif attached not in Open_Inodes.Created | Open_Inodes.Shared then
             sendReply (sender, REPLY_ERR, 0);
             return;
          end if;
@@ -945,6 +961,8 @@ procedure main is
                return REPLY_IO_ERROR;
             when Ext2.Read_File_Range_Unsupported =>
                return REPLY_FILE_RANGE_UNSUPPORTED;
+            when Ext2.Read_Object_Unsupported =>
+               return REPLY_UNSUPPORTED_OBJECT;
          end case;
       end replyForRead;
    begin
@@ -1258,6 +1276,60 @@ procedure main is
       end case;
    end handleFlush;
 
+   procedure handleResize (sender : ProcessID; msg : Message) is
+      handle : constant Integer :=
+        resolveHandle (msg.words (0), sender, FILE_OBJECT);
+      updated : Ext2.Inode;
+      status : Ext2.Truncate_Status;
+   begin
+      if msg.tag.length /= 2 or else msg.tag.flags /= 0 or else
+        msg.tag.reserved /= 0 or else handle < 0
+      then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      elsif (files (handle).openRights and ACL_WRITE) = 0 then
+         sendReply (sender, REPLY_ACCESS_DENIED, 0);
+         return;
+      elsif files (handle).filesystemKind /= EXT2_FILESYSTEM then
+         sendReply (sender, REPLY_READ_ONLY, 0);
+         return;
+      end if;
+      Ext2.resizeFile
+        (Contexts (files (handle).volume).Fs, files (handle).inodeNum,
+         msg.words (1), updated, status);
+      case status is
+         when Ext2.Truncate_Complete =>
+            Open_Inodes.Replace
+              (inodeObjects, Open_Inodes.Owner_Index (handle), updated);
+            sendReply (sender, REPLY_OK, 0);
+         when Ext2.Truncate_Recovery_Required =>
+            declare
+               volume : constant Volume_Index := files (handle).volume;
+               number : constant Unsigned_32 := files (handle).inodeNum;
+            begin
+               for Other in files'Range loop
+                  if files (Other).active and then
+                    files (Other).objectKind = FILE_OBJECT and then
+                    files (Other).filesystemKind = EXT2_FILESYSTEM and then
+                    files (Other).volume = volume and then
+                    files (Other).inodeNum = number
+                  then
+                     releaseHandle (Other);
+                  end if;
+               end loop;
+            end;
+            sendReply (sender, REPLY_RECOVERY_REQUIRED, 0);
+         when Ext2.Truncate_Read_Only =>
+            sendReply (sender, REPLY_READ_ONLY, 0);
+         when Ext2.Truncate_Unsupported =>
+            sendReply (sender, REPLY_FILE_RANGE_UNSUPPORTED, 0);
+         when Ext2.Truncate_Durability_Unsupported =>
+            sendReply (sender, REPLY_DURABILITY_UNSUPPORTED, 0);
+         when Ext2.Truncate_Invalid | Ext2.Truncate_IO_Error =>
+            sendReply (sender, REPLY_IO_ERROR, 0);
+      end case;
+   end handleResize;
+
    --  Open a directory by bootstrap path.  The returned object is a distinct
    --  PID-bound directory handle; subsequent enumeration carries no path.
    procedure handleOpenDirectory (sender : ProcessID; msg : Message) is
@@ -1429,6 +1501,8 @@ procedure main is
          when Ext2.Read_Device_Error => return REPLY_IO_ERROR;
          when Ext2.Read_File_Range_Unsupported =>
             return REPLY_FILE_RANGE_UNSUPPORTED;
+         when Ext2.Read_Object_Unsupported =>
+            return REPLY_UNSUPPORTED_OBJECT;
       end case;
    end Read_Reply_Label;
 
@@ -1835,12 +1909,32 @@ procedure main is
          declare
             status : Ext2.Rename_Status;
             admission : Admission_Result;
+            inodeNum : Unsigned_32;
+            lookup : Ext2.Directory_Lookup_Status;
          begin
             ensureVolume (Volume_Index (oldVolume), admission);
             if admission /= Admitted then
                sendReply (sender, REPLY_IO_ERROR, 0);
                return;
             end if;
+            --  Do not rename an exclusively held inode. Check identity after
+            --  authority, before any mutation;
+            --  path spelling and caller PID cannot bypass an exclusive hold.
+            Ext2.resolvePath
+              (Contexts (Volume_Index (oldVolume)).Fs,
+               oldPath (oldRelStart .. oldPath'Last), inodeNum, lookup);
+            if lookup not in Ext2.Lookup_Found | Ext2.Lookup_Not_Found then
+               sendReply (sender, Lookup_Reply_Label (lookup), 0);
+               return;
+            elsif lookup = Ext2.Lookup_Found and then Open_Inodes.Exclusively_Held
+              (inodeObjects, (Volume_Index (oldVolume), inodeNum))
+            then
+               sendReply (sender, REPLY_SHARING_VIOLATION, 0);
+               return;
+            end if;
+            --  No source identity means no hold can conflict. Let rename's
+            --  own preflight distinguish an unsupported parent layout from
+            --  an absent source; failed metadata I/O was already stopped above.
             Ext2.renamePath
               (Contexts (Volume_Index (oldVolume)).Fs,
                oldPath (oldRelStart .. oldPath'Last),
@@ -1976,6 +2070,8 @@ begin
             handleClose (sender, msg);
          when OP_FLUSH_FILE =>
             handleFlush (sender, msg);
+         when OP_RESIZE_FILE =>
+            handleResize (sender, msg);
          when OP_OPEN_DIRECTORY =>
             handleOpenDirectory (sender, msg);
          when OP_READ_DIRECTORY_PAGE =>

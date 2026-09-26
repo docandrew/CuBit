@@ -16,6 +16,25 @@ package body Memory_Grants with SPARK_Mode => On is
         end if;
     end Advance_Generation;
 
+    procedure Advance_Generation_Within
+      (value    : in out Live_Grant_Generation;
+       ceiling  : Live_Grant_Generation;
+       reusable :    out Boolean)
+    is
+    begin
+        if value < ceiling then
+            value := value + 1;
+            reusable := True;
+        else
+            reusable := False;
+        end if;
+    end Advance_Generation_Within;
+
+    procedure Prove_Lives_Disjoint (Earlier, Later : Process_Generation) is
+    begin
+        pragma Assert (Grant_Generation (Earlier) + 1 <= Grant_Generation (Later));
+    end Prove_Lives_Disjoint;
+
     function To_Live_Generation
       (value : Unsigned_64) return Live_Grant_Generation
     is

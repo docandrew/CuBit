@@ -7,6 +7,11 @@
 (startup v1
   (start "logstore.svc" (priority 5))
   (start "clock.svc" (priority 5))
+  # Typed Config persistence is a real Turso worker, not Workbench-local state.
+  (start "config-storage.svc" (priority 5) (role config-storage))
+  # HTTPS for NetSurf and other clients. Approves tls.svc's declared scope
+  # (outbound TCP with DNS); each client still needs its own tls-scope.
+  (start "tls.svc" (priority 5) (network approve-declared))
   (start "display.svc" (priority 5))
   (start "desktop.svc" (priority 4))
 )

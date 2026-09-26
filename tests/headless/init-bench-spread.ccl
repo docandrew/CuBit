@@ -1,0 +1,8 @@
+# CPU-spread benchmark: four identical CPU-bound instances started together.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "bench-spread.app" (priority 3))
+  (start "bench-spread.app" (priority 3))
+  (start "bench-spread.app" (priority 3))
+  (start "bench-spread.app" (priority 3))
+)

@@ -98,6 +98,49 @@ fn allocation_probe() {
     }
 }
 
+/// Threads and futex locks (docs/threads.md): contended mutex, condvar
+/// handoff and join, on however many CPUs the kernel spreads them over.
+fn thread_probe() {
+    use alloc::sync::Arc;
+    use cubit::sync::{Condvar, Mutex};
+
+    let counter = Arc::new(Mutex::new(0u64));
+    let handles: Vec<_> = (0..4)
+        .map(|i| {
+            let counter = counter.clone();
+            cubit::thread::spawn_with_stack(64 * 1024, move || {
+                for _ in 0..10_000 {
+                    *counter.lock() += 1;
+                }
+                i
+            })
+            .expect("thread started")
+        })
+        .collect();
+    let ids: u64 = handles.into_iter().map(|h| h.join()).sum();
+    assert_eq!(ids, 0 + 1 + 2 + 3);
+    assert_eq!(*counter.lock(), 40_000);
+
+    let pair = Arc::new((Mutex::new(0u32), Condvar::new()));
+    let other = pair.clone();
+    let waiter = cubit::thread::spawn_with_stack(64 * 1024, move || {
+        let (m, c) = &*other;
+        let mut v = m.lock();
+        while *v == 0 {
+            v = c.wait(v);
+        }
+        *v
+    })
+    .expect("thread started");
+    {
+        let (m, c) = &*pair;
+        *m.lock() = 7;
+        c.notify_all();
+    }
+    assert_eq!(waiter.join(), 7);
+    cubit::debug_write("RUST-THREADS: PASS\n");
+}
+
 fn heap_failure_probe(host: &EndpointSlot) {
     // The dedicated headless VM has 128 MiB. This runs only after both
     // executables have loaded and completed their allocator/authority checks.
@@ -126,7 +169,7 @@ fn heap_failure_probe(host: &EndpointSlot) {
 
 #[unsafe(no_mangle)]
 extern "C" fn rust_main() -> ! {
-    // SAFETY: this probe is single-threaded and never mutates ZEROED.
+    // SAFETY: read before any thread starts; ZEROED is never mutated.
     let zeroed = unsafe { core::ptr::read_volatile(&raw const ZEROED) };
     if zeroed != [0; 8] {
         report(0, 1);
@@ -143,6 +186,7 @@ extern "C" fn rust_main() -> ! {
         }
     }
     allocation_probe();
+    thread_probe();
     match host.call(Message::new(ALLOCATION_REPORT, 1, [1, 0, 0, 0])) {
         Ok(reply) if reply.tag.label == REPLY_OK && reply.tag.length == 0 => {}
         _ => {

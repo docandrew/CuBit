@@ -1,0 +1,116 @@
+package TCP is
+
+   -- RFC 793
+
+   type Port is unsigned 16;
+   type Sequence_Number is unsigned 32;
+   type Acknowledgment_Number is unsigned 32;
+   type Data_Offset is range 5 .. 2 ** 4 - 1 with Size => 4;
+   type Reserved is range 0 .. 0 with Size => 3;
+   type Window is unsigned 16;
+   type Checksum is unsigned 16;
+   type Urgent_Pointer is unsigned 16;
+
+   type Kind is
+      (End_Of_Option_List   => 0,
+       No_Operation         => 1,
+       Maximum_Segment_Size => 2,
+       Window_Scale         => 3, -- RFC 7323
+       SACK_Permitted       => 4, -- RFC 2018
+       SACK                 => 5, -- RFC 2018
+       Timestamps           => 8) -- RFC 7323
+   with Size => 8;
+
+   type Length is range 2 .. 2 ** 8 - 1 with Size => 8;
+   type TSval is unsigned 32;
+   type TSecr is unsigned 32;
+   type Shift_Cnt is unsigned 8;
+   type Max_Seg_Size is unsigned 16;
+   type SACK_Edge is unsigned 32;
+
+   type SACK_Block is
+      message
+         Left_Edge : SACK_Edge;
+         Right_Edge : SACK_Edge;
+      end message;
+
+   type SACK_Blocks is sequence of SACK_Block;
+
+   type Option is
+      message
+         Kind : Kind
+            then null
+               if Kind = End_Of_Option_List or Kind = No_Operation
+            then Length
+               if Kind = Maximum_Segment_Size
+                  or Kind = Window_Scale
+                  or Kind = SACK_Permitted
+                  or Kind = SACK
+                  or Kind = Timestamps;
+         Length : Length
+            then Shift_Cnt
+               if Kind = Window_Scale
+                  and Length = (TCP::Kind'Size + TCP::Length'Size + TCP::Shift_Cnt'Size) / 8
+            then Max_Seg_Size
+               if Kind = Maximum_Segment_Size
+                  and Length = (TCP::Kind'Size + TCP::Length'Size + TCP::Max_Seg_Size'Size) / 8
+                  -- "This field must only be sent in the initial connection request
+                  -- (i.e., in segments with the SYN control bit set)."
+                  -- Eng/RecordFlux/RecordFlux#78
+            then SACK_Blocks
+               if Kind = SACK
+            then TSval
+               if Kind = Timestamps
+                  and Length = (TCP::Kind'Size + TCP::Length'Size + TCP::TSval'Size + TCP::TSecr'Size) / 8
+            then null
+               if Kind = SACK_Permitted
+                  and Length = (TCP::Kind'Size + TCP::Length'Size) / 8;
+         Shift_Cnt : Shift_Cnt
+            then null;
+         Max_Seg_Size : Max_Seg_Size
+            then null;
+         SACK_Blocks : SACK_Blocks
+            with Size => Length * 8 - Kind'Size - Length'Size
+            then null;
+         TSval : TSval;
+         TSecr : TSecr
+            then null;
+      end message;
+
+   type Options is sequence of Option;
+
+   type Segment_Length is range 20 .. 2 ** 32 - 1 with Size => 32;
+
+   type Segment (Segment_Length : Segment_Length) is
+      message
+         Source_Port : Port;
+         Destination_Port : Port;
+         Sequence_Number : Sequence_Number;
+         Acknowledgment_Number : Acknowledgment_Number;
+         Data_Offset : Data_Offset
+            then Reserved
+               if Segment_Length >= Data_Offset * 4;
+         Reserved : Reserved;
+         NS : Boolean;  -- Nonce Sum (RFC 3540)
+         CWR : Boolean; -- Congestion Window Reduced (RFC 3168)
+         ECN : Boolean; -- ECN-Echo (RFC 3168)
+         URG : Boolean; -- Urgent Pointer field significant (RFC793, 3.1)
+         ACK : Boolean; -- Acknowledgement field significant (RFC793, 3.1)
+         PSH : Boolean; -- Push function (RFC793, 3.1)
+         RST : Boolean; -- Reset the connection (RFC793, 3.1)
+         SYN : Boolean; -- Synchronize sequence numbers (RFC793, 3.1)
+         FIN : Boolean; -- No more data from sender (RFC793, 3.1)
+         Window : Window;
+         Checksum : Checksum;
+         Urgent_Pointer : Urgent_Pointer
+            then Options
+               if URG = True or (URG = False and Urgent_Pointer = 0);
+         Options : Options
+            with Size => (Data_Offset * 32) - (Urgent_Pointer'Last - Source_Port'First + 1)
+            then Data
+               if (Options'Last - Source_Port'First + 1) mod 32 = 0;
+         Data : Opaque
+            with Size => (Segment_Length * 8) - (Data_Offset * 32);
+      end message;
+
+end TCP;

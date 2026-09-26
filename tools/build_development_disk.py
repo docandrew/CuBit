@@ -50,8 +50,11 @@ def build(output, files):
         candidate = root / 'disk.img'
         with candidate.open('wb') as stream:
             stream.truncate(size)
-        subprocess.run(['mke2fs', '-q', '-t', 'ext2', '-F', '-d', str(stage),
-                        str(candidate)], check=True)
+        # 4 KiB blocks: CuBit's ext2 reads single and double indirect blocks,
+        # which reach ~4 GiB per file at this block size (~64 MiB at 1 KiB;
+        # Servo's cubitshell.app alone is 85 MB).
+        subprocess.run(['mke2fs', '-q', '-t', 'ext2', '-b', '4096', '-F',
+                        '-d', str(stage), str(candidate)], check=True)
         subprocess.run(['e2fsck', '-fn', str(candidate)], check=True,
                        stdout=subprocess.DEVNULL)
         dumped = root / 'payload'

@@ -681,6 +681,13 @@ is
     procedure fxrstor (saveArea : System.Address);
 
     ---------------------------------------------------------------------------
+    -- User FS base (CR4.FSGSBASE is enabled on every CPU). The kernel does not
+    -- use FS, so the live register always holds the running thread's value.
+    ---------------------------------------------------------------------------
+    function rdfsbase return Unsigned_64;
+    procedure wrfsbase (val : Unsigned_64);
+
+    ---------------------------------------------------------------------------
     -- PAT (Page Atribute Table)
     ---------------------------------------------------------------------------
     type PATFlag is mod 255;

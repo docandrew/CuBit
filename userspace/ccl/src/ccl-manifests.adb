@@ -1,6 +1,7 @@
 with CCL.VM;
 with CCL.Declarations;
 with CuBit.Network_Authority;
+with CuBit.TLS_Scopes;
 
 package body CCL.Manifests with SPARK_Mode => On is
    use Interfaces;
@@ -39,8 +40,11 @@ package body CCL.Manifests with SPARK_Mode => On is
    type Access_Right is (Read_File, Write_File, Execute_File, Create_File);
    for Access_Right use (Read_File => 1, Write_File => 2, Execute_File => 4, Create_File => 8);
    type Access_Rights is array (Access_Right) of Boolean;
-   type Access_Domain is (Filesystem_Domain, Config_Domain);
-   for Access_Domain use (Filesystem_Domain => 0, Config_Domain => 1);
+   --  Tls_Domain entries carry a CuBit.TLS_Scopes pattern ("host:port")
+   --  with the Read_File bit meaning "connect"; see Add_TLS_Scope.
+   type Access_Domain is (Filesystem_Domain, Config_Domain, Tls_Domain);
+   for Access_Domain use
+     (Filesystem_Domain => 0, Config_Domain => 1, Tls_Domain => 2);
    type Scope is record
       Domain : Access_Domain := Filesystem_Domain;
       Path : Metadata_Text;
@@ -330,6 +334,8 @@ package body CCL.Manifests with SPARK_Mode => On is
             Item.Network.Action := CuBit.Network_Authority.Connect_TCP;
          elsif Is_Text (Name, "tcp-listen") then
             Item.Network.Action := CuBit.Network_Authority.Listen_TCP;
+         elsif Is_Text (Name, "udp-connect") then
+            Item.Network.Action := CuBit.Network_Authority.Connect_UDP;
          else
             Fail (Invalid_Network_Scope, Cursor); return;
          end if;
@@ -510,6 +516,39 @@ package body CCL.Manifests with SPARK_Mode => On is
          elsif not Failed then Scope_Count := Scope_Count + 1; Scopes (Scope_Count) := Item;
          end if;
       end Add_Scope;
+
+      --  (tls-scope "host:port") authorizes connections through tls.svc to
+      --  matching names; the pattern is validated exactly as tls.svc will
+      --  interpret it, and stored unchanged.
+      procedure Add_TLS_Scope is
+         Item : Scope;
+         Parsed : CuBit.TLS_Scopes.Scope;
+         Valid : Boolean;
+      begin
+         Item.Domain := Tls_Domain;
+         Item.Rights (Read_File) := True;
+         Expression;
+         if Failed then return; end if;
+         if not Value.Has_Text or else Value.Result_Text.Length not in 1 .. 64 then
+            Fail (Invalid_Path, Cursor); return;
+         end if;
+         CuBit.TLS_Scopes.Parse
+           (Value.Result_Text.Data (1 .. Value.Result_Text.Length), Parsed, Valid);
+         if not Valid then
+            Fail (Invalid_Path, Cursor); return;
+         end if;
+         Item.Path.Length := Value.Result_Text.Length;
+         Item.Path.Data (1 .. Item.Path.Length) :=
+           Value.Result_Text.Data (1 .. Item.Path.Length);
+         for Existing of Scopes (1 .. Scope_Count) loop
+            if Existing.Domain = Item.Domain and then Existing.Path = Item.Path then
+               Fail (Duplicate_Scope, Cursor);
+            end if;
+         end loop;
+         if Scope_Count = MAX_SCOPES then Fail (Too_Many_Scopes, Cursor);
+         elsif not Failed then Scope_Count := Scope_Count + 1; Scopes (Scope_Count) := Item;
+         end if;
+      end Add_TLS_Scope;
 
       procedure Add_Stream is
          Name : Metadata_Text;
@@ -698,6 +737,7 @@ package body CCL.Manifests with SPARK_Mode => On is
          elsif Is_Text (Name, "request-network") then Add_Network;
          elsif Is_Text (Name, "filesystem-scope") then Add_Scope (Filesystem_Domain);
          elsif Is_Text (Name, "config-scope") then Add_Scope (Config_Domain);
+         elsif Is_Text (Name, "tls-scope") then Add_TLS_Scope;
          elsif Is_Text (Name, "stream") then Add_Stream;
          elsif Is_Text (Name, "requests-none") then
             if Explicit_No_Requests then Fail (Duplicate_Field, Cursor); end if;

@@ -9,6 +9,7 @@ is
    type Compilation_Status is
      (Compilation_Succeeded,
       Analysis_Failed,
+      Ownership_Check_Failed,
       Unsupported_Form,
       Malformed_Typed_Tree,
       Too_Many_Locals,

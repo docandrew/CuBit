@@ -20,7 +20,7 @@ is
      (Open_File, Close_File, Read_File, Write_File, Open_Directory,
       Seek_File, Read_Directory_Page, Rename_File, Close_Directory,
       Open_Child_Directory, Rewind_Directory, Flush_File,
-      Read_File_At, Write_File_At, Set_Access_Profile,
+      Read_File_At, Write_File_At, Resize_File, Set_Access_Profile,
       Revoke_Access_Profile);
    for Filesystem_Operation use
      (Open_File             => 16#0001#,
@@ -37,6 +37,7 @@ is
       Flush_File            => 16#000C#,
       Read_File_At          => 16#000D#,
       Write_File_At         => 16#000E#,
+      Resize_File           => 16#000F#,
       Set_Access_Profile    => 16#0080#,
       Revoke_Access_Profile => 16#0081#);
 
@@ -56,6 +57,7 @@ is
    OP_FLUSH_FILE : constant Unsigned_32 := 16#000C#;
    OP_READ_AT : constant Unsigned_32 := 16#000D#;
    OP_WRITE_AT : constant Unsigned_32 := 16#000E#;
+   OP_RESIZE_FILE : constant Unsigned_32 := 16#000F#;
    OP_SET_ACL    : constant Unsigned_32 := 16#0080#;
    OP_REVOKE_ACL : constant Unsigned_32 := 16#0081#;
 
@@ -74,6 +76,10 @@ is
    REPLY_NOT_FOUND            : constant Unsigned_32 := 16#F00B#;
    REPLY_RECOVERY_REQUIRED    : constant Unsigned_32 := 16#F00C#;
    REPLY_DURABILITY_UNSUPPORTED : constant Unsigned_32 := 16#F00D#;
+   --  The object exists, but its link/metadata semantics are not supported.
+   --  This is distinct from insufficient caller authority or a missing name.
+   REPLY_UNSUPPORTED_OBJECT : constant Unsigned_32 := 16#F00E#;
+   REPLY_SHARING_VIOLATION : constant Unsigned_32 := 16#F00F#;
 
    MAXIMUM_PATH_BYTES : constant := CuBit.Directory_Paths.Maximum_Bytes;
    subtype Path_Byte_Count is Natural range 0 .. MAXIMUM_PATH_BYTES;
@@ -167,6 +173,10 @@ is
    OPEN_TRUNCATE   : constant Open_Options := 512;
    --  With CREATE: fail if the name exists. Never truncate/reuse an old file.
    OPEN_EXCLUSIVE  : constant Open_Options := 1024;
+   --  Lifetime-exclusive handle, distinct from create-if-absent above.
+   --  Requires write access. Existing handles conflict, and while held all
+   --  further opens and path renames are denied, even to its owner.
+   OPEN_DENY_SHARING : constant Open_Options := 2048;
 
    function Valid_Open_Options (options : Open_Options) return Boolean;
    function Requests_Read (options : Open_Options) return Boolean;
@@ -191,6 +201,15 @@ is
    --  Volatile RAM/unsupported media must not report durable success.
    function Flush_Request
      (handle : File_Handle) return CuBit.Messages.Message;
+
+   --  Owned, write-authorized handle; words = [handle, new byte length].
+   --  Growth exposes zeroes without reserving holes. Success updates metadata
+   --  seen by every open alias, but never changes any handle's seek cursor.
+   --  Rejected/unsupported requests publish no new size. RECOVERY_REQUIRED
+   --  retires affected aliases; this is not an atomic or journaled operation.
+   function Resize_Request
+     (handle : File_Handle; length : Unsigned_64)
+      return CuBit.Messages.Message;
 
    function Read_Request
      (handle : File_Handle;

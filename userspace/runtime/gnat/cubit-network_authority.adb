@@ -44,12 +44,15 @@ package body CuBit.Network_Authority with SPARK_Mode is
       Item := Denied_Scope;
       Success := False;
       if Address > Unsigned_64 (Unsigned_32'Last) or else Prefix > 32 or else
-        Action not in 1 .. 2 or else Shift_Right (Descriptor, 49) /= 0
+        Action not in 1 .. 3 or else Shift_Right (Descriptor, 49) /= 0
       then
          return;
       end if;
       Item :=
-        (Action => (if Action = 1 then Connect_TCP else Listen_TCP),
+        (Action => (case Action is
+                       when 1 => Connect_TCP,
+                       when 2 => Listen_TCP,
+                       when others => Connect_UDP),
          Network => Unsigned_32 (Address), Prefix => Prefix_Length (Prefix),
          First_Port => Unsigned_16 (Descriptor and 16#FFFF#),
          Last_Port => Unsigned_16 (Shift_Right (Descriptor, 16) and 16#FFFF#),

@@ -9,7 +9,8 @@ package body CuBit.Filesystems with
 is
    OPEN_ACCESS_MASK : constant Open_Options := 3;
    SUPPORTED_OPEN_OPTIONS : constant Open_Options :=
-     OPEN_ACCESS_MASK or OPEN_CREATE or OPEN_TRUNCATE or OPEN_EXCLUSIVE;
+     OPEN_ACCESS_MASK or OPEN_CREATE or OPEN_TRUNCATE or OPEN_EXCLUSIVE or
+     OPEN_DENY_SHARING;
 
    function Grant_Message
      (label      : Unsigned_32;
@@ -41,7 +42,7 @@ is
         ((options and OPEN_EXCLUSIVE) = 0 or else
          ((options and OPEN_CREATE) /= 0 and then
           (options and OPEN_TRUNCATE) = 0)) and then
-        ((options and OPEN_TRUNCATE) = 0 or else
+        ((options and (OPEN_TRUNCATE or OPEN_DENY_SHARING)) = 0 or else
          accessMode in OPEN_WRITE_ONLY | OPEN_READ_WRITE);
    end Valid_Open_Options;
 
@@ -96,6 +97,17 @@ is
          authorityTag => 0,
          words => (0 => Unsigned_64 (handle), others => 0));
    end Flush_Request;
+
+   function Resize_Request
+     (handle : File_Handle; length : Unsigned_64) return CuBit.Messages.Message
+   is
+   begin
+      return
+        (tag => (label => OP_RESIZE_FILE, length => 2,
+                 flags => 0, reserved => 0),
+         authorityTag => 0,
+         words => (0 => Unsigned_64 (handle), 1 => length, others => 0));
+   end Resize_Request;
 
    function Read_Request
      (handle : File_Handle;

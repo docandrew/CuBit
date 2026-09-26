@@ -32,36 +32,46 @@ package Process.Queues is
     function hasAwakenedPeer (q : in out ProcQueue; priority : Integer) return Boolean;
 
     ---------------------------------------------------------------------------
+    -- Work stealing. An entry is stealable when it has ordinary priority
+    -- (not an idle thread), is not pinned, is not being retired, and is not
+    -- still executing (switching out) on another CPU.
+    ---------------------------------------------------------------------------
+    function hasStealable (q : in out ProcQueue) return Boolean;
+    -- Remove the first stealable entry (highest priority, then FIFO), or
+    -- return NO_THREAD.
+    procedure stealFrom (q : in out ProcQueue; result : out ThreadID);
+
+    ---------------------------------------------------------------------------
     -- popFront
     ---------------------------------------------------------------------------
-    procedure popFront (q : in out ProcQueue; result : out ProcessID);
+    procedure popFront (q : in out ProcQueue; result : out ThreadID);
 
     -- ---------------------------------------------------------------------------
     -- -- popBack
     -- ---------------------------------------------------------------------------
-    procedure popBack (q : in out ProcQueue; result : out ProcessID);
+    procedure popBack (q : in out ProcQueue; result : out ThreadID);
 
     -- ---------------------------------------------------------------------------
     -- -- popItem
     -- ---------------------------------------------------------------------------
-    procedure popItem (q : in out ProcQueue; pid : ProcessID;
-                       result : out ProcessID);
+    procedure popItem (q : in out ProcQueue; pid : ThreadID;
+                       result : out ThreadID);
     type Removal_Kind is (Ordinary_Queue, Delta_Queue);
     -- Caller holds Process.lock; selecting/removing membership is one
     -- queue-locked operation. Delta removal preserves successors' deadlines.
-    procedure detach (q : in out ProcQueue; pid : ProcessID;
+    procedure detach (q : in out ProcQueue; pid : ThreadID;
                       kind : Removal_Kind := Ordinary_Queue);
 
     ---------------------------------------------------------------------------
     -- enqueue
     ---------------------------------------------------------------------------
-    procedure enqueue (q : in out ProcQueue; pid : ProcessID;
-                       result : out ProcessID);
+    procedure enqueue (q : in out ProcQueue; pid : ThreadID;
+                       result : out ThreadID);
 
     ---------------------------------------------------------------------------
     -- dequeue
     ---------------------------------------------------------------------------
-    procedure dequeue (q : in out ProcQueue; result : out ProcessID);
+    procedure dequeue (q : in out ProcQueue; result : out ThreadID);
 
     ---------------------------------------------------------------------------
     -- insert
@@ -69,9 +79,9 @@ package Process.Queues is
     ---------------------------------------------------------------------------
     type Equal_Placement is (After_Peers, Resume_Turn);
     procedure insert (q      : in out ProcQueue;
-                      pid    : ProcessID;
+                      pid    : ThreadID;
                       key    : Integer;
-                      result : out ProcessID;
+                      result : out ThreadID;
                       placement : Equal_Placement := After_Peers);
 
     ---------------------------------------------------------------------------
@@ -80,9 +90,9 @@ package Process.Queues is
     -- math to ensure delay is delta from previous node.
     ---------------------------------------------------------------------------
     procedure insertDelta (q            : in out ProcQueue;
-                           pid          : ProcessID;
+                           pid          : ThreadID;
                            delayFromNow : Integer;
-                           result       : out ProcessID);
+                           result       : out ThreadID);
 
     ---------------------------------------------------------------------------
     -- insertDeltaNoLock
@@ -90,9 +100,9 @@ package Process.Queues is
     -- Used by Process.sleep to atomically set state + insert.
     ---------------------------------------------------------------------------
     procedure insertDeltaNoLock (q            : in out ProcQueue;
-                                 pid          : ProcessID;
+                                 pid          : ThreadID;
                                  delayFromNow : Integer;
-                                 result       : out ProcessID);
+                                 result       : out ThreadID);
 
     ---------------------------------------------------------------------------
     -- wakeFromSleep
@@ -100,7 +110,7 @@ package Process.Queues is
     -- Adjusts the successor's delta to preserve remaining timings.
     -- Acquires Process.lock before sleepList.lock; caller must not hold either.
     ---------------------------------------------------------------------------
-    procedure wakeFromSleep (pid : ProcessID; woken : out Boolean);
+    procedure wakeFromSleep (pid : ThreadID; woken : out Boolean);
 
     ---------------------------------------------------------------------------
     -- clockTick

@@ -1,5 +1,6 @@
 package body CCL.Language.Views with SPARK_Mode => On is
    use type CCL.Types.Type_Reference;
+   use type CCL.Types.Shape;
    Marker : constant String := "#!ccl basic";
 
    function Detect (Source : String) return Surface is
@@ -57,7 +58,7 @@ package body CCL.Language.Views with SPARK_Mode => On is
       function Keyword (S : String) return Boolean is
         (S = "LET" or S = "IN" or S = "END" or S = "IF" or
          S = "THEN" or S = "ELSE" or S = "MOD" or S = "FUNCTION" or
-         S = "AS" or S = "RETURN" or S = "TYPE" or S = "VARIANT" or
+         S = "AS" or S = "RETURN" or S = "TYPE" or S = "VARIANT" or S = "RECORD" or
          S = "MATCH" or S = "CASE");
 
       type Infix_Operator is (No_Operator, Equality, Addition, Multiplication,
@@ -309,7 +310,7 @@ package body CCL.Language.Views with SPARK_Mode => On is
       procedure Program is
          Token, Type_Name : Text;
          Start : Positive;
-         Variant : Boolean;
+         Variant, Record_Type : Boolean;
       begin
          loop
             Skip;
@@ -324,13 +325,19 @@ package body CCL.Language.Views with SPARK_Mode => On is
                Put ("(type " & Token.Data (1 .. Token.Length), Start);
                Expect ("="); Skip;
                Variant := Cursor + 6 <= Input.Length and then Input.Data (Cursor .. Cursor + 6) = "VARIANT";
+               Record_Type := Cursor + 5 <= Input.Length and then Input.Data (Cursor .. Cursor + 5) = "RECORD";
                if Variant then Expect ("VARIANT"); end if;
-               Put ((if Variant then " (variant" else " (enum"), Start);
+               if Record_Type then Expect ("RECORD"); end if;
+               Put ((if Record_Type then " (record" elsif Variant then " (variant" else " (enum"), Start);
                Expect ("(");
+               Skip;
+               if Record_Type and then Cursor <= Input.Length and then Input.Data (Cursor) = ')' then
+                  null;
+               else
                loop
                   Name_Token (Token);
-                  Put ((if Variant then " (" else " ") & Token.Data (1 .. Token.Length), Cursor);
-                  if Variant then
+                  Put ((if Variant or Record_Type then " (" else " ") & Token.Data (1 .. Token.Length), Cursor);
+                  if Variant or Record_Type then
                      Skip;
                      if Cursor + 1 <= Input.Length and then Input.Data (Cursor .. Cursor + 1) = "AS" then
                         Expect ("AS"); Name_Token (Type_Name);
@@ -342,6 +349,7 @@ package body CCL.Language.Views with SPARK_Mode => On is
                   exit when Failed or else Full or else Cursor > Input.Length or else Input.Data (Cursor) /= ',';
                   Cursor := Cursor + 1;
                end loop;
+               end if;
                Expect (")"); Put (")) ", Cursor);
             else
             exit when Cursor + 7 > Input.Length or else
@@ -483,13 +491,14 @@ package body CCL.Language.Views with SPARK_Mode => On is
                   Emit ((if Style = Lisp then "(type " else "TYPE "));
                   Identifier (D.Identifier);
                   --  Canonicalize nullary sums to the enum shorthand.
-                  Emit ((if Style = Lisp then (if Enum then " (enum " else " (variant ")
-                         else (if Enum then " = (" else " = VARIANT (")));
+                  Emit ((if Style = Lisp then
+                           (if D.Form = CCL.Types.Product then " (record " elsif Enum then " (enum " else " (variant ")
+                         else (if D.Form = CCL.Types.Product then " = RECORD (" elsif Enum then " = (" else " = VARIANT (")));
                   for I in 1 .. D.Count loop
                      if I > 1 then Emit ((if Style = Lisp then " " else ", ")); end if;
                      if not Enum and Style = Lisp then Emit ("("); end if;
                      Identifier (D.Parts (I).Identifier);
-                     if D.Parts (I).Payload /= Unit_Type then
+                     if D.Parts (I).Payload /= Unit_Type or D.Form = CCL.Types.Product then
                         Emit ((if Style = Lisp then " " else " AS ") & Type_Name (D.Parts (I).Payload));
                      end if;
                      if not Enum and Style = Lisp then Emit (")"); end if;
@@ -556,6 +565,21 @@ package body CCL.Language.Views with SPARK_Mode => On is
             when Handler_Form =>
                Emit ((if Style = Lisp then "(handler " else "handler("));
                Identifier (N.Identifier);
+               Emit (")");
+            when Field_Form =>
+               Emit ((if Style = Lisp then "(field " else "field("));
+               Child (N.First);
+               Emit ((if Style = Lisp then " " else ", "));
+               Identifier (N.Identifier);
+               Emit (")");
+            when Record_Construct =>
+               if Style = Lisp then Emit ("("); end if;
+               Identifier (N.Identifier);
+               if Style = Basic then Emit ("("); end if;
+               for P in 1 .. CCL.Types.Describe (Analysis.Tree.Types, N.Declared_Kind).Count loop
+                  if Style = Lisp then Emit (" "); elsif P > 1 then Emit (", "); end if;
+                  Child (N.Components (P));
+               end loop;
                Emit (")");
             when Function_Call =>
                if Style = Lisp then Emit ("("); end if;

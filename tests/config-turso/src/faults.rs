@@ -14,6 +14,48 @@ enum Fault {
     Write,
     Flush,
 }
+
+#[test]
+fn failed_type_creation_retires_without_retry_or_partial_adoption() -> Result<()> {
+    use crate::schemas::EncodedSchema;
+    let mut encoder = minicbor::Encoder::new(Vec::new());
+    encoder.array(4)?.u8(1)?.bytes(&[1; 32])?.u8(1)?.array(0)?;
+    let schema = EncodedSchema::parse(&encoder.into_writer())?;
+    for (index, fault) in [Fault::Write, Fault::Flush].into_iter().enumerate() {
+        let io = Arc::new(FaultIO::new());
+        let path = format!("type-create-fault-{index}.sqlite");
+        let store = Store::open_with_io(io.clone(), &path)?;
+        io.arm(fault);
+        assert!(store.create_object("org.demo", "machine", &schema).is_err());
+        assert_eq!(io.fault.load(Ordering::SeqCst), Fault::None as u8);
+        assert_eq!(store.state(), StorageState::RecoveryRequired);
+        let calls = io.calls.load(Ordering::SeqCst);
+        assert!(
+            store
+                .read_definition("org.demo", "machine")
+                .unwrap_err()
+                .is::<RecoveryRequired>()
+        );
+        assert!(
+            store
+                .create_object("org.demo", "machine", &schema)
+                .unwrap_err()
+                .is::<RecoveryRequired>()
+        );
+        assert!(store.close().unwrap_err().is::<RecoveryRequired>());
+        assert_eq!(io.calls.load(Ordering::SeqCst), calls);
+        let recovered = Store::open_with_io(io, &path)?;
+        if let Some(actual) = recovered.read_definition("org.demo", "machine")? {
+            assert_eq!(actual, schema);
+        }
+        assert_eq!(
+            recovered.query("SELECT count(*) FROM revisions", vec![])?,
+            vec![vec![integer(0)]]
+        );
+        recovered.close()?;
+    }
+    Ok(())
+}
 struct FaultIO {
     memory: MemoryIO,
     fault: Arc<AtomicU8>,

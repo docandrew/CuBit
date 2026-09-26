@@ -8,5 +8,5 @@ package CCL_Config_Bindings is
       Grants : in out CCL.Catalog.Granted_Bindings; Success : out Boolean);
    procedure Invoke
      (Binding : Interfaces.Unsigned_32; Argument : CCL.Host_Values.Value;
-      Value : out CCL.Host_Values.Value; Success : out Boolean);
+      Reply : out CCL.Host_Values.Call_Result);
 end CCL_Config_Bindings;

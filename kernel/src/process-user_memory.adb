@@ -61,11 +61,115 @@ package body Process.User_Memory is
       -- The caller's execution pin protects its page tables from retirement.
       -- Never use this interface to inspect an unpinned, remote address space.
       if Caller = NO_PROCESS or else Caller /= PerCPUData.getCurrentPID or else
-        proctab(Caller).isThread or else proctab(Caller).pgTable = NO_PROCESS then
+        proctab(Caller).pgTable = NO_PROCESS then
          return;
       end if;
       Copy_Chunks (Source, Unsigned_64 (Length), Success);
    end Copy;
+
+   procedure Read_Table_Entry
+     (Table_Frame : Unsigned_64; Index : User_Page_Walk.Table_Index;
+      Word : out Unsigned_64)
+   is
+      Entry_Word : Unsigned_64 with Import, Atomic,
+        Address => Virtmem.P2Va (Virtmem.PhysAddress (Table_Frame)) +
+                   Storage_Offset (Index * 8);
+   begin
+      Word := Entry_Word;
+   end Read_Table_Entry;
+
+   -- Resolve and pin the frame holding an aligned user word, or 0.
+   generic
+      with function Frame_Of (Root, Address, Physical_Last : Unsigned_64)
+        return Unsigned_64;
+   procedure Pin_Word_Frame
+     (Caller : ProcessID; Address : Unsigned_64; Frame : out Unsigned_64);
+
+   procedure Pin_Word_Frame
+     (Caller : ProcessID; Address : Unsigned_64; Frame : out Unsigned_64)
+   is
+      Pinned : Boolean;
+   begin
+      Frame := 0;
+      if Caller = NO_PROCESS or else Caller /= PerCPUData.getCurrentPID or else
+        proctab(Caller).pgTable = NO_PROCESS or else Address mod 4 /= 0 or else
+        Address >= User_Page_Walk.User_Limit or else
+        (Address >= Unsigned_64 (GRANT_REGION_BASE) and then
+         Address < Unsigned_64 (GRANT_REGION_END))
+      then
+         return;
+      end if;
+      Frame := Frame_Of
+        (Unsigned_64 (Virtmem.K2P (addrtab(proctab(Caller).pgTable)'Address)),
+         Address, Unsigned_64 (Virtmem.MAX_PHYS_USABLE));
+      if Frame = 0 then
+         return;
+      end if;
+      -- Only the caller's own frames: never MMIO or another owner's pages.
+      BuddyAllocator.pinOwnedFrame
+        (Virtmem.PhysAddress (Frame), Unsigned_8 (Caller), Pinned);
+      if not Pinned then
+         Frame := 0;
+      end if;
+   end Pin_Word_Frame;
+
+   procedure Unpin_Word_Frame (Frame : Unsigned_64) is
+      Released : Boolean;
+   begin
+      BuddyAllocator.unpinFrame (Virtmem.PhysAddress (Frame), Released);
+      if not Released then
+         raise ProcessException with "User-word frame pin lost";
+      end if;
+   end Unpin_Word_Frame;
+
+   procedure Load_Word32
+     (Caller : ProcessID; Address : Unsigned_64; Value : out Unsigned_32;
+      Success : out Boolean)
+   is
+      function Readable is new User_Page_Walk.Readable_Frame (Read_Table_Entry);
+      procedure Pin is new Pin_Word_Frame (Readable);
+      Frame : Unsigned_64;
+   begin
+      Value := 0;
+      Success := False;
+      Pin (Caller, Address, Frame);
+      if Frame = 0 then
+         return;
+      end if;
+      declare
+         Word : Unsigned_32 with Import, Atomic,
+           Address => Virtmem.P2Va (Virtmem.PhysAddress (Frame)) +
+                      Storage_Offset (Address mod User_Page_Walk.Page_Size);
+      begin
+         Value := Word;
+      end;
+      Unpin_Word_Frame (Frame);
+      Success := True;
+   end Load_Word32;
+
+   procedure Store_Word32
+     (Caller : ProcessID; Address : Unsigned_64; Value : Unsigned_32;
+      Success : out Boolean)
+   is
+      function Writable is new User_Page_Walk.Writable_Frame (Read_Table_Entry);
+      procedure Pin is new Pin_Word_Frame (Writable);
+      Frame : Unsigned_64;
+   begin
+      Success := False;
+      Pin (Caller, Address, Frame);
+      if Frame = 0 then
+         return;
+      end if;
+      declare
+         Word : Unsigned_32 with Import, Atomic,
+           Address => Virtmem.P2Va (Virtmem.PhysAddress (Frame)) +
+                      Storage_Offset (Address mod User_Page_Walk.Page_Size);
+      begin
+         Word := Value;
+      end;
+      Unpin_Word_Frame (Frame);
+      Success := True;
+   end Store_Word32;
 
    procedure Copy_Name
      (Caller : ProcessID; Source : Unsigned_64; Name : out ProcessName;

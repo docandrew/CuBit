@@ -7,6 +7,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with PerCpuData;
 with Process;
+with Process.Futex;
 with Process.IPC;
 with Syscall.IPC;
 with Syscall.Admin;
@@ -38,22 +39,32 @@ package body Syscall is
                     count : in Unsigned_64) return Unsigned_64 with SPARK_Mode => Off
     is
         use Descriptors;    -- for '=' comparison
+        Chunk_Size : constant := 256;
         bytesWritten : Unsigned_64 := 0;
-        idx : Storage_Offset := 0;
+        chunk : String (1 .. Chunk_Size);
+        length : Natural;
     begin
         -- for testing
         if fd = Descriptors.STDOUT then
-            x86.stac;
-            for i in 1 .. count loop
-                nextByte: declare
-                    c : Character with Import, Address => buf + idx;
-                begin
-                    print (c);
-                    bytesWritten := bytesWritten + 1;
-                    idx := idx + 1;
-                end nextByte;
+            -- Copy each chunk from user memory first, so a fault on the user
+            -- buffer never happens under TextIO's output lock, then print the
+            -- chunk as one string: other CPUs' output cannot interleave in it.
+            while bytesWritten < count loop
+                length := Natural (Unsigned_64'Min (count - bytesWritten, Chunk_Size));
+                x86.stac;
+                for i in 1 .. length loop
+                    nextByte: declare
+                        c : Character with Import,
+                          Address => buf + Storage_Offset (bytesWritten) +
+                                     Storage_Offset (i - 1);
+                    begin
+                        chunk (i) := c;
+                    end nextByte;
+                end loop;
+                x86.clac;
+                print (chunk (1 .. length));
+                bytesWritten := bytesWritten + Unsigned_64 (length);
             end loop;
-            x86.clac;
         end if;
 
         return bytesWritten;
@@ -121,6 +132,10 @@ package body Syscall is
             when 82   => number := SYSCALL_TRACE_RESET;
             when 83   => number := SYSCALL_TRACE_SUMMARY;
             when 84   => number := SYSCALL_INSPECT_CAPABILITY;
+            when 90   => number := SYSCALL_THREAD_CREATE;
+            when 91   => number := SYSCALL_THREAD_EXIT;
+            when 92   => number := SYSCALL_FUTEX_WAIT;
+            when 93   => number := SYSCALL_FUTEX_WAKE;
             when 102  =>
                 number :=
                     SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID;
@@ -188,7 +203,7 @@ package body Syscall is
         decodeSyscall (syscallNumRaw, syscallNum, validSyscall);
         if not validSyscall then
             print ("Unknown syscall: "); printd (syscallNumRaw);
-            print (" from PID: "); println (percpu.currentPID);
+            print (" from PID: "); println (Process.processOf (percpu.currentThread));
             if traceActive then
                 Trace.ObserveDuration (Trace.EVENT_SYSCALL_TIME,
                                        x86.rdtsc - startTSC);
@@ -200,14 +215,14 @@ package body Syscall is
 
         case syscallNum is
             when SYSCALL_EXIT =>
-                exitp (percpu.currentPID);
+                exitp (Process.processOf (percpu.currentThread));
 
             when SYSCALL_KILL =>
                 Admin.handleKill (
-                    percpu.currentPID, arg0, retval);
+                    Process.processOf (percpu.currentThread), arg0, retval);
 
             when SYSCALL_GETPID =>
-                retval := Unsigned_64 (percpu.currentPID);
+                retval := Unsigned_64 (Process.processOf (percpu.currentThread));
 
             when SYSCALL_WRITE =>
                 retval := write (
@@ -215,9 +230,42 @@ package body Syscall is
                     buf   => Util.numToAddr(arg1),
                     count => arg2);
 
+            -- arg0 entry, arg1 stack pointer, arg2 argument (RDI), arg3 FS
+            -- base, arg4 word cleared and futex-woken at exit (0: none).
+            -- Returns the thread ID, or Unsigned_64'Last.
+            when SYSCALL_THREAD_CREATE =>
+                declare
+                    tid : Process.ThreadID;
+                begin
+                    Process.createThread
+                      (entryPoint      => Util.numToAddr (arg0),
+                       userStack       => Util.numToAddr (arg1),
+                       argument        => arg2,
+                       fsBase          => arg3,
+                       clearTidAddress => arg4,
+                       tid             => tid);
+                    retval := (if Process."=" (tid, Process.NO_THREAD)
+                               then Unsigned_64'Last else Unsigned_64 (tid));
+                end;
+
+            when SYSCALL_THREAD_EXIT =>
+                Process.exitThread;
+
+            -- arg0 word address, arg1 expected value, arg2 absolute
+            -- monotonic-ms deadline (Unsigned_64'Last: none).
+            when SYSCALL_FUTEX_WAIT =>
+                retval := Process.Futex.wait (arg0, arg1, arg2);
+
+            -- arg0 word address, arg1 maximum waiters to wake.
+            when SYSCALL_FUTEX_WAKE =>
+                retval := Process.Futex.wake (arg0, arg1);
+
             when SYSCALL_SBRK =>
+                -- Serialized against sibling threads' faults and sbrk.
+                Process.lockAddressSpace (Process.processOf (percpu.currentThread));
                 IPC.handleSbrk (
-                    percpu.currentPID, arg0, retval);
+                    Process.processOf (percpu.currentThread), arg0, retval);
+                Process.unlockAddressSpace (Process.processOf (percpu.currentThread));
 
             when SYSCALL_GETTIME =>
                 retval := Time.msTicks;
@@ -231,7 +279,7 @@ package body Syscall is
 
             when SYSCALL_MAPFB =>
                 IPC.handleMapFB (
-                    percpu.currentPID, retval);
+                    Process.processOf (percpu.currentThread), retval);
 
             when SYSCALL_RECEIVE =>
                 IPC.handleReceive (arg0, retval);
@@ -265,7 +313,7 @@ package body Syscall is
 
             when SYSCALL_SEND_EVENT =>
                 IPC.handleSendEvent (
-                    percpu.currentPID,
+                    Process.processOf (percpu.currentThread),
                     arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
             when SYSCALL_POLL_ANY_IPC =>
@@ -283,12 +331,12 @@ package body Syscall is
 
             when SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID =>
                 IPC.handleGrant (
-                    percpu.currentPID,
+                    Process.processOf (percpu.currentThread),
                     arg0, arg1, arg2, arg3, retval);
 
             when SYSCALL_REVOKE_SHARED_MEMORY_GRANT =>
                 IPC.handleRevoke (
-                    percpu.currentPID, arg0, retval);
+                    Process.processOf (percpu.currentThread), arg0, retval);
 
             when SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION =>
                 IPC.handleGetOwnedGrantGeneration (arg0, retval);
@@ -305,40 +353,40 @@ package body Syscall is
 
             when SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT_VIA_CAPABILITY =>
                 IPC.handleAcquireGrantViaCap
-                  (percpu.currentPID,
+                  (Process.processOf (percpu.currentThread),
                    arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
             when SYSCALL_INFO =>
                 IPC.handleInfo (
-                    percpu.currentPID, arg0, arg1, retval);
+                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
 
             when SYSCALL_REGISTER_DRIVER =>
                 Admin.handleRegisterDriver (
-                    percpu.currentPID, arg0, retval);
+                    Process.processOf (percpu.currentThread), arg0, retval);
 
             when SYSCALL_INP8 | SYSCALL_OUTP8 |
                  SYSCALL_INP16 | SYSCALL_OUTP16 |
                  SYSCALL_INP32 | SYSCALL_OUTP32 =>
                 Admin.handlePortIO (
-                    percpu.currentPID, syscallNum,
+                    Process.processOf (percpu.currentThread), syscallNum,
                     arg0, arg1, retval);
 
             when SYSCALL_VIRT_TO_PHYS =>
                 Admin.handleVirtToPhys (
-                    percpu.currentPID, arg0, retval);
+                    Process.processOf (percpu.currentThread), arg0, retval);
 
             when SYSCALL_MOVE_REPLY_CAPABILITY =>
                 Admin.handleSaveReplyCap (
-                    percpu.currentPID, arg0, retval);
+                    Process.processOf (percpu.currentThread), arg0, retval);
 
             when SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY =>
                 Admin.handleCapSend (
-                    percpu.currentPID,
+                    Process.processOf (percpu.currentThread),
                     arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
             when SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY =>
                 Admin.handleCapCall (
-                    percpu.currentPID, arg0, arg1, retval);
+                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
 
             when SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY =>
                 Admin.handleCapSubmit (
@@ -349,50 +397,50 @@ package body Syscall is
 
             when SYSCALL_SPAWN =>
                 IPC.handleSpawn (
-                    percpu.currentPID,
+                    Process.processOf (percpu.currentThread),
                     arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
             when SYSCALL_MAP_DEVICE =>
                 IPC.handleMapDevice (
-                    percpu.currentPID, arg0, arg1, arg2, retval);
+                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, retval);
 
             when SYSCALL_PROCLIST =>
                 Admin.handleProclist (
-                    percpu.currentPID, arg0, arg1, retval);
+                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
 
             when SYSCALL_INSPECT_CAPABILITY =>
                 Admin.handleInspectCap (
-                    percpu.currentPID, arg0, arg1, arg2, retval);
+                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, retval);
 
             when SYSCALL_POLICY_MINT_CAPABILITY =>
                 Admin.handleMintCap (
-                    percpu.currentPID,
+                    Process.processOf (percpu.currentThread),
                     arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
             when SYSCALL_RESUME =>
                 Admin.handleResume (
-                    percpu.currentPID, arg0, retval);
+                    Process.processOf (percpu.currentThread), arg0, retval);
 
             when SYSCALL_ALLOC_DMA =>
                 IPC.handleAllocDma (
-                    percpu.currentPID, arg0, arg1, arg2, retval);
+                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, retval);
 
             when SYSCALL_ENABLE_IRQ =>
                 Admin.handleEnableIrq (
-                    percpu.currentPID, arg0, arg1, arg2, retval);
+                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, retval);
 
             when SYSCALL_MAP_INTO =>
                 IPC.handleMapInto (
-                    percpu.currentPID,
+                    Process.processOf (percpu.currentThread),
                     arg0, arg1, arg2, arg3, arg4, retval);
 
             when SYSCALL_SET_SYSINFO =>
                 Admin.handleSetSysinfo (
-                    percpu.currentPID, arg0, arg1, retval);
+                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
 
             when SYSCALL_SET_CPU =>
                 Admin.handleSetCpu (
-                    percpu.currentPID, arg0, arg1, retval);
+                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
 
             when SYSCALL_SET_LATENCY_CONTRACT =>
                 -- Advisory process-local scheduler contract. We validate the
@@ -411,7 +459,7 @@ package body Syscall is
                     retval := Unsigned_64'Last;
                 else
                     Process.setLatencyContract (
-                        pid      => percpu.currentPID,
+                        pid      => Process.processOf (percpu.currentThread),
                         class    => Process.LatencyClass'Val (Natural (arg0)),
                         periodUs => Unsigned_32 (arg1),
                         budgetUs => Unsigned_32 (arg2),
@@ -440,12 +488,12 @@ package body Syscall is
 
             when SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY =>
                 IPC.handleGrantViaCap (
-                    percpu.currentPID,
+                    Process.processOf (percpu.currentThread),
                     arg0, arg1, arg2, arg3, retval);
 
             when SYSCALL_SET_WELL_KNOWN =>
                 Admin.handleSetWellKnown (
-                    percpu.currentPID, arg0, arg1, retval);
+                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
 
         end case;
 

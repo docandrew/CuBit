@@ -34,6 +34,23 @@
         "type": "github"
       }
     },
+    "libkeccak": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1654433700,
+        "narHash": "sha256-MTNF3R3QB/MWwm+0NSVrEdhvL74/FHyWAvT1+IshAbg=",
+        "owner": "damaki",
+        "repo": "libkeccak",
+        "rev": "f33be1c8120196d90f600b14d669b11d16149bf9",
+        "type": "github"
+      },
+      "original": {
+        "owner": "damaki",
+        "repo": "libkeccak",
+        "rev": "f33be1c8120196d90f600b14d669b11d16149bf9",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1787360063,
@@ -54,9 +71,16 @@
       "inputs": {
         "cbor_ada": "cbor_ada",
         "doomgeneric": "doomgeneric",
+        "libkeccak": "libkeccak",
         "nixpkgs": "nixpkgs",
         "rust-overlay": "rust-overlay",
         "sameboy": "sameboy",
+        "sparkentropy": "sparkentropy",
+        "sparkmlkem": "sparkmlkem",
+        "sparknacl": "sparknacl",
+        "sparktls": "sparktls",
+        "sparktlscrypto": "sparktlscrypto",
+        "sparkx509": "sparkx509",
         "stb": "stb"
       }
     },
@@ -94,6 +118,108 @@
         "owner": "LIJI32",
         "repo": "SameBoy",
         "rev": "213a12ce93d66b105a113debd9396306066a7cfc",
+        "type": "github"
+      }
+    },
+    "sparkentropy": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1790205017,
+        "narHash": "sha256-i6PPbeXfuv4IdCdbrEVSrcnEY8mLmM4uWdwcUAUMVdg=",
+        "owner": "docandrew",
+        "repo": "sparkentropy",
+        "rev": "f707e61678576b4748c040d645b8ed427a28f8c8",
+        "type": "github"
+      },
+      "original": {
+        "owner": "docandrew",
+        "repo": "sparkentropy",
+        "rev": "f707e61678576b4748c040d645b8ed427a28f8c8",
+        "type": "github"
+      }
+    },
+    "sparkmlkem": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1790033795,
+        "narHash": "sha256-h0qwajlPbXE2KcWCc8IWlMMCQ4G/XV/cQL52U90Qwsg=",
+        "owner": "docandrew",
+        "repo": "sparkmlkem",
+        "rev": "5fbd0c9ae7a498f4bd5350547ebaffba381156fa",
+        "type": "github"
+      },
+      "original": {
+        "owner": "docandrew",
+        "repo": "sparkmlkem",
+        "rev": "5fbd0c9ae7a498f4bd5350547ebaffba381156fa",
+        "type": "github"
+      }
+    },
+    "sparknacl": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1774535186,
+        "narHash": "sha256-9bwmBZ2qtJA8LTjQVr5c844KsMQrDK9OYKUScXkeCos=",
+        "owner": "rod-chapman",
+        "repo": "SPARKNaCl",
+        "rev": "49e3bddf092561ce2b74c134a35acff91a2da9a4",
+        "type": "github"
+      },
+      "original": {
+        "owner": "rod-chapman",
+        "repo": "SPARKNaCl",
+        "rev": "49e3bddf092561ce2b74c134a35acff91a2da9a4",
+        "type": "github"
+      }
+    },
+    "sparktls": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1790257215,
+        "narHash": "sha256-3fi07g1lmgJy1zs7LqD5MJq1Xs66kwZHzNUGpyBysK8=",
+        "owner": "docandrew",
+        "repo": "sparktls",
+        "rev": "f7ea3a5eba7538e88f485f5ed252a5bd98364206",
+        "type": "github"
+      },
+      "original": {
+        "owner": "docandrew",
+        "repo": "sparktls",
+        "rev": "f7ea3a5eba7538e88f485f5ed252a5bd98364206",
+        "type": "github"
+      }
+    },
+    "sparktlscrypto": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1790205029,
+        "narHash": "sha256-/FUaVKuKYNRJb6mLetBuDcqtJ2mIN0J/9voXtbupif8=",
+        "owner": "docandrew",
+        "repo": "sparktlscrypto",
+        "rev": "b89c8bee8013498ac9008f92f4fd5480740e60df",
+        "type": "github"
+      },
+      "original": {
+        "owner": "docandrew",
+        "repo": "sparktlscrypto",
+        "rev": "b89c8bee8013498ac9008f92f4fd5480740e60df",
+        "type": "github"
+      }
+    },
+    "sparkx509": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1789440868,
+        "narHash": "sha256-rpv4khQzJ5qSgP32V7phGEvvT/V0Q7cEl1Dzmjvb37I=",
+        "owner": "docandrew",
+        "repo": "sparkx509",
+        "rev": "ba9c37170911a3ef564472187f83a6b38dac8fb2",
+        "type": "github"
+      },
+      "original": {
+        "owner": "docandrew",
+        "repo": "sparkx509",
+        "rev": "ba9c37170911a3ef564472187f83a6b38dac8fb2",
         "type": "github"
       }
     },

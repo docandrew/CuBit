@@ -1,0 +1,71 @@
+--  SPARKTLS and its SPARK dependencies compiled in place for CuBit's
+--  userspace runtime. The crates are pinned upstream commits, unmodified.
+--
+--  Excluded units:
+--  * SPARKTLS.Credentials (and child) and SPARKTLS.System_Roots read files
+--    through Ada.Text_IO/Directories/Streams. CuBit supplies DER buffers to
+--    SPARKTLS.Cert_Verify.Load_Roots and Set_Identity instead.
+--  * SPARKNaCl.Debug and PDebug print with Ada.Text_IO.
+--
+--  External:
+--    CUBIT_SPARK_CRATES  directory holding the crates, with a trailing slash.
+--                        nix develop exports the pinned flake inputs; override
+--                        an input to develop against a local checkout.
+project SPARKTLS_CuBit is
+   Crates := external ("CUBIT_SPARK_CRATES");
+   Keccak := Crates & "libkeccak";
+
+   for Languages use ("Ada");
+   for Source_Dirs use
+     (Crates & "sparktls/src", Crates & "sparktls/generated",
+      Crates & "sparktlscrypto/src", Crates & "sparktlscrypto/src/tiers/enabled",
+      Crates & "sparkx509/src",
+      Crates & "sparkentropy/src", Crates & "sparkentropy/src/timer/x86_64",
+      Crates & "sparkmlkem/src",
+      Crates & "sparknacl/src",
+      Keccak & "/src/common", Keccak & "/src/generic");
+   for Excluded_Source_Files use
+     ("sparktls-credentials.ads", "sparktls-credentials.adb",
+      "sparktls-credentials-parsing.ads", "sparktls-credentials-parsing.adb",
+      "sparktls-system_roots.ads", "sparktls-system_roots.adb",
+      "sparknacl-debug.ads", "sparknacl-debug.adb",
+      "sparknacl-pdebug.ads", "sparknacl-pdebug.adb");
+   for Object_Dir use "build";
+   for Runtime ("Ada") use "../../runtime";
+
+   --  Matches CuBit services, except for three things, each as upstream
+   --  builds do it:
+   --  * Checks are suppressed (-gnatp); the proofs cover absence of runtime
+   --    errors.
+   --  * -fno-tree-vrp for every unit. This is SPARKNaCl's own workaround for
+   --    a long-standing GCC value-range-propagation bug: at -O2 with -gnatp,
+   --    SPARKNaCl's SHA-256 otherwise never stores the last three digest
+   --    bytes. That broke HMAC and the HMAC-DRBG on CPUs without SHA-NI, and
+   --    SPARKTLS's DRBG self-test caught it on CuBit (reproduced with GNAT
+   --    15.3 and 16.1). Applying it to all crates is the conservative choice.
+   --  * SSE is allowed, as upstream's x86-64 baseline assumes (the kernel
+   --    sets CR4.OSFXSR and restores FXSAVE state eagerly), and accelerated
+   --    units get upstream's instruction switches. AVX units run only after
+   --    CPUID and XCR0 dispatch, and CuBit does not enable AVX state yet.
+   Base := ("-O2", "-gnat2022", "-gnatp", "-fno-tree-vrp", "-gnatQ",
+            "-gnatw.X", "-gnatws", "-fomit-frame-pointer", "-mno-red-zone",
+            "-fno-pic");
+   AES_NI := ("-maes", "-mpclmul", "-mssse3");
+   ADX := ("-mbmi2", "-madx");
+   AVX2 := ("-mavx2");
+   AVX512 := ("-mavx512f", "-mavx512dq", "-mavx512bw", "-mavx512vl",
+              "-mavx512ifma", "-mvaes",
+              "-mvpclmulqdq");
+
+   package Compiler is
+      for Default_Switches ("Ada") use Base;
+      for Switches ("sparktlscrypto-aes_ni.adb") use Base & AES_NI;
+      for Switches ("sparktlscrypto-ghash_ni.adb") use Base & AES_NI;
+      for Switches ("sparktlscrypto-bignat64_adx.adb") use Base & ADX;
+      for Switches ("sparktlscrypto-p256_gather_avx2.adb") use Base & AVX2;
+      for Switches ("sparktlscrypto-aes_gcm_avx512.adb") use Base & AVX512;
+      for Switches ("sparktlscrypto-chacha20_avx512.adb") use Base & AVX512;
+      for Switches ("sparktlscrypto-poly1305_avx512.adb") use Base & AVX512;
+      for Switches ("sparktlscrypto-poly1305_avx512_ifma.adb") use Base & AVX512;
+   end Compiler;
+end SPARKTLS_CuBit;

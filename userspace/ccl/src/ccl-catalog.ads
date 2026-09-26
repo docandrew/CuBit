@@ -1,17 +1,24 @@
 with Interfaces;
 with CCL.VM;
 with CCL.Host_Values;
+with CCL.Types;
+with CCL.Objects.Catalog;
+with CCL.Resource_Policies;
+with CCL.Ownership;
 
 package CCL.Catalog with
    SPARK_Mode => On
 is
    use Interfaces;
+   use type CCL.Types.Type_Reference;
 
    MAX_NAME_LENGTH : constant := 48;
    MAX_INTERFACES  : constant := 16;
    MAX_OPERATIONS  : constant := 16;
 
    subtype Parameter_Count is Natural range 0 .. 1;
+   -- Ordinary data arguments, excluding an optional owned receiver. A source
+   -- receiver call spells the receiver first, then its data argument if any.
    subtype Interface_Count is Natural range 0 .. MAX_INTERFACES;
    subtype Operation_Count is Natural range 0 .. MAX_OPERATIONS;
    subtype Operation_Index is Natural range 0 .. MAX_OPERATIONS - 1;
@@ -80,6 +87,67 @@ is
    type Interface_Catalog is private;
 
    procedure Initialize (Item : out Interface_Catalog);
+   function Empty_Catalog return Interface_Catalog;
+
+   --  A trusted host publishes only descriptions the caller may discover.
+   --  This does not grant an operation, authenticate a publisher or install a
+   --  runtime binding. A name conflict rejects the complete import atomically.
+   procedure Publish_Type
+     (Item : in out Interface_Catalog; Source : CCL.Types.Registry;
+      Root : CCL.Types.Type_Reference; Ref : out CCL.Types.Type_Reference;
+      Result : out CCL.Types.Import_Result);
+   function Visible_Types (Item : Interface_Catalog) return CCL.Types.Registry;
+   type Resource_Publication is
+     (Resource_Published, Resource_Already_Published, Invalid_Resource_Policy,
+      Resource_Definition_Conflict, Resource_Policy_Conflict, Resource_Catalog_Full);
+   procedure Publish_Resource
+     (Item : in out Interface_Catalog; Source : CCL.Types.Registry;
+      Root : CCL.Types.Type_Reference; Policy : CCL.Resource_Policies.Description;
+      Ref : out CCL.Types.Type_Reference; Result : out Resource_Publication)
+     with Global => null,
+       Post => (if Result not in Resource_Published | Resource_Already_Published then
+         Item = Item'Old and Ref = CCL.Types.Invalid_Type);
+   -- Atomic trusted publication of nominal type + ownership/disposition rules.
+   -- Transition target definitions are imported too; their own policies may be
+   -- published afterward (including cycles). Layout rejects incomplete policy
+   -- closures. Metadata publication grants no operation or endpoint authority.
+   type Resource_Specialization_Result is
+     (Specialization_Ready,
+      Specialization_Already_Ready,
+      Specialization_Invalid,
+      Specialization_Conflict,
+      Specialization_Full);
+   --  Trusted descriptor construction for unary resource families such as
+   --  ConfigCollection<T> and Stream<T>. Parameter is resolved in Source; the
+   --  nominal resource and its non-unrestricted ownership policy are published
+   --  atomically. This creates no operation, endpoint, grant, handle, or
+   --  stream transport.
+   procedure Specialize_Unary_Resource
+     (Item : in out Interface_Catalog; Source : CCL.Types.Registry;
+      Family, Parameter_Label : String; Parameter : CCL.Types.Type_Reference;
+      Policy : CCL.Resource_Policies.Description;
+      Ref : out CCL.Types.Type_Reference;
+      Result : out Resource_Specialization_Result)
+   with Global => null,
+     Post => (if Result not in Specialization_Ready | Specialization_Already_Ready then
+       Item = Item'Old and Ref = CCL.Types.Invalid_Type);
+   function Resource_Policy
+     (Item : Interface_Catalog; Ref : CCL.Types.Type_Reference)
+      return CCL.Resource_Policies.Description;
+   procedure Layout_Resources
+     (Item : Interface_Catalog; Roots : CCL.Resource_Policies.Selection;
+      Bindings : out CCL.Resource_Policies.Binding_Map;
+      Definitions : out CCL.Ownership.Type_Table;
+      Count : out CCL.Resource_Policies.Layout_Count;
+      Result : out CCL.Resource_Policies.Layout_Result);
+   procedure Publish_Schema
+     (Item : in out Interface_Catalog; Contract : CCL.Objects.Binding;
+      Result : out CCL.Objects.Catalog.Publication_Result);
+   procedure Resolve_Schema
+     (Item : Interface_Catalog; Key : CCL.Objects.Schema_Key;
+      Contract : out CCL.Objects.Binding);
+   function Schema_Type (Item : Interface_Catalog; Key : CCL.Objects.Schema_Key)
+     return CCL.Types.Type_Reference;
 
    procedure Publish
      (Item       : in out Interface_Catalog;
@@ -110,7 +178,8 @@ is
      (Item      : in out Linkage_Table;
       Operation : Resolved_Operation;
       Index     : out CCL.VM.Import_Index;
-      Result    : out Intern_Result);
+      Result    : out Intern_Result;
+      Local     : CCL.Ownership.Binding_Id := 0);
 
    function Length (Item : Linkage_Table) return CCL.VM.Import_Count;
 
@@ -161,7 +230,10 @@ is
      (Grants  : Granted_Bindings;
       Linkage : Linkage_Table;
       Program : in out CCL.VM.Program;
-      Result  : out Link_Result);
+      Result  : out Link_Result;
+      Schemas : Interface_Catalog := Empty_Catalog);
+   -- Typed imports require an explicit authorized schema view. The empty
+   -- default permits only schema-free scalar imports; it grants nothing.
 
 private
    subtype Name_Length is Natural range 0 .. MAX_NAME_LENGTH;
@@ -198,15 +270,20 @@ private
 
    type Interface_Catalog is record
       Count       : Interface_Count := 0;
+      Data_Types  : CCL.Objects.Catalog.Schema_Catalog;
+      Resource_Policies : CCL.Resource_Policies.Policy_Table := [others => (others => <>)];
       Descriptors : Interface_Array := [others => (others => <>)];
    end record;
 
    type Linkage_Array is
      array (CCL.VM.Import_Index) of Resolved_Operation;
+   type Linkage_Local_Array is
+     array (CCL.VM.Import_Index) of CCL.Ownership.Binding_Id;
 
    type Linkage_Table is record
       Count   : CCL.VM.Import_Count := 0;
       Entries : Linkage_Array := [others => (others => <>)];
+      Locals : Linkage_Local_Array := [others => 0];
    end record;
 
    type Granted_Binding is record
@@ -224,6 +301,9 @@ private
 
    function Length (Item : Interface_Catalog) return Interface_Count is
      (Item.Count);
+
+   function Visible_Types (Item : Interface_Catalog) return CCL.Types.Registry is
+     (CCL.Objects.Catalog.Visible_Types (Item.Data_Types));
 
    function Length (Item : Linkage_Table) return CCL.VM.Import_Count is
      (Item.Count);

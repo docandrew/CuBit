@@ -1,0 +1,14 @@
+# Native CuBit only: run config-counter.ccl first, then try after a reboot.
+(let ((counter (config-values.open)))
+  (let ((reading (config-values.read counter)))
+    (let ((closed (config-values.close counter)))
+      (match reading
+        ((CounterRead.Found snapshot) (field snapshot value))
+        ((CounterRead.Stale snapshot) (field snapshot value))
+        ((CounterRead.Missing) -1)
+        ((CounterRead.Denied) -2)
+        ((CounterRead.Busy) -3)
+        ((CounterRead.Unavailable) -4)
+        ((CounterRead.SchemaMismatch) -5)
+        ((CounterRead.InvalidRequest) -6)
+        ((CounterRead.InvalidCompletion) -7)))))

@@ -1,0 +1,10 @@
+# NetSurf, approved for network use, with a test build whose homepage is the
+# loopback HTTPS fixture: the page can only arrive through tls.svc.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "tls.svc" (priority 5) (network approve-declared))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "netsurf.app" (priority 3) (network approve-declared))
+)

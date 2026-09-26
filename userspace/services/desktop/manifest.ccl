@@ -4,6 +4,8 @@
   (version "0.1.0")
   (request-service config read-write config)
   (config-scope (rights read write) "desktop.appearance.")
+  # The Apps menu entries (Desktop_Launch).
+  (config-scope (rights read) "desktop.launch.")
   (request-service mixer-control read-write mixer-control)
   (request-service clock read-write clock)
   (request-service display read-write display)

@@ -142,7 +142,7 @@ begin
      (Result = 1 and then Inspection (0) = CAP_NULL,
       "no ambient filesystem");
 
-   Inspection := (others => 0);
+   Inspection := [others => 0];
    Result := syscall
      (SYSCALL_INSPECT_CAPABILITY, PID, CAP_SLOT_SELF_PROC,
       Address_Number (Inspection'Address));
@@ -175,7 +175,7 @@ begin
       TEST_SLOT);
    Check (Result = ERROR_RESULT, "self mint denied");
 
-   Inspection := (others => 0);
+   Inspection := [others => 0];
    Result := syscall
      (SYSCALL_INSPECT_CAPABILITY, PID, TEST_SLOT,
       Address_Number (Inspection'Address));

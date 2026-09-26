@@ -6,6 +6,7 @@ package User_Page_Walk with SPARK_Mode, Pure is
    Page_Size : constant Unsigned_64 := 4096;
    User_Limit : constant Unsigned_64 := 16#0000_8000_0000_0000#;
    Present_Bit : constant Unsigned_64 := 1;
+   Writable_Bit : constant Unsigned_64 := 2;
    User_Bit : constant Unsigned_64 := 4;
    Large_Page_Bit : constant Unsigned_64 := 128;
    Frame_Mask : constant Unsigned_64 := 16#000F_FFFF_FFFF_F000#;
@@ -22,4 +23,13 @@ package User_Page_Walk with SPARK_Mode, Pure is
      return Unsigned_64
      with Post => (if Readable_Frame'Result /= 0 then
        Address < User_Limit and then RAM_Page (Readable_Frame'Result, Physical_Last));
+
+   -- As Readable_Frame, but every level must also permit user writes.
+   generic
+      with procedure Read_Entry
+        (Table_Frame : Unsigned_64; Index : Table_Index; Word : out Unsigned_64);
+   function Writable_Frame (Root, Address, Physical_Last : Unsigned_64)
+     return Unsigned_64
+     with Post => (if Writable_Frame'Result /= 0 then
+       Address < User_Limit and then RAM_Page (Writable_Frame'Result, Physical_Last));
 end User_Page_Walk;

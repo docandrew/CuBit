@@ -4,11 +4,18 @@ with CCL.Imports;
 with CCL.Bounded_Stacks;
 with CCL.Execution_Budgets;
 with CCL.Types;
+with CCL.Objects;
+with CCL.Objects.Views;
+with CCL.Resources;
 
 package CCL.VM with
    SPARK_Mode => On
 is
    use Interfaces;
+   use type CCL.Types.Type_Reference;
+   use type CCL.Types.Shape;
+   use type CCL.Resources.Reference;
+   use type CCL.Objects.Views.Cursor;
 
    MAX_INSTRUCTIONS : constant := 256;
    MAX_STACK_DEPTH  : constant := 64;
@@ -25,10 +32,12 @@ is
    type Local_Type_Array is
      array (CCL.Ownership.Binding_Id) of CCL.Ownership.Type_Id;
 
-   type Value_Kind is (Integer_Value, Boolean_Value, Variant_Value);
-   for Value_Kind use (Integer_Value => 0, Boolean_Value => 1, Variant_Value => 2);
+   type Value_Kind is (Integer_Value, Boolean_Value, Variant_Value, Object_Value, Resource_Value);
+   for Value_Kind use (Integer_Value => 0, Boolean_Value => 1, Variant_Value => 2, Object_Value => 3, Resource_Value => 4);
    for Value_Kind'Size use 8;
    subtype Scalar_Kind is Value_Kind range Integer_Value .. Boolean_Value;
+   MAX_OBJECT_VALUES : constant := 16;
+   subtype Object_Position is Natural range 0 .. MAX_OBJECT_VALUES;
 
    type Value is record
       Kind    : Value_Kind := Integer_Value;
@@ -38,6 +47,9 @@ is
       Data_Type : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
       Alternative : CCL.Types.Component_Index := 1;
       Copyable : Standard.Boolean := True;
+      Object : Object_Position := 0;
+      Object_Node : CCL.Objects.Views.Cursor := CCL.Objects.Views.No_Value;
+      Resource : CCL.Resources.Reference := CCL.Resources.No_Reference;
    end record;
 
    function Integer_Constant (Item : Integer_64) return Value is
@@ -50,10 +62,45 @@ is
      (Item : Value; Type_Tag : CCL.Ownership.Type_Id) return Value is
      ((Kind => Item.Kind, Integer => Item.Integer, Boolean => Item.Boolean,
        Type_Tag => Type_Tag, Data_Type => Item.Data_Type, Alternative => Item.Alternative,
-       Copyable => Item.Copyable));
+       Copyable => Item.Copyable, Object => Item.Object, Object_Node => Item.Object_Node,
+       Resource => Item.Resource));
+
+   function Native_Object_Type
+     (Types : CCL.Types.Registry; Ref : CCL.Types.Type_Reference) return Boolean is
+     (CCL.Objects.Persistable (Types, Ref) and then
+      Ref not in CCL.Types.Integer_Type | CCL.Types.Boolean_Type and then
+      not CCL.Types.Is_Scalar_Sum (Types, Ref));
+   function Known_Value_Type
+     (Types : CCL.Types.Registry; Kind : Value_Kind; Ref : CCL.Types.Type_Reference) return Boolean is
+     (case Kind is
+        when Integer_Value | Boolean_Value => Ref = CCL.Types.Invalid_Type,
+        when Variant_Value => CCL.Types.Is_Scalar_Sum (Types, Ref),
+        when Object_Value => Native_Object_Type (Types, Ref),
+        when Resource_Value => CCL.Types.Known (Types, Ref) and then
+          CCL.Types.Describe (Types, Ref).Form = CCL.Types.Resource);
+   function Kind_For_Type
+     (Types : CCL.Types.Registry; Ref : CCL.Types.Type_Reference) return Value_Kind is
+     (if Ref = CCL.Types.Integer_Type then Integer_Value
+      elsif Ref = CCL.Types.Boolean_Type then Boolean_Value
+      elsif CCL.Types.Describe (Types, Ref).Form = CCL.Types.Resource then Resource_Value
+      elsif CCL.Types.Is_Scalar_Sum (Types, Ref) then Variant_Value else Object_Value);
+   function Reference_For_Type (Ref : CCL.Types.Type_Reference) return CCL.Types.Type_Reference is
+     (if Ref in CCL.Types.Integer_Type | CCL.Types.Boolean_Type then CCL.Types.Invalid_Type else Ref);
 
    function Value_Image (Types : CCL.Types.Registry; Item : Value) return String;
-   function Well_Typed (Types : CCL.Types.Registry; Item : Value) return Boolean;
+   function Well_Typed (Types : CCL.Types.Registry; Item : Value) return Boolean is
+     (if Item.Kind = Resource_Value then
+         Known_Value_Type (Types, Item.Kind, Item.Data_Type) and then
+         not Item.Copyable and then Item.Resource /= CCL.Resources.No_Reference and then
+         Item.Object = 0 and then Item.Object_Node = CCL.Objects.Views.No_Value
+      elsif Item.Resource /= CCL.Resources.No_Reference then False
+      elsif Item.Kind = Object_Value then
+         Native_Object_Type (Types, Item.Data_Type) and then Item.Object /= 0 and then
+         Item.Object_Node /= CCL.Objects.Views.No_Value
+      elsif Item.Object /= 0 or else Item.Object_Node /= CCL.Objects.Views.No_Value then False
+      elsif Item.Kind /= Variant_Value then Item.Data_Type = CCL.Types.Invalid_Type
+      else CCL.Types.Is_Scalar_Sum (Types, Item.Data_Type) and then
+         Item.Alternative <= CCL.Types.Describe (Types, Item.Data_Type).Count);
 
    type Local_Value_Array is
      array (CCL.Ownership.Binding_Id) of Value;
@@ -89,7 +136,8 @@ is
       Equal_Variant,
       Switch_Variant,
       Copy_Stack,
-      Drop_Under_Top);
+      Drop_Under_Top,
+      Project_Field);
    for Op_Code use
      (Halt                    => 0,
       Push_Integer            => 1,
@@ -117,7 +165,8 @@ is
       Equal_Variant           => 23,
       Switch_Variant          => 24,
       Copy_Stack              => 25,
-      Drop_Under_Top          => 26);
+      Drop_Under_Top          => 26,
+      Project_Field          => 27);
    for Op_Code'Size use 8;
 
    type Authority_Class is
@@ -135,8 +184,15 @@ is
    for Authority_Class'Size use 8;
 
    type Import_Declaration is record
-      Argument  : Scalar_Kind := Integer_Value;
-      Result    : Scalar_Kind := Integer_Value;
+      Argument  : Value_Kind := Integer_Value;
+      Result    : Value_Kind := Integer_Value;
+      Argument_Data_Type, Result_Data_Type : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
+      Result_Type_Tag : CCL.Ownership.Type_Id := 0;
+      Receiver_Data_Type : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
+      -- When present, Local is an owned resource receiver. Argument is a
+      -- separate, unrestricted data operand, never part of the authority.
+      -- A resource result is moved onto the operand stack under this declared
+      -- ownership type. Data results retain the canonical unrestricted tag 0.
       Authority : Authority_Class := No_Authority;
       Binding   : Unsigned_32 := 0;
       Ownership_Argument : Boolean := False;
@@ -149,7 +205,22 @@ is
       Cancel_Verb  : CCL.Ownership.Disposition_Id := 0;
    end record;
 
+   -- Scalar-only operations need no nominal type references. Schema-bearing
+   -- imports require separate pinned linkage; this predicate grants nothing.
+   function Scalar_Import (Item : Import_Declaration) return Boolean is
+     (Item.Argument in Scalar_Kind and Item.Result in Scalar_Kind and
+      Item.Argument_Data_Type = CCL.Types.Invalid_Type and
+      Item.Result_Data_Type = CCL.Types.Invalid_Type and Item.Result_Type_Tag = 0 and
+      Item.Receiver_Data_Type = CCL.Types.Invalid_Type);
+
    type Import_Array is array (Import_Index) of Import_Declaration;
+
+   function Has_Receiver (Item : Import_Declaration) return Boolean is
+     (Item.Receiver_Data_Type /= CCL.Types.Invalid_Type);
+   function Local_Argument_Kind (Item : Import_Declaration) return Value_Kind is
+     (if Has_Receiver (Item) then Resource_Value else Item.Argument);
+   function Local_Argument_Type (Item : Import_Declaration) return CCL.Types.Type_Reference is
+     (if Has_Receiver (Item) then Item.Receiver_Data_Type else Item.Argument_Data_Type);
 
    type Instruction is record
       Op        : Op_Code := Halt;
@@ -226,6 +297,7 @@ is
       Fuel_Exhausted,
       Arithmetic_Overflow,
       Division_By_Zero,
+      Object_Storage_Exhausted,
       Invalid_Bytecode,
       Waiting_For_Host,
       Host_Call_Failed,
@@ -239,6 +311,8 @@ is
       Steps          : Unsigned_32 := 0;
       Requested_Import : Import_Index := 0;
       Request_Argument : Value := (others => <>);
+      Request_Receiver : CCL.Resources.Reference := CCL.Resources.No_Reference;
+      Request_Owned : Boolean := False;
       Requested_Authority : Authority_Class := No_Authority;
       Requested_Binding   : Unsigned_32 := 0;
    end record;
@@ -332,6 +406,7 @@ is
       Waiting_Import : Import_Index := 0;
       Waiting_Result_Kind : Value_Kind := Integer_Value;
       Waiting_Argument : Value := (others => <>);
+      Waiting_Receiver : CCL.Resources.Reference := CCL.Resources.No_Reference;
       Waiting_Owned : Boolean := False;
       Import_Phase : CCL.Imports.Import_Phase := CCL.Imports.Import_Idle;
    end record;
@@ -373,6 +448,28 @@ is
       Post => Result.Steps <= Unsigned_32 (Fuel);
 
 private
+   -- Native storage is a trusted in-process implementation detail, not an IPC
+   -- import or an extra authority. Scalar execution supplies a rejecting store.
+   generic
+      type Native_Store is limited private;
+      with procedure Evaluate_Native
+        (Store : in out Native_Store; Types : CCL.Types.Registry;
+         Op : Instruction; Source : Value; Result : out Value;
+         Alternative : out CCL.Types.Component_Count; Accepted : out Boolean);
+   procedure Continue_With_Native
+     (Item : Validated_Program; State : in out Machine_State;
+      Store : in out Native_Store; Instructions : Natural; Result : out Execution_Result)
+     with Pre => Is_Valid (Item) and then Is_Well_Formed (Item, State),
+       Post => Is_Well_Formed (Item, State) and then
+         Fuel_Limit (State) = Fuel_Limit (State'Old) and then Result.Steps <= Fuel_Limit (State);
+   -- Only the native-object child admits object references, after copying and
+   -- validating their owned storage. Public scalar completion cannot mint one.
+   procedure Complete_Checked_Host_Call
+     (Item : Validated_Program; State : in out Machine_State;
+      Response : Value; Accepted : Boolean; Native_Response : Boolean;
+      Resource_Response : Boolean := False)
+     with Pre => Is_Valid (Item) and then Is_Well_Formed (Item, State),
+       Post => Is_Well_Formed (Item, State);
    type Runtime_Stack_Index is mod MAX_STACK_DEPTH;
    package Runtime_Stacks is new CCL.Bounded_Stacks
      (Index_Type    => Runtime_Stack_Index,
@@ -392,6 +489,7 @@ private
       Waiting_Import      : Import_Index := 0;
       Waiting_Result_Kind : Value_Kind := Integer_Value;
       Waiting_Argument    : Value := (others => <>);
+      Waiting_Receiver    : CCL.Resources.Reference := CCL.Resources.No_Reference;
       Waiting_Owned       : Boolean := False;
       Import_Lifecycle    : CCL.Imports.Lifecycle;
       Terminal            : Boolean := False;

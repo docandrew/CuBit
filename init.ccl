@@ -2,6 +2,11 @@
 (startup v1
   (start "logstore.svc" (priority 5))
   (start "clock.svc" (priority 5))
+  # Approves timesync's declared scope: outbound UDP port 123 and DNS.
+  (start "timesync.svc" (priority 5) (network approve-declared))
+  # Approves tls.svc's declared scope: outbound TCP with DNS. Clients still
+  # need their own tls-scope names.
+  (start "tls.svc" (priority 5) (network approve-declared))
   (start "display.svc" (priority 5))
   (start "shell.app" (priority 4))
 )

@@ -26,7 +26,14 @@ nix develop -c make -C kernel config procmgr devmgr config-check
 nix develop -c tests/headless/run.sh --test config-inspection --accel kvm --cpus 4 --timeout 35
 ```
 
-Two processes have different manifest scopes. The first has global read plus
+Before the two normal clients, a test-only ELF with invalid Config rights must
+be rejected by the scope installer. The launcher must report failed admission
+and never resume that child. The runner creates an exclusive temporary copy;
+staged applications are untouched. FS/Config installation failure now stops
+launch, cleaning partial policy before killing the suspended child while its
+PID is still occupied. TLS/network approval behavior is unchanged.
+
+Two normal processes have different manifest scopes. The first has global read plus
 write only to its test namespace. The second has read only to a different
 namespace and cannot discover the global inspector, enumerate all keys, or read
 outside its scope. The test also runs a CCL expression through the real Config

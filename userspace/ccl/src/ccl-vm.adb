@@ -4,21 +4,12 @@ with CCL.Checked_Arithmetic;
 package body CCL.VM with
    SPARK_Mode => On
 is
-   use type CCL.Types.Type_Reference;
    type Stack_Type is record
       Kind : Value_Kind := Integer_Value;
       Data_Type : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
       Copyable : Boolean := True;
+      Type_Tag : CCL.Ownership.Type_Id := 0;
    end record;
-
-   function Well_Typed (Types : CCL.Types.Registry; Item : Value) return Boolean is
-   begin
-      if Item.Kind /= Variant_Value then
-         return Item.Data_Type = CCL.Types.Invalid_Type;
-      end if;
-      return CCL.Types.Is_Scalar_Sum (Types, Item.Data_Type) and then
-        Item.Alternative <= CCL.Types.Describe (Types, Item.Data_Type).Count;
-   end Well_Typed;
 
    function Value_Image (Types : CCL.Types.Registry; Item : Value) return String is
       D : constant CCL.Types.Description := CCL.Types.Describe (Types, Item.Data_Type);
@@ -27,6 +18,8 @@ is
       case Item.Kind is
          when Integer_Value => return Integer_64'Image (Item.Integer);
          when Boolean_Value => return (if Item.Boolean then "true" else "false");
+         when Object_Value => return "<native object>";
+         when Resource_Value => return "<resource " & CCL.Types.Image (D.Identifier) & ">";
          when Variant_Value =>
             return CCL.Types.Image (D.Identifier) & "." &
               CCL.Types.Image (D.Parts (Item.Alternative).Identifier) &
@@ -38,8 +31,11 @@ is
    end Value_Image;
    use type CCL.Ownership.Bytecode.Verification_Error;
    use type CCL.Ownership.Ownership_Error;
+   use type CCL.Ownership.Ownership_Mode;
    use type CCL.Imports.Import_Error;
+   use type CCL.Imports.Import_Phase;
    use type CCL.Imports.Cancellation_Mode;
+   use type CCL.Imports.Transfer_Mode;
    type Abstract_Stack_Index is mod MAX_STACK_DEPTH;
    package Abstract_Stacks is new CCL.Bounded_Stacks
      (Index_Type    => Abstract_Stack_Index,
@@ -80,14 +76,15 @@ is
       Kind  : Value_Kind;
       Error : in out Validation_Error;
       Data_Type : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
-      Copyable : Boolean := True)
+      Copyable : Boolean := True;
+      Type_Tag : CCL.Ownership.Type_Id := 0)
    is
       Stack_Result : Abstract_Stacks.Operation_Result;
    begin
       if Error /= Valid then
          null;
       else
-         Abstract_Stacks.Push (State.Values, (Kind, Data_Type, Copyable), Stack_Result);
+         Abstract_Stacks.Push (State.Values, (Kind, Data_Type, Copyable, Type_Tag), Stack_Result);
          if Stack_Result /= Abstract_Stacks.Stack_Ok then
             Error := Stack_Overflow;
          end if;
@@ -146,20 +143,52 @@ is
       Result := (Checked => False, Content => Candidate);
       Error := Valid;
 
-      for Ref in CCL.Types.Declared_Type'First .. CCL.Types.Last (Candidate.Data_Types) loop
-         if not CCL.Types.Is_Scalar_Sum (Candidate.Data_Types, Ref) then
-            Error := Invalid_Data_Type; return;
-         end if;
+      -- A discovery snapshot may describe more types than this VM can execute.
+      -- Registry construction/CCLB decoding already validate the definitions.
+      -- Enforce executable shapes at each use below (locals, match tables,
+      -- constructors and comparisons), not on unrelated metadata.
+      for I in 1 .. Candidate.Imports_Length loop
+         declare
+            Op : constant Import_Declaration := Candidate.Imports (I - 1);
+         begin
+            if not Known_Value_Type (Candidate.Data_Types, Op.Argument, Op.Argument_Data_Type) or else
+              not Known_Value_Type (Candidate.Data_Types, Op.Result, Op.Result_Data_Type)
+            then Error := Invalid_Data_Type; return; end if;
+            if Op.Result = Resource_Value then
+               if Op.Result_Type_Tag >= Candidate.Types_Length or else
+                 Candidate.Types (Op.Result_Type_Tag).Mode = CCL.Ownership.Unrestricted
+               then Error := Invalid_Ownership; return; end if;
+            elsif Op.Result_Type_Tag /= 0 then Error := Invalid_Ownership; return;
+            end if;
+            if Has_Receiver (Op) and then
+              (not Known_Value_Type (Candidate.Data_Types, Resource_Value, Op.Receiver_Data_Type) or else
+               not Op.Ownership_Argument or else Op.Transfer = CCL.Imports.Copy_Argument or else
+               Op.Argument = Resource_Value)
+            then Error := Invalid_Import; return; end if;
+            -- Opaque resources can only be passed by a checked local borrow or
+            -- move, never copied as a data argument.
+            if Op.Argument = Resource_Value and then
+              (not Op.Ownership_Argument or else Op.Transfer = CCL.Imports.Copy_Argument)
+            then Error := Invalid_Import; return; end if;
+            if Op.Ownership_Argument and then not
+              (Scalar_Import (Op) or else
+               ((Has_Receiver (Op) or else Op.Argument = Resource_Value) and then Op.Result /= Resource_Value)) then
+               Error := Invalid_Import; return;
+            end if;
+         end;
       end loop;
       for L in 1 .. Candidate.Locals_Length loop
-         if (Candidate.Local_Kinds (L - 1) = Variant_Value and then
-              not CCL.Types.Is_Scalar_Sum (Candidate.Data_Types, Candidate.Local_Data_Types (L - 1))) or else
-            (Candidate.Local_Kinds (L - 1) /= Variant_Value and then
-              Candidate.Local_Data_Types (L - 1) /= CCL.Types.Invalid_Type)
+         if not Known_Value_Type (Candidate.Data_Types,
+           Candidate.Local_Kinds (L - 1), Candidate.Local_Data_Types (L - 1))
          then Error := Invalid_Data_Type; return; end if;
+         if Candidate.Local_Kinds (L - 1) = Resource_Value and then
+           (Candidate.Local_Types (L - 1) >= Candidate.Types_Length or else
+            Candidate.Types (Candidate.Local_Types (L - 1)).Mode = CCL.Ownership.Unrestricted)
+         then Error := Invalid_Ownership; return; end if;
       end loop;
       for M in 1 .. Candidate.Matches_Length loop
-         if not CCL.Types.Is_Scalar_Sum (Candidate.Data_Types, Candidate.Matches (M - 1).Data_Type)
+         if CCL.Types.Describe (Candidate.Data_Types, Candidate.Matches (M - 1).Data_Type).Form /= CCL.Types.Sum or else
+           not CCL.Objects.Persistable (Candidate.Data_Types, Candidate.Matches (M - 1).Data_Type)
          then Error := Invalid_Match; return; end if;
          D := CCL.Types.Describe (Candidate.Data_Types, Candidate.Matches (M - 1).Data_Type);
          for A in D.Count + 1 .. CCL.Types.Maximum_Components loop
@@ -189,12 +218,38 @@ is
          Instruction := Candidate.Code (PC);
          Falls_Through := True;
 
-         if Instruction.Op not in Make_Variant | Equal_Variant and then
+         if Instruction.Op not in Make_Variant | Equal_Variant | Project_Field and then
            (Instruction.Data_Type /= CCL.Types.Invalid_Type or else Instruction.Alternative /= 0)
          then Error := Invalid_Data_Type; exit; end if;
 
          case Instruction.Op is
+            when Project_Field =>
+               D := CCL.Types.Describe (Candidate.Data_Types, Instruction.Data_Type);
+               if D.Form /= CCL.Types.Product or else
+                 not CCL.Objects.Persistable (Candidate.Data_Types, Instruction.Data_Type) or else
+                 Instruction.Immediate not in 1 .. Integer_64 (D.Count) or else Instruction.Alternative /= 0
+               then Error := Invalid_Data_Type;
+               else
+                  Pop_Kind (State, Object_Value, Error, Instruction.Data_Type);
+                  declare
+                     Ref : constant CCL.Types.Type_Reference :=
+                       D.Parts (CCL.Types.Component_Index (Instruction.Immediate)).Payload;
+                  begin
+                     Push_Kind (State, Kind_For_Type (Candidate.Data_Types, Ref), Error, Reference_For_Type (Ref));
+                  end;
+               end if;
             when Halt =>
+               -- The top value is returned to the host. No other moved
+               -- operand may disappear when the machine completes: checking
+               -- only the locals would miss ownership moved onto the stack.
+               for Depth in 1 .. MAX_STACK_DEPTH - 1 loop
+                  Abstract_Stacks.Peek_At (State.Values, Unsigned_32 (Depth), Abstract_Value, Stack_Result);
+                  exit when Stack_Result /= Abstract_Stacks.Stack_Ok;
+                  if not Abstract_Value.Copyable then
+                     Error := Invalid_Ownership;
+                     exit;
+                  end if;
+               end loop;
                Falls_Through := False;
 
             when Push_Integer =>
@@ -242,7 +297,8 @@ is
                                           Abstract_Value, Stack_Result);
                   if Stack_Result /= Abstract_Stacks.Stack_Ok then Error := Stack_Underflow;
                   elsif not Abstract_Value.Copyable then Error := Invalid_Ownership;
-                  else Push_Kind (State, Abstract_Value.Kind, Error, Abstract_Value.Data_Type);
+                  else Push_Kind (State, Abstract_Value.Kind, Error, Abstract_Value.Data_Type,
+                                  Abstract_Value.Copyable, Abstract_Value.Type_Tag);
                   end if;
                end if;
 
@@ -253,7 +309,8 @@ is
                   Abstract_Stacks.Pop (State.Values, Discarded, Stack_Result);
                   if Stack_Result /= Abstract_Stacks.Stack_Ok then Error := Stack_Underflow;
                   elsif not Discarded.Copyable then Error := Invalid_Ownership;
-                  else Push_Kind (State, Abstract_Value.Kind, Error, Abstract_Value.Data_Type, Abstract_Value.Copyable);
+                  else Push_Kind (State, Abstract_Value.Kind, Error, Abstract_Value.Data_Type,
+                                  Abstract_Value.Copyable, Abstract_Value.Type_Tag);
                   end if;
                end if;
 
@@ -278,7 +335,7 @@ is
                      if Stack_Result = Abstract_Stacks.Stack_Ok and then not Abstract_Value.Copyable then
                         Error := Invalid_Ownership;
                      end if;
-                     Pop_Kind (State, Variant_Value, Error, M.Data_Type);
+                     Pop_Kind (State, Kind_For_Type (Candidate.Data_Types, M.Data_Type), Error, M.Data_Type);
                      D := CCL.Types.Describe (Candidate.Data_Types, M.Data_Type);
                      for A in 1 .. D.Count loop
                         if M.Targets (A) <= PC then Error := Backward_Jump;
@@ -286,8 +343,8 @@ is
                         else
                            Branch := State;
                            if D.Parts (A).Payload /= CCL.Types.Unit_Type then
-                              Push_Kind (Branch, (if D.Parts (A).Payload = CCL.Types.Integer_Type
-                                                 then Integer_Value else Boolean_Value), Error);
+                              Push_Kind (Branch, Kind_For_Type (Candidate.Data_Types, D.Parts (A).Payload),
+                                Error, Reference_For_Type (D.Parts (A).Payload));
                            end if;
                            Merge_State (States, M.Targets (A), Branch, Error);
                         end if;
@@ -371,22 +428,28 @@ is
                     CCL.Imports.Not_Cancellable or else
                   Candidate.Local_Kinds
                     (Candidate.Imports (Instruction.Import).Local) /=
-                      Candidate.Imports (Instruction.Import).Argument)
+                      Local_Argument_Kind (Candidate.Imports (Instruction.Import)) or else
+                  Candidate.Local_Data_Types (Candidate.Imports (Instruction.Import).Local) /=
+                    Local_Argument_Type (Candidate.Imports (Instruction.Import)))
                then
                   Error := Invalid_Import;
-               elsif Candidate.Imports (Instruction.Import).Ownership_Argument
-               then
-                  null;
                else
-                  Pop_Kind
-                    (State,
-                     Candidate.Imports (Instruction.Import).Argument,
-                     Error);
+                  if not Candidate.Imports (Instruction.Import).Ownership_Argument or else
+                    Has_Receiver (Candidate.Imports (Instruction.Import)) then
+                     Pop_Kind
+                       (State,
+                        Candidate.Imports (Instruction.Import).Argument,
+                        Error, Candidate.Imports (Instruction.Import).Argument_Data_Type);
+                  end if;
+                  -- A resource receiver comes from its local; a separate data
+                  -- argument, when declared, is consumed from the operand stack.
                   if Error = Valid then
                      Push_Kind
                        (State,
                         Candidate.Imports (Instruction.Import).Result,
-                        Error);
+                        Error, Candidate.Imports (Instruction.Import).Result_Data_Type,
+                        Candidate.Imports (Instruction.Import).Result /= Resource_Value,
+                        Candidate.Imports (Instruction.Import).Result_Type_Tag);
                   end if;
                end if;
 
@@ -394,9 +457,19 @@ is
                if Natural (Instruction.Local) >= Candidate.Locals_Length then
                   Error := Invalid_Ownership;
                else
-                  Pop_Kind
-                    (State, Candidate.Local_Kinds (Instruction.Local), Error,
-                     Candidate.Local_Data_Types (Instruction.Local));
+                  Abstract_Stacks.Pop (State.Values, Abstract_Value, Stack_Result);
+                  if Stack_Result /= Abstract_Stacks.Stack_Ok then
+                     Error := Stack_Underflow;
+                  elsif Abstract_Value.Kind /= Candidate.Local_Kinds (Instruction.Local) or else
+                    Abstract_Value.Data_Type /= Candidate.Local_Data_Types (Instruction.Local)
+                  then
+                     Error := Type_Mismatch;
+                  elsif Abstract_Value.Type_Tag /= Candidate.Local_Types (Instruction.Local) or else
+                    (Abstract_Value.Copyable and then
+                     Candidate.Types (Candidate.Local_Types (Instruction.Local)).Mode /= CCL.Ownership.Unrestricted)
+                  then
+                     Error := Invalid_Ownership;
+                  end if;
                end if;
 
             when Copy_Local | Move_Local | Drop_Local |
@@ -409,7 +482,7 @@ is
                   Push_Kind
                     (State, Candidate.Local_Kinds (Instruction.Local), Error,
                      Candidate.Local_Data_Types (Instruction.Local),
-                     Instruction.Op = Copy_Local);
+                     Instruction.Op = Copy_Local, Candidate.Local_Types (Instruction.Local));
                end if;
          end case;
 
@@ -573,7 +646,8 @@ is
       Accepted := Count = Initial_Locals_Length;
       if Accepted and then Count > 0 then
          for Local in 0 .. Count - 1 loop
-            if Values (Local).Kind /= Item.Content.Local_Kinds (Local) or else
+            if Values (Local).Kind in Object_Value | Resource_Value or else
+              Values (Local).Kind /= Item.Content.Local_Kinds (Local) or else
               Values (Local).Type_Tag /= Item.Content.Local_Types (Local) or else
               Values (Local).Data_Type /= Item.Content.Local_Data_Types (Local) or else
               not Well_Typed (Item.Content.Data_Types, Values (Local))
@@ -602,9 +676,10 @@ is
       end if;
    end Initialize_With_Locals;
 
-   procedure Continue_Execution_For
+   procedure Continue_With_Native
      (Item   : Validated_Program;
       State  : in out Machine_State;
+      Store : in out Native_Store;
       Instructions : Natural;
       Result : out Execution_Result)
    is
@@ -671,14 +746,35 @@ is
             Done := True;
          else
          case Item.Content.Code (PC).Op is
-            when Make_Variant | Equal_Variant | Switch_Variant | Copy_Stack | Drop_Under_Top =>
+            when Make_Variant | Equal_Variant | Switch_Variant | Copy_Stack | Drop_Under_Top | Project_Field =>
                declare
                   Ins : constant Instruction := Item.Content.Code (PC);
                   D : constant CCL.Types.Description := CCL.Types.Describe (Item.Content.Data_Types, Ins.Data_Type);
                   Good : Boolean := True;
                   Next_PC : Instruction_Index := PC + 1;
+                  Alternative : CCL.Types.Component_Count;
+                  Native_Value : Value;
+                  function Matches (V : Value; Ref : CCL.Types.Type_Reference) return Boolean is
+                    (V.Kind = Kind_For_Type (Item.Content.Data_Types, Ref) and then
+                     V.Data_Type = Reference_For_Type (Ref) and then
+                     V.Copyable and then V.Type_Tag = 0 and then Well_Typed (Item.Content.Data_Types, V));
                begin
                   case Ins.Op is
+                     when Project_Field =>
+                        Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+                        Good := Stack_Result = Runtime_Stacks.Stack_Ok and then
+                          Matches (Right_Value, Ins.Data_Type) and then D.Form = CCL.Types.Product and then
+                          Ins.Immediate in 1 .. Integer_64 (D.Count);
+                        if Good then
+                           Evaluate_Native (Store, Item.Content.Data_Types, Ins, Right_Value, Native_Value, Alternative, Good);
+                           if Good then
+                              Good := Matches (Native_Value, D.Parts (CCL.Types.Component_Index (Ins.Immediate)).Payload);
+                           end if;
+                           if Good then
+                              Runtime_Stacks.Push (Stack, Native_Value, Stack_Result);
+                              Good := Stack_Result = Runtime_Stacks.Stack_Ok;
+                           end if;
+                        end if;
                      when Make_Variant =>
                         Right_Value := Integer_Constant (0);
                         if Ins.Alternative not in 1 .. D.Count then Good := False;
@@ -740,9 +836,23 @@ is
                            begin
                               Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
                               Good := Stack_Result = Runtime_Stacks.Stack_Ok and then Right_Value.Copyable and then
-                                Right_Value.Kind = Variant_Value and then Right_Value.Data_Type = M.Data_Type and then
+                                Right_Value.Kind = Kind_For_Type (Item.Content.Data_Types, M.Data_Type) and then
+                                Right_Value.Data_Type = M.Data_Type and then
                                 Well_Typed (Item.Content.Data_Types, Right_Value);
-                              if Good then
+                              if Good and then Right_Value.Kind = Object_Value then
+                                 Evaluate_Native (Store, Item.Content.Data_Types, Ins, Right_Value, Native_Value, Alternative, Good);
+                                 Good := Good and then Alternative in 1 .. Schema.Count;
+                                 if Good then
+                                    Next_PC := M.Targets (Alternative);
+                                    if Schema.Parts (Alternative).Payload /= CCL.Types.Unit_Type then
+                                       Good := Matches (Native_Value, Schema.Parts (Alternative).Payload);
+                                       if Good then
+                                          Runtime_Stacks.Push (Stack, Native_Value, Stack_Result);
+                                          Good := Stack_Result = Runtime_Stacks.Stack_Ok;
+                                       end if;
+                                    end if;
+                                 end if;
+                              elsif Good then
                                  Next_PC := M.Targets (Right_Value.Alternative);
                                  case Schema.Parts (Right_Value.Alternative).Payload is
                                     when CCL.Types.Integer_Type =>
@@ -1055,14 +1165,32 @@ is
                declare
                   Import_Number : constant Import_Index :=
                     Item.Content.Code (PC).Import;
+                  Operation : constant Import_Declaration := Item.Content.Imports (Import_Number);
+                  Argument_Valid : Boolean := True;
                begin
-                  if Natural (Import_Number) >= Item.Content.Imports_Length
+                  State.Waiting_Receiver := CCL.Resources.No_Reference;
+                  if Natural (Import_Number) < Item.Content.Imports_Length and then
+                    (not Operation.Ownership_Argument or else Has_Receiver (Operation)) then
+                     Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+                     Argument_Valid := Stack_Result = Runtime_Stacks.Stack_Ok and then
+                       Right_Value.Kind = Operation.Argument and then
+                       Right_Value.Data_Type = Operation.Argument_Data_Type and then
+                       Well_Typed (Item.Content.Data_Types, Right_Value) and then
+                       Right_Value.Copyable and then Right_Value.Type_Tag = 0;
+                  end if;
+                  if Natural (Import_Number) >= Item.Content.Imports_Length or else not Argument_Valid
                   then
                      Status := Invalid_Bytecode;
                      State.Terminal := True;
                      State.Terminal_Status := Invalid_Bytecode;
                   elsif Item.Content.Imports (Import_Number).Ownership_Argument
                   then
+                     -- A terminal completion has already returned its borrow
+                     -- or applied its disposition. Start a fresh lifecycle for
+                     -- the next call, never reset an offered/accepted call.
+                     if CCL.Imports.Phase (State.Import_Lifecycle) = CCL.Imports.Import_Completed then
+                        CCL.Imports.Initialize (State.Import_Lifecycle);
+                     end if;
                      CCL.Imports.Offer
                        (State.Import_Lifecycle,
                         Item.Content.Imports (Import_Number).Local,
@@ -1082,21 +1210,15 @@ is
                         State.Waiting_Import := Import_Number;
                         State.Waiting_Result_Kind :=
                           Item.Content.Imports (Import_Number).Result;
-                        State.Waiting_Argument := State.Locals
-                          (Item.Content.Imports (Import_Number).Local);
+                        if Has_Receiver (Operation) then
+                           State.Waiting_Receiver := State.Locals (Operation.Local).Resource;
+                           State.Waiting_Argument := Right_Value;
+                        else
+                           State.Waiting_Argument := State.Locals (Operation.Local);
+                        end if;
                         Status := Waiting_For_Host;
                      end if;
                   else
-                     Runtime_Stacks.Pop
-                       (Stack, Right_Value, Stack_Result);
-                     if Stack_Result /= Runtime_Stacks.Stack_Ok or else
-                       Right_Value.Kind /=
-                         Item.Content.Imports (Import_Number).Argument
-                     then
-                        Status := Invalid_Bytecode;
-                        State.Terminal := True;
-                        State.Terminal_Status := Invalid_Bytecode;
-                     else
                         Waiting := True;
                         State.Waiting_Import := Import_Number;
                         State.Waiting_Result_Kind :=
@@ -1104,7 +1226,6 @@ is
                         State.Waiting_Argument := Right_Value;
                         Waiting_Owned := False;
                         Status := Waiting_For_Host;
-                     end if;
                   end if;
                   Done := True;
                end;
@@ -1120,6 +1241,8 @@ is
                    (Item.Content.Code (PC).Local) or else
                  Right_Value.Data_Type /= Item.Content.Local_Data_Types
                    (Item.Content.Code (PC).Local) or else
+                 (Right_Value.Copyable and then Item.Content.Types
+                   (Item.Content.Local_Types (Item.Content.Code (PC).Local)).Mode /= CCL.Ownership.Unrestricted) or else
                  Program_Length (PC) + 1 >= Item.Content.Length
                then
                   Status := Invalid_Bytecode;
@@ -1255,6 +1378,8 @@ is
          Steps          => CCL.Execution_Budgets.Steps (State.Execution_Budget),
          Requested_Import => State.Waiting_Import,
          Request_Argument => State.Waiting_Argument,
+         Request_Receiver => State.Waiting_Receiver,
+         Request_Owned => Waiting_Owned,
          Requested_Authority =>
            (if Waiting then
                Item.Content.Imports (State.Waiting_Import).Authority
@@ -1263,6 +1388,24 @@ is
            (if Waiting then
                Item.Content.Imports (State.Waiting_Import).Binding
             else 0));
+   end Continue_With_Native;
+
+   type No_Native_Store is null record;
+   procedure Reject_Native
+     (Store : in out No_Native_Store; Types : CCL.Types.Registry;
+      Op : Instruction; Source : Value; Result : out Value;
+      Alternative : out CCL.Types.Component_Count; Accepted : out Boolean) is
+      pragma Unreferenced (Store, Types, Op, Source);
+   begin
+      Result := (others => <>); Alternative := 0; Accepted := False;
+   end Reject_Native;
+   procedure Scalar_Continue is new Continue_With_Native (No_Native_Store, Reject_Native);
+   procedure Continue_Execution_For
+     (Item : Validated_Program; State : in out Machine_State;
+      Instructions : Natural; Result : out Execution_Result) is
+      Store : No_Native_Store;
+   begin
+      Scalar_Continue (Item, State, Store, Instructions, Result);
    end Continue_Execution_For;
 
    procedure Continue_Execution
@@ -1303,6 +1446,7 @@ is
       Result.Waiting_Import := State.Waiting_Import;
       Result.Waiting_Result_Kind := State.Waiting_Result_Kind;
       Result.Waiting_Argument := State.Waiting_Argument;
+      Result.Waiting_Receiver := State.Waiting_Receiver;
       Result.Waiting_Owned := State.Waiting_Owned;
       Result.Import_Phase := CCL.Imports.Phase (State.Import_Lifecycle);
 
@@ -1340,11 +1484,13 @@ is
       end if;
    end Stop;
 
-   procedure Complete_Host_Call
+   procedure Complete_Checked_Host_Call
      (Item     : Validated_Program;
       State    : in out Machine_State;
       Response : Value;
-      Accepted : Boolean)
+      Accepted : Boolean;
+      Native_Response : Boolean;
+      Resource_Response : Boolean := False)
    is
       Import_Error : CCL.Imports.Import_Error;
       Stack_Result : Runtime_Stacks.Operation_Result;
@@ -1377,7 +1523,13 @@ is
                return;
             end if;
          end if;
-         if Response.Kind /= State.Waiting_Result_Kind or else
+         if (Response.Kind = Object_Value and then not Native_Response) or else
+           (Response.Kind = Resource_Value and then not Resource_Response) or else
+           Response.Kind /= State.Waiting_Result_Kind or else
+           Response.Data_Type /= Item.Content.Imports (State.Waiting_Import).Result_Data_Type or else
+           not Well_Typed (Item.Content.Data_Types, Response) or else
+           Response.Copyable /= (Response.Kind /= Resource_Value) or else
+           Response.Type_Tag /= Item.Content.Imports (State.Waiting_Import).Result_Type_Tag or else
            Program_Length (State.PC) + 1 >= Item.Content.Length
          then
             State.Terminal := True;
@@ -1394,6 +1546,13 @@ is
          State.Waiting := False;
          State.Waiting_Owned := False;
       end if;
+   end Complete_Checked_Host_Call;
+
+   procedure Complete_Host_Call
+     (Item : Validated_Program; State : in out Machine_State;
+      Response : Value; Accepted : Boolean) is
+   begin
+      Complete_Checked_Host_Call (Item, State, Response, Accepted, False);
    end Complete_Host_Call;
 
    procedure Acknowledge_Host_Submission

@@ -29,6 +29,7 @@ with TCPSession;
 with TCP_Listeners;
 with Network_Grants;
 with Network_Channel_Handles;
+with UDP_Channels;
 with CuBit.Network_Authority;
 with CuBit.Memory_Grants;
 
@@ -46,11 +47,17 @@ procedure main is
    CAP_SLOT_NET_DRV : constant CapabilitySlot := 10;
 
    --  Shared packet buffer layout
-   PACKET_BUF_PAGES : constant := 16;     -- 64 KB total
+   PACKET_BUF_PAGES : constant := 48;     -- 192 KB total
    PACKET_BUF_SIZE  : constant := PACKET_BUF_PAGES * 4096;
    TX_AREA_OFFSET   : constant := PACKET_BUF_SIZE / 2;    -- TX half
    TX_SLOT_SIZE     : constant := 2048;                   -- per-slot size
-   NUM_TX_SLOTS     : constant := 8;                      -- rotating slots
+   --  Frames are queued to the driver fire-and-forget, and the driver copies
+   --  a slot only when it handles that message. Its kernel mailbox holds 32
+   --  messages, plus one being handled, so more slots than that guarantee a
+   --  slot is never reused before the driver has copied it.
+   NUM_TX_SLOTS     : constant := (PACKET_BUF_SIZE / 2) / TX_SLOT_SIZE;
+   pragma Compile_Time_Error
+     (NUM_TX_SLOTS < 34, "TX slots must exceed the driver mailbox depth");
 
    --  Grant region mapping (must match kernel process.ads)
    GRANT_REGION_BASE : constant Integer_Address := 16#0000_4000_0000_0000#;
@@ -62,13 +69,13 @@ procedure main is
 
    type InterfaceRecord is record
       state     : InterfaceState := IF_DOWN;
-      mac       : Net.MACAddress := (others => 0);
-      ipv4      : Net.IPv4Address := (others => 0);
-      netmask   : Net.IPv4Address := (others => 0);
-      gateway   : Net.IPv4Address := (others => 0);
+      mac       : Net.MACAddress := [others => 0];
+      ipv4      : Net.IPv4Address := [others => 0];
+      netmask   : Net.IPv4Address := [others => 0];
+      gateway   : Net.IPv4Address := [others => 0];
       driverPID : ProcessID := NO_PROCESS;
-      arpCache  : Net.ARPTable := (others =>
-         (ip => (others => 0), mac => (others => 0), valid => False));
+      arpCache  : Net.ARPTable := [others =>
+         (ip => [others => 0], mac => [others => 0], valid => False)];
       gwMAC     : Net.MACAddress := Net.ZERO_MAC;
       grantId   : Unsigned_64 := 0;
       txSlotIdx : Natural := 0;
@@ -80,15 +87,23 @@ procedure main is
    numIfaces  : Natural := 0;
 
    --  Global DNS (not per-interface)
-   primaryDNS   : Net.IPv4Address := (others => 0);
-   secondaryDNS : Net.IPv4Address := (others => 0);
+   primaryDNS   : Net.IPv4Address := [others => 0];
+   --  Per-packet serial traces. Off by default: concurrent serial output
+   --  from several processes interleaves inside other lines, including test
+   --  readiness markers. Errors and drops are still always reported.
+   Trace_Packets : constant Boolean := False;
+
+   --  netstack's own resolver port. Application UDP channels use ephemeral
+   --  ports (49152..65535), so they can never receive resolver replies.
+   DNS_CLIENT_PORT : constant Unsigned_16 := 10053;
+   secondaryDNS : Net.IPv4Address := [others => 0];
 
    --  Convenience aliases for interface 0 (used during transition)
    --  These are procedures/functions that access interfaces(0) directly.
    --  TODO: thread ifIdx through all packet handlers for full multi-if.
 
    --  Self-test state (removed: netmgr handles config now)
-   resolvedIP   : Net.IPv4Address := (others => 0);
+   resolvedIP   : Net.IPv4Address := [others => 0];
 
    --  TCP connection table (types in TCPSession package)
    tcpConns : TCPSession.ConnTable;
@@ -146,9 +161,9 @@ procedure main is
    MAX_ROUTES : constant := 16;
    type RouteEntry is record
       active  : Boolean := False;
-      dest    : Net.IPv4Address := (others => 0);
+      dest    : Net.IPv4Address := [others => 0];
       prefix  : Natural := 0;
-      gateway : Net.IPv4Address := (others => 0);
+      gateway : Net.IPv4Address := [others => 0];
       ifIdx   : Natural := 0;
       metric  : Natural := 0;
    end record;
@@ -157,8 +172,12 @@ procedure main is
    --  Deferred TX queue: during OP_NET_RX processing we can't capCall to
    --  the driver (it's blocked waiting for our reply). Buffer frames here
    --  and flush between message receives.
-   MAX_DEFERRED_TX  : constant := 4;
-   MAX_DEFERRED_LEN : constant := 1500;  -- max Ethernet frame
+   --  STOPGAP (2026-09-25): deep enough that Servo's parallel downloads do
+   --  not drop frames while the driver's mailbox is full. TCP here has no
+   --  retransmission yet, so a dropped segment stalls its connection. To be
+   --  replaced by the netstack redesign (docs/servo-port.md).
+   MAX_DEFERRED_TX  : constant := 256;
+   MAX_DEFERRED_LEN : constant := 1514;  -- Ethernet header + 1500-byte MTU
 
    type FrameData is array (0 .. MAX_DEFERRED_LEN - 1) of Unsigned_8;
 
@@ -167,8 +186,10 @@ procedure main is
       len  : Natural := 0;
    end record;
 
+   --  A ring: deferredHead is the oldest frame, deferredCount the number.
    deferredTX    : array (0 .. MAX_DEFERRED_TX - 1) of DeferredFrame;
-   deferredCount : Natural := 0;
+   deferredHead  : Natural range 0 .. MAX_DEFERRED_TX - 1 := 0;
+   deferredCount : Natural range 0 .. MAX_DEFERRED_TX := 0;
 
    --  Channel table (tracks app connections via new channel API + legacy)
    type ChannelKind is (CHANNEL_NONE, CHANNEL_CLIENT,
@@ -182,7 +203,7 @@ procedure main is
       grantId    : Unsigned_64 := 0;
       bufSize    : Natural := 0;
       connIdx    : Integer := -1;
-      remoteIP   : Net.IPv4Address := (others => 0);
+      remoteIP   : Net.IPv4Address := [others => 0];
       remotePort : Unsigned_16 := 0;
       localPort  : Unsigned_16 := 0;
       authorityTag : Unsigned_64 := 0;
@@ -195,6 +216,8 @@ procedure main is
 
    channels : array (Network_Channel_Handles.Channel_Index) of NetChannel;
    channelHandles : Network_Channel_Handles.Table;
+   --  Connected UDP state shares the channel index with channels above.
+   udpChannels : UDP_Channels.Table;
 
    procedure releaseChannel (Index : Network_Channel_Handles.Channel_Index) is
       released : Boolean;
@@ -206,6 +229,7 @@ procedure main is
       if channels (Index).acquired then
          CuBit.Memory_Grants.Return_Acquisition (channels (Index).transfer, released);
       end if;
+      UDP_Channels.Close (udpChannels, Index);
       channels (Index) := (others => <>);
       Network_Channel_Handles.Release (channelHandles, Index);
    end releaseChannel;
@@ -223,7 +247,8 @@ procedure main is
    --  Pending request queue (deferred reply for blocking ops)
    type PendingKind is (PENDING_NONE, PENDING_RESOLVE,
                         PENDING_CONNECT, PENDING_RECV,
-                        PENDING_OPEN, PENDING_PING, PENDING_ACCEPT);
+                        PENDING_OPEN, PENDING_PING, PENDING_ACCEPT,
+                        PENDING_DATAGRAM);
    type PendingRequest is record
       kind       : PendingKind := PENDING_NONE;
       sender     : ProcessID := NO_PROCESS;
@@ -237,7 +262,8 @@ procedure main is
       replySlot  : CapabilitySlot := CapabilitySlot'First;
    end record;
 
-   MAX_PENDING : constant := 8;
+   --  Deferred replies are saved in capability slots 16 .. 16 + MAX_PENDING - 1.
+   MAX_PENDING : constant := 32;
    pendingReqs : array (0 .. MAX_PENDING - 1) of PendingRequest;
    nextDnsTxid : Unsigned_16 := 16#CB20#;
 
@@ -390,7 +416,7 @@ procedure main is
          end if;
       end loop;
       --  Also accept broadcast
-      if ip = (255, 255, 255, 255) and numIfaces > 0 then
+      if ip = [255, 255, 255, 255] and numIfaces > 0 then
          return 0;
       end if;
       return -1;
@@ -425,7 +451,7 @@ procedure main is
       bestMetric : Natural := Natural'Last;
    begin
       ifIdx := -1;
-      nextHop := (others => 0);
+      nextHop := [others => 0];
 
       for i in routeTable'Range loop
          if routeTable (i).active then
@@ -483,7 +509,7 @@ procedure main is
                routeTable (i) := (active  => True,
                                    dest    => network,
                                    prefix  => prefix,
-                                   gateway => (others => 0),
+                                   gateway => [others => 0],
                                    ifIdx   => ifIdx,
                                    metric  => 0);
                exit;
@@ -496,7 +522,7 @@ procedure main is
          for i in routeTable'Range loop
             if not routeTable (i).active then
                routeTable (i) := (active  => True,
-                                   dest    => (others => 0),
+                                   dest    => [others => 0],
                                    prefix  => 0,
                                    gateway => interfaces (ifIdx).gateway,
                                    ifIdx   => ifIdx,
@@ -529,9 +555,9 @@ procedure main is
                       flags  => 1,      -- fire-and-forget (no reply)
                       reserved  => 0),
          authorityTag => 0,
-         words    => (0 => Unsigned_64 (slotOff),
+         words    => [0 => Unsigned_64 (slotOff),
                       1 => Unsigned_64 (frameLen),
-                      others => 0));
+                      others => 0]);
       ok : Boolean;
    begin
       --  Copy frame into this TX slot of the grant buffer
@@ -567,13 +593,10 @@ procedure main is
          return True;
       end if;
 
-      ok := doSendFrame (deferredTX (0).data'Address,
-                          deferredTX (0).len);
+      ok := doSendFrame (deferredTX (deferredHead).data'Address,
+                          deferredTX (deferredHead).len);
       if ok then
-         --  Shift remaining frames down
-         for i in 1 .. deferredCount - 1 loop
-            deferredTX (i - 1) := deferredTX (i);
-         end loop;
+         deferredHead := (deferredHead + 1) mod MAX_DEFERRED_TX;
          deferredCount := deferredCount - 1;
       end if;
       return ok;
@@ -606,20 +629,17 @@ procedure main is
          --  Driver mailbox full, buffer for later
          if deferredCount < MAX_DEFERRED_TX then
             declare
+               slot : constant Natural :=
+                 (deferredHead + deferredCount) mod MAX_DEFERRED_TX;
                src : array (0 .. frameLen - 1) of Unsigned_8 with
                   Import, Address => frameAddr;
             begin
                for i in src'Range loop
-                  deferredTX (deferredCount).data (i) := src (i);
+                  deferredTX (slot).data (i) := src (i);
                end loop;
+               deferredTX (slot).len := frameLen;
             end;
-            deferredTX (deferredCount).len := frameLen;
             deferredCount := deferredCount + 1;
-            debugPrint ("netstack: deferred TX (");
-            printDec (Unsigned_32 (deferredCount));
-            debugPrint ("/");
-            printDec (Unsigned_32 (MAX_DEFERRED_TX));
-            debugPrint (")" & LF);
          else
             debugPrint ("netstack: deferred TX full, dropping" & LF);
          end if;
@@ -937,12 +957,14 @@ procedure main is
          dnsMAC := interfaces (0).gwMAC;
       end if;
 
-      sendUDP (primaryDNS, dnsMAC, 10053, 53, pAddr, off);
-      debugPrint ("UDP: sent DNS query for ");
-      debugPrint (hostname);
-      debugPrint (" to ");
-      printIP (primaryDNS);
-      debugPrint ("" & LF);
+      sendUDP (primaryDNS, dnsMAC, DNS_CLIENT_PORT, 53, pAddr, off);
+      if Trace_Packets then
+         debugPrint ("UDP: sent DNS query for ");
+         debugPrint (hostname);
+         debugPrint (" to ");
+         printIP (primaryDNS);
+         debugPrint ("" & LF);
+      end if;
    end sendDNSQuery;
 
    --  Forward declarations for functions used by handleDNSResponse
@@ -952,6 +974,12 @@ procedure main is
    procedure replyError
      (to   : ProcessID;
       slot : CapabilitySlot := CapabilitySlot'Last);
+   procedure openDatagram
+     (chIdx : Network_Channel_Handles.Channel_Index;
+      owner : ProcessID;
+      dstIP : Net.IPv4Address;
+      port  : Unsigned_16;
+      slot  : CapabilitySlot);
 
    ---------------------------------------------------------------------------
    --  handleDNSResponse - parse DNS A-record response, extract IP
@@ -1084,7 +1112,7 @@ procedure main is
                                   flags  => 0,
                                   reserved  => 0),
                      authorityTag => 0,
-                     words    => (0 => ipPacked, others => 0));
+                     words    => [0 => ipPacked, others => 0]);
                   ignore : Unsigned_64;
                begin
                   ignore := replyCap (pendingReqs (i).replySlot, replyMsg);
@@ -1105,7 +1133,14 @@ procedure main is
                   chIdx   : constant Integer := pendingReqs (i).channelIdx;
                   connIdx : Integer;
                begin
-                  if chIdx >= 0 and then chIdx <= channels'Last and then
+                  if chIdx in channels'Range and then
+                    channels (chIdx).proto = Net.PROTO_UDP
+                  then
+                     openDatagram (chIdx, pendingReqs (i).sender, resolvedIP,
+                                   pendingReqs (i).dstPort,
+                                   pendingReqs (i).replySlot);
+                     pendingReqs (i).kind := PENDING_NONE;
+                  elsif chIdx >= 0 and then chIdx <= channels'Last and then
                     Network_Grants.Allows
                       (networkGrants, pendingReqs (i).sender,
                        channels (chIdx).authorityTag, Network_Authority.Connect_TCP,
@@ -1144,6 +1179,78 @@ procedure main is
    end handleDNSResponse;
 
    ---------------------------------------------------------------------------
+   --  replyDatagram - move the oldest queued datagram of a UDP channel into
+   --  its transfer buffer and reply on slot. Word 0 is the copied length;
+   --  word 1 bit 0 reports that the datagram was truncated to maxLen. The
+   --  caller validated bufOff/maxLen against the channel's acquired grant.
+   --  Returns False, without replying or touching the buffer, when nothing
+   --  is queued.
+   ---------------------------------------------------------------------------
+   function replyDatagram
+     (chIdx  : Network_Channel_Handles.Channel_Index;
+      slot   : CapabilitySlot;
+      bufOff : Natural;
+      maxLen : Positive) return Boolean
+   is
+      output : UDP_Channels.Byte_Array (1 .. maxLen)
+         with Import, Address => channels (chIdx).bufAddr + Storage_Offset (bufOff);
+      len : Natural;
+      truncated, found : Boolean;
+      ignore : Unsigned_64;
+   begin
+      if UDP_Channels.Queued_Count (udpChannels, chIdx) = 0 then
+         return False;
+      end if;
+      UDP_Channels.Take (udpChannels, chIdx, output, len, truncated, found);
+      if not found then
+         return False;
+      end if;
+      ignore := replyCap
+        (slot,
+         (tag => (label => REPLY_OK, length => 2, flags => 0, reserved => 0),
+          authorityTag => 0,
+          words => [0 => Unsigned_64 (len),
+                    1 => (if truncated then 1 else 0),
+                    others => 0]));
+      return True;
+   end replyDatagram;
+
+   ---------------------------------------------------------------------------
+   --  deliverDatagram - queue a datagram for the matching connected UDP
+   --  channel, then complete that channel's waiting reader, if any. A
+   --  datagram with no exactly matching channel, or for a full queue, is
+   --  dropped, as UDP permits.
+   ---------------------------------------------------------------------------
+   procedure deliverDatagram (srcIP   : Net.IPv4Address;
+                              srcPort : Unsigned_16;
+                              dstPort : Unsigned_16;
+                              payload : System.Address;
+                              len     : Natural) is
+      data : UDP_Channels.Byte_Array (1 .. len)
+         with Import, Address => payload;
+      index  : UDP_Channels.Channel_Index;
+      result : UDP_Channels.Delivery;
+   begin
+      UDP_Channels.Deliver
+        (udpChannels, dstPort, policyAddress (srcIP), srcPort, data, index, result);
+      case result is
+         when UDP_Channels.Queued =>
+            for P of pendingReqs loop
+               if P.kind = PENDING_DATAGRAM and then P.channelIdx = index then
+                  if replyDatagram (index, P.replySlot, P.bufOff, P.maxLen) then
+                     P.kind := PENDING_NONE;
+                  end if;
+                  exit;
+               end if;
+            end loop;
+         when UDP_Channels.Queue_Full =>
+            debugPrint ("UDP: channel queue full, datagram dropped" & LF);
+         when UDP_Channels.No_Channel | UDP_Channels.Oversized =>
+            null;
+      end case;
+   end deliverDatagram;
+
+   ---------------------------------------------------------------------------
    --  handleUDP - parse UDP datagram via RecordFlux, dispatch on port
    ---------------------------------------------------------------------------
    procedure handleUDP (pktBuf     : System.Address;
@@ -1177,20 +1284,37 @@ procedure main is
          srcPort := Unsigned_16 (Net.UDP.Datagram.Get_Source_Port (ctx));
          dstPort := Unsigned_16 (Net.UDP.Datagram.Get_Destination_Port (ctx));
 
-         debugPrint ("UDP: ");
-         printIP (srcIP);
-         debugPrint (":");
-         printDec (Unsigned_32 (srcPort));
-         debugPrint (" -> port ");
-         printDec (Unsigned_32 (dstPort));
-         debugPrint ("" & LF);
-
-         --  DNS response (from port 53)
-         if srcPort = 53 then
-            --  DNS payload starts at UDP offset + 8
-            handleDNSResponse
-               (pktBuf + Storage_Offset (udpOff + 8), udpLen - 8);
+         if Trace_Packets then
+            debugPrint ("UDP: ");
+            printIP (srcIP);
+            debugPrint (":");
+            printDec (Unsigned_32 (srcPort));
+            debugPrint (" -> port ");
+            printDec (Unsigned_32 (dstPort));
+            debugPrint ("" & LF);
          end if;
+
+         declare
+            --  The UDP length field, not the IPv4 length, bounds the payload.
+            declared : constant Natural :=
+               Natural (Net.UDP.Datagram.Get_Length (ctx));
+            payloadLen : constant Natural :=
+               (if declared in 8 .. udpLen then declared - 8 else 0);
+         begin
+            --  Resolver replies must come from the configured server's port
+            --  53 to netstack's own resolver port.
+            if srcPort = 53 and then dstPort = DNS_CLIENT_PORT and then
+               srcIP = primaryDNS
+            then
+               --  DNS payload starts at UDP offset + 8
+               handleDNSResponse
+                  (pktBuf + Storage_Offset (udpOff + 8), udpLen - 8);
+            elsif declared in 8 .. udpLen then
+               deliverDatagram
+                  (srcIP, srcPort, dstPort,
+                   pktBuf + Storage_Offset (udpOff + 8), payloadLen);
+            end if;
+         end;
       else
          debugPrint ("UDP: malformed datagram" & LF);
       end if;
@@ -1245,9 +1369,7 @@ procedure main is
       Net.TCP.Segment.Set_Acknowledgment_Number
          (ctx, Net.TCP.Acknowledgment_Number (ackNum));
       Net.TCP.Segment.Set_Data_Offset (ctx, 5);
-      Net.TCP.Segment.Set_Reserved (ctx, False);
-      Net.TCP.Segment.Set_Reserved_2 (ctx, False);
-      Net.TCP.Segment.Set_Reserved_3 (ctx, False);
+      Net.TCP.Segment.Set_Reserved (ctx, 0);
       Net.TCP.Segment.Set_NS  (ctx, False);
       Net.TCP.Segment.Set_CWR (ctx, False);
       Net.TCP.Segment.Set_ECN (ctx, False);
@@ -1337,11 +1459,13 @@ procedure main is
       end if;
       rxBuffers (idx).len := 0;
 
-      debugPrint ("TCP: SYN to ");
-      printIP (dstIP);
-      debugPrint (":");
-      printDec (Unsigned_32 (dstPort));
-      debugPrint ("" & LF);
+      if Trace_Packets then
+         debugPrint ("TCP: SYN to ");
+         printIP (dstIP);
+         debugPrint (":");
+         printDec (Unsigned_32 (dstPort));
+         debugPrint ("" & LF);
+      end if;
 
       TCPSession.onConnect (tcpConns (idx), res);
       executeActions (idx, res, System.Null_Address);
@@ -1351,26 +1475,36 @@ procedure main is
    ---------------------------------------------------------------------------
    --  tcpSend - send data on an established connection (PSH+ACK)
    ---------------------------------------------------------------------------
+   --  Largest TCP payload in one 1500-byte IPv4 packet (no options).
+   TCP_MSS : constant := 1500 - 20 - 20;
+
    procedure tcpSend (connIdx : Natural;
                       payload : System.Address;
                       payLen  : Natural) is
       res : TCPSession.Result;
+      sent, chunk : Natural := 0;
    begin
       if connIdx > tcpConns'Last then
          return;
       end if;
-      TCPSession.onSend (tcpConns (connIdx), payLen, 0, res);
-      --  onSend produces ACT_SEND_SEGMENT; we handle it specially here
-      --  since the payload address is known only by the caller.
-      if res.numActions > 0 and then
-         res.actions (0).kind = TCPSession.ACT_SEND_SEGMENT
-      then
+      --  Segment to the MSS; an oversized frame would be dropped. There is
+      --  still no retransmission, congestion control or peer-window check.
+      while sent < payLen loop
+         chunk := Natural'Min (TCP_MSS, payLen - sent);
+         TCPSession.onSend (tcpConns (connIdx), chunk, 0, res);
+         --  onSend produces ACT_SEND_SEGMENT; we handle it specially here
+         --  since the payload address is known only by the caller.
+         exit when res.numActions = 0 or else
+           res.actions (0).kind /= TCPSession.ACT_SEND_SEGMENT;
          sendTCPSegment (tcpConns (connIdx), res.actions (0).flags,
                          res.actions (0).seqNum,
                          res.actions (0).ackNum,
-                         payload, payLen);
+                         payload + Storage_Offset (sent), chunk);
+         sent := sent + chunk;
+      end loop;
+      if Trace_Packets then
          debugPrint ("TCP: sent ");
-         printDec (Unsigned_32 (payLen));
+         printDec (Unsigned_32 (sent));
          debugPrint (" bytes" & LF);
       end if;
    end tcpSend;
@@ -1427,9 +1561,11 @@ procedure main is
       Net.putU16BE (pAddr, 29, 1);
 
       tcpSend (connIdx, pAddr, 2 + DNS_PAYLOAD_LEN);
-      debugPrint ("TCP: sent DNS query (");
-      printDec (Unsigned_32 (2 + DNS_PAYLOAD_LEN));
-      debugPrint (" bytes)" & LF);
+      if Trace_Packets then
+         debugPrint ("TCP: sent DNS query (");
+         printDec (Unsigned_32 (2 + DNS_PAYLOAD_LEN));
+         debugPrint (" bytes)" & LF);
+      end if;
    end sendTCPDNSQuery;
 
    --  Forward declaration for reply helper (defined later in file)
@@ -1579,7 +1715,7 @@ procedure main is
                                flags  => 0,
                                reserved  => 0),
                   authorityTag => 0,
-                  words    => (others => 0));
+                  words    => [others => 0]);
                ignore : Unsigned_64;
             begin
                ignore := replyCap (pendingReqs (i).replySlot, eofMsg);
@@ -1644,22 +1780,26 @@ procedure main is
                end if;
 
             when TCPSession.ACT_NOTIFY_ESTABLISHED =>
-               debugPrint ("TCP: ESTABLISHED with ");
-               printIP (tcpConns (connIdx).remoteIP);
-               debugPrint (":");
-               printDec (Unsigned_32 (tcpConns (connIdx).remotePort));
-               debugPrint ("" & LF);
+               if Trace_Packets then
+                  debugPrint ("TCP: ESTABLISHED with ");
+                  printIP (tcpConns (connIdx).remoteIP);
+                  debugPrint (":");
+                  printDec (Unsigned_32 (tcpConns (connIdx).remotePort));
+                  debugPrint ("" & LF);
+               end if;
                completePendingConnect (connIdx);
                TCP_Listeners.Mark_Ready (listeners, connIdx);
 
             when TCPSession.ACT_NOTIFY_DATA =>
-               debugPrint ("TCP: received ");
-               printDec (Unsigned_32 (res.actions (i).dataLen));
-               debugPrint (" bytes from ");
-               printIP (tcpConns (connIdx).remoteIP);
-               debugPrint (":");
-               printDec (Unsigned_32 (tcpConns (connIdx).remotePort));
-               debugPrint ("" & LF);
+               if Trace_Packets then
+                  debugPrint ("TCP: received ");
+                  printDec (Unsigned_32 (res.actions (i).dataLen));
+                  debugPrint (" bytes from ");
+                  printIP (tcpConns (connIdx).remoteIP);
+                  debugPrint (":");
+                  printDec (Unsigned_32 (tcpConns (connIdx).remotePort));
+                  debugPrint ("" & LF);
+               end if;
 
                --  A remote port number is not protocol authority. All channel
                --  bytes go to their owner, including a peer using port 53.
@@ -1671,7 +1811,9 @@ procedure main is
                end if;
 
             when TCPSession.ACT_NOTIFY_CLOSED =>
-               debugPrint ("TCP: connection closed" & LF);
+               if Trace_Packets then
+                  debugPrint ("TCP: connection closed" & LF);
+               end if;
                completePendingRecvEOF (connIdx);
 
             when TCPSession.ACT_NOTIFY_ERROR =>
@@ -1995,12 +2137,12 @@ procedure main is
                                            flags  => 0,
                                            reserved  => 0),
                               authorityTag => 0,
-                              words    => (0 => Unsigned_64 (icmpSeq),
+                              words    => [0 => Unsigned_64 (icmpSeq),
                                            1 => srcPacked,
                                            2 => (if nowMs > sendTs
                                                  then nowMs - sendTs
                                                  else 0),
-                                           3 => 0));
+                                           3 => 0]);
                            ignore : Unsigned_64;
                         begin
                            ignore := replyCap
@@ -2197,6 +2339,10 @@ procedure main is
          return True;
       end skipPrefix;
 
+      --  A token longer than its buffer makes the whole scheme invalid;
+      --  truncating a host name could silently select a different host.
+      overflow : Boolean := False;
+
       --  Read until ':' or end, return as string
       procedure readToken (buf : out String; tLen : out Natural) is
       begin
@@ -2208,6 +2354,8 @@ procedure main is
                tLen := tLen + 1;
                buf (buf'First + tLen - 1) :=
                   Character'Val (Natural (ch));
+            else
+               overflow := True;
             end if;
             pos := pos + 1;
          end loop;
@@ -2227,7 +2375,7 @@ procedure main is
       allDigitsAndDots : Boolean;
    begin
       result := (valid => False, proto => 0,
-                 hostname => (others => ' '), hostLen => 0,
+                 hostname => [others => ' '], hostLen => 0,
                  port => 0, isIPLiteral => False);
 
       --  Must start with "@net:"
@@ -2276,6 +2424,10 @@ procedure main is
       end if;
       result.port := Unsigned_16 (portVal);
 
+      if overflow then
+         return;
+      end if;
+
       --  Detect IP literal (all digits and dots)
       allDigitsAndDots := True;
       for i in 1 .. result.hostLen loop
@@ -2301,7 +2453,7 @@ procedure main is
       octet : Natural := 0;
       idx   : Natural := 0;
    begin
-      ip := (others => 0);
+      ip := [others => 0];
       ok := False;
       for i in s'First .. s'First + len - 1 loop
          if s (i) = '.' then
@@ -2364,7 +2516,7 @@ procedure main is
                       flags  => 0,
                       reserved  => 0),
          authorityTag => 0,
-         words    => (others => 0));
+         words    => [others => 0]);
       ignore : Unsigned_64;
    begin
       pragma Unreferenced (to);
@@ -2385,7 +2537,7 @@ procedure main is
                       flags  => 0,
                       reserved  => 0),
          authorityTag => 0,
-         words    => (0 => w0, others => 0));
+         words    => [0 => w0, others => 0]);
       ignore : Unsigned_64;
    begin
       pragma Unreferenced (to);
@@ -2485,7 +2637,8 @@ procedure main is
             replyError (P.sender, P.replySlot);
             releaseChannel (P.channelIdx);
             P.kind := PENDING_NONE;
-         elsif P.kind = PENDING_RECV and then P.channelIdx in channels'Range and then
+         elsif P.kind in PENDING_RECV | PENDING_DATAGRAM and then
+           P.channelIdx in channels'Range and then
            Now >= channels (P.channelIdx).readDeadline
          then
             replyError (P.sender, P.replySlot);
@@ -2505,7 +2658,9 @@ procedure main is
       for P of pendingReqs loop
          if P.kind = PENDING_ACCEPT then
             deadline := Unsigned_64'Min (deadline, channels (P.channelIdx).acceptDeadline);
-         elsif P.kind = PENDING_RECV and then P.channelIdx in channels'Range then
+         elsif P.kind in PENDING_RECV | PENDING_DATAGRAM and then
+           P.channelIdx in channels'Range
+         then
             deadline := Unsigned_64'Min (deadline, channels (P.channelIdx).readDeadline);
          elsif P.kind = PENDING_PING then
             deadline := Unsigned_64'Min
@@ -2733,7 +2888,7 @@ procedure main is
                             flags  => 0,
                             reserved  => 0),
                authorityTag => 0,
-               words    => (others => 0));
+               words    => [others => 0]);
             ignore : Unsigned_64;
          begin
             ignore := replyCap (CapabilitySlot'Last, eofMsg);
@@ -2785,7 +2940,7 @@ procedure main is
                                flags  => 0,
                                reserved  => 0),
                   authorityTag => 0,
-                  words    => (others => 0));
+                  words    => [others => 0]);
                ignore : Unsigned_64;
             begin
                ignore := replyCap (pendingReqs (i).replySlot, eofMsg);
@@ -2808,6 +2963,39 @@ procedure main is
    --  Scheme string is at offset 0 of the grant buffer.
    --  Reply: deferred until DNS+TCP handshake completes
    ---------------------------------------------------------------------------
+   ---------------------------------------------------------------------------
+   --  openDatagram - finish opening a connected UDP channel once its
+   --  destination is known. Checks the caller's Connect_UDP scope, assigns
+   --  an ephemeral local port and replies with the channel handle on slot.
+   --  On failure the channel is released and REPLY_ERR is sent.
+   ---------------------------------------------------------------------------
+   procedure openDatagram
+     (chIdx : Network_Channel_Handles.Channel_Index;
+      owner : ProcessID;
+      dstIP : Net.IPv4Address;
+      port  : Unsigned_16;
+      slot  : CapabilitySlot)
+   is
+      ok : Boolean := False;
+   begin
+      if Network_Grants.Allows
+        (networkGrants, owner, channels (chIdx).authorityTag,
+         Network_Authority.Connect_UDP, policyAddress (dstIP), port)
+      then
+         UDP_Channels.Open (udpChannels, chIdx, policyAddress (dstIP), port, ok);
+      end if;
+      if not ok then
+         releaseChannel (chIdx);
+         replyError (owner, slot);
+         return;
+      end if;
+      channels (chIdx).remoteIP := dstIP;
+      channels (chIdx).localPort := UDP_Channels.Local_Port (udpChannels, chIdx);
+      replyOKWord (owner,
+                   Unsigned_64 (Network_Channel_Handles.Value (channelHandles, chIdx)),
+                   slot);
+   end openDatagram;
+
    procedure handleNetOpen (snd : ProcessID; m : Message) is
       schemeLen : constant Natural := Natural (m.tag.length);
       grantId   : constant Unsigned_64 := m.words (0);
@@ -2844,9 +3032,9 @@ procedure main is
          return;
       end if;
 
-      --  Only TCP client channels for now
-      if scheme.proto /= Net.PROTO_TCP then
-         debugPrint ("netstack: open: only TCP supported" & LF);
+      --  TCP client channels and connected UDP channels.
+      if scheme.proto /= Net.PROTO_TCP and scheme.proto /= Net.PROTO_UDP then
+         debugPrint ("netstack: open: unsupported protocol" & LF);
          CuBit.Memory_Grants.Return_Acquisition (reference, ok);
          replyError (snd);
          return;
@@ -2869,7 +3057,7 @@ procedure main is
           grantId    => grantId,
           bufSize    => bufSize,
           connIdx    => -1,
-          remoteIP   => (others => 0),
+          remoteIP   => [others => 0],
           remotePort => scheme.port,
           localPort  => 0,
           authorityTag => m.authorityTag,
@@ -2877,7 +3065,21 @@ procedure main is
           acquired => True,
           others => <>);
 
-      if scheme.isIPLiteral then
+      if scheme.isIPLiteral and scheme.proto = Net.PROTO_UDP then
+         declare
+            dstIP : Net.IPv4Address;
+            ipOK  : Boolean;
+         begin
+            parseIPLiteral (scheme.hostname, scheme.hostLen, dstIP, ipOK);
+            if not ipOK then
+               releaseChannel (chIdx);
+               replyError (snd);
+               return;
+            end if;
+            --  No handshake: the reply is immediate.
+            openDatagram (chIdx, snd, dstIP, scheme.port, CapabilitySlot'Last);
+         end;
+      elsif scheme.isIPLiteral then
          --  Parse IP directly, skip DNS
          declare
             dstIP : Net.IPv4Address;
@@ -2980,6 +3182,23 @@ procedure main is
          return;
       end if;
 
+      --  Connected UDP: one write is one datagram to the channel's peer.
+      if channels (chHandle).proto = Net.PROTO_UDP then
+         if not UDP_Channels.Active (udpChannels, chHandle) or else
+            offset > channels (chHandle).bufSize or else
+            len > channels (chHandle).bufSize - offset or else
+            len > UDP_Channels.Maximum_Payload
+         then
+            replyError (snd);
+            return;
+         end if;
+         sendUDP (channels (chHandle).remoteIP, interfaces (0).gwMAC,
+                  channels (chHandle).localPort, channels (chHandle).remotePort,
+                  channels (chHandle).bufAddr + Storage_Offset (offset), len);
+         replyOKWord (snd, Unsigned_64 (len));
+         return;
+      end if;
+
       if channels (chHandle).connIdx < 0 or else
          channels (chHandle).connIdx > tcpConns'Last or else
          connectionAuthority (channels (chHandle).connIdx) /= m.authorityTag or else
@@ -3025,6 +3244,47 @@ procedure main is
       then
          replyError (snd);
          return;
+      end if;
+
+      --  Connected UDP: one read returns at most one whole datagram, oldest
+      --  first. Reply word 1 bit 0 reports truncation to max len.
+      if channels (chHandle).proto = Net.PROTO_UDP then
+         if not UDP_Channels.Active (udpChannels, chHandle) or else
+            offset > channels (chHandle).bufSize or else
+            maxLen > channels (chHandle).bufSize - offset or else
+            m.tag.length not in 3 .. 4
+         then
+            replyError (snd); return;
+         end if;
+         for P of pendingReqs loop
+            if P.kind = PENDING_DATAGRAM and then P.channelIdx = chHandle then
+               replyError (snd); return;
+            end if;
+         end loop;
+         if maxLen = 0 then replyOKWord (snd, 0); return; end if;
+         channels (chHandle).readDeadline :=
+           (if m.tag.length = 4 then m.words (3) else Unsigned_64'Last);
+         if syscall (SYSCALL_GETTIME) >= channels (chHandle).readDeadline then
+            replyError (snd); return;
+         end if;
+         if replyDatagram (chHandle, CapabilitySlot'Last, offset, maxLen) then
+            return;
+         end if;
+         ok := addPending (
+            (kind       => PENDING_DATAGRAM,
+             sender     => snd,
+             connIdx    => -1,
+             channelIdx => chHandle,
+             bufAddr    => channels (chHandle).bufAddr,
+             bufOff     => offset,
+             maxLen     => maxLen,
+             txid       => 0,
+             dstPort    => 0,
+             replySlot  => 0));
+         if not ok then
+            replyError (snd);
+         end if;
+         return;  --  Reply deferred
       end if;
 
       if channels (chHandle).connIdx < 0 or else
@@ -3080,7 +3340,7 @@ procedure main is
                                flags  => 0,
                                reserved  => 0),
                   authorityTag => 0,
-                  words    => (others => 0));
+                  words    => [others => 0]);
                ignore : Unsigned_64;
             begin
                ignore := replyCap (CapabilitySlot'Last, eofMsg);
@@ -3126,6 +3386,31 @@ procedure main is
          return;
       end if;
 
+      --  Connected UDP: end any waiting read with EOF, then release the
+      --  channel, its local port and any queued datagrams.
+      if channels (chHandle).proto = Net.PROTO_UDP then
+         for P of pendingReqs loop
+            if P.kind = PENDING_DATAGRAM and then P.channelIdx = chHandle then
+               declare
+                  eofMsg : constant Message :=
+                    (tag      => (label  => REPLY_EOF,
+                                  length => 0,
+                                  flags  => 0,
+                                  reserved  => 0),
+                     authorityTag => 0,
+                     words    => [others => 0]);
+                  ignore : Unsigned_64;
+               begin
+                  ignore := replyCap (P.replySlot, eofMsg);
+               end;
+               P.kind := PENDING_NONE;
+            end if;
+         end loop;
+         releaseChannel (chHandle);
+         replyOKWord (snd, 0);
+         return;
+      end if;
+
       --  Complete all pending RECV for this connection with EOF
       if channels (chHandle).connIdx in tcpConns'Range and then
         connectionAuthority (channels (chHandle).connIdx) = m.authorityTag
@@ -3141,7 +3426,7 @@ procedure main is
                                   flags  => 0,
                                   reserved  => 0),
                      authorityTag => 0,
-                     words    => (others => 0));
+                     words    => [others => 0]);
                   ignore : Unsigned_64;
                begin
                   ignore := replyCap (pendingReqs (i).replySlot, eofMsg);
@@ -3237,9 +3522,9 @@ procedure main is
                          flags  => 0,
                          reserved  => 0),
             authorityTag => 0,
-            words    => (0 => interfaces (ifIdx).pktGrant,
+            words    => [0 => interfaces (ifIdx).pktGrant,
                          1 => Unsigned_64 (PACKET_BUF_SIZE),
-                         others => 0));
+                         others => 0]);
          ignore : Unsigned_64;
       begin
          ignore := replyCap (CapabilitySlot'Last, replyMsg);
@@ -3316,7 +3601,7 @@ begin
          (tag      => (label => OP_READY, length => 0,
                        flags => 0, reserved => 0),
           authorityTag => 0,
-          words    => (others => 0)));
+          words    => [others => 0]));
    end;
 
    debugPrint ("netstack: waiting for driver attach..." & LF);
@@ -3482,7 +3767,7 @@ begin
                                   flags  => 0,
                                   reserved  => 0),
                      authorityTag => 0,
-                     words    => (others => 0));
+                     words    => [others => 0]);
                   ignore : Unsigned_64;
                begin
                   ignore := replyCap (CapabilitySlot'Last, replyMsg);
@@ -3579,14 +3864,14 @@ begin
                                         flags  => 0,
                                         reserved  => 0),
                            authorityTag => 0,
-                           words    => (
+                           words    => [
                               0 => ipPacked or
                                    Shift_Left (stateVal, 32),
                               1 => maskPacked or
                                    Shift_Left (gwPacked, 32),
                               2 => macPacked,
                               3 => dnsPri or
-                                   Shift_Left (dnsSec, 32)));
+                                   Shift_Left (dnsSec, 32)]);
                         ignore : Unsigned_64;
                      begin
                         ignore := replyCap (CapabilitySlot'Last, detailMsg);
@@ -3601,7 +3886,7 @@ begin
                   startIdx : constant Natural :=
                      Natural (msg.words (0));
                   total  : Natural := 0;
-                  packed : array (0 .. 3) of Unsigned_64 := (others => 0);
+                  packed : array (0 .. 3) of Unsigned_64 := [others => 0];
                   slot   : Natural := 0;
                   nextStart : Natural := 0;
                begin
@@ -3644,10 +3929,10 @@ begin
                                      flags  => Unsigned_8 (nextStart),
                                      reserved  => 0),
                         authorityTag => 0,
-                        words    => (0 => packed (0),
+                        words    => [0 => packed (0),
                                      1 => packed (1),
                                      2 => packed (2),
-                                     3 => packed (3)));
+                                     3 => packed (3)]);
                      ignore : Unsigned_64;
                   begin
                      ignore := replyCap (CapabilitySlot'Last, routeReply);
@@ -3695,10 +3980,10 @@ begin
                                         flags  => 0,
                                         reserved  => 0),
                            authorityTag => 0,
-                           words    => (0 => Unsigned_64 (seq),
+                           words    => [0 => Unsigned_64 (seq),
                                         1 => msg.words (0),
                                         2 => rtt,
-                                        others => 0));
+                                        others => 0]);
                         ignore : Unsigned_64;
                      begin
                         ignore := replyCap (CapabilitySlot'Last, loopReply);
@@ -3838,7 +4123,7 @@ begin
                                   flags  => 0,
                                   reserved  => 0),
                      authorityTag => 0,
-                     words    => (others => 0));
+                     words    => [others => 0]);
                   ignore : Unsigned_64;
                begin
                   ignore := replyCap (CapabilitySlot'Last, replyMsg);

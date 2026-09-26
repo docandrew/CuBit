@@ -18,7 +18,23 @@
 (system-config v1
   (setting "desktop.appearance.theme.light" "(theme v1 (base alloy-light))")
   (setting "desktop.appearance.theme.dark" "(theme v1 (base alloy-dark))")
+  # The desktop's Apps menu, in key order (userspace/services/desktop/
+  # desktop_launch.ads). Entries name programs; what they may do is decided
+  # by their manifests and procmgr's launch policy.
+  (setting "desktop.launch.10-workbench" "(launch v1 (label \"CCL Workbench\") (program \"ccl-workbench.app\") (icon uilab))")
+  (setting "desktop.launch.20-doom" "(launch v1 (label \"DOOM\") (program \"doom.elf\") (icon doom) (single-instance))")
+  (setting "desktop.launch.30-devices" "(launch v1 (label \"Devices\") (program \"devices.app\") (icon files))")
+  (setting "desktop.launch.40-netsurf" "(launch v1 (label \"NetSurf\") (program \"netsurf.app\") (icon files))")
+  (setting "desktop.launch.45-servo" "(launch v1 (label \"Servo\") (program \"cubitshell.app\") (icon files))")
+  (setting "desktop.launch.50-files" "(launch v1 (label \"Files\") (program \"files.app\") (icon files))")
+  (setting "desktop.launch.60-sameboy" "(launch v1 (label \"SameBoy\") (program \"sameboy.app\") (icon doom))")
+  (setting "desktop.launch.70-settings" "(launch v1 (label \"Settings\") (internal settings))")
+  (setting "desktop.launch.80-config-inspector" "(launch v1 (label \"Config Inspector\") (program \"config-inspector.app\") (icon files))")
   (setting "clock.time-zone" "UTC")
+  (setting "cubit.config.storage.database" "@nvme:0/system-config.sqlite")
+  # SNTP servers for timesync.svc (host or host:port). A majority of at least
+  # two must agree before the clock is adjusted.
+  (setting "time.servers" "time.cloudflare.com 0.pool.ntp.org 1.pool.ntp.org 2.pool.ntp.org")
   (setting "scheme.fs.driver" 6)
   (setting "scheme.fs.slot" 1)
   (setting "scheme.ata.driver" 6)

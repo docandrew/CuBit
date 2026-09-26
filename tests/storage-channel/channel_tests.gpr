@@ -1,0 +1,19 @@
+project Channel_Tests is
+   for Source_Dirs use
+     (".", "fixture", "../../userspace/lib/storage", "../../userspace/lib/storage/native",
+      "../../userspace/runtime/gnat");
+   for Source_Files use
+     ("cubit-async_requests.ads", "cubit-async_requests.adb") &
+     ("channel_tests.adb", "storage_channel.ads", "storage_channel.adb",
+      "native_bridge_tests.adb", "native_storage.ads", "native_storage.adb",
+      "cubit.ads", "cubit-messages.ads", "cubit-messages.adb",
+      "cubit-memory_grants.ads", "cubit-memory_grants.adb",
+      "cubit-grant_references.ads", "cubit-filesystems.ads", "cubit-filesystems.adb",
+      "cubit-directory_paths.ads", "cubit-directory_paths.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("channel_tests.adb", "native_bridge_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-O2", "-gnata", "-gnato", "-I-");
+   end Compiler;
+end Channel_Tests;

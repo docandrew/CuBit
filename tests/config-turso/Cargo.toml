@@ -10,6 +10,11 @@ publish = false
 
 [features]
 linux-uring = ["turso_core/io_uring"]
+measure = []
+
+[[example]]
+name = "database_bridge"
+crate-type = ["staticlib"]
 
 [dependencies]
 minicbor = { version = "=2.3.0", features = ["std"] }

@@ -9,6 +9,7 @@ with Config;
 with PerCPUData;
 with Process;
 with Process.IPC;
+with Process.Futex;
 with Process.Queues;
 with Scheduler_Timing;
 with TextIO;
@@ -143,6 +144,7 @@ is
             Time.msTicks := Time.msTicks + elapsed;
             Process.Queues.clockTick (elapsed);
             Process.IPC.expireReceiveDeadlines (Time.msTicks);
+            Process.Futex.expireDeadlines (Time.msTicks);
         end if;
 
         -- Existing coarse CPU quota accounting remains at one-millisecond

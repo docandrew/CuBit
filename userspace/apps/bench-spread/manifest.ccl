@@ -1,0 +1,4 @@
+# CPU-spread benchmark: fixed CPU-bound work, no authority.
+(executable-manifest v1
+  (identity "com.cubit.bench-spread")
+  (version "0.1.0"))
