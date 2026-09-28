@@ -30,6 +30,17 @@ SAMPLES = {path.name for path in (ROOT / "userspace/ccl/samples").glob("*.ccl")}
 
 
 class Images(unittest.TestCase):
+    def test_efi_generated_loader_allowlist(self):
+        for name in ('efi.img', 'efi/boot/bootx64.efi', 'mach_kernel',
+                     'System/Library/CoreServices/boot.efi',
+                     '.disk/2026-09-26-17-42-25-00.uuid'):
+            self.assertFalse(realizer.generated_loader(name))
+            self.assertTrue(realizer.generated_loader(name, efi=True))
+        for name in ('efi/evil.app', 'System/Library/CoreServices/evil.app',
+                     '.disk/evil.uuid', '.disk/2026-09-26-17-42-25-00.uuid.app',
+                     'apps/evil.app'):
+            self.assertFalse(realizer.generated_loader(name, efi=True))
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="ccl-images-test.")
         self.addCleanup(self.temp.cleanup)
@@ -81,7 +92,7 @@ class Images(unittest.TestCase):
                     self.assertEqual(bootstrap, {"devmgr.svc", "filesystem.svc", "ramdisk.drv", "ps2.drv",
                                                 "xhci.drv", "system.ccl", "init.ccl", "live-rw.ext2"})
                     apps = {row[5].removeprefix("apps/") for row in rows if row[5].startswith("apps/")}
-                    self.assertEqual(apps, (stage1 | stage2 | {"sameboy.app", "sameboy/00.gb", "doom1.wad"})
+                    self.assertEqual(apps, (stage1 | stage2 | {"sameboy.app", "sameboy/00.gb", "doom1.wad", "config-storage.svc", "cubitshell.app"})
                                      - {"devmgr.svc", "filesystem.svc", "ramdisk.drv", "ps2.drv", "xhci.drv",
                                         "ata.drv", "nvme.drv", "storage-check.app"})
                     self.assertFalse(any("network-check" in row[2] or "ccl-control" in row[2] for row in rows))

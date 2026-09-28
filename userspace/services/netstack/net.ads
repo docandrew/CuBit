@@ -22,6 +22,7 @@ package Net is
 
    ETHERTYPE_ARP  : constant Unsigned_16 := 16#0806#;
    ETHERTYPE_IPV4 : constant Unsigned_16 := 16#0800#;
+   ETHERTYPE_IPV6 : constant Unsigned_16 := 16#86DD#;
 
    PROTO_ICMP : constant Unsigned_8 := 1;
    PROTO_TCP  : constant Unsigned_8 := 6;
@@ -82,26 +83,6 @@ package Net is
                                segment : System.Address;
                                segLen  : Natural) return Unsigned_16;
 
-   ---------------------------------------------------------------------------
-   --  Simple static ARP cache.
-   ---------------------------------------------------------------------------
-   MAX_ARP_ENTRIES : constant := 8;
-
-   type ARPEntry is record
-      ip    : IPv4Address;
-      mac   : MACAddress;
-      valid : Boolean := False;
-   end record;
-
-   type ARPTable is array (0 .. MAX_ARP_ENTRIES - 1) of ARPEntry;
-
-   procedure arpUpdate (cache : in out ARPTable;
-                        ip    : IPv4Address;
-                        mac   : MACAddress);
-
-   function arpLookup (cache : ARPTable;
-                       ip    : IPv4Address;
-                       mac   : out MACAddress) return Boolean;
 
    ---------------------------------------------------------------------------
    --  packIPv4 - pack 4-byte IPv4Address into low 32 bits of Unsigned_64

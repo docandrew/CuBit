@@ -20,6 +20,8 @@ package acpi is
     lapicAddr   : Virtmem.PhysAddress := 0;
     ioapicAddr  : Virtmem.PhysAddress := 0;
     ioapicID    : Unsigned_32 := 0;
+    -- Checked HPET register window, zero when firmware advertises none.
+    hpetAddr    : Virtmem.PhysAddress := 0;
 
     type ACPIVersion is (AcpiVersion1, AcpiVersion2);
 
@@ -49,9 +51,8 @@ package acpi is
     -- @field reserved2 - not used
     -- @field reserved3 - not used
     --
-    -- Note: We just assume this is going to be an ACPI version 2 record.
-    --  This may come back to bite us later, but ACPI 2 was released almost 20
-    --  years ago...
+    -- Internal storage only. The reader validates the version-specific wire
+    -- length and checksum; it never overlays this entire record on a v1 RSDP.
     ---------------------------------------------------------------------------
     type RSDPRecord is
     record
@@ -423,7 +424,8 @@ package acpi is
 
     -- Note: the ACPI spec says that LAPIC_DISABLED means the _processor_ is
     -- unusable.
-    subtype LocalAPICFlags is Unsigned_32 range 0..1;
+    -- Raw firmware bits: bit 1 is online-capable, not enabled at boot.
+    subtype LocalAPICFlags is Unsigned_32;
 
     LAPIC_ENABLED           : constant LocalAPICFlags := 1;
     LAPIC_DISABLED          : constant LocalAPICFlags := 0;
@@ -438,7 +440,9 @@ package acpi is
     ---------------------------------------------------------------------------
     type APICRecordHeader is
     record
-        apicType            : APICStructureType;
+        -- Raw firmware tag: newer ACPI revisions define values beyond 8.
+        -- Do not overlay a restricted subtype on unvalidated wire bytes.
+        apicType            : Unsigned_8;
         length              : Unsigned_8;
     end record with Size => 2*8;
 

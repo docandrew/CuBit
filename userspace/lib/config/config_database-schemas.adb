@@ -10,11 +10,11 @@ package body Config_Database.Schemas is
    for Operation use (Create_Type => 1, Recover_Type => 2);
    type Wire_Result is
      (Created_Type, Existing_Type, Conflicting_Type, Loaded_Type,
-      Absent_Type, Rejected_Type, Uncertain_Type, Failed_Type);
+      Absent_Type, Rejected_Type, Uncertain_Type, Failed_Type, Managed_Type, Management_Conflict_Type);
    for Wire_Result use
      (Created_Type => 1, Existing_Type => 2, Conflicting_Type => 3,
       Loaded_Type => 4, Absent_Type => 5, Rejected_Type => 6,
-      Uncertain_Type => 7, Failed_Type => 8);
+      Uncertain_Type => 7, Failed_Type => 8, Managed_Type => 9, Management_Conflict_Type => 10);
    type Reply is record
       Code, Length : Unsigned_32 := 0;
       Data : CBOR.Byte_Array (1 .. Codec.Maximum_Encoded_Bytes) := [others => 0];
@@ -68,6 +68,7 @@ package body Config_Database.Schemas is
       case Output.Code is
          when Wire_Result'Enum_Rep (Created_Type) => Result := Created;
          when Wire_Result'Enum_Rep (Existing_Type) => Result := Already_Exists;
+         when Wire_Result'Enum_Rep (Management_Conflict_Type) => Result := Management_Conflict;
          when Wire_Result'Enum_Rep (Conflicting_Type) =>
             --  Rust compares the stored bytes. Equivalent nominal schemas can
             --  have different local IDs/declaration order/unrelated metadata.
@@ -82,6 +83,8 @@ package body Config_Database.Schemas is
                if Loaded_As = Loaded then
                   Result := (if CCL.Objects.Same_Schema (Existing, Contract) then
                                 Already_Exists else Definition_Conflict);
+               elsif Loaded_As = Loaded_Managed then
+                  Result := Management_Conflict;
                end if;
                --  Absent/malformed/failed recovery contradicts the conflict
                --  response: leave Uncertain, retiring the worker session.
@@ -110,11 +113,13 @@ package body Config_Database.Schemas is
       Execute (Database, Call'Address, Output'Address);
       if Output.Code = Wire_Result'Enum_Rep (Absent_Type) and then Output.Length = 0 then
          Result := Absent;
-      elsif Output.Code = Wire_Result'Enum_Rep (Loaded_Type) and then
+      elsif Output.Code in Wire_Result'Enum_Rep (Loaded_Type) | Wire_Result'Enum_Rep (Managed_Type) and then
         Output.Length in 1 .. Codec.Maximum_Encoded_Bytes
       then
          Codec.Decode (Output.Data (1 .. CBOR.SE_Offset (Output.Length)), Contract, Decoded);
-         if Decoded = Codec.Success then Result := Loaded; end if;
+         if Decoded = Codec.Success then
+            Result := (if Output.Code = Wire_Result'Enum_Rep (Managed_Type) then Loaded_Managed else Loaded);
+         end if;
       end if;
    end Recover;
 
@@ -132,11 +137,13 @@ package body Config_Database.Schemas is
       if Action = P.Create then
          Create (Database, Name, Context, Contract, Made);
          Result := (case Made is when Created => P.Created, when Already_Exists => P.Already_Exists,
-           when Definition_Conflict => P.Definition_Conflict, when Rejected => P.Rejected,
+           when Definition_Conflict => P.Definition_Conflict, when Management_Conflict => P.Management_Conflict,
+           when Rejected => P.Rejected,
            when Uncertain => P.Uncertain);
       else
          Recover (Database, Name, Context, Recovered, Read);
-         Result := (case Read is when Loaded => P.Loaded, when Absent => P.Absent,
+         Result := (case Read is when Loaded => P.Loaded, when Loaded_Managed => P.Loaded_Managed,
+           when Absent => P.Absent,
            when Load_Failed => P.Load_Failed);
       end if;
    end Invoke;

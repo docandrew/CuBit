@@ -1,0 +1,28 @@
+project Client is
+   for Source_Dirs use
+     (".", "../storage-channel/fixture", "../../userspace/lib/config",
+      "../../userspace/ccl/src", "../../userspace/runtime/gnat", "../../userspace/services/config");
+   for Source_Files use
+     ("cubit-async_requests.ads", "cubit-async_requests.adb") &
+     ("ccl-types-correspondence.ads", "ccl-types-correspondence.adb") &
+     ("client_tests.adb", "dispatch_tests.adb", "receiver_tests.adb", "startup_tests.adb",
+      "config_worker_startup.ads", "config_worker_startup.adb", "config_object_client.ads", "config_object_client.adb",
+      "config_object_receiver.ads", "config_object_receiver.adb",
+      "config_object_dispatch.ads", "config_object_dispatch.adb",
+      "config_typed_store.ads", "config_typed_store.adb", "config_objects.ads", "config_objects.adb",
+      "config_collections.ads", "config_collections.adb", "config_authority.ads", "config_authority.adb",
+      "cubit-config_inspection.ads", "cubit-config_inspection.adb",
+      "config_object_messages.ads", "config_object_messages.adb",
+      "config_worker_protocol.ads", "config_worker_protocol.adb",
+      "ccl.ads", "ccl-types.ads", "ccl-types.adb", "ccl-objects.ads", "ccl-objects.adb",
+      "ccl-objects-schemas.ads", "ccl-objects-schemas.adb",
+      "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb",
+      "cubit.ads", "cubit-messages.ads", "cubit-messages.adb",
+      "cubit-memory_grants.ads", "cubit-memory_grants.adb", "cubit-grant_references.ads");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("client_tests.adb", "dispatch_tests.adb", "receiver_tests.adb", "startup_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnato", "-I-");
+   end Compiler;
+end Client;

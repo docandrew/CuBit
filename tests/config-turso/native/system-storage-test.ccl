@@ -1,0 +1,4 @@
+# Bootstrap settings are available before durable Config storage starts.
+(system-config v1
+  (setting "clock.time-zone" "UTC")
+  (setting "cubit.config.storage.database" "@nvme:0/system-config.sqlite"))

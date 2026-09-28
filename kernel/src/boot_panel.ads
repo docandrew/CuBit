@@ -4,7 +4,10 @@ pragma Ada_2022;
 package Boot_Panel with SPARK_Mode, Pure is
    Columns : constant := 96;
    subtype Line is String (1 .. Columns);
-   type Row is (Heading, Current_Step, Last_Completed, Latest_Detail, First_Error);
+   type Row is (Heading, Current_Step, Last_Completed, Latest_Detail, First_Error,
+                Timing_Evidence, Timer_Evidence, Controller_Evidence,
+                Firmware_Evidence, IRQ_Timing_Evidence, IRQ_Source_Evidence);
+   subtype Evidence_Row is Row range Timing_Evidence .. IRQ_Source_Evidence;
    type Lines is array (Row) of Line;
    type Phase is (Unavailable, Active, Retired);
    type State is private with Preelaborable_Initialization;
@@ -27,6 +30,10 @@ package Boot_Panel with SPARK_Mode, Pure is
      with Post => Lifecycle (S) = Lifecycle (S'Old) and
        (if Lifecycle (S'Old) /= Active or Failed (S'Old) then S = S'Old
         else Failed (S) and Content (S, First_Error) = Fit (Text));
+   procedure Set_Evidence (S : in out State; R : Evidence_Row; Text : String)
+     with Post => Lifecycle (S) = Lifecycle (S'Old) and
+       (if Lifecycle (S'Old) /= Active or Failed (S'Old) then S = S'Old
+        else Content (S, R) = Fit (Text));
    procedure Append (S : in out State; C : Character; Changed : out Boolean)
      with Post => Lifecycle (S) = Lifecycle (S'Old) and
        (if Lifecycle (S'Old) /= Active or Failed (S'Old) then

@@ -1,0 +1,15 @@
+project Discovery is
+   for Source_Dirs use (".", "../usb-optical", "../../userspace/services/xhci");
+   for Source_Files use ("main.adb", "configuration_tests.adb",
+                         "usb_configurations.ads", "usb_configurations.adb",
+                         "xhci_topology.ads", "xhci_topology.adb", "topology_tests.adb",
+                         "usb_hubs.ads", "usb_hubs.adb", "hub_tests.adb",
+                         "usb_keyboards.ads", "usb_keyboards.adb", "keyboard_tests.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb", "configuration_tests.adb", "topology_tests.adb", "hub_tests.adb", "keyboard_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Discovery;

@@ -35,10 +35,15 @@ hidden void report_unsupported(const char *what, long value);
 hidden void __cubit_readiness_changed(void);
 hidden int __cubit_readiness_seq(void);
 hidden void __cubit_readiness_wait(int seq, unsigned long deadline);
+/* Network sockets (net.c): block for netstack's completions as well as the
+ * futex; end that block when something local becomes ready. */
+hidden void __cubit_net_wait(int seq, unsigned long deadline, uint64_t sockets);
+hidden void __cubit_net_interrupt(void);
 
 /* net.c: TCP over netstack. */
 struct cubit_tcp;
 struct sockaddr;
+hidden uint64_t __cubit_tcp_mask(struct cubit_tcp *);
 hidden struct cubit_tcp *__cubit_tcp_new(void);
 hidden long __cubit_tcp_connect(struct cubit_tcp *, const struct sockaddr *, unsigned, int);
 hidden long __cubit_tcp_read(struct cubit_tcp *, void *, size_t, int);
@@ -47,6 +52,12 @@ hidden short __cubit_tcp_poll(struct cubit_tcp *, short);
 hidden long __cubit_tcp_so_error(struct cubit_tcp *);
 hidden long __cubit_tcp_peer(struct cubit_tcp *, struct sockaddr *, unsigned *);
 hidden long __cubit_tcp_shutdown(struct cubit_tcp *, int);
+hidden long __cubit_tcp_bind(struct cubit_tcp *, const struct sockaddr *, unsigned);
+hidden long __cubit_tcp_listen(struct cubit_tcp *, int);
+hidden long __cubit_tcp_accept(struct cubit_tcp *, struct cubit_tcp **,
+	struct sockaddr *, unsigned *, int);
+hidden long __cubit_tcp_local(struct cubit_tcp *, struct sockaddr *, unsigned *);
+hidden long __cubit_fd_accept(int, struct sockaddr *, unsigned *, int);
 hidden void __cubit_tcp_close(struct cubit_tcp *);
 hidden long __cubit_fd_socket_tcp(int flags);
 hidden struct cubit_tcp *__cubit_fd_tcp(int fd, int *nonblock);

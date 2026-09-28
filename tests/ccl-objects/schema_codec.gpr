@@ -1,0 +1,19 @@
+project Schema_Codec is
+   CBOR_Source := external ("CBOR_ADA_SRC");
+   for Source_Dirs use (".", "../../userspace/ccl/src", "../../userspace/ccl/persistence", CBOR_Source & "/src");
+   for Source_Files use
+     ("ccl-types-correspondence.ads", "ccl-types-correspondence.adb") &
+     ("schema_codec_tests.adb", "ccl.ads", "ccl-types.ads", "ccl-types.adb",
+      "ccl-objects.ads", "ccl-objects.adb", "ccl-objects-schemas.ads", "ccl-objects-schemas.adb",
+      "ccl-objects-schemas-persistence.ads", "ccl-objects-schemas-persistence.adb",
+      "ccl-objects-persistence.ads", "ccl-objects-persistence.adb",
+      "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb",
+      "cbor.ads", "cbor-model.ads", "cbor-decoding.ads", "cbor-decoding.adb",
+      "cbor-encoding.ads", "cbor-encoding.adb");
+   for Object_Dir use "build/schema-codec";
+   for Exec_Dir use "build/schema-codec";
+   for Main use ("schema_codec_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-O2", "-gnata", "-gnato");
+   end Compiler;
+end Schema_Codec;

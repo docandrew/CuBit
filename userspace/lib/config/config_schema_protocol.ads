@@ -13,10 +13,11 @@ package Config_Schema_Protocol with SPARK_Mode is
    for Operation use (Create => 1, Recover => 2);
    type Reply_Kind is
      (Created, Already_Exists, Definition_Conflict, Loaded, Absent,
-      Rejected, Uncertain, Load_Failed);
+      Rejected, Uncertain, Load_Failed, Loaded_Managed, Management_Conflict);
    for Reply_Kind use
      (Created => 1, Already_Exists => 2, Definition_Conflict => 3,
-      Loaded => 4, Absent => 5, Rejected => 6, Uncertain => 7, Load_Failed => 8);
+      Loaded => 4, Absent => 5, Rejected => 6, Uncertain => 7, Load_Failed => 8,
+      Loaded_Managed => 9, Management_Conflict => 10);
    Frame_Bytes : constant := 4096 + CCL.Objects.Schemas.Native_Schema_Bytes;
    type Header_Padding is array (1 .. 3800) of Unsigned_8;
    type Frame is record
@@ -49,7 +50,9 @@ package Config_Schema_Protocol with SPARK_Mode is
      (Action : Operation; Session, Token : Number; Name, Context : String;
       Contract : CCL.Objects.Binding; Item : out Frame; Accepted : out Boolean)
      with Post => (if Accepted then Valid_Request (Item));
-   -- Only Loaded carries metadata. Create acknowledgments cannot redefine the
+   -- Loaded / Loaded_Managed carry validated metadata and its durable class.
+   -- Create always requests application state; clients cannot request managed
+   -- registration. Create acknowledgments cannot redefine the
    -- requested type, and absence/errors cannot leak previous buffer contents.
    procedure Make_Reply
      (Request : Frame; Kind : Reply_Kind; Contract : CCL.Objects.Binding;

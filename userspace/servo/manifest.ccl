@@ -15,4 +15,5 @@
   # Wall-clock time (certificate validity, Date headers).
   (request-service clock read-write clock)
   (request-network tcp-connect (ipv4 "0.0.0.0" 0)
-    (ports 1 65535) (dns allow) network))
+    (ports 1 65535) (dns allow)
+    (connections 16) network))

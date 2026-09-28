@@ -1,0 +1,9 @@
+project Wait is
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use ("wait_tests.adb", "monotonic_wait.ads", "monotonic_wait.adb");
+   for Object_Dir use "build-wait";
+   for Main use ("wait_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Wait;

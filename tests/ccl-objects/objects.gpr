@@ -1,0 +1,9 @@
+project Objects is
+   for Source_Dirs use (".", "../../userspace/ccl/src", "../../userspace/services/config");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("object_tests.adb", "value_tests.adb", "durable_tests.adb", "correspondence_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Objects;

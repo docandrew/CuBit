@@ -34,6 +34,8 @@ with Process;
 with Scheduler;
 with Serial;
 with Multiboot; use Multiboot;
+with CPU_Topology.Boot;
+with System.Machine_Code;
 with Services.Idle;
 with StoragePools;
 with TextIO; use TextIO;
@@ -43,6 +45,7 @@ with Timer_Expiry_Probe;
 with Video;
 with Video.EGA;
 with Boot_Diagnostics;
+with Boot_Timer_Setup;
 with Virtmem; use Virtmem;
 with x86;
 
@@ -122,6 +125,7 @@ begin
 
     earlyCheckpoint ("CPU features");
     cpuid.setupCPUID;
+    CPU_Topology.Initialize (CPU_Topology.Boot.CPUs, cpuid.leaf1ebx.localAPICID);
 
     -- Enable SMEP/SMAP if supported
     enableSMEPSMAP : declare
@@ -298,6 +302,9 @@ begin
         end if;
     end initACPI;
     showBootStage ("ACPI tables loaded");
+    Boot_Diagnostics.Begin_Step ("Taking ownership of firmware timers");
+    Boot_Timer_Setup.Take_Over;
+    showBootStage ("Firmware timers quiesced");
     Boot_Diagnostics.Begin_Step ("Configuring interrupt routing");
 
 
@@ -307,20 +314,34 @@ begin
         println("Setting up 8259 PIC", LT_BLUE, BLACK);
         pic.setupPIC;
         Interrupts.setInterruptController (Interrupts.LEGACY_PIC);
+        showBootStage ("Legacy PIC programmed");
     end initPIC;
 
 
-    initPIT: declare
+    initReferenceClock: declare
     begin
+        Boot_Diagnostics.Begin_Step ("Selecting boot clock reference");
+        if Time.Try_CPU_TSC then
+            println ("BOOT-CLOCK: CPUID.15 TSC; PIT interrupts not required");
+            showBootStage ("CPU-reported TSC frequency accepted; PIT bypassed");
+        else
         -- Enable PIT for now just so we have a clock to calibrate the APIC with.
         println("Setting up PIT and enabling timer interrupts", LT_BLUE, BLACK);
         timer_pit.setupPIT;
         timer_pit.enable;
+        showBootStage ("PIT programmed; IRQ0 unmasked");
+        Boot_Diagnostics.Begin_Step ("Waiting for PIT interrupts (bounded calibration)");
         x86.sti;
         -- Independent low-rate reference, before the hypervisor can clamp a
         -- short LAPIC period. Never calibrate TSC against counted fast IRQs.
         Time.calibrateTSC;
-    end initPIT;
+        showBootStage ("PIT interrupts received; TSC calibrated");
+        end if;
+        -- No more dependency on PIT delivery, including LAPIC calibration.
+        x86.cli;
+        timer_pit.disable;
+    end initReferenceClock;
+    Boot_Diagnostics.Begin_Step ("Calibrating LAPIC countdown against TSC");
 
 
     initAPIC: declare
@@ -373,10 +394,10 @@ begin
     initTimerCalibration: declare
     begin
         x86.sti;
-        -- TSC was calibrated against the PIT before LAPIC setup.
+        -- TSC rate came from CPUID or the bounded PIT fallback.
         print (" TSC timer calibration: ");
         printd (time.tscPerDuration);
-        println (" ticks/us (PIT reference)");
+        println (" ticks/us");
 
         if not cpuid.hasInvariantTSC then
             println (" CAUTION: Time-Stamp Counter is not invariant and may vary with CPU speed.",
@@ -505,12 +526,30 @@ begin
             println("Starting SMP CPUs", LT_BLUE, BLACK);
 
             for cpu in 1 .. maxAPs loop
-                startingCPU := Unsigned_32(cpu);
-                myLapic.bootAP(Unsigned_8(cpu), 16#7000#);
-
-                while startingCPU /= 0 loop
-                    Time.sleep(1 * Time.Milliseconds);
-                end loop;
+                declare
+                    Destination : constant Unsigned_8 := CPU_Topology.Destination
+                      (CPU_Topology.Boot.CPUs, cpu);
+                    Started_At : constant Unsigned_64 := x86.rdtsc;
+                begin
+                    println ("SMP start logical=" & Natural'Image (cpu) &
+                      " apic=" & Unsigned_8'Image (Destination));
+                    AP_Startup_Stage := 0;
+                    startingCPU := Unsigned_32(cpu);
+                    myLapic.bootAP(Destination, 16#7000#);
+                    for Poll in 1 .. 100_000_000 loop
+                        exit when startingCPU = 0;
+                        exit when x86.rdtsc - Started_At > Time.tscFrequencyHz * 2;
+                        System.Machine_Code.Asm ("pause", Volatile => True);
+                    end loop;
+                    if startingCPU /= 0 then
+                        println ("SMP FAILED cpu=" & Natural'Image (cpu) &
+                          " apic=" & Unsigned_8'Image (Destination) &
+                          " stage=" & Unsigned_32'Image (AP_Startup_Stage));
+                        raise Program_Error with "Secondary CPU startup timed out";
+                    end if;
+                    println ("SMP ready logical=" & Natural'Image (cpu) &
+                      " apic=" & Unsigned_8'Image (Destination));
+                end;
             end loop;
         end initSMP;
     end if;
@@ -536,7 +575,7 @@ begin
     begin
         Process.startReaper;
         showBootStage ("Starting userspace...");
-        Boot_Diagnostics.Begin_Step ("Starting services / waiting for display owner");
+        Boot_Diagnostics.Begin_Step ("Starting services / NUC trace 12");
         println("Starting scheduler on CPU 0");
         Scheduler.schedule(cpu0Data);
     end initScheduler;
@@ -567,6 +606,7 @@ begin
                       cpuData.gdt'Address,
                       cpuData.gdtPointer'Address,
                       cpuData.tss'Address);
+    AP_Startup_Stage := 2;
 
     -- set up secondary stack for this CPU
     ssPtr := PerCPUData.getSecondaryStack;
@@ -576,6 +616,7 @@ begin
 
     -- switch to the kernel's primary page tables.
     Mem_mgr.switchAddressSpace;
+    AP_Startup_Stage := 3;
 
     -- Diagnostic rendering needs both CPU-local lock bookkeeping and the
     -- kernel framebuffer mapping, not the AP's bootstrap page tables.
@@ -608,6 +649,7 @@ begin
     end if;
 
     -- Create idle process for this CPU
+    AP_Startup_Stage := 4;
     Process.startKernelThread (
         procStart => Services.Idle.start'Address,
         name      => "Idle            ",
@@ -618,6 +660,7 @@ begin
     TLB_Shootdown.Register_CPU (Natural (cpuNum));
 
     -- Signal BSP that we're up
+    AP_Startup_Stage := 5;
     startingCPU := 0;
 
     -- Enable interrupts before entering scheduler (needed for timer)

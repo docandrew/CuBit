@@ -7,9 +7,23 @@ nix develop -c bash tests/config-inspection/run.sh --prove
 ```
 
 The SPARK units are the pure component-boundary matcher, owned
-`Config_Authority` table, `Config_Protocol` wire-length decoder, and owned
-`Config_Store`, not the IPC service, ACL parser, or kernel grants. Matcher cases include non-1 string
+`Config_Authority` table, `Config_Authority_Wire` counted-rule decoder,
+`Config_Protocol` wire-length decoder, and owned `Config_Store`, not the IPC
+service, administrator authentication, or kernel grants. Matcher cases include non-1 string
 bounds and one-character strings at `Positive'Last`.
+
+The counted-rule decoder is now shared with the native Config service. Its
+134,962 hosted checks cover all 256 rights bytes and 256 length bytes, nonzero
+reserved bytes, malformed framing, each invalid position in a full 16-rule
+message, non-1 bounds and a record ending at `Integer'Last`. Rejected input
+returns an empty rule set, never a valid prefix or previous output. Its focused
+SPARK run discharges 18 checks, including that functional postcondition, with
+Z3/CVC5 invoked and none unproved or justified. Exact decoded scopes/rights are
+regression-tested; full native authorization is not proved by this decoder.
+
+The old inline counted-rule loop was removed. The separately authenticated
+zero-count bootstrap wildcard command remains an explicit migration gap;
+passing an empty byte string to the decoder does NOT create wildcard authority.
 
 The authorization tests cover default deny, separate subjects, scoped read
 versus write, explicit wildcard, empty-set denial, grant replacement,

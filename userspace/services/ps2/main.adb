@@ -19,6 +19,7 @@ with System; use System;
 
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Input; use CuBit.Input;
+with PS2_Boot_Probe;
 
 procedure main is
    use ASCII;
@@ -178,19 +179,7 @@ procedure main is
       end if;
    end initMouse;
 
-   ---------------------------------------------------------------------------
-   --  flushPS2 - flush stale bytes from PS/2 output buffer
-   ---------------------------------------------------------------------------
-   procedure flushPS2 is
-      status : Unsigned_8;
-      ignore : Unsigned_8;
-   begin
-      loop
-         status := inb (STATUS_PORT);
-         exit when (status and 16#01#) = 0;
-         ignore := inb (DATA_PORT);
-      end loop;
-   end flushPS2;
+   package Boot_Probe is new PS2_Boot_Probe (inb);
 
    ---------------------------------------------------------------------------
    --  refreshConsumers - re-read registered consumer PIDs from sysinfo
@@ -339,7 +328,28 @@ begin
    --  Discard firmware/bootloader residue before enabling live reports.  A
    --  flush after F4 could consume only the first byte of a packet and leave
    --  the streaming decoder permanently out of phase.
-   flushPS2;
+   declare
+      use type Boot_Probe.Probe_Result;
+      Probe : Boot_Probe.Probe_Result;
+      CAP_SLOT_READY : constant Unsigned_64 := 15;
+      OP_NOT_PRESENT : constant Unsigned_32 := 16#FF01#;
+      Ready_Result : MessageTag;
+   begin
+      Boot_Probe.Drain (Probe);
+      if Probe /= Boot_Probe.Quiescent then
+         if Probe = Boot_Probe.Controller_Unavailable then
+            debugPrint ("ps2: controller unavailable (status FF); skipping" & LF);
+         else
+            debugPrint ("ps2: controller drain limit reached; skipping" & LF);
+         end if;
+         Ready_Result := capSend (CAP_SLOT_READY,
+           (tag => (label => OP_NOT_PRESENT, length => 0,
+                    flags => 0, reserved => 0),
+            authorityTag => 0, words => (others => 0)));
+         ignore := syscall (SYSCALL_EXIT);
+         return;
+      end if;
+   end;
 
    --  Initialize PS/2 mouse
    initMouse;

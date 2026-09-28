@@ -1,0 +1,13 @@
+project Rings is
+   --  mutations.sh points RING_SRC and RING_OBJ at a mutated copy.
+   Ring_Src := external ("RING_SRC", "../../userspace/runtime/gnat");
+   for Source_Dirs use (".", Ring_Src);
+   for Source_Files use ("cubit.ads", "cubit-channel_rings.ads", "cubit-channel_rings.adb",
+                         "cubit-datagram_rings.ads", "cubit-datagram_rings.adb", "main.adb");
+   for Object_Dir use external ("RING_OBJ", "build");
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-O2", "-gnata", "-gnato", "-I-");
+   end Compiler;
+end Rings;

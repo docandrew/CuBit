@@ -1,0 +1,10 @@
+project Requests is
+   for Source_Dirs use (".", "../../userspace/runtime/gnat");
+   for Source_Files use ("cubit.ads", "cubit-async_requests.ads", "cubit-async_requests.adb", "main.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-O2", "-gnata", "-gnato", "-I-");
+   end Compiler;
+end Requests;

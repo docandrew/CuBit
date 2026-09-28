@@ -19,6 +19,7 @@ src/build.ads
 /kernel/*.img
 /kernel/*.iso
 /kernel/*.iso.plan.json
+/kernel/*.img.plan.json
 /kernel/isodir/boot/*.img.plan.json
 /kernel/*.log
 /kernel/*.pcap
@@ -47,3 +48,10 @@ userspace/apps/display-check/build-gpu-clear-failure/
 
 # Advisory cross-session build/test lock; never delete a live lock file.
 /coordination/*.lock
+/.build-workspaces/
+
+# Networking scratch: proof/test build variants, runner temp files, logs.
+/tests/net-tcp/build-*/
+/tests/net-tcp/build*.log
+# Local A/B backups of built images (never committed).
+/kernel/*.pre-*

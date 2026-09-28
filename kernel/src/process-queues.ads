@@ -74,6 +74,15 @@ package Process.Queues is
     procedure dequeue (q : in out ProcQueue; result : out ThreadID);
 
     ---------------------------------------------------------------------------
+    -- dequeuePreferring
+    -- Remove the first entry whose home CPU is cpu, else the head (FIFO).
+    -- Used to hand IPC work to a receiver thread on the sender's CPU, so the
+    -- handoff can be direct; it changes no priority and grants nothing.
+    ---------------------------------------------------------------------------
+    procedure dequeuePreferring (q : in out ProcQueue; cpu : Natural;
+                                 result : out ThreadID);
+
+    ---------------------------------------------------------------------------
     -- insert
     -- Inserts in descending key order; equal keys retain FIFO arrival order.
     ---------------------------------------------------------------------------

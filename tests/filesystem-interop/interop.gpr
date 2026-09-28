@@ -1,0 +1,23 @@
+project Interop is
+   for Languages use ("Ada");
+   for Source_Dirs use
+     (".", "fixture", "../../userspace/services/filesystem", "../../userspace/runtime/gnat");
+   for Source_Files use
+     ("main.adb", "cubit-messages.ads", "cubit-messages.adb", "cubit.ads",
+      "ext2.ads", "ext2.adb", "ext2_inodes.ads", "ext2_support.ads", "ext2_support.adb",
+      "sector_accounting.ads", "sector_accounting.adb", "inode_mappings.ads", "inode_mappings.adb",
+      "volume_admission.ads", "block_paths.ads", "block_paths.adb",
+      "block_inventory.ads", "block_inventory.adb",
+      "double_mappings.ads", "double_mappings.adb",
+      "directory_blocks.ads", "directory_blocks.adb",
+      "directory_commit.ads", "directory_commit.adb", "cubit-memory_grants.ads",
+      "cubit-grant_references.ads", "cubit-block_devices.ads", "cubit-block_devices.adb",
+      "cubit-filesystems.ads", "cubit-filesystems.adb", "cubit-file_access.ads", "cubit-file_access.adb",
+      "cubit-directory_paths.ads", "cubit-directory_paths.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-I-");
+   end Compiler;
+end Interop;

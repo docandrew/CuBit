@@ -854,8 +854,10 @@ procedure main is
       dmaPhys   : Unsigned_64;
       ret       : Unsigned_64;
 
-      DMA_ORDER : constant Unsigned_64 := 6;  --  64 pages = 256KB
-      DMA_PAGES : constant Unsigned_64 := 64;
+      --  Rings, a full queue of receive buffers and the transmit buffers
+      --  (virtio-net's main.adb lays them out).
+      DMA_ORDER : constant Unsigned_64 := 8;  --  256 pages = 1 MiB
+      DMA_PAGES : constant Unsigned_64 := 2 ** Natural (DMA_ORDER);
       DMA_SIZE  : constant Unsigned_64 := DMA_PAGES * 4096;
    begin
       if not netDev.found or virtioNetPID = 0 then

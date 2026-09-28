@@ -5,6 +5,7 @@
 -- General functions and data structures for time-keeping.
 -------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
+with Boot_Timer_Rates;
 
 package Time with
     SPARK_Mode => On
@@ -21,6 +22,11 @@ is
 
     subtype TSCTicks        is Unsigned_64;
 
+    -- High-resolution monotonic backend; independent of UTC and msTicks.
+    -- False means unavailable. Do not infer physical accuracy from units.
+    procedure Read_Monotonic (Microseconds : out Unsigned_64;
+                             Success : out Boolean) with SPARK_Mode => Off;
+
     ---------------------------------------------------------------------------
     -- msTicks is a running count, updated by the interruptHandler.
     ---------------------------------------------------------------------------
@@ -30,6 +36,9 @@ is
     -- TSC ticks per time duration
     ---------------------------------------------------------------------------
     tscPerDuration      : TSCTicks := 0;
+    tscFrequencyHz     : Boot_Timer_Rates.Frequency := 0;
+    -- BSP only, before interrupts/APs. False leaves calibration unchanged.
+    function Try_CPU_TSC return Boolean with SPARK_Mode => Off, No_Inline;
 
     tscCalibrated       : Boolean := False with Ghost;
     clockFault          : Boolean := False with Atomic;
@@ -42,6 +51,7 @@ is
     --
     -- IMPORTANT: A timer must be active and PIC _interrupts enabled_ for this
     --  to work.
+    --  Missing progress fails with a bounded diagnostic rather than hanging.
     -- 
     -- @param ms - number of milliseconds to sleep
     ---------------------------------------------------------------------------
@@ -49,8 +59,7 @@ is
 
     ---------------------------------------------------------------------------
     -- calibrateTSC
-    -- Use bootCalibrationSleep to determine the time interval between
-    -- successive TSC ticks.
+    -- Bounded PIT fallback, only when Try_CPU_TSC could not establish a rate.
     ---------------------------------------------------------------------------
     procedure calibrateTSC with
         Post => tscCalibrated;

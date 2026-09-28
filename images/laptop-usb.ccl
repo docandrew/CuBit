@@ -20,6 +20,8 @@
   (file optical "hda" "apps/hda.drv")
   (file optical "mixer" "apps/mixer.svc")
   (file optical "config" "apps/config.svc")
+  (file optical "config-storage" "apps/config-storage.svc")
+  (file optical "servo" "apps/cubitshell.app")
   (file optical "netmgr" "apps/netmgr.svc")
   (file optical "procmgr" "apps/procmgr.svc")
   (file optical "logstore" "apps/logstore.svc")

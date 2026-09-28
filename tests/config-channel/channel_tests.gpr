@@ -1,0 +1,31 @@
+project Channel_Tests is
+   CBOR_Source := external ("CBOR_ADA_SRC");
+   for Source_Dirs use
+     (".", "../storage-channel/fixture", "../../userspace/lib/config",
+      "../../userspace/ccl/src", "../../userspace/ccl/persistence",
+      CBOR_Source & "/src", "../../userspace/runtime/gnat");
+   for Source_Files use
+     ("ccl-types-correspondence.ads", "ccl-types-correspondence.adb") &
+     ("config_channel_tests.adb", "receiver_tests.adb",
+      "type_channel_tests.adb", "config_schema_protocol.ads", "config_schema_protocol.adb",
+      "config_schema_worker.ads", "config_schema_worker.adb",
+      "config_worker_receiver.ads", "config_worker_receiver.adb",
+      "config_worker.ads", "config_worker.adb", "config_worker_storage.ads",
+      "ccl-objects-persistence.ads", "ccl-objects-persistence.adb",
+      "ccl-objects-schemas.ads", "ccl-objects-schemas.adb",
+      "cbor.ads", "cbor-model.ads", "cbor-decoding.ads", "cbor-decoding.adb",
+      "cbor-encoding.ads", "cbor-encoding.adb",
+      "config_worker_channel.ads", "config_worker_channel.adb",
+      "config_worker_messages.ads", "config_worker_messages.adb",
+      "config_worker_protocol.ads", "config_worker_protocol.adb",
+      "ccl.ads", "ccl-types.ads", "ccl-types.adb", "ccl-objects.ads", "ccl-objects.adb",
+      "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb",
+      "cubit.ads", "cubit-messages.ads", "cubit-messages.adb",
+      "cubit-memory_grants.ads", "cubit-memory_grants.adb", "cubit-grant_references.ads");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("config_channel_tests.adb", "receiver_tests.adb", "type_channel_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-O2", "-gnata", "-gnato", "-I-");
+   end Compiler;
+end Channel_Tests;

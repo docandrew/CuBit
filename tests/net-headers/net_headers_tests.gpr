@@ -1,0 +1,17 @@
+project Net_Headers_Tests is
+   --  MODE=check (default): assertions on, for the differential test.
+   --  MODE=speed: as netstack is built (no assertions), for the timing.
+   Mode := external ("MODE", "check");
+   for Source_Dirs use (".", "../../userspace/net/src", "../../userspace/net/generated");
+   for Object_Dir use "build/" & Mode;
+   for Exec_Dir use "build/" & Mode;
+   for Main use ("differential.adb");
+   package Compiler is
+      case Mode is
+         when "speed" =>
+            for Default_Switches ("Ada") use ("-gnat2022", "-O2");
+         when others =>
+            for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-O2");
+      end case;
+   end Compiler;
+end Net_Headers_Tests;

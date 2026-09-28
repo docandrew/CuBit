@@ -59,7 +59,7 @@ Rebuild the IODD image with the existing explicitly opted-in local cartridges:
 SAMEBOY_ROMS_DIR=/home/doc/git/cubit/local-roms nix develop -c make -C kernel usb-live-iso
 ```
 
-Boot `kernel/cubit_laptop_usb.iso`, try DOOM, then close it. Initialization logs
+Boot `kernel/cubit_laptop_usb.img`, try DOOM, then close it. Initialization logs
 include codec identity, selected nodes, power, amplifier capabilities and actual
 gain/mute, EAPD, pin control, converter stream and format. Expected laptop values:
 

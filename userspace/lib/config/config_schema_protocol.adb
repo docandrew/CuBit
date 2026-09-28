@@ -32,13 +32,15 @@ package body Config_Schema_Protocol with SPARK_Mode is
         Item.Action /= Request.Action or else Item.Name_Length /= Request.Name_Length or else
         Item.Context_Length /= Request.Context_Length or else Item.Name /= Request.Name or else
         Item.Context /= Request.Context then return False; end if;
-      if Item.Action = Operation'Enum_Rep (Recover) and then Item.Reply = Reply_Kind'Enum_Rep (Loaded) then
+      if Item.Action = Operation'Enum_Rep (Recover) and then
+        Item.Reply in Reply_Kind'Enum_Rep (Loaded) | Reply_Kind'Enum_Rep (Loaded_Managed) then
          return Valid_Metadata (Item.Metadata);
       end if;
       if Item.Metadata /= Empty_Metadata then return False; end if;
       if Item.Action = Operation'Enum_Rep (Create) then
          return Item.Reply in Reply_Kind'Enum_Rep (Created) | Reply_Kind'Enum_Rep (Already_Exists) |
-           Reply_Kind'Enum_Rep (Definition_Conflict) | Reply_Kind'Enum_Rep (Rejected) |
+           Reply_Kind'Enum_Rep (Definition_Conflict) | Reply_Kind'Enum_Rep (Management_Conflict) |
+           Reply_Kind'Enum_Rep (Rejected) |
            Reply_Kind'Enum_Rep (Uncertain);
       else
          return Item.Reply in Reply_Kind'Enum_Rep (Absent) | Reply_Kind'Enum_Rep (Load_Failed);
@@ -70,7 +72,7 @@ package body Config_Schema_Protocol with SPARK_Mode is
    begin
       Item := Request; Item.Reply := Reply_Kind'Enum_Rep (Kind);
       Item.Metadata := Empty_Metadata;
-      if Kind = Loaded then
+      if Kind in Loaded | Loaded_Managed then
          S.Write (Contract, Item.Metadata, Accepted);
          if not Accepted then Item := (others => <>); return; end if;
       end if;

@@ -4,7 +4,7 @@ project Virtio_Net is
 
     for Object_Dir use "build";
 
-    for Source_Dirs use (".");
+    for Source_Dirs use (".", "../../net/src");
 
     for Main use ("main.adb");
 
@@ -32,7 +32,10 @@ project Virtio_Net is
     package Compiler is
         for Default_Switches ("Ada") use
         (
-            "-O2",
+            "-O3",
+            --  No run-time checks: correctness comes from SPARK proof
+            --  (see tests/net-tcp and tests/tcp-session), not from checks.
+            "-gnatp",
             "-fstack-usage",
             "-fomit-frame-pointer",
             "-mno-red-zone",

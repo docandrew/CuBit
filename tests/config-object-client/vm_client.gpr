@@ -1,0 +1,25 @@
+project VM_Client extends "client.gpr" is
+   for Source_Dirs use Client'Source_Dirs & ("native-app");
+   for Source_Files use Client'Source_Files &
+     ("vm_tests.adb", "vm_fixture.ads", "vm_fixture.adb",
+      "config_object_client-vm.ads", "config_object_client-vm.adb",
+      "ccl-objects-values.ads", "ccl-objects-values.adb",
+      "ccl-objects-catalog.ads", "ccl-objects-catalog.adb",
+      "ccl-host_values.ads", "ccl-host_values.adb",
+      "ccl-handler_references.ads", "ccl-handler_references.adb",
+      "ccl-vm.ads", "ccl-vm.adb", "ccl-ownership.ads", "ccl-ownership.adb",
+      "ccl-resources.ads", "ccl-resources.adb",
+      "ccl-resource_policies.ads", "ccl-resource_policies.adb",
+      "ccl-vm-resource_values.ads", "ccl-vm-resource_values.adb",
+      "ccl-ownership-bytecode.ads", "ccl-ownership-bytecode.adb",
+      "ccl-imports.ads", "ccl-imports.adb",
+      "ccl-execution_budgets.ads", "ccl-execution_budgets.adb",
+      "ccl-checked_arithmetic.ads", "ccl-checked_arithmetic.adb",
+      "ccl-language.ads", "ccl-language.adb", "ccl-compiler.ads", "ccl-compiler.adb",
+      "ccl-objects-views.ads", "ccl-objects-views.adb",
+      "ccl-catalog.ads", "ccl-catalog.adb", "ccl-debug_maps.ads", "ccl-debug_maps.adb",
+      "ccl-secondary_stacks.ads", "ccl-secondary_stacks.adb");
+   for Object_Dir use "build/vm";
+   for Exec_Dir use "build/vm";
+   for Main use ("vm_tests.adb");
+end VM_Client;

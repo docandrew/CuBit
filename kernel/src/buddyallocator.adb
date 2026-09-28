@@ -737,6 +737,50 @@ is
         Spinlocks.exitCriticalSection (lock);
     end alloc;
 
+    procedure allocBelow
+      (ord : Order; ceiling : Unsigned_64; addr : out System.Address) with
+        SPARK_Mode => Off -- serialized physical free-list overlays
+    is
+        Candidate : System.Address;
+        Physical : Unsigned_64;
+        Needed : constant Unsigned_64 := Unsigned_64 (blockSize (ord));
+        Split_Order : Order;
+        Ignored : System.Address;
+    begin
+        addr := NO_BLOCK_AVAILABLE;
+        if ceiling < Needed then return; end if;
+        Spinlocks.enterCriticalSection (lock);
+        for Current in ord .. Order'Last loop
+            Candidate := freeLists (Current).nextBlock;
+            for Visit in 1 .. freeLists (Current).numFreeBlocks loop
+                if Candidate = getListAddress (Current) then
+                    raise AllocatorException with "DMA free-list count mismatch";
+                end if;
+                Physical := Unsigned_64 (Virtmem.V2P (Candidate));
+                if Physical <= ceiling - Needed then
+                    unlink (Current, Candidate);
+                    if Current < Order'Last then toggleBit (Current, Candidate); end if;
+                    Split_Order := Current;
+                    while Split_Order > ord loop
+                        splitBlock (Split_Order, Candidate);
+                        Split_Order := Split_Order - 1;
+                    end loop;
+                    moveBlock (ord, Candidate, Buddy_Blocks.Commit);
+                    addr := Candidate;
+                    Spinlocks.exitCriticalSection (lock);
+                    Ignored := Util.memset (addr, 0, blockSize (ord));
+                    return;
+                end if;
+                declare
+                    Node : FreeBlock with Import, Volatile, Address => Candidate;
+                begin
+                    Candidate := Node.nextBlock;
+                end;
+            end loop;
+        end loop;
+        Spinlocks.exitCriticalSection (lock);
+    end allocBelow;
+
     ---------------------------------------------------------------------------
     -- allocFrame
     ---------------------------------------------------------------------------

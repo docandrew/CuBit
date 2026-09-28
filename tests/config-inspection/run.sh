@@ -11,11 +11,17 @@ alr exec -- gprbuild -p -P ../tests/config-inspection/tree_tests.gpr
 ../tests/config-inspection/build/tree/tree_tests
 alr exec -- gprbuild -p -P ../tests/config-inspection/authority.gpr
 ../tests/config-inspection/build/authority/authority_tests
+alr exec -- gprbuild -p -P ../tests/config-inspection/authority_wire.gpr
+../tests/config-inspection/build/authority-wire/authority_wire_tests
 alr exec -- gprbuild -p -P ../tests/config-inspection/protocol.gpr
 ../tests/config-inspection/build/protocol/protocol_tests
 alr exec -- gprbuild -p -P ../tests/config-inspection/store.gpr
 ../tests/config-inspection/build/store/store_tests
 if [ "${1:-}" = "--prove" ]; then
+    alr exec -- gnatprove -P ../tests/config-inspection/authority_wire.gpr -u config_authority_wire.adb --mode=prove --level=2 -j2 2>&1 | tee ../tests/config-inspection/build/authority-wire-proof.log
+    if rg -q ': (low|medium|high):' ../tests/config-inspection/build/authority-wire-proof.log; then
+        exit 1
+    fi
     alr exec -- gnatprove -P ../tests/config-inspection/inspection.gpr -u cubit-config_inspection.adb --mode=prove --level=2 2>&1 | tee ../tests/config-inspection/build/proof.log
     if rg -q ': (low|medium|high):' ../tests/config-inspection/build/proof.log; then
         exit 1

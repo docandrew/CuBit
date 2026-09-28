@@ -393,6 +393,13 @@ package body CCL.Manifests with SPARK_Mode => On is
          else Fail (Invalid_Network_Scope, Cursor);
          end if;
          Expect (')');
+         Expect ('(');
+         Atom (Name);
+         if not Is_Text (Name, "connections") then Fail (Invalid_Network_Scope, Cursor); end if;
+         Network_Integer
+           (1, Integer_64 (CuBit.Network_Authority.Connection_Count'Last), Number);
+         Item.Network.Connections := CuBit.Network_Authority.Connection_Count (Number);
+         Expect (')');
          if not CuBit.Network_Authority.Valid (Item.Network) then
             Fail (Invalid_Network_Scope, Cursor);
          end if;

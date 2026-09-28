@@ -22,7 +22,7 @@ is
                                retval    : out Unsigned_64);
 
     procedure handleAllocDma (callerPID : Process.ProcessID;
-                              arg0, arg1, arg2 : Unsigned_64;
+                              arg0, arg1, arg2, arg3, arg4 : Unsigned_64;
                               retval    : out Unsigned_64);
 
     procedure handleMapInto (callerPID : Process.ProcessID;

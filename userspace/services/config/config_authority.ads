@@ -9,11 +9,17 @@ package Config_Authority with SPARK_Mode, Pure is
    Maximum_Rules : constant := 16;
    Maximum_Subjects : constant := 32;
    Maximum_Scope : constant := 64;
-   type Operation is (Read_Config, Write_Config);
+   type Operation is (Read_Config, Write_Config, Activate_Config);
+   subtype Value_Operation is Operation range Read_Config .. Write_Config;
    type Rights is array (Operation) of Boolean;
-   Read_Only : constant Rights := [Read_Config => True, Write_Config => False];
-   Read_Write : constant Rights := [others => True];
+   Read_Only : constant Rights := [Read_Config => True, others => False];
+   Read_Write : constant Rights :=
+     [Read_Config | Write_Config => True, Activate_Config => False];
+   --  Activation is explicit and scoped by the same rule engine. Neither
+   --  Read_Write nor the existing grant-wire mask grants it. Only trusted
+   --  in-process installation can currently authorize the activation pilot.
    type Rule_Set is private;
+   Empty_Rules : constant Rule_Set;
    type Authority_State is private;
    type Install_Result is (Installed, Invalid_Subject, Capacity_Exceeded, Identity_Exhausted);
 
@@ -56,6 +62,7 @@ private
       Entries : Rule_Array;
       Count : Rule_Count := 0;
    end record;
+   Empty_Rules : constant Rule_Set := (others => <>);
    type Profile is record
       Subject : Subject_ID := No_Subject;
       Revision : Interfaces.Unsigned_64 := 0;

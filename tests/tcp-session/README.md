@@ -11,19 +11,24 @@ nix develop -c make -C kernel netstack
 Assertions are enabled only in the Linux-hosted test executable. Native netstack
 builds remain optimized, without `-gnata`.
 
-The tests exercise the actual service's pure `TCPSession` state machine and the
-`TCP_Listeners` ownership/backlog ADT and `Network_Channel_Handles`. They cover active and passive handshake
-ACK validation, duplicate SYN, receive credit, sequence wrap, peer half-close,
-data plus FIN on the final handshake ACK, reset sequence validation, listener
+The tests exercise the service's `TCP_Slots` connection slots, the
+`TCP_Wire` option parser, the `TCP_Listeners` ownership/backlog ADT and
+`Network_Channel_Handles`, plus netstack's IPv6 link glue (`IPv6_Link`, through
+the instance in `ipv6_link_proof.ads`) and the proved `Internet_Checksum`. The
+IPv6 proof covers every frame and clock value; every frame sent is
+`IPv6_Frame.Emittable`. The checksum is compared with RFC 1071 and netstack's
+word-wise sum for every length up to 1,600 at four alignments. (The TCP protocol itself is the proved engine in
+`userspace/net/src`, tested and proved in `tests/net-tcp`.) They cover listener
 ownership, duplicate bind rejection, stale listener handles, bounded backlog,
 accept readiness, and expiry/close cleanup. Channel identity tests cover
 owner/tag separation, zero and oversized handles, 1,000 reuses of one slot,
-stale-handle rejection, table exhaustion, and recovery. TCP reservation tests
-distinguish CLOSED protocol state from permission to reuse a still-owned slot.
+stale-handle rejection, table exhaustion, and recovery. Slot tests check that
+an owned or still-closing slot is not reused. Option tests cover Linux's SYN options (MSS, SACK-permitted, timestamps,
+window scale), NOPs, End of Option List, and truncated or malformed lengths.
 
 GNATprove checks absence of run-time errors, initialization, and the reported
-termination obligations in these three packages. This is **not** a proof of TCP
-protocol correctness, listener policy, the pointer-based packet IO boundary,
+termination obligations in these packages. This is **not** a proof of TCP
+protocol correctness (that is `tests/net-tcp`), listener policy, the pointer-based packet IO boundary,
 or the complete netstack service. Behavioral claims above are regression tests.
 
 The listener ADT is connected to native `NET_BIND`/accept/close and passive receive.

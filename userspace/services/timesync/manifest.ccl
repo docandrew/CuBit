@@ -9,5 +9,6 @@
   # NTP servers are named by the time.servers setting, so any IPv4 address,
   # but only UDP port 123. DNS is needed to resolve server names.
   (request-network udp-connect (ipv4 "0.0.0.0" 0)
-    (ports 123 123) (dns allow) ntp)
+    (ports 123 123) (dns allow)
+    (connections 2) ntp)
   (config-scope (rights read) "time."))

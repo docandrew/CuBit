@@ -15,7 +15,7 @@ package body Boot_Panel with SPARK_Mode is
    begin
       if S.Life = Unavailable then
          S.Life := Active;
-         S.Text (Heading) := Fit ("CuBit / boot diagnostics");
+         S.Text (Heading) := Fit ("CuBit / boot diagnostics / PS2 PROBE 5");
          S.Text (Current_Step) := Fit ("Initializing kernel");
       end if;
    end Initialize;
@@ -35,6 +35,12 @@ package body Boot_Panel with SPARK_Mode is
          S.Text (Last_Completed) := Fit (Text);
       end if;
    end Complete_Step;
+   procedure Set_Evidence (S : in out State; R : Evidence_Row; Text : String) is
+   begin
+      if S.Life = Active and then not S.Stopped then
+         S.Text (R) := Fit (Text);
+      end if;
+   end Set_Evidence;
    procedure Fail (S : in out State; Text : String) is
    begin
       if S.Life = Active and then not S.Stopped then

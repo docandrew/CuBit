@@ -1,0 +1,6 @@
+# Network benchmark (tests/net-bench): net-bench.app against the host
+# fixture, the same client the Linux reference runs (linux.sh).
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "net-bench.app" (priority 3) (network approve-declared))
+)

@@ -647,7 +647,7 @@ is
     ---------------------------------------------------------------------------
     tscRatioDenominator         : Unsigned_32 := 0;
     tscRatioNumerator           : Unsigned_32 := 0;
-    tscFreqHz                   : Unsigned_32 := 0;
+    crystalClockHz              : Unsigned_32 := 0; -- CPUID.15 ECX, not TSC Hz
 
     ---------------------------------------------------------------------------
     -- CPUID:16h - Processor Frequency Info

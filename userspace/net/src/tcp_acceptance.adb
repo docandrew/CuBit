@@ -4,6 +4,27 @@
 ------------------------------------------------------------------------------
 package body TCP_Acceptance with SPARK_Mode is
 
+   --  A segment that starts before the window but ends inside it starts
+   --  less than its length before RCV.NXT.
+   procedure Lemma_Ends_In_Window (S : Seq; L : Segment_Length; N : Seq; W : Window_Size)
+   with Ghost, Global => null,
+        Pre  => L > 0 and then not In_Window (S, N, W) and then
+                In_Window (S + (L - 1), N, W),
+        Post => Distance (S, N) < L;
+   procedure Lemma_Ends_In_Window (S : Seq; L : Segment_Length; N : Seq; W : Window_Size) is
+      E : constant Seq := S + (L - 1) - N;   --  where the segment ends, from N
+   begin
+      pragma Assert (E < W);
+      if E < L - 1 then
+         --  Then N - S = (L - 1) - E, below L.
+         pragma Assert (N - S = (L - 1) - E);
+      else
+         --  Then S is E - (L - 1) past N: inside the window.
+         pragma Assert (S - N = E - (L - 1));
+         pragma Assert (S - N < W);
+      end if;
+   end Lemma_Ends_In_Window;
+
    procedure Trim
      (Seg_Seq : Seq; Seg_Len : Segment_Length;
       Rcv_Nxt : Seq; Rcv_Wnd : Window_Size;
@@ -19,6 +40,7 @@ package body TCP_Acceptance with SPARK_Mode is
          Offset := Distance (Rcv_Nxt, Seg_Seq);
       else
          --  Starts before RCV.NXT and ends inside: drop the old prefix.
+         Lemma_Ends_In_Window (Seg_Seq, Seg_Len, Rcv_Nxt, Rcv_Wnd);
          Skip   := Distance (Seg_Seq, Rcv_Nxt);
          First  := Rcv_Nxt;
          Offset := 0;

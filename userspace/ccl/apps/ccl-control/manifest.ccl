@@ -5,5 +5,6 @@
   # Development-only plaintext listener, isolated behind a loopback QEMU forward.
   # No outbound, filesystem, desktop, or process administration request.
   (request-network tcp-listen (ipv4 "10.0.2.15" 32)
-    (ports 8080 8080) (dns deny) network)
+    (ports 8080 8080) (dns deny)
+    (connections 4) network)
   (request-service clock read-write clock))

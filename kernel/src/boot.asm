@@ -37,6 +37,7 @@ extern apEnter
 ; Ada code will set this variable so we know what CPU is entering here when
 ; booting up the APs.
 extern startingCPU
+extern ap_startup_stage
 
 ; Declare constants used for creating a multiboot header.
 ; note that we do not set bit 16 in FLAGS here, so the boot loader will use
@@ -76,6 +77,33 @@ MultiBootHeader:
     dd 1024         ; height
     dd 32           ; bpp depth
 
+; Multiboot2 is the UEFI handoff: GRUB supplies copied ACPI RSDP tags and
+; terminates EFI boot services. Do not request the EFI boot-services tag.
+align 8
+MultiBoot2Header:
+    dd 0xe85250d6, 0
+    dd MultiBoot2HeaderEnd - MultiBoot2Header
+    dd (-(0xe85250d6 + (MultiBoot2HeaderEnd - MultiBoot2Header))) & 0xffffffff
+    dw 1, 0                     ; required information: map and framebuffer
+    dd 16
+    dd 6, 8
+    dw 1, 1                     ; optional ACPI old/new (not every BIOS has both)
+    dd 16
+    dd 14, 15
+    dw 3, 0                     ; 32-bit entry physical address
+    dd 12
+    dd start_phys
+    dd 0                        ; tag alignment
+    dw 5, 1                     ; preferred framebuffer, not a fixed mode
+    dd 20
+    dd 1280, 1024, 32
+    dd 0
+    dw 6, 0                     ; page-aligned boot modules
+    dd 8
+    dw 0, 0
+    dd 8
+MultiBoot2HeaderEnd:
+
 ; Stack setup (see end for location)
 STACKSIZE equ 0x1000
 
@@ -96,6 +124,8 @@ start:
 
     ; Admit the entire header window BEFORE the first loader-memory read.
     ; Physical backing remains a loader assumption, not proved by this gate.
+    cmp edi, 0x36d76289
+    je .multiboot2_entry
     ADMIT_MULTIBOOT_ENTRY invalid_multiboot_entry
 
     ; Allocation-free breadcrumbs for the explicit legacy text diagnostic
@@ -106,6 +136,16 @@ start:
     jne .no_text_breadcrumb
     mov dword [0xb8000], 0x1f301f42 ; B0: entered 32-bit kernel
 .no_text_breadcrumb:
+    jmp .entry_admitted
+.multiboot2_entry:
+    ; Only the fixed prefix is read in Ada before admitting total_size.
+    test esi, esi
+    jz invalid_multiboot_entry
+    test esi, 7
+    jnz invalid_multiboot_entry
+    cmp esi, (0x40000000 - 8)
+    ja invalid_multiboot_entry
+.entry_admitted:
 
     ; Zero out ebx for the initial processor. AP cores will come in with a
     ; non-zero ebx for their CPU number.
@@ -309,7 +349,8 @@ setup_bsp:
 
 setup_ap:
     ; see exactly what CPU was just booted
-    mov rbx, qword [(startingCPU - KERNEL_BASE)]
+    mov dword [ap_startup_stage - KERNEL_BASE], 1 ; reached 64-bit trampoline
+    mov ebx, dword [(startingCPU - KERNEL_BASE)] ; Ada Unsigned_32, zero extend
 
     ; Subsequent per-CPU stacks will be STACK_TOP - (2 pages * the CPU number in rbx)
     ; Make sure the max number of CPUs booted * the PER_CPU_STACK_SIZE doesn't exceed

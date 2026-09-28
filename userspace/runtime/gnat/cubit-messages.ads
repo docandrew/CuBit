@@ -36,6 +36,8 @@ package CuBit.Messages is
    SYSCALL_RECEIVE_EVENT_NB : constant Unsigned_64 := 26;
    SYSCALL_POLL_EVENT      : constant Unsigned_64 := 26;
    SYSCALL_GETTIME         : constant Unsigned_64 := 27;
+   --  Separate microsecond epoch; Last indicates unavailable. Never UTC.
+   SYSCALL_READ_MONOTONIC_MICROSECONDS : constant Unsigned_64 := 114;
    SYSCALL_SLEEP           : constant Unsigned_64 := 28;
    SYSCALL_POLL_SERVICE_REQUEST : constant Unsigned_64 := 80;
    SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID :
@@ -166,6 +168,7 @@ package CuBit.Messages is
    SYSINFO_GPU_IS_PRIMARY     : constant Unsigned_64 := 1707;
    SYSINFO_GPU_SECOND_DMA_PHYS : constant Unsigned_64 := 1708;
    SYSINFO_NUM_CPUS           : constant Unsigned_64 := 1400;
+   SYSINFO_MONOTONIC_DIAGNOSTIC : constant Unsigned_64 := 1402;
    SYSINFO_EVENT_DROPS_SELF   : constant Unsigned_64 := 1401;
    SYSINFO_REGISTERED_DRIVER  : constant Unsigned_64 := 2000;
 

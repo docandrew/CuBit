@@ -316,10 +316,10 @@ class Manifests(unittest.TestCase):
     def test_network_scope_encoding_and_validation(self):
         template = '''(executable-manifest v1 (identity "test") (version "1")
           (request-network tcp-connect (ipv4 "10.0.2.0" 24)
-            (ports 80 443) (dns allow) network))'''
+            (ports 80 443) (dns allow) (connections 6) network))'''
         result = self.compile(template)
         self.assertEqual(result.returncode, 0, result.stderr)
-        descriptor = 80 | (443 << 16) | (24 << 32) | (1 << 40) | (1 << 48)
+        descriptor = 80 | (443 << 16) | (24 << 32) | (1 << 40) | (1 << 48) | (6 << 49)
         self.assertEqual(self.sections(result.stdout)['.cubit.caps'],
                          struct.pack('<IHH', 0x43424954, 1, 1) +
                          struct.pack('<BBHIQ', 10, 3, 24, 0x0a000200, descriptor))
@@ -327,16 +327,18 @@ class Manifests(unittest.TestCase):
             '10.0.2.0" 24', '10.0.2.15" 32').replace('80 443', '8080 8080').replace('dns allow', 'dns deny')
         result = self.compile(listener)
         self.assertEqual(result.returncode, 0, result.stderr)
-        descriptor = 8080 | (8080 << 16) | (32 << 32) | (2 << 40)
+        descriptor = 8080 | (8080 << 16) | (32 << 32) | (2 << 40) | (6 << 49)
         self.assertEqual(self.sections(result.stdout)['.cubit.caps'][8:],
                          struct.pack('<BBHIQ', 10, 3, 24, 0x0a00020f, descriptor))
         broad = template.replace('10.0.2.0" 24', '0.0.0.0" 0').replace('80 443', '1 65535')
         self.assertEqual(self.compile(broad).returncode, 0)
+        most = template.replace('connections 6', 'connections 32767')
+        self.assertEqual(self.compile(most).returncode, 0)
         datagram = template.replace('tcp-connect', 'udp-connect').replace(
             '10.0.2.0" 24', '10.0.2.2" 32').replace('80 443', '123 123')
         result = self.compile(datagram)
         self.assertEqual(result.returncode, 0, result.stderr)
-        descriptor = 123 | (123 << 16) | (32 << 32) | (3 << 40) | (1 << 48)
+        descriptor = 123 | (123 << 16) | (32 << 32) | (3 << 40) | (1 << 48) | (6 << 49)
         self.assertEqual(self.sections(result.stdout)['.cubit.caps'][8:],
                          struct.pack('<BBHIQ', 10, 3, 24, 0x0a000202, descriptor))
         for old, bad in [
@@ -349,7 +351,12 @@ class Manifests(unittest.TestCase):
                 ('"10.0.2.0"', '"10.0.2.-1"'), ('"10.0.2.0"', '"10.0.2.0 "'),
                 ('24)', '33)'), ('24)', '-1)'), ('24)', 'true)'),
                 ('80 443', '0 443'), ('80 443', '444 443'), ('80 443', '80 65536'),
-                ('80 443', '"80" 443'), ('dns allow', 'dns maybe')]:
+                ('80 443', '"80" 443'), ('dns allow', 'dns maybe'),
+                ('connections 6', 'connections 0'),
+                ('connections 6', 'connections 32768'),
+                ('connections 6', 'connections -1'),
+                ('connections 6', 'connections "6"'),
+                ('connections 6', 'channels 6')]:
             with self.subTest(old=old, bad=bad):
                 self.reject(template.replace(old, bad), diagnostic='INVALID_NETWORK_SCOPE')
         for old, bad in [('dns deny', 'dns allow'), ('8080 8080', '8080 8081'),
@@ -357,6 +364,8 @@ class Manifests(unittest.TestCase):
                          ('10.0.2.15', '224.0.0.1')]:
             self.reject(listener.replace(old, bad), diagnostic='INVALID_NETWORK_SCOPE')
         self.reject(template.replace('network)', 'Network)'), diagnostic='INVALID_BINDING_NAME')
+        # Every network request declares its channel count up front.
+        self.reject(template.replace('(connections 6) ', ''), diagnostic='EXPECTED_FORM')
 
     def test_tls_scope_encoding_and_validation(self):
         template = '''(executable-manifest v1 (identity "test") (version "1")

@@ -24,11 +24,12 @@ package body Config_Typed_Store with SPARK_Mode is
 
    procedure Register
      (Object : in out State; Name : String; Contract : CCL.Objects.Binding;
-      ID : out Catalog.Collection_ID; Result : out Catalog.Result)
+      ID : out Catalog.Collection_ID; Result : out Catalog.Result;
+      Management : Catalog.Management_Kind := Catalog.Application_State)
    is
       Initialized : Boolean;
    begin
-      Catalog.Register (Object.Catalog, Name, Contract, ID, Result);
+      Catalog.Register (Object.Catalog, Name, Contract, ID, Result, Management);
       if Result = Catalog.Registered then
          Values.Initialize (Object.Cache (ID), Contract, Initialized);
          if not Initialized then Result := Catalog.Invalid_Definition; ID := Catalog.No_Collection; end if;
@@ -37,9 +38,10 @@ package body Config_Typed_Store with SPARK_Mode is
 
    procedure Check_Registration
      (Object : State; Name : String; Contract : CCL.Objects.Binding;
-      ID : out Catalog.Collection_ID; Result : out Catalog.Result) is
+      ID : out Catalog.Collection_ID; Result : out Catalog.Result;
+      Management : Catalog.Management_Kind := Catalog.Application_State) is
    begin
-      Catalog.Check_Registration (Object.Catalog, Name, Contract, ID, Result);
+      Catalog.Check_Registration (Object.Catalog, Name, Contract, ID, Result, Management);
    end Check_Registration;
 
    procedure Open

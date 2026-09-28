@@ -1,0 +1,7 @@
+project Rename_Probe extends "interop.gpr" is
+   for Source_Dirs use Interop'Source_Dirs;
+   for Source_Files use Interop'Source_Files & ("rename_probe.adb");
+   for Object_Dir use "build/rename-probe";
+   for Exec_Dir use "build/rename-probe";
+   for Main use ("rename_probe.adb");
+end Rename_Probe;

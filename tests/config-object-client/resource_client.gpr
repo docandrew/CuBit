@@ -1,0 +1,9 @@
+project Resource_Client extends "client.gpr" is
+   for Source_Dirs use Client'Source_Dirs;
+   for Source_Files use Client'Source_Files &
+     ("ccl-resources.ads", "ccl-resources.adb", "resource_client_tests.adb",
+      "config_object_client-resources.ads", "config_object_client-resources.adb");
+   for Object_Dir use "build/resource-client";
+   for Exec_Dir use "build/resource-client";
+   for Main use ("resource_client_tests.adb");
+end Resource_Client;

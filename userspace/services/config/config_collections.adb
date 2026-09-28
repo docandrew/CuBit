@@ -4,6 +4,12 @@ package body Config_Collections with SPARK_Mode is
    use type Number;
    use type CCL.Objects.Schema_Key;
    use type Config_Authority.Rights;
+   use type Config_Authority.Operation;
+
+   function Permits
+     (Kind : Management_Kind; Operation : Config_Authority.Operation) return Boolean is
+     (Operation in Config_Authority.Value_Operation and then
+      (Kind = Application_State or else Operation = Config_Authority.Read_Config));
 
    function Authorized_For
      (Object : State; Authority : Config_Authority.Authority_State;
@@ -13,6 +19,7 @@ package body Config_Collections with SPARK_Mode is
       (for some H of Object.Handles =>
          H.Token = Token and then H.Owner = Subject and then H.ID = ID and then
          H.Allowed (Operation) and then
+         Permits (Object.Definitions (H.ID).Management, Operation) and then
          H.Grant_Revision = Config_Authority.Revision (Authority, Subject) and then
          Config_Authority.Allows (Authority, Subject,
            Object.Definitions (H.ID).Name (1 .. Object.Definitions (H.ID).Length), Operation)));
@@ -21,13 +28,15 @@ package body Config_Collections with SPARK_Mode is
      (Authority : Config_Authority.Authority_State; Subject : Subject_ID;
       Name : String; Requested : Config_Authority.Rights) return Boolean is
      (Subject /= Config_Authority.No_Subject and then
+      not Requested (Config_Authority.Activate_Config) and then
       Requested /= Config_Authority.Rights'[others => False] and then
       (for all Op in Config_Authority.Operation =>
         (not Requested (Op) or else Config_Authority.Allows (Authority, Subject, Name, Op))));
 
    procedure Check_Registration
      (Object : State; Name : String; Contract : CCL.Objects.Binding;
-      ID : out Collection_ID; Status : out Result)
+      ID : out Collection_ID; Status : out Result;
+      Management : Management_Kind := Application_State)
    is
       Free : Collection_ID := No_Collection;
    begin
@@ -51,7 +60,11 @@ package body Config_Collections with SPARK_Mode is
             --  Compare the complete nominal root, not local numbering or
             --  unrelated registry entries; key equality alone is insufficient.
             if CCL.Objects.Same_Schema (Object.Definitions (I).Contract, Contract) then
-               ID := I; Status := Already_Registered;
+               if Object.Definitions (I).Management /= Management then
+                  Status := Management_Conflict;
+               else
+                  ID := I; Status := Already_Registered;
+               end if;
             end if;
             return;
          end if;
@@ -64,14 +77,16 @@ package body Config_Collections with SPARK_Mode is
 
    procedure Register
      (Object : in out State; Name : String; Contract : CCL.Objects.Binding;
-      ID : out Collection_ID; Status : out Result)
+      ID : out Collection_ID; Status : out Result;
+      Management : Management_Kind := Application_State)
    is
    begin
-      Check_Registration (Object, Name, Contract, ID, Status);
+      Check_Registration (Object, Name, Contract, ID, Status, Management);
       if Status = Registered then
          Object.Definitions (ID).Name (1 .. Name'Length) := Name;
          Object.Definitions (ID).Length := Name'Length;
          Object.Definitions (ID).Contract := Contract;
+         Object.Definitions (ID).Management := Management;
       end if;
    end Register;
 
@@ -97,6 +112,10 @@ package body Config_Collections with SPARK_Mode is
          then ID := I; exit; end if;
       end loop;
       if ID = No_Collection then return; end if;
+      Status := Denied;
+      if (for some Op in Config_Authority.Operation =>
+            Requested (Op) and then not Permits (Object.Definitions (ID).Management, Op))
+      then return; end if;
       Status := Schema_Conflict;
       if CCL.Objects.Identity (Object.Definitions (ID).Contract) /= Expected then return; end if;
       Status := Identity_Exhausted;
@@ -132,7 +151,8 @@ package body Config_Collections with SPARK_Mode is
             declare
                Item : Definition renames Object.Definitions (H.ID);
             begin
-               if Config_Authority.Allows (Authority, Subject, Item.Name (1 .. Item.Length), Operation) then
+               if Permits (Item.Management, Operation) and then
+                 Config_Authority.Allows (Authority, Subject, Item.Name (1 .. Item.Length), Operation) then
                   ID := H.ID; Status := Resolved;
                end if;
             end;
@@ -178,5 +198,8 @@ package body Config_Collections with SPARK_Mode is
 
    function Schema (Object : State; ID : Registered_ID) return CCL.Objects.Schema_Key is
      (CCL.Objects.Identity (Object.Definitions (ID).Contract));
+
+   function Management (Object : State; ID : Registered_ID) return Management_Kind is
+     (Object.Definitions (ID).Management);
 
 end Config_Collections;

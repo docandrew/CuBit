@@ -15,21 +15,21 @@ package body TCP_RTO with SPARK_Mode is
    begin
       if not E.Measured then
          E.SRTT := R;
-         E.RTTVAR := R / 2;
+         E.RTTVAR := R / First_RTTVAR_Divisor;
          E.Measured := True;
       else
          Deviation := (if E.SRTT > R then E.SRTT - R else R - E.SRTT);
-         --  RTTVAR := 3/4 RTTVAR + 1/4 |SRTT - R|
-         E.RTTVAR := (3 * E.RTTVAR + Deviation) / 4;
-         --  SRTT := 7/8 SRTT + 1/8 R
-         E.SRTT := (7 * E.SRTT + R) / 8;
+         --  RTTVAR := (1 - beta) RTTVAR + beta |SRTT - R|
+         E.RTTVAR := ((Beta_Divisor - 1) * E.RTTVAR + Deviation) / Beta_Divisor;
+         --  SRTT := (1 - alpha) SRTT + alpha R
+         E.SRTT := ((Alpha_Divisor - 1) * E.SRTT + R) / Alpha_Divisor;
       end if;
-      Spread := Unsigned_32'Max (Clock_Granularity, 4 * E.RTTVAR);
+      Spread := Unsigned_32'Max (Clock_Granularity, K * E.RTTVAR);
       E.RTO := Clamp (E.SRTT + Spread);
    end Update;
 
    procedure Back_Off (E : in out Estimator) is
    begin
-      E.RTO := Unsigned_32'Min (2 * E.RTO, Maximum_RTO);
+      E.RTO := Unsigned_32'Min (Backoff_Factor * E.RTO, Maximum_RTO);
    end Back_Off;
 end TCP_RTO;

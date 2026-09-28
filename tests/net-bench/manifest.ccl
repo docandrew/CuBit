@@ -1,0 +1,13 @@
+# Network benchmark client (tests/net-bench): TCP to the host fixture's
+# ports only, and a listener for the host to connect in; the libc routes
+# each to its scope. Needs network=declared launch approval.
+(executable-manifest v1
+  (identity "com.cubit.net-bench")
+  (version "0.1.0")
+  (request-network tcp-connect (ipv4 "10.0.2.2" 32)
+    (ports 18480 18484) (dns deny)
+    (connections 8) network)
+  # The serve workload: the host connects in (QEMU forwards to port 8080).
+  (request-network tcp-listen (ipv4 "10.0.2.15" 32)
+    (ports 8080 8080) (dns deny)
+    (connections 8) listen))

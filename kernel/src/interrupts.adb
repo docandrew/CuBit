@@ -9,6 +9,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with Capabilities.IRQ;
 with Build;
+with Boot_Timer_Probe;
 with Config;
 with ioapic;
 with IPC_Labels;
@@ -143,7 +144,13 @@ is
 
         interruptNumber : constant x86Interrupt := x86Interrupt(frame.interruptNumber);
         oldCR3 : Integer_Address;
+        Measure_Boot_IRQ : constant Boolean := interruptNumber = TIMER
+          and then intController = LEGACY_PIC and then Boot_Timer_Probe.Enabled;
+        Boot_IRQ_Stamp : Unsigned_64 := 0;
     begin
+        if Measure_Boot_IRQ then
+            Boot_Timer_Probe.Enter_IRQ (Boot_IRQ_Stamp);
+        end if;
         -- Save the old address space
         oldCR3 := x86.getCR3;
         --print("Saving old address space: "); println(oldCR3);
@@ -316,6 +323,9 @@ is
         -- if we return from this interrupt, put page tables back the way they were.
         -- TODO: check cs to see if we were in user code?
         Virtmem.setActiveP4 (oldCR3);
+        if Measure_Boot_IRQ then
+            Boot_Timer_Probe.Leave_IRQ (Boot_IRQ_Stamp);
+        end if;
     end interruptHandler;
 
     ---------------------------------------------------------------------------

@@ -5,6 +5,7 @@
 -- Inter-Processor Interrupt (IPI) support
 -------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
+with CPU_Topology.Boot;
 with System.Storage_Elements; use System.Storage_Elements;
 
 use type System.Address;
@@ -47,7 +48,11 @@ is
         end loop;
 
         -- Set destination APIC ID in ICR high word
-        icr1 := Shift_Left (Unsigned_32 (targetCPU), 24);
+        if targetCPU >= CPU_Topology.Count (CPU_Topology.Boot.CPUs) then
+            raise Program_Error with "IPI target is not a discovered CPU";
+        end if;
+        icr1 := Shift_Left (Unsigned_32 (CPU_Topology.Destination
+          (CPU_Topology.Boot.CPUs, targetCPU)), 24);
 
         -- Send fixed IPI with reschedule vector (edge-triggered, physical)
         icr0 := Unsigned_32 (RESCHEDULE_VECTOR);

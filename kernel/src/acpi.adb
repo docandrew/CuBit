@@ -4,14 +4,80 @@
 --
 -- ACPI - Advanced Configuration and Power Interface
 -------------------------------------------------------------------------------
-with System.Address_To_Access_Conversions;
 with System.Storage_Elements; use System.Storage_Elements;
+with Multiboot;
+with CPU_Topology.Boot;
+with Multiboot2_Info;
+with Firmware_Tables;
+with Firmware_Tables.HPET;
 
 with TextIO; use TextIO;
 
 -- Ada implementation: custom storage, address overlays or live context state.
 -- Only separately annotated SPARK policy/state routines carry proof obligations.
 package body acpi is
+    use type System.Address;
+    use type Firmware_Tables.Admission;
+    use type Firmware_Tables.Root_Kind;
+
+    -- Raw adapter: firmware tables are immutable during boot. Check retained
+    -- backing before every overlay; shared SPARK code admits byte contents.
+    function Read_Root_At (Physical : Unsigned_64) return Firmware_Tables.Root_Result is
+        Length : Unsigned_32 := 20;
+    begin
+        if not Multiboot.Firmware_Readable (Physical, 20) then
+            return (Status => Firmware_Tables.Truncated);
+        end if;
+        declare
+            Prefix : Firmware_Tables.Bytes (1 .. 20) with Import,
+              Address => Virtmem.P2Va (Integer_Address (Physical));
+        begin
+            if Prefix (16) >= 2 then
+                if not Multiboot.Firmware_Readable (Physical, 36) then
+                    return (Status => Firmware_Tables.Truncated);
+                end if;
+                declare
+                    Raw : Multiboot2_Info.Bytes (0 .. 35) with Import,
+                      Address => Prefix'Address;
+                begin
+                    Length := Multiboot2_Info.Read_32 (Raw, 20);
+                end;
+            end if;
+        end;
+        if Length < 20 or else Length > 4096 or else
+          not Multiboot.Firmware_Readable (Physical, Unsigned_64 (Length))
+        then return (Status => Firmware_Tables.Invalid_Length); end if;
+        declare
+            Raw : Firmware_Tables.Bytes (1 .. Natural (Length)) with Import,
+              Address => Virtmem.P2Va (Integer_Address (Physical));
+        begin
+            return Firmware_Tables.Read_Root (Raw);
+        end;
+    end Read_Root_At;
+
+    function Admit_Table (Physical : Unsigned_64; Expected : String := "") return Boolean is
+        Length : Unsigned_32;
+        Name : Firmware_Tables.Signature;
+    begin
+        if not Multiboot.Firmware_Readable (Physical, 36) then return False; end if;
+        declare
+            Prefix : Multiboot2_Info.Bytes (0 .. 35) with Import,
+              Address => Virtmem.P2Va (Integer_Address (Physical));
+        begin
+            Length := Multiboot2_Info.Read_32 (Prefix, 4);
+            for I in Name'Range loop Name (I) := Character'Val (Prefix (I - 1)); end loop;
+        end;
+        if (Expected /= "" and then Name /= Expected) or else
+          Length < 36 or else Length > 1024 * 1024 or else
+          not Multiboot.Firmware_Readable (Physical, Unsigned_64 (Length))
+        then return False; end if;
+        declare
+            Raw : Firmware_Tables.Bytes (1 .. Natural (Length)) with Import,
+              Address => Virtmem.P2Va (Integer_Address (Physical));
+        begin
+            return Firmware_Tables.Read_Table (Raw, Name).Status = Firmware_Tables.Accepted;
+        end;
+    end Admit_Table;
     -- As we go through each of the tables, stash a copy here.
 
     rsdp : RSDPRecord;
@@ -65,10 +131,13 @@ package body acpi is
     procedure getRSDP(rsdpAddr : in System.Address; rsdp : in out RSDPRecord;
         success : out Boolean)
     is
-        retRSDP : RSDPRecord with Import, Volatile, Address => rsdpAddr;
+        Root : constant Firmware_Tables.Root_Result :=
+          Read_Root_At (Unsigned_64 (Virtmem.V2P (rsdpAddr)));
     begin
-        if retRSDP.signature = "RSD PTR " then
-            rsdp := retRSDP;
+        if Root.Status = Firmware_Tables.Accepted then
+            rsdp.revision := (if Root.Kind = Firmware_Tables.XSDT then 2 else 0);
+            rsdp.XSDTAddress := Root.Address;
+            rsdp.RSDTAddress := (if Root.Kind = Firmware_Tables.RSDT then Unsigned_32 (Root.Address) else 0);
             success := True;
         else
             success := False;
@@ -83,7 +152,9 @@ package body acpi is
     is
         retXSDT : XSDTRecord with Import, Volatile, Address => sdtAddr;
     begin
-        if retXSDT.header.signature = "XSDT" then
+        if Admit_Table (Unsigned_64 (Virtmem.V2P (sdtAddr)), "XSDT") and then
+          retXSDT.header.length >= 44 and then (retXSDT.header.length - 36) mod 8 = 0
+        then
             xsdt := retXSDT;
             success := True;
         else
@@ -99,7 +170,9 @@ package body acpi is
     is
         retRSDT : RSDTRecord with Import, Volatile, Address => sdtAddr;
     begin
-        if retRSDT.header.signature = "RSDT" then
+        if Admit_Table (Unsigned_64 (Virtmem.V2P (sdtAddr)), "RSDT") and then
+          retRSDT.header.length >= 40 and then (retRSDT.header.length - 36) mod 4 = 0
+        then
             rsdt := retRSDT;
             success := True;
         else
@@ -155,7 +228,10 @@ package body acpi is
         endMADT : Integer_Address := madtAddrInt + Integer_Address(madt.header.length);
     begin
 
-        APICLoop : loop
+        while entries_i < endMADT loop
+            if endMADT - entries_i < 2 then
+                raise Constraint_Error with "ACPI: truncated MADT entry header";
+            end if;
             ThisEntry : declare
                 entryHeader : APICRecordHeader
                     with Import, Volatile, Address => To_Address(entries_i);
@@ -163,6 +239,13 @@ package body acpi is
                 ioapic : IOAPICRecord;
                 ok : Boolean;
             begin
+                if entryHeader.length < 2 or else
+                  Integer_Address (entryHeader.length) > endMADT - entries_i or else
+                  (entryHeader.apicType = LOCAL_APIC and entryHeader.length < 8) or else
+                  (entryHeader.apicType = IO_APIC and entryHeader.length < 12)
+                then
+                    raise Constraint_Error with "ACPI: invalid MADT entry extent";
+                end if;
                 -- print("Checking APIC entry, type: ");
                 -- print(entryHeader.apicType);
                 -- print(" length: ");
@@ -173,7 +256,14 @@ package body acpi is
                         print(" Found Local APIC:");
                         getLAPIC(To_Address(entries_i), lapic, ok);
                         if ok then
-                            numCPUs := numCPUs + 1;
+                            if (lapic.flags and LAPIC_ENABLED) /= 0 then
+                                if lapic.apicID = 255 then
+                                    raise Constraint_Error with "ACPI: broadcast APIC ID is not a CPU";
+                                end if;
+                                CPU_Topology.Include_CPU
+                                  (CPU_Topology.Boot.CPUs, lapic.apicID);
+                                numCPUs := Natural (CPU_Topology.Count (CPU_Topology.Boot.CPUs));
+                            end if;
                             print(" LAPIC ID: ");
                             print(lapic.apicID);
                             print(", CPU ID: ");
@@ -221,10 +311,8 @@ package body acpi is
                 -- advance to next entry.
                 entries_i := entries_i + Integer_Address(entryHeader.length);
 
-                exit APICLoop when entries_i >= endMADT
-                                or entryHeader.length = 0;
             end ThisEntry;
-        end loop APICLoop;
+        end loop;
 
         lapicAddr := Virtmem.PhysAddress(madt.lapicAddress);
         print (" LAPIC Physical Address:   "); println (lapicAddr);
@@ -310,7 +398,8 @@ package body acpi is
 
     is
         use System;
-        rsdpAddr    : constant System.Address := findRSDP;
+        rsdpAddr    : System.Address;
+        handedRoot : constant Firmware_Tables.Root_Result := Multiboot.Firmware_Root;
 
         -- use XSDT if available.
         useXSDT     : Boolean := False;
@@ -327,6 +416,18 @@ package body acpi is
         ok          : Boolean;
     begin
 
+        if Multiboot.Tagged_Boot then
+            if handedRoot.Status /= Firmware_Tables.Accepted then
+                println ("ACPI: Multiboot2 root missing");
+                return False;
+            end if;
+            rsdp.revision := (if handedRoot.Kind = Firmware_Tables.XSDT then 2 else 0);
+            rsdp.XSDTAddress := handedRoot.Address;
+            rsdp.RSDTAddress := (if handedRoot.Kind = Firmware_Tables.RSDT then
+              Unsigned_32 (handedRoot.Address) else 0);
+            println ("ACPI: validated Multiboot2 root handoff");
+        else
+        rsdpAddr := findRSDP;
         if rsdpAddr = Null_Address then
             println("ACPI RSDP not found.");
             return False;
@@ -336,6 +437,7 @@ package body acpi is
         if not ok then
             println("Invalid ACPI Tables (No RSDP)");
             return False;
+        end if;
         end if;
 
         println("Found ACPI Tables. ");
@@ -360,8 +462,8 @@ package body acpi is
 
             getXSDT(To_Address(virtmem.P2V(Integer_Address(sdtAddr))), xsdt, ok);
             if not ok then
-                println("Error reading XSDT, defaulting to RSDT");
-                useXSDT := False;   -- try and fall back on RSDT
+                println("ACPI: invalid XSDT; refusing fallback");
+                return False;
             else
                 sdtPtrSize := 8;
                 sdtHeader := xsdt.header;
@@ -417,12 +519,24 @@ package body acpi is
             --println(entries_i);
             printRecordHeader : declare
 
-                entries_i_val : constant Integer_Address
-                    with Import, Volatile, Address => To_Address(entries_i);
-
-                descHdr : DescriptionHeader
-                    with Import, Volatile, Address => To_Address(makeTableAddress(entries_i_val, sdtPtrSize));
+                entries_i_val : Integer_Address;
             begin
+                if sdtPtrSize = 4 then
+                    declare
+                        Raw : Unsigned_32 with Import, Address => To_Address (entries_i);
+                    begin entries_i_val := Integer_Address (Raw); end;
+                else
+                    declare
+                        Raw : Unsigned_64 with Import, Address => To_Address (entries_i);
+                    begin entries_i_val := Integer_Address (Raw); end;
+                end if;
+                if not Admit_Table (Unsigned_64 (entries_i_val)) then
+                    println ("ACPI: child table failed admission"); return False;
+                end if;
+                declare
+                descHdr : DescriptionHeader with Import, Volatile,
+                  Address => Virtmem.P2Va (entries_i_val);
+                begin
                 -- print("entries_0: "); println(entries_0);
                 -- print("offset: "); println(offset);
                 -- --print("newint: "); println(newint);
@@ -471,31 +585,48 @@ package body acpi is
                             println ("ACPI: invalid DSDT physical extent");
                             return False;
                         end if;
+                        if not Admit_Table (dsdtPhysical, "DSDT") then
+                            println ("ACPI: invalid DSDT"); return False;
+                        end if;
                         parseDSDT (To_Address(virtmem.P2V(Integer_Address(dsdtPhysical))));
                     end parseFADT;
 
                 elsif descHdr.signature = "APIC" then
-
+                    if descHdr.length < 44 then
+                        println ("ACPI: truncated MADT"); return False;
+                    end if;
                     parseMADT(descHdr'Address);
 
                 elsif descHdr.signature = "MCFG" then
-
+                    if descHdr.length < 60 or else (descHdr.length - 44) mod 16 /= 0 then
+                        println ("ACPI: invalid MCFG extent"); return False;
+                    end if;
                     parseMCFG (descHdr'Address);
 
                 elsif descHdr.signature = "HPET" then
-                    println(" HPET present, not supported.");
-                    -- parseHPET : declare
-                    -- hpet : HPETRecord
-                    --     with Import, Address => descHdr'Address;
-                    -- begin
-                    --     println(" HPET Address:          "); println(hpet.);
-                    -- end parseHPET;
+                    declare
+                        Data : Firmware_Tables.Bytes (1 .. Natural (descHdr.length))
+                          with Import, Address => descHdr'Address;
+                        Item : constant Firmware_Tables.HPET.Descriptor :=
+                          Firmware_Tables.HPET.Decode
+                            (Data, Unsigned_64 (Integer_Address'Min
+                              (Virtmem.PhysAddress'Last,
+                               Integer_Address'Last - Virtmem.LINEAR_BASE)));
+                    begin
+                        if not Item.Valid or else hpetAddr /= 0 then
+                            println ("ACPI: unsupported or duplicate HPET descriptor");
+                            return False;
+                        end if;
+                        hpetAddr := Virtmem.PhysAddress (Item.Base);
+                        print ("HPET register base: "); println (hpetAddr);
+                    end;
                 elsif descHdr.signature = "SSDT" then
                     println(" SSDT present, not supported.");
                 else
                     print("Unsupported ACPI table "); print(descHdr.signature);
                     print(" with length "); println(descHdr.length);
                 end if;
+                end;
             end printRecordHeader;
         end loop;
 
@@ -507,31 +638,27 @@ package body acpi is
     ---------------------------------------------------------------------------
     function findRSDP return System.Address
     is
-        --use System.Storage_Elements;
-        package ToRSDP is new System.Address_To_Access_Conversions(RSDPRecord);
-
-        type RSDPAccess is access all RSDPRecord;
-        rsdpAddr : Integer_Address;
-        rsdp : RSDPAccess;
+        function Scan (First, Last : Unsigned_64) return System.Address is
+            Cursor : Unsigned_64 := First;
+        begin
+            while Cursor <= Last and then Last - Cursor >= 19 loop
+                if Read_Root_At (Cursor).Status = Firmware_Tables.Accepted then
+                    return Virtmem.P2Va (Integer_Address (Cursor));
+                end if;
+                Cursor := Cursor + 16;
+            end loop;
+            return System.Null_Address;
+        end Scan;
+        EBDA_Segment : Unsigned_16 with Import, Address => Virtmem.P2Va (16#40E#);
+        EBDA : constant Unsigned_64 := Unsigned_64 (EBDA_Segment) * 16;
+        Found : System.Address;
     begin
-        -- Check BIOS area E0000 to FFFFF
-        rsdpAddr := Integer_Address(virtmem.P2V(16#E0000#));
-
-        -- a bit ugly, we just cast addresses to an rsdp and see if the
-        -- signature matches what we'd expect.
-        search : loop
-            rsdp := RSDPAccess(ToRSDP.To_Pointer(To_Address(rsdpAddr)));
-
-            if rsdp.signature = "RSD PTR " then
-                return To_Address(rsdpAddr);
-            end if;
-
-            rsdpAddr := rsdpAddr + 16;
-
-            exit search when rsdpAddr >= virtmem.P2V(16#FFFFF#);
-        end loop search;
-
-        return System.Null_Address;
+        -- Defined BIOS discovery windows only; UEFI never scans RAM.
+        if EBDA >= 16#80000# and EBDA <= 16#9FC00# then
+            Found := Scan (EBDA, EBDA + 1023);
+            if Found /= System.Null_Address then return Found; end if;
+        end if;
+        return Scan (16#E0000#, 16#FFFFF#);
     end findRSDP;
 
 end acpi;

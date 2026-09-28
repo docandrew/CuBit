@@ -1,0 +1,10 @@
+project Resource_Calls extends "calls.gpr" is
+   for Source_Dirs use Calls'Source_Dirs;
+   for Source_Files use Calls'Source_Files &
+     ("config_object_client-resources.ads", "config_object_client-resources.adb",
+      "config_object_client-resources-calls.ads", "config_object_client-resources-calls.adb",
+      "resource_call_tests.adb");
+   for Object_Dir use "build/resource-calls";
+   for Exec_Dir use "build/resource-calls";
+   for Main use ("resource_call_tests.adb");
+end Resource_Calls;

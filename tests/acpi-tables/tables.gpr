@@ -1,0 +1,10 @@
+project Tables is
+   for Source_Dirs use (".", "../../shared/firmware");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("table_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Tables;

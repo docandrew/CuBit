@@ -19,6 +19,19 @@ import time
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--cpus', type=int, default=1)
+parser.add_argument('--without-ps2', action='store_true',
+                    help='remove i8042; check USB mouse and desktop boot (no keyboard app-launch test)')
+parser.add_argument('--image', type=pathlib.Path, help='explicit read-only image for boot regressions')
+parser.add_argument('--sparse-apic-ids', action='store_true',
+                    help='six CPUs: two sockets, three cores each (APIC IDs 0,1,2,4,5,6)')
+parser.add_argument('--stall-ap-fixture', action='store_true',
+                    help='with PIT-free fixture: halt first AP at Ada entry; require bounded failure')
+parser.add_argument('--uefi', action='store_true', help='boot the UEFI companion ISO with OVMF')
+parser.add_argument('--pit-free-fixture', action='store_true',
+                    help='omit PIT; seed CPUID.15 cache via GDB to match a KVM-scaled N95-rate TSC')
+parser.add_argument('--invalid-clock-fixture', action='store_true',
+                    help='seed a zero CPUID.15 denominator and require the real PIT fallback')
+parser.add_argument('--uefi-firmware', type=pathlib.Path, default=pathlib.Path('/usr/share/OVMF/OVMF_CODE_4M.fd'))
 parser.add_argument('--timeout', type=int, default=180)
 parser.add_argument('--disk-first', action='store_true', help='non-optical LUN 0, CD LUN 1')
 parser.add_argument('--mouse-first', action='store_true')
@@ -30,6 +43,8 @@ parser.add_argument('--sameboy', action='store_true', help='also exercise the na
 parser.add_argument('--settings', action='store_true', help='exercise Settings and live shared-toolkit theme changes')
 parser.add_argument('--ccl-ui-hooks', action='store_true', help='exercise native REPL clock, label hooks and retained button callback')
 parser.add_argument('--ccl-samples', action='store_true', help='open an ISO-seeded workspace sample and invoke its button')
+parser.add_argument('--config', action='store_true', help='write/read typed Config through native Workbench bytecode')
+parser.add_argument('--servo', action='store_true', help='launch the bundled Servo shell and require a rendered page')
 parser.add_argument('--sameboy-audio', action='store_true',
                     help='capture the original test ROM tone and verify volume, mute and pause')
 parser.add_argument('--taskbar', action='store_true',
@@ -39,6 +54,10 @@ parser.add_argument('--sameboy-local-rom', action='store_true',
 parser.add_argument('--sameboy-second-local-rom', action='store_true',
                     help='also exercise explicitly staged ROM 02')
 args = parser.parse_args()
+if args.pit_free_fixture and args.invalid_clock_fixture:
+    parser.error('select only one CPU-clock fixture')
+if args.uefi and args.early_text:
+    parser.error('--early-text is a BIOS-only diagnostic entry')
 if args.taskbar and not args.sameboy_audio:
     parser.error('--taskbar requires --sameboy-audio')
 if args.sameboy_audio and (not args.sameboy or args.without_audio):
@@ -48,8 +67,12 @@ if args.sameboy_local_rom and not args.sameboy:
 if args.sameboy_second_local_rom and not args.sameboy_local_rom:
     parser.error('--sameboy-second-local-rom requires --sameboy-local-rom')
 root = pathlib.Path(__file__).resolve().parents[2]
-image = root / 'kernel/cubit_laptop_usb.iso'
-run = pathlib.Path(tempfile.mkdtemp(prefix='cubit-usb-live.', dir='/tmp'))
+if args.stall_ap_fixture and (not args.pit_free_fixture or args.cpus < 2):
+    parser.error('--stall-ap-fixture requires --pit-free-fixture and --cpus >= 2')
+image = root / ('kernel/cubit_live_uefi.img' if args.uefi else 'kernel/cubit_laptop_usb.img')
+if args.image:
+    image = args.image.resolve(strict=True)
+run = pathlib.Path(tempfile.mkdtemp(prefix='cubit-usb-live.'))
 serial = run / 'serial.log'
 monitor = run / 'monitor.sock'
 mouse_port, cd_port = (1, 2) if args.mouse_first else (2, 1)
@@ -63,6 +86,21 @@ command = ['qemu-system-x86_64', '-enable-kvm', '-machine', 'q35', '-cpu', 'host
            '-device', f'usb-mouse,bus=xhci.0,port={mouse_port}',
            '-serial', f'file:{serial}', '-qmp', f'unix:{monitor},server,nowait',
            '-display', 'none', '-no-reboot']
+if args.pit_free_fixture or args.invalid_clock_fixture:
+    # QEMU's ordinary CPU model does not expose leaf 15 on this host. Keep
+    # the real virtual TSC coherent with the injected firmware/CPU metadata.
+    # No software ticks, calibration result, or branch outcome is patched.
+    if args.pit_free_fixture:
+        command[command.index('-machine') + 1] = 'q35,pit=off'
+    command[command.index('-cpu') + 1] = (
+        'host,vendor=GenuineIntel,level=0x16,+invtsc,tsc-frequency=1689600000')
+    command += ['-S', '-gdb', f'unix:{run}/gdb.sock,server=on,wait=off']
+if args.sparse_apic_ids:
+    command[command.index('-smp') + 1] = '6,sockets=2,cores=3,threads=1'
+if args.without_ps2:
+    command[command.index('-machine') + 1] += ',i8042=off'
+if args.uefi:
+    command += ['-drive', f'if=pflash,format=raw,unit=0,readonly=on,file={args.uefi_firmware}']
 if args.taskbar:
     command += ['-rtc', 'base=2026-07-01T12:34:00,clock=vm']
 if not args.without_audio:
@@ -109,6 +147,27 @@ with (run / 'qemu.log').open('w') as log:
                     return response['return']
 
         qmp('qmp_capabilities')
+        if args.pit_free_fixture or args.invalid_clock_fixture:
+            denominator = 0 if args.invalid_clock_fixture else 2
+            injection = [
+                'set language c', 'hbreak *time__try_cpu_tsc', 'continue',
+                f'set *(unsigned int *)&cpuid__tscratiodenominator = {denominator}',
+                'set *(unsigned int *)&cpuid__tscrationumerator = 88',
+                'set *(unsigned int *)&cpuid__crystalclockhz = 38400000',
+                f'printf "Seeded CPUID15 D={denominator} N=88 C=38400000; invtsc=%u\\n", '
+                '*(unsigned char *)&cpuid__hasinvarianttsc',
+                'detach']
+            if args.stall_ap_fixture:
+                injection[-1:] = [
+                    'delete breakpoints', 'hbreak *apEnter', 'continue',
+                    'set $rip = (unsigned long)&hang', 'detach']
+            with (run / 'gdb.log').open('w') as debugger_log:
+                subprocess.run(
+                    ['gdb', '-q', '-nx', '-batch', str(root / 'kernel/cubit_kernel'),
+                     '-ex', f'target remote {run}/gdb.sock'] +
+                    [item for step in injection for item in ('-ex', step)],
+                    stdout=debugger_log, stderr=subprocess.STDOUT,
+                    timeout=60, check=True)
 
         def hmp(text):
             return qmp('human-monitor-command', {'command-line': text})
@@ -140,7 +199,65 @@ with (run / 'qemu.log').open('w') as log:
             print('EARLY TEXT PASS: kernel checkpoints precede framebuffer allocation.', flush=True)
             sys.exit(0)
 
+        if args.uefi:
+            wait_for('Multiboot2: owned boot metadata admitted')
+            wait_for('ACPI: validated Multiboot2 root handoff')
+        if args.stall_ap_fixture:
+            wait_for('SMP FAILED cpu= 1 apic= 1 stage= 1')
+            hmp(f'screendump {run}/smp-timeout.ppm')
+            if 'Starting userspace...' in serial.read_text(errors='replace'):
+                raise RuntimeError('continued boot after incomplete CPU startup')
+            print('SMP TIMEOUT PASS: halted AP reports logical ID, APIC ID and stage', flush=True)
+            sys.exit(0)
         wait_for('desktop: display info ready')
+        if args.without_ps2:
+            wait_for('ps2: controller unavailable (status FF); skipping')
+            wait_for('desktop: asynchronous frame released')
+            # xHCI currently supports boot mice, not USB keyboards. Exercise
+            # real USB mouse reports, without pretending keyboard app tests ran.
+            for _ in range(30):
+                hmp('mouse_move 2 1')
+                time.sleep(0.02)
+            hmp('mouse_button 1')
+            time.sleep(0.1)
+            hmp('mouse_button 0')
+            time.sleep(6)
+            # Desktop emits its accumulated counters on activity, not an
+            # independent periodic timer. Trigger the report after its interval.
+            hmp('mouse_move 1 0')
+            time.sleep(0.5)
+            hmp(f'screendump {run}/no-ps2-desktop.ppm')
+            text = serial.read_text(errors='replace')
+            events = re.findall(r'desktop: stats ev=\d+ key=\d+ mouse=(\d+) button=(\d+)', text)
+            if not any(int(motion) > 0 for motion, _ in events):
+                raise RuntimeError('USB mouse motion did not reach desktop')
+            if not any(int(buttons) > 0 for _, buttons in events):
+                raise RuntimeError('USB mouse button did not reach desktop')
+            print('NO PS2 PASS: absent i8042 did not block USB/desktop startup', flush=True)
+            sys.exit(0)
+        if args.sparse_apic_ids:
+            boot_log = serial.read_text(errors='replace')
+            for logical, apic in [(1, 1), (2, 2), (3, 4), (4, 5), (5, 6)]:
+                if f'SMP start logical= {logical} apic= {apic}' not in boot_log:
+                    raise RuntimeError('sparse APIC destination missing; see serial.log')
+                if f'SMP ready logical= {logical} apic= {apic}' not in boot_log:
+                    raise RuntimeError('secondary CPU acknowledgment missing; see serial.log')
+            print('SPARSE APIC PASS: all six CPUs started with firmware destinations', flush=True)
+        if args.pit_free_fixture:
+            clock_log = serial.read_text(errors='replace')
+            if ('BOOT-CLOCK: CPUID.15 TSC; PIT interrupts not required' not in clock_log or
+                    'APIC timer calibration:' not in clock_log or
+                    'Setting up PIT and enabling timer interrupts' in clock_log):
+                raise RuntimeError('Did not take the PIT-independent timer path')
+            print('PIT-FREE TIMER PASS: no PIT device, CPUID cache fixture, real LAPIC delivery',
+                  flush=True)
+        if args.invalid_clock_fixture:
+            clock_log = serial.read_text(errors='replace')
+            if ('PIT interrupts received; TSC calibrated' not in clock_log or
+                    'BOOT-CLOCK: CPUID.15' in clock_log):
+                raise RuntimeError('Invalid CPU clock information did not select PIT fallback')
+            print('INVALID CPU CLOCK PASS: rejected zero denominator; PIT fallback booted',
+                  flush=True)
         time.sleep(2)
         hmp(f'screendump {run}/desktop.ppm')
         if args.taskbar or args.ccl_ui_hooks or args.ccl_samples:
@@ -344,6 +461,38 @@ with (run / 'qemu.log').open('w') as log:
         wait_for('ccl-workbench: native window ready')
         time.sleep(2)
         hmp(f'screendump {run}/workbench.ppm')
+        if args.config:
+            wait_for('CONFIG-STORAGE: volatile live session (no reboot persistence)')
+            wait_for('CONFIG-STORAGE: ready')
+
+            def run_ccl(source, completed):
+                key('ctrl-a')
+                mapping = {'(': 'shift-9', ')': 'shift-0', ' ': 'spc',
+                           '-': 'minus', '.': 'dot', '=': 'equal', '/': 'slash'}
+                for char in source:
+                    code = 'shift-' + char.lower() if char.isupper() else mapping.get(char, char)
+                    reply = hmp(f'sendkey {code} 10')
+                    if reply.strip():
+                        raise RuntimeError('rejected source key: ' + reply)
+                    time.sleep(0.035)
+                key('ctrl-f5')
+                marker = 'ccl-workbench: bytecode completed'
+                while time.monotonic() < deadline and process.poll() is None:
+                    if serial.read_text(errors='replace').count(marker) >= completed:
+                        break
+                    time.sleep(0.1)
+                else:
+                    raise RuntimeError('Config bytecode did not complete')
+                time.sleep(1)
+                hmp(f'screendump {run}/config-{completed}.ppm')
+
+            write = '(let ((c (config-values.open))) (let ((r (config-values.read c))) (let ((w (config-values.write c 42))) (let ((closed (config-values.close c))) w))))'
+            read = ' '.join(line.strip() for line in
+                           (root / 'userspace/ccl/samples/config-counter-read.ccl').read_text().splitlines()
+                           if not line.lstrip().startswith('#'))
+            run_ccl(write, 1)
+            run_ccl(f'(let ((observed {read})) (if (= observed 42) observed (/ 1 0)))', 2)
+            print('CONFIG LIVE PASS: native Workbench/IPC/Turso write and asserted read42; volatile session.', flush=True)
         if args.ccl_samples:
             key('ctrl-o')
             screenshot('ccl-sample-picker')
@@ -403,6 +552,16 @@ with (run / 'qemu.log').open('w') as log:
         wait_for('files: native window ready')
         time.sleep(2)
         hmp(f'screendump {run}/files.ppm')
+        if args.servo:
+            key('meta_l')
+            for _ in range(3):
+                key('down')
+            key('ret')
+            wait_for('CUBITSHELL: desktop window')
+            wait_for('CUBITSHELL: PASS')
+            time.sleep(2)
+            hmp(f'screendump {run}/servo.ppm')
+            print('SERVO LIVE PASS: native optical load and rendered built-in page; inspect screenshot.', flush=True)
         if args.settings:
             key('meta_l'); key('up'); key('ret')
             time.sleep(1)

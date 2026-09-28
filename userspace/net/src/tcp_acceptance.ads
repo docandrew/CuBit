@@ -13,12 +13,13 @@
 --  (Proved with gnatprove, tests/net-tcp.)
 ------------------------------------------------------------------------------
 with TCP_Sequence; use TCP_Sequence;
+with TCP_Limits;
 
 package TCP_Acceptance with SPARK_Mode, Pure is
 
    --  Receive windows (scaled) and segment lengths stay below half the
    --  sequence space, as TCP requires (RFC 7323: window < 2**30).
-   Maximum_Window : constant Seq := 2 ** 30;
+   Maximum_Window : constant Seq := TCP_Limits.Maximum_Scaled_Window;
    subtype Window_Size is Seq range 0 .. Maximum_Window;
    subtype Segment_Length is Seq range 0 .. Maximum_Window;
 

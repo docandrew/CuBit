@@ -160,12 +160,20 @@ static void readiness_changed(void);
 hidden void __cubit_readiness_changed(void) { readiness_changed(); }
 hidden int __cubit_readiness_seq(void) { return fd_events; }
 
+/* Threads waiting on fd_events. The wake is skipped when there are none;
+ * both counters change with locked (fully ordered) instructions, so either
+ * the waker sees the waiter or the waiter's futex check sees the new
+ * fd_events and does not sleep. */
+static volatile int fd_waiters;
+
 static void readiness_changed(void)
 {
 	unsigned long r;
 	a_inc(&fd_events);
-	__asm__ __volatile__ ("syscall" : "=a"(r)
-		: "a"(93UL), "D"(&fd_events), "S"(~0UL) : "rcx", "r11", "memory");
+	if (fd_waiters)
+		__asm__ __volatile__ ("syscall" : "=a"(r)
+			: "a"(93UL), "D"(&fd_events), "S"(~0UL) : "rcx", "r11", "memory");
+	__cubit_net_interrupt();
 }
 
 /* Wait until fd_events moves on from seq, or the deadline (kernel
@@ -174,9 +182,11 @@ static void wait_readiness(int seq, unsigned long deadline)
 {
 	unsigned long r;
 	register unsigned long r10 __asm__("r10") = 0;
+	a_inc(&fd_waiters);
 	__asm__ __volatile__ ("syscall" : "=a"(r)
 		: "a"(92UL), "D"(&fd_events), "S"((unsigned long)(unsigned)seq),
 		  "d"(deadline), "r"(r10) : "rcx", "r11", "memory");
+	a_dec(&fd_waiters);
 }
 
 hidden void __cubit_readiness_wait(int seq, unsigned long deadline)
@@ -290,6 +300,23 @@ hidden long __cubit_fd_socket_tcp(int flags)
 	fds[fd].flags = (flags & O_NONBLOCK) | O_RDWR;
 	fds[fd].cloexec = (flags & O_CLOEXEC) != 0;
 	return fd;
+}
+
+/* accept4: a new descriptor for the next connection on a listener. */
+hidden long __cubit_fd_accept(int fd, struct sockaddr *sa, unsigned *len, int flags)
+{
+	int nonblock;
+	struct cubit_tcp *l = __cubit_fd_tcp(fd, &nonblock);
+	if (!l) return __cubit_fd_is_socket(fd) ? -EOPNOTSUPP : -ENOTSOCK;
+	struct cubit_tcp *t;
+	long r = __cubit_tcp_accept(l, &t, sa, len, nonblock);
+	if (r) return r;
+	int nfd = allocate(FD_TCP);
+	if (nfd < 0) { __cubit_tcp_close(t); return nfd; }
+	fds[nfd].tcp = t;
+	fds[nfd].flags = (flags & O_NONBLOCK) | O_RDWR;
+	fds[nfd].cloexec = (flags & O_CLOEXEC) != 0;
+	return nfd;
 }
 
 /* The socket behind a descriptor, or NULL. */
@@ -654,9 +681,10 @@ hidden long __cubit_fd_getdents(int fd, void *buf, size_t count)
  * blocks (it drops the oldest records instead), so it is always writable;
  * a file is always readable; a pipe end is ready when it has data (or room)
  * or its other end is closed; a descriptor with no object is invalid. */
-static long scan(struct pollfd *p, unsigned long n)
+static long scan(struct pollfd *p, unsigned long n, uint64_t *sockets)
 {
 	long ready = 0;
+	*sockets = 0;
 	for (unsigned long i = 0; i < n; i++) {
 		short re = 0;
 		struct fd_entry *e = p[i].fd < 0 ? 0 : lookup(p[i].fd);
@@ -678,6 +706,7 @@ static long scan(struct pollfd *p, unsigned long n)
 			UNLOCK(q->lock);
 		} else if (e->kind == FD_TCP) {
 			re = __cubit_tcp_poll(e->tcp, p[i].events);
+			*sockets |= __cubit_tcp_mask(e->tcp);
 		} else if (e->kind == FD_PAIR) {
 			struct pipe_obj *in = e->pipe, *out = e->peer;
 			LOCK(in->lock);
@@ -702,9 +731,11 @@ hidden long __cubit_fd_poll(struct pollfd *p, unsigned long n, unsigned long dea
 {
 	for (;;) {
 		int seq = fd_events;
-		long ready = scan(p, n);
+		uint64_t sockets;
+		long ready = scan(p, n, &sockets);
 		if (ready || !deadline || (deadline != ~0UL && now_ms() >= deadline))
 			return ready;
-		wait_readiness(seq, deadline);
+		if (sockets) __cubit_net_wait(seq, deadline, sockets);
+		else wait_readiness(seq, deadline);
 	}
 }

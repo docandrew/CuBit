@@ -1,0 +1,10 @@
+project Interfaces extends "resource_calls.gpr" is
+   for Source_Dirs use Resource_Calls'Source_Dirs;
+   for Source_Files use Resource_Calls'Source_Files &
+     ("config_object_interfaces.ads", "config_object_interfaces.adb",
+      "ccl-catalog-completion.ads", "ccl-catalog-completion.adb",
+      "interface_tests.adb");
+   for Object_Dir use "build/interfaces";
+   for Exec_Dir use "build/interfaces";
+   for Main use ("interface_tests.adb");
+end Interfaces;

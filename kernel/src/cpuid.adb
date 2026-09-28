@@ -495,7 +495,7 @@ is
                 cpuid(16#15#, eax, ebx, ecx, unused);
                 tscRatioDenominator := eax;
                 tscRatioNumerator   := ebx;
-                tscFreqHz           := ecx;
+                crystalClockHz      := ecx;
             end if;
 
             -- Processor Speeds

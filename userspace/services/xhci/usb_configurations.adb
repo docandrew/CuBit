@@ -1,8 +1,10 @@
 package body USB_Configurations with SPARK_Mode => On is
-   type Interface_Kind is (Other_Interface, Boot_Mouse, Bulk_Storage);
+   type Interface_Kind is
+     (Other_Interface, Boot_Mouse, Boot_Keyboard, USB2_Hub, Bulk_Storage);
    type Candidate is record
       Kind : Interface_Kind := Other_Interface;
       Number : Unsigned_8 := 0;
+      Protocol : Unsigned_8 := 0;
       Expected_Endpoints : Unsigned_8 := 0;
       Seen_Endpoints : Natural range 0 .. Maximum_Descriptor_Bytes := 0;
       Input, Output : Endpoint;
@@ -20,6 +22,16 @@ package body USB_Configurations with SPARK_Mode => On is
          when Boot_Mouse =>
             if not Value.Mouse.Present and then Item.Input.Address /= 0 then
                Value.Mouse := (True, Item.Number, Item.Input);
+            end if;
+         when Boot_Keyboard =>
+            if not Value.Keyboard.Present and then Item.Input.Address /= 0 then
+               Value.Keyboard := (True, Item.Number, Item.Input);
+            end if;
+         when USB2_Hub =>
+            if not Value.Hub.Present and then Item.Expected_Endpoints = 1
+              and then Item.Input.Address /= 0
+            then
+               Value.Hub := (True, Item.Number, Item.Protocol, Item.Input);
             end if;
          when Bulk_Storage =>
             if not Value.Storage.Present and then
@@ -93,6 +105,17 @@ package body USB_Configurations with SPARK_Mode => On is
                         Frame (Position + 7) = 2
                      then
                         Item.Kind := Boot_Mouse;
+                     elsif Frame (Position + 5) = 3 and then
+                        Frame (Position + 6) = 1 and then
+                        Frame (Position + 7) = 1
+                     then
+                        Item.Kind := Boot_Keyboard;
+                     elsif Frame (Position + 5) = 9 and then
+                        Frame (Position + 6) = 0 and then
+                        Frame (Position + 7) <= 2
+                     then
+                        Item.Kind := USB2_Hub;
+                        Item.Protocol := Frame (Position + 7);
                      elsif Frame (Position + 5) = 8 and then
                         Frame (Position + 6) = 6 and then
                         Frame (Position + 7) = 16#50#
@@ -128,6 +151,18 @@ package body USB_Configurations with SPARK_Mode => On is
                            when Boot_Mouse =>
                               if (Attributes and 3) = 3 and then
                                  (Address and 128) /= 0 and then Packet in 3 .. 64
+                              then
+                                 if Item.Input.Address /= 0 or else EP.Interval = 0 then
+                                    Item.Invalid := True;
+                                 else
+                                    Item.Input := EP;
+                                 end if;
+                              end if;
+                           when Boot_Keyboard | USB2_Hub =>
+                              if Attributes = 3 and then
+                                 (Address and 128) /= 0 and then
+                                 Packet <= 64 and then
+                                 (Item.Kind = USB2_Hub or else Packet >= 8)
                               then
                                  if Item.Input.Address /= 0 or else EP.Interval = 0 then
                                     Item.Invalid := True;

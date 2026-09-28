@@ -1,0 +1,9 @@
+project Runs extends "interfaces.gpr" is
+   for Source_Dirs use Interfaces'Source_Dirs;
+   for Source_Files use Interfaces'Source_Files &
+     ("config_object_client-resources-runs.ads", "config_object_client-resources-runs.adb",
+      "ccl-language-views.ads", "ccl-language-views.adb", "run_tests.adb");
+   for Object_Dir use "build/runs";
+   for Exec_Dir use "build/runs";
+   for Main use ("run_tests.adb");
+end Runs;

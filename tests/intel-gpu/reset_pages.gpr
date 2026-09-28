@@ -1,0 +1,8 @@
+project Reset_Pages is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Object_Dir use "build-reset-pages";
+   for Main use ("reset_pages_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Reset_Pages;

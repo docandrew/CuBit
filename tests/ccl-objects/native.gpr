@@ -1,0 +1,25 @@
+library project Native is
+   for Source_Dirs use ("../../userspace/ccl/src", "../../userspace/services/config");
+   for Source_Files use ("ccl.ads", "ccl-types.ads", "ccl-types.adb",
+      "ccl-types-correspondence.ads", "ccl-types-correspondence.adb",
+      "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb",
+      "ccl-objects-values.ads", "ccl-objects-values.adb",
+      "ccl-host_values.ads", "ccl-host_values.adb", "ccl-handler_references.ads",
+      "ccl-handler_references.adb",
+      "ccl-vm.ads", "ccl-vm.adb", "ccl-ownership.ads", "ccl-ownership.adb",
+      "ccl-resources.ads", "ccl-resources.adb",
+      "ccl-ownership-bytecode.ads", "ccl-ownership-bytecode.adb",
+      "ccl-imports.ads", "ccl-imports.adb",
+      "ccl-execution_budgets.ads", "ccl-execution_budgets.adb",
+      "ccl-checked_arithmetic.ads", "ccl-checked_arithmetic.adb",
+      "ccl-objects.ads", "ccl-objects.adb", "config_objects.ads", "config_objects.adb");
+   for Object_Dir use "build/native";
+   for Library_Dir use "build/native-lib";
+   for Library_Name use "config_objects_check";
+   for Library_Kind use "static";
+   for Runtime ("Ada") use "../../userspace/runtime";
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-g", "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+   end Compiler;
+end Native;

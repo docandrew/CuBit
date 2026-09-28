@@ -20,6 +20,14 @@ package TCP_RTO with SPARK_Mode, Pure is
    Minimum_RTO       : constant := 200;       --  as Linux; RFC 6298 says 1 s
    Maximum_RTO       : constant := 120_000;   --  RFC 6298 2.5 allows >= 60 s
    Initial_RTO       : constant := 1_000;     --  RFC 6298 2.1
+   --  RFC 6298 2.3: alpha = 1/Alpha_Divisor, beta = 1/Beta_Divisor, K;
+   --  the first RTTVAR is R / First_RTTVAR_Divisor (2.2); a timeout
+   --  multiplies RTO by Backoff_Factor (5.5).
+   Alpha_Divisor        : constant := 8;
+   Beta_Divisor         : constant := 4;
+   K                    : constant := 4;
+   First_RTTVAR_Divisor : constant := 2;
+   Backoff_Factor       : constant := 2;
    Maximum_Sample    : constant := 600_000;   --  samples beyond 10 min are clipped
 
    subtype Milliseconds is Unsigned_32;
@@ -45,7 +53,7 @@ package TCP_RTO with SPARK_Mode, Pure is
    --  RFC 6298 5.5: on a retransmission timeout, back off.
    procedure Back_Off (E : in out Estimator) with
      Post => E.RTO >= E.RTO'Old and then
-             E.RTO = Unsigned_32'Min (2 * E.RTO'Old, Maximum_RTO) and then
+             E.RTO = Unsigned_32'Min (Backoff_Factor * E.RTO'Old, Maximum_RTO) and then
              E.Measured = E.Measured'Old and then
              E.SRTT = E.SRTT'Old and then E.RTTVAR = E.RTTVAR'Old;
 end TCP_RTO;

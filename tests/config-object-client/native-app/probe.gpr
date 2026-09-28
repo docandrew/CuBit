@@ -1,0 +1,33 @@
+project Probe is
+   Mode := external ("CONFIG_OBJECT_MODE", "create");
+   for Languages use ("Ada");
+   for Object_Dir use "build/" & Mode;
+   for Exec_Dir use "build";
+   for Source_Dirs use (".", "../../../userspace/ccl/src", "../../../userspace/lib/config");
+   case Mode is
+      when "reopen" => for Main use ("reopen.adb");
+      when "benchmark" => for Main use ("benchmark.adb");
+      when others => for Main use ("main.adb");
+   end case;
+   for Runtime ("Ada") use "../../../userspace/runtime";
+   package Builder is
+      for Executable ("main.adb") use "config-objects-check.app";
+      for Executable ("reopen.adb") use "config-objects-reopen.app";
+      for Executable ("benchmark.adb") use "config-objects-benchmark.app";
+      for Default_Switches ("Ada") use ("-nostdlib");
+   end Builder;
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnatwa", "-g", "-fomit-frame-pointer",
+         "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+   end Compiler;
+   package Binder is
+      for Default_Switches ("Ada") use ("-d_C");
+   end Binder;
+   package Linker is
+      for Default_Switches ("Ada") use
+        ("-nostdlib", "-static", "-no-pie", "-Wl,-z,stack-size=16777216",
+         "-lgnat-user", "-T", "../../../userspace/c/link.ld",
+         "../../../userspace/c/build/crt0.o", "build/manifest-" & Mode & ".o");
+   end Linker;
+end Probe;

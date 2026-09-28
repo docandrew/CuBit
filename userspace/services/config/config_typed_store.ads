@@ -20,10 +20,12 @@ package Config_Typed_Store with SPARK_Mode is
    function Published (Object : State) return Published_Values with Ghost;
    procedure Register
      (Object : in out State; Name : String; Contract : CCL.Objects.Binding;
-      ID : out Config_Collections.Collection_ID; Result : out Config_Collections.Result);
+      ID : out Config_Collections.Collection_ID; Result : out Config_Collections.Result;
+      Management : Config_Collections.Management_Kind := Config_Collections.Application_State);
    procedure Check_Registration
      (Object : State; Name : String; Contract : CCL.Objects.Binding;
-      ID : out Config_Collections.Collection_ID; Result : out Config_Collections.Result);
+      ID : out Config_Collections.Collection_ID; Result : out Config_Collections.Result;
+      Management : Config_Collections.Management_Kind := Config_Collections.Application_State);
    procedure Open
      (Object : in out State; Authority : Config_Authority.Authority_State;
       Subject : Config_Authority.Subject_ID; Name : String; Context : Number;

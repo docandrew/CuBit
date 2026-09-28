@@ -9,6 +9,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import stat
@@ -265,7 +266,23 @@ def publish(source, output):
         pending.unlink(missing_ok=True)
 
 
-def check_iso(path, expected):
+def generated_loader(name, efi=False):
+    if name.startswith("boot/grub/") or name == "boot.catalog":
+        return True
+    if not efi:
+        return False
+    # Only the specific x86-64 EFI/Apple compatibility files GRUB generates.
+    # Do not exempt whole EFI/System trees: undeclared apps must still fail.
+    return name in {
+        "efi.img", "efi/boot/bootx64.efi", "mach_kernel",
+        "System/Library/CoreServices/boot.efi",
+        "System/Library/CoreServices/.disk_label",
+        "System/Library/CoreServices/.disk_label.contentDetails",
+        "System/Library/CoreServices/SystemVersion.plist",
+    } or re.fullmatch(r"\.disk/[0-9]{4}(?:-[0-9]{2}){6}\.uuid", name) is not None
+
+
+def check_iso(path, expected, efi=False):
     """Check declared bytes in the primary ISO9660 tree CuBit actually reads."""
     blob = path.read_bytes()
     visited, actual = set(), {}
@@ -337,17 +354,20 @@ def check_iso(path, expected):
                              f"{len(observed) if observed is not None else 'missing'})")
     # GRUB may generate loader files and its El Torito catalog, not app payload.
     extras = {name for name in actual if name not in expected
-              and not name.startswith("boot/grub/") and name != "boot.catalog"}
+              and not generated_loader(name, efi)}
     if extras:
         raise ValueError("undeclared ISO payload: " + ", ".join(sorted(extras)))
 
 
-def realize(files, report, output, audit_usb=False):
+def realize(files, report, output, audit_usb=False, grub_directory=None):
     optical_layout = report["layout"] == "OPTICAL_IMAGE"
-    if output.suffix != (".iso" if optical_layout else ".img"):
+    # Layout comes from the checked CCL plan, not the burner's preferred
+    # filename. Optical images may use .img without changing their contents.
+    extensions = (".iso", ".img") if optical_layout else (".img",)
+    if output.suffix not in extensions:
         raise ValueError("output extension must match the declared layout")
     # Retain staging and its input hashes for inspection/reproduction.
-    directory = Path(tempfile.mkdtemp(prefix="cubit-ccl-image.", dir="/tmp"))
+    directory = Path(tempfile.mkdtemp(prefix="cubit-ccl-image."))
     bootstrap, optical = stage(files, directory)
     archive = directory / "initrd.img"
     names = sorted(p.relative_to(bootstrap).as_posix() for p in bootstrap.rglob("*"))
@@ -362,15 +382,18 @@ def realize(files, report, output, audit_usb=False):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(archive, target)
         result = directory / "image.iso"
-        subprocess.run(["grub-mkrescue", "-o", result, optical,
+        platform_args = [] if grub_directory is None else ["--directory", str(grub_directory)]
+        subprocess.run(["grub-mkrescue", *platform_args, "-o", result, optical,
                         "-iso-level", "3", "-full-iso9660-filenames", "-allow-lowercase",
                         "-allow-multidot", "-relaxed-filenames"], check=True)
         expected = {f.destination: f.data for f in files if f.region == "OPTICAL"}
         expected["boot/initrd.img"] = archive.read_bytes()
-        check_iso(result, expected)
+        check_iso(result, expected, efi=grub_directory is not None)
         if audit_usb:
             subprocess.run(["python3", ROOT / "tests/usb-optical/check-image.py", result], check=True)
     report["output_sha256"] = digest(result.read_bytes())
+    if grub_directory is not None:
+        report["grub_module_directory"] = str(grub_directory)
     report_path = directory / "plan.json"
     report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     publish(result, output)
@@ -388,6 +411,8 @@ def main():
     parser.add_argument("--check-only", action="store_true")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--audit-usb", action="store_true")
+    parser.add_argument("--grub-directory", type=Path,
+                        help="trusted build input: explicit GRUB platform module directory")
     args = parser.parse_args()
     inputs = {}
     try:
@@ -403,7 +428,7 @@ def main():
         if args.check_only:
             print(json.dumps(report, indent=2, sort_keys=True))
         else:
-            realize(files, report, args.output, args.audit_usb)
+            realize(files, report, args.output, args.audit_usb, args.grub_directory)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         parser.exit(1, f"ccl-image: {error}\n")
 

@@ -1,0 +1,19 @@
+project Schema_Worker is
+   for Source_Dirs use (".", "../../userspace/lib/config", "../../userspace/ccl/src");
+   for Source_Files use
+     ("ccl-types-correspondence.ads", "ccl-types-correspondence.adb") &
+     ("schema_protocol_tests.adb", "schema_proof.ads", "schema_proof.adb",
+      "config_schema_protocol.ads", "config_schema_protocol.adb",
+      "config_schema_worker.ads", "config_schema_worker.adb",
+      "config_worker_protocol.ads", "config_worker_protocol.adb",
+      "ccl.ads", "ccl-types.ads", "ccl-types.adb",
+      "ccl-objects.ads", "ccl-objects.adb",
+      "ccl-objects-schemas.ads", "ccl-objects-schemas.adb",
+      "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb");
+   for Object_Dir use "build/schema-worker";
+   for Exec_Dir use "build/schema-worker";
+   for Main use ("schema_protocol_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa");
+   end Compiler;
+end Schema_Worker;

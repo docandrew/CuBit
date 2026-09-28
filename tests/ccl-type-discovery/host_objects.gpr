@@ -1,0 +1,5 @@
+project Host_Objects extends "discovery.gpr" is
+   for Object_Dir use "build/host-objects";
+   for Exec_Dir use "build/host-objects";
+   for Main use ("host_object_tests.adb");
+end Host_Objects;

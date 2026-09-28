@@ -127,71 +127,62 @@ package body Net is
    ---------------------------------------------------------------------------
    --  internetChecksum - RFC 1071 one's complement checksum
    ---------------------------------------------------------------------------
+   --  RFC 1071: the one's-complement sum is independent of byte order, so
+   --  sum 32-bit little-endian words into 64 bits, fold, and swap the two
+   --  bytes once at the end (2.2 and 2.3 there).
+   function nativeSum (data : System.Address; len : Natural;
+                       initial : Unsigned_64) return Unsigned_64 is
+      --  Ones'-complement addition of 64-bit words (the end-around carry
+      --  is added back), folded to 16 bits later: the same sum as 16-bit
+      --  words (RFC 1071 2 (B)), with two accumulators to overlap work.
+      type Quads is array (0 .. len / 8 - 1) of Unsigned_64;
+      q    : Quads with Import, Address => data;
+      rest : constant Natural := len mod 8;
+      type Tail is array (0 .. 6) of Unsigned_8;
+      t    : Tail with Import, Address => data + Storage_Offset (len - rest);
+      acc0, acc1 : Unsigned_64 := 0;
+      last : Unsigned_64 := 0;
+
+      procedure add (acc : in out Unsigned_64; x : Unsigned_64) with Inline is
+         s : constant Unsigned_64 := acc + x;
+      begin
+         acc := s + (if s < x then 1 else 0);
+      end add;
+   begin
+      for k in 0 .. q'Length / 2 - 1 loop
+         add (acc0, q (2 * k));
+         add (acc1, q (2 * k + 1));
+      end loop;
+      if q'Length mod 2 = 1 then
+         add (acc0, q (q'Last));
+      end if;
+      for k in 0 .. rest - 1 loop
+         last := last or Shift_Left (Unsigned_64 (t (k)), 8 * k);
+      end loop;
+      add (acc0, last);
+      add (acc0, acc1);
+      add (acc0, initial);
+      return acc0;
+   end nativeSum;
+
+   --  Fold a native sum to 16 bits, complement it, and put it in network order.
+   function finish (sum : Unsigned_64) return Unsigned_16 is
+      s : Unsigned_64 := sum;
+      r : Unsigned_16;
+   begin
+      while s > 16#FFFF# loop
+         s := (s and 16#FFFF#) + Shift_Right (s, 16);
+      end loop;
+      r := not Unsigned_16 (s);
+      return Shift_Left (r, 8) or Shift_Right (r, 8);
+   end finish;
+
    function internetChecksum (data : System.Address;
                               len  : Natural) return Unsigned_16 is
-      sum : Unsigned_32 := 0;
-      i   : Natural := 0;
    begin
-      --  Sum 16-bit words
-      while i + 1 < len loop
-         sum := sum + Unsigned_32 (getU16BE (data, i));
-         i := i + 2;
-      end loop;
-
-      --  If odd length, add last byte shifted left
-      if i < len then
-         sum := sum + Shift_Left (Unsigned_32 (getU8 (data, i)), 8);
-      end if;
-
-      --  Fold 32-bit sum to 16 bits
-      while (sum and 16#FFFF_0000#) /= 0 loop
-         sum := (sum and 16#FFFF#) + Shift_Right (sum, 16);
-      end loop;
-
-      return not Unsigned_16 (sum and 16#FFFF#);
+      return finish (nativeSum (data, len, 0));
    end internetChecksum;
 
-   ---------------------------------------------------------------------------
-   --  arpUpdate - add or update an entry in the ARP cache
-   ---------------------------------------------------------------------------
-   procedure arpUpdate (cache : in out ARPTable;
-                        ip    : IPv4Address;
-                        mac   : MACAddress) is
-      freeSlot : Integer := -1;
-   begin
-      for i in cache'Range loop
-         if cache (i).valid and then cache (i).ip = ip then
-            --  Update existing entry
-            cache (i).mac := mac;
-            return;
-         end if;
-         if not cache (i).valid and freeSlot < 0 then
-            freeSlot := i;
-         end if;
-      end loop;
-
-      --  Add new entry if room
-      if freeSlot >= 0 then
-         cache (freeSlot) := (ip => ip, mac => mac, valid => True);
-      end if;
-   end arpUpdate;
-
-   ---------------------------------------------------------------------------
-   --  arpLookup - look up a MAC address by IP in the cache
-   ---------------------------------------------------------------------------
-   function arpLookup (cache : ARPTable;
-                       ip    : IPv4Address;
-                       mac   : out MACAddress) return Boolean is
-   begin
-      for i in cache'Range loop
-         if cache (i).valid and then cache (i).ip = ip then
-            mac := cache (i).mac;
-            return True;
-         end if;
-      end loop;
-      mac := ZERO_MAC;
-      return False;
-   end arpLookup;
 
    ---------------------------------------------------------------------------
    --  transportChecksum - RFC 1071 checksum over pseudo-header + segment
@@ -201,50 +192,15 @@ package body Net is
                                proto   : Unsigned_8;
                                segment : System.Address;
                                segLen  : Natural) return Unsigned_16 is
-      pseudoHdr : array (0 .. 11) of Unsigned_8;
-      sum       : Unsigned_32 := 0;
-      i         : Natural := 0;
+      --  The 12-byte pseudo-header, in network order.
+      pseudoHdr : constant array (0 .. 11) of Unsigned_8 :=
+        [srcIP (0), srcIP (1), srcIP (2), srcIP (3),
+         dstIP (0), dstIP (1), dstIP (2), dstIP (3),
+         0, proto,
+         Unsigned_8 (Shift_Right (Unsigned_16 (segLen), 8)),
+         Unsigned_8 (Unsigned_16 (segLen) and 16#FF#)];
    begin
-      --  Build 12-byte pseudo-header
-      pseudoHdr (0)  := srcIP (0);
-      pseudoHdr (1)  := srcIP (1);
-      pseudoHdr (2)  := srcIP (2);
-      pseudoHdr (3)  := srcIP (3);
-      pseudoHdr (4)  := dstIP (0);
-      pseudoHdr (5)  := dstIP (1);
-      pseudoHdr (6)  := dstIP (2);
-      pseudoHdr (7)  := dstIP (3);
-      pseudoHdr (8)  := 0;
-      pseudoHdr (9)  := proto;
-      pseudoHdr (10) := Unsigned_8 (Shift_Right (Unsigned_16 (segLen), 8));
-      pseudoHdr (11) := Unsigned_8 (Unsigned_16 (segLen) and 16#FF#);
-
-      --  Sum pseudo-header words
-      i := 0;
-      while i < 12 loop
-         sum := sum + Shift_Left (Unsigned_32 (pseudoHdr (i)), 8) +
-                Unsigned_32 (pseudoHdr (i + 1));
-         i := i + 2;
-      end loop;
-
-      --  Sum segment data words
-      i := 0;
-      while i + 1 < segLen loop
-         sum := sum + Unsigned_32 (getU16BE (segment, i));
-         i := i + 2;
-      end loop;
-
-      --  Odd byte
-      if i < segLen then
-         sum := sum + Shift_Left (Unsigned_32 (getU8 (segment, i)), 8);
-      end if;
-
-      --  Fold 32-bit sum to 16 bits
-      while (sum and 16#FFFF_0000#) /= 0 loop
-         sum := (sum and 16#FFFF#) + Shift_Right (sum, 16);
-      end loop;
-
-      return not Unsigned_16 (sum and 16#FFFF#);
+      return finish (nativeSum (segment, segLen, nativeSum (pseudoHdr'Address, 12, 0)));
    end transportChecksum;
 
    ---------------------------------------------------------------------------

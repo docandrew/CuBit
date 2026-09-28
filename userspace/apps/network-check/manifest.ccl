@@ -5,8 +5,19 @@
   # Test scopes still require independent network=declared launch approval.
   (request-service network-stack read-write network)
   (request-network tcp-connect (ipv4 "10.0.2.0" 24)
-    (ports 18443 18443) (dns deny) test-connect)
+    (ports 18443 18443) (dns deny)
+    (connections 4) test-connect)
   (request-network tcp-listen (ipv4 "10.0.2.15" 32)
-    (ports 8080 8080) (dns deny) test-listen)
+    (ports 8080 8080) (dns deny)
+    (connections 4) test-listen)
   (request-network udp-connect (ipv4 "10.0.2.2" 32)
-    (ports 18446 18446) (dns deny) test-datagram))
+    (ports 18446 18446) (dns deny)
+    (connections 2) test-datagram)
+  # A host port nobody listens on: QEMU answers with ICMP port unreachable.
+  (request-network udp-connect (ipv4 "10.0.2.2" 32)
+    (ports 18449 18449) (dns deny)
+    (connections 1) test-refused)
+  # Names only: the resolver's own queries go to the configured server.
+  (request-network udp-connect (ipv4 "10.0.2.3" 32)
+    (ports 53 53) (dns allow)
+    (connections 1) test-resolve))

@@ -203,6 +203,15 @@ is
         Pre     => BuddyAllocator.initialized,
         Post    => isValidBlock (ord, addr);
 
+    -- Slow-path DMA placement: the requested block must fit entirely below
+    -- the exclusive physical ceiling. No allocate/reject/retry loop and no
+    -- change to the ordinary allocation fast path. Zero admits no memory.
+    procedure allocBelow
+      (ord : Order; ceiling : Interfaces.Unsigned_64;
+       addr : out System.Address) with
+        Pre => BuddyAllocator.initialized,
+        Post => isValidBlock (ord, addr);
+
     ---------------------------------------------------------------------------
     -- allocFrame
     -- Convenience procedure for getting a single physical frame, shorthand for

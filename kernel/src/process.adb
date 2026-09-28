@@ -1553,6 +1553,28 @@ package body Process is
             exitMsg.words(0) := Unsigned_64(pid);
             IPC.sendRetirementEvent (parent, parentGen, exitMsg);
         end if;
+
+        -- The process manager hears of every retirement, whoever launched
+        -- the process: it releases what services hold for it (netstack's
+        -- channels and scopes). It checks the claim against the process
+        -- list before acting, since events are not unforgeable.
+        tellManager : declare
+            manager : constant Unsigned_64 := Sysinfo.getInfo
+              (Unsigned_64 (Sysinfo.REGISTERED_DRIVER),
+               Unsigned_64 (Sysinfo.DRIVER_PROCMGR));
+        begin
+            if manager /= Unsigned_64 (NO_PROCESS) and then
+               manager <= Unsigned_64 (ProcessID'Last) and then
+               ProcessID (manager) /= parent and then
+               ProcessID (manager) /= pid
+            then
+                exitMsg.tag := (label => IPC_Labels.EVENT_CHILD_EXIT,
+                                length => 1, flags => 0, reserved => 0);
+                exitMsg.words(0) := Unsigned_64(pid);
+                IPC.sendRetirementEvent
+                  (ProcessID (manager), generationOf (ProcessID (manager)), exitMsg);
+            end if;
+        end tellManager;
     end reclaimProcess;
 
     ---------------------------------------------------------------------------

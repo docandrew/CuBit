@@ -1,0 +1,22 @@
+library project Persistence_Native is
+   CBOR_Source := external ("CBOR_ADA_SRC");
+   for Source_Dirs use ("../../userspace/ccl/src", "../../userspace/ccl/persistence", CBOR_Source & "/src");
+   for Source_Files use
+     ("ccl-types-correspondence.ads", "ccl-types-correspondence.adb") &
+     ("ccl.ads", "ccl-types.ads", "ccl-types.adb",
+      "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb",
+      "ccl-objects.ads", "ccl-objects.adb",
+      "ccl-objects-persistence.ads", "ccl-objects-persistence.adb",
+      "cbor.ads", "cbor-model.ads", "cbor-encoding.ads", "cbor-encoding.adb",
+      "cbor-decoding.ads", "cbor-decoding.adb");
+   for Object_Dir use "build/persistence-native";
+   for Library_Dir use "build/persistence-native-lib";
+   for Library_Name use "ccl_object_persistence_check";
+   for Library_Kind use "static";
+   for Runtime ("Ada") use "../../userspace/runtime";
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-mno-red-zone", "-mno-sse", "-mno-sse2",
+         "-fno-pic", "-fstack-usage", "-I-");
+   end Compiler;
+end Persistence_Native;

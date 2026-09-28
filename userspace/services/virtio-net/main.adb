@@ -13,14 +13,19 @@
 --  DMA region at 0x7000_0000_0000 (mapped by kernel):
 --    0x0000 .. 0x2FFF : RX vring (3 pages)
 --    0x3000 .. 0x5FFF : TX vring (3 pages)
---    0x6000+          : Packet buffers (64 x 2K: 0-31 RX, 32-63 TX)
+--    0x6000+          : Packet buffers (112 x 2K: 0-31 RX, 32-111 TX; the
+--                       256 KiB region devmgr allocates holds 116)
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
+with System.Machine_Code;
 
 with CuBit.Messages; use CuBit.Messages;
 with Virtio;
+with Descriptor_Pool;
+with Frame_Ring;
+with Virtqueue_Index;
 with CuBit.Virtio_Net_Control;
 
 procedure main is
@@ -34,10 +39,17 @@ procedure main is
    RX_QUEUE : constant Unsigned_16 := 0;
    TX_QUEUE : constant Unsigned_16 := 1;
 
-   --  Buffer layout: 32 RX + 32 TX, each 2KB
-   NUM_RX_BUFS  : constant := 32;
-   NUM_TX_BUFS  : constant := 32;
-   TX_BUF_FIRST : constant := 32;
+   --  Buffer layout (devmgr maps 1 MiB): a receive buffer for every queue
+   --  entry, so the device can hold a full window of frames while we are
+   --  busy, then 80 TX buffers; each 2KB. TCP sends in bursts; the device
+   --  may not have consumed earlier frames yet.
+   NUM_RX_BUFS  : constant := Virtio.QUEUE_SIZE;
+   NUM_TX_BUFS  : constant := 80;
+   TX_BUF_FIRST : constant := NUM_RX_BUFS;
+   package TX_Descriptors is new Descriptor_Pool (Count => NUM_TX_BUFS);
+   --  Receive buffers with the device (posted): the device's returned ids
+   --  are accepted only for buffers it holds, so none is posted twice.
+   package RX_Buffers is new Descriptor_Pool (Count => NUM_RX_BUFS);
    RX_BUF_SIZE  : constant := 2048;
 
    --  Virtio-net header is 10 bytes (legacy), prepended to every packet
@@ -104,24 +116,24 @@ procedure main is
    ---------------------------------------------------------------------------
    --  TX free descriptor stack
    ---------------------------------------------------------------------------
-   txFreeStack : array (0 .. NUM_TX_BUFS - 1) of Natural;
-   txFreeTop   : Natural := NUM_TX_BUFS;
+   --  Transmit descriptor ownership (proved, userspace/net/src
+   --  descriptor_pool): the device's returned ids are accepted only for
+   --  descriptors in flight, so no buffer is handed out twice.
+   txPool : TX_Descriptors.Pool;
+   rxPool : RX_Buffers.Pool;
 
    function allocTXDesc return Integer is
+      d  : TX_Descriptors.Id;
+      ok : Boolean;
    begin
-      if txFreeTop = 0 then
-         return -1;
-      end if;
-      txFreeTop := txFreeTop - 1;
-      return txFreeStack (txFreeTop);
+      TX_Descriptors.Take (txPool, d, ok);
+      return (if ok then d else -1);
    end allocTXDesc;
 
-   procedure freeTXDesc (idx : Natural) is
+   procedure freeTXDesc (id : Unsigned_32) is
+      ignore : Boolean;
    begin
-      if txFreeTop < NUM_TX_BUFS then
-         txFreeStack (txFreeTop) := idx;
-         txFreeTop := txFreeTop + 1;
-      end if;
+      TX_Descriptors.Give_Back (txPool, id, ignore);
    end freeTXDesc;
 
    ---------------------------------------------------------------------------
@@ -192,14 +204,20 @@ procedure main is
    --  setupRXQueue
    ---------------------------------------------------------------------------
    procedure setupRXQueue is
+      d  : RX_Buffers.Id;
+      ok : Boolean;
    begin
+      RX_Buffers.Initialize (rxPool);
       for i in 0 .. NUM_RX_BUFS - 1 loop
          rxDescs (i) := (addr  => bufPhys (i),
                          len   => RX_BUF_SIZE,
                          flags => Virtio.VRING_DESC_F_WRITE,
                          next  => 0);
-
-         rxAvail.ring (i) := Unsigned_16 (i);
+      end loop;
+      --  Post every buffer.
+      for i in 0 .. NUM_RX_BUFS - 1 loop
+         RX_Buffers.Take (rxPool, d, ok);
+         rxAvail.ring (i) := Unsigned_16 (d);
       end loop;
 
       rxAvail.flags := 0;
@@ -209,6 +227,13 @@ procedure main is
    ---------------------------------------------------------------------------
    --  submitTX - send a frame via the TX virtqueue
    ---------------------------------------------------------------------------
+   txPending : Boolean := False;
+   VRING_USED_F_NO_NOTIFY : constant Unsigned_16 := 1;
+   --  In our avail rings: the device need not interrupt on completions.
+   VRING_AVAIL_F_NO_INTERRUPT : constant Unsigned_16 := 1;
+   --  At most this many frames in flight counts as sparse traffic.
+   SPARSE_TX_FRAMES : constant := 2;
+
    procedure submitTX (frameAddr : System.Address; frameLen : Natural) is
       descIdx : Integer;
       txBuf   : System.Address;
@@ -219,7 +244,9 @@ procedure main is
          return;
       end if;
 
-      txBuf := bufAddr (descIdx);
+      --  TX descriptor D uses buffer TX_BUF_FIRST + D (the descriptor
+      --  table has QUEUE_SIZE entries; buffer indices go past it).
+      txBuf := bufAddr (TX_BUF_FIRST + descIdx);
 
       --  Zero the 10-byte virtio-net header
       declare
@@ -233,19 +260,17 @@ procedure main is
 
       --  Copy frame data after the virtio-net header
       declare
-         src : array (0 .. frameLen - 1) of Unsigned_8 with
-            Import, Address => frameAddr;
-         dst : array (0 .. frameLen - 1) of Unsigned_8 with
+         type Frame is array (0 .. frameLen - 1) of Unsigned_8;
+         src : Frame with Import, Address => frameAddr;
+         dst : Frame with
             Import, Address => txBuf + Storage_Offset (VIRTIO_NET_HDR_SIZE);
       begin
-         for i in src'Range loop
-            dst (i) := src (i);
-         end loop;
+         dst := src;
       end;
 
       --  Set up the descriptor
       txDescs (descIdx) :=
-         (addr  => bufPhys (descIdx),
+         (addr  => bufPhys (TX_BUF_FIRST + descIdx),
           len   => Unsigned_32 (VIRTIO_NET_HDR_SIZE + frameLen),
           flags => 0,
           next  => 0);
@@ -255,107 +280,296 @@ procedure main is
          Unsigned_16 (descIdx);
       txAvail.idx := txAvail.idx + 1;
 
-      --  Kick the device
-      Virtio.notifyQueue (ioBase, TX_QUEUE);
+      --  The device is kicked once for a run of frames (kickTX).
+      txPending := True;
    end submitTX;
+
+   ---------------------------------------------------------------------------
+   --  kickTX - tell the device about the frames added since the last kick,
+   --  unless it asked not to be notified (it is already processing the
+   --  ring: VRING_USED_F_NO_NOTIFY).
+   ---------------------------------------------------------------------------
+   procedure kickTX is
+      usedFlags : Unsigned_16 with Volatile, Import, Address => txUsed'Address;
+   begin
+      if txPending then
+         txPending := False;
+         --  The avail index must be visible before the flags are read.
+         System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
+         if (usedFlags and VRING_USED_F_NO_NOTIFY) = 0 then
+            Virtio.notifyQueue (ioBase, TX_QUEUE);
+         end if;
+      end if;
+   end kickTX;
+
+   ---------------------------------------------------------------------------
+   --  kickRX - after replenishing receive buffers, notify the device only
+   --  if it asked to be (it had run out: VRING_USED_F_NO_NOTIFY clear).
+   ---------------------------------------------------------------------------
+   procedure kickRX is
+      usedFlags : Unsigned_16 with Volatile, Import, Address => rxUsed'Address;
+   begin
+      --  The replenished avail index must be visible before the flags are read.
+      System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
+      if (usedFlags and VRING_USED_F_NO_NOTIFY) = 0 then
+         Virtio.notifyQueue (ioBase, RX_QUEUE);
+      end if;
+   end kickRX;
+
+
 
    ---------------------------------------------------------------------------
    --  processTXUsed - reclaim completed TX descriptors
    ---------------------------------------------------------------------------
    procedure processTXUsed is
-      usedIdx : Unsigned_16;
-      descIdx : Unsigned_32;
+      use Virtqueue_Index;
+      taken : constant Natural :=
+        New_Entries (Index (lastTXUsedIdx), Index (txUsed.idx),
+                     NUM_TX_BUFS - txPool.Top);
    begin
-      usedIdx := txUsed.idx;
-
-      while lastTXUsedIdx /= usedIdx loop
-         descIdx := txUsed.ring (Natural (lastTXUsedIdx mod
-                                          Virtio.QUEUE_SIZE)).id;
-         freeTXDesc (Natural (descIdx));
+      for K in 1 .. taken loop
+         freeTXDesc (txUsed.ring (Slot (Index (lastTXUsedIdx))).id);
          lastTXUsedIdx := lastTXUsedIdx + 1;
       end loop;
    end processTXUsed;
 
    ---------------------------------------------------------------------------
+   --  The TX ring in the grant's second half (netstack's doSendFrame is the
+   --  producer). Its first 2 KiB slot holds the indices: netstack's
+   --  producer count at byte 0, ours (the consumer) at byte 64, both
+   --  free-running. Frame N is in slot (N mod TX_RING_SLOTS) + 1: its
+   --  length (4 bytes) at the slot's start, the frame TX_FRAME_HEADER bytes
+   --  in. A slot is netstack's again once the consumer count passes it.
+   ---------------------------------------------------------------------------
+   TX_RING_SLOT_BYTES : constant := 2048;
+   TX_FRAME_HEADER    : constant := 16;
+   TX_CONSUMER_OFFSET : constant := 64;
+   txRingSlots : Unsigned_32 := 0;   --  set from the grant's size at attach
+   txConsumed  : Unsigned_32 := 0;
+   --  Our doorbell epoch in the TX area (netstack reads it): a new nonzero
+   --  value each time we are about to wait.
+   TX_DOORBELL_OFFSET : constant := 68;
+   txIdleEpoch : Unsigned_32 := 0;
+
+   --  Copy queued frames to the device; True if any were taken.
+   function drainTXRing return Boolean is
+      area : constant System.Address :=
+        grantBase + Storage_Offset (grantBufSize / 2);
+      produced : Unsigned_32 with Volatile, Import, Address => area;
+      consumed : Unsigned_32 with Volatile, Import,
+        Address => area + Storage_Offset (TX_CONSUMER_OFFSET);
+      available : Unsigned_32;
+      took : Boolean := False;
+   begin
+      if grantBase = System.Null_Address or else txRingSlots = 0 then
+         return False;
+      end if;
+      available := produced;
+      --  The frames were written before the count was: read them after.
+      System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
+      --  A producer count too far ahead is not ours to trust.
+      if Frame_Ring.Fill (available, txConsumed) > txRingSlots then
+         return False;
+      end if;
+      while txConsumed /= available loop
+         processTXUsed;
+         if txPool.Top = 0 then
+            --  Out of descriptors with frames waiting: let the device's
+            --  completion wake us to reclaim them.
+            txAvail.flags := 0;
+            System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
+            processTXUsed;
+            exit when txPool.Top = 0;
+         end if;
+         if txAvail.flags /= VRING_AVAIL_F_NO_INTERRUPT then
+            txAvail.flags := VRING_AVAIL_F_NO_INTERRUPT;
+         end if;
+         declare
+            slot : constant System.Address :=
+              area + Storage_Offset
+                (Frame_Ring.Slot_Of (txConsumed, Natural (txRingSlots)) * TX_RING_SLOT_BYTES);
+            len : Unsigned_32 with Volatile, Import, Address => slot;
+            frameLen : constant Unsigned_32 := len;
+         begin
+            if frameLen >= 14 and then
+              Frame_Ring.Fits (frameLen, TX_RING_SLOT_BYTES, TX_FRAME_HEADER)
+            then
+               submitTX (slot + Storage_Offset (TX_FRAME_HEADER), Natural (frameLen));
+            end if;
+         end;
+         txConsumed := txConsumed + 1;
+         took := True;
+      end loop;
+      if took then
+         --  Copied out before the slots are handed back.
+         System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
+         consumed := txConsumed;
+         kickTX;
+      end if;
+      return took;
+   end drainTXRing;
+
+   ---------------------------------------------------------------------------
    --  processRX - check used ring, forward packets to netstack via grant
    ---------------------------------------------------------------------------
+   --  Received frames go to netstack through a ring in the grant's RX
+   --  half (netstack's drainRXRing reads the same layout). Slot 0 holds
+   --  the counts and flags; frame N is in slot (N mod rxRingSlots) + 1, its
+   --  length (4 bytes, little endian) in the slot's first RX_SLOT_HEADER
+   --  bytes and the Ethernet frame after them.
+   --  - produced (byte 0, ours) and consumed (byte 64, netstack's) are
+   --    free-running frame counts;
+   --  - space wanted (byte 4, ours): the ring was full; netstack rings our
+   --    doorbell (OP_NET_TX) once it frees slots;
+   --  - doorbell wanted (byte 68, netstack's): a nonzero epoch while
+   --    netstack is idle; one OP_NET_RX (one-way) per epoch wakes it.
+   --  No call and no reply per batch: we never wait for netstack.
+   RX_SLOT_BYTES  : constant := 2048;
+   RX_SLOT_HEADER : constant := 16;
+   RX_SPACE_WANTED_OFFSET : constant := 4;
+   RX_CONSUMER_OFFSET     : constant := 64;
+   RX_DOORBELL_OFFSET     : constant := 68;
+   type Frame_Bytes is array (Natural range <>) of Unsigned_8;
+   rxRingSlots : Unsigned_32 := 0;   --  set from the grant's size at attach
+   rxProduced  : Unsigned_32 := 0;
+   rxRungEpoch : Unsigned_32 := 0;   --  the netstack epoch we last woke
+   --  processRX stopped at a full ring: the used entries left are not new
+   --  work until netstack frees a slot.
+   rxBlocked   : Boolean := False;
+
+   function rxSpace return Boolean is
+      consumed : Unsigned_32 with Volatile, Import,
+        Address => grantBase + Storage_Offset (RX_CONSUMER_OFFSET);
+   begin
+      return Frame_Ring.Has_Room (rxProduced, consumed, Natural (rxRingSlots));
+   end rxSpace;
+
+   --  Publish the frames written so far and wake netstack if it is idle.
+   procedure publishRX is
+      produced : Unsigned_32 with Volatile, Import, Address => grantBase;
+      doorbell : Unsigned_32 with Volatile, Import,
+        Address => grantBase + Storage_Offset (RX_DOORBELL_OFFSET);
+      epoch : Unsigned_32;
+      rxMsg : constant Message :=
+        (tag      => (label  => OP_NET_RX,
+                      length => 0,
+                      flags  => 1,      --  a doorbell: no reply
+                      reserved  => 0),
+         authorityTag => 0,
+         words    => (others => 0));
+      ignore : Boolean;
+   begin
+      --  The frames were written before the count that hands them over.
+      System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
+      produced := rxProduced;
+      --  The count must be visible before the flag is read.
+      System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
+      epoch := doorbell;
+      if epoch /= 0 and then epoch /= rxRungEpoch then
+         rxRungEpoch := epoch;
+         ignore := capSubmit (CAP_SLOT_NETSTACK, rxMsg, NO_COMPLETION_TOKEN);
+      end if;
+   end publishRX;
+
+   --  Room for one more frame; if the ring is full, ask netstack to say
+   --  when it has taken some (and look once more after asking).
+   function rxRoom return Boolean is
+      consumed : Unsigned_32 with Volatile, Import,
+        Address => grantBase + Storage_Offset (RX_CONSUMER_OFFSET);
+      wanted : Unsigned_32 with Volatile, Import,
+        Address => grantBase + Storage_Offset (RX_SPACE_WANTED_OFFSET);
+   begin
+      if Frame_Ring.Has_Room (rxProduced, consumed, Natural (rxRingSlots)) then
+         if wanted /= 0 then
+            wanted := 0;
+         end if;
+         return True;
+      end if;
+      wanted := 1;
+      System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
+      if Frame_Ring.Has_Room (rxProduced, consumed, Natural (rxRingSlots)) then
+         wanted := 0;
+         return True;
+      end if;
+      return False;
+   end rxRoom;
+
+   --  The device returned receive buffer Raw: take it back if it is one it
+   --  holds (True), and post a free buffer in its place.
+   function takeBackRX (Raw : Unsigned_32) return Boolean is
+      d  : RX_Buffers.Id;
+      ok : Boolean;
+   begin
+      RX_Buffers.Give_Back (rxPool, Raw, ok);
+      if ok then
+         RX_Buffers.Take (rxPool, d, ok);
+         rxAvail.ring (Virtqueue_Index.Slot (Virtqueue_Index.Index (rxAvail.idx))) :=
+           Unsigned_16 (d);
+         rxAvail.idx := rxAvail.idx + 1;
+         return True;
+      end if;
+      return False;
+   end takeBackRX;
+
    procedure processRX is
       usedIdx : Unsigned_16;
       descIdx : Unsigned_32;
       pktLen  : Unsigned_32;
       pktBuf  : System.Address;
       ethLen  : Natural;
+      put     : Boolean := False;
    begin
-      if grantBase = System.Null_Address then
-         --  Not attached yet; drain and discard
-         usedIdx := rxUsed.idx;
-         while lastRXUsedIdx /= usedIdx loop
-            descIdx := rxUsed.ring (Natural (lastRXUsedIdx mod
-                                             Virtio.QUEUE_SIZE)).id;
-            rxAvail.ring (Natural (rxAvail.idx mod Virtio.QUEUE_SIZE)) :=
-               Unsigned_16 (descIdx);
-            rxAvail.idx := rxAvail.idx + 1;
-            lastRXUsedIdx := lastRXUsedIdx + 1;
-         end loop;
-         return;
-      end if;
-
       usedIdx := rxUsed.idx;
-
-      while lastRXUsedIdx /= usedIdx loop
-         descIdx := rxUsed.ring (Natural (lastRXUsedIdx mod
-                                          Virtio.QUEUE_SIZE)).id;
-         pktLen  := rxUsed.ring (Natural (lastRXUsedIdx mod
-                                          Virtio.QUEUE_SIZE)).len;
-
-         pktBuf := bufAddr (Natural (descIdx));
-
-         --  Forward packet to netstack (skip virtio-net header)
-         if pktLen > Unsigned_32 (VIRTIO_NET_HDR_SIZE + 14) then
-            ethLen := Natural (pktLen) - VIRTIO_NET_HDR_SIZE;
-
-            --  Clamp to grant RX area size
-            if ethLen > Natural (grantBufSize) / 2 then
-               ethLen := Natural (grantBufSize) / 2;
+      declare
+         use Virtqueue_Index;
+         returned : constant Natural :=
+           New_Entries (Index (lastRXUsedIdx), Index (usedIdx), NUM_RX_BUFS - rxPool.Top);
+         attached : constant Boolean :=
+           grantBase /= System.Null_Address and then rxRingSlots /= 0;
+      begin
+         --  A full ring leaves the rest in the device's used ring until
+         --  netstack frees slots (it rings our doorbell). Before netstack
+         --  attaches, frames are dropped.
+         for K in 1 .. returned loop
+            exit when attached and then not rxRoom;
+            descIdx := rxUsed.ring (Slot (Index (lastRXUsedIdx))).id;
+            pktLen  := rxUsed.ring (Slot (Index (lastRXUsedIdx))).len;
+            lastRXUsedIdx := lastRXUsedIdx + 1;
+            --  Only a buffer the device holds is read, and posted again once
+            --  copied; an id that is not one (a device fault) is skipped.
+            if descIdx < NUM_RX_BUFS and then attached and then
+              rxPool.In_Flight (Natural (descIdx)) and then
+              pktLen > Unsigned_32 (VIRTIO_NET_HDR_SIZE + 14) and then
+              Natural (pktLen) - VIRTIO_NET_HDR_SIZE <= RX_SLOT_BYTES - RX_SLOT_HEADER
+            then
+               pktBuf := bufAddr (Natural (descIdx));
+               ethLen := Natural (pktLen) - VIRTIO_NET_HDR_SIZE;
+               declare
+                  slot : constant System.Address :=
+                    grantBase + Storage_Offset
+                      (Frame_Ring.Slot_Of (rxProduced, Natural (rxRingSlots)) * RX_SLOT_BYTES);
+                  src : Frame_Bytes (0 .. ethLen - 1) with
+                     Import, Address =>
+                        pktBuf + Storage_Offset (VIRTIO_NET_HDR_SIZE);
+                  dst : Frame_Bytes (0 .. ethLen - 1) with
+                     Import, Address => slot + Storage_Offset (RX_SLOT_HEADER);
+                  lenField : Unsigned_32 with Import, Address => slot;
+               begin
+                  dst := src;
+                  lenField := Unsigned_32 (ethLen);
+               end;
+               rxProduced := rxProduced + 1;
+               put := True;
             end if;
-
-            --  Copy packet into grant RX area (offset 0)
-            declare
-               src : array (0 .. ethLen - 1) of Unsigned_8 with
-                  Import, Address =>
-                     pktBuf + Storage_Offset (VIRTIO_NET_HDR_SIZE);
-               dst : array (0 .. ethLen - 1) of Unsigned_8 with
-                  Import, Address => grantBase;
-            begin
-               for i in src'Range loop
-                  dst (i) := src (i);
-               end loop;
-            end;
-
-            --  Send OP_NET_RX to netstack via capCall (blocking)
-            declare
-               rxMsg : Message :=
-                 (tag      => (label  => OP_NET_RX,
-                               length => 2,
-                               flags  => 0,
-                               reserved  => 0),
-                  authorityTag => 0,
-                  words    => (0 => 0,  -- offset in grant (RX area)
-                               1 => Unsigned_64 (ethLen),
-                               others => 0));
-               ignore : MessageTag;
-            begin
-               ignore := capCall (CAP_SLOT_NETSTACK, rxMsg);
-            end;
-         end if;
-
-         --  Replenish: put this descriptor back in the available ring
-         rxAvail.ring (Natural (rxAvail.idx mod Virtio.QUEUE_SIZE)) :=
-            Unsigned_16 (descIdx);
-         rxAvail.idx := rxAvail.idx + 1;
-
-         lastRXUsedIdx := lastRXUsedIdx + 1;
-      end loop;
+            if takeBackRX (descIdx) then
+               null;   --  replenished
+            end if;
+         end loop;
+      end;
+      rxBlocked := lastRXUsedIdx /= usedIdx;
+      if put then
+         publishRX;
+      end if;
    end processRX;
 
    ---------------------------------------------------------------------------
@@ -386,6 +600,8 @@ procedure main is
          if replyTag.label = REPLY_OK then
             grantId      := attachMsg.words (0);
             grantBufSize := attachMsg.words (1);
+            rxRingSlots := Unsigned_32 (grantBufSize / 2 / RX_SLOT_BYTES) - 1;
+            txRingSlots := Unsigned_32 (grantBufSize / 2 / TX_RING_SLOT_BYTES) - 1;
 
             --  Grant region is mapped at GRANT_REGION_BASE + grantId * slot
             grantBase := To_Address (
@@ -409,7 +625,6 @@ procedure main is
    ipcFound   : Boolean;
    evtMsg     : Message;
    evtFound   : Boolean;
-   isr        : Unsigned_8;
    rxActive   : Boolean;
    devQSz     : Unsigned_16;
    rxPFN      : Unsigned_32;
@@ -542,7 +757,9 @@ begin
       debugPrint ("" & LF);
    end;
 
-   txAvail.flags := 0;
+   --  No TX completion interrupts: descriptors are reclaimed on each pass
+   --  of the loop (drainTXRing re-enables them if it runs out).
+   txAvail.flags := VRING_AVAIL_F_NO_INTERRUPT;
    txAvail.idx   := 0;
 
    txPFN := Unsigned_32 ((DMA_PHYS_BASE + Unsigned_64 (TX_VRING_OFFSET)) / 4096);
@@ -557,10 +774,8 @@ begin
    printHex8 (Unsigned_8 (txPFN and 16#FF#));
    debugPrint ("" & LF);
 
-   --  Initialize TX free descriptor stack
-   for i in 0 .. NUM_TX_BUFS - 1 loop
-      txFreeStack (i) := TX_BUF_FIRST + i;
-   end loop;
+   --  Every transmit descriptor starts free.
+   TX_Descriptors.Initialize (txPool);
 
    ignore := portOutp16 (ioBase + Virtio.REG_CONFIG_MSIX_VECTOR, 0);
    if portInp16 (ioBase + Virtio.REG_CONFIG_MSIX_VECTOR) /= 0 then
@@ -607,62 +822,77 @@ begin
 
       --  Check for service requests from netstack. IRQ-style traffic is
       --  handled through Poll_Event below, so this must stay request-only.
+      --  OP_NET_TX is only a doorbell: the frames are in the TX ring.
       Poll_Service_Request (ipcSender, ipcMsg, ipcFound);
-
-      if ipcFound then
-         case ipcMsg.tag.label is
-            when OP_NET_TX =>
-               --  Netstack wants to transmit a frame via grant buffer
-               if grantBase /= System.Null_Address then
-                  declare
-                     offset    : constant Unsigned_64 := ipcMsg.words (0);
-                     frameLen  : constant Natural :=
-                        Natural (ipcMsg.words (1));
-                     frameAddr : constant System.Address :=
-                        grantBase + Storage_Offset (offset);
-                  begin
-                     submitTX (frameAddr, frameLen);
-                     --  Only reply if sender expects it (flags=0).
-                     --  capSubmit'd TX uses flags=1 (fire-and-forget).
-                     if ipcMsg.tag.flags = 0 then
-                        declare
-                           replyMsg : constant Message :=
-                             (tag      => (label  => REPLY_OK,
-                                           length => 0,
-                                           flags  => 0,
-                                           reserved  => 0),
-                              authorityTag => 0,
-                              words    => (others => 0));
-                           ignore : Unsigned_64;
-                        begin
-                           ignore := reply (ipcSender, replyMsg);
-                        end;
-                     end if;
-                  end;
-               end if;
-
-            when others =>
-               null;
-         end case;
+      if ipcFound and then ipcMsg.tag.label = OP_NET_TX and then ipcMsg.tag.flags = 0 then
+         declare
+            replyMsg : constant Message :=
+              (tag      => (label  => REPLY_OK,
+                            length => 0,
+                            flags  => 0,
+                            reserved  => 0),
+               authorityTag => 0,
+               words    => (others => 0));
+            ignore : Unsigned_64;
+         begin
+            ignore := reply (ipcSender, replyMsg);
+         end;
       end if;
 
-      --  Drain IRQ events if any (clears ISR status)
+      --  Every frame netstack has queued, while descriptors last; one kick.
+      if drainTXRing then
+         ipcFound := True;
+      end if;
+
+      --  Drain IRQ events. With MSI-X (configured above; INTx disabled)
+      --  nothing needs acknowledging in the device: the ISR register exists
+      --  for legacy INTx, and reading it is a costly exit to the hypervisor.
       evtFound := Poll_Event (evtMsg);
-      if evtFound then
-         isr := Virtio.readISR (ioBase);
-      end if;
 
       --  Inspect durable ring state, not the number of coalesced IRQs.
-      if lastRXUsedIdx /= rxUsed.idx then
+      if lastRXUsedIdx /= rxUsed.idx and then
+        (not rxBlocked or else rxSpace)
+      then
          rxActive := True;
          processRX;
          processTXUsed;
-         Virtio.notifyQueue (ioBase, RX_QUEUE);
+         kickRX;
       end if;
 
       --  The kernel checks all queues and the IRQ latch under the same lock
       --  used to publish work before enrolling the waiter. Work arriving
       --  between the checks above and this syscall cannot be lost.
+      if not ipcFound and not evtFound and not rxActive then
+         --  About to wait: publish a new doorbell epoch so netstack wakes
+         --  us once, then look at its TX ring once more (it may have
+         --  published frames before it could see the epoch).
+         if grantBase /= System.Null_Address and then txRingSlots /= 0 then
+            declare
+               area : constant System.Address :=
+                 grantBase + Storage_Offset (grantBufSize / 2);
+               epochWord : Unsigned_32 with Volatile, Import,
+                 Address => area + Storage_Offset (TX_DOORBELL_OFFSET);
+               produced : Unsigned_32 with Volatile, Import, Address => area;
+            begin
+               txIdleEpoch :=
+                 (if txIdleEpoch = Unsigned_32'Last then 1 else txIdleEpoch + 1);
+               epochWord := txIdleEpoch;
+               --  A lone frame in flight (a request awaiting its reply):
+               --  take its completion interrupt, which keeps this CPU
+               --  quick to wake for the reply. Bulk sending reclaims
+               --  descriptors on the loop's passes instead.
+               txAvail.flags :=
+                 (if NUM_TX_BUFS - txPool.Top in 1 .. SPARSE_TX_FRAMES then 0
+                  else VRING_AVAIL_F_NO_INTERRUPT);
+               System.Machine_Code.Asm
+                 ("mfence", Clobber => "memory", Volatile => True);
+               if produced /= txConsumed then
+                  epochWord := 0;
+                  rxActive := True;   --  frames arrived: drain, do not wait
+               end if;
+            end;
+         end if;
+      end if;
       if not ipcFound and not evtFound and not rxActive then
          declare
             activity : Activity_Result;

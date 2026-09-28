@@ -12,7 +12,10 @@
 ------------------------------------------------------------------------------
 package TCP_Sequence with SPARK_Mode, Pure is
 
-   type Seq is mod 2 ** 32;
+   --  Modelled as integers modulo 2**32 for proof (no bitwise operations
+   --  are used on sequence numbers), which keeps sums and conversions
+   --  within the provers' reach.
+   type Seq is mod 2 ** 32 with Annotate => (GNATprove, No_Bitwise_Operations);
 
    Half : constant Seq := 2 ** 31;
 

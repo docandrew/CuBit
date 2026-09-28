@@ -4,7 +4,7 @@ with System;
 with System.Storage_Elements; use System.Storage_Elements;
 with CCL_Manifest_Bindings;
 with CuBit.Messages; use CuBit.Messages;
-with CuBit.Memory_Grants;
+with CuBit.Net_Channels;
 with TLS_Clock;
 with SPARKNaCl; use SPARKNaCl;
 with SPARKTLS; use SPARKTLS;
@@ -25,20 +25,29 @@ with TLS_Probe_Roots;
 --  before the TLS client service is built around the same adapter.
 procedure Main is
    Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Tls_Test;
-   OK_Label : constant Unsigned_32 := 16#F000#;
-   Open_Label : constant Unsigned_32 := 16#0420#;
-   Write_Label : constant Unsigned_32 := 16#0421#;
-   Read_Label : constant Unsigned_32 := 16#0422#;
-   Shut_Label : constant Unsigned_32 := 16#0423#;
+   package Channels renames CuBit.Net_Channels;
    Server_Name : constant String := "tls-test.cubit.internal";
    Transfer_Size : constant := 16 * 4_096;
+   Ring_Size : constant := 32_768;
+   Channel_Bytes : constant := Channels.Layout.Header_Bytes + 2 * Ring_Size;
 
-   Allocation : constant Unsigned_64 := syscall (SYSCALL_SBRK, Transfer_Size);
-   Transfer_Address : constant System.Address :=
+   --  The channel's grant (header and rings), then a scratch buffer.
+   Allocation : constant Unsigned_64 :=
+     syscall (SYSCALL_SBRK, Channel_Bytes + Transfer_Size);
+   Channel_Address : constant System.Address :=
      To_Address (Integer_Address (Allocation));
+   Transfer_Address : constant System.Address :=
+     To_Address (Integer_Address (Allocation) + Channel_Bytes);
    Transfer : Byte_Seq (0 .. Transfer_Size - 1)
      with Import, Address => Transfer_Address;
-   Reference : CuBit.Memory_Grants.Grant_Reference;
+   Stream : Channels.Stream;
+   Token : Unsigned_64 := 0;
+
+   function Next_Token return Unsigned_64 is
+   begin
+      Token := Token + 1;
+      return Token;
+   end Next_Token;
 
    Roots : aliased Trust_Store;
    Session : Client_Session;
@@ -64,46 +73,52 @@ procedure Main is
          when Internal_Error => "internal error",
          when others => "code" & Error_Code'Pos (Code)'Image);
 
-   procedure Call (Label : Unsigned_32; Length : Unsigned_8;
-                   W0, W1, W2, W3 : Unsigned_64; Reply : out Message) is
-   begin
-      Reply := NULL_MESSAGE;
-      Reply.tag.label := Label;
-      Reply.tag.length := Length;
-      Reply.words := [W0, W1, W2, W3];
-      Reply.tag := capCall (Slot, Reply);
-   end Call;
-
    --  Send everything SPARKTLS has queued.
-   function Flush (Channel : Unsigned_64) return Boolean is
+   function Flush return Boolean is
       Count : N32;
-      Reply : Message;
+      Sent, Put : Natural;
+      Ready : Boolean;
    begin
       loop
          Drain_Ciphertext (Session, Transfer, Count);
          exit when Count = 0;
-         Call (Write_Label, 3, Channel, 0, Unsigned_64 (Count), 0, Reply);
-         if Reply.tag.label /= OK_Label or else Reply.words (0) /= Unsigned_64 (Count) then
-            return False;
-         end if;
+         Sent := 0;
+         while Sent < Natural (Count) loop
+            Channels.Write
+              (Stream, Transfer_Address + Storage_Offset (Sent),
+               Natural (Count) - Sent, Put);
+            Sent := Sent + Put;
+            if Put = 0 then
+               if Channels.Failed (Stream) then
+                  return False;
+               end if;
+               Channels.Await
+                 (Stream, Slot, Channels.Layout.Want_Writable,
+                  syscall (SYSCALL_GETTIME) + 15_000, Next_Token, Ready);
+               if not Ready then
+                  return False;
+               end if;
+            end if;
+         end loop;
       end loop;
       return True;
    end Flush;
 
-   --  Read one chunk from TCP into the session. False on EOF, error or
-   --  timeout.
-   function Receive (Channel : Unsigned_64) return Boolean is
-      Reply : Message;
+   --  Read what has arrived from TCP into the session, waiting up to 15 s
+   --  for something. False on end of stream, error or timeout.
+   function Receive return Boolean is
       Fed, Offset, Length : N32;
+      Got : Natural;
+      Ready : Boolean;
    begin
-      Call (Read_Label, 4, Channel, 0, Transfer_Size,
-            syscall (SYSCALL_GETTIME) + 15_000, Reply);
-      if Reply.tag.label /= OK_Label or else Reply.words (0) = 0 or else
-        Reply.words (0) > Transfer_Size
-      then
+      Channels.Await
+        (Stream, Slot, Channels.Layout.Want_Readable,
+         syscall (SYSCALL_GETTIME) + 15_000, Next_Token, Ready);
+      Channels.Read (Stream, Transfer_Address, Transfer_Size, Got);
+      if not Ready or else Got = 0 then
          return False;
       end if;
-      Length := N32 (Reply.words (0));
+      Length := N32 (Got);
       Offset := 0;
       while Offset < Length loop
          declare
@@ -126,25 +141,25 @@ procedure Main is
       Scheme : constant String := "@net:tcp:10.0.2.2:" &
         Port'Image (Port'Image'First + 1 .. Port'Image'Last);
       Reply : Message;
-      Channel : Unsigned_64;
+      Open_Token : constant Unsigned_64 := Next_Token;
+      Submitted, Completed : Boolean;
       Result : Action;
       Count : N32;
       Started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
       Established, Exchanged, Failed : Boolean := False;
       Error : Error_Code := No_Error;
    begin
-      declare
-         Text : String (1 .. Scheme'Length) with Import, Address => Transfer_Address;
-      begin
-         Text := Scheme;
-      end;
-      Call (Open_Label, Unsigned_8 (Scheme'Length), Reference.slot, Transfer_Size,
-            0, Reference.generation, Reply);
-      if Reply.tag.label /= OK_Label then
+      Channels.Reset (Stream);
+      Channels.Submit_Open (Stream, Slot, Scheme, Open_Token, Submitted);
+      if Submitted then
+         Channels.Wait_For (Open_Token, Reply, Completed);
+      end if;
+      if not Submitted or else not Completed or else
+        not Channels.Opened (Stream, Reply)
+      then
          Check (False, Name & ": TCP connect");
          return;
       end if;
-      Channel := Reply.words (0);
       Session := SPARKTLS.Client.Configure
         ((Server_Name => To_Name (Server_Name),
           Trust => Roots'Unchecked_Access,
@@ -156,9 +171,9 @@ procedure Main is
          case Result is
             when OK => null;
             when Has_Output =>
-               exit Handshake when not Flush (Channel);
+               exit Handshake when not Flush;
             when Need_Input =>
-               exit Handshake when not Receive (Channel);
+               exit Handshake when not Receive;
             when Handshake_Done =>
                Established := True;
                exit Handshake;
@@ -168,7 +183,7 @@ procedure Main is
                Failed := True;
                Error := Last_Error (Session);
                --  Send our alert, if any, so the peer sees why.
-               if Flush (Channel) then null; end if;
+               if Flush then null; end if;
                exit Handshake;
          end case;
       end loop Handshake;
@@ -181,7 +196,7 @@ procedure Main is
                         when others => "TLS ?") & ASCII.LF);
          Write_Plaintext (Session, [Character'Pos ('P'), Character'Pos ('I'),
                                     Character'Pos ('N'), Character'Pos ('G')], Count);
-         if Count = 4 and then Flush (Channel) then
+         if Count = 4 and then Flush then
             Exchange : loop
                SPARKTLS.Client.Advance (Session, Result);
                case Result is
@@ -192,9 +207,9 @@ procedure Main is
                         Character'Pos ('N'), Character'Pos ('G')];
                      exit Exchange;
                   when Need_Input =>
-                     exit Exchange when not Receive (Channel);
+                     exit Exchange when not Receive;
                   when Has_Output =>
-                     exit Exchange when not Flush (Channel);
+                     exit Exchange when not Flush;
                   when OK | Handshake_Done => null;
                   when Error_Alert | Shutdown => exit Exchange;
                end case;
@@ -202,11 +217,11 @@ procedure Main is
          end if;
          if State (Session) = Connected and then not Write_Limit_Reached (Session) then
             SPARKTLS.Client.Close_Notify (Session);
-            if Flush (Channel) then null; end if;
+            if Flush then null; end if;
          end if;
       end if;
       Drop (Session);
-      Call (Shut_Label, 1, Channel, 0, 0, 0, Reply);
+      Channels.Close (Stream, Slot);
       if Expect_Success then
          Check (Established and then Exchanged, Name & ": verified handshake and data exchange");
       else
@@ -217,6 +232,7 @@ procedure Main is
    end Attempt;
 
    Entropy_OK, Roots_OK, Granted : Boolean;
+   Arena : Channels.Arena;
    Loaded : Natural;
    Started : Unsigned_64;
    --  Stage-by-stage diagnostics for RBG start-up on CuBit.
@@ -279,12 +295,13 @@ begin
    if not (Entropy_OK and Roots_OK) or else Allocation = Unsigned_64'Last then
       return;
    end if;
-   CuBit.Memory_Grants.Create_Via_Capability
-     (Slot, Transfer_Address, Transfer_Size / 4_096, True, Reference, Granted);
-   Check (Granted, "transfer grant");
+   Channels.Create_Arena
+     (Arena, Slot, Channel_Address, Ring_Size, Ring_Size, 1, Granted);
+   Check (Granted, "channel arena");
    if not Granted then
       return;
    end if;
+   Channels.Prepare (Stream, Arena, 0, 0, Slot);
    Attempt (18460, True, "valid certificate");
    Attempt (18461, False, "wrong host name");
    Attempt (18462, False, "untrusted root");

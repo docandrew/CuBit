@@ -1,1 +1,22 @@
 * text eol=lf
+
+# Binary files: never line-ending converted (overrides the rule above).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.wav binary
+*.ogg binary
+*.mp3 binary
+*.pdf binary
+*.img binary
+*.iso binary
+*.bin binary
+*.gz binary
+*.xz binary
+*.zip binary

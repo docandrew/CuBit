@@ -4,7 +4,8 @@ package body CuBit.Network_Authority with SPARK_Mode is
      (if Prefix = 0 then 0 else Shift_Left (Unsigned_32'Last, 32 - Prefix));
 
    function Valid (Item : Scope) return Boolean is
-     (Item.First_Port /= 0 and then Item.Last_Port >= Item.First_Port and then
+     (Item.Connections /= 0 and then Item.First_Port /= 0 and then
+      Item.Last_Port >= Item.First_Port and then
       (Item.Network and Mask (Item.Prefix)) = Item.Network and then
       (if Item.Action = Listen_TCP then
          Item.Prefix = 32 and then Item.Network /= 0 and then
@@ -25,14 +26,16 @@ package body CuBit.Network_Authority with SPARK_Mode is
       (Requested.Network and Mask (Ceiling.Prefix)) = Ceiling.Network and then
       Requested.First_Port >= Ceiling.First_Port and then
       Requested.Last_Port <= Ceiling.Last_Port and then
-      (not Requested.Resolve_Names or else Ceiling.Resolve_Names));
+      (not Requested.Resolve_Names or else Ceiling.Resolve_Names) and then
+      Requested.Connections <= Ceiling.Connections);
 
    function Descriptor (Item : Scope) return Unsigned_64 is
      (Unsigned_64 (Item.First_Port) or
       Shift_Left (Unsigned_64 (Item.Last_Port), 16) or
       Shift_Left (Unsigned_64 (Item.Prefix), 32) or
       Shift_Left (Unsigned_64 (Operation'Enum_Rep (Item.Action)), 40) or
-      (if Item.Resolve_Names then Shift_Left (Unsigned_64'(1), 48) else 0));
+      (if Item.Resolve_Names then Shift_Left (Unsigned_64'(1), 48) else 0) or
+      Shift_Left (Unsigned_64 (Item.Connections), 49));
 
    procedure Decode
      (Address, Descriptor : Unsigned_64; Item : out Scope;
@@ -44,7 +47,7 @@ package body CuBit.Network_Authority with SPARK_Mode is
       Item := Denied_Scope;
       Success := False;
       if Address > Unsigned_64 (Unsigned_32'Last) or else Prefix > 32 or else
-        Action not in 1 .. 3 or else Shift_Right (Descriptor, 49) /= 0
+        Action not in 1 .. 3
       then
          return;
       end if;
@@ -57,7 +60,8 @@ package body CuBit.Network_Authority with SPARK_Mode is
          First_Port => Unsigned_16 (Descriptor and 16#FFFF#),
          Last_Port => Unsigned_16 (Shift_Right (Descriptor, 16) and 16#FFFF#),
          Resolve_Names =>
-           (Descriptor and Shift_Left (Unsigned_64'(1), 48)) /= 0);
+           (Descriptor and Shift_Left (Unsigned_64'(1), 48)) /= 0,
+         Connections => Connection_Count (Shift_Right (Descriptor, 49)));
       Success := Valid (Item);
       if not Success then
          Item := Denied_Scope;

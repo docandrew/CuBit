@@ -10,9 +10,15 @@ package USB_Configurations with SPARK_Mode => On is
       Packet_Bytes : Natural range 0 .. 1024 := 0;
       Interval : Unsigned_8 := 0;
    end record;
-   type Mouse_Interface is record
+   type Interrupt_Interface is record
       Present : Boolean := False;
       Number : Unsigned_8 := 0;
+      Input : Endpoint;
+   end record;
+   type Hub_Interface is record
+      Present : Boolean := False;
+      Number : Unsigned_8 := 0;
+      Protocol : Unsigned_8 := 0;
       Input : Endpoint;
    end record;
    type Storage_Interface is record
@@ -22,7 +28,8 @@ package USB_Configurations with SPARK_Mode => On is
    end record;
    type Configuration is record
       Value : Unsigned_8 := 0;
-      Mouse : Mouse_Interface;
+      Mouse, Keyboard : Interrupt_Interface;
+      Hub : Hub_Interface;
       Storage : Storage_Interface;
    end record;
    type Decode_Result is (Decoded, Malformed);

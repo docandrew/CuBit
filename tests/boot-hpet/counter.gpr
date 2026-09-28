@@ -1,0 +1,9 @@
+project Counter is
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use ("counter_tests.adb", "hpet_counter.ads", "hpet_counter.adb");
+   for Object_Dir use "build-counter";
+   for Main use ("counter_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Counter;

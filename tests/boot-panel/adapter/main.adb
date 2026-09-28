@@ -1,6 +1,9 @@
 with Ada.Command_Line;
 with Ada.Text_IO;
 with Boot_Diagnostics;
+with Boot_Panel;
+with Boot_Font;
+with Boot_QR;
 with Boot_Output;
 with Boot_Framebuffer;
 with Interfaces; use Interfaces;
@@ -50,20 +53,40 @@ begin
    Check_Guards;
    Snapshot := Memory;
    Boot_Diagnostics.Begin_Step ("Testing bounded framebuffer writes");
-   -- Stage updates may only change the current-step glyph row.
+   -- Stage updates may only change the current-step glyph row and, where
+   -- admitted, the bounded QR diagnostic capsule beside the panel.
    declare
-      Scale : constant Positive := (if W >= 1024 and H >= 600 then 2 else 1);
+      Scale : constant Positive := (if W >= 32 + Boot_Panel.Columns *
+        (Boot_Font.Width + 1) * 2 and H >=
+        16 + (Boot_Panel.Row'Pos (Boot_Panel.Row'Last) * 2 + 3) *
+          (Boot_Font.Height + 3) * 2 then 2 else 1);
       Top : constant Natural := 16 + 3 * 16 * Scale;
+      QR_Scale : constant Positive := (if W >= 32 + Boot_Panel.Columns *
+        (Boot_Font.Width + 1) * Scale +
+        (Boot_QR.Dimension + 2 * Boot_QR.Quiet_Zone) * 3 + 8
+        then 3 else 2);
+      QR_Total : constant Natural :=
+        (Boot_QR.Dimension + 2 * Boot_QR.Quiet_Zone) * QR_Scale;
+      QR_Active : constant Boolean := W >= 32 + Boot_Panel.Columns *
+        (Boot_Font.Width + 1) * Scale + QR_Total + 8 and then
+        H >= 16 + QR_Total;
+      QR_Left : constant Natural := (if QR_Active then W - QR_Total - 8 else W);
+      In_QR : Boolean;
    begin
       for Y in 0 .. H - 1 loop
          if Y < Top or Y >= Top + 13 * Scale then
             for X in 0 .. Stride - 1 loop
-               pragma Assert (Memory (1 + Y * Stride + X) = Snapshot (1 + Y * Stride + X));
+               In_QR := QR_Active and then X >= QR_Left and then X < QR_Left + QR_Total
+                 and then Y >= 16 and then Y < 16 + QR_Total;
+               if not In_QR then
+                  pragma Assert (Memory (1 + Y * Stride + X) = Snapshot (1 + Y * Stride + X));
+               end if;
             end loop;
          end if;
       end loop;
    end;
    Boot_Diagnostics.Complete_Step ("Completed");
+   Boot_Diagnostics.Set_Evidence (Boot_Panel.Timing_Evidence, "span=0000000012345678");
    for I in 1 .. 1000 loop Boot_Diagnostics.Append ('x'); end loop;
    Boot_Diagnostics.Append (ASCII.LF);
    Check_Guards;
@@ -72,17 +95,20 @@ begin
    Boot_Diagnostics.Panic (Message'Address);
    Boot_Diagnostics.Append (ASCII.LF);
    Boot_Diagnostics.Begin_Step ("busy");
+   Boot_Diagnostics.Set_Evidence (Boot_Panel.Timer_Evidence, "busy");
    pragma Assert (Memory = Snapshot);
    Spinlocks.Busy := False;
    Boot_Diagnostics.Panic (Message'Address);
    Snapshot := Memory;
    Boot_Diagnostics.Panic (Second'Address);
+   Boot_Diagnostics.Set_Evidence (Boot_Panel.Timer_Evidence, "must not update after panic");
    pragma Assert (Memory = Snapshot);
    Boot_Output.Retire;
    Boot_Output.Retire;
    Boot_Diagnostics.Setup (Decoded.Value);
    Boot_Diagnostics.Begin_Step ("must not revive");
    Boot_Diagnostics.Complete_Step ("must not revive");
+   Boot_Diagnostics.Set_Evidence (Boot_Panel.Controller_Evidence, "must not revive");
    Boot_Diagnostics.Panic (Second'Address);
    Boot_Diagnostics.Append ('x');
    Boot_Diagnostics.Append (ASCII.LF);

@@ -15,6 +15,7 @@ with Multiboot;
 with TextIO; use TextIO;
 with Util;
 with Boot_Output;
+with Platform_Monotonic;
 
 package body Sysinfo is
 
@@ -90,6 +91,8 @@ package body Sysinfo is
                 return gpuIsPrimary;
             when NUM_CPUS =>
                 return Unsigned_64 (acpi.numCPUs);
+            when MONOTONIC_DIAGNOSTIC =>
+                return Platform_Monotonic.Diagnostic (detail);
             when MEM_FREE =>
                 return Unsigned_64 (BuddyAllocator.getFreeBytes);
             when MEM_TOTAL =>

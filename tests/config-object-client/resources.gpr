@@ -1,0 +1,8 @@
+project Resources extends "vm_client.gpr" is
+   for Source_Dirs use VM_Client'Source_Dirs;
+   for Source_Files use VM_Client'Source_Files &
+     ("resource_tests.adb", "resource_vm_tests.adb");
+   for Object_Dir use "build/resources";
+   for Exec_Dir use "build/resources";
+   for Main use ("resource_tests.adb", "resource_vm_tests.adb");
+end Resources;

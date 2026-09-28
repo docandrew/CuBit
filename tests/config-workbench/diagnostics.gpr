@@ -1,0 +1,10 @@
+project Diagnostics is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../../userspace/ccl/src");
+   for Object_Dir use "build/diagnostics";
+   for Exec_Dir use "build/diagnostics";
+   for Main use ("diagnostic_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnatwa", "-gnata");
+   end Compiler;
+end Diagnostics;

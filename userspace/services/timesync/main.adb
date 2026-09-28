@@ -4,7 +4,7 @@ with System;
 with System.Storage_Elements; use System.Storage_Elements;
 with CCL_Manifest_Bindings;
 with CuBit.Messages; use CuBit.Messages;
-with CuBit.Memory_Grants;
+with CuBit.Net_Channels;
 with CuBit.Config;
 with CuBit.Clocks;
 with CuBit.Clock_Control; use CuBit.Clock_Control;
@@ -24,9 +24,7 @@ procedure Main is
    Network_Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Ntp;
    OK_Label : constant Unsigned_32 := 16#F000#;
    Open_Label : constant Unsigned_32 := 16#0420#;
-   Write_Label : constant Unsigned_32 := 16#0421#;
-   Read_Label : constant Unsigned_32 := 16#0422#;
-   Shut_Label : constant Unsigned_32 := 16#0423#;
+   package Channels renames CuBit.Net_Channels;
 
    Default_Poll_Seconds : constant := 1_024;
    Minimum_Poll_Seconds : constant := 64;
@@ -40,7 +38,14 @@ procedure Main is
      To_Address (Integer_Address (Allocation));
    Buffer : SNTP.Byte_Array (1 .. Buffer_Size)
      with Import, Address => Buffer_Address;
-   Transfer : CuBit.Memory_Grants.Grant_Reference;
+   --  The channel lent to netstack: a header page and two small rings of
+   --  datagram records (one request out, one reply in).
+   Ring_Size : constant := 4_096;
+   Stream_Bytes : constant := Channels.Layout.Header_Bytes + 2 * Ring_Size;
+   Stream_Allocation : constant Unsigned_64 := syscall (SYSCALL_SBRK, Stream_Bytes);
+   Arena : Channels.Arena;
+   Stream : Channels.Stream;
+   Wait_Token : Unsigned_64 := 16#7153_0000_0000_0000#;
    Granted, Hardware_Nonces : Boolean;
 
    --  Servers that answered Kiss-o'-Death are not asked again until the
@@ -109,45 +114,46 @@ procedure Main is
       Scheme : String (1 .. Server_List.Maximum_Scheme_Length);
       Scheme_Length : Natural;
       Reply : Message;
-      Channel : Unsigned_64;
       Nonce : constant Unsigned_64 := Nonces.Next;
       Sent, Received : Unsigned_64;
-      Ignore : Message;
+      Delivered, Ready, Truncated, Found : Boolean;
+      Got : Natural;
    begin
       Result := (others => <>);
       Status := SNTP.Wrong_Length;
       Reached := False;
       Server_List.Scheme (Item, Scheme, Scheme_Length);
+      Channels.Reset (Stream);
       declare
-         Name : String (1 .. Scheme_Length) with Import, Address => Buffer_Address;
+         Name : String (1 .. Scheme_Length) with Import,
+           Address => Stream.Base + Storage_Offset (Channels.Layout.Target_At);
       begin
          Name := Scheme (1 .. Scheme_Length);
       end;
-      Channel_Call (Open_Label, Unsigned_8 (Scheme_Length), Transfer.slot,
-                    Buffer_Size, 0, Transfer.generation, Reply);
+      Channel_Call (Open_Label, Unsigned_8 (Scheme_Length), Stream.Arena,
+                    Unsigned_64 (Stream.Buffer), 0, 0, Reply);
       if Reply.tag.label /= OK_Label then
          debugPrint ("timesync: cannot open " & Scheme (1 .. Scheme_Length) & LF);
          return;
       end if;
-      Channel := Reply.words (0);
+      Stream.Handle := Reply.words (0);
       Buffer (1 .. SNTP.Packet_Length) := SNTP.Request (Nonce);
       Sent := syscall (SYSCALL_GETTIME);
-      Channel_Call (Write_Label, 3, Channel, 0, SNTP.Packet_Length, 0, Reply);
-      if Reply.tag.label = OK_Label then
+      Channels.Send_Datagram (Stream, Buffer_Address, SNTP.Packet_Length, Delivered);
+      if Delivered then
          --  Read more than a bare packet so extension fields are detected
          --  (and rejected) rather than silently truncated.
-         Channel_Call (Read_Label, 4, Channel, 0, 512, Sent + Reply_Timeout_MS, Reply);
+         Wait_Token := Wait_Token + 1;
+         Channels.Await (Stream, Network_Slot, Channels.Layout.Want_Readable,
+                         Sent + Reply_Timeout_MS, Wait_Token, Ready);
+         Channels.Receive_Datagram (Stream, Buffer_Address, 512, Got, Truncated, Found);
          Received := syscall (SYSCALL_GETTIME);
-         if Reply.tag.label = OK_Label and then Reply.words (1) = 0 and then
-           Reply.words (0) <= 512
-         then
+         if Ready and then Found and then not Truncated then
             Reached := True;
-            SNTP.Evaluate
-              (Buffer (1 .. Natural (Reply.words (0))), Nonce, Sent, Received,
-               Result, Status);
+            SNTP.Evaluate (Buffer (1 .. Got), Nonce, Sent, Received, Result, Status);
          end if;
       end if;
-      Channel_Call (Shut_Label, 1, Channel, 0, 0, 0, Ignore);
+      Channels.Close (Stream, Network_Slot);
       if not Reached then
          debugPrint ("timesync: no reply from " & Scheme (1 .. Scheme_Length) & LF);
       end if;
@@ -248,12 +254,18 @@ begin
       debugPrint ("timesync: buffer allocation failed" & LF);
       return;
    end if;
-   CuBit.Memory_Grants.Create_Via_Capability
-     (Network_Slot, Buffer_Address, 1, True, Transfer, Granted);
+   if Stream_Allocation = Unsigned_64'Last then
+      debugPrint ("timesync: channel allocation failed" & LF);
+      return;
+   end if;
+   Channels.Create_Arena
+     (Arena, Network_Slot, To_Address (Integer_Address (Stream_Allocation)),
+      Ring_Size, Ring_Size, 1, Granted);
    if not Granted then
       debugPrint ("timesync: no network authority; exiting" & LF);
       return;
    end if;
+   Channels.Prepare (Stream, Arena, 0, 0, Network_Slot);
    Nonces.Initialize (Hardware_Nonces);
    if not Hardware_Nonces then
       debugPrint ("timesync: RDRAND unavailable; using weaker TSC-derived nonces" & LF);

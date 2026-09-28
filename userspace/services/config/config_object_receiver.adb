@@ -88,7 +88,8 @@ package body Config_Object_Receiver is
          Deliver (Current_Reply, Wire.Reply (Wire.Invalid_Request)); return;
       end if;
       Requested := [A.Read_Config => Control.Access_Rights /= Wire.Access_Mode'Enum_Rep (Wire.Write_Only),
-                    A.Write_Config => Control.Access_Rights /= Wire.Access_Mode'Enum_Rep (Wire.Read_Only)];
+                    A.Write_Config => Control.Access_Rights /= Wire.Access_Mode'Enum_Rep (Wire.Read_Only),
+                    A.Activate_Config => False];
       if ((Action = Wire.Create_Collection or Requested (A.Write_Config)) and then
           not A.Allows (Authority, Sender, Control.Name (1 .. Natural (Control.Name_Length)), A.Write_Config))
         or else (Requested (A.Read_Config) and then
@@ -136,7 +137,9 @@ package body Config_Object_Receiver is
            Contract, ID, Admission);
          if Admission not in Config_Collections.Registered | Config_Collections.Already_Registered then
             Deliver (Current_Reply, Wire.Reply
-              (if Admission = Config_Collections.Capacity_Exceeded then Wire.Capacity_Exceeded else Wire.Schema_Mismatch));
+              (if Admission = Config_Collections.Capacity_Exceeded then Wire.Capacity_Exceeded
+               elsif Admission = Config_Collections.Management_Conflict then Wire.Denied
+               else Wire.Schema_Mismatch));
             return;
          end if;
       end if;
@@ -178,7 +181,8 @@ package body Config_Object_Receiver is
            A.Allows (Authority, Object.Caller, Control.Name (1 .. Natural (Control.Name_Length)), A.Write_Config)
          then
             Requested := [A.Read_Config => Control.Access_Rights /= Wire.Access_Mode'Enum_Rep (Wire.Write_Only),
-                          A.Write_Config => Control.Access_Rights /= Wire.Access_Mode'Enum_Rep (Wire.Read_Only)];
+                          A.Write_Config => Control.Access_Rights /= Wire.Access_Mode'Enum_Rep (Wire.Read_Only),
+                          A.Activate_Config => False];
             Config_Typed_Store.Open (Store, Authority, Object.Caller,
               Control.Name (1 .. Natural (Control.Name_Length)), Control.Context, Requested,
               Control.Schema, Handle, Result);

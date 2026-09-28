@@ -6,8 +6,11 @@ an importer for arbitrary untrusted databases; public typed Config creation and
 startup catalog recovery are still being connected.
 No hosted Turso account, network relay, or cloud service is involved.
 
-Current database format is **3** (immutable typed declarations plus revision
-history). Earlier experimental formats are rejected, not silently migrated or
+Current database format is **4** (immutable typed declarations, explicit
+application-state/managed classification, plus revision history). Ordinary
+commits reject managed collections inside the transaction. Schema recovery
+preserves class; client Create cannot downgrade it. Trusted registration is not
+an activation API. Earlier experimental formats are rejected, not silently migrated or
 reseeded. See [schema persistence tests](../ccl-objects/SCHEMA-PERSISTENCE.md)
 and [native worker integration](../../userspace/services/config-storage/README.md).
 
@@ -15,8 +18,8 @@ The main workspace below is **Linux hosted**. An isolated
 [native CuBit probe](native/README.md) now runs the same typed Config/CBOR
 adapter on real Turso with both volatile MemoryIO and native filesystem IPC.
 Its ext2-backed database passes an independent Linux SQLite integrity/payload
-check after QEMU exits. Persistent Config is not enabled in normal desktop
-profiles; dedicated native Config tests do start its storage worker. The probe
+check after QEMU exits. Normal desktop profiles now start the Config storage
+worker; scalar settings remain volatile, distinct from typed app-state storage. The probe
 documents the runtime port and remaining crash/recovery requirements.
 
 ```sh
@@ -313,4 +316,22 @@ not SPARK proofs of Rust/Turso or power-failure guarantees.
 The same adapter now passes the native typed Ada worker two-boot scenario; see
 [native evidence](native/README.md) and the
 [Config integration checklist](../../docs/config-worker-integration-checklist.md).
-Live `config.svc` still uses its volatile store.
+Live `config.svc` still uses its volatile scalar store.
+
+## Explicit volatile live session
+
+`Store::open_volatile()` uses a fresh MemoryIO and the `:memory:` URI (bypassing
+Turso's file-identity registry). It has the same schema/transaction checks but
+no filesystem access or reboot persistence. Config's USB live profile explicitly
+selects it with `cubit.config.storage.database = ":memory:"`; it is never an
+automatic fallback for a failed disk-backed open. The native disk adapter's
+flush requirements are unchanged.
+
+```sh
+nix develop -c cargo run --manifest-path tests/config-turso/Cargo.toml --locked --offline --release --example volatile_session
+```
+
+The hosted example checks commit/read/conflict, concurrent session isolation and
+an empty new session after dropping the old one. Using an ordinary filename
+with independent MemoryIO instances failed that isolation test; the memory URI
+is required, not just an optimization hint.

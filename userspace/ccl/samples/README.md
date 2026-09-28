@@ -26,7 +26,7 @@ USB-only live profile uses the RAM workspace. The picker does not yet browse
 the CD's read-only originals or switch volumes.
 
 Rebuild the USB LiveCD with `nix develop -c make -C kernel usb-live-iso`;
-the image is `kernel/cubit_laptop_usb.iso`. New examples are automatically
+the image is `kernel/cubit_laptop_usb.img`. New examples are automatically
 seeded into the RAM workspace. Add their explicit optical entries to
 `images/artifacts.ccl` and `images/laptop-usb.ccl` too: `test-ccl-images`
 checks the entire samples directory against the optical plan and compares

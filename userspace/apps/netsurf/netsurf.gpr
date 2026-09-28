@@ -1,0 +1,30 @@
+with "../../lib/ui/fonts_native.gpr";
+project Netsurf is
+   for Languages use ("Ada");
+   for Object_Dir use "build";
+   for Source_Dirs use
+     (".", "build/generated", "../../lib/ui", "../../lib/theme");
+   for Main use ("main.adb");
+   for Runtime ("Ada") use "../../runtime";
+   package Builder is
+      for Executable ("main.adb") use "netsurf.app";
+      for Default_Switches ("Ada") use ("-nostdlib");
+   end Builder;
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnatwa", "-gnatw.X", "-fstack-usage",
+         "-fomit-frame-pointer", "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+   end Compiler;
+   package Binder is
+      for Default_Switches ("Ada") use ("-d_C");
+   end Binder;
+   --  The NetSurf engine (build-freestanding-deps.sh) is C and links against
+   --  libcubit.a; the Ada runtime's mem* win over libcubit's weak ones.
+   package Linker is
+      for Default_Switches ("Ada") use
+        ("-nostdlib", "-static", "-no-pie", "-Wl,-z,stack-size=16777216",
+         "-T", "../../c/link.ld", "../../c/build/crt0.o", "build/manifest.o",
+         "../../c/netsurf/build/freestanding/netsurf-engine.o",
+         "-lgnat-user", "../../c/build/libcubit.a");
+   end Linker;
+end Netsurf;

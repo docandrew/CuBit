@@ -24,8 +24,10 @@ rm -rf "$src"
 mkdir -p "$src"
 tar -xzf "$tarball" -C "$src" --strip-components=1
 cp -R "$here/overlay/." "$src/"
-# The CuBit stream producer, shared with the older C runtime.
-cp "$here/../c/cubit_streams.c" "$here/../c/cubit.h" "$src/src/cubit/"
+# The CuBit stream producer and the network channel layout, shared with
+# the older C runtime.
+cp "$here/../c/cubit_streams.c" "$here/../c/cubit.h" "$here/../c/cubit_net_channel.h" \
+    "$src/src/cubit/"
 
 (
     cd "$src"
@@ -34,6 +36,21 @@ cp "$here/../c/cubit_streams.c" "$here/../c/cubit.h" "$src/src/cubit/"
     make -j"$(nproc)" >/dev/null
     make install >/dev/null
 )
+
+# The proved channel-ring and datagram-record code (CuBit.Channel_Rings,
+# CuBit.Datagram_Rings, tests/channel-rings) and their C entry points: C,
+# C++ and Rust programs keep their network channel rings and listener
+# records with it (src/cubit/net.c). Pure code: no Ada run-time library.
+gnat_gcc=$(dirname "$(command -v gnat)")/gcc
+ada_obj=$build/ada
+rm -rf "$ada_obj"
+mkdir -p "$ada_obj"
+for unit in "$here/../runtime/gnat/cubit-channel_rings.adb" "$here/../runtime/gnat/cubit-channel_rings_c.adb" \
+    "$here/../runtime/gnat/cubit-datagram_rings.adb" "$here/../runtime/gnat/cubit-datagram_rings_c.adb"; do
+    (cd "$ada_obj" && "$gnat_gcc" -c -O2 -g -gnatp -gnatn -fno-pic -ffunction-sections \
+        -I"$here/../runtime/gnat" "$unit")
+done
+ar rcs "$sysroot/lib/libc.a" "$ada_obj"/*.o
 
 gcc -O2 -g -ffreestanding -nostdinc -isystem "$sysroot/include" \
     -c "$here/crt/crt1.c" -o "$sysroot/lib/cubit-crt1.o"

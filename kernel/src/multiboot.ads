@@ -12,6 +12,7 @@ with MemoryAreas;
 with Config;
 with Boot_Modules;
 with Boot_Framebuffer;
+with Firmware_Tables;
 
 package Multiboot with
     SPARK_Mode => On
@@ -185,6 +186,11 @@ is
     -- Frozen geometry, published with the boot catalog after range exclusion.
     function Has_Graphics return Boolean;
     function Framebuffer return Boot_Framebuffer.Description;
+    function Firmware_Root return Firmware_Tables.Root_Result;
+    function Tagged_Boot return Boolean;
+    -- Only retained firmware regions (or legacy firmware below 1 MiB), never
+    -- ordinary allocatable RAM. Called after boot map publication.
+    function Firmware_Readable (Base, Length : Unsigned_64) return Boolean;
     
     -- Fixed kernel workspace, independent of untrusted mmap_length. The
     -- decoder itself accepts caller-sized output; this is a boot resource budget.

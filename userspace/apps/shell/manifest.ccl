@@ -8,7 +8,8 @@
   (request-service config read-write config)
   # Broad outbound request, not independent approval.
   (request-network tcp-connect (ipv4 "0.0.0.0" 0)
-    (ports 1 65535) (dns allow) network)
+    (ports 1 65535) (dns allow)
+    (connections 8) network)
   (request-service display read-write display)
   (request-notification keyboard manage keyboard)
   (request-notification mouse manage mouse)

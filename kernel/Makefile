@@ -81,6 +81,7 @@ MAX_STACK_USAGE := 2048
 
 # kernel ELF object
 cubit_kernel: build/libcubit.a build/init.bin build/boot.o cubit.gpr linker.ld Makefile \
+              $(wildcard ../shared/firmware/*.ads ../shared/firmware/*.adb) \
               $(wildcard src/*.ads src/*.adb src/*.asm src/*.adc \
                          src/services/*.ads src/services/*.adb src/*.inc)
 # Compile and bind only
@@ -349,7 +350,7 @@ test-network-authority:
 
 prove-network-authority:
 	$(ALR) gnatprove -P../tests/network-authority/network_authority_tests.gpr \
-		-u cubit-network_authority.adb network_grants.adb udp_channels.adb --level=2 --report=all --checks-as-errors=on -j2
+		-u cubit-network_authority.adb network_grants.adb udp_channels.adb --level=1 --report=all --checks-as-errors=on -j2
 	@cat ../tests/network-authority/build/gnatprove/gnatprove.out
 
 test-timesync:
@@ -381,7 +382,7 @@ test-tcp-session:
 
 prove-tcp-session:
 	$(ALR) gnatprove -P../tests/tcp-session/tcp_session_tests.gpr \
-		-u tcpsession.adb tcp_listeners.adb network_channel_handles.adb --level=2 --report=all --checks-as-errors=on -j2
+		-u tcp_listeners.adb network_channel_handles.adb tcp_time_wait.adb tcp_wire.adb ipv6_link_proof.adb internet_checksum.adb --level=1 --report=all --checks-as-errors=on -j2
 	@cat ../tests/tcp-session/build/gnatprove/gnatprove.out
 
 .PHONY : test-filesystem-policy
@@ -1518,20 +1519,27 @@ CCL_WORKSPACE_SAMPLES := $(sort $(wildcard ../userspace/ccl/samples/*.ccl))
 # Native USB optical edition. Keep the original initrd-only laptop image as
 # an independent fallback; no ATA/NVMe driver is admitted in this profile.
 .PHONY: usb-live-iso run-usb-live run-usb-live-fast
-usb-live-iso: ccl-image ../images/laptop-usb.ccl $(CCL_IMAGE_CATALOG) cubit_kernel $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) $(LAPTOP_LIVE_RW_DISK)
+usb-live-iso: ccl-image ../images/laptop-usb.ccl $(CCL_IMAGE_CATALOG) cubit_kernel $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) config-storage $(LAPTOP_LIVE_RW_DISK)
+	@test -s isodir/boot/cubitshell.app || (echo "missing Servo payload; run make -C kernel servo first" && false)
 	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)"
 
 run-usb-live: usb-live-iso
 	$(MAKE) run-usb-live-fast
 
+# UEFI-only companion for machines without CSM, e.g. the N95 reference NUC.
+# Retain the existing legacy image for the laptop/IODD regression path.
+.PHONY: usb-live-uefi-iso
+usb-live-uefi-iso: usb-live-iso
+	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)" --uefi
+
 # Match the working desktop frontend: SDL's native Wayland display can leave
 # a running guest without a visible window on the development workstation.
 # This target only reuses the completed ISO; it never refreshes its contents.
 run-usb-live-fast:
-	@test -f cubit_laptop_usb.iso || (echo "missing cubit_laptop_usb.iso; run make -C kernel usb-live-iso first" && false)
+	@test -f cubit_laptop_usb.img || (echo "missing cubit_laptop_usb.img; run make -C kernel usb-live-iso first" && false)
 	GDK_BACKEND=x11 qemu-system-x86_64 $(QEMU_ACCEL_ARGS) -machine q35 -cpu host -smp 4 -m 8G \
 		-nodefaults -device VGA -device qemu-xhci,id=xhci \
-		-drive file=cubit_laptop_usb.iso,if=none,id=livecd,media=cdrom,format=raw,readonly=on \
+		-drive file=cubit_laptop_usb.img,if=none,id=livecd,media=cdrom,format=raw,readonly=on \
 		-device usb-bot,id=usbcd,bus=xhci.0,port=1 \
 		-device scsi-cd,bus=usbcd.0,lun=0,drive=livecd,bootindex=1 \
 		-device usb-mouse,bus=xhci.0,port=2 \

@@ -638,7 +638,9 @@ package body Process.IPC is
     begin
         Spinlocks.enterCriticalSection (lock);
         if not Queues.isEmpty (mailtab(owner).recvQueue) then
-            Queues.dequeue (mailtab(owner).recvQueue, receiver);
+            -- Prefer a receiving thread on this CPU (no IPI, no idle exit).
+            Queues.dequeuePreferring
+              (mailtab(owner).recvQueue, PerCPUData.getCPUNumber, receiver);
             threadtab (receiver).receiveDeadlineActive := False;
             if threadtab (receiver).state = RECEIVING and then
                not Process_Lifetime.Closing (threadtab (receiver).lifetime)
@@ -1031,7 +1033,10 @@ package body Process.IPC is
                 end if;
             end enqueueP1;
 
-            Queues.dequeue (mailtab(dest).recvQueue, receiver);
+            -- A receiving thread on this CPU, if the destination has one,
+            -- so the call can be a direct handoff (else the longest waiter).
+            Queues.dequeuePreferring
+              (mailtab(dest).recvQueue, PerCPUData.getCPUNumber, receiver);
 
             -- Sender goes to WAITINGFORREPLY
             threadtab (me).state := WAITINGFORREPLY;
@@ -1971,8 +1976,13 @@ package body Process.IPC is
                              Virtmem.PhysAddress (page * Virtmem.PAGE_SIZE),
                            Unsigned_8 (pid));
                     end loop;
-                    BuddyAllocator.free
-                      (allocation.order, Virtmem.P2Va (allocation.physAddr));
+                    if not allocation.retainUntilReboot then
+                        BuddyAllocator.free
+                          (allocation.order, Virtmem.P2Va (allocation.physAddr));
+                    end if;
+                    -- Retained blocks remain allocated in the buddy map.
+                    -- Clear process ownership above before PID reuse, but do
+                    -- not recycle backing possibly still reachable by DMA.
                     allocation.active := False;
                 end;
             end if;

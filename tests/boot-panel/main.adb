@@ -8,7 +8,7 @@ procedure Main is
       Changed : Boolean;
    begin
       if Depth = 0 then return; end if;
-      for Op in 0 .. 6 loop
+      for Op in 0 .. 7 loop
          S := Before;
          case Op is
             when 0 => Initialize (S);
@@ -18,6 +18,7 @@ procedure Main is
             when 4 => Append (S, 'x', Changed);
             when 5 => Append (S, ASCII.LF, Changed);
             when 6 => Retire (S);
+            when 7 => Set_Evidence (S, Timing_Evidence, "span=00123456");
             when others => null;
          end case;
          Visits := Visits + 1;
@@ -25,6 +26,7 @@ procedure Main is
          if Failed (Before) then
             pragma Assert (Failed (S));
             pragma Assert (Content (S, First_Error) = Content (Before, First_Error));
+            pragma Assert (Content (S, Timing_Evidence) = Content (Before, Timing_Evidence));
          end if;
          Walk (S, Depth - 1);
       end loop;
@@ -34,6 +36,8 @@ procedure Main is
 begin
    Walk (S, 6);
    Initialize (S);
+   Set_Evidence (S, Timer_Evidence, "PIT mode");
+   pragma Assert (Content (S, Timer_Evidence) = Fit ("PIT mode"));
    for I in 1 .. 10_000 loop Append (S, 'A', Changed); end loop;
    Append (S, ASCII.CR, Changed);
    pragma Assert (not Changed);

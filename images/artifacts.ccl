@@ -15,6 +15,8 @@
   (artifact "ps2" repository "kernel/isodir/boot/ps2.drv")
   (artifact "xhci" repository "kernel/isodir/boot/xhci.drv")
   (artifact "config" repository "kernel/isodir/boot/config.svc")
+  (artifact "config-storage" repository "kernel/isodir/boot/config-storage.svc")
+  (artifact "servo" repository "kernel/isodir/boot/cubitshell.app")
   (artifact "netmgr" repository "kernel/isodir/boot/netmgr.svc")
   (artifact "procmgr" repository "kernel/isodir/boot/procmgr.svc")
   (artifact "logstore" repository "kernel/isodir/boot/logstore.svc")

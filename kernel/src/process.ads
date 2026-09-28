@@ -390,6 +390,7 @@ package Process is
         active   : Boolean              := False;
         physAddr : Virtmem.PhysAddress  := 0;
         order    : BuddyAllocator.Order := 0;
+        retainUntilReboot : Boolean := False;
     end record;
 
     type DMAAllocArray is array (0 .. MAX_DMA_ALLOCS - 1) of DMAAlloc;

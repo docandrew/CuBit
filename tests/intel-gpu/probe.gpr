@@ -1,0 +1,23 @@
+project Probe is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("main.adb", "resource_tests.adb", "boot_tests.adb",
+     "observation_tests.adb", "intel_gpu_observation.ads", "intel_gpu_observation.adb",
+     "observation_proof.ads",
+     "pci_power_tests.adb", "intel_gpu_pci_power.ads", "intel_gpu_pci_power.adb",
+     "firmware_tests.adb", "firmware_file.adb", "intel_gpu_firmware.ads", "intel_gpu_firmware.adb",
+     "firmware_reader_tests.adb", "intel_gpu_firmware_reader.ads", "intel_gpu_firmware_reader.adb",
+     "ggtt_tests.adb", "intel_gpu_ggtt.ads", "intel_gpu_ggtt.adb",
+     "ggtt_publish_tests.adb", "intel_gpu_ggtt_publish.ads", "intel_gpu_ggtt_publish.adb",
+     "domain_lease_tests.adb", "intel_gpu_domain_lease.ads", "intel_gpu_domain_lease.adb",
+     "dma_lifetime_tests.adb", "intel_gpu_dma_lifetime.ads", "intel_gpu_dma_lifetime.adb",
+     "intel_gpu_probe.ads", "intel_gpu_probe.adb", "intel_gpu_resources.ads",
+     "intel_gpu_resources.adb", "intel_gpu_boot.ads", "intel_gpu_boot.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb", "firmware_file.adb", "firmware_reader_tests.adb", "ggtt_tests.adb", "ggtt_publish_tests.adb", "dma_lifetime_tests.adb", "domain_lease_tests.adb");
+   package Compiler is
+      -- Assertions are enabled ONLY for this Linux-hosted test executable.
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Probe;

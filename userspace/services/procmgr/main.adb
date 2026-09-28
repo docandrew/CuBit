@@ -44,6 +44,8 @@ procedure main is
 
    --  IPC label constants
    OP_SPAWN   : constant Unsigned_32 := 16#0100#;
+   --  The kernel's retirement notice (kernel/src/ipc_labels.ads).
+   EVENT_CHILD_EXIT : constant Unsigned_32 := 16#0103#;
    REPLY_OK     : constant Unsigned_32 := 16#F000#;
    REPLY_ERR    : constant Unsigned_32 := 16#F001#;
    OP_SET_ACL   : constant Unsigned_32 := 16#0080#;
@@ -205,6 +207,43 @@ procedure main is
          nextAuthorityId := nextAuthorityId + 1;
       end if;
    end recordAuthority;
+
+   --  netstack releases what Owner held: channels, listeners, arenas,
+   --  scopes and their reservations (CuBit.Network_Authority.OP_RELEASE_OWNER).
+   procedure releaseNetworkOwner (owner : Unsigned_64) is
+      request : Message := NULL_MESSAGE;
+      ignore : MessageTag;
+   begin
+      if owner = 0 then
+         return;
+      end if;
+      request.tag.label := CuBit.Network_Authority.OP_RELEASE_OWNER;
+      request.tag.length := 1;
+      request.words (0) := owner;
+      ignore := capCall (CuBit.Network_Authority.Policy_Capability_Slot, request);
+   end releaseNetworkOwner;
+
+   --  The kernel's process list still holds pid.
+   Process_List_Bytes : constant := 8_192;
+   Process_Entry_Bytes : constant := 32;
+   processList : array (0 .. Process_List_Bytes - 1) of Unsigned_8 := [others => 0];
+   function processListed (pid : Unsigned_64) return Boolean is
+      count : constant Unsigned_64 :=
+        syscall (SYSCALL_PROCLIST, Unsigned_64 (To_Integer (processList'Address)),
+                 Process_List_Bytes);
+   begin
+      if count = Unsigned_64'Last then
+         return True;   --  unknown: do not act on the claim
+      end if;
+      for i in 0 .. Natural (Unsigned_64'Min (count, Process_List_Bytes / Process_Entry_Bytes)) - 1 loop
+         if (Unsigned_64 (processList (i * Process_Entry_Bytes)) or
+             Shift_Left (Unsigned_64 (processList (i * Process_Entry_Bytes + 1)), 8)) = pid
+         then
+            return True;
+         end if;
+      end loop;
+      return False;
+   end processListed;
 
    procedure clearAuthorityForPID (pid : Unsigned_64) is
    begin
@@ -1745,6 +1784,8 @@ procedure main is
       --  PIDs are reusable.  Never attribute records retained from an earlier
       --  process generation to the new child.
       clearAuthorityForPID (newPID);
+      --  Nothing a previous holder of this PID had in netstack survives.
+      releaseNetworkOwner (newPID);
 
       --  SYSCALL_SPAWN installs these kernel bootstrap capabilities before
       --  procmgr applies the ELF manifest.  Record their origin explicitly.
@@ -2234,13 +2275,23 @@ procedure main is
       debugPrint ("procmgr: init.ccl: ");
       printDec (Unsigned_32 (Plan.Plan.Launch_Count));
       debugPrint (" entries" & LF);
+      declare
+         Entry_Number : Natural := 0;
+      begin
       for Item of Plan.Plan.Launches (1 .. Plan.Plan.Launch_Count) loop
          declare
             Name : String renames
               Item.Executable.Data (1 .. Item.Executable.Length);
             PID : Unsigned_64;
          begin
-            debugPrint ("procmgr: init spawn: " & Name & LF);
+            Entry_Number := Entry_Number + 1;
+            --  These bounded milestones are also retained by the firmware
+            --  boot panel until display.svc takes ownership.  They make a
+            --  physical boot stall attributable to one launch boundary,
+            --  without turning the panel into an unbounded serial log.
+            debugPrint ("procmgr: init launch ");
+            printDec (Unsigned_32 (Entry_Number));
+            debugPrint ("/" & Unsigned_32'Image (Unsigned_32 (Plan.Plan.Launch_Count)) & ": " & Name & LF);
             PID := spawnByName
               (Name, Unsigned_64 (Item.Priority), systemStartup => True, startupRole => Item.Role,
                approveNetwork =>
@@ -2248,9 +2299,12 @@ procedure main is
                   else No_Network));
             if PID = 0 then
                debugPrint ("procmgr: init spawn failed: " & Name & LF);
+            else
+               debugPrint ("procmgr: init launched: " & Name & LF);
             end if;
          end;
       end loop;
+      end;
    end processInitCCL;
 
    ---------------------------------------------------------------------------
@@ -2275,16 +2329,23 @@ begin
       OP_READY       : constant Unsigned_32 := 16#FF00#;
       ignore : MessageTag;
    begin
+      --  This is intentionally before the synchronous ready handoff.  The
+      --  firmware diagnostic panel retains the bounded bootstrap line, so a
+      --  headless physical boot distinguishes "blocked in handoff" from
+      --  "resumed and failed during bootstrap" without relying on serial.
+      debugPrint ("procmgr: bootstrap handoff sent" & LF);
       ignore := capSend (CAP_SLOT_READY,
          (tag      => (label => OP_READY, length => 0,
                        flags => 0, reserved => 0),
           authorityTag => 0,
           words    => [others => 0]));
+      debugPrint ("procmgr: bootstrap handoff returned" & LF);
    end;
 
    debugPrint ("procmgr: registered as driver" & LF);
 
    --  Allocate initial ELF buffer via sbrk (grows dynamically as needed)
+   debugPrint ("procmgr: bootstrap 1/4 allocating launch buffer" & LF);
    declare
       ret : Unsigned_64;
    begin
@@ -2302,10 +2363,12 @@ begin
       end if;
       elfBuf := To_Address (Integer_Address (ret));
    end;
+   debugPrint ("procmgr: bootstrap 1/4 launch buffer ready" & LF);
 
    --  Grant elfBuf directly to FS server for zero-copy reads.
    --  Use createGrantViaCap with our FS endpoint cap (slot 1) to avoid
    --  hardcoding the FS server PID.
+   debugPrint ("procmgr: bootstrap 2/4 creating filesystem grant" & LF);
    declare
       ok : Boolean;
    begin
@@ -2327,16 +2390,21 @@ begin
          return;
       end if;
    end;
+   debugPrint ("procmgr: bootstrap 2/4 filesystem grant ready" & LF);
 
    -- Generation-bearing Config loan. All callers supply owner-checked metadata.
+   debugPrint ("procmgr: bootstrap 3/4 creating config grant" & LF);
    CuBit.Memory_Grants.Create_Via_Capability
      (CAP_SLOT_CONFIG_LOCAL, elfBuf, INITIAL_BUF_PAGES, True,
       Config_Grant, Config_Grant_Ready);
    if not Config_Grant_Ready then
       debugPrint ("procmgr: config grant unavailable" & LF);
+   else
+      debugPrint ("procmgr: bootstrap 3/4 config grant ready" & LF);
    end if;
 
    --  Process init.ccl to spawn Stage 2 programs
+   debugPrint ("procmgr: bootstrap 4/4 reading startup profile" & LF);
    processInitCCL;
 
    debugPrint ("procmgr: ready, entering receive loop" & LF);
@@ -2348,6 +2416,13 @@ begin
       case msg.tag.label is
          when OP_SPAWN =>
             handleSpawn (sender, msg);
+         when EVENT_CHILD_EXIT =>
+            --  A process retired (the kernel tells procmgr of each). Events
+            --  are not unforgeable, so act only if it is really gone.
+            if msg.tag.length = 1 and then not processListed (msg.words (0)) then
+               clearAuthorityForPID (msg.words (0));
+               releaseNetworkOwner (msg.words (0));
+            end if;
          when others =>
             sendReply (sender, REPLY_ERR, 0);
       end case;

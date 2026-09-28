@@ -1,0 +1,12 @@
+project Host_Client extends "vm_client.gpr" is
+   for Source_Dirs use VM_Client'Source_Dirs;
+   for Source_Files use VM_Client'Source_Files &
+     ("host_tests.adb", "read_outcome_tests.adb", "view_tests.adb", "read_source_tests.adb",
+      "ccl-language-views.ads", "ccl-language-views.adb",
+      "ccl-vm-native_objects.ads", "ccl-vm-native_objects.adb",
+      "config_read_outcomes.ads", "config_read_outcomes.adb",
+      "config_object_client-host.ads", "config_object_client-host.adb");
+   for Object_Dir use "build/host";
+   for Exec_Dir use "build/host";
+   for Main use ("host_tests.adb", "read_outcome_tests.adb", "view_tests.adb", "read_source_tests.adb");
+end Host_Client;

@@ -4,7 +4,7 @@ project Netstack is
 
     for Object_Dir use "build";
 
-    for Source_Dirs use (".", "../../net/generated");
+    for Source_Dirs use (".", "../../net/generated", "../../net/src");
 
     for Main use ("main.adb");
 
@@ -14,6 +14,9 @@ project Netstack is
 
     -- For gprbuild
     package Builder is
+        --  Restrictions for every unit (see gnat.adc).
+        for Global_Configuration_Pragmas use "gnat.adc";
+
 
         for Executable ("main.adb") use "netstack.svc";
 
@@ -32,7 +35,10 @@ project Netstack is
     package Compiler is
         for Default_Switches ("Ada") use
         (
-            "-O2",
+            "-O3",
+            --  No run-time checks: correctness comes from SPARK proof
+            --  (see tests/net-tcp and tests/tcp-session), not from checks.
+            "-gnatp",
             "-gnat2022",
             "-fstack-usage",
             "-fomit-frame-pointer",

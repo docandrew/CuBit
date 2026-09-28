@@ -1,0 +1,21 @@
+project Collections is
+   for Source_Dirs use
+     (".", "../../userspace/services/config", "../../userspace/lib/config",
+      "../../userspace/ccl/src", "../../userspace/runtime/gnat");
+   for Source_Files use
+     ("ccl-types-correspondence.ads", "ccl-types-correspondence.adb") &
+     ("collection_tests.adb", "typed_store_tests.adb", "managed_tests.adb",
+      "config_typed_store.ads", "config_typed_store.adb", "config_objects.ads", "config_objects.adb",
+      "config_collections.ads", "config_collections.adb",
+      "config_authority.ads", "config_authority.adb",
+      "config_worker_protocol.ads", "config_worker_protocol.adb",
+      "ccl.ads", "ccl-types.ads", "ccl-types.adb", "ccl-objects.ads", "ccl-objects.adb",
+      "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb",
+      "cubit.ads", "cubit-config_inspection.ads", "cubit-config_inspection.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("collection_tests.adb", "typed_store_tests.adb", "managed_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnato", "-I-");
+   end Compiler;
+end Collections;

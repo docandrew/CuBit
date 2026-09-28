@@ -45,6 +45,10 @@ use type Process.ProcessMode;
 use type Capabilities.Operations.OperationStatus;
 
 package body Syscall.IPC is
+    -- Bring-up only: successful mode-1 allocations are charged until reboot,
+    -- including owner death. No timeout/reset message refunds this budget.
+    Retained_DMA_Lock : Spinlocks.Spinlock;
+    Retained_DMA_Pages : Natural range 0 .. 16_384 := 0;
 
     --  Bound one privileged mapping operation so a malformed request cannot
     --  monopolize the kernel.  Larger regions are mapped by a sequence of
@@ -244,10 +248,12 @@ package body Syscall.IPC is
     -- Extracted to its own procedure to avoid inflating syscallHandler's
     -- stack frame with mapPage generic instantiation + locals.
     ---------------------------------------------------------------------------
-    procedure handleAllocDma (callerPID : Process.ProcessID;
+    procedure allocateDma (callerPID : Process.ProcessID;
                               arg0      : Unsigned_64;
                               arg1      : Unsigned_64;
                               arg2      : Unsigned_64;
+                              retain    : Boolean;
+                              ceiling   : Unsigned_64;
                               retval    : out Unsigned_64) with
         SPARK_Mode => Off   -- generic instantiation
     is
@@ -312,7 +318,11 @@ package body Syscall.IPC is
             return;
         end if;
 
-        BuddyAllocator.alloc (order, dmaAddr);
+        if ceiling = 0 then
+            BuddyAllocator.alloc (order, dmaAddr);
+        else
+            BuddyAllocator.allocBelow (order, ceiling, dmaAddr);
+        end if;
 
         if System."=" (dmaAddr, BuddyAllocator.NO_BLOCK_AVAILABLE) then
             println ("ALLOC_DMA: alloc failed");
@@ -388,7 +398,8 @@ package body Syscall.IPC is
                     Process.proctab(targetPID).dmaAllocs(d) :=
                         (active   => True,
                          physAddr => dmaPhys,
-                         order    => order);
+                         order    => order,
+                         retainUntilReboot => retain);
                     tracked := True;
                     exit trackDMA;
                 end if;
@@ -415,6 +426,37 @@ package body Syscall.IPC is
 
             retval := Unsigned_64 (dmaPhys);
         end;
+    end allocateDma;
+
+    procedure handleAllocDma
+      (callerPID : Process.ProcessID;
+       arg0, arg1, arg2, arg3, arg4 : Unsigned_64;
+       retval : out Unsigned_64) with SPARK_Mode => Off
+    is
+        Pages : Natural;
+    begin
+        retval := reterr;
+        if arg3 = 0 then
+            allocateDma (callerPID, arg0, arg1, arg2, False, arg4, retval);
+            return;
+        elsif arg3 /= 1 or else arg1 > 14 then
+            return;
+        end if;
+        Pages := 2 ** Natural (arg1);
+        Spinlocks.enterCriticalSection (Retained_DMA_Lock);
+        if Pages > 16_384 - Retained_DMA_Pages then
+            Spinlocks.exitCriticalSection (Retained_DMA_Lock);
+            return;
+        end if;
+        Retained_DMA_Pages := Retained_DMA_Pages + Pages;
+        Spinlocks.exitCriticalSection (Retained_DMA_Lock);
+        -- Existing CAP_PROCESS/RIGHT_GRANT authorization remains mandatory.
+        allocateDma (callerPID, arg0, arg1, arg2, True, arg4, retval);
+        if retval = reterr then
+            Spinlocks.enterCriticalSection (Retained_DMA_Lock);
+            Retained_DMA_Pages := Retained_DMA_Pages - Pages;
+            Spinlocks.exitCriticalSection (Retained_DMA_Lock);
+        end if;
     end handleAllocDma;
 
     ---------------------------------------------------------------------------
@@ -1347,6 +1389,7 @@ package body Syscall.IPC is
             when Sysinfo.FB_WIDTH | Sysinfo.FB_HEIGHT |
                  Sysinfo.FB_PITCH | Sysinfo.FB_BPP |
                  Sysinfo.NUM_CPUS |
+                 Sysinfo.MONOTONIC_DIAGNOSTIC |
                  Sysinfo.REGISTERED_DRIVER |
                  Sysinfo.MAGIC_RAMDISK_ADDRESS |
                  Sysinfo.RAMDISK_SIZE =>

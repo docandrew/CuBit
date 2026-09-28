@@ -121,6 +121,7 @@
               gnatprove
               gnumake
               grub2
+              mtools # GRUB's UEFI El Torito FAT image
               ibm-plex
               jemalloc
               jq
@@ -150,6 +151,8 @@
               export CUBIT_BENCH_JEMALLOC="${pkgs.jemalloc}/lib/libjemalloc.so"
               export CUBIT_BENCH_TCMALLOC="${pkgs.gperftools}/lib/libtcmalloc.so"
               export PYTHONTZPATH="${pkgs.tzdata}/share/zoneinfo"
+              # Explicit EFI module set; the default grub2 supplies BIOS only.
+              export CUBIT_GRUB_EFI_DIR="${pkgs.grub2_efi}/lib/grub/x86_64-efi"
               export DOOMGENERIC_SRC="${doomgeneric}"
               export DOOM_WAD="${pkgs.freedoom}/share/games/doom/freedoom1.wad"
               export STB_SRC="${stb}"

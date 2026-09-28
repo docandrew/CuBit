@@ -5,8 +5,10 @@ with Config_Schema_Protocol;
 -- the parent. Namespace authority has already been checked by Config; neither
 -- this adapter nor stored metadata grants authority or installs live bindings.
 package Config_Database.Schemas is
-   type Creation is (Created, Already_Exists, Definition_Conflict, Rejected, Uncertain);
-   type Recovery is (Loaded, Absent, Load_Failed);
+   type Creation is (Created, Already_Exists, Definition_Conflict, Management_Conflict, Rejected, Uncertain);
+   -- Distinguish recovered classification instead of returning an unqualified
+   -- schema that callers might re-register as writable application state.
+   type Recovery is (Loaded, Loaded_Managed, Absent, Load_Failed);
    procedure Create
      (Database : System.Address; Name, Context : String;
       Contract : CCL.Objects.Binding; Result : out Creation);

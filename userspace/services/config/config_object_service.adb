@@ -167,6 +167,8 @@ package body Config_Object_Service is
          end if;
          if Type_Response.Reply = T.Reply_Kind'Enum_Rep (T.Definition_Conflict) then
             Receiver.Finish_Definition (Object.Requests, Object.Store, Authority, W.Schema_Mismatch); return;
+         elsif Type_Response.Reply = T.Reply_Kind'Enum_Rep (T.Management_Conflict) then
+            Receiver.Finish_Definition (Object.Requests, Object.Store, Authority, W.Denied); return;
          elsif Type_Response.Reply = T.Reply_Kind'Enum_Rep (T.Rejected) then
             Receiver.Finish_Definition (Object.Requests, Object.Store, Authority, W.Invalid_Request); return;
          elsif Type_Response.Reply = T.Reply_Kind'Enum_Rep (T.Absent) then
@@ -180,12 +182,16 @@ package body Config_Object_Service is
                Receiver.Finish_Definition (Object.Requests, Object.Store, Authority, W.Schema_Mismatch); return;
             end if;
          end if;
-         Store.Register (Object.Store, Control.Name (1 .. Natural (Control.Name_Length)), Contract, ID, Registered);
+         Store.Register (Object.Store, Control.Name (1 .. Natural (Control.Name_Length)), Contract, ID, Registered,
+           (if Type_Response.Reply = T.Reply_Kind'Enum_Rep (T.Loaded_Managed) then
+               Config_Collections.Declaration_Managed else Config_Collections.Application_State));
          if Registered not in Config_Collections.Registered | Config_Collections.Already_Registered then
             if Registered = Config_Collections.Capacity_Exceeded then
                Receiver.Finish_Definition (Object.Requests, Object.Store, Authority, W.Capacity_Exceeded);
             elsif Registered = Config_Collections.Schema_Conflict then
                Receiver.Finish_Definition (Object.Requests, Object.Store, Authority, W.Schema_Mismatch);
+            elsif Registered = Config_Collections.Management_Conflict then
+               Receiver.Finish_Definition (Object.Requests, Object.Store, Authority, W.Denied);
             else Retire (Object, Retired); end if;
             return;
          end if;

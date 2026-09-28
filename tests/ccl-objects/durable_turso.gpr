@@ -1,0 +1,49 @@
+project Durable_Turso is
+   CBOR_Source := external ("CBOR_ADA_SRC");
+   for Source_Dirs use (".", "../../userspace/ccl/src", "../../userspace/ccl/persistence",
+      "../../userspace/services/config", "../../userspace/lib/config",
+      "../config-worker", "../storage-channel/fixture",
+      "../../userspace/runtime/gnat", CBOR_Source & "/src");
+   for Source_Files use
+     ("ccl-types-correspondence.ads", "ccl-types-correspondence.adb") &
+     ("typed_store_turso.adb", "native_probe_host.adb", "schema_store_turso.adb",
+      "config_native_probe.ads", "config_native_probe.adb",
+      "config_objects.ads", "config_objects.adb",
+      "config_typed_store.ads", "config_typed_store.adb",
+      "config_object_messages.ads", "config_object_messages.adb",
+      "config_object_dispatch.ads", "config_object_dispatch.adb",
+      "config_object_receiver.ads", "config_object_receiver.adb",
+      "config_object_service.ads", "config_object_service.adb",
+      "config_collections.ads", "config_collections.adb", "config_authority.ads", "config_authority.adb",
+      "cubit-config_inspection.ads", "cubit-config_inspection.adb",
+      "config_worker_receiver.ads", "config_worker_receiver.adb",
+      "config_worker_channel.ads", "config_worker_channel.adb",
+      "config_worker_messages.ads", "config_worker_messages.adb",
+      "config_schema_protocol.ads", "config_schema_protocol.adb",
+      "config_schema_worker.ads", "config_schema_worker.adb",
+      "config_worker_protocol.ads", "config_worker_protocol.adb",
+      "config_worker.ads", "config_worker.adb", "config_worker_storage.ads",
+      "config_database.ads", "config_database.adb",
+      "config_database-schemas.ads", "config_database-schemas.adb",
+      "ccl-objects-schemas-persistence.ads", "ccl-objects-schemas-persistence.adb",
+      "ccl-objects-persistence.ads", "ccl-objects-persistence.adb",
+      "cbor.ads", "cbor-model.ads", "cbor-decoding.ads", "cbor-decoding.adb",
+      "cbor-encoding.ads", "cbor-encoding.adb",
+      "ccl.ads", "ccl-types.ads", "ccl-types.adb",
+      "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb",
+      "ccl-objects.ads", "ccl-objects.adb",
+      "ccl-objects-schemas.ads", "ccl-objects-schemas.adb",
+      "cubit.ads", "cubit-messages.ads", "cubit-messages.adb",
+      "cubit-memory_grants.ads", "cubit-memory_grants.adb", "cubit-grant_references.ads");
+   for Object_Dir use "build/durable-turso";
+   for Exec_Dir use "build/durable-turso";
+   for Main use ("typed_store_turso.adb", "native_probe_host.adb", "schema_store_turso.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnato", "-I-");
+   end Compiler;
+   package Linker is
+      for Default_Switches ("Ada") use
+        ("-L" & external ("CONFIG_TURSO_LIBRARY"), "-ldatabase_bridge",
+         "-lpthread", "-ldl", "-lm");
+   end Linker;
+end Durable_Turso;

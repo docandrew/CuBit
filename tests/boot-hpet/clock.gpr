@@ -1,0 +1,10 @@
+project Clock is
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use ("clock_tests.adb", "hpet_clock.ads", "hpet_clock.adb",
+                        "hpet_counter.ads", "hpet_counter.adb");
+   for Object_Dir use "build-clock";
+   for Main use ("clock_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Clock;

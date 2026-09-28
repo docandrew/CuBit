@@ -1,0 +1,21 @@
+library project Native is
+   for Source_Dirs use
+     ("../../userspace/services/config", "../../userspace/lib/config", "../../userspace/ccl/src");
+   for Source_Files use
+     ("ccl-types-correspondence.ads", "ccl-types-correspondence.adb") &
+     ("config_collections.ads", "config_collections.adb",
+      "config_typed_store.ads", "config_typed_store.adb", "config_objects.ads", "config_objects.adb",
+      "config_authority.ads", "config_authority.adb",
+      "config_worker_protocol.ads", "config_worker_protocol.adb",
+      "ccl.ads", "ccl-types.ads", "ccl-types.adb", "ccl-objects.ads", "ccl-objects.adb",
+      "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb");
+   for Object_Dir use "build/native";
+   for Library_Dir use "build/native-lib";
+   for Library_Name use "config_collections";
+   for Library_Kind use "static";
+   for Runtime ("Ada") use "../../userspace/runtime";
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-g", "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+   end Compiler;
+end Native;

@@ -49,20 +49,29 @@ extern "C" fn rust_main() -> ! {
     let Some(path) = path.filter(|path| {
         status == 0xf000
             && !path.is_empty()
-            && path.starts_with('@')
+            && (path.starts_with('@') || *path == ":memory:")
             && !path.contains('\0')
             && path.len() <= 1020
     }) else {
         cubit::debug_write("CONFIG-STORAGE: missing/invalid bootstrap database path\n");
         cubit::exit(1);
     };
-    let wal = format!("{path}-wal");
-    // Exact two-path narrowing on top of manifest-installed filesystem scopes.
-    let io = Arc::new(NativeIO::new(
-        storage::Bridge::new(SLOT_FILESYSTEM),
-        &[path, &wal],
-    ));
-    let store = match Store::open_with_io(io, path) {
+    // Explicit live-image choice, never an automatic fallback after disk error.
+    // RAM filesystems correctly reject durable flushes, so do not lie about
+    // durability or weaken the native file adapter to make a live demo work.
+    let opened = if path == ":memory:" {
+        cubit::debug_write("CONFIG-STORAGE: volatile live session (no reboot persistence)\n");
+        Store::open_volatile()
+    } else {
+        let wal = format!("{path}-wal");
+        // Exact two-path narrowing on top of manifest-installed filesystem scopes.
+        let io = Arc::new(NativeIO::new(
+            storage::Bridge::new(SLOT_FILESYSTEM),
+            &[path, &wal],
+        ));
+        Store::open_with_io(io, path)
+    };
+    let store = match opened {
         Ok(store) => store,
         Err(_) => {
             cubit::debug_write("CONFIG-STORAGE: database open failed\n");

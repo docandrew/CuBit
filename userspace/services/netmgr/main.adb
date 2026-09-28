@@ -59,6 +59,7 @@ procedure main is
 
    --  DNS config
    primaryDNS : Unsigned_64 := 0;
+   secondaryDNS : Unsigned_64 := 0;
 
    --  DHCP state (per interface)
    dhcpState : DHCP.DHCPState;
@@ -299,6 +300,7 @@ begin
    ifCfg.netmask := readConfigIP ("net.if0.netmask");
    ifCfg.gateway := readConfigIP ("net.if0.gateway");
    primaryDNS    := readConfigIP ("net.dns.primary");
+   secondaryDNS  := readConfigIP ("net.dns.secondary");
 
    --  Signal ready to devmgr
    signalReady;
@@ -319,7 +321,7 @@ begin
       end if;
 
       if primaryDNS /= 0 then
-         sendSetDNS (primaryDNS);
+         sendSetDNS (primaryDNS, secondaryDNS);
          debugPrint ("netmgr: DNS configured" & LF);
       end if;
 
@@ -340,7 +342,7 @@ begin
          if ifCfg.address /= 0 then
             sendConfigure (0, ifCfg.address, ifCfg.netmask, ifCfg.gateway);
             if primaryDNS /= 0 then
-               sendSetDNS (primaryDNS);
+               sendSetDNS (primaryDNS, secondaryDNS);
             end if;
          end if;
       end if;

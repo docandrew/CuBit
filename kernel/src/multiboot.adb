@@ -11,6 +11,7 @@ with Multiboot_Memory_Map;
 with Multiboot_Entry;
 with CPUID;
 with Boot_Font;
+with Multiboot2_Info;
 
 package body Multiboot with SPARK_Mode => On is
     use type Boot_Framebuffer.Status;
@@ -38,6 +39,10 @@ package body Multiboot with SPARK_Mode => On is
     bootCatalog : Boot_Modules.Catalog;
     bootSnapshotReady : Boolean := False;
     bootInfoPhysical : Unsigned_32 := 0;
+    bootInfoBytes : Natural := Multiboot_Entry.Header_Bytes;
+    bootUsesTags : Boolean := False;
+    bootMapCount : Natural := 0;
+    bootTagged : Multiboot2_Info.Snapshot;
     bootFramebuffer : Boot_Framebuffer.Result;
     -- Match the current userspace linear-buffer transport budget. This is an
     -- explicit boot backend limit, not a universal GPU/output size limit.
@@ -49,6 +54,36 @@ package body Multiboot with SPARK_Mode => On is
     function Has_Graphics return Boolean is
       (bootSnapshotReady and then bootFramebuffer.State = Boot_Framebuffer.Success)
       with SPARK_Mode => Off;
+
+    function Tagged_Boot return Boolean is (bootUsesTags) with SPARK_Mode => Off;
+    function Firmware_Root return Firmware_Tables.Root_Result is
+      (if bootSnapshotReady and bootUsesTags then bootTagged.Root
+       else (Status => Firmware_Tables.Truncated)) with SPARK_Mode => Off;
+
+    function Firmware_Readable (Base, Length : Unsigned_64) return Boolean
+      with SPARK_Mode => Off
+    is
+        use type Multiboot_Memory_Map.Region_Kind;
+        Covered : Boolean := False;
+        Last : Unsigned_64;
+    begin
+        if not bootSnapshotReady or else Base = 0 or else Length = 0 or else
+          Base >= Virtmem.LINEAR_PHYSICAL_LIMIT or else
+          Length > Virtmem.LINEAR_PHYSICAL_LIMIT - Base
+        then return False; end if;
+        Last := Base + (Length - 1);
+        for Region of bootMapSnapshot (1 .. bootMapCount) loop
+            if not Region.Empty and then Base <= Region.Last and then Region.First <= Last then
+                if Region.Kind in Multiboot_Memory_Map.Usable | Multiboot_Memory_Map.Defective then
+                    -- The legacy BIOS windows are retained, despite some
+                    -- firmware maps describing parts of low RAM as usable.
+                    if bootUsesTags or else Last >= 16#100000# then return False; end if;
+                end if;
+                if Region.First <= Base and then Last <= Region.Last then Covered := True; end if;
+            end if;
+        end loop;
+        return Covered or else (not bootUsesTags and Last < 16#100000#);
+    end Firmware_Readable;
 
     function Framebuffer return Boot_Framebuffer.Description
       with SPARK_Mode => Off
@@ -95,6 +130,59 @@ package body Multiboot with SPARK_Mode => On is
           (MultibootInfo'Size /= Entry_Check.Snapshot_Bytes * 8,
            "Boot header snapshot must match the Multiboot record layout");
     begin
+        if Magic = Multiboot2_Info.Loader_Magic then
+            if Physical = 0 or else Physical mod 8 /= 0 or else
+              Unsigned_64 (Physical) > Multiboot_Entry.Bootstrap_Limit - 8
+            then
+                raise MemoryAreas.InvalidMemoryMap with "Invalid Multiboot2 prefix address";
+            end if;
+            if Overlaps_Kernel (Integer_Address (Physical), 8) then
+                raise MemoryAreas.InvalidMemoryMap with "Multiboot2 prefix overlaps kernel";
+            end if;
+            declare
+                Prefix : Multiboot2_Info.Bytes (0 .. 7) with Import,
+                  Address => To_Address (Integer_Address (Physical));
+            begin
+                bootInfoBytes := Multiboot2_Info.Header_Extent (Prefix);
+            end;
+            if bootInfoBytes = 0 or else Unsigned_64 (bootInfoBytes) >
+              Multiboot_Entry.Bootstrap_Limit - Unsigned_64 (Physical) or else
+              Overlaps_Kernel (Integer_Address (Physical), Integer_Address (bootInfoBytes))
+            then
+                raise MemoryAreas.InvalidMemoryMap with "Invalid Multiboot2 metadata extent";
+            end if;
+            declare
+                Raw : Multiboot2_Info.Bytes (0 .. bootInfoBytes - 1) with Import,
+                  Address => To_Address (Integer_Address (Physical));
+                State : Multiboot2_Info.Status;
+                use type Multiboot2_Info.Status;
+                Destination : Entry_Check.Snapshot_Header with Import, Address => Info'Address;
+            begin
+                Multiboot2_Info.Parse (Raw, Unsigned_64 (Virtmem.PhysAddress'Last),
+                  bootTagged, bootMapSnapshot, bootMapCount, State);
+                if State /= Multiboot2_Info.Success then
+                    print ("Multiboot2 admission: "); println (Multiboot2_Info.Status'Image (State));
+                    raise MemoryAreas.InvalidMemoryMap with "Invalid Multiboot2 metadata";
+                end if;
+                Destination := [others => 0];
+            end;
+            bootUsesTags := True;
+            Info.flags.hasMemoryMap := True;
+            Info.flags.hasFramebuffer := True;
+            Info.framebuffer_addr := Integer_Address (bootTagged.Frame.Base);
+            Info.framebuffer_pitch := bootTagged.Frame.Pitch;
+            Info.framebuffer_width := bootTagged.Frame.Width;
+            Info.framebuffer_height := bootTagged.Frame.Height;
+            Info.framebuffer_bpp := bootTagged.Frame.Depth;
+            Info.framebuffer_type := bootTagged.Frame.Kind;
+            Info.framebuffer_red_field_position := bootTagged.Frame.Red_Position;
+            Info.framebuffer_red_mask_size := bootTagged.Frame.Red_Size;
+            Info.framebuffer_green_field_position := bootTagged.Frame.Green_Position;
+            Info.framebuffer_green_mask_size := bootTagged.Frame.Green_Size;
+            Info.framebuffer_blue_field_position := bootTagged.Frame.Blue_Position;
+            Info.framebuffer_blue_mask_size := bootTagged.Frame.Blue_Size;
+            println ("Multiboot2: owned boot metadata admitted");
+        else
         Entry_Check.Admit_Address
           (Magic, Unsigned_64 (Physical), Entry_Check.Bootstrap_Limit, Result);
         if Result /= Entry_Check.Success then
@@ -121,6 +209,7 @@ package body Multiboot with SPARK_Mode => On is
         begin
             Destination := Snapshot;
         end;
+        end if;
         bootInfoPhysical := Physical;
         -- Admit geometry before even selecting the early text/graphics adapter.
         -- The direct-map region is narrower than PhysAddress on this platform.
@@ -221,6 +310,19 @@ package body Multiboot with SPARK_Mode => On is
         if not mbinfo.flags.hasMemoryMap then
             raise MemoryAreas.InvalidMemoryMap with "Missing Multiboot memory map";
         end if;
+        if bootUsesTags then
+            Count := bootMapCount;
+            Require_Source_RAM (Integer_Address (bootInfoPhysical), Integer_Address (bootInfoBytes));
+            bootEnd := Integer_Address'Max (bootEnd,
+              Integer_Address (bootInfoPhysical) + Integer_Address (bootInfoBytes));
+            moduleCount := bootTagged.Module_Count;
+            for I in 1 .. moduleCount loop
+                capturedModules (I).Descriptor :=
+                  (mod_start => bootTagged.Modules (I).First,
+                   mod_end => bootTagged.Modules (I).Limit, others => 0);
+                capturedModules (I).Name := bootTagged.Modules (I).Name;
+            end loop;
+        else
         Require_Boot_Window (Integer_Address (mbinfo.mmap_addr),
                              Integer_Address (mbinfo.mmap_length));
         declare
@@ -295,6 +397,8 @@ package body Multiboot with SPARK_Mode => On is
                 end;
             end loop;
         end if;
+        end if; -- loader-specific capture; lifetime admission below is shared
+        bootMapCount := Count;
         for I in 1 .. moduleCount loop
             declare
                 Status : Boot_Modules.Status;
@@ -330,13 +434,15 @@ package body Multiboot with SPARK_Mode => On is
             declare
                 Item : constant Boot_Modules.Image := Boot_Modules.Get (bootCatalog, I);
             begin
-                Reject_Metadata_Overlap (Item, Integer_Address (bootInfoPhysical), Multiboot_Entry.Header_Bytes);
+                Reject_Metadata_Overlap (Item, Integer_Address (bootInfoPhysical), Integer_Address (bootInfoBytes));
+                if not bootUsesTags then
                 Reject_Metadata_Overlap (Item, Integer_Address (mbinfo.mmap_addr), Integer_Address (mbinfo.mmap_length));
                 Reject_Metadata_Overlap (Item, Integer_Address (mbinfo.mods_addr), Integer_Address (moduleCount) * Module_Bytes);
                 for J in 1 .. moduleCount loop
                     Reject_Metadata_Overlap (Item, Integer_Address (capturedModules (J).Name_First),
                       Integer_Address (capturedModules (J).Name_Limit - capturedModules (J).Name_First));
                 end loop;
+                end if;
             end;
         end loop;
         bootEnd := (bootEnd + 4095) and not Integer_Address (4095);

@@ -1,0 +1,12 @@
+project Benchmark extends "collections.gpr" is
+   for Source_Dirs use Collections'Source_Dirs;
+   for Source_Files use Collections'Source_Files & ("store_benchmark.adb");
+   for Object_Dir use "build/benchmark";
+   for Exec_Dir use "build/benchmark";
+   for Main use ("store_benchmark.adb");
+   package Compiler is
+      -- Match the service's optimization level; no executable ghost contracts.
+      -- Language/runtime checks remain enabled, just as in config.svc.
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-I-");
+   end Compiler;
+end Benchmark;

@@ -81,6 +81,14 @@ fn name(s: &str) -> bool {
 }
 
 impl Store {
+    /// Explicit live-session backend. No filesystem access and no persistence
+    /// across worker restart/reboot. Never used as fallback after disk failure.
+    pub fn open_volatile() -> Result<Self> {
+        // The memory URI bypasses Turso's process-wide file-identity registry;
+        // an ordinary filename would alias independent MemoryIO instances.
+        Self::open_with_io(Arc::new(turso_core::MemoryIO::new()), ":memory:")
+    }
+
     pub fn open(path: &Path) -> Result<Self> {
         let io = Arc::new(PlatformIO::new()?);
         Self::open_with_io(io, path.to_str().ok_or("non-UTF8 test path")?)
@@ -130,8 +138,9 @@ impl Store {
                     CREATE TABLE object_types (
                       namespace TEXT NOT NULL, profile TEXT NOT NULL,
                       schema_key BLOB NOT NULL, declaration BLOB NOT NULL,
+                      management INTEGER NOT NULL CHECK(management IN (1,2)),
                       PRIMARY KEY(namespace, profile));
-                    INSERT INTO config_format VALUES(3);",
+                    INSERT INTO config_format VALUES(4);",
                 )?;
             } else {
                 let expected: Vec<_> =
@@ -143,7 +152,7 @@ impl Store {
                     return Err("incomplete or foreign Config database schema".into());
                 }
                 let version = self.query("SELECT version FROM config_format LIMIT 2", vec![])?;
-                if version.len() != 1 || as_integer(&version[0][0])? != 3 {
+                if version.len() != 1 || as_integer(&version[0][0])? != 4 {
                     return Err("missing or unsupported Config database format".into());
                 }
             }
@@ -329,6 +338,10 @@ impl Store {
         }
         self.transaction_boundary("BEGIN IMMEDIATE")?;
         let result = (|| -> Result<Commit> {
+            if self.management(namespace, profile)? == Some(schemas::Management::DeclarationManaged)
+            {
+                return Err(Box::new(schemas::ManagedWriteDenied));
+            }
             let actual = self.head(namespace, profile)?;
             if expected != actual {
                 return Ok(Commit::Conflict { actual });
@@ -544,7 +557,8 @@ mod tests {
             "DROP TABLE collections",
             "DROP TABLE revisions",
             "DROP TABLE object_types",
-            "INSERT INTO config_format VALUES(3)",
+            "INSERT INTO config_format VALUES(4)",
+            "UPDATE config_format SET version=3",
             "UPDATE config_format SET version=2",
             "UPDATE config_format SET version='wrong'",
             "CREATE TABLE foreign_data (value TEXT)",

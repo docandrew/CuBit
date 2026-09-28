@@ -9,6 +9,8 @@
 with System.Storage_Elements; use System.Storage_Elements;
 
 with BootAllocator;
+with Boot_Timer_Rates;
+with System.Machine_Code;
 with Build;
 with BuddyAllocator;
 with cmos;
@@ -306,36 +308,50 @@ is
     function calibrateAPICTimer return Unsigned_32
         with SPARK_Mode => Off
     is
-        APICTicksIn10ms : Unsigned_32;
-        Start_TSC, Elapsed_TSC, Scaled : Unsigned_64;
-        Bad_Timer_Calibration : exception;
+        -- 10ms of counted TSC, with a finite work budget even if TSC stalls.
+        Poll_Budget : constant := 10_000_000;
+        Start_TSC, Elapsed_TSC, Target_TSC : Unsigned_64;
+        Start_Count, End_Count, Rate : Unsigned_32;
+        Reached : Boolean := False;
     begin
+        if Time.tscFrequencyHz not in Boot_Timer_Rates.Valid_Frequency then
+            raise Program_Error with "LAPIC calibration needs a valid TSC rate";
+        end if;
+        Target_TSC := Time.tscFrequencyHz / 100;
+        -- Keep delivery masked and one-shot while reading the countdown.
+        -- Masking LVT does not stop the counter: initial-count zero does.
+        x86.cli;
+        write (lvtTimer, LVT_MASKED or Unsigned_32 (InterruptNumbers.TIMER));
+        write (timerInitialCount, 0);
         write (timerDivideConf,   DIVIDE_BY_16);
         write (timerInitialCount, 16#FFFF_FFFF#);
+        Start_Count := Unsigned_32 (timerCurrentCount);
         Start_TSC := x86.readOrderedTSC;
-
-        -- sleep for 10ms using the PIT
-        Time.bootCalibrationSleep(10);
-
-        -- stop the timer
-        write(lvtTimer, LVT_MASKED);
-
-        APICTicksIn10ms := 16#FFFF_FFFF# - Unsigned_32(timerCurrentCount);
+        for Poll in 1 .. Poll_Budget loop
+            if x86.readOrderedTSC - Start_TSC >= Target_TSC then
+                Reached := True;
+                exit;
+            end if;
+            System.Machine_Code.Asm ("pause", Volatile => True);
+        end loop;
+        End_Count := Unsigned_32 (timerCurrentCount);
         Elapsed_TSC := x86.readOrderedTSC - Start_TSC;
-        -- The PIT sleep spans tick boundaries, not necessarily exactly 10 ms.
-        -- Use the independently calibrated TSC interval rather than dividing
-        -- by the requested delay (which made short one-shots fire early).
-        Scaled := Unsigned_64 (APICTicksIn10ms) * 1000;
-        if Elapsed_TSC = 0 or else Scaled = 0 or else Time.tscPerDuration = 0 or else
-          Time.tscPerDuration > Unsigned_64'Last / Scaled
+        write (timerInitialCount, 0);
+        if not Reached then
+            raise Program_Error with "LAPIC calibration stalled: TSC did not advance";
+        end if;
+        -- Reject expired/stalled countdowns and grossly interrupted samples.
+        if End_Count = 0 or else End_Count >= Start_Count or else
+          Elapsed_TSC > Target_TSC * 10
         then
-            raise Bad_Timer_Calibration;
+            raise Program_Error with "LAPIC calibration invalid countdown/sample";
         end if;
-        Scaled := Scaled * Time.tscPerDuration / Elapsed_TSC;
-        if Scaled = 0 or else Scaled > Unsigned_64 (Unsigned_32'Last) then
-            raise Bad_Timer_Calibration;
+        Rate := Boot_Timer_Rates.LAPIC_Per_Millisecond
+          (Start_Count - End_Count, Elapsed_TSC, Time.tscFrequencyHz);
+        if Rate = 0 then
+            raise Program_Error with "LAPIC calibration produced an invalid rate";
         end if;
-        return Unsigned_32 (Scaled);
+        return Rate;
     end calibrateAPICTimer;
 
     ---------------------------------------------------------------------------
@@ -410,8 +426,8 @@ is
                  else Scheduler_Timing.Ticks_Per_Millisecond)));
 
         -- Disable LINT0, LINT1
-        write(lvtLINT0, Unsigned_32(lvtLINT0) and LVT_MASKED);
-        write(lvtLINT1, Unsigned_32(lvtLINT1) and LVT_MASKED);
+        write(lvtLINT0, Unsigned_32(lvtLINT0) or LVT_MASKED);
+        write(lvtLINT1, Unsigned_32(lvtLINT1) or LVT_MASKED);
 
         -- clear error status reg
         write(esr, 0);
@@ -469,8 +485,11 @@ is
     is
     begin
         -- make sure no IPI is pending
-        while (Unsigned_32(icr0) and ICR_SEND_PENDING) = ICR_SEND_PENDING loop
-            null;
+        for Attempt in 1 .. 1_000_000 loop
+            exit when (Unsigned_32(icr0) and ICR_SEND_PENDING) = 0;
+            if Attempt = 1_000_000 then
+                raise Program_Error with "AP startup IPI delivery stalled";
+            end if;
         end loop;
 
         -- specify the destination in the upper 8 bits of icr1

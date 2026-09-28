@@ -549,7 +549,10 @@ hidden long __cubit_syscall(long n, long a, long b, long c, long d, long e, long
 		return __cubit_tcp_peer(t, (struct sockaddr *)b, (unsigned *)c);
 	}
 	case SYS_getsockname: {
-		/* netstack does not report the local end; an unspecified one. */
+		/* The bound address, if any: netstack does not report an
+		 * outbound connection's local end. */
+		struct cubit_tcp *t = __cubit_fd_tcp((int)a, 0);
+		if (t) return __cubit_tcp_local(t, (struct sockaddr *)b, (socklen_t *)c);
 		if (!__cubit_fd_is_socket((int)a)) return -ENOTSOCK;
 		struct sockaddr_in local = { .sin_family = AF_INET };
 		socklen_t *len = (socklen_t *)c;
@@ -557,11 +560,22 @@ hidden long __cubit_syscall(long n, long a, long b, long c, long d, long e, long
 		*len = sizeof local;
 		return 0;
 	}
-	case SYS_bind:
-	case SYS_listen:
+	case SYS_bind: {
+		struct cubit_tcp *t = __cubit_fd_tcp((int)a, 0);
+		if (!t) return __cubit_fd_is_socket((int)a) ? -EOPNOTSUPP : -ENOTSOCK;
+		return __cubit_tcp_bind(t, (const struct sockaddr *)b, (socklen_t)c);
+	}
+	case SYS_listen: {
+		struct cubit_tcp *t = __cubit_fd_tcp((int)a, 0);
+		if (!t) return __cubit_fd_is_socket((int)a) ? -EOPNOTSUPP : -ENOTSOCK;
+		return __cubit_tcp_listen(t, (int)b);
+	}
 	case SYS_accept:
+		return __cubit_fd_accept((int)a, (struct sockaddr *)b, (socklen_t *)c, 0);
 	case SYS_accept4:
-		return -EOPNOTSUPP;             /* no listening sockets yet */
+		return __cubit_fd_accept((int)a, (struct sockaddr *)b, (socklen_t *)c,
+			(((int)d & SOCK_NONBLOCK) ? O_NONBLOCK : 0) |
+			(((int)d & SOCK_CLOEXEC) ? O_CLOEXEC : 0));
 	case SYS_recvfrom:                  /* connected pairs: no address */
 		if (e) return -EOPNOTSUPP;
 		return __cubit_fd_read((int)a, (void *)b, (size_t)c);

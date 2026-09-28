@@ -43,7 +43,7 @@ Usage: tests/headless/run.sh [options]
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-remote, capability-security, network-authority, threads, futex, rust-std, libc, servo, bench-spread, timesync, tls-probe, tls-service, netsurf-https, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-remote, capability-security, network-authority, bench-net, threads, futex, rust-std, libc, servo, bench-spread, timesync, tls-probe, tls-service, netsurf-https, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
   --timeout SECONDS    QEMU runtime before timeout is treated as success
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
   --cpus COUNT         Virtual CPUs, 1..4 (default: 4)
@@ -256,7 +256,7 @@ case "$TEST_NAME" in
         ;;
     config-tree|config-inspection|log-authority|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|threads|futex|rust-std|libc|servo|bench-spread|timesync|tls-probe|tls-service|netsurf-https|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|bench-net|threads|futex|rust-std|libc|servo|bench-spread|timesync|tls-probe|tls-service|netsurf-https|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -453,6 +453,11 @@ case "$TEST_NAME" in
         ;;
     network-authority)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-network-authority.ccl"
+        ;;
+    bench-net)
+        # tests/net-bench: the same client as the Linux reference (linux.sh).
+        INIT_PROFILE="$ROOT_DIR/tests/net-bench/init-bench-net.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-512M}"
         ;;
     threads)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-threads.ccl"
@@ -860,6 +865,16 @@ if [ -n "$INIT_PROFILE" ]; then
             debugfs -w -R "rm $REMOTE_IMAGE_NAME" "$TEMP_DISK" >/dev/null 2>&1
             if ! debugfs -w -R "write $REMOTE_IMAGE $REMOTE_IMAGE_NAME" "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $REMOTE_IMAGE_NAME" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "bench-net" ]; then
+        for BENCH_NET_IMAGE in logstore.svc net-bench.app; do
+            debugfs -w -R "rm $BENCH_NET_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$BENCH_NET_IMAGE $BENCH_NET_IMAGE" \
+                "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $BENCH_NET_IMAGE (tests/net-bench/build-cubit.sh)" >&2
                 exit 1
             fi
         done
@@ -1812,6 +1827,12 @@ if [ "$TEST_NAME" = "network-authority" ]; then
     python3 "$ROOT_DIR/tests/network-authority/peer.py" "$SERIAL_LOG" &
     NETWORK_PEER_PID=$!
 fi
+if [ "$TEST_NAME" = "bench-net" ]; then
+    # The serve workload connects in to the guest's listener on port 8080.
+    NETDEV_CONFIG="user,id=net0,hostfwd=tcp:127.0.0.1:18486-10.0.2.15:8080"
+    python3 "$ROOT_DIR/tests/net-bench/server.py" "$TIMEOUT_SECONDS" &
+    NETWORK_PEER_PID=$!
+fi
 if [ "$TEST_NAME" = "timesync" ]; then
     python3 "$ROOT_DIR/tests/timesync/fixture.py" "$SERIAL_LOG" &
     NETWORK_PEER_PID=$!
@@ -1845,6 +1866,9 @@ if [ "$CHECK_EXT2" -eq 1 ]; then
     fi
 fi
 
+# The benchmark runs without a packet capture, as its Linux reference does.
+PCAP_ARGS=(-object "filter-dump,id=f0,netdev=net0,file=$NET_PCAP")
+if [ "$TEST_NAME" = "bench-net" ] && [ -z "${BENCH_NET_PCAP:-}" ]; then PCAP_ARGS=(); fi   # BENCH_NET_PCAP=1 keeps the capture
 (
     cd "$KERNEL_DIR" || exit 1
     # shellcheck disable=SC2086
@@ -1864,7 +1888,7 @@ fi
         -device virtio-net-pci,netdev=net0 \
         "${VIDEO_ARGS[@]}" \
         -netdev "$NETDEV_CONFIG" \
-        -object "filter-dump,id=f0,netdev=net0,file=$NET_PCAP" \
+        "${PCAP_ARGS[@]}" \
         "${AUDIO_ARGS[@]}" \
         -device intel-hda \
         -device hda-output,audiodev=snd0 \
@@ -2029,7 +2053,14 @@ TEST: PASS network-authority
 network-check: async outbound connects PASS
 network-check: async outbound round trip PASS
 network-check: async completion identity PASS
-network-check: accept remains pending until listener close PASS
+network-check: listener closes with an offer outstanding PASS
+network-check: arrival names the offered buffer PASS
+network-check: open beyond declared connections refused PASS
+network-check: buffer in use cannot open a second channel PASS
+netstack: IPv6 link-local
+netstack: IPv6 address
+netstack: IPv6 echo reply from
+netstack: released the scopes of exited process
 capability-test: retired PID submit rejected PASS
 capability-test: authorityless capability submit rejected PASS
 capability-test: all tests passed
@@ -2052,6 +2083,12 @@ BENCH: spread elapsed_ms
             echo "headless: not all four bench-spread instances finished" >&2
             exit 1
         fi
+        ;;
+    bench-net)
+        required_markers="
+net-bench: start
+net-bench: done
+"
         ;;
     libc)
         required_markers="

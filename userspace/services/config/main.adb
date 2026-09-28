@@ -20,6 +20,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Config_Inspection;
 with Config_Authority;
+with Config_Authority_Wire;
 with Config_Store;
 with CuBit.Config_Protocol;
 with Config_Typed_Service;
@@ -138,30 +139,19 @@ procedure main is
          then sendReply (sender, REPLY_ERR, 0); return; end if;
          Reference := (slot => msg.words (2), generation => msg.words (3));
          CuBit.Memory_Grants.Acquire
-           (Reference, sender, 0, Unsigned_64 (Count * 72),
+           (Reference, sender, 0, Unsigned_64 (Count * Config_Authority_Wire.Entry_Bytes),
             CuBit.Memory_Grants.Read_Access, Address, Acquired);
          if not Acquired then sendReply (sender, REPLY_ERR, 0); return; end if;
          declare
-            Shared : String (1 .. Count * 72) with Import, Address => Address;
+            Shared : String (1 .. Count * Config_Authority_Wire.Entry_Bytes)
+              with Import, Address => Address;
             -- Snapshot once; subsequent authorization never rereads client bytes.
             Data : constant String := Shared;
-            Base, Length, Mask : Natural;
          begin
             CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
             if not Returned then sendReply (sender, REPLY_ERR, 0); return; end if;
-            for I in 0 .. Count - 1 loop
-               Base := I * 72;
-               Mask := Character'Pos (Data (Base + 1));
-               Length := Character'Pos (Data (Base + 2));
-               if Length > Config_Authority.Maximum_Scope or else Mask > 3 or else
-                 (for some J in Base + 3 .. Base + 8 => Data (J) /= ASCII.NUL)
-               then sendReply (sender, REPLY_ERR, 0); return; end if;
-               Config_Authority.Append
-                 (Candidate, Data (Base + 9 .. Base + 8 + Length),
-                 [Config_Authority.Read_Config => Mask mod 2 = 1,
-                  Config_Authority.Write_Config => Mask >= 2], Accepted);
-               if not Accepted then sendReply (sender, REPLY_ERR, 0); return; end if;
-            end loop;
+            Config_Authority_Wire.Decode (Data, Candidate, Accepted);
+            if not Accepted then sendReply (sender, REPLY_ERR, 0); return; end if;
          end;
       end if;
       Config_Authority.Install (Authorities, msg.words (0), Candidate, Result);

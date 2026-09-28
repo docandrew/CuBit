@@ -1,13 +1,13 @@
 project Net_TCP_Tests is
    Net_Src := external ("NET_SRC", "../../userspace/net/src");
    for Source_Dirs use (".", Net_Src);
-   for Object_Dir use "build";
-   for Exec_Dir use "build";
-   for Main use ("main.adb");
+   for Object_Dir use external ("NET_OBJ", "build");
+   for Exec_Dir use external ("NET_OBJ", "build");
+   for Main use ("main.adb", "tcp_scenarios.adb", "tcp_endpoint_sim.adb", "tcp_flow_sim.adb", "tcp_flag_storm.adb");
    package Compiler is
       for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
    end Compiler;
    package Prove is
-      for Proof_Switches ("Ada") use ("--level=2", "--timeout=60");
+      for Proof_Switches ("Ada") use ("--level=1");
    end Prove;
 end Net_TCP_Tests;

@@ -20,9 +20,10 @@ package Config_Collections with SPARK_Mode is
    subtype Handle is Number;
    No_Handle : constant Handle := 0;
    Machine_Context : constant Number := 0;
+   type Management_Kind is (Application_State, Declaration_Managed);
    type Result is
      (Registered, Already_Registered, Opened, Closed, Resolved, Denied,
-      Missing, Invalid_Definition, Schema_Conflict, Unsupported_Context,
+      Missing, Invalid_Definition, Schema_Conflict, Management_Conflict, Unsupported_Context,
       Capacity_Exceeded, Identity_Exhausted);
    type State is limited private;
 
@@ -40,17 +41,23 @@ package Config_Collections with SPARK_Mode is
    --  existing collection's type. Persistent creation is a separate operation.
    procedure Register
      (Object : in out State; Name : String; Contract : CCL.Objects.Binding;
-      ID : out Collection_ID; Status : out Result)
+      ID : out Collection_ID; Status : out Result;
+      Management : Management_Kind := Application_State)
      with Post => (if Status in Registered | Already_Registered then ID /= No_Collection
                    else ID = No_Collection);
    procedure Check_Registration
      (Object : State; Name : String; Contract : CCL.Objects.Binding;
-      ID : out Collection_ID; Status : out Result)
+      ID : out Collection_ID; Status : out Result;
+      Management : Management_Kind := Application_State)
      with Post => (if Status in Registered | Already_Registered then
                      ID /= No_Collection and Name'Length in 1 .. Maximum_Name
                    else ID = No_Collection);
    -- Read-only admission. Registered identifies the available slot but does
    -- not reserve/publish it; the single dispatcher serializes creation.
+   -- Management is selected by trusted registration, never by a client Open.
+   -- Existing registration cannot change class. Declaration-managed values are
+   -- readable with normal scoped authority, but ordinary writes are forbidden.
+   -- Activation is a separate future operation, not an administrative override.
    procedure Open
      (Object : in out State; Authority : Config_Authority.Authority_State;
       Subject : Subject_ID; Name : String; Context : Number;
@@ -79,11 +86,13 @@ package Config_Collections with SPARK_Mode is
      (Object : State; ID : Registered_ID; Name : out Collection_Name;
       Length : out Name_Length; Contract : out CCL.Objects.Binding; Found : out Boolean);
    function Schema (Object : State; ID : Registered_ID) return CCL.Objects.Schema_Key;
+   function Management (Object : State; ID : Registered_ID) return Management_Kind;
 private
    type Definition is record
       Name : String (1 .. Maximum_Name) := [others => Character'Val (0)];
       Length : Name_Length := 0;
       Contract : CCL.Objects.Binding;
+      Management : Management_Kind := Application_State;
    end record;
    type Definition_Array is array (Registered_ID) of Definition;
    type Held_Handle is record

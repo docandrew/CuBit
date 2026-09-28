@@ -6,6 +6,8 @@
 -------------------------------------------------------------------------------
 pragma Ada_2022;
 with Config;
+with CPUID;
+with Boot_Timer_Diagnostics;
 with PerCPUData;
 with Process;
 with Process.IPC;
@@ -14,21 +16,44 @@ with Process.Queues;
 with Scheduler_Timing;
 with TextIO;
 with x86;
+with Platform_Monotonic;
 
 package body Time with
     SPARK_Mode => On
 is
+    procedure Read_Monotonic (Microseconds : out Unsigned_64;
+                             Success : out Boolean) with SPARK_Mode => Off is
+    begin
+        Platform_Monotonic.Read (Microseconds, Success);
+    end Read_Monotonic;
+
+    function Try_CPU_TSC return Boolean with SPARK_Mode => Off is
+        Rate : Boot_Timer_Rates.Frequency;
+    begin
+        -- The direct-frequency path requires Intel's architectural leaf and
+        -- an invariant TSC. Other CPUs keep the bounded reference fallback.
+        if CPUID.cpuVendor /= "GenuineIntel" or else not CPUID.hasInvariantTSC
+          or else CPUID.getMaxStandardFunction < 16#15#
+        then
+            return False;
+        end if;
+        Rate := Boot_Timer_Rates.From_CPUID
+          (CPUID.tscRatioDenominator, CPUID.tscRatioNumerator, CPUID.crystalClockHz);
+        if Rate = 0 then return False; end if;
+        tscFrequencyHz := Rate;
+        tscPerDuration := Rate / 1_000_000;
+        tscCalibrated := True;
+        return True;
+    end Try_CPU_TSC;
+
     ---------------------------------------------------------------------------
     -- bootCalibrationSleep - busy wait until tick difference matches up
     ---------------------------------------------------------------------------
     procedure bootCalibrationSleep (ms : in Unsigned_64)
         with SPARK_Mode => Off -- asynchronous hardware tick polling
     is
-        startTicks : constant Unsigned_64 := msTicks;
     begin
-        while msTicks < startTicks + ms loop
-            null;
-        end loop;
+        Boot_Timer_Diagnostics.Wait_For_Ticks (ms);
     end bootCalibrationSleep;
 
     ---------------------------------------------------------------------------
@@ -44,19 +69,20 @@ is
         with SPARK_Mode => Off -- asynchronous hardware tick/TSC sampling
     is
         samplems    : constant Unsigned_64 := 100;
-        startTicks  : constant Unsigned_64 := msTicks;
         startTSC    : constant TSCTicks := x86.rdtsc;
         endTSC      : TSCTicks;
-        tscPerMilli : Unsigned_64;
+        Rate : Unsigned_64;
     begin
-        while msTicks < startTicks + samplems loop
-            null;
-        end loop;
+        bootCalibrationSleep (samplems);
 
         endTSC := x86.rdtsc;
 
-        tscPerMilli         := (endTSC - startTSC) / samplems;
-        tscPerDuration      := tscPerMilli / 1_000;
+        Rate := (endTSC - startTSC) / samplems * 1000;
+        if Rate not in Boot_Timer_Rates.Valid_Frequency then
+            raise Program_Error with "PIT reference produced an invalid TSC rate";
+        end if;
+        tscFrequencyHz := Rate;
+        tscPerDuration := Rate / 1_000_000;
         tscCalibrated := True;
     end calibrateTSC;
 
@@ -109,7 +135,7 @@ is
         referenceEpoch := Stamp;
         for CPU in cpuClock'Range loop
             cpuClock(CPU) := Scheduler_Timing.Start
-              (0, Scheduler_Timing.Tick_Rate (tscPerDuration * 1000));
+              (0, Scheduler_Timing.Tick_Rate (tscFrequencyHz / 1000));
         end loop;
         schedulingClock := True;
     end enableSchedulingClock;

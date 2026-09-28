@@ -1,0 +1,17 @@
+project Futex_Queues_Tests is
+   Kernel_Src := external ("KERNEL_SRC", "../../kernel/src");
+   for Source_Dirs use (".", Kernel_Src);
+   for Source_Files use ("main.adb", "futex_keys.ads", "futex_keys.adb",
+                         "futex_queues.ads", "futex_queues.adb",
+                         "futex_queues_small.ads", "futex_queues_large.ads",
+                         "futex_protocol.ads", "futex_protocol.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--timeout=60");
+   end Prove;
+end Futex_Queues_Tests;

@@ -1,0 +1,10 @@
+project Reset_Prepare is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("reset_prepare_tests.adb", "intel_gpu_reset_prepare.ads",
+                        "intel_gpu_reset_prepare.adb");
+   for Object_Dir use "build-reset-prepare";
+   for Main use ("reset_prepare_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Reset_Prepare;

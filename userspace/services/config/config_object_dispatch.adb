@@ -35,7 +35,8 @@ package body Config_Object_Dispatch with SPARK_Mode is
             Typed.Open (Store, Authority, Sender,
               Input.Control.Name (1 .. Natural (Input.Control.Name_Length)), Input.Control.Context,
               (Config_Authority.Read_Config => Input.Control.Access_Rights mod 2 = 1,
-               Config_Authority.Write_Config => Input.Control.Access_Rights >= 2),
+               Config_Authority.Write_Config => Input.Control.Access_Rights >= 2,
+               Config_Authority.Activate_Config => False),
               Input.Control.Schema, Handle, Access_Result);
             case Access_Result is
                when Catalog.Opened => Reply := Wire.Reply (Wire.Success, Handle);

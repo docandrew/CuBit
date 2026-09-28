@@ -5,4 +5,5 @@
   (version "0.1.0")
   (request-service clock read-write clock)
   (request-network tcp-connect (ipv4 "10.0.2.2" 32)
-    (ports 18460 18463) (dns deny) tls-test))
+    (ports 18460 18463) (dns deny)
+    (connections 4) tls-test))

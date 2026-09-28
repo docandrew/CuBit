@@ -278,6 +278,32 @@ package body Process.Queues is
     ---------------------------------------------------------------------------
     -- dequeue - remove from front of the list while holding the list's lock
     ---------------------------------------------------------------------------
+    procedure dequeuePreferring (q : in out ProcQueue; cpu : Natural;
+                                 result : out ThreadID)
+    is
+        cursor : ThreadID;
+        pid    : ThreadID;
+    begin
+        Spinlocks.enterCriticalSection (q.lock);
+        if isEmpty (q) then
+            Spinlocks.exitCriticalSection (q.lock);
+            result := NO_THREAD;
+            return;
+        end if;
+        cursor := q.head;
+        while cursor /= NO_THREAD and then threadtab (cursor).cpu /= cpu loop
+            cursor := threadtab (cursor).next;
+        end loop;
+        if cursor = NO_THREAD then
+            cursor := q.head;
+        end if;
+        popItemNoLock (q, cursor, pid);
+        threadtab (pid).prev := NO_THREAD;
+        threadtab (pid).next := NO_THREAD;
+        Spinlocks.exitCriticalSection (q.lock);
+        result := pid;
+    end dequeuePreferring;
+
     procedure dequeue (q : in out ProcQueue; result : out ThreadID)
 
     is

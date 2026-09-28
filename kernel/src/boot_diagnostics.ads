@@ -1,4 +1,5 @@
 with Boot_Framebuffer;
+with Boot_Panel;
 with System;
 --  Kernel bootstrap graphics only. No terminal, allocator, IPC or mode setting.
 --  Setup runs after per-CPU interrupt state and the direct mapping are ready.
@@ -6,6 +7,7 @@ package Boot_Diagnostics with SPARK_Mode => Off is
    procedure Setup (Item : Boot_Framebuffer.Description);
    procedure Begin_Step (Text : String);
    procedure Complete_Step (Text : String);
+   procedure Set_Evidence (R : Boot_Panel.Evidence_Row; Text : String);
    procedure Append (C : Character);
    procedure Panic (Message : System.Address);
    --  Authorized takeover calls this before handing out the boot mapping or

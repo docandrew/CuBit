@@ -1,0 +1,29 @@
+library project Native is
+   for Source_Dirs use ("../../userspace/lib/config", "../../userspace/ccl/src",
+                        "../../userspace/services/config");
+   for Source_Files use
+     ("ccl-types-correspondence.ads", "ccl-types-correspondence.adb") &
+     ("config_object_client.ads", "config_object_client.adb",
+      "config_object_native.ads", "config_object_receiver.ads", "config_object_receiver.adb",
+      "config_typed_service.ads", "config_object_service.ads", "config_object_service.adb",
+      "config_worker_channel.ads", "config_worker_channel.adb",
+      "config_worker_messages.ads", "config_worker_messages.adb",
+      "config_schema_protocol.ads", "config_schema_protocol.adb",
+      "config_object_dispatch.ads", "config_object_dispatch.adb",
+      "config_typed_store.ads", "config_typed_store.adb", "config_objects.ads", "config_objects.adb",
+      "config_collections.ads", "config_collections.adb", "config_authority.ads", "config_authority.adb",
+      "config_object_messages.ads", "config_object_messages.adb",
+      "config_worker_protocol.ads", "config_worker_protocol.adb",
+      "ccl.ads", "ccl-types.ads", "ccl-types.adb", "ccl-objects.ads", "ccl-objects.adb",
+      "ccl-objects-schemas.ads", "ccl-objects-schemas.adb",
+      "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb");
+   for Object_Dir use "build/native";
+   for Library_Dir use "build/native-lib";
+   for Library_Name use "config_object_client";
+   for Library_Kind use "static";
+   for Runtime ("Ada") use "../../userspace/runtime";
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-g", "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+   end Compiler;
+end Native;

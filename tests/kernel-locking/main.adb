@@ -155,6 +155,36 @@ procedure Main is
           ("READY-FAIRNESS-CHECK: PASS (300 quanta, 10000 stable-priority oracle steps)");
     end Check_Ready_Fairness;
 
+    -- IPC hands work to a receiver on the sender's CPU when one is waiting,
+    -- else to the longest-waiting receiver; the queue stays consistent.
+    procedure Check_Receiver_Preference is
+        use Process;
+        Q : ProcQueue renames Process.sleepList;
+        Got, Ignored : ProcessID;
+    begin
+        for T in 11 .. 15 loop
+            proctab (T).cpu := (if T = 13 then 2 elsif T = 15 then 2 else 1);
+            Queues.enqueue (Q, T, Ignored);
+        end loop;
+        Queues.dequeuePreferring (Q, 2, Got);
+        pragma Assert (Got = 13);                       -- first on CPU 2
+        Queues.dequeuePreferring (Q, 2, Got);
+        pragma Assert (Got = 15);
+        Queues.dequeuePreferring (Q, 2, Got);
+        pragma Assert (Got = 11);                       -- none left: FIFO head
+        Queues.dequeuePreferring (Q, 3, Got);
+        pragma Assert (Got = 12);
+        Queues.dequeue (Q, Got);
+        pragma Assert (Got = 14 and then Queues.isEmpty (Q));
+        Queues.dequeuePreferring (Q, 1, Got);
+        pragma Assert (Got = NO_PROCESS);
+        for T in 11 .. 15 loop
+            pragma Assert (proctab (T).prev = NO_PROCESS and then proctab (T).next = NO_PROCESS);
+            proctab (T).cpu := 0;
+        end loop;
+        Ada.Text_IO.Put_Line ("RECEIVER-PREFERENCE-CHECK: PASS (same-CPU first, FIFO fallback, links cleared)");
+    end Check_Receiver_Preference;
+
     procedure Check_Policy is
         S, Before : State;
         Result : Acquire_Result;
@@ -331,6 +361,7 @@ procedure Main is
     end Check_Lifetime;
 begin
     Check_Ready_Fairness;
+    Check_Receiver_Preference;
     Check_Policy;
     Check_Lifetime;
 

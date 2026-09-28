@@ -54,7 +54,7 @@ expected_apps = {'config.svc', 'netmgr.svc', 'netstack.svc', 'virtio-net.drv',
                  'virtio-gpu.drv', 'hda.drv', 'mixer.svc', 'procmgr.svc',
                  'logstore.svc', 'clock.svc', 'display.svc', 'desktop.svc',
                  'ccl-workbench.app', 'devices.app', 'files.app', 'doom.elf', 'doom1.wad',
-                 'sameboy.app'}
+                 'sameboy.app', 'config-inspector.app', 'config-storage.svc', 'cubitshell.app'}
 assert expected_apps <= apps.keys(), expected_apps - apps.keys()
 cartridges = entries(*apps['sameboy'])
 assert '00.gb' in cartridges
@@ -83,8 +83,9 @@ assert not names & expected_apps
 grub = entries(*boot['grub'])
 config = contents(grub['grub.cfg']).decode()
 modules = [line.split()[1:] for line in config.splitlines()
-           if line.strip().startswith('module ')]
+           if line.strip().startswith(('module ', 'module2 ', '$cubit_module '))]
 assert modules and all(line == ['/boot/initrd.img', 'init.img'] for line in modules)
+assert 'set cubit_loader=multiboot2' in config and 'set cubit_module=module2' in config
 assert contents(apps['doom1.wad'])[:4] in (b'IWAD', b'PWAD')
 print(f'IMAGE AUDIT PASS: {len(names)} bootstrap files; {len(expected_apps)} CD payload files.')
 print(f'CARTRIDGE AUDIT PASS: {len(cartridges) - 2} ROMs on CD, none in initrd.')

@@ -5,6 +5,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CCL_Manifest_Bindings;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
+with CuBit.Net_Channels;
 with CuBit.Config;
 with CuBit.Filesystems;
 with CuBit.TLS_Protocol; use CuBit.TLS_Protocol;
@@ -31,32 +32,34 @@ procedure Main is
    Net_Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Tcp;
    FS_Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Filesystem;
 
-   NET_OPEN : constant Unsigned_32 := 16#0420#;
-   NET_WRITE : constant Unsigned_32 := 16#0421#;
-   NET_READ : constant Unsigned_32 := 16#0422#;
-   NET_SHUT : constant Unsigned_32 := 16#0423#;
+   package Streams renames CuBit.Net_Channels;
 
    Handshake_Timeout_MS : constant := 20_000;
-   Net_Read_Timeout_MS : constant := 30_000;
 
    --  netstack supports 16 TCP connections system-wide; TLS gets up to half.
    --  Deferred reply slots are 48 .. 48 + 2 * Maximum_Channels - 1.
    Maximum_Channels : constant := 8;
    subtype Channel_Index is Natural range 0 .. Maximum_Channels - 1;
 
-   --  Per-channel netstack transfer: ciphertext out, then ciphertext in.
-   Half : constant := 20_480;
-   Net_Buffer_Bytes : constant := 2 * Half;
-   Net_Buffer_Pages : constant := Net_Buffer_Bytes / 4_096;
+   --  Per-channel netstack stream: ciphertext out and in go through its
+   --  rings with no IPC per record. The receive ring holds more than one
+   --  maximum TLS record (16 KiB plus overhead).
+   Send_Ring_Bytes : constant := 16_384;
+   Receive_Ring_Bytes : constant := 32_768;
+   Net_Buffer_Bytes : constant :=
+     Streams.Layout.Header_Bytes + Send_Ring_Bytes + Receive_Ring_Bytes;
+
+   --  The process's one outstanding netstack WAIT.
+   Wait_Token : constant Unsigned_64 := Unsigned_64'Last - 1;
+   Wait_Outstanding : Boolean := False;
 
    --  Closed: the connection ended (peer close, error or timeout) but the
    --  client still holds the channel ID. Buffered plaintext can still be
    --  read, then EOF or the error; SHUT frees the channel.
    type Phase_Kind is
      (Free, Connecting, Handshaking, Established, Failed, Closed);
-   type Net_Operation is (None, Op_Open, Op_Write, Op_Read, Op_Shut);
-   for Net_Operation use
-     (None => 0, Op_Open => 1, Op_Write => 2, Op_Read => 3, Op_Shut => 4);
+   type Net_Operation is (None, Op_Open);
+   for Net_Operation use (None => 0, Op_Open => 1);
 
    type Channel is record
       Phase : Phase_Kind := Free;
@@ -68,22 +71,17 @@ procedure Main is
       Client_Bytes : Natural := 0;
       Name : String (1 .. CuBit.TLS_Scopes.Maximum_Name);
       Name_Length : CuBit.TLS_Scopes.Name_Length := 0;
-      --  Our buffer lent to netstack.
-      Net_Grant : CuBit.Memory_Grants.Grant_Reference;
-      Net_Address : System.Address := System.Null_Address;
-      Net_Channel : Unsigned_64 := 0;
+      --  Our stream lent to netstack (its grant stays with the slot).
+      Net : Streams.Stream;
       Net_Pending : Net_Operation := None;
+      --  Waiting on netstack for received ciphertext or send ring room.
+      Blocked : Boolean := False;
       Deadline : Unsigned_64 := Unsigned_64'Last;
       --  Deferred client replies, saved into per-channel reply slots.
       Open_Waiting : Boolean := False;
       Read_Waiting : Boolean := False;
       Read_Offset, Read_Max : Natural := 0;
       Read_Deadline : Unsigned_64 := Unsigned_64'Last;
-      --  Received ciphertext in the input half of the netstack buffer that
-      --  the session has not accepted yet. A read can carry more than the
-      --  session's input buffer takes at once; the rest is fed as records
-      --  are processed, and no new read is issued until it is all fed.
-      In_Position, In_Length : Natural := 0;
       --  Decrypted data not yet delivered to the client.
       Plain_Length, Plain_Position : Natural := 0;
       Peer_Closed : Boolean := False;
@@ -165,15 +163,12 @@ procedure Main is
          CuBit.Memory_Grants.Return_Acquisition (C.Client, Returned);
       end if;
       Plain (I) := [others => 0];
-      --  Keep the netstack buffer and its grant for reuse by this slot.
-      C := (Net_Grant => C.Net_Grant, Net_Address => C.Net_Address,
-            others => <>);
+      --  Keep the netstack stream and its grant for reuse by this slot.
+      C := (Net => C.Net, others => <>);
    end Free;
 
    procedure Retire (I : Channel_Index; Code : Failure) is
       C : Channel renames Channels (I);
-      Ignore_Tag : MessageTag;
-      Msg : Message := NULL_MESSAGE;
       Client_Holds_Id : constant Boolean := not C.Open_Waiting;
    begin
       if C.Open_Waiting then
@@ -189,14 +184,10 @@ procedure Main is
          end if;
       end if;
       Drop (Sessions (I));
-      if C.Net_Channel /= 0 then
-         --  Synchronous shut: netstack replies immediately and releases its
-         --  own acquisition of our buffer.
-         Msg.tag := (label => NET_SHUT, length => 1, flags => 0, reserved => 0);
-         Msg.words (0) := C.Net_Channel;
-         Ignore_Tag := capCall (Net_Slot, Msg);
-         C.Net_Channel := 0;
-      end if;
+      --  Synchronous shut: netstack takes what the send ring holds (a
+      --  close_notify), sends FIN and releases its acquisition of our grant.
+      Streams.Close (C.Net, Net_Slot);
+      C.Blocked := False;
       C.Error := Code;
       C.Deadline := Unsigned_64'Last;
       if Client_Holds_Id then
@@ -206,24 +197,6 @@ procedure Main is
       end if;
    end Retire;
 
-   ---------------------------------------------------------------------------
-   --  Submitting netstack operations (async; completions carry Token).
-   ---------------------------------------------------------------------------
-   procedure Submit
-     (I : Channel_Index; Op : Net_Operation; Label : Unsigned_32;
-      Length : Unsigned_8; W0, W1, W2, W3 : Unsigned_64)
-   is
-      Msg : Message := NULL_MESSAGE;
-   begin
-      Msg.tag := (label => Label, length => Length, flags => 0, reserved => 0);
-      Msg.words := [W0, W1, W2, W3];
-      if capSubmit (Net_Slot, Msg, Token (I, Op)) then
-         Channels (I).Net_Pending := Op;
-      else
-         Channels (I).Phase := Failed;
-         Channels (I).Error := Busy;
-      end if;
-   end Submit;
 
    --  Serve a waiting client read from buffered plaintext.
    procedure Serve_Read (I : Channel_Index) is
@@ -250,34 +223,22 @@ procedure Main is
    --  Drive: run the SPARKTLS state machine until it needs the network or
    --  the client. At most one netstack operation is outstanding per channel.
    ---------------------------------------------------------------------------
-   --  Feed pending received ciphertext to the session; True if any was
-   --  accepted.
-   function Feed_Pending (I : Channel_Index) return Boolean is
-      C : Channel renames Channels (I);
-      In_Area : Byte_Seq (0 .. Half - 1) with Import,
-        Address => C.Net_Address + Storage_Offset (Half);
-      Fed : N32 := 0;
-      Accepted : Boolean := False;
-   begin
-      while C.In_Position < C.In_Length loop
-         declare
-            Chunk : constant Byte_Seq (0 .. N32 (C.In_Length - C.In_Position) - 1) :=
-              In_Area (N32 (C.In_Position) .. N32 (C.In_Length) - 1);
-         begin
-            Feed_Ciphertext (Sessions (I), Chunk, Fed);
-         end;
-         exit when Fed = 0;
-         C.In_Position := C.In_Position + Natural (Fed);
-         Accepted := True;
-      end loop;
-      return Accepted;
-   end Feed_Pending;
+
+   --  The stream's status as a failure (after its last received byte).
+   function Stream_Failure (I : Channel_Index) return Failure is
+     (case Streams.Status (Channels (I).Net) is
+         when Streams.Layout.Status_Peer_Finished => Peer_Closed,
+         when Streams.Layout.Status_Timed_Out => Timeout,
+         when others => Connect_Failed);
 
    procedure Drive (I : Channel_Index) is
       C : Channel renames Channels (I);
       Result : Action;
-      Count : N32;
+      Count, Fed : N32;
+      Area : System.Address;
+      Room : Natural;
    begin
+      C.Blocked := False;
       while C.Phase in Handshaking | Established and then C.Net_Pending = None loop
          --  Decrypted data must be read before the session advances again,
          --  or the next record overwrites it. While our buffer still holds
@@ -294,39 +255,66 @@ procedure Main is
             when OK =>
                null;
             when Has_Output =>
-               declare
-                  Out_Area : Byte_Seq (0 .. Half - 1)
-                    with Import, Address => C.Net_Address;
-               begin
-                  Drain_Ciphertext (Sessions (I), Out_Area, Count);
-               end;
-               if Count > 0 then
-                  Submit (I, Op_Write, NET_WRITE, 3, C.Net_Channel, 0,
-                          Unsigned_64 (Count), 0);
+               --  Encrypt straight into the send ring.
+               Streams.Writable (C.Net, Area, Room);
+               if Room = 0 and then not Streams.Failed (C.Net) then
+                  Streams.Want (C.Net, Streams.Layout.Want_Writable);
+                  Streams.Writable (C.Net, Area, Room);
+               end if;
+               if Streams.Failed (C.Net) then
+                  C.Error := Stream_Failure (I);
+                  C.Phase := Failed;
+               elsif Room = 0 then
+                  C.Blocked := True;
+                  exit;
+               else
+                  declare
+                     Out_Area : Byte_Seq (0 .. N32 (Room) - 1)
+                       with Import, Address => Area;
+                  begin
+                     Drain_Ciphertext (Sessions (I), Out_Area, Count);
+                  end;
+                  Streams.Commit (C.Net, Natural (Count));
                end if;
             when Need_Input =>
-               if C.In_Position < C.In_Length then
-                  --  Ciphertext from the last read is still waiting. The
-                  --  session asked for input, so it has processed what it
-                  --  holds; if it still takes nothing, a record exceeds its
-                  --  buffer. Otherwise keep advancing with the new input.
-                  if not Feed_Pending (I) then
+               --  Feed received ciphertext straight from the receive ring.
+               Streams.Readable (C.Net, Area, Room);
+               if Room = 0 and then not Streams.Final (C.Net) and then
+                 (C.Phase = Handshaking or else
+                  (C.Read_Waiting and then C.Plain_Position >= C.Plain_Length))
+               then
+                  --  Someone needs the data: the handshake, or a client
+                  --  read with nothing buffered.
+                  Streams.Want (C.Net, Streams.Layout.Want_Readable);
+                  Streams.Readable (C.Net, Area, Room);
+                  if Room = 0 and then not Streams.Final (C.Net) then
+                     C.Blocked := True;
+                     exit;
+                  end if;
+               end if;
+               if Room > 0 then
+                  declare
+                     Chunk : Byte_Seq (0 .. N32 (Room) - 1)
+                       with Import, Address => Area;
+                  begin
+                     Feed_Ciphertext (Sessions (I), Chunk, Fed);
+                  end;
+                  if Fed = 0 then
+                     --  The session asked for input, so it has processed
+                     --  what it holds; taking nothing means a record
+                     --  exceeds its buffer.
                      debugPrint ("tls: channel" & C.Id'Image &
                                  " failed: record exceeds input buffer" & LF);
                      C.Error := Protocol_Alert;
                      C.Phase := Failed;
                      exit;
                   end if;
+                  Streams.Consume (C.Net, Natural (Fed));
+               elsif Streams.Final (C.Net) then
+                  C.Error := Stream_Failure (I);
+                  C.Peer_Closed := C.Error = Peer_Closed;
+                  C.Phase := Failed;
                else
-                  --  Read from the network only when someone needs the
-                  --  data: the handshake, or a client read with nothing
-                  --  buffered.
-                  if C.Phase = Handshaking or else
-                    (C.Read_Waiting and then C.Plain_Position >= C.Plain_Length)
-                  then
-                     Submit (I, Op_Read, NET_READ, 4, C.Net_Channel, Half, Half,
-                             syscall (SYSCALL_GETTIME) + Net_Read_Timeout_MS);
-                  end if;
                   exit;
                end if;
             when Handshake_Done =>
@@ -342,7 +330,7 @@ procedure Main is
                exit when C.Plain_Position < C.Plain_Length;
                Read_Plaintext (Sessions (I), Plain (I), Count);
                C.Plain_Length := Natural (Count);
-                  C.Plain_Position := 0;
+               C.Plain_Position := 0;
                Serve_Read (I);
             when Error_Alert =>
                C.Error := Map_Error (Last_Error (Sessions (I)));
@@ -367,47 +355,16 @@ procedure Main is
    ---------------------------------------------------------------------------
    procedure Complete (I : Channel_Index; Op : Net_Operation; Reply : Message) is
       C : Channel renames Channels (I);
-      OK_Reply : constant Boolean := Reply.tag.label = Reply_OK;
    begin
       C.Net_Pending := None;
-      case Op is
-         when Op_Open =>
-            if not OK_Reply then
-               C.Error := Connect_Failed;
-               C.Phase := Failed;
-            else
-               C.Net_Channel := Reply.words (0);
-               C.Phase := Handshaking;
-            end if;
-         when Op_Write =>
-            if not OK_Reply then
-               C.Error := Connect_Failed;
-               C.Phase := Failed;
-            end if;
-         when Op_Read =>
-            if Reply.tag.label = Reply_EOF then
-               C.Error := Peer_Closed;
-               C.Peer_Closed := True;
-               C.Phase := Failed;
-            elsif not OK_Reply or else Reply.words (0) = 0 or else
-              Reply.words (0) > Half
-            then
-               C.Error := (if C.Phase = Handshaking then Timeout else Connect_Failed);
-               C.Phase := Failed;
-            else
-               --  Whatever the session cannot take yet stays pending; Drive
-               --  feeds it as records are processed.
-               C.In_Position := 0;
-               C.In_Length := Natural (Reply.words (0));
-               declare
-                  Ignore : constant Boolean := Feed_Pending (I);
-               begin
-                  null;
-               end;
-            end if;
-         when Op_Shut | None =>
-            null;
-      end case;
+      if Op = Op_Open then
+         if Streams.Opened (C.Net, Reply) then
+            C.Phase := Handshaking;
+         else
+            C.Error := Connect_Failed;
+            C.Phase := Failed;
+         end if;
+      end if;
       Drive (I);
    end Complete;
 
@@ -516,7 +473,7 @@ procedure Main is
       end if;
       for I in Channel_Index loop
          if Channels (I).Phase = Free and then
-           Channels (I).Net_Address /= System.Null_Address
+           Channels (I).Net.Base /= System.Null_Address
          then
             Free_Index := I;
             exit;
@@ -539,8 +496,7 @@ procedure Main is
             else Name (1 .. Name_Length));
          Scheme : constant String := Scheme_Prefix & Host_Part & ":" &
            Port_Image (Port_Image'First + 1 .. Port_Image'Last);
-         Scheme_Text : String (1 .. Scheme'Length)
-           with Import, Address => C.Net_Address;
+         Submitted : Boolean;
       begin
          C.Phase := Connecting;
          C.Id := Next_Id;
@@ -559,10 +515,11 @@ procedure Main is
              Get_Time => TLS_Clock.Now'Access,
              Verify_Mode => Mode_WebPKI,
              others => <>));
-         Scheme_Text := Scheme;
-         Submit (I, Op_Open, NET_OPEN, Unsigned_8 (Scheme'Length),
-                 C.Net_Grant.slot, Net_Buffer_Bytes, 0, C.Net_Grant.generation);
-         if C.Phase = Failed then
+         Streams.Reset (C.Net);
+         Streams.Submit_Open (C.Net, Net_Slot, Scheme, Token (I, Op_Open), Submitted);
+         if Submitted then
+            C.Net_Pending := Op_Open;
+         else
             Retire (I, Busy);
          end if;
       end;
@@ -651,8 +608,8 @@ procedure Main is
    procedure Handle_Shut (From : ProcessID; Request : Message) is
       Index : constant Integer := Find (From, Request.words (0));
       Count : N32;
-      Msg : Message := NULL_MESSAGE;
-      Ignore : MessageTag;
+      Area : System.Address;
+      Room : Natural;
    begin
       if Index < 0 then
          Fail_Request (Unknown_Channel);
@@ -669,16 +626,15 @@ procedure Main is
            not Write_Limit_Reached (Sessions (Index))
          then
             SPARKTLS.Client.Close_Notify (Sessions (Index));
-            declare
-               Out_Area : Byte_Seq (0 .. Half - 1)
-                 with Import, Address => C.Net_Address;
-            begin
-               Drain_Ciphertext (Sessions (Index), Out_Area, Count);
-            end;
-            if Count > 0 then
-               Msg.tag := (label => NET_WRITE, length => 3, flags => 0, reserved => 0);
-               Msg.words := [C.Net_Channel, 0, Unsigned_64 (Count), 0];
-               Ignore := capCall (Net_Slot, Msg);
+            Streams.Writable (C.Net, Area, Room);
+            if Room > 0 then
+               declare
+                  Out_Area : Byte_Seq (0 .. N32 (Room) - 1)
+                    with Import, Address => Area;
+               begin
+                  Drain_Ciphertext (Sessions (Index), Out_Area, Count);
+               end;
+               Streams.Commit (C.Net, Natural (Count));
             end if;
          end if;
          --  A pending netstack operation completes later against a released
@@ -903,6 +859,8 @@ procedure Main is
       end;
    end Load_Hosts;
 
+   Net_Arena : Streams.Arena;
+
    function Setup_Buffers return Boolean is
       Allocation : constant Unsigned_64 :=
         syscall (SYSCALL_SBRK, Unsigned_64 (Maximum_Channels * Net_Buffer_Bytes));
@@ -911,15 +869,15 @@ procedure Main is
       if Allocation = Unsigned_64'Last then
          return False;
       end if;
+      --  One arena lent to netstack; each channel keeps its own buffer.
+      Streams.Create_Arena
+        (Net_Arena, Net_Slot, To_Address (Integer_Address (Allocation)),
+         Send_Ring_Bytes, Receive_Ring_Bytes, Maximum_Channels, Granted);
+      if not Granted then
+         return False;
+      end if;
       for I in Channel_Index loop
-         Channels (I).Net_Address := To_Address
-           (Integer_Address (Allocation) + Integer_Address (I * Net_Buffer_Bytes));
-         CuBit.Memory_Grants.Create_Via_Capability
-           (Net_Slot, Channels (I).Net_Address, Net_Buffer_Pages, True,
-            Channels (I).Net_Grant, Granted);
-         if not Granted then
-            return False;
-         end if;
+         Streams.Prepare (Channels (I).Net, Net_Arena, I, I, Net_Slot);
       end loop;
       return True;
    end Setup_Buffers;
@@ -991,7 +949,15 @@ begin
             Op : constant Unsigned_64 := Completion.token and 15;
             Id : constant Unsigned_64 := Shift_Right (Completion.token, 8);
          begin
-            if Index < Maximum_Channels and then Op in 1 .. 4 and then
+            if Completion.token = Wait_Token then
+               --  netstack has news for a waiting channel: drive them all.
+               Wait_Outstanding := False;
+               for I in Channel_Index loop
+                  if Channels (I).Blocked then
+                     Drive (I);
+                  end if;
+               end loop;
+            elsif Index < Maximum_Channels and then Op = 1 and then
               Channels (Natural (Index)).Id = Id and then
               Channels (Natural (Index)).Phase /= Free
             then
@@ -1024,6 +990,21 @@ begin
       end if;
 
       Expire (syscall (SYSCALL_GETTIME));
+      if not Progress and then not Wait_Outstanding then
+         declare
+            Interest : Unsigned_64 := 0;
+         begin
+            for C of Channels loop
+               if C.Blocked then
+                  Interest := Interest or Streams.Mask (C.Net);
+               end if;
+            end loop;
+            if Interest /= 0 then
+               Streams.Submit_Wait
+                 (Net_Slot, 0, Interest, Next_Deadline, Wait_Token, Wait_Outstanding);
+            end if;
+         end;
+      end if;
       if not Progress then
          if Wait_For_Activity_Until (Next_Deadline) = Unavailable then
             debugPrint ("tls: activity wait unavailable" & LF);

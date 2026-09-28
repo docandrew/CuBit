@@ -1,0 +1,14 @@
+project Schemas is
+   for Source_Dirs use (".", "../../userspace/ccl/src");
+   for Source_Files use
+     ("ccl-types-correspondence.ads", "ccl-types-correspondence.adb") &
+     ("schema_tests.adb", "ccl.ads", "ccl-types.ads", "ccl-types.adb",
+      "ccl-objects.ads", "ccl-objects.adb", "ccl-objects-schemas.ads", "ccl-objects-schemas.adb",
+      "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb");
+   for Object_Dir use "build/schemas";
+   for Exec_Dir use "build/schemas";
+   for Main use ("schema_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-O2", "-gnata", "-gnato");
+   end Compiler;
+end Schemas;

@@ -101,6 +101,7 @@ package body Syscall is
             when 25   => number := SYSCALL_POLL_COMPLETION;
             when 26   => number := SYSCALL_RECEIVE_EVENT_NB;
             when 27   => number := SYSCALL_GETTIME;
+            when 114  => number := SYSCALL_READ_MONOTONIC_MICROSECONDS;
             when 28   => number := SYSCALL_SLEEP;
             when 29   => number := SYSCALL_MAPFB;
             when 30   => number := SYSCALL_INP8;
@@ -270,6 +271,14 @@ package body Syscall is
             when SYSCALL_GETTIME =>
                 retval := Time.msTicks;
 
+            when SYSCALL_READ_MONOTONIC_MICROSECONDS =>
+                declare
+                    Available : Boolean;
+                begin
+                    Time.Read_Monotonic (retval, Available);
+                    if not Available then retval := Unsigned_64'Last; end if;
+                end;
+
             when SYSCALL_SLEEP =>
                 if arg0 > 0 and arg0 <= 2147483647 then
                     Process.sleep (
@@ -423,7 +432,7 @@ package body Syscall is
 
             when SYSCALL_ALLOC_DMA =>
                 IPC.handleAllocDma (
-                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, retval);
+                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, arg3, arg4, retval);
 
             when SYSCALL_ENABLE_IRQ =>
                 Admin.handleEnableIrq (

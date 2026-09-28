@@ -44,28 +44,51 @@ package body CuBit.String is
       return System.Address
    is
       use System.Storage_Elements;
-
-      type Byte is mod 256;
-      type Byte_Ptr is access all Byte;
-      pragma No_Strict_Aliasing (Byte_Ptr);
-
-      function To_Ptr is new Ada.Unchecked_Conversion
-        (System.Address, Byte_Ptr);
+      Dest_At : constant Integer_Address := To_Integer (dest);
+      Src_At  : constant Integer_Address := To_Integer (src);
+      dstl : System.Address := dest;
+      srcl : System.Address := src;
+      lenl : Storage_Count  := len;
    begin
-      if len = 0 then
+      if len = 0 or else Dest_At = Src_At then
          return dest;
       end if;
-
-      if To_Integer (dest) <= To_Integer (src) then
-         for I in 0 .. len - 1 loop
-            To_Ptr (dest + I).all := To_Ptr (src + I).all;
-         end loop;
+      --  GNAT calls memmove for most array assignments, so this is on every
+      --  packet copy: string instructions, not a byte loop. Copying
+      --  forwards is safe unless dest overlaps src from above.
+      if Dest_At < Src_At or else Dest_At - Src_At >= Integer_Address (len)
+      then
+         Asm ("rep movsb",
+             Outputs => (
+                System.Address'Asm_Output ("=D", dstl),
+                System.Address'Asm_Output ("=S", srcl),
+                Storage_Count'Asm_Output ("=c", lenl)
+             ),
+             Inputs => (
+                System.Address'Asm_Input ("0", dstl),
+                System.Address'Asm_Input ("1", srcl),
+                Storage_Count'Asm_Input ("2", lenl)
+             ),
+             Clobber  => "memory",
+             Volatile => True);
       else
-         for I in reverse 0 .. len - 1 loop
-            To_Ptr (dest + I).all := To_Ptr (src + I).all;
-         end loop;
+         --  Backwards from the last byte; the direction flag is restored.
+         dstl := dest + Storage_Offset (len - 1);
+         srcl := src + Storage_Offset (len - 1);
+         Asm ("std" & ASCII.LF & "rep movsb" & ASCII.LF & "cld",
+             Outputs => (
+                System.Address'Asm_Output ("=D", dstl),
+                System.Address'Asm_Output ("=S", srcl),
+                Storage_Count'Asm_Output ("=c", lenl)
+             ),
+             Inputs => (
+                System.Address'Asm_Input ("0", dstl),
+                System.Address'Asm_Input ("1", srcl),
+                Storage_Count'Asm_Input ("2", lenl)
+             ),
+             Clobber  => "memory, cc",
+             Volatile => True);
       end if;
-
       return dest;
    end memmove;
 

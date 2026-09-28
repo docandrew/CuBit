@@ -25,7 +25,10 @@ package kmain is
     -- When we boot the other cores, we set this value so the CPU knows what
     -- CPU number they are
     ---------------------------------------------------------------------------
-    startingCPU : Unsigned_32
-        with Export => True, External_Name => "startingCPU";
+    startingCPU : Unsigned_32 := 0
+        with Atomic, Export => True, External_Name => "startingCPU";
+    -- One AP starts at a time; written by trampoline/AP, read by BSP.
+    AP_Startup_Stage : Unsigned_32 := 0
+        with Atomic, Export => True, External_Name => "ap_startup_stage";
 
 end kmain;

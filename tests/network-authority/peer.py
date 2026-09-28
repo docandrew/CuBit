@@ -121,6 +121,23 @@ for cycle in range(1, 5):
             raise RuntimeError(f"unexpected inbound reply: {response!r}")
 print("network peer: PASS (4 native inbound accepts, fragmentation and half-close)", flush=True)
 
+# The guest has closed its last listener: a connection to the port is now
+# refused with a reset (RFC 9293 3.10.7.1), not left to time out.
+wait_marker("network-check: idle arena released")
+started = time.monotonic()
+refused = False
+try:
+    with socket.create_connection(("127.0.0.1", 18444), timeout=5) as connection:
+        connection.settimeout(5)
+        refused = connection.recv(1) == b""   # QEMU closes on the guest's reset
+except (ConnectionResetError, ConnectionRefusedError):
+    refused = True
+except socket.timeout:
+    refused = False
+if not refused or time.monotonic() - started >= 3:
+    raise RuntimeError("closed guest port was not refused promptly")
+print("network peer: PASS (closed port refused with a reset)", flush=True)
+
 udp_thread.join(timeout=60)
 if udp_result["error"] is not None:
     raise RuntimeError(f"UDP peer failed: {udp_result['error']}")
