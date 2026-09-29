@@ -24,9 +24,10 @@ rm -rf "$src"
 mkdir -p "$src"
 tar -xzf "$tarball" -C "$src" --strip-components=1
 cp -R "$here/overlay/." "$src/"
-# The CuBit stream producer and the network channel layout, shared with
+# The CuBit stream producer, the network channel and filesystem queue
+# layouts, shared with
 # the older C runtime.
-cp "$here/../c/cubit_streams.c" "$here/../c/cubit.h" "$here/../c/cubit_net_channel.h" \
+cp "$here/../c/cubit_streams.c" "$here/../c/cubit.h" "$here/../c/cubit_net_channel.h" "$here/../c/cubit_fs_queue.h" \
     "$src/src/cubit/"
 
 (

@@ -50,6 +50,28 @@ package CuBit.Block_Devices is
    --  Completed writes remain visible to subsequent reads. Not a flush claim.
    FEATURE_VOLATILE : constant Device_Features := 2#1_0000#;
 
+   --  Durability contract (non-volatile media):
+   --  * A completed OP_WRITE_BLOCKS is visible to later reads. Without
+   --    FEATURE_VOLATILE_CACHE it is also durable at completion.
+   --  * FEATURE_VOLATILE_CACHE: the device may hold completed writes in a
+   --    volatile cache, in any order. They become durable, all together, when
+   --    a later OP_FLUSH_DEVICE completes. Order between two writes that must
+   --    reach the media in sequence therefore needs a flush between them.
+   --  * FEATURE_FLUSH: OP_FLUSH_DEVICE is accepted. Its completion means every
+   --    write completed before it was submitted is durable. A device without
+   --    a volatile cache may complete it at once.
+   --  * FEATURE_FUA: OP_WRITE_BLOCKS accepts WRITE_FLAG_FUA; that write is
+   --    durable at its completion, whatever the cache state. It says nothing
+   --    about other writes.
+   --  FEATURE_VOLATILE media (RAM) promise no persistence at all; they offer
+   --  neither a flush nor FUA. A driver must not advertise a feature it cannot
+   --  honour, and must reject request flags it does not advertise.
+   FEATURE_VOLATILE_CACHE : constant Device_Features := 2#10_0000#;
+   FEATURE_FUA            : constant Device_Features := 2#100_0000#;
+
+   --  OP_WRITE_BLOCKS tag flags.
+   WRITE_FLAG_FUA : constant Unsigned_8 := 2#0000_0001#;
+
    subtype Logical_Block_Size is Unsigned_32 range 512 .. 65_536;
 
    type Device_Description is record
@@ -78,6 +100,20 @@ package CuBit.Block_Devices is
 
    function Is_Read_Only (description : Device_Description) return Boolean;
    function Is_Volatile (description : Device_Description) return Boolean;
+
+   --  A completed write may still be lost to power failure until a flush.
+   function Has_Volatile_Cache
+     (description : Device_Description) return Boolean is
+     ((description.features and FEATURE_VOLATILE_CACHE) /= 0);
+   --  The device can make completed writes durable: they already are (no
+   --  volatile cache), or OP_FLUSH_DEVICE commits them.
+   function Can_Persist (description : Device_Description) return Boolean is
+     (not Is_Volatile (description) and then
+      (not Has_Volatile_Cache (description) or else
+       (description.features and FEATURE_FLUSH) /= 0));
+   function Supports_FUA
+     (description : Device_Description) return Boolean is
+     ((description.features and FEATURE_FUA) /= 0);
 
    --  OP_READ_BLOCKS and OP_WRITE_BLOCKS request words:
    --    0 = starting logical block address

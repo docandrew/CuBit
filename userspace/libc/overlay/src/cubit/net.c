@@ -77,7 +77,7 @@ enum {
 };
 
 enum { OP_NET_OPEN = 0x0420, OP_NET_SHUT = 0x0423 };
-enum { REPLY_OK = 0xF000 };
+enum { REPLY_OK = 0xF000, REPLY_ERR = 0xF001 };
 
 /* Each direction's ring; the grant is the header page and both rings. */
 #define RING_BYTES (64 * 1024UL)
@@ -464,6 +464,143 @@ static void release(struct cubit_tcp *t)
 	free(t);
 }
 
+/* --- control queues --------------------------------------------------------
+ * OPEN and SHUT go into a queue pair lent to netstack (one per scope
+ * endpoint; cubit_net_channel.h, "Control queues") instead of a message
+ * each. We KICK only when netstack's wake word shows it went to sleep;
+ * its answers complete our WAIT and are reaped in drain(). If netstack
+ * has no queue for us, OPEN and SHUT go by message as before. */
+static struct queue {
+	int slot;                   /* the endpoint; -1: unused */
+	int refused;                /* netstack gave no queue: use messages */
+	unsigned char *base;        /* NET_QUEUE_BYTES lent to netstack */
+	uint32_t produced;          /* requests written */
+	uint32_t taken;             /* netstack's consumed count, as accepted */
+	uint32_t reaped;            /* answers taken */
+	uint32_t answered;          /* netstack's answer count, as accepted */
+	uint32_t kicked;            /* the wake epoch last kicked */
+} queues[MAX_SCOPES];
+static int queue_count;
+static volatile int queue_lock[1];
+
+static inline volatile uint32_t *qword(struct queue *q, unsigned offset)
+{
+	return (volatile uint32_t *)(q->base + offset);
+}
+
+/* The queue for endpoint slot, lent now if it has none; NULL: use
+ * messages. Caller holds queue_lock. */
+static struct queue *queue_for(int slot)
+{
+	for (int i = 0; i < queue_count; i++)
+		if (queues[i].slot == slot)
+			return queues[i].refused ? 0 : &queues[i];
+	if (queue_count == MAX_SCOPES) return 0;
+	struct queue *q = &queues[queue_count++];
+	*q = (struct queue){ .slot = slot, .refused = 1 };
+	unsigned char *mem = mmap(0, NET_QUEUE_BYTES, PROT_READ | PROT_WRITE,
+		MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	if (mem == MAP_FAILED) return 0;
+	unsigned long grant = cubit(SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
+		(unsigned long)slot, (unsigned long)mem, NET_QUEUE_BYTES / 4096, 1);
+	if (grant == (unsigned long)-1) {
+		munmap(mem, NET_QUEUE_BYTES);
+		return 0;
+	}
+	unsigned long gen = cubit(SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION,
+		grant, 0, 0, 0);
+	if (gen == (unsigned long)-1 || !gen ||
+	    call((unsigned)slot, OP_NET_QUEUE, 2, grant, gen, 0, 0, 0) != REPLY_OK) {
+		cubit(SYSCALL_REVOKE_SHARED_MEMORY_GRANT, grant, 0, 0, 0);
+		munmap(mem, NET_QUEUE_BYTES);
+		return 0;
+	}
+	q->base = mem;
+	q->refused = 0;
+	return q;
+}
+
+/* Queue a request on endpoint slot; 0 if it must go by message. */
+static int queue_submit(int slot, uint64_t token, uint32_t op, uint32_t length,
+	uint64_t object, uint32_t buffer)
+{
+	LOCK(queue_lock);
+	struct queue *q = queue_for(slot);
+	if (!q) { UNLOCK(queue_lock); return 0; }
+	/* netstack's consumed count, taken only if it releases no request we
+	 * did not write and does not go back. */
+	uint32_t consumed = *qword(q, NET_QUEUE_SUBMISSIONS_AT + NET_QUEUE_CONSUMED_AT);
+	if (consumed - q->taken <= q->produced - q->taken) q->taken = consumed;
+	/* Room in the ring, and an answer slot for every request out. */
+	if (q->produced - q->taken >= NET_QUEUE_SLOTS ||
+	    q->produced - q->reaped >= NET_QUEUE_SLOTS) {
+		UNLOCK(queue_lock);
+		return 0;
+	}
+	unsigned char *e = q->base + NET_QUEUE_REQUESTS_AT +
+		(size_t)(q->produced & (NET_QUEUE_SLOTS - 1)) * NET_QUEUE_ENTRY_BYTES;
+	memset(e, 0, NET_QUEUE_ENTRY_BYTES);
+	memcpy(e + NET_REQUEST_TOKEN_AT, &token, 8);
+	memcpy(e + NET_REQUEST_OPERATION_AT, &op, 4);
+	memcpy(e + NET_REQUEST_LENGTH_AT, &length, 4);
+	memcpy(e + NET_REQUEST_OBJECT_AT, &object, 8);
+	memcpy(e + NET_REQUEST_BUFFER_AT, &buffer, 4);
+	barrier();                      /* the entry before the count */
+	q->produced++;
+	*qword(q, NET_QUEUE_SUBMISSIONS_AT + NET_QUEUE_PRODUCED_AT) = q->produced;
+	__atomic_thread_fence(__ATOMIC_SEQ_CST);  /* the count before the wake word */
+	uint32_t wake = *qword(q, NET_QUEUE_SUBMISSIONS_AT + NET_QUEUE_WAKE_AT);
+	int kick = wake != 0 && wake != q->kicked;
+	if (kick) q->kicked = wake;
+	UNLOCK(queue_lock);
+	if (kick)
+		submit((unsigned)slot, OP_NET_KICK, 2, 0, NET_KICK_QUEUE, 0, 0,
+		       NO_COMPLETION_TOKEN);
+	return 1;
+}
+
+static void dispatch(const struct completion *c);
+
+/* Take netstack's answers from every queue and dispatch them as the
+ * completions of the requests they answer; how many there were. */
+static int reap_answers(void)
+{
+	int total = 0;
+	struct completion got[NET_QUEUE_SLOTS];
+	for (int i = 0; i < queue_count; i++) {
+		int n = 0;
+		LOCK(queue_lock);
+		struct queue *q = &queues[i];
+		if (q->refused) { UNLOCK(queue_lock); continue; }
+		uint32_t produced = *qword(q, NET_QUEUE_COMPLETIONS_AT + NET_QUEUE_PRODUCED_AT);
+		barrier();              /* the answers after their count */
+		/* Accepted only if it does not go back and does not overfill. */
+		if (produced - q->reaped <= NET_QUEUE_SLOTS &&
+		    produced - q->reaped >= q->answered - q->reaped)
+			q->answered = produced;
+		while (q->reaped != q->answered) {
+			const unsigned char *e = q->base + NET_QUEUE_ANSWERS_AT +
+				(size_t)(q->reaped & (NET_QUEUE_SLOTS - 1)) * NET_QUEUE_ENTRY_BYTES;
+			uint32_t status;
+			struct completion *c = &got[n++];
+			memset(c, 0, sizeof *c);
+			memcpy(&c->token, e + NET_ANSWER_TOKEN_AT, 8);
+			memcpy(&status, e + NET_ANSWER_STATUS_AT, 4);
+			memcpy(&c->msg.words[0], e + NET_ANSWER_VALUE_AT, 8);
+			c->msg.label = status == NET_ANSWER_OK ? REPLY_OK : REPLY_ERR;
+			q->reaped++;
+		}
+		if (n) {
+			barrier();      /* copied out before the slots go back */
+			*qword(q, NET_QUEUE_COMPLETIONS_AT + NET_QUEUE_CONSUMED_AT) = q->reaped;
+		}
+		UNLOCK(queue_lock);
+		for (int k = 0; k < n; k++) dispatch(&got[k]);
+		total += n;
+	}
+	return total;
+}
+
 /* SHUT and wait for it (a listener's close must know no more arrive). */
 static void send_shut_now(struct cubit_tcp *t)
 {
@@ -481,7 +618,8 @@ static void send_shut(struct cubit_tcp *t)
 	t->shut_token = token;
 	t->refs++;
 	UNLOCK(t->lock);
-	if (submit((unsigned)t->slot, OP_NET_SHUT, 1, t->channel, 0, 0, 0, token)) return;
+	if (queue_submit(t->slot, token, NET_QUEUE_SHUT, 0, t->channel, 0) ||
+	    submit((unsigned)t->slot, OP_NET_SHUT, 1, t->channel, 0, 0, 0, token)) return;
 	LOCK(t->lock);
 	t->shut_token = 0;
 	t->refs--;
@@ -551,14 +689,15 @@ static void drain(int block)
 			n++;
 	}
 	for (unsigned long i = 0; i < n; i++) dispatch(&c[i]);
-	if (n) __cubit_readiness_changed();
+	int answers = reap_answers();
+	if (n || answers) __cubit_readiness_changed();
 }
 
 /* Collect finished OPENs and WAITs without blocking, if any are out and
  * no waiter is collecting them. */
 static void collect(void)
 {
-	if (!waiter && (opens_outstanding || wait_outstanding)) drain(0);
+	if (!waiter && (opens_outstanding || wait_outstanding || queue_count)) drain(0);
 }
 
 /* A local event (fd.c) while a thread blocks for netstack: end its WAIT so
@@ -690,7 +829,9 @@ static long open_channel(struct cubit_tcp *t, int nonblock)
 	t->state = TCP_CONNECTING;
 	t->refs++;
 	UNLOCK(t->lock);
-	if (!submit((unsigned)t->slot, OP_NET_OPEN, (uint8_t)t->target_len,
+	if (!queue_submit(t->slot, t->open_token, NET_QUEUE_OPEN, (uint32_t)t->target_len,
+			  arenas[t->arena].handle, (uint32_t)t->index) &&
+	    !submit((unsigned)t->slot, OP_NET_OPEN, (uint8_t)t->target_len,
 		    arenas[t->arena].handle, (uint64_t)t->index, 0, 0,
 		    t->open_token)) {
 		LOCK(net_lock);

@@ -48,6 +48,57 @@ def inode_bytes(image, number):
         return f.read(stride)
 
 
+def query(image, command):
+    """Read-only debugfs query; returns output without the version banner."""
+    lines = run("debugfs", "-R", command, image).splitlines()
+    return "\n".join(l for l in lines if not l.startswith("debugfs "))
+
+
+def data_mapping(stat):
+    """Logical -> physical data blocks from debugfs stat's BLOCKS listing."""
+    mapping = {}
+    if "BLOCKS:" not in stat:
+        return mapping
+    listing = stat.split("BLOCKS:", 1)[1]
+    for first, last, physical in re.findall(r"\((\d+)(?:-(\d+))?\):(\d+)", listing):
+        first, physical = int(first), int(physical)
+        for index in range(int(last or first) - first + 1):
+            mapping[first + index] = physical + index
+    return mapping
+
+
+def check_sparse(image, name, size, expected):
+    """Check a (possibly huge) sparse file without dumping its holes.
+
+    expected maps logical block -> full block contents; every other block
+    must be a hole. Pointer blocks are not data; e2fsck checks their count.
+    """
+    block = fs_block_size(image)
+    stat = query(image, f"stat {name}")
+    assert int(re.search(r"Size: (\d+)", stat).group(1)) == size, f"{name}: size"
+    mapping = data_mapping(stat)
+    assert sorted(mapping) == sorted(expected), f"{name}: mapped {sorted(mapping)}"
+    with image.open("rb") as f:
+        for logical, contents in expected.items():
+            f.seek(mapping[logical] * block)
+            visible = min(block, size - logical * block)
+            assert f.read(visible) == contents[:visible], f"{name}: block {logical}"
+
+
+def fs_block_size(image):
+    with image.open("rb") as f:
+        f.seek(1024 + 24)
+        return 1024 << struct.unpack("<I", f.read(4))[0]
+
+
+def block_of(block, *pieces):
+    """One block: zeroes overlaid with (offset, bytes) pieces."""
+    data = bytearray(block)
+    for offset, piece in pieces:
+        data[offset:offset + len(piece)] = piece
+    return bytes(data)
+
+
 def inode_number(image, name):
     return int(re.search(r"Inode:\s+(\d+)", debug(image, f"stat {name}")).group(1))
 
@@ -98,18 +149,48 @@ def matrix_case(root, block, stride, profile):
         f.write(b"S" * 64)
         f.seek(next_leaf)
         f.write(b"T" * 64)
+    # Sparse triple-indirect trees. A 4 KiB volume without LARGE_FILE cannot
+    # represent them; CuBit must then reject growth into that range instead.
+    pointers = block // 4
+    first_triple = 12 + pointers + pointers * pointers
+    middle = pointers * pointers
+    triple = not (block == 4096 and profile == "minimal")
+    if triple:
+        with (stage / "triple-existing").open("wb") as f:
+            f.seek((first_triple - 1) * block)
+            f.write(b"D" * block + b"X" * 64)
+            f.seek((first_triple + middle) * block)
+            f.write(b"Y" * 64)
+        (stage / "triple-grow").write_bytes(b"g" * 100)
+        with (stage / "triple-resize").open("wb") as f:
+            f.seek(first_triple * block)
+            f.write(b"R" * 64)
+            f.seek((first_triple + 1) * block)
+            f.write(b"S" * block)
+            f.seek((first_triple + middle) * block)
+            f.write(b"T" * 64)
+        with (stage / "triple-empty").open("wb") as f:
+            f.write(b"e" * 100)
+            f.seek(first_triple * block)
+            f.write(b"E" * 64)
     image = root / "disk.ext2"
     with image.open("wb") as f:
         f.truncate(16 * 1024 * 1024)
     features = (["-O", "none,filetype,ext_attr"] if profile == "minimal" else [])
-    run("mke2fs", "-q", "-t", "ext2", "-F", "-b", block, "-I", stride,
-        *features, "-d", stage, image)
+    # "ext3": the same with an internal journal, which CuBit writes
+    # transactions to (data=ordered) and leaves empty and clean on detach.
+    run("mke2fs", "-q", "-t", "ext3" if profile == "ext3" else "ext2", "-F",
+        "-b", block, "-I", stride, *features, "-d", stage, image)
     debug(image, "ea_set existing user.cubit.test portable-metadata")
     assert "portable-metadata" in debug(image, "ea_get existing user.cubit.test")
     existing_number = inode_number(image, "existing")
     before_existing = inode_bytes(image, existing_number)
     double_number = inode_number(image, "double-existing")
     before_double = inode_bytes(image, double_number)
+    if triple:
+        triple_number = inode_number(image, "triple-existing")
+        before_triple = inode_bytes(image, triple_number)
+        assert struct.unpack_from("<I", before_triple, 96)[0] != 0, "needs a triple root"
     next_inode = poison_free_inode(image)
     run("e2fsck", "-fn", image)
     run(HERE / "build/main", image, next_inode)
@@ -141,8 +222,30 @@ def matrix_case(root, block, stride, profile):
         dump = root / f"{name}.dump"
         debug(image, f"dump {name} {dump}")
         assert dump.read_bytes() == expected, f"{name}: content mismatch"
+    if triple:
+        assert inode_bytes(image, triple_number) == before_triple, "triple overwrite changed inode"
+        check_sparse(image, "triple-existing", (first_triple + middle) * block + 64, {
+            first_triple - 1: block_of(block, (0, b"D" * (block - 7)),
+                                       (block - 7, PAYLOAD[:7])),
+            first_triple: block_of(block, (0, PAYLOAD[7:]), (8, b"X" * 56)),
+            first_triple + middle: block_of(block, (0, b"Y" * 64), (20, PAYLOAD))})
+        check_sparse(image, "triple-grow",
+                     (first_triple + middle + 3) * block + 1 + len(PAYLOAD), {
+            0: block_of(block, (0, b"g" * 100)),
+            first_triple: block_of(block, (7, PAYLOAD[:10])),
+            first_triple + middle + 3: block_of(block, (1, PAYLOAD))})
+        check_sparse(image, "triple-resize", (first_triple + middle) * block, {
+            first_triple: block_of(block, (0, b"R" * 64)),
+            first_triple + 1: block_of(block, (0, b"S" * 5))})
+        check_sparse(image, "triple-empty", 0, {})
     run("e2fsck", "-fn", image)
-    print(f"PASS block={block} inode={stride} profile={profile}", flush=True)
+    if profile == "ext3":
+        summary = run("dumpe2fs", "-h", image)
+        assert "needs_recovery" not in summary, "journal left needing recovery"
+        assert re.search(r"Journal start:\s+0\b", summary), "journal left non-empty"
+        sequence = int(re.search(r"Journal sequence:\s+(0x[0-9a-f]+)", summary).group(1), 16)
+        assert sequence > 2, "no transaction was committed"
+    print(f"PASS block={block} inode={stride} profile={profile} triple={triple}", flush=True)
 
 
 def main():
@@ -151,7 +254,7 @@ def main():
     args = parser.parse_args()
     cases = [(1024, 256, "default")] if args.one else [
         (b, i, p) for b in (1024, 2048, 4096) for i in (128, 256, 512)
-        for p in ("default", "minimal")]
+        for p in ("default", "minimal", "ext3")]
     for block, stride, profile in cases:
         with tempfile.TemporaryDirectory(prefix="cubit-ext2-interop-") as tmp:
             matrix_case(Path(tmp), block, stride, profile)

@@ -136,6 +136,15 @@ package LinkedLists is
     ---------------------------------------------------------------------------
     procedure popBack (myList : in out List);
 
+    -- Detach a nonwrapping, contiguous range into an empty list without
+    -- allocating or freeing nodes. First/Last are compared against nodes
+    -- reached from myList, never dereferenced before membership is known.
+    -- On rejection both lists are unchanged. Caller serializes two distinct
+    -- list objects and preserves their existing structural invariants.
+    procedure detachRange (myList : in out List; First, Last : NodePtr;
+                           Count : Positive; Detached : in out List;
+                           Success : out Boolean);
+
     ---------------------------------------------------------------------------
     -- back
     -- return the last element in this list

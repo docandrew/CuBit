@@ -29,11 +29,13 @@ package UDP_Channels with SPARK_Mode is
    function Port_In_Use (Item : Table; Port : Unsigned_16) return Boolean;
 
    --  Activate an inactive slot with a fresh ephemeral port that no other
-   --  active channel uses. Fails without change if the slot is active, the
-   --  remote endpoint is unusable, or no port is free.
+   --  active channel uses, searching from Start (the caller's keyed hash,
+   --  RFC 6056, so ports are not predictable). Fails without change if the
+   --  slot is active, the remote endpoint is unusable, or no port is free.
    procedure Open
      (Item : in out Table; Index : Channel_Index;
-      Address : Unsigned_32; Port : Unsigned_16; Success : out Boolean)
+      Address : Unsigned_32; Port : Unsigned_16; Start : Unsigned_16;
+      Success : out Boolean)
    with
      Post =>
        (if Success then
@@ -73,7 +75,6 @@ private
    type Channel_Array is array (Channel_Index) of Channel;
    type Table is record
       Channels : Channel_Array;
-      Next_Port : Unsigned_16 := First_Ephemeral;
    end record;
 
    function Active (Item : Table; Index : Channel_Index) return Boolean is

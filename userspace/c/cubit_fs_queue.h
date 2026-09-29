@@ -1,0 +1,48 @@
+/*
+ * CuBit filesystem request queue (cubit-filesystem_queues.ads): the layout
+ * a client and the filesystem service share. Checked against the Ada by
+ * tests/fs-bench/queue-layout-check.py.
+ */
+#ifndef CUBIT_FS_QUEUE_H
+#define CUBIT_FS_QUEUE_H
+
+enum {
+	OP_FS_QUEUE = 0x0020,
+	OP_FS_KICK = 0x0021,
+	OP_FS_WAIT = 0x0022,
+	FS_QUEUE_BYTES = 12288,
+	FS_SLOT_BITS = 6,
+	FS_SLOTS = 64,
+	FS_REQUEST_BYTES = 64,
+	FS_ANSWER_BYTES = 32,
+	FS_SUBMISSIONS_AT = 0,
+	FS_COMPLETIONS_AT = 2048,
+	FS_REQUESTS_AT = 4096,
+	FS_ANSWERS_AT = 8192,
+	FS_PRODUCED_AT = 0,
+	FS_CONSUMED_AT = 64,
+	FS_WAKE_AT = 68,
+	FS_DELEGATIONS_AT = 256,
+	FS_DELEGATION_BYTES = 32,
+	FS_MAXIMUM_DELEGATIONS = 32,
+	FS_DELEGATION_VALID_AT = 0,
+	FS_DELEGATION_INODE_AT = 8,
+	FS_DELEGATION_VERSION_AT = 16,
+	FS_DELEGATION_SIZE_AT = 24,
+	FS_QUEUE_OPEN = 1,
+	FS_QUEUE_CLOSE = 2,
+	FS_QUEUE_READ_AT = 3,
+	FS_QUEUE_WRITE_AT = 4,
+	FS_QUEUE_FLUSH = 5,
+	FS_TOKEN_AT = 0,
+	FS_OPERATION_AT = 8,
+	FS_OPTIONS_AT = 12,
+	FS_HANDLE_AT = 16,
+	FS_POSITION_AT = 24,
+	FS_LENGTH_AT = 32,
+	FS_ARENA_OFFSET_AT = 40,
+	FS_STATUS_AT = 8,
+	FS_VALUE_AT = 16,
+};
+
+#endif

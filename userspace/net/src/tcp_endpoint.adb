@@ -290,7 +290,14 @@ package body TCP_Endpoint with SPARK_Mode is
       pragma Assert (Send_Consistent (E.C, E.S));
       end;
       pragma Assert (Consistent (E));
-      pragma Assert (Sends.Owner_Of (E.S) = Me and then Sends.Isolated (Me, Old_P, P));
+      pragma Assert (Recv_Consistent (E));
+      pragma Assert (Valid (E, P));
+      --  Only what the postcondition needs, so that relating the ghost copy
+      --  to P'Old is not lost in this long body's context (level 1).
+      pragma Assert_And_Cut
+        (Valid (E, P) and then Sends.Owner_Of (E.S) = Me and then
+         Sends.Isolated (Me, Old_P, P) and then Allowed (Old_St, E.C.St) and then
+         (if E.C.St = Closed and then Old_St /= Closed then Sends.Chunks_Held (E.S) = 0));
    end Segment_Arrived;
 
    procedure Timeout (E : in out Endpoint; P : Chunks.Pool) is

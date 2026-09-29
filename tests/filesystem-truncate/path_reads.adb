@@ -67,7 +67,9 @@ begin
    resolvePath (fs, "/folder/file", found, lookup);
    pragma Assert (lookup = Lookup_Found and found = 4);
    baseline := Calls;
-   pragma Assert (baseline = 6);
+   --  Group descriptor, inode table and two directory blocks: the second
+   --  inode comes from the cached inode-table block.
+   pragma Assert (baseline = 4);
    for boundary in 1 .. baseline loop
       for treatment in Failure_Mode loop
          for style in Failure_Reply loop
@@ -83,7 +85,7 @@ begin
          end loop;
       end loop;
    end loop;
-   Put_Line ("Nested path read/reply failures: 90 cases PASS");
+   Put_Line ("Nested path read/reply failures: 60 cases PASS");
 
    for boundary in 1 .. 2 loop
       for treatment in Failure_Mode loop

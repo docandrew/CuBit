@@ -10,6 +10,8 @@
 hidden long __cubit_fd_writev(int fd, const struct iovec *iov, int n);
 hidden long __cubit_fd_read(int fd, void *buf, size_t n);
 hidden long __cubit_fd_pread(int fd, void *buf, size_t n, off_t offset);
+hidden long __cubit_fd_pwrite(int fd, const void *buf, size_t n, off_t offset);
+hidden long __cubit_fd_fsync(int fd);
 hidden long __cubit_fd_lseek(int fd, off_t offset, int whence);
 hidden long __cubit_fd_open(const char *path, int flags);
 hidden long __cubit_fd_close(int fd);
@@ -24,10 +26,13 @@ hidden long __cubit_path_stat(const char *path, struct stat *st);
 
 /* file.c: filesystem.svc requests. */
 hidden long __cubit_file_open(const char *path, int directory,
-	uint64_t *handle, uint64_t *size);
+	uint64_t options, uint64_t *handle, uint64_t *size);
 hidden void __cubit_file_close(uint64_t handle, int directory);
 hidden long __cubit_file_read_at(uint64_t handle, void *buf, size_t count,
 	uint64_t offset);
+hidden long __cubit_file_write_at(uint64_t handle, const void *buf, size_t count,
+	uint64_t offset);
+hidden long __cubit_file_flush(uint64_t handle);
 hidden long __cubit_dir_read_page(uint64_t handle, void *page);
 hidden void report_unsupported(const char *what, long value);
 

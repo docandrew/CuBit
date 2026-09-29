@@ -9,6 +9,9 @@ package USB_Optical with SPARK_Mode => On is
    subtype Logical_Unit is Unsigned_8 range 0 .. 15;
    subtype Read_Block_Count is Unsigned_16 range 1 .. 16;
    Optical_Block_Bytes : constant Unsigned_32 := 2048;
+   type Sector_Format is (Sector_512, Sector_2048);
+   function Sectors_Per_Block (Format : Sector_Format) return Unsigned_32 is
+     (if Format = Sector_512 then 4 else 1);
    subtype Command_Wrapper is Bytes (1 .. 31);
 
    type Command_Kind is
@@ -18,7 +21,9 @@ package USB_Optical with SPARK_Mode => On is
 
    function Probe (Kind : Probe_Kind) return Command;
    function Read_Request
-     (First_Block : Unsigned_32; Count : Read_Block_Count) return Command;
+     (First_Block : Unsigned_32; Count : Read_Block_Count;
+      Format : Sector_Format := Sector_2048) return Command
+     with Pre => First_Block <= Unsigned_32'Last / Sectors_Per_Block (Format);
    function Transfer_Bytes (Item : Command) return Unsigned_32;
    function Read_Fits
      (First_Block : Unsigned_32; Count : Read_Block_Count;
@@ -39,16 +44,17 @@ package USB_Optical with SPARK_Mode => On is
      (Data : Bytes; Expected_Tag, Expected_Bytes, Received : Unsigned_32)
       return Status_Result;
 
-   function Is_Optical_Inquiry (Data : Bytes) return Boolean;
+   function Is_Supported_Inquiry (Data : Bytes) return Boolean;
    type Capacity_Result is
      (Capacity_Valid, Capacity_Truncated, Unsupported_Block_Size,
       Capacity_16_Required);
    procedure Decode_Capacity
      (Data : Bytes; Block_Count : out Unsigned_64;
-      Result : out Capacity_Result)
+      Result : out Capacity_Result; Format : out Sector_Format)
      with Post =>
        (if Result = Capacity_Valid then
-           Block_Count in 1 .. Unsigned_64 (Unsigned_32'Last)
+           Block_Count in 1 .. Unsigned_64 (Unsigned_32'Last) /
+             Unsigned_64 (Sectors_Per_Block (Format))
         else Block_Count = 0);
 
    type Sense_Result is
@@ -66,5 +72,6 @@ private
       Kind : Command_Kind := Test_Unit_Ready;
       First_Block : Unsigned_32 := 0;
       Count : Read_Block_Count := 1;
+      Format : Sector_Format := Sector_2048;
    end record;
 end USB_Optical;

@@ -1688,6 +1688,12 @@ package body Process.IPC is
                     permission => perm, others => <>);
 
         for page in 0 .. numPages - 1 loop
+            -- A source mapping must not be replaced/retired between looking
+            -- up its frame and acquiring the mapping-owned pin. Lock order:
+            -- grantLock -> source address space -> physical allocator.
+            -- Release the source lock before taking the receiver lock below;
+            -- this also permits self-grants without recursive locking.
+            lockAddressSpace (owner);
             physical := Virtmem.tableWalk
               (To_Integer (localAddr) +
                  Integer_Address (page) * Virtmem.PAGE_SIZE,
@@ -1696,6 +1702,7 @@ package body Process.IPC is
             if physical /= 0 then
                 BuddyAllocator.pinOwnedFrame (physical, Unsigned_8 (owner), ok);
             end if;
+            unlockAddressSpace (owner);
             if not ok then
                 unmapGrantPages (staging);
                 Spinlocks.exitCriticalSection (grantLock);

@@ -8,6 +8,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with PerCpuData;
 with Process;
 with Process.Futex;
+with Process.Owned_Memory;
 with Process.IPC;
 with Syscall.IPC;
 with Syscall.Admin;
@@ -88,6 +89,10 @@ package body Syscall is
             when 6    => number := SYSCALL_GETPID;
             when 7    => number := SYSCALL_KILL;
             when 8    => number := SYSCALL_SBRK;
+            when 115  => number := SYSCALL_ALLOCATE_OWNED_MEMORY;
+            when 116  => number := SYSCALL_RELEASE_OWNED_MEMORY;
+            when 117  => number := SYSCALL_PROTECT_OWNED_MEMORY;
+            when 118  => number := SYSCALL_YIELD;
             when 12   => number := SYSCALL_WRITE;
             when 15   => number := SYSCALL_INFO;
             when 17   => number := SYSCALL_RECEIVE;
@@ -268,6 +273,29 @@ package body Syscall is
                     Process.processOf (percpu.currentThread), arg0, retval);
                 Process.unlockAddressSpace (Process.processOf (percpu.currentThread));
 
+            when SYSCALL_ALLOCATE_OWNED_MEMORY =>
+                Process.Owned_Memory.Allocate
+                  (Process.processOf (percpu.currentThread), arg0, retval);
+
+            when SYSCALL_RELEASE_OWNED_MEMORY =>
+                declare
+                    Released : Boolean;
+                begin
+                    Process.Owned_Memory.Release
+                      (Process.processOf (percpu.currentThread), arg0, arg1, Released);
+                    retval := (if Released then 0 else Unsigned_64'Last);
+                end;
+
+            when SYSCALL_PROTECT_OWNED_MEMORY =>
+                declare
+                    Protected_OK : Boolean;
+                begin
+                    Process.Owned_Memory.Protect
+                      (Process.processOf (percpu.currentThread), arg0, arg1,
+                       arg2, Protected_OK);
+                    retval := (if Protected_OK then 0 else Unsigned_64'Last);
+                end;
+
             when SYSCALL_GETTIME =>
                 retval := Time.msTicks;
 
@@ -278,6 +306,12 @@ package body Syscall is
                     Time.Read_Monotonic (retval, Available);
                     if not Available then retval := Unsigned_64'Last; end if;
                 end;
+
+            -- Give the CPU to any other ready thread; the caller is re-queued
+            -- behind its peers and runs again when next picked.
+            when SYSCALL_YIELD =>
+                Process.yield;
+                retval := 0;
 
             when SYSCALL_SLEEP =>
                 if arg0 > 0 and arg0 <= 2147483647 then
@@ -411,7 +445,7 @@ package body Syscall is
 
             when SYSCALL_MAP_DEVICE =>
                 IPC.handleMapDevice (
-                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, retval);
+                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, arg3, retval);
 
             when SYSCALL_PROCLIST =>
                 Admin.handleProclist (

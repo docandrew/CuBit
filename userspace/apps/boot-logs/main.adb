@@ -1,0 +1,101 @@
+with Interfaces; use Interfaces;
+with CuBit.Messages; use CuBit.Messages;
+with CuBit.Logging;
+with CuBit.Log_Protocol;
+with CuBit.Log_Records;
+with CuBit.UI; use CuBit.UI;
+with CuBit.UI.App;
+with CuBit.UI.State;
+with CuBit.UI.Controls;
+procedure Main is
+   package P renames CuBit.Log_Protocol;
+   use type P.Status;
+   Win : CuBit.UI.App.Window;
+   UI : CuBit.UI.State.UI_State;
+   Controls : CuBit.UI.Controls.Control_Map;
+   Reader : CuBit.Logging.Reader;
+   Status : P.Status := P.Unavailable;
+   Records : array (1 .. 512) of CuBit.Log_Records.Log_Record;
+   Count, Page : Natural := 0;
+   Lost_Records : Unsigned_64 := 0;
+   Viewer_Dropped : Unsigned_64 := 0;
+   Rows : constant Positive := 25;
+   Due, Turn_Page : Unsigned_64 := 0;
+   Opened : Boolean;
+   procedure Render (Win : in out CuBit.UI.App.Window; Damage : Rect) is
+      C : constant Canvas := CuBit.UI.App.Canvas (Win, Damage);
+      Colors : constant Theme := Current_Theme;
+      First : constant Natural := Page * Rows + 1;
+   begin
+      Fill_Rect (C, CuBit.UI.App.Full_Rect (Win), Colors.panel);
+      Draw_UI_Text (C, 12, 10, "Boot diagnostics - pages rotate automatically every 8 seconds", Colors.text, Colors.panel);
+      Draw_UI_Text (C, 12, 580, "Page" & Natural'Image (Page + 1) &
+        "  Records" & Natural'Image (Count) & "  Service lost" & Unsigned_64'Image (Lost_Records) &
+        "  Viewer dropped" & Unsigned_64'Image (Viewer_Dropped),
+        Colors.text, Colors.panel);
+      if Status = P.Denied then
+         Draw_UI_Text (C, 12, 36, "Log read authority denied", Colors.danger, Colors.panel);
+      elsif Count = 0 then
+         Draw_UI_Text (C, 12, 36, "Waiting for driver startup records via logstore...", Colors.text, Colors.panel);
+      else
+         for I in 0 .. Rows - 1 loop
+            if First + I <= Count then
+               Draw_UI_Text (C, 12, 40 + I * 21,
+                 CuBit.Log_Records.Text (Records (First + I)), Colors.text, Colors.panel);
+            end if;
+         end loop;
+      end if;
+   end Render;
+   procedure Handle_Event (Win : in out CuBit.UI.App.Window;
+     Event : CuBit.UI.App.Input_Event; Dirty : in out Rect; Running : in out Boolean) is
+   begin null; end Handle_Event;
+   function Deadline return Unsigned_64 is (Due);
+   procedure Tick (Win : in out CuBit.UI.App.Window; Dirty : in out Rect; Running : in out Boolean) is
+      Event : P.Event;
+      Lost : Unsigned_64;
+      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+   begin
+      Due := Now + 250;
+      if Status not in P.OK | P.Empty | P.Gap then
+         CuBit.Logging.Subscribe (Reader, Status);
+      end if;
+      if Status in P.OK | P.Empty | P.Gap then
+         for I in 1 .. 8 loop
+            CuBit.Logging.Read_Next (Reader, Event, Lost, Status);
+            if Status = P.Gap then
+               Lost_Records := Lost_Records + Lost;
+               Dirty := CuBit.UI.App.Full_Rect (Win);
+            end if;
+            exit when Status /= P.OK;
+            debugPrint ("boot-logs: " & CuBit.Log_Records.Text (Event.Data) & ASCII.LF);
+            if Count < Records'Length then
+               Count := Count + 1; Records (Count) := Event.Data;
+            else
+               -- Preserve the latest diagnosis and final capture summary.
+               for J in Records'First .. Records'Last - 1 loop
+                  Records (J) := Records (J + 1);
+               end loop;
+               Records (Records'Last) := Event.Data;
+               Viewer_Dropped := Viewer_Dropped + 1;
+            end if;
+            Dirty := CuBit.UI.App.Full_Rect (Win);
+         end loop;
+      end if;
+      if Now >= Turn_Page then
+         Page := (if Count = 0 then 0 else (Page + 1) mod ((Count + Rows - 1) / Rows));
+         Turn_Page := Now + 8000;
+         Dirty := CuBit.UI.App.Full_Rect (Win);
+      end if;
+   end Tick;
+   procedure Run is new CuBit.UI.App.Run
+     (UI, Controls, Render => Render, Handle_Event => Handle_Event,
+      Next_Deadline => Deadline, On_Deadline => Tick);
+begin
+   CuBit.UI.App.Open (Win, 950, 610, CuBit.UI.App.WINDOW_FLAG_DECORATED,
+     Opened, title => "CuBit boot diagnostics");
+   if Opened then
+      Due := syscall (SYSCALL_GETTIME) + 1;
+      debugPrint ("boot-logs: window ready" & ASCII.LF);
+      Run (Win);
+   end if;
+end Main;

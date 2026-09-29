@@ -3,4 +3,6 @@
   (start "logstore.svc" (priority 5))
   (start "libc-check.app" (priority 3))
   (start "cxx-check.app" (priority 3))
+  (start "guard-fault.app" (priority 3))
+  (start "readonly-fault.app" (priority 3))
 )

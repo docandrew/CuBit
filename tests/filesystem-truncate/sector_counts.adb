@@ -8,6 +8,7 @@ with Volume_Admission; use Volume_Admission;
 with Sector_Accounting;
 with Inode_Mappings;
 with Double_Mappings;
+with Triple_Mappings;
 with Block_Paths;
 
 procedure Sector_Counts is
@@ -22,6 +23,7 @@ procedure Sector_Counts is
    blockBytes : Positive := 1024;
    faultCases : Natural := 0;
    beforeFault : Bytes (Disk'Range);
+   Fresh_Endpoint : Unsigned_64 := 100;
 
    procedure Setup (Size : Positive) is
       sb : Superblock with Import, Address => Disk (1024)'Address;
@@ -69,7 +71,26 @@ procedure Sector_Counts is
 
    procedure Check (Allocated : Natural) is
       diskInode : Inode with Import, Address => Disk (5 * blockBytes)'Address;
+      diskSuper : Superblock with Import, Address => Disk (1024)'Address;
       reached : Natural := 0;
+
+      --  Count a pointer block and everything below it, Depth levels deep.
+      procedure Count_Tree (Number : Unsigned_32; Depth : Positive) is
+         entries : array (0 .. blockBytes / 4 - 1) of Unsigned_32
+           with Import, Address => Disk (Natural (Number) * blockBytes)'Address;
+      begin
+         if Number = 0 then return; end if;
+         reached := reached + 1;
+         for Child of entries loop
+            if Child /= 0 then
+               if Depth = 1 then
+                  reached := reached + 1;
+               else
+                  Count_Tree (Child, Depth - 1);
+               end if;
+            end if;
+         end loop;
+      end Count_Tree;
    begin
       --  Count actual pointers independently of the implementation's counter.
       for B of candidate.directBlocks loop
@@ -86,31 +107,13 @@ procedure Sector_Counts is
             end loop;
          end;
       end if;
-      if candidate.doubleIndirectBlock /= 0 then
-         declare
-            roots : array (0 .. blockBytes / 4 - 1) of Unsigned_32
-              with Import, Address => Disk (Natural (candidate.doubleIndirectBlock) * blockBytes)'Address;
-         begin
-            reached := reached + 1;
-            for Root of roots loop
-               if Root /= 0 then
-                  declare
-                     leaves : array (roots'Range) of Unsigned_32
-                       with Import, Address => Disk (Natural (Root) * blockBytes)'Address;
-                  begin
-                     reached := reached + 1;
-                     for Data of leaves loop
-                        if Data /= 0 then reached := reached + 1; end if;
-                     end loop;
-                  end;
-               end if;
-            end loop;
-         end;
-      end if;
+      Count_Tree (candidate.doubleIndirectBlock, 2);
+      Count_Tree (candidate.tripleIndirectBlock, 3);
       pragma Assert (reached = Allocated);
       pragma Assert (candidate.numDiskSectors = Unsigned_32 (reached * (blockBytes / 512)));
       pragma Assert (candidate = diskInode);
       pragma Assert (fs.sb.freeBlocks = initialFree - Unsigned_32 (Allocated));
+      pragma Assert (diskSuper.freeBlocks = fs.sb.freeBlocks);
    end Check;
 
    procedure Write_At (Offset : Unsigned_64; Allocated : Natural) is
@@ -119,6 +122,7 @@ procedure Sector_Counts is
       pragma Assert (status = Write_Complete and written = payload'Length);
       Check (Allocated);
    end Write_At;
+
 
    procedure Check_Cache_Against_Disk (Offset : Unsigned_64) is
       Probe : Inode := candidate;
@@ -148,12 +152,27 @@ procedure Sector_Counts is
          if Probe.singleIndirectBlock /= 0 then
             Physical := Pointer (Probe.singleIndirectBlock, Logical - 12);
          end if;
-      elsif Probe.doubleIndirectBlock /= 0 then
+      elsif Logical < 12 + Per_Block + Per_Block * Per_Block then
+         if Probe.doubleIndirectBlock /= 0 then
+            declare
+               Relative : constant Natural := Logical - 12 - Per_Block;
+               Leaf : constant Unsigned_32 :=
+                 Pointer (Probe.doubleIndirectBlock, Relative / Per_Block);
+            begin
+               if Leaf /= 0 then Physical := Pointer (Leaf, Relative mod Per_Block); end if;
+            end;
+         end if;
+      elsif Probe.tripleIndirectBlock /= 0 then
          declare
-            Relative : constant Natural := Logical - 12 - Per_Block;
-            Leaf : constant Unsigned_32 :=
-              Pointer (Probe.doubleIndirectBlock, Relative / Per_Block);
+            Relative : constant Natural :=
+              Logical - 12 - Per_Block - Per_Block * Per_Block;
+            Middle : constant Unsigned_32 := Pointer
+              (Probe.tripleIndirectBlock, Relative / (Per_Block * Per_Block));
+            Leaf : Unsigned_32 := 0;
          begin
+            if Middle /= 0 then
+               Leaf := Pointer (Middle, Relative / Per_Block mod Per_Block);
+            end if;
             if Leaf /= 0 then Physical := Pointer (Leaf, Relative mod Per_Block); end if;
          end;
       end if;
@@ -162,8 +181,8 @@ procedure Sector_Counts is
             Expected (I) := Character'Val (Disk (Natural (Physical) * blockBytes + I - 1));
          end loop;
       end if;
-      Probe.sizeLo := Unsigned_32 (Offset + 4);
-      Probe.sizeHi_DirACL := 0;
+      Probe.sizeLo := Unsigned_32 ((Offset + 4) and 16#FFFF_FFFF#);
+      Probe.sizeHi_DirACL := Unsigned_32 (Shift_Right (Offset + 4, 32));
       Failed := False;
       Fail_At := 0;
       --  Do not re-admit the volume or clear caches: this must catch a stale
@@ -182,8 +201,9 @@ procedure Sector_Counts is
       bgd.numFreeBlocks := Unsigned_16 (Free_Count);
       initialFree := sb.freeBlocks;
       Disk (3072 .. 4095) := [others => 255];
-      Disk (3072) := 16#DF#; -- group-relative bit 5: physical block 6
-      if Free_Count = 2 then Disk (3072) := 16#9F#; end if;
+      --  Group-relative bits 5, 6, 7: physical blocks 6, 7, 8.
+      Disk (3072) := (case Free_Count is when 1 => 16#DF#, when 2 => 16#9F#,
+                        when others => 16#1F#);
    end Limited_Space;
 begin
    for Shift in 0 .. 2 loop
@@ -258,6 +278,59 @@ begin
       end loop;
    end;
 
+   --  Every validity rule of the triple transformation, with and without an
+   --  existing root: zero/aliased blocks, a new middle without a new leaf and
+   --  a new root without a new middle are rejected unchanged.
+   declare
+      Original, Updated : Inode := NULL_INODE;
+      Accepted : Boolean;
+      type Block_Set is array (0 .. 3) of Unsigned_32;
+      Ids : constant Block_Set := [7, 8, 9, 10];
+   begin
+      Original.flags := 16#A55A#;
+      for Root_Present in Boolean loop
+         Original.tripleIndirectBlock := (if Root_Present then 7 else 0);
+         for New_Middle in Boolean loop
+            for New_Leaf in Boolean loop
+               for Case_Number in 0 .. 8 loop
+                  declare
+                     Blocks : Block_Set := Ids;
+                  begin
+                     case Case_Number is
+                        when 1 .. 4 => Blocks (Case_Number - 1) := 0;
+                        when 5 => Blocks (1) := Blocks (0);
+                        when 6 => Blocks (2) := Blocks (1);
+                        when 7 => Blocks (3) := Blocks (2);
+                        when 8 => Blocks (3) := Blocks (0);
+                        when others => null;
+                     end case;
+                     Triple_Mappings.Prepare
+                       (Original, Blocks (0), Blocks (1), Blocks (2), Blocks (3),
+                        New_Middle, New_Leaf, 8, Updated, Accepted);
+                     pragma Assert (Accepted =
+                       (Case_Number = 0 and (if New_Middle then New_Leaf) and
+                        (Root_Present or New_Middle)));
+                     if Accepted then
+                        pragma Assert (Updated.numDiskSectors = 8 *
+                          (1 + (if Root_Present then 0 else 1) +
+                           (if New_Middle then 1 else 0) + (if New_Leaf then 1 else 0)));
+                        pragma Assert (Updated = (Original with delta
+                          tripleIndirectBlock => 7,
+                          numDiskSectors => Updated.numDiskSectors));
+                     else
+                        pragma Assert (Updated = Original);
+                     end if;
+                  end;
+               end loop;
+            end loop;
+         end loop;
+      end loop;
+      --  An existing root must be the one supplied.
+      Original.tripleIndirectBlock := 11;
+      Triple_Mappings.Prepare (Original, 7, 8, 9, 10, True, True, 8, Updated, Accepted);
+      pragma Assert (not Accepted and Updated = Original);
+   end;
+
    --  Sparse double trees can be grown, shrunk across leaf boundaries, then
    --  reused. Both byte contents and exact metadata accounting must survive.
    for Geometry in 0 .. 2 loop
@@ -291,12 +364,67 @@ begin
       end;
    end loop;
 
+   --  Sparse triple trees: grow, cross leaf and middle boundaries, shrink at
+   --  each boundary (partial leaf, whole leaf, whole middle, whole root),
+   --  regrow into a retained partial block, and reclaim everything.
+   for Geometry in 0 .. 2 loop
+      Setup (1024 * 2 ** Geometry);
+      declare
+         Sb : Superblock with Import, Address => Disk (1024)'Address;
+         Per_Block : constant Unsigned_64 := Unsigned_64 (blockBytes / 4);
+         Bytes : constant Unsigned_64 := Unsigned_64 (blockBytes);
+         First_Triple : constant Unsigned_64 :=
+           (12 + Per_Block + Per_Block * Per_Block) * Bytes;
+         Next_Leaf : constant Unsigned_64 := First_Triple + Per_Block * Bytes;
+         Next_Middle : constant Unsigned_64 :=
+           First_Triple + Per_Block * Per_Block * Bytes;
+         Resized : Inode;
+         Result : Truncate_Status;
+         Read_Result : Read_Status;
+         Buffer : String (1 .. 20);
+
+         procedure Shrink (Size : Unsigned_64; Allocated : Natural) is
+         begin
+            resizeFile (fs, 1, Size, Resized, Result);
+            pragma Assert (Result = Truncate_Complete and fileSize (Resized) = Size);
+            candidate := Resized;
+            Check (Allocated);
+         end Shrink;
+      begin
+         --  Triple offsets exceed 2 GiB only at 4 KiB; LARGE_FILE is required.
+         Sb.readOnlyFeatures := 2;
+         fs.sb.readOnlyFeatures := 2;
+         Write_At (First_Triple + 7, 4);        -- root, middle, leaf, data
+         Write_At (First_Triple + Bytes + 7, 5); -- same leaf
+         Write_At (Next_Leaf + 7, 7);          -- new leaf, same middle
+         Write_At (Next_Middle + 7, 10);       -- new middle, leaf and data
+         Shrink (Next_Middle + 1, 10);          -- retains a partial block
+         Shrink (Next_Middle, 7);               -- whole second middle retired
+         Shrink (Next_Leaf, 5);                 -- second leaf retired
+         Shrink (First_Triple + 9, 4);          -- partial first leaf
+         Write_At (Next_Middle + 7, 7);        -- regrow a middle subtree
+         readData (fs, candidate, First_Triple, Buffer'Address, Buffer'Length,
+                   written, Read_Result);
+         pragma Assert (Read_Result = Read_Complete and written = Buffer'Length);
+         pragma Assert (Buffer (1 .. 7) = [1 .. 7 => Character'Val (0)]);
+         pragma Assert (Buffer (8 .. 9) = "te");
+         pragma Assert (Buffer (10 .. 20) = [10 .. 20 => Character'Val (0)]);
+         Shrink (First_Triple, 0);              -- triple root retired
+         pragma Assert (candidate.tripleIndirectBlock = 0);
+         Write_At (First_Triple + 7, 4);
+         Write_At (12 * Bytes, 6);              -- single root and data too
+         Shrink (0, 0);
+      end;
+   end loop;
+
    --  The last 4 KiB double-tree slot crosses the 32-bit size field. Sparse
    --  growth needs only three real blocks, but must require LARGE_FILE and
-   --  preserve the high word through publication and reclamation.
+   --  preserve the high word through publication and reclamation. The final
+   --  triple slot then needs four more; the next byte is unsupported.
    Setup (4096);
    declare
-      Limit : constant Unsigned_64 := Block_Paths.Block_Limit (8) * 4096;
+      Limit : constant Unsigned_64 := Block_Paths.First_Triple (8) * 4096;
+      Triple_Limit : constant Unsigned_64 := Block_Paths.Block_Limit (8) * 4096;
       Resized : Inode;
       Result : Truncate_Status;
       Sb : Superblock with Import, Address => Disk (1024)'Address;
@@ -308,6 +436,15 @@ begin
       writeData (fs, 1, candidate, Limit - 1, payload'Address, 1, written, status);
       pragma Assert (status = Write_Complete and written = 1 and fileSize (candidate) = Limit);
       Check (3);
+      --  The very last triple slot: root, middle, leaf and data.
+      writeData (fs, 1, candidate, Triple_Limit - 1, payload'Address, 2, written, status);
+      pragma Assert (status = Write_File_Range_Unsupported and written = 1);
+      pragma Assert (fileSize (candidate) = Triple_Limit);
+      Check (7);
+      writeData (fs, 1, candidate, Triple_Limit, payload'Address, 1, written, status);
+      pragma Assert (status = Write_File_Range_Unsupported and written = 0);
+      resizeFile (fs, 1, Triple_Limit + 1, Resized, Result);
+      pragma Assert (Result = Truncate_Unsupported);
       truncateToEmpty (fs, 1, Resized, Result);
       pragma Assert (Result = Truncate_Complete and fileSize (Resized) = 0);
       candidate := Resized;
@@ -333,10 +470,15 @@ begin
       end loop;
    end loop;
 
+   --  Patterns 8 .. 10 grow triple trees: a new root/middle/leaf, a new leaf
+   --  in an existing middle, and a new middle under an existing root.
    for Geometry in 0 .. 2 loop
-      for Pattern in 0 .. 7 loop
+      for Pattern in 0 .. 10 loop
          declare
             Size : constant Positive := 1024 * 2 ** Geometry;
+            Per_Block : constant Unsigned_64 := Unsigned_64 (Size / 4);
+            First_Triple : constant Unsigned_64 :=
+              (12 + Per_Block + Per_Block * Per_Block) * Unsigned_64 (Size);
             Offset : constant Unsigned_64 :=
               (case Pattern is
                  when 0 | 3 => 0,
@@ -345,21 +487,35 @@ begin
                  when 4 => Unsigned_64 (11 * Size),
                  when 5 => Unsigned_64 ((12 + Size / 4) * Size),
                  when 6 => Unsigned_64 ((13 + Size / 4) * Size),
-                 when others => Unsigned_64 ((12 + 2 * (Size / 4)) * Size));
+                 when 7 => Unsigned_64 ((12 + 2 * (Size / 4)) * Size),
+                 when 8 => First_Triple,
+                 when 9 => First_Triple + Per_Block * Unsigned_64 (Size),
+                 when others =>
+                   First_Triple + Per_Block * Per_Block * Unsigned_64 (Size));
             Length : constant Unsigned_64 :=
               (if Pattern in 3 .. 4 then Unsigned_64 (Size * 2) else 4);
-            Existing : constant Natural := (if Pattern = 2 then 2 elsif Pattern >= 6 then 3 else 0);
+            Existing : constant Natural :=
+              (case Pattern is when 2 => 2, when 6 | 7 => 3, when 9 | 10 => 4,
+                 when others => 0);
             Added : constant Natural :=
-              (case Pattern is when 1 | 3 | 7 => 2, when 4 | 5 => 3, when others => 1);
+              (case Pattern is when 1 | 3 | 7 | 9 => 2, when 4 | 5 | 10 => 3,
+                 when 8 => 4, when others => 1);
             Baseline : Natural;
 
             procedure Prepare is
+               Sb : Superblock with Import, Address => Disk (1024)'Address;
             begin
                Setup (Size);
+               if Pattern >= 8 then
+                  Sb.readOnlyFeatures := 2; -- 4 KiB triple offsets exceed 2 GiB
+                  fs.sb.readOnlyFeatures := 2;
+               end if;
                if Pattern = 2 then
                   Write_At (Unsigned_64 (12 * Size), 2);
-               elsif Pattern >= 6 then
+               elsif Pattern in 6 .. 7 then
                   Write_At (Unsigned_64 ((12 + Size / 4) * Size), 3);
+               elsif Pattern >= 9 then
+                  Write_At (First_Triple, 4);
                end if;
                if Existing > 0 then
                   Calls := 0;
@@ -373,7 +529,7 @@ begin
             pragma Assert (status = Write_Complete and written = Length);
             Check (Existing + Added);
             Baseline := Calls;
-            if Pattern in 1 | 2 | 5 | 6 | 7 then
+            if Pattern in 1 | 2 | 5 .. 10 then
                declare
                   Output : String (1 .. 4) := [others => '?'];
                   Read_Count : Unsigned_64;
@@ -387,12 +543,15 @@ begin
                   pragma Assert (Output = "SSSS" and Calls = Baseline + 1);
                   --  Same block numbers on another endpoint must not reuse
                   --  this volume's warm mappings. Reload each pointer level.
-                  fs.device.endpointSlot := 2;
+                  --  A never-used endpoint: the block cache outlives Setup.
+                  Fresh_Endpoint := Fresh_Endpoint + 1;
+                  fs.device.endpointSlot := Fresh_Endpoint;
                   readData (fs, candidate, Offset, Output'Address, 4,
                             Read_Count, Read_Result);
                   pragma Assert (Read_Result = Read_Complete and Read_Count = 4);
                   pragma Assert (Output = "SSSS" and
-                    Calls = Baseline + (if Pattern in 1 | 2 then 3 else 4));
+                    Calls = Baseline + (case Pattern is when 1 | 2 => 3,
+                                          when 5 .. 7 => 4, when others => 5));
                end;
             end if;
             for Boundary in 1 .. Baseline loop
@@ -423,7 +582,7 @@ begin
                         end if;
                         Check (Existing);
                      end if;
-                     if Pattern in 1 | 2 | 5 | 6 | 7 then
+                     if Pattern in 1 | 2 | 5 .. 10 then
                         Check_Cache_Against_Disk (Offset);
                      end if;
                      faultCases := faultCases + 1;
@@ -433,7 +592,8 @@ begin
 
             Prepare;
             candidate.numDiskSectors := Unsigned_32'Last -
-              Unsigned_32 (Size / 512 * (if Pattern in 1 | 7 then 2 elsif Pattern = 5 then 3 else 1)) + 1;
+              Unsigned_32 (Size / 512 * (case Pattern is when 1 | 7 | 9 => 2,
+                 when 5 | 10 => 3, when 8 => 4, when others => 1)) + 1;
             writeData (fs, 1, candidate, Offset, payload'Address,
                        payload'Length, written, status);
             pragma Assert (status = Write_Out_Of_Range and written = 0 and Writes = 0);
@@ -444,10 +604,15 @@ begin
 
    --  Data reservation succeeds, but no space remains for an indirect root.
    --  This is a definite, unpublished failure, so checked reclaim is allowed.
-   for Scenario in 1 .. 3 loop
+   --  Scenarios 4 .. 6 exhaust space before the triple root, middle or leaf:
+   --  every earlier unpublished reservation is reclaimed in reverse.
+   for Scenario in 1 .. 6 loop
    declare
-      Free_Count : constant Positive := (if Scenario = 3 then 2 else 1);
-      Offset : constant Unsigned_64 := (if Scenario = 1 then 12 else 268) * 1024;
+      Free_Count : constant Positive :=
+        (case Scenario is when 3 | 5 => 2, when 6 => 3, when others => 1);
+      Offset : constant Unsigned_64 :=
+        (case Scenario is when 1 => 12 * 1024, when 2 | 3 => 268 * 1024,
+           when others => Block_Paths.First_Triple (2) * 1024);
    begin
    Limited_Space (Free_Count);
    writeData (fs, 1, candidate, Offset, payload'Address,

@@ -68,4 +68,24 @@ package body IPv4_Header with SPARK_Mode is
       pragma Assert ((U16 (B, 6) and 16#BFFF#) = 0);
    end Build;
 
+   procedure Build_Header (H : Header; DF : Boolean; Hdr : out Header_Bytes) is
+      Flags : constant Unsigned_16 := (if DF then Dont_Fragment else 0);
+      Sum   : Unsigned_16;
+   begin
+      Hdr := [others => 0];
+      Hdr (0) := Version_IHL;
+      Put16 (Hdr, 2, Unsigned_16 (H.Total_Length));
+      Put16 (Hdr, 6, Flags);
+      Hdr (8) := H.TTL;
+      Hdr (9) := H.Protocol;
+      Hdr (12 .. 15) := Bytes (H.Source);
+      Hdr (16 .. 19) := Bytes (H.Destination);
+      pragma Assert (Hdr (0) = Version_IHL and then Hdr (12) = H.Source (0) and then
+                     Hdr (16) = H.Destination (0));
+      pragma Assert ((Hdr (6) and Fragment_High_Bits) = 0 and then Hdr (7) = 0 and then
+                     ((Hdr (6) and DF_In_High_Byte) /= 0) = DF);
+      Sum := Internet_Checksum.Of_Bytes (Internet_Checksum.Bytes (Hdr));
+      Put16 (Hdr, Checksum_At, Sum);
+   end Build_Header;
+
 end IPv4_Header;

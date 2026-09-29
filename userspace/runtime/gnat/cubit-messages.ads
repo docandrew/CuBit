@@ -38,7 +38,21 @@ package CuBit.Messages is
    SYSCALL_GETTIME         : constant Unsigned_64 := 27;
    --  Separate microsecond epoch; Last indicates unavailable. Never UTC.
    SYSCALL_READ_MONOTONIC_MICROSECONDS : constant Unsigned_64 := 114;
+   --  Allocate zero-filled RW/NX private RAM: arg0 bytes (1..16MiB), rounded
+   --  to 4KiB. Returns a page-aligned base, or zero on failure.
+   --  No fixed address selection.
+   SYSCALL_ALLOCATE_OWNED_MEMORY : constant Unsigned_64 := 115;
+   --  Release own exact allocation: arg0 base, arg1 bytes (same rounded size).
+   --  Returns zero on success, Last on rejection.
+   --  Partial unmapping unsupported.
+   --  Existing grant acquisitions retain their backing until returned.
+   SYSCALL_RELEASE_OWNED_MEMORY : constant Unsigned_64 := 116;
+   --  Page-aligned subrange of one owned allocation; bytes round upward.
+   --  Mode 0 inaccessible, 1 read-only, 3 RW; no executable mode.
+   SYSCALL_PROTECT_OWNED_MEMORY : constant Unsigned_64 := 117;
    SYSCALL_SLEEP           : constant Unsigned_64 := 28;
+   --  Give the CPU to any other ready thread and run again when next picked.
+   SYSCALL_YIELD           : constant Unsigned_64 := 118;
    SYSCALL_POLL_SERVICE_REQUEST : constant Unsigned_64 := 80;
    SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID :
       constant Unsigned_64 := 102;

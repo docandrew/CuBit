@@ -452,6 +452,46 @@ their cost is much larger than a bare IPC echo. Test cached metadata policy
 checks, block operations and grant lifetime costs separately, preserving the
 same authority decisions.
 
+## Filesystem throughput: CuBit against Linux
+
+`tests/fs-bench` runs one POSIX program, `fs-bench.c`, natively on CuBit
+(libc → filesystem.svc → NVMe, `run.sh --test bench-fs`) and on a Linux
+guest (`tests/fs-bench/linux.sh`, Linux's ext2 driver). Both use the same
+QEMU configuration: q35, Broadwell, 4 vCPUs, 512 MiB, KVM, and a QEMU
+`nvme` device holding an ext2 volume with 4 KiB blocks and 384 MiB. The
+figures are medians of three rounds from one run each on 2026-09-28. CuBit
+has no page cache, so on CuBit every result is a device-path result.
+
+| Operation | CuBit native | Linux guest |
+|---|---:|---:|
+| 64 MiB sequential write + fsync | 0.5 MB/s | 901 MB/s |
+| sequential read, warm | 206 MB/s | 19,894 MB/s (page cache) |
+| sequential read, cold | 205 MB/s | 4,594 MB/s (after drop_caches) |
+| 4 KiB random read p50 / p99 (warm) | 200 / 2,350 µs | 0.4 / 0.8 µs |
+| 4 KiB random write p50 / p99, no fsync | 1,279 / 2,330 µs | 0.7 / 1.5 µs |
+| 4 KiB random write + fsync p50 / p99 | 3,445 / 6,878 µs | 1,203 / 1,774 µs |
+| create + write 4 KiB + close | 15 files/s | 8,011 files/s |
+| open + read 4 KiB + close | 43 files/s | 715,850 files/s |
+| unlink | unsupported | 9,522 files/s |
+
+Inferred causes (the code locations are in `tests/fs-bench/README.md`;
+there is no per-stage profile yet):
+
+- ext2 appends allocate one block at a time, with bitmap, group-descriptor,
+  superblock, pointer and inode writes all going through at once (about ten
+  synchronous commands per 4 KiB).
+- No page, dentry or inode cache, and no readahead or write-back.
+- One request at a time at every stage: the libc's single lock and 256 KiB
+  bounce, the single-threaded filesystem.svc, and one outstanding NVMe
+  command, polled with a 1 ms sleep step. That step is the ~2.3 ms p99.
+- Two or three copies per byte (NVMe bounce → 512 KiB filesystem staging →
+  client grant → caller).
+
+Caching is the first-order gap for reads and metadata, and write-back with
+batched allocation is the first-order gap for writes. The fsync'd random
+write, where Linux also waits for the device, is the nearest comparison
+(2.9x).
+
 ## Verification and next work
 
 The portable histogram was tested at bucket edges, U64 extremes, known ranks

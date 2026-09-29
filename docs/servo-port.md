@@ -134,8 +134,9 @@ Where it stands:
 - Headless case `servo` (`tests/headless/init-servo.ccl`, 4 GB guest,
   fonts installed under `@nvme:0/fonts`). First run: procmgr could not read
   the image, because the development disk's 1 KiB ext2 blocks reach ~64 MiB
-  without triple-indirect blocks, which CuBit's ext2 does not read. The case
-  now rebuilds its disk copy with 4 KiB blocks.
+  without triple-indirect blocks, which CuBit's ext2 did not read. The case
+  now rebuilds its disk copy with 4 KiB blocks. (Triple-indirect support was
+  added 2026-09-28; see ext2-interoperability.md. The 4 KiB copy is unchanged.)
 - **Native result (2026-09-25): `headless: PASS servo`.** cubitshell loads a
   data: URL test page, renders it through SWGL into an 800x600 frame
   (22,376 inked pixels; 22,817 in the Linux-hosted run; first frame

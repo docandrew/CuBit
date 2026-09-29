@@ -122,5 +122,40 @@ begin
    pragma Assert (Response.tag.label = REPLY_ERROR and Response.words (0) = 0);
    pragma Assert (Disk (1 .. 512) = [1 .. 512 => 'X'] and Active = 0);
    --  A failed return reports uncertainty, never a falsely successful write.
+
+   --  RAM rejects FUA: it advertises no persistence, so no request flag.
+   Transfer (OP_WRITE_BLOCKS, 0, 1);
+   Request.tag.flags := WRITE_FLAG_FUA;
+   Allow_Return := True;
+   Reject;
+
+   --  Durability contract: every combination of the four persistence
+   --  features, as a description decodes and as a filesystem reads it.
+   for Bits in Unsigned_64 range 0 .. 15 loop
+      declare
+         Features : constant Device_Features :=
+           (if (Bits and 1) /= 0 then FEATURE_VOLATILE else 0) or
+           (if (Bits and 2) /= 0 then FEATURE_FLUSH else 0) or
+           (if (Bits and 4) /= 0 then FEATURE_VOLATILE_CACHE else 0) or
+           (if (Bits and 8) /= 0 then FEATURE_FUA else 0);
+         Volatile : constant Boolean := (Bits and 1) /= 0;
+         Flushes : constant Boolean := (Bits and 2) /= 0;
+         Caches : constant Boolean := (Bits and 4) /= 0;
+         Promises : constant Boolean := (Bits and 14) /= 0;
+      begin
+         OK := Decode_Description
+           (16, Pack_Sizes (512, 512), 8,
+            Pack_Properties (Features, (if Volatile then Memory_Media else Fixed_Media)),
+            Description);
+         --  RAM promises nothing; a volatile cache needs a flush command.
+         pragma Assert (OK = (not (Volatile and Promises) and not (Caches and not Flushes)));
+         if OK then
+            pragma Assert (Has_Volatile_Cache (Description) = Caches);
+            pragma Assert (Supports_FUA (Description) = ((Bits and 8) /= 0));
+            pragma Assert (Can_Persist (Description) = not Volatile);
+         end if;
+      end;
+   end loop;
+   Put_Line ("DURABILITY-CONTRACT-CHECK: PASS 16 feature combinations");
    Put_Line ("RAM-BLOCK-CHECK: PASS (" & Natural'Image (Failures) & " rejected requests)");
 end Main;

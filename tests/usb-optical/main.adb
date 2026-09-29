@@ -10,6 +10,7 @@ procedure Main is
    Capacity : Bytes (1 .. 8) := [0, 0, 0, 99, 0, 0, 8, 0];
    Count : Unsigned_64;
    Result : Capacity_Result;
+   Format : Sector_Format;
    LUN : Logical_Unit;
    Valid : Boolean;
    Inquiry_Data : Bytes (1 .. 36) := [others => 0];
@@ -80,35 +81,58 @@ begin
       pragma Assert (Decode_Status (Status, Tag, 2048, 2048) = Invalid_Status);
    end loop;
 
-   Decode_Capacity (Capacity, Count, Result);
+   Decode_Capacity (Capacity, Count, Result, Format);
    pragma Assert (Result = Capacity_Valid and Count = 100);
    Capacity (4) := 0;
-   Decode_Capacity (Capacity, Count, Result);
+   Decode_Capacity (Capacity, Count, Result, Format);
    pragma Assert (Result = Capacity_Valid and Count = 1);
    Capacity (1 .. 4) := [255, 255, 255, 254];
-   Decode_Capacity (Capacity, Count, Result);
+   Decode_Capacity (Capacity, Count, Result, Format);
    pragma Assert (Result = Capacity_Valid and Count = 16#FFFF_FFFF#);
    Capacity (4) := 255;
-   Decode_Capacity (Capacity, Count, Result);
+   Decode_Capacity (Capacity, Count, Result, Format);
    pragma Assert (Result = Capacity_16_Required and Count = 0);
    Capacity (1 .. 4) := [0, 0, 0, 99];
    Capacity (7) := 2;
-   Decode_Capacity (Capacity, Count, Result);
+   Decode_Capacity (Capacity, Count, Result, Format);
+   pragma Assert (Result = Capacity_Valid and Count = 25 and Format = Sector_512);
+   Capacity (7) := 16;
+   Decode_Capacity (Capacity, Count, Result, Format);
    pragma Assert (Result = Unsupported_Block_Size and Count = 0);
    for Length in 0 .. 7 loop
-      Decode_Capacity (Capacity (1 .. Length), Count, Result);
+      Decode_Capacity (Capacity (1 .. Length), Count, Result, Format);
       pragma Assert (Result = Capacity_Truncated and Count = 0);
    end loop;
 
    Inquiry_Data (1) := 5;
    Inquiry_Data (5) := 31;
-   pragma Assert (Is_Optical_Inquiry (Inquiry_Data));
+   pragma Assert (Is_Supported_Inquiry (Inquiry_Data));
    for First_Byte in Unsigned_8 loop
       Inquiry_Data (1) := First_Byte;
       pragma Assert
-        (Is_Optical_Inquiry (Inquiry_Data) = (First_Byte = 5));
+        (Is_Supported_Inquiry (Inquiry_Data) = (First_Byte in 0 | 5));
    end loop;
-   pragma Assert (not Is_Optical_Inquiry (Empty));
+   pragma Assert (not Is_Supported_Inquiry (Empty));
+   --  Byte-exact READ(10) fixtures: ISO LBA 16 maps to disk LBA 64,
+   --  while the BOT transfer remains exactly 2048 bytes.
+   declare
+      Frame : constant Command_Wrapper := Encode (Read_Request (16, 1, Sector_512), Tag, 0);
+      Maximum : constant Command_Wrapper := Encode
+        (Read_Request (16#3FFF_FFEF#, 16, Sector_512), Tag, 0);
+   begin
+      pragma Assert (Frame (9 .. 12) = [0, 8, 0, 0]);
+      pragma Assert (Frame (18 .. 21) = [0, 0, 0, 64]);
+      pragma Assert (Frame (23 .. 24) = [0, 4]);
+      pragma Assert (Maximum (9 .. 12) = [0, 128, 0, 0]);
+      pragma Assert (Maximum (18 .. 21) = [255, 255, 255, 188]);
+      pragma Assert (Maximum (23 .. 24) = [0, 64]);
+   end;
+   Capacity := [255, 255, 255, 254, 0, 0, 2, 0];
+   Decode_Capacity (Capacity, Count, Result, Format);
+   pragma Assert (Result = Capacity_Valid and Count = 16#3FFF_FFFF#);
+   Capacity := [0, 0, 0, 2, 0, 0, 2, 0];
+   Decode_Capacity (Capacity, Count, Result, Format);
+   pragma Assert (Result = Unsupported_Block_Size and Count = 0);
 
    Sense (1) := 16#70#;
    Sense (3) := 2;

@@ -6,7 +6,7 @@
 --  TCP option negotiation: MSS (RFC 9293 3.7.1, RFC 6691), window scaling
 --  and timestamps (RFC 7323), SACK-permitted (RFC 2018).
 --
---  The RecordFlux TCP parser reads the options off the wire; this decides
+--  TCP_Wire walks the options on the wire; this decides
 --  what a connection uses from its SYN exchange, and converts windows
 --  between the 16-bit field and bytes.
 --

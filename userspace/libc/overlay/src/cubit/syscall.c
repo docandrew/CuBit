@@ -7,14 +7,14 @@
  *
  *   threads      clone (clone.s), exit -> THREAD_CREATE/THREAD_EXIT
  *   futexes      futex -> FUTEX_WAIT/FUTEX_WAKE (requeue wakes instead)
- *   memory       brk, anonymous mmap -> SBRK; munmap/mprotect/madvise are
- *                accepted but do not unmap or protect yet (no region API)
+ *   memory       brk -> SBRK; private RW mmap/whole munmap -> owned regions;
+ *                unsupported protections and partial unmaps fail
  *   time         clock_gettime/nanosleep -> the kernel millisecond clock
  *   descriptors  write, read, close, fstat, poll -> fd.c: a table of CuBit
  *                objects (stdout/stderr are the program's CuBit streams)
- *   files        open/stat/read/getdents/mmap of a file -> file.c, through
- *                filesystem.svc; paths resolve only inside the program's
- *                filesystem scopes. Read-only for now.
+ *   files        open/stat/read/write/pread/pwrite/fsync/getdents/mmap of a
+ *                file -> file.c, through filesystem.svc; paths resolve only
+ *                inside the program's filesystem scopes. No unlink or mkdir.
  *   process      exit_group -> EXIT; getpid -> GETPID; kill of self exits
  *   randomness   getrandom -> RDRAND (not yet the entropy service)
  *   signals      none: masks and handlers are accepted and never fire
@@ -53,6 +53,10 @@ enum {
 	CUBIT_THREAD_EXIT = 91,
 	CUBIT_FUTEX_WAIT = 92,
 	CUBIT_FUTEX_WAKE = 93,
+	CUBIT_ALLOCATE_OWNED_MEMORY = 115,
+	CUBIT_RELEASE_OWNED_MEMORY = 116,
+	CUBIT_PROTECT_OWNED_MEMORY = 117,
+	CUBIT_YIELD = 118,
 };
 
 #define CUBIT_FUTEX_RETRY 1
@@ -131,30 +135,40 @@ static long sys_brk(unsigned long want)
 static long sys_mmap(unsigned long addr, unsigned long len, long prot,
 	long flags, long fd, long off)
 {
-	(void)prot;
 	if (!len) return -EINVAL;
-	if (flags & MAP_FIXED) return -ENOMEM;  /* no region API yet */
+	if (prot != PROT_NONE && prot != PROT_READ &&
+	    prot != (PROT_READ | PROT_WRITE)) return -ENOTSUP;
+	if (flags & MAP_FIXED) return -ENOTSUP;
+	if ((flags & MAP_TYPE) != MAP_PRIVATE) return -ENOTSUP;
+	if (flags & ~(MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK | MAP_NORESERVE))
+		return -ENOTSUP;
+	if (len > 16UL * 1024 * 1024) return -ENOMEM;
 	(void)addr;
 	if (!(flags & MAP_ANONYMOUS)) {
 		/* A file: a private copy of its bytes (read-only use is what
 		 * programs here need; writes are not carried back). */
 		if (off & 4095) return -EINVAL;
-		long base = sys_mmap(0, len, prot, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+		long base = sys_mmap(0, len, PROT_READ | PROT_WRITE,
+		                     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 		if (base < 0) return base;
 		long got = __cubit_fd_pread((int)fd, (void *)base, len, off);
-		if (got < 0) return got;        /* the region is not returned yet */
+		if (got < 0) {
+			cubit(CUBIT_RELEASE_OWNED_MEMORY, base, len, 0, 0, 0);
+			return got;
+		}
+		if (prot != (PROT_READ | PROT_WRITE) &&
+		    cubit(CUBIT_PROTECT_OWNED_MEMORY, base, len, prot, 0, 0)) {
+			cubit(CUBIT_RELEASE_OWNED_MEMORY, base, len, 0, 0, 0);
+			return -ENOMEM;
+		}
 		return base;
 	}
-	len = (len + 4095) & ~4095UL;
-	/* Page-aligned growth of the heap; CuBit maps it zero-filled. */
-	unsigned long base = cubit(CUBIT_SBRK, len, 0, 0, 0, 0);
-	if (base == (unsigned long)-1 || !base) return -ENOMEM;
-	if (base & 4095) {
-		/* The break was not page aligned: waste the head. */
-		unsigned long pad = 4096 - (base & 4095);
-		if (cubit(CUBIT_SBRK, pad, 0, 0, 0, 0) == (unsigned long)-1)
-			return -ENOMEM;
-		base += pad;
+	unsigned long base = cubit(CUBIT_ALLOCATE_OWNED_MEMORY, len, 0, 0, 0, 0);
+	if (!base) return -ENOMEM;
+	if (prot != (PROT_READ | PROT_WRITE) &&
+	    cubit(CUBIT_PROTECT_OWNED_MEMORY, base, len, prot, 0, 0)) {
+		cubit(CUBIT_RELEASE_OWNED_MEMORY, base, len, 0, 0, 0);
+		return -ENOMEM;
 	}
 	return (long)base;
 }
@@ -378,6 +392,13 @@ hidden long __cubit_syscall(long n, long a, long b, long c, long d, long e, long
 	}
 	case SYS_pread64:
 		return __cubit_fd_pread((int)a, (void *)b, (size_t)c, (off_t)d);
+	case SYS_pwritev2:
+		return -EOPNOTSUPP;             /* musl's pwrite then uses pwrite64 */
+	case SYS_pwrite64:
+		return __cubit_fd_pwrite((int)a, (const void *)b, (size_t)c, (off_t)d);
+	case SYS_fsync:
+	case SYS_fdatasync:
+		return __cubit_fd_fsync((int)a);
 	case SYS_close:
 		return __cubit_fd_close((int)a);
 	case SYS_ioctl:
@@ -426,9 +447,15 @@ hidden long __cubit_syscall(long n, long a, long b, long c, long d, long e, long
 	case SYS_mmap:
 		return sys_mmap(a, b, c, d, e, f);
 	case SYS_munmap:
-	case SYS_mprotect:
+		return cubit(CUBIT_RELEASE_OWNED_MEMORY, a, b, 0, 0, 0) == 0
+			? 0 : -EINVAL;
 	case SYS_madvise:
 		return 0;
+	case SYS_mprotect:
+		if (c != PROT_NONE && c != PROT_READ && c != (PROT_READ | PROT_WRITE))
+			return -ENOSYS;
+		return cubit(CUBIT_PROTECT_OWNED_MEMORY, a, b, c, 0, 0) == 0
+			? 0 : -EINVAL;
 	case SYS_mremap:
 		return -ENOMEM;                 /* musl falls back to mmap + copy */
 
@@ -448,11 +475,9 @@ hidden long __cubit_syscall(long n, long a, long b, long c, long d, long e, long
 	case SYS_gettid:
 		/* The thread's id as clone/set_tid_address gave it to musl. */
 		return __pthread_self()->tid;
-	case SYS_sched_yield: {
-		volatile int word = 0;
-		cubit(CUBIT_FUTEX_WAIT, (unsigned long)&word, 0, 0, 0, 0);
+	case SYS_sched_yield:
+		cubit(CUBIT_YIELD, 0, 0, 0, 0, 0);
 		return 0;
-	}
 	case SYS_sched_getaffinity: {
 		/* Four CPUs until the kernel reports its count. */
 		size_t size = (size_t)b;

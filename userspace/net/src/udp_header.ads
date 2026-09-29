@@ -6,8 +6,7 @@
 --  The UDP header on the wire (RFC 768), parsed in place: a datagram whose
 --  length field covers the 8-byte header and lies within the bytes the IP
 --  packet carries. The checksum is checked by the caller (zero means none
---  was computed, which IPv4 permits). specs/udp.rflx stays the
---  specification.
+--  was computed, which IPv4 permits; RFC 768).
 --
 --  Proved (tests/net-tcp): Well_Formed is exactly that rule; every parsed
 --  field is its bytes on the wire.

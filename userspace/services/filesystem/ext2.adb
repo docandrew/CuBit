@@ -19,40 +19,23 @@ with Sector_Accounting;
 with Inode_Mappings;
 with Block_Paths;
 with Block_Inventory;
+with Block_Cache_Index;
 with Double_Mappings;
+with Jbd2_Recovery;
+with Triple_Mappings;
 with Ext2_Support; use type Ext2_Support.File_Admission;
 
 package body Ext2 is
 
+   --  New inodes: rw-r--r-- regular files and rwxr-xr-x directories.
+   Regular_Mode   : constant Unsigned_16 := 16#81A4#;
+   Directory_Mode : constant Unsigned_16 := 16#41ED#;
+
    use type System.Address;
    use type Block_Paths.Path_Kind;
+   use type Directory_Blocks.Prepare_Result;
    use Volume_Admission;
 
-   procedure Flush (fs : Filesystem; status : out Flush_Status) is
-      msg : Message := NULL_MESSAGE;
-   begin
-      if fs.writeQuarantined then
-         status := Flush_Recovery_Required;
-      elsif Is_Volatile (fs.device.description) or else
-        (fs.device.description.features and FEATURE_FLUSH) = 0
-      then
-         status := Flush_Unsupported;
-      else
-         --  Ext2 has no write-back cache: completed write paths have already
-         --  submitted both data and metadata. The device flush is the barrier.
-         msg.tag := (label => OP_FLUSH_DEVICE, length => 0,
-                     flags => 0, reserved => 0);
-         msg.tag := capCall (fs.device.endpointSlot, msg);
-         if msg.tag.label = CuBit.Block_Devices.REPLY_OK and then
-           msg.tag.length = 1 and then msg.tag.flags = 0 and then
-           msg.tag.reserved = 0 and then msg.words (0) = 0
-         then
-            status := Flush_Complete;
-         else
-            status := Flush_IO_Error;
-         end if;
-      end if;
-   end Flush;
 
    --  Indirect block cache (avoids re-reading same block per getDataBlock call)
    --  Sized for max 4KB ext2 blocks (1024 ptrs); 1KB blocks use first 256.
@@ -61,7 +44,9 @@ package body Ext2 is
       Block_Number : Unsigned_32 := 0; -- zero means invalid, never a cache hit
       Data : Pointer_Block;
    end record;
+   --  One cache per tree level, so a sequential walk rereads no pointer block.
    Single_Cache, Double_Root_Cache, Double_Leaf_Cache : Pointer_Cache;
+   Triple_Root_Cache, Triple_Middle_Cache, Triple_Leaf_Cache : Pointer_Cache;
 
    cacheIdentityValid : Boolean := False;
    cachedCapSlot       : Unsigned_64 := 0;
@@ -71,6 +56,9 @@ package body Ext2 is
       Single_Cache.Block_Number := 0;
       Double_Root_Cache.Block_Number := 0;
       Double_Leaf_Cache.Block_Number := 0;
+      Triple_Root_Cache.Block_Number := 0;
+      Triple_Middle_Cache.Block_Number := 0;
+      Triple_Leaf_Cache.Block_Number := 0;
    end invalidateBlockCache;
 
    procedure selectCacheIdentity (fs : Filesystem) is
@@ -84,9 +72,9 @@ package body Ext2 is
       end if;
    end selectCacheIdentity;
 
-   --  Read bytes from the filesystem at a byte offset.
+   --  Read bytes from the device at a byte offset, bypassing the block cache.
    --  All storage, including RAM, uses a Block.Device.V1 session.
-   procedure readBytes
+   procedure deviceRead
      (fs     : Filesystem;
       offset : Storage_Offset;
       dest   : System.Address;
@@ -190,7 +178,289 @@ package body Ext2 is
          end loop;
          status := Read_Complete;
       end;
+   end deviceRead;
+
+   --  Write-through block cache for metadata: inode tables, directories,
+   --  bitmaps, group descriptors and pointer blocks. Cached reads fill it;
+   --  every acknowledged write patches any cached copy of the blocks it
+   --  covered, and whole metadata blocks are inserted once written; a failed
+   --  write drops the volume's entries. A cached block therefore never holds
+   --  bytes the device has not acknowledged, and none is ever dirty. Every
+   --  write names its dependency class and the index keeps dirty/class tags
+   --  and ordered write-back selection: the hooks a journal needs to make
+   --  this cache write-back later. It relies on this service owning each
+   --  volume exclusively, as the pointer caches do.
+   subtype Cache_Slot is Block_Cache_Index.Slot_Index;
+   subtype Block_Class is Block_Cache_Index.Block_Class;
+   use all type Block_Cache_Index.Block_Class;
+   Cached_Block_Bytes : constant := 4096; -- largest admitted ext2 block
+   type Cached_Block is array (0 .. Cached_Block_Bytes - 1) of Unsigned_8
+     with Alignment => 8;
+   Cache_Index : Block_Cache_Index.Index := Block_Cache_Index.Empty;
+   Cache_Blocks : array (Cache_Slot) of Cached_Block;
+
+   --  Bulk file payload bypasses the cache so it cannot evict metadata.
+   type Cache_Policy is (Cache_Fill, Cache_Bypass);
+
+   function cacheKey (fs : Filesystem; number : Unsigned_32)
+      return Block_Cache_Index.Block_Key is
+     ((Volume => fs.device.endpointSlot, Block => number));
+
+   function cacheable (fs : Filesystem) return Boolean is
+     (fs.blkSize in 1024 | 2048 | 4096);
+
+   --  Nothing is ever dirty in a write-through cache, so dropping a volume's
+   --  entries loses nothing the device lacks.
+   procedure forgetVolume (fs : Filesystem) is
+   begin
+      Block_Cache_Index.Discard_Volume (Cache_Index, fs.device.endpointSlot);
+   end forgetVolume;
+
+   --  The slot holding a block, read on a miss. A failed read leaves no
+   --  entry. found is False only if every way of the block's set were dirty,
+   --  which a write-through cache never is; callers then read directly.
+   procedure cachedBlock
+     (fs : Filesystem; number : Unsigned_32; slot : out Cache_Slot;
+      found : out Boolean; status : out Read_Status)
+   is
+      key : constant Block_Cache_Index.Block_Key := cacheKey (fs, number);
+   begin
+      status := Read_Complete;
+      Block_Cache_Index.Find (Cache_Index, key, found, slot);
+      if found then
+         return;
+      end if;
+      Block_Cache_Index.Claim (Cache_Index, key, found, slot);
+      if not found then
+         return;
+      end if;
+      deviceRead
+        (fs, Storage_Offset (number) * Storage_Offset (fs.blkSize),
+         Cache_Blocks (slot)'Address, Storage_Count (fs.blkSize), status);
+      if status /= Read_Complete then
+         Block_Cache_Index.Forget (Cache_Index, key);
+         found := False;
+      end if;
+   end cachedBlock;
+
+   --  Read bytes through the block cache (whole blocks are cached) unless the
+   --  caller bypasses it or the volume is not yet admitted.
+   procedure readBytes
+     (fs     : Filesystem;
+      offset : Storage_Offset;
+      dest   : System.Address;
+      len    : Storage_Count;
+      status : out Read_Status;
+      policy : Cache_Policy := Cache_Fill)
+   is
+      blockBytes : constant Storage_Offset := Storage_Offset (fs.blkSize);
+      position : Storage_Offset := offset;
+      done : Storage_Offset := 0;
+      slot : Cache_Slot;
+      found : Boolean;
+   begin
+      if policy = Cache_Bypass or else not cacheable (fs) or else offset < 0 then
+         deviceRead (fs, offset, dest, len, status);
+         return;
+      end if;
+      status := Read_Complete;
+      while done < len loop
+         declare
+            number : constant Storage_Offset := position / blockBytes;
+            within : constant Storage_Offset := position mod blockBytes;
+            part : constant Storage_Offset :=
+              Storage_Offset'Min (blockBytes - within, len - done);
+         begin
+            if number >= Storage_Offset (fs.sb.blockCount) then
+               status := Read_Out_Of_Range;
+               return;
+            end if;
+            cachedBlock (fs, Unsigned_32 (number), slot, found, status);
+            if status /= Read_Complete then
+               return;
+            elsif found then
+               declare
+                  source : String (1 .. Natural (part))
+                    with Import, Address => Cache_Blocks (slot) (Natural (within))'Address;
+                  target : String (1 .. Natural (part))
+                    with Import, Address => dest + done;
+               begin
+                  target := source;
+               end;
+            else
+               deviceRead (fs, position, dest + done, part, status);
+               if status /= Read_Complete then
+                  return;
+               end if;
+            end if;
+            position := position + part;
+            done := done + part;
+         end;
+      end loop;
    end readBytes;
+
+   --  Copy device sector lba into the grant buffer from the filesystem
+   --  blocks it overlaps, filling the cache with any that are missing: small
+   --  metadata writes then need no read once their block is cached. found is
+   --  False when the sector lies outside the volume's blocks (the caller
+   --  reads it directly); failed reports a read that must end the write.
+   procedure cachedSector
+     (fs : Filesystem; lba, sectorBytes : Unsigned_64;
+      found, failed : out Boolean)
+   is
+      blockBytes : constant Unsigned_64 := Unsigned_64 (fs.blkSize);
+      first : constant Unsigned_64 := lba * sectorBytes;
+      position : Unsigned_64 := first;
+      slot : Cache_Slot;
+      cached : Boolean;
+      readStatus : Read_Status;
+   begin
+      found := False;
+      failed := False;
+      if not cacheable (fs) then
+         return;
+      end if;
+      while position < first + sectorBytes loop
+         declare
+            number : constant Unsigned_64 := position / blockBytes;
+            within : constant Unsigned_64 := position mod blockBytes;
+            part : constant Unsigned_64 :=
+              Unsigned_64'Min (blockBytes - within, first + sectorBytes - position);
+         begin
+            if number >= Unsigned_64 (fs.sb.blockCount) then
+               return;
+            end if;
+            cachedBlock (fs, Unsigned_32 (number), slot, cached, readStatus);
+            if readStatus /= Read_Complete then
+               failed := True;
+               return;
+            elsif not cached then
+               return;
+            end if;
+            declare
+               source : String (1 .. Natural (part))
+                 with Import, Address => Cache_Blocks (slot) (Natural (within))'Address;
+               target : String (1 .. Natural (part))
+                 with Import, Address =>
+                   fs.device.grantBuffer + Storage_Offset (position - first);
+            begin
+               target := source;
+            end;
+            position := position + part;
+         end;
+      end loop;
+      found := True;
+   end cachedSector;
+
+   --  After the device acknowledged a write, patch any cached copy. A whole
+   --  metadata block not yet cached is inserted: it will be read again
+   --  (inode tables, directories, bitmaps, pointer blocks). File payload is
+   --  only patched, so bulk writes cannot evict metadata.
+   procedure writeThrough
+     (fs : Filesystem; offset : Storage_Offset; src : System.Address;
+      len : Storage_Count; class : Block_Class)
+   is
+      blockBytes : constant Storage_Offset := Storage_Offset (fs.blkSize);
+      position : Storage_Offset := offset;
+      done : Storage_Offset := 0;
+      slot : Cache_Slot;
+      hit : Boolean;
+   begin
+      if not cacheable (fs) then
+         return;
+      end if;
+      while done < len loop
+         declare
+            number : constant Storage_Offset := position / blockBytes;
+            within : constant Storage_Offset := position mod blockBytes;
+            part : constant Storage_Offset :=
+              Storage_Offset'Min (blockBytes - within, len - done);
+         begin
+            exit when number >= Storage_Offset (fs.sb.blockCount);
+            Block_Cache_Index.Find
+              (Cache_Index, cacheKey (fs, Unsigned_32 (number)), hit, slot);
+            if not hit and then class /= File_Data and then part = blockBytes then
+               Block_Cache_Index.Claim
+                 (Cache_Index, cacheKey (fs, Unsigned_32 (number)), hit, slot);
+            end if;
+            if hit then
+               declare
+                  source : String (1 .. Natural (part))
+                    with Import, Address => src + done;
+                  target : String (1 .. Natural (part))
+                    with Import, Address => Cache_Blocks (slot) (Natural (within))'Address;
+               begin
+                  target := source;
+               end;
+            end if;
+            position := position + part;
+            done := done + part;
+         end;
+      end loop;
+   end writeThrough;
+
+   --  File payload: cached (possibly dirty) blocks are copied; runs of
+   --  uncached blocks are read from the device directly, without filling the
+   --  cache, so bulk reads cannot evict metadata.
+   procedure readPayload
+     (fs : Filesystem; offset : Storage_Offset; dest : System.Address;
+      len : Storage_Count; status : out Read_Status)
+   is
+      blockBytes : constant Storage_Offset := Storage_Offset (fs.blkSize);
+      position : Storage_Offset := offset;
+      done : Storage_Offset := 0;
+      missStart : Storage_Offset := 0;
+      missLength : Storage_Offset := 0;
+      slot : Cache_Slot;
+      found : Boolean;
+
+      procedure Read_Misses is
+      begin
+         if missLength > 0 then
+            deviceRead (fs, missStart, dest + (missStart - offset), missLength, status);
+            missLength := 0;
+         end if;
+      end Read_Misses;
+   begin
+      status := Read_Complete;
+      if not cacheable (fs) then
+         deviceRead (fs, offset, dest, len, status);
+         return;
+      end if;
+      while done < len loop
+         declare
+            number : constant Storage_Offset := position / blockBytes;
+            within : constant Storage_Offset := position mod blockBytes;
+            part : constant Storage_Offset :=
+              Storage_Offset'Min (blockBytes - within, len - done);
+         begin
+            Block_Cache_Index.Find
+              (Cache_Index, cacheKey (fs, Unsigned_32 (number)), found, slot);
+            if found then
+               Read_Misses;
+               if status /= Read_Complete then
+                  return;
+               end if;
+               declare
+                  source : String (1 .. Natural (part))
+                    with Import, Address => Cache_Blocks (slot) (Natural (within))'Address;
+                  target : String (1 .. Natural (part))
+                    with Import, Address => dest + done;
+               begin
+                  target := source;
+               end;
+            else
+               if missLength = 0 then
+                  missStart := position;
+               end if;
+               missLength := missLength + part;
+            end if;
+            position := position + part;
+            done := done + part;
+         end;
+      end loop;
+      Read_Misses;
+   end readPayload;
 
    procedure readBlock
      (fs       : Filesystem;
@@ -428,10 +698,13 @@ package body Ext2 is
    end resolvePath;
 
    --  Get the block number for a given logical block index in a file.
-   --  Checked direct, single-indirect and double-indirect resolution.
+   --  Checked direct, single-, double- and triple-indirect resolution.
+   --  pointerLeaf is the pointer block holding the data slot; pointerMiddle
+   --  is the triple-tree middle block holding that leaf. Zero means absent.
    procedure resolveBlock
      (fs : Filesystem; ino : Inode; logBlock : Unsigned_32;
-      physical, pointerLeaf : out Unsigned_32; status : out Read_Status)
+      physical, pointerLeaf, pointerMiddle : out Unsigned_32;
+      status : out Read_Status)
    is
       path : constant Block_Paths.Block_Path := Block_Paths.Decode
         (Unsigned_64 (logBlock), Sector_Accounting.Block_Sectors (fs.blkSize / 512));
@@ -460,6 +733,7 @@ package body Ext2 is
    begin
       physical := 0;
       pointerLeaf := 0;
+      pointerMiddle := 0;
       status := Read_Complete;
       selectCacheIdentity (fs);
       case path.Kind is
@@ -496,6 +770,41 @@ package body Ext2 is
                physical := Double_Leaf_Cache.Data (path.Leaf_Slot);
                pointerLeaf := leaf;
             end;
+         when Block_Paths.Triple_Indirect =>
+            if ino.tripleIndirectBlock = 0 then
+               return;
+            end if;
+            Load (ino.tripleIndirectBlock, Triple_Root_Cache);
+            if status /= Read_Complete then
+               return;
+            end if;
+            declare
+               middle : constant Unsigned_32 :=
+                 Triple_Root_Cache.Data (path.Top_Slot);
+            begin
+               if middle = 0 then
+                  return;
+               end if;
+               Load (middle, Triple_Middle_Cache);
+               if status /= Read_Complete then
+                  return;
+               end if;
+               pointerMiddle := middle;
+               declare
+                  leaf : constant Unsigned_32 :=
+                    Triple_Middle_Cache.Data (path.Middle_Slot);
+               begin
+                  if leaf = 0 then
+                     return;
+                  end if;
+                  Load (leaf, Triple_Leaf_Cache);
+                  if status /= Read_Complete then
+                     return;
+                  end if;
+                  physical := Triple_Leaf_Cache.Data (path.Bottom_Slot);
+                  pointerLeaf := leaf;
+               end;
+            end;
          when Block_Paths.Unsupported =>
             status := Read_File_Range_Unsupported;
             return;
@@ -512,9 +821,9 @@ package body Ext2 is
      (fs : Filesystem; ino : Inode; logBlock : Unsigned_32;
       physical : out Unsigned_32; status : out Read_Status)
    is
-      pointerLeaf : Unsigned_32;
+      pointerLeaf, pointerMiddle : Unsigned_32;
    begin
-      resolveBlock (fs, ino, logBlock, physical, pointerLeaf, status);
+      resolveBlock (fs, ino, logBlock, physical, pointerLeaf, pointerMiddle, status);
    end getDataBlock;
 
    procedure readDirectoryPage
@@ -759,10 +1068,8 @@ package body Ext2 is
       pos       : Unsigned_64 := offset;
       completed : Unsigned_64 := 0;
       terminalStatus : Read_Status := Read_Complete;
-      ptrsPerBlock : constant Unsigned_64 := Unsigned_64 (fs.blkSize / 4);
-      maximumLogicalBlocks : constant Unsigned_64 :=
-        Unsigned_64 (NUM_DIRECT_BLOCKS) + ptrsPerBlock +
-          ptrsPerBlock * ptrsPerBlock;
+      maximumLogicalBlocks : constant Block_Paths.Logical_Block_Count :=
+        Block_Paths.Block_Limit (Sector_Accounting.Block_Sectors (fs.blkSize / 512));
 
       --  Maximum contiguous payload accepted by this block session.
       maxContigBytes : constant Unsigned_64 :=
@@ -770,7 +1077,7 @@ package body Ext2 is
    begin
       bytesRead := 0;
       status := Read_Complete;
-      if Ext2_Support.Check_File (ino) /= Ext2_Support.File_Allowed then
+      if Ext2_Support.Check_File (ino, Unlinked_Allowed => True) /= Ext2_Support.File_Allowed then
          status := Read_Object_Unsupported;
          return;
       end if;
@@ -870,7 +1177,7 @@ package body Ext2 is
                   declare
                      readStatus : Read_Status;
                   begin
-                     readBytes
+                     readPayload
                        (fs,
                         Storage_Offset (physBlock) *
                           Storage_Offset (fs.blkSize) +
@@ -899,14 +1206,16 @@ package body Ext2 is
 
    --  writeBytes uses the session's described logical block and transfer bound.
 
-   --  Write bytes to the filesystem at a raw byte offset.
-   --  Handles non-aligned writes via read-modify-write of partial sectors.
-   procedure writeBytes
+   --  Write bytes to the device at a raw byte offset. Non-aligned writes
+   --  read-modify-write partial sectors, taking the other bytes from cached
+   --  blocks when present instead of reading the sector.
+   procedure deviceWrite
      (fs     : Filesystem;
       offset : Storage_Offset;
       src    : System.Address;
       len    : Storage_Count;
-      status : out Write_Status)
+      status : out Write_Status;
+      fua    : Boolean := False)
    is
    begin
       status := Write_Device_Error;
@@ -938,6 +1247,7 @@ package body Ext2 is
            Unsigned_64 (fs.device.description.logicalBlockSize);
          msg       : Message;
          ignore    : MessageTag;
+         fromCache, cacheReadFailed : Boolean;
       begin
          while remaining > 0 loop
             lba    := byteOff / deviceBlockSize;
@@ -955,26 +1265,34 @@ package body Ext2 is
                   copyLen := remaining;
                end if;
 
-               --  Read the sector into grant buffer
-               msg.tag := (label  => OP_READ_BLOCKS,
-                           length => 4,
-                           flags  => 0,
-                           reserved  => 0);
-               msg.authorityTag := 0;
-               msg.words := [0 => lba,
-                             1 => fs.device.grant.slot,
-                             2 => 1,
-                             3 => fs.device.grant.generation];
-               ignore := capCall (fs.device.endpointSlot, msg);
-
-               if msg.tag.label /= REPLY_OK or else
-                  msg.tag.length /= 1 or else
-                  msg.tag.flags /= 0 or else msg.tag.reserved /= 0 or else
-                  msg.words (0) /= deviceBlockSize
-               then
-                  debugPrint
-                    ("Ext2: write RMW read failed." & ASCII.LF);
+               --  The sector's other bytes: cached blocks equal the
+               --  acknowledged disk state. Outside the volume's blocks (or
+               --  before admission), read the sector itself.
+               cachedSector (fs, lba, deviceBlockSize, fromCache, cacheReadFailed);
+               if cacheReadFailed then
+                  debugPrint ("Ext2: write RMW read failed." & ASCII.LF);
                   return;
+               elsif not fromCache then
+                  msg.tag := (label  => OP_READ_BLOCKS,
+                              length => 4,
+                              flags  => 0,
+                              reserved  => 0);
+                  msg.authorityTag := 0;
+                  msg.words := [0 => lba,
+                                1 => fs.device.grant.slot,
+                                2 => 1,
+                                3 => fs.device.grant.generation];
+                  ignore := capCall (fs.device.endpointSlot, msg);
+
+                  if msg.tag.label /= REPLY_OK or else
+                     msg.tag.length /= 1 or else
+                     msg.tag.flags /= 0 or else msg.tag.reserved /= 0 or else
+                     msg.words (0) /= deviceBlockSize
+                  then
+                     debugPrint
+                       ("Ext2: write RMW read failed." & ASCII.LF);
+                     return;
+                  end if;
                end if;
 
                --  Overlay our data onto the grant buffer
@@ -1051,7 +1369,7 @@ package body Ext2 is
                   --  Write sectors
                   msg.tag := (label  => OP_WRITE_BLOCKS,
                               length => 4,
-                              flags  => 0,
+                              flags  => (if fua then WRITE_FLAG_FUA else 0),
                               reserved  => 0);
                   msg.authorityTag := 0;
                   msg.words := [0 => lba,
@@ -1078,6 +1396,585 @@ package body Ext2 is
          end loop;
          status := Write_Complete;
       end;
+   end deviceWrite;
+
+
+   Journal_Start_Offset : constant := 16#1C#;
+   Journal_Sequence_Offset : constant := 16#18#;
+
+   --  One device transfer of up to this many bytes (the staging buffer).
+   Maximum_Transfer_Bytes : constant := 512 * 1024;
+   subtype Staging_Index is Natural range 0 .. Maximum_Transfer_Bytes - 1;
+   type Staging_Buffer is array (Staging_Index) of Unsigned_8 with Alignment => 8;
+
+   --  Completed writes are durable: nothing to do without a volatile cache;
+   --  otherwise the device's FLUSH. A failure quarantines the volume.
+   procedure barrier (fs : in out Filesystem; ok : out Boolean) is
+      msg : Message := NULL_MESSAGE;
+   begin
+      ok := True;
+      if not Has_Volatile_Cache (fs.device.description) then
+         return;
+      end if;
+      msg.tag := (label => OP_FLUSH_DEVICE, length => 0, flags => 0, reserved => 0);
+      msg.tag := capCall (fs.device.endpointSlot, msg);
+      ok := msg.tag.label = CuBit.Block_Devices.REPLY_OK and then
+        msg.tag.length = 1 and then msg.tag.flags = 0 and then
+        msg.tag.reserved = 0 and then msg.words (0) = 0;
+      if not ok then
+         fs.writeQuarantined := True;
+      end if;
+   end barrier;
+
+   --  One block durable on its own: FUA where offered, else write + barrier.
+   procedure writeDurable
+     (fs : in out Filesystem; number : Unsigned_32; source : System.Address;
+      ok : out Boolean)
+   is
+      status : Write_Status;
+      useFua : constant Boolean :=
+        Has_Volatile_Cache (fs.device.description) and then
+        Supports_FUA (fs.device.description);
+   begin
+      deviceWrite (fs, Storage_Offset (number) * Storage_Offset (fs.blkSize), source,
+                   Storage_Count (fs.blkSize), status, fua => useFua);
+      ok := status = Write_Complete;
+      if ok and then not useFua then
+         barrier (fs, ok);
+      end if;
+      if not ok then
+         fs.writeQuarantined := True;
+      end if;
+   end writeDurable;
+
+   function dirtyBlocks (fs : Filesystem) return Boolean is
+     (Block_Cache_Index.Has_Dirty (Cache_Index, fs.device.endpointSlot));
+
+   --  Commit the running transaction of a journaled volume, JBD2 style and
+   --  data=ordered: (1) dirty file data home; (2) barrier; (3) the log at the
+   --  journal's first block: descriptor blocks naming each dirty metadata
+   --  block's home, followed by its copy (escaped if it begins with the
+   --  journal magic), with the journal's checksums; (4) barrier, then the
+   --  commit block, durable; (5) checkpoint: each metadata block home, then
+   --  a barrier; (6) the journal superblock's next sequence, durable. Until
+   --  (6) a crash replays the transaction; replay writes the same blocks the
+   --  checkpoint does. The log is always empty again after (6), so no revoke
+   --  record is ever needed. A transaction larger than the log is split into
+   --  several, each whole. Any failure quarantines: the device state is then
+   --  uncertain and dirty blocks stay dirty, never silently dropped.
+   procedure commitTransaction (fs : in out Filesystem; status : out Write_Status) is
+      volume : constant Unsigned_64 := fs.device.endpointSlot;
+      blockBytes : constant Unsigned_64 := Unsigned_64 (fs.blkSize);
+      size : constant Jbd2_Format.Block_Bytes := Jbd2_Format.Block_Bytes (fs.blkSize);
+      incompat : constant Unsigned_32 := fs.journal.Incompat;
+      checksums : constant Boolean := Jbd2_Format.Checksummed (incompat);
+      v3 : constant Boolean := Jbd2_Format.Has (incompat, Jbd2_Format.Incompat_Csum_V3);
+      wide : constant Boolean := Jbd2_Format.Has (incompat, Jbd2_Format.Incompat_64bit);
+      transactionSums : constant Boolean :=
+        not checksums and then
+        Jbd2_Format.Has (fs.journal.Compat, Jbd2_Format.Compat_Checksum);
+      seed : constant Unsigned_32 :=
+        (if checksums then Jbd2_Format.Crc32c_UUID (16#FFFF_FFFF#, fs.journal.Identity)
+         else 0);
+      tagBytes : constant Natural := Jbd2_Format.Tag_Bytes (incompat);
+      --  The first tag carries the journal UUID; later ones SAME_UUID.
+      tagsPerDescriptor : constant Natural :=
+        (Jbd2_Format.Usable_Bytes (size, incompat) - Jbd2_Format.Header_Bytes -
+           Jbd2_Format.UUID_Bytes) / tagBytes;
+      logBlocks : constant Unsigned_32 := fs.journal.Max_Length - fs.journal.First;
+      slotBits : constant := 13;
+      pragma Compile_Time_Error
+        (2 ** slotBits /= Block_Cache_Index.Capacity, "slot encoding changed");
+      type Pending_Array is array (1 .. Block_Cache_Index.Capacity) of Unsigned_64;
+      data, meta : Pending_Array;
+      dataCount, metaCount : Natural := 0;
+      staging : Staging_Buffer;
+      runStart : Unsigned_32 := 0;
+      runBlocks : Natural := 0;
+      ok : Boolean := True;
+
+      function Block_Of (item : Unsigned_64) return Unsigned_32 is
+        (Unsigned_32 (Shift_Right (item, slotBits)));
+      function Slot_Of (item : Unsigned_64) return Cache_Slot is
+        (Cache_Slot (item and (2 ** slotBits - 1)));
+
+      procedure Sort (list : in out Pending_Array; count : Natural) is
+         procedure Sift (start, last : Positive) is
+            parent : Positive := start;
+            child : Positive;
+            saved : Unsigned_64;
+         begin
+            while parent <= last / 2 loop
+               child := parent * 2;
+               if child < last and then list (child) < list (child + 1) then
+                  child := child + 1;
+               end if;
+               exit when list (parent) >= list (child);
+               saved := list (parent);
+               list (parent) := list (child);
+               list (child) := saved;
+               parent := child;
+            end loop;
+         end Sift;
+         saved : Unsigned_64;
+      begin
+         for start in reverse 1 .. count / 2 loop
+            Sift (start, count);
+         end loop;
+         for last in reverse 2 .. count loop
+            saved := list (1);
+            list (1) := list (last);
+            list (last) := saved;
+            Sift (1, last - 1);
+         end loop;
+      end Sort;
+
+      procedure Flush_Run is
+         result : Write_Status;
+      begin
+         if runBlocks > 0 and then ok then
+            deviceWrite (fs, Storage_Offset (runStart) * Storage_Offset (blockBytes),
+                         staging'Address,
+                         Storage_Count (Unsigned_64 (runBlocks) * blockBytes), result);
+            ok := result = Write_Complete;
+         end if;
+         runBlocks := 0;
+      end Flush_Run;
+
+      --  Queue one block for its physical home, coalescing consecutive ones.
+      procedure Append (physical : Unsigned_32; source : System.Address) is
+      begin
+         if runBlocks > 0 and then
+           (Unsigned_64 (physical) /= Unsigned_64 (runStart) + Unsigned_64 (runBlocks) or else
+            Unsigned_64 (runBlocks + 1) * blockBytes > Maximum_Transfer_Bytes)
+         then
+            Flush_Run;
+         end if;
+         if runBlocks = 0 then
+            runStart := physical;
+         end if;
+         declare
+            from : String (1 .. Natural (blockBytes)) with Import, Address => source;
+            to : String (1 .. Natural (blockBytes))
+              with Import, Address => staging (runBlocks * Natural (blockBytes))'Address;
+         begin
+            to := from;
+         end;
+         runBlocks := runBlocks + 1;
+      end Append;
+
+      function Log_Home (logical : Unsigned_32) return Unsigned_32 is
+         physical, leaf, middle : Unsigned_32;
+         result : Read_Status;
+      begin
+         resolveBlock (fs, fs.journal.Journal_Inode, logical, physical, leaf, middle, result);
+         if result /= Read_Complete or else physical = 0 then
+            ok := False;
+            return 0;
+         end if;
+         return physical;
+      end Log_Home;
+
+      procedure Put_Be32 (block : in out Jbd2_Format.Block; offset : Natural;
+                          value : Unsigned_32) is
+      begin
+         block (offset) := Unsigned_8 (Shift_Right (value, 24));
+         block (offset + 1) := Unsigned_8 (Shift_Right (value, 16) and 16#FF#);
+         block (offset + 2) := Unsigned_8 (Shift_Right (value, 8) and 16#FF#);
+         block (offset + 3) := Unsigned_8 (value and 16#FF#);
+      end Put_Be32;
+
+      procedure Put_Be16 (block : in out Jbd2_Format.Block; offset : Natural;
+                          value : Unsigned_32) is
+      begin
+         block (offset) := Unsigned_8 (Shift_Right (value, 8) and 16#FF#);
+         block (offset + 1) := Unsigned_8 (value and 16#FF#);
+      end Put_Be16;
+
+      procedure Header (block : in out Jbd2_Format.Block; kind, sequence : Unsigned_32) is
+      begin
+         block := [others => 0];
+         Put_Be32 (block, 0, Jbd2_Format.Magic);
+         Put_Be32 (block, 4, kind);
+         Put_Be32 (block, 8, sequence);
+      end Header;
+
+      --  One whole transaction over meta (first .. last).
+      procedure Commit_Chunk (first, last : Positive) is
+         sequence : constant Unsigned_32 := fs.journal.Sequence;
+         position : Unsigned_32 := fs.journal.First;
+         descriptor, copy, commit : Jbd2_Format.Block;
+         runningSum : Unsigned_32 := 16#FFFF_FFFF#;
+         index : Positive := first;
+      begin
+         --  (3) descriptors and copies, in log order.
+         while index <= last and then ok loop
+            declare
+               groupLast : constant Positive :=
+                 Positive'Min (last, index + tagsPerDescriptor - 1);
+               offset : Natural := Jbd2_Format.Header_Bytes;
+               descriptorPosition : constant Unsigned_32 := position;
+            begin
+               Header (descriptor, Jbd2_Format.Descriptor_Kind, sequence);
+               for item in index .. groupLast loop
+                  declare
+                     slot : constant Cache_Slot := Slot_Of (meta (item));
+                     home : constant Unsigned_32 := Block_Of (meta (item));
+                     flags : Unsigned_32 := 0;
+                     tagChecksum : Unsigned_32 := 0;
+                  begin
+                     copy := [others => 0];
+                     for b in 0 .. Natural (blockBytes) - 1 loop
+                        copy (b) := Cache_Blocks (slot) (b);
+                     end loop;
+                     if Jbd2_Format.Be32 (copy, 0) = Jbd2_Format.Magic then
+                        flags := flags or Jbd2_Format.Tag_Escape;
+                        copy (0 .. 3) := [others => 0];
+                     end if;
+                     if item /= index then
+                        flags := flags or Jbd2_Format.Tag_Same_UUID;
+                     end if;
+                     if item = groupLast then
+                        flags := flags or Jbd2_Format.Tag_Last;
+                     end if;
+                     if checksums then
+                        tagChecksum := Jbd2_Format.Crc32c
+                          (Jbd2_Format.Crc32c_Be32 (seed, sequence), copy, 0, size);
+                     end if;
+                     Put_Be32 (descriptor, offset, home);
+                     if v3 then
+                        Put_Be32 (descriptor, offset + 4, flags);
+                        Put_Be32 (descriptor, offset + 8, 0);
+                        Put_Be32 (descriptor, offset + 12, tagChecksum);
+                     else
+                        Put_Be16 (descriptor, offset + 4, tagChecksum and 16#FFFF#);
+                        Put_Be16 (descriptor, offset + 6, flags);
+                        if wide then
+                           Put_Be32 (descriptor, offset + 8, 0);
+                        end if;
+                     end if;
+                     offset := offset + tagBytes;
+                     if item = index then
+                        for u in Jbd2_Format.UUID'Range loop
+                           descriptor (offset + u) := fs.journal.Identity (u);
+                        end loop;
+                        offset := offset + Jbd2_Format.UUID_Bytes;
+                     end if;
+                     --  The copy follows the descriptor, in tag order.
+                     position := position + 1;
+                     Append (Log_Home (position), copy'Address);
+                  end;
+               end loop;
+               if checksums then
+                  Put_Be32 (descriptor, size - Jbd2_Format.Tail_Bytes,
+                            Jbd2_Format.Crc32c (seed, descriptor, 0, size));
+               end if;
+               --  The descriptor precedes its copies in the log. Its sum is
+               --  jbd2's order too: descriptor, then each copy.
+               if transactionSums then
+                  runningSum := Jbd2_Format.Crc32_Be (runningSum, descriptor, 0, size);
+                  for item in index .. groupLast loop
+                     declare
+                        slot : constant Cache_Slot := Slot_Of (meta (item));
+                     begin
+                        copy := [others => 0];
+                        for b in 0 .. Natural (blockBytes) - 1 loop
+                           copy (b) := Cache_Blocks (slot) (b);
+                        end loop;
+                        if Jbd2_Format.Be32 (copy, 0) = Jbd2_Format.Magic then
+                           copy (0 .. 3) := [others => 0];
+                        end if;
+                        runningSum := Jbd2_Format.Crc32_Be (runningSum, copy, 0, size);
+                     end;
+                  end loop;
+               end if;
+               Flush_Run;
+               declare
+                  home : constant Unsigned_32 := Log_Home (descriptorPosition);
+                  result : Write_Status;
+               begin
+                  if ok then
+                     deviceWrite (fs, Storage_Offset (home) * Storage_Offset (blockBytes),
+                                  descriptor'Address, Storage_Count (blockBytes), result);
+                     ok := result = Write_Complete;
+                  end if;
+               end;
+               position := position + 1;
+               index := groupLast + 1;
+            end;
+         end loop;
+         if not ok then
+            return;
+         end if;
+         --  (4) the commit block, after its transaction is durable.
+         barrier (fs, ok);
+         if not ok then
+            return;
+         end if;
+         Header (commit, Jbd2_Format.Commit_Kind, sequence);
+         if transactionSums then
+            commit (Jbd2_Format.Commit_Checksum_Type_Offset) :=
+              Jbd2_Format.Checksum_Type_Crc32;
+            commit (Jbd2_Format.Commit_Checksum_Size_Offset) :=
+              Jbd2_Format.Crc32_Checksum_Bytes;
+            Put_Be32 (commit, Jbd2_Format.Commit_Checksum_Offset, runningSum);
+         elsif checksums then
+            Put_Be32 (commit, Jbd2_Format.Commit_Checksum_Offset,
+                      Jbd2_Format.Crc32c (seed, commit, 0, size));
+         end if;
+         writeDurable (fs, Log_Home (position), commit'Address, ok);
+         if not ok then
+            return;
+         end if;
+         --  (5) checkpoint: metadata home, in block order.
+         for item in first .. last loop
+            Append (Block_Of (meta (item)), Cache_Blocks (Slot_Of (meta (item)))'Address);
+         end loop;
+         Flush_Run;
+         if ok then
+            barrier (fs, ok);
+         end if;
+         if not ok then
+            return;
+         end if;
+         --  (6) the log is empty again: expect the next sequence.
+         declare
+            super : Jbd2_Format.Block := [others => 0];
+            result : Read_Status;
+         begin
+            deviceRead (fs, Storage_Offset (fs.journal.Super_Home) *
+                          Storage_Offset (blockBytes),
+                        super'Address, Storage_Count (blockBytes), result);
+            ok := result = Read_Complete;
+            if not ok then
+               return;
+            end if;
+            Put_Be32 (super, Journal_Sequence_Offset, sequence + 1);
+            Put_Be32 (super, Journal_Start_Offset, fs.journal.First);
+            if checksums then
+               Put_Be32 (super, Jbd2_Format.Superblock_Checksum_Offset, 0);
+               Put_Be32 (super, Jbd2_Format.Superblock_Checksum_Offset,
+                         Jbd2_Format.Crc32c (16#FFFF_FFFF#, super, 0,
+                                             Jbd2_Format.Superblock_Bytes));
+            end if;
+            writeDurable (fs, fs.journal.Super_Home, super'Address, ok);
+         end;
+         if not ok then
+            return;
+         end if;
+         fs.journal.Sequence := sequence + 1;
+         for item in first .. last loop
+            Block_Cache_Index.Mark_Clean (Cache_Index, Slot_Of (meta (item)));
+         end loop;
+      end Commit_Chunk;
+   begin
+      status := Write_Complete;
+      if fs.writeQuarantined then
+         status := Write_Recovery_Required;
+         return;
+      end if;
+      for slot in Cache_Slot loop
+         if Cache_Index.Used (slot) and then Cache_Index.Dirty (slot) and then
+           Cache_Index.Keys (slot).Volume = volume
+         then
+            declare
+               item : constant Unsigned_64 :=
+                 Shift_Left (Unsigned_64 (Cache_Index.Keys (slot).Block), slotBits) or
+                 Unsigned_64 (slot);
+            begin
+               if Cache_Index.Classes (slot) = File_Data then
+                  dataCount := dataCount + 1;
+                  data (dataCount) := item;
+               else
+                  metaCount := metaCount + 1;
+                  meta (metaCount) := item;
+               end if;
+            end;
+         end if;
+      end loop;
+      --  (1) ordered data, home first.
+      Sort (data, dataCount);
+      for item in 1 .. dataCount loop
+         Append (Block_Of (data (item)), Cache_Blocks (Slot_Of (data (item)))'Address);
+      end loop;
+      Flush_Run;
+      if ok then
+         for item in 1 .. dataCount loop
+            Block_Cache_Index.Mark_Clean (Cache_Index, Slot_Of (data (item)));
+         end loop;
+      end if;
+      if ok and then metaCount > 0 then
+         --  (2) the data a commit refers to must be durable before it.
+         barrier (fs, ok);
+         Sort (meta, metaCount);
+         declare
+            --  Blocks per transaction: copies + descriptors + commit fit the log.
+            perTransaction : constant Positive := Positive
+              (Unsigned_64'Max
+                 (1, (Unsigned_64 (logBlocks) - 1) * Unsigned_64 (tagsPerDescriptor) /
+                     Unsigned_64 (tagsPerDescriptor + 1)));
+            first : Positive := 1;
+         begin
+            while first <= metaCount and then ok loop
+               Commit_Chunk (first, Positive'Min (metaCount, first + perTransaction - 1));
+               first := first + perTransaction;
+            end loop;
+         end;
+      end if;
+      if ok then
+         fs.journal.Dirty_Metadata := 0;
+      else
+         fs.writeQuarantined := True;
+         invalidateBlockCache;
+         status := Write_Recovery_Required;
+      end if;
+   end commitTransaction;
+
+   procedure Flush (fs : in out Filesystem; status : out Flush_Status) is
+      committed : Write_Status;
+      ok : Boolean;
+   begin
+      if fs.writeQuarantined then
+         status := Flush_Recovery_Required;
+         return;
+      end if;
+      if fs.journal.Active then
+         commitTransaction (fs, committed);
+         if committed /= Write_Complete then
+            status := Flush_IO_Error;
+            return;
+         end if;
+      end if;
+      if not Can_Persist (fs.device.description) then
+         status := Flush_Unsupported;
+         return;
+      end if;
+      --  Ext2 write paths have submitted everything else already: the
+      --  device barrier makes it durable.
+      barrier (fs, ok);
+      status := (if ok then Flush_Complete else Flush_IO_Error);
+   end Flush;
+
+   --  Journaled volumes: write into the cache and mark each block dirty in
+   --  its class; commitTransaction later sends file data home and metadata
+   --  through the journal. A partially written block is read first. With
+   --  every way of a set dirty, or the running transaction at half the log,
+   --  the transaction commits first. Only an uncertain commit quarantines.
+   procedure writeCached
+     (fs     : in out Filesystem;
+      offset : Storage_Offset;
+      src    : System.Address;
+      len    : Storage_Count;
+      status : out Write_Status;
+      class  : Block_Class)
+   is
+      blockBytes : constant Storage_Offset := Storage_Offset (fs.blkSize);
+      position : Storage_Offset := offset;
+      done : Storage_Offset := 0;
+      slot : Cache_Slot;
+      found : Boolean;
+      readStatus : Read_Status;
+   begin
+      status := Write_Complete;
+      if fs.writeQuarantined or else Is_Read_Only (fs.device.description) then
+         status := Write_Read_Only;
+         return;
+      elsif offset < 0 then
+         status := Write_Out_Of_Range;
+         return;
+      end if;
+      while done < len loop
+         declare
+            number : constant Storage_Offset := position / blockBytes;
+            within : constant Storage_Offset := position mod blockBytes;
+            part : constant Storage_Offset :=
+              Storage_Offset'Min (blockBytes - within, len - done);
+            key : constant Block_Cache_Index.Block_Key :=
+              cacheKey (fs, Unsigned_32 (number));
+         begin
+            if number >= Storage_Offset (fs.sb.blockCount) then
+               status := Write_Out_Of_Range;
+               return;
+            end if;
+            Block_Cache_Index.Find (Cache_Index, key, found, slot);
+            if not found then
+               Block_Cache_Index.Claim (Cache_Index, key, found, slot);
+               if not found then
+                  --  Memory pressure: commit, which cleans this volume.
+                  commitTransaction (fs, status);
+                  if status /= Write_Complete then
+                     return;
+                  end if;
+                  Block_Cache_Index.Claim (Cache_Index, key, found, slot);
+                  if not found then
+                     --  Every way holds another journaled volume's dirty
+                     --  blocks: never bypass this volume's journal.
+                     fs.writeQuarantined := True;
+                     status := Write_Recovery_Required;
+                     return;
+                  end if;
+               end if;
+               if part < blockBytes then
+                  deviceRead (fs, number * blockBytes, Cache_Blocks (slot)'Address,
+                              Storage_Count (blockBytes), readStatus);
+                  if readStatus /= Read_Complete then
+                     Block_Cache_Index.Forget (Cache_Index, key);
+                     status := (if readStatus = Read_Out_Of_Range then
+                                  Write_Out_Of_Range else Write_Device_Error);
+                     return;
+                  end if;
+               end if;
+            end if;
+            declare
+               source : String (1 .. Natural (part)) with Import, Address => src + done;
+               target : String (1 .. Natural (part))
+                 with Import, Address => Cache_Blocks (slot) (Natural (within))'Address;
+            begin
+               target := source;
+            end;
+            if class /= File_Data and then not Cache_Index.Dirty (slot) then
+               fs.journal.Dirty_Metadata := fs.journal.Dirty_Metadata + 1;
+            end if;
+            Block_Cache_Index.Mark_Dirty
+              (Cache_Index, slot,
+               --  A block keeps its metadata class once journaled in this
+               --  transaction, even if file data is written into it later.
+               (if Cache_Index.Dirty (slot) and then Cache_Index.Classes (slot) /= File_Data
+                then Cache_Index.Classes (slot) else class));
+            position := position + part;
+            done := done + part;
+         end;
+      end loop;
+      --  Keep every transaction comfortably inside the log.
+      if Natural (fs.journal.Max_Length - fs.journal.First) / 2 <=
+        fs.journal.Dirty_Metadata
+      then
+         commitTransaction (fs, status);
+      end if;
+   end writeCached;
+
+   --  Write through the block cache: patch cached copies only after the
+   --  device acknowledged; after any failure the device state of the range
+   --  is uncertain, so drop the volume's cached blocks.
+   procedure writeBytes
+     (fs     : in out Filesystem;
+      offset : Storage_Offset;
+      src    : System.Address;
+      len    : Storage_Count;
+      status : out Write_Status;
+      class  : Block_Class)
+   is
+   begin
+      if fs.journal.Active and then cacheable (fs) then
+         writeCached (fs, offset, src, len, status, class);
+         return;
+      end if;
+      deviceWrite (fs, offset, src, len, status);
+      if status = Write_Complete then
+         writeThrough (fs, offset, src, len, class);
+      else
+         forgetVolume (fs);
+      end if;
    end writeBytes;
 
    type Inode_Write_Mode is (Update_Existing_Inode, Initialize_New_Inode);
@@ -1085,7 +1982,7 @@ package body Ext2 is
    --  Existing inodes preserve their extended metadata. A newly reserved slot
    --  must be initialized in full before any directory entry can expose it.
    procedure writeInode
-     (fs       : Filesystem;
+     (fs       : in out Filesystem;
       inodeNum : Unsigned_32;
       ino      : Inode;
       status   : out Write_Status;
@@ -1130,7 +2027,8 @@ package body Ext2 is
       case mode is
          when Update_Existing_Inode =>
             writeBytes
-              (fs, inodeTableByteOffset, ino'Address, Inode'Size / 8, status);
+              (fs, inodeTableByteOffset, ino'Address, Inode'Size / 8, status,
+               Inode_Table);
          when Initialize_New_Inode =>
             declare
                --  Admission bounds the power-of-two inode slot by blkSize.
@@ -1140,7 +2038,8 @@ package body Ext2 is
             begin
                header := ino;
                writeBytes
-                 (fs, inodeTableByteOffset, slot'Address, Storage_Count (inoSize), status);
+                 (fs, inodeTableByteOffset, slot'Address, Storage_Count (inoSize), status,
+                  Inode_Table);
             end;
       end case;
    end writeInode;
@@ -1148,18 +2047,18 @@ package body Ext2 is
 
    --  Write the superblock back to disk
    procedure writeSuperblock
-     (fs : Filesystem;
+     (fs : in out Filesystem;
       status : out Write_Status)
    is
    begin
       writeBytes (fs, SUPERBLOCK_OFFSET, fs.sb'Address,
-                  Superblock'Size / 8, status);
+                  Superblock'Size / 8, status, Allocation_Metadata);
    end writeSuperblock;
 
 
    --  Write a block group descriptor back to disk
    procedure writeBGD
-     (fs         : Filesystem;
+     (fs         : in out Filesystem;
       blockGroup : Unsigned_32;
       bgd        : BlockGroupDescriptor;
       status     : out Write_Status)
@@ -1169,7 +2068,7 @@ package body Ext2 is
         Storage_Offset (blockGroup) * (BlockGroupDescriptor'Size / 8);
    begin
       writeBytes (fs, bgdtOffset, bgd'Address,
-                  BlockGroupDescriptor'Size / 8, status);
+                  BlockGroupDescriptor'Size / 8, status, Allocation_Metadata);
    end writeBGD;
 
 
@@ -1188,202 +2087,251 @@ package body Ext2 is
                  BlockGroupDescriptor'Size / 8, status);
    end readBGD;
 
-   --  Allocate a free block from the first group which has one.  Block bitmap
-   --  bits are relative to their group, not to firstDataBlock globally.
+   --  Blocks reserved in memory for one request batch, with each touched
+   --  group's updated bitmap and descriptor. Nothing reaches the disk before
+   --  commitReservation, so discarding an uncommitted plan needs no I/O.
+   Maximum_Reserved_Groups : constant := 4;
+   Maximum_Bitmap_Bytes : constant := 4096; -- one 4 KiB bitmap block
+   --  Payload staged per batch: the per-volume transfer buffer's size.
+   Maximum_Batch_Bytes : constant := 512 * 1024;
+   Minimum_Block_Bytes : constant := 1024;
+   Maximum_Batch_Data_Blocks : constant := Maximum_Batch_Bytes / Minimum_Block_Bytes;
+   --  A batch stays under one leaf: at most a new leaf, middle and root.
+   Maximum_Batch_Pointer_Blocks : constant := 3;
+   Maximum_Reserved_Blocks : constant :=
+     Maximum_Batch_Data_Blocks + Maximum_Batch_Pointer_Blocks;
+   subtype Reserved_Count is Natural range 0 .. Maximum_Reserved_Blocks;
+   subtype Reserved_Index is Positive range 1 .. Maximum_Reserved_Blocks;
+   subtype Group_Change_Count is Natural range 0 .. Maximum_Reserved_Groups;
+   subtype Group_Change_Index is Positive range 1 .. Maximum_Reserved_Groups;
+   subtype Bitmap_Index is Natural range 0 .. Maximum_Bitmap_Bytes - 1;
+   type Bitmap_Buffer is array (Bitmap_Index) of Unsigned_8 with Alignment => 8;
+   type Group_Change is record
+      Group : Unsigned_32 := 0;
+      Descriptor : BlockGroupDescriptor;
+      Bitmap : Bitmap_Buffer;
+      Taken : Reserved_Count := 0;
+   end record;
+   type Group_Changes is array (Group_Change_Index) of Group_Change;
+   type Reserved_Blocks is array (Reserved_Index) of Unsigned_32;
+   type Reservation is record
+      Blocks : Reserved_Blocks := [others => 0];
+      Count : Reserved_Count := 0;
+      Groups : Group_Changes;
+      Group_Total : Group_Change_Count := 0;
+   end record;
+
+   function bitmapBytes (fs : Filesystem) return Unsigned_32 is
+     (Unsigned_32'Min ((fs.sb.blocksPerBlockGroup + 7) / 8, Maximum_Bitmap_Bytes));
+
+   --  Reserve up to wanted free blocks in memory, at least minimum or none,
+   --  scanning from goal and then onward through the groups. Bitmap bits
+   --  are relative to their group, not to firstDataBlock globally. Free-space
+   --  counters advertising space that no bitmap bit backs are inconsistent
+   --  metadata, not a normal no-space condition.
+   procedure reserveBlocks
+     (fs : Filesystem; goal : Unsigned_32; wanted, minimum : Reserved_Count;
+      plan : out Reservation; status : out Write_Status)
+   is
+      readSize : constant Unsigned_32 := bitmapBytes (fs);
+      blockBytes : constant Storage_Offset := Storage_Offset (fs.blkSize);
+      allocatableBlocks, groupCount : Unsigned_32;
+      startGroup, startBit : Unsigned_32 := 0;
+      readStatus : Read_Status;
+      sawAdvertisedSpace : Boolean := False;
+
+      procedure Discard (reason : Write_Status) is
+      begin
+         plan.Count := 0;
+         plan.Group_Total := 0;
+         status := reason;
+      end Discard;
+   begin
+      plan.Count := 0;
+      plan.Group_Total := 0;
+      status := Write_No_Space;
+      if fs.writeQuarantined then
+         status := Write_Recovery_Required;
+         return;
+      elsif Is_Read_Only (fs.device.description) then
+         status := Write_Read_Only;
+         return;
+      elsif fs.sb.blocksPerBlockGroup = 0 or else
+        fs.sb.blockCount <= fs.sb.firstDataBlock
+      then
+         status := Write_Device_Error;
+         return;
+      elsif wanted = 0 or else fs.sb.freeBlocks = 0 or else readSize = 0 then
+         return;
+      end if;
+
+      --  Commit rewrites the superblock: read its block now, so publishing
+      --  the reservation needs no read that could fail half way through.
+      declare
+         current : Superblock;
+      begin
+         readBytes (fs, SUPERBLOCK_OFFSET, current'Address, Superblock'Size / 8,
+                    readStatus);
+         if readStatus /= Read_Complete then
+            status := (if readStatus = Read_Out_Of_Range then Write_Out_Of_Range
+                       else Write_Device_Error);
+            return;
+         end if;
+      end;
+      allocatableBlocks := fs.sb.blockCount - fs.sb.firstDataBlock;
+      groupCount := 1 + (allocatableBlocks - 1) / fs.sb.blocksPerBlockGroup;
+      if goal >= fs.sb.firstDataBlock and then goal < fs.sb.blockCount then
+         startGroup := (goal - fs.sb.firstDataBlock) / fs.sb.blocksPerBlockGroup;
+         startBit := (goal - fs.sb.firstDataBlock) mod fs.sb.blocksPerBlockGroup;
+      end if;
+
+      for step in 0 .. Unsigned_64 (groupCount) - 1 loop
+         exit when plan.Count = wanted or else
+           plan.Group_Total = Maximum_Reserved_Groups or else
+           Unsigned_32 (plan.Count) = fs.sb.freeBlocks;
+         declare
+            group : constant Unsigned_32 := Unsigned_32
+              ((Unsigned_64 (startGroup) + step) mod Unsigned_64 (groupCount));
+            change : Group_Change renames plan.Groups (plan.Group_Total + 1);
+            groupFirst, validBlocks, scanBits, bit : Unsigned_32;
+         begin
+            readBGD (fs, group, change.Descriptor, readStatus);
+            if readStatus /= Read_Complete then
+               Discard (if readStatus = Read_Out_Of_Range then Write_Out_Of_Range
+                        else Write_Device_Error);
+               return;
+            end if;
+            if change.Descriptor.numFreeBlocks /= 0 then
+               sawAdvertisedSpace := True;
+               groupFirst := fs.sb.firstDataBlock + group * fs.sb.blocksPerBlockGroup;
+               validBlocks := Unsigned_32'Min
+                 (fs.sb.blocksPerBlockGroup, fs.sb.blockCount - groupFirst);
+               readBytes
+                 (fs, Storage_Offset (change.Descriptor.blockBitmapAddr) * blockBytes,
+                  change.Bitmap'Address, Storage_Count (readSize), readStatus);
+               if readStatus /= Read_Complete then
+                  Discard (if readStatus = Read_Out_Of_Range then Write_Out_Of_Range
+                           else Write_Device_Error);
+                  return;
+               end if;
+               scanBits := Unsigned_32'Min (validBlocks, readSize * 8);
+               change.Group := group;
+               change.Taken := 0;
+               for scanned in 0 .. scanBits - 1 loop
+                  exit when plan.Count = wanted or else
+                    Unsigned_32 (change.Taken) =
+                      Unsigned_32 (change.Descriptor.numFreeBlocks) or else
+                    Unsigned_32 (plan.Count) = fs.sb.freeBlocks;
+                  bit := (if step = 0 then (startBit + scanned) mod scanBits
+                          else scanned);
+                  declare
+                     mask : constant Unsigned_8 :=
+                       Shift_Left (Unsigned_8'(1), Natural (bit mod 8));
+                     byte : Unsigned_8 renames change.Bitmap (Natural (bit / 8));
+                  begin
+                     if (byte and mask) = 0 then
+                        byte := byte or mask;
+                        plan.Count := plan.Count + 1;
+                        plan.Blocks (plan.Count) := groupFirst + bit;
+                        change.Taken := change.Taken + 1;
+                     end if;
+                  end;
+               end loop;
+               if change.Taken > 0 then
+                  plan.Group_Total := plan.Group_Total + 1;
+               end if;
+            end if;
+         end;
+      end loop;
+
+      if plan.Count > 0 and then plan.Count >= minimum then
+         status := Write_Complete;
+      elsif plan.Count = 0 and then sawAdvertisedSpace then
+         Discard (Write_Device_Error);
+      else
+         Discard (Write_No_Space);
+      end if;
+   end reserveBlocks;
+
+   --  Publish a reservation: every touched bitmap, then every descriptor,
+   --  then the superblock, each written once. Error replies do not prove a
+   --  metadata write left storage unchanged: never attempt blind rollback or
+   --  hand out an uncertain reservation.
+   procedure commitReservation
+     (fs : in out Filesystem; plan : Reservation; status : out Write_Status)
+   is
+      updated : BlockGroupDescriptor;
+
+      procedure Uncertain is
+      begin
+         fs.writeQuarantined := True;
+         status := Write_Recovery_Required;
+      end Uncertain;
+   begin
+      status := Write_Complete;
+      for index in 1 .. plan.Group_Total loop
+         writeBytes
+           (fs, Storage_Offset (plan.Groups (index).Descriptor.blockBitmapAddr) *
+              Storage_Offset (fs.blkSize),
+            plan.Groups (index).Bitmap'Address, Storage_Count (bitmapBytes (fs)),
+            status, Allocation_Metadata);
+         if status /= Write_Complete then
+            Uncertain;
+            return;
+         end if;
+      end loop;
+      for index in 1 .. plan.Group_Total loop
+         updated := plan.Groups (index).Descriptor;
+         updated.numFreeBlocks :=
+           updated.numFreeBlocks - Unsigned_16 (plan.Groups (index).Taken);
+         writeBGD (fs, plan.Groups (index).Group, updated, status);
+         if status /= Write_Complete then
+            Uncertain;
+            return;
+         end if;
+      end loop;
+      fs.sb.freeBlocks := fs.sb.freeBlocks - Unsigned_32 (plan.Count);
+      writeSuperblock (fs, status);
+      if status /= Write_Complete then
+         Uncertain;
+      end if;
+   end commitReservation;
+
+   --  Allocate one free block. Returns a block only after all reservation
+   --  metadata writes complete.
    procedure allocateBlock
      (fs       : in out Filesystem;
       blockNum : out Unsigned_32;
       status   : out Write_Status)
    is
-      bgd : BlockGroupDescriptor;
-      updatedBGD : BlockGroupDescriptor;
-      bitmapBuf : array (0 .. 4095) of Unsigned_8 with Alignment => 8;
-      bitmapBytes : constant Unsigned_32 :=
-        (fs.sb.blocksPerBlockGroup + 7) / 8;
-      readSize : Unsigned_32;
-      groupCount : Unsigned_32;
-      allocatableBlocks : Unsigned_32;
-      groupFirst : Unsigned_32;
-      validBlocks : Unsigned_32;
-      candidate : Unsigned_32;
-      readStatus : Read_Status;
-      writeStatus : Write_Status;
-      sawAdvertisedSpace : Boolean := False;
-      --  A scan-local sector snapshot, NOT a persistent metadata cache. Every
-      --  descriptor read used to reread this same sector (16 records on a
-      --  512-byte provider). The search performs no writes until it finds a
-      --  candidate, and every mutation path then returns from allocateBlock.
-      --  Therefore no cached descriptor survives a metadata mutation.
-      Descriptor_Read_Bytes : constant := Logical_Block_Size'First;
-      Descriptors_Per_Read : constant Unsigned_32 :=
-        Descriptor_Read_Bytes / (BlockGroupDescriptor'Size / 8);
-      subtype Descriptor_Index is Unsigned_32 range 0 .. Descriptors_Per_Read - 1;
-      type Descriptor_Buffer is array (Descriptor_Index) of BlockGroupDescriptor;
-      descriptors : Descriptor_Buffer;
-      pragma Compile_Time_Error
-        (Descriptor_Buffer'Size /= Descriptor_Read_Bytes * 8,
-         "Ext2 descriptor sector layout changed");
+      plan : Reservation;
    begin
       blockNum := 0;
-      status := Write_No_Space;
-      if fs.writeQuarantined then
-         status := Write_Recovery_Required;
-         return;
-      elsif Is_Read_Only (fs.device.description)
-      then
-         status := Write_Read_Only;
+      reserveBlocks (fs, 0, 1, 1, plan, status);
+      if status /= Write_Complete then
          return;
       end if;
-
-      if fs.sb.blocksPerBlockGroup = 0 or else
-         fs.sb.blockCount <= fs.sb.firstDataBlock
-      then
-         status := Write_Device_Error;
-         return;
-      end if;
-
-      if fs.sb.freeBlocks = 0 then
-         return;
-      end if;
-
-      allocatableBlocks := fs.sb.blockCount - fs.sb.firstDataBlock;
-      groupCount := 1 +
-        (allocatableBlocks - 1) / fs.sb.blocksPerBlockGroup;
-
-      readSize := bitmapBytes;
-      if readSize > bitmapBuf'Length then
-         readSize := Unsigned_32 (bitmapBuf'Length);
-      end if;
-
-      if readSize = 0 then
-         return;
-      end if;
-
-      for group in Unsigned_32 range 0 .. groupCount - 1 loop
-         if group mod Descriptors_Per_Read = 0 then
-            readBytes
-              (fs,
-               (Storage_Offset (fs.sb.firstDataBlock) + 1) *
-                 Storage_Offset (fs.blkSize) +
-                 Storage_Offset (group) * (BlockGroupDescriptor'Size / 8),
-               descriptors'Address, Descriptor_Read_Bytes, readStatus);
-            if readStatus /= Read_Complete then
-               status :=
-                 (if readStatus = Read_Out_Of_Range then Write_Out_Of_Range
-                  else Write_Device_Error);
-               return;
-            end if;
-         end if;
-         bgd := descriptors (group mod Descriptors_Per_Read);
-
-         if bgd.numFreeBlocks /= 0 then
-            sawAdvertisedSpace := True;
-            groupFirst := fs.sb.firstDataBlock +
-              group * fs.sb.blocksPerBlockGroup;
-            validBlocks := Unsigned_32'Min
-              (fs.sb.blocksPerBlockGroup,
-               fs.sb.blockCount - groupFirst);
-
-            readBytes
-              (fs,
-               Storage_Offset (bgd.blockBitmapAddr) *
-                 Storage_Offset (fs.blkSize),
-               bitmapBuf'Address,
-               Storage_Count (readSize),
-               readStatus);
-            if readStatus /= Read_Complete then
-               status :=
-                 (if readStatus = Read_Out_Of_Range then Write_Out_Of_Range
-                  else Write_Device_Error);
-               return;
-            end if;
-
-            for byteIdx in 0 .. Natural (readSize) - 1 loop
-               if bitmapBuf (byteIdx) /= 16#FF# then
-                  for bitIdx in 0 .. 7 loop
-                     candidate := Unsigned_32 (byteIdx * 8 + bitIdx);
-                     if candidate < validBlocks and then
-                        (bitmapBuf (byteIdx) and
-                         Shift_Left (Unsigned_8'(1), bitIdx)) = 0
-                     then
-                        bitmapBuf (byteIdx) := bitmapBuf (byteIdx) or
-                          Shift_Left (Unsigned_8'(1), bitIdx);
-
-                        writeBytes
-                          (fs,
-                           Storage_Offset (bgd.blockBitmapAddr) *
-                           Storage_Offset (fs.blkSize),
-                           bitmapBuf'Address,
-                           Storage_Count (readSize),
-                           writeStatus);
-                        if writeStatus /= Write_Complete then
-                           --  Error replies do not prove a metadata write
-                           --  left storage unchanged. Do not attempt blind
-                           --  rollback or hand out an uncertain reservation.
-                           fs.writeQuarantined := True;
-                           status := Write_Recovery_Required;
-                           return;
-                        end if;
-
-                        updatedBGD := bgd;
-                        updatedBGD.numFreeBlocks :=
-                          updatedBGD.numFreeBlocks - 1;
-                        writeBGD (fs, group, updatedBGD, writeStatus);
-                        if writeStatus /= Write_Complete then
-                           --  Error replies do not prove a metadata write
-                           --  left storage unchanged. Do not attempt blind
-                           --  rollback or hand out an uncertain reservation.
-                           fs.writeQuarantined := True;
-                           status := Write_Recovery_Required;
-                           return;
-                        end if;
-
-                        fs.sb.freeBlocks := fs.sb.freeBlocks - 1;
-                        writeSuperblock (fs, writeStatus);
-                        if writeStatus /= Write_Complete then
-                           --  Error replies do not prove a metadata write
-                           --  left storage unchanged. Do not attempt blind
-                           --  rollback or hand out an uncertain reservation.
-                           fs.writeQuarantined := True;
-                           status := Write_Recovery_Required;
-                           return;
-                        end if;
-
-                        blockNum := groupFirst + candidate;
-                        status := Write_Complete;
-                        return;
-                     end if;
-                  end loop;
-               end if;
-            end loop;
-         end if;
-      end loop;
-
-      --  Free-space counters that advertise an unavailable block indicate
-      --  inconsistent metadata, not a normal no-space condition.
-      if sawAdvertisedSpace then
-         status := Write_Device_Error;
+      commitReservation (fs, plan, status);
+      if status = Write_Complete then
+         blockNum := plan.Blocks (Reserved_Index'First);
       end if;
    end allocateBlock;
 
-   --  Free a previously allocated block
-   procedure freeBlock
-     (fs       : in out Filesystem;
-      blockNum : Unsigned_32;
-      status : out Write_Status)
+   type Release_List is array (Positive range <>) of Unsigned_32;
+
+   --  Return blocks to their groups' free pools: each touched group's bitmap
+   --  and descriptor are written once, then the superblock once. An out-of-
+   --  range block, or one already free (a duplicate or corrupt free must not
+   --  inflate allocator counts), is rejected before its group's writes. Any
+   --  failed write quarantines further mutation.
+   procedure releaseBlocks
+     (fs : in out Filesystem; blocks : Release_List; status : out Write_Status)
    is
+      readSize : constant Unsigned_32 := bitmapBytes (fs);
+      bitmap : Bitmap_Buffer;
       bgd : BlockGroupDescriptor;
-      relBlock : Unsigned_32;
-      blockGroup : Unsigned_32;
-      groupRelativeBlock : Unsigned_32;
-      byteIdx  : Natural;
-      bitIdx   : Natural;
-      bitmapBuf : array (0 .. 4095) of Unsigned_8 with Alignment => 8;
-      bitmapBytes : constant Unsigned_32 :=
-        (fs.sb.blocksPerBlockGroup + 7) / 8;
-      readSize : Unsigned_32;
-      groupFirst : Unsigned_32;
-      validBlocks : Unsigned_32;
+      done : array (blocks'Range) of Boolean := [others => False];
+      released : Unsigned_64 := 0;
       allocatableBlocks : Unsigned_32;
       readStatus : Read_Status;
    begin
@@ -1391,96 +2339,93 @@ package body Ext2 is
       if fs.writeQuarantined then
          status := Write_Read_Only;
          return;
-      end if;
-      if fs.sb.blocksPerBlockGroup = 0 or else
-         blockNum < fs.sb.firstDataBlock or else
-         blockNum >= fs.sb.blockCount
+      elsif fs.sb.blocksPerBlockGroup = 0 or else
+        (for some number of blocks =>
+           number < fs.sb.firstDataBlock or else number >= fs.sb.blockCount)
       then
          return;
       end if;
-
-      relBlock := blockNum - fs.sb.firstDataBlock;
-      blockGroup := relBlock / fs.sb.blocksPerBlockGroup;
-      groupRelativeBlock := relBlock mod fs.sb.blocksPerBlockGroup;
-      byteIdx := Natural (groupRelativeBlock / 8);
-      bitIdx := Natural (groupRelativeBlock mod 8);
-
-      readBGD (fs, blockGroup, bgd, readStatus);
-      if readStatus /= Read_Complete then
-         status := Write_Device_Error;
-         return;
-      end if;
-
-      groupFirst := fs.sb.firstDataBlock +
-        blockGroup * fs.sb.blocksPerBlockGroup;
-      validBlocks := Unsigned_32'Min
-        (fs.sb.blocksPerBlockGroup, fs.sb.blockCount - groupFirst);
       allocatableBlocks := fs.sb.blockCount - fs.sb.firstDataBlock;
-
-      if Unsigned_32 (bgd.numFreeBlocks) >= validBlocks or else
-         fs.sb.freeBlocks >= allocatableBlocks
-      then
-         return;
-      end if;
-
-      readSize := bitmapBytes;
-      if readSize > Unsigned_32 (bitmapBuf'Length) then
-         readSize := Unsigned_32 (bitmapBuf'Length);
-      end if;
-
-      if byteIdx >= Natural (readSize) then
-         return;
-      end if;
-
-      readBytes (fs,
-                 Storage_Offset (bgd.blockBitmapAddr) *
-                   Storage_Offset (fs.blkSize),
-                 bitmapBuf'Address,
-                 Storage_Count (readSize), readStatus);
-      if readStatus /= Read_Complete then
-         status := Write_Device_Error;
-         return;
-      end if;
-
-      --  A duplicate or corrupt free must not inflate allocator counts.
-      if (bitmapBuf (byteIdx) and
-          Shift_Left (Unsigned_8'(1), bitIdx)) = 0
-      then
-         return;
-      end if;
-
-      bitmapBuf (byteIdx) := bitmapBuf (byteIdx) and
-        not Shift_Left (Unsigned_8'(1), bitIdx);
-
-      writeBytes (fs,
-                  Storage_Offset (bgd.blockBitmapAddr) *
-                    Storage_Offset (fs.blkSize),
-                  bitmapBuf'Address,
-                  Storage_Count (readSize), status);
-      if status /= Write_Complete then
-         fs.writeQuarantined := True;
-         return;
-      end if;
-
-      bgd.numFreeBlocks := bgd.numFreeBlocks + 1;
-      writeBGD (fs, blockGroup, bgd, status);
-      if status /= Write_Complete then
-         fs.writeQuarantined := True;
-         return;
-      end if;
-
-      fs.sb.freeBlocks := fs.sb.freeBlocks + 1;
+      for first in blocks'Range loop
+         if not done (first) then
+            declare
+               group : constant Unsigned_32 :=
+                 (blocks (first) - fs.sb.firstDataBlock) / fs.sb.blocksPerBlockGroup;
+               groupFirst : constant Unsigned_32 :=
+                 fs.sb.firstDataBlock + group * fs.sb.blocksPerBlockGroup;
+               validBlocks : constant Unsigned_32 := Unsigned_32'Min
+                 (fs.sb.blocksPerBlockGroup, fs.sb.blockCount - groupFirst);
+               cleared : Unsigned_32 := 0;
+            begin
+               readBGD (fs, group, bgd, readStatus);
+               if readStatus /= Read_Complete then
+                  status := Write_Device_Error;
+                  return;
+               end if;
+               readBytes
+                 (fs, Storage_Offset (bgd.blockBitmapAddr) * Storage_Offset (fs.blkSize),
+                  bitmap'Address, Storage_Count (readSize), readStatus);
+               if readStatus /= Read_Complete then
+                  status := Write_Device_Error;
+                  return;
+               end if;
+               for index in first .. blocks'Last loop
+                  if not done (index) and then
+                    (blocks (index) - fs.sb.firstDataBlock) / fs.sb.blocksPerBlockGroup = group
+                  then
+                     declare
+                        bit : constant Unsigned_32 := blocks (index) - groupFirst;
+                        mask : constant Unsigned_8 :=
+                          Shift_Left (Unsigned_8'(1), Natural (bit mod 8));
+                     begin
+                        if bit / 8 >= readSize or else
+                          (bitmap (Natural (bit / 8)) and mask) = 0
+                        then
+                           return;
+                        end if;
+                        bitmap (Natural (bit / 8)) := bitmap (Natural (bit / 8)) and not mask;
+                        cleared := cleared + 1;
+                        done (index) := True;
+                     end;
+                  end if;
+               end loop;
+               if Unsigned_64 (bgd.numFreeBlocks) + Unsigned_64 (cleared) >
+                    Unsigned_64 (validBlocks) or else
+                 Unsigned_64 (fs.sb.freeBlocks) + released + Unsigned_64 (cleared) >
+                    Unsigned_64 (allocatableBlocks)
+               then
+                  return;
+               end if;
+               writeBytes
+                 (fs, Storage_Offset (bgd.blockBitmapAddr) * Storage_Offset (fs.blkSize),
+                  bitmap'Address, Storage_Count (readSize), status, Allocation_Metadata);
+               if status /= Write_Complete then
+                  fs.writeQuarantined := True;
+                  return;
+               end if;
+               bgd.numFreeBlocks := bgd.numFreeBlocks + Unsigned_16 (cleared);
+               writeBGD (fs, group, bgd, status);
+               if status /= Write_Complete then
+                  fs.writeQuarantined := True;
+                  return;
+               end if;
+               released := released + Unsigned_64 (cleared);
+            end;
+         end if;
+      end loop;
+      fs.sb.freeBlocks := fs.sb.freeBlocks + Unsigned_32 (released);
       writeSuperblock (fs, status);
       if status /= Write_Complete then
          fs.writeQuarantined := True;
       end if;
-   end freeBlock;
+   end releaseBlocks;
 
    --  Allocate a free inode from any block group.
    procedure allocateInode
      (fs       : in out Filesystem;
       inodeNum : out Unsigned_32;
-      status   : out Write_Status)
+      status   : out Write_Status;
+      directory : Boolean := False)
    is
       bgd : BlockGroupDescriptor;
       updatedBGD : BlockGroupDescriptor;
@@ -1583,7 +2528,7 @@ package body Ext2 is
                              Storage_Offset (fs.blkSize),
                            bitmapBuf'Address,
                            Storage_Count (readSize),
-                           writeStatus);
+                           writeStatus, Allocation_Metadata);
                         if writeStatus /= Write_Complete then
                            --  Error replies do not prove a metadata write
                            --  left storage unchanged. Do not attempt blind
@@ -1596,6 +2541,10 @@ package body Ext2 is
                         updatedBGD := bgd;
                         updatedBGD.numFreeInodes :=
                           updatedBGD.numFreeInodes - 1;
+                        if directory then
+                           updatedBGD.numDirectories :=
+                             updatedBGD.numDirectories + 1;
+                        end if;
                         writeBGD (fs, group, updatedBGD, writeStatus);
                         if writeStatus /= Write_Complete then
                            --  Error replies do not prove a metadata write
@@ -1640,187 +2589,311 @@ package body Ext2 is
       end if;
    end allocateInode;
 
-   --  Attach a direct, single-indirect or double-indirect data block.
-   --  Updates ino in place and writes the indirect block if needed.
-   procedure setBlockPointer
-     (fs       : in out Filesystem;
-      ino      : in out Inode;
-      logBlock : Unsigned_32;
-      physBlk  : Unsigned_32;
-      status   : out Write_Status)
+   --  Allocate, attach and write a run of unmapped logical blocks starting at
+   --  byte pos, all under one pointer leaf (or the inode's direct slots), for
+   --  up to available bytes from source. The run's allocation metadata is
+   --  published once; then the payload in coalesced transfers (fresh blocks
+   --  are zero-filled around it, so no previously freed bytes can appear);
+   --  then each modified pointer block, children before parents. Each block
+   --  is thus on disk before any pointer to it, and allocation metadata
+   --  before the pointers that reference its blocks. The caller publishes the
+   --  inode. A failure before commit has written nothing; any failure after
+   --  it quarantines the volume. consumed is zero unless status is Complete.
+   procedure appendRun
+     (fs : in out Filesystem; ino : in out Inode; pos : Unsigned_64;
+      source : System.Address; available : Unsigned_64;
+      consumed : out Unsigned_64; status : out Write_Status)
    is
-      ptrsPerBlock : constant Unsigned_32 := fs.blkSize / 4;
-      candidate : Inode;
-      accepted : Boolean;
       sectors : constant Sector_Accounting.Block_Sectors :=
         Sector_Accounting.Block_Sectors (fs.blkSize / 512);
-   begin
-      status := Write_File_Range_Unsupported;
-      if logBlock < NUM_DIRECT_BLOCKS then
-         Inode_Mappings.Prepare_Attachment
-           (ino, logBlock, physBlk, 0, sectors, candidate, accepted);
-         if not accepted then
-            status := Write_Out_Of_Range;
-            return;
-         end if;
-         ino := candidate;
-         status := Write_Complete;
-      elsif logBlock - Unsigned_32 (NUM_DIRECT_BLOCKS) < ptrsPerBlock then
-         --  Single indirect
-         declare
-            indirectIdx : constant Unsigned_32 :=
-              logBlock - Unsigned_32 (NUM_DIRECT_BLOCKS);
-            indBuf : Pointer_Block := [others => 0];
-            readStatus : Read_Status;
-            indirectBlock : Unsigned_32 := ino.singleIndirectBlock;
-         begin
-            if indirectBlock = 0 then
-               --  Allocate the indirect block itself
-               declare
-                  newBlk : Unsigned_32;
-               begin
-                  allocateBlock (fs, newBlk, status);
-                  if status /= Write_Complete then
-                     return;
-                  end if;
-                  indirectBlock := newBlk;
-                  --  Zero-fill the new indirect block
-                  indBuf := [others => 0];
-               end;
-            else
-               readBytes
-                 (fs, Storage_Offset (indirectBlock) *
-                    Storage_Offset (fs.blkSize),
-                  indBuf'Address, Storage_Count (fs.blkSize), readStatus);
-               if readStatus /= Read_Complete then
-                  status := Write_Device_Error;
-                  return;
-               end if;
-            end if;
+      blockBytes : constant Unsigned_64 := Unsigned_64 (fs.blkSize);
+      pointers : constant Unsigned_64 := Block_Paths.Pointer_Count (sectors);
+      first : constant Unsigned_64 := pos / blockBytes;
+      offset : constant Unsigned_64 := pos mod blockBytes;
+      path : constant Block_Paths.Block_Path := Block_Paths.Decode (first, sectors);
+      containerEnd : Unsigned_64 := 0;
+      runBlocks : Unsigned_64;
+      rootBuf, middleBuf, leafBuf : Pointer_Block := [others => 0];
+      root, middle, leaf : Unsigned_32 := 0;
+      newRoot, newMiddle, newLeaf : Boolean := False;
+      leafSlot : Block_Paths.Pointer_Index := 0;
+      pointerCount : Reserved_Count;
+      plan : Reservation;
+      candidate, next : Inode;
+      accepted : Boolean;
+      readStatus : Read_Status;
+      goal : Unsigned_32 := 0;
+      bytes : Unsigned_64;
+      type Payload_Bytes is array (Natural range <>) of Unsigned_8;
+      payload : Payload_Bytes (0 .. Maximum_Batch_Bytes - 1) with Alignment => 8;
 
-            --  Prepare both fields together, but do not expose the candidate
-            --  until its pointer block has completed successfully.
-            Inode_Mappings.Prepare_Attachment
-              (ino, logBlock, physBlk, indirectBlock, sectors,
-               candidate, accepted);
-            if not accepted or else indBuf (Natural (indirectIdx)) /= 0 then
-               status := Write_Out_Of_Range;
-               return;
-            end if;
-            indBuf (Natural (indirectIdx)) := physBlk;
-            declare
-               blkOffset : constant Storage_Offset :=
-                 Storage_Offset (indirectBlock) *
-                   Storage_Offset (fs.blkSize);
-            begin
-               writeBytes (fs, blkOffset, indBuf'Address,
-                           Storage_Count (fs.blkSize), status);
-            end;
-            if status /= Write_Complete then
-               --  The pointer may already have reached storage. Neither the
-               --  indirect block nor its target may be returned to the free
-               --  pool after an ambiguous publication.
-               fs.writeQuarantined := True;
-               status := Write_Recovery_Required;
-               invalidateBlockCache;
-               return;
-            end if;
-            ino := candidate;
-            --  Publish only an entirely acknowledged pointer block. Keep the
-            --  existing read cache warm instead of rereading the block we just
-            --  wrote at the next lookup. This is not deferred write-back;
-            --  failure above still invalidates every cached pointer block.
-            selectCacheIdentity (fs);
-            invalidateBlockCache;
-            Single_Cache := (Block_Number => indirectBlock, Data => indBuf);
-         end;
-      else
-         declare
-            path : constant Block_Paths.Block_Path :=
-              Block_Paths.Decode (Unsigned_64 (logBlock), sectors);
-            rootBuf, leafBuf : Pointer_Block := [others => 0];
-            root : Unsigned_32 := ino.doubleIndirectBlock;
-            leaf : Unsigned_32 := 0;
-            newRoot : constant Boolean := root = 0;
-            newLeaf : Boolean;
-            readStatus : Read_Status;
-            cleanupStatus : Write_Status;
-         begin
-            if path.Kind /= Block_Paths.Double_Indirect then return; end if;
+      procedure Load (number : Unsigned_32; contents : out Pointer_Block) is
+      begin
+         readBytes (fs, Storage_Offset (number) * Storage_Offset (fs.blkSize),
+                    contents'Address, Storage_Count (fs.blkSize), readStatus);
+         if readStatus /= Read_Complete then
+            status := Write_Device_Error;
+         end if;
+      end Load;
+
+      procedure Publish
+        (number : Unsigned_32; contents : Pointer_Block; class : Block_Class) is
+      begin
+         if status = Write_Complete then
+            writeBytes (fs, Storage_Offset (number) * Storage_Offset (fs.blkSize),
+                        contents'Address, Storage_Count (fs.blkSize), status, class);
+         end if;
+      end Publish;
+
+      function Data_Block (index : Unsigned_64) return Unsigned_32 is
+        (plan.Blocks (pointerCount + 1 + Natural (index)));
+   begin
+      consumed := 0;
+      status := Write_Complete;
+      case path.Kind is
+         when Block_Paths.Direct =>
+            containerEnd := NUM_DIRECT_BLOCKS;
+         when Block_Paths.Single_Indirect =>
+            containerEnd := Block_Paths.First_Double (sectors);
+            leafSlot := path.Single_Slot;
+            leaf := ino.singleIndirectBlock;
+            newLeaf := leaf = 0;
+            if not newLeaf then Load (leaf, leafBuf); end if;
+         when Block_Paths.Double_Indirect =>
+            containerEnd := Block_Paths.First_Double (sectors) +
+              (Unsigned_64 (path.Root_Slot) + 1) * pointers;
+            leafSlot := path.Leaf_Slot;
+            root := ino.doubleIndirectBlock;
+            newRoot := root = 0;
             if not newRoot then
-               readBytes (fs, Storage_Offset (root) * Storage_Offset (fs.blkSize),
-                          rootBuf'Address, Storage_Count (fs.blkSize), readStatus);
-               if readStatus /= Read_Complete then
-                  status := Write_Device_Error;
-                  return;
-               end if;
+               Load (root, rootBuf);
                leaf := rootBuf (path.Root_Slot);
             end if;
             newLeaf := leaf = 0;
-            if not newLeaf then
-               readBytes (fs, Storage_Offset (leaf) * Storage_Offset (fs.blkSize),
-                          leafBuf'Address, Storage_Count (fs.blkSize), readStatus);
-               if readStatus /= Read_Complete then
-                  status := Write_Device_Error;
-                  return;
-               end if;
+            if status = Write_Complete and then not newLeaf then
+               Load (leaf, leafBuf);
             end if;
-            if leafBuf (path.Leaf_Slot) /= 0 or else
-              not Double_Mappings.Fits (ino, newLeaf, sectors)
-            then
+         when Block_Paths.Triple_Indirect =>
+            containerEnd := Block_Paths.First_Triple (sectors) +
+              Unsigned_64 (path.Top_Slot) * Block_Paths.Middle_Span (sectors) +
+              (Unsigned_64 (path.Middle_Slot) + 1) * pointers;
+            leafSlot := path.Bottom_Slot;
+            root := ino.tripleIndirectBlock;
+            newRoot := root = 0;
+            if not newRoot then
+               Load (root, rootBuf);
+               middle := rootBuf (path.Top_Slot);
+            end if;
+            newMiddle := middle = 0;
+            if status = Write_Complete and then not newMiddle then
+               Load (middle, middleBuf);
+               leaf := middleBuf (path.Middle_Slot);
+            end if;
+            newLeaf := leaf = 0;
+            if status = Write_Complete and then not newLeaf then
+               Load (leaf, leafBuf);
+            end if;
+         when Block_Paths.Unsupported =>
+            status := Write_File_Range_Unsupported;
+      end case;
+      if status /= Write_Complete then
+         return;
+      end if;
+      pointerCount :=
+        Boolean'Pos (newRoot) + Boolean'Pos (newMiddle) + Boolean'Pos (newLeaf);
+
+      --  Blocks the request reaches, bounded by the leaf and the staging
+      --  buffer; every one must still be unmapped.
+      runBlocks := Unsigned_64'Min
+        (Unsigned_64'Min (containerEnd - first, Maximum_Batch_Bytes / blockBytes),
+         (offset + Unsigned_64'Min (available, Maximum_Batch_Bytes) +
+            blockBytes - 1) / blockBytes);
+      for index in 0 .. runBlocks - 1 loop
+         if (if path.Kind = Block_Paths.Direct
+             then ino.directBlocks (Natural (first + index)) /= 0
+             else leafBuf (leafSlot + Natural (index)) /= 0)
+         then
+            if index = 0 then
                status := Write_Out_Of_Range;
                return;
             end if;
-            if newRoot then
-               allocateBlock (fs, root, status);
-               if status /= Write_Complete then return; end if;
+            runBlocks := index;
+            exit;
+         end if;
+      end loop;
+      --  Never let the allocation count wrap: shorten the run to what fits.
+      declare
+         room : constant Unsigned_64 :=
+           (Unsigned_64 (Unsigned_32'Last) - Unsigned_64 (ino.numDiskSectors)) /
+             Unsigned_64 (sectors);
+      begin
+         if room < Unsigned_64 (pointerCount) + 1 then
+            status := Write_Out_Of_Range;
+            return;
+         end if;
+         runBlocks := Unsigned_64'Min (runBlocks, room - Unsigned_64 (pointerCount));
+      end;
+
+      --  Prefer the block after the file's previous one, so appends coalesce.
+      if first > 0 then
+         declare
+            previous, previousLeaf, previousMiddle : Unsigned_32;
+            lookupStatus : Read_Status;
+         begin
+            resolveBlock (fs, ino, Unsigned_32 (first - 1), previous, previousLeaf,
+                          previousMiddle, lookupStatus);
+            if lookupStatus = Read_Complete and then previous /= 0 then
+               goal := previous + 1;
             end if;
-            if newLeaf then
-               allocateBlock (fs, leaf, status);
-               if status /= Write_Complete then
-                  --  Only a definite no-space result permits undoing the
-                  --  unpublished root reservation. Never follow failed I/O
-                  --  with speculative cleanup writes.
-                  if status = Write_No_Space and then newRoot then
-                     freeBlock (fs, root, cleanupStatus);
-                     if cleanupStatus /= Write_Complete then
-                        fs.writeQuarantined := True;
-                        status := Write_Recovery_Required;
-                     end if;
-                  end if;
-                  return;
-               end if;
-            end if;
-            Double_Mappings.Prepare
-              (ino, root, leaf, physBlk, newLeaf, sectors, candidate, accepted);
-            if not accepted then
-               status := Write_Out_Of_Range;
-               return;
-            end if;
-            --  Initialize each child before publishing its parent pointer.
-            --  This is checked completion ordering, not a power-loss journal.
-            leafBuf (path.Leaf_Slot) := physBlk;
-            writeBytes (fs, Storage_Offset (leaf) * Storage_Offset (fs.blkSize),
-                        leafBuf'Address, Storage_Count (fs.blkSize), status);
-            if status = Write_Complete and then newLeaf then
-               rootBuf (path.Root_Slot) := leaf;
-               writeBytes (fs, Storage_Offset (root) * Storage_Offset (fs.blkSize),
-                           rootBuf'Address, Storage_Count (fs.blkSize), status);
-            end if;
+         end;
+      end if;
+      reserveBlocks (fs, goal, pointerCount + Natural (runBlocks), pointerCount + 1,
+                     plan, status);
+      if status /= Write_Complete then
+         return;
+      end if;
+      runBlocks := Unsigned_64 (plan.Count - pointerCount);
+      declare
+         next_Pointer : Reserved_Index := Reserved_Index'First;
+      begin
+         if newRoot then
+            root := plan.Blocks (next_Pointer);
+            next_Pointer := next_Pointer + 1;
+         end if;
+         if newMiddle then
+            middle := plan.Blocks (next_Pointer);
+            next_Pointer := next_Pointer + 1;
+         end if;
+         if newLeaf then
+            leaf := plan.Blocks (next_Pointer);
+         end if;
+      end;
+
+      --  The proved per-attachment transformations, applied in order. Only
+      --  the first attachment adds new pointer blocks.
+      candidate := ino;
+      for index in 0 .. runBlocks - 1 loop
+         case path.Kind is
+            when Block_Paths.Direct =>
+               Inode_Mappings.Prepare_Attachment
+                 (candidate, Unsigned_32 (first + index), Data_Block (index), 0,
+                  sectors, next, accepted);
+            when Block_Paths.Single_Indirect =>
+               Inode_Mappings.Prepare_Attachment
+                 (candidate, Unsigned_32 (first + index), Data_Block (index), leaf,
+                  sectors, next, accepted);
+            when Block_Paths.Double_Indirect =>
+               Double_Mappings.Prepare
+                 (candidate, root, leaf, Data_Block (index), newLeaf and index = 0,
+                  sectors, next, accepted);
+            when Block_Paths.Triple_Indirect =>
+               Triple_Mappings.Prepare
+                 (candidate, root, middle, leaf, Data_Block (index),
+                  newMiddle and index = 0, newLeaf and index = 0,
+                  sectors, next, accepted);
+            when Block_Paths.Unsupported =>
+               accepted := False;
+         end case;
+         if not accepted then
+            status := Write_Out_Of_Range; -- only an in-memory plan is dropped
+            return;
+         end if;
+         candidate := next;
+         if path.Kind /= Block_Paths.Direct then
+            leafBuf (leafSlot + Natural (index)) := Data_Block (index);
+         end if;
+      end loop;
+      if newLeaf then
+         case path.Kind is
+            when Block_Paths.Double_Indirect => rootBuf (path.Root_Slot) := leaf;
+            when Block_Paths.Triple_Indirect => middleBuf (path.Middle_Slot) := leaf;
+            when others => null;
+         end case;
+      end if;
+      if newMiddle then
+         rootBuf (path.Top_Slot) := middle;
+      end if;
+
+      commitReservation (fs, plan, status);
+      if status /= Write_Complete then
+         return;
+      end if;
+
+      --  Payload: whole fresh blocks, coalesced over physically contiguous
+      --  reservations. Reservation metadata is already committed: after a
+      --  transport error, stop; speculative rollback could compound it.
+      bytes := Unsigned_64'Min (available, runBlocks * blockBytes - offset);
+      payload (0 .. Natural (runBlocks * blockBytes) - 1) := [others => 0];
+      declare
+         data : Payload_Bytes (0 .. Natural (bytes) - 1)
+           with Import, Address => source;
+      begin
+         payload (Natural (offset) .. Natural (offset + bytes) - 1) := data;
+      end;
+      declare
+         start : Unsigned_64 := 0;
+         length : Unsigned_64;
+      begin
+         while start < runBlocks loop
+            length := 1;
+            while start + length < runBlocks and then
+              Unsigned_64 (Data_Block (start + length)) =
+                Unsigned_64 (Data_Block (start)) + length
+            loop
+               length := length + 1;
+            end loop;
+            writeBytes
+              (fs, Storage_Offset (Data_Block (start)) * Storage_Offset (fs.blkSize),
+               payload (Natural (start * blockBytes))'Address,
+               Storage_Count (length * blockBytes), status, File_Data);
             if status /= Write_Complete then
                fs.writeQuarantined := True;
                status := Write_Recovery_Required;
-               invalidateBlockCache;
                return;
             end if;
-            ino := candidate;
-            selectCacheIdentity (fs);
+            start := start + length;
+         end loop;
+      end;
+
+      --  Pointer blocks, each initialized before its parent points to it.
+      --  A failed publication may already have reached storage: neither the
+      --  pointer block nor its targets may return to the free pool.
+      if path.Kind /= Block_Paths.Direct then
+         Publish (leaf, leafBuf, Leaf_Pointers);
+         if newLeaf and then path.Kind = Block_Paths.Double_Indirect then
+            Publish (root, rootBuf, Middle_Pointers);
+         elsif newLeaf and then path.Kind = Block_Paths.Triple_Indirect then
+            Publish (middle, middleBuf, Middle_Pointers);
+         end if;
+         if newMiddle then
+            Publish (root, rootBuf, Root_Pointers);
+         end if;
+         if status /= Write_Complete then
+            fs.writeQuarantined := True;
+            status := Write_Recovery_Required;
             invalidateBlockCache;
+            return;
+         end if;
+      end if;
+      ino := candidate;
+      --  Keep the lookup caches warm with the acknowledged pointer blocks.
+      --  This is not deferred write-back: a failure above invalidates them.
+      selectCacheIdentity (fs);
+      invalidateBlockCache;
+      case path.Kind is
+         when Block_Paths.Single_Indirect =>
+            Single_Cache := (Block_Number => leaf, Data => leafBuf);
+         when Block_Paths.Double_Indirect =>
             Double_Root_Cache := (Block_Number => root, Data => rootBuf);
             Double_Leaf_Cache := (Block_Number => leaf, Data => leafBuf);
-         end;
-      end if;
-   end setBlockPointer;
+         when Block_Paths.Triple_Indirect =>
+            Triple_Root_Cache := (Block_Number => root, Data => rootBuf);
+            Triple_Middle_Cache := (Block_Number => middle, Data => middleBuf);
+            Triple_Leaf_Cache := (Block_Number => leaf, Data => leafBuf);
+         when others => null;
+      end case;
+      consumed := bytes;
+   end appendRun;
 
    --  Clear only mapped storage in a newly exposed byte range. Holes already
    --  read as zero and must not cause allocation. This is shared by explicit
@@ -1834,7 +2907,7 @@ package body Ext2 is
       blockBytes : constant Unsigned_64 := Unsigned_64 (fs.blkSize);
       zeroes : constant String (1 .. Natural (fs.blkSize)) :=
         [others => Character'Val (0)];
-      physical, pointerLeaf : Unsigned_32;
+      physical, pointerLeaf, pointerMiddle : Unsigned_32;
       readStatus : Read_Status;
    begin
       status := Write_Complete;
@@ -1845,7 +2918,8 @@ package body Ext2 is
               Unsigned_64'Min (blockBytes - withinBlock, limit - pos);
          begin
             resolveBlock
-              (fs, ino, Unsigned_32 (pos / blockBytes), physical, pointerLeaf, readStatus);
+              (fs, ino, Unsigned_32 (pos / blockBytes), physical, pointerLeaf,
+               pointerMiddle, readStatus);
             if readStatus /= Read_Complete then
                status := Write_Device_Error;
                return;
@@ -1854,7 +2928,7 @@ package body Ext2 is
                writeBytes
                  (fs, Storage_Offset (physical) * Storage_Offset (fs.blkSize) +
                     Storage_Offset (withinBlock),
-                  zeroes'Address, Storage_Count (length), status);
+                  zeroes'Address, Storage_Count (length), status, File_Data);
                if status /= Write_Complete then
                   fs.writeQuarantined := True;
                   status := Write_Recovery_Required;
@@ -1879,10 +2953,23 @@ package body Ext2 is
                         end if;
                      when Block_Paths.Double_Indirect =>
                         if ino.doubleIndirectBlock = 0 then
-                           nextBlock := Block_Paths.Block_Limit (sectors);
+                           nextBlock := Block_Paths.First_Triple (sectors);
                         elsif pointerLeaf = 0 then
-                           nextBlock := NUM_DIRECT_BLOCKS + pointers +
+                           nextBlock := Block_Paths.First_Double (sectors) +
                              (Unsigned_64 (path.Root_Slot) + 1) * pointers;
+                        end if;
+                     when Block_Paths.Triple_Indirect =>
+                        if ino.tripleIndirectBlock = 0 then
+                           nextBlock := Block_Paths.Block_Limit (sectors);
+                        elsif pointerMiddle = 0 then
+                           nextBlock := Block_Paths.First_Triple (sectors) +
+                             (Unsigned_64 (path.Top_Slot) + 1) *
+                               Block_Paths.Middle_Span (sectors);
+                        elsif pointerLeaf = 0 then
+                           nextBlock := Block_Paths.First_Triple (sectors) +
+                             Unsigned_64 (path.Top_Slot) *
+                               Block_Paths.Middle_Span (sectors) +
+                             (Unsigned_64 (path.Middle_Slot) + 1) * pointers;
                         end if;
                      when others => null;
                   end case;
@@ -1912,12 +2999,13 @@ package body Ext2 is
       terminalStatus : Write_Status := Write_Complete;
       originalInode : constant Inode := ino;
       gapCleared : Boolean := offset <= fileSize (ino);
+      inodeCached : Boolean := False;
       sectors : constant Sector_Accounting.Block_Sectors :=
         Sector_Accounting.Block_Sectors (fs.blkSize / 512);
    begin
       bytesWritten := 0;
       status := Write_Complete;
-      if Ext2_Support.Check_File (ino) /= Ext2_Support.File_Allowed then
+      if Ext2_Support.Check_File (ino, Unlinked_Allowed => True) /= Ext2_Support.File_Allowed then
          status := Write_Object_Unsupported;
          return;
       end if;
@@ -1936,9 +3024,8 @@ package body Ext2 is
          return;
       end if;
 
-      if count > 0 and then offset + count > 16#7FFF_FFFF# and then
-        offset + count > fileSize (ino) and then
-        (fs.sb.readOnlyFeatures and 2) = 0
+      if count > 0 and then offset + count > fileSize (ino) and then
+        not Ext2_Support.Size_Admitted (offset + count, fs.sb.readOnlyFeatures)
       then
          status := Write_File_Range_Unsupported;
          return;
@@ -1961,9 +3048,8 @@ package body Ext2 is
             blockOffset : constant Unsigned_32 :=
               Unsigned_32 (pos mod Unsigned_64 (fs.blkSize));
             physBlock   : Unsigned_32;
-            pointerLeaf : Unsigned_32;
+            pointerLeaf, pointerMiddle : Unsigned_32;
             lookupStatus : Read_Status;
-            pointerStatus : Write_Status;
             dataStatus    : Write_Status;
             canWrite    : Unsigned_64 :=
               Unsigned_64 (fs.blkSize - blockOffset);
@@ -1979,7 +3065,8 @@ package body Ext2 is
                logBlock : constant Unsigned_32 :=
                  Unsigned_32 (logicalIndex);
             begin
-               resolveBlock (fs, ino, logBlock, physBlock, pointerLeaf, lookupStatus);
+               resolveBlock
+                 (fs, ino, logBlock, physBlock, pointerLeaf, pointerMiddle, lookupStatus);
                if lookupStatus /= Read_Complete then
                   terminalStatus :=
                     (case lookupStatus is
@@ -1996,12 +3083,34 @@ package body Ext2 is
                --  Reject unrepresentable accounting before even zeroing a
                --  growth gap. Neither step may precede the allocation plan.
                if physBlock = 0 and then
-                 (if path.Kind = Block_Paths.Double_Indirect then
-                    not Double_Mappings.Fits (ino, pointerLeaf = 0, sectors)
-                  else not Inode_Mappings.Fits (ino, logBlock, sectors))
+                 (case path.Kind is
+                    when Block_Paths.Double_Indirect =>
+                      not Double_Mappings.Fits (ino, pointerLeaf = 0, sectors),
+                    when Block_Paths.Triple_Indirect =>
+                      not Triple_Mappings.Fits
+                        (ino, pointerMiddle = 0, pointerLeaf = 0, sectors),
+                    when others => not Inode_Mappings.Fits (ino, logBlock, sectors))
                then
                   terminalStatus := Write_Out_Of_Range;
                   exit;
+               end if;
+               if physBlock = 0 and then not inodeCached then
+                  --  Read the inode's table block before any allocation, so
+                  --  publishing the new mapping needs no read that could
+                  --  fail after the reservation is on disk.
+                  declare
+                     current : Inode;
+                     readStatus : Read_Status;
+                  begin
+                     readInode (fs, inodeNum, current, readStatus);
+                     if readStatus /= Read_Complete then
+                        terminalStatus :=
+                          (if readStatus = Read_Out_Of_Range then Write_Out_Of_Range
+                           else Write_Device_Error);
+                        exit;
+                     end if;
+                     inodeCached := True;
+                  end;
                end if;
                if not gapCleared then
                   zeroExposedRange (fs, ino, fileSize (ino), offset, dataStatus);
@@ -2013,62 +3122,13 @@ package body Ext2 is
                end if;
 
                if physBlock = 0 then
-                  --  Initialize a fresh data block before publishing its
-                  --  inode pointer.  Besides failure ordering, this prevents
-                  --  bytes from a previously freed block becoming visible
-                  --  through a partial first write.
-                  declare
-                     blockBuf : String (1 .. Natural (fs.blkSize)) :=
-                       (others => Character'Val (0));
-                     source   : String (1 .. Natural (canWrite))
-                       with Import,
-                            Address => buf + Storage_Offset (written);
-                     firstByte : constant Natural :=
-                       Natural (blockOffset) + 1;
-                     lastByte  : constant Natural :=
-                       Natural (blockOffset) + Natural (canWrite);
-                  begin
-                     allocateBlock (fs, physBlock, dataStatus);
-                     if dataStatus /= Write_Complete then
-                        terminalStatus := dataStatus;
-                        exit;
-                     end if;
-
-                     blockBuf (firstByte .. lastByte) := source;
-                     writeBytes
-                       (fs,
-                        Storage_Offset (physBlock) *
-                          Storage_Offset (fs.blkSize),
-                        blockBuf'Address,
-                        Storage_Count (fs.blkSize),
-                        dataStatus);
-                     if dataStatus /= Write_Complete then
-                        --  Reservation metadata is already committed. Stop
-                        --  after a transport error; speculative rollback can
-                        --  compound an ambiguous device state.
-                        fs.writeQuarantined := True;
-                        terminalStatus := Write_Recovery_Required;
-                        exit;
-                     end if;
-
-                     setBlockPointer
-                       (fs, ino, logBlock, physBlock, pointerStatus);
-                     if pointerStatus /= Write_Complete then
-                        if pointerStatus = Write_No_Space then
-                           --  A definite lack of space for the indirect root
-                           --  published nothing. Reclaim only in this case.
-                           freeBlock (fs, physBlock, dataStatus);
-                           if dataStatus /= Write_Complete then
-                              fs.writeQuarantined := True;
-                           end if;
-                           terminalStatus := Write_No_Space;
-                        else
-                           fs.writeQuarantined := True;
-                           terminalStatus := Write_Recovery_Required;
-                        end if;
-                        exit;
-                     end if;
-                  end;
+                  appendRun
+                    (fs, ino, pos, buf + Storage_Offset (written), remaining,
+                     canWrite, dataStatus);
+                  if dataStatus /= Write_Complete then
+                     terminalStatus := dataStatus;
+                     exit;
+                  end if;
                else
                   --  Batch only complete, already allocated filesystem blocks
                   --  inside the published file extent. Allocation, EOF growth
@@ -2126,7 +3186,7 @@ package body Ext2 is
                        Storage_Offset (blockOffset),
                      buf + Storage_Offset (written),
                      Storage_Count (canWrite),
-                     dataStatus);
+                     dataStatus, File_Data);
                   if dataStatus /= Write_Complete then
                      terminalStatus := dataStatus;
                      exit;
@@ -2224,7 +3284,7 @@ package body Ext2 is
       begin
          writeBytes
            (fs, Storage_Offset (blockNumber) * Storage_Offset (fs.blkSize),
-            data'Address, Storage_Count (size), writeStatus);
+            data'Address, Storage_Count (size), writeStatus, Directory_Data);
          success := writeStatus = Write_Complete;
       end Write_Block;
       package Committer is new Directory_Commit (Write_Block);
@@ -2394,12 +3454,15 @@ package body Ext2 is
       end;
    end renamePath;
 
-   --  Create a new file in a directory
-   --  Create an empty regular file. Prepare the directory insertion before
-   --  reserving anything; publish its initialized inode before its name.
-   procedure createFile
+   --  Create an empty regular file or directory. Prepare the directory
+   --  insertion before reserving anything; publish the initialized inode
+   --  (and a directory's "."/".." block before it) before its name. A new
+   --  directory's parent gains its ".." link before anything refers to it
+   --  (an over-count is harmless); a grown parent's new block is attached
+   --  after it holds the name.
+   procedure createNode
      (fs : in out Filesystem; dirInodeNum : Unsigned_32; name : String;
-      inodeNum : out Unsigned_32; status : out Write_Status)
+      directory : Boolean; inodeNum : out Unsigned_32; status : out Write_Status)
    is
       parent : Inode;
       fresh : Inode := NULL_INODE;
@@ -2417,6 +3480,8 @@ package body Ext2 is
       cleanupStatus : Write_Status;
       grownParent : Inode;
       accepted : Boolean;
+      ownBlock : Unsigned_32 := 0;
+      sectors : constant Unsigned_32 := fs.blkSize / 512;
 
       procedure Uncertain is
       begin
@@ -2449,6 +3514,12 @@ package body Ext2 is
         parent.sizeLo mod fs.blkSize /= 0 or else
         parent.singleIndirectBlock /= 0 or else
         parent.doubleIndirectBlock /= 0 or else parent.tripleIndirectBlock /= 0
+      then
+         status := Write_File_Range_Unsupported;
+         return;
+      elsif directory and then
+        (parent.numHardLinks >= Maximum_Links or else
+         fs.blkSize < Directory_Blocks.Minimum_Directory_Block)
       then
          status := Write_File_Range_Unsupported;
          return;
@@ -2545,23 +3616,76 @@ package body Ext2 is
          end if;
       end if;
 
-      allocateInode (fs, reservedInode, status);
+      if directory then
+         allocateBlock (fs, ownBlock, status);
+         if status /= Write_Complete then
+            if grow and then status = Write_No_Space then
+               releaseBlocks (fs, [1 => targetBlock], cleanupStatus);
+               if cleanupStatus /= Write_Complete then
+                  Uncertain;
+               end if;
+            elsif grow then
+               Uncertain;
+            end if;
+            return;
+         end if;
+      end if;
+
+      allocateInode (fs, reservedInode, status, directory);
       if status /= Write_Complete then
-         if grow and then status = Write_No_Space then
-            --  This block has never been published. Only a definite no-space
+         if status = Write_No_Space and then (grow or else directory) then
+            --  These blocks were never published. Only a definite no-space
             --  rejection permits cleanup; transport uncertainty must stop.
-            freeBlock (fs, targetBlock, cleanupStatus);
+            if grow and then directory then
+               releaseBlocks (fs, [targetBlock, ownBlock], cleanupStatus);
+            elsif grow then
+               releaseBlocks (fs, [1 => targetBlock], cleanupStatus);
+            else
+               releaseBlocks (fs, [1 => ownBlock], cleanupStatus);
+            end if;
             if cleanupStatus /= Write_Complete then
                Uncertain;
             end if;
-         elsif grow then
+         elsif grow or else directory then
             Uncertain;
          end if;
          return;
       end if;
 
-      fresh.typeAndPermissions := 16#81A4#;
-      fresh.numHardLinks := 1;
+      if directory then
+         --  The parent's ".." link first: until the name exists it is an
+         --  over-count, which is harmless.
+         parent.numHardLinks := parent.numHardLinks + 1;
+         grownParent.numHardLinks := parent.numHardLinks;
+         writeInode (fs, dirInodeNum, parent, status);
+         if status /= Write_Complete then
+            Uncertain;
+            return;
+         end if;
+         declare
+            contents : Directory_Blocks.Block_Data;
+         begin
+            Directory_Blocks.Initial_Block
+              (contents, Directory_Blocks.Block_Length (fs.blkSize),
+               reservedInode, dirInodeNum, FILETYPE_DIRECTORY);
+            writeBytes
+              (fs, Storage_Offset (ownBlock) * Storage_Offset (fs.blkSize),
+               contents'Address, Storage_Count (fs.blkSize), status,
+               Directory_Data);
+         end;
+         if status /= Write_Complete then
+            Uncertain;
+            return;
+         end if;
+         fresh.typeAndPermissions := Directory_Mode;
+         fresh.numHardLinks := 2; -- its name and its own "."
+         fresh.sizeLo := fs.blkSize;
+         fresh.directBlocks (0) := ownBlock;
+         fresh.numDiskSectors := sectors;
+      else
+         fresh.typeAndPermissions := Regular_Mode;
+         fresh.numHardLinks := 1;
+      end if;
       writeInode (fs, reservedInode, fresh, status);
       if status /= Write_Complete then
          Uncertain;
@@ -2575,12 +3699,13 @@ package body Ext2 is
       begin
          dent := (inode => reservedInode, length => entrySpan,
                    nameLength => Unsigned_8 (name'Length),
-                   fileType => FILETYPE_REGULAR);
+                   fileType => (if directory then FILETYPE_DIRECTORY
+                                else FILETYPE_REGULAR));
          entryName := name;
       end;
       writeBytes
         (fs, Storage_Offset (targetBlock) * Storage_Offset (fs.blkSize),
-         buffer'Address, Storage_Count (fs.blkSize), status);
+         buffer'Address, Storage_Count (fs.blkSize), status, Directory_Data);
       if status /= Write_Complete then
          --  The name may now reference reservedInode. Never free it.
          Uncertain;
@@ -2597,31 +3722,58 @@ package body Ext2 is
       end if;
       inodeNum := reservedInode;
       status := Write_Complete;
+   end createNode;
+
+   procedure createFile
+     (fs : in out Filesystem; dirInodeNum : Unsigned_32; name : String;
+      inodeNum : out Unsigned_32; status : out Write_Status)
+   is
+   begin
+      createNode (fs, dirInodeNum, name, False, inodeNum, status);
    end createFile;
+
+   procedure makeDirectory
+     (fs : in out Filesystem; dirInodeNum : Unsigned_32; name : String;
+      inodeNum : out Unsigned_32; status : out Write_Status)
+   is
+   begin
+      createNode (fs, dirInodeNum, name, True, inodeNum, status);
+   end makeDirectory;
 
    --  Validate ownership within this inode BEFORE any mutation. The inventory
    --  is sized by an admitted allocation count, not by logical file size.
    --  Sorting is O(n log n), replacing the old quadratic duplicate walk.
+   --  Allocations beyond the scratch inventory capacity (only reachable with
+   --  triple-indirect trees) are rejected as unsupported, never partially
+   --  checked.
    procedure validateBlockTree
      (fs : Filesystem; ino : Inode; status : out Truncate_Status)
    is
       sectors : constant Unsigned_32 := fs.blkSize / 512;
       ptrCount : constant Unsigned_32 := fs.blkSize / 4;
       claimed : constant Unsigned_32 := ino.numDiskSectors / sectors;
+      --  Data blocks plus the single, double (root + leaves) and triple
+      --  (root + middles + leaves) pointer blocks of a complete tree.
+      pointerBlockLimit : constant Unsigned_64 :=
+        1 + (1 + Unsigned_64 (ptrCount)) +
+        (1 + Unsigned_64 (ptrCount) + Unsigned_64 (ptrCount) * Unsigned_64 (ptrCount));
       geometryLimit : constant Unsigned_64 :=
         Block_Paths.Block_Limit (Sector_Accounting.Block_Sectors (sectors)) +
-          Unsigned_64 (ptrCount) + 2;
+          pointerBlockLimit;
    begin
       status := Truncate_Invalid;
       if ino.numDiskSectors mod sectors /= 0 or else
         Unsigned_64 (claimed) > geometryLimit or else claimed > fs.sb.blockCount
       then
          return;
+      elsif Unsigned_64 (claimed) > Block_Inventory.Maximum_Blocks then
+         status := Truncate_Unsupported;
+         return;
       end if;
       declare
          blocks : Block_Inventory.Block_Array (1 .. Natural (claimed));
          count : Block_Inventory.Block_Count := 0;
-         root, leaf : Pointer_Block;
+         top, middle, root, leaf : Pointer_Block;
          valid, unique : Boolean := True;
          readStatus : Read_Status;
 
@@ -2684,6 +3836,24 @@ package body Ext2 is
                end if;
             end loop;
          end if;
+         if ino.tripleIndirectBlock /= 0 then
+            Load (ino.tripleIndirectBlock, top);
+            if not valid then return; end if;
+            for I in 0 .. Natural (ptrCount) - 1 loop
+               if top (I) /= 0 then
+                  Load (top (I), middle);
+                  if not valid then return; end if;
+                  for J in 0 .. Natural (ptrCount) - 1 loop
+                     if middle (J) /= 0 then
+                        Load (middle (J), leaf);
+                        if not valid then return; end if;
+                        Data_Pointers (leaf);
+                        if not valid then return; end if;
+                     end if;
+                  end loop;
+               end if;
+            end loop;
+         end if;
          if Unsigned_32 (count) /= claimed then
             return;
          end if;
@@ -2696,22 +3866,27 @@ package body Ext2 is
 
    --  Whole-tree preflight, then bounded leaf-sized detach/flush/reclaim.
    --  No mutable pointer tree is revisited after its storage has been freed.
-   procedure resizeFile
+   --  Journaled, commitAtEnd = False leaves the whole resize in the running
+   --  transaction for the caller to extend and commit.
+   procedure resizeInode
      (fs : in out Filesystem; inodeNum : Unsigned_32;
       newSize : Unsigned_64; resizedInode : out Inode;
-      status : out Truncate_Status)
+      status : out Truncate_Status; commitAtEnd : Boolean)
    is
       ino : Inode;
       readStatus : Read_Status;
       writeStatus : Write_Status;
       flushStatus : Flush_Status;
-      root, leaf : Pointer_Block := [others => 0];
-      retired : array (1 .. Sector_Accounting.Retired_Blocks'Last) of Unsigned_32;
+      top, middle, root, leaf : Pointer_Block := [others => 0];
+      --  One batch retires at most one leaf's data plus that leaf and its
+      --  emptied middle and triple root: P + 3 <= Retired_Blocks'Last.
+      retired : Release_List (1 .. Sector_Accounting.Retired_Blocks'Last);
       count : Sector_Accounting.Retired_Blocks := 0;
       keepBlocks : Unsigned_64;
       mutated : Boolean := False;
       failed : Boolean := False;
       ptrCount : Unsigned_32;
+      type Leaf_Parent is (Single_Parent, Double_Parent, Triple_Parent);
 
       procedure Fail (reason : Truncate_Status) is
       begin
@@ -2740,11 +3915,12 @@ package body Ext2 is
          if readStatus /= Read_Complete then Fail (Truncate_IO_Error); end if;
       end Load;
 
-      procedure Publish (number : Unsigned_32; contents : Pointer_Block) is
+      procedure Publish
+        (number : Unsigned_32; contents : Pointer_Block; class : Block_Class) is
       begin
          mutated := True;
          writeBytes (fs, Storage_Offset (number) * Storage_Offset (fs.blkSize),
-                     contents'Address, Storage_Count (fs.blkSize), writeStatus);
+                     contents'Address, Storage_Count (fs.blkSize), writeStatus, class);
          if writeStatus /= Write_Complete then Fail (Truncate_IO_Error); end if;
       end Publish;
 
@@ -2760,9 +3936,26 @@ package body Ext2 is
             return;
          end if;
          ino.numDiskSectors := newSectors;
+         mutated := True;
+         if fs.journal.Active then
+            --  Journaled: detach and free in the same running transaction,
+            --  so they commit together; the size shrinks (the blocks beyond
+            --  it are already gone) only in the final batch. Nothing can
+            --  reuse a freed block before resizeFile's closing commit.
+            writeInode (fs, inodeNum, ino, writeStatus);
+            if writeStatus = Write_Complete and then count > 0 then
+               releaseBlocks (fs, retired (1 .. count), writeStatus);
+            end if;
+            if writeStatus /= Write_Complete then
+               Fail (Truncate_IO_Error);
+               return;
+            end if;
+            invalidateBlockCache;
+            count := 0;
+            return;
+         end if;
          ino.sizeLo := Unsigned_32 (newSize and 16#FFFF_FFFF#);
          ino.sizeHi_DirACL := Unsigned_32 (Shift_Right (newSize, 32));
-         mutated := True;
          writeInode (fs, inodeNum, ino, writeStatus);
          if writeStatus /= Write_Complete then
             Fail (Truncate_IO_Error);
@@ -2777,22 +3970,42 @@ package body Ext2 is
             end if;
          end if;
          --  Both inode and surviving parent pointers are durably detached.
-         for I in 1 .. count loop
-            freeBlock (fs, retired (I), writeStatus);
+         if count > 0 then
+            releaseBlocks (fs, retired (1 .. count), writeStatus);
             if writeStatus /= Write_Complete then
                Fail (Truncate_IO_Error);
                return;
             end if;
-         end loop;
+         end if;
          count := 0;
       end Commit_Batch;
 
+      function Empty (contents : Pointer_Block) return Boolean is
+        (for all I in 0 .. Natural (ptrCount) - 1 => contents (I) = 0);
+
+      --  Remove triple root slot topSlot, whose middle block is now empty,
+      --  retiring the root too when that was its last middle.
+      procedure Detach_Middle (topSlot : Natural) is
+      begin
+         Retire (top (topSlot));
+         top (topSlot) := 0;
+         if Empty (top) then
+            Retire (ino.tripleIndirectBlock);
+            ino.tripleIndirectBlock := 0;
+         else
+            Publish (ino.tripleIndirectBlock, top, Root_Pointers);
+         end if;
+      end Detach_Middle;
+
       procedure Trim_Leaf
         (number : Unsigned_32; firstLogical : Unsigned_64;
-         inDouble : Boolean; rootSlot : Natural := 0)
+         parent : Leaf_Parent; outerSlot, middleSlot : Natural := 0)
       is
          remains, changed : Boolean := False;
       begin
+         --  Validation already read every pointer block. A leaf lying wholly
+         --  below the retained extent needs neither I/O nor publication.
+         if firstLogical + Unsigned_64 (ptrCount) <= keepBlocks then return; end if;
          Load (number, leaf);
          if failed then return; end if;
          for I in 0 .. Natural (ptrCount) - 1 loop
@@ -2808,24 +4021,66 @@ package body Ext2 is
          end loop;
          if remains then
             if not changed then return; end if;
-            Publish (number, leaf);
+            Publish (number, leaf, Leaf_Pointers);
          else
             Retire (number);
-            if inDouble then
-               root (rootSlot) := 0;
-               if (for all I in 0 .. Natural (ptrCount) - 1 => root (I) = 0) then
-                  Retire (ino.doubleIndirectBlock);
-                  ino.doubleIndirectBlock := 0;
-               else
-                  Publish (ino.doubleIndirectBlock, root);
-               end if;
-            else
-               ino.singleIndirectBlock := 0;
-            end if;
+            --  Publish only the nearest surviving ancestor; emptied parents
+            --  are retired in the same batch after the inode is flushed.
+            case parent is
+               when Single_Parent =>
+                  ino.singleIndirectBlock := 0;
+               when Double_Parent =>
+                  root (outerSlot) := 0;
+                  if Empty (root) then
+                     Retire (ino.doubleIndirectBlock);
+                     ino.doubleIndirectBlock := 0;
+                  else
+                     Publish (ino.doubleIndirectBlock, root, Middle_Pointers);
+                  end if;
+               when Triple_Parent =>
+                  middle (middleSlot) := 0;
+                  if Empty (middle) then
+                     Detach_Middle (outerSlot);
+                  else
+                     Publish (top (outerSlot), middle, Middle_Pointers);
+                  end if;
+            end case;
          end if;
          if failed then return; end if;
          Commit_Batch;
       end Trim_Leaf;
+
+      --  Trim one middle block's leaves from the highest logical block down.
+      --  A middle wholly below the retained extent is skipped without I/O.
+      procedure Trim_Middle (topSlot : Natural) is
+         sectors : constant Sector_Accounting.Block_Sectors :=
+           Sector_Accounting.Block_Sectors (fs.blkSize / 512);
+         firstLogical : constant Unsigned_64 :=
+           Block_Paths.First_Triple (sectors) +
+             Unsigned_64 (topSlot) * Block_Paths.Middle_Span (sectors);
+      begin
+         if firstLogical + Block_Paths.Middle_Span (sectors) <= keepBlocks then
+            return;
+         end if;
+         Load (top (topSlot), middle);
+         if failed then return; end if;
+         for J in reverse 0 .. Natural (ptrCount) - 1 loop
+            if middle (J) /= 0 then
+               Trim_Leaf (middle (J),
+                 firstLogical + Unsigned_64 (J) * Unsigned_64 (ptrCount),
+                 Triple_Parent, topSlot, J);
+               if failed then return; end if;
+               --  The last leaf's removal also retired this middle block.
+               exit when top (topSlot) = 0;
+            end if;
+         end loop;
+         --  Also retire a valid but initially empty middle block.
+         if top (topSlot) /= 0 and then Empty (middle) then
+            Detach_Middle (topSlot);
+            if failed then return; end if;
+            Commit_Batch;
+         end if;
+      end Trim_Middle;
    begin
       resizedInode := NULL_INODE;
       status := Truncate_Invalid;
@@ -2836,7 +4091,7 @@ package body Ext2 is
          status := Truncate_Read_Only;
          return;
       elsif not Is_Volatile (fs.device.description) and then
-        (fs.device.description.features and FEATURE_FLUSH) = 0
+        not Can_Persist (fs.device.description)
       then
          status := Truncate_Durability_Unsupported;
          return;
@@ -2845,9 +4100,8 @@ package body Ext2 is
       if readStatus /= Read_Complete then
          status := Truncate_IO_Error;
          return;
-      elsif Ext2_Support.Check_File (ino) /= Ext2_Support.File_Allowed or else
-        ino.tripleIndirectBlock /= 0 or else ino.fileACL /= 0 or else
-        fs.blkSize not in 1024 | 2048 | 4096
+      elsif Ext2_Support.Check_File (ino, Unlinked_Allowed => True) /= Ext2_Support.File_Allowed or else
+        ino.fileACL /= 0 or else fs.blkSize not in 1024 | 2048 | 4096
       then
          status := Truncate_Unsupported;
          return;
@@ -2855,7 +4109,7 @@ package body Ext2 is
       ptrCount := fs.blkSize / 4;
       if newSize > Unsigned_64 (fs.blkSize) *
         Block_Paths.Block_Limit (Sector_Accounting.Block_Sectors (fs.blkSize / 512)) or else
-        (newSize > 16#7FFF_FFFF# and then (fs.sb.readOnlyFeatures and 2) = 0)
+        not Ext2_Support.Size_Admitted (newSize, fs.sb.readOnlyFeatures)
       then
          status := Truncate_Unsupported;
          return;
@@ -2872,6 +4126,25 @@ package body Ext2 is
          end if;
          Commit_Batch;
       elsif newSize < fileSize (ino) then
+         --  Highest logical blocks first: triple, double, single, direct.
+         if ino.tripleIndirectBlock /= 0 then
+            Load (ino.tripleIndirectBlock, top);
+            if failed then return; end if;
+            for I in reverse 0 .. Natural (ptrCount) - 1 loop
+               if top (I) /= 0 then
+                  Trim_Middle (I);
+                  if failed then return; end if;
+               end if;
+               exit when ino.tripleIndirectBlock = 0;
+            end loop;
+            --  Also retire a valid but initially empty triple root.
+            if ino.tripleIndirectBlock /= 0 and then Empty (top) then
+               Retire (ino.tripleIndirectBlock);
+               ino.tripleIndirectBlock := 0;
+               Commit_Batch;
+               if failed then return; end if;
+            end if;
+         end if;
          if ino.doubleIndirectBlock /= 0 then
             Load (ino.doubleIndirectBlock, root);
             if failed then return; end if;
@@ -2879,14 +4152,12 @@ package body Ext2 is
                if root (I) /= 0 then
                   Trim_Leaf (root (I),
                     Unsigned_64 (NUM_DIRECT_BLOCKS) + Unsigned_64 (ptrCount) +
-                      Unsigned_64 (I) * Unsigned_64 (ptrCount), True, I);
+                      Unsigned_64 (I) * Unsigned_64 (ptrCount), Double_Parent, I);
                   if failed then return; end if;
                end if;
             end loop;
             --  Also retire a valid but initially empty double root.
-            if ino.doubleIndirectBlock /= 0 and then
-              (for all I in 0 .. Natural (ptrCount) - 1 => root (I) = 0)
-            then
+            if ino.doubleIndirectBlock /= 0 and then Empty (root) then
                Retire (ino.doubleIndirectBlock);
                ino.doubleIndirectBlock := 0;
                Commit_Batch;
@@ -2894,7 +4165,7 @@ package body Ext2 is
             end if;
          end if;
          if ino.singleIndirectBlock /= 0 then
-            Trim_Leaf (ino.singleIndirectBlock, NUM_DIRECT_BLOCKS, False);
+            Trim_Leaf (ino.singleIndirectBlock, NUM_DIRECT_BLOCKS, Single_Parent);
             if failed then return; end if;
          end if;
          for I in ino.directBlocks'Range loop
@@ -2907,10 +4178,37 @@ package body Ext2 is
             Commit_Batch;
          end if;
       end if;
+      if not failed and then fs.journal.Active then
+         --  The new size, then one commit for the whole resize.
+         ino.sizeLo := Unsigned_32 (newSize and 16#FFFF_FFFF#);
+         ino.sizeHi_DirACL := Unsigned_32 (Shift_Right (newSize, 32));
+         mutated := True;
+         writeInode (fs, inodeNum, ino, writeStatus);
+         if writeStatus /= Write_Complete then
+            Fail (Truncate_IO_Error);
+         elsif commitAtEnd then
+            Flush (fs, flushStatus);
+            if flushStatus /= Flush_Complete and then
+              not (flushStatus = Flush_Unsupported and then
+                   Is_Volatile (fs.device.description))
+            then
+               Fail (Truncate_IO_Error);
+            end if;
+         end if;
+      end if;
       if not failed then
          resizedInode := ino;
          status := Truncate_Complete;
       end if;
+   end resizeInode;
+
+   procedure resizeFile
+     (fs : in out Filesystem; inodeNum : Unsigned_32;
+      newSize : Unsigned_64; resizedInode : out Inode;
+      status : out Truncate_Status)
+   is
+   begin
+      resizeInode (fs, inodeNum, newSize, resizedInode, status, True);
    end resizeFile;
 
    --  OPEN_TRUNCATE uses the same mutation implementation as general resize.
@@ -2921,6 +4219,782 @@ package body Ext2 is
    begin
       resizeFile (fs, inodeNum, 0, emptyInode, status);
    end truncateToEmpty;
+
+   ---------------------------------------------------------------------------
+   --  Name removal and directory creation by path
+   ---------------------------------------------------------------------------
+
+   --  The parent directory of path and where its leaf name starts.
+   procedure resolveParent
+     (fs : Filesystem; path : String; parent : out Unsigned_32;
+      leafFirst : out Positive; status : out Directory_Lookup_Status)
+   is
+   begin
+      parent := ROOT_INODE;
+      leafFirst := path'First;
+      status := Lookup_Found;
+      for index in reverse path'Range loop
+         if path (index) = '/' then
+            leafFirst := index + 1;
+            exit;
+         end if;
+      end loop;
+      if leafFirst > path'First + 1 then
+         resolvePath (fs, path (path'First .. leafFirst - 2), parent, status);
+      end if;
+      if status /= Lookup_Found then
+         parent := 0;
+      end if;
+   end resolveParent;
+
+   --  A directory whose records this service may rewrite: unindexed, whole
+   --  blocks, direct pointers only.
+   function plainDirectory (fs : Filesystem; dir : Inode) return Boolean is
+     (inodeType (dir) = INODE_DIRECTORY and then dir.flags = 0 and then
+      dir.sizeLo /= 0 and then dir.sizeLo mod fs.blkSize = 0 and then
+      Unsigned_64 (dir.sizeLo) <=
+        Unsigned_64 (NUM_DIRECT_BLOCKS) * Unsigned_64 (fs.blkSize) and then
+      dir.singleIndirectBlock = 0 and then dir.doubleIndirectBlock = 0 and then
+      dir.tripleIndirectBlock = 0);
+
+   function removeLookupFailure
+     (status : Directory_Lookup_Status) return Remove_Status is
+     (case status is
+        when Lookup_Malformed => Remove_Malformed,
+        when Lookup_Device_Error => Remove_IO_Error,
+        when Lookup_Out_Of_Range => Remove_Out_Of_Range,
+        when Lookup_Range_Unsupported => Remove_Unsupported,
+        when others => Remove_Not_Found);
+
+   function removeReadFailure (status : Read_Status) return Remove_Status is
+     (if status = Read_Out_Of_Range then Remove_Out_Of_Range
+      else Remove_IO_Error);
+
+   --  The dtime of a freed inode: ext2 requires it nonzero. Without a clock
+   --  the volume's last write time serves.
+   function deletionTime (fs : Filesystem) return Unsigned_32 is
+     (Unsigned_32'Max (1, fs.sb.lastWriteTime));
+
+   --  Remove name's record (which must name expected) from a plain
+   --  directory: one block rewritten, restored if that write fails.
+   procedure removeEntry
+     (fs : in out Filesystem; dir : Inode; name : String;
+      expected : Unsigned_32; status : out Remove_Status)
+   is
+      original : Directory_Blocks.Block_Data := [others => 0];
+      candidate : Directory_Blocks.Block_Data;
+      prepared : Directory_Blocks.Prepare_Result;
+      removed : Unsigned_32;
+      kind : Unsigned_8;
+      blockNumber : Unsigned_32 := 0;
+      readStatus : Read_Status;
+
+      procedure Write_Block
+        (data : Directory_Blocks.Block_Data;
+         size : Directory_Blocks.Block_Length; success : out Boolean)
+      is
+         writeStatus : Write_Status;
+      begin
+         writeBytes
+           (fs, Storage_Offset (blockNumber) * Storage_Offset (fs.blkSize),
+            data'Address, Storage_Count (size), writeStatus, Directory_Data);
+         success := writeStatus = Write_Complete;
+      end Write_Block;
+      package Committer is new Directory_Commit (Write_Block);
+      result : Committer.Commit_Result;
+   begin
+      for index in 0 .. Natural (dir.sizeLo / fs.blkSize) - 1 loop
+         blockNumber := dir.directBlocks (index);
+         if blockNumber = 0 then
+            status := Remove_Malformed;
+            return;
+         end if;
+         readBlock (fs, blockNumber, original'Address, readStatus);
+         if readStatus /= Read_Complete then
+            status := removeReadFailure (readStatus);
+            return;
+         end if;
+         candidate := original;
+         Directory_Blocks.Prepare_Remove
+           (candidate, Directory_Blocks.Block_Length (fs.blkSize),
+            fs.sb.inodeCount, name, removed, kind, prepared);
+         case prepared is
+            when Directory_Blocks.Prepared =>
+               if removed /= expected then
+                  status := Remove_Malformed;
+                  return;
+               end if;
+               Committer.Commit
+                 (original, candidate,
+                  Directory_Blocks.Block_Length (fs.blkSize), result);
+               case result is
+                  when Committer.Committed => status := Remove_Complete;
+                  when Committer.Original_Restored => status := Remove_IO_Error;
+                  when Committer.Recovery_Required =>
+                     fs.writeQuarantined := True;
+                     status := Remove_Recovery_Required;
+               end case;
+               return;
+            when Directory_Blocks.Source_Not_Found => null;
+            when Directory_Blocks.Invalid_Name =>
+               status := Remove_Invalid_Name;
+               return;
+            when others =>
+               status := Remove_Malformed;
+               return;
+         end case;
+      end loop;
+      status := Remove_Not_Found;
+   end removeEntry;
+
+   --  Return an inode to its group's bitmap. Counts are checked before the
+   --  first write; a failed write quarantines the volume.
+   procedure freeInode
+     (fs : in out Filesystem; inodeNum : Unsigned_32; directory : Boolean;
+      status : out Write_Status)
+   is
+      bitmapBuf : array (0 .. 4095) of Unsigned_8 with Alignment => 8;
+      readSize : constant Unsigned_32 := Unsigned_32'Min
+        ((fs.sb.inodesPerBlockGroup + 7) / 8, Unsigned_32 (bitmapBuf'Length));
+      group, index : Unsigned_32;
+      bgd : BlockGroupDescriptor;
+      readStatus : Read_Status;
+      mask : Unsigned_8;
+   begin
+      status := Write_Device_Error;
+      if fs.sb.inodesPerBlockGroup = 0 or else inodeNum = 0 or else
+        inodeNum > fs.sb.inodeCount or else fs.sb.freeInodes >= fs.sb.inodeCount
+      then
+         return;
+      end if;
+      group := (inodeNum - 1) / fs.sb.inodesPerBlockGroup;
+      index := (inodeNum - 1) mod fs.sb.inodesPerBlockGroup;
+      if index / 8 >= readSize then
+         status := Write_Out_Of_Range;
+         return;
+      end if;
+      readBGD (fs, group, bgd, readStatus);
+      if readStatus /= Read_Complete then
+         return;
+      end if;
+      readBytes
+        (fs, Storage_Offset (bgd.inodeBitmapAddr) * Storage_Offset (fs.blkSize),
+         bitmapBuf'Address, Storage_Count (readSize), readStatus);
+      mask := Shift_Left (Unsigned_8'(1), Natural (index mod 8));
+      if readStatus /= Read_Complete or else
+        (bitmapBuf (Natural (index / 8)) and mask) = 0 or else
+        Unsigned_32 (bgd.numFreeInodes) >= fs.sb.inodesPerBlockGroup or else
+        (directory and then bgd.numDirectories = 0)
+      then
+         return;
+      end if;
+      bitmapBuf (Natural (index / 8)) := bitmapBuf (Natural (index / 8)) and not mask;
+      writeBytes
+        (fs, Storage_Offset (bgd.inodeBitmapAddr) * Storage_Offset (fs.blkSize),
+         bitmapBuf'Address, Storage_Count (readSize), status, Allocation_Metadata);
+      if status = Write_Complete then
+         bgd.numFreeInodes := bgd.numFreeInodes + 1;
+         if directory then
+            bgd.numDirectories := bgd.numDirectories - 1;
+         end if;
+         writeBGD (fs, group, bgd, status);
+      end if;
+      if status = Write_Complete then
+         fs.sb.freeInodes := fs.sb.freeInodes + 1;
+         writeSuperblock (fs, status);
+      end if;
+      if status /= Write_Complete then
+         fs.writeQuarantined := True;
+         status := Write_Recovery_Required;
+      end if;
+   end freeInode;
+
+   --  Common guards of the removal operations.
+   function removeRefusal (fs : Filesystem) return Remove_Status is
+     (if fs.writeQuarantined then Remove_Recovery_Required
+      elsif Is_Read_Only (fs.device.description) then Remove_Read_Only
+      elsif not Is_Volatile (fs.device.description) and then
+        not Can_Persist (fs.device.description)
+      then Remove_Durability_Unsupported
+      else Remove_Complete);
+
+   procedure reclaimInode
+     (fs : in out Filesystem; inodeNum : Unsigned_32;
+      status : out Remove_Status)
+   is
+      ino, emptied : Inode;
+      readStatus : Read_Status;
+      writeStatus : Write_Status;
+      flushStatus : Flush_Status;
+      truncated : Truncate_Status;
+   begin
+      status := removeRefusal (fs);
+      if status /= Remove_Complete then
+         return;
+      end if;
+      readInode (fs, inodeNum, ino, readStatus);
+      if readStatus /= Read_Complete then
+         status := removeReadFailure (readStatus);
+         return;
+      elsif ino.numHardLinks /= 0 or else
+        Ext2_Support.Check_File (ino, Unlinked_Allowed => True) /=
+          Ext2_Support.File_Allowed
+      then
+         status := Remove_Malformed;
+         return;
+      end if;
+      --  Detach and free the blocks (durably detached before release).
+      --  Journaled, the whole reclaim is one transaction, committed below
+      --  before any freed block can be reused.
+      resizeInode (fs, inodeNum, 0, emptied, truncated,
+                   commitAtEnd => not fs.journal.Active);
+      case truncated is
+         when Truncate_Complete => null;
+         when Truncate_Read_Only => status := Remove_Read_Only; return;
+         when Truncate_IO_Error => status := Remove_IO_Error; return;
+         when Truncate_Unsupported | Truncate_Invalid =>
+            status := Remove_Unsupported; return;
+         when Truncate_Durability_Unsupported =>
+            status := Remove_Durability_Unsupported; return;
+         when Truncate_Recovery_Required =>
+            status := Remove_Recovery_Required; return;
+      end case;
+      --  Mark the inode deleted, then release it: a crash between the two
+      --  leaves an allocated deleted inode, which e2fsck frees.
+      emptied.deletedTime := deletionTime (fs);
+      writeInode (fs, inodeNum, emptied, writeStatus);
+      if writeStatus = Write_Complete then
+         freeInode (fs, inodeNum, False, writeStatus);
+      else
+         fs.writeQuarantined := True;
+      end if;
+      if writeStatus = Write_Complete and then fs.journal.Active then
+         Flush (fs, flushStatus);
+         if flushStatus /= Flush_Complete and then
+           not (flushStatus = Flush_Unsupported and then
+                Is_Volatile (fs.device.description))
+         then
+            writeStatus := Write_Device_Error;
+         end if;
+      end if;
+      status := (if writeStatus = Write_Complete then Remove_Complete
+                 else Remove_Recovery_Required);
+   end reclaimInode;
+
+   procedure unlinkPath
+     (fs : in out Filesystem; path : String; keepOrphan : Boolean;
+      inodeNum : out Unsigned_32; unlinked : out Inode;
+      status : out Remove_Status)
+   is
+      parentNum, target : Unsigned_32;
+      leafFirst : Positive;
+      lookup : Directory_Lookup_Status;
+      dir, ino : Inode;
+      readStatus : Read_Status;
+      writeStatus : Write_Status;
+      treeStatus : Truncate_Status;
+   begin
+      inodeNum := 0;
+      unlinked := NULL_INODE;
+      status := removeRefusal (fs);
+      if status /= Remove_Complete then
+         return;
+      end if;
+      resolveParent (fs, path, parentNum, leafFirst, lookup);
+      if lookup /= Lookup_Found then
+         status := removeLookupFailure (lookup);
+         return;
+      end if;
+      declare
+         leaf : String renames path (leafFirst .. path'Last);
+      begin
+         if not CuBit.Directory_Paths.Valid_Child_Name (leaf) then
+            status := Remove_Invalid_Name;
+            return;
+         end if;
+         readInode (fs, parentNum, dir, readStatus);
+         if readStatus /= Read_Complete then
+            status := removeReadFailure (readStatus);
+            return;
+         elsif inodeType (dir) /= INODE_DIRECTORY then
+            status := Remove_Not_Found;
+            return;
+         elsif not plainDirectory (fs, dir) then
+            status := Remove_Unsupported;
+            return;
+         end if;
+         lookupInDir (fs, dir, leaf, target, lookup);
+         if lookup /= Lookup_Found then
+            status := removeLookupFailure (lookup);
+            return;
+         end if;
+         readInode (fs, target, ino, readStatus);
+         if readStatus /= Read_Complete then
+            status := removeReadFailure (readStatus);
+            return;
+         elsif inodeType (ino) = INODE_DIRECTORY then
+            status := Remove_Wrong_Type;
+            return;
+         elsif Ext2_Support.Check_File (ino) /= Ext2_Support.File_Allowed or else
+           ino.fileACL /= 0
+         then
+            status := Remove_Unsupported;
+            return;
+         end if;
+         --  Check the block tree before the name goes, so that reclaim
+         --  cannot then refuse it and strand an orphan.
+         validateBlockTree (fs, ino, treeStatus);
+         if treeStatus /= Truncate_Complete then
+            status := (if treeStatus = Truncate_IO_Error then Remove_IO_Error
+                       else Remove_Unsupported);
+            return;
+         end if;
+         removeEntry (fs, dir, leaf, target, status);
+         if status /= Remove_Complete then
+            return;
+         end if;
+      end;
+      --  The name is gone; a crash here leaves a linked, unnamed inode
+      --  (e2fsck moves it to lost+found).
+      ino.numHardLinks := 0;
+      writeInode (fs, target, ino, writeStatus);
+      if writeStatus /= Write_Complete then
+         fs.writeQuarantined := True;
+         status := Remove_Recovery_Required;
+         return;
+      end if;
+      inodeNum := target;
+      unlinked := ino;
+      if not keepOrphan then
+         reclaimInode (fs, target, status);
+      end if;
+   end unlinkPath;
+
+   procedure makeDirectoryPath
+     (fs : in out Filesystem; path : String; inodeNum : out Unsigned_32;
+      lookup : out Directory_Lookup_Status; status : out Write_Status)
+   is
+      parentNum : Unsigned_32;
+      leafFirst : Positive;
+   begin
+      inodeNum := 0;
+      status := Write_Out_Of_Range;
+      resolveParent (fs, path, parentNum, leafFirst, lookup);
+      if lookup /= Lookup_Found then
+         return;
+      end if;
+      makeDirectory
+        (fs, parentNum, path (leafFirst .. path'Last), inodeNum, status);
+   end makeDirectoryPath;
+
+   procedure removeDirectoryPath
+     (fs : in out Filesystem; path : String; inodeNum : out Unsigned_32;
+      status : out Remove_Status)
+   is
+      parentNum, target : Unsigned_32;
+      leafFirst : Positive;
+      lookup : Directory_Lookup_Status;
+      parent, dir : Inode;
+      readStatus : Read_Status;
+      writeStatus : Write_Status;
+      flushStatus : Flush_Status;
+      contents : Directory_Blocks.Block_Data := [others => 0];
+      children : Directory_Blocks.Byte_Count;
+      counted : Directory_Blocks.Prepare_Result;
+      blocks : Natural;
+   begin
+      inodeNum := 0;
+      status := removeRefusal (fs);
+      if status /= Remove_Complete then
+         return;
+      end if;
+      resolveParent (fs, path, parentNum, leafFirst, lookup);
+      if lookup /= Lookup_Found then
+         status := removeLookupFailure (lookup);
+         return;
+      end if;
+      declare
+         leaf : String renames path (leafFirst .. path'Last);
+      begin
+         if not CuBit.Directory_Paths.Valid_Child_Name (leaf) then
+            status := Remove_Invalid_Name;
+            return;
+         end if;
+         readInode (fs, parentNum, parent, readStatus);
+         if readStatus /= Read_Complete then
+            status := removeReadFailure (readStatus);
+            return;
+         elsif inodeType (parent) /= INODE_DIRECTORY then
+            status := Remove_Not_Found;
+            return;
+         elsif not plainDirectory (fs, parent) then
+            status := Remove_Unsupported;
+            return;
+         end if;
+         lookupInDir (fs, parent, leaf, target, lookup);
+         if lookup /= Lookup_Found then
+            status := removeLookupFailure (lookup);
+            return;
+         elsif target = ROOT_INODE or else target = parentNum then
+            status := Remove_Malformed;
+            return;
+         end if;
+         readInode (fs, target, dir, readStatus);
+         if readStatus /= Read_Complete then
+            status := removeReadFailure (readStatus);
+            return;
+         elsif inodeType (dir) /= INODE_DIRECTORY then
+            status := Remove_Wrong_Type;
+            return;
+         elsif not plainDirectory (fs, dir) or else dir.fileACL /= 0 or else
+           dir.deletedTime /= 0 or else dir.fragmentBlockAddr /= 0
+         then
+            status := Remove_Unsupported;
+            return;
+         end if;
+         blocks := Natural (dir.sizeLo / fs.blkSize);
+         if dir.numDiskSectors /= Unsigned_32 (blocks) * (fs.blkSize / 512) or else
+           (for some index in 0 .. blocks - 1 =>
+              dir.directBlocks (index) < fs.sb.firstDataBlock or else
+              dir.directBlocks (index) >= fs.sb.blockCount) or else
+           (for some index in blocks .. NUM_DIRECT_BLOCKS - 1 =>
+              dir.directBlocks (index) /= 0) or else
+           parent.numHardLinks <= 2
+         then
+            status := Remove_Malformed;
+            return;
+         end if;
+         for index in 0 .. blocks - 1 loop
+            readBlock (fs, dir.directBlocks (index), contents'Address, readStatus);
+            if readStatus /= Read_Complete then
+               status := removeReadFailure (readStatus);
+               return;
+            end if;
+            Directory_Blocks.Count_Children
+              (contents, Directory_Blocks.Block_Length (fs.blkSize),
+               fs.sb.inodeCount, children, counted);
+            if counted /= Directory_Blocks.Prepared then
+               status := Remove_Malformed;
+               return;
+            elsif children /= 0 then
+               status := Remove_Not_Empty;
+               return;
+            end if;
+         end loop;
+         if dir.numHardLinks /= 2 then
+            status := Remove_Malformed; -- no children yet other links
+            return;
+         end if;
+         removeEntry (fs, parent, leaf, target, status);
+         if status /= Remove_Complete then
+            return;
+         end if;
+      end;
+      inodeNum := target;
+      --  Detach its blocks with the inode marked deleted, durably, before
+      --  they become reusable; then free the inode; the parent's ".." link
+      --  goes last.
+      declare
+         retired : Release_List (1 .. blocks);
+      begin
+         for index in retired'Range loop
+            retired (index) := dir.directBlocks (index - 1);
+         end loop;
+         dir.numHardLinks := 0;
+         dir.sizeLo := 0;
+         dir.directBlocks := [others => 0];
+         dir.numDiskSectors := 0;
+         dir.deletedTime := deletionTime (fs);
+         writeInode (fs, target, dir, writeStatus);
+         --  Journaled, the detach and the frees share one transaction,
+         --  committed below before any freed block can be reused.
+         if writeStatus = Write_Complete and then not fs.journal.Active and then
+           not Is_Volatile (fs.device.description)
+         then
+            Flush (fs, flushStatus);
+            if flushStatus /= Flush_Complete then
+               writeStatus := Write_Device_Error;
+            end if;
+         end if;
+         if writeStatus = Write_Complete then
+            releaseBlocks (fs, retired, writeStatus);
+         end if;
+      end;
+      if writeStatus = Write_Complete then
+         freeInode (fs, target, True, writeStatus);
+      end if;
+      if writeStatus = Write_Complete then
+         parent.numHardLinks := parent.numHardLinks - 1;
+         writeInode (fs, parentNum, parent, writeStatus);
+      end if;
+      if writeStatus = Write_Complete and then fs.journal.Active then
+         Flush (fs, flushStatus);
+         if flushStatus /= Flush_Complete and then
+           not (flushStatus = Flush_Unsupported and then
+                Is_Volatile (fs.device.description))
+         then
+            writeStatus := Write_Device_Error;
+         end if;
+      end if;
+      if writeStatus /= Write_Complete then
+         fs.writeQuarantined := True;
+         status := Remove_Recovery_Required;
+      end if;
+   end removeDirectoryPath;
+
+   --  Superblock journal fields beyond the prefix record (little-endian).
+   Journal_Inode_Offset  : constant := 16#E0#;
+   Journal_Device_Offset : constant := 16#E4#;
+   --  ext4 inode flag: the block map is an extent tree, not block pointers.
+   Inode_Extents_Flag : constant Unsigned_32 := 16#0008_0000#;
+   --  Open an internal JBD2 journal before the volume is used. Committed
+   --  transactions a crash left in the log are replayed first (idempotent;
+   --  straight to the device, then a barrier), whether or not needs_recovery
+   --  is set, as e2fsck does. Then, on a writable device, the journal is
+   --  opened for this session: the log start is set and the sequence moves
+   --  past every one a stale log block could carry, durably, and
+   --  needs_recovery is set, as a Linux mount does; Detach undoes both. On a
+   --  read-only device a clean journal is left alone and a dirty one refused.
+   --  The cache is discarded after replay: it may have rewritten any block.
+   procedure openJournal
+     (fs : in out Filesystem; result : out Admission_Result)
+   is
+      blockBytes : constant Storage_Offset := Storage_Offset (fs.blkSize);
+      size : constant Jbd2_Format.Block_Bytes := Jbd2_Format.Block_Bytes (fs.blkSize);
+      journalInode, journalDevice : Unsigned_32 := 0;
+      journal : Inode;
+      journalBlocks : Unsigned_64;
+      readStatus : Read_Status;
+      writeStatus : Write_Status;
+      data : Jbd2_Format.Block := [others => 0];
+      super : Jbd2_Format.Journal_Superblock;
+      valid, ok : Boolean;
+      superHome : Unsigned_32;
+      nextSequence : Unsigned_32;
+
+      function Journal_Home (logical : Unsigned_32; physical : out Unsigned_32)
+         return Boolean
+      is
+         leaf, middle : Unsigned_32;
+         status : Read_Status;
+      begin
+         if Unsigned_64 (logical) >= journalBlocks then
+            physical := 0;
+            return False;
+         end if;
+         resolveBlock (fs, journal, logical, physical, leaf, middle, status);
+         return status = Read_Complete and then physical /= 0;
+      end Journal_Home;
+
+      procedure Read_Log
+        (Log_Block : Unsigned_32; Data : out Jbd2_Format.Block; Ok : out Boolean)
+      is
+         physical : Unsigned_32;
+         status : Read_Status;
+      begin
+         Data := [others => 0];
+         Ok := Journal_Home (Log_Block, physical);
+         if Ok then
+            deviceRead (fs, Storage_Offset (physical) * blockBytes, Data'Address,
+                        Storage_Count (fs.blkSize), status);
+            Ok := status = Read_Complete;
+         end if;
+      end Read_Log;
+
+      procedure Write_Home
+        (Home : Unsigned_64; Data : Jbd2_Format.Block; Ok : out Boolean)
+      is
+         status : Write_Status;
+      begin
+         deviceWrite (fs, Storage_Offset (Home) * blockBytes, Data'Address,
+                      Storage_Count (fs.blkSize), status);
+         Ok := status = Write_Complete;
+      end Write_Home;
+
+      package Recovery is new Jbd2_Recovery (Read_Log, Write_Home);
+      use type Recovery.Outcome;
+
+      procedure Put_Be32 (offset : Natural; value : Unsigned_32) is
+      begin
+         data (offset) := Unsigned_8 (Shift_Right (value, 24));
+         data (offset + 1) := Unsigned_8 (Shift_Right (value, 16) and 16#FF#);
+         data (offset + 2) := Unsigned_8 (Shift_Right (value, 8) and 16#FF#);
+         data (offset + 3) := Unsigned_8 (value and 16#FF#);
+      end Put_Be32;
+   begin
+      result := Invalid_Filesystem;
+      readBytes (fs, SUPERBLOCK_OFFSET + Journal_Inode_Offset, journalInode'Address, 4,
+                 readStatus);
+      if readStatus = Read_Complete then
+         readBytes (fs, SUPERBLOCK_OFFSET + Journal_Device_Offset, journalDevice'Address,
+                    4, readStatus);
+      end if;
+      if readStatus /= Read_Complete then
+         result := Device_Error;
+         return;
+      elsif journalDevice /= 0 then
+         result := Unsupported_Filesystem; -- external journals
+         return;
+      end if;
+      readInode (fs, journalInode, journal, readStatus);
+      if readStatus /= Read_Complete then
+         result := (if readStatus = Read_Out_Of_Range then Invalid_Filesystem
+                    else Device_Error);
+         return;
+      elsif inodeType (journal) /= INODE_REGULAR_FILE or else
+        (journal.flags and Inode_Extents_Flag) /= 0
+      then
+         result := Unsupported_Filesystem;
+         return;
+      end if;
+      journalBlocks := fileSize (journal) / Unsigned_64 (fs.blkSize);
+      if journalBlocks = 0 or else journalBlocks > Unsigned_64 (Unsigned_32'Last) or else
+        not Journal_Home (0, superHome)
+      then
+         return;
+      end if;
+      deviceRead (fs, Storage_Offset (superHome) * blockBytes, data'Address,
+                  Storage_Count (fs.blkSize), readStatus);
+      if readStatus /= Read_Complete then
+         result := Device_Error;
+         return;
+      end if;
+      Jbd2_Format.Decode_Superblock
+        (data, size, Unsigned_32 (journalBlocks),
+         Recovery.Superblock_Checksum_Matches (data), super, valid);
+      if not valid then
+         result := Unsupported_Filesystem;
+         return;
+      elsif Is_Read_Only (fs.device.description) then
+         --  Without replay a dirty journal's volume is not what Linux sees.
+         result := (if super.Start = 0 then Admitted else Unsupported_Filesystem);
+         return;
+      end if;
+
+      nextSequence := super.Sequence + 1;
+      if super.Start /= 0 then
+         declare
+            outcome : Recovery.Outcome;
+            transactions, written : Natural := 0;
+         begin
+            Recovery.Recover
+              (super, size, fs.sb.blockCount, outcome, nextSequence, transactions, written);
+            if outcome /= Recovery.Recovered then
+               result := (if outcome = Recovery.Too_Many_Revokes
+                          then Unsupported_Filesystem else Device_Error);
+               return;
+            end if;
+            barrier (fs, ok);
+            if not ok then
+               result := Device_Error;
+               return;
+            end if;
+         end;
+         --  Replay may have rewritten the superblock itself: re-read and
+         --  re-validate it.
+         Block_Cache_Index.Discard_Volume (Cache_Index, fs.device.endpointSlot);
+         invalidateBlockCache;
+         deviceRead (fs, SUPERBLOCK_OFFSET, fs.sb'Address, Superblock'Size / 8, readStatus);
+         if readStatus /= Read_Complete then
+            result := Device_Error;
+            return;
+         elsif not Ext2_Support.Supported_Volume
+             (fs.sb.majorVersion, fs.sb.creatorOS, fs.sb.compatibleFeatures,
+              fs.sb.incompatibleFeatures, fs.sb.readOnlyFeatures) or else
+           not supportedSuperblock (fs.sb) or else blockSize (fs.sb) /= fs.blkSize
+         then
+            result := Invalid_Filesystem;
+            return;
+         end if;
+      end if;
+
+      --  Open the log for this session.
+      Put_Be32 (Journal_Start_Offset, super.First);
+      Put_Be32 (Journal_Sequence_Offset, nextSequence);
+      if Jbd2_Format.Checksummed (super.Incompat) then
+         Put_Be32 (Jbd2_Format.Superblock_Checksum_Offset, 0);
+         Put_Be32 (Jbd2_Format.Superblock_Checksum_Offset,
+                   Jbd2_Format.Crc32c (16#FFFF_FFFF#, data, 0, Jbd2_Format.Superblock_Bytes));
+      end if;
+      writeDurable (fs, superHome, data'Address, ok);
+      if ok and then (fs.sb.incompatibleFeatures and Ext2_Support.Incompat_Recover) = 0 then
+         fs.sb.incompatibleFeatures :=
+           fs.sb.incompatibleFeatures or Ext2_Support.Incompat_Recover;
+         writeSuperblock (fs, writeStatus); -- write-through: not yet journaled
+         ok := writeStatus = Write_Complete;
+         if ok then
+            barrier (fs, ok);
+         end if;
+      end if;
+      if not ok then
+         result := Device_Error;
+         return;
+      end if;
+      fs.journal :=
+        (Active => True, Journal_Inode => journal, Blocks => Unsigned_32 (journalBlocks),
+         First => super.First, Max_Length => super.Max_Length, Sequence => nextSequence,
+         Compat => super.Compat, Incompat => super.Incompat, Identity => super.Identity,
+         Super_Home => superHome, Dirty_Metadata => 0);
+      result := Admitted;
+   end openJournal;
+
+   procedure Detach (fs : in out Filesystem; status : out Flush_Status) is
+      data : Jbd2_Format.Block := [others => 0];
+      readStatus : Read_Status;
+      writeStatus : Write_Status;
+      ok : Boolean;
+   begin
+      Flush (fs, status);
+      if not fs.journal.Active or else status /= Flush_Complete then
+         return;
+      end if;
+      deviceRead (fs, Storage_Offset (fs.journal.Super_Home) * Storage_Offset (fs.blkSize),
+                  data'Address, Storage_Count (fs.blkSize), readStatus);
+      if readStatus /= Read_Complete then
+         status := Flush_IO_Error;
+         return;
+      end if;
+      --  An empty log: no start, and the next sequence.
+      for index in 0 .. 3 loop
+         data (Journal_Start_Offset + index) := 0;
+      end loop;
+      data (Journal_Sequence_Offset) :=
+        Unsigned_8 (Shift_Right (fs.journal.Sequence, 24));
+      data (Journal_Sequence_Offset + 1) :=
+        Unsigned_8 (Shift_Right (fs.journal.Sequence, 16) and 16#FF#);
+      data (Journal_Sequence_Offset + 2) :=
+        Unsigned_8 (Shift_Right (fs.journal.Sequence, 8) and 16#FF#);
+      data (Journal_Sequence_Offset + 3) := Unsigned_8 (fs.journal.Sequence and 16#FF#);
+      if Jbd2_Format.Checksummed (fs.journal.Incompat) then
+         declare
+            sum : Unsigned_32;
+         begin
+            data (Jbd2_Format.Superblock_Checksum_Offset ..
+                  Jbd2_Format.Superblock_Checksum_Offset + 3) := [others => 0];
+            sum := Jbd2_Format.Crc32c (16#FFFF_FFFF#, data, 0, Jbd2_Format.Superblock_Bytes);
+            for index in 0 .. 3 loop
+               data (Jbd2_Format.Superblock_Checksum_Offset + index) :=
+                 Unsigned_8 (Shift_Right (sum, 24 - 8 * index) and 16#FF#);
+            end loop;
+         end;
+      end if;
+      writeDurable (fs, fs.journal.Super_Home, data'Address, ok);
+      if not ok then
+         status := Flush_IO_Error;
+         return;
+      end if;
+      --  The session is over: clear needs_recovery write-through.
+      fs.journal.Active := False;
+      fs.sb.incompatibleFeatures :=
+        fs.sb.incompatibleFeatures and not Ext2_Support.Incompat_Recover;
+      writeSuperblock (fs, writeStatus);
+      if writeStatus = Write_Complete then
+         barrier (fs, ok);
+      else
+         ok := False;
+      end if;
+      status := (if ok then Flush_Complete else Flush_IO_Error);
+   end Detach;
 
    procedure initBlockDevice
      (fs         : out Filesystem;
@@ -2945,13 +5019,15 @@ package body Ext2 is
                     reservedBlocksGID | inodeSize | blockGroupNumber => 0,
                     others => 0),
              blkSize => 0, device => <>,
-             writeQuarantined => False);
+             writeQuarantined => False, journal => <>);
       result := Invalid_Session;
       if capSlot not in 1 .. 62 or else
          grantBuf = System.Null_Address or else grantBytes = 0
       then
          return;
       end if;
+      --  Any admission attempt ends the endpoint's previous volume lifetime.
+      Block_Cache_Index.Discard_Volume (Cache_Index, capSlot);
 
       describeMsg :=
         (tag      => (label => OP_DESCRIBE_DEVICE, length => 0,
@@ -3030,6 +5106,17 @@ package body Ext2 is
       cacheIdentityValid := False;
       tmpFs.sb := sb;
       tmpFs.blkSize := blockSize (sb);
+      if (sb.compatibleFeatures and Ext2_Support.Compat_Has_Journal) /= 0 then
+         openJournal (tmpFs, result);
+         if result /= Admitted then
+            debugPrint ("Ext2: journal " & Volume_Admission.Description (result) &
+                        ASCII.LF);
+            return;
+         end if;
+      elsif (sb.incompatibleFeatures and Ext2_Support.Incompat_Recover) /= 0 then
+         result := Invalid_Filesystem; -- needs_recovery without a journal
+         return;
+      end if;
       fs := tmpFs;
       result := Admitted;
    end initBlockDevice;

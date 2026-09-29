@@ -16,7 +16,9 @@ package body Directory_Blocks with SPARK_Mode => On is
       Position : in out Byte_Count; Item : out Record_Info;
       Result : out Read_Result)
      with Post =>
-       (if Result = Available then Position > Position'Old and Position <= Size)
+       (if Result = Available then
+          Position >= Position'Old + Header_Bytes and Position <= Size and
+          Item.Inode <= Maximum_Inode)
    is
       Span : Natural;
    begin
@@ -169,4 +171,138 @@ package body Directory_Blocks with SPARK_Mode => On is
       Data := Candidate;
       Result := Prepared;
    end Prepare_Rename;
+
+   procedure Put_Inode
+     (Data : in out Block_Data; Position : Byte_Count; Number : Unsigned_32)
+     with Pre => Position <= Maximum_Bytes - Header_Bytes
+   is
+   begin
+      Data (Position + 1) := Unsigned_8 (Number and 255);
+      Data (Position + 2) := Unsigned_8 (Shift_Right (Number, 8) and 255);
+      Data (Position + 3) := Unsigned_8 (Shift_Right (Number, 16) and 255);
+      Data (Position + 4) := Unsigned_8 (Shift_Right (Number, 24));
+   end Put_Inode;
+
+   procedure Prepare_Remove
+     (Data : in out Block_Data; Size : Block_Length;
+      Maximum_Inode : Unsigned_32; Name : String;
+      Removed : out Unsigned_32; Kind : out Unsigned_8;
+      Result : out Prepare_Result)
+   is
+      Position, Last_Start : Byte_Count := 0;
+      Start : Byte_Count;
+      Match_Start, Match_End, Match_Previous : Byte_Count := 0;
+      Has_Previous, Match_Has_Previous, Found : Boolean := False;
+      Item : Record_Info;
+      Read_Status : Read_Result;
+      Number : Unsigned_32 := 0;
+   begin
+      Removed := 0;
+      Kind := 0;
+      Result := Invalid_Name;
+      if not CuBit.Directory_Paths.Valid_Child_Name (Name) then
+         return;
+      end if;
+      Result := Malformed_Block;
+      if Size mod 4 /= 0 then
+         return;
+      end if;
+      while Position < Size loop
+         pragma Loop_Invariant (Position <= Size);
+         pragma Loop_Invariant
+           (if Has_Previous then Last_Start + Header_Bytes <= Position);
+         pragma Loop_Invariant
+           (if Found then
+              Match_Start + Header_Bytes <= Match_End and
+              Match_End <= Position and
+              Number in 1 .. Maximum_Inode and
+              (if Match_Has_Previous then
+                 Match_Previous + Header_Bytes <= Match_Start));
+         pragma Loop_Variant (Decreases => Size - Position);
+         Start := Position;
+         Next (Data, Size, Maximum_Inode, Position, Item, Read_Status);
+         exit when Read_Status = End_Of_Block;
+         if Read_Status = Malformed then
+            return;
+         end if;
+         if Matches (Item, Name) then
+            if Found then
+               return; -- Duplicate names are malformed metadata.
+            end if;
+            Found := True;
+            Match_Start := Start;
+            Match_End := Position;
+            Match_Previous := Last_Start;
+            Match_Has_Previous := Has_Previous;
+            Number := Item.Inode;
+            Kind := Item.Kind;
+         end if;
+         Last_Start := Start;
+         Has_Previous := True;
+      end loop;
+      if not Found then
+         Kind := 0;
+         Result := Source_Not_Found;
+         return;
+      end if;
+      if Match_Has_Previous then
+         Set_Span (Data, Match_Previous, Match_End - Match_Previous);
+      else
+         Put_Inode (Data, Match_Start, 0);
+      end if;
+      Removed := Number;
+      Result := Prepared;
+   end Prepare_Remove;
+
+   procedure Count_Children
+     (Data : Block_Data; Size : Block_Length; Maximum_Inode : Unsigned_32;
+      Children : out Byte_Count; Result : out Prepare_Result)
+   is
+      Position : Byte_Count := 0;
+      Item : Record_Info;
+      Read_Status : Read_Result;
+   begin
+      Children := 0;
+      Result := Malformed_Block;
+      if Size mod 4 /= 0 then
+         return;
+      end if;
+      while Position < Size loop
+         pragma Loop_Invariant (Position <= Size);
+         pragma Loop_Invariant (Children * Header_Bytes <= Position);
+         pragma Loop_Variant (Decreases => Size - Position);
+         Next (Data, Size, Maximum_Inode, Position, Item, Read_Status);
+         exit when Read_Status = End_Of_Block;
+         if Read_Status = Malformed then
+            return;
+         end if;
+         if Item.Inode /= 0 and then
+           Item.Name (1 .. Item.Length) /= "." and then
+           Item.Name (1 .. Item.Length) /= ".."
+         then
+            Children := Children + 1;
+         end if;
+      end loop;
+      Result := Prepared;
+   end Count_Children;
+
+   procedure Initial_Block
+     (Data : out Block_Data; Size : Block_Length;
+      Self, Parent : Unsigned_32; Directory_Kind : Unsigned_8)
+   is
+      Dot_Span : constant := 12;
+   begin
+      Data := [others => 0];
+      Put_Inode (Data, 0, Self);
+      Set_Span (Data, 0, Dot_Span);
+      Data (7) := 1;
+      Data (8) := Directory_Kind;
+      Data (Header_Bytes + 1) := Character'Pos ('.');
+      Put_Inode (Data, Dot_Span, Parent);
+      Set_Span (Data, Dot_Span, Size - Dot_Span);
+      Data (Dot_Span + 7) := 2;
+      Data (Dot_Span + 8) := Directory_Kind;
+      Data (Dot_Span + Header_Bytes + 1) := Character'Pos ('.');
+      Data (Dot_Span + Header_Bytes + 2) := Character'Pos ('.');
+   end Initial_Block;
 end Directory_Blocks;

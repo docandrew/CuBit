@@ -13,6 +13,7 @@ with CuBit.Filesystems;
 with CuBit.Memory_Grants;
 with Volume_Admission;
 with Ext2_Inodes;
+with Jbd2_Format;
 
 package Ext2 is
    SUPERBLOCK_OFFSET : constant := 1024;
@@ -168,6 +169,22 @@ package Ext2 is
      (Flush_Complete, Flush_Unsupported, Flush_IO_Error,
       Flush_Recovery_Required);
 
+   --  The internal JBD2 journal of an ext3 volume this service writes
+   --  transactions to (data=ordered). Inactive for ext2 volumes and for
+   --  journals it cannot write, which keep the write-through cache.
+   type Journal_State is record
+      Active : Boolean := False;
+      Journal_Inode : Inode := NULL_INODE;
+      Blocks : Unsigned_32 := 0;        -- journal length in blocks
+      First : Unsigned_32 := 0;         -- first log block
+      Max_Length : Unsigned_32 := 0;    -- log area end (exclusive)
+      Sequence : Unsigned_32 := 0;      -- the next transaction's id
+      Compat, Incompat : Unsigned_32 := 0;
+      Identity : Jbd2_Format.UUID := [others => 0];
+      Super_Home : Unsigned_32 := 0;    -- physical block of its superblock
+      Dirty_Metadata : Natural := 0;    -- cached blocks awaiting commit
+   end record;
+
    --  Context for an Ext2 filesystem
    type Filesystem is record
       sb           : Superblock;         --  Cached superblock
@@ -175,10 +192,22 @@ package Ext2 is
       device       : CuBit.Block_Devices.Device_Session;
       --  Uncertain metadata after failed rollback requires offline recovery.
       writeQuarantined : Boolean := False;
+      journal      : Journal_State;
    end record;
 
-   --  Flush completed writes; volatile/unsupported backends fail explicitly.
-   procedure Flush (fs : Filesystem; status : out Flush_Status);
+   --  Make every completed write durable. A journaled volume first commits
+   --  its running transaction (file data home, then the journal, then the
+   --  metadata home); then the device barrier. Volatile/unsupported backends
+   --  fail explicitly. A failure quarantines the volume and is reported by
+   --  this and every later flush.
+   procedure Flush (fs : in out Filesystem; status : out Flush_Status);
+
+   --  Whether the volume has cached writes not yet on the device.
+   function dirtyBlocks (fs : Filesystem) return Boolean;
+
+   --  Clean end of the volume's session: flush, then mark an active journal
+   --  empty and clear needs_recovery, as a Linux unmount does.
+   procedure Detach (fs : in out Filesystem; status : out Flush_Status);
 
    --  Initialize a filesystem over any Block.Device.V1 endpoint.
    procedure initBlockDevice
@@ -253,7 +282,8 @@ package Ext2 is
    procedure allocateInode
      (fs       : in out Filesystem;
       inodeNum : out Unsigned_32;
-      status   : out Write_Status);
+      status   : out Write_Status;
+      directory : Boolean := False);
 
    --  Create an empty regular file. Returns no inode on failure; an error
    --  does not imply absence of on-disk side effects.
@@ -280,8 +310,10 @@ package Ext2 is
       emptyInode : out Inode;
       status   : out Truncate_Status);
 
-   --  Resize within the supported direct/single/double-indirect extent. Growth is
+   --  Resize within the direct/single/double/triple-indirect extent. Growth is
    --  sparse and exposes zeroes; shrink detaches and flushes before reclaim.
+   --  Files whose allocation exceeds the validation inventory capacity
+   --  (Block_Inventory.Maximum_Blocks) are Truncate_Unsupported.
    --  On failure the output must not be published to shared inode aliases.
    --  The same quarantine/durability limitations as OPEN_TRUNCATE apply.
    procedure resizeFile
@@ -299,5 +331,54 @@ package Ext2 is
    procedure renamePath
      (fs : in out Filesystem; oldPath, newPath : String;
       status : out Rename_Status);
+
+   --  Name removal (unlink, rmdir) and directory creation (mkdir). Until the
+   --  journal lands these are write-through, ordered so that a crash leaves
+   --  only leaks or link over-counts (e2fsck repairs them), never a name for
+   --  a freed inode nor a pointer to a freed block: the name goes first, the
+   --  link count next, then the blocks (detached durably before release),
+   --  then the inode; mkdir writes the new block and inode before the name.
+   --  Parent directories must be plain (unindexed, direct blocks only).
+   type Remove_Status is
+     (Remove_Complete, Remove_Not_Found, Remove_Invalid_Name,
+      Remove_Wrong_Type,  --  unlink of a directory; rmdir of a non-directory
+      Remove_Not_Empty, Remove_Malformed, Remove_Unsupported,
+      Remove_Read_Only, Remove_Out_Of_Range, Remove_IO_Error,
+      Remove_Durability_Unsupported, Remove_Recovery_Required);
+
+   --  ext2's link limit (EXT2_LINK_MAX): mkdir refuses a parent at it.
+   Maximum_Links : constant := 32_000;
+
+   --  Remove a regular file's name and its (single) link. With keepOrphan
+   --  (handles still hold it) the unlinked inode keeps its blocks for
+   --  reclaimInode at last close (POSIX); otherwise it is freed now.
+   --  inodeNum and unlinked (links 0) are set once the name is gone, even
+   --  if the later reclaim fails.
+   procedure unlinkPath
+     (fs : in out Filesystem; path : String; keepOrphan : Boolean;
+      inodeNum : out Unsigned_32; unlinked : out Inode;
+      status : out Remove_Status);
+
+   --  Free an unlinked (zero-link) regular file: blocks, then inode.
+   procedure reclaimInode
+     (fs : in out Filesystem; inodeNum : Unsigned_32;
+      status : out Remove_Status);
+
+   --  Create an empty directory ("." and "..") and link it into dirInodeNum,
+   --  whose link count grows by one.
+   procedure makeDirectory
+     (fs : in out Filesystem; dirInodeNum : Unsigned_32; name : String;
+      inodeNum : out Unsigned_32; status : out Write_Status);
+
+   --  lookup reports the parent's resolution; status is meaningful only
+   --  when it is Lookup_Found.
+   procedure makeDirectoryPath
+     (fs : in out Filesystem; path : String; inodeNum : out Unsigned_32;
+      lookup : out Directory_Lookup_Status; status : out Write_Status);
+
+   --  Remove an empty plain directory; the parent loses its ".." link.
+   procedure removeDirectoryPath
+     (fs : in out Filesystem; path : String; inodeNum : out Unsigned_32;
+      status : out Remove_Status);
 
 end Ext2;

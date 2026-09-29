@@ -21,6 +21,7 @@ with Process;
 with Process.Loader;
 with Multiboot;
 with Boot_Modules;
+with Owned_Memory_Layout;
 with Sysinfo;
 with TextIO; use TextIO;
 with Virtmem;
@@ -125,6 +126,11 @@ package body Modules with SPARK_Mode => Off is
         procedure mapPage is new Virtmem.mapPage (BuddyAllocator.allocFrame);
     begin
         print ("Modules: Mapping "); print (Integer(numPages));
+        if Owned_Memory_Layout.Conflicts
+          (Unsigned_64 (To_Integer (base)), Unsigned_64 (numPages) * Virtmem.PAGE_SIZE)
+        then
+            raise ModuleException with "Initrd overlaps owned-memory aperture";
+        end if;
         print (" initrd pages into pid "); println (Integer(pid));
 
         for i in 0..numPages-1 loop

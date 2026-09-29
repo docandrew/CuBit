@@ -72,6 +72,7 @@ typedef long                ssize_t;
 /* Time */
 #define SYSCALL_GETTIME         27
 #define SYSCALL_SLEEP           28
+#define SYSCALL_YIELD           118
 
 /* Framebuffer */
 #define SYSCALL_MAPFB           29

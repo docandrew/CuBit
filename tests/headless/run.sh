@@ -41,9 +41,11 @@ usage() {
     cat <<'EOF'
 Usage: tests/headless/run.sh [options]
 
+Mesa native tests: --test softpipe, opengl, buffer or mesa-window (default RAM 512 MiB).
+
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-remote, capability-security, network-authority, bench-net, threads, futex, rust-std, libc, servo, bench-spread, timesync, tls-probe, tls-service, netsurf-https, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, rust-std, libc, servo, bench-spread, timesync, tls-probe, tls-service, netsurf-https, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
   --timeout SECONDS    QEMU runtime before timeout is treated as success
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
   --cpus COUNT         Virtual CPUs, 1..4 (default: 4)
@@ -65,6 +67,7 @@ Options:
 The suite boots the NVMe profile headlessly and checks serial output for
 stable pass markers.
 Performance fixtures: bench-ipc, bench-audio, bench-storage, bench-input, bench-scheduler.
+bench-fs: tests/fs-bench (build tests/fs-bench/build-cubit.sh first).
 Logging fixture: log-authority (build logstore procmgr clock log-check first).
 Rust fixture: rust-native (build rust-probe ccl-test-host clock first).
 Native Turso: turso-native-std, turso-native, config-storage; see tests/config-turso/native/README.md.
@@ -251,12 +254,14 @@ if [ -n "$CONFIG_EXPORT" ] && [ "$TEST_NAME" != config-objects ] && [ "$TEST_NAM
 fi
 
 case "$TEST_NAME" in
+    softpipe|opengl|buffer|mesa-window)
+        ;;
     config-objects|config-objects-reopen|config-objects-benchmark|config-storage)
         CONFIG_STORAGE_TEST=1
         ;;
     config-tree|config-inspection|log-authority|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|bench-net|threads|futex|rust-std|libc|servo|bench-spread|timesync|tls-probe|tls-service|netsurf-https|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|rust-std|libc|servo|bench-spread|timesync|tls-probe|tls-service|netsurf-https|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -459,6 +464,12 @@ case "$TEST_NAME" in
         INIT_PROFILE="$ROOT_DIR/tests/net-bench/init-bench-net.ccl"
         QEMU_MEMORY="${QEMU_MEMORY:-512M}"
         ;;
+    bench-fs)
+        # tests/fs-bench: the same program as the Linux reference (linux.sh),
+        # with the same memory.
+        INIT_PROFILE="$ROOT_DIR/tests/fs-bench/init-bench-fs.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-512M}"
+        ;;
     threads)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-threads.ccl"
         # The per-thread CPU state check needs both instances on one CPU;
@@ -471,6 +482,23 @@ case "$TEST_NAME" in
         ;;
     rust-std)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-rust-std.ccl"
+        ;;
+    softpipe)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-softpipe.ccl"
+        # Softpipe's context caches plus resident services exceed 128 MiB.
+        QEMU_MEMORY="${QEMU_MEMORY:-512M}"
+        ;;
+    opengl)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-opengl.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-512M}"
+        ;;
+    buffer)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-buffer.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-512M}"
+        ;;
+    mesa-window)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-mesa-window.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-512M}"
         ;;
     libc)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-libc.ccl"
@@ -711,7 +739,7 @@ if [ -n "$INIT_PROFILE" ]; then
         debugfs -w -R "write $KERNEL_DIR/isodir/boot/$app $app" \
             "$TEMP_DISK" >/dev/null 2>&1 || exit 1
     fi
-    if [ "$TEST_NAME" = "desktop-display" ] ||
+    if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "mesa-window" ] ||
        [ "$TEST_NAME" = "bench-input" ] ||
        [ "$TEST_NAME" = "desktop-protocol" ] ||
        [ "$TEST_NAME" = "desktop-dual-output" ] ||
@@ -879,6 +907,28 @@ if [ -n "$INIT_PROFILE" ]; then
             fi
         done
     fi
+    if [ "$TEST_NAME" = "bench-fs" ]; then
+        for BENCH_FS_IMAGE in logstore.svc fs-bench.app; do
+            debugfs -w -R "rm $BENCH_FS_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$BENCH_FS_IMAGE $BENCH_FS_IMAGE" \
+                "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $BENCH_FS_IMAGE (tests/fs-bench/build-cubit.sh)" >&2
+                exit 1
+            fi
+        done
+        # CuBit's filesystem protocol has no mkdir: the benchmark's directory
+        # and one per round are made here, on the disposable copy.
+        for BENCH_FS_DIR in fs-bench fs-bench/r1 fs-bench/r2 fs-bench/r3; do
+            # Never mkdir over an existing name (see the Turso case).
+            if [ -z "$(debugfs -R "stat $BENCH_FS_DIR" "$TEMP_DISK" 2>/dev/null)" ]; then
+                debugfs -w -R "mkdir $BENCH_FS_DIR" "$TEMP_DISK" >/dev/null 2>&1
+            fi
+            if ! debugfs -R "stat $BENCH_FS_DIR" "$TEMP_DISK" 2>/dev/null | grep -q 'Type: directory'; then
+                echo "headless: failed to make $BENCH_FS_DIR" >&2
+                exit 1
+            fi
+        done
+    fi
     if [ "$TEST_NAME" = "network-authority" ]; then
         NETWORK_TEST_IMAGE="$KERNEL_DIR/isodir/boot/network-check.app"
         debugfs -w -R "rm network-check.app" "$TEMP_DISK" >/dev/null 2>&1
@@ -899,6 +949,34 @@ if [ -n "$INIT_PROFILE" ]; then
                 exit 1
             fi
         done
+    fi
+    if [ "$TEST_NAME" = "libc" ]; then
+        for PROTECTION_IMAGE in guard-fault.app readonly-fault.app; do
+            debugfs -w -R "rm $PROTECTION_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "write $KERNEL_DIR/isodir/boot/$PROTECTION_IMAGE $PROTECTION_IMAGE" \
+                "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        done
+    fi
+    if [ "$TEST_NAME" = "softpipe" ] || [ "$TEST_NAME" = "opengl" ] || [ "$TEST_NAME" = "buffer" ] || [ "$TEST_NAME" = "mesa-window" ]; then
+        MESA_APP="native-$TEST_NAME.app"
+        if [ "$TEST_NAME" = "softpipe" ]; then
+            MESA_IMAGE="${SOFTPIPE_IMAGE:-$ROOT_DIR/tests/mesa-software/target/native-softpipe-cubit/$MESA_APP}"
+        elif [ "$TEST_NAME" = "opengl" ]; then
+            MESA_IMAGE="${OPENGL_IMAGE:-$ROOT_DIR/tests/mesa-software/target/native-softpipe-cubit/$MESA_APP}"
+        elif [ "$TEST_NAME" = "mesa-window" ]; then
+            MESA_IMAGE="${MESA_WINDOW_IMAGE:-$ROOT_DIR/tests/mesa-software/target/native-softpipe-cubit/$MESA_APP}"
+        else
+            MESA_IMAGE="${BUFFER_IMAGE:-$ROOT_DIR/tests/mesa-software/target/native-softpipe-cubit/$MESA_APP}"
+        fi
+        if [ ! -f "$MESA_IMAGE" ]; then
+            echo "headless: build tests/mesa-software/build-native-$([ "$TEST_NAME" = softpipe ] && echo softpipe || echo opengl).sh first" >&2
+            exit 1
+        fi
+        debugfs -w -R "rm $MESA_APP" "$TEMP_DISK" >/dev/null 2>&1
+        if ! debugfs -w -R "write $MESA_IMAGE $MESA_APP" "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to install $MESA_APP" >&2
+            exit 1
+        fi
     fi
     if [ "$TEST_NAME" = "servo" ]; then
         # Servo (85 MB) is past what 1 KiB ext2 blocks reach without
@@ -1319,7 +1397,7 @@ fi
 
 MONITOR_ARGS=()
 QMP_ARGS=()
-if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] ||
+if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TEST_NAME" = "mesa-window" ] ||
    [ "$TEST_NAME" = "desktop-protocol" ] ||
    [ "$TEST_NAME" = "ccl-workspace" ] ||
    [ "$TEST_NAME" = "desktop-doom" ] ||
@@ -1360,6 +1438,27 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] ||
             exit 1
         fi
 
+        if [ "$TEST_NAME" = "mesa-window" ]; then
+            for ((attempt = 0; attempt < 200; attempt++)); do
+                grep -aF "MESA-WINDOW: attached immutable Mesa buffer" "$SERIAL_LOG" >/dev/null 2>&1 && break
+                sleep 0.1
+            done
+            sleep 2
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-mesa.ppm" |
+                nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            if [ "${MESA_WINDOW_ANIMATION:-0}" = 1 ]; then
+                printf 'sendkey spc\n' | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+                for ((attempt = 0; attempt < 150; attempt++)); do
+                    grep -aF "MESA-WINDOW: PASS animated cycle" "$SERIAL_LOG" >/dev/null 2>&1 && break
+                    sleep 0.1
+                done
+                printf 'sendkey spc\n' | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+                sleep 0.5
+            fi
+            printf 'sendkey esc\n' |
+                nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            exit 0
+        fi
         if [ "$TEST_NAME" = "servo" ] && [ -n "${SERVO_DESKTOP:-}" ]; then
             # Launch Servo from the Apps menu (5th entry) once the desktop is
             # up, then photograph the window after the first page renders.
@@ -1885,7 +1984,7 @@ if [ "$TEST_NAME" = "bench-net" ] && [ -z "${BENCH_NET_PCAP:-}" ]; then PCAP_ARG
         "${QMP_ARGS[@]}" \
         -drive "file=$DISK_IMAGE,if=none,id=nvme0,format=raw" \
         -device nvme,serial=cubitnvme,drive=nvme0 \
-        -device virtio-net-pci,netdev=net0 \
+        -device "virtio-net-pci,netdev=net0${NET_DEVICE_OPTIONS:-}" \
         "${VIDEO_ARGS[@]}" \
         -netdev "$NETDEV_CONFIG" \
         "${PCAP_ARGS[@]}" \
@@ -2060,6 +2159,7 @@ network-check: buffer in use cannot open a second channel PASS
 netstack: IPv6 link-local
 netstack: IPv6 address
 netstack: IPv6 echo reply from
+netstack: IPv4 echo reply from
 netstack: released the scopes of exited process
 capability-test: retired PID submit rejected PASS
 capability-test: authorityless capability submit rejected PASS
@@ -2090,6 +2190,80 @@ net-bench: start
 net-bench: done
 "
         ;;
+    bench-fs)
+        required_markers="
+fs-bench: start
+fs-bench: done
+"
+        if grep -qa 'fs-bench: .*FAIL' "$SERIAL_LOG"; then
+            echo "headless: fs-bench reported a failure" >&2
+            exit 1
+        fi
+        ;;
+    softpipe)
+        required_markers="
+SOFTPIPE-NATIVE: starting
+SOFTPIPE-NATIVE: PASS 1024 pixels
+SOFTPIPE-NATIVE: PASS triangle 992 pixels
+"
+        if grep -qF 'SOFTPIPE-NATIVE: FAIL' "$SERIAL_LOG"; then
+            echo "headless: native softpipe reported failure" >&2
+            exit 1
+        fi
+        ;;
+    opengl)
+        required_markers="
+OPENGL-NATIVE: starting
+OPENGL-NATIVE: PASS clear 1024 pixels
+OPENGL-NATIVE: PASS triangle 992 pixels
+OPENGL-NATIVE: PASS depth 4096 pixels
+OPENGL-NATIVE: PASS context lifecycle
+"
+        if grep -qF 'OPENGL-NATIVE: FAIL' "$SERIAL_LOG"; then
+            echo "headless: native OpenGL reported failure" >&2
+            exit 1
+        fi
+        ;;
+    buffer)
+        required_markers="
+OPENGL-NATIVE: PASS caller buffer 1152 pixels
+"
+        if grep -qF 'OPENGL-NATIVE: FAIL' "$SERIAL_LOG"; then
+            echo "headless: native caller buffer reported failure" >&2
+            exit 1
+        fi
+        ;;
+    mesa-window)
+        required_markers="
+MESA-WINDOW: starting
+MESA-WINDOW: GL drawable rendered
+MESA-WINDOW: PASS 9 frames with retired-buffer reuse
+MESA-WINDOW: attached immutable Mesa buffer
+MESA-WINDOW: Escape; exiting
+"
+        if [ "${MESA_WINDOW_ANIMATION:-0}" = 1 ]; then
+            required_markers+="
+MESA-WINDOW: animation resumed
+MESA-WINDOW: PASS animated cycle with retired-buffer reuse
+MESA-WINDOW: animation paused
+"
+        fi
+        if grep -qF 'MESA-WINDOW: FAIL' "$SERIAL_LOG"; then
+            echo "headless: Mesa window reported failure" >&2
+            exit 1
+        fi
+        case "${MESA_WINDOW_SCENE:-quads}" in
+            quads) python3 "$ROOT_DIR/tests/mesa-software/check-window.py" "${SERIAL_LOG%.log}-mesa.ppm" || exit 1 ;;
+            cube)
+                grep -qF 'MESA-WINDOW: RGBA texture uploaded PASS' "$SERIAL_LOG" || exit 1
+                grep -qF 'MESA-WINDOW: vertex/index buffers uploaded PASS' "$SERIAL_LOG" || exit 1
+                grep -qF 'MESA-WINDOW: GLSL vertex/fragment compile and link PASS' "$SERIAL_LOG" || exit 1
+                grep -qF 'MESA-WINDOW: depth-tested cube ready' "$SERIAL_LOG" || exit 1
+                python3 "$ROOT_DIR/tests/mesa-software/check-cube-window.py" "${SERIAL_LOG%.log}-mesa.ppm" || exit 1
+                ;;
+            *) echo 'headless: unsupported MESA_WINDOW_SCENE' >&2; exit 2 ;;
+        esac
+        ;;
     libc)
         required_markers="
 libc-check: hello from musl on CuBit
@@ -2113,6 +2287,7 @@ cxx-check: thread_local std::string PASS
 cxx-check: streams and map PASS
 CXX: PASS
 "
+        python3 "$ROOT_DIR/userspace/libc/tests/check-protection-faults.py" "$SERIAL_LOG" || exit 1
         ;;
     servo)
         if [ -n "${SERVO_DESKTOP:-}" ]; then
@@ -2388,6 +2563,10 @@ capability-test: all tests passed
         required_markers="
 GRANT-REFERENCE-CHECK: PASS
 GRANT-RECLAMATION-CHECK: PASS
+OWNED-MEMORY-CHECK: PASS
+OWNED-GRANT-RETENTION-CHECK: PASS
+OWNED-EXIT-CHECK: leaving two allocations
+Process.reclaimProcess: owned regions retired 2
 RAM-VOLUME-CHECK: PASS
 VOLUME-ISOLATION-CHECK: PASS
 ramdisk: volatile block device ready
@@ -2396,6 +2575,7 @@ POSITIONED-IO-CHECK: PASS
 FILE-COHERENCE-CHECK: PASS
 FILE-RESIZE-CHECK: PASS
 FILE-DOUBLE-RESIZE-CHECK: PASS
+FILE-TRIPLE-RESIZE-CHECK: PASS
 FILE-EXCLUSIVE-CHECK: PASS
 FILE-DOUBLE-OVERWRITE-CHECK: PASS
 MALFORMED-DIRECTORY-CHECK: PASS

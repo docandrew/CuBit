@@ -1,4 +1,5 @@
 with Intel_GPU_Probe; use Intel_GPU_Probe;
+with Intel_GPU_PCI_Interrupts;
 package body Intel_GPU_Boot with SPARK_Mode is
    use Intel_GPU_Resources;
    function Decode (Data : Words) return Mapping_Plan is
@@ -8,7 +9,9 @@ package body Intel_GPU_Boot with SPARK_Mode is
          Unsigned_8 (Shift_Right (Data (1), 40) and 16#FF#));
    begin
       if (Data (3) and 16#FFFF#) /= Protocol_Version or else
-        Shift_Right (Data (3), 32) /= 0 or else
+        Shift_Right (Data (3), 39) /= 0 or else
+        not Intel_GPU_PCI_Interrupts.Encoding_Valid
+          (Unsigned_8 (Shift_Right (Data (3), 32) and 16#7F#)) or else
         Data (2) not in 16#1_0000# .. 16#1_FFFF# or else
         Shift_Right (Data (1), 56) /= 0 or else
         (Shift_Right (Data (1), 48) and 16#7F#) /= 0

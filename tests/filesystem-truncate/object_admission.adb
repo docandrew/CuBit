@@ -97,13 +97,19 @@ begin
          Rejected;
       end if;
    end loop;
-   for Links in Unsigned_16 range 0 .. 3 loop
-      if Links /= 1 then
-         Setup;
-         target.numHardLinks := Links;
-         Rejected;
-      end if;
+   for Links in Unsigned_16 range 2 .. 3 loop
+      Setup;
+      target.numHardLinks := Links;
+      Rejected;
    end loop;
+   --  No links: never opened by name, but a file unlinked while open stays
+   --  usable through its handles until the last close reclaims it.
+   Setup;
+   target.numHardLinks := 0;
+   pragma Assert (Check_File (target) = Not_A_Single_Link);
+   pragma Assert (Check_File (target, Unlinked_Allowed => True) = File_Allowed);
+   readData (fs, target, 0, output'Address, 4, completed, readStatus);
+   pragma Assert (readStatus = Read_Complete and completed = 4 and output = "DATA");
    Setup;
    target.numHardLinks := Unsigned_16'Last;
    Rejected;
@@ -133,5 +139,5 @@ begin
    pragma Assert (Check_File (target) = File_Allowed);
    readData (fs, target, 0, output'Address, 4, completed, readStatus);
    pragma Assert (readStatus = Read_Complete and completed = 4 and output = "DATA");
-   Ada.Text_IO.Put_Line ("OBJECT-ADMISSION-CHECK: PASS (53 rejected inode cases)");
+   Ada.Text_IO.Put_Line ("OBJECT-ADMISSION-CHECK: PASS (52 rejected inode cases, unlinked-open admitted)");
 end Object_Admission;

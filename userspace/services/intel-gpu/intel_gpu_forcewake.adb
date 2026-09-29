@@ -25,7 +25,7 @@ package body Intel_GPU_Forcewake is
          return True;
       end Within_Budget;
    begin
-      Status := Timed_Out;
+      Status := Poll_Exhausted;
       for Attempt in 1 .. Poll_Limit loop
          if not Within_Budget then
             return;
@@ -48,6 +48,15 @@ package body Intel_GPU_Forcewake is
       end loop;
    end Await_Ack;
 
+   procedure Try_Recovery (Expected : Unsigned_32; Status : in out Result) is
+      Recovered : Boolean := False;
+   begin
+      if Status in Timed_Out | Poll_Exhausted then
+         Recover_Ack (Expected, Recovered);
+         if Recovered then Status := Ready; end if;
+      end if;
+   end Try_Recovery;
+
    procedure Acquire
      (Object : in out Lease; Poll_Limit : Positive; Status : out Result;
       Timeout_Milliseconds : Unsigned_64 := 50)
@@ -64,11 +73,13 @@ package body Intel_GPU_Forcewake is
       Started := Now_Milliseconds;
       Last_Time := Started;
       Await_Ack (0, Poll_Limit, Started, Timeout_Milliseconds, Last_Time, Status);
+      Try_Recovery (0, Status);
       if Status /= Ready then
          return;
       end if;
       Write_32 (Request_Register, Set_Request);
       Await_Ack (1, Poll_Limit, Started, Timeout_Milliseconds, Last_Time, Status);
+      Try_Recovery (1, Status);
       if Status /= Ready then
          Write_32 (Request_Register, Clear_Request);
       else
@@ -91,6 +102,7 @@ package body Intel_GPU_Forcewake is
       Last_Time := Started;
       Write_32 (Request_Register, Clear_Request);
       Await_Ack (0, Poll_Limit, Started, Timeout_Milliseconds, Last_Time, Status);
+      Try_Recovery (0, Status);
       if Status = Ready then
          Object.Current := Idle;
       end if;

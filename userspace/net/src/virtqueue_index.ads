@@ -36,4 +36,13 @@ package Virtqueue_Index with SPARK_Mode, Pure is
    function Slot (I : Index) return Natural is (Natural (I mod Queue_Size))
    with Post => Slot'Result < Queue_Size;
 
+   --  VIRTIO_F_EVENT_IDX (virtio 1.x, 2.7.10): whether moving an index from
+   --  Old to New passes the other side's Event, so it asked to be told
+   --  (notified, or interrupted): Event lies in the half-open window
+   --  Old .. New - 1, counting modulo 2 ** 16. Tested (tests/net-tcp) to
+   --  equal Linux's vring_need_event, (New - Event - 1) < (New - Old), for
+   --  every Event and Old against several New.
+   function Needs_Event (Event, New_Index, Old_Index : Index) return Boolean is
+     (Distance (Old_Index, Event) < Distance (Old_Index, New_Index));
+
 end Virtqueue_Index;

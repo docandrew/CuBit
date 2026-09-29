@@ -47,15 +47,31 @@ package body SLAAC_Table with SPARK_Mode is
          if T (Pos).St = Duplicate then
             return;
          end if;
-         T (Pos).Preferred_Until := Deadline (Now, P.Preferred);
-         --  RFC 4862 5.5.3 (e).
-         if P.Valid > Two_Hours or else New_Valid > T (Pos).Valid_Until then
-            T (Pos).Valid_Until := New_Valid;
-         elsif T (Pos).Valid_Until <= Now + Two_Hours then
-            null;   --  within two hours: only a longer lifetime is taken
-         else
-            T (Pos).Valid_Until := Now + Two_Hours;
-         end if;
+         declare
+            Old_T     : constant Table := T with Ghost;
+            Old_Valid : constant Unsigned_64 := T (Pos).Valid_Until;
+            Floor     : constant Unsigned_64 := Unsigned_64'Min (Old_Valid, Now + Two_Hours);
+         begin
+            T (Pos).Preferred_Until := Deadline (Now, P.Preferred);
+            --  RFC 4862 5.5.3 (e).
+            if P.Valid > Two_Hours then
+               pragma Assert (New_Valid >= Now + Two_Hours);
+               T (Pos).Valid_Until := New_Valid;
+            elsif New_Valid > Old_Valid then
+               T (Pos).Valid_Until := New_Valid;
+            elsif Old_Valid <= Now + Two_Hours then
+               null;   --  within two hours: only a longer lifetime is taken
+            else
+               T (Pos).Valid_Until := Now + Two_Hours;
+            end if;
+            pragma Assert (T (Pos).Valid_Until >= Floor);
+            pragma Assert (for all I in Index => (if I /= Pos then T (I) = Old_T (I)));
+            pragma Assert
+              (for all I in Index =>
+                 (if Old_T (I).St in Tentative | Preferred | Deprecated then
+                    T (I).Valid_Until >=
+                      Unsigned_64'Min (Old_T (I).Valid_Until, Now + Two_Hours)));
+         end;
          return;
       end if;
       if P.Valid = 0 then

@@ -13,7 +13,10 @@ builds remain optimized, without `-gnata`.
 
 The tests exercise the service's `TCP_Slots` connection slots, the
 `TCP_Wire` option parser, the `TCP_Listeners` ownership/backlog ADT and
-`Network_Channel_Handles`, plus netstack's IPv6 link glue (`IPv6_Link`, through
+`Network_Channel_Handles`, plus netstack's IPv4 ICMP (`IPv4_ICMP`, through
+`ipv4_icmp_proof.ads`: every frame it sends is `IPv4_Frame.Emittable`, with
+unicast source and destination, so it is never a broadcast amplifier), its
+IPv6 link glue (`IPv6_Link`, through
 the instance in `ipv6_link_proof.ads`) and the proved `Internet_Checksum`. The
 IPv6 proof covers every frame and clock value; every frame sent is
 `IPv6_Frame.Emittable`. The checksum is compared with RFC 1071 and netstack's

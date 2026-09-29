@@ -164,6 +164,74 @@ begin
    Lists.clear (L);
    Length := 0;
    Check_List;
+   -- Every interval, including whole-list/head/tail/single-node detach.
+   -- Caller owns the node handles; outside/mismatched ranges must not mutate.
+   for Size in 1 .. 16 loop
+      for First_Index in 1 .. Size loop
+         for Last_Index in First_Index .. Size loop
+            declare
+               Detached, Other : Lists.List;
+               First_Node, Last_Node, Cursor : Lists.NodePtr;
+               Before_Free : constant Natural := Lists.nodeSlab.numFree;
+               Count : constant Positive := Last_Index - First_Index + 1;
+            begin
+               Lists.create (Detached, 0);
+               Lists.create (Other, 1);
+               Lists.insertBack (Other, 999);
+               Lists.create (L, 32);
+               for I in 1 .. Size loop Lists.insertBack (L, I); Model (I) := I; end loop;
+               Length := Size;
+               First_Node := L.head;
+               for I in 2 .. First_Index loop First_Node := First_Node.next; end loop;
+               Last_Node := First_Node;
+               for I in 2 .. Count loop Last_Node := Last_Node.next; end loop;
+               Lists.detachRange (L, Other.head, Other.tail, 1, Detached, OK);
+               pragma Assert (not OK and Detached.length = 0);
+               Check_List;
+               Lists.detachRange (L, First_Node, Other.tail, Count, Detached, OK);
+               pragma Assert (not OK and Detached.length = 0);
+               Check_List;
+               Lists.detachRange (L, First_Node, Last_Node, Count, Other, OK);
+               pragma Assert (not OK and Other.length = 1);
+               Check_List;
+               Lists.detachRange (L, L.tail, L.head, Size + 1, Detached, OK);
+               pragma Assert (not OK);
+               Check_List;
+               Lists.detachRange (L, null, Last_Node, Count, Detached, OK);
+               pragma Assert (not OK);
+               Check_List;
+               if Size > 1 then
+                  Lists.detachRange (L, L.tail, L.head, 2, Detached, OK);
+                  pragma Assert (not OK); -- Never wrap through the list head.
+                  Check_List;
+               end if;
+               declare
+                  Free_Nodes : constant Natural := Lists.nodeSlab.numFree;
+               begin
+                  Lists.detachRange (L, First_Node, Last_Node, Count, Detached, OK);
+                  pragma Assert (OK and Lists.nodeSlab.numFree = Free_Nodes);
+               end;
+               for I in Last_Index + 1 .. Size loop
+                  Model (I - Count) := Model (I);
+               end loop;
+               Length := Size - Count;
+               Check_List;
+               Cursor := Detached.head;
+               for I in First_Index .. Last_Index loop
+                  pragma Assert (Cursor.element = I);
+                  pragma Assert (Cursor.next.prev = Cursor and Cursor.prev.next = Cursor);
+                  Cursor := Cursor.next;
+               end loop;
+               pragma Assert (Cursor = Detached.head and Detached.length = Count);
+               Lists.clear (L); Lists.clear (Detached); Lists.clear (Other);
+               Length := 0;
+               pragma Assert (Lists.nodeSlab.numFree = Before_Free);
+               Check_List;
+            end;
+         end loop;
+      end loop;
+   end loop;
+   Put_Line ("PASS actual LinkedLists: 816 range detaches, rejection atomicity, node conservation");
    Lists.teardown;
    pragma Assert (BuddyAllocator.Live_Blocks = 0 and then Spinlocks.Locks_Held = 0);
    Put_Line ("PASS actual LinkedLists: failure atomicity, bidirectional links, 20000 model operations");

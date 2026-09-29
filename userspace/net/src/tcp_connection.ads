@@ -6,7 +6,7 @@
 --  A TCP connection's state machine: segment arrival (RFC 9293 3.10.7)
 --  with RFC 5961's defences, and the application's open and close.
 --
---  Pure logic over parsed header fields (from the RecordFlux parsers);
+--  Pure logic over parsed header fields (from TCP_Header);
 --  it decides the next state, what to send in reply, which bytes to
 --  deliver and how far the peer has acknowledged. It owns no buffers: the
 --  send queue (TCP_Send_Queue) and the receive side follow its results.

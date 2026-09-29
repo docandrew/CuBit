@@ -860,7 +860,18 @@ See [filesystem maturity](filesystem-maturity.md) for the findings and tests.
 
 ### FS-005 — Add crash-consistent filesystem journaling
 
-Status: backburner
+Status: planned (2026-09-28). Decision: mimic Linux. The journal is
+ext3/ext4 JBD2 in data=ordered mode, compatible with Linux on disk
+(volumes made with `mke2fs -j` mount on both). The earlier preference for
+a smaller CuBit-specific scheme is superseded: JBD2 is proven and
+reliable, and its performance is good. Order of work:
+1. A block cache and per-request allocation batching, still write-through.
+2. The device durability contract below.
+3. Replay (proved codecs).
+4. Transactions, with a write-back cache.
+5. Crash injection.
+
+The paragraphs below still apply as requirements.
 
 Add metadata journaling before claiming crash consistency for writable
 persistent filesystems. First define and implement durable completion in

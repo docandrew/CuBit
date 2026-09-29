@@ -216,7 +216,7 @@ begin
    writeData (Fs, 1, Result, 16 * 1024, Payload'Address, 4, Completed, WStatus);
    pragma Assert (WStatus = Write_Read_Only and Calls = 0 and not Fs.writeQuarantined);
    Setup;
-   Fs.device.description.features := 0;
+   Fs.device.description.features := FEATURE_VOLATILE_CACHE; -- nothing flushes it
    resizeFile (Fs, 1, 17, Result, Status);
    pragma Assert (Status = Truncate_Durability_Unsupported and Calls = 0);
    Setup;

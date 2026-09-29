@@ -3,6 +3,7 @@ with Interfaces; use Interfaces;
 with Ext2; use Ext2;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
+with Volume_Admission; use Volume_Admission;
 
 -- Synthetic descriptor-table geometry isolates the allocation scan. This is
 -- not a complete ext2 admission fixture; native Linux-created disks cover it.
@@ -36,22 +37,34 @@ procedure Allocation_Scan is
         device => (endpointSlot => 1, grant => (slot => 1, generation => 1),
           grantBuffer => Grant_Buffer'Address, grantBytes => Grant_Buffer'Length,
           description => (blockCount => 128, maxTransferBlocks => 8,
-            features => FEATURE_FLUSH, others => <>)),
-        writeQuarantined => False);
+            features => FEATURE_FLUSH or FEATURE_VOLATILE_CACHE, others => <>)),
+        writeQuarantined => False, journal => <>);
       baseline := Disk;
+      declare
+         Discarded : Filesystem;
+         Ignored : Admission_Result;
+      begin
+         --  End endpoint 1's previous block-cache lifetime. This synthetic
+         --  geometry is deliberately not itself an admissible volume.
+         initBlockDevice (Discarded, 1, (slot => 1, generation => 1),
+                          Grant_Buffer'Address, Grant_Buffer'Length, Ignored);
+      end;
+      Calls := 0;
+      Writes := 0;
    end Setup;
 begin
    for Target in Unsigned_32 range 15 .. 31 loop
       Setup (Target);
       allocateBlock (fs, block, status);
       pragma Assert (status = Write_Complete and block = 1 + Target * 2);
-      -- One/two descriptor sector reads, then a bitmap read and three RMW
-      -- metadata writes (bitmap, chosen descriptor, superblock): +7 calls.
-      pragma Assert (Calls = Natural (Target / 16 + 1) + 7);
+      -- The cached descriptor block and bitmap block reads, then bitmap and
+      -- descriptor writes completed from those cached blocks, then the
+      -- superblock's read-modify-write: six calls whatever the group.
+      pragma Assert (Calls = 6);
       pragma Assert (Writes = 3 and fs.sb.freeBlocks = 0);
       pragma Assert (table (Target).numFreeBlocks = 0 and Disk (4096) = 255);
       cases := cases + 1;
-      for Failure in 1 .. Natural (Target / 16 + 1) loop
+      for Failure in 1 .. 2 loop
          for Failure_Mode_Value in Failure_Mode loop
             for Style in Failure_Reply loop
                Setup (Target);
@@ -64,16 +77,17 @@ begin
          end loop;
       end loop;
    end loop;
-   -- Repeated calls re-read descriptors, not a stale cache that could allocate
-   -- from an exhausted group or miss newly made available earlier groups.
+   -- A second call sees the first call's own (written-through) metadata: the
+   -- exhausted group is not allocated again from a stale snapshot, even
+   -- when the in-memory superblock count still advertises a block.
    Setup (31);
    allocateBlock (fs, block, status);
    pragma Assert (status = Write_Complete);
-   fs.sb.freeBlocks := 1; sb.freeBlocks := 1;
-   table (15).numFreeBlocks := 1; Disk (4096) := 254;
+   fs.sb.freeBlocks := 1;
    Calls := 0;
    allocateBlock (fs, block, status);
-   pragma Assert (status = Write_Complete and block = 31 and Calls = 8);
+   pragma Assert (status = Write_No_Space and block = 0 and Writes = 3);
+   pragma Assert (table (31).numFreeBlocks = 0 and Disk (4096) = 255);
    cases := cases + 1;
    Put_Line ("Ext2 allocation descriptor-sector scan: " & cases'Image & " checks PASS");
 end Allocation_Scan;

@@ -310,7 +310,7 @@ mutant "writer swaps the sequence and acknowledgement numbers" tcp_header.adb \
 mutant "MSS option with the wrong length" tcp_header.adb \
     "      B (21) := 4;" "      B (21) := 3;"
 mutant "ARP accepts an unsolicited reply" arp_cache.adb \
-    "            if Pos >= 0 and then T (Pos).St = Pending then
+    "            if Pos >= 0 and then T (Pos).St in Pending | Probing then
                T (Pos) := (St => Resolved, IP => P.Sender_IP, HW => P.Sender_HW, Since => Now);
             end if;
          when Request =>" "            if Pos >= 0 then
@@ -319,6 +319,7 @@ mutant "ARP accepts an unsolicited reply" arp_cache.adb \
          when Request =>"
 mutant "ARP lets a request rewrite a resolved address" arp_cache.adb \
     "            elsif T (Pos).HW = P.Sender_HW then
+               --  Still there; a different address is not taken.
                T (Pos).Since := Now;" "            else
                T (Pos).HW := P.Sender_HW;"
 mutant "ARP learns from a request for someone else" arp_cache.adb \
@@ -343,9 +344,6 @@ mutant "free list may overflow" descriptor_pool.adb \
     "            P.Top < Count;" "            True;" $DP
 mutant "returned descriptor stays in flight" descriptor_pool.adb \
     "         P.In_Flight (Natural (Raw)) := False;" "         null;" $DP
-mutant "frame slot may be 0 (the counts slot)" frame_ring.ads \
-    "     (Natural (Long_Long_Integer (N) mod Long_Long_Integer (Slots)) + 1)" \
-    "     (Natural (Long_Long_Integer (N) mod Long_Long_Integer (Slots)))" frame_ring.ads
 mutant "arena buffer claimed while held" channel_arenas.adb \
     "      if Item.Entries (Index).Used (Slot) then
          return;" "      if False then
@@ -428,8 +426,15 @@ mutant "ipv4 build writes source for destination" ipv4_header.adb \
     "         B (16 + K) := H.Destination (K);" \
     "         B (16 + K) := H.Source (K);" ipv4_header.adb
 mutant "ipv4 build sets MF" ipv4_header.adb \
-    "      Flags : constant Unsigned_16 := (if DF then Dont_Fragment else 0);" \
-    "      Flags : constant Unsigned_16 := (if DF then Dont_Fragment else 16#2000#);" ipv4_header.adb
+    "   procedure Build (H : Header; DF : Boolean; B : in out Bytes) is
+      Flags : constant Unsigned_16 := (if DF then Dont_Fragment else 0);" \
+    "   procedure Build (H : Header; DF : Boolean; B : in out Bytes) is
+      Flags : constant Unsigned_16 := (if DF then Dont_Fragment else 16#2000#);" ipv4_header.adb
+mutant "ipv4 header bytes set MF" ipv4_header.adb \
+    "   procedure Build_Header (H : Header; DF : Boolean; Hdr : out Header_Bytes) is
+      Flags : constant Unsigned_16 := (if DF then Dont_Fragment else 0);" \
+    "   procedure Build_Header (H : Header; DF : Boolean; Hdr : out Header_Bytes) is
+      Flags : constant Unsigned_16 := (if DF then Dont_Fragment else 16#2000#);" ipv4_header.adb
 mutant "icmp quote bound off by the transport" icmpv4_error.adb \
     "        Quoted_At + Size + Quoted_Transport > Message'Length" \
     "        Quoted_At + Size > Message'Length" icmpv4_error.adb
@@ -455,4 +460,33 @@ mutant "older segment shrinks the window" tcp_connection.ads \
     "       True));" tcp_connection.adb
 mutant "persist never gives up" tcp_flow.adb \
     "      Give_Up := F.Probes >= Maximum_Probes;" "      Give_Up := False;" flow_small.ads
+mutant "arp request rewrites a doubted mapping" arp_cache.adb \
+    "            elsif T (Pos).St = Pending then
+               T (Pos) := (St => Resolved, IP => P.Sender_IP, HW => P.Sender_HW, Since => Now);" \
+    "            elsif T (Pos).St in Pending | Probing then
+               T (Pos) := (St => Resolved, IP => P.Sender_IP, HW => P.Sender_HW, Since => Now);" arp_cache.adb
+mutant "arp expiry drops confirmed mappings" arp_cache.adb \
+    "         if T (I).St in Pending | Probing and then Now - Timeout >= T (I).Since then" \
+    "         if T (I).St /= Free and then Now - Timeout >= T (I).Since then" arp_cache.adb
+mutant "channel kicks on send while client data waits" channel_service.ads \
+    "   is ((if not Failed and then Send_Unconsumed = 0 then Kick_On_Send else 0) or" \
+    "   is ((if not Failed then Kick_On_Send else 0) or"
+mutant "failed channel still asks for a receive kick" channel_service.ads \
+    "       (if not Failed and then Has_Connection and then Readable > 0 and then" \
+    "       (if Has_Connection and then Readable > 0 and then"
+mutant "write-shutdown closes during the handshake" channel_service.ads \
+    "   is (not Already_Closed and then Send_Unconsumed = 0 and then Shutdown_Asked and then
+       not In_Handshake)" \
+    "   is (not Already_Closed and then Send_Unconsumed = 0 and then Shutdown_Asked)"
+mutant "write-shutdown closes before the client's data is taken" channel_service.ads \
+    "   is (not Already_Closed and then Send_Unconsumed = 0 and then Shutdown_Asked and then" \
+    "   is (not Already_Closed and then Shutdown_Asked and then"
+mutant "no second look after the client sent (lost wakeup)" channel_service.ads \
+    "       not (((Flags and Kick_On_Send) = 0 or else Tx_Produced_Now = Tx_Produced_Seen) and then" \
+    "       not (((Flags and Kick_On_Send) = 0 or else True) and then"
+mutant "second look forever (the service never idles)" channel_service.ads \
+    "   is (Flags /= 0 and then
+       not" \
+    "   is (Flags /= 0 or else
+       not"
 echo "mutants killed: $killed/$((total - 1)) (plus one control that must survive)"

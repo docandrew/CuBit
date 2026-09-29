@@ -36,7 +36,7 @@ package body CuBit.Messages is
       if Op = OP_DESCRIBE_DEVICE then
          msg := ((REPLY_OK, 4, 0, 0), 0,
                  [Image_Size / 512, Pack_Sizes (512, 512), 8,
-                  Pack_Properties (FEATURE_FLUSH, Fixed_Media)]);
+                  Pack_Properties (FEATURE_FLUSH or FEATURE_VOLATILE_CACHE, Fixed_Media)]);
       elsif Op = OP_FLUSH_DEVICE then
          --  Flush host buffering; no power-loss durability claim is made.
          IO.Close (Image);

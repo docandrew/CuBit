@@ -4,16 +4,16 @@ package body UDP_Channels with SPARK_Mode is
 
    procedure Open
      (Item : in out Table; Index : Channel_Index;
-      Address : Unsigned_32; Port : Unsigned_16; Success : out Boolean)
+      Address : Unsigned_32; Port : Unsigned_16; Start : Unsigned_16;
+      Success : out Boolean)
    is
-      Candidate : Unsigned_16 := Item.Next_Port;
+      --  Any Start maps into the ephemeral range, spread evenly.
+      Candidate : Unsigned_16 :=
+        First_Ephemeral + Start mod Unsigned_16 (Ephemeral_Count);
    begin
       Success := False;
       if Item.Channels (Index).Active or else Address = 0 or else Port = 0 then
          return;
-      end if;
-      if Candidate < First_Ephemeral then
-         Candidate := First_Ephemeral;
       end if;
       for Attempt in 1 .. Ephemeral_Count loop
          pragma Loop_Invariant (Candidate >= First_Ephemeral);
@@ -22,8 +22,6 @@ package body UDP_Channels with SPARK_Mode is
             Item.Channels (Index) :=
               (Active => True, Local_Port => Candidate,
                Remote_Address => Address, Remote_Port => Port);
-            Item.Next_Port :=
-              (if Candidate = Last_Ephemeral then First_Ephemeral else Candidate + 1);
             Success := True;
             return;
          end if;

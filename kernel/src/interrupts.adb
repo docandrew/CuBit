@@ -368,8 +368,10 @@ is
                         case userMode is
                             when True =>
                                 -- user page-protection wr violation. kill it.
-                                print ("User page-protection write violation: ");
-                                println (faultAddr);
+                                println ("USER-MEMORY-FAULT: pid" &
+                                  Integer'Image (Integer (pid)) & " address" &
+                                  Unsigned_64'Image (Unsigned_64 (To_Integer (faultAddr))) &
+                                  " kind=write-protection");
                                 Process.kill (pid);
                             when False =>
                                 -- kernel page-protection wr violation. we goofed.
@@ -381,8 +383,10 @@ is
                         case userMode is
                             when True =>
                                 -- user page-protection rd violation. kill it.
-                                print ("User page-protection read violation: ");
-                                println (faultAddr);
+                                println ("USER-MEMORY-FAULT: pid" &
+                                  Integer'Image (Integer (pid)) & " address" &
+                                  Unsigned_64'Image (Unsigned_64 (To_Integer (faultAddr))) &
+                                  " kind=read-protection");
                                 Process.kill (pid);
                             when False =>
                                 -- kernel page-protection rd violation. we goofed.

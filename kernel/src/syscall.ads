@@ -79,6 +79,10 @@ is
         SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
         SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND,
         SYSCALL_READ_MONOTONIC_MICROSECONDS,
+        SYSCALL_ALLOCATE_OWNED_MEMORY,
+        SYSCALL_RELEASE_OWNED_MEMORY,
+        SYSCALL_PROTECT_OWNED_MEMORY,
+        SYSCALL_YIELD,
         SYSCALL_REGISTER_DRIVER)
     with Size => Unsigned_64'Size;
 
@@ -87,6 +91,10 @@ is
         SYSCALL_GETPID               => 6,
         SYSCALL_KILL                 => 7,
         SYSCALL_SBRK                 => 8,
+        SYSCALL_ALLOCATE_OWNED_MEMORY => 115,
+        SYSCALL_RELEASE_OWNED_MEMORY => 116,
+        SYSCALL_PROTECT_OWNED_MEMORY => 117,
+        SYSCALL_YIELD                => 118,
         SYSCALL_WRITE                => 12,
         SYSCALL_INFO                 => 15,
         SYSCALL_RECEIVE              => 17,

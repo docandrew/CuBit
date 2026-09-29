@@ -8,7 +8,7 @@
 --
 --  Accepted: hardware type Ethernet (1), protocol type IPv4 (0x0800),
 --  address lengths 6 and 4, operation request (1) or reply (2), and at
---  least the 28 bytes these need. specs/arp.rflx stays the specification.
+--  least the 28 bytes these need (RFC 826).
 --
 --  Proved (tests/net-tcp): Well_Formed is exactly that rule; every parsed
 --  field is its bytes on the wire.
@@ -54,5 +54,29 @@ package ARP_Packet with SPARK_Mode is
              P.Sender_IP = [B (14), B (15), B (16), B (17)] and then
              P.Target_HW = [B (18), B (19), B (20), B (21), B (22), B (23)] and then
              P.Target_IP = [B (24), B (25), B (26), B (27)];
+
+   Ethernet_Header : constant := 14;
+   Frame_Size      : constant := Ethernet_Header + Size;
+   Ethertype_High  : constant := 16#08#;
+   Ethertype_Low   : constant := 16#06#;
+   subtype Frame_Bytes is Bytes (0 .. Frame_Size - 1);
+
+   --  A whole Ethernet frame carrying P, to Eth_Destination, from
+   --  P.Sender_HW (a sender always sends from its own address).
+   procedure Build (P : Packet; Eth_Destination : MAC; Frame : out Frame_Bytes) with
+     Post => Frame (12) = Ethertype_High and then Frame (13) = Ethertype_Low and then
+             (for all K in MAC'Range =>
+                Frame (K) = Eth_Destination (K) and then
+                Frame (6 + K) = P.Sender_HW (K) and then
+                Frame (Ethernet_Header + 8 + K) = P.Sender_HW (K) and then
+                Frame (Ethernet_Header + 18 + K) = P.Target_HW (K)) and then
+             (for all K in IPv4'Range =>
+                Frame (Ethernet_Header + 14 + K) = P.Sender_IP (K) and then
+                Frame (Ethernet_Header + 24 + K) = P.Target_IP (K)) and then
+             U16 (Frame, Ethernet_Header) = Hardware_Ethernet and then
+             U16 (Frame, Ethernet_Header + 2) = Protocol_IPv4 and then
+             Frame (Ethernet_Header + 4) = 6 and then Frame (Ethernet_Header + 5) = 4 and then
+             U16 (Frame, Ethernet_Header + 6) =
+               (if P.Op = Request then Request_Operation else Reply_Operation);
 
 end ARP_Packet;

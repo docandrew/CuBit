@@ -6,11 +6,9 @@
 --  The TCP header on the wire (RFC 9293 3.1): parsing and writing the fixed
 --  20 bytes in place, and writing the options our SYNs carry.
 --
---  The data path's codec: specs/tcp.rflx stays the specification, and
---  tests/net-headers checks this against the RecordFlux parser on the same
---  segments. Well_Formed is that specification's rule for the header,
---  except that option kinds it does not name are accepted here (skipped by
---  TCP_Wire, as RFC 9293 3.1 requires) where RecordFlux rejects them.
+--  The data path's codec. Well_Formed is RFC 9293 3.1's rule for the
+--  header; option kinds it does not know are accepted here and skipped by
+--  TCP_Wire, as 3.1 requires.
 --
 --  Proved (tests/net-tcp): every field parsed is its bytes on the wire,
 --  big-endian; writing then parsing gives back each field written, and

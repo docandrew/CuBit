@@ -13,10 +13,13 @@ with Ada.Unchecked_Conversion;
 with Interfaces; use Interfaces;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
+with System.Machine_Code;
 
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Filesystems; use CuBit.Filesystems;
+with CuBit.Filesystem_Queues;
+with CuBit.Busy_Poll;
 with CuBit.Grant_References;
 with CuBit.Directory_Paths;
 with CuBit.File_Access;
@@ -35,6 +38,7 @@ procedure main is
    use type Ext2.Write_Status;
    use type Ext2.Truncate_Status;
    use type Ext2.Directory_Lookup_Status;
+   use type Ext2.Remove_Status;
 
    --  Sysinfo query for ramdisk address
    --  (uses SYSINFO_RAMDISK_ADDRESS from CuBit.Messages)
@@ -204,7 +208,44 @@ procedure main is
       return slot;
    end resolveHandle;
 
+   ---------------------------------------------------------------------------
+   --  [filesystem-journal agent] Files unlinked while handles held them
+   --  (handleUnlink): freed when the last handle goes (POSIX). Each needs a
+   --  live handle, so MAX_OPEN_FILES entries always suffice.
+   ---------------------------------------------------------------------------
+   type Inode_Key_Array is array (0 .. MAX_OPEN_FILES - 1) of Inode_Identity;
+   NO_ORPHAN : constant Inode_Identity := (Volume_Index'First, 0);
+   orphans : Inode_Key_Array := [others => NO_ORPHAN];
+
+   procedure reclaimOrphan (key : Inode_Identity) is
+      status : Ext2.Remove_Status;
+   begin
+      for slot in files'Range loop
+         if files (slot).active and then files (slot).objectKind = FILE_OBJECT and then
+           files (slot).filesystemKind = EXT2_FILESYSTEM and then
+           files (slot).volume = key.volume and then files (slot).inodeNum = key.number
+         then
+            return; --  still held
+         end if;
+      end loop;
+      for orphan of orphans loop
+         if orphan.number /= 0 and then orphan = key then
+            orphan := NO_ORPHAN;
+            Ext2.reclaimInode (Contexts (key.volume).Fs, key.number, status);
+            if status /= Ext2.Remove_Complete then
+               debugPrint ("FS Server: unlinked inode not reclaimed: " &
+                           Ext2.Remove_Status'Image (status) & LF);
+            end if;
+         end if;
+      end loop;
+   end reclaimOrphan;
+
    procedure releaseHandle (slot : Integer) is
+      --  [filesystem-journal agent] last-close reclaim of an unlinked file.
+      heldFile : constant Boolean :=
+        files (slot).active and then files (slot).objectKind = FILE_OBJECT and then
+        files (slot).filesystemKind = EXT2_FILESYSTEM;
+      key : constant Inode_Identity := (files (slot).volume, files (slot).inodeNum);
    begin
       Open_Inodes.Detach (inodeObjects, Open_Inodes.Owner_Index (slot));
       files (slot).active := False;
@@ -219,6 +260,9 @@ procedure main is
          files (slot).retired := True;
       else
          files (slot).generation := files (slot).generation + 1;
+      end if;
+      if heldFile then
+         reclaimOrphan (key);
       end if;
    end releaseHandle;
 
@@ -235,6 +279,221 @@ procedure main is
    --  fit the strongly typed userspace representation.  The kernel then
    --  authenticates the owner, current grantee, generation, access, and full
    --  byte range before returning an address.
+   ---------------------------------------------------------------------------
+   --  Client request queues (CuBit.Filesystem_Queues,
+   --  docs/filesystem-data-plane.md): a client lends a queue pair and a
+   --  transfer arena once; each request is then an entry, handled by the
+   --  same handler as its message twin, with its data in the arena and its
+   --  answer on the queue.
+   ---------------------------------------------------------------------------
+   package FQ renames CuBit.Filesystem_Queues;
+   package FQueues renames CuBit.Filesystem_Queues.Queues;
+   use type FQueues.Submissions.Index;
+   MAX_CLIENT_QUEUES : constant := 16;
+   subtype Client_Queue_Count is Natural range 0 .. MAX_CLIENT_QUEUES;
+   subtype Client_Queue_Index is Client_Queue_Count range 1 .. MAX_CLIENT_QUEUES;
+   No_Client_Queue : constant Client_Queue_Count := 0;
+   --  Saved reply capabilities for deferred WAITs, one per queue.
+   WAIT_REPLY_SLOT_BASE : constant := 40;
+
+   type Client_Queue is record
+      owner      : ProcessID := NO_PROCESS;
+      queueGrant : CuBit.Memory_Grants.Grant_Reference;
+      arenaGrant : CuBit.Memory_Grants.Grant_Reference;
+      base       : System.Address := System.Null_Address;
+      arena      : System.Address := System.Null_Address;
+      arenaBytes : Unsigned_64 := 0;
+      server     : FQueues.Server;
+      waiting    : Boolean := False;   --  a WAIT's reply is saved
+   end record;
+   clientQueues : array (Client_Queue_Index) of Client_Queue;
+   clientQueueEpoch : Unsigned_32 := 0;
+
+   --  While a queue entry is handled: where its answer goes, and the arena
+   --  range it names (checked against the arena before it is set).
+   type Reply_Route is record
+      queue : Client_Queue_Count := No_Client_Queue;
+      token : FQueues.Token := 0;
+   end record;
+   curRoute : Reply_Route;
+   curArena : System.Address := System.Null_Address;
+   curArenaBytes : Unsigned_64 := 0;
+
+   function queueWord (q : Client_Queue_Index; offset : Natural) return System.Address is
+     (clientQueues (q).base + Storage_Offset (offset));
+
+   ---------------------------------------------------------------------------
+   --  Read delegations (FQ.Delegations_At): a handle whose client may answer
+   --  reads from its own cache while no other handle can write the file.
+   --  Every change to a file revokes the other handles' delegations first
+   --  and moves the file's version on.
+   ---------------------------------------------------------------------------
+   pragma Compile_Time_Error
+     (MAX_OPEN_FILES > FQ.Maximum_Delegations,
+      "every handle slot needs a delegation entry");
+   subtype Handle_Slot is Natural range 0 .. MAX_OPEN_FILES - 1;
+   delegated : array (Handle_Slot) of Boolean := [others => False];
+
+   --  Versions of files seen during this service's life. An entry reused
+   --  for another file gives the old one a fresh version when it is seen
+   --  again, so no client keeps pages of an older version.
+   MAX_INODE_VERSIONS : constant := 256;
+   subtype Version_Slot is Natural range 0 .. MAX_INODE_VERSIONS - 1;
+   type Inode_Version is record
+      used    : Boolean := False;
+      key     : Inode_Identity := (Volume_Index'First, 0);
+      version : Unsigned_64 := 0;
+   end record;
+   inodeVersions : array (Version_Slot) of Inode_Version;
+   versionClock : Unsigned_64 := 0;
+   nextVersionSlot : Version_Slot := Version_Slot'First;
+
+   function versionSlotOf (key : Inode_Identity) return Version_Slot is
+      fresh : constant Version_Slot := nextVersionSlot;
+   begin
+      for i in inodeVersions'Range loop
+         if inodeVersions (i).used and then inodeVersions (i).key = key then
+            return i;
+         end if;
+      end loop;
+      nextVersionSlot := (if nextVersionSlot = Version_Slot'Last then Version_Slot'First
+                          else nextVersionSlot + 1);
+      versionClock := versionClock + 1;
+      inodeVersions (fresh) := (used => True, key => key, version => versionClock);
+      return fresh;
+   end versionSlotOf;
+
+   procedure bumpVersion (key : Inode_Identity) is
+      i : constant Version_Slot := versionSlotOf (key);
+   begin
+      versionClock := versionClock + 1;
+      inodeVersions (i).version := versionClock;
+   end bumpVersion;
+
+   function queueOf (owner : ProcessID) return Client_Queue_Count is
+   begin
+      for q in clientQueues'Range loop
+         if clientQueues (q).owner = owner then
+            return q;
+         end if;
+      end loop;
+      return No_Client_Queue;
+   end queueOf;
+
+   function isFileOf (slot : Handle_Slot; key : Inode_Identity) return Boolean is
+     (files (slot).active and then files (slot).objectKind = FILE_OBJECT and then
+      files (slot).filesystemKind = EXT2_FILESYSTEM and then
+      files (slot).volume = key.volume and then files (slot).inodeNum = key.number);
+
+   --  Grant (publish the file's identity, version and size, then the valid
+   --  word) or revoke (clear the valid word) slot's delegation in its
+   --  owner's queue page.
+   procedure delegate (slot : Handle_Slot; grant : Boolean) is
+      q : constant Client_Queue_Count := queueOf (files (slot).ownerPID);
+   begin
+      delegated (slot) := grant and then q /= No_Client_Queue;
+      if q = No_Client_Queue then
+         return;
+      end if;
+      declare
+         entryAt : constant Natural := FQ.Delegations_At + slot * FQ.Delegation_Bytes;
+         valid : Unsigned_32 with Volatile, Import,
+           Address => queueWord (q, entryAt + FQ.Delegation_Valid_At);
+         inode : Unsigned_64 with Volatile, Import,
+           Address => queueWord (q, entryAt + FQ.Delegation_Inode_At);
+         version : Unsigned_64 with Volatile, Import,
+           Address => queueWord (q, entryAt + FQ.Delegation_Version_At);
+         size : Unsigned_64 with Volatile, Import,
+           Address => queueWord (q, entryAt + FQ.Delegation_Size_At);
+         key : constant Inode_Identity := (files (slot).volume, files (slot).inodeNum);
+      begin
+         valid := 0;
+         System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
+         if grant then
+            inode := Shift_Left (Unsigned_64 (key.volume), 32) or Unsigned_64 (key.number);
+            version := inodeVersions (versionSlotOf (key)).version;
+            size := Ext2.fileSize
+              (Open_Inodes.Value (inodeObjects, Open_Inodes.Owner_Index (slot)));
+            System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
+            valid := 1;
+         end if;
+      end;
+   end delegate;
+
+   --  The file key is about to change through slot except: every other
+   --  handle's delegation goes first, and the version moves on.
+   procedure fileChanging (key : Inode_Identity; except : Integer) is
+   begin
+      for j in Handle_Slot loop
+         if j /= except and then delegated (j) and then isFileOf (j, key) then
+            delegate (j, False);
+         end if;
+      end loop;
+      bumpVersion (key);
+   end fileChanging;
+
+   --  After slot's own change: its delegation, if held, carries the new
+   --  version and size.
+   procedure refreshDelegation (slot : Handle_Slot) is
+   begin
+      if delegated (slot) then
+         delegate (slot, True);
+      end if;
+   end refreshDelegation;
+
+   --  A handle was opened: a writable open revokes the others; the handle
+   --  is delegated if no other handle can write the file.
+   procedure handleOpened (slot : Handle_Slot) is
+      key : constant Inode_Identity := (files (slot).volume, files (slot).inodeNum);
+      otherWriter : Boolean := False;
+   begin
+      for j in Handle_Slot loop
+         if j /= slot and then isFileOf (j, key) then
+            if (files (slot).openRights and ACL_WRITE) /= 0 and then delegated (j) then
+               delegate (j, False);
+            end if;
+            if (files (j).openRights and ACL_WRITE) /= 0 then
+               otherWriter := True;
+            end if;
+         end if;
+      end loop;
+      if not otherWriter then
+         delegate (slot, True);
+      end if;
+   end handleOpened;
+
+   --  Answer the entry being handled on its queue, and wake the client's
+   --  WAIT if one is saved.
+   procedure answerEntry (label : Unsigned_32; word0, word1 : Unsigned_64) is
+      q : constant Client_Queue_Count := curRoute.queue;
+   begin
+      if q = No_Client_Queue or else clientQueues (q).server.Owed = 0 then
+         return;
+      end if;
+      declare
+         ring : FQueues.Completions.Ring with Import,
+           Address => queueWord (q, FQ.Answers_At);
+         produced : Unsigned_32 with Volatile, Import,
+           Address => queueWord (q, FQ.Completions_At + FQ.Produced_At);
+         ignore : Unsigned_64;
+      begin
+         --  Owed <= Space (FQueues.Valid): the answer has its slot.
+         FQueues.Complete
+           (clientQueues (q).server, ring, curRoute.token,
+            (Status => label, Value => word0, Spare => word1, others => <>));
+         --  The answer is written before the count that hands it over.
+         System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
+         produced := Unsigned_32 (clientQueues (q).server.Answers.Produced);
+         if clientQueues (q).waiting then
+            clientQueues (q).waiting := False;
+            ignore := replyCap
+              (CapabilitySlot (WAIT_REPLY_SLOT_BASE + q),
+               (tag => (label => REPLY_OK, length => 0, flags => 0, reserved => 0),
+                authorityTag => 0, words => [others => 0]));
+         end if;
+      end;
+   end answerEntry;
+
    procedure acquireClientMemory
      (sender        : ProcessID;
       rawSlot       : Unsigned_64;
@@ -245,6 +504,13 @@ procedure main is
       success       : out Boolean)
    is
    begin
+      --  A queue entry's data is in the arena range already checked.
+      if curRoute.queue /= No_Client_Queue then
+         address := curArena;
+         success := curArena /= System.Null_Address and then
+                    byteLength <= curArenaBytes;
+         return;
+      end if;
       address := System.Null_Address;
       success := False;
       if rawSlot > CuBit.Memory_Grants.MAXIMUM_GLOBAL_SLOT or else
@@ -274,6 +540,10 @@ procedure main is
       success       : out Boolean)
    is
    begin
+      if curRoute.queue /= No_Client_Queue then
+         success := True;   --  the arena stays mapped
+         return;
+      end if;
       CuBit.Memory_Grants.Return_Acquisition
         ((slot => CuBit.Memory_Grants.Global_Grant_Slot (rawSlot),
           generation =>
@@ -290,6 +560,10 @@ procedure main is
       replyMsg : Message;
       ignore   : Unsigned_64;
    begin
+      if curRoute.queue /= No_Client_Queue then
+         answerEntry (label, word0, 0);
+         return;
+      end if;
       replyMsg.tag := (label  => label,
                        length => 1,
                        flags  => 0,
@@ -841,6 +1115,7 @@ procedure main is
          end if;
 
          if (openFlags and OPEN_TRUNCATE) /= 0 then
+            fileChanging ((useVolume, inodeNum), handle);
             Ext2.truncateToEmpty
               (Contexts (useVolume).Fs, inodeNum, objectInode, truncateStatus);
             if truncateStatus /= Ext2.Truncate_Complete then
@@ -896,6 +1171,9 @@ procedure main is
          files (handle).openRights :=
            files (handle).openRights or ACL_WRITE;
       end if;
+      if selectedKind = EXT2_FILESYSTEM then
+         handleOpened (handle);
+      end if;
 
       --  Reply with handle in words(0) and file size in words(1)
       declare
@@ -920,7 +1198,11 @@ procedure main is
          replyMsg.words := [0 => handleId,
                             1 => fsize,
                             others => 0];
-         ignore := reply (sender, replyMsg);
+         if curRoute.queue /= No_Client_Queue then
+            answerEntry (REPLY_OK, handleId, fsize);
+         else
+            ignore := reply (sender, replyMsg);
+         end if;
       end;
    end handleOpen;
 
@@ -1112,6 +1394,7 @@ procedure main is
          when CPIO_ARCHIVE | ISO_FILESYSTEM =>
             bytesWritten := 0; -- Rejected above.
          when EXT2_FILESYSTEM =>
+            fileChanging ((files (handle).volume, files (handle).inodeNum), handle);
             Ext2.writeData
               (Contexts (files (handle).volume).Fs,
                files (handle).inodeNum,
@@ -1145,6 +1428,7 @@ procedure main is
       end if;
       Open_Inodes.Replace
         (inodeObjects, Open_Inodes.Owner_Index (handle), currentInode);
+      refreshDelegation (handle);
 
       --  The completed prefix is part of the file even when a later block
       --  fails.  Keep the handle synchronized with that committed progress.
@@ -1242,6 +1526,9 @@ procedure main is
          return;
       end if;
 
+      if delegated (handle) then
+         delegate (handle, False);
+      end if;
       releaseHandle (handle);
       sendReply (sender, REPLY_OK, 0);
    end handleClose;
@@ -1294,6 +1581,7 @@ procedure main is
          sendReply (sender, REPLY_READ_ONLY, 0);
          return;
       end if;
+      fileChanging ((files (handle).volume, files (handle).inodeNum), handle);
       Ext2.resizeFile
         (Contexts (files (handle).volume).Fs, files (handle).inodeNum,
          msg.words (1), updated, status);
@@ -1301,6 +1589,7 @@ procedure main is
          when Ext2.Truncate_Complete =>
             Open_Inodes.Replace
               (inodeObjects, Open_Inodes.Owner_Index (handle), updated);
+            refreshDelegation (handle);
             sendReply (sender, REPLY_OK, 0);
          when Ext2.Truncate_Recovery_Required =>
             declare
@@ -1964,11 +2253,495 @@ procedure main is
       end;
    end handleRename;
 
+   ---------------------------------------------------------------------------
+   --  [filesystem-journal agent] Namespace operations: unlink, mkdir, rmdir.
+   --  Not yet dispatched (no protocol constants); the main session wires
+   --  them. Request like OP_OPEN: words 0 = path grant slot, 1 = path
+   --  length, 3 = grant generation. Authority: ACL_WRITE and ACL_CREATE on
+   --  the path, as for OPEN_CREATE.
+   ---------------------------------------------------------------------------
+
+   --  Copy the path, check authority, select and admit its writable volume.
+   --  On failure a reply has been sent and ok is False.
+   procedure namespaceRequest
+     (sender : ProcessID; msg : Message; pathBuffer : out String;
+      pathLen : out Natural; volume : out Volume_Index;
+      relStart : out Natural; ok : out Boolean)
+   is
+      rawLength : constant Unsigned_64 := msg.words (1);
+      grantAddr : System.Address := System.Null_Address;
+      grantOk, returned : Boolean := False;
+      selection : Path_Selection;
+      reference : Volume_Reference;
+      admission : Admission_Result;
+   begin
+      ok := False;
+      pathLen := 0;
+      volume := Volume_Index'First;
+      relStart := pathBuffer'First;
+      if msg.tag.length /= 4 or else rawLength = 0 or else
+        rawLength > MAXIMUM_PATH_BYTES or else rawLength > pathBuffer'Length
+      then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+      acquireClientMemory
+        (sender, msg.words (0), msg.words (3), rawLength,
+         CuBit.Memory_Grants.Read_Access, grantAddr, grantOk);
+      if not grantOk then
+         sendReply (sender, REPLY_ACCESS_DENIED, 0);
+         return;
+      end if;
+      pathLen := Natural (rawLength);
+      declare
+         granted : String (1 .. pathLen) with Import, Address => grantAddr;
+      begin
+         pathBuffer (pathBuffer'First .. pathBuffer'First + pathLen - 1) := granted;
+      end;
+      returnClientMemory (msg.words (0), msg.words (3), returned);
+      if not returned then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+      declare
+         path : String renames
+           pathBuffer (pathBuffer'First .. pathBuffer'First + pathLen - 1);
+      begin
+         if hasTraversal (path) then
+            sendReply (sender, REPLY_ERR, 0);
+            return;
+         elsif not checkAccess (sender, path, ACL_WRITE or ACL_CREATE) then
+            sendReply (sender, REPLY_ACCESS_DENIED, 0);
+            return;
+         end if;
+         Select_Path (Volumes, path, selection, reference, relStart);
+      end;
+      if selection = Unqualified then
+         reference := Default_Write_Volume;
+      end if;
+      if selection in Unknown_Volume | Invalid_Path then
+         sendReply (sender, REPLY_NOT_FOUND, 0);
+         return;
+      elsif reference = No_Volume then
+         sendReply (sender, REPLY_READ_ONLY, 0);
+         return;
+      end if;
+      volume := Volume_Index (reference);
+      ensureVolume (volume, admission);
+      if admission /= Admitted then
+         sendReply (sender, REPLY_IO_ERROR, 0);
+         return;
+      end if;
+      ok := True;
+   end namespaceRequest;
+
+   function replyForRemove (status : Ext2.Remove_Status) return Unsigned_32 is
+     (case status is
+        when Ext2.Remove_Complete => REPLY_OK,
+        when Ext2.Remove_Not_Found => REPLY_NOT_FOUND,
+        when Ext2.Remove_Invalid_Name => REPLY_ERR,
+        when Ext2.Remove_Wrong_Type => REPLY_WRONG_OBJECT_TYPE,
+        --  No distinct "not empty" reply exists yet (see coordination note).
+        when Ext2.Remove_Not_Empty => REPLY_ERR,
+        when Ext2.Remove_Malformed => REPLY_MALFORMED_FILESYSTEM,
+        when Ext2.Remove_Unsupported => REPLY_UNSUPPORTED_OBJECT,
+        when Ext2.Remove_Read_Only => REPLY_READ_ONLY,
+        when Ext2.Remove_Out_Of_Range => REPLY_OUT_OF_RANGE,
+        when Ext2.Remove_IO_Error => REPLY_IO_ERROR,
+        when Ext2.Remove_Durability_Unsupported => REPLY_DURABILITY_UNSUPPORTED,
+        when Ext2.Remove_Recovery_Required => REPLY_RECOVERY_REQUIRED);
+
+   --  Unlink a regular file. While handles hold it, the name and link go
+   --  now and the inode at the last close (releaseHandle).
+   procedure handleUnlink (sender : ProcessID; msg : Message) is
+      pathBuffer : String (1 .. Natural (MAXIMUM_PATH_BYTES));
+      pathLen, relStart : Natural;
+      volume : Volume_Index;
+      ok : Boolean;
+      target, unlinkedNumber : Unsigned_32;
+      lookup : Ext2.Directory_Lookup_Status;
+      unlinked : Ext2.Inode;
+      status : Ext2.Remove_Status;
+      holder : Integer := -1;
+   begin
+      namespaceRequest (sender, msg, pathBuffer, pathLen, volume, relStart, ok);
+      if not ok then
+         return;
+      end if;
+      declare
+         relPath : String renames pathBuffer (relStart .. pathLen);
+      begin
+         Ext2.resolvePath (Contexts (volume).Fs, relPath, target, lookup);
+         if lookup /= Ext2.Lookup_Found then
+            sendReply (sender, Lookup_Reply_Label (lookup), 0);
+            return;
+         elsif Open_Inodes.Exclusively_Held (inodeObjects, (volume, target)) then
+            sendReply (sender, REPLY_SHARING_VIOLATION, 0);
+            return;
+         end if;
+         for j in Handle_Slot loop
+            if isFileOf (j, (volume, target)) then
+               holder := j;
+            end if;
+         end loop;
+         Ext2.unlinkPath
+           (Contexts (volume).Fs, relPath, holder >= 0, unlinkedNumber, unlinked, status);
+      end;
+      if holder >= 0 and then unlinkedNumber = target then
+         --  The name is gone: handles keep a zero-link inode (their writes
+         --  must not restore the link), freed at the last close.
+         declare
+            current : Ext2.Inode :=
+              Open_Inodes.Value (inodeObjects, Open_Inodes.Owner_Index (holder));
+            recorded : Boolean := False;
+         begin
+            current.numHardLinks := 0;
+            Open_Inodes.Replace
+              (inodeObjects, Open_Inodes.Owner_Index (holder), current);
+            for orphan of orphans loop
+               if not recorded and then orphan.number = 0 then
+                  orphan := (volume, target);
+                  recorded := True;
+               end if;
+            end loop;
+         end;
+      end if;
+      sendReply (sender, replyForRemove (status), 0);
+   end handleUnlink;
+
+   procedure handleMkdir (sender : ProcessID; msg : Message) is
+      pathBuffer : String (1 .. Natural (MAXIMUM_PATH_BYTES));
+      pathLen, relStart : Natural;
+      volume : Volume_Index;
+      ok : Boolean;
+      created : Unsigned_32;
+      lookup : Ext2.Directory_Lookup_Status;
+      status : Ext2.Write_Status;
+   begin
+      namespaceRequest (sender, msg, pathBuffer, pathLen, volume, relStart, ok);
+      if not ok then
+         return;
+      end if;
+      Ext2.makeDirectoryPath
+        (Contexts (volume).Fs, pathBuffer (relStart .. pathLen), created, lookup, status);
+      if lookup /= Ext2.Lookup_Found then
+         sendReply (sender, Lookup_Reply_Label (lookup), 0);
+      else
+         sendReply (sender, replyForWrite (status), Unsigned_64 (created));
+      end if;
+   end handleMkdir;
+
+   --  Remove an empty directory. Refused while a directory handle has it
+   --  open: its blocks would be freed under the enumeration.
+   procedure handleRmdir (sender : ProcessID; msg : Message) is
+      pathBuffer : String (1 .. Natural (MAXIMUM_PATH_BYTES));
+      pathLen, relStart : Natural;
+      volume : Volume_Index;
+      ok : Boolean;
+      target, removed : Unsigned_32;
+      lookup : Ext2.Directory_Lookup_Status;
+      status : Ext2.Remove_Status;
+   begin
+      namespaceRequest (sender, msg, pathBuffer, pathLen, volume, relStart, ok);
+      if not ok then
+         return;
+      end if;
+      declare
+         relPath : String renames pathBuffer (relStart .. pathLen);
+      begin
+         Ext2.resolvePath (Contexts (volume).Fs, relPath, target, lookup);
+         if lookup /= Ext2.Lookup_Found then
+            sendReply (sender, Lookup_Reply_Label (lookup), 0);
+            return;
+         end if;
+         for j in files'Range loop
+            if files (j).active and then files (j).objectKind = DIRECTORY_OBJECT and then
+              files (j).filesystemKind = EXT2_FILESYSTEM and then
+              files (j).volume = volume and then files (j).inodeNum = target
+            then
+               sendReply (sender, REPLY_SHARING_VIOLATION, 0);
+               return;
+            end if;
+         end loop;
+         Ext2.removeDirectoryPath (Contexts (volume).Fs, relPath, removed, status);
+      end;
+      sendReply (sender, replyForRemove (status), 0);
+   end handleRmdir;
+
    --  Main message loop variables
    sender : ProcessID;
    msg    : Message;
    rdAddr : Unsigned_64;
    rdSize : Unsigned_64;
+
+   ---------------------------------------------------------------------------
+   --  handleQueue: a client lends its request queue and transfer arena
+   --  (FQ.OP_FS_QUEUE): words 0 = queue grant, 1 = arena grant (wire form),
+   --  2 = arena bytes. One queue per process.
+   ---------------------------------------------------------------------------
+   procedure handleQueue (sender : ProcessID; msg : Message) is
+      free : Client_Queue_Count := No_Client_Queue;
+      queueRef, arenaRef : CuBit.Grant_References.Reference;
+      queueGrant, arenaGrant : CuBit.Memory_Grants.Grant_Reference;
+      base, arena : System.Address;
+      ok, returned : Boolean;
+   begin
+      if msg.tag.length /= 3 or else
+        not CuBit.Grant_References.Valid_Wire (msg.words (0)) or else
+        not CuBit.Grant_References.Valid_Wire (msg.words (1)) or else
+        msg.words (2) = 0
+      then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+      for q in clientQueues'Range loop
+         if clientQueues (q).owner = sender then
+            sendReply (sender, REPLY_ERR, 0);
+            return;
+         end if;
+         if free = No_Client_Queue and then clientQueues (q).owner = NO_PROCESS then
+            free := q;
+         end if;
+      end loop;
+      if free = No_Client_Queue then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+      queueRef := CuBit.Grant_References.Decode (msg.words (0));
+      arenaRef := CuBit.Grant_References.Decode (msg.words (1));
+      queueGrant := (slot => queueRef.slot, generation => queueRef.generation);
+      arenaGrant := (slot => arenaRef.slot, generation => arenaRef.generation);
+      CuBit.Memory_Grants.Acquire
+        (queueGrant, sender, 0, FQ.Queue_Bytes,
+         CuBit.Memory_Grants.Write_Access, base, ok);
+      if not ok then
+         sendReply (sender, REPLY_ACCESS_DENIED, 0);
+         return;
+      end if;
+      CuBit.Memory_Grants.Acquire
+        (arenaGrant, sender, 0, msg.words (2),
+         CuBit.Memory_Grants.Write_Access, arena, ok);
+      if not ok then
+         CuBit.Memory_Grants.Return_Acquisition (queueGrant, returned);
+         sendReply (sender, REPLY_ACCESS_DENIED, 0);
+         return;
+      end if;
+      clientQueues (free) := (owner      => sender,
+                              queueGrant => queueGrant,
+                              arenaGrant => arenaGrant,
+                              base       => base,
+                              arena      => arena,
+                              arenaBytes => msg.words (2),
+                              server     => <>,
+                              waiting    => False);
+      sendReply (sender, REPLY_OK, 0);
+   end handleQueue;
+
+   --  Take the client's reaped index: its answers' slots are free again.
+   procedure acceptReaped (q : Client_Queue_Index) is
+      consumed : Unsigned_32 with Volatile, Import,
+        Address => queueWord (q, FQ.Completions_At + FQ.Consumed_At);
+      ignore : Boolean;
+   begin
+      FQueues.Accept_Reaped
+        (clientQueues (q).server, FQueues.Completions.Index (consumed), ignore);
+   end acceptReaped;
+
+   --  WAIT (FQ.OP_FS_WAIT): complete now if answers wait, else when one is
+   --  posted.
+   procedure handleWait (sender : ProcessID) is
+   begin
+      for q in clientQueues'Range loop
+         if clientQueues (q).owner = sender then
+            acceptReaped (q);
+            if clientQueues (q).server.Answers.Fill > 0 or else
+              clientQueues (q).waiting
+            then
+               sendReply (sender, REPLY_OK, 0);
+            elsif saveReplyCap (Unsigned_64 (WAIT_REPLY_SLOT_BASE + q)) = 1 then
+               clientQueues (q).waiting := True;
+            else
+               sendReply (sender, REPLY_ERR, 0);
+            end if;
+            return;
+         end if;
+      end loop;
+      sendReply (sender, REPLY_ERR, 0);
+   end handleWait;
+
+   --  Handle one request entry of queue q as its message twin would be.
+   procedure dispatchEntry (q : Client_Queue_Index; item : FQueues.Submission) is
+      owner : constant ProcessID := clientQueues (q).owner;
+      r : FQ.Request renames item.Item;
+      m : Message :=
+        (tag => (label => 0, length => 0, flags => 0, reserved => 0),
+         authorityTag => 0,
+         words => [others => 0]);
+      inArena : constant Boolean :=
+        FQ.In_Arena (r.Arena_Offset, r.Length, clientQueues (q).arenaBytes);
+   begin
+      curRoute := (queue => q, token => item.Tag);
+      if inArena then
+         curArena := clientQueues (q).arena + Storage_Offset (r.Arena_Offset);
+         curArenaBytes := r.Length;
+      end if;
+      case r.Operation is
+         when FQ.Queue_Open =>
+            if inArena then
+               m.tag := (label => OP_OPEN, length => 4, flags => 0, reserved => 0);
+               m.words := [0 => 0, 1 => r.Length, 2 => Unsigned_64 (r.Options), 3 => 1];
+               handleOpen (owner, m);
+            else
+               sendReply (owner, REPLY_ERR, Unsigned_64'Last);
+            end if;
+         when FQ.Queue_Read_At | FQ.Queue_Write_At =>
+            if inArena then
+               m.tag := (label => (if r.Operation = FQ.Queue_Read_At then OP_READ_AT
+                                   else OP_WRITE_AT),
+                         length => 4, flags => 0, reserved => 0);
+               m.words := [0 => r.Handle, 1 => 0, 2 => r.Length, 3 => 1];
+               if r.Operation = FQ.Queue_Read_At then
+                  handleRead (owner, m, Explicit_Offset, r.Position);
+               else
+                  handleWrite (owner, m, Explicit_Offset, r.Position);
+               end if;
+            else
+               sendReply (owner, REPLY_ERR, 0);
+            end if;
+         when FQ.Queue_Close =>
+            m.tag := (label => OP_CLOSE, length => 1, flags => 0, reserved => 0);
+            m.words (0) := r.Handle;
+            handleClose (owner, m);
+         when FQ.Queue_Flush =>
+            m.tag := (label => OP_FLUSH_FILE, length => 1, flags => 0, reserved => 0);
+            m.words (0) := r.Handle;
+            handleFlush (owner, m);
+         when others =>
+            sendReply (owner, REPLY_ERR, 0);
+      end case;
+      curRoute := (others => <>);
+      curArena := System.Null_Address;
+      curArenaBytes := 0;
+   end dispatchEntry;
+
+   --  Take queue q's requests and handle each.
+   procedure serviceQueue (q : Client_Queue_Index) is
+      produced : Unsigned_32 with Volatile, Import,
+        Address => queueWord (q, FQ.Submissions_At + FQ.Produced_At);
+      consumed : Unsigned_32 with Volatile, Import,
+        Address => queueWord (q, FQ.Submissions_At + FQ.Consumed_At);
+      wake : Unsigned_32 with Volatile, Import,
+        Address => queueWord (q, FQ.Submissions_At + FQ.Wake_At);
+      requests : FQueues.Submissions.Ring with Import,
+        Address => queueWord (q, FQ.Requests_At);
+      item : FQueues.Submission;
+      ok   : Boolean;
+      took : Boolean := False;
+   begin
+      --  Awake: the client need not kick until the word is armed again.
+      if wake /= 0 then
+         wake := 0;
+      end if;
+      acceptReaped (q);
+      --  The client's count, read once; one that goes back or overfills the
+      --  ring is ignored.
+      FQueues.Submissions.Accept_Produced
+        (clientQueues (q).server.Requests, FQueues.Submissions.Index (produced), ok);
+      if not ok then
+         return;
+      end if;
+      --  The requests were written before the count was: read them after.
+      System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
+      while FQueues.Can_Take (clientQueues (q).server) loop
+         --  A private copy of the entry: what is checked is what is used.
+         FQueues.Take (clientQueues (q).server, requests, item);
+         took := True;
+         dispatchEntry (q, item);
+      end loop;
+      if took then
+         System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
+         consumed := Unsigned_32 (clientQueues (q).server.Requests.Consumed);
+      end if;
+   end serviceQueue;
+
+   --  When a queue last had requests (TSC): the service polls its queues
+   --  for a short window after that before it blocks, so back-to-back
+   --  requests need no KICK (CuBit.Busy_Poll, as netstack).
+   lastQueueActivity : Unsigned_64 := 0;
+
+   function queuesPending return Boolean is
+   begin
+      for q in clientQueues'Range loop
+         if clientQueues (q).owner /= NO_PROCESS then
+            declare
+               produced : Unsigned_32 with Volatile, Import,
+                 Address => queueWord (q, FQ.Submissions_At + FQ.Produced_At);
+            begin
+               if FQueues.Submissions.Index (produced) /=
+                 clientQueues (q).server.Requests.Consumed
+               then
+                  return True;
+               end if;
+            end;
+         end if;
+      end loop;
+      return False;
+   end queuesPending;
+
+   procedure serviceClientQueues is
+      polling : Boolean := True;
+   begin
+      while polling loop
+         for q in clientQueues'Range loop
+            if clientQueues (q).owner /= NO_PROCESS then
+               serviceQueue (q);
+            end if;
+         end loop;
+         --  Keep looking while requests keep coming, then briefly after.
+         loop
+            if queuesPending then
+               lastQueueActivity := CuBit.Busy_Poll.Now;
+               exit;
+            end if;
+            if not CuBit.Busy_Poll.Within
+              (lastQueueActivity, CuBit.Busy_Poll.Default_Window_Microseconds)
+            then
+               polling := False;
+               exit;
+            end if;
+            CuBit.Busy_Poll.Relax;
+         end loop;
+      end loop;
+   end serviceClientQueues;
+
+   --  About to block: arm each queue's wake word so its client kicks, then
+   --  look once more. True if requests wait: do not block.
+   function armClientQueues return Boolean is
+      found : Boolean := False;
+   begin
+      clientQueueEpoch :=
+        (if clientQueueEpoch = Unsigned_32'Last then 1 else clientQueueEpoch + 1);
+      for q in clientQueues'Range loop
+         if clientQueues (q).owner /= NO_PROCESS then
+            declare
+               produced : Unsigned_32 with Volatile, Import,
+                 Address => queueWord (q, FQ.Submissions_At + FQ.Produced_At);
+               wake : Unsigned_32 with Volatile, Import,
+                 Address => queueWord (q, FQ.Submissions_At + FQ.Wake_At);
+            begin
+               wake := clientQueueEpoch;
+               System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
+               if FQueues.Submissions.Index (produced) /=
+                 clientQueues (q).server.Requests.Consumed
+               then
+                  found := True;
+               end if;
+            end;
+         end if;
+      end loop;
+      return found;
+   end armClientQueues;
+
 begin
    debugPrint ("FS Server: Starting..." & LF);
 
@@ -2046,6 +2819,7 @@ begin
           words    => (others => 0)));
    end;
 
+   CuBit.Busy_Poll.Calibrate;   --  queue polling windows are timed by the TSC
    debugPrint ("FS Server: Entering message loop." & LF);
 
    --  Main IPC message loop.
@@ -2053,9 +2827,18 @@ begin
    --  can switch to Poll_Service_Request + Poll_Completion when capSubmit-based
    --  driver I/O is implemented.
    loop
+      --  Queued requests first; block only when none wait.
+      serviceClientQueues;
+      if not armClientQueues then
       receive (sender, msg);
 
       case msg.tag.label is
+         when FQ.OP_FS_QUEUE =>
+            handleQueue (sender, msg);
+         when FQ.OP_FS_KICK =>
+            null;   --  one-way: the queue is serviced at the loop's top
+         when FQ.OP_FS_WAIT =>
+            handleWait (sender);
          when OP_OPEN =>
             handleOpen (sender, msg);
          when OP_READ =>
@@ -2091,5 +2874,6 @@ begin
          when others =>
             sendReply (sender, REPLY_ERR, 0);
       end case;
+      end if;
    end loop;
 end main;

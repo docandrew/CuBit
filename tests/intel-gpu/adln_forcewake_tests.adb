@@ -3,6 +3,54 @@ with Intel_GPU_ADLN_Inventory; use Intel_GPU_ADLN_Inventory;
 with Intel_GPU_ADLN_Forcewake;
 with Ada.Text_IO;
 procedure ADLN_Forcewake_Tests is
+   procedure Delayed (Limit : Positive; Expected : Boolean) is
+      Ack : array (Domain) of Unsigned_32 := [others => 0];
+      Target : array (Domain) of Unsigned_32 := [others => 0];
+      Pending : array (Domain) of Natural := [others => 0];
+      Ticks : Unsigned_64 := 0;
+      function Read_32 (Offset : Unsigned_32) return Unsigned_32 is
+      begin
+         for D in Domain loop
+            if Offset = Ack_Register (D) then return Ack (D); end if;
+         end loop;
+         raise Program_Error;
+      end Read_32;
+      procedure Write_32 (Offset, Value : Unsigned_32) is
+      begin
+         for D in Domain loop
+            if Offset = Request_Register (D) then
+               Target (D) := Value and 1;
+               Pending (D) := 200;
+               return;
+            end if;
+         end loop;
+         raise Program_Error;
+      end Write_32;
+      procedure Pause is
+      begin
+         Ticks := Ticks + 1;
+         for D in Domain loop
+            if Pending (D) > 0 then
+               Pending (D) := Pending (D) - 1;
+               if Pending (D) = 0 then Ack (D) := Target (D); end if;
+            end if;
+         end loop;
+      end Pause;
+      function Now return Unsigned_64 is (Ticks / 1000);
+      package FW is new Intel_GPU_ADLN_Forcewake
+        (Read_32, Write_32, Pause, Now, Limit);
+      OK : Boolean;
+   begin
+      FW.Acquire (16#8086#, 16#46D2#, 16#000E00FE#, OK);
+      pragma Assert (OK = Expected);
+      if OK then
+         FW.Release (OK);
+         pragma Assert (OK and FW.Failure_Detail = "none");
+      else
+         pragma Assert (FW.Failure_Detail =
+           "domain= 0 acquire poll-budget-exhausted ack=00000000");
+      end if;
+   end Delayed;
    procedure Run (Fuse : Unsigned_32; Fail_Acquire, Fail_Release : Natural) is
       type Counts is array (Domain) of Natural;
       Sets, Clears : Counts := [others => 0];
@@ -61,6 +109,15 @@ procedure ADLN_Forcewake_Tests is
            not Required (Domain'Val (Fail_Release - 1))));
          pragma Assert (FW.State = (if OK then FW.Idle else FW.Faulted));
       else pragma Assert (FW.State = FW.Faulted); end if;
+      if Failed /= 0 then
+         pragma Assert (FW.Failure_Detail =
+           "domain=" & Natural'Image (Failed - 1) &
+           " acquire deadline-expired ack=00000000");
+      elsif not OK then
+         pragma Assert (FW.Failure_Detail =
+           "domain=" & Natural'Image (Fail_Release - 1) &
+           " release deadline-expired ack=00000001");
+      end if;
       for D in Domain loop
          pragma Assert (Clears (D) =
            (if Required (D) and (Failed = 0 or Number (D) <= Failed) then 1 else 0));
@@ -76,6 +133,8 @@ procedure ADLN_Forcewake_Tests is
       end;
    end Run;
 begin
+   Delayed (100, False);
+   Delayed (100_000, True);
    for Mask in Unsigned_32 range 0 .. 7 loop
       for A in 0 .. 5 loop
          for R in 0 .. 5 loop
@@ -84,5 +143,5 @@ begin
          end loop;
       end loop;
    end loop;
-   Ada.Text_IO.Put_Line ("PASS: 288 combined ADL-N forcewake failure cases");
+   Ada.Text_IO.Put_Line ("PASS: 288 combined ADL-N forcewake failure cases + 2 delayed-ack cases");
 end ADLN_Forcewake_Tests;

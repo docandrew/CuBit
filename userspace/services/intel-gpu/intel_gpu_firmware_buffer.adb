@@ -1,6 +1,6 @@
 with CuBit.Messages; use CuBit.Messages;
 with System.Storage_Elements; use System.Storage_Elements;
-with System.Machine_Code; use System.Machine_Code;
+with Intel_GPU_DMA_Cache;
 package body Intel_GPU_Firmware_Buffer is
    use Interfaces;
    use type System.Address;
@@ -9,34 +9,32 @@ package body Intel_GPU_Firmware_Buffer is
    Virtual : constant Unsigned_64 := 16#6100_0000#;
    Prepared_View : Prepared_Buffer := (Ready => False);
    function Prepared return Prepared_Buffer is (Prepared_View);
-   function Flush_Retained_Buffer return Boolean is
-      A, B, C, D : Unsigned_32;
-      Line_Bytes, Offset : Unsigned_64;
+   function Prepared_Submission (Part : Intel_GPU_Submission_Backing.Region)
+     return Prepared_Submission_Buffer is
    begin
-      -- x86 adapter, not a platform-neutral DMA coherency guarantee. The
-      -- retained pages are mapped and exclusively CPU-written by this service.
-      -- CuBit must schedule it only on CPUs with compatible CLFLUSH support.
-      Asm ("cpuid",
-        Inputs => (Unsigned_32'Asm_Input ("a", 1), Unsigned_32'Asm_Input ("c", 0)),
-        Outputs => (Unsigned_32'Asm_Output ("=a", A), Unsigned_32'Asm_Output ("=b", B),
-                    Unsigned_32'Asm_Output ("=c", C), Unsigned_32'Asm_Output ("=d", D)),
-        Volatile => True);
-      if (D and 16#0008_0000#) = 0 then return False; end if;
-      Line_Bytes := Unsigned_64 (Shift_Right (B, 8) and 255) * 8;
-      if Line_Bytes = 0 or else Line_Bytes > 4096 or else
-        (Line_Bytes and (Line_Bytes - 1)) /= 0 or else
-        Virtual mod Line_Bytes /= 0 or else Capacity mod Line_Bytes /= 0
-      then return False; end if;
-      Asm ("mfence", Clobber => "memory", Volatile => True);
-      Offset := 0;
-      while Offset < Capacity loop
-         Asm ("clflush (%0)", Inputs => Unsigned_64'Asm_Input ("r", Virtual + Offset),
-              Clobber => "memory", Volatile => True);
-         Offset := Offset + Line_Bytes;
-      end loop;
-      Asm ("mfence", Clobber => "memory", Volatile => True);
-      return True;
-   end Flush_Retained_Buffer;
+      if not Prepared_View.Ready or else not Intel_GPU_Submission_Backing.Valid_Layout
+      then return (Ready => False); end if;
+      return (Ready => True,
+        DMA_Address => Prepared_View.DMA_Address + Intel_GPU_Submission_Backing.Offsets (Part),
+        CPU_Address => Prepared_View.CPU_Address + Intel_GPU_Submission_Backing.Offsets (Part),
+        Region_Bytes => Intel_GPU_Submission_Backing.Sizes (Part));
+   end Prepared_Submission;
+   function Prepared_CT return Prepared_CT_Buffer is
+   begin
+      if not Prepared_View.Ready then return (Ready => False); end if;
+      return (Ready => True,
+        DMA_Address => Prepared_View.DMA_Address + CT_Region_Offset,
+        CPU_Address => Prepared_View.CPU_Address + CT_Region_Offset,
+        Region_Bytes => CT_Region_Bytes);
+   end Prepared_CT;
+   function Prepared_Log return Prepared_Log_Buffer is
+   begin
+      if not Prepared_View.Ready then return (Ready => False); end if;
+      return (Ready => True,
+        DMA_Address => Prepared_View.DMA_Address + Log_Region_Offset,
+        CPU_Address => Prepared_View.CPU_Address + Log_Region_Offset,
+        Region_Bytes => Log_Region_Bytes);
+   end Prepared_Log;
    function Prepare (Source : System.Address; Bytes : Unsigned_64) return String is
       Token : constant Unsigned_64 := 16#4947_0005#;
       Msg : Message := NULL_MESSAGE;
@@ -48,7 +46,8 @@ package body Intel_GPU_Firmware_Buffer is
    begin
       if Attempted then return "already-attempted"; end if;
       Attempted := True;
-      if Source = System.Null_Address or else Bytes = 0 or else Bytes > Capacity or else
+      if Source = System.Null_Address or else Bytes = 0 or else
+        Bytes > Firmware_Region_Bytes or else
         Unsigned_64 (To_Integer (Source)) > Unsigned_64'Last - Bytes
       then return "invalid-source"; end if;
       Msg.tag := (16#022C#, 0, 0, 0);
@@ -92,7 +91,9 @@ package body Intel_GPU_Firmware_Buffer is
             end if;
          end loop;
       end;
-      if not Flush_Retained_Buffer then return "cache-flush-unavailable (retained)"; end if;
+      if not Intel_GPU_DMA_Cache.Flush_Range (Virtual, Capacity) then
+         return "cache-flush-unavailable (retained)";
+      end if;
       Prepared_View := (Ready => True, DMA_Address => Physical,
         CPU_Address => Virtual, Allocation_Bytes => Capacity, Content_Bytes => Bytes);
       return "prepared-retained (NOT GPU-published)";

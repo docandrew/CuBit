@@ -11,7 +11,7 @@
  *          records are dropped (the stream's DROP_OLDEST policy).
  *   0      none (no input stream is granted yet).
  *   3...   files and directories opened through filesystem.svc (file.c),
- *          read-only for now; pipes, which are in-process objects (a ring
+ *          files also for writing (no unlink or mkdir yet); pipes, which are in-process objects (a ring
  *          shared by both ends; threads use them to wake each other, e.g.
  *          mio's waker); connected socket pairs, two such rings (tokio's
  *          signal driver wakes itself through one; CuBit has no signals);
@@ -366,17 +366,49 @@ static void release_ring(struct pipe_obj *p, int reader)
 	if (last) free(p);
 }
 
+/* filesystem.svc open options (CuBit.Filesystems.Open_Options). */
+#define FS_OPEN_READ_ONLY 0
+#define FS_OPEN_WRITE_ONLY 1
+#define FS_OPEN_READ_WRITE 2
+#define FS_OPEN_CREATE 64
+#define FS_OPEN_TRUNCATE 512
+#define FS_OPEN_EXCLUSIVE 1024
+
+static int writable(const struct fd_entry *e)
+{
+	return (e->flags & O_ACCMODE) != O_RDONLY;
+}
+
+/* The service's options for open(2) flags; -errno for what it lacks. */
+static long open_options(int flags, uint64_t *options)
+{
+	int access = flags & O_ACCMODE;
+	uint64_t o = access == O_WRONLY ? FS_OPEN_WRITE_ONLY
+		: access == O_RDWR ? FS_OPEN_READ_WRITE : FS_OPEN_READ_ONLY;
+	if (access != O_RDONLY && access != O_WRONLY && access != O_RDWR)
+		return -EINVAL;
+	if (flags & O_CREAT) o |= FS_OPEN_CREATE;
+	if (flags & O_TRUNC) o |= FS_OPEN_TRUNCATE;
+	if ((flags & (O_CREAT | O_EXCL)) == (O_CREAT | O_EXCL)) o |= FS_OPEN_EXCLUSIVE;
+	*options = o;
+	return 0;
+}
+
 hidden long __cubit_fd_open(const char *path, int flags)
 {
-	if ((flags & O_ACCMODE) != O_RDONLY || (flags & (O_CREAT | O_TRUNC)))
-		return -EROFS;              /* read-only for now */
+	uint64_t options;
+	long r = open_options(flags, &options);
+	if (r) return r;
 	int directory = (flags & O_DIRECTORY) != 0;
+	if (directory && options != FS_OPEN_READ_ONLY)
+		return -EISDIR;             /* directories are read-only */
 	uint64_t handle, size = 0;
-	long r = __cubit_file_open(path, directory, &handle, &size);
-	if (r == -ENOTDIR && !directory && !(flags & O_NOFOLLOW)) {
+	r = __cubit_file_open(path, directory, options, &handle, &size);
+	if (r == -ENOTDIR && !directory && !(flags & O_NOFOLLOW) &&
+	    options == FS_OPEN_READ_ONLY) {
 		/* open(2) of a directory without O_DIRECTORY also succeeds. */
 		directory = 1;
-		r = __cubit_file_open(path, 1, &handle, &size);
+		r = __cubit_file_open(path, 1, options, &handle, &size);
 	}
 	if (r) return r;
 	struct dir_page *page = 0;
@@ -403,10 +435,10 @@ hidden long __cubit_path_stat(const char *path, struct stat *st)
 {
 	uint64_t handle, size = 0;
 	int directory = 0;
-	long r = __cubit_file_open(path, 0, &handle, &size);
+	long r = __cubit_file_open(path, 0, FS_OPEN_READ_ONLY, &handle, &size);
 	if (r == -ENOTDIR) {
 		directory = 1;
-		r = __cubit_file_open(path, 1, &handle, &size);
+		r = __cubit_file_open(path, 1, FS_OPEN_READ_ONLY, &handle, &size);
 	}
 	if (r) return r;
 	__cubit_file_close(handle, directory);
@@ -419,10 +451,67 @@ hidden long __cubit_path_stat(const char *path, struct stat *st)
 	return 0;
 }
 
+/* A positioned write; the file's size follows it. */
+static long file_write_at(struct fd_entry *e, const void *buf, size_t n, uint64_t at)
+{
+	long put = __cubit_file_write_at(e->handle, buf, n, at);
+	if (put > 0) {
+		LOCK(table_lock);
+		if (at + (uint64_t)put > e->size) e->size = at + (uint64_t)put;
+		UNLOCK(table_lock);
+	}
+	return put;
+}
+
+hidden long __cubit_fd_pwrite(int fd, const void *buf, size_t n, off_t offset)
+{
+	struct fd_entry *e = lookup(fd);
+	if (!e) return -EBADF;
+	if (e->kind == FD_DIR) return -EISDIR;
+	if (e->kind != FD_FILE) return -ESPIPE;
+	if (!writable(e)) return -EBADF;
+	if (offset < 0) return -EINVAL;
+	if (!n) return 0;
+	return file_write_at(e, buf, n, (uint64_t)offset);
+}
+
+/* write(2) on a file: at the descriptor's offset (the end with O_APPEND). */
+static long file_writev(struct fd_entry *e, const struct iovec *iov, int n)
+{
+	if (!writable(e)) return -EBADF;
+	long total = 0;
+	for (int i = 0; i < n; i++) {
+		if (!iov[i].iov_len) continue;
+		LOCK(table_lock);
+		uint64_t at = (e->flags & O_APPEND) ? e->size : e->offset;
+		UNLOCK(table_lock);
+		long put = file_write_at(e, iov[i].iov_base, iov[i].iov_len, at);
+		if (put < 0) return total ? total : put;
+		LOCK(table_lock);
+		e->offset = at + (uint64_t)put;
+		UNLOCK(table_lock);
+		total += put;
+		if ((size_t)put < iov[i].iov_len) break;
+	}
+	return total;
+}
+
+hidden long __cubit_fd_fsync(int fd)
+{
+	struct fd_entry *e = lookup(fd);
+	if (!e) return -EBADF;
+	if (e->kind == FD_DIR) return 0;    /* directory updates are written through */
+	if (e->kind != FD_FILE) return -EINVAL;
+	/* The service flushes only through a write-authorized handle; a
+	 * read-only one has written nothing. */
+	return writable(e) ? __cubit_file_flush(e->handle) : 0;
+}
+
 hidden long __cubit_fd_writev(int fd, const struct iovec *iov, int n)
 {
 	struct fd_entry *e = lookup(fd);
 	if (!e) return -EBADF;
+	if (e->kind == FD_FILE) return file_writev(e, iov, n);
 	if (e->kind == FD_PIPE_W || e->kind == FD_PAIR) return pipe_write(e, iov, n);
 	if (e->kind == FD_TCP)
 		return __cubit_tcp_write(e->tcp, iov, n, (e->flags & O_NONBLOCK) != 0);
@@ -539,7 +628,7 @@ hidden long __cubit_fd_fstat(int fd, struct stat *st)
 	st->st_blksize = 4096;
 	switch (e->kind) {
 	case FD_FILE:
-		st->st_mode = S_IFREG | 0444;
+		st->st_mode = S_IFREG | (writable(e) ? 0644 : 0444);
 		st->st_size = (off_t)e->size;
 		st->st_blocks = (blkcnt_t)((e->size + 511) / 512);
 		st->st_ino = e->handle;

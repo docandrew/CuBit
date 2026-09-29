@@ -10,6 +10,7 @@ with Interfaces; use Interfaces;
 with System;
 with USB_Optical;
 with XHCI_Capabilities;
+with USB_Keyboards;
 
 package XHCI is
 
@@ -69,6 +70,9 @@ package XHCI is
    --  service loop. Keeping requests resident across scheduling gaps avoids
    --  losing whole USB service intervals between mouse reports.
    procedure Start_Boot_Mouse_Transfers;
+   procedure Start_Boot_Keyboard_Transfers;
+   procedure Poll_Boot_Keyboard
+     (Data : out USB_Keyboards.Report; Ready, Progressed : out Boolean);
 
    --  Enable and acknowledge the controller's primary MSI interrupter.
    procedure Enable_Runtime_Interrupts

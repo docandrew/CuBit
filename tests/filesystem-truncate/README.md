@@ -24,7 +24,7 @@ disk, matching the cache-lifetime boundary used by the native service rather
 than overwriting a volume in place behind its live cache.
 
 The cache/I/O behavior is regression-tested, not newly SPARK-proved. The
-separate 87-check accounting/mapping proof does not prove hardware or cache
+separate 145-check accounting/mapping proof does not prove hardware or cache
 coherence.
 
 ## Allocation descriptor scan
@@ -70,7 +70,7 @@ quarantine. A read failure after completed zeroing strictly beyond EOF can
 leave the old size/prefix usable; it has not published or freed anything.
 
 SPARK proves exact subtraction and unchanged accounting on underflow rejection
-in `Sector_Accounting.Plan_Removal`; the combined local proof has **87 checks,
+in `Sector_Accounting.Plan_Removal`; the combined local proof has **145 checks,
 zero unproved**. This is not a proof of the pointer walk, IPC authorization,
 disk ordering or crash recovery. No kernel/runtime assertions were enabled.
 
@@ -97,6 +97,7 @@ nix develop -c tests/filesystem-truncate/build/inode_slots
 nix develop -c tests/filesystem-truncate/build/resizing
 nix develop -c tests/filesystem-truncate/build/path_decoding
 nix develop -c tests/filesystem-truncate/build/double_resize
+nix develop -c tests/filesystem-truncate/build/triple_resize
 ```
 
 This builds the **production Ext2 implementation**, not a duplicate algorithm.
@@ -105,23 +106,67 @@ The fixture supplies a sector device, a grant buffer, and a durable image
 snapshot updated by successful simulated flushes. Assertions/checks are enabled
 in this hosted executable; none were added to the native service.
 
+### Triple-indirect paths, growth, overwrite and resize
+
+Standard triple-indirect mappings are supported for read, overwrite, growth,
+resize and reclamation; see [the design summary](../../docs/ext2-interoperability.md#triple-indirect-support).
+Hosted production-path coverage (all against the real Ext2 package):
+
+- `path_decoding`: every direct/single/double path plus the first triple leaf
+  at 1/2/4 KiB, the whole 1 KiB triple extent, both sides of every triple leaf
+  (hence middle/top) boundary at 2/4 KiB, the final leaf and rejected indices:
+  **20,779,824 paths**, checked against a subtraction-based oracle.
+- `indirect_reads`: absent triple root as a hole, cold/warm cache I/O counts
+  at the final triple block, completed-prefix reporting past the limit, zero
+  and out-of-volume pointers at each triple level, endpoint cache identity,
+  an overwrite across the double/triple boundary, and **60 injected lookup
+  and payload failures** (four boundaries x three timings x five replies).
+- `sector_counts`: independent tree walk of allocation counts; triple growth,
+  second leaf, second middle, shrink to each boundary, regrowth zeroing a
+  retained partial block, full reclamation; last-slot 4 KiB growth needing
+  four blocks and LARGE_FILE; count overflow before reservation; definite
+  no-space before the triple root, middle or leaf releasing earlier
+  unpublished reservations; and the `Triple_Mappings` value rules. Fault
+  sweeps over triple growth patterns raise its total to **14,910 cases**.
+- `triple_resize`: **23,040 injected failures** over shrink at every boundary
+  (partial leaf, leaf, middle, root), unchanged size and sparse growth at all
+  geometries. Every attempted bitmap clear is checked against the last
+  flushed tree, including triple levels. It also covers valid but empty
+  middles/roots, growth zeroing past an absent middle, seven alias/count/range
+  corruptions rejected before writes, over-capacity inventory rejection with
+  no pointer I/O, and growth past the limit or above 2 GiB without LARGE_FILE.
+
+Shrink now skips leaves wholly inside the retained extent without rereading
+them (validation already read every block). This removes redundant reads, so
+`double_resize` has 13,212 rather than 13,356 transport boundaries to fail.
+
+`mutations.sh` applies 21 triple-specific mutants to a private source copy.
+Mutants of the SPARK units must fail the level-1 proof; those whose contract
+is expressed through the mutated function itself (limit, added blocks,
+validity rule) fall back to the hosted tests, as do Ext2 mutants. One
+equivalent control must survive:
+
+```sh
+nix develop -c bash tests/filesystem-truncate/mutations.sh
+```
+
 ### Double-indirect paths and existing mappings
 
 `path_decoding` exhausts 1,378,087 supported/boundary paths for 1/2/4 KiB blocks,
 plus large rejected 64-bit indices. `Block_Paths.Decode` now returns a bounded
 discriminated value; it cannot be passed a caller-constrained output record of
 the wrong variant. Its Ghost contract and range safety prove without `Assume`
-or SPARK-Off sections. The combined local proof now has **87 checks, none
+or SPARK-Off sections. The combined local proof now has **145 checks, none
 unproved**; this does not prove disk state, cache lifetime or hardware behavior.
 
 `indirect_reads` adds **105 before/partial/after injected faults** for double-
 indirect overwrites and cross-leaf lookahead. Checks cover unchanged metadata,
 cache recovery, a single payload request on warm contiguous overwrites,
-single/double and leaf boundaries, the final double block and completed-prefix
-reporting at the unsupported triple boundary. New allocation and resizing use
+single/double and leaf boundaries, the final double block, overwrites across the
+double/triple boundary and completed-prefix reporting past the final triple block. New allocation and resizing use
 the real bitmap/accounting fixtures described below.
 
-`double_resize` adds **13,356 injected failures** for shrink/growth at all three
+`double_resize` adds **13,212 injected failures** for shrink/growth at all three
 geometries, including partial leaves, discarded leaves, double-root retirement,
 and data-vs-metadata/cross-leaf duplicate rejection before writes. Every reclaimed
 block must be unreachable in the last flushed tree. The inventory sort also
@@ -141,7 +186,7 @@ referenced block stays allocated, the operation reports recovery required with
 no reliable completed prefix, and subsequent writes issue no I/O.
 
 Other cases cover successful reclamation/accounting, duplicate/out-of-range
-pointers, unsupported triple-indirect trees, read-only devices, missing flush
+pointers, an unaccounted triple root, read-only devices, missing flush
 support, and a block session advertising volatile storage.
 
 Allocation and creation add these before/partial/after fault sweeps:
@@ -188,8 +233,9 @@ The new executable exercises:
 - Completed-prefix reporting and failed speculative lookup during batching.
   A speculative error aborts before issuing that batch's data read; only
   earlier completed batches are reported. It is not hidden by an implicit retry.
-- Legitimate sparse holes, malformed pointers, single/double range boundaries,
-  rejected triple-indirect ranges, and no allocation on write-side lookup error.
+- Legitimate sparse holes, malformed pointers, single/double/triple range
+  boundaries, the rejected range past the final triple block, and no allocation
+  on write-side lookup error.
 - Endpoint isolation and reopening the same endpoint after its image changes.
   Volume initialization clears pointer caches; RAM uses the same block protocol.
 
@@ -245,8 +291,9 @@ These are regression tests, **not a SPARK proof**, hardware power-cut test,
 full malicious-filesystem validator, or journaled transaction. The device must
 honor its flush contract. Initial block ownership is assumed consistent; local
 pointer range/duplicate validation is not a global cross-link or metadata-block
-ownership proof. Triple-indirect truncation, external attributes, and
-fragments are rejected rather than partially handled.
+ownership proof. External attributes and fragments are rejected rather than
+partially handled, as are resizes of files whose allocation exceeds the
+validation inventory capacity (see triple-indirect support below).
 
 Interrupted reclamation can leak blocks or leave free-space counters inconsistent.
 Quarantine is currently in-memory: it is not a persistent recovery marker.
@@ -332,7 +379,7 @@ indirect mappings, with 75 failure cases at pointer-read and data-batch completi
 Failed speculative lookup discards the unsubmitted batch, preserving any earlier
 completed prefix. Other cases check provider versus grant bounds, larger device
 sectors, holes/fragmentation, unrequested invalid mappings, original EOF and the
-unsupported triple-indirect-write boundary. These batches never allocate blocks.
+unsupported write boundary past the final triple block. These batches never allocate blocks.
 
 ## Allocated-sector accounting
 
@@ -354,8 +401,9 @@ Run the proof in Nix:
 nix develop -c bash -c 'cd kernel && alr exec -- gnatprove -P ../tests/filesystem-truncate/accounting_proof.gpr --level=1 --timeout=5 --checks-as-errors=on -j2'
 ```
 
-Combined result: **87 checks, 0 unproved** (29 flow/initialization/termination,
-49 runtime, 9 functional contracts). No `Assume`, suppressed proof obligations or SPARK-Off
+Combined result, from a clean proof cache with triple-indirect support:
+**145 checks, 0 unproved** at level 1 (44 flow/initialization/termination,
+79 runtime, 5 assertions, 17 functional contracts); no per-file budgets. No `Assume`, suppressed proof obligations or SPARK-Off
 escape hatches are used in these units. No runtime assertion option was added
 to the native service.
 

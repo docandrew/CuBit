@@ -20,16 +20,22 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Busy_Poll;
 with Net;
-with Net.RFLX_Builtin_Types;
-with Net.UDP.Datagram;
 with SipHash;
 with TCP_Congestion;
 with TCP_Header;
 with DNS_Name;
 with DNS_Response;
+with DNS_Query;
 with IPv4_Header;
 with ICMPv4_Error;
+with IPv4_Frame;
+with IPv4_ICMP;
+with UDP_Frame;
+with TCP_Frame;
+with TCP_Dispatch;
+with Channel_Service;
 with ARP_Packet;
 with ARP_Cache;
 with UDP_Header;
@@ -44,7 +50,8 @@ with TCP_Time_Wait;
 with TCP_Reset;
 with TCP_Wire;
 with TCP_Listeners;
-with Frame_Ring;
+with CuBit.Frame_Rings;
+with CuBit.Net_Control_Queues;
 with Channel_Geometry;
 with Channel_Arenas;
 with IPv6_Frame;
@@ -77,6 +84,12 @@ package body Netstack_Service is
    use type Seq;
    package Network_Authority renames CuBit.Network_Authority;
    package Layout renames CuBit.Net_Channel_Layout;
+
+   --  Channel_Service (proved without the runtime) names the same kick bits.
+   pragma Compile_Time_Error
+     (Channel_Service.Kick_On_Send /= Layout.Kick_On_Send or else
+      Channel_Service.Kick_On_Receive /= Layout.Kick_On_Receive,
+      "Channel_Service kick bits differ from CuBit.Net_Channel_Layout");
    package Rings renames CuBit.Channel_Rings;
    package Datagrams renames CuBit.Datagram_Rings;
    package Prof renames Netstack_Profile;
@@ -87,20 +100,15 @@ package body Netstack_Service is
    --  Well-known capability slots (granted by kernel modules.adb)
    CAP_SLOT_NET_DRV : constant CapabilitySlot := 10;
 
-   --  Shared packet buffer layout
-   PACKET_BUF_PAGES : constant := 128;    -- 512 KB: RX ring, then TX ring
-   PACKET_BUF_SIZE  : constant := PACKET_BUF_PAGES * 4096;
-   TX_AREA_OFFSET   : constant := PACKET_BUF_SIZE / 2;    -- TX half
-   TX_SLOT_SIZE     : constant := 2048;                   -- per-slot size
-   --  The TX half is a ring the driver drains (virtio-net's drainTXRing):
-   --  its first slot holds our producer count (byte 0) and the driver's
-   --  consumer count (byte 64), both free-running; frame N is in slot
-   --  (N mod TX_RING_SLOTS) + 1, its length (4 bytes) first and the frame
-   --  TX_FRAME_HEADER bytes in. OP_NET_TX is only a doorbell.
-   NUM_TX_SLOTS       : constant := (PACKET_BUF_SIZE / 2) / TX_SLOT_SIZE;
-   TX_RING_SLOTS      : constant := NUM_TX_SLOTS - 1;
-   TX_FRAME_HEADER    : constant := 16;
-   TX_CONSUMER_OFFSET : constant := 64;
+   --  The packet grant shared with the driver: a header page, then the
+   --  receive and transmit frame rings (CuBit.Frame_Rings). The driver
+   --  drains the transmit ring (virtio-net's drainTXRing); OP_NET_TX is
+   --  only a doorbell.
+   package Frames renames CuBit.Frame_Rings;
+   package Frame_Ring renames CuBit.Frame_Rings.Rings;
+   use type Frame_Ring.Index;
+   PACKET_BUF_PAGES : constant := Frames.Grant_Pages;
+   PACKET_BUF_SIZE  : constant := Frames.Grant_Bytes;
 
 
    --  Multi-interface support
@@ -118,7 +126,7 @@ package body Netstack_Service is
       arpCache  : ARP_Cache.Table;
       gwMAC     : Net.MACAddress := Net.ZERO_MAC;
       grantId   : Unsigned_64 := 0;
-      txProduced : Unsigned_32 := 0;   --  frames put in the TX ring
+      txRing    : Frame_Ring.Producer;   --  our transmit ring's indices
       pktBuf    : System.Address := System.Null_Address;
       pktGrant  : Unsigned_64 := 0;
    end record;
@@ -155,6 +163,9 @@ package body Netstack_Service is
    DNS_PORT_FIRST : constant Unsigned_16 := 49152;
    DNS_PORT_COUNT : constant := 16_384;
    DNS_SERVER_PORT : constant Unsigned_16 := 53;
+   IPV4_PREFIX_BITS  : constant := 32;
+   --  The largest TCP segment an IPv4 packet can carry.
+   TCP_MAXIMUM_SEGMENT : constant := 65_535 - 20;
    secondaryDNS : Net.IPv4Address := [others => 0];
 
    --  Convenience aliases for interface 0 (used during transition)
@@ -285,7 +296,18 @@ package body Netstack_Service is
 
    function deadlineAfter (Now, Delay_MS : Unsigned_64) return Unsigned_64 is
      (if Delay_MS > Unsigned_64'Last - Now then Unsigned_64'Last else Now + Delay_MS);
-   nextEphemeralPort : Unsigned_16 := 49152;  -- incrementing ephemeral port
+   --  Ephemeral ports (RFC 6056 3.3.3, "double-hash"): a keyed hash of the
+   --  destination picks where a connection's search starts, and a counter
+   --  per hash bucket moves it on, so ports are unpredictable to others
+   --  and successive connections to one destination do not reuse a port.
+   EPHEMERAL_FIRST : constant := 49_152;
+   EPHEMERAL_COUNT : constant := 16_384;
+   EPHEMERAL_TRIES : constant := 64;
+   PORT_BUCKETS    : constant := 256;
+   portKey   : SipHash.Key := (K0 => 0, K1 => 0);
+   portSteps : array (0 .. PORT_BUCKETS - 1) of Unsigned_32 := [others => 0];
+   --  Datagram channels opened: mixed into each one's starting port.
+   udpOpens  : Unsigned_32 := 0;
 
    --  Legacy aliases to interface 0 (for incremental refactoring)
    --  New code should use interfaces(ifIdx).xxx directly.
@@ -468,6 +490,41 @@ package body Netstack_Service is
       return OK;
    end claimBuffer;
 
+   ---------------------------------------------------------------------------
+   --  Control queues (Layout, "Control queues"): OPEN and SHUT as entries
+   --  in a queue pair a process lent (CuBit.Net_Control_Queues). A queue
+   --  acts with the authority tag of the QUEUE request that set it up.
+   --  A request's answer goes back the way the request came: a reply
+   --  capability, or its queue with the request's token.
+   ---------------------------------------------------------------------------
+   package Control renames CuBit.Net_Control_Queues.Queues;
+   MAX_QUEUES : constant := 16;
+   subtype Queue_Count is Natural range 0 .. MAX_QUEUES;
+   subtype Queue_Index is Queue_Count range 1 .. MAX_QUEUES;
+   No_Queue : constant Queue_Count := 0;
+
+   type Reply_Route is record
+      queue : Queue_Count := No_Queue;
+      token : Control.Token := 0;
+   end record;
+
+   type ControlQueue is record
+      owner  : ProcessID := NO_PROCESS;
+      tag    : Unsigned_64 := 0;
+      grant  : CuBit.Memory_Grants.Grant_Reference;
+      base   : System.Address := System.Null_Address;
+      server : Control.Server;
+   end record;
+   queues : array (Queue_Index) of ControlQueue;
+   queueEpoch : Unsigned_32 := 0;
+
+   --  The request being handled came from this queue entry (only while a
+   --  queue entry is dispatched): immediate replies go to it.
+   curRoute : Reply_Route;
+
+   --  Answer on a queue; the owner's WAIT completes (defined below).
+   procedure answerQueue (route : Reply_Route; ok : Boolean; value : Unsigned_64);
+
    --  Pending request queue (deferred reply for blocking ops)
    type PendingKind is (PENDING_NONE, PENDING_RESOLVE,
                         PENDING_CONNECT,
@@ -503,6 +560,8 @@ package body Netstack_Service is
       --  wait bits of the channels it is for.
       waitDeadline : Unsigned_64 := Unsigned_64'Last;
       waitMask     : Unsigned_64 := 0;
+      --  Where the answer goes: replySlot, or a control queue.
+      route        : Reply_Route;
    end record;
 
    --  How long a resolver query waits for its answer, in all. Within it,
@@ -514,6 +573,10 @@ package body Netstack_Service is
    --  Deferred replies are saved in capability slots 16 .. 16 + MAX_PENDING - 1.
    MAX_PENDING : constant := 32;
    pendingReqs : array (0 .. MAX_PENDING - 1) of PendingRequest;
+
+   --  A deferred request's answer, the way it came (defined below).
+   procedure answerError (P : PendingRequest);
+   procedure answerOK (P : PendingRequest; w0 : Unsigned_64);
    --  Resolver randomness: transaction IDs and source ports are a keyed
    --  PRF of a counter (unpredictable off-path, RFC 5452), keyed at start.
    dnsKey     : SipHash.Key := (K0 => 0, K1 => 0);
@@ -579,6 +642,11 @@ package body Netstack_Service is
               Rings.Valid_Size (Request.words (2) and 16#FFFF_FFFF#) and then
               Rings.Valid_Size (Shift_Right (Request.words (2), 32)) and then
               Request.words (3) in 1 .. Layout.Maximum_Arena_Buffers and then
+              Network_Grants.Owned (networkGrants, Owner, Request.authorityTag);
+         when Layout.OP_NET_QUEUE =>
+            return Request.tag.length = 2 and then
+              Request.words (0) <= CuBit.Memory_Grants.MAXIMUM_GLOBAL_SLOT and then
+              Request.words (1) in 1 .. CuBit.Memory_Grants.MAXIMUM_GENERATION and then
               Network_Grants.Owned (networkGrants, Owner, Request.authorityTag);
          when Layout.OP_NET_SCOPE =>
             return Request.tag.length = 0 and then
@@ -794,35 +862,57 @@ package body Netstack_Service is
    --  Frames were added to the TX ring since the driver was last told.
    txDoorbell : Boolean := False;
 
+   --  The transmit direction's header words.
+   function txWord (Offset : Natural) return System.Address is
+     (interfaces (0).pktBuf + Storage_Offset (Frames.Transmit_Header_At + Offset));
+
+   --  Take the driver's consumed count if it is sane (a bad one frees
+   --  nothing); True if a frame fits in the ring now.
+   function txRoom (frameLen : Natural) return Boolean is
+      consumed : Unsigned_32 with Volatile, Import,
+        Address => txWord (Frames.Consumed_At);
+      ignore : Boolean;
+   begin
+      Frame_Ring.Accept_Consumed
+        (interfaces (0).txRing, Frame_Ring.Index (consumed), ignore);
+      return Frame_Ring.Space (interfaces (0).txRing) > 0 and then
+        frameLen <= Frames.Maximum_Frame;
+   end txRoom;
+
+   --  The next transmit slot's start.
+   function txSlot return System.Address is
+     (interfaces (0).pktBuf + Storage_Offset
+        (Frames.Transmit_Slot_At (Frame_Ring.Next_Slot (interfaces (0).txRing))));
+
+   --  Hand the frame in the next slot (frameLen bytes) to the driver.
+   procedure txCommit (frameLen : Natural) is
+      produced : Unsigned_32 with Volatile, Import,
+        Address => txWord (Frames.Produced_At);
+      len : Unsigned_32 with Volatile, Import,
+        Address => txSlot + Storage_Offset (Frames.Length_At);
+   begin
+      len := Unsigned_32 (frameLen);
+      --  The frame is written before the count that hands it over.
+      System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
+      Frame_Ring.Commit (interfaces (0).txRing);
+      produced := Unsigned_32 (interfaces (0).txRing.Produced);
+      txDoorbell := True;
+   end txCommit;
+
    function doSendFrame (frameAddr : System.Address;
                          frameLen  : Natural) return Boolean is
-      area : constant System.Address := interfaces (0).pktBuf + Storage_Offset (TX_AREA_OFFSET);
-      produced : Unsigned_32 with Volatile, Import, Address => area;
-      consumed : Unsigned_32 with Volatile, Import,
-        Address => area + Storage_Offset (TX_CONSUMER_OFFSET);
-      next : constant Unsigned_32 := interfaces (0).txProduced;
    begin
-      if not Frame_Ring.Has_Room (next, consumed, TX_RING_SLOTS) or else
-        not Frame_Ring.Fits (Unsigned_32 (frameLen), TX_SLOT_SIZE, TX_FRAME_HEADER)
-      then
+      if not txRoom (frameLen) then
          return False;   --  the ring is full: the caller defers the frame
       end if;
       declare
-         slot : constant System.Address :=
-           area + Storage_Offset (Frame_Ring.Slot_Of (next, TX_RING_SLOTS) * TX_SLOT_SIZE);
          type Frame is array (0 .. frameLen - 1) of Unsigned_8;
          src : Frame with Import, Address => frameAddr;
-         dst : Frame with Import, Address => slot + Storage_Offset (TX_FRAME_HEADER);
-         len : Unsigned_32 with Volatile, Import, Address => slot;
+         dst : Frame with Import, Address => txSlot + Storage_Offset (Frames.Frame_At);
       begin
          dst := src;
-         len := Unsigned_32 (frameLen);
       end;
-      --  The frame is written before the count that hands it over.
-      System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
-      interfaces (0).txProduced := next + 1;
-      produced := next + 1;
-      txDoorbell := True;
+      txCommit (frameLen);
       return True;
    end doSendFrame;
 
@@ -830,37 +920,17 @@ package body Netstack_Service is
    --  in place, or Null_Address if the ring is full or older frames still
    --  wait in the deferred queue (they go first). txCommit hands it over.
    function txReserve (frameLen : Natural) return System.Address is
-      area : constant System.Address := interfaces (0).pktBuf + Storage_Offset (TX_AREA_OFFSET);
-      consumed : Unsigned_32 with Volatile, Import,
-        Address => area + Storage_Offset (TX_CONSUMER_OFFSET);
-      next : constant Unsigned_32 := interfaces (0).txProduced;
    begin
       if interfaces (0).pktBuf = System.Null_Address or else deferredCount > 0 or else
-        not Frame_Ring.Has_Room (next, consumed, TX_RING_SLOTS) or else
-        not Frame_Ring.Fits (Unsigned_32 (frameLen), TX_SLOT_SIZE, TX_FRAME_HEADER)
+        not txRoom (frameLen)
       then
          return System.Null_Address;
       end if;
-      return area + Storage_Offset (Frame_Ring.Slot_Of (next, TX_RING_SLOTS) * TX_SLOT_SIZE + TX_FRAME_HEADER);
+      return txSlot + Storage_Offset (Frames.Frame_At);
    end txReserve;
 
-   procedure txCommit (frameLen : Natural) is
-      area : constant System.Address := interfaces (0).pktBuf + Storage_Offset (TX_AREA_OFFSET);
-      produced : Unsigned_32 with Volatile, Import, Address => area;
-      next : constant Unsigned_32 := interfaces (0).txProduced;
-      len : Unsigned_32 with Volatile, Import,
-        Address => area + Storage_Offset (Frame_Ring.Slot_Of (next, TX_RING_SLOTS) * TX_SLOT_SIZE);
-   begin
-      len := Unsigned_32 (frameLen);
-      System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
-      interfaces (0).txProduced := next + 1;
-      produced := next + 1;
-      txDoorbell := True;
-   end txCommit;
-
-   --  The driver publishes a new nonzero epoch here (TX area, byte 68) each
-   --  time it is about to wait; one doorbell per epoch wakes it.
-   TX_DOORBELL_OFFSET : constant := 68;
+   --  The driver publishes a new nonzero epoch (the transmit header's
+   --  Wake_At) each time it is about to wait; one doorbell per epoch.
    txRungEpoch : Unsigned_32 := 0;
 
    --  Tell the driver the ring has frames (or the RX ring has room), if it
@@ -883,8 +953,7 @@ package body Netstack_Service is
          System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
          declare
             epoch : Unsigned_32 with Volatile, Import,
-              Address => interfaces (0).pktBuf +
-                         Storage_Offset (TX_AREA_OFFSET + TX_DOORBELL_OFFSET);
+              Address => txWord (Frames.Wake_At);
             seen : constant Unsigned_32 := epoch;
          begin
             if seen /= 0 and then seen /= txRungEpoch then
@@ -971,6 +1040,16 @@ package body Netstack_Service is
       end if;
    end sendFrame;
 
+   function v4 (a : Net.IPv4Address) return IPv4_Header.Address is
+     ([a (0), a (1), a (2), a (3)]);
+
+   procedure sendIPv4 (frame : IPv4_Header.Bytes)
+     with Pre => IPv4_Frame.Emittable (frame);
+   procedure sendIPv4 (frame : IPv4_Header.Bytes) is
+   begin
+      sendFrame (frame'Address, frame'Length);
+   end sendIPv4;
+
    procedure sendIPv6 (frame : IPv6_Header.Bytes)
      with Pre => IPv6_Frame.Emittable (frame);
    procedure sendIPv6 (frame : IPv6_Header.Bytes) is
@@ -985,28 +1064,27 @@ package body Netstack_Service is
    ---------------------------------------------------------------------------
    --  sendARPReply - respond to an ARP request
    ---------------------------------------------------------------------------
+   --  An ARP frame from our address, built by the proved ARP_Packet.Build.
+   procedure sendARP (op       : ARP_Packet.Operation;
+                      ethDest  : Net.MACAddress;
+                      targetHW : Net.MACAddress;
+                      targetIP : Net.IPv4Address) is
+      frame : ARP_Packet.Frame_Bytes;
+   begin
+      ARP_Packet.Build
+        ((Op        => op,
+          Sender_HW => ARP_Packet.MAC (interfaces (0).mac),
+          Sender_IP => arpIP (interfaces (0).ipv4),
+          Target_HW => ARP_Packet.MAC (targetHW),
+          Target_IP => arpIP (targetIP)),
+         ARP_Packet.MAC (ethDest), frame);
+      sendFrame (frame'Address, frame'Length);
+   end sendARP;
+
    procedure sendARPReply (dstMAC : Net.MACAddress;
                            dstIP  : Net.IPv4Address) is
-      frame : array (0 .. 41) of Unsigned_8;  -- 14 eth + 28 ARP
-      fAddr : constant System.Address := frame'Address;
    begin
-      --  Ethernet header
-      Net.putMAC   (fAddr, 0,  dstMAC);
-      Net.putMAC   (fAddr, 6,  interfaces (0).mac);
-      Net.putU16BE (fAddr, 12, Net.ETHERTYPE_ARP);
-
-      --  ARP payload
-      Net.putU16BE (fAddr, 14, 1);                 -- HTYPE: Ethernet
-      Net.putU16BE (fAddr, 16, 16#0800#);          -- PTYPE: IPv4
-      Net.putU8    (fAddr, 18, 6);                  -- HLEN
-      Net.putU8    (fAddr, 19, 4);                  -- PLEN
-      Net.putU16BE (fAddr, 20, Net.ARP_REPLY);     -- OPER
-      Net.putMAC   (fAddr, 22, interfaces (0).mac);
-      Net.putIP    (fAddr, 28, interfaces (0).ipv4);
-      Net.putMAC   (fAddr, 32, dstMAC);
-      Net.putIP    (fAddr, 38, dstIP);
-
-      sendFrame (fAddr, 42);
+      sendARP (ARP_Packet.Reply, dstMAC, dstMAC, dstIP);
       debugPrint ("NET: sent ARP reply to ");
       printIP (dstIP);
       debugPrint ("" & LF);
@@ -1015,25 +1093,11 @@ package body Netstack_Service is
    ---------------------------------------------------------------------------
    --  sendGratuitousARP
    ---------------------------------------------------------------------------
+   --  An ARP announcement (RFC 5227 2.3): a request whose sender and
+   --  target addresses are both ours, to everyone.
    procedure sendGratuitousARP is
-      frame : array (0 .. 41) of Unsigned_8;
-      fAddr : constant System.Address := frame'Address;
    begin
-      Net.putMAC   (fAddr, 0,  Net.BROADCAST_MAC);
-      Net.putMAC   (fAddr, 6,  interfaces (0).mac);
-      Net.putU16BE (fAddr, 12, Net.ETHERTYPE_ARP);
-
-      Net.putU16BE (fAddr, 14, 1);
-      Net.putU16BE (fAddr, 16, 16#0800#);
-      Net.putU8    (fAddr, 18, 6);
-      Net.putU8    (fAddr, 19, 4);
-      Net.putU16BE (fAddr, 20, Net.ARP_REPLY);
-      Net.putMAC   (fAddr, 22, interfaces (0).mac);
-      Net.putIP    (fAddr, 28, interfaces (0).ipv4);
-      Net.putMAC   (fAddr, 32, Net.ZERO_MAC);
-      Net.putIP    (fAddr, 38, interfaces (0).ipv4);
-
-      sendFrame (fAddr, 42);
+      sendARP (ARP_Packet.Request, Net.BROADCAST_MAC, Net.ZERO_MAC, interfaces (0).ipv4);
       debugPrint ("NET: sent gratuitous ARP for ");
       printIP (interfaces (0).ipv4);
       debugPrint ("" & LF);
@@ -1042,45 +1106,76 @@ package body Netstack_Service is
    ---------------------------------------------------------------------------
    --  sendARPRequest
    ---------------------------------------------------------------------------
+   --  When each ARP cache slot's neighbour was last asked about (the
+   --  cache's Since is when the question began, for expiry).
+   arpAskedAt : array (ARP_Cache.Index) of Unsigned_64 := [others => 0];
+
    procedure sendARPRequest (targetIP : Net.IPv4Address) is
-      frame : array (0 .. 41) of Unsigned_8;
-      fAddr : constant System.Address := frame'Address;
    begin
-      Net.putMAC   (fAddr, 0,  Net.BROADCAST_MAC);
-      Net.putMAC   (fAddr, 6,  interfaces (0).mac);
-      Net.putU16BE (fAddr, 12, Net.ETHERTYPE_ARP);
-
-      Net.putU16BE (fAddr, 14, 1);
-      Net.putU16BE (fAddr, 16, 16#0800#);
-      Net.putU8    (fAddr, 18, 6);
-      Net.putU8    (fAddr, 19, 4);
-      Net.putU16BE (fAddr, 20, Net.ARP_REQUEST);
-      Net.putMAC   (fAddr, 22, interfaces (0).mac);
-      Net.putIP    (fAddr, 28, interfaces (0).ipv4);
-      Net.putMAC   (fAddr, 32, Net.ZERO_MAC);
-      Net.putIP    (fAddr, 38, targetIP);
-
       --  The reply to this, and only it, may resolve targetIP.
       ARP_Cache.Request (interfaces (0).arpCache, arpIP (targetIP), syscall (SYSCALL_GETTIME));
-      sendFrame (fAddr, 42);
+      declare
+         pos : constant Integer :=
+           ARP_Cache.Position (interfaces (0).arpCache, arpIP (targetIP));
+      begin
+         if pos >= 0 then
+            arpAskedAt (pos) := clockNow;
+         end if;
+      end;
+      sendARP (ARP_Packet.Request, Net.BROADCAST_MAC, Net.ZERO_MAC, targetIP);
    end sendARPRequest;
 
    --  How often an unanswered neighbour is asked again (RFC 1122 2.3.2.1:
    --  at most one request per second per destination).
    ARP_RETRY_MS : constant Unsigned_64 := 1_000;
+   --  A mapping unconfirmed this long is asked again on its next use, and
+   --  a question unanswered this long is given up (RFC 4861's
+   --  REACHABLE_TIME and its probe window, as Linux applies them to ARP).
+   ARP_REACHABLE_MS : constant Unsigned_64 := 30_000;
+   ARP_PROBE_MS     : constant Unsigned_64 := 3_000;
+
+   --  hop's mapping is doubted (stale, or traffic through it stalls): ask
+   --  again. The answer may change the address (a replaced router).
+   procedure doubtNeighbour (hop : Net.IPv4Address) is
+      pos : constant Integer := ARP_Cache.Position (interfaces (0).arpCache, arpIP (hop));
+      use type ARP_Cache.State;
+   begin
+      --  Only a confirmed mapping is doubted; one already being asked
+      --  about is left to its question.
+      if hop /= [0, 0, 0, 0] and then pos >= 0 and then
+        interfaces (0).arpCache (pos).St = ARP_Cache.Resolved
+      then
+         ARP_Cache.Reconfirm (interfaces (0).arpCache, arpIP (hop), clockNow);
+         sendARPRequest (hop);
+      end if;
+   end doubtNeighbour;
 
    --  Ask for hop's link address, unless we asked within ARP_RETRY_MS.
    procedure requestNeighbour (hop : Net.IPv4Address) is
       pos : constant Integer := ARP_Cache.Position (interfaces (0).arpCache, arpIP (hop));
       use type ARP_Cache.State;
    begin
-      if pos >= 0 and then interfaces (0).arpCache (pos).St = ARP_Cache.Pending and then
-        clockNow < deadlineAfter (interfaces (0).arpCache (pos).Since, ARP_RETRY_MS)
+      if pos >= 0 and then
+        (interfaces (0).arpCache (pos).St = ARP_Cache.Resolved or else
+         clockNow < deadlineAfter (arpAskedAt (pos), ARP_RETRY_MS))
       then
-         return;
+         return;   --  confirmed, or asked within the last second
       end if;
       sendARPRequest (hop);
    end requestNeighbour;
+
+   --  hop's mapping has gone unconfirmed for ARP_REACHABLE_MS: ask again,
+   --  using the address meanwhile.
+   procedure doubtIfStale (hop : Net.IPv4Address) is
+      pos : constant Integer := ARP_Cache.Position (interfaces (0).arpCache, arpIP (hop));
+      use type ARP_Cache.State;
+   begin
+      if pos >= 0 and then interfaces (0).arpCache (pos).St = ARP_Cache.Resolved and then
+        clockNow >= deadlineAfter (interfaces (0).arpCache (pos).Since, ARP_REACHABLE_MS)
+      then
+         doubtNeighbour (hop);
+      end if;
+   end doubtIfStale;
 
    --  The link address to send to dstIP by: its next hop's (the route
    --  table's gateway, or dstIP itself on a connected network), from the
@@ -1100,8 +1195,11 @@ package body Netstack_Service is
          return;   --  no route
       end if;
       found := arpLookup (0, hop, mac);
-      if not found then
-         requestNeighbour (hop);
+      --  Unresolved or being reconfirmed: ask (at most once a second). A
+      --  confirmed mapping gone stale is doubted.
+      requestNeighbour (hop);
+      if found then
+         doubtIfStale (hop);
       end if;
    end neighbourMAC;
 
@@ -1123,111 +1221,14 @@ package body Netstack_Service is
       return (if ifIdx < 0 then [others => 0] else hop);
    end nextHopOf;
 
-   --  The IPv4 header of a frame, written by the proved IPv4_Header.Build.
-   procedure writeIPv4Header (fAddr    : System.Address;
-                              frameLen : Natural;
-                              proto    : Unsigned_8;
-                              srcIP    : Net.IPv4Address;
-                              dstIP    : Net.IPv4Address;
-                              df       : Boolean) is
-      packet : IPv4_Header.Bytes (0 .. frameLen - 15)
-        with Import, Address => fAddr + 14;
-   begin
-      IPv4_Header.Build
-        ((Size         => IPv4_Header.Minimum_Size,
-          Total_Length => frameLen - 14,
-          Protocol     => proto,
-          TTL          => 64,
-          Source       => [srcIP (0), srcIP (1), srcIP (2), srcIP (3)],
-          Destination  => [dstIP (0), dstIP (1), dstIP (2), dstIP (3)]),
-         df, packet);
-   end writeIPv4Header;
 
-   ---------------------------------------------------------------------------
-   --  sendICMPEchoRequest
-   ---------------------------------------------------------------------------
-   procedure sendICMPEchoRequest (dstIP  : Net.IPv4Address;
-                                  dstMAC : Net.MACAddress;
-                                  seq    : Unsigned_16;
-                                  ifIdx  : Natural := 0) is
-      FRAME_LEN   : constant := 74;
-      PAYLOAD_LEN : constant := 32;
-      frame : array (0 .. FRAME_LEN - 1) of Unsigned_8;
-      fAddr : constant System.Address := frame'Address;
-   begin
-      for i in frame'Range loop
-         frame (i) := 0;
-      end loop;
 
-      --  Ethernet header
-      Net.putMAC   (fAddr, 0,  dstMAC);
-      Net.putMAC   (fAddr, 6,  interfaces (ifIdx).mac);
-      Net.putU16BE (fAddr, 12, Net.ETHERTYPE_IPV4);
 
-      writeIPv4Header (fAddr, FRAME_LEN, Net.PROTO_ICMP, interfaces (ifIdx).ipv4, dstIP, False);
-
-      --  ICMP echo request (at offset 34)
-      Net.putU8    (fAddr, 34, Net.ICMP_ECHO_REQUEST);
-      Net.putU8    (fAddr, 35, 0);
-      Net.putU16BE (fAddr, 36, 0);
-      Net.putU16BE (fAddr, 38, 16#CB17#);
-      Net.putU16BE (fAddr, 40, seq);
-
-      for i in 0 .. PAYLOAD_LEN - 1 loop
-         Net.putU8 (fAddr, 42 + i, Unsigned_8 (i mod 256));
-      end loop;
-
-      declare
-         icmpCksum : Unsigned_16;
-      begin
-         icmpCksum := Net.internetChecksum (fAddr + 34, 8 + PAYLOAD_LEN);
-         Net.putU16BE (fAddr, 36, icmpCksum);
-      end;
-
-      sendFrame (fAddr, FRAME_LEN);
-      debugPrint ("NET: sent ICMP echo to ");
-      printIP (dstIP);
-      debugPrint (" seq=");
-      printDec (Unsigned_32 (seq));
-      debugPrint ("" & LF);
-   end sendICMPEchoRequest;
-
-   ---------------------------------------------------------------------------
-   --  sendIPv4Frame - build Ethernet + IPv4 wrapper, place payload, send
-   --
-   --  Caller writes transport payload into frame at offset 34.
-   --  This fills in Ethernet (14 bytes) + IPv4 (20 bytes) headers around it.
-   ---------------------------------------------------------------------------
-   --  The Ethernet and IPv4 headers of a frame whose payload is in place.
-   procedure fillIPv4Header (dstMAC   : Net.MACAddress;
-                             dstIP    : Net.IPv4Address;
-                             proto    : Unsigned_8;
-                             fAddr    : System.Address;
-                             frameLen : Natural) is
-   begin
-      --  Ethernet header
-      Net.putMAC   (fAddr, 0,  dstMAC);
-      Net.putMAC   (fAddr, 6,  interfaces (0).mac);
-      Net.putU16BE (fAddr, 12, Net.ETHERTYPE_IPV4);
-
-      writeIPv4Header (fAddr, frameLen, proto, interfaces (0).ipv4, dstIP, True);
-   end fillIPv4Header;
-
-   procedure sendIPv4Frame (dstMAC   : Net.MACAddress;
-                            dstIP    : Net.IPv4Address;
-                            proto    : Unsigned_8;
-                            fAddr    : System.Address;
-                            frameLen : Natural) is
-   begin
-      fillIPv4Header (dstMAC, dstIP, proto, fAddr, frameLen);
-      sendFrame (fAddr, frameLen);
-   end sendIPv4Frame;
 
    ---------------------------------------------------------------------------
    --  sendUDP - build and send a UDP datagram inside an IPv4 frame
    --
-   --  Uses RecordFlux to serialize the UDP header into a local buffer,
-   --  then wraps in Ethernet + IPv4 manually.
+   --  The whole frame is built by the proved UDP_Frame.
    ---------------------------------------------------------------------------
    procedure sendUDP (dstIP      : Net.IPv4Address;
                       dstMAC     : Net.MACAddress;
@@ -1235,52 +1236,25 @@ package body Netstack_Service is
                       dstPort    : Unsigned_16;
                       payload    : System.Address;
                       payloadLen : Natural) is
-      use Net.RFLX_Builtin_Types;
-      totalUDP : constant Natural := 8 + payloadLen;
-      frameLen : constant Natural := 14 + 20 + totalUDP;
-      frame    : array (0 .. frameLen - 1) of Unsigned_8;
-      fAddr    : constant System.Address := frame'Address;
-
-      --  RecordFlux buffer overlaid at UDP offset (byte 34) in frame
-      udpBuf : aliased Bytes (1 .. Index (totalUDP))
-         with Import, Address => fAddr + 34;
-      bufPtr : Bytes_Ptr := udpBuf'Unrestricted_Access;
-      ctx    : Net.UDP.Datagram.Context;
-
-      --  Payload as RFLX Bytes for Set_Payload
-      payBytes : Bytes (1 .. Index (payloadLen))
-         with Import, Address => payload;
+      ours : constant IPv4_Header.Address := v4 (interfaces (0).ipv4);
+      dest : constant IPv4_Header.Address := v4 (dstIP);
    begin
-      for i in frame'Range loop
-         frame (i) := 0;
-      end loop;
-
-      --  Build UDP datagram via RecordFlux
-      Net.UDP.Datagram.Initialize (ctx, bufPtr);
-      Net.UDP.Datagram.Set_Source_Port
-         (ctx, Net.UDP.Port (srcPort));
-      Net.UDP.Datagram.Set_Destination_Port
-         (ctx, Net.UDP.Port (dstPort));
-      Net.UDP.Datagram.Set_Length
-         (ctx, Net.UDP.Length (totalUDP));
-      Net.UDP.Datagram.Set_Checksum (ctx, 0);
-      if payloadLen > 0 then
-         Net.UDP.Datagram.Set_Payload (ctx, payBytes);
-      else
-         Net.UDP.Datagram.Set_Payload_Empty (ctx);
+      --  Built whole by the proved UDP_Frame (only unicast is sent).
+      if payloadLen > UDP_Frame.Maximum_Payload or else
+        not IPv4_Frame.Unicast (ours) or else not IPv4_Frame.Unicast (dest)
+      then
+         return;
       end if;
-      Net.UDP.Datagram.Take_Buffer (ctx, bufPtr);
-
-      --  Compute UDP checksum over pseudo-header + serialized datagram
       declare
-         cksum : Unsigned_16;
+         data  : constant IPv4_Header.Bytes (0 .. payloadLen - 1)
+           with Import, Address => payload;
+         frame : IPv4_Header.Bytes (0 .. UDP_Frame.Payload_At + payloadLen - 1);
       begin
-         cksum := Net.transportChecksum
-            (interfaces (0).ipv4, dstIP, Net.PROTO_UDP, fAddr + 34, totalUDP);
-         Net.putU16BE (fAddr, 40, cksum);   -- UDP checksum at offset 34+6
+         UDP_Frame.Build
+           (IPv4_Frame.MAC (interfaces (0).mac), IPv4_Frame.MAC (dstMAC), ours, dest,
+            srcPort, dstPort, data, frame);
+         sendIPv4 (frame);
       end;
-
-      sendIPv4Frame (dstMAC, dstIP, Net.PROTO_UDP, fAddr, frameLen);
    end sendUDP;
 
    ---------------------------------------------------------------------------
@@ -1290,30 +1264,25 @@ package body Netstack_Service is
    ---------------------------------------------------------------------------
    --  A query for an A record of name (wire form, from DNS_Name.Encode),
    --  from the query's own source port.
-   procedure sendDNSQuery (name   : DNS_Name.Bytes; txid, port : Unsigned_16;
-                           server : Net.IPv4Address) is
-      HEADER : constant := 12;
-      payload : array (0 .. HEADER + DNS_Name.Maximum_Wire + 4 - 1) of Unsigned_8 :=
-        [others => 0];
-      pAddr   : constant System.Address := payload'Address;
-      off     : constant Natural := HEADER + name'Length;
-      dnsMAC  : Net.MACAddress;
-      found   : Boolean;
+   procedure sendDNSQuery (name    : DNS_Name.Wire;
+                           nameLen : DNS_Name.Wire_Length;
+                           txid, port : Unsigned_16;
+                           server  : Net.IPv4Address) is
+      query  : DNS_Query.Message;
+      length : Natural;
+      dnsMAC : Net.MACAddress;
+      found  : Boolean;
    begin
-      Net.putU16BE (pAddr, 0, txid);
-      Net.putU16BE (pAddr, 2, 16#0100#);  -- flags: RD=1
-      Net.putU16BE (pAddr, 4, 1);         -- QDCOUNT=1
-      for I in 0 .. name'Length - 1 loop
-         payload (HEADER + I) := name (name'First + I);
-      end loop;
-      Net.putU16BE (pAddr, off, 1);       -- QTYPE: A
-      Net.putU16BE (pAddr, off + 2, 1);   -- QCLASS: IN
-
+      if nameLen = 0 then
+         return;
+      end if;
+      --  Built by the proved DNS_Query.
+      DNS_Query.Build (txid, name, nameLen, query, length);
       --  The server's next hop; unresolved, this attempt is lost and the
       --  next one (or an ARP reply) sends the question again.
       neighbourMAC (server, dnsMAC, found);
       if found then
-         sendUDP (server, dnsMAC, port, DNS_SERVER_PORT, pAddr, off + 4);
+         sendUDP (server, dnsMAC, port, DNS_SERVER_PORT, query'Address, length);
       end if;
    end sendDNSQuery;
 
@@ -1331,7 +1300,7 @@ package body Netstack_Service is
    --  Send a pending query's next attempt.
    procedure sendAttempt (P : in out PendingRequest; Now : Unsigned_64) is
    begin
-      sendDNSQuery (P.question (0 .. P.questionLen - 1), P.txid, P.queryPort,
+      sendDNSQuery (P.question, P.questionLen, P.txid, P.queryPort,
                     dnsServer (P.attempts));
       P.attempts := P.attempts + 1;
       P.nextSend :=
@@ -1353,7 +1322,7 @@ package body Netstack_Service is
    --  an OPEN's channel is released.
    procedure failQuery (P : in out PendingRequest) is
    begin
-      replyError (P.sender, P.replySlot);
+      answerError (P);
       if P.kind = PENDING_OPEN and then P.channelIdx in channels'Range then
          releaseChannel (P.channelIdx);
       end if;
@@ -1483,8 +1452,7 @@ package body Netstack_Service is
                                          pendingReqs (i).dstPort);
                   if connIdx < 0 then
                      releaseChannel (chIdx);
-                     replyError (pendingReqs (i).sender,
-                                 pendingReqs (i).replySlot);
+                     answerError (pendingReqs (i));
                      pendingReqs (i).kind := PENDING_NONE;
                   else
                      channels (chIdx).connIdx := connIdx;
@@ -1499,8 +1467,7 @@ package body Netstack_Service is
                   if chIdx in channels'Range then
                      releaseChannel (chIdx);
                   end if;
-                  replyError (pendingReqs (i).sender,
-                              pendingReqs (i).replySlot);
+                  answerError (pendingReqs (i));
                   pendingReqs (i).kind := PENDING_NONE;
                end if;
             end;
@@ -1535,7 +1502,7 @@ package body Netstack_Service is
    end deliverDatagram;
 
    ---------------------------------------------------------------------------
-   --  handleUDP - parse UDP datagram via RecordFlux, dispatch on port
+   --  handleUDP - parse a UDP datagram (UDP_Header), dispatch on port
    ---------------------------------------------------------------------------
    --  A resolver query is waiting on this source port.
    function dnsPortPending (port : Unsigned_16) return Boolean is
@@ -1561,9 +1528,8 @@ package body Netstack_Service is
       UDP_Header.Parse (datagram, h);
       --  RFC 768: a zero checksum means none was computed (allowed over
       --  IPv4); any other must verify over the pseudo-header and datagram.
-      if h.Checksum /= 0 and then
-        Net.transportChecksum (srcIP, dstIP, Net.PROTO_UDP,
-                               pktBuf + Storage_Offset (udpOff), h.Length) /= 0
+      if h.Length > UDP_Frame.Maximum_Datagram or else
+        not UDP_Frame.Checksum_OK (v4 (srcIP), v4 (dstIP), IPv4_Header.Bytes (datagram (0 .. h.Length - 1)))
       then
          return;
       end if;
@@ -1595,7 +1561,7 @@ package body Netstack_Service is
    end handleUDP;
 
    ---------------------------------------------------------------------------
-   --  sendTCPSegment - build TCP segment via RecordFlux, wrap in IPv4
+   --  sendTCPSegment - write a TCP segment (TCP_Header, TCP_Frame)
    --
    --  flags encoding: bit 0=FIN, 1=SYN, 2=RST, 3=PSH, 4=ACK. synOptions
    --  adds our MSS option and, with windowScale, our window scale (SYN
@@ -1655,16 +1621,20 @@ package body Netstack_Service is
          end;
       end if;
 
-      --  Compute TCP checksum over pseudo-header + serialized segment
+      --  The checksum, IPv4 and Ethernet headers around the segment, by the
+      --  proved TCP_Frame (the frame is proved to have unicast addresses;
+      --  anything else is not sent).
       declare
-         cksum : Unsigned_16;
+         frame : IPv4_Header.Bytes (0 .. frameLen - 1) with Import, Address => fAddr;
+         ours  : constant IPv4_Header.Address := v4 (interfaces (0).ipv4);
+         peer  : constant IPv4_Header.Address := v4 (conn.remoteIP);
       begin
-         cksum := Net.transportChecksum
-            (interfaces (0).ipv4, conn.remoteIP, Net.PROTO_TCP, fAddr + 34, tcpLen);
-         Net.putU16BE (fAddr, 50, cksum);  -- TCP checksum at 34+16
+         --  sendTCPSegment sends only between unicast addresses.
+         if IPv4_Frame.Unicast (ours) and then IPv4_Frame.Unicast (peer) then
+            TCP_Frame.Finish (frame, IPv4_Frame.MAC (interfaces (0).mac),
+                              IPv4_Frame.MAC (conn.remoteMAC), ours, peer);
+         end if;
       end;
-
-      fillIPv4Header (conn.remoteMAC, conn.remoteIP, Net.PROTO_TCP, fAddr, frameLen);
    end buildTCPSegment;
 
    --  Build a segment straight into the next TX ring slot; only when the
@@ -1688,6 +1658,13 @@ package body Netstack_Service is
       conn     : TCP_Slots.Slot := slotIn;
       found    : Boolean;
    begin
+      --  Only between unicast addresses (connect refuses any other peer;
+      --  arriving segments from one are dropped).
+      if not IPv4_Frame.Unicast (v4 (interfaces (0).ipv4)) or else
+        not IPv4_Frame.Unicast (v4 (conn.remoteIP))
+      then
+         return;
+      end if;
       --  A connection opened before its next hop answered ARP: resolve now,
       --  or drop the segment (retransmission sends it again).
       if conn.remoteMAC = Net.ZERO_MAC then
@@ -1975,28 +1952,43 @@ package body Netstack_Service is
    function tcpConnect (dstIP   : Net.IPv4Address;
                         dstMAC  : Net.MACAddress;
                         dstPort : Unsigned_16) return Integer is
-      lport : Unsigned_16;
+      ours  : constant Net.IPv4Address := interfaces (0).ipv4;
+      h     : constant Unsigned_64 := SipHash.Hash
+        (portKey, [ours (0), ours (1), ours (2), ours (3), dstIP (0), dstIP (1), dstIP (2),
+                   dstIP (3), Unsigned_8 (dstPort / 256), Unsigned_8 (dstPort mod 256)]);
+      offset : constant Unsigned_32 := Unsigned_32 (h and 16#FFFF_FFFF#);
+      bucket : constant Natural := Natural (Shift_Right (h, 32) mod PORT_BUCKETS);
+      lport : Unsigned_16 := 0;
+      found : Boolean := False;
       idx   : Integer;
    begin
-      lport := nextEphemeralPort;
-      --  At most Maximum_Listeners ports are bound, so one more candidate
-      --  suffices. Never originate a connection from an admitted listen port.
-      for Attempt in 1 .. TCP_Listeners.Maximum_Listeners + 1 loop
-         exit when TCP_Listeners.Find (listeners, policyAddress (interfaces (0).ipv4), lport) = 0;
-         lport := lport + 1;
-         if lport = 0 then lport := 49152; end if;
+      if not IPv4_Frame.Unicast (v4 (dstIP)) then
+         return -1;   --  never a broadcast, multicast, loopback or zero peer
+      end if;
+      --  A port is free for this destination if nothing listens on it, no
+      --  connection uses the 4-tuple, and it is not in TIME-WAIT (whose
+      --  protection a new incarnation would defeat).
+      for Attempt in 0 .. EPHEMERAL_TRIES - 1 loop
+         lport := Unsigned_16
+           (EPHEMERAL_FIRST +
+            (offset + portSteps (bucket) + Unsigned_32 (Attempt)) mod EPHEMERAL_COUNT);
+         if TCP_Listeners.Find (listeners, policyAddress (ours), lport) = 0 and then
+           Conns.Find (connTable, tupleOf (ours, dstIP, lport, dstPort)) = Conns.No_Slot and then
+           TCP_Time_Wait.Find (timeWaits, waitKey (dstIP, dstPort, lport)) = TCP_Time_Wait.No_Entry
+         then
+            portSteps (bucket) := portSteps (bucket) + Unsigned_32 (Attempt) + 1;
+            found := True;
+            exit;
+         end if;
       end loop;
-      nextEphemeralPort := lport + 1;
-      if nextEphemeralPort = 0 then
-         nextEphemeralPort := 49152;
+      if not found then
+         return -1;
       end if;
 
-      claimSlot (interfaces (0).ipv4, dstIP, lport, dstPort, dstMAC, idx);
+      claimSlot (ours, dstIP, lport, dstPort, dstMAC, idx);
       if idx < 0 then
          return -1;
       end if;
-      --  A new incarnation of a 4-tuple still in TIME-WAIT replaces it.
-      TCP_Time_Wait.Remove (timeWaits, waitKey (dstIP, dstPort, lport));
 
       if Trace_Packets then
          debugPrint ("TCP: SYN to ");
@@ -2052,15 +2044,12 @@ package body Netstack_Service is
          then
             if pendingReqs (i).channelIdx >= 0 then
                --  Channel API: reply with channel handle
-               replyOKWord (pendingReqs (i).sender,
-                            Unsigned_64 (Network_Channel_Handles.Value
-                              (channelHandles, pendingReqs (i).channelIdx)),
-                            pendingReqs (i).replySlot);
+               answerOK (pendingReqs (i),
+                         Unsigned_64 (Network_Channel_Handles.Value
+                           (channelHandles, pendingReqs (i).channelIdx)));
             else
                --  Legacy API: reply with raw connIdx
-               replyOKWord (pendingReqs (i).sender,
-                            Unsigned_64 (connIdx),
-                            pendingReqs (i).replySlot);
+               answerOK (pendingReqs (i), Unsigned_64 (connIdx));
             end if;
             pendingReqs (i).kind := PENDING_NONE;
             exit;
@@ -2074,10 +2063,9 @@ package body Netstack_Service is
             pendingReqs (i).connIdx = connIdx and
             pendingReqs (i).channelIdx >= 0
          then
-            replyOKWord (pendingReqs (i).sender,
-                         Unsigned_64 (Network_Channel_Handles.Value
-                           (channelHandles, pendingReqs (i).channelIdx)),
-                         pendingReqs (i).replySlot);
+            answerOK (pendingReqs (i),
+                      Unsigned_64 (Network_Channel_Handles.Value
+                        (channelHandles, pendingReqs (i).channelIdx)));
             pendingReqs (i).kind := PENDING_NONE;
             exit;
          end if;
@@ -2133,8 +2121,7 @@ package body Netstack_Service is
              pendingReqs (i).kind = PENDING_OPEN) and
             pendingReqs (i).connIdx = connIdx
          then
-            replyError (pendingReqs (i).sender,
-                        pendingReqs (i).replySlot);
+            answerError (pendingReqs (i));
             --  A failed OPEN never delivered its handle. Return its buffer
             --  acquisition and reservation here; the caller cannot SHUT it.
             if pendingReqs (i).kind in PENDING_CONNECT | PENDING_OPEN and then
@@ -2401,6 +2388,83 @@ package body Netstack_Service is
       return mask;
    end readyMask;
 
+   --  A word of queue q's grant.
+   function queueWord (q : Queue_Index; offset : Natural) return System.Address is
+     (queues (q).base + Storage_Offset (offset));
+
+   --  Take the client's reaped index: its answers' slots are free again.
+   procedure acceptReaped (q : Queue_Index) is
+      consumed : Unsigned_32 with Volatile, Import,
+        Address => queueWord (q, Layout.Queue_Completions_At + Layout.Queue_Consumed_At);
+      ignore : Boolean;
+   begin
+      Control.Accept_Reaped
+        (queues (q).server, Control.Completions.Index (consumed), ignore);
+   end acceptReaped;
+
+   --  owner has answers it has not reaped.
+   function answersWaiting (owner : ProcessID) return Boolean is
+   begin
+      for q in queues'Range loop
+         if queues (q).owner = owner then
+            acceptReaped (q);
+            if queues (q).server.Answers.Fill > 0 then
+               return True;
+            end if;
+         end if;
+      end loop;
+      return False;
+   end answersWaiting;
+
+   --  Complete a WAIT with the ready channels and whether answers wait.
+   procedure replyWait (P : PendingRequest; mask : Unsigned_64; answers : Boolean) is
+      msg : constant Message :=
+        (tag      => (label  => REPLY_OK,
+                      length => 2,
+                      flags  => 0,
+                      reserved  => 0),
+         authorityTag => 0,
+         words    => [0 => mask,
+                      1 => (if answers then Layout.Wait_Answers else 0),
+                      others => 0]);
+      ignore : Unsigned_64;
+   begin
+      ignore := replyCap (P.replySlot, msg);
+   end replyWait;
+
+   procedure answerQueue (route : Reply_Route; ok : Boolean; value : Unsigned_64) is
+      q : constant Queue_Count := route.queue;
+   begin
+      --  The queue went with its owner, or owes nothing: nowhere to answer.
+      if q = No_Queue or else queues (q).owner = NO_PROCESS or else
+        queues (q).server.Owed = 0
+      then
+         return;
+      end if;
+      declare
+         ring : Control.Completions.Ring with Import,
+           Address => queueWord (q, Layout.Queue_Answers_At);
+         produced : Unsigned_32 with Volatile, Import,
+           Address => queueWord (q, Layout.Queue_Completions_At + Layout.Queue_Produced_At);
+      begin
+         --  Owed <= Space (Control.Valid): the answer has its slot.
+         Control.Complete
+           (queues (q).server, ring, route.token,
+            (Status => (if ok then Layout.Answer_OK else Layout.Answer_Refused),
+             Value  => value,
+             others => <>));
+         --  The answer is written before the count that hands it over.
+         System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
+         produced := Unsigned_32 (queues (q).server.Answers.Produced);
+      end;
+      for P of pendingReqs loop
+         if P.kind = PENDING_WAIT and then P.sender = queues (q).owner then
+            replyWait (P, readyMask (P.sender, P.waitMask), True);
+            P.kind := PENDING_NONE;
+         end if;
+      end loop;
+   end answerQueue;
+
    --  Complete owner's waiting WAIT if any of its channels is ready.
    procedure notifyWaiter (owner : ProcessID) is
       mask : Unsigned_64;
@@ -2592,9 +2656,12 @@ package body Netstack_Service is
          elsif not failedStatus (C.status) and then C.connIdx in tcpConns'Range then
             pullSend (chIdx);
             pushReceive (chIdx);
-            if not C.shutDone and then C.tx.Available = 0 and then
-              headerWord (chIdx, Layout.Shut_Write_At) /= 0 and then
-              tcpState (C.connIdx) not in TCP_Connection.Syn_Sent | TCP_Connection.Syn_Received
+            if Channel_Service.Close_Due
+              (Already_Closed  => C.shutDone,
+               Send_Unconsumed => C.tx.Available,
+               Shutdown_Asked  => headerWord (chIdx, Layout.Shut_Write_At) /= 0,
+               In_Handshake    => tcpState (C.connIdx) in
+                                    TCP_Connection.Syn_Sent | TCP_Connection.Syn_Received)
             then
                C.shutDone := True;
                tcpClose (C.connIdx);
@@ -2602,28 +2669,25 @@ package body Netstack_Service is
          end if;
          setStatus (chIdx, streamStatus (chIdx));
 
-         flags := 0;
-         if not failedStatus (C.status) then
-            if C.tx.Available = 0 then
-               flags := flags or Layout.Kick_On_Send;
-            end if;
-            if C.connIdx in tcpConns'Range and then readable (C.connIdx) > 0 and then
-              Rings.Space (C.rx) = 0
-            then
-               flags := flags or Layout.Kick_On_Receive;
-            end if;
-         end if;
+         --  The kicks to ask for (the proved Channel_Service rule).
+         flags := Channel_Service.Kicks
+           (Failed          => failedStatus (C.status),
+            Send_Unconsumed => C.tx.Available,
+            Readable        => (if C.connIdx in tcpConns'Range then readable (C.connIdx) else 0),
+            Receive_Space   => Rings.Space (C.rx),
+            Has_Connection  => C.connIdx in tcpConns'Range);
          if flags /= C.kickFlags then
             C.kickFlags := flags;
             setHeaderWord (chIdx, Layout.Kick_Wanted_At, flags);
          end if;
          exit when flags = 0;
          fullFence;
-         exit when
-           ((flags and Layout.Kick_On_Send) = 0 or else
-            headerWord (chIdx, Layout.Tx_Produced_At) = Unsigned_32 (Rings.Produced (C.tx))) and then
-           ((flags and Layout.Kick_On_Receive) = 0 or else
-            headerWord (chIdx, Layout.Rx_Consumed_At) = Unsigned_32 (Rings.Consumed (C.rx)));
+         exit when not Channel_Service.Look_Again
+           (Flags            => flags,
+            Tx_Produced_Seen => Unsigned_32 (Rings.Produced (C.tx)),
+            Tx_Produced_Now  => headerWord (chIdx, Layout.Tx_Produced_At),
+            Rx_Consumed_Seen => Unsigned_32 (Rings.Consumed (C.rx)),
+            Rx_Consumed_Now  => headerWord (chIdx, Layout.Rx_Consumed_At));
       end loop;
       if channelReady (chIdx) then
          notifyWaiter (C.pid);
@@ -2700,7 +2764,9 @@ package body Netstack_Service is
       end loop;
       kickChannels (snd, m.words (0));
       mask := readyMask (snd, m.words (2));
-      if mask /= 0 or else m.words (1) <= clockNow then
+      if answersWaiting (snd) then
+         replyWait ((replySlot => CapabilitySlot'Last, others => <>), mask, True);
+      elsif mask /= 0 or else m.words (1) <= clockNow then
          replyOKWord (snd, mask);
       elsif not addPending ((kind => PENDING_WAIT, sender => snd,
                              waitDeadline => m.words (1), waitMask => m.words (2),
@@ -2896,6 +2962,8 @@ package body Netstack_Service is
                   if Flows.Exhausted (F) then
                      abortConnection (Index, Now);
                   else
+                     --  No answer for an RTO: the next hop may have changed.
+                     doubtNeighbour (nextHopOf (tcpConns (Index).remoteIP));
                      Flows.Retransmit_Timeout (F, tcpPool, Now);
                      case F.E.C.St is
                         when TCP_Connection.Syn_Sent     => sendSyn (Index);
@@ -2971,8 +3039,13 @@ package body Netstack_Service is
    end refuseSegment;
 
    ---------------------------------------------------------------------------
-   --  handleTCP - parse TCP segment via RecordFlux, drive state machine
+   --  handleTCP - parse a TCP segment (TCP_Header), drive the state machine
    ---------------------------------------------------------------------------
+   --  A TCP peer sent a segment since netstack last went idle: more is
+   --  likely on its way, a stream's next data or a server's next client
+   --  (arrivalExpected). Control requests and timers do not set it.
+   peerActive : Boolean := False;
+
    procedure handleTCP (pktBuf     : System.Address;
                         ipOff      : Natural;
                         ipHdrLen   : Natural;
@@ -2997,14 +3070,20 @@ package body Netstack_Service is
          return;
       end if;
 
-      --  RecordFlux validates the layout, not the TCP pseudo-header checksum.
-      --  Validate before a packet can acknowledge data or change TCP state.
-      if Net.transportChecksum
-        (srcIP, dstIP, Net.PROTO_TCP,
-         pktBuf + Storage_Offset (tcpOff), tcpLen) /= 0
-      then
+      --  TCP_Header validates the layout, not the pseudo-header checksum.
+      --  Validate before a packet can acknowledge data or change TCP state
+      --  (the proved TCP_Frame.Checksum_OK, over netstack's own copy).
+      if tcpLen > TCP_MAXIMUM_SEGMENT then
          return;
       end if;
+      declare
+         segment : constant IPv4_Header.Bytes (0 .. tcpLen - 1)
+           with Import, Address => pktBuf + Storage_Offset (tcpOff);
+      begin
+         if not TCP_Frame.Checksum_OK (v4 (srcIP), v4 (dstIP), segment) then
+            return;
+         end if;
+      end;
       Prof.Charge (Prof.Checksum, mark);
       mark := Prof.Now;
 
@@ -3061,49 +3140,50 @@ package body Netstack_Service is
       end;
       Prof.Charge (Prof.Lookup, mark);
       Prof.Packet;
-      if connIdx < 0 then
-         if timeWaitSegment (seg, Now) then
-            return;
-         end if;
-         --  Nothing is ever sent to a zero, multicast or broadcast source.
-         if seg.srcPort = 0 or else srcIP (0) = 0 or else srcIP (0) >= 224 then
-            return;
-         end if;
-         --  Only a plain SYN can open; anything else here is for no
-         --  connection, and is refused (a RST never is).
-         if not seg.flagSYN or else seg.flagACK or else seg.flagRST or else seg.flagFIN then
-            refuseSegment (seg, dstIP, srcMAC, Now);
-            return;
-         end if;
-         declare
-            listener : constant TCP_Listeners.Handle :=
-              TCP_Listeners.Find (listeners, policyAddress (dstIP), seg.dstPort);
-            reserved : Boolean;
-         begin
-            if listener = TCP_Listeners.No_Handle then
-               refuseSegment (seg, dstIP, srcMAC, Now);   --  a closed port
+      --  Where the segment goes: the proved TCP_Dispatch table.
+      declare
+         use TCP_Dispatch;
+         listener : constant TCP_Listeners.Handle :=
+           (if connIdx < 0 then TCP_Listeners.Find (listeners, policyAddress (dstIP), seg.dstPort)
+            else TCP_Listeners.No_Handle);
+         action : constant TCP_Dispatch.Action := Decide
+           ((Has_Connection  => connIdx >= 0,
+             Time_Wait_Taken => connIdx < 0 and then timeWaitSegment (seg, Now),
+             Usable_Source   => seg.srcPort /= 0 and then IPv4_Frame.Unicast (v4 (srcIP)),
+             SYN => seg.flagSYN, ACK => seg.flagACK, RST => seg.flagRST, FIN => seg.flagFIN,
+             Listening       => listener /= TCP_Listeners.No_Handle));
+         reserved : Boolean;
+      begin
+         case action is
+            when To_Connection =>
+               null;
+            when Taken_By_Time_Wait | Drop =>
                return;
-            end if;
-            claimSlot (dstIP, srcIP, seg.dstPort, seg.srcPort, srcMAC, connIdx);
-            if connIdx < 0 then return; end if;
-            TCP_Listeners.Reserve
-              (listeners, listener, connIdx,
-               deadlineAfter (Now, HANDSHAKE_TIMEOUT_MS), reserved);
-            if not reserved then
-               dropSlot (connIdx);
+            when Refuse =>
+               refuseSegment (seg, dstIP, srcMAC, Now);
                return;
-            end if;
-            parentListener (connIdx) := listener;
-            connectionAuthority (connIdx) := 0;
-            lingerDeadline (connIdx) := Unsigned_64'Last;
-            agreements (connIdx) := agree (seg);
-            Flows.Open_Passive
-              (tcpFlows (connIdx), tcpPool, TCP_Engine.Owner (connIdx),
-               TCP_Congestion.Segment_Size (agreements (connIdx).Send_MSS));
-         end;
-      end if;
+            when Open_Passive =>
+               claimSlot (dstIP, srcIP, seg.dstPort, seg.srcPort, srcMAC, connIdx);
+               if connIdx < 0 then return; end if;
+               TCP_Listeners.Reserve
+                 (listeners, listener, connIdx,
+                  deadlineAfter (Now, HANDSHAKE_TIMEOUT_MS), reserved);
+               if not reserved then
+                  dropSlot (connIdx);
+                  return;
+               end if;
+               parentListener (connIdx) := listener;
+               connectionAuthority (connIdx) := 0;
+               lingerDeadline (connIdx) := Unsigned_64'Last;
+               agreements (connIdx) := agree (seg);
+               Flows.Open_Passive
+                 (tcpFlows (connIdx), tcpPool, TCP_Engine.Owner (connIdx),
+                  TCP_Congestion.Segment_Size (agreements (connIdx).Send_MSS));
+         end case;
+      end;
 
       tcpArrive (connIdx, seg, pktBuf, Now);
+      peerActive := True;
       --  Finish buffering all final-ACK payload/FIN actions before handing the
       --  connection to its owner.
       deliverAllArrivals;
@@ -3114,8 +3194,9 @@ package body Netstack_Service is
    --  now instead of at their next retry.
    procedure neighbourResolved (hop : Net.IPv4Address; mac : Net.MACAddress) is
    begin
+      --  Every connection through hop takes its (possibly new) address.
       for I in tcpConns'Range loop
-         if tcpConns (I).inUse and then tcpConns (I).remoteMAC = Net.ZERO_MAC and then
+         if tcpConns (I).inUse and then tcpConns (I).remoteMAC /= mac and then
            nextHopOf (tcpConns (I).remoteIP) = hop
          then
             tcpConns (I).remoteMAC := mac;
@@ -3168,52 +3249,6 @@ package body Netstack_Service is
       end if;
    end handleARP;
 
-   ---------------------------------------------------------------------------
-   --  sendICMPReply
-   ---------------------------------------------------------------------------
-   procedure sendICMPReply (srcIP   : Net.IPv4Address;
-                            srcMAC  : Net.MACAddress;
-                            pktBuf  : System.Address;
-                            icmpOff : Natural;
-                            icmpLen : Natural) is
-      frameLen : constant Natural := 14 + 20 + icmpLen;
-      frame    : array (0 .. frameLen - 1) of Unsigned_8;
-      fAddr    : constant System.Address := frame'Address;
-   begin
-      for i in frame'Range loop
-         frame (i) := 0;
-      end loop;
-
-      Net.putMAC   (fAddr, 0,  srcMAC);
-      Net.putMAC   (fAddr, 6,  interfaces (0).mac);
-      Net.putU16BE (fAddr, 12, Net.ETHERTYPE_IPV4);
-
-      writeIPv4Header (fAddr, frameLen, Net.PROTO_ICMP, interfaces (0).ipv4, srcIP, False);
-
-      --  Copy ICMP data from request, change type to reply
-      declare
-         srcData : array (0 .. icmpLen - 1) of Unsigned_8 with
-            Import, Address => pktBuf + Storage_Offset (icmpOff);
-         dstData : array (0 .. icmpLen - 1) of Unsigned_8 with
-            Import, Address => fAddr + 34;
-      begin
-         for i in srcData'Range loop
-            dstData (i) := srcData (i);
-         end loop;
-      end;
-
-      Net.putU8    (fAddr, 34, Net.ICMP_ECHO_REPLY);
-      Net.putU16BE (fAddr, 36, 0);
-
-      declare
-         cksum : Unsigned_16;
-      begin
-         cksum := Net.internetChecksum (fAddr + 34, icmpLen);
-         Net.putU16BE (fAddr, 36, cksum);
-      end;
-
-      sendFrame (fAddr, frameLen);
-   end sendICMPReply;
 
    --  An ICMP error about one of our packets (RFC 1122 4.2.3.9, RFC 1191,
    --  RFC 5927). It must quote a packet we sent: our address, and for TCP
@@ -3300,126 +3335,82 @@ package body Netstack_Service is
    end handleICMPError;
 
    ---------------------------------------------------------------------------
-   --  handleICMP
+   --  ICMP for IPv4 (ipv4_icmp.ads, proved through
+   --  tests/tcp-session/ipv4_icmp_proof.ads): echo, errors, our pings.
    ---------------------------------------------------------------------------
-   --  Echo replies: at most ICMP_PER_MS per millisecond, bursts of ICMP_BURST.
-   ICMP_PER_MS  : constant := 1;
-   ICMP_BURST   : constant := 50;
-   icmpTokens   : Natural := ICMP_BURST;
-   icmpRefillAt : Unsigned_64 := 0;
 
-   procedure handleICMP (pktBuf     : System.Address;
-                         ipOff      : Natural;
-                         ipHdrLen   : Natural;
-                         srcIP      : Net.IPv4Address;
-                         srcMAC     : Net.MACAddress;
-                         totalIPLen : Natural) is
-      icmpOff  : constant Natural := ipOff + ipHdrLen;
-      icmpLen  : constant Natural := totalIPLen - ipHdrLen;
-      icmpType : Unsigned_8;
-      icmpSeq  : Unsigned_16;
+   --  The self-test (tests/headless network-authority): once configured,
+   --  ping the gateway once and log its reply.
+   SELF_TEST_SEQUENCE : constant Unsigned_16 := 16#FFFF#;
+   SELF_TEST_TRIES    : constant := 3;
+   SELF_TEST_POLL_MS  : constant Unsigned_64 := 100;
+   type SelfTest is (TEST_OFF, TEST_WAITING, TEST_SENT, TEST_DONE);
+   ipv4Test      : SelfTest := TEST_OFF;
+   ipv4TestTries : Natural range 0 .. SELF_TEST_TRIES := 0;
+   ipv4TestAt    : Unsigned_64 := 0;
+
+   --  A reply to our ping Sequence: complete the request waiting for it.
+   procedure pingAnswered (From : IPv4_Header.Address; Sequence : Unsigned_16) is
+      source : constant Net.IPv4Address := [From (0), From (1), From (2), From (3)];
    begin
-      --  Well formed: long enough, and the checksum over the whole message.
-      if icmpLen < 8 or else
-        Net.internetChecksum (pktBuf + Storage_Offset (icmpOff), icmpLen) /= 0
+      if Sequence = SELF_TEST_SEQUENCE and then ipv4Test = TEST_SENT then
+         ipv4Test := TEST_DONE;
+         debugPrint ("netstack: IPv4 echo reply from ");
+         printIP (source);
+         debugPrint ("" & LF);
+         return;
+      end if;
+      for i in pendingReqs'Range loop
+         if pendingReqs (i).kind = PENDING_PING and then pendingReqs (i).txid = Sequence then
+            declare
+               sentAt : constant Unsigned_64 :=
+                 Unsigned_64 (To_Integer (pendingReqs (i).bufAddr));
+               replyMsg : constant Message :=
+                 (tag          => (label => REPLY_OK, length => 3, flags => 0, reserved => 0),
+                  authorityTag => 0,
+                  words        => [0 => Unsigned_64 (Sequence),
+                                   1 => Net.packIPv4 (source),
+                                   2 => (if clockNow > sentAt then clockNow - sentAt else 0),
+                                   3 => 0]);
+               ignore : Unsigned_64;
+            begin
+               ignore := replyCap (pendingReqs (i).replySlot, replyMsg);
+            end;
+            pendingReqs (i).kind := PENDING_NONE;
+            return;
+         end if;
+      end loop;
+   end pingAnswered;
+
+   procedure icmpError (Message : IPv4_Header.Bytes) is
+   begin
+      handleICMPError (Message, clockNow);
+   end icmpError;
+
+   package ICMPv4 is new IPv4_ICMP
+     (Send => sendIPv4, Echo_Answered => pingAnswered, Error_Arrived => icmpError);
+
+   --  The self-test's next step: ping the gateway once its address is
+   --  known, up to SELF_TEST_TRIES times a second apart.
+   procedure ipv4SelfTest (Now : Unsigned_64) is
+      gw  : constant Net.IPv4Address := interfaces (0).gateway;
+      mac : Net.MACAddress;
+   begin
+      if ipv4Test not in TEST_WAITING | TEST_SENT or else ipv4TestTries = SELF_TEST_TRIES or else
+        Now < ipv4TestAt
       then
          return;
       end if;
-
-      icmpType := Net.getU8 (pktBuf, icmpOff);
-
-      if icmpType = Net.ICMP_ECHO_REQUEST then
-         --  Answered within a token bucket, so a flood cannot take netstack.
-         declare
-            nowMs : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
-         begin
-            if nowMs > icmpRefillAt then
-               icmpTokens := Natural'Min
-                 (ICMP_BURST, icmpTokens + Natural (Unsigned_64'Min
-                    (Unsigned_64 (ICMP_BURST), (nowMs - icmpRefillAt) * ICMP_PER_MS)));
-               icmpRefillAt := nowMs;
-            end if;
-            if icmpTokens > 0 then
-               icmpTokens := icmpTokens - 1;
-               sendICMPReply (srcIP, srcMAC, pktBuf, icmpOff, icmpLen);
-            end if;
-         end;
-
-      elsif icmpType in ICMPv4_Error.Destination_Unreachable | ICMPv4_Error.Time_Exceeded then
-         declare
-            message : constant ICMPv4_Error.Bytes (0 .. icmpLen - 1)
-              with Import, Address => pktBuf + Storage_Offset (icmpOff);
-         begin
-            handleICMPError (message, clockNow);
-         end;
-
-      elsif icmpType = Net.ICMP_ECHO_REPLY then
-         icmpSeq := Net.getU16BE (pktBuf, icmpOff + 6);
-
-         --  Check identifier (must be our 0xCB17)
-         declare
-            icmpId : constant Unsigned_16 :=
-               Net.getU16BE (pktBuf, icmpOff + 4);
-            nowMs  : constant Unsigned_64 :=
-               syscall (SYSCALL_GETTIME);
-         begin
-            if icmpId = 16#CB17# then
-               declare
-                  matched : Boolean := False;
-               begin
-                  for i in pendingReqs'Range loop
-                     if pendingReqs (i).kind = PENDING_PING and
-                        pendingReqs (i).txid = icmpSeq
-                     then
-                        declare
-                           sendTs : constant Unsigned_64 := Unsigned_64 (
-                              To_Integer (pendingReqs (i).bufAddr));
-                           srcPacked : constant Unsigned_64 :=
-                              Net.packIPv4 (srcIP);
-                           replyMsg : constant Message :=
-                             (tag      => (label  => REPLY_OK,
-                                           length => 3,
-                                           flags  => 0,
-                                           reserved  => 0),
-                              authorityTag => 0,
-                              words    => [0 => Unsigned_64 (icmpSeq),
-                                           1 => srcPacked,
-                                           2 => (if nowMs > sendTs
-                                                 then nowMs - sendTs
-                                                 else 0),
-                                           3 => 0]);
-                           ignore : Unsigned_64;
-                        begin
-                           ignore := replyCap
-                             (pendingReqs (i).replySlot, replyMsg);
-                        end;
-                        pendingReqs (i).kind := PENDING_NONE;
-                        matched := True;
-                        exit;
-                     end if;
-                  end loop;
-                  if not matched then
-                     debugPrint ("ICMP: unmatched reply seq=");
-                     printDec (Unsigned_32 (icmpSeq));
-                     debugPrint (" pending=[");
-                     for i in pendingReqs'Range loop
-                        printDec (Unsigned_32 (
-                           PendingKind'Pos (pendingReqs (i).kind)));
-                        if i < pendingReqs'Last then
-                           debugPrint (",");
-                        end if;
-                     end loop;
-                     debugPrint ("]" & LF);
-                  end if;
-               end;
-            else
-               debugPrint ("ICMP: reply wrong id=");
-               printDec (Unsigned_32 (icmpId));
-               debugPrint (" (expected CB17)" & LF);
-            end if;
-         end;
+      if not arpLookup (0, gw, mac) then
+         ipv4TestAt := deadlineAfter (Now, SELF_TEST_POLL_MS);   --  not resolved yet
+         return;
       end if;
-   end handleICMP;
+      ICMPv4.Echo (interfaces (0).mac, mac, v4 (interfaces (0).ipv4), v4 (gw), SELF_TEST_SEQUENCE);
+      ipv4Test := TEST_SENT;
+      ipv4TestTries := ipv4TestTries + 1;
+      ipv4TestAt := deadlineAfter (Now, ARP_RETRY_MS);
+   end ipv4SelfTest;
+
 
    ---------------------------------------------------------------------------
    --  handleIPv4
@@ -3464,7 +3455,12 @@ package body Netstack_Service is
       end if;
 
       if proto = Net.PROTO_ICMP then
-         handleICMP (pktBuf, ipOff, ipHdrLen, srcIP, srcMAC, totalLen);
+         declare
+            packet : constant IPv4_Header.Bytes (0 .. pktLen - ipOff - 1)
+              with Import, Address => pktBuf + Storage_Offset (ipOff);
+         begin
+            ICMPv4.Receive (packet, interfaces (0).mac, srcMAC, clockNow);
+         end;
       elsif proto = Net.PROTO_UDP then
          handleUDP (pktBuf, ipOff, ipHdrLen, srcIP, dstIP, totalLen);
       elsif proto = Net.PROTO_TCP then
@@ -3568,7 +3564,12 @@ package body Netstack_Service is
       savedSlot : CapabilitySlot;
    begin
       for i in pendingReqs'Range loop
-         if pendingReqs (i).kind = PENDING_NONE then
+         if pendingReqs (i).kind = PENDING_NONE and then curRoute.queue /= No_Queue then
+            --  A queue entry: its answer goes to the queue, not a capability.
+            pendingReqs (i) := req;
+            pendingReqs (i).route := curRoute;
+            return True;
+         elsif pendingReqs (i).kind = PENDING_NONE then
             savedSlot := CapabilitySlot (16 + i);
 
             --  Deferral is valid only if the kernel moved the current
@@ -3605,6 +3606,10 @@ package body Netstack_Service is
       ignore : Unsigned_64;
    begin
       pragma Unreferenced (to);
+      if slot = CapabilitySlot'Last and then curRoute.queue /= No_Queue then
+         answerQueue (curRoute, False, 0);
+         return;
+      end if;
       ignore := replyCap (slot, errMsg);
    end replyError;
 
@@ -3626,8 +3631,31 @@ package body Netstack_Service is
       ignore : Unsigned_64;
    begin
       pragma Unreferenced (to);
+      if slot = CapabilitySlot'Last and then curRoute.queue /= No_Queue then
+         answerQueue (curRoute, True, w0);
+         return;
+      end if;
       ignore := replyCap (slot, okMsg);
    end replyOKWord;
+
+   --  Deferred answers: to the request's queue, or its saved capability.
+   procedure answerError (P : PendingRequest) is
+   begin
+      if P.route.queue /= No_Queue then
+         answerQueue (P.route, False, 0);
+      else
+         replyError (P.sender, P.replySlot);
+      end if;
+   end answerError;
+
+   procedure answerOK (P : PendingRequest; w0 : Unsigned_64) is
+   begin
+      if P.route.queue /= No_Queue then
+         answerQueue (P.route, True, w0);
+      else
+         replyOKWord (P.sender, w0, P.replySlot);
+      end if;
+   end answerOK;
 
    ---------------------------------------------------------------------------
    --  deliverArrivals: hand listener lIdx's established connections to its
@@ -3804,6 +3832,8 @@ package body Netstack_Service is
    procedure expireRequests (Now : Unsigned_64) is
       children : TCP_Listeners.Connection_List;
    begin
+      ARP_Cache.Expire (interfaces (0).arpCache, Now, ARP_PROBE_MS);
+      ipv4SelfTest (Now);
       tcpTimers (Now);
       TCP_Listeners.Expire (listeners, Now, children);
       for I in children'Range loop
@@ -3843,6 +3873,9 @@ package body Netstack_Service is
               (deadline, Unsigned_64'Min (P.queryDeadline, P.nextSend));
          end if;
       end loop;
+      if ipv4Test in TEST_WAITING | TEST_SENT and then ipv4TestTries < SELF_TEST_TRIES then
+         deadline := Unsigned_64'Min (deadline, ipv4TestAt);
+      end if;
       return deadline;
    end nextDeadline;
 
@@ -3884,7 +3917,8 @@ package body Netstack_Service is
           attempts    => 0,
           nextSend    => Unsigned_64'Last,
           waitDeadline  => Unsigned_64'Last,
-          waitMask      => 0));
+          waitMask      => 0,
+          route         => <>));   --  addPending sets it
       if not ok then
          return;
       end if;
@@ -3971,7 +4005,17 @@ package body Netstack_Service is
         (networkGrants, owner, channels (chIdx).authorityTag,
          Network_Authority.Connect_UDP, policyAddress (dstIP), port)
       then
-         UDP_Channels.Open (udpChannels, chIdx, policyAddress (dstIP), port, ok);
+         udpOpens := udpOpens + 1;
+         UDP_Channels.Open
+           (udpChannels, chIdx, policyAddress (dstIP), port,
+            Unsigned_16 (SipHash.Hash
+              (portKey, [dstIP (0), dstIP (1), dstIP (2), dstIP (3),
+                         Unsigned_8 (port / 256), Unsigned_8 (port mod 256),
+                         Unsigned_8 (udpOpens and 16#FF#),
+                         Unsigned_8 (Shift_Right (udpOpens, 8) and 16#FF#),
+                         Unsigned_8 (Shift_Right (udpOpens, 16) and 16#FF#),
+                         Unsigned_8 (Shift_Right (udpOpens, 24) and 16#FF#)]) and 16#FFFF#),
+            ok);
       end if;
       if not ok then
          releaseChannel (chIdx);
@@ -3998,7 +4042,11 @@ package body Netstack_Service is
    begin
       for P of pendingReqs loop
          if P.kind /= PENDING_NONE and then P.sender = owner then
-            replyError (P.sender, P.replySlot);
+            --  A queued request's answer has nowhere to go: its queue is
+            --  released below.
+            if P.route.queue = No_Queue then
+               replyError (P.sender, P.replySlot);
+            end if;
             P.kind := PENDING_NONE;
          end if;
       end loop;
@@ -4019,6 +4067,16 @@ package body Netstack_Service is
             end if;
          end loop;
       end;
+      for q in queues'Range loop
+         if queues (q).owner = owner then
+            declare
+               returned : Boolean;
+            begin
+               CuBit.Memory_Grants.Return_Acquisition (queues (q).grant, returned);
+            end;
+            queues (q) := (others => <>);
+         end if;
+      end loop;
       Network_Grants.Release_Owner (networkGrants, Unsigned_64 (owner), tags);
       if (for some T of tags => T /= 0) then
          debugPrint ("netstack: released the scopes of exited process" &
@@ -4034,15 +4092,24 @@ package body Netstack_Service is
       end loop;
    end releaseOwner;
 
+   --  A request word as a count or index. netstack has no run-time checks,
+   --  so a word beyond Natural'Last must not be converted as it is: it
+   --  saturates, and then fails whatever range check follows.
+   function wordNatural (w : Unsigned_64) return Natural is
+     (if w > Unsigned_64 (Natural'Last) then Natural'Last else Natural (w));
+
    ---------------------------------------------------------------------------
    --  handleArena: a process lends a grant cut into channel buffers
    --  (Layout.OP_NET_ARENA). Admission checked the ring sizes and count.
    ---------------------------------------------------------------------------
    procedure handleArena (snd : ProcessID; m : Message) is
-      size : constant Natural :=
-        Layout.Header_Bytes + Natural (m.words (2) and 16#FFFF_FFFF#) +
-        Natural (Shift_Right (m.words (2), 32));
-      count : constant Natural := Natural (m.words (3));
+      --  Each ring size is 32 bits; their sum with the header is checked
+      --  in 64 bits before it becomes a Natural.
+      size64 : constant Unsigned_64 :=
+        Unsigned_64 (Layout.Header_Bytes) + (m.words (2) and 16#FFFF_FFFF#) +
+        Shift_Right (m.words (2), 32);
+      size : constant Natural := wordNatural (size64);
+      count : constant Natural := wordNatural (m.words (3));
       reference : constant CuBit.Memory_Grants.Grant_Reference :=
         (slot => m.words (0), generation => m.words (1));
       handle : Channel_Arenas.Handle;
@@ -4067,6 +4134,42 @@ package body Netstack_Service is
       arenaBase (index) := address;
       replyOKWord (snd, Unsigned_64 (handle));
    end handleArena;
+
+   ---------------------------------------------------------------------------
+   --  handleQueue: a process lends a control queue (Layout.OP_NET_QUEUE),
+   --  one per endpoint it holds. The queue acts with this request's
+   --  authority tag.
+   ---------------------------------------------------------------------------
+   procedure handleQueue (snd : ProcessID; m : Message) is
+      reference : constant CuBit.Memory_Grants.Grant_Reference :=
+        (slot => m.words (0), generation => m.words (1));
+      address : System.Address;
+      free : Queue_Count := No_Queue;
+      ok : Boolean;
+   begin
+      for q in queues'Range loop
+         if queues (q).owner = snd and then queues (q).tag = m.authorityTag then
+            replyError (snd); return;
+         end if;
+         if free = No_Queue and then queues (q).owner = NO_PROCESS then
+            free := q;
+         end if;
+      end loop;
+      if free = No_Queue then replyError (snd); return; end if;
+      CuBit.Memory_Grants.Acquire
+        (reference, snd, 0, Layout.Queue_Bytes,
+         CuBit.Memory_Grants.Write_Access, address, ok);
+      if not ok then replyError (snd); return; end if;
+      queues (free) := (owner  => snd,
+                        tag    => m.authorityTag,
+                        grant  => reference,
+                        base   => address,
+                        server => <>);
+      debugPrint ("netstack: control queue for pid");
+      printDec (Unsigned_32 (snd));
+      debugPrint ("" & LF);
+      replyOKWord (snd, 0);
+   end handleQueue;
 
    procedure handleNetOpen (snd : ProcessID; m : Message) is
       schemeLen : constant Natural := Natural (m.tag.length);
@@ -4263,6 +4366,129 @@ package body Netstack_Service is
       replyOKWord (snd, 0);
    end handleNetShut;
 
+   --  Take queue q's requests and handle each as its IPC twin would be
+   --  (same admission, same handler), answering on the queue.
+   procedure serviceQueue (q : Queue_Index) is
+      produced : Unsigned_32 with Volatile, Import,
+        Address => queueWord (q, Layout.Queue_Submissions_At + Layout.Queue_Produced_At);
+      consumed : Unsigned_32 with Volatile, Import,
+        Address => queueWord (q, Layout.Queue_Submissions_At + Layout.Queue_Consumed_At);
+      wake : Unsigned_32 with Volatile, Import,
+        Address => queueWord (q, Layout.Queue_Submissions_At + Layout.Queue_Wake_At);
+      requests : Control.Submissions.Ring with Import,
+        Address => queueWord (q, Layout.Queue_Requests_At);
+      item  : Control.Submission;
+      ok    : Boolean;
+      took  : Boolean := False;
+      owner : constant ProcessID := queues (q).owner;
+      tag   : constant Unsigned_64 := queues (q).tag;
+   begin
+      --  Awake: the client need not kick until we arm the word again.
+      if wake /= 0 then
+         wake := 0;
+      end if;
+      acceptReaped (q);
+      --  The client's count, read once; one that goes back or overfills
+      --  the ring is ignored.
+      Control.Submissions.Accept_Produced
+        (queues (q).server.Requests, Control.Submissions.Index (produced), ok);
+      if not ok then
+         return;
+      end if;
+      --  The requests were written before the count was: read them after.
+      System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
+      while Control.Can_Take (queues (q).server) loop
+         --  A private copy of the entry: what is checked is what is used.
+         Control.Take (queues (q).server, requests, item);
+         took := True;
+         curRoute := (queue => q, token => item.Tag);
+         declare
+            m : Message :=
+              (tag => (label => 0, length => 0, flags => 0, reserved => 0),
+               authorityTag => tag,
+               words => [others => 0]);
+         begin
+            if item.Item.Operation = Layout.Queue_Open and then
+              item.Item.Length in 1 .. Layout.Target_Maximum and then
+              Network_Grants.Owned (networkGrants, owner, tag)
+            then
+               m.tag := (label => OP_NET_OPEN, length => Unsigned_8 (item.Item.Length),
+                         flags => 0, reserved => 0);
+               m.words (0) := item.Item.Object;
+               m.words (1) := Unsigned_64 (item.Item.Buffer);
+               handleNetOpen (owner, m);
+            elsif item.Item.Operation = Layout.Queue_Shut and then
+              Network_Grants.Owned (networkGrants, owner, tag)
+            then
+               m.tag := (label => OP_NET_SHUT, length => 1, flags => 0, reserved => 0);
+               m.words (0) := item.Item.Object;
+               handleNetShut (owner, m);
+            else
+               answerQueue (curRoute, False, 0);
+            end if;
+         end;
+         curRoute := (others => <>);
+      end loop;
+      if took then
+         --  The entries were copied out before their slots are handed back.
+         System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
+         consumed := Unsigned_32 (queues (q).server.Requests.Consumed);
+      end if;
+   end serviceQueue;
+
+   procedure serviceQueues is
+   begin
+      for q in queues'Range loop
+         if queues (q).owner /= NO_PROCESS then
+            serviceQueue (q);
+         end if;
+      end loop;
+   end serviceQueues;
+
+   --  About to sleep: arm each queue's wake word so its client kicks, then
+   --  look once more (it may have submitted before it could see the
+   --  word). True if requests wait: do not sleep.
+   function armQueues return Boolean is
+      found : Boolean := False;
+   begin
+      queueEpoch := (if queueEpoch = Unsigned_32'Last then 1 else queueEpoch + 1);
+      for q in queues'Range loop
+         if queues (q).owner /= NO_PROCESS then
+            declare
+               produced : Unsigned_32 with Volatile, Import,
+                 Address => queueWord (q, Layout.Queue_Submissions_At + Layout.Queue_Produced_At);
+               wake : Unsigned_32 with Volatile, Import,
+                 Address => queueWord (q, Layout.Queue_Submissions_At + Layout.Queue_Wake_At);
+            begin
+               wake := queueEpoch;
+               System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
+               if Control.Submissions.Index (produced) /=
+                 queues (q).server.Requests.Consumed
+               then
+                  found := True;
+               end if;
+            end;
+         end if;
+      end loop;
+      return found;
+   end armQueues;
+
+   --  The interface's address changed: connections and connected datagram
+   --  channels bound to the old one end, reported Unreachable.
+   procedure addressWithdrawn is
+   begin
+      for I in tcpConns'Range loop
+         if tcpConns (I).inUse then
+            abortConnection (I, clockNow, Layout.Status_Unreachable);
+         end if;
+      end loop;
+      for C in channels'Range loop
+         if channels (C).kind /= CHANNEL_NONE and then channels (C).proto = Net.PROTO_UDP then
+            setStatus (C, Layout.Status_Unreachable);
+         end if;
+      end loop;
+   end addressWithdrawn;
+
    ---------------------------------------------------------------------------
    --  handleAttach - process OP_NET_ATTACH from the driver
    --
@@ -4351,76 +4577,143 @@ package body Netstack_Service is
    end handleAttach;
 
    ---------------------------------------------------------------------------
-   --  Received frames: a ring in the grant's RX half that the driver fills
-   --  (virtio-net's processRX has the same layout). Slot 0 holds the
-   --  counts and flags; frame N is in slot (N mod RX_RING_SLOTS) + 1, its
-   --  length (4 bytes, little endian) first and the frame RX_SLOT_HEADER
-   --  bytes in.
-   --  - produced (byte 0, the driver's) and consumed (byte 64, ours) are
-   --    free-running frame counts; a produced count more than a ring ahead
-   --    is refused;
-   --  - space wanted (byte 4, the driver's): it found the ring full; we
-   --    ring its doorbell (OP_NET_TX) after freeing slots;
-   --  - doorbell wanted (byte 68, ours): a new nonzero epoch each time we
-   --    are about to go idle; the driver sends one OP_NET_RX per epoch.
+   --  Received frames: the grant's receive ring, which the driver fills
+   --  (virtio-net's processRX; layout in CuBit.Frame_Rings).
+   --  - produced (the driver's) and consumed (ours) are free-running frame
+   --    counts; a produced count that goes back or more than a ring ahead
+   --    is refused (Frame_Ring.Accept_Produced);
+   --  - space wanted (the driver's): it found the ring full; we ring its
+   --    doorbell (OP_NET_TX) after freeing slots;
+   --  - wake (ours): a new nonzero epoch each time we are about to go idle;
+   --    the driver sends one OP_NET_RX per epoch.
    --  No call and no reply per batch: neither side waits for the other.
    ---------------------------------------------------------------------------
-   RX_SLOT_BYTES  : constant := 2048;
-   RX_SLOT_HEADER : constant := 16;
-   RX_RING_SLOTS  : constant := (PACKET_BUF_SIZE / 2) / RX_SLOT_BYTES - 1;
-   RX_SPACE_WANTED_OFFSET : constant := 4;
-   RX_CONSUMER_OFFSET     : constant := 64;
-   RX_DOORBELL_OFFSET     : constant := 68;
-   rxConsumed : Unsigned_32 := 0;
-   rxEpoch    : Unsigned_32 := 0;
+   rxRing  : Frame_Ring.Consumer;   --  our receive ring's indices
+   rxEpoch : Unsigned_32 := 0;
 
-   procedure drainRXRing is
-      ifIdx : constant Natural := 0;   --  the ring is interface zero's
-      area : constant System.Address := interfaces (ifIdx).pktBuf;
-      produced : Unsigned_32 with Volatile, Import, Address => area;
-      consumed : Unsigned_32 with Volatile, Import,
-        Address => area + Storage_Offset (RX_CONSUMER_OFFSET);
-      spaceWanted : Unsigned_32 with Volatile, Import,
-        Address => area + Storage_Offset (RX_SPACE_WANTED_OFFSET);
-      doorbell : Unsigned_32 with Volatile, Import,
-        Address => area + Storage_Offset (RX_DOORBELL_OFFSET);
-      available : Unsigned_32;
+   --  Received frames are handled from netstack's own copy (drainRXRing).
+   type Frame_Bytes is array (Natural range <>) of Unsigned_8;
+   rxPrivate : Frame_Bytes (0 .. Frames.Maximum_Frame - 1) := [others => 0]
+     with Alignment => 8;
+
+   --  The last time netstack had work (TSC), for polling while traffic
+   --  flows (CuBit.Busy_Poll).
+   lastActivity : Unsigned_64 := 0;
+
+   --  Frames wait in the driver's receive ring.
+   --  The receive direction's header words.
+   function rxWord (Offset : Natural) return System.Address is
+     (interfaces (0).pktBuf + Storage_Offset (Frames.Receive_Header_At + Offset));
+
+   function rxPending return Boolean is
+   begin
+      if interfaces (0).pktBuf = System.Null_Address then
+         return False;
+      end if;
+      declare
+         produced : Unsigned_32 with Volatile, Import,
+           Address => rxWord (Frames.Produced_At);
+      begin
+         return Frame_Ring.Index (produced) /= rxRing.Consumed;
+      end;
+   end rxPending;
+
+   --  An arrival is due soon, so a short poll will likely find it: a
+   --  connection on a sub-millisecond path awaits a SYN answer or an
+   --  acknowledgement, a TCP peer was active since netstack last slept, or a resolver query
+   --  awaits its answer. With nothing
+   --  due, netstack arms its doorbells and sleeps at once instead of
+   --  spinning (the io_uring SQPOLL idea, driven by what netstack knows).
+   function arrivalExpected return Boolean is
+      use TCP_Connection;
+   begin
+      for I in tcpConns'Range loop
+         declare
+            C : TCP_Connection.Connection renames tcpFlows (I).E.C;
+         begin
+            if (C.St in Syn_Sent | Syn_Received or else
+                (C.St in Synchronized_State and then C.Snd_Una /= C.Snd_Nxt))
+              and then tcpFlows (I).RTO.SRTT = 0
+            then
+               return True;
+            end if;
+         end;
+      end loop;
+      if peerActive then
+         return True;
+      end if;
+      for R of pendingReqs loop
+         if R.kind = PENDING_RESOLVE then
+            return True;
+         end if;
+      end loop;
+      return False;
+   end arrivalExpected;
+
+   --  Handle every frame in the receive ring. With arm, then ask the
+   --  driver for a doorbell before going idle (and look once more); without,
+   --  the caller is polling and no doorbell is wanted.
+   procedure drainRXRing (arm : Boolean := True) is
+      area : constant System.Address := interfaces (0).pktBuf;
       mark : Unsigned_64;
+      ok   : Boolean;
    begin
       if area = System.Null_Address then
          return;
       end if;
+      declare
+         produced : Unsigned_32 with Volatile, Import,
+           Address => rxWord (Frames.Produced_At);
+         consumed : Unsigned_32 with Volatile, Import,
+           Address => rxWord (Frames.Consumed_At);
+         spaceWanted : Unsigned_32 with Volatile, Import,
+           Address => rxWord (Frames.Space_Wanted_At);
+         doorbell : Unsigned_32 with Volatile, Import,
+           Address => rxWord (Frames.Wake_At);
+      begin
       --  Busy: no doorbells needed until we are about to go idle again.
       doorbell := 0;
       loop
-         available := produced;
-         --  The frames were written before the count was: read them after.
-         System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
-         if Frame_Ring.Fill (available, rxConsumed) > RX_RING_SLOTS then
+         --  The driver's count, read once and accepted only if sane.
+         Frame_Ring.Accept_Produced (rxRing, Frame_Ring.Index (produced), ok);
+         if not ok then
             debugPrint ("netstack: RX ring count out of range" & LF);
             return;
          end if;
-         if available /= rxConsumed then
+         --  The frames were written before the count was: read them after.
+         System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
+         if rxRing.Available > 0 then
             inRxBatch := True;
             clockNow := syscall (SYSCALL_GETTIME);
             mark := Prof.Now;
-            while rxConsumed /= available loop
+            while rxRing.Available > 0 loop
                declare
                   slot : constant System.Address :=
                     area + Storage_Offset
-                      (Frame_Ring.Slot_Of (rxConsumed, RX_RING_SLOTS) * RX_SLOT_BYTES);
-                  len  : Unsigned_32 with Import, Address => slot;
+                      (Frames.Receive_Slot_At (Frame_Ring.Head_Slot (rxRing)));
+                  shared : Unsigned_32 with Volatile, Import,
+                    Address => slot + Storage_Offset (Frames.Length_At);
+                  --  The driver shares this memory: its length is read once,
+                  --  and the frame is copied before anything parses it, so
+                  --  what was checked is what is used (no double fetch).
+                  len : constant Unsigned_32 := shared;
                begin
-                  if len >= 14 and then Frame_Ring.Fits (len, RX_SLOT_BYTES, RX_SLOT_HEADER) then
-                     handlePacket (slot + RX_SLOT_HEADER, Natural (len));
+                  if Frames.Fits (len) then
+                     declare
+                        frame : Frame_Bytes (0 .. Natural (len) - 1)
+                          with Import, Address => slot + Storage_Offset (Frames.Frame_At);
+                     begin
+                        rxPrivate (0 .. Natural (len) - 1) := frame;
+                     end;
+                     handlePacket (rxPrivate'Address, Natural (len));
                   end if;
                end;
-               rxConsumed := rxConsumed + 1;
+               Frame_Ring.Release (rxRing);
             end loop;
             Prof.Charge (Prof.Batch, mark);
             --  The frames are handled before their slots are handed back.
             System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
-            consumed := rxConsumed;
+            consumed := Unsigned_32 (rxRing.Consumed);
             mark := Prof.Now;
             tcpBatchDone;
             Prof.Charge (Prof.Batch_Done, mark);
@@ -4429,14 +4722,16 @@ package body Netstack_Service is
                txDoorbell := True;   --  the driver waits for slots
             end if;
          end if;
+         exit when not arm and then Frame_Ring.Index (produced) = rxRing.Consumed;
          --  About to go idle: ask for a doorbell, then look once more (the
          --  driver may have published before it could see the request).
          rxEpoch := (if rxEpoch = Unsigned_32'Last then 1 else rxEpoch + 1);
          doorbell := rxEpoch;
          System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
-         exit when produced = rxConsumed;
+         exit when Frame_Ring.Index (produced) = rxRing.Consumed;
          doorbell := 0;
       end loop;
+      end;
    end drainRXRing;
 
    --  64 random bits from the CPU (RDRAND), or, without it, a mix of the
@@ -4490,8 +4785,10 @@ package body Netstack_Service is
       found   : Boolean;
    begin
    debugPrint ("netstack: starting..." & LF);
+   CuBit.Busy_Poll.Calibrate;
    TCP_Engine.Pool.Initialize (tcpPool);
    isnKey := (K0 => hardwareRandom, K1 => hardwareRandom);
+   portKey := (K0 => hardwareRandom, K1 => hardwareRandom);
    Conns.Initialize (connTable, (K0 => hardwareRandom, K1 => hardwareRandom));
    dnsKey := (K0 => hardwareRandom, K1 => hardwareRandom);
 
@@ -4555,6 +4852,7 @@ package body Netstack_Service is
          tcpResumeBlocked;
       end if;
       ringTXDoorbell;
+      serviceQueues;
 
       --  1. Try non-blocking service-request receive to keep responsiveness.
       --     Network driver events and completions stay on their own lanes.
@@ -4579,8 +4877,38 @@ package body Netstack_Service is
          end if;
 
       --  3. Block on messages or the earliest actual resource deadline.
+      --  While traffic flows, first poll the receive ring and requests for
+      --  a short window, with no doorbell armed (the driver then sends no
+      --  IPC); only a quiet window arms it and sleeps.
       elsif not found then
-         receiveUntil (nextDeadline, sender, msg, found);
+         declare
+            dueAt : constant Unsigned_64 := nextDeadline;
+         begin
+            while arrivalExpected and then CuBit.Busy_Poll.Within
+              (lastActivity, CuBit.Busy_Poll.Default_Window_Microseconds)
+            loop
+               if rxPending then
+                  drainRXRing (arm => False);
+                  lastActivity := CuBit.Busy_Poll.Now;
+               end if;
+               serviceQueues;
+               Poll_Service_Request (sender, msg, found);
+               exit when found or else syscall (SYSCALL_GETTIME) >= dueAt;
+               CuBit.Busy_Poll.Relax;
+            end loop;
+         end;
+         if not found then
+            peerActive := False;
+            drainRXRing;   --  arm the doorbell (and take anything that came)
+            Poll_Service_Request (sender, msg, found);
+            --  Queue requests that came meanwhile: the next pass takes them.
+            if not found and then not armQueues then
+               receiveUntil (nextDeadline, sender, msg, found);
+            end if;
+         end if;
+      end if;
+      if found then
+         lastActivity := CuBit.Busy_Poll.Now;
       end if;
 
       --  4. Dispatch message
@@ -4665,23 +4993,48 @@ package body Netstack_Service is
 
             --  Network management IPC (from netmgr)
             when OP_NET_CONFIGURE =>
+               if msg.words (0) >= Unsigned_64 (numIfaces) then
+                  replyError (sender);
+                  goto Configure_Done;
+               end if;
                declare
                   cfgIfIdx : constant Natural :=
                      Natural (msg.words (0));
-                  addrPacked : constant Unsigned_64 := msg.words (1);
-                  maskPacked : constant Unsigned_64 := msg.words (2);
-                  gwPacked   : constant Unsigned_64 := msg.words (3);
+                  newAddr : constant Net.IPv4Address := Net.unpackIPv4 (msg.words (1));
+                  newMask : constant Net.IPv4Address := Net.unpackIPv4 (msg.words (2));
+                  newGW   : constant Net.IPv4Address := Net.unpackIPv4 (msg.words (3));
+                  wasUp   : constant Boolean := interfaces (cfgIfIdx).state = IF_UP;
                begin
                   if cfgIfIdx < numIfaces then
-                     interfaces (cfgIfIdx).ipv4 :=
-                        Net.unpackIPv4 (addrPacked);
-                     interfaces (cfgIfIdx).netmask :=
-                        Net.unpackIPv4 (maskPacked);
-                     interfaces (cfgIfIdx).gateway :=
-                        Net.unpackIPv4 (gwPacked);
+                     --  A new address: what was bound to the old one cannot
+                     --  go on (its peers know the old address). Connections
+                     --  and connected datagram channels end as Unreachable.
+                     if wasUp and then interfaces (cfgIfIdx).ipv4 /= newAddr then
+                        addressWithdrawn;
+                     end if;
+                     --  A new address or gateway: what the link told us may
+                     --  be stale (another network, another router).
+                     if interfaces (cfgIfIdx).ipv4 /= newAddr or else
+                       interfaces (cfgIfIdx).gateway /= newGW
+                     then
+                        interfaces (cfgIfIdx).arpCache := [others => (others => <>)];
+                        interfaces (cfgIfIdx).gwMAC := Net.ZERO_MAC;
+                     end if;
+                     interfaces (cfgIfIdx).ipv4 := newAddr;
+                     interfaces (cfgIfIdx).netmask := newMask;
+                     interfaces (cfgIfIdx).gateway := newGW;
                      interfaces (cfgIfIdx).state := IF_UP;
+                     if ipv4Test = TEST_OFF and then newGW /= Net.IPv4Address'(others => 0) then
+                        ipv4Test := TEST_WAITING;
+                     end if;
 
-                     --  Install connected + default routes
+                     --  Replace (not add to) the interface's connected and
+                     --  default routes.
+                     for R of routeTable loop
+                        if R.active and then R.ifIdx = cfgIfIdx then
+                           R.active := False;
+                        end if;
+                     end loop;
                      installConnectedRoute (cfgIfIdx);
 
                      --  Send gratuitous ARP and ARP for gateway
@@ -4703,12 +5056,11 @@ package body Netstack_Service is
                      replyError (sender);
                   end if;
                end;
+               <<Configure_Done>>
 
             when OP_NET_SET_DNS =>
                primaryDNS := Net.unpackIPv4 (msg.words (0));
-               if msg.words (1) /= 0 then
-                  secondaryDNS := Net.unpackIPv4 (msg.words (1));
-               end if;
+               secondaryDNS := Net.unpackIPv4 (msg.words (1));   --  0.0.0.0: none
                debugPrint ("netstack: DNS set to ");
                printIP (primaryDNS);
                debugPrint ("" & LF);
@@ -4719,8 +5071,7 @@ package body Netstack_Service is
 
             when OP_NET_IF_DETAIL =>
                declare
-                  reqIfIdx : constant Natural :=
-                     Natural (msg.words (0));
+                  reqIfIdx : constant Natural := wordNatural (msg.words (0));
                begin
                   if reqIfIdx < numIfaces then
                      declare
@@ -4773,8 +5124,7 @@ package body Netstack_Service is
 
             when OP_NET_ROUTE_LIST =>
                declare
-                  startIdx : constant Natural :=
-                     Natural (msg.words (0));
+                  startIdx : constant Natural := wordNatural (msg.words (0));
                   total  : Natural := 0;
                   packed : array (0 .. 3) of Unsigned_64 := [others => 0];
                   slot   : Natural := 0;
@@ -4902,8 +5252,8 @@ package body Netstack_Service is
           others     => <>));
 
                         if ok then
-                           sendICMPEchoRequest (dstIP, dstMAC, seq,
-                                                rIfIdx);
+                           ICMPv4.Echo (interfaces (rIfIdx).mac, dstMAC,
+                                        v4 (interfaces (rIfIdx).ipv4), v4 (dstIP), seq);
                         else
                            replyError (sender);
                         end if;
@@ -4912,6 +5262,15 @@ package body Netstack_Service is
                end;
 
             when OP_NET_ROUTE_ADD =>
+               --  The prefix and interface are checked while still words:
+               --  converting an out-of-range word (netstack has no run-time
+               --  checks) would give a garbage index.
+               if msg.words (1) > IPV4_PREFIX_BITS or else
+                 msg.words (3) >= Unsigned_64 (numIfaces)
+               then
+                  replyError (sender);
+                  goto Route_Done;
+               end if;
                declare
                   routeDest : constant Net.IPv4Address :=
                      Net.unpackIPv4 (msg.words (0));
@@ -4942,13 +5301,13 @@ package body Netstack_Service is
                      replyError (sender);
                   end if;
                end;
+               <<Route_Done>>
 
             when OP_NET_ROUTE_DEL =>
                declare
                   routeDest : constant Net.IPv4Address :=
                      Net.unpackIPv4 (msg.words (0));
-                  routePrefix : constant Natural :=
-                     Natural (msg.words (1));
+                  routePrefix : constant Natural := wordNatural (msg.words (1));
                   deleted : Boolean := False;
                begin
                   for i in routeTable'Range loop
@@ -5013,6 +5372,9 @@ package body Netstack_Service is
                   ignore := replyCap (CapabilitySlot'Last, answer);
                end;
 
+            when Layout.OP_NET_QUEUE =>
+               handleQueue (sender, msg);
+
             when Layout.OP_NET_ARENA_RELEASE =>
                declare
                   index : Channel_Arenas.Arena_Index;
@@ -5040,7 +5402,10 @@ package body Netstack_Service is
             when Layout.OP_NET_KICK =>
                --  One-way: no reply.
                kickChannels (sender, msg.words (0));
-               if msg.words (1) = Layout.End_Wait then
+               if (msg.words (1) and Layout.Kick_Queue) /= 0 then
+                  serviceQueues;
+               end if;
+               if (msg.words (1) and Layout.End_Wait) /= 0 then
                   endWait (sender);
                end if;
 

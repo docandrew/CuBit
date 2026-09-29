@@ -18,6 +18,7 @@ with System; use System;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
 with CuBit.Memory_Grants;
+with CuBit.Busy_Poll;
 with NVMe;
 
 procedure main is
@@ -129,6 +130,9 @@ procedure main is
       expectedBytes : Unsigned_64;
    begin
       if msg.tag.length /= 4 or else
+         --  WRITE_FLAG_FUA is the only request flag this device honours.
+         (msg.tag.flags and not WRITE_FLAG_FUA) /= 0 or else
+         msg.tag.reserved /= 0 or else
          msg.words (1) > CuBit.Memory_Grants.MAXIMUM_GLOBAL_SLOT or else
          msg.words (3) = 0 or else
          msg.words (3) > CuBit.Memory_Grants.MAXIMUM_GENERATION or else
@@ -163,7 +167,8 @@ procedure main is
          return;
       end if;
 
-      bytesWritten := NVMe.writeBlocks (lba, sectorCt, grantAddr);
+      bytesWritten := NVMe.writeBlocks
+        (lba, sectorCt, grantAddr, fua => (msg.tag.flags and WRITE_FLAG_FUA) /= 0);
       CuBit.Memory_Grants.Return_Acquisition
         ((slot => CuBit.Memory_Grants.Global_Grant_Slot (msg.words (1)),
           generation =>
@@ -210,7 +215,10 @@ procedure main is
               (Logical_Block_Size (NVMe.nsSectorSize),
                Logical_Block_Size (NVMe.nsSectorSize)),
             2 => maxBlocks64,
-            3 => Pack_Properties (FEATURE_FLUSH, Fixed_Media)];
+            3 => Pack_Properties
+              (FEATURE_FLUSH or FEATURE_FUA or
+                 (if NVMe.volatileWriteCache then FEATURE_VOLATILE_CACHE else 0),
+               Fixed_Media)];
          ignore := reply (sender, replyMsg);
       else
          sendReply (sender, REPLY_ERROR, 0);
@@ -251,6 +259,7 @@ begin
    debugPrint ("NVMe Driver: Initializing controller..." & LF);
 
    --  2. Initialize controller (maps BAR0, resets, sets up admin queues)
+   CuBit.Busy_Poll.Calibrate;   --  completion waits are timed by the TSC
    NVMe.initController (bar0Phys, dmaPhys);
 
    --  3. Identify controller and namespace
@@ -294,8 +303,11 @@ begin
          when OP_DESCRIBE_DEVICE =>
             handleDescribe (sender);
          when OP_FLUSH_DEVICE =>
+            --  Without a volatile write cache every completed write is
+            --  already durable: the barrier needs no controller command.
             if msg.tag.length = 0 and then msg.tag.flags = 0 and then
-              msg.tag.reserved = 0 and then NVMe.flush
+              msg.tag.reserved = 0 and then
+              (not NVMe.volatileWriteCache or else NVMe.flush)
             then
                sendReply (sender, REPLY_OK, 0);
             else

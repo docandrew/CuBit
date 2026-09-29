@@ -1,0 +1,5 @@
+(executable-manifest v1
+  (identity "com.cubit.boot-logs")
+  (version "0.1.0")
+  (request-service desktop read-write desktop)
+  (request-service log-observer read-write log-observer))

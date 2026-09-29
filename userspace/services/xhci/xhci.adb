@@ -1,3 +1,4 @@
+with Boot_Log;
 ------------------------------------------------------------------------------
 --  CuBit
 --  Copyright (C) 2026 Jon Andrew
@@ -17,6 +18,8 @@ with XHCI_Completions;
 with XHCI_Capabilities;
 with XHCI_DMA_Layout; use XHCI_DMA_Layout;
 with XHCI_Ports;
+with XHCI_Topology;
+with USB_Hubs;
 with XHCI_Legacy;
 with USB_Optical;
 
@@ -70,6 +73,7 @@ package body XHCI is
    TRB_TYPE_ENABLE_SLOT : constant Unsigned_32 := 9;
    TRB_TYPE_ADDRESS_DEVICE : constant Unsigned_32 := 11;
    TRB_TYPE_CONFIGURE_ENDPOINT : constant Unsigned_32 := 12;
+   TRB_TYPE_EVALUATE_CONTEXT : constant Unsigned_32 := 13;
    TRB_TYPE_NORMAL : constant Unsigned_32 := 1;
    TRB_TYPE_SETUP_STAGE : constant Unsigned_32 := 2;
    TRB_TYPE_DATA_STAGE : constant Unsigned_32 := 3;
@@ -127,6 +131,10 @@ package body XHCI is
    activePort   : Natural := 0;
    activeSlot   : Natural := 0; -- Enumeration/control context, never HID identity.
    mouseSlot    : Natural := 0;
+   keyboardSlot, keyboardDCI, keyboardPacket : Natural := 0;
+   keyboardTail : Natural := 0;
+   keyboardCycle : Unsigned_32 := TRB_CYCLE;
+   keyboardStarted : Boolean := False;
    storageSlot : Natural := 0;
    storageInDCI, storageOutDCI : Natural := 0;
    storageInterface : Unsigned_8 := 0;
@@ -169,6 +177,7 @@ package body XHCI is
    bulkResult : USB_Optical.Status_Result := USB_Optical.Invalid_Status;
    opticalLUN : USB_Optical.Logical_Unit := 0;
    opticalBlocks : Unsigned_64 := 0;
+   storageFormat : USB_Optical.Sector_Format := USB_Optical.Sector_2048;
    bulkData : USB_Optical.Bytes (1 .. 32768) with Import, Volatile,
      Address => To_Address (Integer_Address (DMA_VIRT_BASE + BULK_DATA_OFFSET));
    bulkCBW : USB_Optical.Command_Wrapper with Import, Volatile,
@@ -271,11 +280,11 @@ package body XHCI is
       for attempt in 1 .. attempts loop
          if attempt = 1 then
             Debug_Hex32 ("xhci: wait register offset=", Unsigned_32 (offset));
-            debugPrint ("xhci: wait entering sleep(1ms)" & ASCII.LF);
+            Boot_Log.Write ("xhci: wait entering sleep(1ms)" & ASCII.LF);
          end if;
          ignore := syscall (SYSCALL_SLEEP, 1);
          if attempt = 1 then
-            debugPrint ("xhci: wait resumed from sleep" & ASCII.LF);
+            Boot_Log.Write ("xhci: wait resumed from sleep" & ASCII.LF);
          elsif attempt mod 1000 = 0 then
             Debug_Hex32 ("xhci: wait iterations completed=", Unsigned_32 (attempt));
             Debug_Hex32 ("xhci: wait register value=", Read32 (base, offset));
@@ -338,7 +347,7 @@ package body XHCI is
             --  DMA allocation remains retained, even if halt itself fails.
             completionRoutingFailed := True;
             Write32 (operational, OP_USBCMD, 0);
-            debugPrint ("xhci: completion routing fault; halt requested" & ASCII.LF);
+            Boot_Log.Write ("xhci: completion routing fault; halt requested" & ASCII.LF);
       end case;
       return True;
    end Collect_Event;
@@ -436,7 +445,7 @@ package body XHCI is
              (Natural
                 (Shift_Right (value, (text'Last - i) * 4) and 16#F#) + 1);
       end loop;
-      debugPrint (labelText & text & ASCII.LF);
+      Boot_Log.Write (labelText & text & ASCII.LF);
    end Debug_Hex32;
 
    function Firmware_Handoff (HCC : Unsigned_32) return Boolean is
@@ -448,15 +457,15 @@ package body XHCI is
       --  bound prevents an unbounded walk; validate each access before MMIO.
       for Entry_Number in 1 .. Natural (barMappedBytes / 4) loop
          if Offset = 0 then
-            debugPrint ("xhci: no firmware ownership capability" & ASCII.LF);
+            Boot_Log.Write ("xhci: no firmware ownership capability" & ASCII.LF);
             return True;
          elsif not XHCI_Legacy.Fits (Offset, 4, barMappedBytes) then
-            debugPrint ("xhci: invalid extended capability range" & ASCII.LF);
+            Boot_Log.Write ("xhci: invalid extended capability range" & ASCII.LF);
             return False;
          end if;
          Header := Read32 (barBase, Storage_Offset (Offset));
          if Header = Unsigned_32'Last or else (Header and 255) = 0 then
-            debugPrint ("xhci: invalid extended capability header" & ASCII.LF);
+            Boot_Log.Write ("xhci: invalid extended capability header" & ASCII.LF);
             return False;
          end if;
          if (Header and 255) = XHCI_Legacy.LEGACY_ID then
@@ -485,7 +494,7 @@ package body XHCI is
          Distance := XHCI_Legacy.Next_Distance (Header);
          Offset := (if Distance = 0 then 0 else Offset + Distance);
       end loop;
-      debugPrint ("xhci: extended capability walk exhausted" & ASCII.LF);
+      Boot_Log.Write ("xhci: extended capability walk exhausted" & ASCII.LF);
       return False;
    end Firmware_Handoff;
 
@@ -714,7 +723,7 @@ package body XHCI is
          bulkPhase := Bulk_Faulted;
          opticalBlocks := 0;
          bulkResult := USB_Optical.Reset_Recovery_Required;
-         debugPrint ("xhci: optical transport quarantined" & ASCII.LF);
+         Boot_Log.Write ("xhci: optical transport quarantined" & ASCII.LF);
       end Fault;
    begin
       Done := False;
@@ -781,7 +790,7 @@ package body XHCI is
                end case;
             end if;
          elsif syscall (SYSCALL_GETTIME) >= bulkDeadline then
-            debugPrint ("xhci: optical transfer timeout" & ASCII.LF);
+            Boot_Log.Write ("xhci: optical transfer timeout" & ASCII.LF);
             Fault;
          end if;
       end if;
@@ -796,6 +805,7 @@ package body XHCI is
       outcome : USB_Optical.Control_Result;
       count : Unsigned_64;
       capacity : USB_Optical.Capacity_Result;
+      format : USB_Optical.Sector_Format;
       savedSlot : constant Natural := activeSlot;
       use type USB_Optical.Status_Result;
       use type USB_Optical.Capacity_Result;
@@ -815,6 +825,27 @@ package body XHCI is
          end loop;
          return result = USB_Optical.Command_Passed;
       end Run;
+      function Has_ISO (LUN : USB_Optical.Logical_Unit) return Boolean is
+         accepted, done, progressed : Boolean;
+         result : USB_Optical.Status_Result;
+         ignore : Unsigned_64;
+      begin
+         if count <= 16 then return False; end if;
+         Begin_Bulk (USB_Optical.Read_Request (16, 1, format), LUN, accepted);
+         if not accepted then return False; end if;
+         loop
+            Poll_Optical_Read (done, result, progressed);
+            exit when done;
+            ignore := syscall (SYSCALL_SLEEP, 1);
+         end loop;
+         --  Admission signature only; filesystem validates all PVD geometry
+         --  and directory extents using its existing hostile-input decoder.
+         return result = USB_Optical.Command_Passed and then
+           bulkData (1) in 0 | 1 and then
+           bulkData (2) = 16#43# and then bulkData (3) = 16#44# and then
+           bulkData (4) = 16#30# and then bulkData (5) = 16#30# and then
+           bulkData (6) = 16#31# and then bulkData (7) = 1;
+      end Has_ISO;
    begin
       if storageSlot = 0 then return; end if;
       activeSlot := storageSlot;
@@ -832,7 +863,7 @@ package body XHCI is
       end;
       activeSlot := savedSlot;
       if not valid then
-         debugPrint ("xhci: invalid optical LUN discovery" & ASCII.LF);
+         Boot_Log.Write ("xhci: invalid optical LUN discovery" & ASCII.LF);
          return;
       end if;
       for lun in USB_Optical.Logical_Unit range 0 .. lastLUN loop
@@ -840,7 +871,7 @@ package body XHCI is
             declare
                inquiry : constant USB_Optical.Bytes (1 .. 36) := bulkData (1 .. 36);
             begin
-               if USB_Optical.Is_Optical_Inquiry (inquiry) then
+               if USB_Optical.Is_Supported_Inquiry (inquiry) then
                   for attempt in 1 .. 5 loop
                      exit when Run (USB_Optical.Test_Unit_Ready, lun);
                      ok := Run (USB_Optical.Request_Sense, lun);
@@ -849,11 +880,14 @@ package body XHCI is
                      declare
                         response : constant USB_Optical.Bytes (1 .. 8) := bulkData (1 .. 8);
                      begin
-                        USB_Optical.Decode_Capacity (response, count, capacity);
+                        USB_Optical.Decode_Capacity (response, count, capacity, format);
                      end;
-                     if capacity = USB_Optical.Capacity_Valid then
+                     if capacity = USB_Optical.Capacity_Valid and then Has_ISO (lun) then
                         opticalLUN := lun;
                         opticalBlocks := count;
+                        storageFormat := format;
+                        Debug_Hex32 ("xhci: ISO native sector bytes=",
+                          2048 / USB_Optical.Sectors_Per_Block (format));
                         Debug_Hex32 ("xhci: optical LUN=", Unsigned_32 (lun));
                         Debug_Hex32 ("xhci: optical blocks=", Unsigned_32 (count));
                         return;
@@ -863,7 +897,7 @@ package body XHCI is
             end;
          end if;
       end loop;
-      debugPrint ("xhci: no supported optical medium" & ASCII.LF);
+      Boot_Log.Write ("xhci: no supported optical medium" & ASCII.LF);
    end Probe_Optical;
 
    function Optical_Block_Count return Unsigned_64 is (opticalBlocks);
@@ -878,7 +912,9 @@ package body XHCI is
    begin
       Accepted := False;
       if not USB_Optical.Read_Fits (First, Count, opticalBlocks) then return; end if;
-      Begin_Bulk (USB_Optical.Read_Request (First, Count), opticalLUN, Accepted);
+      if First > Unsigned_32'Last / USB_Optical.Sectors_Per_Block (storageFormat)
+      then return; end if;
+      Begin_Bulk (USB_Optical.Read_Request (First, Count, storageFormat), opticalLUN, Accepted);
    end Start_Optical_Read;
 
    function Boot_Interval
@@ -927,53 +963,24 @@ package body XHCI is
       usbCommand : Unsigned_32;
       usbStatus  : Unsigned_32;
       portStatus : Unsigned_32;
-      commandCompletion : Unsigned_32;
-      commandDone : Boolean;
-      slotId : Natural;
-      contextStride : Natural;
-      endpointBase  : Natural;
-      portSpeed     : Unsigned_32;
-      maxPacketSize : Unsigned_32;
+      selectedPath : XHCI_Topology.Path;
 
-      procedure Enumerate_Selected_Port (result : out Init_Result) is
+      procedure Enumerate_Device
+        (selectedPath : XHCI_Topology.Path; result : out Init_Result) is
+         commandCompletion : Unsigned_32;
+         commandDone : Boolean;
+         slotId : Natural;
+         contextStride : constant Natural := (if (hccParams1 and 4) = 0 then 8 else 16);
+         endpointBase : Natural;
+         portSpeed : constant Unsigned_32 := Unsigned_32
+           (XHCI_Topology.Speed'Enum_Rep (XHCI_Topology.Device_Speed (selectedPath)));
+         maxPacketSize : constant Unsigned_32 :=
+           (case XHCI_Topology.Device_Speed (selectedPath) is
+              when XHCI_Topology.Full_Speed | XHCI_Topology.Low_Speed => 8,
+              when XHCI_Topology.High_Speed => 64,
+              when XHCI_Topology.Super_Speed => 512);
       begin
-      Debug_Hex32 ("xhci: enumerate root port=", Unsigned_32 (activePort));
-      portStatus := Read32
-        (operational,
-         OP_PORTSC_BASE + Storage_Offset (activePort - 1) * OP_PORT_STRIDE);
-      Debug_Hex32 ("xhci: PORTSC before enumeration=", portStatus);
-      case XHCI_Ports.Before_Enumeration (portStatus) is
-         when XHCI_Ports.Disconnected =>
-            result := INIT_NO_DEVICE;
-            return;
-         when XHCI_Ports.Start_Reset =>
-            debugPrint ("xhci: starting port reset" & ASCII.LF);
-            Write32
-              (operational,
-               OP_PORTSC_BASE + Storage_Offset (activePort - 1) * OP_PORT_STRIDE,
-               XHCI_Ports.Reset_Write (portStatus));
-         when XHCI_Ports.Wait_For_Reset =>
-            debugPrint ("xhci: waiting for existing port reset" & ASCII.LF);
-         when XHCI_Ports.Already_Enabled =>
-            null;
-      end case;
-      if not Wait_For_Bits
-        (operational,
-         OP_PORTSC_BASE + Storage_Offset (activePort - 1) * OP_PORT_STRIDE,
-         16#8000_0000# or PORTSC_PR or PORTSC_PED, PORTSC_PED, 10_000)
-      then
-         Debug_Hex32
-           ("xhci: PORTSC reset timeout=",
-            Read32
-              (operational,
-               OP_PORTSC_BASE +
-                 Storage_Offset (activePort - 1) * OP_PORT_STRIDE));
-         result := INIT_PORT_RESET_TIMEOUT;
-         return;
-      end if;
-      Debug_Hex32 ("xhci: PORTSC ready=", Read32 (operational,
-        OP_PORTSC_BASE + Storage_Offset (activePort - 1) * OP_PORT_STRIDE));
-      debugPrint ("xhci: submitting Enable Slot" & ASCII.LF);
+      Boot_Log.Write ("xhci: submitting Enable Slot" & ASCII.LF);
       Submit_Command
         ((parameterLo => 0, parameterHi => 0, status => 0,
           control => Shift_Left (TRB_TYPE_ENABLE_SLOT, TRB_TYPE_SHIFT)),
@@ -996,27 +1003,6 @@ package body XHCI is
       --  Give the slot an output Device Context, then describe the route and
       --  default control endpoint in an Input Context.  Contexts are 32 or 64
       --  bytes according to HCCPARAMS1.CSZ; each lives in its own DMA page.
-      if (hccParams1 and 16#4#) = 0 then
-         contextStride := 8;
-      else
-         contextStride := 16;
-      end if;
-
-      portStatus := Read32
-        (operational,
-         OP_PORTSC_BASE + Storage_Offset (activePort - 1) * OP_PORT_STRIDE);
-      portSpeed := Shift_Right (portStatus, 10) and 16#F#;
-      case portSpeed is
-         when 1 | 2 =>
-            maxPacketSize := 8;
-         when 3 =>
-            maxPacketSize := 64;
-         when 4 =>
-            maxPacketSize := 512;
-         when others =>
-            result := INIT_ADDRESS_FAILED;
-            return;
-      end case;
 
       dcbaa (activeSlot) := dmaPhys + Device_Offset (activeSlot, DEVICE_CONTEXT_OFFSET);
       --  Input Control Context: add Slot and Endpoint 0 contexts.
@@ -1024,9 +1010,13 @@ package body XHCI is
       deviceDMA (activeSlot).inputContext (1) := 3;
       --  Input Slot Context is context index 1.
       deviceDMA (activeSlot).inputContext (contextStride) :=
-        Shift_Left (portSpeed, 20) or Shift_Left (1, 27);
+        XHCI_Topology.Route_String (selectedPath) or
+        Shift_Left (Unsigned_32 (XHCI_Topology.Speed'Enum_Rep
+          (XHCI_Topology.Device_Speed (selectedPath))), 20) or Shift_Left (1, 27);
       deviceDMA (activeSlot).inputContext (contextStride + 1) :=
-        Shift_Left (Unsigned_32 (activePort), 16);
+        Shift_Left (Unsigned_32 (XHCI_Topology.Root_Port (selectedPath)), 16);
+      deviceDMA (activeSlot).inputContext (contextStride + 2) :=
+        XHCI_Topology.TT_Context (selectedPath);
       --  Input Endpoint 0 Context is context index 2.
       endpointBase := 2 * contextStride;
       deviceDMA (activeSlot).inputContext (endpointBase + 1) :=
@@ -1079,6 +1069,7 @@ package body XHCI is
          endpointPacketSize : Natural := 0;
          endpointInterval   : Unsigned_8 := 0;
          selectedStorage : USB_Configurations.Storage_Interface;
+         selectedKeyboard : Boolean := False;
          endpointNumber     : Natural;
          endpointDCI        : Natural;
          endpointInputBase  : Natural;
@@ -1086,6 +1077,61 @@ package body XHCI is
          vendorProduct      : Unsigned_32;
       begin
          --  Read only bounded standard descriptors into a private DMA page.
+         -- Discover EP0 packet size before requesting a multi-packet descriptor.
+         Control_Request
+           (16#80#, 6, 16#0100#, 0, 8,
+            dmaPhys + Device_Offset (activeSlot, DESCRIPTOR_OFFSET), actualLength, requestOK);
+         if not requestOK or else actualLength /= 8 or else
+           deviceDMA (activeSlot).descriptorBytes (0) /= 18 or else
+           deviceDMA (activeSlot).descriptorBytes (1) /= 1
+         then
+            result := INIT_DESCRIPTOR_FAILED; return;
+         end if;
+         declare
+            Encoded : constant Unsigned_8 := deviceDMA (activeSlot).descriptorBytes (7);
+            Packet : Unsigned_32;
+         begin
+            case portSpeed is
+               when 1 =>
+                  if Encoded not in 8 | 16 | 32 | 64 then
+                     result := INIT_DESCRIPTOR_FAILED; return;
+                  end if;
+                  Packet := Unsigned_32 (Encoded);
+               when 2 =>
+                  if Encoded /= 8 then result := INIT_DESCRIPTOR_FAILED; return; end if;
+                  Packet := 8;
+               when 3 =>
+                  if Encoded /= 64 then result := INIT_DESCRIPTOR_FAILED; return; end if;
+                  Packet := 64;
+               when 4 =>
+                  if Encoded /= 9 then result := INIT_DESCRIPTOR_FAILED; return; end if;
+                  Packet := 512;
+               when others => result := INIT_DESCRIPTOR_FAILED; return;
+            end case;
+            if Packet /= maxPacketSize then
+               for I in 0 .. 33 * contextStride - 1 loop
+                  deviceDMA (activeSlot).inputContext (I) := 0;
+               end loop;
+               deviceDMA (activeSlot).inputContext (1) := 2;
+               for I in 0 .. contextStride - 1 loop
+                  deviceDMA (activeSlot).inputContext (2 * contextStride + I) :=
+                    deviceDMA (activeSlot).deviceContext (contextStride + I);
+               end loop;
+               deviceDMA (activeSlot).inputContext (2 * contextStride + 1) :=
+                 (deviceDMA (activeSlot).inputContext (2 * contextStride + 1) and 16#FFFF#)
+                   or Shift_Left (Packet, 16);
+               Submit_Command
+                 ((Unsigned_32 ((dmaPhys + Device_Offset (activeSlot, INPUT_CONTEXT_OFFSET)) and 16#FFFF_FFFF#),
+                   Unsigned_32 (Shift_Right (dmaPhys + Device_Offset (activeSlot, INPUT_CONTEXT_OFFSET), 32)),
+                   0, Shift_Left (TRB_TYPE_EVALUATE_CONTEXT, TRB_TYPE_SHIFT) or
+                     Shift_Left (Unsigned_32 (activeSlot), 24)),
+                  commandCompletion, slotId, commandDone);
+               if not commandDone or else commandCompletion /= COMPLETION_SUCCESS then
+                  result := INIT_CONFIGURE_FAILED; return;
+               end if;
+               Debug_Hex32 ("xhci: EP0 packet bytes=", Packet);
+            end if;
+         end;
          Control_Request
            (16#80#, 6, 16#0100#, 0, 18,
             dmaPhys + Device_Offset (activeSlot, DESCRIPTOR_OFFSET), actualLength, requestOK);
@@ -1146,8 +1192,159 @@ package body XHCI is
                return;
             end if;
             configValue := configuration.Value;
+            if configuration.Hub.Present then
+               Debug_Hex32 ("xhci: USB2 hub interface=",
+                 Unsigned_32 (configuration.Hub.Number));
+               Debug_Hex32 ("xhci: USB2 hub protocol=",
+                 Unsigned_32 (configuration.Hub.Protocol));
+               -- Configure and inspect the hub before accepting any child slot.
+               -- This startup probe is bounded; it does not poll for input.
+               declare
+                  use type USB_Hubs.Decode_Result;
+                  use type USB_Hubs.Power_Mode;
+                  use type USB_Hubs.Port_Action;
+                  Hub : USB_Hubs.Descriptor;
+                  Decoded_Hub : USB_Hubs.Decode_Result;
+                  Status : Unsigned_16;
+                  Ignored : Unsigned_64;
+                  Hub_Slot : constant Device_Index := activeSlot;
+                  Child_Path : XHCI_Topology.Path;
+                  Attached : XHCI_Topology.Attach_Result;
+                  Child_Result : Init_Result;
+                  use type XHCI_Topology.Attach_Result;
+                  function Read_Port (Port : Positive) return Boolean is
+                  begin
+                     Control_Request (16#A3#, 0, 0, Unsigned_16 (Port), 4,
+                       dmaPhys + Device_Offset (activeSlot, DESCRIPTOR_OFFSET),
+                       actualLength, requestOK);
+                     if not requestOK or else actualLength /= 4 then return False; end if;
+                     Status := Unsigned_16 (deviceDMA (activeSlot).descriptorBytes (0)) or
+                       Shift_Left (Unsigned_16 (deviceDMA (activeSlot).descriptorBytes (1)), 8);
+                     return True;
+                  end Read_Port;
+               begin
+                  Control_Request (0, 9, Unsigned_16 (configValue), 0, 0, 0,
+                                   actualLength, requestOK);
+                  if not requestOK then result := INIT_CONFIGURE_FAILED; return; end if;
+                  Control_Request (16#A0#, 6, 16#2900#, 0, 71,
+                    dmaPhys + Device_Offset (activeSlot, DESCRIPTOR_OFFSET),
+                    actualLength, requestOK);
+                  if not requestOK or else actualLength not in 9 .. 71 then
+                     result := INIT_DESCRIPTOR_FAILED; return;
+                  end if;
+                  declare
+                     Data : USB_Hubs.Bytes (1 .. actualLength);
+                  begin
+                     for I in Data'Range loop
+                        Data (I) := deviceDMA (activeSlot).descriptorBytes (I - 1);
+                     end loop;
+                     USB_Hubs.Decode (Data, Hub, Decoded_Hub);
+                  end;
+                  if Decoded_Hub /= USB_Hubs.Decoded then
+                     Debug_Hex32 ("xhci: rejected hub descriptor bytes=", Unsigned_32 (actualLength));
+                     Debug_Hex32 ("xhci: rejected hub descriptor ports=",
+                       Unsigned_32 (deviceDMA (activeSlot).descriptorBytes (2)));
+                     result := INIT_DESCRIPTOR_FAILED; return;
+                  end if;
+                  Debug_Hex32 ("xhci: hub port count=", Unsigned_32 (Hub.Ports));
+                  -- Tell the controller this slot routes downstream traffic.
+                  -- Only single-TT/default alternate setting is supported here.
+                  if configuration.Hub.Protocol = 2 then
+                     result := INIT_CONFIGURE_FAILED; return;
+                  end if;
+                  for I in 0 .. 33 * contextStride - 1 loop
+                     deviceDMA (activeSlot).inputContext (I) := 0;
+                  end loop;
+                  deviceDMA (activeSlot).inputContext (1) := 1;
+                  for I in 0 .. contextStride - 1 loop
+                     deviceDMA (activeSlot).inputContext (contextStride + I) :=
+                       deviceDMA (activeSlot).deviceContext (I);
+                  end loop;
+                  deviceDMA (activeSlot).inputContext (contextStride) :=
+                    deviceDMA (activeSlot).inputContext (contextStride) or Shift_Left (1, 26);
+                  deviceDMA (activeSlot).inputContext (contextStride + 1) :=
+                    (deviceDMA (activeSlot).inputContext (contextStride + 1) and 16#00FF_FFFF#)
+                      or Shift_Left (Unsigned_32 (Hub.Ports), 24);
+                  if portSpeed = 3 then
+                     deviceDMA (activeSlot).inputContext (contextStride + 2) :=
+                       deviceDMA (activeSlot).inputContext (contextStride + 2)
+                         or Shift_Left (Unsigned_32 (Hub.TT_Think_Time), 16);
+                  end if;
+                  Submit_Command
+                    ((Unsigned_32 ((dmaPhys + Device_Offset (activeSlot, INPUT_CONTEXT_OFFSET)) and 16#FFFF_FFFF#),
+                      Unsigned_32 (Shift_Right (dmaPhys + Device_Offset (activeSlot, INPUT_CONTEXT_OFFSET), 32)),
+                      0, Shift_Left (TRB_TYPE_CONFIGURE_ENDPOINT, TRB_TYPE_SHIFT) or
+                        Shift_Left (Unsigned_32 (activeSlot), 24)),
+                     commandCompletion, slotId, commandDone);
+                  if not commandDone or else commandCompletion /= COMPLETION_SUCCESS then
+                     result := INIT_CONFIGURE_FAILED; return;
+                  end if;
+                  if Hub.Power /= USB_Hubs.Always_On then
+                     for Port in 1 .. Hub.Ports loop
+                        Control_Request (16#23#, 3, 8, Unsigned_16 (Port), 0, 0,
+                                         actualLength, requestOK);
+                        if not requestOK then result := INIT_CONFIGURE_FAILED; return; end if;
+                     end loop;
+                  end if;
+                  Ignored := syscall (SYSCALL_SLEEP,
+                    Unsigned_64 (Natural'Max (Hub.Power_Delay_MS, 100)));
+                  for Port in 1 .. Hub.Ports loop
+                     if not Read_Port (Port) then result := INIT_DESCRIPTOR_FAILED; return; end if;
+                     if USB_Hubs.Action (Status) = USB_Hubs.Reset_Required then
+                        Control_Request (16#23#, 3, 4, Unsigned_16 (Port), 0, 0,
+                                         actualLength, requestOK);
+                        if not requestOK then result := INIT_CONFIGURE_FAILED; return; end if;
+                        for Attempt in 1 .. 50 loop
+                           Ignored := syscall (SYSCALL_SLEEP, 10);
+                           if not Read_Port (Port) then result := INIT_DESCRIPTOR_FAILED; return; end if;
+                           exit when USB_Hubs.Action (Status) /= USB_Hubs.Resetting
+                             and then USB_Hubs.Action (Status) /= USB_Hubs.Reset_Required;
+                        end loop;
+                     end if;
+                     Debug_Hex32 ("xhci: hub downstream port=", Unsigned_32 (Port));
+                     Debug_Hex32 ("xhci: hub port status=", Unsigned_32 (Status));
+                     case USB_Hubs.Action (Status) is
+                        when USB_Hubs.Ready => Boot_Log.Write ("xhci: hub port READY" & ASCII.LF);
+                        when USB_Hubs.Disconnected => Boot_Log.Write ("xhci: hub port disconnected" & ASCII.LF);
+                        when others => Boot_Log.Write ("xhci: hub port not ready; see status" & ASCII.LF);
+                     end case;
+                     if USB_Hubs.Action (Status) = USB_Hubs.Ready then
+                        Control_Request (16#23#, 1, 20, Unsigned_16 (Port), 0, 0,
+                                         actualLength, requestOK);
+                        if not requestOK then result := INIT_CONFIGURE_FAILED; return; end if;
+                        XHCI_Topology.Child (selectedPath, Hub_Slot, Port,
+                          USB_Hubs.Rate (Status), Child_Path, Attached);
+                        if Attached /= XHCI_Topology.Attached then
+                           result := INIT_ADDRESS_FAILED; return;
+                        end if;
+                        -- Address this child before resetting any sibling.
+                        Enumerate_Device (Child_Path, Child_Result);
+                        activeSlot := Hub_Slot;
+                        Debug_Hex32 ("xhci: child initialization result=",
+                          Unsigned_32 (Init_Result'Pos (Child_Result)));
+                        if Child_Result in INIT_COMMAND_TIMEOUT | INIT_COMMAND_FAILED |
+                          INIT_ADDRESS_FAILED then
+                           result := Child_Result; return;
+                        end if;
+                     end if;
+                  end loop;
+                  Boot_Log.Write ("xhci: hub children enumerated" & ASCII.LF);
+                  result := INIT_OK;
+                  return;
+               end;
+            end if;
+            if configuration.Keyboard.Present then
+               Debug_Hex32 ("xhci: boot keyboard interface=",
+                 Unsigned_32 (configuration.Keyboard.Number));
+            end if;
             if configuration.Storage.Present and then storageSlot = 0 then
                selectedStorage := configuration.Storage;
+            elsif configuration.Keyboard.Present and then keyboardSlot = 0 then
+               selectedKeyboard := True;
+               interfaceNumber := configuration.Keyboard.Number;
+               endpointAddress := configuration.Keyboard.Input.Address;
+               endpointPacketSize := configuration.Keyboard.Input.Packet_Bytes;
+               endpointInterval := configuration.Keyboard.Input.Interval;
             elsif not configuration.Mouse.Present or else mouseSlot /= 0 then
                result := INIT_NOT_BOOT_MOUSE;
                return;
@@ -1268,8 +1465,6 @@ package body XHCI is
             result := INIT_NOT_BOOT_MOUSE;
             return;
          end if;
-         hidEndpointDCI := endpointDCI;
-         hidMaxPacket := endpointPacketSize;
 
          for i in 0 .. 33 * contextStride - 1 loop
             deviceDMA (activeSlot).inputContext (i) := 0;
@@ -1340,12 +1535,70 @@ package body XHCI is
             result := INIT_CONFIGURE_FAILED;
             return;
          end if;
-         Debug_Hex32
-           ("xhci: boot mouse endpoint DCI=", Unsigned_32 (endpointDCI));
+         if selectedKeyboard then
+            keyboardSlot := activeSlot;
+            keyboardDCI := endpointDCI;
+            keyboardPacket := endpointPacketSize;
+            Debug_Hex32 ("xhci: boot keyboard endpoint DCI=", Unsigned_32 (endpointDCI));
+         else
+            mouseSlot := activeSlot;
+            hidEndpointDCI := endpointDCI;
+            hidMaxPacket := endpointPacketSize;
+            Debug_Hex32 ("xhci: boot mouse endpoint DCI=", Unsigned_32 (endpointDCI));
+         end if;
       end;
 
-      mouseSlot := activeSlot;
       result := INIT_OK;
+      end Enumerate_Device;
+
+      procedure Enumerate_Selected_Port (result : out Init_Result) is
+      begin
+      Debug_Hex32 ("xhci: enumerate root port=", Unsigned_32 (activePort));
+      portStatus := Read32
+        (operational,
+         OP_PORTSC_BASE + Storage_Offset (activePort - 1) * OP_PORT_STRIDE);
+      Debug_Hex32 ("xhci: PORTSC before enumeration=", portStatus);
+      case XHCI_Ports.Before_Enumeration (portStatus) is
+         when XHCI_Ports.Disconnected =>
+            result := INIT_NO_DEVICE;
+            return;
+         when XHCI_Ports.Start_Reset =>
+            Boot_Log.Write ("xhci: starting port reset" & ASCII.LF);
+            Write32
+              (operational,
+               OP_PORTSC_BASE + Storage_Offset (activePort - 1) * OP_PORT_STRIDE,
+               XHCI_Ports.Reset_Write (portStatus));
+         when XHCI_Ports.Wait_For_Reset =>
+            Boot_Log.Write ("xhci: waiting for existing port reset" & ASCII.LF);
+         when XHCI_Ports.Already_Enabled =>
+            null;
+      end case;
+      if not Wait_For_Bits
+        (operational,
+         OP_PORTSC_BASE + Storage_Offset (activePort - 1) * OP_PORT_STRIDE,
+         16#8000_0000# or PORTSC_PR or PORTSC_PED, PORTSC_PED, 10_000)
+      then
+         Debug_Hex32
+           ("xhci: PORTSC reset timeout=",
+            Read32
+              (operational,
+               OP_PORTSC_BASE +
+                 Storage_Offset (activePort - 1) * OP_PORT_STRIDE));
+         result := INIT_PORT_RESET_TIMEOUT;
+         return;
+      end if;
+      Debug_Hex32 ("xhci: PORTSC ready=", Read32 (operational,
+        OP_PORTSC_BASE + Storage_Offset (activePort - 1) * OP_PORT_STRIDE));
+      portStatus := Read32 (operational,
+        OP_PORTSC_BASE + Storage_Offset (activePort - 1) * OP_PORT_STRIDE);
+      case Shift_Right (portStatus, 10) and 16#F# is
+         when 1 => selectedPath := XHCI_Topology.Root (activePort, XHCI_Topology.Full_Speed);
+         when 2 => selectedPath := XHCI_Topology.Root (activePort, XHCI_Topology.Low_Speed);
+         when 3 => selectedPath := XHCI_Topology.Root (activePort, XHCI_Topology.High_Speed);
+         when 4 => selectedPath := XHCI_Topology.Root (activePort, XHCI_Topology.Super_Speed);
+         when others => result := INIT_ADDRESS_FAILED; return;
+      end case;
+      Enumerate_Device (selectedPath, result);
       end Enumerate_Selected_Port;
    begin
       result := INIT_BAD_CAPABILITY;
@@ -1362,6 +1615,8 @@ package body XHCI is
       completionRoutingFailed := False;
       ep0State := [others => (others => <>)];
       mouseSlot := 0;
+      keyboardSlot := 0; keyboardDCI := 0; keyboardPacket := 0;
+      keyboardTail := 0; keyboardCycle := TRB_CYCLE; keyboardStarted := False;
       storageSlot := 0;
       hidTail := 0;
       hidCycle := TRB_CYCLE;
@@ -1440,9 +1695,9 @@ package body XHCI is
       end if;
       Debug_Hex32 ("xhci: DMA pages allocated=", Unsigned_32 (Pages (Layout)));
 
-      debugPrint ("xhci: pre-reset sleep(1ms) begin" & ASCII.LF);
+      Boot_Log.Write ("xhci: pre-reset sleep(1ms) begin" & ASCII.LF);
       ignore := syscall (SYSCALL_SLEEP, 1);
-      debugPrint ("xhci: pre-reset sleep resumed" & ASCII.LF);
+      Boot_Log.Write ("xhci: pre-reset sleep resumed" & ASCII.LF);
 
       if not Firmware_Handoff (hccParams1) then
          result := INIT_FIRMWARE_HANDOFF_FAILED;
@@ -1536,9 +1791,17 @@ package body XHCI is
       end if;
 
       --  A device attached before boot reconnects asynchronously after HCRST.
-      --  Wait for that architected state transition rather than taking a
-      --  one-shot snapshot immediately after Run/Stop is asserted.
-      for attempt in 1 .. 1_000 loop
+      -- Diagnostic startup window: a fast SuperSpeed arrival does not mean
+      -- USB2 companion ports have finished reconnecting. This is bounded
+      -- boot settling, not steady-state input polling or hotplug support.
+      Boot_Log.Write ("xhci: boot discovery settling begin (3000 ms)" & ASCII.LF);
+      for attempt in 1 .. 300 loop
+         -- Drain through the sole event-ring owner. Port-change notifications
+         -- must not fill the ring while devices reconnect. The final PORTSC
+         -- scan remains authoritative; this is not runtime hotplug handling.
+         for Event_Budget in 1 .. EVENT_RING_ENTRIES loop
+            exit when not Collect_Event;
+         end loop;
          connectedPorts := 0;
          for port in 0 .. maxPorts - 1 loop
             portStatus := Read32
@@ -1548,15 +1811,18 @@ package body XHCI is
                connectedPorts := connectedPorts + 1;
             end if;
          end loop;
-         exit when connectedPorts > 0;
-         ignore := syscall (SYSCALL_SLEEP, 1);
+         ignore := syscall (SYSCALL_SLEEP, 10);
       end loop;
+      Boot_Log.Write ("xhci: boot discovery settling complete" & ASCII.LF);
 
       connectedPorts := 0;
       for port in 0 .. maxPorts - 1 loop
          portStatus := Read32
            (operational,
             OP_PORTSC_BASE + Storage_Offset (port) * OP_PORT_STRIDE);
+         -- Include disconnected/unpowered ports: absence is evidence too.
+         Debug_Hex32 ("xhci: final root port=", Unsigned_32 (port + 1));
+         Debug_Hex32 ("xhci: final PORTSC=", portStatus);
          if (portStatus and PORTSC_CCS) /= 0 then
             connectedPorts := connectedPorts + 1;
             Debug_Hex32 ("xhci: connected root port=", Unsigned_32 (port + 1));
@@ -1592,7 +1858,7 @@ package body XHCI is
             end if;
          end loop;
       end;
-      activeSlot := (if mouseSlot /= 0 then mouseSlot else storageSlot);
+      activeSlot := (if mouseSlot /= 0 then mouseSlot elsif keyboardSlot /= 0 then keyboardSlot else storageSlot);
       result := (if activeSlot /= 0 then INIT_OK else INIT_NO_DEVICE);
    end Initialize;
 
@@ -1667,6 +1933,63 @@ package body XHCI is
       hidTransfersStarted := True;
       Ring_HID_Doorbell;
    end Start_Boot_Mouse_Transfers;
+
+   procedure Queue_Keyboard is
+      Offset : constant Natural := keyboardTail * HID_REPORT_STRIDE;
+      Address : constant Unsigned_64 := dmaPhysical +
+        Device_Offset (keyboardSlot, HID_REPORT_OFFSET) + Unsigned_64 (Offset);
+   begin
+      deviceDMA (keyboardSlot).hidRing (keyboardTail) :=
+        (Unsigned_32 (Address and 16#FFFF_FFFF#),
+         Unsigned_32 (Shift_Right (Address, 32)), Unsigned_32 (keyboardPacket),
+         Shift_Left (TRB_TYPE_NORMAL, TRB_TYPE_SHIFT) or TRB_IOC or keyboardCycle);
+      if keyboardTail = COMMAND_RING_ENTRIES - 2 then
+         deviceDMA (keyboardSlot).hidRing (COMMAND_RING_ENTRIES - 1).control :=
+           Shift_Left (TRB_TYPE_LINK, TRB_TYPE_SHIFT) or TRB_TOGGLE_CYCLE or keyboardCycle;
+         keyboardTail := 0;
+         keyboardCycle := keyboardCycle xor TRB_CYCLE;
+      else
+         keyboardTail := keyboardTail + 1;
+      end if;
+   end Queue_Keyboard;
+
+   procedure Start_Boot_Keyboard_Transfers is
+   begin
+      if keyboardSlot = 0 or else keyboardStarted then return; end if;
+      for I in 1 .. HID_TRANSFER_DEPTH loop Queue_Keyboard; end loop;
+      keyboardStarted := True;
+      Write32 (doorbellBase, Storage_Offset (keyboardSlot * 4), Unsigned_32 (keyboardDCI));
+   end Start_Boot_Keyboard_Transfers;
+
+   procedure Poll_Boot_Keyboard
+     (Data : out USB_Keyboards.Report; Ready, Progressed : out Boolean)
+   is
+      Event : TRB;
+      Found : Boolean;
+      Pointer : Unsigned_64;
+      Base : Unsigned_64;
+      Offset, Residual : Natural;
+      Code : Unsigned_32;
+   begin
+      Data := [others => 0]; Ready := False; Progressed := False;
+      if keyboardSlot = 0 then return; end if;
+      Base := dmaPhysical + Device_Offset (keyboardSlot, HID_RING_OFFSET);
+      Next_Completion (keyboardSlot, keyboardDCI, Event, Found, Progressed);
+      if not Found then return; end if;
+      Pointer := Unsigned_64 (Event.parameterLo) or Shift_Left (Unsigned_64 (Event.parameterHi), 32);
+      if Pointer < Base or else Pointer >= Base + Unsigned_64 ((COMMAND_RING_ENTRIES - 1) * 16)
+        or else (Pointer - Base) mod 16 /= 0 then return; end if;
+      Offset := Natural ((Pointer - Base) / 16) * HID_REPORT_STRIDE;
+      Residual := Natural (Event.status and 16#FFFFFF#);
+      Code := Shift_Right (Event.status, 24);
+      if Code in 1 | 13 and then Residual <= keyboardPacket
+        and then keyboardPacket - Residual = 8 then
+         for I in Data'Range loop Data (I) := deviceDMA (keyboardSlot).hidReports (Offset + I - 1); end loop;
+         Ready := True;
+      end if;
+      Queue_Keyboard;
+      Write32 (doorbellBase, Storage_Offset (keyboardSlot * 4), Unsigned_32 (keyboardDCI));
+   end Poll_Boot_Keyboard;
 
    procedure Enable_Runtime_Interrupts
      (mode        : Runtime_Interrupt_Mode;

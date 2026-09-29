@@ -52,7 +52,7 @@ package body ARP_Cache with SPARK_Mode is
       case P.Op is
          when Reply =>
             --  Only the answer to our own question.
-            if Pos >= 0 and then T (Pos).St = Pending then
+            if Pos >= 0 and then T (Pos).St in Pending | Probing then
                T (Pos) := (St => Resolved, IP => P.Sender_IP, HW => P.Sender_HW, Since => Now);
             end if;
          when Request =>
@@ -68,7 +68,9 @@ package body ARP_Cache with SPARK_Mode is
             elsif T (Pos).St = Pending then
                T (Pos) := (St => Resolved, IP => P.Sender_IP, HW => P.Sender_HW, Since => Now);
             elsif T (Pos).HW = P.Sender_HW then
-               T (Pos).Since := Now;   --  still there; a different address is not taken
+               --  Still there; a different address is not taken.
+               T (Pos).Since := Now;
+               T (Pos).St := Resolved;
             end if;
       end case;
    end Learn;
@@ -76,8 +78,36 @@ package body ARP_Cache with SPARK_Mode is
    procedure Lookup (T : Table; IP : IPv4; HW : out MAC; Found : out Boolean) is
       Pos : constant Integer := Position (T, IP);
    begin
-      Found := Pos >= 0 and then T (Pos).St = Resolved;
+      Found := Pos >= 0 and then T (Pos).St in Usable;
       HW := (if Found then T (Pos).HW else [others => 0]);
    end Lookup;
+
+   procedure Reconfirm (T : in out Table; IP : IPv4; Now : Unsigned_64) is
+      Pos : constant Integer := Position (T, IP);
+   begin
+      if Pos >= 0 and then T (Pos).St = Resolved then
+         T (Pos).St := Probing;
+         T (Pos).Since := Now;
+      end if;
+   end Reconfirm;
+
+   procedure Expire (T : in out Table; Now, Timeout : Unsigned_64) is
+   begin
+      if Now < Timeout then
+         return;
+      end if;
+      for I in Index loop
+         pragma Loop_Invariant (Unique (T));
+         pragma Loop_Invariant
+           (for all J in Index =>
+              T (J) = T'Loop_Entry (J) or else
+              (J < I and then T (J).St = Free and then
+               T'Loop_Entry (J).St in Pending | Probing and then
+               Now - Timeout >= T'Loop_Entry (J).Since));
+         if T (I).St in Pending | Probing and then Now - Timeout >= T (I).Since then
+            T (I) := (others => <>);
+         end if;
+      end loop;
+   end Expire;
 
 end ARP_Cache;

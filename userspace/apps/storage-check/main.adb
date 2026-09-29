@@ -26,6 +26,100 @@ procedure main is
    grantRef : CuBit.Memory_Grants.Grant_Reference;
    grantOk  : Boolean;
 
+   function exerciseOwnedMemory return Boolean is
+      A, B, Again : Unsigned_64;
+      Bytes : constant Unsigned_64 := 3 * PAGE_SIZE;
+      function Release (Base, Size : Unsigned_64) return Boolean is
+        (syscall (SYSCALL_RELEASE_OWNED_MEMORY, Base, Size) = 0);
+      function Check (Base : Unsigned_64; Expected, Value : Unsigned_8) return Boolean is
+         type Data is array (1 .. Natural (Bytes)) of Unsigned_8;
+         Buffer : Data with Import, Volatile,
+           Address => To_Address (Integer_Address (Base));
+      begin
+         for I in Buffer'Range loop
+            if Buffer (I) /= Expected then return False; end if;
+            Buffer (I) := Value;
+         end loop;
+         return True;
+      end Check;
+   begin
+      if syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, 0) /= 0 or else
+        syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, Unsigned_64'Last) /= 0 or else
+        Release (aligned, PAGE_SIZE)
+      then return False; end if;
+      for Round in 1 .. 64 loop
+         A := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, Bytes - 1);
+         B := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, Bytes);
+         if A = 0 or B = 0 or A = B or A mod PAGE_SIZE /= 0 or B mod PAGE_SIZE /= 0
+         then return False; end if;
+         if not Check (A, 0, 16#A5#) or else not Check (B, 0, 16#5A#) then return False; end if;
+         -- Interior, wrong-size and non-owned releases must not change data.
+         if Release (A + PAGE_SIZE, Bytes) or else Release (A, PAGE_SIZE) or else
+           not Check (A, 16#A5#, 16#A5#) or else not Release (A, Bytes - 1) or else
+           Release (A, Bytes)
+         then return False; end if;
+         Again := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, Bytes);
+         -- First-fit reuses the hole, but fresh physical contents must be zero.
+         if Again /= A or else not Check (Again, 0, 16#33#) or else
+           not Check (B, 16#5A#, 16#5A#) or else not Release (B, Bytes) or else
+           not Release (Again, Bytes)
+         then return False; end if;
+      end loop;
+      return True;
+   end exerciseOwnedMemory;
+
+   function exerciseOwnedGrantRetention return Boolean is
+      use CuBit.Memory_Grants;
+      PID : constant ProcessID := syscall (SYSCALL_GETPID);
+      Base, Replacement : Unsigned_64;
+      Reference : Grant_Reference;
+      Alias_Address : System.Address;
+      OK : Boolean;
+      type Page is array (1 .. 4096) of Unsigned_8;
+      function Matches (Address : System.Address; Value : Unsigned_8) return Boolean is
+         Data : Page with Import, Volatile, Address => Address;
+      begin
+         for I in Data'Range loop
+            if Data (I) /= Value then return False; end if;
+         end loop;
+         return True;
+      end Matches;
+      procedure Fill (Address : System.Address; Value : Unsigned_8) is
+         Data : Page with Import, Volatile, Address => Address;
+      begin
+         for I in Data'Range loop Data (I) := Value; end loop;
+      end Fill;
+   begin
+      for Round in 1 .. 64 loop
+         Base := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, 4096);
+         if Base = 0 then return False; end if;
+         Fill (To_Address (Integer_Address (Base)), 16#A7#);
+         Create_For_Process (PID, To_Address (Integer_Address (Base)), 1,
+                             False, Reference, OK);
+         if not OK then return False; end if;
+         Acquire (Reference, PID, 0, 4096, Read_Access, Alias_Address, OK);
+         if not OK or else Alias_Address = System.Null_Address then return False; end if;
+         if syscall (SYSCALL_RELEASE_OWNED_MEMORY, Base, 4096) /= 0 then return False; end if;
+         Replacement := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, 4096);
+         if Replacement /= Base or else
+           not Matches (To_Address (Integer_Address (Replacement)), 0)
+         then return False; end if;
+         Fill (To_Address (Integer_Address (Replacement)), 16#3C#);
+         -- The new allocation at the same VA must not recycle pinned backing.
+         if not Matches (Alias_Address, 16#A7#) then return False; end if;
+         Revoke (Reference, OK);
+         if not OK or else Retirement_Confirmed (Reference) or else
+           not Matches (Alias_Address, 16#A7#)
+         then return False; end if;
+         Return_Acquisition (Reference, OK);
+         if not OK or else not Retirement_Confirmed (Reference) or else
+           not Matches (To_Address (Integer_Address (Replacement)), 16#3C#) or else
+           syscall (SYSCALL_RELEASE_OWNED_MEMORY, Replacement, 4096) /= 0
+         then return False; end if;
+      end loop;
+      return True;
+   end exerciseOwnedGrantRetention;
+
    function exerciseRejectedObjects return Boolean is
       Buffer : String (1 .. 4096)
         with Import, Address => To_Address (Integer_Address (aligned));
@@ -506,7 +600,8 @@ procedure main is
         or else Buffer (Text'Range) /= Text
       then return False; end if;
       --  A rejected zero-progress write must not synthesize a larger file.
-      if not Check (Write_At_Request (A, grantRef, 1, 16#2_0000_0000#),
+      --  256 TiB lies beyond the triple-indirect extent of every block size.
+      if not Check (Write_At_Request (A, grantRef, 1, 16#1_0000_0000_0000#),
                     0, REPLY_FILE_RANGE_UNSUPPORTED) or else
         not Check (Seek_Request (B, 0, From_End), PAGE_SIZE + Text'Length) or else
         not Check (Seek_Request (A, 0, From_End), PAGE_SIZE + Text'Length)
@@ -571,6 +666,37 @@ procedure main is
          end loop;
          if not Check (Flush_Request (A), 0) then return False; end if;
          debugPrint ("FILE-DOUBLE-RESIZE-CHECK: PASS" & LF);
+      end;
+      --  4.25 GiB is triple-indirect on 1, 2 and 4 KiB volumes (it needs
+      --  LARGE_FILE). Sparse growth there must be coherent through both
+      --  aliases, a removed tail must stay zero, and shrinking back below the
+      --  triple extent must retire the whole triple tree.
+      declare
+         Triple_Offset : constant Unsigned_64 := 16#1_1000_0000#;
+         Previous_Size : constant Unsigned_64 := 16#0100_0000# + 1025;
+      begin
+         Buffer (Text'Range) := Text;
+         if not Check (Write_At_Request (A, grantRef, Text'Length, Triple_Offset),
+                       Text'Length) or else
+           not Check (Read_At_Request (B, grantRef, Text'Length, Triple_Offset),
+                       Text'Length) or else Buffer (Text'Range) /= Text or else
+           not Check (Resize_Request (B, Triple_Offset + 7), 0) or else
+           not Check (Seek_Request (A, 0, From_End), Triple_Offset + 7) or else
+           not Check (Resize_Request (A, Triple_Offset + 1025), 0)
+         then return False; end if;
+         Buffer := [others => '?'];
+         if not Check (Read_At_Request (B, grantRef, 1025, Triple_Offset), 1025)
+           or else Buffer (1 .. 7) /= Text (1 .. 7)
+         then return False; end if;
+         for I in 8 .. 1025 loop
+            if Buffer (I) /= Character'Val (0) then return False; end if;
+         end loop;
+         if not Check (Resize_Request (B, Previous_Size), 0) or else
+           not Check (Seek_Request (A, 0, From_End), Previous_Size) or else
+           not Check (Read_At_Request (A, grantRef, 1, Triple_Offset), 0) or else
+           not Check (Flush_Request (A), 0)
+         then return False; end if;
+         debugPrint ("FILE-TRIPLE-RESIZE-CHECK: PASS" & LF);
       end;
       --  Truncation through a third handle invalidates every old block mapping.
       if not Open (OPEN_READ_WRITE or OPEN_TRUNCATE, C) or else
@@ -1308,10 +1434,10 @@ procedure main is
          return False;
       end if;
 
-      --  The current writer deliberately supports direct and single-indirect
-      --  blocks only.  A range it cannot represent must be reported as such,
+      --  256 TiB lies beyond the triple-indirect extent of every block size.
+      --  A range the writer cannot represent must be reported as such,
       --  never as a successful zero-byte write.
-      msg := Seek_Request (handle, 16#2_0000_0000#, From_Start);
+      msg := Seek_Request (handle, 16#1_0000_0000_0000#, From_Start);
       msg.tag := capCall (CAP_SLOT_FS, msg);
       if msg.tag.label /= REPLY_OK then
          debugPrint ("STORAGE-CHECK: large seek failed" & LF);
@@ -1506,6 +1632,20 @@ begin
 
    aligned := (raw + PAGE_SIZE - 1) and not (PAGE_SIZE - 1);
 
+   if exerciseOwnedMemory then
+      debugPrint ("OWNED-MEMORY-CHECK: PASS" & LF);
+   else
+      debugPrint ("OWNED-MEMORY-CHECK: FAIL" & LF);
+      return;
+   end if;
+
+   if exerciseOwnedGrantRetention then
+      debugPrint ("OWNED-GRANT-RETENTION-CHECK: PASS" & LF);
+   else
+      debugPrint ("OWNED-GRANT-RETENTION-CHECK: FAIL" & LF);
+      return;
+   end if;
+
    if exerciseGrantReferences then
       debugPrint ("GRANT-REFERENCE-CHECK: PASS" & LF);
    else
@@ -1567,4 +1707,16 @@ begin
    end if;
 
    CuBit.Memory_Grants.Revoke (grantRef, grantOk);
+   -- Exercise reaper cleanup rather than explicit release. These allocations
+   -- have no outstanding grants; a separate test covers retained grant pins.
+   declare
+      First : constant Unsigned_64 := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, 4096);
+      Second : constant Unsigned_64 := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY, 12288);
+   begin
+      if First = 0 or Second = 0 then
+         debugPrint ("OWNED-EXIT-CHECK: FAIL allocation" & LF);
+      else
+         debugPrint ("OWNED-EXIT-CHECK: leaving two allocations" & LF);
+      end if;
+   end;
 end main;

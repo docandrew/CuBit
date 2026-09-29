@@ -16,6 +16,8 @@
   (setting "desktop.launch.60-sameboy" "(launch v1 (label \"SameBoy\") (program \"sameboy.app\") (icon doom))")
   (setting "desktop.launch.70-config-inspector" "(launch v1 (label \"Config Inspector\") (program \"config-inspector.app\") (icon files))")
   (setting "desktop.launch.80-settings" "(launch v1 (label \"Settings\") (internal settings))")
+  (setting "desktop.launch.90-mesa" "(launch v1 (label \"Mesa Cube (software)\") (program \"mesa-cube.app\") (icon uilab))")
+  (setting "desktop.launch.95-boot-logs" "(launch v1 (label \"Boot Diagnostics\") (program \"boot-logs.app\") (icon files))")
   (setting "scheme.fs.driver" 6)
   (setting "scheme.fs.slot" 1)
   (setting "scheme.ata.driver" 6)

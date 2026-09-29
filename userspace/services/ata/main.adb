@@ -42,6 +42,11 @@ procedure main is
    CMD_IDENTIFY   : constant Unsigned_8 := 16#EC#;
    CMD_READ_PIO   : constant Unsigned_8 := 16#20#;
    CMD_WRITE_PIO  : constant Unsigned_8 := 16#30#;
+   CMD_FLUSH_CACHE : constant Unsigned_8 := 16#E7#;
+
+   --  IDENTIFY word 85 (command sets enabled), bit 5: volatile write cache.
+   IDENTIFY_ENABLED_FEATURES : constant := 85;
+   WRITE_CACHE_ENABLED : constant Unsigned_16 := 16#0020#;
 
    --  Drive select values
    SELECT_MASTER  : constant Unsigned_8 := 16#A0#;
@@ -60,6 +65,9 @@ procedure main is
    type Identification_Result is (Identified, No_Device, Identification_Failed);
    identification : Identification_Result := No_Device;
    driveBlockCount : Unsigned_64 := 0;
+   --  Completed writes may sit in the drive's cache until FLUSH CACHE.
+   --  Assumed until IDENTIFY says the cache is disabled.
+   writeCacheEnabled : Boolean := True;
 
    ---------------------------------------------------------------------------
    --  outb / inb wrappers (call syscall port I/O)
@@ -195,6 +203,8 @@ procedure main is
       --  range it can actually address even if IDENTIFY advertises LBA48.
       driveBlockCount := Unsigned_64 (buf (60)) or
         Shift_Left (Unsigned_64 (buf (61)), 16);
+      writeCacheEnabled :=
+        (buf (IDENTIFY_ENABLED_FEATURES) and WRITE_CACHE_ENABLED) /= 0;
       if driveBlockCount > 16#1000_0000# then
          driveBlockCount := 16#1000_0000#;
       end if;
@@ -334,8 +344,8 @@ procedure main is
          end;
       end loop;
 
-      --  Wait for command completion. This is not a durability flush; the
-      --  device does not advertise FEATURE_FLUSH yet.
+      --  Wait for command completion. With the write cache enabled this is
+      --  not durability: OP_FLUSH_DEVICE issues FLUSH CACHE for that.
       ata400nsDelay;
       if not waitBSY or else (inb (REG_STATUS) and STATUS_ERR) /= 0 then
          debugPrint ("ATA: command failed after write." & LF);
@@ -344,6 +354,19 @@ procedure main is
 
       return Unsigned_64 (Natural (count) * SECTOR_SIZE);
    end writeSectors;
+
+   ---------------------------------------------------------------------------
+   --  flushCache - FLUSH CACHE: every completed write reaches the media.
+   --  PIO writes offer no FUA here, so this is the only durability barrier.
+   ---------------------------------------------------------------------------
+   function flushCache return Boolean is
+   begin
+      outb (REG_DRIVE_SEL, SELECT_MASTER or SELECT_LBA);
+      ata400nsDelay;
+      outb (REG_COMMAND, CMD_FLUSH_CACHE);
+      ata400nsDelay;
+      return waitBSY and then (inb (REG_STATUS) and STATUS_ERR) = 0;
+   end flushCache;
 
    ---------------------------------------------------------------------------
    --  sendReply - send a reply message
@@ -456,7 +479,9 @@ procedure main is
          return;
       end if;
 
-      if msg.tag.length /= 4 or else
+      --  No request flags are honoured: FUA is not advertised.
+      if msg.tag.length /= 4 or else msg.tag.flags /= 0 or else
+         msg.tag.reserved /= 0 or else
          msg.words (1) > CuBit.Memory_Grants.MAXIMUM_GLOBAL_SLOT or else
          msg.words (3) = 0 or else
          msg.words (3) > CuBit.Memory_Grants.MAXIMUM_GENERATION or else
@@ -522,7 +547,10 @@ procedure main is
            (0 => driveBlockCount,
             1 => Pack_Sizes (512, 512),
             2 => 255,
-            3 => Pack_Properties (0, Fixed_Media));
+            3 => Pack_Properties
+              (FEATURE_FLUSH or
+                 (if writeCacheEnabled then FEATURE_VOLATILE_CACHE else 0),
+               Fixed_Media));
          ignore := reply (sender, replyMsg);
       elsif identification = No_Device then
          sendReply (sender, REPLY_NO_DEVICE, 0);
@@ -577,6 +605,15 @@ begin
             handleWriteBlock (sender, msg);
          when OP_DESCRIBE_DEVICE =>
             handleDescribe (sender);
+         when OP_FLUSH_DEVICE =>
+            if identification = Identified and then msg.tag.length = 0 and then
+              msg.tag.flags = 0 and then msg.tag.reserved = 0 and then
+              (not writeCacheEnabled or else flushCache)
+            then
+               sendReply (sender, REPLY_OK, 0);
+            else
+               sendReply (sender, REPLY_ERROR, 0);
+            end if;
          when others =>
             sendReply (sender, REPLY_ERROR, 0);
       end case;

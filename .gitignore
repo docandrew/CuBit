@@ -55,3 +55,17 @@ userspace/apps/display-check/build-gpu-clear-failure/
 /tests/net-tcp/build*.log
 # Local A/B backups of built images (never committed).
 /kernel/*.pre-*
+/tests/intel-gpu/build-guc-dma/
+/tests/intel-gpu/build-ggtt-reservations/
+/tests/intel-gpu/build-guc-rsa/
+/tests/intel-gpu/build-wopcm/
+/tests/intel-gpu/build-guc-upload/
+/tests/intel-gpu/build-guc-status/
+/tests/mesa-software/target/
+/tests/region-transition/build-pte/
+/tests/region-transition/build-registry/
+/tests/region-transition/build-adapter/
+/tests/region-transition/build-install/
+/tests/region-transition/build-release/
+/tests/region-transition/build-layout/
+/userspace/mesa/build/

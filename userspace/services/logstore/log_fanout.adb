@@ -56,9 +56,9 @@ package body Log_Fanout with SPARK_Mode is
             Item.Next_Handle := Item.Next_Handle + 1;
             Client := (Owner => Caller, Authority_Tag => Authority_Tag,
                        Last_Use => Item.Now_Ms, Handle => Handle, Pending => Item.Recent);
-            --  Subscription starts with the retained snapshot. Earlier events
-            --  were never accepted for this subscriber: no hidden total count.
-            Client.Pending.Lost := 0;
+            -- Replay starts with a Gap if the retained boot history wrapped.
+            -- Preserve Recent.Lost so a late viewer does not falsely report
+            -- complete history. Existing subscriptions retain their own loss.
             Result := OK;
             return;
          end if;

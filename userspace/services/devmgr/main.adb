@@ -10,6 +10,7 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
+with CuBit.Log_Protocol;
 with Boot_RTC;
 with CCL.Configurations;
 with CCL.Declarations;
@@ -26,6 +27,18 @@ with CuBit.File_Access;
 with Cpio;
 with XHCI_DMA_Layout;
 with XHCI_Capabilities;
+with Intel_GPU_Probe;
+with Intel_GPU_Display_Pages;
+with Intel_GPU_PHY_Pages;
+with Intel_GPU_Resources;
+with Intel_GPU_Reset_Pages;
+with Intel_GPU_Display_Claim;
+with Intel_GPU_Boot;
+with Intel_GPU_PCI_Power;
+with Intel_GPU_ADS_Backing;
+with Intel_GPU_PCI_Interrupts;
+with Intel_GPU_PCI_IRQ_Disable;
+with Intel_GPU_GGTT_Access;
 
 procedure main is
    use ASCII;
@@ -170,6 +183,28 @@ procedure main is
    hdaDev    : PCIDeviceInfo;
    xhciDev   : PCIDeviceInfo;
    gpuDev    : PCIDeviceInfo;
+   intelDev : PCIDeviceInfo;
+   Intel_Inspection_PID : Unsigned_64 := 0;
+   --  Static bring-up ownership: no general PCI changes after handoff. The
+   --  one-shot IRQ-disable executor below has its own exact word allowlist.
+   --  No runtime suspend/rebind is supported while this claim exists. Keep
+   --  it frozen even if the child exits; recovery requires a device lifecycle.
+   Intel_Config_Frozen : Boolean := False;
+   Intel_Claim_Base : Unsigned_64 := 0;
+   Intel_Claim_Identity : Unsigned_32 := 0;
+   Intel_Forcewake_Granted : Boolean := False;
+   Intel_Reset_Granted : array (Intel_GPU_Reset_Pages.Page_Index) of Boolean := [others => False];
+   Intel_Reset_Authorized : Boolean := False;
+   Intel_Display_Ownership : Intel_GPU_Display_Claim.Claim;
+   Intel_Display_Granted : array (Intel_GPU_Display_Pages.Page_Index) of Boolean := [others => False];
+   Intel_PHY_Granted : array (Intel_GPU_PHY_Pages.Page_Index) of Boolean := [others => False];
+   Intel_GGTT_Granted : Boolean := False;
+   Intel_GGTT_BAR, Intel_GGTT_Bytes : Unsigned_64 := 0;
+   Intel_GGTT_Write_Attempted : Boolean := False;
+   Intel_Buffer_Attempted : Boolean := False;
+   Intel_Buffer_Physical : Unsigned_64 := 0;
+   Intel_ADS_Attempted : Boolean := False;
+   Intel_ADS_Physical : Unsigned_64 := 0;
    gpuIsPrimary : Boolean := False;
 
    --  Service PIDs
@@ -182,6 +217,11 @@ procedure main is
    netMSIXCap : Unsigned_8 := 0;
    netTableOffset : Unsigned_64 := 0;
    netIOBase : Unsigned_64 := 0;
+   --  A modern (virtio 1.0) device: its register layout within the mapped
+   --  BAR (CuBit.Virtio_Net_Control.Configure_Modern).
+   netModern : Boolean := False;
+   netCommonOff, netDeviceOff, netNotifyOff, netNotifyMult : Unsigned_64 := 0;
+   netModernBytes : Unsigned_64 := 0;
    netTransportReady : Boolean := False;
    DEVMGR_NET_SLOT : constant Unsigned_64 := 3;
    procmgrPID    : Unsigned_64 := 0;
@@ -272,6 +312,12 @@ procedure main is
       addr   : Unsigned_32;
       ignore : Unsigned_64;
    begin
+      if Intel_Config_Frozen and then intelDev.found and then
+        bus = intelDev.bus and then pSlot = intelDev.slot and then func = intelDev.func
+      then
+         debugPrint ("devmgr: rejected PCI write to claimed Intel GPU" & LF);
+         return;
+      end if;
       addr := 16#8000_0000# or
               Shift_Left (Unsigned_32 (bus), 16) or
               Shift_Left (Unsigned_32 (pSlot), 11) or
@@ -288,33 +334,170 @@ procedure main is
                                value  : Unsigned_16)
    is
       addr : Unsigned_32;
-      data32 : Unsigned_32;
       ignore : Unsigned_64;
    begin
+      if Intel_Config_Frozen and then intelDev.found and then
+        bus = intelDev.bus and then pSlot = intelDev.slot and then func = intelDev.func
+      then
+         debugPrint ("devmgr: rejected PCI write to claimed Intel GPU" & LF);
+         return;
+      end if;
       addr := 16#8000_0000# or
               Shift_Left (Unsigned_32 (bus), 16) or
               Shift_Left (Unsigned_32 (pSlot), 11) or
               Shift_Left (Unsigned_32 (func), 8) or
               Unsigned_32 (offset and 16#FC#);
       ignore := portOutp32 (PCI_CONFIG_ADDR, addr);
-      data32 := Unsigned_32 (portInp32 (PCI_CONFIG_DATA));
-
-      --  Modify the correct 16-bit word
-      if (offset and 2) /= 0 then
-         data32 := (data32 and 16#0000_FFFF#) or
-                   Shift_Left (Unsigned_32 (value), 16);
-      else
-         data32 := (data32 and 16#FFFF_0000#) or Unsigned_32 (value);
-      end if;
-
-      ignore := portOutp32 (PCI_CONFIG_ADDR, addr);
-      ignore := portOutp32 (PCI_CONFIG_DATA, data32);
+      -- Never widen this into a DWORD read/modify/write: e.g. COMMAND's
+      -- neighboring STATUS word contains write-one-to-clear bits. PCI
+      -- mechanism 1 selects the word with the CFC/CFE data-port lane.
+      ignore := portOutp16
+        (PCI_CONFIG_DATA + Unsigned_16 (offset and 2), value);
    end pciWriteConfig16;
+
+   Intel_IRQ_Active, Intel_IRQ_Plan_Ready : Boolean := False;
+   Intel_IRQ_Plan : Intel_GPU_PCI_Interrupts.Disable_Plan;
+   function Intel_Config_Address (Offset : Natural) return Unsigned_32 is
+     (16#8000_0000# or Shift_Left (Unsigned_32 (intelDev.bus), 16) or
+      Shift_Left (Unsigned_32 (intelDev.slot), 11) or
+      Shift_Left (Unsigned_32 (intelDev.func), 8) or (Unsigned_32 (Offset) and 16#FC#));
+   procedure Read_Intel_IRQ_Config
+     (Data : out Intel_GPU_PCI_Power.Configuration; Success : out Boolean)
+   is
+      Raw : Unsigned_64;
+      Plan : Intel_GPU_Resources.Mapping_Plan;
+      function Word32 (Offset : Natural) return Unsigned_32 is
+        (Unsigned_32 (Data (Offset)) or Shift_Left (Unsigned_32 (Data (Offset + 1)), 8) or
+         Shift_Left (Unsigned_32 (Data (Offset + 2)), 16) or
+         Shift_Left (Unsigned_32 (Data (Offset + 3)), 24));
+      use type Intel_GPU_Resources.Admission_Status;
+      use type Intel_GPU_PCI_Power.Power_Status;
+   begin
+      Success := False; Intel_IRQ_Plan_Ready := False;
+      Data := [others => 255];
+      if not Intel_IRQ_Active or else not Intel_Config_Frozen or else
+        not intelDev.found or else Intel_Claim_Identity /= 16#46D2_8086#
+      then return; end if;
+      for Index in 0 .. 63 loop
+         if portOutp32 (PCI_CONFIG_ADDR, Intel_Config_Address (Index * 4)) /= 0 then return; end if;
+         Raw := portInp32 (PCI_CONFIG_DATA);
+         if Raw = reterr then return; end if;
+         for Byte in 0 .. 3 loop
+            Data (Index * 4 + Byte) := Unsigned_8 (Shift_Right (Raw, Byte * 8) and 255);
+         end loop;
+      end loop;
+      Plan := Intel_GPU_Resources.Plan_ADLN_Registers
+        (Intel_GPU_Probe.Alder_Lake_N, Unsigned_16 (Word32 (4) and 16#FFFF#),
+         Word32 (16#10#), Word32 (16#14#), 0, 4096);
+      Success := Word32 (0) = Intel_Claim_Identity and then
+        Intel_GPU_PCI_Power.Decode (Data) = Intel_GPU_PCI_Power.D0 and then
+        Plan.Status = Intel_GPU_Resources.Admitted and then Plan.Physical_Base = Intel_Claim_Base;
+      if Success then
+         Intel_IRQ_Plan := Intel_GPU_PCI_Interrupts.Plan_Disable (Data);
+         Intel_IRQ_Plan_Ready := Intel_GPU_PCI_Interrupts.Valid (Intel_IRQ_Plan);
+      end if;
+   end Read_Intel_IRQ_Config;
+   procedure Write_Intel_IRQ_Word
+     (Offset : Natural; Value : Unsigned_16; Success : out Boolean)
+   is
+      Allowed : Boolean := False;
+   begin
+      Success := False;
+      if not Intel_IRQ_Active or else not Intel_IRQ_Plan_Ready then return; end if;
+      for I in 1 .. Intel_GPU_PCI_Interrupts.Count (Intel_IRQ_Plan) loop
+         Allowed := Allowed or
+           (Offset = Intel_GPU_PCI_Interrupts.Offset (Intel_IRQ_Plan, I) and then
+            Value = Intel_GPU_PCI_Interrupts.After (Intel_IRQ_Plan, I));
+      end loop;
+      Intel_IRQ_Plan_Ready := False; -- one write per fresh admitted snapshot
+      if not Allowed then return; end if;
+      if portOutp32 (PCI_CONFIG_ADDR, Intel_Config_Address (Offset)) /= 0 then return; end if;
+      Success := portOutp16 (PCI_CONFIG_DATA + Unsigned_16 (Offset mod 4), Value) = 0;
+   end Write_Intel_IRQ_Word;
+   package Intel_IRQ_Disable is new Intel_GPU_PCI_IRQ_Disable
+     (Read_Intel_IRQ_Config, Write_Intel_IRQ_Word);
 
    ---------------------------------------------------------------------------
    -- PCI bus scan: find devices by class code
    ---------------------------------------------------------------------------
    procedure scanPCI is
+      function Hex (Value : Unsigned_64; Digits_Count : Positive) return String is
+         Result : String (1 .. Digits_Count);
+         Characters : constant String := "0123456789ABCDEF";
+         Remaining : Unsigned_64 := Value;
+      begin
+         for I in reverse Result'Range loop
+            Result (I) := Characters (Natural (Remaining and 15) + 1);
+            Remaining := Shift_Right (Remaining, 4);
+         end loop;
+         return Result;
+      end Hex;
+
+      procedure Report_Intel_Display (Location : PCIDeviceInfo;
+                                      Device : Unsigned_16;
+                                      Class_Code : Unsigned_16) is
+         use Intel_GPU_Probe;
+         Header : constant Unsigned_8 := pciReadConfig8
+           (Location.bus, Location.slot, Location.func, PCI_HEADER_TYPE);
+         Family : constant Platform := Identify
+           (16#8086#, Device, Unsigned_8 (Shift_Right (Class_Code, 8)));
+         Index : Natural range 0 .. 6 := 0;
+         Low, High : Unsigned_32;
+         Resource : BAR_Result;
+         Register_Plan : Intel_GPU_Resources.Mapping_Plan;
+      begin
+         -- Whole bounded lines survive diagnostic capture without fragment loss.
+         -- Configuration reads only: never probe sizes, enable bus mastering,
+         -- map registers, or claim ownership of the active firmware scanout.
+         debugPrint ("intel-gpu: PCI " & Hex (Unsigned_64 (Location.bus), 2)
+           & ":" & Hex (Unsigned_64 (Location.slot), 2) & "."
+           & Hex (Unsigned_64 (Location.func), 1) & " device="
+           & Hex (Unsigned_64 (Device), 4) & " revision="
+           & Hex (Unsigned_64 (pciReadConfig8
+             (Location.bus, Location.slot, Location.func, 8)), 2)
+           & " family=" & Platform'Image (Family) & LF);
+         debugPrint ("intel-gpu: command=" & Hex (Unsigned_64
+           (pciReadConfig16 (Location.bus, Location.slot, Location.func,
+                            PCI_COMMAND)), 4) & " header="
+           & Hex (Unsigned_64 (Header), 2) & LF);
+         if (Header and 16#7F#) /= 0 then
+            debugPrint ("intel-gpu: unsupported PCI header; no BAR scan" & LF);
+            return;
+         end if;
+         while Index < 6 loop
+            if Family = Alder_Lake_N and then not intelDev.found then
+               intelDev := Location;
+               intelDev.found := True;
+            end if;
+            Low := pciReadConfig32 (Location.bus, Location.slot, Location.func,
+                                   Unsigned_8 (16 + Index * 4));
+            High := 0;
+            if (Low and 7) = 4 and then Index < 5 then
+               High := pciReadConfig32
+                 (Location.bus, Location.slot, Location.func,
+                  Unsigned_8 (20 + Index * 4));
+            end if;
+            Resource := Decode_BAR (Low, High, Index < 5);
+            if Index = 0 then
+               Register_Plan := Intel_GPU_Resources.Plan_ADLN_Registers
+                 (Family, pciReadConfig16 (Location.bus, Location.slot,
+                  Location.func, PCI_COMMAND), Low, High, 0, 16#20_0000#);
+               debugPrint ("intel-gpu: register-region plan=" &
+                 Intel_GPU_Resources.Admission_Status'Image (Register_Plan.Status)
+                 & " base=" & Hex (Register_Plan.Physical_Base, 16)
+                 & " bytes=" & Hex (Register_Plan.Bytes, 8) & LF);
+            end if;
+            debugPrint ("intel-gpu: BAR" & Hex (Unsigned_64 (Index), 1)
+              & " " & BAR_Status'Image (Resource.Status)
+              & " base=" & Hex (Resource.Base, 16)
+              & " raw=" & Hex (Unsigned_64 (High), 8) & ":"
+              & Hex (Unsigned_64 (Low), 8) & " size=unknown" & LF);
+            exit when Index + Resource.Words >= 6;
+            Index := Index + Resource.Words;
+         end loop;
+         debugPrint ("intel-gpu: inventory only; firmware display retained" & LF);
+      end Report_Intel_Display;
+
       procedure printHexNibble (value : Unsigned_8) is
          hexCharacters : constant String := "0123456789ABCDEF";
       begin
@@ -414,6 +597,9 @@ procedure main is
             gpuIsPrimary := classCode = CLASS_DISPLAY_VGA;
             observedKind := CuBit.Devices.Display_Controller;
             debugPrint (" virtio-gpu");
+         elsif Shift_Right (classCode, 8) = 3 then
+            observedKind := CuBit.Devices.Display_Controller;
+            debugPrint (" display (firmware/unclaimed)");
          end if;
 
          if inventoryCount < inventory'Length then
@@ -430,6 +616,9 @@ procedure main is
          end if;
 
          debugPrint (LF & "");
+         if vendorID = 16#8086# and then Shift_Right (classCode, 8) = 3 then
+            Report_Intel_Display (location, deviceID, classCode);
+         end if;
       end observeFunction;
 
       vendorID  : Unsigned_16;
@@ -645,6 +834,10 @@ procedure main is
       then
          cpu := 0;
       --  Network services on CPU 1
+      --  The NIC driver polls while traffic flows (CuBit.Busy_Poll), so
+      --  it gets a CPU of its own when there are enough.
+      elsif strEq (name, "virtio-net.drv") and then numCPUs > 3 then
+         cpu := 3;
       elsif strEq (name, "netstack.svc") or
             strEq (name, "virtio-net.drv") or
             strEq (name, "netmgr.svc")
@@ -700,15 +893,79 @@ procedure main is
       rdyMsg : Message;
       ignore : Unsigned_64;
    begin
-      receive (sender, rdyMsg);
-      ignore := reply (sender, NULL_MESSAGE);
-      return rdyMsg.tag.label = OP_READY;
+      loop
+         receive (sender, rdyMsg);
+         if sender = driverPID then
+            ignore := reply (sender, NULL_MESSAGE);
+            return rdyMsg.tag.label = OP_READY;
+         elsif ((rdyMsg.tag = (16#022D#, 1, 0, 0) and then
+                 rdyMsg.words (0) <= Unsigned_64 (Intel_GPU_Reset_Pages.Page_Index'Last)) or else
+                (rdyMsg.tag = (Intel_GPU_Display_Pages.Request_Label, 1, 0, 0) and then
+                 rdyMsg.words (0) <= Unsigned_64 (Intel_GPU_Display_Pages.Page_Index'Last)) or else
+                (rdyMsg.tag = (Intel_GPU_PHY_Pages.Request_Label, 1, 0, 0) and then
+                 rdyMsg.words (0) <= Unsigned_64 (Intel_GPU_PHY_Pages.Page_Index'Last))) and then
+           sender = Intel_Inspection_PID and then sender /= 0 and then
+           rdyMsg.authorityTag = 16#4947# and then
+           rdyMsg.words (1 .. 3) = [0, 0, 0]
+         then
+            ignore := reply (sender,
+              (tag => (16#F002#, 0, 0, 0), authorityTag => 0, words => [others => 0]));
+         elsif (rdyMsg.tag = (16#022A#, 0, 0, 0) or else
+                rdyMsg.tag = (16#022B#, 0, 0, 0) or else
+                rdyMsg.tag = (Intel_GPU_GGTT_Access.Write_Request_Label, 0, 0, 0) or else
+                rdyMsg.tag = (16#022C#, 0, 0, 0) or else
+                rdyMsg.tag = (16#022E#, 0, 0, 0) or else
+                rdyMsg.tag = (Intel_GPU_PCI_Interrupts.Disable_Request_Label, 0, 0, 0) or else
+                rdyMsg.tag = (Intel_GPU_ADS_Backing.Request_Label, 0, 0, 0) or else
+                rdyMsg.tag = (16#022F#, 0, 0, 0)) and then
+           sender = Intel_Inspection_PID and then sender /= 0 and then
+           rdyMsg.authorityTag = 16#4947# and then rdyMsg.words = [0, 0, 0, 0]
+         then
+            ignore := reply (sender,
+              (tag => (16#F002#, 0, 0, 0), authorityTag => 0, words => [others => 0]));
+         else
+            ignore := reply (sender, NULL_MESSAGE);
+         end if;
+      end loop;
    end waitReady;
 
    ---------------------------------------------------------------------------
    -- Send a wildcard ACL to the filesystem server for a target process
    ---------------------------------------------------------------------------
    OP_SET_ACL : constant Unsigned_32 := 16#0080#;
+
+   procedure Grant_Intel_Firmware (Child : Unsigned_64) is
+      Path : constant String := "firmware/intel/tgl_guc_70.bin";
+      Request : Message := NULL_MESSAGE;
+      Tag : MessageTag;
+   begin
+      if filesystemPID = 0 or else not Boot_Granted or else
+        Boot_Buffer = System.Null_Address
+      then return; end if;
+      declare
+         Policy : CuBit.File_Access.Wire_Bytes (1 .. 72)
+           with Import, Address => Boot_Buffer;
+      begin
+         Policy := [others => 0];
+         Policy (1) := 1; -- Read_Objects; no write/create/delete authority.
+         Policy (2) := Path'Length;
+         for Index in Path'Range loop
+            Policy (8 + Index) := Character'Pos (Path (Index));
+         end loop;
+      end;
+      Request.tag := (CuBit.Filesystems.OP_SET_ACL, 4, 0, 0);
+      Request.words := [Child, 1, Unsigned_64 (Boot_Grant.slot),
+                        Unsigned_64 (Boot_Grant.generation)];
+      Tag := capCall (1, Request);
+      if Tag = (CuBit.Filesystems.REPLY_OK, 1, 0, 0) and then
+        Request.words = [0, 0, 0, 0]
+      then
+         grantEndpoint (Child, filesystemPID, 6, Child);
+         debugPrint ("devmgr: Intel firmware read scope installed" & LF);
+      else
+         debugPrint ("devmgr: Intel firmware read scope rejected" & LF);
+      end if;
+   end Grant_Intel_Firmware;
 
    procedure sendWildcardACL (targetPID : Unsigned_64) is
       aclMsg : Message;
@@ -842,11 +1099,77 @@ procedure main is
    end setupAta;
 
    ---------------------------------------------------------------------------
-   -- Setup virtio-net driver: PCI config, DMA, capabilities
+   --  findModernNet - the virtio-net device's modern (1.0) register layout,
+   --  if it has one in a single memory BAR (virtio 1.0 4.1.4).
    ---------------------------------------------------------------------------
    function probeMemoryBARSize
      (dev : PCIDeviceInfo; bar : Unsigned_8) return Unsigned_64;
 
+   netModernBar : Unsigned_64 := 0;
+
+   procedure findModernNet is
+      NONE : constant Unsigned_8 := 16#FF#;
+      capPtr, capId, next, cfgType, barIndex : Unsigned_8;
+      capOff : Unsigned_32;
+      commonBar, notifyBar, deviceBar : Unsigned_8 := NONE;
+      lo, hi : Unsigned_32;
+      bar : Unsigned_8;
+      size : Unsigned_64;
+   begin
+      netModern := False;
+      capPtr := pciReadConfig8 (netDev.bus, netDev.slot, netDev.func, PCI_CAP_PTR) and 16#FC#;
+      for hop in 1 .. 48 loop
+         exit when capPtr < 16#40# or else capPtr > 16#F0#;
+         capId := pciReadConfig8 (netDev.bus, netDev.slot, netDev.func, capPtr);
+         next := pciReadConfig8 (netDev.bus, netDev.slot, netDev.func, capPtr + 1) and 16#FC#;
+         if capId = PCI_CAP_ID_VENDOR_SPECIFIC then
+            cfgType := pciReadConfig8 (netDev.bus, netDev.slot, netDev.func, capPtr + 3);
+            barIndex := pciReadConfig8 (netDev.bus, netDev.slot, netDev.func, capPtr + 4);
+            capOff := pciReadConfig32 (netDev.bus, netDev.slot, netDev.func, capPtr + 8);
+            case cfgType is
+               when VIRTIO_PCI_CAP_COMMON_CFG =>
+                  commonBar := barIndex;
+                  netCommonOff := Unsigned_64 (capOff);
+               when VIRTIO_PCI_CAP_NOTIFY_CFG =>
+                  notifyBar := barIndex;
+                  netNotifyOff := Unsigned_64 (capOff);
+                  netNotifyMult := Unsigned_64
+                    (pciReadConfig32 (netDev.bus, netDev.slot, netDev.func, capPtr + 16));
+               when VIRTIO_PCI_CAP_DEVICE_CFG =>
+                  deviceBar := barIndex;
+                  netDeviceOff := Unsigned_64 (capOff);
+               when others =>
+                  null;
+            end case;
+         end if;
+         capPtr := next;
+      end loop;
+      if commonBar > 5 or else notifyBar /= commonBar or else deviceBar /= commonBar then
+         return;   --  absent, or split across BARs (not supported)
+      end if;
+      bar := PCI_BASEADDR_0 + commonBar * 4;
+      lo := pciReadConfig32 (netDev.bus, netDev.slot, netDev.func, bar);
+      if (lo and 1) /= 0 or else (commonBar = 5 and then (lo and 6) = 4) then
+         return;   --  an I/O BAR, or a 64-bit BAR with no high half
+      end if;
+      netModernBar := Unsigned_64 (lo and 16#FFFF_FFF0#);
+      if (lo and 6) = 4 then
+         hi := pciReadConfig32 (netDev.bus, netDev.slot, netDev.func, bar + 4);
+         netModernBar := netModernBar or Shift_Left (Unsigned_64 (hi), 32);
+      end if;
+      size := probeMemoryBARSize (netDev, bar);
+      if netModernBar = 0 or else size < 4096 or else netModernBar mod 4096 /= 0 then
+         return;
+      end if;
+      netModernBytes := Unsigned_64'Min
+        (size, CuBit.Virtio_Net_Control.Maximum_Modern_Bytes);
+      netModernBytes := netModernBytes - netModernBytes mod 4096;
+      netModern := True;
+   end findModernNet;
+
+   ---------------------------------------------------------------------------
+   -- Setup virtio-net driver: PCI config, DMA, capabilities
+   ---------------------------------------------------------------------------
    procedure setupVirtioNet is
       bar0Raw   : Unsigned_32;
       bar0Base  : Unsigned_64;
@@ -864,16 +1187,21 @@ procedure main is
          return;
       end if;
 
-      --  Read BAR0 (I/O space)
-      bar0Raw := pciReadConfig32 (netDev.bus, netDev.slot, netDev.func,
-                                  PCI_BASEADDR_0);
-      bar0Base := Unsigned_64 (bar0Raw and 16#FFFC#);
+      --  A modern device (virtio 1.0, as a cloud host may offer only)
+      --  is preferred: common, notification and device configuration in
+      --  one memory BAR. Otherwise the legacy I/O transport (BAR0).
+      findModernNet;
+      if not netModern then
+         bar0Raw := pciReadConfig32 (netDev.bus, netDev.slot, netDev.func,
+                                     PCI_BASEADDR_0);
+         bar0Base := Unsigned_64 (bar0Raw and 16#FFFC#);
 
-      if (bar0Raw and 1) = 0 or else bar0Base = 0 or else
-         bar0Base > 16#FFE0#
-      then
-         debugPrint ("devmgr: virtio-net requires legacy I/O transport" & LF);
-         return;
+         if (bar0Raw and 1) = 0 or else bar0Base = 0 or else
+            bar0Base > 16#FFE0#
+         then
+            debugPrint ("devmgr: virtio-net has neither modern nor legacy transport" & LF);
+            return;
+         end if;
       end if;
 
       --  Do not trust the firmware's legacy interrupt-line byte as an APIC
@@ -959,9 +1287,21 @@ procedure main is
          return;
       end if;
 
-      --  Slot 4: CAP_IOPORT for BAR0 (32 ports)
-      mintCap (virtioNetPID, CAP_IOPORT, bar0Base, 32,
-               RIGHT_READ or RIGHT_WRITE, 4);
+      if netModern then
+         --  The register BAR, mapped where the driver expects it.
+         ret := mapInto (virtioNetPID, netModernBar,
+           CuBit.Virtio_Net_Control.Modern_Virtual_Address,
+           netModernBytes / 4096, MAP_FLAG_IO);
+         if ret = reterr then
+            debugPrint ("devmgr: virtio-net register BAR map failed" & LF);
+            return;
+         end if;
+         debugPrint ("devmgr: virtio-net modern (virtio 1.0) transport" & LF);
+      else
+         --  Slot 4: CAP_IOPORT for BAR0 (32 ports)
+         mintCap (virtioNetPID, CAP_IOPORT, bar0Base, 32,
+                  RIGHT_READ or RIGHT_WRITE, 4);
+      end if;
 
       --  Slot 5: CAP_IRQ for device interrupt
       mintCap (virtioNetPID, CAP_IRQ, CuBit.Virtio_Net_Control.Device_Vector,
@@ -1631,9 +1971,15 @@ procedure main is
       --  that consumer; desktop.svc holds the complementary RIGHT_WRITE.
       mintCap
         (xhciPID, CAP_NOTIFICATION, DRIVER_MOUSE, 0, RIGHT_READ, 7);
+      -- Keyboard publication is distinct from mouse publication and does
+      -- not permit replacing the registered consumer.
+      mintCap
+        (xhciPID, CAP_NOTIFICATION, DRIVER_KEYBOARD, 0, RIGHT_READ, 8);
 
       --  Slot 3 belongs to devmgr and reaches only this xHCI process.
       grantEndpoint (myPID, xhciPID, DEVMGR_XHCI_SLOT, myPID);
+      -- Authenticated driver diagnostics/bootstrap log-grant request only.
+      grantEndpoint (xhciPID, myPID, CAP_SLOT_READY, xhciPID);
       assignCPU (xhciPID, "xhci.drv");
       resumeProc (xhciPID);
 
@@ -2176,14 +2522,22 @@ begin
          grantEndpoint (myPID, virtioNetPID, DEVMGR_NET_SLOT, myPID);
          resumeProc (virtioNetPID);
          declare
+            use CuBit.Virtio_Net_Control;
             cfg : Message :=
-              (tag => (label => CuBit.Virtio_Net_Control.Operation'Enum_Rep
-                         (CuBit.Virtio_Net_Control.Configure_MSIX),
-                       length => 3, flags => 0, reserved => 0),
-               authorityTag => 0,
-               words => [0 => netIOBase, 1 => netTableOffset,
-                         2 => CuBit.Virtio_Net_Control.Device_Vector,
-                         others => 0]);
+              (if netModern then
+                 (tag => (label => Operation'Enum_Rep (Configure_Modern),
+                          length => 4, flags => 0, reserved => 0),
+                  authorityTag => 0,
+                  words => [0 => Pair (netCommonOff, netDeviceOff),
+                            1 => Pair (netNotifyOff, netNotifyMult),
+                            2 => Pair (netTableOffset, netModernBytes),
+                            3 => Device_Vector])
+               else
+                 (tag => (label => Operation'Enum_Rep (Configure_MSIX),
+                          length => 3, flags => 0, reserved => 0),
+                  authorityTag => 0,
+                  words => [0 => netIOBase, 1 => netTableOffset,
+                            2 => Device_Vector, others => 0]));
             response : MessageTag;
             control : Unsigned_16;
          begin
@@ -2275,6 +2629,77 @@ begin
    -----------------------------------------------------------------------
    -- Phase 4: Spawn audio services (HDA driver + mixer)
    -----------------------------------------------------------------------
+
+   if intelDev.found then
+      declare
+         Low : constant Unsigned_32 := pciReadConfig32
+           (intelDev.bus, intelDev.slot, intelDev.func, 16#10#);
+         High : constant Unsigned_32 := pciReadConfig32
+           (intelDev.bus, intelDev.slot, intelDev.func, 16#14#);
+         Command : constant Unsigned_16 := pciReadConfig16
+           (intelDev.bus, intelDev.slot, intelDev.func, PCI_COMMAND);
+         Plan : constant Intel_GPU_Resources.Mapping_Plan :=
+           Intel_GPU_Resources.Plan_ADLN_Registers
+             (Intel_GPU_Probe.Alder_Lake_N, Command, Low, High, 0, 16#20_0000#);
+         Child : Unsigned_64;
+         Request : Message := NULL_MESSAGE;
+         Submitted : Boolean;
+         use type Intel_GPU_Resources.Admission_Status;
+         use type Intel_GPU_PCI_Power.Power_Status;
+         Config : Intel_GPU_PCI_Power.Configuration;
+         Power : Intel_GPU_PCI_Power.Power_Status;
+         IRQ_State : Intel_GPU_PCI_Interrupts.Snapshot;
+      begin
+         for Byte in Config'Range loop
+            Config (Byte) := pciReadConfig8
+              (intelDev.bus, intelDev.slot, intelDev.func, Unsigned_8 (Byte));
+         end loop;
+         Power := Intel_GPU_PCI_Power.Decode (Config);
+         IRQ_State := Intel_GPU_PCI_Interrupts.Decode (Config);
+         debugPrint ("devmgr: Intel PCI IRQ snapshot valid=" &
+           Boolean'Image (IRQ_State.Valid) & " INTx-disabled=" &
+           Boolean'Image (IRQ_State.INTx_Disabled) & LF);
+         debugPrint ("devmgr: Intel MSI present/enabled=" &
+           Boolean'Image (IRQ_State.MSI_Present) & "/" &
+           Boolean'Image (IRQ_State.MSI_Enabled) & " MSI-X present/enabled/masked=" &
+           Boolean'Image (IRQ_State.MSIX_Present) & "/" &
+           Boolean'Image (IRQ_State.MSIX_Enabled) & "/" &
+           Boolean'Image (IRQ_State.MSIX_Masked) & LF);
+         debugPrint ("devmgr: Intel PCI power=" &
+           Intel_GPU_PCI_Power.Power_Status'Image (Power) & LF);
+         if Plan.Status = Intel_GPU_Resources.Admitted and then
+           Power = Intel_GPU_PCI_Power.D0
+         then
+            Child := spawnFromBootStorage ("intel-gpu.drv", 4);
+            if Child /= 0 and then Child /= reterr then
+               Intel_Inspection_PID := Child;
+               Grant_Intel_Firmware (Child);
+               mintCap (Child, CAP_ENDPOINT, myPID, 16#4947#, RIGHT_READ or RIGHT_WRITE, 15);
+               mintCap (Child, CAP_DEVICE_MEM, Plan.Physical_Base, Plan.Bytes, RIGHT_READ, 4);
+               grantEndpoint (myPID, Child, 31, myPID);
+               Request.tag := (Intel_GPU_Boot.Configure_Label, 4, 0, 0);
+               Request.words (0) := Unsigned_64 (Low) or Shift_Left (Unsigned_64 (High), 32);
+               Request.words (1) := Unsigned_64 (pciReadConfig32
+                 (intelDev.bus, intelDev.slot, intelDev.func, 0)) or
+                 Shift_Left (Unsigned_64 (pciReadConfig8
+                   (intelDev.bus, intelDev.slot, intelDev.func, 8)), 32) or
+                 Shift_Left (Unsigned_64'(3), 40);
+               Request.words (2) := Unsigned_64 (Command) or 16#10000#;
+               Request.words (3) := Intel_GPU_Boot.Protocol_Version or
+                 Shift_Left (Unsigned_64 (Intel_GPU_PCI_Interrupts.Pack (IRQ_State)), 32) or
+                 Shift_Left (Unsigned_64 (pciReadConfig16
+                   (intelDev.bus, intelDev.slot, intelDev.func, 16#50#)), 16);
+               Intel_Claim_Base := Plan.Physical_Base;
+               Intel_Claim_Identity := Unsigned_32 (Request.words (1) and 16#FFFF_FFFF#);
+               Intel_Config_Frozen := True;
+               resumeProc (Child);
+               Submitted := capSubmit (31, Request, NO_COMPLETION_TOKEN);
+               if not Submitted then debugPrint ("devmgr: Intel bootstrap submission failed" & LF); end if;
+               debugPrint ("devmgr: Intel inspection launched; firmware display retained" & LF);
+            end if;
+         end if;
+      end;
+   end if;
 
    --  HDA driver
    hdaPID := spawnFromBootStorage ("hda.drv", 5);
@@ -2402,7 +2827,430 @@ begin
 
    loop
       receive (from, msg);
-      if msg.tag.label = CuBit.Devices.OP_INVENTORY_COUNT then
+      if msg.tag = (16#0228#, 0, 0, 0) and then
+        from = xhciPID and then xhciPID /= 0 and then
+        msg.authorityTag = xhciPID and then msg.words = [0, 0, 0, 0]
+      then
+         declare
+            Collector : constant Unsigned_64 := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_LOGSTORE);
+            Issued : Unsigned_64 := reterr;
+         begin
+            if Collector /= 0 then
+               Issued := syscall (SYSCALL_POLICY_MINT_CAPABILITY, xhciPID, CAP_ENDPOINT,
+                 Collector, CuBit.Log_Protocol.Publisher_Tag (15, 1),
+                 RIGHT_READ or RIGHT_WRITE, CuBit.Log_Protocol.Publisher_Slot);
+            end if;
+            ret := Unsigned_64 (reply (from,
+              (tag => (label => (if Issued /= reterr then 16#F000# else 16#F001#),
+                length => 0, flags => 0, reserved => 0), authorityTag => 0, words => [others => 0])));
+         end;
+      elsif msg.tag = (16#0229#, 0, 0, 0) and then
+        Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
+        msg.authorityTag = 16#4947# and then msg.words = [0, 0, 0, 0]
+      then
+         declare
+            Collector : constant Unsigned_64 := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_LOGSTORE);
+            Issued : Unsigned_64 := reterr;
+         begin
+            if Collector /= 0 then
+               Issued := syscall (SYSCALL_POLICY_MINT_CAPABILITY, from, CAP_ENDPOINT,
+                 Collector, CuBit.Log_Protocol.Publisher_Tag (15, 2),
+                 RIGHT_READ or RIGHT_WRITE, CuBit.Log_Protocol.Publisher_Slot);
+            end if;
+            ret := Unsigned_64 (reply (from,
+              (tag => (label => (if Issued /= reterr then 16#F000# else 16#F001#),
+                length => 0, flags => 0, reserved => 0), authorityTag => 0, words => [others => 0])));
+         end;
+      elsif msg.tag = (16#022A#, 0, 0, 0) and then
+        Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
+        msg.authorityTag = 16#4947# and then msg.words = [0, 0, 0, 0]
+      then
+         --  One-page write authority for the GT forcewake request register.
+         --  No PCI ports, GGTT, aperture, DMA or display ownership is granted.
+         declare
+            Config : Intel_GPU_PCI_Power.Configuration;
+            Plan : Intel_GPU_Resources.Mapping_Plan;
+            Issued : Unsigned_64 := reterr;
+            use type Intel_GPU_Resources.Admission_Status;
+            use type Intel_GPU_PCI_Power.Power_Status;
+         begin
+            if Intel_Config_Frozen and then intelDev.found and then
+              Intel_Claim_Base /= 0 and then not Intel_Forcewake_Granted
+            then
+               for Byte in Config'Range loop
+                  Config (Byte) := pciReadConfig8
+                    (intelDev.bus, intelDev.slot, intelDev.func, Unsigned_8 (Byte));
+               end loop;
+               Plan := Intel_GPU_Resources.Plan_ADLN_Registers
+                 (Intel_GPU_Probe.Alder_Lake_N,
+                  pciReadConfig16 (intelDev.bus, intelDev.slot, intelDev.func, PCI_COMMAND),
+                  pciReadConfig32 (intelDev.bus, intelDev.slot, intelDev.func, 16#10#),
+                  pciReadConfig32 (intelDev.bus, intelDev.slot, intelDev.func, 16#14#),
+                  16#A000#, 4096);
+               if Intel_GPU_PCI_Power.Decode (Config) = Intel_GPU_PCI_Power.D0 and then
+                 pciReadConfig32 (intelDev.bus, intelDev.slot, intelDev.func, 0) =
+                   Intel_Claim_Identity and then
+                 Plan.Status = Intel_GPU_Resources.Admitted and then
+                 Plan.Physical_Base >= Intel_Claim_Base and then
+                 Plan.Physical_Base - Intel_Claim_Base = 16#A000#
+               then
+                  Issued := syscall (SYSCALL_POLICY_MINT_CAPABILITY, from,
+                    CAP_DEVICE_MEM, Plan.Physical_Base, 4096,
+                    RIGHT_READ or RIGHT_WRITE, 5);
+                  if Issued /= reterr then
+                     Intel_Forcewake_Granted := True;
+                     debugPrint ("devmgr: Intel forcewake page granted; PCI config frozen" & LF);
+                  end if;
+               end if;
+            end if;
+            ret := Unsigned_64 (reply (from,
+              (tag => (label => (if Issued /= reterr then 16#F000# else 16#F001#),
+                length => 0, flags => 0, reserved => 0), authorityTag => 0,
+                words => [others => 0])));
+         end;
+      elsif msg.tag = (16#022F#, 0, 0, 0) and then
+        Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
+        msg.authorityTag = 16#4947# and then msg.words = [0, 0, 0, 0]
+      then
+         declare
+            Allowed, Valid : Boolean := False;
+            Config : Intel_GPU_PCI_Power.Configuration;
+            Plan : Intel_GPU_Resources.Mapping_Plan;
+            use type Intel_GPU_Resources.Admission_Status;
+            use type Intel_GPU_PCI_Power.Power_Status;
+         begin
+            if Intel_Config_Frozen and then intelDev.found and then
+              Intel_Claim_Identity = 16#46D2_8086# and then
+              Intel_GPU_Display_Claim.Owner (Intel_Display_Ownership) = 0
+            then
+               for Byte in Config'Range loop
+                  Config (Byte) := pciReadConfig8
+                    (intelDev.bus, intelDev.slot, intelDev.func, Unsigned_8 (Byte));
+               end loop;
+               Plan := Intel_GPU_Resources.Plan_ADLN_Registers
+                 (Intel_GPU_Probe.Alder_Lake_N,
+                  pciReadConfig16 (intelDev.bus, intelDev.slot, intelDev.func, PCI_COMMAND),
+                  pciReadConfig32 (intelDev.bus, intelDev.slot, intelDev.func, 16#10#),
+                  pciReadConfig32 (intelDev.bus, intelDev.slot, intelDev.func, 16#14#),
+                  0, 4096);
+               Valid := Intel_GPU_PCI_Power.Decode (Config) = Intel_GPU_PCI_Power.D0 and then
+                 pciReadConfig32 (intelDev.bus, intelDev.slot, intelDev.func, 0) =
+                   Intel_Claim_Identity and then Plan.Status = Intel_GPU_Resources.Admitted and then
+                 Plan.Physical_Base = Intel_Claim_Base;
+            end if;
+            Intel_GPU_Display_Claim.Take
+              (Intel_Display_Ownership, Intel_Inspection_PID, from,
+               Badge_Valid => True, Device_Valid => Valid, Allowed => Allowed);
+            -- Consume before replying, including lost replies. This designates
+            -- the sole power-request manager; it grants NO writable MMIO and
+            -- establishes NO hardware reference by itself. Any future power
+            -- page grant must require this same retained owner.
+            ret := Unsigned_64 (reply (from,
+              (tag => (label => (if Allowed then 16#F000# else 16#F001#),
+                length => 0, flags => 0, reserved => 0), authorityTag => 0,
+                words => [others => 0])));
+         end;
+      elsif msg.tag = (Intel_GPU_PCI_Interrupts.Disable_Request_Label, 0, 0, 0) and then
+        Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
+        msg.authorityTag = 16#4947# and then msg.words = [0, 0, 0, 0]
+      then
+         declare
+            Status : Intel_IRQ_Disable.Result;
+            use type Intel_IRQ_Disable.Result;
+         begin
+            Intel_IRQ_Active := Intel_Config_Frozen and then intelDev.found and then
+              Intel_Reset_Authorized and then Intel_Forcewake_Granted and then
+              Intel_GPU_Display_Claim.Owner (Intel_Display_Ownership) = from;
+            Intel_IRQ_Disable.Execute (Intel_IRQ_Active, Status);
+            Intel_IRQ_Active := False;
+            Intel_IRQ_Plan_Ready := False;
+            -- Success is PCI control readback, NOT pending-vector drain.
+            -- Repeated requests cannot replay a consumed executor after loss.
+            ret := Unsigned_64 (reply (from,
+              (tag => (label => (if Status = Intel_IRQ_Disable.Complete then 16#F000# else 16#F001#),
+                length => 0, flags => 0, reserved => 0), authorityTag => 0,
+                words => [others => 0])));
+         end;
+      elsif msg.tag = (16#022E#, 0, 0, 0) and then
+        Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
+        msg.authorityTag = 16#4947# and then msg.words = [0, 0, 0, 0]
+      then
+         declare
+            Allowed : Boolean := False;
+            Config : Intel_GPU_PCI_Power.Configuration;
+            Plan : Intel_GPU_Resources.Mapping_Plan;
+            use type Intel_GPU_Resources.Admission_Status;
+            use type Intel_GPU_PCI_Power.Power_Status;
+         begin
+            if not Intel_Reset_Authorized and then Intel_Config_Frozen and then
+              intelDev.found and then Intel_Forcewake_Granted and then
+              Intel_Claim_Identity = 16#46D2_8086# and then
+              (for all Granted of Intel_Reset_Granted => Granted)
+            then
+               for Byte in Config'Range loop
+                  Config (Byte) := pciReadConfig8
+                    (intelDev.bus, intelDev.slot, intelDev.func, Unsigned_8 (Byte));
+               end loop;
+               Plan := Intel_GPU_Resources.Plan_ADLN_Registers
+                 (Intel_GPU_Probe.Alder_Lake_N,
+                  pciReadConfig16 (intelDev.bus, intelDev.slot, intelDev.func, PCI_COMMAND),
+                  pciReadConfig32 (intelDev.bus, intelDev.slot, intelDev.func, 16#10#),
+                  pciReadConfig32 (intelDev.bus, intelDev.slot, intelDev.func, 16#14#),
+                  0, 4096);
+               Allowed := Intel_GPU_PCI_Power.Decode (Config) = Intel_GPU_PCI_Power.D0 and then
+                 pciReadConfig32 (intelDev.bus, intelDev.slot, intelDev.func, 0) =
+                   Intel_Claim_Identity and then Plan.Status = Intel_GPU_Resources.Admitted and then
+                 Plan.Physical_Base = Intel_Claim_Base;
+               if Allowed then Intel_Reset_Authorized := True; end if;
+            end if;
+            -- Consume permission before replying; no repeat after reply loss.
+            ret := Unsigned_64 (reply (from,
+              (tag => (label => (if Allowed then 16#F000# else 16#F001#),
+                length => 0, flags => 0, reserved => 0), authorityTag => 0,
+                words => [others => 0])));
+         end;
+      elsif ((msg.tag = (16#022D#, 1, 0, 0) and then
+              msg.words (0) <= Unsigned_64 (Intel_GPU_Reset_Pages.Page_Index'Last)) or else
+             (msg.tag = (Intel_GPU_Display_Pages.Request_Label, 1, 0, 0) and then
+              msg.words (0) <= Unsigned_64 (Intel_GPU_Display_Pages.Page_Index'Last)) or else
+             (msg.tag = (Intel_GPU_PHY_Pages.Request_Label, 1, 0, 0) and then
+              msg.words (0) <= Unsigned_64 (Intel_GPU_PHY_Pages.Page_Index'Last))) and then
+        Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
+        msg.authorityTag = 16#4947# and then
+        msg.words (1 .. 3) = [0, 0, 0]
+      then
+         declare
+            Display_Page : constant Boolean := msg.tag.label = Intel_GPU_Display_Pages.Request_Label;
+            PHY_Page : constant Boolean := msg.tag.label = Intel_GPU_PHY_Pages.Request_Label;
+            Index : constant Intel_GPU_Reset_Pages.Page_Index := Natural (msg.words (0));
+            Offset : constant Unsigned_64 :=
+              (if Display_Page then Intel_GPU_Display_Pages.Offset (Index)
+               elsif PHY_Page then Intel_GPU_PHY_Pages.Offset (Index)
+               else Intel_GPU_Reset_Pages.Offset (Index));
+            Target_Slot : constant Unsigned_64 :=
+              (if Display_Page then Intel_GPU_Display_Pages.Slot (Index)
+               elsif PHY_Page then Intel_GPU_PHY_Pages.Slot (Index)
+               else Intel_GPU_Reset_Pages.Slot (Index));
+            Config : Intel_GPU_PCI_Power.Configuration;
+            Plan : Intel_GPU_Resources.Mapping_Plan;
+            Issued : Unsigned_64 := reterr;
+            use type Intel_GPU_Resources.Admission_Status;
+            use type Intel_GPU_PCI_Power.Power_Status;
+         begin
+            -- Never caller-selected addresses, lengths, slots or PCI identity.
+            -- Partial grants persist under the static claim; no retry/rebind.
+            if Intel_Config_Frozen and then intelDev.found and then
+              Intel_Forcewake_Granted and then Intel_Claim_Base /= 0 and then
+              (if Display_Page then
+                 Intel_GPU_Display_Claim.Owner (Intel_Display_Ownership) = from and then
+                 not Intel_Display_Granted (Index)
+               elsif PHY_Page then
+                 Intel_GPU_Display_Claim.Owner (Intel_Display_Ownership) = from and then
+                 not Intel_PHY_Granted (Index)
+               else not Intel_Reset_Granted (Index))
+            then
+               for Byte in Config'Range loop
+                  Config (Byte) := pciReadConfig8
+                    (intelDev.bus, intelDev.slot, intelDev.func, Unsigned_8 (Byte));
+               end loop;
+               Plan := Intel_GPU_Resources.Plan_ADLN_Registers
+                 (Intel_GPU_Probe.Alder_Lake_N,
+                  pciReadConfig16 (intelDev.bus, intelDev.slot, intelDev.func, PCI_COMMAND),
+                  pciReadConfig32 (intelDev.bus, intelDev.slot, intelDev.func, 16#10#),
+                  pciReadConfig32 (intelDev.bus, intelDev.slot, intelDev.func, 16#14#),
+                  Offset, 4096);
+               if Intel_GPU_PCI_Power.Decode (Config) = Intel_GPU_PCI_Power.D0 and then
+                 Intel_Claim_Identity = 16#46D2_8086# and then
+                 pciReadConfig32 (intelDev.bus, intelDev.slot, intelDev.func, 0) =
+                   Intel_Claim_Identity and then Plan.Status = Intel_GPU_Resources.Admitted and then
+                 Plan.Physical_Base >= Intel_Claim_Base and then
+                 Plan.Physical_Base - Intel_Claim_Base = Offset
+               then
+                  Issued := syscall (SYSCALL_POLICY_MINT_CAPABILITY, from,
+                    CAP_DEVICE_MEM, Plan.Physical_Base, 4096,
+                    RIGHT_READ or RIGHT_WRITE, Target_Slot);
+                  if Issued /= reterr then
+                     if Display_Page then Intel_Display_Granted (Index) := True;
+                     elsif PHY_Page then Intel_PHY_Granted (Index) := True;
+                     else Intel_Reset_Granted (Index) := True;
+                     end if;
+                  end if;
+               end if;
+            end if;
+            ret := Unsigned_64 (reply (from,
+              (tag => (label => (if Issued /= reterr then 16#F000# else 16#F001#),
+                length => 0, flags => 0, reserved => 0), authorityTag => 0,
+                words => [others => 0])));
+         end;
+      elsif msg.tag = (Intel_GPU_GGTT_Access.Write_Request_Label, 0, 0, 0) and then
+        Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
+        msg.authorityTag = 16#4947# and then msg.words = [0, 0, 0, 0]
+      then
+         declare
+            Config : Intel_GPU_PCI_Power.Configuration := [others => 255];
+            Plan : Intel_GPU_GGTT_Access.Grant_Plan;
+            Raw, Issued : Unsigned_64 := reterr;
+            Snapshot_OK : Boolean := True;
+            use type Intel_IRQ_Disable.Phase;
+         begin
+            if not Intel_GGTT_Write_Attempted then
+               -- Consume before inspection/mint; lost replies cannot replay.
+               Intel_GGTT_Write_Attempted := True;
+               if Intel_Config_Frozen and then intelDev.found and then
+                 Intel_Claim_Identity = 16#46D2_8086# and then
+                 Intel_Reset_Authorized and then Intel_GGTT_Granted and then
+                 Intel_GPU_Display_Claim.Owner (Intel_Display_Ownership) = from and then
+                 Intel_IRQ_Disable.State = Intel_IRQ_Disable.PCI_Disabled
+               then
+                  -- A single fresh snapshot supplies identity, BAR, table size,
+                  -- power and interrupt state. No client-selected range/slot.
+                  for Index in 0 .. 63 loop
+                     if portOutp32 (PCI_CONFIG_ADDR, Intel_Config_Address (Index * 4)) /= 0 then
+                        Snapshot_OK := False; exit;
+                     end if;
+                     Raw := portInp32 (PCI_CONFIG_DATA);
+                     if Raw = reterr then Snapshot_OK := False; exit; end if;
+                     for Byte in 0 .. 3 loop
+                        Config (Index * 4 + Byte) := Unsigned_8
+                          (Shift_Right (Raw, Byte * 8) and 255);
+                     end loop;
+                  end loop;
+                  if Snapshot_OK then
+                     Plan := Intel_GPU_GGTT_Access.Plan_Write
+                       (Config, Intel_GGTT_BAR, Intel_GGTT_Bytes, True, True);
+                     if Plan.Valid then
+                        Issued := syscall (SYSCALL_POLICY_MINT_CAPABILITY, from,
+                          CAP_DEVICE_MEM, Plan.Physical, Plan.Bytes,
+                          RIGHT_READ or RIGHT_WRITE, Intel_GPU_GGTT_Access.Write_Slot);
+                     end if;
+                  end if;
+               end if;
+            end if;
+            if Issued /= reterr then
+               ret := Unsigned_64 (reply (from,
+                 (tag => (16#F000#, 2, 0, 0), authorityTag => 0,
+                  words => [Plan.Physical, Plan.Bytes, 0, 0])));
+            else
+               ret := Unsigned_64 (reply (from,
+                 (tag => (16#F001#, 0, 0, 0), authorityTag => 0,
+                  words => [others => 0])));
+            end if;
+         end;
+      elsif msg.tag = (16#022B#, 0, 0, 0) and then
+        Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
+        msg.authorityTag = 16#4947# and then msg.words = [0, 0, 0, 0]
+      then
+         declare
+            Config : Intel_GPU_PCI_Power.Configuration;
+            Plan : Intel_GPU_Resources.Mapping_Plan;
+            Physical : Unsigned_64 := 0;
+            Table_Bytes : Unsigned_64 := 0;
+            Issued : Unsigned_64 := reterr;
+            GGC : Unsigned_16;
+            use type Intel_GPU_Resources.Admission_Status;
+            use type Intel_GPU_PCI_Power.Power_Status;
+         begin
+            if not Intel_GGTT_Granted then
+               if Intel_Config_Frozen and then intelDev.found then
+                  for Byte in Config'Range loop
+                     Config (Byte) := pciReadConfig8
+                       (intelDev.bus, intelDev.slot, intelDev.func, Unsigned_8 (Byte));
+                  end loop;
+                  GGC := pciReadConfig16
+                    (intelDev.bus, intelDev.slot, intelDev.func, 16#50#);
+                  Plan := Intel_GPU_Resources.Plan_ADLN_Registers
+                    (Intel_GPU_Probe.Alder_Lake_N,
+                     pciReadConfig16 (intelDev.bus, intelDev.slot, intelDev.func, PCI_COMMAND),
+                     pciReadConfig32 (intelDev.bus, intelDev.slot, intelDev.func, 16#10#),
+                     pciReadConfig32 (intelDev.bus, intelDev.slot, intelDev.func, 16#14#),
+                     0, 4096);
+                  if Intel_GPU_PCI_Power.Decode (Config) = Intel_GPU_PCI_Power.D0 and then
+                    Plan.Status = Intel_GPU_Resources.Admitted and then
+                    Plan.Physical_Base = Intel_Claim_Base and then
+                    pciReadConfig32 (intelDev.bus, intelDev.slot, intelDev.func, 0) =
+                      Intel_Claim_Identity and then GGC /= Unsigned_16'Last and then
+                    (Shift_Right (GGC, 6) and 3) /= 0
+                  then
+                     Physical := Plan.Physical_Base + 16#80_0000#;
+                     Table_Bytes := 2 ** Natural (Shift_Right (GGC, 6) and 3) * 1024 * 1024;
+                  end if;
+               end if;
+               if Physical /= 0 then
+                  Issued := syscall (SYSCALL_POLICY_MINT_CAPABILITY, from,
+                    CAP_DEVICE_MEM, Physical, Table_Bytes, RIGHT_READ, 7);
+                  Intel_GGTT_Granted := Issued /= reterr;
+                  if Intel_GGTT_Granted then
+                     Intel_GGTT_BAR := Plan.Physical_Base;
+                     Intel_GGTT_Bytes := Table_Bytes;
+                  end if;
+               end if;
+            end if;
+            if Issued /= reterr then
+               debugPrint ("devmgr: Intel GGTT inspection page granted read-only" & LF);
+               ret := Unsigned_64 (reply (from,
+                 (tag => (16#F000#, 2, 0, 0), authorityTag => 0,
+                  words => [Physical, Table_Bytes, 0, 0])));
+            else
+               ret := Unsigned_64 (reply (from,
+                 (tag => (16#F001#, 0, 0, 0), authorityTag => 0,
+                  words => [others => 0])));
+            end if;
+         end;
+      elsif msg.tag = (16#022C#, 0, 0, 0) and then
+        Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
+        msg.authorityTag = 16#4947# and then msg.words = [0, 0, 0, 0]
+      then
+         -- Fixed supervisor-owned allocation policy, not caller-controlled
+         -- addresses or sizes. Retain even if the driver subsequently dies.
+         if not Intel_Buffer_Attempted then
+            Intel_Buffer_Attempted := True;
+            if Intel_GGTT_Granted then
+               Intel_Buffer_Physical := syscall
+                 (SYSCALL_ALLOC_DMA, from, 8, 16#6100_0000#, 1, 2 ** 32);
+               debugPrint ("devmgr: Intel retained buffer physical" &
+                 Unsigned_64'Image (Intel_Buffer_Physical) & LF);
+               if Intel_Buffer_Physical = reterr or else
+                 Intel_Buffer_Physical = 0 or else
+                 Intel_Buffer_Physical mod 4096 /= 0 or else
+                 Intel_Buffer_Physical > 2 ** 32 - 1024 * 1024
+               then Intel_Buffer_Physical := 0; end if;
+            end if;
+         end if;
+         if Intel_Buffer_Physical /= 0 then
+            ret := Unsigned_64 (reply (from,
+              (tag => (16#F000#, 3, 0, 0), authorityTag => 0,
+               words => [Intel_Buffer_Physical, 16#6100_0000#, 1024 * 1024, 0])));
+         else
+            ret := Unsigned_64 (reply (from,
+              (tag => (16#F001#, 0, 0, 0), authorityTag => 0, words => [others => 0])));
+         end if;
+      elsif msg.tag = (Intel_GPU_ADS_Backing.Request_Label, 0, 0, 0) and then
+        Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
+        msg.authorityTag = 16#4947# and then msg.words = [0, 0, 0, 0]
+      then
+         if not Intel_ADS_Attempted then
+            Intel_ADS_Attempted := True;
+            if Intel_Reset_Authorized and then Intel_Config_Frozen and then
+              Intel_GGTT_Granted
+            then
+               Intel_ADS_Physical := syscall
+                 (SYSCALL_ALLOC_DMA, from, Intel_GPU_ADS_Backing.Allocation_Order,
+                  Intel_GPU_ADS_Backing.CPU_Address, 1, 2 ** 32);
+               if not Intel_GPU_ADS_Backing.Valid_Physical (Intel_ADS_Physical) then
+                  Intel_ADS_Physical := 0;
+               end if;
+            end if;
+         end if;
+         if Intel_ADS_Physical /= 0 then
+            ret := Unsigned_64 (reply (from,
+              (tag => (16#F000#, 3, 0, 0), authorityTag => 0,
+               words => [Intel_ADS_Physical, Intel_GPU_ADS_Backing.CPU_Address,
+                         Intel_GPU_ADS_Backing.Capacity, 0])));
+         else
+            ret := Unsigned_64 (reply (from,
+              (tag => (16#F001#, 0, 0, 0), authorityTag => 0, words => [others => 0])));
+         end if;
+      elsif msg.tag.label = CuBit.Devices.OP_INVENTORY_COUNT then
          ret := Unsigned_64
            (reply
               (from,

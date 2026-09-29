@@ -34,7 +34,11 @@ parser.add_argument('--invalid-clock-fixture', action='store_true',
 parser.add_argument('--uefi-firmware', type=pathlib.Path, default=pathlib.Path('/usr/share/OVMF/OVMF_CODE_4M.fd'))
 parser.add_argument('--timeout', type=int, default=180)
 parser.add_argument('--disk-first', action='store_true', help='non-optical LUN 0, CD LUN 1')
+parser.add_argument('--usb-flash', action='store_true',
+                    help='boot the ISO image on a 512-byte USB disk, as with dd to a flash drive')
 parser.add_argument('--mouse-first', action='store_true')
+parser.add_argument('--usb-hub', action='store_true',
+                    help='exercise USB keyboard and mouse behind a four-port hub; may combine with --mesa')
 parser.add_argument('--eject', action='store_true', help='test fail-closed media removal after app launch')
 parser.add_argument('--early-text', action='store_true', help='check the early text diagnostic boot entry')
 parser.add_argument('--without-audio', action='store_true',
@@ -45,6 +49,10 @@ parser.add_argument('--ccl-ui-hooks', action='store_true', help='exercise native
 parser.add_argument('--ccl-samples', action='store_true', help='open an ISO-seeded workspace sample and invoke its button')
 parser.add_argument('--config', action='store_true', help='write/read typed Config through native Workbench bytecode')
 parser.add_argument('--servo', action='store_true', help='launch the bundled Servo shell and require a rendered page')
+parser.add_argument('--mesa', action='store_true', help='launch native Mesa software cube from optical media and verify pixels and input')
+parser.add_argument('--boot-logs', action='store_true', help='verify on-screen boot viewer and typed USB startup log replay')
+parser.add_argument('--quiet-xhci', action='store_true', help='require quiet USB logs; retain filesystem and interactive input checks')
+parser.add_argument('--boot-logs-menu', action='store_true', help='launch an additional boot viewer from Apps and verify log replay')
 parser.add_argument('--sameboy-audio', action='store_true',
                     help='capture the original test ROM tone and verify volume, mute and pause')
 parser.add_argument('--taskbar', action='store_true',
@@ -54,6 +62,12 @@ parser.add_argument('--sameboy-local-rom', action='store_true',
 parser.add_argument('--sameboy-second-local-rom', action='store_true',
                     help='also exercise explicitly staged ROM 02')
 args = parser.parse_args()
+if args.quiet_xhci and (args.boot_logs or args.boot_logs_menu or args.eject or args.usb_hub):
+    parser.error('quiet-xhci cannot use USB-log-dependent replay/ejection/hub assertions')
+if args.usb_flash and args.disk_first:
+    parser.error('--usb-flash and --disk-first are separate fixtures')
+if args.usb_hub and not args.without_ps2:
+    parser.error('--usb-hub requires --without-ps2 so keyboard tests cannot use PS/2')
 if args.pit_free_fixture and args.invalid_clock_fixture:
     parser.error('select only one CPU-clock fixture')
 if args.uefi and args.early_text:
@@ -86,6 +100,15 @@ command = ['qemu-system-x86_64', '-enable-kvm', '-machine', 'q35', '-cpu', 'host
            '-device', f'usb-mouse,bus=xhci.0,port={mouse_port}',
            '-serial', f'file:{serial}', '-qmp', f'unix:{monitor},server,nowait',
            '-display', 'none', '-no-reboot']
+if args.usb_flash:
+    command[command.index(f'file={image},if=none,id=cd,media=cdrom,format=raw,readonly=on')] = f'file={image},if=none,id=cd,format=raw,readonly=on'
+    command[command.index(f'scsi-cd,bus=usbcd.0,lun={lun},drive=cd,bootindex=1')] = f'scsi-hd,bus=usbcd.0,lun={lun},drive=cd,bootindex=1'
+if args.usb_hub:
+    index = command.index(f'usb-mouse,bus=xhci.0,port={mouse_port}')
+    command[index:index + 1] = [
+        f'usb-hub,id=inputhub,bus=xhci.0,port={mouse_port},ports=4,port-power=on',
+        '-device', f'usb-mouse,bus=xhci.0,port={mouse_port}.1',
+        '-device', f'usb-kbd,bus=xhci.0,port={mouse_port}.4']
 if args.pit_free_fixture or args.invalid_clock_fixture:
     # QEMU's ordinary CPU model does not expose leaf 15 on this host. Keep
     # the real virtual TSC coherent with the injected firmware/CPU metadata.
@@ -172,10 +195,10 @@ with (run / 'qemu.log').open('w') as log:
         def hmp(text):
             return qmp('human-monitor-command', {'command-line': text})
 
-        def wait_for(marker):
+        def wait_for(marker, count=1):
             while time.monotonic() < deadline and process.poll() is None:
                 text = serial.read_text(errors='replace') if serial.exists() else ''
-                if marker in text:
+                if text.count(marker) >= count:
                     return
                 if 'EXCEPTION' in text or 'optical transport quarantined' in text:
                     raise RuntimeError('native fault; see serial.log')
@@ -210,11 +233,15 @@ with (run / 'qemu.log').open('w') as log:
             print('SMP TIMEOUT PASS: halted AP reports logical ID, APIC ID and stage', flush=True)
             sys.exit(0)
         wait_for('desktop: display info ready')
+        if args.usb_hub:
+            wait_for('xhci: hub children enumerated')
+            wait_for('xhci: boot keyboard endpoint DCI=')
+            wait_for('xhci: boot mouse endpoint DCI=')
         if args.without_ps2:
             wait_for('ps2: controller unavailable (status FF); skipping')
             wait_for('desktop: asynchronous frame released')
-            # xHCI currently supports boot mice, not USB keyboards. Exercise
-            # real USB mouse reports, without pretending keyboard app tests ran.
+            # Exercise real USB mouse reports before optional USB keyboard
+            # application tests. Without a hub, this fixture remains mouse-only.
             for _ in range(30):
                 hmp('mouse_move 2 1')
                 time.sleep(0.02)
@@ -234,7 +261,8 @@ with (run / 'qemu.log').open('w') as log:
             if not any(int(buttons) > 0 for _, buttons in events):
                 raise RuntimeError('USB mouse button did not reach desktop')
             print('NO PS2 PASS: absent i8042 did not block USB/desktop startup', flush=True)
-            sys.exit(0)
+            if not args.usb_hub:
+                sys.exit(0)
         if args.sparse_apic_ids:
             boot_log = serial.read_text(errors='replace')
             for logical, apic in [(1, 1), (2, 2), (3, 4), (4, 5), (5, 6)]:
@@ -258,6 +286,24 @@ with (run / 'qemu.log').open('w') as log:
                 raise RuntimeError('Invalid CPU clock information did not select PIT fallback')
             print('INVALID CPU CLOCK PASS: rejected zero denominator; PIT fallback booted',
                   flush=True)
+        if args.boot_logs:
+            wait_for('boot-logs: window ready')
+            wait_for('boot-logs: xhci: controller running;')
+            wait_for('boot-logs: xhci startup capture: overflow 0 publication losses 0')
+            hmp(f'screendump {run}/boot-logs.ppm')
+            print('BOOT LOGS PASS: viewer opened and replayed USB startup without capture losses.', flush=True)
+        if args.boot_logs_menu:
+            before = serial.read_text(errors='replace')
+            windows = before.count('boot-logs: window ready')
+            replays = before.count('boot-logs: xhci: controller running;')
+            key('meta_l')
+            for _ in range(9):
+                key('down')
+            key('ret')
+            wait_for('boot-logs: window ready', windows + 1)
+            wait_for('boot-logs: xhci: controller running;', replays + 1)
+            hmp(f'screendump {run}/boot-logs-menu.ppm')
+            print('BOOT LOGS MENU PASS: Apps launched a new viewer with log read authority and replay.', flush=True)
         time.sleep(2)
         hmp(f'screendump {run}/desktop.ppm')
         if args.taskbar or args.ccl_ui_hooks or args.ccl_samples:
@@ -562,8 +608,32 @@ with (run / 'qemu.log').open('w') as log:
             time.sleep(2)
             hmp(f'screendump {run}/servo.ppm')
             print('SERVO LIVE PASS: native optical load and rendered built-in page; inspect screenshot.', flush=True)
+        if args.mesa:
+            key('meta_l')
+            for _ in range(8):
+                key('down')
+            key('ret')
+            wait_for('MESA-WINDOW: attached immutable Mesa buffer')
+            time.sleep(2)
+            hmp(f'screendump {run}/mesa.ppm')
+            subprocess.run([sys.executable, str(pathlib.Path(__file__).resolve().parents[2] /
+                            'tests/mesa-software/check-cube-window.py'),
+                            str(run / 'mesa.ppm')], check=True)
+            key('spc')
+            wait_for('MESA-WINDOW: animation resumed')
+            wait_for('MESA-WINDOW: PASS animated cycle with retired-buffer reuse')
+            key('spc')
+            wait_for('MESA-WINDOW: animation paused')
+            key('esc')
+            wait_for('MESA-WINDOW: Escape; exiting')
+            if 'MESA-WINDOW: FAIL' in serial.read_text(errors='replace'):
+                raise RuntimeError('native Mesa application reported a failure')
+            print('MESA LIVE PASS: optical Apps launch, software-rendered pixels, animation and close.', flush=True)
         if args.settings:
-            key('meta_l'); key('up'); key('ret')
+            key('meta_l')
+            for _ in range(7):
+                key('down')
+            key('ret')
             time.sleep(1)
             hmp(f'screendump {run}/settings-light.ppm')
             key('tab'); key('ret')  # Select Alloy Dark, still only a preview.
@@ -633,6 +703,10 @@ with (run / 'qemu.log').open('w') as log:
                     'xhci: pre-reset sleep resumed',
                     'devmgr: loaded from filesystem: procmgr.svc',
                     'desktop: display info ready']
+        if args.quiet_xhci:
+            required = [marker for marker in required if not marker.startswith('xhci:')]
+            if 'xhci: ' in text or 'xhci-log:' in text:
+                raise RuntimeError('quiet xHCI build emitted USB diagnostics')
         if not all(marker in text for marker in required):
             raise RuntimeError('missing native optical boot evidence')
         if args.without_audio:
@@ -646,7 +720,7 @@ with (run / 'qemu.log').open('w') as log:
                 raise RuntimeError('missing HDA failure handshake')
             if 'hda: registered, entering service loop' in text:
                 raise RuntimeError('absent HDA was incorrectly registered')
-        if not any(marker in text for marker in
+        if not args.quiet_xhci and not any(marker in text for marker in
                    ['xhci: no firmware ownership capability',
                     'xhci: firmware ownership acquired=']):
             raise RuntimeError('missing firmware handoff evidence')

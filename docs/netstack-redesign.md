@@ -1107,3 +1107,276 @@ runtime from GNAT internals):
 
 Proved properties, assumptions and regression-tested behaviour are kept
 apart in the documentation of each phase.
+
+## Unifying netstack with the proved units (plan, 2026-09-28)
+
+**Where it stands.** There is one stack, in two layers:
+- **the proved units** in `userspace/net/src`: codecs, TCP, ARP, IPv6,
+  DNS, ICMP and UDP framing;
+- **the netstack service** (`userspace/services/netstack`): about
+  4,800 lines of unproved glue, some written before the proved units
+  existed.
+
+The goal is one design: a thin, mostly-proved service over the proved
+units, with the old paths deleted.
+
+**Deprecated, to remove**
+- **RecordFlux: removed 2026-09-28.** This covers the specifications, the
+  generated parsers (including an unused copy under virtio-net), the
+  `tests/net-headers` cross-check, and the Apache-2.0 attribution that
+  covered them. Each wire format's rule is now stated only in its proved
+  codec's contract (`Well_Formed`), citing the RFC. The generated parsers
+  were proved free of run-time errors, but their generic accessor-based
+  API was too slow for the data path; the hand-written codecs replaced
+  them there, and the last user (UDP send) moved to `UDP_Frame`. Sections
+  above that mention RecordFlux are history.
+- **`net.adb`:** raw-address byte helpers and the word-wise checksum,
+  still used about 50 times. Each use moves to a proved codec over byte
+  arrays in netstack's own memory. The larger remaining users are the
+  TCP segment builder (`buildTCPSegment`, `fillIPv4Header`), ARP
+  send/reply, and DNS query building.
+- **Pre-channel API leftovers:** the "reply with raw connIdx" path, the
+  `OP_NET_OPEN_RAW` stub (replaced by raw-link, docs/network-authority.md),
+  netmgr's unused `dhcp.adb`, and stale comments ("legacy aliases").
+- **Interface 0 hard-wired throughout:** thread an interface index
+  through (the per-interface ARP tables already exist).
+- **STOPGAP capacities** (channels, listeners, connections): these become
+  typed launch parameters (docs/ccl-launch-parameters.md).
+
+**Moving glue into proved units** (as `IPv6_Link`, `IPv4_ICMP` and
+`UDP_Frame` did). Each unit takes byte arrays, has a `Send` formal whose
+precondition is the frame rule, and is proved through a test instance.
+In order:
+1. The TCP segment builder: one `TCP_Frame.Build`, like `UDP_Frame`, for
+   every segment netstack sends. It is the hottest path, so it gets
+   benchmarked.
+2. The ARP sender and replier, and DNS query building.
+3. The TCP receive dispatch (`handleTCP`, listener admission, TIME-WAIT)
+   as a unit over the connection table.
+4. Channel servicing (rings to TCP and UDP): the largest piece, and what
+   remains of the IPC shell.
+
+**Done so far** (all in this document or
+docs/netstack-protocol-gaps.md): `IPv6_Link`, `IPv4_ICMP`,
+`UDP_Frame`, `DNS_Response`, `IPv4_Header.Build`, `Internet_Checksum`.
+Received frames are handled from a private copy.
+
+## virtio-net for hosting (plan, 2026-09-28)
+
+**Target.** Serving the CuBit site from CuBit on a KVM cloud host: a
+vhost-net or vhost-user backend, often virtio 1.0 only.
+
+**Measured on the same QEMU device** (`tests/net-bench/linux.sh`,
+`NET_BENCH_FEATURES=cubit` restricts the device to our driver's feature
+set):
+
+| | Linux, full virtio | Linux, CuBit's features | CuBit |
+| --- | --- | --- | --- |
+| download (Gbit/s) | 10.06 | 5.8 - 6.1 | 4.2 - 4.4 |
+| upload | 1.86 | 1.54 | 1.75 - 1.81 |
+| round trip (us) | 38.7 | 38.8 - 42.9 | 83 - 97 |
+| accepts/s | 7,909 | 7,000 - 8,300 | 3,800 - 4,200 |
+| serve download | 1.65 | 1.48 - 1.51 | 1.55 |
+
+- **Download:** driver features are most of the gap. With equal
+  features, CuBit trails by about 1.4 times.
+- **Upload and serving:** at parity or ahead.
+- **Round trip and accepts:** virtio features do not matter to Linux
+  here, so this gap is CuBit's own: the driver-to-netstack process hop
+  and the wakeup stalls.
+
+**Steps, in order**
+1. **Virtio 1.0 (modern) transport:** common, notify, ISR and device
+   configuration in a memory BAR. Needed to attach at all on
+   modern-only hosts.
+   - devmgr already parses these capabilities for virtio-gpu.
+   - The BAR offsets reach the driver through a devmgr "describe device"
+     reply, not new per-device kernel sysinfo keys (those need a kernel
+     change per key and do not scale to several NICs).
+2. **Receive coalescing:** `GUEST_CSUM`, `GUEST_TSO4/6` and `MRG_RXBUF`,
+   so the device hands us up to 64 KB per frame across chained buffers.
+   - The driver-to-netstack RX ring needs frames larger than its 2 KB
+     slots (scatter records, or large slots).
+   - netstack accepts segments larger than the MTU, and skips checksum
+     verification when the device marks `DATA_VALID`.
+3. **Notification:** `EVENT_IDX` (`used_event`/`avail_event`), whose
+   index arithmetic joins the proved `Virtqueue_Index`.
+4. **The latency and accept path:** remove the separate driver process
+   from the per-packet path. Either netstack owns the virtqueues (the
+   driver becomes device setup only, and netstack is granted the rings
+   and doorbell), or both poll shared rings without per-batch IPC. This
+   is an architecture decision (a smaller trusted driver process versus
+   one fewer hop).
+5. **Send offload:** `CSUM` and `HOST_TSO4/6`. netstack hands the driver
+   segments up to 64 KB, with a `virtio_net_hdr` naming the MSS.
+6. **Multiqueue,** with the per-CPU netstack work.
+
+**Measuring:** a tap + vhost-net mode for both benchmark harnesses, to
+match a cloud backend. Creating the tap needs root on the test host.
+
+**Progress (2026-09-28).**
+- **Modern virtio 1.0 transport:**
+  - devmgr maps the register BAR, and the driver checks every offset
+    against the mapping;
+  - legacy devices remain supported;
+  - it passes natively on QEMU's transitional device and on a
+    modern-only one (`NET_DEVICE_OPTIONS=',disable-legacy=on'` in
+    tests/headless/run.sh).
+- **Which feature matters here.** Bisecting Linux's features
+  (`NET_BENCH_DEVICE_OPTIONS` in linux.sh) shows that over QEMU's user
+  network, `EVENT_IDX` alone is Linux's download advantage: 10.1 Gbit/s
+  with it, 5.6 without. Mergeable buffers, the offloads, multiqueue and
+  the modern transport are each within noise. Receive coalescing
+  therefore waits for a backend that produces large frames.
+- **`EVENT_IDX` in the driver:**
+  - receive interrupts are armed only just before the driver waits
+    (NAPI-style), and polled while it is busy;
+  - completion interrupts only when descriptors run out or traffic is
+    sparse;
+  - kicks only when the device's event index asks;
+  - the index test (`Virtqueue_Index.Needs_Event`) is proved, and equals
+    Linux's `vring_need_event` exhaustively.
+- **Results:**
+  - upload 1.90 - 2.04 Gbit/s (was 1.75 - 1.81; Linux 1.86);
+  - serve download 1.93 (was 1.55; Linux 1.65).
+  - Download (4.2 - 4.3) and round trip (93 - 102 us) are unchanged, so
+    their remaining gap is CuBit's own receive path (the driver-to-netstack
+    hop and scheduling), not interrupts. That is the next target.
+- The driver builds as Ada 2022.
+
+**Polling while traffic flows (2026-09-28).** This follows the user's
+direction: drivers stay separate processes, and the per-batch wakeup is
+removed instead.
+- **How it works.** After doing work, netstack and virtio-net each keep
+  checking their shared rings for 50 us (Linux's default busy-poll
+  window), timed with the TSC (`CuBit.Busy_Poll`), with no doorbell
+  armed. The other side therefore sends no IPC. Only a quiet window arms
+  the doorbell (and, with `EVENT_IDX`, receive interrupts) and sleeps.
+- **Placement.** There is no yield system call, so a spinning side must
+  not share a CPU with its peer. devmgr places virtio-net on CPU3 when
+  there are four.
+- **Results, three runs on the same QEMU device:**
+
+| | Before polling | Now | Linux (full virtio) |
+| --- | --- | --- | --- |
+| download (Gbit/s) | 4.2 - 4.3 | 10.3 - 10.7 | 10.06 |
+| upload | 1.90 - 2.04 | 2.11 | 1.86 |
+| serve download | 1.93 | 2.03 - 2.07 | 1.65 |
+| round trip (us) | 93 - 102 | 51 - 57 | 38.7 |
+| accepts/s | ~3,900 | 5,900 - 7,100 | 7,909 |
+| connects/s | ~2,400 | 2,900 - 3,200 | 3,702 |
+
+- **What remains** is the round trip (about 1.4 times Linux's) and the
+  connect and accept rates: the cost of the IPC path itself.
+  coordination/networking.md has the request to the kernel owner:
+  - the late-wake path;
+  - a seL4-style IPC fastpath and notifications;
+  - a yield system call.
+
+**Next proof step: channel servicing (plan).** `serviceChannel`,
+`pullSend`, `pushReceive`, the datagram paths and `deliverArrivals` are
+about 400 lines of unproved glue over proved ring operations. The plan is
+a proved `Channel_Service` unit, as `TCP_Listeners` was done:
+- **State:** a channel's record, with an invariant tying its kind,
+  protocol, connection and status together.
+- **Operations, each with a contract:**
+  - accept the client's indices, failing the channel on any the ring
+    rejects;
+  - the shutdown rule: close only once all sent data is consumed, after
+    the handshake, and exactly once;
+  - the kick flags, which have no lost-wakeup window;
+  - the readiness predicate.
+- **Stated independently in postconditions:**
+  - a failed channel never moves data again;
+  - a channel only ever touches its own connection;
+  - status only moves toward failure or finish.
+- **The glue** keeps the IPC notifications and the TCP calls.
+- **Checks:** benchmarks after each step, because this is the hot path.
+
+## Control plane and data plane (principle, 2026-09-28)
+
+IPC is the **control plane**: infrequent, authority-bearing requests
+(scopes, grants, configuration, interface state, setting up a channel).
+Shared rings are the **data plane**: bulk, asynchronous, batched. Between
+the two sit **signals**, which must be cheap and only sent when needed.
+With that split, a userspace driver and stack can come close to a
+monolithic kernel while keeping their isolation.
+
+Where each path stands:
+
+- **On rings already:** driver <-> netstack frames (batched RX/TX rings),
+  netstack <-> app byte channels, datagram channels, and the listener's
+  arrivals ring. IPC appears only as a doorbell, and only when the consumer
+  armed one before sleeping (io_uring's `NEED_WAKEUP`, virtio's
+  `EVENT_IDX`). Bulk throughput matches or beats Linux.
+- **High-rate control operations:** OPEN and SHUT go through a control
+  queue per client endpoint (2026-09-28; docs/async-rings.md,
+  `OP_NET_QUEUE`), with IPC only when netstack's wake word shows it
+  asleep. Their answers complete the client's WAIT.
+  - libc uses the queue, falling back to messages when netstack has
+    none to give.
+  - The Ada `CuBit.Net_Channels` API still sends OPEN by message and CLOSE
+    by call. It moves next.
+  - Shut_Write was already a ring flag plus a kick.
+- **Signals:**
+  - Userspace: netstack polls only while an arrival is expected. That
+    means a handshake or an acknowledgement is due on a sub-millisecond
+    path, a TCP peer sent anything since netstack last slept, or a
+    resolver query is outstanding. After purely control-plane or timer
+    work it arms its doorbells and sleeps at once.
+
+    A/B (KVM, second run after each build; the first run after a build
+    is consistently cold):
+
+    | Rule | Accepts/s | Round trip (µs) | Download (Gbit/s) |
+    | --- | --- | --- | --- |
+    | Always poll after any activity | 6,452 | 55.0 | 11.2 |
+    | Expected: ACK, DNS or data due | 5,405–5,714 | 51.0–52.5 | 10.7 |
+    | Expected: also any TCP arrival | 7,143 | 51.0 | 9.9 |
+
+    The middle rule slept between a server's clients, so each SYN paid a
+    wake. The last rule is kept. Single samples are noisy; the download
+    difference is within run-to-run spread.
+  - Kernel (requested from the kernel owner in coordination/networking.md):
+    - cheaper notification wakeups (no message copy, direct switch);
+    - a read-only per-CPU "CPU wanted" word, so that pollers stop the
+      moment another thread needs the CPU (Linux's `need_resched()`)
+      instead of calling yield in a loop.
+  - `SYSCALL_YIELD` (118) exists for `sched_yield` and Rust's
+    `yield_now`. It is not used for polling.
+
+### Security of the split
+
+A ring adds no authority; it is a faster pipe for authority already
+granted.
+
+- **Setup is checked.** A channel exists only after an IPC request passed
+  the process's network scope. Its memory is the process's own grant,
+  lent to netstack and revocable. `Channel_Arenas` (proved) gives each
+  arena one owner and one grant, holds a buffer for at most one channel,
+  and never reuses a handle.
+- **Identity by construction.** A ring is bound to one owner at setup.
+  When control operations move onto rings, netstack must still check the
+  scope **for each submitted operation**, exactly as it does for the IPC
+  request today. This rule must be stated in the proved submission
+  decoder and covered by tests.
+- **Untrusted shared memory.** The client can rewrite shared memory while
+  netstack reads it. Netstack therefore:
+  - reads each index once and bounds it (the proved byte ring);
+  - snapshots what it decides on (headers, lengths, entries) before
+    checking it, and reads payload exactly once, straight to its
+    destination (docs/async-rings.md).
+- **Signals are hints.** Kick bits, doorbell words and any future "more
+  coming" bit can only cause spurious wakes (at most one doorbell per
+  epoch) or stall the liar's own channel. `Channel_Service` decides per
+  channel.
+- **Bounded effect.** Per-process declared capacity and bounded work per
+  service pass limit a flooding or stalled client. Open item: prove
+  fairness across channels as the channel state machine moves under proof.
+- **Lifetime.** When a process exits, its channels are released and its
+  grants returned; netstack never touches a buffer after that.
+- **Not covered by this split:** DMA by a device. That needs IOMMU
+  confinement (device-manager.md, phase 6).
+- **Timing.** Busy polling and a "CPU wanted" word reveal a little timing
+  and scheduling information. Map the word only into registered
+  services and drivers, read-only.

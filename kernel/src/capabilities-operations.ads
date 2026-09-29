@@ -415,11 +415,13 @@ is
     -- checkDeviceMemAccess
     -- Scan the capability table for a CAP_DEVICE_MEM whose range
     -- [object.ref .. object.ref+object.param-1] covers [base .. base+size-1]
-    -- with READ_WRITE rights.
+    -- with READ rights and, when requireWrite is True, WRITE rights.
+    -- Empty or wrapping request/capability ranges are rejected.
     ---------------------------------------------------------------------------
     procedure checkDeviceMemAccess (table   : in     CapabilityTable;
                                     base    : in     Unsigned_64;
                                     size    : in     Unsigned_64;
-                                    allowed :    out Boolean);
+                                    allowed :    out Boolean;
+                                    requireWrite : in Boolean := True);
 
 end Capabilities.Operations;

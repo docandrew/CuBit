@@ -40,7 +40,7 @@ package TCP_Slots with SPARK_Mode is
    subtype Connection_Reference is Integer range -1 .. Connection_Index'Last;
    type Table is array (Connection_Index) of Slot;
 
-   --  Parsed fields of an arriving segment (from RecordFlux Net.TCP.Segment).
+   --  Parsed fields of an arriving segment (from TCP_Header).
    type SegmentInfo is record
       srcIP   : Net.IPv4Address;
       srcPort : Unsigned_16;

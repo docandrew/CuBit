@@ -26,19 +26,20 @@ on `TCP_Flow` (one per connection slot; `userspace/services/netstack/tcp_engine.
 | `TCP_Flow` (generic) | the endpoint with its sending policy (RFC 6298 timing with Karn's rule, NewReno): segments never exceed the MSS, the congestion allowance or the peer's window; congestion decisions count the pipe (RFC 6675), not bytes presumed lost; the retransmission timer runs whenever sequence space (data, SYN or FIN) is in flight, and restarts backed off when it fires; timeouts without progress are counted (`Exhausted`); the endpoint and the controller stay valid |
 | `Timer_Heap` (generic) | the root is the earliest deadline, so `Next_Due` never reports a timer before it is due; arming and cancelling change only that timer; counts are exact |
 | `Descriptor_Pool` (generic; 80, virtio-net's transmit descriptors) | every descriptor is free or in flight; `Take` hands out only a free one; a device-returned id is accepted exactly when it names a descriptor in flight (out-of-range, free and repeated ids change nothing), so no buffer is handed out twice; the free list never holds a descriptor twice or one in flight |
-| `Frame_Ring` | the frame rings between netstack and virtio-net (packet grant): slot numbers are always 1 .. Slots; a frame is used only if it fits its slot; accepted peer counts keep the fill within the ring (`Has_Room`, `Fill`, `Valid_Produced` are definitional) |
 | `Channel_Geometry` | a channel's rings lie in the client's grant: for sizes netstack accepted at open, every send- or receive-ring position is an offset inside the acquired grant (with `CuBit.Channel_Rings` keeping positions below ring sizes, no channel access leaves the grant) |
 | `Channel_Arenas` | channel arenas (one grant cut into channel buffers): a registered arena fits one grant (16 MiB); a claimed buffer lies wholly inside its arena, at its index times the buffer size; only a free buffer of the caller's own arena can be claimed, so no buffer backs two channels; an arena with a claimed buffer cannot be unregistered; handles are never reused, so a stale handle names nothing; an exiting owner's arenas all go |
 | `Virtqueue_Index` | a virtqueue's used index as the device writes it: the driver takes only as many new entries as it handed the device and has not seen back (an index further ahead yields none, so stale entries are never read as new), and every ring position is inside the queue |
+| `Channel_Service` | netstack's stream-channel decisions: a failed channel asks for no kick; Kick_On_Send only once all the client's data was taken, Kick_On_Receive only when data waits and the receive ring is full; a write-shutdown closes once, after the client's data, never during the handshake; after asking for a kick, netstack looks again whenever the client's index moved (no lost wakeup) and never when nothing moved |
 | `IPv4_Header` | the IPv4 header (RFC 791): `Well_Formed` is exactly the accepted rule (version 4, a 20 to 60 byte header, total length within the bytes received, no fragment); every parsed field is its bytes on the wire; `Build` writes a version-4, 20-byte, unfragmented header whose length, protocol, TTL and addresses are those given, leaving the payload alone. Tested, not proved: its checksum verifies and `Parse` reads it back (10,000 random headers) |
 | `Internet_Checksum` | RFC 1071 over a byte array: no overflow and no access outside the bytes for any length up to 2^17. Tested, not proved: agreement with RFC 1071's 16-bit sum and netstack's word-wise sum (`tests/tcp-session`) |
+| `UDP_Frame` | UDP over IPv4 on Ethernet (RFC 768), used for every datagram netstack sends: no run-time errors for any payload up to 1,472 bytes, and every built frame is `IPv4_Frame.Emittable` (unicast source and destination). Tested, not proved (`tests/tcp-session`): ports, length and payload are those given, and both checksums verify and agree with netstack's word-wise sum for every payload length |
 | `IPv6_Header` | the IPv6 header (RFC 8200): `Well_Formed` is exactly the accepted rule (version 6, the payload inside the bytes received, a source neither IPv4-mapped nor multicast, a destination neither IPv4-mapped nor unspecified); every parsed field is its bytes on the wire; `Build` writes a header `Well_Formed` accepts and `Parse` reads back, and cannot be asked to write a mapped address, so a mapped address never enters or leaves on IPv6 |
 | `ND_Message` | Neighbor Solicitation and Advertisement (RFC 4861): an accepted message had hop limit 255 (cannot have crossed a router), type 135 or 136 with code 0, and a target that is its bytes 8 .. 23 and not multicast; the option walk ends (a zero-length option rejects the message) and never reads outside it |
 | `Neighbor_Cache` | the IPv6 neighbor cache, hardened as `ARP_Cache`: only an advertisement answering our own solicitation, or a solicitation to us, is learned; an unsolicited advertisement (even with Override) changes nothing; a resolved link address never changes; IPv4-mapped, multicast and unspecified neighbors are never learned; at most one entry per address; an entry changes only for its own address |
 | `RA_Message` | Router Advertisements and their prefixes (RFC 4861 4.2, 4.6.2): accepted only with hop limit 255 and a link-local source; the option walk ends; a returned prefix is an autonomous /64, not link-local and not multicast (stated on its own), with its preferred lifetime no longer than its valid one |
 | `SLAAC_Table` | stateless address autoconfiguration (RFC 4862) with RFC 7217 stable identifiers: an address starts Tentative and becomes usable only after its detection period passes with no conflict; a Duplicate never becomes usable; the two-hour rule (5.5.3 e): no advertisement shortens a valid lifetime below the lesser of what remained and two hours; at most one address per prefix |
 | `DNS_Response` | a DNS response to one A/IN question: no access outside the message and the answer walk ends, for any bytes; an accepted message has QR set and one question for A/IN; a returned address is the four data bytes of an A/IN answer of length four, inside the message (`DNS_Name.Read_Name` now also proves it moves forward) |
-| `TCP_Header` | the TCP header on the wire: each parsed field is its bytes (big-endian); writing then parsing gives back each field; writing touches only the header; SYN options written exactly (MSS, NOP, window scale). The acceptance rule matches `specs/tcp.rflx` (checked against RecordFlux in `tests/net-headers`) |
+| `TCP_Header` | the TCP header on the wire: each parsed field is its bytes (big-endian); writing then parsing gives back each field; writing touches only the header; SYN options written exactly (MSS, NOP, window scale). The acceptance rule is RFC 9293 3.1's |
 
 Some properties are definitional (an expression function's result is its
 own specification) and have no mutant: `Peer_Window`'s SYN rule, IsLost's
@@ -113,7 +114,20 @@ over hostile input; the proofs are what cover all inputs.
 
 gnatprove analyzes what `main.adb` reaches, so every unit to prove is
 referenced from it; realistic sizes are withed but unused. Delete
-`build/gnatprove` before trusting a summary after large edits.
+`build/gnatprove` (or run `gnatprove --clean`) before trusting a summary:
+gnatprove reuses stored results for units it considers unchanged, and on
+2026-09-28 a clean run showed three checks that an incremental summary had
+reported proved (SLAAC's two-hour rule, the connection table's bucket
+invariant after Insert, and the endpoint's pool isolation after a segment).
+Each was restructured (stepping assertions, an `Assert_And_Cut`). Three
+units whose checks prove alone but can miss level 1's 1 s budget in a
+saturated `-j0` run get level 1's provers with `--timeout=60
+--memlimit=4000` (per-file `Proof_Switches` in `net_tcp_tests.gpr`, as
+SPARKTLS does); every other unit is plain `--level=1`.
+
+Results, 2026-09-28 (clean run): 5,125/5,125 checks proved; mutants
+146/146 killed, control surviving (the last survivor showed that
+`IPv4_Header.Build_Header` did not promise a non-fragment; it does now).
 
 Not yet covered: SACK-driven recovery (the scoreboard exists but the flow
 does not use it yet), RACK-TLP, CUBIC, delayed ACK and Nagle, persist and

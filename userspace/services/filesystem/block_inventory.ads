@@ -1,8 +1,10 @@
 with Interfaces; use Interfaces;
 
---  Scratch ownership inventory for one standard direct/single/double tree.
---  At most 4,202,552 bytes, transient on the validation call's stack; normally
---  much smaller. No per-logical-hole entries, heap, or permanent BSS arena.
+--  Scratch ownership inventory for one inode's block tree. Its capacity is
+--  a complete 4 KiB direct/single/double tree: at most 4,202,552 bytes,
+--  transient on the validation call's stack; normally much smaller. Larger
+--  allocations (only reachable through triple-indirect mappings) are rejected
+--  by resize before any mutation. No per-hole entries, heap or BSS arena.
 package Block_Inventory with Pure, SPARK_Mode is
    Maximum_Blocks : constant := 12 + 1024 + 1 + 1024 * 1024 + 1024 + 1;
    subtype Block_Count is Natural range 0 .. Maximum_Blocks;

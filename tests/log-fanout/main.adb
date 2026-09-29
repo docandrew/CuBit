@@ -164,6 +164,9 @@ begin
    Read (10, First); pragma Assert (Result = Denied);
    Log_Fanout.Close (Store, 10, Publisher_Authority_Tag, Other, Result);
    pragma Assert (Result = Denied);
+   -- The initial publication plus Capacity+3 later records discarded four
+   -- entries from boot history, even though the active reader kept up.
+   Read (10, Other); pragma Assert (Result = Gap and Lost = 4 and Value = Empty_Value);
    Read (10, Other); pragma Assert (Result = OK and Value.Monotonic_Ms = 4);
    Replacement := Other;
    --  Capacity rejection never returns a token or permits an unprivileged

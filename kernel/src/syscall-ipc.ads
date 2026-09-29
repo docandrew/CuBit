@@ -18,7 +18,7 @@ is
                            retval     : out Unsigned_64);
 
     procedure handleMapDevice (callerPID : Process.ProcessID;
-                               arg0, arg1, arg2 : Unsigned_64;
+                               arg0, arg1, arg2, arg3 : Unsigned_64;
                                retval    : out Unsigned_64);
 
     procedure handleAllocDma (callerPID : Process.ProcessID;

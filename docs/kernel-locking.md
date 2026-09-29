@@ -80,6 +80,25 @@ decisions, not runtime evaluation of SPARK contracts.
 
 ## Acquisition dependencies
 
+### Owned anonymous memory
+
+`Process.Owned_Memory` serializes its bounded allocation inventory with a
+registry lock. Allocation takes registry -> owner address-space -> allocator
+locks. Release takes grant -> registry -> owner address-space, then performs
+PTE removal and acknowledged TLB shootdown before detaching/freeing frame-list
+nodes. Source grant lookup and pin acquisition take grant -> source
+address-space; they drop the source lock before acquiring a receiver lock.
+This is an implementation review boundary, not a whole-kernel SPARK proof.
+
+Legacy physical mapping admission holds the registry lock through mapping
+publication. It rejects aliases to retained owned frames. This does not revoke
+preexisting raw physical mappings; holders of arbitrary physical mapping
+authority remain trusted. Process reclamation holds the registry lock across
+freeing its frame list and forgetting its owned descriptors, after execution
+has quiesced. No owned release may free backing before remote TLB acknowledgment;
+grant-pinned frames additionally remain in the allocator's deferred-free state
+until the last grant pin is returned.
+
 This inventory covers the kernel `Spinlocks` call sites inspected in this pass.
 It is a reviewed dependency map, not a mechanically proved acyclic call graph.
 Transitive dependencies also apply.

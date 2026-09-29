@@ -23,10 +23,12 @@ with Heap_Admission;
 with Heap_Growth;
 with Interrupts;
 with Memory_Grants;
+with Owned_Memory_Layout;
 with PerCpuData;
 with PerCPUData;
 with Process;
 with Process.IPC;
+with Process.Owned_Memory;
 with Process.Loader;
 with Process.User_Memory;
 with Spinlocks;
@@ -180,6 +182,7 @@ package body Syscall.IPC is
                                arg0      : Unsigned_64;
                                arg1      : Unsigned_64;
                                arg2      : Unsigned_64;
+                               arg3      : Unsigned_64;
                                retval    : out Unsigned_64) with
         SPARK_Mode => Off   -- generic instantiation
     is
@@ -196,11 +199,20 @@ package body Syscall.IPC is
     begin
         retval := reterr;
 
-        if numPages = 0 or numPages > 1024 then
+        -- arg3: 0 = read/write, 1 = read-only. Never silently widen a
+        -- requested inspection mapping, including when a broader cap exists.
+        if numPages = 0 or else numPages > 1024 or else arg3 > 1 or else
+          arg0 mod 4096 /= 0 or else arg1 = 0 or else arg1 mod 4096 /= 0 or else
+          arg0 > Unsigned_64'Last - numPages * 4096 or else
+          arg1 >= 16#0000_8000_0000_0000# or else
+          numPages * 4096 > 16#0000_8000_0000_0000# - arg1
+        then
             return;
         end if;
         if Memory_Grants.Overlaps_Received_Region
           (arg1, Memory_Grants.Page_Count (numPages))
+          or else Owned_Memory_Layout.Conflicts
+            (arg1, numPages * Unsigned_64 (Virtmem.PAGE_SIZE))
         then
             return; -- only the grant subsystem may mutate its aperture
         end if;
@@ -209,13 +221,20 @@ package body Syscall.IPC is
             table   => Process.proctab(callerPID).caps,
             base    => arg0,
             size    => numPages * Unsigned_64 (Virtmem.PAGE_SIZE),
-            allowed => capAllowed);
+            allowed => capAllowed,
+            requireWrite => arg3 = 0);
 
         if not capAllowed then
             println ("MAP_DEVICE: denied, no CAP_DEVICE_MEM");
             return;
         end if;
 
+        Process.Owned_Memory.Lock;
+        if Process.Owned_Memory.Physical_Conflict
+          (arg0, numPages * Unsigned_64 (Virtmem.PAGE_SIZE)) then
+            Process.Owned_Memory.Unlock;
+            return;
+        end if;
         Process.lockAddressSpace (callerPID);
         for i in 0 .. numPages - 1 loop
             declare
@@ -228,7 +247,9 @@ package body Syscall.IPC is
                     virt    => virtAddr +
                         Integer_Address (
                             i * Unsigned_64 (Virtmem.PAGE_SIZE)),
-                    flags   => Virtmem.PG_USERIO,
+                    flags   => (if arg3 = 1 then
+                                  Virtmem.PG_USERIO and not Virtmem.PG_WRITABLE
+                                else Virtmem.PG_USERIO),
                     myP4    => Process.addrtab(callerPID),
                     success => pageOk);
                 if not pageOk then
@@ -237,6 +258,7 @@ package body Syscall.IPC is
             end;
         end loop;
         Process.unlockAddressSpace (callerPID);
+        Process.Owned_Memory.Unlock;
 
         if ok then
             retval := 0;
@@ -279,7 +301,7 @@ package body Syscall.IPC is
 
         if arg0 > Unsigned_64 (Process.ProcessID'Last) or arg0 = 0 then
             return;
-        elsif arg1 >= Unsigned_64 (BuddyAllocator.Order'Last) then
+        elsif arg1 > Unsigned_64 (BuddyAllocator.Order'Last) then
             println ("ALLOC_DMA: order too large");
             return;
         end if;
@@ -289,6 +311,8 @@ package body Syscall.IPC is
         virtBase := Virtmem.VirtAddress (arg2);
         if Memory_Grants.Overlaps_Received_Region
           (arg2, Memory_Grants.Page_Count (2 ** Natural (order)))
+          or else Owned_Memory_Layout.Conflicts
+            (arg2, (2 ** Natural (order)) * Unsigned_64 (Virtmem.PAGE_SIZE))
         then
             return;
         end if;
@@ -495,6 +519,8 @@ package body Syscall.IPC is
         end if;
         if Memory_Grants.Overlaps_Received_Region
           (arg2, Memory_Grants.Page_Count (arg3))
+          or else Owned_Memory_Layout.Conflicts
+            (arg2, arg3 * Unsigned_64 (Virtmem.PAGE_SIZE))
         then
             return;
         end if;
@@ -542,6 +568,12 @@ package body Syscall.IPC is
                 end case;
 
                 ok := True;
+                Process.Owned_Memory.Lock;
+                if Process.Owned_Memory.Physical_Conflict
+                  (arg1, arg3 * Unsigned_64 (Virtmem.PAGE_SIZE)) then
+                    Process.Owned_Memory.Unlock;
+                    return;
+                end if;
                 Process.lockAddressSpace (targetPID);
                 for i in 0 .. Natural (arg3) - 1 loop
                     mapPage (
@@ -555,12 +587,14 @@ package body Syscall.IPC is
 
                     if not ok then
                         Process.unlockAddressSpace (targetPID);
+                        Process.Owned_Memory.Unlock;
                         print ("MAP_INTO: map fail page ");
                         println (i);
                         return;
                     end if;
                 end loop;
                 Process.unlockAddressSpace (targetPID);
+                Process.Owned_Memory.Unlock;
 
                 retval := 0;
             end performLocked;
@@ -696,6 +730,12 @@ package body Syscall.IPC is
             --  published, including a partially successful mapping attempt.
             Boot_Output.Retire;
             TextIO.disableVideo;
+            Process.Owned_Memory.Lock;
+            if Process.Owned_Memory.Physical_Conflict
+              (Unsigned_64 (fbPhys), Unsigned_64 (numPages) * Virtmem.PAGE_SIZE) then
+                Process.Owned_Memory.Unlock;
+                return;
+            end if;
             Process.lockAddressSpace (callerPID);
             for i in 0 .. numPages - 1 loop
                 declare
@@ -715,6 +755,7 @@ package body Syscall.IPC is
                 end;
             end loop;
             Process.unlockAddressSpace (callerPID);
+            Process.Owned_Memory.Unlock;
 
             if ok then
                 retval := Unsigned_64(FB_USER_BASE) +

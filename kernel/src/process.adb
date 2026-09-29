@@ -31,6 +31,7 @@ with Page_Admission;
 with PerCPUData;
 with Process.Futex;
 with Process.IPC;
+with Process.Owned_Memory;
 with Process.User_Memory;
 with Process.Queues;
 with Scheduler;
@@ -1438,12 +1439,13 @@ package body Process is
         procedure deleteP4 is new Virtmem.deleteP4 (BuddyAllocator.freeFrame);
         pidReusable, finished : Boolean;
         grantDeferred : Boolean := False;
+        ownedRetired : Natural := 0;
         parent : constant ProcessID := proctab(pid).ppid;
         parentGen : constant Capabilities.Generation :=
             proctab(pid).parentGeneration;
         exitMsg : Message := NULL_MESSAGE;
     begin
-        print ("Process.reclaimProcess: stopped PID "); println (Integer(pid));
+        println ("Process.reclaimProcess: stopped PID" & Integer'Image (Integer (pid)));
         -- Worker owns its own stack and runs on kernel page tables. The
         -- victim's execution presence is zero; cleanup holds no global lock.
         IPC.retireMailboxes (pid);
@@ -1484,7 +1486,10 @@ package body Process is
         Capabilities.Operations.clearTable (proctab(pid).caps);
 
         if threadOf (pid).mode = USER then
-
+            -- Physical-mapping admission may inspect owned-region inventory.
+            -- Keep its lock until all corresponding frame nodes and region
+            -- descriptors are retired, so that traversal never sees stale nodes.
+            Owned_Memory.Lock;
             while proctab(pid).frames.length > 0 loop
                 BuddyAllocator.freeFrame (FrameLists.front(proctab(pid).frames));
                 FrameLists.popFront (proctab(pid).frames);
@@ -1492,6 +1497,12 @@ package body Process is
             end loop;
 
             FrameLists.delete (proctab(pid).frames);
+            Owned_Memory.Forget_Exited (pid, ownedRetired);
+            Owned_Memory.Unlock;
+            if ownedRetired /= 0 then
+                println ("Process.reclaimProcess: owned regions retired" &
+                         Natural'Image (ownedRetired));
+            end if;
 
             -- Need to unmap Kernel mem here so when we delete page tables we
             -- only delete the process' page tables.
@@ -1814,6 +1825,9 @@ package body Process is
             -- @TODO use a heuristic here to figure out if this was a stack
             -- overflow, or heap over/underflow and signal the process either way.
             -- (something like distance to stackBottom < distance to heapEnd = stack overflow)
+            println ("USER-MEMORY-FAULT: pid" & Integer'Image (Integer (pid)) &
+                     " address" & Unsigned_64'Image (Unsigned_64 (To_Integer (addr))) &
+                     " kind=unmapped");
             print ("Process: Illegal memory access at "); print (addr);
             print (" rip "); print (lastFaultRIP);
             -- The words at the user stack pointer: usually return addresses.

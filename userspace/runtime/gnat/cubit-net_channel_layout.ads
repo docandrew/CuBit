@@ -118,4 +118,54 @@ package CuBit.Net_Channel_Layout with Pure, SPARK_Mode is
    Arrival_Address_At   : constant := 24;
    Address_Bytes        : constant := 16;
 
+   --  Control queues (docs/async-rings.md): OPEN and SHUT without a
+   --  message each. QUEUE (call) lends netstack a grant of Queue_Bytes:
+   --  words 0 = grant slot, 1 = grant generation. Replies REPLY_OK. The
+   --  queue acts with the authority of the endpoint QUEUE came through,
+   --  and one per endpoint (scope) is allowed.
+   --  Layout: a header page (submission header at Queue_Submissions_At,
+   --  completion header at Queue_Completions_At, each with the words
+   --  below), then Queue_Slots submission entries at Queue_Requests_At
+   --  and Queue_Slots completion entries at Queue_Answers_At, each
+   --  Queue_Entry_Bytes. Indices are free-running entry counts
+   --  (CuBit.Slot_Rings); the client produces requests and consumes
+   --  answers.
+   OP_NET_QUEUE : constant := 16#042D#;
+   Queue_Bytes          : constant := 8_192;
+   Queue_Slot_Bits      : constant := 6;
+   Queue_Slots          : constant := 64;
+   Queue_Entry_Bytes    : constant := 32;
+   Queue_Submissions_At : constant := 0;
+   Queue_Completions_At : constant := 2_048;
+   Queue_Requests_At    : constant := 4_096;
+   Queue_Answers_At     : constant := 6_144;
+   --  Header words (as CuBit.Frame_Rings): the producer's count; the
+   --  consumer's count, on its own line; and the consumer's wake word, a
+   --  new nonzero epoch each time it is about to sleep. After producing,
+   --  a client KICKs with Kick_Queue only if the submission wake word
+   --  shows an epoch it has not kicked yet. netstack's answers complete
+   --  the process's WAIT (words 1 = Wait_Answers).
+   Queue_Produced_At : constant := 0;
+   Queue_Consumed_At : constant := 64;
+   Queue_Wake_At     : constant := 68;
+   Kick_Queue        : constant := 2;
+   Wait_Answers      : constant := 1;
+   --  A request: token (64 bits, returned with the answer), operation
+   --  (32), then OPEN: target length (32), arena handle (64), buffer
+   --  index (32); SHUT: channel handle in the arena's place.
+   Request_Token_At     : constant := 0;
+   Request_Operation_At : constant := 8;
+   Request_Length_At    : constant := 12;
+   Request_Object_At    : constant := 16;
+   Request_Buffer_At    : constant := 24;
+   Queue_Open : constant := 1;
+   Queue_Shut : constant := 2;
+   --  An answer: token (64), status (32: Answer_OK or Answer_Refused),
+   --  value (64: the channel handle of an OPEN).
+   Answer_Token_At  : constant := 0;
+   Answer_Status_At : constant := 8;
+   Answer_Value_At  : constant := 16;
+   Answer_OK      : constant := 0;
+   Answer_Refused : constant := 1;
+
 end CuBit.Net_Channel_Layout;

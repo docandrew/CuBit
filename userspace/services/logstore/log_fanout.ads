@@ -4,7 +4,9 @@ package Log_Fanout with SPARK_Mode is
    --  Single-owner broker; logstore serializes access in its service loop.
    --  Caller and Authority_Tag must be authenticated by a trusted adapter.
    --  Publish is an internal trusted operation, not an IPC authorization gate.
-   Capacity : constant := 16;
+   -- Bounded boot replay for a viewer opened after driver initialization.
+   -- Each subscriber keeps an independent queue; no unbounded allocation.
+   Capacity : constant := 512;
    Maximum_Subscribers : constant := 8;
    type Broker is limited private;
    Subscription_Lease_Ms : constant Unsigned_64 := 30_000;

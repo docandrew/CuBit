@@ -11,8 +11,7 @@
 --  truncated datagram is never read as a shorter valid one); no fragment
 --  (MF clear, offset zero; there is no reassembly yet) and the reserved
 --  flag clear (DF alone is fine). The header checksum is checked by the
---  caller. specs/ipv4.rflx stays the specification; tests/net-headers
---  compares the two.
+--  caller.
 --
 --  Proved (tests/net-tcp): Well_Formed is exactly that rule; every parsed
 --  field is its bytes on the wire, big-endian. Build writes a version-4,
@@ -68,6 +67,11 @@ package IPv4_Header with SPARK_Mode is
 
    Version_IHL    : constant := 16#45#;   --  version 4, a 20-byte header
    Dont_Fragment  : constant := 16#4000#;
+   --  The flags/offset word's high byte (header byte 6): the DF bit, and
+   --  the bits that must stay clear in a non-fragment (reserved, MF and the
+   --  offset's top five bits).
+   DF_In_High_Byte    : constant := 16#40#;
+   Fragment_High_Bits : constant := 16#BF#;
    Maximum_Length : constant := 16#FFFF#;
    Checksum_At    : constant := 10;
 
@@ -78,7 +82,7 @@ package IPv4_Header with SPARK_Mode is
      Pre  => B'First = 0 and then B'Length <= 2 ** 16 and then H.Size = Minimum_Size and then
              H.Total_Length in Minimum_Size .. Maximum_Length and then
              H.Total_Length <= B'Length,
-     Post => Shift_Right (B (0), 4) = 4 and then
+     Post => B (0) = Version_IHL and then Shift_Right (B (0), 4) = 4 and then
              Stated_Size (B) = Minimum_Size and then
              (U16 (B, 6) and 16#BFFF#) = 0 and then
              Natural (U16 (B, 2)) = H.Total_Length and then
@@ -86,5 +90,18 @@ package IPv4_Header with SPARK_Mode is
              [B (12), B (13), B (14), B (15)] = H.Source and then
              [B (16), B (17), B (18), B (19)] = H.Destination and then
              B (Minimum_Size .. B'Last) = B'Old (Minimum_Size .. B'Last);
+
+   subtype Header_Bytes is Bytes (0 .. Minimum_Size - 1);
+
+   --  The same 20-byte header as Build, on its own (for a packet written in
+   --  place elsewhere).
+   procedure Build_Header (H : Header; DF : Boolean; Hdr : out Header_Bytes) with
+     Pre  => H.Size = Minimum_Size and then
+             H.Total_Length in Minimum_Size .. Maximum_Length,
+     Post => Hdr (0) = Version_IHL and then Hdr (12) = H.Source (0) and then
+             Hdr (16) = H.Destination (0) and then
+             --  Never a fragment: MF clear, offset zero; DF as asked.
+             (Hdr (6) and Fragment_High_Bits) = 0 and then Hdr (7) = 0 and then
+             ((Hdr (6) and DF_In_High_Byte) /= 0) = DF;
 
 end IPv4_Header;

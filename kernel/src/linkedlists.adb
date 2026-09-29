@@ -186,6 +186,49 @@ package body LinkedLists is
         myList.length := myList.length - 1;
     end popBack;
 
+    procedure detachRange (myList : in out List; First, Last : NodePtr;
+                           Count : Positive; Detached : in out List;
+                           Success : out Boolean) is
+        use type System.Address;
+        Cursor : NodePtr := myList.head;
+        Position : Natural := 0;
+        Range_Last, Before, After : NodePtr;
+    begin
+        Success := False;
+        if myList'Address = Detached'Address or else First = null or else
+          Last = null or else Count > myList.length or else
+          Detached.length /= 0 or else Detached.head /= null or else
+          Detached.tail /= null then return; end if;
+        for I in 1 .. myList.length loop
+            if Cursor = First then Position := I; exit; end if;
+            Cursor := Cursor.next;
+        end loop;
+        if Position = 0 or else Count > myList.length - Position + 1 then
+            return;
+        end if;
+        Range_Last := Cursor;
+        for I in 2 .. Count loop Range_Last := Range_Last.next; end loop;
+        if Range_Last /= Last then return; end if;
+
+        Before := Cursor.prev;
+        After := Range_Last.next;
+        if Count = myList.length then
+            myList.head := null;
+            myList.tail := null;
+        else
+            Before.next := After;
+            After.prev := Before;
+            if myList.head = Cursor then myList.head := After; end if;
+            if myList.tail = Range_Last then myList.tail := Before; end if;
+        end if;
+        myList.length := myList.length - Count;
+        Cursor.prev := Range_Last;
+        Range_Last.next := Cursor;
+        Detached := (head => Cursor, tail => Range_Last,
+                     length => Count, capacity => Count);
+        Success := True;
+    end detachRange;
+
     ---------------------------------------------------------------------------
     -- back
     ---------------------------------------------------------------------------

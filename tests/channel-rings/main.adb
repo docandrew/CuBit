@@ -11,6 +11,12 @@ with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CuBit.Channel_Rings; use CuBit.Channel_Rings;
 with CuBit.Datagram_Rings; use CuBit.Datagram_Rings;
+with Slot_Ring_Small;
+with Slot_Ring_Frames;
+with CuBit.Frame_Rings;
+with Queue_Small;
+with CuBit.Net_Control_Queues;
+with CuBit.Net_Channel_Layout;
 
 procedure Main is
    Failures : Natural := 0;
@@ -254,7 +260,184 @@ procedure Main is
       Check (Malformed_Seen > 10_000, "hostile datagram headers reported");
    end Hostile_Datagrams;
 
+   --  A 4-slot ring: a value sequence arrives in order across 32-bit wrap,
+   --  with random batch sizes, and hostile peer indices are refused
+   --  exactly as an independent formulation says, leaving the side as it
+   --  was. Every in-flight element's slot differs from the next one pushed.
+   procedure Slots_Small (Origin : Index; Steps : Positive) is
+      package S renames Slot_Ring_Small;
+      use type S.Producer, S.Consumer;
+      R    : S.Ring := [others => 0];
+      P    : S.Producer := S.New_Producer (Origin);
+      C    : S.Consumer := S.New_Consumer (Origin);
+      Next_Out, Next_In : Unsigned_32 := 0;
+      OK   : Boolean;
+      V    : Unsigned_32;
+   begin
+      for Step in 1 .. Steps loop
+         for K in 1 .. Below (S.Slots + 1) loop
+            exit when S.Space (P) = 0;
+            --  The slot about to be written holds nothing in flight.
+            for Back in 1 .. P.Fill loop
+               Check (S.Slot_Of (P.Produced - Index (Back)) /= S.Next_Slot (P),
+                      "slot ring: in-flight slot reused");
+            end loop;
+            S.Push (P, R, Next_Out);
+            Next_Out := Next_Out + 1;
+         end loop;
+         S.Accept_Produced (C, P.Produced, OK);
+         Check (OK, "slot ring: honest produced index accepted");
+         for K in 1 .. Below (S.Slots + 1) loop
+            exit when C.Available = 0;
+            S.Take (C, R, V);
+            Check (V = Next_In, "slot ring: values in order");
+            Next_In := Next_In + 1;
+         end loop;
+         S.Accept_Consumed (P, C.Consumed, OK);
+         Check (OK, "slot ring: honest consumed index accepted");
+         --  Hostile indices, judged independently.
+         declare
+            Bad : constant Index := Index (Random mod 2 ** 32);
+            P0  : constant S.Producer := P;
+            C0  : constant S.Consumer := C;
+            Freed : constant Unsigned_32 := Unsigned_32 (Bad - (P.Produced - Index (P.Fill)));
+            Ahead : constant Unsigned_32 := Unsigned_32 (Bad - C.Consumed);
+         begin
+            S.Accept_Consumed (P, Bad, OK);
+            Check (OK = (Freed <= Unsigned_32 (P0.Fill)), "slot ring: consumed index judged");
+            if not OK then
+               Check (P = P0, "slot ring: rejected consumed index changes nothing");
+            end if;
+            P := P0;
+            S.Accept_Produced (C, Bad, OK);
+            Check (OK = (Ahead <= Unsigned_32 (S.Slots) and then Ahead >= Unsigned_32 (C0.Available)),
+                   "slot ring: produced index judged");
+            if not OK then
+               Check (C = C0, "slot ring: rejected produced index changes nothing");
+            end if;
+            C := C0;
+         end;
+      end loop;
+      Check (Next_In > Unsigned_32 (Steps / 2), "slot ring: values flowed");
+   end Slots_Small;
+
+   --  Indices less than a ring apart never share a slot, for the frame
+   --  ring's 128 slots, around the 2 ** 32 wrap.
+   procedure Slots_Distinct is
+      package F renames Slot_Ring_Frames;
+   begin
+      for Base in Index'Last - 300 .. Index'Last loop
+         for D in 1 .. F.Slots - 1 loop
+            if F.Slot_Of (Base) = F.Slot_Of (Base + Index (D)) then
+               Check (False, "frame ring: indices a ring apart share a slot");
+            end if;
+         end loop;
+      end loop;
+      Check (F.Slots = 128 and then F.Slot_Of (Index'Last) = 127 and then
+             F.Slot_Of (0) = 0, "frame ring: slots across the wrap");
+      --  The packet grant: header page, then 128 + 128 slots, 129 pages.
+      Check (CuBit.Frame_Rings.Grant_Bytes = 129 * 4_096 and then
+             CuBit.Frame_Rings.Receive_Slot_At (127) + 2_048 =
+               CuBit.Frame_Rings.Transmit_Slots_At and then
+             CuBit.Frame_Rings.Fits (14) and then CuBit.Frame_Rings.Fits (2_032) and then
+             not CuBit.Frame_Rings.Fits (13) and then not CuBit.Frame_Rings.Fits (2_033),
+             "frame rings: grant layout");
+   end Slots_Distinct;
+
+   --  A queue pair whose completion ring (2 slots) is smaller than its
+   --  submission ring (4): random submit, take, complete and reap steps.
+   --  Every answer pairs with its request's token and value, answers come
+   --  in the order requests were taken, the service never owes more than
+   --  it has room for, and a client that stops reaping stalls only the
+   --  service's intake, never an answer.
+   procedure Queue_Pair is
+      package Q renames Queue_Small;
+      use type Q.Token;
+      SR : Q.Submissions.Ring := [others => (Tag => 0, Item => 0)];
+      CR : Q.Completions.Ring := [others => (Tag => 0, Answer => 0)];
+      C  : Q.Client;
+      S  : Q.Server;
+      Next_Tag, Next_Answer : Q.Token := 1;
+      Taken : array (0 .. 3) of Q.Submission;   --  owed, in order
+      Owed_First : Natural := 0;
+      Sub  : Q.Submission;
+      Comp : Q.Completion;
+      OK   : Boolean;
+      Reaped : Natural := 0;
+   begin
+      for Step in 1 .. 400_000 loop
+         case Below (4) is
+            when 0 =>
+               Q.Accept_Taken (C, S.Requests.Consumed, OK);
+               Check (OK, "queue: honest taken index accepted");
+               if Q.Can_Submit (C) then
+                  Q.Submit (C, SR, Next_Tag, Unsigned_32 (Next_Tag mod 2 ** 32) * 3);
+                  Next_Tag := Next_Tag + 1;
+               end if;
+            when 1 =>
+               Q.Submissions.Accept_Produced (S.Requests, C.Requests.Produced, OK);
+               Check (OK, "queue: honest submissions accepted");
+               if Q.Can_Take (S) then
+                  Q.Take (S, SR, Sub);
+                  Taken ((Owed_First + S.Owed - 1) mod 4) := Sub;
+               end if;
+            when 2 =>
+               if S.Owed > 0 then
+                  declare
+                     R : constant Q.Submission := Taken (Owed_First);
+                  begin
+                     Q.Complete (S, CR, R.Tag, R.Item + 1);
+                     Owed_First := (Owed_First + 1) mod 4;
+                  end;
+               end if;
+            when others =>
+               Q.Completions.Accept_Produced (C.Answers, S.Answers.Produced, OK);
+               Check (OK, "queue: honest answers accepted");
+               if C.Answers.Available > 0 then
+                  Q.Reap (C, CR, Comp, OK);
+                  Check (OK, "queue: every answer had a request");
+                  Check (Comp.Tag = Next_Answer and then
+                         Comp.Answer = Unsigned_32 (Comp.Tag mod 2 ** 32) * 3 + 1,
+                         "queue: answer pairs with its request");
+                  Next_Answer := Next_Answer + 1;
+                  Reaped := Reaped + 1;
+               end if;
+               Q.Accept_Reaped (S, C.Answers.Consumed, OK);
+               Check (OK, "queue: honest reaped index accepted");
+         end case;
+         Check (Q.Valid (S) and then S.Owed <= Q.Completion_Slots and then
+                C.Pending <= Q.Completion_Slots, "queue: bounds");
+      end loop;
+      Check (Reaped > 20_000, "queue: answers flowed");   --  about 40,000
+   end Queue_Pair;
+
+   --  The control queue's entries lie as C sees them (cubit_net_channel.h).
+   procedure Control_Layout is
+      package NC renames CuBit.Net_Control_Queues;
+      package L renames CuBit.Net_Channel_Layout;
+      S : constant NC.Queues.Submission := (Tag => 0, Item => <>);
+      A : constant NC.Queues.Completion := (Tag => 0, Answer => <>);
+   begin
+      Check (S.Tag'Position = L.Request_Token_At and then
+             S.Item'Position = L.Request_Operation_At and then
+             S.Item'Position + S.Item.Length'Position = L.Request_Length_At and then
+             S.Item'Position + S.Item.Object'Position = L.Request_Object_At and then
+             S.Item'Position + S.Item.Buffer'Position = L.Request_Buffer_At and then
+             NC.Queues.Submission'Size = L.Queue_Entry_Bytes * 8,
+             "control queue: request layout");
+      Check (A.Tag'Position = L.Answer_Token_At and then
+             A.Answer'Position = L.Answer_Status_At and then
+             A.Answer'Position + A.Answer.Value'Position = L.Answer_Value_At and then
+             NC.Queues.Completion'Size = L.Queue_Entry_Bytes * 8,
+             "control queue: answer layout");
+   end Control_Layout;
+
 begin
+   Control_Layout;
+   Queue_Pair;
+   Slots_Small (0, 200_000);
+   Slots_Small (Index'Last - 5, 200_000);
+   Slots_Distinct;
    Datagrams (4_096, 0);
    Datagrams (4_096, Index'Last - 703);   --  aligned: 2 ** 32 - 704
    Datagrams (65_536, Index'Last - 29_999);   --  aligned: 2 ** 32 - 30_000

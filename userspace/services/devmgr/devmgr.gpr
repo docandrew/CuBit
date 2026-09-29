@@ -4,13 +4,27 @@ project Devmgr is
 
     for Object_Dir use "build";
 
-    for Source_Dirs use (".", "../filesystem", "../xhci", "../../ccl/src", "../../lib/time");
+    for Source_Dirs use (".", "../filesystem", "../xhci", "../intel-gpu", "../../ccl/src", "../../lib/time");
 
     for Main use ("main.adb");
 
     --  Explicit list excludes other service mains and hardware adapters.
     for Source_Files use ("main.adb", "cpio.ads", "cpio.adb", "ccl.ads",
        "boot_rtc.ads", "boot_rtc.adb", "civil_time.ads", "civil_time.adb",
+       "intel_gpu_probe.ads", "intel_gpu_probe.adb",
+       "intel_gpu_resources.ads", "intel_gpu_resources.adb",
+       "intel_gpu_reset_pages.ads",
+       "intel_gpu_display_pages.ads",
+       "intel_gpu_phy_pages.ads", "intel_gpu_phy_pages.adb",
+       "intel_gpu_combo_phy.ads", "intel_gpu_combo_phy.adb",
+       "intel_gpu_ads_backing.ads",
+       "intel_gpu_display_claim.ads", "intel_gpu_display_claim.adb",
+       "intel_gpu_boot.ads", "intel_gpu_boot.adb",
+       "intel_gpu_pci_power.ads", "intel_gpu_pci_power.adb",
+       "intel_gpu_pci_interrupts.ads", "intel_gpu_pci_interrupts.adb",
+       "intel_gpu_pci_irq_disable.ads", "intel_gpu_pci_irq_disable.adb",
+       "intel_gpu_ggtt_access.ads", "intel_gpu_ggtt_access.adb",
+       "intel_gpu_ggtt.ads", "intel_gpu_ggtt.adb",
        "xhci_dma_layout.ads", "xhci_dma_layout.adb",
        "xhci_capabilities.ads", "xhci_capabilities.adb",
        "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb",

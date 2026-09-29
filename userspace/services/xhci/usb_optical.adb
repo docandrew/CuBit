@@ -26,11 +26,12 @@ package body USB_Optical with SPARK_Mode => On is
        Unsigned_8 (Value and 255)]);
 
    function Probe (Kind : Probe_Kind) return Command is
-     ((Kind => Kind, First_Block => 0, Count => 1));
+     ((Kind => Kind, First_Block => 0, Count => 1, Format => Sector_2048));
 
    function Read_Request
-     (First_Block : Unsigned_32; Count : Read_Block_Count) return Command is
-     ((Read_Blocks, First_Block, Count));
+     (First_Block : Unsigned_32; Count : Read_Block_Count;
+      Format : Sector_Format := Sector_2048) return Command is
+     ((Read_Blocks, First_Block, Count, Format));
 
    function Transfer_Bytes (Item : Command) return Unsigned_32 is
      (case Item.Kind is
@@ -71,9 +72,12 @@ package body USB_Optical with SPARK_Mode => On is
          when Read_Capacity => Result (16) := 16#25#;
          when Read_Blocks =>
             Result (16) := 16#28#;
-            Result (18 .. 21) := BE_Bytes (Item.First_Block);
-            Result (23) := Unsigned_8 (Shift_Right (Item.Count, 8));
-            Result (24) := Unsigned_8 (Item.Count and 255);
+            Result (18 .. 21) := BE_Bytes
+              (Item.First_Block * Sectors_Per_Block (Item.Format));
+            --  At most 16 ISO blocks = 64 native 512-byte sectors = 32 KiB.
+            Result (23) := 0;
+            Result (24) := Unsigned_8
+              (Unsigned_32 (Item.Count) * Sectors_Per_Block (Item.Format));
       end case;
       return Result;
    end Encode;
@@ -112,7 +116,7 @@ package body USB_Optical with SPARK_Mode => On is
       end;
    end Decode_Status;
 
-   function Is_Optical_Inquiry (Data : Bytes) return Boolean is
+   function Is_Supported_Inquiry (Data : Bytes) return Boolean is
    begin
       if Data'Length < 36 then
          return False;
@@ -120,18 +124,19 @@ package body USB_Optical with SPARK_Mode => On is
       declare
          Header : constant Bytes (1 .. 5) := Data (Data'First .. Data'First + 4);
       begin
-         --  Peripheral qualifier zero, CD/DVD device type 5. Do not accept a
-         --  disconnected LUN, disk, or vendor-specific device as our boot CD.
-         return Header (1) = 5 and then Header (5) >= 31;
+         --  Connected CD/DVD or direct-access disk. The adapter must also
+         --  validate ISO content before selecting a disk as a live volume.
+         return Header (1) in 0 | 5 and then Header (5) >= 31;
       end;
-   end Is_Optical_Inquiry;
+   end Is_Supported_Inquiry;
 
    procedure Decode_Capacity
      (Data : Bytes; Block_Count : out Unsigned_64;
-      Result : out Capacity_Result)
+      Result : out Capacity_Result; Format : out Sector_Format)
    is
    begin
       Block_Count := 0;
+      Format := Sector_2048;
       if Data'Length /= 8 then
          Result := Capacity_Truncated;
          return;
@@ -142,11 +147,15 @@ package body USB_Optical with SPARK_Mode => On is
       begin
          if Last_Block = Unsigned_32'Last then
             Result := Capacity_16_Required;
-         elsif Big_Endian (Frame (5 .. 8)) /= Optical_Block_Bytes then
+         elsif Big_Endian (Frame (5 .. 8)) not in 512 | 2048 then
             Result := Unsupported_Block_Size;
          else
-            Block_Count := Unsigned_64 (Last_Block) + 1;
-            Result := Capacity_Valid;
+            Format := (if Big_Endian (Frame (5 .. 8)) = 512
+                       then Sector_512 else Sector_2048);
+            Block_Count := (Unsigned_64 (Last_Block) + 1) /
+              Unsigned_64 (Sectors_Per_Block (Format));
+            Result := (if Block_Count = 0 then Unsupported_Block_Size
+                       else Capacity_Valid);
          end if;
       end;
    end Decode_Capacity;

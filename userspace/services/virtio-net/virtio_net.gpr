@@ -33,6 +33,7 @@ project Virtio_Net is
         for Default_Switches ("Ada") use
         (
             "-O3",
+            "-gnat2022",
             --  No run-time checks: correctness comes from SPARK proof
             --  (see tests/net-tcp and tests/tcp-session), not from checks.
             "-gnatp",

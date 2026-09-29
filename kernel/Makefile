@@ -382,7 +382,7 @@ test-tcp-session:
 
 prove-tcp-session:
 	$(ALR) gnatprove -P../tests/tcp-session/tcp_session_tests.gpr \
-		-u tcp_listeners.adb network_channel_handles.adb tcp_time_wait.adb tcp_wire.adb ipv6_link_proof.adb internet_checksum.adb --level=1 --report=all --checks-as-errors=on -j2
+		-u tcp_listeners.adb network_channel_handles.adb tcp_time_wait.adb tcp_wire.adb ipv6_link_proof.adb ipv4_icmp_proof.adb internet_checksum.adb --level=1 --report=all --checks-as-errors=on -j2
 	@cat ../tests/tcp-session/build/gnatprove/gnatprove.out
 
 .PHONY : test-filesystem-policy
@@ -1061,10 +1061,14 @@ bench-spread: user_runtime ccl-manifest
 	cp ../userspace/apps/bench-spread/build/bench-spread.app isodir/boot/bench-spread.app
 
 # CuBit libc (userspace/libc): musl over CuBit system calls, and its checks.
+.PHONY: mesa-cube
+mesa-cube: libc ccl-manifest
+	bash ../userspace/mesa/build.sh
+
 .PHONY : libc libc-check cxx-check
 libc:
 	bash ../userspace/libc/build.sh
-libc-check: libc ccl-manifest
+libc-check: libc ccl-manifest libc-protection-check
 	../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl ../userspace/libc/tests/manifest.ccl > ../userspace/libc/build/libc-check-manifest.S
 	as --64 ../userspace/libc/build/libc-check-manifest.S -o ../userspace/libc/build/libc-check-manifest.o
 	../userspace/libc/cubit-cc -O2 -g -pthread -o isodir/boot/libc-check.app ../userspace/libc/tests/libc-check.c --manifest ../userspace/libc/build/libc-check-manifest.o
@@ -1072,6 +1076,13 @@ cxx-check: libc ccl-manifest
 	../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl ../userspace/libc/tests/cxx-manifest.ccl > ../userspace/libc/build/cxx-check-manifest.S
 	as --64 ../userspace/libc/build/cxx-check-manifest.S -o ../userspace/libc/build/cxx-check-manifest.o
 	../userspace/libc/cubit-c++ -O2 -g -pthread -o isodir/boot/cxx-check.app ../userspace/libc/tests/cxx-check.cpp --manifest ../userspace/libc/build/cxx-check-manifest.o
+
+.PHONY: libc-protection-check
+libc-protection-check: libc ccl-manifest
+	../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl ../userspace/libc/tests/protection-manifest.ccl > ../userspace/libc/build/protection-manifest.S
+	as --64 ../userspace/libc/build/protection-manifest.S -o ../userspace/libc/build/protection-manifest.o
+	../userspace/libc/cubit-cc -O2 -g -o isodir/boot/guard-fault.app ../userspace/libc/tests/protection-fault.c --manifest ../userspace/libc/build/protection-manifest.o
+	../userspace/libc/cubit-cc -O2 -g -DFAULT_READ_ONLY=1 -o isodir/boot/readonly-fault.app ../userspace/libc/tests/protection-fault.c --manifest ../userspace/libc/build/protection-manifest.o
 
 # Rust std on CuBit (docs/rust-std.md): patched std, built with -Zbuild-std.
 .PHONY : rust-std-hello
@@ -1204,6 +1215,13 @@ wget: user_runtime ccl-manifest
 # Build the unified hardware inventory and diagnostics app
 .PHONY : devices
 .PHONY : config-inspector
+.PHONY: intel-gpu
+intel-gpu: user_runtime ccl-manifest
+	mkdir -p ../userspace/services/intel-gpu/build
+	$(call compile_ccl_manifest,../userspace/services/intel-gpu)
+	$(ALR) gprbuild -P ../userspace/services/intel-gpu/intel_gpu.gpr
+	cp ../userspace/services/intel-gpu/build/intel-gpu.drv isodir/boot/intel-gpu.drv
+
 config-inspector: user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/apps/config-inspector/build
 	$(call compile_ccl_manifest,../userspace/apps/config-inspector)
@@ -1218,6 +1236,13 @@ devices: user_runtime ccl-manifest ui-fonts-native
 
 # Build the read-only, authority-scoped filesystem browser.
 .PHONY : files
+.PHONY : boot-logs
+boot-logs: user_runtime ccl-manifest ui-fonts-native
+	mkdir -p ../userspace/apps/boot-logs/build
+	$(call compile_ccl_manifest,../userspace/apps/boot-logs)
+	$(ALR) gprbuild -P ../userspace/apps/boot-logs/boot_logs.gpr
+	cp ../userspace/apps/boot-logs/build/boot-logs.app isodir/boot/boot-logs.app
+
 files: user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/apps/files/build
 	$(call compile_ccl_manifest,../userspace/apps/files)
@@ -1509,7 +1534,7 @@ initrd: $(INITRD_SERVICES) ccl-image ../images/development-initrd.ccl $(CCL_IMAG
 # desktop and diagnostic UI before AHCI or any other block driver works.
 LAPTOP_LIVE_STAGE1 := filesystem ramdisk ata nvme netstack virtio-net virtio-gpu hda \
 	mixer ps2 xhci config netmgr procmgr devmgr
-LAPTOP_LIVE_STAGE2 := logstore clock display desktop ccl-workbench devices files config-inspector \
+LAPTOP_LIVE_STAGE2 := logstore clock display desktop ccl-workbench devices files config-inspector boot-logs \
 	storage-check doom sameboy
 LAPTOP_LIVE_RW_DISK := laptop_live_rw.img
 # All runnable examples belong in the live workspace. The image regression
@@ -1519,7 +1544,7 @@ CCL_WORKSPACE_SAMPLES := $(sort $(wildcard ../userspace/ccl/samples/*.ccl))
 # Native USB optical edition. Keep the original initrd-only laptop image as
 # an independent fallback; no ATA/NVMe driver is admitted in this profile.
 .PHONY: usb-live-iso run-usb-live run-usb-live-fast
-usb-live-iso: ccl-image ../images/laptop-usb.ccl $(CCL_IMAGE_CATALOG) cubit_kernel $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) config-storage $(LAPTOP_LIVE_RW_DISK)
+usb-live-iso: ccl-image ../images/laptop-usb.ccl $(CCL_IMAGE_CATALOG) cubit_kernel $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) intel-gpu config-storage mesa-cube $(LAPTOP_LIVE_RW_DISK)
 	@test -s isodir/boot/cubitshell.app || (echo "missing Servo payload; run make -C kernel servo first" && false)
 	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)"
 

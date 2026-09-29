@@ -2,6 +2,7 @@
  * pthreads, thread-local storage, time and formatting. */
 #define _GNU_SOURCE
 #include <pthread.h>
+#include <sched.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,6 +10,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <sys/mman.h>
+#include <sys/syscall.h>
 #include <sys/stat.h>
 #include <dirent.h>
 #include <fcntl.h>
@@ -73,6 +75,68 @@ static void *late_writer(void *arg)
 
 int main(void)
 {
+	/* sched_yield returns to the caller (it no longer waits on a futex). */
+	check(sched_yield() == 0 && sched_yield() == 0, "sched_yield returns");
+	check(mmap(0, 4096, PROT_READ | PROT_EXEC,
+	      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0) == MAP_FAILED && errno == ENOTSUP,
+	      "executable mmap is unsupported, not false success");
+	check(mmap(0, 4096, PROT_READ | PROT_WRITE | PROT_EXEC,
+	      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0) == MAP_FAILED && errno == ENOTSUP,
+	      "writable executable mmap is denied");
+	void *protection_probe = mmap(0, 4096, PROT_READ | PROT_WRITE,
+	      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	check(protection_probe != MAP_FAILED &&
+	      mprotect(protection_probe, 4096, PROT_READ | PROT_EXEC) == -1 && errno == ENOSYS,
+	      "mprotect RX cannot falsely succeed");
+	check(protection_probe != MAP_FAILED &&
+	      mprotect(protection_probe, 4096, PROT_NONE) == 0,
+	      "mprotect guard installed");
+	check(mprotect(protection_probe, 4096, PROT_READ | PROT_WRITE) == 0,
+	      "restore owned page access");
+	if (protection_probe == MAP_FAILED) return 1;
+	volatile unsigned char *probe = protection_probe;
+	probe[0] = 0x37;
+	/* Bypass musl's public wrapper, which rounds addresses/lengths before
+	 * invoking the shim. These malformed values must reach kernel admission. */
+	check(syscall(SYS_mprotect, (char *)protection_probe + 1, 1, PROT_NONE) == -1
+	      && errno == EINVAL, "unaligned protection rejected");
+	check(mprotect(protection_probe, 8192, PROT_NONE) == -1
+	      && errno == EINVAL, "protection beyond allocation rejected");
+	check(syscall(SYS_mprotect, protection_probe, (size_t)-1, PROT_NONE) == -1
+	      && errno == EINVAL, "wrapping protection size rejected");
+	check(mprotect(protection_probe, 0, PROT_NONE) == -1
+	      && errno == EINVAL, "empty owned protection rejected");
+	check(probe[0] == 0x37, "rejected protections preserve readable data");
+	probe[0] = 0x73;
+	check(probe[0] == 0x73, "rejected protections preserve write access");
+	check(mprotect(protection_probe, 4096, PROT_READ) == 0 && probe[0] == 0x73,
+	      "read-only transition preserves data");
+	check(mprotect(protection_probe, 4096, PROT_READ | PROT_WRITE) == 0,
+	      "read-only mapping can return to writable");
+	probe[0] = 0x19;
+	check(munmap(protection_probe, 4096) == 0, "release protection probe");
+	void *guard = mmap(0, 8192, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	check(guard != MAP_FAILED && mprotect((char *)guard + 4096, 4096,
+	      PROT_READ | PROT_WRITE) == 0, "enable usable stack suffix");
+	if (guard != MAP_FAILED) {
+		((volatile char *)guard)[4096] = 42;
+		check(munmap(guard, 8192) == 0, "release mixed guard and data pages");
+	}
+	for (int round = 0; round < 128; round++) {
+		unsigned char *p = mmap(0, 1 << 20, PROT_READ | PROT_WRITE,
+		                       MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+		check(p != MAP_FAILED, "repeated owned mmap");
+		if (p == MAP_FAILED) return 1;
+		check(p[0] == 0 && p[(1 << 20) - 1] == 0, "owned mmap zero fill");
+		memset(p, 0x5a, 1 << 20);
+		check(munmap(p, 4096) == -1 && errno == EINVAL,
+		      "partial munmap rejected");
+		check(p[0] == 0x5a && p[(1 << 20) - 1] == 0x5a,
+		      "rejected unmap preserves contents");
+		check(munmap(p, 1 << 20) == 0, "whole munmap releases allocation");
+		check(munmap(p, 1 << 20) == -1 && errno == EINVAL,
+		      "duplicate munmap rejected");
+	}
 	say("libc-check: hello from musl on CuBit\n");
 	/* stdout is the program's stdout stream, not the console. */
 	check(printf("libc-check: to the stdout stream\n") > 0 && fflush(stdout) == 0,
@@ -96,7 +160,13 @@ int main(void)
 	free(big);
 
 	pthread_t t[8];
-	for (long i = 0; i < 8; i++) pthread_create(&t[i], 0, worker, (void *)(i + 1));
+	for (long i = 0; i < 8; i++) {
+		int error = pthread_create(&t[i], 0, worker, (void *)(i + 1));
+		if (error) {
+			say("libc-check: pthread_create failed %d\nLIBC: FAIL\n", error);
+			return 1;
+		}
+	}
 	struct timespec pause = { 0, 5 * 1000000 };
 	nanosleep(&pause, 0);
 	pthread_mutex_lock(&lock);
@@ -196,6 +266,7 @@ int main(void)
 	unsigned char *mapped = mmap(0, (size_t)st.st_size, PROT_READ,
 		MAP_PRIVATE, fd, 0);
 	check(mapped != MAP_FAILED && memcmp(mapped, head, 4) == 0, "mmap a file");
+	check(munmap(mapped, (size_t)st.st_size) == 0, "release private file copy");
 	check(close(fd) == 0 && read(fd, head, 1) < 0 && errno == EBADF,
 	      "close");
 	FILE *f = fopen("/tls/roots.der", "rb");
@@ -209,8 +280,8 @@ int main(void)
 	check(dir && found && closedir(dir) == 0, "opendir and readdir");
 	check(open("/motd.txt", O_RDONLY) < 0 && errno == EACCES,
 	      "a file outside the scope is denied");
-	check(open("/tls/roots.der", O_WRONLY) < 0 && errno == EROFS,
-	      "files are read-only for now");
+	check(open("/tls/roots.der", O_WRONLY) < 0 && errno == EACCES,
+	      "writing needs a write scope");
 
 	say("%s\n", failures ? "LIBC: FAIL" : "LIBC: PASS");
 	return failures != 0;

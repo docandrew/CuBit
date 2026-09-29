@@ -5,7 +5,10 @@ with Interfaces; use Interfaces;
 package Sector_Accounting with Pure, SPARK_Mode is
    subtype Block_Sectors is Unsigned_32 range 2 .. 8
      with Static_Predicate => Block_Sectors in 2 | 4 | 8;
-   subtype Attached_Blocks is Positive range 1 .. 3;
+   --  One attachment adds a data block plus at most a new leaf, middle and
+   --  triple root pointer block.
+   Maximum_Attached_Blocks : constant := 4;
+   subtype Attached_Blocks is Positive range 1 .. Maximum_Attached_Blocks;
    subtype Retired_Blocks is Natural range 0 .. 12 + 1024 + 1;
 
    procedure Plan_Removal

@@ -91,9 +91,11 @@ begin
             " writes=" & Writes'Image);
 
          Setup (Block_Bytes);
+         --  Two partial sectors: their block is read once into the cache,
+         --  then both sectors are written from it.
          writeData (fs, 1, ino, 509, payload'Address, 7, written, status);
          pragma Assert (status = Write_Complete and written = 7);
-         pragma Assert (Calls = 4 and Writes = 2);
+         pragma Assert (Calls = 3 and Writes = 2);
          Check_Contents (509, 7);
          Ada.Text_IO.Put_Line
            ("UNALIGNED-OVERWRITE-IO block_bytes=" & Block_Bytes'Image &
@@ -107,7 +109,7 @@ begin
             for Unaligned in Boolean loop
                declare
                   Boundaries : constant Positive :=
-                    (if Unaligned then 4 elsif Grant_Limited then payload'Length / Block_Bytes
+                    (if Unaligned then 3 elsif Grant_Limited then payload'Length / Block_Bytes
                      else 1);
                begin
                   for Boundary in 1 .. Boundaries loop
@@ -183,13 +185,15 @@ begin
                      then Character'Pos ('W') else originalDisk (I)));
             end loop;
 
-            --  A hole ends the run; the normal allocator is not bypassed.
+            --  A hole ends the run; the normal allocator is not bypassed. It
+            --  first reads the group descriptor and inode table blocks (the
+            --  inode is fetched before any allocation), then finds no space.
             Setup (Block_Bytes);
             ino.directBlocks (2) := 0;
             originalInode := ino;
             writeData (fs, 1, ino, 0, payload'Address, payload'Length, written, status);
             pragma Assert (status = Write_No_Space and written = 2048);
-            pragma Assert (Calls = 1 and Writes = 1 and ino = originalInode);
+            pragma Assert (Calls = 3 and Writes = 1 and ino = originalInode);
 
             --  Do not inspect unrequested mappings or batch across the old EOF.
             Setup (Block_Bytes);

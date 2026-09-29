@@ -112,7 +112,9 @@ begin
    truncateToEmpty (fs, 1, result, status);
    pragma Assert (status = Truncate_Complete);
    pragma Assert (fileSize (result) = 0 and then fileSize (ino) = 0);
-   pragma Assert (Reclaims = 3 and then fs.sb.freeBlocks = 43);
+   --  Two reclamation batches (the indirect leaf with its data block, then
+   --  the direct block) each clear the bitmap once.
+   pragma Assert (Reclaims = 2 and then fs.sb.freeBlocks = 43);
    pragma Assert (sb.freeBlocks = 43 and then bgd.numFreeBlocks = 43);
    pragma Assert ((Disk (3074) and 16#38#) = 0);
    goodCalls := Calls;
@@ -143,8 +145,9 @@ begin
    Put_Line ("Injected before/partial/after failure at" &
              goodCalls'Image & " transport boundaries: PASS");
 
+   --  A volatile write cache with no flush can never make writes durable.
    Setup;
-   fs.device.description.features := 0;
+   fs.device.description.features := FEATURE_VOLATILE_CACHE;
    truncateToEmpty (fs, 1, result, status);
    pragma Assert (status = Truncate_Durability_Unsupported and Writes = 0);
    Setup;
@@ -152,9 +155,9 @@ begin
    truncateToEmpty (fs, 1, result, status);
    pragma Assert (status = Truncate_Read_Only and Writes = 0);
    Setup;
-   ino.tripleIndirectBlock := 23;
+   ino.tripleIndirectBlock := 23; -- a triple root missing from the count
    truncateToEmpty (fs, 1, result, status);
-   pragma Assert (status = Truncate_Unsupported and Writes = 0);
+   pragma Assert (status = Truncate_Invalid and Writes = 0);
    Setup;
    pointers (0) := 20; -- duplicate direct/indirect pointer
    truncateToEmpty (fs, 1, result, status);

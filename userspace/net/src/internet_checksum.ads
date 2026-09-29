@@ -26,4 +26,18 @@ package Internet_Checksum with SPARK_Mode is
    function Of_Bytes (B : Bytes) return Unsigned_16 with
      Pre => B'Length <= Maximum_Length and then B'Last < Natural'Last;
 
+   --  The same sum in parts, for data not in one array (a pseudo-header
+   --  and a segment in place): Fold (Add_Bytes (Add_Bytes (0, A), B)).
+   --  B's length must be even except for the last part.
+   Maximum_Partial : constant := 2 ** 40;
+   type Partial_Sum is range 0 .. Maximum_Partial;
+   Part_Limit : constant := 2 ** 32;
+
+   function Add_Bytes (Sum : Partial_Sum; B : Bytes) return Partial_Sum with
+     Pre  => Sum <= Part_Limit and then B'Length <= Maximum_Length and then
+             B'Last < Natural'Last,
+     Post => Add_Bytes'Result <= Sum + Part_Limit;
+
+   function Fold (Sum : Partial_Sum) return Unsigned_16;
+
 end Internet_Checksum;

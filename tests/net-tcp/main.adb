@@ -40,6 +40,7 @@ with DNS_Response;
 with Descriptors_80;
 with Channel_Arenas;
 with Virtqueue_Index;
+with Channel_Service;
 with IPv6_Header;
 with ND_Message;
 with Neighbor_Cache;
@@ -629,6 +630,33 @@ begin
       Check (not Found, "ARP: multicast sender IP never learned");
       Lookup (T, [10, 0, 2, 9], HW, Found);
       Check (not Found, "ARP: multicast sender hardware address never learned");
+
+      --  Aging: a doubted mapping stays usable while it is asked again, and
+      --  only the answer to that question may change it (a replaced
+      --  router); unanswered, it is given up.
+      declare
+         New_Router : constant ARP_Packet.MAC := [16#52#, 16#55#, 10, 0, 2, 99];
+      begin
+         Reconfirm (T, Gateway, 100);
+         Lookup (T, Gateway, HW, Found);
+         Check (Found and then HW = Real, "ARP: a doubted mapping stays usable");
+         Learn (T, Pkt (ARP_Packet.Request, Gateway, Evil), Ours => True, Now => 101);
+         Lookup (T, Gateway, HW, Found);
+         Check (Found and then HW = Real, "ARP: a request cannot rewrite a doubted mapping");
+         Learn (T, Pkt (ARP_Packet.Reply, Gateway, New_Router), Ours => True, Now => 102);
+         Lookup (T, Gateway, HW, Found);
+         Check (Found and then HW = New_Router, "ARP: the answer to our doubt may change the address");
+         Learn (T, Pkt (ARP_Packet.Reply, Gateway, Evil), Ours => True, Now => 103);
+         Lookup (T, Gateway, HW, Found);
+         Check (Found and then HW = New_Router, "ARP: once reconfirmed, unsolicited replies are ignored again");
+         Reconfirm (T, Gateway, 200);
+         Expire (T, 202, 3);
+         Lookup (T, Gateway, HW, Found);
+         Check (Found, "ARP: a doubt is not given up early");
+         Expire (T, 203, 3);
+         Lookup (T, Gateway, HW, Found);
+         Check (not Found, "ARP: an unanswered doubt is given up");
+      end;
    end;
 
    --  Descriptor ownership against a device returning ids at random,
@@ -1120,6 +1148,47 @@ begin
       Check (R.Send and then R.Ack_No = 2, "rst: SEG.LEN counts data and FIN, wrapping");
       R := For_Closed ((RST => True, ACK => True, others => <>));
       Check (not R.Send, "rst: a reset is never answered");
+   end;
+
+   --  EVENT_IDX: Needs_Event is Linux's vring_need_event.
+   declare
+      use Virtqueue_Index;
+      Agree : Boolean := True;
+   begin
+      for New_Index in Index'(0) .. 3 loop
+         for Event in Index loop
+            for Old_Index in Index loop
+               Agree := Agree and then
+                 Needs_Event (Event, New_Index * 21_845, Old_Index) =
+                   (New_Index * 21_845 - Event - 1 < New_Index * 21_845 - Old_Index);
+            end loop;
+         end loop;
+      end loop;
+      Check (Agree, "virtio: Needs_Event equals vring_need_event (every Event and Old, four New)");
+   end;
+
+   --  Channel servicing: netstack's proved kick, close and second-look rules.
+   declare
+      use Channel_Service;
+   begin
+      Check (Kicks (True, 0, 5, 0, True) = 0, "channel: a failed channel asks for no kick");
+      Check (Kicks (False, 0, 0, 9, True) = Kick_On_Send, "channel: kick on send once all was taken");
+      Check (Kicks (False, 1, 0, 9, True) = 0, "channel: no send kick while data waits");
+      Check (Kicks (False, 1, 5, 0, True) = Kick_On_Receive,
+             "channel: kick on receive when data waits and the ring is full");
+      Check (Kicks (False, 0, 5, 0, True) = (Kick_On_Send or Kick_On_Receive), "channel: both kicks");
+      Check (Kicks (False, 1, 5, 1, True) = 0, "channel: no receive kick while the ring has space");
+      Check (Kicks (False, 1, 5, 0, False) = 0, "channel: no receive kick without a connection");
+      Check (Close_Due (False, 0, True, False), "channel: write-shutdown closes");
+      Check (not Close_Due (True, 0, True, False), "channel: write-shutdown closes only once");
+      Check (not Close_Due (False, 3, True, False), "channel: close waits for the client's data");
+      Check (not Close_Due (False, 0, False, False), "channel: no close unless asked");
+      Check (not Close_Due (False, 0, True, True), "channel: no close during the handshake");
+      Check (not Look_Again (0, 1, 2, 3, 4), "channel: no second look without a kick request");
+      Check (not Look_Again (Kick_On_Send, 7, 7, 1, 2), "channel: no second look when the client sent nothing");
+      Check (Look_Again (Kick_On_Send, 7, 8, 1, 1), "channel: second look after the client sent");
+      Check (Look_Again (Kick_On_Receive, 7, 7, 1, 2), "channel: second look after the client read");
+      Check (not Look_Again (Kick_On_Receive, 7, 8, 1, 1), "channel: a send ignored when only a receive kick was asked");
    end;
 
    Put_Line (if Failures = 0 then "NET-TCP: PASS" else "NET-TCP: FAIL");

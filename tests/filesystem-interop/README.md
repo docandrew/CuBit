@@ -60,6 +60,19 @@ profile. It verifies:
 - CuBit-created sparse double trees, shrink retaining a partial leaf, and
   reallocation of a discarded leaf. A second Linux-created sparse double tree
   is shrunk/regrown too; complete contents, zero tails and fsck must agree.
+- Sparse triple-indirect files (15 of 18 images; see below): an in-place
+  overwrite of a Linux-created tree, including one crossing the double/triple
+  boundary, must leave the inode byte-identical; CuBit growth creates a
+  triple root, second leaf and second middle, shrinks retiring them, regrows
+  sparsely (zeroing the retained partial block) and reallocates a middle;
+  a Linux-created tree spanning two middles is shrunk into its first leaf and
+  regrown; another is truncated to empty. The files start at 64.3 MiB,
+  513 MiB or 4.0 GiB, so they are checked from `debugfs stat` block maps and
+  raw image reads rather than full dumps: size, exactly the expected mapped
+  data blocks and their contents. `e2fsck -fn` checks pointer blocks and
+  `i_blocks`. The three 4 KiB minimal-profile images lack LARGE_FILE and
+  cannot represent triple offsets; there CuBit must reject such a write with
+  no progress.
 - Preservation of existing extended inode bytes and a standard
   `user.cubit.test` xattr while overwriting file data.
 
@@ -105,7 +118,7 @@ unchanged. **930 injected failures** sweep before/partial/after I/O and five
 error/malformed reply styles. Uncertain initialization must publish no inode
 number, stop further I/O, and quarantine the volume.
 
-The accounting/admission/path/inventory SPARK project passes all 87 checks, including exact
+The accounting/admission/path/inventory SPARK project passes all 145 checks, including exact
 sector subtraction for resize and bounded direct/single/double path decoding.
 The raw byte overlay and transport integration used for full-slot initialization
 are regression-tested here, not newly SPARK-proved. No proof assumptions or

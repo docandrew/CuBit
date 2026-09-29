@@ -1,12 +1,19 @@
 project Accounting_Proof is
-   for Source_Dirs use ("../../userspace/services/filesystem");
+   --  Overridden only by mutations.sh, which proves/tests private copies.
+   Fs_Src := external ("FS_SRC", "../../userspace/services/filesystem");
+   Fs_Obj := external ("FS_OBJ", "build/accounting-proof");
+   for Source_Dirs use (Fs_Src);
    for Source_Files use ("sector_accounting.ads", "sector_accounting.adb",
                         "ext2_inodes.ads", "inode_mappings.ads", "inode_mappings.adb",
                         "ext2_support.ads", "ext2_support.adb",
                         "block_paths.ads", "block_paths.adb",
                         "block_inventory.ads", "block_inventory.adb",
-                        "double_mappings.ads", "double_mappings.adb");
-   for Object_Dir use "build/accounting-proof";
+                        "double_mappings.ads", "double_mappings.adb",
+                        "triple_mappings.ads", "triple_mappings.adb",
+                        "block_cache_index.ads", "block_cache_index.adb",
+                        "jbd2_format.ads", "jbd2_format.adb",
+                        "jbd2_revokes.ads", "jbd2_revokes.adb");
+   for Object_Dir use Fs_Obj;
    package Compiler is
       for Default_Switches ("Ada") use ("-gnat2022", "-O2", "-I-");
    end Compiler;

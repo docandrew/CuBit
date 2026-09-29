@@ -50,7 +50,7 @@ procedure Admission is
       Description_Reply :=
         ((REPLY_OK, 4, 0, 0), 0,
          [0 => Disk'Length / 512, 1 => Pack_Sizes (512, 512),
-          2 => 8, 3 => Pack_Properties (FEATURE_FLUSH, Fixed_Media)]);
+          2 => 8, 3 => Pack_Properties (FEATURE_FLUSH or FEATURE_VOLATILE_CACHE, Fixed_Media)]);
    end Describe;
 begin
    Setup;
@@ -135,8 +135,14 @@ begin
       begin
          Setup;
          sb.compatibleFeatures := Flag;
-         Check ((if (Flag and Ext2_Support.Supported_Compatible) /= 0
-                 then Admitted else Unsupported_Filesystem), 2);
+         if Flag = Ext2_Support.Compat_Has_Journal then
+            --  A journal is supported, but this fixture's journal inode
+            --  number (zero) is invalid: one more read, then rejection.
+            Check (Invalid_Filesystem, 3);
+         else
+            Check ((if (Flag and Ext2_Support.Supported_Compatible) /= 0
+                    then Admitted else Unsupported_Filesystem), 2);
+         end if;
          Setup;
          sb.incompatibleFeatures := sb.incompatibleFeatures or Flag;
          Check ((if Flag = Ext2_Support.Incompat_Directory_Types
@@ -148,7 +154,8 @@ begin
       end;
    end loop;
    Setup;
-   sb.compatibleFeatures := Ext2_Support.Supported_Compatible;
+   sb.compatibleFeatures :=
+     Ext2_Support.Supported_Compatible and not Ext2_Support.Compat_Has_Journal;
    sb.readOnlyFeatures := Ext2_Support.Supported_Read_Only;
    Check (Admitted, 2); -- common Linux mke2fs ext2 profile
    Setup;
@@ -166,10 +173,10 @@ begin
 
    --  Independently address the standard on-disk offsets, not Ada fields.
    Setup;
-   Disk (1024 + 92) := 4; -- HAS_JOURNAL
-   Check (Unsupported_Filesystem, 2);
+   Disk (1024 + 92) := 4; -- HAS_JOURNAL, journal inode 0
+   Check (Invalid_Filesystem, 3);
    Setup;
-   Disk (1024 + 96) := 6; -- FILETYPE | RECOVER
+   Disk (1024 + 96) := 6; -- FILETYPE | RECOVER, but no journal
    Check (Unsupported_Filesystem, 2);
    Setup;
    Disk (1024 + 100) := 16#40#; -- EXTRA_ISIZE

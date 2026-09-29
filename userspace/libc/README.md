@@ -30,13 +30,18 @@ stack canary at `%fs:0x28`, exists.
 | `exit` / `exit_group` | THREAD_EXIT / EXIT |
 | `futex` wait, wake | FUTEX_WAIT / FUTEX_WAKE; requeue wakes all waiters instead |
 | thread pointer | `wrfsbase` (FSGSBASE); the kernel keeps FS per thread |
-| `brk`, anonymous `mmap` | SBRK (page-aligned heap growth, zero-filled) |
-| `munmap`, `mprotect`, `madvise` | accepted, no effect yet (no region API): memory is not returned |
+| `brk` | SBRK (heap growth) |
+| private RW `mmap` | owned zero-filled RW/NX pages, at most 16 MiB per mapping |
+| `munmap` | releases an exact whole owned allocation; partial/foreign/double unmaps fail with `EINVAL` |
+| `madvise` | currently accepted without effect |
+| `mmap` NONE/RO | owned pages with inaccessible/read-only permissions installed before return; always NX |
+| `mprotect` | NONE/RO/RW for a page-aligned subrange of one owned allocation; acknowledged TLB invalidation, no execute mode |
+| executable/shared/fixed `mmap` | unsupported (`ENOTSUP`); executable `mprotect` remains `ENOSYS` |
 | `clock_gettime`, `nanosleep` | the kernel's millisecond clock (1 ms resolution; `CLOCK_REALTIME` is time since boot until the clock service is wired in) |
 | descriptors 1, 2 | the program's `stdout`/`stderr` CuBit streams (typed text lines, created on first write; subscribers see them if the manifest declares them). Not terminals: `ioctl` is `-ENOTTY` |
 | descriptor 0 | none (no input stream is granted) |
 | `open`, `stat`, `read`, `pread`, `lseek`, `getdents64`, `close` | files and directories through filesystem.svc (`overlay/src/cubit/file.c`), read-only; the service checks each path against the program's `filesystem-scope`s. `@vol:N/…` paths are CuBit names; POSIX absolute paths name the system volume (`/fonts/a.ttf` is `@nvme:0/fonts/a.ttf`); no working directory |
-| `mmap` of a file | a private copy of its bytes |
+| `mmap` of a file | private copy of its bytes, releasable with `munmap`; requested NONE/RO/RW protection applied after copying; no writeback |
 | `pipe`, `pipe2`, `socketpair(AF_UNIX, SOCK_STREAM)` | in-process rings (both ends in one address space: thread wakeups such as mio's waker, tokio's signal self-pipe). Across processes these should become CuBit IPC objects (an endpoint capability or stream granted at launch, never a filesystem path); not implemented yet |
 | `poll` | readiness of the descriptors' CuBit objects (streams writable, files readable) |
 | `getrandom` | RDRAND (not yet the entropy service) |

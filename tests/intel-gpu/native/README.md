@@ -14,10 +14,20 @@ VM, never run it as normal startup policy.
 
 The private devmgr fixture instantiates this with a map-check.app spawn and
 runs it only when that test binary is in the bootstrap archive. QEMU runner
-requires the PASS marker and rejects FAIL markers. Eight 8MiB retained ranges
+requires the PASS marker and rejects FAIL markers. Four 16MiB retained ranges
 must be disjoint after each owner disappears from the process list. Failed
 reservations, unknown modes/orders, exhaustion across owner exits, and an
 ordinary allocation outside retained ranges are checked.
+
+The current fixture targets maximum allocator order12 and rejects order13 and
+Unsigned_64'Last. Kernel admission was corrected from >=maximum to >maximum
+after verifying both allocator paths include the maximum free list.
+This revision passed four-CPU UEFI QEMU in isolated workspace
+`.build-workspaces/dma-max-order-r37_25jh`, run `cubit-usb-live.yxpwf9ka`.
+It verifies four16MiB allocations below4GiB, disjoint retained backing across
+owner exit, the deferred CPU loan, failed-request quota rollback and exhausted
+64MiB quota with ordinary allocation still available. No GPU DMA is exercised.
+The older runs below used eight8MiB allocations.
 
 This is bounded regression evidence, not an exhaustive allocator proof or a
 GPU DMA test. The deferred CPU-loan extension passed in private native QEMU

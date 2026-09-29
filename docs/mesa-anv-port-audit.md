@@ -1,10 +1,155 @@
 # Mesa ANV: first CuBit OS-boundary audit
 
+## Native cross-build probe, 2026-09-28
+
+Repeatable preparation is now `bash tests/mesa-anv/prepare-cubit-source.sh
+PRISTINE_SOURCE NEW_DESTINATION` inside Nix (one command). It checks 26.2.3,
+applies the CuBit platform, ANV-header and runtime-finalization patches to a
+new copy, and refuses existing destinations. Fresh preparation `dhBEVo` and
+finalization test `68wg8o74` passed; resulting finalizer sources match the
+reviewed prepared tree. Native configuration requires the finalizer declaration.
+
+`tests/mesa-anv/runtime-finalize.patch` extracts the existing upstream scratch,
+engine-prefetch and workaround sequence into `intel_device_info_finalize_runtime`.
+The Linux discovery path calls the same helper at its original location; no
+CuBit discovery or successful submission is fabricated. Apply this patch to
+the prepared 26.2.3 source in addition to the existing patches. It requires
+initialized defaults, validated topology, and completed backend/hwconfig/memory
+setup; it is not a public untrusted-input validator and is called once per fresh
+device description. CuBit provider wiring is still outstanding.
+
+Run `nix develop -c python3 tests/mesa-anv/test-runtime-finalize.py
+tests/mesa-anv/target/source-cubit tests/mesa-anv/build-host` (one command).
+Hosted result `runtime-finalize.tcr71f_2` PASS for all 63 nonempty DSS masks
+times 255 EU-pair masks. This compiles the actual patched Mesa implementation,
+checks scratch bounds and prefetch, and checks both ADL's 1536-entry geometry
+workaround and the subsequent <=32-EU override to 1024. Assertions are enabled.
+The test uses host compiler metadata with redirected source/include/dependency
+and object paths; it does not rebuild the host library or establish a working
+CuBit device provider. The first failed harness attempt wrote a generated host
+dependency file; subsequent runs redirect that file into the unique test output.
+
+Sparse scratch-ID and repeated-query regression (`topology-test.ns27Ly`):
+all valid DSS/EU-pair combinations now check Mesa's exclusive physical DSS-ID
+bound, idempotent translation, and replacement of a prior valid topology
+against a fresh translation. For example, DSS mask 0x20 has one enabled DSS
+but ID bound six; compute scratch sizing must not use the enabled count.
+The pinned `intel_device_info.c:init_max_scratch_ids` uses that bound times
+128 IDs for Gfx12 compute, independently of the enabled EU count. Native
+provider finalization must invoke the upstream scratch/workaround sequence
+after topology discovery, not duplicate it in this mask adapter. Hosted
+regression and CuBit adapter compilation passed; no native submission tested.
+
+Topology compatibility now runs against the pinned Mesa host library's real
+count, pixel-pipe, L3-bank and EU-query functions. The exhaustive adapter test
+verifies their outputs for sparse masks, starts with dirty prior arrays/counts,
+and verifies every identity-rejection path leaves input unchanged. Reproduce
+inside Nix with `bash tests/mesa-anv/test-topology.sh SOURCE CUBIT_BUILD`.
+The script also cross-compiles the adapter for CuBit. This checks translation
+compatibility on Linux, not native Mesa device initialization or GPU execution.
+
+`tests/mesa-anv/cubit-topology.c` is now a small Mesa-side adapter for the
+driver's decoded ADL-N masks. It writes the real Mesa structure's one-slice,
+six-DSS, sixteen-EU mask layout without synthesizing contiguous enabled EUs
+from a count. Disabled DSS slots remain zero, and half-enabled EU pairs or
+wrong device/generation are rejected before mutation. Host tests cover all
+256 DSS bytes by 256 EU-pair masks plus malformed masks; CuBit cross-compilation
+passes. This is an internal translation step, not authenticated IPC or a
+finished device provider. The adapter itself now runs Mesa's derived-count,
+pixel-pipe and L3 finalization; the regression checks the returned structure
+without repairing it first (run job7CO PASS). The caller must still finalize
+scratch and workarounds before exposing a device. In particular, pinned Mesa's
+`intel_device_info_apply_workarounds` limits geometry URB entries to 1024 on
+Gfx12.0 devices with at most 32 EUs. Applying offline defaults before replacing
+topology is not sufficient: runtime workarounds must see the measured EU count.
+
+EU sampling follow-up: the post-reset ADS snapshot now reads EU_DISABLE
+twice alongside slice/DSS/L3/doorbell registers (ten reads total), rejecting
+changed samples, all-ones failures, and no enabled EUs. The native read-only
+allowlist and getter are wired; boot diagnostics report the decoded mask and
+total only for a valid observation. Hosted sampling tests and native driver
+link pass. The shipped diagnostic image is unchanged, so this has not yet
+produced an NUC EU measurement or supplied a Mesa device-information provider.
+
+Device-information gap: the native steering snapshot has slice/DSS/L3 masks,
+but no EU mask. Mesa's offline PCI-ID initialization fills default masks and
+is not a substitute for runtime fused topology. Added a CuBit ADL-N decoder
+for GEN11_EU_DISABLE (0x9134), following Linux v6.16
+`gen12_sseu_info_init`: low eight disable bits expand to sixteen enabled EU
+bits, shared by each enabled DSS on the single slice. Exhaustive 64-by-256
+DSS/fuse tests and SPARK bounds/termination/validity checks pass. MMIO sampling
+and native provider integration remain to be done; no measured EU count is
+being advertised yet.
+
+Reference: https://github.com/torvalds/linux/blob/v6.16/drivers/gpu/drm/i915/gt/intel_sseu.c
+
+The ANV patch now also gives CuBit's `drm_fourcc.h` a data-only dependency:
+fixed-width `uint32_t`/`uint64_t` typedefs instead of `drm.h`. Other platforms
+keep the upstream include path. No ioctl definitions or working Linux ABI
+are supplied. `format-header-test.c` compiles as CuBit C11 and C++17 with
+warnings as errors; it checks exact XRGB8888 and Intel tiling/compression
+identifier values and rejects accidental inclusion of DRM control APIs.
+This does not solve the separate i915/xe device-discovery implementation.
+
+Dedicated build follow-up: headless WSI now compiles. The next failures are
+`src/intel/dev/i915/intel_device_info.c` and
+`src/intel/dev/xe/intel_device_info.c`, at steps602/603 of1069. These are real
+Linux kernel-interface implementations, not unused includes. The port must
+select platform-specific sources and provide CuBit discovery/device information
+instead of satisfying them with dummy Linux ioctl definitions. This is the
+next backend boundary; the native build is stopped, not successfully linked.
+
+The headless-WSI header blocker below is fixed by removing its unused
+`drm_fourcc.h` include, recorded in `tests/mesa-anv/cubit-anv.patch`.
+An exact-flags CuBit compile probe of the changed file passes. This is only
+include hygiene, not a replacement for DRM image allocation or presentation.
+Apply the patch to a separate writable copy of the prepared CuBit source;
+do not mutate the software Mesa content-keyed source cache. The dedicated
+copy is `tests/mesa-anv/target/source-cubit`; its fresh build is
+`tests/mesa-anv/target/build-cubit`. Configuration via the helper passes and
+full compilation is in progress. The original failing build is retained.
+
+First native compile result: failed near step596/1069 in
+`src/vulkan/wsi/wsi_common_headless.c`. Its `drm_fourcc.h` include reaches
+`drm.h`, which selects `linux/types.h` using the compiler's `__linux__`
+macro; that header is intentionally absent from the CuBit sysroot. Utilities,
+NIR/SPIR-V compiler sources and much of the Vulkan runtime compiled before
+this. Do not add host Linux headers globally or infer working thread/runtime
+semantics from these successful object compilations. The headless include
+appears unnecessary (no fourcc/modifier constant use in that file); isolate
+an ANV source patch before continuing, leaving the softpipe cache untouched.
+
+Reproduce configuration inside `host-shell.nix` with
+`bash tests/mesa-anv/configure-cubit.sh PATCHED_SOURCE FRESH_BUILD HOST_BUILD`.
+The source must be the prepared CuBit source, and HOST_BUILD the completed
+pinned Linux baseline (default `tests/mesa-anv/build-host`). Compile with
+`ninja -C FRESH_BUILD -j2 src/intel/vulkan/libvulkan_intel.so` in that same
+Nix shell. Do not execute the target artifact on Linux or package it as a
+functional native backend merely because compilation succeeds.
+
+Configuration now succeeds with the existing CuBit-patched Mesa source and
+`tests/mesa-software/cubit-cross.ini`, using `vulkan-drivers=intel`, no Gallium
+or window-system platforms, and target LLVM disabled. Crucially,
+`mesa-clc=system` selects the pinned Linux baseline's `mesa_clc` and
+`vtn_bindgen2` host executables from `build-host/src/compiler/{clc,spirv}`.
+Without this option, configuration rejects disabled LLVM because CLC requires
+it. Host code generators and CuBit runtime dependencies must stay separate.
+
+Output is `tests/mesa-anv/build-cubit-probe`. This reuses the software port's
+prepared source without editing it. The cross file disallows target pkg-config
+fallback to host libraries. Compilation of `src/intel/vulkan/libvulkan_intel.so`
+has started with two workers; configuration success is not build success,
+a functional CuBit KMD backend, or hardware acceleration. Feature names printed
+by Meson are not a truthful runtime CuBit capability report yet.
+
 2026-09-27; source baseline Mesa **26.2.3**, fetched from the upstream release
 archive and pinned by unpacked NAR hash in `tests/mesa-anv/source.nix`. This is
 an inspected baseline, not a completed dependency audit or production version
-commitment. No Mesa implementation is copied into CuBit and no Mesa build has
-run on CuBit. The current Intel service is still read-only inspection.
+commitment. At that initial audit no Mesa build had run on CuBit and Intel was
+read-only. Subsequent work now runs native Mesa softpipe in a Desktop window
+and has gated Intel reset bring-up; neither is a native ANV backend or hardware
+3D acceleration. See `mesa-software-native-boundary.md` and
+`intel-gpu-reset-handoff.md` for the newer evidence.
 
 Reproduce the inventory (Nix required):
 
@@ -65,7 +210,9 @@ Current upstream [ANV documentation](https://docs.mesa3d.org/drivers/anv.html)
 identifies GuC firmware as required for the modern Alder Lake-P/Alchemist stack.
 The precise ADL-N firmware selection, version/ABI, loading/authentication and
 submission path must be established against Intel/Linux platform tables before
-choosing a native engine bring-up sequence. No firmware blob is bundled here.
+choosing a native engine bring-up sequence. This initial ANV audit did not bundle
+firmware; the later Intel bring-up packages its selected blob and notices as
+documented in `intel-gpu-reset-handoff.md`.
 Preserve its applicable redistribution notices when one is selected.
 
 Do not advertise Linux DRM, external FD, protected-content, sparse, performance

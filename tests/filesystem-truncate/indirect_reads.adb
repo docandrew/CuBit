@@ -4,6 +4,7 @@ with Ext2; use Ext2;
 with Volume_Admission; use Volume_Admission;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
+with Block_Paths;
 procedure Indirect_Reads is
    fs : Filesystem;
    sb : Superblock with Import, Address => Disk (1024)'Address;
@@ -18,6 +19,15 @@ procedure Indirect_Reads is
      with Import, Address => Disk (26 * 1024)'Address;
    alternateLeaf : array (0 .. 255) of Unsigned_32
      with Import, Address => Disk (27 * 1024)'Address;
+   --  Final 1 KiB triple path: root 40 -> middle 41 -> leaf 42 -> data 43.
+   tripleRoot : array (0 .. 255) of Unsigned_32
+     with Import, Address => Disk (40 * 1024)'Address;
+   tripleMiddle : array (0 .. 255) of Unsigned_32
+     with Import, Address => Disk (41 * 1024)'Address;
+   tripleLeaf : array (0 .. 255) of Unsigned_32
+     with Import, Address => Disk (42 * 1024)'Address;
+   Triple_Offset : constant Unsigned_64 := Block_Paths.First_Triple (2) * 1024;
+   Limit_Offset : constant Unsigned_64 := Block_Paths.Block_Limit (2) * 1024;
    output : String (1 .. 4096) := [others => '?'];
    avolume : Unsigned_64;
    status : Read_Status;
@@ -62,6 +72,23 @@ procedure Indirect_Reads is
       output := [others => '?'];
       Check_Reclamation := False;
    end Setup;
+
+   procedure Set_Size (size : Unsigned_64) is
+   begin
+      ino.sizeLo := Unsigned_32 (size and 16#FFFF_FFFF#);
+      ino.sizeHi_DirACL := Unsigned_32 (Shift_Right (size, 32));
+   end Set_Size;
+
+   --  Map only the last supported logical block, one pointer per level.
+   procedure Map_Final_Triple is
+   begin
+      ino.tripleIndirectBlock := 40;
+      tripleRoot (255) := 41;
+      tripleMiddle (255) := 42;
+      tripleLeaf (255) := 43;
+      Disk (43 * 1024 .. 44 * 1024 - 1) := [others => Character'Pos ('U')];
+      Set_Size (Limit_Offset);
+   end Map_Final_Triple;
 
    procedure Retry is
    begin
@@ -235,11 +262,27 @@ begin
      (fs, 1, (slot => 1, generation => 1), Grant_Buffer'Address,
       Grant_Buffer'Length, admission);
    pragma Assert (admission = Admitted);
+   --  An absent triple root is a sparse hole, like an absent double root.
    ino.sizeLo := Unsigned_32 ((12 + 256 + 256 * 256 + 1) * 1024);
    Check_Data (Unsigned_64 (ino.sizeLo) - 2048, 'T');
+   Check_Data (Triple_Offset, Character'Val (0));
+
+   --  Final triple block: cold lookup reads root, middle, leaf and payload;
+   --  warm lookup needs payload only. The next block is unsupported, and the
+   --  completed prefix is reported.
+   Setup;
+   Map_Final_Triple;
+   Check_Data (Limit_Offset - 1024, 'U');
+   pragma Assert (Calls = 4);
+   Check_Data (Limit_Offset - 1024, 'U');
+   pragma Assert (Calls = 5);
+   Set_Size (Limit_Offset + 1024);
    output := [others => '?'];
-   readData (fs, ino, Unsigned_64 (ino.sizeLo) - 1024,
-             output'Address, 1024, avolume, status);
+   readData (fs, ino, Limit_Offset - 1024, output'Address, 2048, avolume, status);
+   pragma Assert (status = Read_File_Range_Unsupported and avolume = 1024);
+   pragma Assert (output (1 .. 1024) = [1 .. 1024 => 'U']);
+   output := [others => '?'];
+   readData (fs, ino, Limit_Offset, output'Address, 1024, avolume, status);
    pragma Assert (status = Read_File_Range_Unsupported and avolume = 0);
    pragma Assert (output = [output'Range => '?']);
 
@@ -258,6 +301,67 @@ begin
    Check_Data (Single_Offset, 'T');
    pragma Assert (Calls = previous + 2); -- revolume reloaded metadata
    Put_Line ("Mapping boundaries, volume isolation and same-endpoint revolume: PASS");
+
+   --  Triple lookup failures at each level and at the payload.
+   declare
+      Triple_Faults : Natural := 0;
+   begin
+      for boundary in 1 .. 4 loop
+         for treatment in Failure_Mode loop
+            for style in Failure_Reply loop
+               Setup;
+               Map_Final_Triple;
+               Fail_At := boundary;
+               CuBit.Messages.Mode := treatment;
+               Reply_Style := style;
+               readData (fs, ino, Limit_Offset - 1024, output'Address, 1024,
+                         avolume, status);
+               pragma Assert (Calls = boundary and Failed);
+               pragma Assert (status = Read_Device_Error and avolume = 0);
+               pragma Assert (output = [output'Range => '?']);
+               pragma Assert (Writes = 0 and not fs.writeQuarantined);
+               Retry;
+               Check_Data (Limit_Offset - 1024, 'U');
+               Triple_Faults := Triple_Faults + 1;
+            end loop;
+         end loop;
+      end loop;
+      pragma Assert (Triple_Faults = 60);
+   end;
+   --  A zero pointer at any triple level is a hole; an out-of-volume pointer
+   --  at any level is an error, never a hole.
+   for level in 1 .. 4 loop
+      for invalid in Boolean loop
+         Setup;
+         Map_Final_Triple;
+         declare
+            value : constant Unsigned_32 := (if invalid then 64 else 0);
+         begin
+            case level is
+               when 1 => ino.tripleIndirectBlock := value;
+               when 2 => tripleRoot (255) := value;
+               when 3 => tripleMiddle (255) := value;
+               when others => tripleLeaf (255) := value;
+            end case;
+         end;
+         if invalid then
+            readData (fs, ino, Limit_Offset - 1024, output'Address, 1024,
+                      avolume, status);
+            pragma Assert (status = Read_Out_Of_Range and avolume = 0);
+            pragma Assert (output = [output'Range => '?']);
+         else
+            Check_Data (Limit_Offset - 1024, Character'Val (0));
+         end if;
+      end loop;
+   end loop;
+   --  Warm triple caches must not leak across endpoints or revolumes.
+   Setup;
+   Map_Final_Triple;
+   Check_Data (Limit_Offset - 1024, 'U');
+   tripleLeaf (255) := 25;
+   fs.device.endpointSlot := 2;
+   Check_Data (Limit_Offset - 1024, 'T');
+   Put_Line ("TRIPLE-READ-CHECK: PASS 60 faults, holes, malformed levels, cache identity");
 
    Setup_Contiguous_Write;
    writeData (fs, 1, ino, Single_Offset - 1024, output'Address,
@@ -382,16 +486,38 @@ begin
       end loop;
    end loop;
 
-   --  Double allocation and extension use real bitmap/inode fixtures in
-   --  sector_counts. This data-only fixture checks the triple boundary.
+   --  Allocation and extension use real bitmap/inode fixtures in
+   --  sector_counts. This data-only fixture overwrites across the double/
+   --  triple boundary and then the final triple block into the unsupported
+   --  range, reporting only the completed prefix.
    Setup;
    first (255) := 24;
    second (255) := 25;
-   ino.sizeLo := (12 + 256 + 256 * 256) * 1024;
-   writeData (fs, 1, ino, Unsigned_64 (ino.sizeLo) - 1024,
-              output'Address, 2048, avolume, writeStatus);
+   Map_Final_Triple;
+   tripleRoot (0) := 44;
+   Disk (44 * 1024 .. 45 * 1024 - 1) := [others => 0];
+   declare
+      middle0 : array (0 .. 255) of Unsigned_32
+        with Import, Address => Disk (44 * 1024)'Address;
+      leaf0 : array (0 .. 255) of Unsigned_32
+        with Import, Address => Disk (45 * 1024)'Address;
+   begin
+      middle0 (0) := 45;
+      Disk (45 * 1024 .. 46 * 1024 - 1) := [others => 0];
+      leaf0 (0) := 46;
+   end;
+   output := [others => 'W'];
+   writeData (fs, 1, ino, Triple_Offset - 1024, output'Address, 2048,
+              avolume, writeStatus);
+   pragma Assert (writeStatus = Write_Complete and avolume = 2048);
+   pragma Assert (Disk (25 * 1024 .. 26 * 1024 - 1) = [0 .. 1023 => Character'Pos ('W')]);
+   pragma Assert (Disk (46 * 1024 .. 47 * 1024 - 1) = [0 .. 1023 => Character'Pos ('W')]);
+   Set_Size (Limit_Offset + 1024);
+   writeData (fs, 1, ino, Limit_Offset - 1024, output'Address, 2048,
+              avolume, writeStatus);
    pragma Assert (writeStatus = Write_File_Range_Unsupported and avolume = 1024);
-   Put_Line ("DOUBLE-OVERWRITE-CHECK: PASS 105 faults, cache/batching and triple boundary");
+   pragma Assert (Disk (43 * 1024 .. 44 * 1024 - 1) = [0 .. 1023 => Character'Pos ('W')]);
+   Put_Line ("DOUBLE-OVERWRITE-CHECK: PASS 105 faults, cache/batching, triple boundaries");
    Put_Line ("Coalesced indirect writes: 75 fault cases and boundary checks PASS");
    Put_Line ("INDIRECT-READ-CHECK: PASS");
 end Indirect_Reads;

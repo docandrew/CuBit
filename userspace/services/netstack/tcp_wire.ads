@@ -3,8 +3,8 @@
 --  Copyright (C) 2026 Jon Andrew
 --
 --  @summary
---  TCP option bytes the RecordFlux parser has already framed: the
---  options area of a segment whose header it validated.
+--  TCP option bytes TCP_Header has already framed: the options area of a
+--  segment whose header it validated.
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with TCP_Options;

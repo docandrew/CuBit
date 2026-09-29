@@ -708,7 +708,8 @@ procedure main is
       elfSize       : Unsigned_64;
       streamBitmask : in out Unsigned_64;
       approveNetwork : Network_Approval := No_Network;
-      systemStartup : Boolean := False)
+      systemStartup : Boolean := False;
+      approveLogViewer : Boolean := False)
    is
       --  ELF64 header field offsets
       e_shoff_off     : constant := 40;  -- Section header table offset
@@ -917,14 +918,16 @@ procedure main is
                                  Approval : constant Decision := Evaluate
                                    (Requested => True,
                                     Installation_Approved => Bootstrap_Approves
-                                      (Authority, systemStartup),
+                                      (Authority, systemStartup) or else
+                                      (isLogObserver and then approveLogViewer),
                                     Session_Approved => True,
                                     Issuer_Allowed => True);
                                  Issued_Tag : Unsigned_64 := 0;
                               begin
-                                 --  Only the trusted startup-plan path can
-                                 --  approve this declared system authority.
-                                 --  OP_SPAWN cannot supply systemStartup.
+                                 -- Startup approval or the trusted Desktop's
+                                 -- narrowly selected system log viewer. This
+                                 -- exception grants observation only, not the
+                                 -- other startup-only authorities.
                                  if (isAudioControl or isLogObserver or isClockControl)
                                    and then Approval /= Approved
                                  then
@@ -1691,6 +1694,14 @@ procedure main is
       pkgId         : String (1 .. 128);
       pkgIdLen      : Natural := 0;
       streamBitmask : Unsigned_64 := 0;
+      -- Transitional installed-system-app policy, like Desktop_Approval for
+      -- browsers. Exact boot-namespace name, never a supplied path/identity;
+      -- assumes the system executable namespace is administrator-controlled.
+      -- Do not propagate this as systemStartup or honor caller-supplied flags.
+      Log_Viewer_Approved : constant Boolean :=
+        name = "boot-logs.app" and then requester /= 0 and then
+        sandboxMode = SANDBOX_NONE and then cwd'Length = 0 and then
+        requester = getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DESKTOP);
       use type CCL.Configurations.Startup_Role;
       procedure Discard_Authorized_Child is
          type Policy_Service is (Files, Configuration);
@@ -1807,7 +1818,8 @@ procedure main is
       --  Parse .cubit.caps manifest (streams fallback if no .cubit.streams)
       t0 := syscall (SYSCALL_GETTIME);
       parseAndGrantManifest
-        (newPID, elfSize, streamBitmask, approveNetwork, systemStartup);
+        (newPID, elfSize, streamBitmask, approveNetwork, systemStartup,
+         approveLogViewer => Log_Viewer_Approved);
       t1 := syscall (SYSCALL_GETTIME);
 
       debugPrint ("procmgr: manifest took ");

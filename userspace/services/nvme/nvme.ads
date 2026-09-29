@@ -54,6 +54,13 @@ package NVMe is
    IO_WRITE : constant Unsigned_8 := 16#01#;
    IO_FLUSH : constant Unsigned_8 := 16#00#;
 
+   --  Read/Write CDW12 Force Unit Access: the write is durable at completion.
+   CDW12_FUA : constant Unsigned_32 := Shift_Left (1, 30);
+
+   --  Identify Controller: Volatile Write Cache byte and its Present bit.
+   IDENTIFY_VWC_OFFSET : constant := 525;
+   VWC_PRESENT : constant Unsigned_8 := 16#01#;
+
    ---------------------------------------------------------------------------
    --  Identify CNS values
    ---------------------------------------------------------------------------
@@ -204,7 +211,8 @@ package NVMe is
    function writeBlocks
      (lba   : Unsigned_64;
       count : Unsigned_32;
-      buf   : System.Address) return Unsigned_64;
+      buf   : System.Address;
+      fua   : Boolean := False) return Unsigned_64;
 
    --  Commit namespace 1's completed writes to nonvolatile media. A timeout
    --  retires the queue until controller reinitialization; never reuse a late
@@ -217,5 +225,9 @@ package NVMe is
 
    --  Max transfer size in bytes (set from MDTS or clamped to buffer)
    maxTransferBytes : Unsigned_64 := 0;
+
+   --  Identify Controller VWC: completed writes may sit in a volatile cache
+   --  until a Flush. Assumed present until Identify says otherwise.
+   volatileWriteCache : Boolean := True;
 
 end NVMe;

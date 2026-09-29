@@ -39,6 +39,8 @@ package body CuBit.Messages is
         with Import, Address => Durable (5 * Reclamation_Block_Bytes)'Address;
       createdInode : Ext2.Inode
         with Import, Address => Disk (5 * 1024 + 256)'Address;
+      function Covers (Position : Natural) return Boolean is
+        (offset <= Position and then Position < offset + count);
       function Referenced (Block : Unsigned_32) return Boolean is
          function Leaf_References (Number : Unsigned_32) return Boolean is
          begin
@@ -67,6 +69,29 @@ package body CuBit.Messages is
                end loop;
             end;
          end if;
+         if durableInode.tripleIndirectBlock /= 0 then
+            if durableInode.tripleIndirectBlock = Block then return True; end if;
+            declare
+               Root : array (0 .. Reclamation_Block_Bytes / 4 - 1) of Unsigned_32
+                 with Import, Address => Durable
+                   (Natural (durableInode.tripleIndirectBlock) * Reclamation_Block_Bytes)'Address;
+            begin
+               for Middle of Root loop
+                  if Middle /= 0 then
+                     if Middle = Block then return True; end if;
+                     declare
+                        Leaves : array (Root'Range) of Unsigned_32
+                          with Import, Address => Durable
+                            (Natural (Middle) * Reclamation_Block_Bytes)'Address;
+                     begin
+                        for Leaf of Leaves loop
+                           if Leaf_References (Leaf) then return True; end if;
+                        end loop;
+                     end;
+                  end if;
+               end loop;
+            end;
+         end if;
          return False;
       end Referenced;
    begin
@@ -80,8 +105,10 @@ package body CuBit.Messages is
       fail := Calls = Fail_At;
       if op = OP_WRITE_BLOCKS then
          Writes := Writes + 1;
+         --  Write-back coalesces adjacent blocks: match any write whose
+         --  range covers a block of interest, not only one starting there.
          if (Check_Resize_Reclamation or Check_Reclamation) and then
-           offset = 3 * Reclamation_Block_Bytes
+           Covers (3 * Reclamation_Block_Bytes)
          then
             Reclaims := Reclaims + 1;
             --  At every attempted bitmap clear, inspect the last completed
@@ -90,9 +117,10 @@ package body CuBit.Messages is
                declare
                   Mask : constant Unsigned_8 := Shift_Left (Unsigned_8 (1), Bit mod 8);
                   Block : constant Unsigned_32 := Unsigned_32 (Bit + Reclamation_First_Block);
+                  Bitmap : constant Natural := 3 * Reclamation_Block_Bytes;
                begin
-                  if (Disk (offset + Bit / 8) and Mask) /= 0 and then
-                    (Grant_Buffer (Bit / 8) and Mask) = 0
+                  if (Disk (Bitmap + Bit / 8) and Mask) /= 0 and then
+                    (Grant_Buffer (Bitmap - offset + Bit / 8) and Mask) = 0
                   then
                      pragma Assert (Barriers > 0);
                      pragma Assert (not Referenced (Block));
@@ -100,7 +128,7 @@ package body CuBit.Messages is
                end;
             end loop;
          end if;
-         if Check_Creation and then offset = Creation_Block * 1024 then
+         if Check_Creation and then Covers (Creation_Block * 1024) then
             --  The name may only be published after inode initialization.
             pragma Assert ((Disk (4096) and 4) /= 0);
             pragma Assert
@@ -108,10 +136,11 @@ package body CuBit.Messages is
             pragma Assert (createdInode.numHardLinks = 1);
             pragma Assert (Ext2.fileSize (createdInode) = 0);
          end if;
-         if offset = 5 * 1024 then
+         if Covers (5 * 1024) then
             Publication_Attempted := True;
             Inode_Write_Call := Calls;
-         elsif offset = 21 * 1024 then
+         end if;
+         if Covers (21 * 1024) then
             Pointer_Write_Call := Calls;
          end if;
       end if;
@@ -147,11 +176,13 @@ package body CuBit.Messages is
            [0 => Unsigned_64 (Disk'Length / Sector_Bytes),
             1 => Pack_Sizes (Logical_Block_Size (Sector_Bytes),
                              Logical_Block_Size (Sector_Bytes)),
-            2 => 8, 3 => Pack_Properties (FEATURE_FLUSH, Fixed_Media)];
+            2 => 8, 3 => Pack_Properties (FEATURE_FLUSH or FEATURE_VOLATILE_CACHE, Fixed_Media)];
       elsif fail then
          case Reply_Style is
             when Error_Label => null;
-            when Short_Transfer => msg.words (0) := 0;
+            --  A flush's valid reply count is zero: make it malformed.
+            when Short_Transfer =>
+               msg.words (0) := (if op = OP_FLUSH_DEVICE then 1 else 0);
             when Bad_Length => msg.tag.length := 0;
             when Bad_Flags => msg.tag.flags := 1;
             when Bad_Reserved => msg.tag.reserved := 1;

@@ -30,7 +30,11 @@ package ARP_Cache with SPARK_Mode is
    Capacity : constant := 32;
    subtype Index is Natural range 0 .. Capacity - 1;
 
-   type State is (Free, Pending, Resolved);
+   --  Probing: resolved, but not confirmed for a while, so we asked again;
+   --  its address stays usable meanwhile, and the answer to our question
+   --  may change it (the one way a mapping's address ever changes).
+   type State is (Free, Pending, Resolved, Probing);
+   subtype Usable is State range Resolved .. Probing;
 
    type Neighbour is record
       St    : State := Free;
@@ -77,7 +81,7 @@ package ARP_Cache with SPARK_Mode is
              (if not Usable_Sender (P.Sender_IP, P.Sender_HW) or else
                  (P.Op = Reply and then
                   (Position (T'Old, P.Sender_IP) < 0 or else
-                   T'Old (Position (T'Old, P.Sender_IP)).St /= Pending))
+                   T'Old (Position (T'Old, P.Sender_IP)).St not in Pending | Probing))
               then T = T'Old) and then
              --  A request not for us changes nothing either.
              (if P.Op = Request and then not Ours then T = T'Old) and then
@@ -85,14 +89,40 @@ package ARP_Cache with SPARK_Mode is
              (for all I in Index =>
                 (if T (I) /= T'Old (I) then
                    T (I).IP = P.Sender_IP or else T'Old (I).St = Free or else T (I).St = Free)) and then
-             --  A resolved mapping keeps its hardware address.
+             --  A resolved mapping keeps its hardware address: only the
+             --  answer to our own question (Probing) may change it.
              (for all I in Index =>
                 (if T'Old (I).St = Resolved and then T (I).St /= Free and then
-                    T (I).IP = T'Old (I).IP then T (I).HW = T'Old (I).HW));
+                    T (I).IP = T'Old (I).IP then T (I).HW = T'Old (I).HW)) and then
+             (for all I in Index =>
+                (if T'Old (I).St = Probing and then T (I).St /= Free and then
+                    T (I).IP = T'Old (I).IP and then T (I).HW /= T'Old (I).HW
+                 then P.Op = Reply));
 
-   --  The link-layer address to use for IP, if resolved.
+   --  The link-layer address to use for IP, if resolved (or being
+   --  reconfirmed).
    procedure Lookup (T : Table; IP : IPv4; HW : out MAC; Found : out Boolean) with
-     Post => Found = (Position (T, IP) >= 0 and then T (Position (T, IP)).St = Resolved) and then
+     Post => Found = (Position (T, IP) >= 0 and then T (Position (T, IP)).St in Usable) and then
              (if Found then HW = T (Position (T, IP)).HW);
+
+   --  IP's mapping is doubted (too old, or traffic through it stalls): the
+   --  caller asks again, and until the answer the address stays in use.
+   procedure Reconfirm (T : in out Table; IP : IPv4; Now : Unsigned_64) with
+     Pre  => Unique (T),
+     Post => Unique (T) and then
+             (for all I in Index =>
+                (if T'Old (I).St = Resolved and then T'Old (I).IP = IP then
+                   T (I) = (T'Old (I) with delta St => Probing, Since => Now)
+                 else T (I) = T'Old (I)));
+
+   --  Questions unanswered for Timeout: a Pending entry is dropped, and so
+   --  is a Probing one (the neighbour has gone or changed without saying).
+   procedure Expire (T : in out Table; Now, Timeout : Unsigned_64) with
+     Pre  => Unique (T),
+     Post => Unique (T) and then
+             (for all I in Index =>
+                T (I) = T'Old (I) or else
+                (T (I).St = Free and then T'Old (I).St in Pending | Probing and then
+                 Now - Timeout >= T'Old (I).Since and then Now >= Timeout));
 
 end ARP_Cache;

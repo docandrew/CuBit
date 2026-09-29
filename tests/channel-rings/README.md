@@ -38,8 +38,38 @@ nix develop -c bash tests/channel-rings/mutations.sh      # mutation check
   hostile headers never read out of bounds. The check that a pad record is
   wholly published before it is skipped is defensive (a partial pad cannot
   cause an out-of-bounds access), so no mutant covers it.
-- **Mutation check:** 17 plausible bugs (13 byte-ring, 4 datagram), all
-  fail to prove, plus a control that proves.
+- **Slot rings (`CuBit.Slot_Rings`, generic, proved through the
+  instances `slot_ring_small.ads` and `slot_ring_frames.ads`):**
+  - every slot is inside the ring and the fill never exceeds the slot
+    count;
+  - a peer index is accepted exactly when it moves forward without
+    overfilling, and a rejected one changes nothing;
+  - pushes and takes move the private index by one and touch only their
+    slot;
+  - indices less than a ring apart never share a slot (`Lemma_Distinct`,
+    `Lemma_Free_Slot`), so an element in flight is never overwritten.
+
+  Tested: a 4-slot ring carries a value sequence in order across 32-bit
+  wrap-around, with random batches and hostile indices judged against an
+  independent formulation. The 128-slot frame ring's slots are distinct
+  around the wrap.
+- **Frame rings (`CuBit.Frame_Rings`, proved):** the driver <-> netstack
+  packet grant (header page, then 128 receive and 128 transmit slots):
+  every slot lies inside its area.
+- **Queue pairs (`CuBit.Submission_Queues`, generic, proved through
+  `queue_small.ads`):**
+  - the service owes at most as many answers as the completion ring has
+    room for (`Valid`), so an answer never waits and is never dropped;
+  - the client never has more requests outstanding than completion
+    slots;
+  - an answer with no pending request is refused;
+  - each answer carries its request's token.
+
+  Tested: 400,000 random submit, take, complete and reap steps pair every
+  answer with its request.
+- **Mutation check:** 32 plausible bugs (13 byte-ring, 4 datagram, 9 slot
+  ring, 6 queue pair), all fail to prove, plus a control that proves.
+- **Results (2026-09-28, clean run):** 496 checks proved at level 1.
 - **Not covered:** SPARK does not model memory ordering between the
   processes. Each index must be read once from shared memory into a local
   value, and fences must be placed around the indices and notification

@@ -14,6 +14,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with System.Machine_Code;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Busy_Poll;
 #if nvme_io_profile = "on" then
 with CuBit.Benchmark_Clock;
 #end if;
@@ -22,7 +23,12 @@ package body NVMe is
 
    ADMIN_SLEEP_POLLS      : constant Positive := 5_000;
    CONTROLLER_SLEEP_POLLS : constant Positive := 10_000;
-   IO_SPIN_POLLS          : constant Positive := 65_536;
+   --  An I/O completion is awaited in three stages: spinning (most
+   --  commands finish within tens of microseconds), then yielding the CPU
+   --  between looks (a busy host), then sleeping a millisecond between
+   --  looks (a flush the host is writing back), until the timeout.
+   IO_SPIN_MICROSECONDS   : constant := 200;
+   IO_YIELD_MICROSECONDS  : constant := 20_000;
    IO_SLEEP_POLLS         : constant Positive := 1_000;
 
    ---------------------------------------------------------------------------
@@ -307,6 +313,8 @@ package body NVMe is
                 (DMA_VIRT_BASE + IDENTIFY_OFFSET);
             mdtsByte : Unsigned_8 with Import,
               Address => idBuf + 77;
+            vwcByte : Unsigned_8 with Import,
+              Address => idBuf + IDENTIFY_VWC_OFFSET;
             bufLimit : constant Unsigned_64 :=
               Unsigned_64 (DATA_BUF_PAGES) * Unsigned_64 (PAGE_SIZE);
          begin
@@ -321,6 +329,7 @@ package body NVMe is
                --  MDTS=0 means unlimited by controller
                maxTransferBytes := bufLimit;
             end if;
+            volatileWriteCache := (vwcByte and VWC_PRESENT) /= 0;
          end;
          debugPrint ("NVMe: Identify Controller OK." & ASCII.LF);
       else
@@ -451,13 +460,23 @@ package body NVMe is
          elsif Opcode = IO_WRITE then Write_Command else Flush_Command);
 #end if;
    begin
-      --  Spin-poll: NVMe typically completes in microseconds
-      for spin in 1 .. IO_SPIN_POLLS loop
-         if (ioCq (ioCqHead).status and 1) = ioPhase then
-            found := True;
-            exit;
-         end if;
-      end loop;
+      --  Spin, then yield between looks, each for a bounded time.
+      declare
+         Started : constant Unsigned_64 := CuBit.Busy_Poll.Now;
+      begin
+         loop
+            if (ioCq (ioCqHead).status and 1) = ioPhase then
+               found := True;
+               exit;
+            end if;
+            exit when not CuBit.Busy_Poll.Within (Started, IO_YIELD_MICROSECONDS);
+            if CuBit.Busy_Poll.Within (Started, IO_SPIN_MICROSECONDS) then
+               CuBit.Busy_Poll.Relax;
+            else
+               ignore := syscall (SYSCALL_YIELD);
+            end if;
+         end loop;
+      end;
 
       --  Fallback: sleep-poll for slow completions
       if not found then
@@ -636,7 +655,8 @@ package body NVMe is
    function writeBlocks
      (lba   : Unsigned_64;
       count : Unsigned_32;
-      buf   : System.Address) return Unsigned_64
+      buf   : System.Address;
+      fua   : Boolean := False) return Unsigned_64
    is
       remaining    : Unsigned_32 := count;
       curLba       : Unsigned_64 := lba;
@@ -702,7 +722,8 @@ package body NVMe is
 
          cmd.cdw10 := Unsigned_32 (curLba and 16#FFFF_FFFF#);
          cmd.cdw11 := Unsigned_32 (Shift_Right (curLba, 32));
-         cmd.cdw12 := thisSectors - 1;  --  0-based count
+         cmd.cdw12 := (thisSectors - 1) or  --  0-based count
+           (if fua then CDW12_FUA else 0);
 
          --  Submit to I/O SQ
          ioSq (ioSqTail) := cmd;

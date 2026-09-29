@@ -14,7 +14,7 @@ killed=0; total=0
 mutant() {   # name file old new [unit to prove]
     total=$((total + 1))
     rm -rf "$work/src" && mkdir -p "$work/src"
-    cp "$runtime"/cubit.ads "$runtime"/cubit-channel_rings.ad[sb] "$runtime"/cubit-datagram_rings.ad[sb] "$work/src"
+    cp "$runtime"/cubit.ads "$runtime"/cubit-channel_rings.ad[sb] "$runtime"/cubit-datagram_rings.ad[sb] "$runtime"/cubit-slot_rings.ad[sb] "$runtime"/cubit-frame_rings.ads "$runtime"/cubit-submission_queues.ad[sb] "$work/src"
     python3 - "$work/src/$2" "$3" "$4" <<'PY'
 import sys
 p, old, new = sys.argv[1:]
@@ -81,4 +81,45 @@ mutant "record length taken on trust" $G \
 mutant "take ignores the caller's buffer" $G \
     "            Length := Natural'Min (Header_Length, Into'Length);" \
     "            Length := Header_Length;" $G
+S=cubit-slot_rings.adb
+SS=cubit-slot_rings.ads
+mutant "slot ring: slot ignores the mask" $SS \
+    "   function Slot_Of (I : Index) return Slot is (Slot (I and Mask));" \
+    "   function Slot_Of (I : Index) return Slot is (Slot (I mod Index (Slots - 1)));" slot_ring_small.ads
+mutant "slot ring: peer may release unpushed elements" $S \
+    "      OK := Freed <= Count (P.Fill);" "      OK := Freed <= Count (Slots);" slot_ring_small.ads
+mutant "slot ring: release not subtracted" $S \
+    "         P.Fill := P.Fill - Natural (Freed);" "         null;" slot_ring_small.ads
+mutant "slot ring: peer may overfill the ring" $S \
+    "      OK := Ahead <= Count (Slots) and then Ahead >= Count (C.Available);" \
+    "      OK := Ahead >= Count (C.Available);" slot_ring_small.ads
+mutant "slot ring: peer may take back pushed elements" $S \
+    "      OK := Ahead <= Count (Slots) and then Ahead >= Count (C.Available);" \
+    "      OK := Ahead <= Count (Slots);" slot_ring_small.ads
+mutant "slot ring: push writes the wrong slot" $S \
+    "      R (Next_Slot (P)) := E;" "      R (Slot_Of (P.Produced + 1)) := E;" slot_ring_small.ads
+mutant "slot ring: commit forgets the fill" $S \
+    "      P.Fill := P.Fill + 1;" "      null;" slot_ring_small.ads
+mutant "slot ring: take reads the wrong slot" $S \
+    "      E := R (Head_Slot (C));" "      E := R (Slot_Of (C.Consumed + Index (C.Available) - 1));" slot_ring_small.ads
+mutant "slot ring: release forgets the index" $S \
+    "      C.Consumed := C.Consumed + 1;" "      null;" slot_ring_small.ads
+Q=cubit-submission_queues.adb
+QS=cubit-submission_queues.ads
+mutant "queue: service takes without a completion slot" $QS \
+    "      S.Owed < Completions.Space (S.Answers));" \
+    "      S.Owed <= Completions.Space (S.Answers));" queue_small.ads
+mutant "queue: take forgets the answer owed" $Q \
+    "      S.Owed := S.Owed + 1;" "      null;" queue_small.ads
+mutant "queue: complete forgets it answered" $Q \
+    "      S.Owed := S.Owed - 1;" "      null;" queue_small.ads
+mutant "queue: client may exceed the completion slots" $QS \
+    "      C.Pending < Completion_Slots);" "      True);" queue_small.ads
+mutant "queue: unsolicited answer counted" $Q \
+    "      OK := C.Pending > 0;
+      if OK then" "      OK := True;
+      if C.Pending > 0 then" queue_small.ads
+mutant "queue: answer loses its token" $Q \
+    "      Completions.Push (S.Answers, Ring, (Tag => Tag, Answer => Answer));" \
+    "      Completions.Push (S.Answers, Ring, (Tag => 0, Answer => Answer));" queue_small.ads
 echo "$killed of $((total - 1)) mutants killed (plus the control)."

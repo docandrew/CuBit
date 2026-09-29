@@ -111,6 +111,10 @@ package body Connection_Table with SPARK_Mode is
 
       S := T.Stack (T.Top);
       pragma Assert (not T.Used (S) and then T.Spot (S) = T.Top);
+      --  S is free, so no bucket holds it: only (B, P) will.
+      pragma Assert
+        (for all B2 in Bucket_Id =>
+           (for all P2 in Position => T.Buckets (B2) (P2) /= S));
       T.Top := T.Top - 1;
       T.Spot (S) := 0;
       T.Used (S) := True;
@@ -119,6 +123,17 @@ package body Connection_Table with SPARK_Mode is
       T.Place (S) := P;
       T.Buckets (B) (P) := S;
       T.N := T.N + 1;
+      pragma Assert
+        (for all B2 in Bucket_Id =>
+           (for all P2 in Position =>
+              (if B2 /= B or else P2 /= P then T.Buckets (B2) (P2) = Old.Buckets (B2) (P2))));
+      pragma Assert
+        (for all B2 in Bucket_Id =>
+           (for all P2 in Position =>
+              (if T.Buckets (B2) (P2) /= No_Slot then
+                 T.Buckets (B2) (P2) in Slot and then T.Used (T.Buckets (B2) (P2)) and then
+                 T.Home (T.Buckets (B2) (P2)) = B2 and then
+                 T.Place (T.Buckets (B2) (P2)) = P2)));
       Lemma_Free_Update (Old.Used, T.Used, S, Max_Connections);
       H := (Index => S, Generation => T.Gen (S));
       Status := Inserted;

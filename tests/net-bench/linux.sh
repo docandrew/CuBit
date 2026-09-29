@@ -66,10 +66,22 @@ server=$!
 trap 'kill $server 2>/dev/null || true' EXIT
 sleep 0.5
 log=$out/serial.log
+# NET_BENCH_FEATURES=cubit: the device offers only what CuBit's driver uses
+# (legacy virtio, no checksum/segmentation offload, no mergeable receive
+# buffers, no event index), so Linux's stack is measured on CuBit's device
+# features: the difference is the driver's share of the gap.
+# NET_BENCH_DEVICE_OPTIONS: any other virtio-net-pci properties (",event_idx=off").
+device_features="${NET_BENCH_DEVICE_OPTIONS:-}"
+if [ "${NET_BENCH_FEATURES:-}" = cubit ]; then
+    device_features=",disable-modern=on,csum=off,guest_csum=off,gso=off"
+    device_features+=",guest_tso4=off,guest_tso6=off,guest_ecn=off,guest_ufo=off"
+    device_features+=",host_tso4=off,host_tso6=off,host_ecn=off,host_ufo=off"
+    device_features+=",mrg_rxbuf=off,event_idx=off,mq=off"
+fi
 timeout "$timeout_s" qemu-system-x86_64 -accel "$accel" -machine q35 -cpu Broadwell \
     -smp "$cpus" -m "$memory" -kernel "$kernel/bzImage" -initrd "$out/initramfs.gz" \
     -append "console=ttyS0 quiet panic=-1" -serial "file:$log" -display none \
-    -device virtio-net-pci,netdev=net0 \
+    -device "virtio-net-pci,netdev=net0${device_features}" \
     -netdev user,id=net0,hostfwd=tcp:127.0.0.1:18486-10.0.2.15:8080 -no-reboot || true
 grep -a "^linux:\|^net-bench:" "$log"
 grep -aq "^net-bench: done" "$log"

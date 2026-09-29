@@ -79,14 +79,25 @@ begin
    Reset;
    Samples := [others => 1];
    FW.Acquire (Leases (Case_Index), 3, Status);
-   pragma Assert (Status = FW.Timed_Out and Reads = 3 and Written = 0 and Pauses = 2);
+   pragma Assert (Status = FW.Poll_Exhausted and Reads = 3 and Written = 0 and Pauses = 2);
    pragma Assert (FW.State (Leases (Case_Index)) = FW.Faulted);
    FW.Acquire (Leases (Case_Index), 1, Status);
    pragma Assert (Status = FW.Invalid_State and Reads = 3 and Written = 0);
    Reset;
    FW.Acquire (Leases (Case_Index), 3, Status);
-   pragma Assert (Status = FW.Timed_Out and Reads = 4 and Written = 2 and Pauses = 2);
+   pragma Assert (Status = FW.Poll_Exhausted and Reads = 4 and Written = 2 and Pauses = 2);
    pragma Assert (Writes (1) = 16#10001# and Writes (2) = 16#10000#);
+   Reset;
+   -- The final admitted sample may succeed; an elapsed deadline on that
+   -- same sample takes precedence over both its ACK and the sample cap.
+   Samples (4) := 1;
+   FW.Acquire (Leases (Case_Index), 3, Status);
+   pragma Assert (Status = FW.Ready and Reads = 4 and Pauses = 2);
+   Reset;
+   Samples (4) := 1; Read_Advance := 10;
+   FW.Acquire (Leases (Case_Index), 3, Status, 40);
+   pragma Assert (Status = FW.Timed_Out and Reads = 4 and Written = 2);
+   pragma Assert (FW.State (Leases (Case_Index)) = FW.Faulted);
    Reset;
    Samples (1) := Unsigned_32'Last;
    FW.Acquire (Leases (Case_Index), 3, Status);
@@ -104,7 +115,7 @@ begin
    Prime_Lease;
    Samples := [others => 1];
    FW.Release (Leases (Case_Index), 3, Status);
-   pragma Assert (Status = FW.Timed_Out and Written = 1 and Reads = 3);
+   pragma Assert (Status = FW.Poll_Exhausted and Written = 1 and Reads = 3);
    pragma Assert (FW.State (Leases (Case_Index)) = FW.Faulted);
    Reset;
    Prime_Lease;

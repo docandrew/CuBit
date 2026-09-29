@@ -4,6 +4,7 @@
 --
 -- Capability Table Operations - Implementation
 -------------------------------------------------------------------------------
+with Device_Memory_Admission;
 package body Capabilities.Operations with
     SPARK_Mode => On
 is
@@ -386,7 +387,8 @@ is
     procedure checkDeviceMemAccess (table   : in     CapabilityTable;
                                     base    : in     Unsigned_64;
                                     size    : in     Unsigned_64;
-                                    allowed :    out Boolean)
+                                    allowed :    out Boolean;
+                                    requireWrite : in Boolean := True)
     is
         capBase : Unsigned_64;
         capSize : Unsigned_64;
@@ -400,10 +402,11 @@ is
 
                 -- Check range coverage: [base .. base+size-1] within
                 -- [capBase .. capBase+capSize-1]
-                if base >= capBase and then
-                   base + size <= capBase + capSize then
-                    if table(i).rights(RIGHT_READ) and then
-                       table(i).rights(RIGHT_WRITE) then
+                if Device_Memory_Admission.Covers (capBase, capSize, base, size) then
+                    if Device_Memory_Admission.Allows
+                      (table(i).rights(RIGHT_READ), table(i).rights(RIGHT_WRITE),
+                       (if requireWrite then Device_Memory_Admission.Read_Write
+                        else Device_Memory_Admission.Read_Only)) then
                         allowed := True;
                         return;
                     end if;

@@ -2,6 +2,10 @@ with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Net;
 with Internet_Checksum;
+with UDP_Frame;
+with TCP_Frame;
+with IPv4_Frame;
+with IPv4_Header;
 with IPv6_Header;
 with IPv6_Link_Proof;
 with TCP_Slots;
@@ -203,6 +207,72 @@ procedure Main is
       Ada.Text_IO.Put_Line ("Checksums: word-wise and proved (Internet_Checksum) sums match RFC 1071 for lengths 0 .. 1600 at every alignment PASS");
    end Test_Checksums;
 
+
+   --  UDP frames built by the proved UDP_Frame: fields, payload and both
+   --  checksums, against netstack's word-wise transport checksum.
+   procedure Test_UDP_Frames is
+      use type IPv4_Header.Bytes;
+      Seed : Unsigned_32 := 4242;
+      function Next return Unsigned_8 is
+      begin
+         Seed := Seed * 1_103_515_245 + 12_345;
+         return Unsigned_8 (Shift_Right (Seed, 16) and 16#FF#);
+      end Next;
+      Src : constant IPv4_Header.Address := [10, 0, 2, 15];
+      Dst : constant IPv4_Header.Address := [93, 184, 216, 34];
+   begin
+      for Len in 0 .. UDP_Frame.Maximum_Payload loop
+         declare
+            Payload : constant IPv4_Header.Bytes (5 .. 5 + Len - 1) := [others => Next];
+            Frame : IPv4_Header.Bytes (0 .. UDP_Frame.Payload_At + Len - 1);
+            SP : constant Unsigned_16 := Unsigned_16 (Next) * 256 + Unsigned_16 (Next);
+            DP : constant Unsigned_16 := Unsigned_16 (Next) * 256 + Unsigned_16 (Next);
+         begin
+            UDP_Frame.Build ([2, 0, 0, 0, 0, 1], [2, 0, 0, 0, 0, 2], Src, Dst, SP, DP,
+                             Payload, Frame);
+            pragma Assert (IPv4_Frame.Emittable (Frame));
+            pragma Assert (UDP_Frame.U16 (Frame, 34) = SP and then UDP_Frame.U16 (Frame, 36) = DP);
+            pragma Assert (Natural (UDP_Frame.U16 (Frame, 38)) = 8 + Len);
+            pragma Assert (Frame (42 .. Frame'Last) = Payload);
+            pragma Assert (UDP_Frame.U16 (Frame, 40) /= 0);
+            pragma Assert (Internet_Checksum.Of_Bytes (Internet_Checksum.Bytes (Frame (14 .. 33))) = 0);
+            pragma Assert (UDP_Frame.Transport_Sum (Src, Dst, Frame (34 .. Frame'Last)) = 0);
+            pragma Assert (UDP_Frame.Checksum_OK (Src, Dst, Frame (34 .. Frame'Last)));
+            pragma Assert (Net.transportChecksum
+                             ([10, 0, 2, 15], [93, 184, 216, 34], Net.PROTO_UDP,
+                              Frame (34)'Address, 8 + Len) = 0);
+         end;
+      end loop;
+      Ada.Text_IO.Put_Line ("UDP frames (proved builder): ports, length, payload, IPv4 and UDP checksums for every payload length 0 .. 1472 PASS");
+   end Test_UDP_Frames;
+
+
+   --  TCP frames finished by the proved TCP_Frame: both checksums, against
+   --  netstack's word-wise transport checksum, for every segment length.
+   procedure Test_TCP_Frames is
+      Seed : Unsigned_32 := 777;
+      function Next return Unsigned_8 is
+      begin
+         Seed := Seed * 1_103_515_245 + 12_345;
+         return Unsigned_8 (Shift_Right (Seed, 16) and 16#FF#);
+      end Next;
+   begin
+      for Len in TCP_Frame.TCP_Minimum .. 1_514 - TCP_Frame.Segment_At loop
+         declare
+            Frame : IPv4_Header.Bytes (0 .. TCP_Frame.Segment_At + Len - 1) := [others => Next];
+         begin
+            TCP_Frame.Finish (Frame, [2, 0, 0, 0, 0, 1], [2, 0, 0, 0, 0, 2],
+                              [10, 0, 2, 15], [93, 184, 216, 34]);
+            pragma Assert (IPv4_Frame.Emittable (Frame));
+            pragma Assert (Internet_Checksum.Of_Bytes (Internet_Checksum.Bytes (Frame (14 .. 33))) = 0);
+            pragma Assert (Net.transportChecksum
+                             ([10, 0, 2, 15], [93, 184, 216, 34], Net.PROTO_TCP,
+                              Frame (34)'Address, Len) = 0);
+         end;
+      end loop;
+      Ada.Text_IO.Put_Line ("TCP frames (proved finisher): IPv4 and TCP checksums for every segment length 20 .. 1460 PASS");
+   end Test_TCP_Frames;
+
    --  The proved IPv6_Link instance: detection, then a router solicitation.
    procedure Test_IPv6_Link is
       use IPv6_Link_Proof;
@@ -291,4 +361,6 @@ begin
    Test_Checksums;
    Test_Time_Wait;
    Test_IPv6_Link;
+   Test_UDP_Frames;
+   Test_TCP_Frames;
 end Main;

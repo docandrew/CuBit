@@ -9,5 +9,14 @@ project Net_TCP_Tests is
    end Compiler;
    package Prove is
       for Proof_Switches ("Ada") use ("--level=1");
+      --  Level 1's provers, with more time where a check is marginal: it
+      --  proves alone but can miss level 1's 1 s budget in a saturated
+      --  -j0 run (SPARKTLS gives its units --timeout=60 --memlimit=4000).
+      for Proof_Switches ("slaac_table.adb") use
+        ("--level=1", "--timeout=60", "--memlimit=4000");
+      for Proof_Switches ("endpoint_small.ads") use
+        ("--level=1", "--timeout=60", "--memlimit=4000");
+      for Proof_Switches ("table_netstack.ads") use
+        ("--level=1", "--timeout=60", "--memlimit=4000");
    end Prove;
 end Net_TCP_Tests;

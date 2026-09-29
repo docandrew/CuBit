@@ -1,5 +1,52 @@
 # Intel probe foundation (Linux-hosted)
 
+Native pipe and primary-plane adapters (2026-09-28): build `native_pipe.gpr`
+and `native_plane.gpr`, then run `build-native-pipe/native_pipe_tests` and
+`build-native-plane/native_plane_tests` in Nix. These compile the actual native
+adapters. The pipe fixture exercises rejected calls without host MMIO and
+substitutes mapping readiness and the clock boundary; the plane fixture supplies
+a retained-power callback plus anonymous host pages for all twenty plane
+register sets. `native_cursor.gpr` similarly exercises all four cursor adapters.
+Neither establishes successful physical acquisition.
+
+Current native source requests display pages 0x45000/0x46000/0x44000 in slots
+24/25/28, avoiding GGTT slot26 and log observer slot27. After successful reset,
+A/B power acquisition uses retained PW1/PW2 references and initial-boot PCI IRQ
+disable evidence. C/D additionally require the completed native DC transition.
+The collector logs two samples of five planes and one cursor on each held pipe.
+`scanout_inventory.gpr` combines all24 observations; missing/changing/unsupported
+observations reject the inventory. Its non-overlap contract is SPARK-proved and
+tested against65536 interval cases. This is exclusion evidence, not authority
+to reclaim or publish GPU addresses. Native four-pipe validation is pending.
+
+ADS storage layout: build `tests/intel-gpu/ads_layout.gpr` in Nix, then run
+`tests/intel-gpu/build-ads-layout/ads_layout_tests`. Covers1089 section-size
+combinations, exact/one-byte-short backing, unrepresentable sizes and rejection
+of1MiB backing for the selected firmware's private area. No native ADS data
+initialization or GPU publication is exercised.
+
+Forcewake fallback: `nix develop -c bash -c 'gprbuild -P
+tests/intel-gpu/forcewake_fallback.gpr &&
+tests/intel-gpu/build-forcewake-fallback/forcewake_fallback_tests'`.
+Twenty injected clear/set cases cover missing original ACK, stuck fallback
+set/clear, invalid MMIO/time, stalled/regressing clock, late read and original
+ACK lost during cleanup. A composed lease test recovers acquire and release.
+These are regression tests, not hardware validation or SPARK proof.
+Three lease-hook guards additionally reject recovery on bad MMIO/regressing
+clock and verify that a failed recovery leaves the lease quarantined.
+
+PCI IRQ snapshot regression: `nix develop -c bash -c 'gprbuild -P
+tests/intel-gpu/probe.gpr pci_interrupt_tests.adb &&
+tests/intel-gpu/build/pci_interrupt_tests'` (join command lines).
+Tests sweep all 256 flag bytes and 256 capability pointers, recognized
+record bounds for all MSI formats, duplicate/cyclic/overlapping chains, and
+all-ones input. GNATprove level 2 on `intel_gpu_pci_interrupts.adb` proves
+runtime checks, dependencies and termination, not PCI hardware quiescence
+or full functional decoding correctness. Bootstrap v4 carries this observation
+to the native Intel logstore publisher. Tests exhaust all 256 encodings,
+round-trip valid ones, reject contradictory/reserved bits and reject old v3.
+Both native services compile; no physical-hardware IRQ handoff claim is made.
+
 Run from the repository root in the pinned Nix environment:
 
 ```sh
@@ -115,6 +162,12 @@ nix develop -c bash -c 'cd kernel && alr exec -- gnatprove -P ../tests/intel-gpu
 ```
 # GGTT publication transaction
 
+The display-claim suite also exercises the `PW1_Write_Allowed` predicate used
+by the native parent-power adapter: all524288 aligned register offsets with
+both permitted masks,192 single-bit mutations, unaligned offsets and invalid
+all-ones readbacks. These are hosted tests of write selection, not proof of
+fresh hardware reads, serialization, MMIO ordering or physical power behavior.
+
 `build/ggtt_publish_tests` is Linux-hosted callback fault injection, not a
 hardware or native CuBit test. It checks occupied entries (including nonzero
 non-present entries), preflight read failures, failed preparation, every write
@@ -124,13 +177,81 @@ Out-of-range, unaligned, partial-page and over-budget inputs produce no I/O.
 The exact upper DMA boundary is covered. Device ownership, concurrent writer
 exclusion and platform visibility/invalidation are external obligations.
 
+The generic `Maximum_Bytes` defaults to 1 MiB for upload staging. ADS callers
+can explicitly select 16 MiB; an absolute 16 MiB limit still bounds callbacks.
+Tests opt in to a full 4096-page ADS mapping, verify every PTE, and inject
+failure at the final preflight read, final write and final readback. Preflight
+failure makes no writes; either later failure retains the claim and quarantines
+the attempt without invalidation. This is hosted regression evidence, not
+native ADS publication or a proof of MMIO ordering.
+
 Publication now consumes a limited, noncopyable `Attempt`. Its state records
 whether no writes occurred, writes may have occurred, or publication completed.
 Every scenario repeats with the same and a different GPU start address: both
 must reject without any callback and preserve the prior phase. There is no
 reset/free operation; callers must keep the attempt associated with its retained
-allocation and must not create a replacement attempt to bypass quarantine.
+allocation. Publication also requires a shared `GGTT_Reservations.Ledger`;
+table geometry comes from its one-shot admission, not a second caller argument.
+Before any callback, the publisher reserves the exact GPU range. All acquired
+claims remain retained, including failures before the first write. Tests create
+a fresh attempt with different DMA backing after each reservation-bearing
+scenario and verify rejection without callbacks. A default ledger and a range
+outside an admitted aperture likewise cannot reach hardware callbacks.
+The caller must retain and share the same ledger; constructing a replacement
+ledger is not a supported way to bypass quarantine. Firmware/display exclusions
+must be established before admission, never inferred from empty PTEs.
 This is API misuse resistance, not kernel enforcement or a concurrency proof.
+
+The ledger now has a Ghost `Valid` predicate covering nonempty claims,
+containment in the admitted aperture and pairwise nonoverlap. `Admit` and
+`Reserve` require and preserve it; their contracts also prove that admission
+does not change the claim count and only `Reserved` increments it by one.
+Ghost snapshots additionally prove every existing claim is preserved on all
+outcomes, and a successful reservation appends exactly the requested extent.
+The limited runtime ledger remains noncopyable; snapshots exist only for proof.
+GNATprove level 2 discharges both functional contracts, loop invariants and
+run-time checks (no unproved checks or `Assume` pragmas). The hosted 1296-pair
+regression also passes with contracts enabled. Reproduce the proof with:
+
+```sh
+nix develop -c bash -c 'cd kernel && alr exec -- gnatprove -P ../tests/intel-gpu/ggtt_reservations.gpr -u intel_gpu_ggtt_reservations.adb --level=2 --report=all --checks-as-errors=on -j2'
+```
+
+This proves a serialized software ledger property, conditional on a valid
+incoming ledger. It does not prove platform aperture admission, MMIO/DMA
+visibility, native driver concurrency or successful firmware execution.
+
+`Find_Free` proposes a page-sized, power-of-two-aligned range inside an already
+admitted aperture, scanning at most 65 passes over 64 unsorted claims. It does
+not reserve the proposal: the same serialized owner must subsequently call
+`Reserve`/`Publish`, which may still reject descriptor exhaustion. No search
+result confers authority over firmware memory or empty GGTT entries.
+
+`Allocate` composes search and reservation in one serialized-owner operation.
+It returns an address only with `Reserved`; otherwise the address is zero,
+the count is unchanged, and existing claims are preserved. It supplies no
+internal lock and does not publish PTEs. Tests cover repeated aligned claims,
+descriptor exhaustion, invalid size, a full aperture and a valid zero address
+(callers must check status, not use zero as a success sentinel). SPARK checks
+the preservation, count and exact successful-claim contracts.
+
+The `Space_Free` return contract proves a successful proposal is nonempty,
+contained and disjoint from existing claims; runtime safety and termination
+are also proved. This quantified contract currently needs level 3 with
+`--timeout=60` using the command above (level 2 did not discharge it).
+An independent eight-page occupancy oracle checks 9216 queries covering every
+occupancy pattern, four alignments, nine sizes and reverse-order insertion.
+Alignment and lowest-fit selection are regression-tested, not part of the
+proved return contract. No claim is made about GPU performance from this test.
+
+`GGTT_Publish.Publish_Available` combines that proposal with the existing
+reservation-and-publication sequence under caller-held exclusive ownership.
+It consumes unsuccessful searches without device callbacks. Hosted tests
+exercise aligned selection past retained claims, successful publication and
+ambiguous first-store failure, then clear the simulated PTEs and verify a new
+attempt still skips the retained claim. Reusing an attempt, including after
+no-space failure, performs no device callbacks. This composition is tested,
+not SPARK-proved, and does not admit a native firmware aperture by itself.
 
 ## Multi-domain forcewake coordination
 
@@ -180,3 +301,284 @@ stop, preparation, reset and cleanup outcomes. Stage callbacks assert ordering;
 tests reject reset after failed stop/preparation, require all-engine cleanup
 after preparation begins, and reject attempt reuse. These abstract callbacks
 do not yet exercise the register-level helpers together or native hardware.
+
+## Linear scanout footprint
+
+`scanout_range.gpr` exercises `Intel_GPU_Scanout_Range.Linear`: a pure
+calculation from already-decoded GGTT surface address, row pitch, dimensions,
+pixel size and source offsets. It retains complete rows including padding and
+leading offset rows, rounds outward to pages, and rejects invalid/overflowing
+geometry or ranges beyond the table aperture. It is not a register decoder or
+an ownership/admission decision. It must not be used for tiled, compressed or
+multi-plane formats. The native caller still needs a stable inventory of all
+enabled planes/cursors and both live and pending surfaces.
+
+```sh
+nix develop -c gprbuild -P tests/intel-gpu/scanout_range.gpr
+nix develop -c tests/intel-gpu/build-scanout-range/scanout_range_tests
+nix develop -c gnatprove -P tests/intel-gpu/scanout_range.gpr -u intel_gpu_scanout_range.adb --level=2 --report=all
+```
+
+The hosted oracle enumerates touched pixel addresses for 5168 layouts and
+checks page containment, full-row retention and rounding tightness. Additional
+cases cover the final page of a 4GiB aperture, overflow and malformed inputs.
+These tests do not establish actual hardware fetch/prefetch behavior or the
+correctness of a future register decoder. Evidence belongs under
+`tests/mesa-software/target/scanout-range-2.log`. The level-2 proof establishes
+runtime checks, termination and the accepted extent's nonempty, page-aligned,
+aperture-contained postcondition. Pixel coverage and tight rounding are tested,
+not included in that proven postcondition. The first proof attempt is retained
+in `scanout-range.log`; it did not prove nonemptiness before explicit rejection
+of zero/under-rounded spans was added.
+
+## ADL-N linear plane decoder
+
+`plane_decode.gpr` tests the strict initial RGB8888 plane-register decoder.
+It covers a 1920x1080 baseline, all 32 control-bit mutations, all-ones values
+and changes in each of six sampled registers, pending/live mismatch, offsets,
+stride flags, address flags and aperture overflow. Every rejected result has
+an invalid extent. No test drives native MMIO or establishes snapshot atomicity.
+
+```sh
+nix develop -c gprbuild -P tests/intel-gpu/plane_decode.gpr
+nix develop -c tests/intel-gpu/build-plane-decode/plane_decode_tests
+nix develop -c gnatprove -P tests/intel-gpu/plane_decode.gpr -u intel_gpu_plane_decode.adb --level=2 --report=all
+```
+
+The contract covers ready/valid agreement and, on success, identical samples,
+matching live/programmed addresses, the supported control values, matching
+surface origin and a nonempty page-sized extent within the aperture. Hardware
+register semantics and the caller's ownership assumptions remain outside that
+proof. Evidence: `tests/mesa-software/target/plane-decode-2.log`.
+
+## Read-only plane collection
+
+`plane_collect.gpr` tests the composed collection/decoder boundary with fake
+power-reference and register-read callbacks. Collection holds Begin/End access
+over exactly two ordered six-field samples. It stops at the first read failure
+or all-ones value, calls End once after every successful Begin, and does not
+decode partial data or data collected with failed cleanup. A reused output is
+cleared before acquisition; failure cannot retain a previously valid extent.
+
+```sh
+nix develop -c gprbuild -P tests/intel-gpu/plane_collect.gpr
+nix develop -c tests/intel-gpu/build-plane-collect/plane_collect_tests
+```
+
+Fault injection covers every read in both passes, callback failure vs all-ones,
+successful vs failed End, changes in each second-sample field, unavailable
+power and a successful decode. These are hosted regression tests, not a proof
+of callback behavior, actual power references, MMIO access or snapshot
+atomicity. There is no native binding yet. Evidence:
+`tests/mesa-software/target/plane-collect-2.log`.
+
+## Display-power owner claim
+
+`display_claim.gpr` covers the one-shot state used by native devmgr request
+0x022F. Tests enumerate designated/caller IDs and badge/device validity, then
+reject every retry or replacement after an owner is consumed. GNATprove
+checks the exact success condition and unchanged owner on denial. It does
+not prove the broker authenticates badges, reads PCI correctly or holds a
+hardware power reference. No writable MMIO accompanies this designation.
+
+```sh
+nix develop -c gprbuild -P tests/intel-gpu/display_claim.gpr
+nix develop -c tests/intel-gpu/build-display-claim/display_claim_tests
+nix develop -c gnatprove -P tests/intel-gpu/display_claim.gpr -u intel_gpu_display_claim.adb --level=2 --report=all
+```
+
+Passing evidence: `tests/mesa-software/target/display-claim-2.log`.
+# Display reference lifecycle
+
+`display_power.gpr` builds `build-display-power/display_power_tests` in Nix.
+It composes the real topology, six request-well transactions and lease against
+shared simulated MMIO, with 512 full-pipe fault combinations and 32 cross-pipe
+reuse transitions. DC-off and IRQ/VGA callbacks remain models, not native code.
+
+`dc_write.gpr` builds `build-dc-write/dc_write_tests` for the low-level
+DC_STATE_EN write verifier. It tests seven-consecutive-read stability,
+sentinels, write errors, independent budgets and periodic glitches. Run both
+build and executable in Nix. Success is not a complete DC-off transition:
+DMC/PHY/clock/DBUF integration is still required before native use.
+
+The per-well MMIO enable transaction is tested with `display_enable.gpr` and
+`build-display-enable/display_enable_tests` in Nix. Its 156 simulated cases
+cover six wells, inherited requests, write/read/clock failures, exact fuse
+selection, late acknowledgments and failure quarantine. Another 84 release
+cases cover inherited retention, safe request removal, cleanup failures and
+successful reuse. Native DC-off/ownership/IRQ/VGA integration remains missing.
+The same executable also composes the real transaction and coordinator for
+36 acquire/release cycles. This guards against skipping inherited *software*
+reference cleanup while still requiring no inherited-release hardware access.
+
+Golden-context reservations use `adln_golden.gpr` and
+`build-adln-golden/adln_golden_tests`: eight media inventories, one image per
+class, exact addresses/state sizes, short backing and upper-bound/alignment
+rejection. GNATprove accepts `-P tests/intel-gpu/adln_golden.gpr
+-u intel_gpu_adln_golden.adb --level=2` for runtime checks and the capacity
+postcondition. There is no captured context or native GPU mapping in this test.
+
+Complete ADS system info uses `ads_system_info.gpr` and
+`build-ads-system-info/ads_system_info_tests`:2048 media/count combinations,
+all640 bytes, count256, ignored reserved bits, changed/all-ones observations
+and invalid topology. GNATprove accepts `-P tests/intel-gpu/ads_system_info.gpr
+-u intel_gpu_ads_system_info.adb --level=2` for runtime/termination checks.
+Native sampling occurs under inventory forcewake and admission after release;
+no GPU publication or hardware validation is implied by hosted tests.
+
+ADS register-section serialization uses `ads_register_image.gpr` and
+`build-ads-register-image/ads_register_image_tests`. Eight media inventories
+check packed records, all4096 descriptor bytes, physical VCS2 indexing, zero
+tails, exact address ceiling fit, overflow/misalignment and failed admission.
+GNATprove accepts `-P tests/intel-gpu/ads_register_image.gpr
+-u intel_gpu_ads_register_image.adb --level=2` for runtime-check analysis.
+This is host-side byte construction, not native GPU mapping or publication.
+
+ADL-N engine settings use `adln_engine_settings.gpr` and
+`build-adln-engine-settings/adln_engine_settings_tests`: all320 engine/MOCS
+combinations, exact render settings, masked-write encoding, preserved unrelated
+RMW bits and invalid/disabled inventory. GNATprove accepts
+`-P tests/intel-gpu/adln_engine_settings.gpr
+-u intel_gpu_adln_engine_settings.adb --level=2` for runtime/termination checks.
+Platform applicability and masks are audited/tested, not a hardware correctness
+proof. This is a pure plan: no MOCS selection, MMIO application or GPU execution.
+
+ADL-N common register sets use `adln_regset.gpr` and
+`build-adln-regset/adln_regset_tests`: all five engine bases,54 exact entries,
+mask/steering flags, sorted offsets, disabled engines, unavailable steering and
+insufficient MMIO extent. Run GNATprove with `-P tests/intel-gpu/adln_regset.gpr
+-u intel_gpu_adln_regset.adb --level=2` for runtime checks and the successful
+entry-count contract. The combined builder also checks315 engine/DSS plans,
+63render/55other counts, sorted uniqueness, common-entry preservation and every
+workaround flag. Exact upstream equivalence is regression evidence, not proof;
+native state initialization/ADS publication remain outstanding.
+
+ADL-N steering selection is exercised with `adln_steering.gpr` and
+`build-adln-steering/adln_steering_tests`: all1024 DSS/L3 mask pairs, all256
+slice masks, range edges, all-ones reads and ignored reserved bits. Run
+GNATprove with `-P tests/intel-gpu/adln_steering.gpr
+-u intel_gpu_adln_steering.adb --level=2` for runtime checks, termination and
+the returned-index bound. Lowest-enabled selection and ABI/platform agreement
+are regression-tested, not a hardware proof. Native fuse reads/MCR writes are
+not enabled by this helper. The native driver separately reads the three fuse
+registers twice under GT forcewake, then uses `Decode_Stable` after successful
+release/identity admission. Tests also reject a change in each sample field
+and matching all-ones samples; SPARK proves differing samples cannot be valid.
+
+ADS register-list construction is exercised with `ads_regset.gpr` and
+`build-ads-regset/ads_regset_tests`. It checks1024 flag/steering encodings,
+full-capacity sorted insertion, exact duplicates, conflicting flags, register
+bounds and atomic failure. Run GNATprove with `-P tests/intel-gpu/ads_regset.gpr
+-u intel_gpu_ads_regset.adb --level=2` for runtime checks and the nonmutation
+failure postcondition. Sorting/ABI equivalence are regression-tested; complete
+engine register lists and hardware steering selection are not provided here.
+
+ADS engine serialization is exercised with `ads_engines.gpr` and
+`build-ads-engines/ads_engines_tests`. Eight media fuse combinations compare
+all576 bytes against an independent expected mapping/mask construction;
+the observed NUC fuse and invalid/missing-core inventories are also checked.
+Run GNATprove with `-P tests/intel-gpu/ads_engines.gpr
+-u intel_gpu_ads_engines.adb --level=2` for runtime checks and the admission
+postcondition. Byte-level ABI agreement is regression-tested, not formally
+proved equivalent to Linux. The generic system-info tail remains unimplemented.
+
+ADS scheduling policy serialization is exercised with `ads_policies.gpr` and
+`build-ads-policies/ads_policies_tests`. Both engine-reset modes check all24
+little-endian DWORDs, including zero queue-depth/reserved fields and unchanged
+bytes outside the reset flag. Run GNATprove with
+`-P tests/intel-gpu/ads_policies.gpr -u intel_gpu_ads_policies.adb --level=2`
+for the exact byte postcondition. This is a serializer, not a native ADS
+publication, firmware compatibility proof or working recovery implementation.
+
+The ADL-N topology is exercised with `display_topology.gpr` and
+`build-display-topology/display_topology_tests`. This checks all 256 low-byte
+selections against an independent dependency oracle and composes all four
+pipe selections with the display lease callbacks. Run GNATprove with
+`-P tests/intel-gpu/display_topology.gpr -u intel_gpu_display_topology.ads --level=2`
+for the pure topology contracts; hardware correctness remains outside that proof.
+
+Run `nix develop -c gprbuild -P tests/intel-gpu/display_lease.gpr`, then
+`nix develop -c tests/intel-gpu/build-display-lease/display_lease_tests`.
+The hosted fault matrix checks ancestor ordering, inherited-request retention,
+failure quarantine and successful reuse. This is regression evidence only:
+the native power-register backend and its platform prerequisites are not yet
+implemented, and no hardware reference is created by running these tests.
+
+Capture-list encoding: build `capture_list.gpr` and run
+`build-capture-list/capture_list_tests` under Nix. Prove with
+`gnatprove -P tests/intel-gpu/capture_list.gpr -u intel_gpu_capture_list.adb
+--level=2 --report=all --checks-as-errors=on -j2`.
+Tests check all 255 nonempty supported lengths, empty-list backing bytes,
+every descriptor word and padding byte, steering combinations, capacity and
+invalid offsets. This is a single-page ADL-N encoder, not platform register
+selection, firmware publication or evidence of working hardware capture.
+
+ADL-N platform capture pages: build `adln_capture.gpr`, run
+`build-adln-capture/adln_capture_tests`; prove the `intel_gpu_adln_capture.adb`
+unit with GNATprove level2/checks-as-errors. The504-case matrix covers all
+eight engine inventories and63 nonempty DSS masks, enabled/absent class
+selection, relative instance offsets and per-DSS steering. These are hosted
+tests and runtime-safety proofs, not native GuC capture validation.
+
+Capture assembly: `ads_capture_image.gpr` builds
+`build-ads-capture-image/ads_capture_image_tests`. GNATprove target is
+`intel_gpu_ads_capture_image.adb` (level2, checks-as-errors). Tests resolve all
+66 pointers across8 inventories, compare each referenced page to its source,
+check zero-page/tail content, and exercise capacity/alignment/ceiling rejection.
+The allocation contract reserves32KiB even when fewer pages are populated.
+
+Read-only upstream ABI audit (supply the downloaded pinned v6.16 header):
+`nix develop -c python3 tests/intel-gpu/check-ads-abi.py /path/to/intel_guc_fwif.h`.
+This checks every packed ADS field offset/size and system-info size, rejecting
+unknown declarations. It neither modifies shared build outputs nor replaces
+native firmware compatibility testing.
+
+ADS composition and CPU materialization:
+
+- `ads_header.gpr`: 256 complete packed-header byte patterns.
+- `ads_initialization.gpr`: 504 inventory/topology combinations, section
+  pointers, allocation boundaries, malformed inputs and disabled recovery.
+- `ads_materialize.gpr`: complete 16 MiB comparison, nonzero array origin,
+  zero padding/reserved storage, and unchanged destination on rejection.
+
+Each executable is `build-ads-NAME/ads_NAME_tests` for NAME `header`,
+`initialization`, or `materialize`. Use the Nix environment and a 64 MiB
+host test stack (`ulimit -s 65536`) for the materialization fixture; production
+receives existing backing and does not allocate that host-test array.
+Prove `intel_gpu_ads_header.adb`, `intel_gpu_ads_initialization.adb`, and
+`intel_gpu_ads_materialize.adb` through their respective projects with
+`--level=2 --checks-as-errors=on`.
+
+The writer checks copy bounds, clears supplied CPU backing, and copies the five
+initialized sections. Its caller must supply an authentic preparation result
+and exclusive writable memory. Neither these checks nor a successful write
+establish GGTT ownership, GPU cache visibility, valid golden-context contents,
+or permission to publish the ADS to firmware. Native driver binding remains
+separate work.
+# Native ADS hardware observation
+
+`dma_cache.gpr` / `build-dma-cache/dma_cache_tests` exercise the shared x86
+CLFLUSH wrapper on a mapped aligned host page and reject invalid extents.
+This requires host CLFLUSH support and does not prove GPU visibility. Native
+ADS initialization now materializes into retained DMA backing and uses that
+wrapper, but remains uncalled until an owned GGTT extent is available. Numeric
+range checks do not replace WOPCM pin-bias, firmware or scanout admission.
+
+The ADS/publication integration regression uses the real ADS composer and
+materializer with modeled PTE callbacks. It checks that a dynamically selected,
+retained GPU extent (skipping an existing claim) supplies ADS pointers before
+any PTE writes. This does not validate native cache visibility or GGTT MMIO.
+The 16MiB hosted fixtures need a larger stack:
+
+```
+nix develop -c bash -c 'gprbuild -P tests/intel-gpu/ads_materialize.gpr && ulimit -s 65536 && tests/intel-gpu/build-ads-materialize/ads_publish_tests && tests/intel-gpu/build-ads-materialize/ads_materialize_tests'
+```
+
+`nix develop -c gprbuild -P tests/intel-gpu/ads_observe.gpr` builds the
+`build-ads-observe/ads_observe_tests` hosted regression. It checks admission
+without MMIO, exactly two ordered samples of topology and doorbell registers,
+all 256 encoded doorbell capacities, invalid reads, sample changes and invalid
+topology. Native reset captures the same observation only after completion,
+with its forcewake reference retained. Captured values feed the future ADS
+initialization path; this is not ADS publication or evidence of working GuC.
+Tests verify callback behavior, not hardware power, MMIO ordering or atomicity.

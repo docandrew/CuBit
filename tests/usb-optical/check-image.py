@@ -50,12 +50,27 @@ _, extent, size, _ = record(pvd, 156)
 root = entries(extent, size)
 apps = entries(*root['apps'])
 boot = entries(*root['boot'])
+# Native boot filesystem paths resolve below apps/, not the ISO root.
+firmware = entries(*apps['firmware'])
+intel = entries(*firmware['intel'])
+licenses = entries(*root['licenses'])
+assert hashlib.sha256(contents(intel['tgl_guc_70.bin'])).hexdigest() == '2f1f57a1b23d186f2592318d1e07a1365968932841ccb3e7177c516ba006e2f6'
+assert hashlib.sha256(contents(licenses['Intel-GPU.txt'])).hexdigest() == '8542aeabf2761935122d693561e16766ce1bcc2b0d003204f9040b7d6d929f2e'
+print('INTEL FIRMWARE AUDIT PASS: reachable firmware and original license hashes match')
 expected_apps = {'config.svc', 'netmgr.svc', 'netstack.svc', 'virtio-net.drv',
-                 'virtio-gpu.drv', 'hda.drv', 'mixer.svc', 'procmgr.svc',
-                 'logstore.svc', 'clock.svc', 'display.svc', 'desktop.svc',
+                 'virtio-gpu.drv', 'intel-gpu.drv', 'hda.drv', 'mixer.svc', 'procmgr.svc',
+                 'logstore.svc', 'clock.svc', 'display.svc', 'desktop.svc', 'boot-logs.app',
                  'ccl-workbench.app', 'devices.app', 'files.app', 'doom.elf', 'doom1.wad',
-                 'sameboy.app', 'config-inspector.app', 'config-storage.svc', 'cubitshell.app'}
+                 'sameboy.app', 'config-inspector.app', 'config-storage.svc', 'cubitshell.app', 'mesa-cube.app'}
 assert expected_apps <= apps.keys(), expected_apps - apps.keys()
+mesa_notices = entries(*licenses['mesa'])
+assert {'MESA-SOURCE.tar.gz', 'UPSTREAM-LICENSE.rst', 'SOURCE.nix',
+        'CUBIT-PLATFORM.patch', 'ELF-SHA256.txt', 'LINKED-SOURCES.json',
+        'LINK-MAP.txt', 'licenses'} <= mesa_notices.keys()
+mesa_hash = contents(mesa_notices['ELF-SHA256.txt']).decode().split()[0]
+assert hashlib.sha256(contents(apps['mesa-cube.app'])).hexdigest() == mesa_hash
+assert contents(mesa_notices['MESA-SOURCE.tar.gz'])[:2] == b'\x1f\x8b'
+print('MESA IMAGE AUDIT PASS: app matches recorded hash; source and notice bundle present')
 cartridges = entries(*apps['sameboy'])
 assert '00.gb' in cartridges
 for name, entry in cartridges.items():

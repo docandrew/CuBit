@@ -64,19 +64,30 @@ package body UDP_Tests is
       Peer : constant Unsigned_32 := 16#0A00_0202#;
       Port : Unsigned_16;
       Previous : Unsigned_16;
+      Repeats  : Natural := 0;
+      --  Starting points as netstack's keyed hash gives them: arbitrary.
+      Seed : Unsigned_32 := 12_345;
+      procedure Open_From
+        (Item : in out Table; Index : Channel_Index; Address : Unsigned_32;
+         Port : Unsigned_16; Success : out Boolean) is
+      begin
+         Seed := Seed * 1_103_515_245 + 12_345;
+         Open (Item, Index, Address, Port,
+               Unsigned_16 (Shift_Right (Seed, 16) and 16#FFFF#), Success);
+      end Open_From;
    begin
-      Open (Item, 0, 0, 123, Success);
+      Open_From (Item, 0, 0, 123, Success);
       pragma Assert (not Success and not Active (Item, 0));
-      Open (Item, 0, Peer, 0, Success);
+      Open_From (Item, 0, Peer, 0, Success);
       pragma Assert (not Success and not Active (Item, 0));
       for I in Channel_Index loop
-         Open (Item, I, Peer, 18446, Success);
+         Open_From (Item, I, Peer, 18446, Success);
          pragma Assert (Success and Local_Port (Item, I) >= First_Ephemeral);
          for J in Channel_Index'First .. I - 1 loop
             pragma Assert (Local_Port (Item, J) /= Local_Port (Item, I));
          end loop;
       end loop;
-      Open (Item, 3, Peer, 18446, Success);
+      Open_From (Item, 3, Peer, 18446, Success);
       pragma Assert (not Success); -- an active slot is not reopened
       Port := Local_Port (Item, 3);
 
@@ -98,23 +109,28 @@ package body UDP_Tests is
       pragma Assert (not Active (Item, 3));
       Deliver (Item, Port, Peer, 18446, 1, Index, Result);
       pragma Assert (Result = No_Channel);
-      Open (Item, 3, Peer, 18446, Success);
-      pragma Assert (Success and Local_Port (Item, 3) /= Port);
+      Open_From (Item, 3, Peer, 18446, Success);
+      pragma Assert (Success);
 
-      --  Wrap the ephemeral cursor repeatedly: ports stay in range and never
-      --  collide with the seven channels that remain open.
+      --  Reopen repeatedly from arbitrary starting points: ports stay in
+      --  range, never collide with the seven channels that remain open, and
+      --  spread over the range (a reuse of the port just freed is allowed,
+      --  as RFC 6056's algorithms allow it, but must be rare).
       Previous := Local_Port (Item, 3);
       for Round in 1 .. 40_000 loop
          Close (Item, 3);
-         Open (Item, 3, Peer, 18446, Success);
-         pragma Assert (Success);
-         pragma Assert (Local_Port (Item, 3) /= Previous);
+         Open_From (Item, 3, Peer, 18446, Success);
+         pragma Assert (Success and Local_Port (Item, 3) >= First_Ephemeral);
+         if Local_Port (Item, 3) = Previous then
+            Repeats := Repeats + 1;
+         end if;
          for J in Channel_Index loop
             pragma Assert
               (J = 3 or else Local_Port (Item, J) /= Local_Port (Item, 3));
          end loop;
          Previous := Local_Port (Item, 3);
       end loop;
+      pragma Assert (Repeats < 40);   --  about 40,000 / 16,384 expected
    end Channels;
 
    procedure Run is

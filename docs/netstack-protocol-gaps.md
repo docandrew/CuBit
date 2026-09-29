@@ -74,6 +74,83 @@ is beyond the gateway.
   listener, the host's connection to the forwarded port is refused within
   3 s (tests/network-authority/peer.py).
 
+- **2026-09-27, late.**
+  - **TCP send window (a bug in the proved engine).** `TCP_Connection`
+    updated SND.WND only when an ACK acknowledged new data, so a pure
+    window update was ignored. After any zero window, the connection
+    could only recover by luck. It now keeps SND.WL1/WL2 and applies RFC
+    9293 3.10.7.4. The rule is stated independently in the
+    postcondition, including that an older segment never changes the
+    window.
+  - **Persist timer (item 11).** It is proved in `TCP_Flow`: backoff
+    capped at 60 s, and the connection is abandoned after 15 unanswered
+    probes. The probe is a bare ACK at SND.UNA-1. The flow simulator's
+    lost-window-update scenario now recovers with one probe (it hung
+    before).
+  - **Proof checks.** All 137 mutants are rejected by the proofs.
+    Earlier, three survived by mutating helper functions that the
+    contracts also use; each rule is now also stated on its own.
+  - **Glue fixes, tested natively on 2026-09-28:** network-authority,
+    tls-service, wget-https, desktop-display and bench-net pass. The
+    frame copy costs nothing measurable (download 4.33 Gbit/s, round trip
+    97 µs, both within the usual range):
+    - received frames are copied out of driver-shared memory before any
+      parsing, and the length is read once (item 30);
+    - a UDP checksum that computes to 0 is sent as 0xFFFF (item 20);
+    - echo requests to broadcast, or from zero, multicast or broadcast
+      sources, are not answered (item 26);
+    - configure and route-add check their words before converting them,
+      and the other request conversions saturate (item 25);
+    - reconfiguring replaces routes instead of appending, flushes the
+      ARP cache on an address or gateway change, and ends connections
+      bound to a withdrawn address as Unreachable (item 9);
+    - ephemeral ports follow RFC 6056 (a keyed hash per destination and
+      a stepping counter). A 4-tuple in TIME-WAIT, or in use, is skipped
+      rather than evicted, and UDP ports start from a keyed hash
+      (item 22).
+
+- **2026-09-28 (item 7).** ARP entries age, following Linux's reachability
+  model.
+  - **States.** The proved `ARP_Cache` gains `Probing`: the mapping stays
+    usable while we ask again, and only the reply to that question may
+    change its address. This keeps the anti-spoofing rule, stated as a
+    postcondition: a request never rewrites it, and neither does an
+    unsolicited reply.
+  - **`Expire`** gives up questions unanswered for 3 s.
+  - **When netstack doubts a mapping:**
+    - on use, after 30 s without confirmation;
+    - when a TCP connection's retransmission timer fires (its next hop
+      may have changed).
+
+    It asks at most once a second per neighbour. An answer with a new
+    address updates every connection behind that neighbour, so
+    connections no longer pin a dead MAC.
+  - **Evidence:** proved at level 1; hosted tests cover a router
+    replacement, forged requests and replies, and expiry. Native
+    network-authority, tls-service, wget-https and bench-net pass, and
+    the benchmark runs past the 30 s reachable time. Not yet tested
+    natively: an actual MAC change.
+  - **Item 8** (queueing packets that wait on ARP) is still open. A miss
+    still drops the frame, and retransmission recovers.
+
+- **2026-09-28 (proof coverage; items 21 and 26).** IPv4 ICMP moved out
+  of the unproved glue into `IPv4_ICMP`, a SPARK generic proved at level
+  1 through a test instance:
+  - **What it covers:** echo replies (token-bucket limited), our own
+    echo requests, and dispatch of errors and ping replies.
+  - **What is proved:** every frame it sends satisfies
+    `IPv4_Frame.Emittable`: EtherType IPv4, a version-4 20-byte header,
+    and a unicast source and destination (not 0.0.0.0, loopback,
+    multicast or broadcast). The "never an amplifier" rule is a theorem
+    rather than an `if` in the glue.
+  - **Replies** carry DF, so their zero IP identification is legal
+    (RFC 6864).
+  - **What stays in the glue:** ping bookkeeping and the TCP/UDP side of
+    error handling, as callbacks, plus one overlay of the received
+    packet.
+  - **Native evidence:** a gateway ping self-test (network-authority now
+    requires "netstack: IPv4 echo reply from").
+
 ## P0: breaks daily use or security
 
 1. DHCP does not work end to end. netstack's raw-open is a stub, netmgr's

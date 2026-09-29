@@ -36,6 +36,10 @@ package body CuBit.Block_Devices is
       mediaValue   : constant Unsigned_64 :=
         Shift_Right (word3, 32) and 16#FF#;
       version      : constant Unsigned_64 := Shift_Right (word3, 48);
+      Offered      : constant Device_Features :=
+        Device_Features (word3 and 16#FFFF_FFFF#);
+      Persistence_Promises : constant Device_Features :=
+        FEATURE_FLUSH or FEATURE_FUA or FEATURE_VOLATILE_CACHE;
    begin
       description := (others => <>);
       if word0 = 0 or else word2 = 0 or else
@@ -45,10 +49,12 @@ package body CuBit.Block_Devices is
          physicalSize < logicalSize or else
          mediaValue > Unsigned_64 (Media_Kind'Pos (Media_Kind'Last)) or else
          (word3 and 16#0000_FF00_0000_0000#) /= 0 or else
-         --  A volatile provider cannot advertise a persistence barrier.
-         (Device_Features (word3 and 16#FFFF_FFFF#) and
-            (FEATURE_VOLATILE or FEATURE_FLUSH)) =
-              (FEATURE_VOLATILE or FEATURE_FLUSH) or else
+         --  A volatile provider cannot advertise any persistence promise.
+         ((Offered and FEATURE_VOLATILE) /= 0 and then
+          (Offered and Persistence_Promises) /= 0) or else
+         --  A volatile cache nothing can flush could never persist a write.
+         (Offered and (FEATURE_VOLATILE_CACHE or FEATURE_FLUSH)) =
+            FEATURE_VOLATILE_CACHE or else
          version /= Unsigned_64 (PROTOCOL_VERSION)
       then
          return False;
