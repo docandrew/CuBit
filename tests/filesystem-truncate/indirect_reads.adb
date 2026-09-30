@@ -127,7 +127,8 @@ begin
          baseline := Calls;
          pragma Assert (baseline = (if doubleIndirect then 3 else 2));
          Check_Data (offset, value);
-         pragma Assert (Calls = baseline + 1); -- warm cache: only payload I/O
+         --  Warm cache: a small read's payload block was cached by the first.
+         pragma Assert (Calls = baseline);
          for boundary in 1 .. baseline loop
             for treatment in Failure_Mode loop
                for style in Failure_Reply loop
@@ -268,14 +269,14 @@ begin
    Check_Data (Triple_Offset, Character'Val (0));
 
    --  Final triple block: cold lookup reads root, middle, leaf and payload;
-   --  warm lookup needs payload only. The next block is unsupported, and the
-   --  completed prefix is reported.
+   --  warm lookup needs nothing (the small read cached its payload). The
+   --  next block is unsupported, and the completed prefix is reported.
    Setup;
    Map_Final_Triple;
    Check_Data (Limit_Offset - 1024, 'U');
    pragma Assert (Calls = 4);
    Check_Data (Limit_Offset - 1024, 'U');
-   pragma Assert (Calls = 5);
+   pragma Assert (Calls = 4);
    Set_Size (Limit_Offset + 1024);
    output := [others => '?'];
    readData (fs, ino, Limit_Offset - 1024, output'Address, 2048, avolume, status);

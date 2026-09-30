@@ -31,7 +31,12 @@ package CCL.Types with SPARK_Mode is
      (Image (Left) = Image (Right));
    function Valid_Name (Item : Name) return Boolean;
 
-   type Shape is (Primitive, Product, Sum, Resource);
+   --  Sequence: a homogeneous List<T> whose elements live in the secondary
+   --  region (docs/ccl-repl.md, "Lists"); Parts (1) holds the element type.
+   --  Callable: a function type; Parts (1 .. Count - 1) are its parameter
+   --  types and Parts (Count) its result type. Function types are
+   --  structural: the same parameters and result give the same type.
+   type Shape is (Primitive, Product, Sum, Resource, Sequence, Callable);
    --  In a product these are fields; in a sum they are alternatives whose
    --  payload type may itself be a product. Unit is the empty product.
    --  Resource is an opaque live reference, not a constructible record or an
@@ -97,6 +102,49 @@ package CCL.Types with SPARK_Mode is
         elsif Result = Resource_Already_Specialized then
           Ref /= Invalid_Type and Item = Item'Old
         else Ref = Invalid_Type and Item = Item'Old);
+
+   --  Materialize List<Element> for an already known element type. The
+   --  identifier-safe spelling is List-Element (presented as List<Element>).
+   --  Specializing an existing list returns it unchanged.
+   type List_Result is
+     (List_Specialized, List_Already_Specialized, Invalid_List_Element,
+      List_Name_Too_Long, List_Registry_Full);
+   procedure Specialize_List
+     (Item : in out Registry; Element : Type_Reference;
+      Ref : out Type_Reference; Result : out List_Result)
+   with Global => null,
+     Post =>
+       (if Result = List_Specialized then Ref = Last (Item) and
+          Last (Item) = Last (Item'Old) + 1
+        elsif Result = List_Already_Specialized then
+          Ref /= Invalid_Type and Item = Item'Old
+        else Ref = Invalid_Type and Item = Item'Old);
+   function Is_List (Item : Registry; Ref : Type_Reference) return Boolean;
+
+   --  The function type taking Parameters and returning Result: an existing
+   --  one with the same parts, or a new one named Fn<n> (presented from its
+   --  parts, e.g. Function (Integer) Integer).
+   Maximum_Function_Parameters : constant := 8;
+   subtype Function_Parameter_Count is Natural range 0 .. Maximum_Function_Parameters;
+   type Function_Parameters is
+     array (1 .. Maximum_Function_Parameters) of Type_Reference;
+   type Function_Result is
+     (Function_Specialized, Function_Already_Specialized,
+      Invalid_Function_Part, Function_Registry_Full);
+   procedure Specialize_Function
+     (Item : in out Registry; Parameters : Function_Parameters;
+      Count : Function_Parameter_Count; Result_Type : Type_Reference;
+      Ref : out Type_Reference; Result : out Function_Result)
+   with Global => null,
+     Post =>
+       (if Result = Function_Specialized then Ref = Last (Item) and
+          Last (Item) = Last (Item'Old) + 1
+        elsif Result = Function_Already_Specialized then
+          Ref /= Invalid_Type and Item = Item'Old
+        else Ref = Invalid_Type and Item = Item'Old);
+   function Is_Function (Item : Registry; Ref : Type_Reference) return Boolean;
+   --  The element type of a list type (Invalid_Type for other types).
+   function Element_Of (Item : Registry; Ref : Type_Reference) return Type_Reference;
 
    type Import_Result is
      (Imported, Invalid_Root, Conflicting_Definition, Import_Full);

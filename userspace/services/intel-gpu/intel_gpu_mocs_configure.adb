@@ -1,7 +1,12 @@
 with Intel_GPU_ADLN_MOCS;
+with Intel_GPU_L3_MOCS_Registers;
+with Intel_GPU_MOCS_Control_Registers;
 package body Intel_GPU_MOCS_Configure is
    use Interfaces;
    package Plan renames Intel_GPU_ADLN_MOCS;
+   function Matches (Index : Plan.Register_Index; Raw : Unsigned_32) return Boolean is
+     (if Index < 64 then Intel_GPU_MOCS_Control_Registers.Matches (Raw, Plan.Value (Index))
+      else Intel_GPU_L3_MOCS_Registers.Matches (Raw, Plan.Value (Index)));
    function Last_Index (Object : Attempt) return Natural is (Object.Index);
    function Last_Raw (Object : Attempt) return Unsigned_32 is (Object.Raw);
    procedure Configure (Object : in out Attempt; Status : out Result) is
@@ -16,14 +21,14 @@ package body Intel_GPU_MOCS_Configure is
          Object.Raw := Read32 (Plan.Offset (I));
          if not Owner_Ready then Status := Ownership_Lost; return; end if;
          if Object.Raw = Unsigned_32'Last then Status := Read_Failed; return; end if;
-         if Object.Raw /= Plan.Value (I) then
+         if not Matches (I, Object.Raw) then
             Write32 (Plan.Offset (I), Plan.Value (I), OK);
             if not Owner_Ready then Status := Ownership_Lost; return; end if;
             if not OK then Status := Write_Failed; return; end if;
          end if;
          Object.Raw := Read32 (Plan.Offset (I));
          if not Owner_Ready then Status := Ownership_Lost; return; end if;
-         if Object.Raw /= Plan.Value (I) then Status := Readback_Failed; return; end if;
+         if not Matches (I, Object.Raw) then Status := Readback_Failed; return; end if;
       end loop;
       Status := Ready;
    end Configure;

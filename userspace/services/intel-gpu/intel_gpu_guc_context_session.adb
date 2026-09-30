@@ -63,6 +63,25 @@ package body Intel_GPU_GuC_Context_Session is
       elsif Outcome = Life.Backpressure then Status := Backpressure;
       else Status := Queued; end if;
    end Submit;
+   procedure Notify_Work (Object : in out Session; Tail_Published : Boolean;
+                          Status : out Result) is
+      Fence : Unsigned_16;
+      Accepted : Boolean;
+      Outcome : Life.Send_Result;
+   begin
+      Status := Rejected;
+      if State (Object) /= Life.Enabled then return; end if;
+      if not Owner_Ready then Fail (Object); Status := Faulted; return; end if;
+      if not Tail_Published then return; end if;
+      Life.Prepare_Notification (Object.Life, Fence, Accepted);
+      if not Accepted then return; end if;
+      Queue (Events.Words (Requests.Schedule (Object.ID)), Fence, Outcome);
+      Life.Notification_Sent (Object.Life, Outcome);
+      if not Owner_Ready then Fail (Object); end if;
+      if State (Object) = Life.Quarantined then Status := Faulted;
+      elsif Outcome = Life.Backpressure then Status := Backpressure;
+      else Status := Queued; end if;
+   end Notify_Work;
    procedure Dispatch (Object : in out Session; Payload : Events.Words;
                        Fence : Unsigned_16; Status : out Result) is
       Item : constant Events.Event := Events.Decode (Payload, Fence);

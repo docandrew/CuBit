@@ -22,24 +22,19 @@ package Process.Queues is
     ---------------------------------------------------------------------------
     function isEmpty (q : ProcQueue) return Boolean;
 
-    -- Atomic readiness test for the priority-ordered run queue. No dequeue,
-    -- preference boost or borrowed authority; the scheduler still selects.
-    type Priority_Query is (At_Least, Strictly_Higher);
-    function hasReadyPeer (q : in out ProcQueue; priority : Integer;
-                          relation : Priority_Query := At_Least) return Boolean;
-    -- Newly awakened work at/above this priority can shorten the next peer
-    -- opportunity. Selection remains unchanged priority/FIFO, never a boost.
-    function hasAwakenedPeer (q : in out ProcQueue; priority : Integer) return Boolean;
+    ---------------------------------------------------------------------------
+    -- Ready lists (docs/scheduler.md) are ordered by run key, earliest first,
+    -- FIFO among equal keys. An empty list's head key is Idle_Key.
+    ---------------------------------------------------------------------------
+    function headKey (q : in out ProcQueue) return Interfaces.Unsigned_64;
 
-    ---------------------------------------------------------------------------
-    -- Work stealing. An entry is stealable when it has ordinary priority
-    -- (not an idle thread), is not pinned, is not being retired, and is not
-    -- still executing (switching out) on another CPU.
-    ---------------------------------------------------------------------------
-    function hasStealable (q : in out ProcQueue) return Boolean;
-    -- Remove the first stealable entry (highest priority, then FIFO), or
-    -- return NO_THREAD.
-    procedure stealFrom (q : in out ProcQueue; result : out ThreadID);
+    -- Another CPU may take an entry that is ordinary work (not an idle
+    -- thread), unpinned, not being retired, and not still executing
+    -- (switching out) on another CPU (Work_Stealing.Eligible).
+    -- The key of the first such entry, or Idle_Key if there is none.
+    function takeableKey (q : in out ProcQueue) return Interfaces.Unsigned_64;
+    -- Remove the first such entry, or return NO_THREAD.
+    procedure takeFirst (q : in out ProcQueue; result : out ThreadID);
 
     ---------------------------------------------------------------------------
     -- popFront
@@ -56,11 +51,9 @@ package Process.Queues is
     -- ---------------------------------------------------------------------------
     procedure popItem (q : in out ProcQueue; pid : ThreadID;
                        result : out ThreadID);
-    type Removal_Kind is (Ordinary_Queue, Delta_Queue);
     -- Caller holds Process.lock; selecting/removing membership is one
-    -- queue-locked operation. Delta removal preserves successors' deadlines.
-    procedure detach (q : in out ProcQueue; pid : ThreadID;
-                      kind : Removal_Kind := Ordinary_Queue);
+    -- queue-locked operation.
+    procedure detach (q : in out ProcQueue; pid : ThreadID);
 
     ---------------------------------------------------------------------------
     -- enqueue
@@ -83,51 +76,44 @@ package Process.Queues is
                                  result : out ThreadID);
 
     ---------------------------------------------------------------------------
-    -- insert
-    -- Inserts in descending key order; equal keys retain FIFO arrival order.
+    -- insertByKey
+    -- Inserts a ready thread in ascending key order; equal keys keep FIFO
+    -- arrival order. The key is kept in the thread's runKey.
     ---------------------------------------------------------------------------
-    type Equal_Placement is (After_Peers, Resume_Turn);
-    procedure insert (q      : in out ProcQueue;
-                      pid    : ThreadID;
-                      key    : Integer;
-                      result : out ThreadID;
-                      placement : Equal_Placement := After_Peers);
+    procedure insertByKey (q      : in out ProcQueue;
+                           pid    : ThreadID;
+                           key    : Interfaces.Unsigned_64;
+                           result : out ThreadID);
+    -- The same; the caller holds q.lock (Process.sleepUntil publishes the
+    -- sleeping state and the insertion together).
+    procedure insertByKeyNoLock (q      : in out ProcQueue;
+                                 pid    : ThreadID;
+                                 key    : Interfaces.Unsigned_64;
+                                 result : out ThreadID);
 
-    ---------------------------------------------------------------------------
-    -- insertDelta
-    -- inserts into a given queue in descending key order, using delta queue
-    -- math to ensure delay is delta from previous node.
-    ---------------------------------------------------------------------------
-    procedure insertDelta (q            : in out ProcQueue;
-                           pid          : ThreadID;
-                           delayFromNow : Integer;
-                           result       : out ThreadID);
-
-    ---------------------------------------------------------------------------
-    -- insertDeltaNoLock
-    -- Same as insertDelta but caller must already hold q.lock.
-    -- Used by Process.sleep to atomically set state + insert.
-    ---------------------------------------------------------------------------
-    procedure insertDeltaNoLock (q            : in out ProcQueue;
-                                 pid          : ThreadID;
-                                 delayFromNow : Integer;
-                                 result       : out ThreadID);
 
     ---------------------------------------------------------------------------
     -- wakeFromSleep
-    -- Remove a specific process from the sleep delta queue and ready it.
-    -- Adjusts the successor's delta to preserve remaining timings.
+    -- Remove a specific process from the sleep list and ready it.
     -- Acquires Process.lock before sleepList.lock; caller must not hold either.
     ---------------------------------------------------------------------------
     procedure wakeFromSleep (pid : ThreadID; woken : out Boolean);
 
     ---------------------------------------------------------------------------
-    -- clockTick
-    -- Adjust the delta queue entries by the elapsed tick, wake up any sleeping
-    -- processes whose delay has elapsed.
-    -- Acquires Process.lock; timer caller must not already hold it.
+    -- The sleep list holds sleeping threads by wake time: absolute TSC
+    -- deadlines, earliest first (insertByKeyNoLock). Any CPU's timer
+    -- interrupt may expire them.
     ---------------------------------------------------------------------------
-    procedure clockTick (elapsed : Interfaces.Unsigned_64 := 1);
+    -- The earliest wake deadline, or Idle_Key when nobody sleeps. A lock-free
+    -- look: callers use it only to decide whether to take the locks.
+    function nextWake return Interfaces.Unsigned_64;
+    -- The earliest wake deadline, at or before horizon, of a sleeper whose
+    -- home is cpu (Idle_Key if none): the one cpu arms its timer for.
+    function nextWakeOn (cpu : Natural; horizon : Interfaces.Unsigned_64)
+      return Interfaces.Unsigned_64;
+    -- Wake every sleeper whose deadline is at or before now.
+    -- Acquires Process.lock; the timer caller must not already hold it.
+    procedure expireSleepers (now : Interfaces.Unsigned_64);
 
     ---------------------------------------------------------------------------
     -- print

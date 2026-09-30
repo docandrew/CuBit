@@ -8,9 +8,13 @@ bit. This is a limited support profile, not complete Ext2 conformance.
 
 - Linux-created revision 1 volumes, 1/2/4 KiB blocks, typed directory entries
   (`FILETYPE`); existing geometry checks still apply.
-- Compatible features: `EXT_ATTR`, `RESIZE_INODE`, `DIR_INDEX`, or subsets.
-  This does not implement an xattr API, online resizing or indexed-directory
-  mutation. Existing indexed directories are rejected for mutation.
+- Compatible features: `EXT_ATTR`, `RESIZE_INODE`, `DIR_INDEX`,
+  `HAS_JOURNAL` (ext3: an internal JBD2 journal, see "ext3 journaling"), or
+  subsets. This does not implement an xattr API, online resizing or
+  indexed-directory mutation. Existing indexed directories are rejected for
+  mutation.
+- Incompatible features: `FILETYPE`, plus `RECOVER` (needs_recovery) with a
+  journal: the journal is replayed at admission.
 - Read-only-compatible features: `SPARSE_SUPER`, `LARGE_FILE`, or subsets.
 - Other bits, revisions, creator OSes and legacy untyped directory records
   are rejected before a usable session is published.
@@ -262,9 +266,11 @@ session). Scope and ordering:
   barriers between steps gives no such guarantee. Orphans of files unlinked
   while open survive a crash as allocated zero-link inodes, which e2fsck
   frees: ext2 has no orphan list.
-- ext3 volumes: each operation, including the reclaim of an unlinked file,
-  lands in the running JBD2 transaction and a removal commits before any
-  freed block can be reused.
+- ext3 volumes: each operation is one journal operation (see below);
+  blocks a removal releases are freed by the commit of its transaction, so
+  nothing reuses them before. A file unlinked while open is on the ext3
+  orphan list until its release, so a crash in between is completed by the
+  next mount.
 
 Validation (Linux-hosted, production code over a file-backed device):
 `tests/filesystem-journal/namespace.py` on mke2fs-made ext2 and ext3 images
@@ -274,4 +280,83 @@ alternate cached writes lost; replay by e2fsck and by CuBit agree block for
 block and are clean) and an error reply at every command (before or after
 the transfer; the failure must reach the caller) leave the tree of the last
 flush or the next step, and on ext2 only the benign findings above.
+
+## ext3 journaling (JBD2)
+
+ext3 volumes (an internal JBD2 journal; Linux's on-disk format, as written
+by `mke2fs -j`/`tune2fs -j` and by Linux's ext3/ext4 driver) are journaled
+in Linux's `data=ordered` mode:
+
+- **Replay at admission.** A journal left dirty (by Linux or by CuBit) is
+  replayed before the volume is used: descriptor, revoke and commit blocks;
+  v1 (crc32), v2/v3 (crc32c) checksums; 64-bit tags; escaped blocks;
+  wrapped logs. Replay stops where jbd2 stops (torn or bad commit) and the
+  next transaction is end + 1, as jbd2's. The SPARK codecs (`Jbd2_Format`,
+  `Jbd2_Revokes`) are proved at level 1.
+- **Transactions.** Metadata and small file writes (under 64 KiB) are
+  written into a write-back block cache; larger file writes go home at
+  once, in one transfer each. A commit writes the cached file data home,
+  then the log copies and descriptors, one barrier (covering all data sent
+  home before it), the commit block (FUA, or write plus barrier), then the
+  checkpoint home, a barrier and the journal superblock. A commit happens
+  at a flush (fsync, the service's 5 s tick), at half the log, or under
+  cache pressure between operations; a flush adds no barrier after a
+  commit that just ended with one. Unlike jbd2, every commit checkpoints at
+  once (the log always restarts at its first block): one more barrier per
+  commit than Linux, and no log wrap to manage.
+- **Operations (handles).** Each operation reserves credits (an upper bound
+  on the metadata blocks it dirties: an allocation run, a create or mkdir,
+  an unlink or rmdir, a resize batch); a commit that would not leave room
+  happens before it starts, never inside it. Inside an operation, a full
+  cache set sends file data home at once and parks metadata in a spill area
+  beside the cache until the next commit. Large writes and truncates are
+  several operations (one per allocation run or resize batch), as in Linux.
+- **Released blocks.** Blocks a truncate, unlink or rmdir releases are
+  freed in the bitmaps by the commit of the transaction holding the
+  detach, not before (jbd2's rule): no allocation in the running
+  transaction can reuse them, so new data sent home early never lands in
+  blocks an uncommitted detach still references, and a removal needs no
+  commit of its own.
+- **Orphans.** A file unlinked while open is put on the ext3 orphan list
+  (superblock `s_last_orphan`, linked through dtime) in the same operation
+  as its unlink, and taken off in the same operation that frees it. The next
+  admission after a crash frees listed orphans, as Linux's mount and e2fsck
+  do.
+
+What a crash leaves (power loss with a volatile device cache, any subset of
+unflushed writes lost):
+
+- everything up to the last completed flush, and possibly later whole
+  operations (a prefix, in order); never part of an operation;
+- no metadata inconsistency: after replay (by CuBit, by e2fsck or by Linux's
+  mount) `e2fsck -fn` is clean;
+- file data written in place before the crash may be old or new block by
+  block (data=ordered does not journal overwrites); newly allocated data is
+  on disk before the metadata that points to it;
+- an unlink is completed by the next mount (the inode is on the orphan list
+  from its unlink until it is freed);
+- a shrinking truncate that spans several operations may be partly done: the
+  file keeps its size, with holes where blocks were released. Linux lists
+  truncations as orphans too; this service does not yet.
+
+Validation (Linux-hosted production code unless stated):
+
+- `tests/filesystem-journal/run.py`: 36 journals written by e2fsprogs
+  (1/2/4 KiB, revoke, escape, wrap, torn commit, v1/v2/v3 checksums, 64-bit)
+  replay block-identically to `e2fsck -E journal_only`, with the same next
+  sequence.
+- `crash.py`, `namespace.py`, `pressure.py`: a power cut at every device
+  command (all, none or alternate cached writes lost) and an I/O error at
+  every command; replay by e2fsck and by CuBit agree block for block (orphans
+  aside) and are clean; `pressure.py` forces full cache sets and checks that
+  no commit splits an operation.
+- `native/native.sh` (live CuBit and a real Linux kernel in QEMU on one
+  NVMe disk): Linux writes and crashes with a dirty journal; CuBit replays
+  it at boot, checks Linux's files, and unlinks, mkdirs, rmdirs and writes
+  through its own journal; QEMU is then killed; e2fsck is clean after
+  replay, and Linux mounts the volume (replaying CuBit's journal), sees the
+  expected tree and unmounts cleanly.
+- `tests/filesystem-truncate/mutations.sh`: mutants of the block map, block
+  cache index, JBD2 codecs, directory records, journal and namespace code
+  must fail the proof or these tests.
 

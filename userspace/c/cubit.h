@@ -73,6 +73,8 @@ typedef long                ssize_t;
 #define SYSCALL_GETTIME         27
 #define SYSCALL_SLEEP           28
 #define SYSCALL_YIELD           118
+/* Sleep until an absolute time on the monotonic microsecond clock (114). */
+#define SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND 119
 
 /* Framebuffer */
 #define SYSCALL_MAPFB           29

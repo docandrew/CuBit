@@ -20,8 +20,9 @@ is
      (Open_File, Close_File, Read_File, Write_File, Open_Directory,
       Seek_File, Read_Directory_Page, Rename_File, Close_Directory,
       Open_Child_Directory, Rewind_Directory, Flush_File,
-      Read_File_At, Write_File_At, Resize_File, Set_Access_Profile,
-      Revoke_Access_Profile);
+      Read_File_At, Write_File_At, Resize_File, Unlink_Path,
+      Make_Directory, Remove_Directory, Set_Access_Profile,
+      Revoke_Access_Profile, Release_Owner);
    for Filesystem_Operation use
      (Open_File             => 16#0001#,
       Close_File            => 16#0002#,
@@ -38,8 +39,12 @@ is
       Read_File_At          => 16#000D#,
       Write_File_At         => 16#000E#,
       Resize_File           => 16#000F#,
+      Unlink_Path           => 16#0010#,
+      Make_Directory        => 16#0011#,
+      Remove_Directory      => 16#0012#,
       Set_Access_Profile    => 16#0080#,
-      Revoke_Access_Profile => 16#0081#);
+      Revoke_Access_Profile => 16#0081#,
+      Release_Owner         => 16#0082#);
 
    --  Ada case choices require static expressions. These constants are the
    --  sole numeric definition site for the userspace filesystem protocol.
@@ -58,8 +63,18 @@ is
    OP_READ_AT : constant Unsigned_32 := 16#000D#;
    OP_WRITE_AT : constant Unsigned_32 := 16#000E#;
    OP_RESIZE_FILE : constant Unsigned_32 := 16#000F#;
+   --  UNLINK, MKDIR, RMDIR (calls): words as OPEN (0 = path grant slot,
+   --  1 = path length, 3 = grant generation). MKDIR replies words 0 = the
+   --  new inode.
+   OP_UNLINK     : constant Unsigned_32 := 16#0010#;
+   OP_MKDIR      : constant Unsigned_32 := 16#0011#;
+   OP_RMDIR      : constant Unsigned_32 := 16#0012#;
    OP_SET_ACL    : constant Unsigned_32 := 16#0080#;
    OP_REVOKE_ACL : constant Unsigned_32 := 16#0081#;
+   --  A process has exited (procmgr only; words 0 = its PID): its handles
+   --  are released (buffered writes harvested first), its request queue
+   --  and grants returned, and its access profile cleared.
+   OP_RELEASE_OWNER : constant Unsigned_32 := 16#0082#;
 
    REPLY_OK            : constant Unsigned_32 := 16#F000#;
    REPLY_ERR           : constant Unsigned_32 := 16#F001#;
@@ -80,6 +95,7 @@ is
    --  This is distinct from insufficient caller authority or a missing name.
    REPLY_UNSUPPORTED_OBJECT : constant Unsigned_32 := 16#F00E#;
    REPLY_SHARING_VIOLATION : constant Unsigned_32 := 16#F00F#;
+   REPLY_NOT_EMPTY : constant Unsigned_32 := 16#F010#;   --  rmdir
 
    MAXIMUM_PATH_BYTES : constant := CuBit.Directory_Paths.Maximum_Bytes;
    subtype Path_Byte_Count is Natural range 0 .. MAXIMUM_PATH_BYTES;

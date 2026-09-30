@@ -21,7 +21,24 @@ procedure Main is
       pragma Assert (A.Status = Converted);
       Convert (A.Rendered.Data (1 .. A.Rendered.Length),
         (if Style = Lisp then Basic else Lisp), Style, Catalog, B);
+      if B.Status /= Converted then
+         Put_Line (Source & " -> " & A.Rendered.Data (1 .. A.Rendered.Length) &
+                   " -> " & B.Status'Image & " " & B.Diagnostic'Image);
+      end if;
       pragma Assert (B.Status = Converted);
+      if A.Output_Nodes /= B.Input_Nodes or else A.Canonical /= B.Canonical then
+         Put_Line ("MISMATCH " & Source);
+         for I in A.Output_Nodes'Range loop
+            if A.Output_Nodes (I) /= B.Input_Nodes (I) then
+               Put_Line ("  node" & I'Image & " rendered" & A.Output_Nodes (I).First'Image &
+                         A.Output_Nodes (I).After_Last'Image & " reparsed" &
+                         B.Input_Nodes (I).First'Image & B.Input_Nodes (I).After_Last'Image);
+               exit;
+            end if;
+         end loop;
+         Put_Line ("  A canonical: " & A.Canonical.Data (1 .. A.Canonical.Length));
+         Put_Line ("  B canonical: " & B.Canonical.Data (1 .. B.Canonical.Length));
+      end if;
       pragma Assert (A.Output_Nodes = B.Input_Nodes);
       pragma Assert (A.Canonical = B.Canonical);
       Convert (B.Rendered.Data (1 .. B.Rendered.Length), Style,
@@ -41,6 +58,16 @@ procedure Main is
       pragma Assert (Outcome.Status = CCL.Language.Succeeded);
       pragma Assert (Outcome.Result_Value.Integer = Expected);
    end Value_Is;
+   procedure Truth_Is (Source : String; Expected : Boolean) is
+      View : Conversion;
+      Outcome : CCL.Language.Interpretation_Result;
+   begin
+      Convert (Source, Basic, Lisp, Catalog, View);
+      pragma Assert (View.Status = Converted);
+      CCL.Language.Interpret (View.Canonical.Data (1 .. View.Canonical.Length), 4096, Outcome);
+      pragma Assert (Outcome.Status = CCL.Language.Succeeded);
+      pragma Assert (Outcome.Result_Value.Boolean = Expected);
+   end Truth_Is;
    procedure Reject (Source : String) is
       View : Conversion;
    begin
@@ -112,7 +139,75 @@ begin
    Reject ("1 / / 2");
    Reject ("(1 + 2");
    Reject ("1 MODulus 2");
-   Reject ("1 - 2"); -- subtraction is not in the core language yet
+   --  Subtraction, comparisons and connectives, both dialects.
+   Check ("(- 50 8)");
+   Check ("(< (- 10 3) (* 2 4))");
+   Check ("(or (and (<= 1 2) (/= 3 4)) (>= 5 6))");
+   Check ("(let ((sort-by 3)) (- sort-by 1))");
+   Check ("50 - 8", Basic);
+   Check ("LET a = 1 IN a <> 2 AND a >= 0 OR not(a = 1) END", Basic);
+   Check ("(1 < 2) = (3 > 2)", Basic);
+   Value_Is ("1 - 2", -1);
+   Value_Is ("10 - 3 - 2", 5);
+   Value_Is ("10 - (3 - 2)", 9);
+   Value_Is ("2 * 3 - 1", 5);
+   Value_Is ("LET sort-by = 3 IN sort-by - 1 END", 2);
+   Truth_Is ("1 < 2 AND 3 > 2", True);
+   Truth_Is ("1 > 2 OR 2 >= 2", True);
+   Truth_Is ("1 <> 1", False);
+   Truth_Is ("1<2", True);
+   Truth_Is ("5 - 3 <= 2", True);
+   Truth_Is ("true OR 1 / 0 = 1", True);
+   Truth_Is ("false AND 1 / 0 = 1", False);
+   --  Lists: [a b c] in Lisp, [a, b, c] in BASIC, the same node.
+   Check ("[1 2 3]");
+   Check ("(length [(- 5 1) 2])");
+   Check ("(at [""a"" ""b""] 2)");
+   Check ("[1, 2 + 3, 4 * 5]", Basic);
+   Check ("LET xs = [10, 20, 30] IN length(xs) + at(xs, 2) END", Basic);
+   Value_Is ("length([1, 2, 3])", 3);
+   Value_Is ("at([7, 8, 9], 3) - 1", 8);
+   Reject ("[1, 2");
+   Reject ("[1 2]");
+   --  First-class functions: function-typed parameters, named functions as
+   --  values, calls through values.
+   Check ("(define (double (x Integer)) Integer (* x 2)) " &
+          "(define (apply (f (Function (Integer) Integer)) (x Integer)) Integer (f x)) " &
+          "(apply double 21)");
+   Check ("FUNCTION inc(x AS Integer) AS Integer RETURN x + 1 END " &
+          "FUNCTION twice(f AS FUNCTION(Integer) AS Integer, x AS Integer) AS Integer RETURN f(f(x)) END " &
+          "twice(inc, 5)", Basic);
+   Value_Is ("FUNCTION inc(x AS Integer) AS Integer RETURN x + 1 END " &
+             "FUNCTION twice(f AS FUNCTION(Integer) AS Integer, x AS Integer) AS Integer RETURN f(f(x)) END " &
+             "twice(inc, 5)", 7);
+   --  Anonymous functions: (fn ((x T)) body) / FUNCTION(x AS T) body.
+   Check ("(let ((twice (fn ((n Integer)) (+ n n)))) (twice 21))");
+   Check ("(define (apply (f (Function (Integer) Integer)) (x Integer)) Integer (f x)) " &
+          "(apply (fn ((n Integer)) (* n n)) 9)");
+   Check ("LET twice = FUNCTION(n AS Integer) n + n IN twice(21) END", Basic);
+   Check ("FUNCTION apply(f AS FUNCTION(Integer) AS Integer, x AS Integer) AS Integer RETURN f(x) END " &
+          "apply(FUNCTION(n AS Integer) n * n, 9)", Basic);
+   Value_Is ("FUNCTION apply(f AS FUNCTION(Integer) AS Integer, x AS Integer) AS Integer RETURN f(x) END " &
+             "apply(FUNCTION(n AS Integer) n * n, 9)", 81);
+   Value_Is ("LET twice = FUNCTION(n AS Integer) n + n IN twice(21) END", 42);
+   --  List builtins: (each f xs) / each(f, xs), collection last.
+   Check ("(each (fn ((n Integer)) (* n n)) [1 2 3])");
+   Check ("(fold (fn ((a Integer) (n Integer)) (+ a n)) 0 (range 1 10))");
+   Check ("(sum (where (fn ((n Integer)) (> n 2)) [1 2 3 4]))");
+   Check ("(first 2 (range 1 5))");
+   Check ("each(FUNCTION(n AS Integer) n * n, [1, 2, 3])", Basic);
+   Check ("sum(where(FUNCTION(n AS Integer) n MOD 2 = 0, range(1, 10)))", Basic);
+   Check ("any(FUNCTION(n AS Integer) n > 3, [1, 5])", Basic);
+   Value_Is ("sum(where(FUNCTION(n AS Integer) n MOD 2 = 0, range(1, 10)))", 30);
+   Value_Is ("fold(FUNCTION(a AS Integer, n AS Integer) a * n, 1, range(1, 5))", 120);
+   --  List types in declarations: (List T) / LIST(T); captures need no syntax.
+   Check ("(define (scale (k Integer) (xs (List Integer))) (List Integer) (each (fn ((n Integer)) (* n k)) xs)) (scale 10 [1 2])");
+   Check ("FUNCTION scale(k AS Integer, xs AS LIST(Integer)) AS LIST(Integer) RETURN each(FUNCTION(n AS Integer) n * k, xs) END " &
+          "scale(10, [1, 2])", Basic);
+   Value_Is ("FUNCTION total(k AS Integer, xs AS LIST(Integer)) AS Integer RETURN sum(each(FUNCTION(n AS Integer) n * k, xs)) END " &
+             "total(10, [1, 2])", 30);
+   Reject ("1 <");
+   Reject ("1 AND");
    declare
       use type CCL.Catalog.Grant_Result;
       use type CCL.VM.Value_Kind;

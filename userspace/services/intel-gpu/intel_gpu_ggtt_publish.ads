@@ -11,7 +11,9 @@ generic
    -- Caller holds exclusive device/GPU-VA ownership for the entire call.
    -- The ledger's aperture is platform-admitted; backing is retained.
    -- These callbacks must be bounded and must not raise exceptions.
-   -- Invoked only after retaining this exact GPU extent and checking its PTEs.
+   -- Invoked only after retaining this exact GPU extent and checking MMIO
+   -- readability. The owner has quiesced old execution and admitted replacement
+   -- of inherited mappings in this interval; nonzero PTEs are not reservations.
    -- ADS pointers must use GPU_Start, not a speculative search result or DMA
    -- address. Initialize and make backing device-visible before returning True.
    -- Do not mutate/reenter Reservations from this callback.
@@ -48,25 +50,28 @@ package Intel_GPU_GGTT_Publish is
    -- One attempt per retained allocation/reservation. No reset/copy/release
    -- operation is provided. Serialization and association with the actual
    -- allocation remain caller obligations; this is not an OS capability.
-   type Result is (Rejected, Protected_Range, Reservation_Failed, Occupied, Read_Failed, Prepare_Failed,
+   type Result is (Rejected, Protected_Range, Reservation_Failed, Read_Failed, Prepare_Failed,
                    Quarantined, Published);
-   -- Rejected/Protected_Range/Reservation_Failed/Occupied/Read_Failed/Prepare_Failed:
+   -- Rejected/Protected_Range/Reservation_Failed/Read_Failed/Prepare_Failed:
    -- no writes this invocation. Every acquired reservation remains retained,
    -- including pre-write failures. A new Attempt cannot bypass the ledger.
    -- Rejection of a reused attempt does not undo its previous publication.
    -- Quarantined: at least one write may have reached the device. Never free
    -- or remap that backing on this result, including a failed first write.
    -- Published is mapping publication, NOT firmware authentication/execution.
-   -- A zero PTE is necessary here but never sufficient to establish ownership.
-   -- Firmware may reserve a range with zero entries: aperture admission is
-   -- external. Use the same ledger for all publications to this aperture.
+   -- Neither zero nor nonzero PTEs establish ownership. Aperture admission
+   -- authorizes bounded replacement after takeover; Range_Allowed protects
+   -- retained scanout/platform ranges. Use one ledger per admitted aperture.
+   -- DMA_Start is a device-visible DMA address, NOT a CPU virtual address.
+   -- The caller retains its DMA mapping/domain and backing through quarantine.
    procedure Publish
      (Object : in out Attempt;
       Reservations : in out Intel_GPU_GGTT_Reservations.Ledger;
       GPU_Start, DMA_Start, Bytes : Interfaces.Unsigned_64;
       Status : out Result);
    -- Search and publish under the same caller-held exclusive ownership.
-   -- Search reads candidate PTEs, skipping retained software claims. Failure
+   -- Search uses software claims and exclusions only, never PTE contents.
+   -- Evidence reads/nonzero count the selected range's pre-write sample. Failure
    -- consumes the attempt without preparation, writes or invalidation. Callbacks
    -- must not reenter this attempt or mutate the ledger. Selected_Start
    -- records the proposed address even on later failure; only Published

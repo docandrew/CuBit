@@ -20,7 +20,8 @@ package body Intel_GPU_Submission_Image with SPARK_Mode is
            (Batch_VA,
             [DMA_Base + Offsets (PML4), DMA_Base + Offsets (PDPT),
              DMA_Base + Offsets (PD), DMA_Base + Offsets (PT)],
-            [DMA_Base + Offsets (Batch_Buffer), DMA_Base + Offsets (Completion_Page)]);
+            [0 => DMA_Base + Offsets (Batch_Buffer),
+             1 => DMA_Base + Offsets (Completion_Page), others => 0]);
          Index : Natural;
          Entry_Value : Unsigned_64;
       begin

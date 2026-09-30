@@ -24,6 +24,16 @@ package Intel_GPU_GuC_Context_Lifecycle with SPARK_Mode is
    -- failure. Pending is recorded before send, not after notification.
    procedure Sent (Object : in out Context; Result : Send_Result)
      with Post => (if State (Object)'Old = Quarantined then State (Object) = Quarantined);
+   -- Repeated single-LRC scheduling notifications while already enabled.
+   -- Caller has published a new tail with the required cache ordering. A
+   -- notification is NOT a GPU completion and holds no scheduling-done credit.
+   -- Fences above the four lifetime controls are never reused after queued or
+   -- uncertain publication; exhaustion rejects without wrapping. The caller
+   -- reserves that remaining fence interval for this single context lifetime.
+   procedure Prepare_Notification
+     (Object : in out Context; Fence : out Unsigned_16; Accepted : out Boolean);
+   procedure Notification_Sent (Object : in out Context; Result : Send_Result)
+     with Post => (if State (Object)'Old = Quarantined then State (Object) = Quarantined);
    -- Dispatcher has already checked HXG origin/type/shape. A failure for any
    -- previously attempted fence quarantines even after later actions queued.
    procedure Failed_Request (Object : in out Context; Fence : Unsigned_16;
@@ -48,5 +58,7 @@ private
       Active : Operation := Register_Context;
       Sending : Boolean := False;
       Credits : Natural range 0 .. 4 := 0;
+      Notification_Sending : Boolean := False;
+      Next_Notification : Unsigned_32 range 0 .. 65536 := 0;
    end record;
 end Intel_GPU_GuC_Context_Lifecycle;

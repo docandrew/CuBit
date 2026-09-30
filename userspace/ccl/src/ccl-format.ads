@@ -130,7 +130,9 @@ is
       Invalid_Operand,
       Noncanonical_Instruction,
       Unsupported_Ownership_Metadata,
-      Bytecode_Invalid);
+      Bytecode_Invalid,
+      --  Version 7 has no function table; functions arrive with version 8.
+      Unsupported_Functions);
 
    procedure Encode
      (Candidate  : CCL.VM.Program;

@@ -58,12 +58,76 @@ package body Directory_Blocks with SPARK_Mode => On is
       Result := Available;
    end Next;
 
+   --  A record's header alone (Next without copying the name): the hot
+   --  path of a removal compares names in place.
+   type Header_Info is record
+      Inode : Unsigned_32 := 0;
+      Kind : Unsigned_8 := 0;
+      Length : Natural range 0 .. 255 := 0;
+   end record;
+
+   procedure Next_Header
+     (Data : Block_Data; Size : Block_Length; Maximum_Inode : Unsigned_32;
+      Position : in out Byte_Count; Item : out Header_Info;
+      Result : out Read_Result)
+     with Post =>
+       (if Result = Available then
+          Position >= Position'Old + Header_Bytes + Item.Length and
+          Position <= Size and
+          Item.Inode <= Maximum_Inode)
+   is
+      Span : Natural;
+   begin
+      Item := (others => <>);
+      Result := Malformed;
+      if Position = Size then
+         Result := End_Of_Block;
+         return;
+      elsif Position > Size or else Size - Position < Header_Bytes then
+         return;
+      end if;
+      Span := Natural (Data (Position + 5)) +
+        256 * Natural (Data (Position + 6));
+      if Span < Header_Bytes or else Span mod 4 /= 0 or else
+        Span > Size - Position
+      then
+         return;
+      end if;
+      Item.Length := Natural (Data (Position + 7));
+      if Item.Length > Span - Header_Bytes then
+         return;
+      end if;
+      Item.Inode := Unsigned_32 (Data (Position + 1)) or
+        Shift_Left (Unsigned_32 (Data (Position + 2)), 8) or
+        Shift_Left (Unsigned_32 (Data (Position + 3)), 16) or
+        Shift_Left (Unsigned_32 (Data (Position + 4)), 24);
+      Item.Kind := Data (Position + 8);
+      if Item.Inode > Maximum_Inode or else
+        (Item.Inode /= 0 and then Item.Length = 0)
+      then
+         return;
+      end if;
+      Position := Position + Span;
+      Result := Available;
+   end Next_Header;
+
+   --  The name of the record at Start is Name (compared in place).
+   function Name_Is
+     (Data : Block_Data; Start : Byte_Count; Name : String) return Boolean
+   is (for all K in Name'Range =>
+         Character'Val (Data (Start + Header_Bytes + (K - Name'First + 1))) = Name (K))
+     with Pre => Name'Length <= 255 and then
+                 Start <= Maximum_Bytes - Header_Bytes - Name'Length;
+
    function Matches (Item : Record_Info; Name : String) return Boolean is
      (Item.Inode /= 0 and then Item.Name (1 .. Item.Length) = Name);
 
    procedure Set_Span
      (Data : in out Block_Data; Position : Byte_Count; Span : Block_Length)
-     with Pre => Position <= Maximum_Bytes - Header_Bytes
+     with Pre => Position <= Maximum_Bytes - Header_Bytes,
+          Post => (for all I in Data'Range =>
+                     (if I /= Position + 5 and I /= Position + 6 then
+                        Data (I) = Data'Old (I)))
    is
    begin
       Data (Position + 5) := Unsigned_8 (Span mod 256);
@@ -174,7 +238,10 @@ package body Directory_Blocks with SPARK_Mode => On is
 
    procedure Put_Inode
      (Data : in out Block_Data; Position : Byte_Count; Number : Unsigned_32)
-     with Pre => Position <= Maximum_Bytes - Header_Bytes
+     with Pre => Position <= Maximum_Bytes - Header_Bytes,
+          Post => (for all I in Data'Range =>
+                     (if I < Position + 1 or I > Position + 4 then
+                        Data (I) = Data'Old (I)))
    is
    begin
       Data (Position + 1) := Unsigned_8 (Number and 255);
@@ -193,7 +260,7 @@ package body Directory_Blocks with SPARK_Mode => On is
       Start : Byte_Count;
       Match_Start, Match_End, Match_Previous : Byte_Count := 0;
       Has_Previous, Match_Has_Previous, Found : Boolean := False;
-      Item : Record_Info;
+      Item : Header_Info;
       Read_Status : Read_Result;
       Number : Unsigned_32 := 0;
    begin
@@ -220,12 +287,14 @@ package body Directory_Blocks with SPARK_Mode => On is
                  Match_Previous + Header_Bytes <= Match_Start));
          pragma Loop_Variant (Decreases => Size - Position);
          Start := Position;
-         Next (Data, Size, Maximum_Inode, Position, Item, Read_Status);
+         Next_Header (Data, Size, Maximum_Inode, Position, Item, Read_Status);
          exit when Read_Status = End_Of_Block;
          if Read_Status = Malformed then
             return;
          end if;
-         if Matches (Item, Name) then
+         if Item.Inode /= 0 and then Item.Length = Name'Length and then
+           Name_Is (Data, Start, Name)
+         then
             if Found then
                return; -- Duplicate names are malformed metadata.
             end if;
@@ -253,6 +322,91 @@ package body Directory_Blocks with SPARK_Mode => On is
       Removed := Number;
       Result := Prepared;
    end Prepare_Remove;
+
+   procedure Remove_In_Place
+     (Data : in out Block_Data; Size : Block_Length;
+      Maximum_Inode : Unsigned_32; Name : String;
+      Removed : out Unsigned_32; Kind : out Unsigned_8;
+      Changed_First, Changed_Last : out Positive;
+      Result : out Prepare_Result)
+   is
+      Position, Last_Start : Byte_Count := 0;
+      Start : Byte_Count;
+      Match_Start, Match_End, Match_Previous : Byte_Count := 0;
+      Has_Previous, Match_Has_Previous, Found : Boolean := False;
+      Item : Header_Info;
+      Read_Status : Read_Result;
+      Number : Unsigned_32 := 0;
+      Number_Kind : Unsigned_8 := 0;
+   begin
+      Removed := 0;
+      Kind := 0;
+      Changed_First := 1;
+      Changed_Last := 1;
+      Result := Invalid_Name;
+      if not CuBit.Directory_Paths.Valid_Child_Name (Name) then
+         return;
+      end if;
+      Result := Malformed_Block;
+      if Size mod 4 /= 0 then
+         return;
+      end if;
+      --  The whole block is walked, as Prepare_Remove does: a duplicate
+      --  name is malformed metadata and nothing changes.
+      while Position < Size loop
+         pragma Loop_Invariant (Position <= Size);
+         pragma Loop_Invariant
+           (if Has_Previous then Last_Start + Header_Bytes <= Position);
+         pragma Loop_Invariant
+           (if Found then
+              Match_Start + Header_Bytes <= Match_End and
+              Match_End <= Position and
+              Number in 1 .. Maximum_Inode and
+              (if Match_Has_Previous then
+                 Match_Previous + Header_Bytes <= Match_Start));
+         pragma Loop_Invariant (Data = Data'Loop_Entry);
+         pragma Loop_Variant (Decreases => Size - Position);
+         Start := Position;
+         Next_Header (Data, Size, Maximum_Inode, Position, Item, Read_Status);
+         exit when Read_Status = End_Of_Block;
+         if Read_Status = Malformed then
+            return;
+         end if;
+         if Item.Inode /= 0 and then Item.Length = Name'Length and then
+           Name_Is (Data, Start, Name)
+         then
+            if Found then
+               return; -- Duplicate names are malformed metadata.
+            end if;
+            Found := True;
+            Match_Start := Start;
+            Match_End := Position;
+            Match_Previous := Last_Start;
+            Match_Has_Previous := Has_Previous;
+            Number := Item.Inode;
+            Number_Kind := Item.Kind;
+         end if;
+         Last_Start := Start;
+         Has_Previous := True;
+      end loop;
+      if not Found then
+         Result := Source_Not_Found;
+         return;
+      end if;
+      if Match_Has_Previous then
+         --  The preceding record now spans this one too.
+         Set_Span (Data, Match_Previous, Match_End - Match_Previous);
+         Changed_First := Match_Previous + 5;
+         Changed_Last := Match_Previous + 6;
+      else
+         Put_Inode (Data, Match_Start, 0);
+         Changed_First := Match_Start + 1;
+         Changed_Last := Match_Start + 4;
+      end if;
+      Removed := Number;
+      Kind := Number_Kind;
+      Result := Prepared;
+   end Remove_In_Place;
 
    procedure Count_Children
      (Data : Block_Data; Size : Block_Length; Maximum_Inode : Unsigned_32;

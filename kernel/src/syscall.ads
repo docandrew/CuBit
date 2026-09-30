@@ -83,6 +83,7 @@ is
         SYSCALL_RELEASE_OWNED_MEMORY,
         SYSCALL_PROTECT_OWNED_MEMORY,
         SYSCALL_YIELD,
+        SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND,
         SYSCALL_REGISTER_DRIVER)
     with Size => Unsigned_64'Size;
 
@@ -95,6 +96,7 @@ is
         SYSCALL_RELEASE_OWNED_MEMORY => 116,
         SYSCALL_PROTECT_OWNED_MEMORY => 117,
         SYSCALL_YIELD                => 118,
+        SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND => 119,
         SYSCALL_WRITE                => 12,
         SYSCALL_INFO                 => 15,
         SYSCALL_RECEIVE              => 17,

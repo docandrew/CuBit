@@ -63,6 +63,8 @@ private
    function Admits_Ordinary_File
      (Item : Ext2_Inodes.Inode; Unlinked_Allowed : Boolean) return Boolean is
      ((Item.typeAndPermissions and 16#F000#) = 16#8000# and
-      (Item.numHardLinks = 1 or (Unlinked_Allowed and Item.numHardLinks = 0)) and Item.deletedTime = 0 and
+      (Item.numHardLinks = 1 or (Unlinked_Allowed and Item.numHardLinks = 0)) and
+      --  An unlinked inode's dtime links the ext3 orphan list.
+      (Item.deletedTime = 0 or (Unlinked_Allowed and Item.numHardLinks = 0)) and
       Item.flags = 0 and Item.fragmentBlockAddr = 0);
 end Ext2_Support;

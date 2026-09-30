@@ -137,7 +137,13 @@ is
       Switch_Variant,
       Copy_Stack,
       Drop_Under_Top,
-      Project_Field);
+      Project_Field,
+      Subtract_Integer,
+      Less_Integer,
+      Less_Equal_Integer,
+      Equal_Boolean,
+      Call_Function,
+      Return_Function);
    for Op_Code use
      (Halt                    => 0,
       Push_Integer            => 1,
@@ -166,7 +172,13 @@ is
       Switch_Variant          => 24,
       Copy_Stack              => 25,
       Drop_Under_Top          => 26,
-      Project_Field          => 27);
+      Project_Field           => 27,
+      Subtract_Integer        => 28,
+      Less_Integer            => 29,
+      Less_Equal_Integer      => 30,
+      Equal_Boolean           => 31,
+      Call_Function           => 32,
+      Return_Function         => 33);
    for Op_Code'Size use 8;
 
    type Authority_Class is
@@ -245,6 +257,30 @@ is
    end record;
    type Match_Tables is array (Match_Index) of Match_Table;
 
+   --  Functions (docs/ccl-bytecode-format.md, "Functions"): code after the
+   --  main body, one contiguous region each, in declaration order. A function
+   --  may call only functions declared before it, so calls never recurse and
+   --  every program still terminates; at most MAX_FUNCTIONS frames are live.
+   --  Parameters and results are unrestricted data: Integer, Boolean or a
+   --  scalar variant.
+   MAX_FUNCTIONS  : constant := 16;
+   MAX_PARAMETERS : constant := 8;
+   subtype Function_Count is Natural range 0 .. MAX_FUNCTIONS;
+   subtype Function_Index is Natural range 0 .. MAX_FUNCTIONS - 1;
+   subtype Parameter_Count is Natural range 0 .. MAX_PARAMETERS;
+   subtype Parameter_Index is Positive range 1 .. MAX_PARAMETERS;
+   type Parameter_Kinds is array (Parameter_Index) of Value_Kind;
+   type Parameter_Data_Types is array (Parameter_Index) of CCL.Types.Type_Reference;
+   type Function_Declaration is record
+      Entry_PC : Instruction_Index := 0;
+      Count : Parameter_Count := 0;
+      Kinds : Parameter_Kinds := [others => Integer_Value];
+      Data_Types : Parameter_Data_Types := [others => CCL.Types.Invalid_Type];
+      Result : Value_Kind := Integer_Value;
+      Result_Data_Type : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
+   end record;
+   type Function_Array is array (Function_Index) of Function_Declaration;
+
    type Program is record
       Length : Program_Length := 0;
       Code   : Instruction_Array := [others => (others => <>)];
@@ -260,6 +296,8 @@ is
       Local_Data_Types : Local_Data_Type_Array := [others => CCL.Types.Invalid_Type];
       Matches_Length : Match_Count := 0;
       Matches : Match_Tables := [others => (others => <>)];
+      Functions_Length : Function_Count := 0;
+      Functions : Function_Array := [others => (others => <>)];
    end record;
 
    type Validation_Error is
@@ -276,7 +314,8 @@ is
       Invalid_Import,
       Invalid_Data_Type,
       Invalid_Match,
-      Invalid_Ownership);
+      Invalid_Ownership,
+      Invalid_Function);
 
    type Validated_Program is private;
 
@@ -481,6 +520,13 @@ private
       Content : Program;
    end record;
 
+   --  A live call: where to continue, and whose frame it is.
+   type Call_Frame is record
+      Return_PC : Instruction_Index := 0;
+      Callee    : Function_Index := 0;
+   end record;
+   type Call_Frames is array (Function_Index) of Call_Frame;
+
    type Machine_State is record
       Stack               : Runtime_Stacks.Stack;
       PC                  : Instruction_Index := 0;
@@ -498,6 +544,8 @@ private
       Result_Value        : Value := (others => <>);
       Ownership           : CCL.Ownership.Environment;
       Locals              : Local_Value_Array := [others => (others => <>)];
+      Frames              : Call_Frames := [others => (others => <>)];
+      Frame_Count         : Function_Count := 0;
    end record;
 
    function Is_Valid (Item : Validated_Program) return Boolean is

@@ -14,10 +14,12 @@ procedure Main is
       Volume : Volume_Index;
       Inode : Unsigned_32;
    end record;
+   function Identity_Hash (Key : Object_Identity) return Unsigned_32 is
+     (Key.Inode * 16#9E37_79B9# xor Unsigned_32 (Key.Volume));
    package Objects is new Shared_Objects
      (Capacity => 4, Object_Key => Object_Identity,
       Empty_Key => (Volume_Index'First, 0),
-      Object_Value => Natural, Empty_Value => 0);
+      Object_Value => Natural, Empty_Value => 0, Hash => Identity_Hash);
    use type Objects.Attach_Result;
    Opened : Objects.State;
    Attached : Objects.Attach_Result;

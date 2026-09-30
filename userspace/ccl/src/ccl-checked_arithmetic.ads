@@ -11,6 +11,11 @@ is
       Sum         : out Interfaces.Integer_64;
       Overflow    : out Boolean);
 
+   procedure Subtract
+     (Left, Right : Interfaces.Integer_64;
+      Difference  : out Interfaces.Integer_64;
+      Overflow    : out Boolean);
+
    procedure Multiply
      (Left, Right : Interfaces.Integer_64;
       Product     : out Interfaces.Integer_64;

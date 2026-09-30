@@ -37,6 +37,8 @@ with Process.Queues;
 with Scheduler;
 with Scheduler_Timing;
 with Scheduler_Alarm;
+with Scheduling_Budgets;
+with Realtime_Admission;
 with Segment;
 with Spinlocks;
 with Sysinfo;
@@ -58,6 +60,123 @@ package body Process is
         Reason : Switch_Reason := Relinquish;
     end record with Alignment => 64;
     cpuAccounting : array (0 .. Config.MAX_CPUS - 1) of CPU_Accounting_Record;
+
+    ---------------------------------------------------------------------------
+    -- Virtual deadlines (docs/scheduler.md, Virtual_Deadlines)
+    ---------------------------------------------------------------------------
+    function ticksOf (Microseconds : Unsigned_64) return Unsigned_64 is
+      (if Time.tscPerDuration = 0 then 1
+       elsif Microseconds > Unsigned_64'Last / Time.tscPerDuration then Unsigned_64'Last
+       else Time.tscPerDuration * Microseconds);
+
+    function sliceTicks return Virtual_Deadlines.Slice_Length is
+      (Virtual_Deadlines.Slice_Length'Min
+         (Virtual_Deadlines.Maximum_Slice,
+          Unsigned_64'Max (1, ticksOf (Scheduler_Timing.Quantum_Microseconds))));
+
+    function minimumDispatchTicks return Unsigned_64 is
+      (ticksOf (Scheduler_Timing.Minimum_Dispatch_Microseconds));
+
+    function marginTicks return Unsigned_64 is
+      (ticksOf (Scheduler_Timing.Preempt_Margin_Microseconds));
+
+    function nowDeadline return Virtual_Deadlines.Deadline is
+      (Unsigned_64'Min (x86.rdtsc, Virtual_Deadlines.Deadline'Last));
+
+    -- Run keys have two bands: an eligible real-time thread's key is the end
+    -- of its current budget period (earliest deadline first among real-time
+    -- threads); every ordinary key is offset above them all.
+    NORMAL_BAND : constant Unsigned_64 := 2 ** 62;
+    use type Scheduling_Budgets.Time_Units;
+
+    -- The budget ledger's clock: microseconds from the TSC (cheap to read).
+    function ledgerNow return Scheduling_Budgets.Time_Units is
+      (if Time.tscPerDuration = 0 then 0
+       else Scheduling_Budgets.Time_Units
+              (Unsigned_64'Min (x86.rdtsc / Time.tscPerDuration,
+                                Unsigned_64 (Scheduling_Budgets.Time_Units'Last))));
+
+    -- Real time while budget and switches remain this period, with a guard
+    -- left so the budget stop lands before an overrun.
+    function realtimeEligible (tid : ThreadID) return Boolean is
+      (threadtab (tid).rtAdmitted and then
+       Scheduling_Budgets.Eligible (threadtab (tid).rtLedger) and then
+       Scheduling_Budgets.Remaining (threadtab (tid).rtLedger) >
+         Scheduler_Timing.Realtime_Guard_Microseconds);
+
+    function realtimeKey (tid : ThreadID) return Unsigned_64 is
+        window : constant Unsigned_64 :=
+          Unsigned_64 (Scheduling_Budgets.Window (threadtab (tid).rtLedger));
+        now : constant Unsigned_64 := Unsigned_64 (ledgerNow);
+    begin
+        return Unsigned_64'Min
+          (NORMAL_BAND - 1, (now / window + 1) * window * Time.tscPerDuration);
+    end realtimeKey;
+
+    function runKeyOf (tid : ThreadID) return Unsigned_64 is
+      (if threadtab (tid).priority < 0 then Virtual_Deadlines.Idle_Key
+       elsif realtimeEligible (tid) then realtimeKey (tid)
+       else NORMAL_BAND + Unsigned_64'Min
+              (threadtab (tid).runDeadline, Virtual_Deadlines.Idle_Key - 1 - NORMAL_BAND));
+
+    -- Account an admitted thread's ledger up to now; Running tells whether
+    -- it runs from now on.
+    procedure accountRealtime (tid : ThreadID; Running : Boolean) is
+        now : constant Scheduling_Budgets.Time_Units := ledgerNow;
+        ignore : Scheduling_Budgets.Update_Result;
+    begin
+        if threadtab (tid).rtAdmitted then
+            -- Charge the interval just past, then run on in the ledger only
+            -- while still in the real-time band.
+            Scheduling_Budgets.Account
+              (threadtab (tid).rtLedger, now, Running, ignore);
+            if Running and then not realtimeEligible (tid) then
+                Scheduling_Budgets.Account
+                  (threadtab (tid).rtLedger, now, False, ignore);
+            end if;
+        end if;
+    end accountRealtime;
+
+    -- While a real-time thread runs in its band, stop it at its guard.
+    procedure armRealtimeAlarm (tid : ThreadID) is
+        left : Scheduling_Budgets.Time_Units;
+    begin
+        if Build.OneShot_Scheduling and then realtimeEligible (tid) then
+            left := Scheduling_Budgets.Remaining (threadtab (tid).rtLedger) -
+                    Scheduler_Timing.Realtime_Guard_Microseconds;
+            Scheduler_Alarm.Request_Earlier
+              (Scheduler_Alarm.Delay_Microseconds
+                 (Scheduling_Budgets.Time_Units'Max
+                    (1, Scheduling_Budgets.Time_Units'Min (1_000, left))));
+        end if;
+    end armRealtimeAlarm;
+
+    -- A fresh slice, and the deadline it sets.
+    procedure refillSlice (tid : ThreadID) is
+    begin
+        threadtab (tid).savedTurn := Scheduling_Turns.Fresh (sliceTicks);
+        threadtab (tid).runDeadline :=
+          Virtual_Deadlines.Refill (nowDeadline, sliceTicks);
+    end refillSlice;
+
+    -- While others wait on this CPU, end the running thread's slice on time.
+    procedure armSliceAlarm is
+        Turn : constant Unsigned_64 := Scheduling_Turns.Remaining
+          (cpuAccounting (PerCPUData.getCPUNumber).Turn);
+    begin
+        if Time.tscPerDuration > 0 and then Turn > 0 and then
+          Queues.headKey (cpuReadyLists (PerCPUData.getCPUNumber)) /=
+            Virtual_Deadlines.Idle_Key
+        then
+            declare
+                Delay_Us : Unsigned_64 := Turn / Time.tscPerDuration;
+            begin
+                if Turn mod Time.tscPerDuration /= 0 then Delay_Us := Delay_Us + 1; end if;
+                Scheduler_Alarm.Request_Earlier
+                  (Scheduler_Alarm.Delay_Microseconds (Unsigned_64'Min (1_000, Delay_Us)));
+            end;
+        end if;
+    end armSliceAlarm;
 
     procedure accountBoundary
       (From_PID, To_PID : ThreadID; Boundary : Accounting_Boundary)
@@ -83,25 +202,34 @@ package body Process is
             case Boundary is
                 when Scheduler_Start =>
                     CPU.Reason := Relinquish;
-                    if Scheduling_Turns.Remaining (threadtab (To_PID).savedTurn) > 0 then
-                        Scheduling_Turns.Move (threadtab (To_PID).savedTurn, CPU.Turn);
-                        Scheduling_Turns.Count (threadtab (To_PID).turnCounters,
-                          Scheduling_Turns.Resumed_Dispatch);
-                    elsif Time.tscPerDuration <= Unsigned_64'Last /
-                      Scheduler_Timing.Quantum_Microseconds
-                    then
-                        CPU.Turn := Scheduling_Turns.Fresh
-                          (Time.tscPerDuration * Scheduler_Timing.Quantum_Microseconds);
+                    -- The slice left from before a sleep or preemption, or a
+                    -- fresh one with a new deadline.
+                    if Scheduling_Turns.Remaining (threadtab (To_PID).savedTurn) = 0 then
+                        refillSlice (To_PID);
                         Scheduling_Turns.Count (threadtab (To_PID).turnCounters,
                           Scheduling_Turns.Fresh_Dispatch);
                     else
-                        CPU.Turn := Scheduling_Turns.Empty;
+                        Scheduling_Turns.Count (threadtab (To_PID).turnCounters,
+                          Scheduling_Turns.Resumed_Dispatch);
+                    end if;
+                    Scheduling_Turns.Move (threadtab (To_PID).savedTurn, CPU.Turn);
+                    Scheduling_Turns.Charge (CPU.Turn, minimumDispatchTicks);
+                    if threadtab (To_PID).rtAdmitted then
+                        declare
+                            accepted : Boolean;
+                        begin
+                            Scheduling_Budgets.Claim_Dispatch
+                              (threadtab (To_PID).rtLedger, accepted);
+                        end;
+                        accountRealtime (To_PID, Running => True);
                     end if;
                     Accounting.Dispatch (threadtab (To_PID).execution, Accounting.Scheduled);
                 when IPC_Handoff =>
                     Trace.Emit (Trace.EVENT_IPC_HANDOFF,
                       Unsigned_64(From_PID), Unsigned_64(To_PID));
                     Accounting.Dispatch (threadtab (To_PID).execution, Accounting.Direct_IPC);
+                    accountRealtime (From_PID, Running => False);
+                    accountRealtime (To_PID, Running => True);
                 when Scheduler_Stop =>
                     Scheduling_Turns.Count (threadtab (From_PID).turnCounters,
                       (case CPU.Reason is
@@ -109,34 +237,20 @@ package body Process is
                          when Quantum_Expired => Scheduling_Turns.Quantum_Rotation,
                          when Awakened_Peer => Scheduling_Turns.Wake_Rotation,
                          when Relinquish => Scheduling_Turns.Relinquishment));
-                    if CPU.Reason = Higher_Priority then
-                        Scheduling_Turns.Move (CPU.Turn, threadtab (From_PID).savedTurn);
-                    else
-                        CPU.Turn := Scheduling_Turns.Empty;
-                        threadtab (From_PID).savedTurn := Scheduling_Turns.Empty;
+                    -- The slice left is kept across sleeps too; a used-up
+                    -- slice is refilled now, moving the deadline on before
+                    -- the thread rejoins a ready list.
+                    Scheduling_Turns.Move (CPU.Turn, threadtab (From_PID).savedTurn);
+                    if Scheduling_Turns.Remaining (threadtab (From_PID).savedTurn) = 0 then
+                        refillSlice (From_PID);
                     end if;
-                when Accounting_Checkpoint => null;
+                    accountRealtime (From_PID, Running => False);
+                when Accounting_Checkpoint =>
+                    accountRealtime (From_PID, Running => True);
             end case;
             if Build.OneShot_Scheduling and then To_PID /= NO_THREAD then
-                if Build.Wakeup_Scheduling and then
-                  Queues.hasAwakenedPeer (cpuReadyLists(PerCPUData.getCPUNumber),
-                    threadtab (To_PID).priority)
-                then
-                    Scheduler_Alarm.Request_Earlier (Scheduler_Timing.Wakeup_Microseconds);
-                elsif Time.tscPerDuration > 0 and then
-                  Scheduling_Turns.Remaining (CPU.Turn) > 0 and then
-                  Queues.hasReadyPeer (cpuReadyLists(PerCPUData.getCPUNumber),
-                    threadtab (To_PID).priority)
-                then
-                    remainingTurn : declare
-                        Ticks : constant Unsigned_64 := Scheduling_Turns.Remaining (CPU.Turn);
-                        Delay_Us : Unsigned_64 := Ticks / Time.tscPerDuration;
-                    begin
-                        if Ticks mod Time.tscPerDuration /= 0 then Delay_Us := Delay_Us + 1; end if;
-                        Scheduler_Alarm.Request_Earlier
-                          (Scheduler_Alarm.Delay_Microseconds (Unsigned_64'Min (1_000, Delay_Us)));
-                    end remainingTurn;
-                end if;
+                armSliceAlarm;
+                armRealtimeAlarm (To_PID);
             end if;
             if Build.Observe_Scheduling_Budgets then
                 if Now > Unsigned_64 (Scheduling_Shadow.Budgets.Time_Units'Last) or else
@@ -808,12 +922,18 @@ package body Process is
         Spinlocks.exitCriticalSection (lock);
     end yield;
 
-    -- An idle thread gives way when another CPU has work it could take. Idle
-    -- CPUs find aged work on their timer opportunities (at most every
-    -- millisecond); a fresh wakeup is never stealable, so it is not kicked.
-    function idleWithStealableWork (tid : ThreadID; cpu : Natural) return Boolean is
-      (Build.Work_Stealing and then threadtab (tid).priority < 0 and then
-       stealableWorkElsewhere (cpu));
+    -- Whether the thread running on cpu should give way now: to an earlier
+    -- deadline queued here (by more than the margin), or, for the idle
+    -- thread, to any work here or work it could take from another CPU.
+    function shouldYieldCPU (tid : ThreadID; cpu : Natural) return Boolean is
+        Local : constant Unsigned_64 := Queues.headKey (cpuReadyLists (cpu));
+    begin
+        if threadtab (tid).priority < 0 then
+            return Local /= Virtual_Deadlines.Idle_Key or else
+              (Build.Work_Stealing and then stealableWorkElsewhere (cpu));
+        end if;
+        return Virtual_Deadlines.Preempts (Local, runKeyOf (tid), marginTicks);
+    end shouldYieldCPU;
 
     procedure serviceReschedule is
         cpuData : PerCPUData.PerCPUData with Import, Volatile,
@@ -822,18 +942,9 @@ package body Process is
         if not cpuData.needReschedule then return; end if;
         Spinlocks.enterCriticalSection (lock);
         cpuData.needReschedule := False;
-        if Build.OneShot_Scheduling and then Build.Wakeup_Scheduling and then
-          cpuData.currentThread /= NO_THREAD and then
-          Queues.hasAwakenedPeer (cpuReadyLists(cpuData.cpuNum),
-            threadtab (cpuData.currentThread).priority)
-        then
-            Scheduler_Alarm.Request_Earlier (Scheduler_Timing.Wakeup_Microseconds);
-        end if;
         if cpuData.currentThread /= NO_THREAD and then
            threadtab (cpuData.currentThread).state = RUNNING and then
-           (Queues.hasReadyPeer (cpuReadyLists(cpuData.cpuNum),
-              threadtab (cpuData.currentThread).priority, Queues.Strictly_Higher) or else
-            idleWithStealableWork (cpuData.currentThread, cpuData.cpuNum))
+           shouldYieldCPU (cpuData.currentThread, cpuData.cpuNum)
         then
             cpuAccounting(cpuData.cpuNum).Reason := Higher_Priority;
             Scheduler.enter;
@@ -850,21 +961,24 @@ package body Process is
         Spinlocks.enterCriticalSection (lock);
         Scheduling_Turns.Count (threadtab (me).turnCounters, Scheduling_Turns.Timer_Opportunity);
         accountBoundary (PerCPUData.getCurrentThread, PerCPUData.getCurrentThread, Accounting_Checkpoint);
-        if Queues.hasReadyPeer
-          (cpuReadyLists(CPU), threadtab (me).priority, Queues.Strictly_Higher) or else
-           idleWithStealableWork (PerCPUData.getCurrentThread, CPU)
-        then
+        if shouldYieldCPU (me, CPU) then
             cpuAccounting(CPU).Reason := Higher_Priority;
             Scheduler.enter;
-        elsif Queues.hasReadyPeer (cpuReadyLists(CPU), threadtab (me).priority) and then
-          (Scheduling_Turns.Remaining (cpuAccounting(CPU).Turn) = 0 or else
-           (Build.Wakeup_Scheduling and then
-            Queues.hasAwakenedPeer (cpuReadyLists(CPU), threadtab (me).priority)))
+        elsif threadtab (me).priority >= 0 and then
+          Scheduling_Turns.Remaining (cpuAccounting(CPU).Turn) = 0
         then
-            cpuAccounting(CPU).Reason :=
-              (if Scheduling_Turns.Remaining (cpuAccounting(CPU).Turn) = 0
-               then Quantum_Expired else Awakened_Peer);
-            Scheduler.enter;
+            -- Slice used up: the new deadline goes behind anything queued
+            -- here that is due by then; otherwise keep running on it.
+            if Queues.headKey (cpuReadyLists (CPU)) <=
+              NORMAL_BAND + Virtual_Deadlines.Refill (nowDeadline, sliceTicks)
+            then
+                cpuAccounting(CPU).Reason := Quantum_Expired;
+                Scheduler.enter;
+            else
+                refillSlice (me);
+                Scheduling_Turns.Move (threadtab (me).savedTurn, cpuAccounting(CPU).Turn);
+                cpuRunningKey (CPU) := runKeyOf (me);
+            end if;
         end if;
         Spinlocks.exitCriticalSection (lock);
     end serviceTimerPreemption;
@@ -873,59 +987,87 @@ package body Process is
     -- ready
     -- Move a process into the ready list and change its state to READY
     ---------------------------------------------------------------------------
+    function placementFor (tid : ThreadID) return Natural is
+        package VD renames Virtual_Deadlines;
+        Last : constant VD.CPU := VD.CPU (cpuReadyLists'Last);
+        Running, Queued : VD.CPU_Keys (0 .. Last);
+        Allowed : VD.CPU_Flags (0 .. Last);
+    begin
+        for C in cpuReadyLists'Range loop
+            Running (VD.CPU (C)) := cpuRunningKey (C);
+            Queued (VD.CPU (C)) := Queues.headKey (cpuReadyLists (C));
+            Allowed (VD.CPU (C)) := Build.Work_Stealing and then cpuOnline (C);
+        end loop;
+        return Natural (VD.Place
+          (Home    => VD.CPU (threadtab (tid).cpu),
+           Wakee   => Unsigned_64'Min (runKeyOf (tid), VD.Deadline'Last),
+           -- A thread still switching out on its CPU (woken as it blocks)
+           -- must not run elsewhere before it has stopped there.
+           Pinned  => threadtab (tid).pinned or else threadtab (tid).priority < 0 or else
+                      Process_Lifetime.Executing (threadtab (tid).lifetime),
+           Running => Running,
+           Queued  => Queued,
+           Allowed => Allowed,
+           Margin  => marginTicks));
+    end placementFor;
+
+    procedure placeOn (tid : ThreadID; cpu : Natural) is
+        ret : ThreadID;
+        key : constant Unsigned_64 := runKeyOf (tid);
+        here : constant Natural := PerCPUData.getCPUNumber;
+    begin
+        threadtab (tid).cpu := cpu;
+        Queues.insertByKey (cpuReadyLists (cpu), tid, key, ret);
+        if ret /= tid then
+            raise ProcessException with "Process.placeOn: Error adding pid to ready list.";
+        end if;
+        if Virtual_Deadlines.Preempts (key, cpuRunningKey (cpu), marginTicks) then
+            if cpu /= here then
+                -- Claimed: later placements before cpu schedules look elsewhere.
+                if cpuRunningKey (cpu) = Virtual_Deadlines.Idle_Key then
+                    cpuRunningKey (cpu) := key;
+                end if;
+                IPI.sendReschedule (cpu);
+            elsif PerCPUData.getCurrentThread /= NO_THREAD then
+                -- Serviced at syscall or interrupt return.
+                setNeedReschedule : declare
+                    cpuData : PerCPUData.PerCPUData with
+                        Import, Volatile, Address => PerCPUData.getPerCPUDataAddr;
+                begin
+                    cpuData.needReschedule := True;
+                end setNeedReschedule;
+            end if;
+        elsif cpu = here and then PerCPUData.getCurrentThread /= NO_THREAD and then
+          Build.OneShot_Scheduling
+        then
+            armSliceAlarm;
+        end if;
+    end placeOn;
+
+    ---------------------------------------------------------------------------
+    -- ready
+    -- A woken thread keeps its deadline and the rest of its slice, even a
+    -- deadline already passed, and joins the ready list of the CPU where it
+    -- can run soonest (placementFor).
+    ---------------------------------------------------------------------------
     procedure ready (tid : ThreadID)
     is
-        ret : ThreadID;
-        targetCPU : constant Natural := threadtab (tid).cpu;
-        current : constant ThreadID := PerCPUData.getCurrentThread;
+        target : Natural;
     begin
         if threadtab (tid).state = INVALID or else
            Process_Lifetime.Closing (threadtab (tid).lifetime)
         then
             return; -- A queued notification cannot restart a retiring task.
         end if;
+        -- A new budget period may have begun while it slept.
+        accountRealtime (tid, Running => False);
         threadtab (tid).readyTSC := x86.rdtsc;
         threadtab (tid).queuedTSC := threadtab (tid).readyTSC;
         threadtab (tid).readiness := Awakened;
-        Trace.Emit (Trace.EVENT_READY, Unsigned_64(tid), Unsigned_64(targetCPU));
+        target := placementFor (tid);
+        Trace.Emit (Trace.EVENT_READY, Unsigned_64(tid), Unsigned_64(target));
         threadtab (tid).state := READY;
-        Queues.insert (cpuReadyLists(targetCPU), tid,
-                       threadtab (tid).priority, ret);
-
-        if ret /= tid then
-            raise ProcessException with "Process.ready: Error adding pid to ready list.";
-        end if;
-
-        if Build.OneShot_Scheduling and then Build.Wakeup_Scheduling and then
-          targetCPU = PerCPUData.getCPUNumber and then current /= NO_THREAD and then
-          threadtab (tid).priority >= threadtab (current).priority
-        then
-            Scheduler_Alarm.Request_Earlier (Scheduler_Timing.Wakeup_Microseconds);
-        end if;
-
-        -- If the newly readied process has higher priority than the
-        -- currently running one, request preemption at interrupt return.
-        -- Only meaningful if targeting THIS CPU.
-        if targetCPU = PerCPUData.getCPUNumber and then
-           current /= NO_THREAD and then
-           threadtab (tid).priority > threadtab (current).priority
-        then
-            setNeedReschedule : declare
-                perCPUAddr : constant System.Address :=
-                    PerCPUData.getPerCPUDataAddr;
-                cpuData : PerCPUData.PerCPUData with
-                    Import, Volatile, Address => perCPUAddr;
-            begin
-                cpuData.needReschedule := True;
-            end setNeedReschedule;
-        end if;
-
-        -- If readying on a remote CPU, send reschedule IPI so it
-        -- wakes from idle HLT promptly instead of waiting for timer.
-        if targetCPU /= PerCPUData.getCPUNumber then
-            IPI.sendReschedule (targetCPU);
-        end if;
-
+        placeOn (tid, target);
     end ready;
 
 
@@ -1022,7 +1164,9 @@ package body Process is
     function stealableWorkElsewhere (cpu : Natural) return Boolean is
     begin
         for C in cpuReadyLists'Range loop
-            if C /= cpu and then Queues.hasStealable (cpuReadyLists(C)) then
+            if C /= cpu and then
+              Queues.takeableKey (cpuReadyLists(C)) /= Virtual_Deadlines.Idle_Key
+            then
                 return True;
             end if;
         end loop;
@@ -1032,6 +1176,71 @@ package body Process is
     ---------------------------------------------------------------------------
     -- setLatencyContract
     ---------------------------------------------------------------------------
+    procedure reserveRealtime
+      (pid      : ProcessID;
+       budgetUs : Unsigned_32;
+       periodUs : Unsigned_32;
+       granted  : out Boolean)
+    is
+        package RA renames Realtime_Admission;
+        package SB renames Scheduling_Budgets;
+        tid : constant ThreadID := mainThreadOf (pid);
+        covered : Boolean := False;
+        onlineCPUs : Natural := 0;
+        share : RA.Utilization;
+    begin
+        granted := False;
+        -- The ledger's shape: a budget of at most half the period.
+        if periodUs < 2 or else budgetUs = 0 or else
+          Unsigned_64 (periodUs) > Unsigned_64 (RA.Microseconds'Last) or else
+          Unsigned_64 (budgetUs) * 2 > Unsigned_64 (periodUs)
+        then
+            return;
+        end if;
+        Spinlocks.enterCriticalSection (lock);
+        for slot in Capabilities.CapabilitySlot loop
+            declare
+                cap : Capabilities.Capability renames proctab (pid).caps (slot);
+                use type Capabilities.CapabilityType;
+            begin
+                if cap.capType = Capabilities.CAP_SCHEDULING and then
+                  cap.object.ref in 1 .. Unsigned_64 (RA.Microseconds'Last) and then
+                  cap.object.param in 1 .. Unsigned_64 (RA.Microseconds'Last) and then
+                  RA.Covers (RA.Microseconds (cap.object.ref),
+                             RA.Microseconds (cap.object.param),
+                             RA.Microseconds (budgetUs), RA.Microseconds (periodUs))
+                then
+                    covered := True;
+                    exit;
+                end if;
+            end;
+        end loop;
+        if covered then
+            if threadtab (tid).rtAdmitted then
+                RA.Release (realtimeAdmitted, threadtab (tid).rtShare);
+                threadtab (tid).rtAdmitted := False;
+            end if;
+            for C in cpuOnline'Range loop
+                if cpuOnline (C) then onlineCPUs := onlineCPUs + 1; end if;
+            end loop;
+            share := RA.Utilization_Of
+              (RA.Microseconds (budgetUs), RA.Microseconds (periodUs));
+            RA.Admit (realtimeAdmitted, share,
+                      RA.CPU_Count (Natural'Max (1, Natural'Min (onlineCPUs, RA.Maximum_CPUs))),
+                      granted);
+            if granted then
+                threadtab (tid).rtShare := share;
+                threadtab (tid).rtLedger := SB.Create
+                  (Budget     => SB.Allowance (budgetUs),
+                   Now        => ledgerNow,
+                   Dispatches => Scheduler_Timing.Realtime_Dispatches,
+                   Interval   => SB.Period_Length (periodUs));
+                threadtab (tid).rtAdmitted := True;
+            end if;
+        end if;
+        Spinlocks.exitCriticalSection (lock);
+    end reserveRealtime;
+
     procedure setLatencyContract
         (pid      : ProcessID;
          class    : LatencyClass;
@@ -1132,9 +1341,38 @@ package body Process is
     ---------------------------------------------------------------------------
     -- sleep
     ---------------------------------------------------------------------------
+    -- Each CPU arms only for sleepers whose home it is, so a wake is
+    -- handled on the CPU where the thread runs: no IPI, and one interrupt
+    -- per sleeper.
+    procedure armWakeAlarm is
+        now : constant Unsigned_64 := x86.rdtsc;
+        horizon : constant Unsigned_64 := now + ticksOf (1_000);
+        next : Unsigned_64;
+    begin
+        if not Build.OneShot_Scheduling or else Time.tscPerDuration = 0 or else
+          Queues.nextWake > horizon
+        then
+            return;
+        end if;
+        next := Queues.nextWakeOn (PerCPUData.getCPUNumber, horizon);
+        if next = Virtual_Deadlines.Idle_Key then
+            return;
+        elsif next <= now then
+            Scheduler_Alarm.Request_Earlier (1);
+        else
+            Scheduler_Alarm.Request_Earlier
+              (Scheduler_Alarm.Delay_Microseconds
+                 (Unsigned_64'Max (1, (next - now + Time.tscPerDuration - 1) /
+                                        Time.tscPerDuration)));
+        end if;
+    end armWakeAlarm;
+
     procedure sleep (us : Time.Duration)
     is
         me : constant ThreadID := PerCPUData.getCurrentThread;
+        wake : constant Unsigned_64 :=
+          (if ticksOf (us) > Unsigned_64'Last - x86.rdtsc then Unsigned_64'Last - 1
+           else x86.rdtsc + ticksOf (us));
         ignore : ThreadID;
     begin
         -- Publish the blocked state and hand off the running context under
@@ -1145,12 +1383,10 @@ package body Process is
 
         threadtab (me).state := SLEEPING;
 
-        Queues.insertDeltaNoLock (q            => sleepList,
-                                  pid          => me,
-                                  delayFromNow => Integer(us / 1000),
-                                  result       => ignore);
+        Queues.insertByKeyNoLock (sleepList, me, wake, ignore);
 
         Spinlocks.exitCriticalSection (sleepList.lock);
+        armWakeAlarm;
 
         Scheduler.enter;
         Spinlocks.exitCriticalSection (lock);
@@ -1343,7 +1579,12 @@ package body Process is
         end if;
         threadtab (t).state := INVALID;
         Queues.detach (cpuReadyLists(threadtab (t).cpu), t);
-        Queues.detach (sleepList, t, Queues.Delta_Queue);
+        Queues.detach (sleepList, t);
+        if threadtab (t).rtAdmitted then
+            Realtime_Admission.Release (realtimeAdmitted, threadtab (t).rtShare);
+            threadtab (t).rtAdmitted := False;
+            threadtab (t).rtShare := 0;
+        end if;
     end claimThread;
 
     -- An exited thread of a live process: free it alone.
@@ -1905,6 +2146,7 @@ package body Process is
 
             -- Update per-CPU state (what scheduler normally does)
             cpuData.currentThread  := toT;
+            cpuRunningKey (cpuData.cpuNum) := runKeyOf (toT);
             cpuData.savedKernelRSP := threadtab (toT).kernelStackTop;
             cpuData.tss.rsp0       := threadtab (toT).kernelStackTop;
 

@@ -126,9 +126,9 @@ begin
       begin Source (Length + 1 .. Length + S'Length) := S; Length := Length + S'Length; end Add;
    begin
       for I in 1 .. MAX_FUNCTIONS loop
-         Add ("(define (f" & Character'Val (Character'Pos ('a') + I - 1) & ") Integer 42) ");
+         Add ("(define (g" & Character'Val (Character'Pos ('a') + I - 1) & ") Integer 42) ");
       end loop;
-      Check (Source (1 .. Length) & "(fp)", 42);
+      Check (Source (1 .. Length) & "(gp)", 42);
       Reject (Source (1 .. Length) & "(define (extra) Integer 1) 42", Too_Many_Functions);
    end;
    Interpret ("(define (twice (x Integer)) Integer (+ x x)) (twice 21)", 0, Outcome);
@@ -141,14 +141,15 @@ begin
       procedure Add (S : String) is
       begin Source (Length + 1 .. Length + S'Length) := S; Length := Length + S'Length; end Add;
    begin
-      Add ("(define (fa) Integer 1) ");
+      --  Names ga .. gp: an f prefix would produce the reserved word fn.
+      Add ("(define (ga) Integer 1) ");
       for I in 2 .. MAX_FUNCTIONS loop
-         Add ("(define (f" & Character'Val (Character'Pos ('a') + I - 1) &
-              ") Integer (+ 0 (f" & Character'Val (Character'Pos ('a') + I - 2) & "))) ");
+         Add ("(define (g" & Character'Val (Character'Pos ('a') + I - 1) &
+              ") Integer (+ 0 (g" & Character'Val (Character'Pos ('a') + I - 2) & "))) ");
       end loop;
-      Interpret (Source (1 .. Length) & "(fp)", 4096, Outcome);
+      Interpret (Source (1 .. Length) & "(gp)", 4096, Outcome);
       pragma Assert (Outcome.Status = Evaluation_Depth_Exhausted);
-      Interpret (Source (1 .. Length) & "(fp)", 20, Outcome);
+      Interpret (Source (1 .. Length) & "(gp)", 20, Outcome);
       pragma Assert (Outcome.Status = Evaluation_Fuel_Exhausted);
    end;
    --  Even an unused definition is admitted before effects in the main expression.

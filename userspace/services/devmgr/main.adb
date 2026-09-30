@@ -21,6 +21,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Network_Authority;
 with CuBit.Devices;
 with CuBit.Virtio_Net_Control;
+with CuBit.NVMe_Control;
 with CuBit.Filesystems;
 with CuBit.Memory_Grants;
 with CuBit.File_Access;
@@ -121,6 +122,7 @@ procedure main is
    CAP_PROCESS      : constant Unsigned_64 := 6;
    CAP_DEVICE_MEM   : constant Unsigned_64 := 7;
    CAP_CSPACE       : constant Unsigned_64 := 10;
+   CAP_SCHEDULING   : constant Unsigned_64 := 11;
 
    --  Rights bitmask (must match kernel/src/capabilities.ads)
    RIGHT_READ    : constant Unsigned_64 := 1;
@@ -224,6 +226,13 @@ procedure main is
    netModernBytes : Unsigned_64 := 0;
    netTransportReady : Boolean := False;
    DEVMGR_NET_SLOT : constant Unsigned_64 := 3;
+   --  NVMe completion interrupts (filesystem agent): MSI-X entry zero, set
+   --  up masked here, filled by nvme.drv, unmasked after its reply.
+   nvmeMSIXCap : Unsigned_8 := 0;
+   nvmeTableOffset : Unsigned_64 := 0;
+   nvmeMSIX : Boolean := False;
+   --  Minted just before the configuration call, as DEVMGR_NET_SLOT is.
+   DEVMGR_NVME_SLOT : constant Unsigned_64 := 3;
    procmgrPID    : Unsigned_64 := 0;
    shellPID      : Unsigned_64 := 0;
    hdaPID        : Unsigned_64 := 0;
@@ -880,6 +889,11 @@ procedure main is
    OP_READY      : constant Unsigned_32 := 16#FF00#;
    OP_NOT_PRESENT : constant Unsigned_32 := 16#FF01#;
    CAP_SLOT_READY : constant Unsigned_64 := 15;
+   --  mixer.svc may reserve real-time CPU for one audio period: 1.5 ms of
+   --  every 5 ms (docs/scheduler.md, "Soft real time").
+   CAP_SLOT_SCHEDULING : constant Unsigned_64 := 9;
+   MIXER_REALTIME_BUDGET_US : constant Unsigned_64 := 1_500;
+   MIXER_REALTIME_PERIOD_US : constant Unsigned_64 := 5_000;
 
    --  Our PID (discovered via registerDriver)
    myPID : Unsigned_64 := 0;
@@ -1042,8 +1056,53 @@ procedure main is
       pciWriteConfig16 (nvmeDev.bus, nvmeDev.slot, nvmeDev.func,
                         PCI_COMMAND, pciCmd or 16#0006#);
 
-      --  Enable IRQ routing
-      ret := enableIrq (irqVector, nvmePID, 0);
+      --  Completion interrupts by MSI-X when the table lies in the part of
+      --  BAR0 the driver maps; otherwise the driver polls. The function
+      --  stays masked until the driver has filled entry zero.
+      nvmeMSIX := False;
+      if (pciReadConfig16 (nvmeDev.bus, nvmeDev.slot, nvmeDev.func,
+                           PCI_STATUS) and 16#10#) /= 0
+      then
+         nvmeMSIXCap := pciReadConfig8
+           (nvmeDev.bus, nvmeDev.slot, nvmeDev.func, PCI_CAP_PTR) and 16#FC#;
+         for hop in 1 .. 48 loop
+            exit when nvmeMSIXCap < 16#40# or else nvmeMSIXCap > 16#F4#;
+            exit when pciReadConfig8
+              (nvmeDev.bus, nvmeDev.slot, nvmeDev.func, nvmeMSIXCap) =
+              PCI_CAP_ID_MSIX;
+            nvmeMSIXCap := pciReadConfig8
+              (nvmeDev.bus, nvmeDev.slot, nvmeDev.func, nvmeMSIXCap + 1) and 16#FC#;
+         end loop;
+         if nvmeMSIXCap >= 16#40# and then nvmeMSIXCap <= 16#F4# and then
+           pciReadConfig8 (nvmeDev.bus, nvmeDev.slot, nvmeDev.func, nvmeMSIXCap) =
+             PCI_CAP_ID_MSIX
+         then
+            declare
+               tableInfo : constant Unsigned_32 := pciReadConfig32
+                 (nvmeDev.bus, nvmeDev.slot, nvmeDev.func, nvmeMSIXCap + 4);
+               offset : constant Unsigned_64 :=
+                 Unsigned_64 (tableInfo and 16#FFFF_FFF8#);
+               control : Unsigned_16;
+            begin
+               if (tableInfo and 7) = 0 and then
+                 offset <= CuBit.NVMe_Control.Table_Offset'Last and then
+                 enableIrq (CuBit.NVMe_Control.Device_Vector, nvmePID, 0,
+                            messageSignaled => True) /= reterr
+               then
+                  control := pciReadConfig16
+                    (nvmeDev.bus, nvmeDev.slot, nvmeDev.func, nvmeMSIXCap + 2);
+                  pciWriteConfig16 (nvmeDev.bus, nvmeDev.slot, nvmeDev.func,
+                    nvmeMSIXCap + 2, control or 16#C000#);
+                  nvmeTableOffset := offset;
+                  nvmeMSIX := True;
+               end if;
+            end;
+         end if;
+      end if;
+      if not nvmeMSIX then
+         --  Legacy route, as before (the polling driver does not use it).
+         ret := enableIrq (irqVector, nvmePID, 0);
+      end if;
 
       --  Allocate DMA
       dmaPhys := allocDma (nvmePID, DMA_ORDER, DMA_VIRT_BASE);
@@ -2235,7 +2294,40 @@ begin
       assignCPU (nvmePID, "nvme.drv");
       mintCap (nvmePID, CAP_ENDPOINT, myPID, 0,
                RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
+      grantEndpoint (myPID, nvmePID, DEVMGR_NVME_SLOT, myPID);
       resumeProc (nvmePID);
+      declare
+         use CuBit.NVMe_Control;
+         cfg : Message :=
+           (if nvmeMSIX then
+              (tag => (label => Operation'Enum_Rep (Configure_MSIX),
+                       length => 2, flags => 0, reserved => 0),
+               authorityTag => 0,
+               words => [0 => nvmeTableOffset, 1 => Device_Vector,
+                         others => 0])
+            else
+              (tag => (label => Operation'Enum_Rep (Configure_Polled),
+                       length => 0, flags => 0, reserved => 0),
+               authorityTag => 0, words => [others => 0]));
+         response : MessageTag;
+         control : Unsigned_16;
+      begin
+         response := capCall (DEVMGR_NVME_SLOT, cfg);
+         if nvmeMSIX then
+            control := pciReadConfig16
+              (nvmeDev.bus, nvmeDev.slot, nvmeDev.func, nvmeMSIXCap + 2);
+            if response.label = REPLY_OK then
+               --  Entry zero is filled: clear the function mask.
+               pciWriteConfig16 (nvmeDev.bus, nvmeDev.slot, nvmeDev.func,
+                 nvmeMSIXCap + 2, control and not Unsigned_16'(16#4000#));
+               debugPrint ("devmgr: NVMe using MSI-X" & LF);
+            else
+               --  The driver polls: disable MSI-X again.
+               pciWriteConfig16 (nvmeDev.bus, nvmeDev.slot, nvmeDev.func,
+                 nvmeMSIXCap + 2, control and not Unsigned_16'(16#8000#));
+            end if;
+         end if;
+      end;
       debugPrint ("devmgr: NVMe driver started" & LF);
 
       if not waitReady (nvmePID) then
@@ -2741,6 +2833,8 @@ begin
       end if;
 
       assignCPU (mixerPID, "mixer.svc");
+      mintCap (mixerPID, CAP_SCHEDULING, MIXER_REALTIME_BUDGET_US,
+               MIXER_REALTIME_PERIOD_US, RIGHT_READ, CAP_SLOT_SCHEDULING);
       mintCap (mixerPID, CAP_ENDPOINT, myPID, 0,
                RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (mixerPID);
@@ -2755,6 +2849,8 @@ begin
       mintCap (mixerPID, CAP_NOTIFICATION, DRIVER_MIXER, 0,
                RIGHT_WRITE, 8);
       assignCPU (mixerPID, "mixer.svc");
+      mintCap (mixerPID, CAP_SCHEDULING, MIXER_REALTIME_BUDGET_US,
+               MIXER_REALTIME_PERIOD_US, RIGHT_READ, CAP_SLOT_SCHEDULING);
       mintCap (mixerPID, CAP_ENDPOINT, myPID, 0,
                RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (mixerPID);

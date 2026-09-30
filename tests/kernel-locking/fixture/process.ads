@@ -20,6 +20,8 @@ package Process is
         pinned : Boolean := False;
         lifetime : Process_Lifetime.State;
         queuedTSC : Interfaces.Unsigned_64 := 0;
+        priority : Integer := 0;
+        runKey : Interfaces.Unsigned_64 := 0;
     end record;
     type Table is array (1 .. 255) of PCB;
     proctab : Table;

@@ -139,6 +139,54 @@ is
       Stack_Result : Abstract_Stacks.Operation_Result;
       D : CCL.Types.Description;
       Branch : Abstract_State;
+
+      --  Functions: the region of a PC is the function whose code holds it,
+      --  or the main body (No_Region), which comes first.
+      No_Region : constant := MAX_FUNCTIONS;
+      subtype Region_Index is Natural range 0 .. No_Region;
+      Region : Region_Index := No_Region;
+      Limit  : Program_Length := 0;
+
+      function Region_Of (PC : Instruction_Index) return Region_Index
+        with Post => Region_Of'Result = No_Region or else
+                     Region_Of'Result < Candidate.Functions_Length
+      is
+         R : Region_Index := No_Region;
+      begin
+         for F in 1 .. Candidate.Functions_Length loop
+            pragma Loop_Invariant (R = No_Region or else R < F);
+            if Candidate.Functions (F - 1).Entry_PC <= PC then
+               R := F - 1;
+            end if;
+         end loop;
+         return R;
+      end Region_Of;
+
+      function Region_End (R : Region_Index) return Program_Length is
+        (if Candidate.Functions_Length = 0 then Length
+         elsif R = No_Region then Program_Length (Candidate.Functions (0).Entry_PC)
+         elsif R + 1 < Candidate.Functions_Length then
+            Program_Length (Candidate.Functions (R + 1).Entry_PC)
+         else Length);
+
+      function Function_Data (Kind : Value_Kind; Ref : CCL.Types.Type_Reference) return Boolean is
+        (Kind in Integer_Value | Boolean_Value | Variant_Value and then
+         Known_Value_Type (Candidate.Data_Types, Kind, Ref));
+
+      --  Whole-program stack bound. Each region's own maximum depth, and for
+      --  each call site the depth under the callee's frame; callees have lower
+      --  indexes, so demands combine in index order after the sweep.
+      subtype Demand is Natural range 0 .. MAX_STACK_DEPTH + 1;
+      type Region_Demands is array (Region_Index) of Demand;
+      type Call_Demands is array (Region_Index, Function_Index) of Demand;
+      type Call_Presence is array (Region_Index, Function_Index) of Boolean;
+      Own_Max : Region_Demands := [others => 0];
+      Base_Max : Call_Demands := [others => [others => 0]];
+      Calls : Call_Presence := [others => [others => False]];
+      Need : Region_Demands := [others => 0];
+
+      function Depth_Of (Item : Abstract_State) return Demand is
+        (Demand (Unsigned_32'Min (Abstract_Stacks.Depth (Item.Values), MAX_STACK_DEPTH)));
    begin
       Result := (Checked => False, Content => Candidate);
       Error := Valid;
@@ -198,12 +246,38 @@ is
          end loop;
       end loop;
 
+      for F in 1 .. Candidate.Functions_Length loop
+         declare
+            Decl : constant Function_Declaration := Candidate.Functions (F - 1);
+         begin
+            if Decl.Entry_PC = 0 or else Program_Length (Decl.Entry_PC) >= Length or else
+              (F > 1 and then Decl.Entry_PC <= Candidate.Functions (F - 2).Entry_PC) or else
+              not Function_Data (Decl.Result, Decl.Result_Data_Type)
+            then Error := Invalid_Function; return; end if;
+            for P in 1 .. Decl.Count loop
+               if not Function_Data (Decl.Kinds (P), Decl.Data_Types (P)) then
+                  Error := Invalid_Function; return;
+               end if;
+            end loop;
+         end;
+      end loop;
+
       if Length = 0 then
          Error := Empty_Program;
       elsif Candidate.Dynamic_Locals_Length > Candidate.Locals_Length then
          Error := Invalid_Ownership;
       else
          States (0).Seen := True;
+         --  A function's code starts with its parameters on the stack.
+         for F in 1 .. Candidate.Functions_Length loop
+            Branch := (others => <>);
+            Branch.Seen := True;
+            for P in 1 .. Candidate.Functions (F - 1).Count loop
+               Push_Kind (Branch, Candidate.Functions (F - 1).Kinds (P), Error,
+                          Candidate.Functions (F - 1).Data_Types (P));
+            end loop;
+            States (Candidate.Functions (F - 1).Entry_PC) := Branch;
+         end loop;
 
       for PC in Instruction_Index loop
          exit when Program_Length (PC) >= Length;
@@ -217,6 +291,25 @@ is
          State := States (PC);
          Instruction := Candidate.Code (PC);
          Falls_Through := True;
+         Region := Region_Of (PC);
+         Limit := Region_End (Region);
+         Own_Max (Region) := Demand'Max (Own_Max (Region), Depth_Of (State));
+
+         --  Function bodies hold data only: no program locals, no ownership
+         --  imports, no halting. The main body never returns.
+         if Region /= No_Region and then
+           (Instruction.Op in Halt | Initialize_Local | Copy_Local | Move_Local | Drop_Local |
+              Borrow_Local_RO | Return_Local_RO | Borrow_Local_RW | Return_Local_RW |
+              Apply_Local_Disposition or else
+            (Instruction.Op = Invoke_Import and then
+             (Natural (Instruction.Import) >= Candidate.Imports_Length or else
+              Candidate.Imports (Instruction.Import).Ownership_Argument or else
+              Candidate.Imports (Instruction.Import).Result = Resource_Value)))
+         then
+            Error := Invalid_Function; exit;
+         elsif Region = No_Region and then Instruction.Op = Return_Function then
+            Error := Invalid_Function; exit;
+         end if;
 
          if Instruction.Op not in Make_Variant | Equal_Variant | Project_Field and then
            (Instruction.Data_Type /= CCL.Types.Invalid_Type or else Instruction.Alternative /= 0)
@@ -339,7 +432,7 @@ is
                      D := CCL.Types.Describe (Candidate.Data_Types, M.Data_Type);
                      for A in 1 .. D.Count loop
                         if M.Targets (A) <= PC then Error := Backward_Jump;
-                        elsif Program_Length (M.Targets (A)) >= Length then Error := Invalid_Jump_Target;
+                        elsif Program_Length (M.Targets (A)) >= Limit then Error := Invalid_Jump_Target;
                         else
                            Branch := State;
                            if D.Parts (A).Payload /= CCL.Types.Unit_Type then
@@ -352,7 +445,7 @@ is
                   end;
                end if;
 
-            when Add_Integer =>
+            when Add_Integer | Subtract_Integer =>
                Pop_Kind (State, Integer_Value, Error);
                if Error = Valid then
                   Pop_Kind (State, Integer_Value, Error);
@@ -370,10 +463,56 @@ is
                   Push_Kind (State, Integer_Value, Error);
                end if;
 
-            when Equal_Integer =>
-               Pop_Kind (State, Integer_Value, Error);
+            when Call_Function =>
+               --  Only functions declared earlier: the call graph is acyclic.
+               if Instruction.Immediate < 0 or else
+                 Instruction.Immediate >= Integer_64 (Candidate.Functions_Length) or else
+                 Instruction.Immediate >= Integer_64 (Region)
+               then
+                  Error := Invalid_Function;
+               else
+                  declare
+                     Callee : constant Function_Index := Function_Index (Instruction.Immediate);
+                     Decl : constant Function_Declaration := Candidate.Functions (Callee);
+                     Base : constant Demand := Depth_Of (State);
+                  begin
+                     if Base < Decl.Count then
+                        Error := Stack_Underflow;
+                     else
+                        Calls (Region, Callee) := True;
+                        Base_Max (Region, Callee) :=
+                          Demand'Max (Base_Max (Region, Callee), Base - Decl.Count);
+                     end if;
+                     for P in reverse 1 .. Decl.Count loop
+                        Pop_Kind (State, Decl.Kinds (P), Error, Decl.Data_Types (P));
+                     end loop;
+                     Push_Kind (State, Decl.Result, Error, Decl.Result_Data_Type);
+                  end;
+               end if;
+
+            when Return_Function =>
+               --  Exactly the parameters and one result remain: frames balance.
+               if Region = No_Region then
+                  Error := Invalid_Function;
+               else
+                  declare
+                     Decl : constant Function_Declaration := Candidate.Functions (Region);
+                  begin
+                     Pop_Kind (State, Decl.Result, Error, Decl.Result_Data_Type);
+                     for P in reverse 1 .. Decl.Count loop
+                        Pop_Kind (State, Decl.Kinds (P), Error, Decl.Data_Types (P));
+                     end loop;
+                     if Error = Valid and then Abstract_Stacks.Depth (State.Values) /= 0 then
+                        Error := Inconsistent_Stack;
+                     end if;
+                  end;
+               end if;
+               Falls_Through := False;
+
+            when Equal_Integer | Less_Integer | Less_Equal_Integer | Equal_Boolean =>
+               Pop_Kind (State, (if Instruction.Op = Equal_Boolean then Boolean_Value else Integer_Value), Error);
                if Error = Valid then
-                  Pop_Kind (State, Integer_Value, Error);
+                  Pop_Kind (State, (if Instruction.Op = Equal_Boolean then Boolean_Value else Integer_Value), Error);
                end if;
                if Error = Valid then
                   Push_Kind (State, Boolean_Value, Error);
@@ -405,7 +544,7 @@ is
                end if;
 
                if Error = Valid then
-                  if Program_Length (Instruction.Target) >= Length then
+                  if Program_Length (Instruction.Target) >= Limit then
                      Error := Invalid_Jump_Target;
                   elsif Instruction.Target <= PC then
                      Error := Backward_Jump;
@@ -486,9 +625,12 @@ is
                end if;
          end case;
 
+         if Error = Valid then
+            Own_Max (Region) := Demand'Max (Own_Max (Region), Depth_Of (State));
+         end if;
          if Error = Valid and then Falls_Through then
-            if Program_Length (PC) + 1 >= Length then
-               Error := Missing_Halt;
+            if Program_Length (PC) + 1 >= Limit then
+               Error := (if Region = No_Region then Missing_Halt else Invalid_Function);
             else
                Merge_State
                  (States, Instruction_Index'Succ (PC), State, Error);
@@ -496,9 +638,26 @@ is
          end if;
       end loop;
 
+      --  The deepest call chain must fit the machine's stack.
+      if Error = Valid then
+         for R in Region_Index loop
+            Need (R) := Own_Max (R);
+            for C in Function_Index loop
+               if C < R and then Calls (R, C) then
+                  Need (R) := Demand'Min
+                    (MAX_STACK_DEPTH + 1, Natural'Max (Need (R), Base_Max (R, C) + Need (C)));
+               end if;
+            end loop;
+         end loop;
+         if Need (No_Region) > MAX_STACK_DEPTH then
+            Error := Stack_Overflow;
+         end if;
+      end if;
+
+      --  Only the main body can hold locals or ownership operations.
       if Error = Valid then
          Ownership_Candidate.Length :=
-           CCL.Ownership.Bytecode.Code_Length (Length);
+           CCL.Ownership.Bytecode.Code_Length (Region_End (No_Region));
          Ownership_Candidate.Locals_Length := Candidate.Locals_Length;
          Ownership_Candidate.Dynamic_Locals_Length :=
            Candidate.Dynamic_Locals_Length;
@@ -510,7 +669,7 @@ is
          end if;
          Ownership_Candidate.Types := Candidate.Types;
          for PC in Instruction_Index loop
-            exit when Program_Length (PC) >= Length;
+            exit when Program_Length (PC) >= Region_End (No_Region);
             Ownership_Candidate.Code (CCL.Ownership.Bytecode.Code_Index (PC)) :=
               (case Candidate.Code (PC).Op is
                   when Halt => (Op => CCL.Ownership.Bytecode.Halt, others => <>),
@@ -979,7 +1138,7 @@ is
                   end if;
                end if;
 
-            when Multiply_Integer | Divide_Integer | Modulo_Integer =>
+            when Subtract_Integer | Multiply_Integer | Divide_Integer | Modulo_Integer =>
                Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
                if Stack_Result /= Runtime_Stacks.Stack_Ok or else
                  Right_Value.Kind /= Integer_Value or else
@@ -1000,6 +1159,14 @@ is
                      Done := True;
                   else
                      case Item.Content.Code (PC).Op is
+                        when Subtract_Integer =>
+                           CCL.Checked_Arithmetic.Subtract
+                             (Left_Value.Integer, Right_Value.Integer,
+                              Arithmetic_Result, Addition_Overflowed);
+                           Arithmetic_Error :=
+                             (if Addition_Overflowed then
+                                 CCL.Checked_Arithmetic.Arithmetic_Overflow
+                              else CCL.Checked_Arithmetic.Arithmetic_Ok);
                         when Multiply_Integer =>
                            CCL.Checked_Arithmetic.Multiply
                              (Left_Value.Integer, Right_Value.Integer,
@@ -1051,10 +1218,67 @@ is
                   end if;
                end if;
 
-            when Equal_Integer =>
+            when Call_Function =>
+               --  The arguments stay on the stack as the callee's parameters.
+               if State.Frame_Count = MAX_FUNCTIONS or else
+                 Item.Content.Code (PC).Immediate not in 0 .. Integer_64 (Item.Content.Functions_Length) - 1 or else
+                 Program_Length (PC) + 1 >= Item.Content.Length
+               then
+                  Status := Invalid_Bytecode;
+                  State.Terminal := True;
+                  State.Terminal_Status := Invalid_Bytecode;
+                  Done := True;
+               else
+                  State.Frames (State.Frame_Count) :=
+                    (Return_PC => PC + 1,
+                     Callee => Function_Index (Item.Content.Code (PC).Immediate));
+                  State.Frame_Count := State.Frame_Count + 1;
+                  PC := Item.Content.Functions
+                    (Function_Index (Item.Content.Code (PC).Immediate)).Entry_PC;
+               end if;
+
+            when Return_Function =>
+               --  Keep the result; drop the parameters beneath it.
+               if State.Frame_Count = 0 then
+                  Status := Invalid_Bytecode;
+                  State.Terminal := True;
+                  State.Terminal_Status := Invalid_Bytecode;
+                  Done := True;
+               else
+                  declare
+                     Frame : constant Call_Frame := State.Frames (State.Frame_Count - 1);
+                     Count : constant Parameter_Count := Item.Content.Functions (Frame.Callee).Count;
+                     Good  : Boolean;
+                  begin
+                     Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+                     Good := Stack_Result = Runtime_Stacks.Stack_Ok;
+                     for P in 1 .. Count loop
+                        exit when not Good;
+                        Runtime_Stacks.Pop (Stack, Left_Value, Stack_Result);
+                        Good := Stack_Result = Runtime_Stacks.Stack_Ok;
+                     end loop;
+                     if Good then
+                        Runtime_Stacks.Push (Stack, Right_Value, Stack_Result);
+                        Good := Stack_Result = Runtime_Stacks.Stack_Ok;
+                     end if;
+                     if Good then
+                        State.Frames (State.Frame_Count - 1) := (others => <>);
+                        State.Frame_Count := State.Frame_Count - 1;
+                        PC := Frame.Return_PC;
+                     else
+                        Status := Invalid_Bytecode;
+                        State.Terminal := True;
+                        State.Terminal_Status := Invalid_Bytecode;
+                        Done := True;
+                     end if;
+                  end;
+               end if;
+
+            when Equal_Integer | Less_Integer | Less_Equal_Integer | Equal_Boolean =>
                Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
                if Stack_Result /= Runtime_Stacks.Stack_Ok or else
-                 Right_Value.Kind /= Integer_Value or else
+                 Right_Value.Kind /=
+                   (if Item.Content.Code (PC).Op = Equal_Boolean then Boolean_Value else Integer_Value) or else
                  Program_Length (PC) + 1 >= Item.Content.Length
                then
                   Status := Invalid_Bytecode;
@@ -1064,7 +1288,7 @@ is
                else
                   Runtime_Stacks.Pop (Stack, Left_Value, Stack_Result);
                   if Stack_Result /= Runtime_Stacks.Stack_Ok or else
-                    Left_Value.Kind /= Integer_Value
+                    Left_Value.Kind /= Right_Value.Kind
                   then
                      Status := Invalid_Bytecode;
                      State.Terminal := True;
@@ -1074,7 +1298,11 @@ is
                      Runtime_Stacks.Push
                        (Stack,
                         Boolean_Constant
-                          (Left_Value.Integer = Right_Value.Integer),
+                          (case Item.Content.Code (PC).Op is
+                              when Less_Integer => Left_Value.Integer < Right_Value.Integer,
+                              when Less_Equal_Integer => Left_Value.Integer <= Right_Value.Integer,
+                              when Equal_Boolean => Left_Value.Boolean = Right_Value.Boolean,
+                              when others => Left_Value.Integer = Right_Value.Integer),
                         Stack_Result);
                      if Stack_Result = Runtime_Stacks.Stack_Ok then
                         PC := PC + 1;

@@ -63,6 +63,24 @@ procedure Path_Reads is
       Check_Reclamation := False;
    end Setup;
 begin
+   --  Names are cached per volume only while it stays admitted: another
+   --  system may change a directory between sessions (or replay a journal).
+   Setup;
+   resolvePath (fs, "/folder/file", found, lookup);
+   pragma Assert (lookup = Lookup_Found and found = 4);
+   resolvePath (fs, "/folder/other", found, lookup);
+   pragma Assert (lookup = Lookup_Not_Found);
+   leafEntry.inode := 5;
+   leafName := "othe";
+   initBlockDevice
+     (fs, 1, (slot => 1, generation => 1), Grant_Buffer'Address,
+      Grant_Buffer'Length, admission);
+   pragma Assert (admission = Admitted);
+   resolvePath (fs, "/folder/file", found, lookup);
+   pragma Assert (lookup = Lookup_Not_Found);
+   resolvePath (fs, "/folder/othe", found, lookup);
+   pragma Assert (lookup = Lookup_Found and found = 5);
+
    Setup;
    resolvePath (fs, "/folder/file", found, lookup);
    pragma Assert (lookup = Lookup_Found and found = 4);

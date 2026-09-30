@@ -183,7 +183,28 @@ package Ext2 is
       Identity : Jbd2_Format.UUID := [others => 0];
       Super_Home : Unsigned_32 := 0;    -- physical block of its superblock
       Dirty_Metadata : Natural := 0;    -- cached blocks awaiting commit
+      --  Nesting of open operations (handles). No commit starts while one
+      --  is open, so an operation is never split across transactions.
+      Handle_Depth : Natural := 0;
+      --  The log ring, as jbd2's: committed transactions stay in the log
+      --  from Tail (the durable superblock's start, with Tail_Sequence)
+      --  to Head (where the next one goes), Live_Blocks long, until the
+      --  tail moves past them. Their home writes are issued right after
+      --  each commit; the tail moves only when space is needed (or the
+      --  transaction freed blocks), after a barrier makes those durable.
+      Head, Tail : Unsigned_32 := 0;
+      Tail_Sequence : Unsigned_32 := 0;
+      Live_Blocks : Unsigned_32 := 0;
    end record;
+
+   --  Journaled volumes: blocks a detach released, freed in the bitmaps
+   --  only by the commit of the transaction holding the detach. Until then
+   --  no allocation can reuse them, so a detach needs no commit of its own
+   --  and new data never overwrites blocks an uncommitted detach still
+   --  references (jbd2's rule for freed blocks).
+   Maximum_Pending_Releases : constant := 4096;
+   subtype Pending_Count is Natural range 0 .. Maximum_Pending_Releases;
+   type Pending_Blocks is array (1 .. Maximum_Pending_Releases) of Unsigned_32;
 
    --  Context for an Ext2 filesystem
    type Filesystem is record
@@ -193,6 +214,16 @@ package Ext2 is
       --  Uncertain metadata after failed rollback requires offline recovery.
       writeQuarantined : Boolean := False;
       journal      : Journal_State;
+      pending      : Pending_Blocks := [others => 0];
+      pendingCount : Pending_Count := 0;
+      --  Where the last allocation ended: the next one without a goal of
+      --  its own starts there, not at the volume's first (full) groups.
+      allocationHint : Unsigned_32 := 0;
+      --  Where the last inode allocation was (group, bitmap byte): the next
+      --  search starts there and wraps, rather than rescanning the used
+      --  start of the bitmaps each time.
+      inodeHintGroup : Unsigned_32 := 0;
+      inodeHintByte  : Unsigned_32 := 0;
    end record;
 
    --  Make every completed write durable. A journaled volume first commits
@@ -202,7 +233,32 @@ package Ext2 is
    --  this and every later flush.
    procedure Flush (fs : in out Filesystem; status : out Flush_Status);
 
-   --  Whether the volume has cached writes not yet on the device.
+   --  Block cache size, set at startup (before the first volume is
+   --  admitted) in 4 MiB steps: each step is one way of each of the
+   --  1024 sets, 4 KiB per block. Block memory is allocated on first use.
+   Megabytes_Per_Way : constant := 4;
+   subtype Cache_Megabytes is Positive range Megabytes_Per_Way .. 32
+     with Dynamic_Predicate => Cache_Megabytes mod Megabytes_Per_Way = 0;
+   --  Fits a 128 MiB machine beside the desktop.
+   Default_Cache_Megabytes : constant Cache_Megabytes := 4;
+
+   --  Size the cache. Ignored once block memory exists.
+   procedure configureCache (megabytes : Cache_Megabytes);
+   function cacheMegabytes return Cache_Megabytes;
+
+   --  Device requests (block device IPC calls) issued since startup, and
+   --  the flushes among them: callers profile an operation by the change.
+   procedure deviceRequests (requests, flushes : out Unsigned_64);
+
+   --  Commits that had to split an open operation (its credits were
+   --  understated). Diagnostic for tests; expected to stay zero.
+   function splitCommits return Natural;
+
+   --  Blocks operations placed beside full cache sets. Diagnostic.
+   function pressureBlocks return Natural;
+
+   --  Whether the volume has cached writes not yet on the device, or
+   --  released blocks not yet freed (a commit does both).
    function dirtyBlocks (fs : Filesystem) return Boolean;
 
    --  Clean end of the volume's session: flush, then mark an active journal

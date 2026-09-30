@@ -3,12 +3,21 @@
 package Scheduler_Timing with Pure, SPARK_Mode is
    Ticks_Per_Millisecond : constant := 4;
    Tick_Microseconds : constant := 1_000 / Ticks_Per_Millisecond;
-   -- Work stealing takes only entries that have waited at least this long
-   -- in a ready list. A freshly woken IPC partner normally runs within
-   -- microseconds on its own CPU; moving it would break the same-CPU direct
-   -- IPC handoff. CPU-bound work that is really waiting still moves.
-   Steal_Age_Microseconds : constant := 500;
+   -- Virtual-deadline scheduling (docs/scheduler.md, Virtual_Deadlines).
+   -- A fresh slice is this long, and its deadline this far ahead.
    Quantum_Microseconds : constant := 1_500;
+   -- Every dispatch costs at least this much slice, so a thread that wakes
+   -- and sleeps constantly pays for its context switches.
+   Minimum_Dispatch_Microseconds : constant := 10;
+   -- A thread preempts, and work moves between CPUs, only for a deadline
+   -- earlier by more than this, so near-equal threads do not ping-pong.
+   Preempt_Margin_Microseconds : constant := 50;
+   -- Real-time reservations (Process.reserveRealtime): context switches
+   -- allowed per budget period, and the guard before exhaustion at which a
+   -- thread leaves the real-time band, so the budget stop (armed on this
+   -- CPU's timer) lands before the budget is overrun.
+   Realtime_Dispatches : constant := 16;
+   Realtime_Guard_Microseconds : constant := 50;
    Wakeup_Microseconds : constant := 100;
    OneShot_Ticks_Per_Millisecond : constant := 1_000 / Wakeup_Microseconds;
    -- A monotonic clock is ordered, not modular arithmetic. Native timestamps

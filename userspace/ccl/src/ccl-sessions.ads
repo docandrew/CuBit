@@ -11,8 +11,11 @@ package CCL.Sessions with SPARK_Mode is
    Maximum_History : constant := 16;
    subtype History_Count is Natural range 0 .. Maximum_History;
    subtype History_Index is Positive range 1 .. Maximum_History;
-   subtype Fuel_Budget is Natural range 0 .. 65_536;
-   Default_Fuel : constant Fuel_Budget := 4_096;
+   --  Fuel bounds work, not wall time: a REPL entry may do real work (sort a
+   --  thousand items, map over a range) and still always ends.
+   Maximum_Fuel : constant := 16_777_216;
+   subtype Fuel_Budget is Natural range 0 .. Maximum_Fuel;
+   Default_Fuel : constant Fuel_Budget := 1_000_000;
    type Submission is record
       Source : String (1 .. CCL.Language.MAX_SOURCE_LENGTH) := [others => ' '];
       Source_Length : Natural range 0 .. CCL.Language.MAX_SOURCE_LENGTH := 0;

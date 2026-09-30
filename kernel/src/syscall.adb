@@ -93,6 +93,7 @@ package body Syscall is
             when 116  => number := SYSCALL_RELEASE_OWNED_MEMORY;
             when 117  => number := SYSCALL_PROTECT_OWNED_MEMORY;
             when 118  => number := SYSCALL_YIELD;
+            when 119  => number := SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND;
             when 12   => number := SYSCALL_WRITE;
             when 15   => number := SYSCALL_INFO;
             when 17   => number := SYSCALL_RECEIVE;
@@ -320,6 +321,20 @@ package body Syscall is
                 end if;
                 retval := 0;
 
+            -- Sleep until an absolute time on the READ_MONOTONIC_MICROSECONDS
+            -- clock. A time already passed returns at once.
+            when SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND =>
+                declare
+                    Now : Unsigned_64;
+                    Available : Boolean;
+                begin
+                    Time.Read_Monotonic (Now, Available);
+                    if Available and then arg0 > Now then
+                        Process.sleep (Time.Duration (arg0 - Now));
+                    end if;
+                end;
+                retval := 0;
+
             when SYSCALL_MAPFB =>
                 IPC.handleMapFB (
                     Process.processOf (percpu.currentThread), retval);
@@ -486,11 +501,8 @@ package body Syscall is
                     Process.processOf (percpu.currentThread), arg0, arg1, retval);
 
             when SYSCALL_SET_LATENCY_CONTRACT =>
-                -- Advisory process-local scheduler contract. We validate the
-                -- ABI at the syscall boundary, but deliberately do not grant
-                -- more CPU yet. Admission control and hard enforcement need a
-                -- capability-governed policy pass so realtime cannot become a
-                -- denial-of-service footgun.
+                -- Process-local scheduler contract, validated at the syscall
+                -- boundary.
                 if arg0 > Unsigned_64 (Process.LatencyClass'Pos (
                    Process.LatencyClass'Last)) or else
                    arg1 > Unsigned_64 (Unsigned_32'Last) or else
@@ -501,13 +513,35 @@ package body Syscall is
                 elsif arg1 /= 0 and then arg2 > arg1 then
                     retval := Unsigned_64'Last;
                 else
-                    Process.setLatencyContract (
-                        pid      => Process.processOf (percpu.currentThread),
-                        class    => Process.LatencyClass'Val (Natural (arg0)),
-                        periodUs => Unsigned_32 (arg1),
-                        budgetUs => Unsigned_32 (arg2),
-                        flags    => Unsigned_32 (arg3));
-                    retval := 0;
+                    -- REALTIME is enforced: admitted only with a covering
+                    -- CAP_SCHEDULING and within the system's real-time
+                    -- share (Process.reserveRealtime). Other classes are
+                    -- recorded as advisory hints.
+                    declare
+                        use type Process.LatencyClass;
+                        class : constant Process.LatencyClass :=
+                          Process.LatencyClass'Val (Natural (arg0));
+                        granted : Boolean := True;
+                    begin
+                        if class = Process.LATENCY_REALTIME then
+                            Process.reserveRealtime
+                              (Process.processOf (percpu.currentThread),
+                               budgetUs => Unsigned_32 (arg2),
+                               periodUs => Unsigned_32 (arg1),
+                               granted  => granted);
+                        end if;
+                        if granted then
+                            Process.setLatencyContract (
+                                pid      => Process.processOf (percpu.currentThread),
+                                class    => class,
+                                periodUs => Unsigned_32 (arg1),
+                                budgetUs => Unsigned_32 (arg2),
+                                flags    => Unsigned_32 (arg3));
+                            retval := 0;
+                        else
+                            retval := Unsigned_64'Last;
+                        end if;
+                    end;
                 end if;
 
             when SYSCALL_TRACE_RESET =>

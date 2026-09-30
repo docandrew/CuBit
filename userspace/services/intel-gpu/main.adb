@@ -16,6 +16,7 @@ with Intel_GPU_Submission_Backing;
 with Intel_GPU_Submission_Image;
 with Intel_GPU_Submission_Buffer;
 with Intel_GPU_Native_Initial_Ring;
+with Intel_GPU_Native_Live_Ring;
 with Intel_GPU_Initial_Completion;
 with Intel_GPU_Firmware;
 with Intel_GPU_GGTT;
@@ -126,6 +127,7 @@ procedure Main is
    Observation : Intel_GPU_Observation.Snapshot;
    GGC : Unsigned_16;
    Table_Bytes : Unsigned_64;
+   GGTT_Inspection_Mapped : Boolean := False;
    Engine_Inventory : Intel_GPU_ADLN_Inventory.Inventory;
    Media_Fuse : Unsigned_32 := Unsigned_32'Last;
    Steering_First, Steering_Second : Intel_GPU_ADLN_Steering.Fuse_Snapshot;
@@ -143,6 +145,10 @@ procedure Main is
    Upload_Ledger : Intel_GPU_GGTT_Reservations.Ledger;
    Upload_Backing : Intel_GPU_Firmware_Buffer.Prepared_Buffer;
    Upload_Bound : Boolean := False;
+   -- One-shot boot takeover. No modesetting/submission peer is admitted;
+   -- the device grant, completed reset and frozen scanout inventory remain
+   -- prerequisites on every write. This is not authority to free old RAM.
+   GGTT_Takeover_Held : Boolean := False;
    Upload_GPU_Start : Unsigned_64 := 0;
    Upload_Region : constant Unsigned_64 := Intel_GPU_Firmware_Buffer.Firmware_Region_Bytes;
    PAT_Ready, MOCS_Ready, GT_Settings_Ready, Render_Settings_Ready : Boolean := False;
@@ -158,7 +164,7 @@ procedure Main is
      (PAT_Ready and then MOCS_Ready and then GT_Settings_Ready and then
       Render_Settings_Ready and then Publication_Owner_Base);
    function Upload_Range_Allowed (First, Bytes : Unsigned_64) return Boolean is
-     (Publication_Owner_Ready and then Address_Layout.Valid and then Bytes > 0 and then
+     (GGTT_Takeover_Held and then Publication_Owner_Ready and then Address_Layout.Valid and then Bytes > 0 and then
       First >= Address_Layout.Upload_First and then First < Address_Layout.Upload_Limit and then
       Bytes <= Address_Layout.Upload_Limit - First and then
       Intel_GPU_Scanout_Inventory.No_Scanout_Overlap (Scanout, (True, First, Bytes)));
@@ -256,7 +262,7 @@ procedure Main is
    Runtime_DMA, Runtime_CPU, Runtime_Bytes, Runtime_GPU : Unsigned_64 := 0;
    Runtime_Bound : Boolean := False;
    function Runtime_Range_Allowed (First, Bytes : Unsigned_64) return Boolean is
-     (Firmware_Mapped and then Publication_Owner_Ready and then Address_Layout.Valid and then
+     (GGTT_Takeover_Held and then Firmware_Mapped and then Publication_Owner_Ready and then Address_Layout.Valid and then
       Bytes > 0 and then First >= Address_Layout.Runtime_First and then
       First < Address_Layout.Runtime_Limit and then Bytes <= Address_Layout.Runtime_Limit - First and then
       Intel_GPU_Scanout_Inventory.No_Scanout_Overlap (Scanout, (True, First, Bytes)));
@@ -516,7 +522,8 @@ procedure Main is
       use type CT_Send.Result;
    begin
       Result := Context_Life.Uncertain;
-      if not Context_Owner or else Fence not in 100 .. 103 then return; end if;
+      -- Controls100..103 plus the single repeated-submission checkpoint104.
+      if not Context_Owner or else Fence not in 100 .. 104 then return; end if;
       CT_Send.Send (Send_Channel, CT_Send.Words (Payload), Fence, Status);
       if not Context_Owner then return; end if;
       Result := (if Status = CT_Send.Queued then Context_Life.Queued
@@ -551,6 +558,14 @@ procedure Main is
      (Context_Driver.State (Render_Context) = Context_Life.Fresh);
    package Initial_Ring is new Intel_GPU_Native_Initial_Ring
      (Initial_Backing_Owner, Initial_Exclusive);
+   function Live_Backing_Owner return Boolean is
+     (Initial_Backing_Owner and then
+      Context_Driver.State (Render_Context) = Context_Life.Enabled);
+   function Live_Coherent_Ready return Boolean is
+     (PCI_Device = 16#46D2# and then Live_Backing_Owner);
+   -- ADL-N LLC system-memory/WB contract only, not a cross-platform default.
+   package Live_Ring is new Intel_GPU_Native_Live_Ring
+     (Live_Backing_Owner, Live_Coherent_Ready, Initial_Ring.Read_Marker);
    function Service_Initial_Events return Boolean is
       Item : CT_Receive.Message;
       Received : CT_Receive.Result;
@@ -678,13 +693,50 @@ procedure Main is
       Intel_GPU_Diagnostics.Capture (Text);
       Intel_GPU_Diagnostics.Tick;
    end Publish_Snapshot;
+   function Hex (Value : Unsigned_32) return String;
    procedure Start_Render_Context is
+      function Completion_Name (Value : Initial_Completion.Result) return String is
+        (case Value is
+           when Initial_Completion.Rejected => "REJECTED",
+           when Initial_Completion.Ready => "READY",
+           when Initial_Completion.Complete => "COMPLETE",
+           when Initial_Completion.Ownership_Lost => "OWNERSHIP_LOST",
+           when Initial_Completion.Read_Failed => "READ_FAILED",
+           when Initial_Completion.Unexpected_Marker => "UNEXPECTED_MARKER",
+           when Initial_Completion.Invalid_Clock => "INVALID_CLOCK",
+           when Initial_Completion.Timed_Out => "TIMED_OUT",
+           when Initial_Completion.Event_Failed => "EVENT_FAILED");
+      function Wait_Name (Value : Context_Wait.Result) return String is
+        (case Value is
+           when Context_Wait.Rejected => "REJECTED",
+           when Context_Wait.Complete => "COMPLETE",
+           when Context_Wait.Ownership_Lost => "OWNERSHIP_LOST",
+           when Context_Wait.Invalid_Clock => "INVALID_CLOCK",
+           when Context_Wait.Timed_Out => "TIMED_OUT",
+           when Context_Wait.Send_Failed => "SEND_FAILED",
+           when Context_Wait.Receive_Failed => "RECEIVE_FAILED",
+           when Context_Wait.Context_Failed => "CONTEXT_FAILED");
+      function Notify_Name (Value : Context_Driver.Result) return String is
+        (case Value is
+           when Context_Driver.Rejected => "REJECTED",
+           when Context_Driver.Backpressure => "BACKPRESSURE",
+           when Context_Driver.Queued => "QUEUED",
+           when Context_Driver.Handled => "HANDLED",
+           when Context_Driver.Retained => "RETAINED",
+           when Context_Driver.Faulted => "FAULTED");
       Status : Context_Driver.Result;
       Wait_Status : Context_Wait.Result;
       use type Context_Driver.Result;
       use type Context_Wait.Result;
       Completed : Initial_Completion.Result;
       Published : Boolean;
+      Repeat_Attempt : Initial_Completion.Attempt;
+      Repeat_Completed : Initial_Completion.Result := Initial_Completion.Rejected;
+      Repeat_Notify : Context_Driver.Result := Context_Driver.Rejected;
+      Repeat_Published : Boolean := False;
+      Repeat_Segment : Intel_GPU_ADLN_Context_Init.Segment;
+      Saved_Head, Saved_Tail, H2G_Head, H2G_Tail, H2G_Status : Unsigned_32 := 0;
+      Saved_OK, H2G_OK : Boolean := False;
       Batch_Value : Unsigned_64 := Unsigned_64'Last;
       Batch_Read : Boolean := False;
       use type Initial_Completion.Result;
@@ -716,7 +768,8 @@ procedure Main is
          Publish_Snapshot ("intel-gpu: initialization ring publication failed; backing retained");
          return;
       end if;
-      -- One retained RCS0 context, unique fences 100..103 (probe uses 42).
+      -- One retained RCS0 context, controls100..103 and notification104
+      -- (transport probe uses42). No other notification fence is used yet.
       -- Only one four-word scheduling response is outstanding at a time.
       -- This bring-up policy explicitly requests preempt-to-idle on quantum
       -- expiry; it is a driver policy choice, not a probed hardware property.
@@ -738,6 +791,37 @@ procedure Main is
          return;
       end if;
       Initial_Completion.Wait (Initial_Attempt, 1_000_000, Completed);
+      if Completed = Initial_Completion.Complete and then Live_Coherent_Ready then
+         -- Reuse the validated command encoding/settings, changing only the
+         -- final completion immediate. Never overwrite the first segment or
+         -- clear the GPU marker on the CPU. This is still a fixed probe, not
+         -- an application-controlled batch submission interface.
+         Repeat_Segment := Context_Init;
+         Repeat_Segment.Words (90) := 2;
+         Initial_Completion.Arm (Repeat_Attempt, Repeat_Completed, 1, 2);
+         if Repeat_Completed = Initial_Completion.Ready then
+            Live_Ring.Append (Repeat_Segment, Repeat_Published);
+            if Repeat_Published then
+               Context_Driver.Notify_Work (Render_Context, True, Repeat_Notify);
+               if Repeat_Notify = Context_Driver.Queued then
+                  Initial_Completion.Wait (Repeat_Attempt, 1_000_000, Repeat_Completed);
+               else
+                  Initial_Completion.Fail (Repeat_Attempt);
+                  Repeat_Completed := Initial_Completion.Event_Failed;
+               end if;
+            else
+               Initial_Completion.Fail (Repeat_Attempt);
+               Repeat_Completed := Initial_Completion.Rejected;
+            end if;
+         end if;
+      end if;
+      -- Keep the bounded bring-up checkpoint closed after this attempt, even
+      -- if a late error or failed scheduling-disable follows completion.
+      Live_Ring.Fail;
+      -- Capture before scheduling-disable adds another CT message or changes
+      -- context state. Saved pointers may lag; neither snapshot is atomic.
+      Live_Ring.Read_Saved_Pointers (Saved_Head, Saved_Tail, Saved_OK);
+      CT_Send_IO.Read_Descriptor (H2G_Head, H2G_Tail, H2G_Status, H2G_OK);
       -- Even after a marker timeout, try to disable a still-healthy enabled
       -- context before slow logging. A faulted transport cannot be trusted;
       -- in every case backing stays retained and no further work is submitted.
@@ -746,6 +830,7 @@ procedure Main is
          Initial_Ring.Read_Batch_Result (Batch_Value, Batch_Read);
       end if;
       if Wait_Status /= Context_Wait.Complete or Completed /= Initial_Completion.Complete or
+        Repeat_Completed /= Initial_Completion.Complete or
         not Batch_Read or Batch_Value /=
           Unsigned_64 (Intel_GPU_Submission_Image.Batch_Probe_Value)
       then
@@ -755,11 +840,23 @@ procedure Main is
         " value=" & Unsigned_64'Image (Batch_Value) &
         "; expected=" & Unsigned_32'Image (Intel_GPU_Submission_Image.Batch_Probe_Value));
       Publish_Snapshot ("intel-gpu: initialization GPU marker " &
-        Initial_Completion.Result'Image (Completed) & "; disable " &
-        Context_Wait.Result'Image (Wait_Status) & " (NO drawing batch submitted)");
+        Completion_Name (Completed) & "; disable " &
+        Wait_Name (Wait_Status) & " (NO drawing batch submitted)");
       Publish_Snapshot ("intel-gpu: initialization marker value=" &
         Unsigned_64'Image (Initial_Completion.Last_Marker (Initial_Attempt)) & " reads=" &
         Natural'Image (Initial_Completion.Marker_Reads (Initial_Attempt)));
+      Publish_Snapshot ("intel-gpu: repeated ring published=" & Boolean'Image (Repeat_Published) &
+        " notify=" & Notify_Name (Repeat_Notify) &
+        " completion=" & Completion_Name (Repeat_Completed));
+      Publish_Snapshot ("intel-gpu: repeated marker value=" &
+        Unsigned_64'Image (Initial_Completion.Last_Marker (Repeat_Attempt)) &
+        " reads=" & Natural'Image (Initial_Completion.Marker_Reads (Repeat_Attempt)) &
+        " tail=" & Unsigned_32'Image (Live_Ring.Tail) & " (NO drawing batch submitted)");
+      Publish_Snapshot ("intel-gpu: repeat saved-context sampled=" & Boolean'Image (Saved_OK) &
+        " head=" & Hex (Saved_Head) & " tail=" & Hex (Saved_Tail) & " (NOT live engine pointers)");
+      Publish_Snapshot ("intel-gpu: repeat H2G sampled=" & Boolean'Image (H2G_OK) &
+        " head=" & Hex (H2G_Head) & " tail=" & Hex (H2G_Tail) &
+        " status=" & Hex (H2G_Status) & " (before disable)");
    end Start_Render_Context;
    procedure Service_Context_Events is
       Item : CT_Receive.Message;
@@ -1008,6 +1105,7 @@ procedure Main is
          then return "map-denied"; end if;
       end loop;
       -- Diagnostic sampling, not an atomic table snapshot or a free-space map.
+      GGTT_Inspection_Mapped := True;
       Low := Read_Register (Virtual);
       High := Read_Register (Virtual + 4);
       if Low = Unsigned_32'Last and then High = Unsigned_32'Last then
@@ -1323,6 +1421,7 @@ begin
                Publish_Snapshot ("intel-gpu: native DC transition beginning; scanout retained");
                Publish_Snapshot ("intel-gpu: native DC transition " &
                  Native_DC.Execute (Display_Power_Owned));
+               Publish_Snapshot ("intel-gpu: " & Native_DC.PHY_Diagnostic);
                declare
                   use Intel_GPU_Display_Topology;
                   Parents : constant Unsigned_64 :=
@@ -1505,7 +1604,7 @@ begin
                   Native_PAT.Configure (PAT_Attempt, Status);
                   PAT_Ready := Status = Native_PAT.Ready and then PAT_Owner_Ready;
                   PAT_Active := False;
-                  Publish_Snapshot ("intel-gpu: PAT setup " & Native_PAT.Result'Image (Status) &
+                  Publish_Snapshot ("intel-gpu: PAT setup " & Native_PAT.Result_Name (Status) &
                     " index=" & Hex (Unsigned_32 (Native_PAT.Last_Index (PAT_Attempt))) &
                     " raw=" & Hex (Native_PAT.Last_Raw (PAT_Attempt)));
                end;
@@ -1517,7 +1616,7 @@ begin
                   Native_MOCS.Configure (MOCS_Attempt, Status);
                   MOCS_Ready := Status = Native_MOCS.Ready and then MOCS_Owner_Ready;
                   MOCS_Active := False;
-                  Publish_Snapshot ("intel-gpu: MOCS setup " & Native_MOCS.Result'Image (Status) &
+                  Publish_Snapshot ("intel-gpu: MOCS setup " & Native_MOCS.Result_Name (Status) &
                     " index=" & Hex (Unsigned_32 (Native_MOCS.Last_Index (MOCS_Attempt))) &
                     " raw=" & Hex (Native_MOCS.Last_Raw (MOCS_Attempt)));
                end;
@@ -1564,7 +1663,8 @@ begin
                        when Render_Settings.Ready => "READY") & " (NOT engine-started)");
                end;
                -- Initial boot: frozen exclusive claim, no other GPU modeset
-               -- or submission owner. Existing PTEs remain untouched. The
+               -- or submission owner. Replace inherited PTEs only within a
+               -- retained allocation; scanout and the guard remain untouched. The
                -- top reservation is driver-owned upload space, not runtime
                -- GuC space; scanout exclusions apply even in this interval.
                Upload_Backing := Intel_GPU_Firmware_Buffer.Prepared;
@@ -1572,6 +1672,8 @@ begin
                  Upload_Backing.Ready and then
                  Scanout.Status = Intel_GPU_Scanout_Inventory.Complete
                then
+                  GGTT_Takeover_Held := True;
+                  Publish_Snapshot ("intel-gpu: GGTT bounded takeover admitted; scanout retained");
                   declare
                      Admitted : Boolean;
                      Selected : Unsigned_64;
@@ -1592,7 +1694,6 @@ begin
                              when Upload_Publication.Quarantined => "QUARANTINED",
                              when Upload_Publication.Protected_Range => "PROTECTED-RANGE",
                              when Upload_Publication.Reservation_Failed => "NO-FREE-UPLOAD-RANGE",
-                             when Upload_Publication.Occupied => "OCCUPIED",
                              when Upload_Publication.Read_Failed => "READ-FAILED",
                              when Upload_Publication.Prepare_Failed => "PREPARE-FAILED",
                              when Upload_Publication.Rejected => "REJECTED") &
@@ -1601,7 +1702,7 @@ begin
                            Detail : constant Upload_Publication.Search_Evidence :=
                              Upload_Publication.Search_Detail (Upload_Attempt);
                         begin
-                           Publish_Snapshot ("intel-gpu: upload search " &
+                           Publish_Snapshot ("intel-gpu: upload allocation " &
                              Upload_Publication.Search_Name (Detail.Outcome) &
                              " reads=" & Unsigned_64'Image (Detail.Reads) &
                              " blocked=" & Unsigned_64'Image (Detail.Blocked) &
@@ -1610,6 +1711,38 @@ begin
                               Publish_Snapshot ("intel-gpu: upload first nonzero index=" &
                                 Hex64 (Detail.First_Nonzero_Index) & " pte=" &
                                 Hex64 (Detail.First_Nonzero_Value));
+                              declare
+                                 procedure Probe (Index : Unsigned_64) is
+                                    Address : Unsigned_64;
+                                    Low, High_Before, High_After, RO_Low, RO_High : Unsigned_32;
+                                    Again : Unsigned_64;
+                                    Valid : Boolean;
+                                 begin
+                                    if not Publication_Owner_Ready or else
+                                      Index >= Intel_GPU_GGTT_Mapping.Bytes / 8
+                                    then return; end if;
+                                    Address := Intel_GPU_GGTT_Mapping.Virtual_Base + Index * 8;
+                                    High_Before := Read_Register (Address + 4);
+                                    Low := Read_Register (Address);
+                                    High_After := Read_Register (Address + 4);
+                                    Upload_IO.Read_PTE (Index, Again, Valid);
+                                    Publish_Snapshot ("intel-gpu: PTE probe index=" & Hex64 (Index) &
+                                      " high=" & Hex (High_Before) & " low=" & Hex (Low));
+                                    Publish_Snapshot ("intel-gpu: PTE probe high-again=" & Hex (High_After) &
+                                      " qword=" & Hex64 (Again) & " read-ok=" & Boolean'Image (Valid));
+                                    if GGTT_Inspection_Mapped and then Index < Table_Bytes / 8 then
+                                       RO_Low := Read_Register (16#6040_0000# + Index * 8);
+                                       RO_High := Read_Register (16#6040_0000# + Index * 8 + 4);
+                                       Publish_Snapshot ("intel-gpu: PTE probe RO high=" & Hex (RO_High) &
+                                         " low=" & Hex (RO_Low));
+                                    end if;
+                                 end Probe;
+                              begin
+                                 -- Observations only, not PTE validity/ownership
+                                 -- evidence. No writes, allocation or retries.
+                                 Probe (0);
+                                 Probe (Detail.First_Nonzero_Index);
+                              end;
                            end if;
                         end;
                         Upload_Bound := False;
@@ -1670,7 +1803,6 @@ begin
                           when Runtime_Publication.Quarantined => "QUARANTINED",
                           when Runtime_Publication.Protected_Range => "PROTECTED-RANGE",
                           when Runtime_Publication.Reservation_Failed => "NO-FREE-RUNTIME-RANGE",
-                          when Runtime_Publication.Occupied => "OCCUPIED",
                           when Runtime_Publication.Read_Failed => "READ-FAILED",
                           when Runtime_Publication.Prepare_Failed => "PREPARE-FAILED",
                           when Runtime_Publication.Rejected => "REJECTED");

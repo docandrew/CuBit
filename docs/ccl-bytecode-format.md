@@ -237,6 +237,23 @@ canonical constant pool and variable-sized value representation.
 | 24 | Switch_Variant | Immediate indexes a match table; consume a variant, jump and expose only that alternative's payload. |
 | 25 | Copy_Stack | Immediate is depth from top, zero-based; copy only unrestricted data. |
 | 26 | Drop_Under_Top | Preserve result while removing the unrestricted lexical payload underneath. |
+| 27 | Project_Field | Consume an object of the declared product type; produce the immediate's field. |
+| 28 | Subtract_Integer | Consume two integers, produce their difference; overflow terminates with a typed status. |
+| 29 | Less_Integer | Consume two integers, produce `left < right`. |
+| 30 | Less_Equal_Integer | Consume two integers, produce `left <= right`. |
+| 31 | Equal_Boolean | Consume two Booleans, produce their equality. |
+| 32 | Call_Function | Immediate is an earlier function's index; its parameters are on the stack. |
+| 33 | Return_Function | Keep the result, drop the parameters, continue after the call. |
+
+The compiler adds no opcode for the other operators:
+
+* `>` is `Less_Equal_Integer` followed by `Not_Boolean`, and `>=` is
+  `Less_Integer` followed by `Not_Boolean`. Both are exact on integers.
+* `/=` is the matching equality followed by `Not_Boolean`.
+* `and` and `or` lower to the conditional's forward jumps, so the right
+  operand runs only when it decides the result.
+
+Operands are always evaluated left to right.
 
 The verifier propagates a distinct payload stack type into every dispatch arm,
 and enforces nominal identity, ownership-copy restrictions, and stack equality
@@ -244,6 +261,40 @@ at joins. Moved locals are opaque transferred values on the operand stack:
 they can be returned but cannot be copied, boxed, discarded, laundered through
 arithmetic/scalar imports, or reinitialized as unrestricted locals. Resource
 operations remain governed by the existing ownership-import/disposition path.
+
+## Functions
+
+Named functions (`define`) compile to CCLB functions (in-memory programs today;
+the v7 module format refuses them with `Unsupported_Functions` until v8 adds a
+function table).
+
+* **Layout.** The main body comes first and ends in `Halt`. Each function's
+  code follows as one contiguous region, in declaration order. The function
+  table gives each function's entry, parameter kinds and result kind.
+* **Calls.** `Call_Function` (`32`) takes the function index as its immediate.
+  The arguments, evaluated left to right, stay on the stack as the callee's
+  parameters. `Return_Function` (`33`) keeps the result and drops the
+  parameters beneath it.
+* **No recursion.** A function may call only functions declared before it
+  (lower indexes); the main body may call any. The call graph is acyclic, so
+  every program still terminates, and at most 16 frames are live.
+* **Data only.** Parameters and results are Integer, Boolean or scalar-variant
+  values. Function bodies may not use program locals, ownership imports,
+  resource results or `Halt`; `let` inside a function binds on the operand
+  stack. Owned resources therefore never cross a call.
+* **Checked per region.** Each function is verified from its entry, starting
+  with its parameters on the stack. Jumps and fall-through stay inside the
+  region, and `Return_Function` must find exactly the parameters plus one
+  result.
+* **Whole-program stack bound.** The verifier records each region's maximum
+  depth and, per call site, the depth beneath the callee's frame. It then
+  combines them in index order, callees first, and rejects the program
+  (`Stack_Overflow`) unless the deepest call chain fits the 64-slot stack. At
+  run time the stack cannot overflow.
+* **Ownership.** Only the main body can hold locals, so the ownership verifier
+  checks the main region; calls are ownership-neutral.
+* **Serializable state.** The machine state gains a bounded frame stack: return
+  PC and callee per live call. It has no native pointers.
 
 ## Validation order
 
@@ -282,3 +333,32 @@ The envelope must bind at least:
 
 Signature validation establishes provenance, not authority. Installation or
 session policy must still decide which declared imports are resolved.
+
+## Future: a verified JIT (not planned soon)
+
+The interpreter and this VM cover current needs. The format should not rule
+out a later native-code compiler, for the same reason eBPF pairs a verifier with
+a JIT: verification once makes checks at run time unnecessary.
+
+What makes CCLB a good JIT input, and must be preserved as opcodes are added:
+
+* **Forward jumps only.** The control-flow graph is acyclic, so every program
+  terminates and each basic block's fuel cost is known when it is compiled.
+  Fuel can be charged per block rather than per instruction. The exceptions
+  are bounded builtins, which charge fuel per element.
+* **Known stack shape.** The verifier fixes the depth and type of every stack
+  slot at every instruction, so slots can map to registers with no run-time
+  type tags.
+* **Static call targets.** Function values name entries of the module's own
+  finite function table, so an indirect call is a bounds-checked switch.
+* **Checked arithmetic** lowers to the operation plus an overflow branch.
+* **Resumable host calls.** Each `Invoke_Import` becomes a return point, so the
+  host's suspend/complete protocol is unchanged.
+
+Trust: the JIT itself joins the trusted base; a verified program run by a wrong
+JIT is a sandbox escape. The intended shape is a template JIT in SPARK: fixed,
+audited instruction templates per opcode, with proofs that only templates are
+emitted and that jumps land on block starts. Its output is cached by module
+digest, or produced at installation beside the signed module. Pages are never
+both writable and executable, and mapping code executable is a capability,
+held by one JIT service rather than by every process.

@@ -5,6 +5,11 @@ package Intel_GPU_Combo_PHY with SPARK_Mode is
    type Field is (Misc, TX_8, PCS_1, Comp_1, Comp_9, Comp_10,
                   Comp_8, Comp_0, CL_5, Comp_3);
    type Snapshot is array (Field) of Unsigned_32;
+   -- Compare only the fields this restoration owns or uses for process/voltage
+   -- selection. Status/calibration/reserved observations are not configuration.
+   function Same_Configuration (Item : Field; Left, Right : Unsigned_32) return Boolean;
+   function Same_Configuration (Left, Right : Snapshot) return Boolean is
+     (for all F in Field => Same_Configuration (F, Left (F), Right (F)));
    function Read_Offset (Port : PHY; Item : Field) return Unsigned_32;
    function Write_Offset (Port : PHY; Item : Field) return Unsigned_32
      with Pre => Item /= Comp_3;

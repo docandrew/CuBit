@@ -62,6 +62,17 @@ package Block_Paths with Pure, SPARK_Mode is
       return Logical_Block_Count is
      (First_Triple (Sectors) + Middle_Span (Sectors) * Pointer_Count (Sectors));
 
+   --  High * pointers-per-block + Low, with the block's pointer count as a
+   --  literal in each case: slot arithmetic stays linear for the provers.
+   function Joined
+     (High, Low : Natural; Sectors : Sector_Accounting.Block_Sectors)
+      return Natural is
+     (case Sectors is
+         when 2 => High * 256 + Low,
+         when 4 => High * 512 + Low,
+         when 8 => High * 1024 + Low)
+     with Pre => High <= Maximum_Pointers ** 2 and Low < Maximum_Pointers;
+
    function Matches
      (Logical : Unsigned_64; Sectors : Sector_Accounting.Block_Sectors;
       Path : Block_Path) return Boolean is
@@ -71,29 +82,23 @@ package Block_Paths with Pure, SPARK_Mode is
            Logical >= Ext2_Inodes.NUM_DIRECT_BLOCKS and then
            Logical < First_Double (Sectors) and then
            Path.Single_Slot < Slot_Count (Sectors) and then
-           Unsigned_64 (Path.Single_Slot) = Logical - Ext2_Inodes.NUM_DIRECT_BLOCKS,
+           Path.Single_Slot = Natural (Logical - Ext2_Inodes.NUM_DIRECT_BLOCKS),
          when Double_Indirect =>
            Logical >= First_Double (Sectors) and then
            Logical < First_Triple (Sectors) and then
            Path.Root_Slot < Slot_Count (Sectors) and then
            Path.Leaf_Slot < Slot_Count (Sectors) and then
-           Unsigned_64 (Path.Root_Slot) =
-             (Logical - First_Double (Sectors)) / Pointer_Count (Sectors) and then
-           Unsigned_64 (Path.Leaf_Slot) =
-             (Logical - First_Double (Sectors)) mod Pointer_Count (Sectors),
+           Joined (Path.Root_Slot, Path.Leaf_Slot, Sectors) =
+             Natural (Logical - First_Double (Sectors)),
          when Triple_Indirect =>
            Logical >= First_Triple (Sectors) and then
            Logical < Block_Limit (Sectors) and then
            Path.Top_Slot < Slot_Count (Sectors) and then
            Path.Middle_Slot < Slot_Count (Sectors) and then
            Path.Bottom_Slot < Slot_Count (Sectors) and then
-           Unsigned_64 (Path.Top_Slot) =
-             (Logical - First_Triple (Sectors)) / Middle_Span (Sectors) and then
-           Unsigned_64 (Path.Middle_Slot) =
-             (Logical - First_Triple (Sectors)) / Pointer_Count (Sectors) mod
-               Pointer_Count (Sectors) and then
-           Unsigned_64 (Path.Bottom_Slot) =
-             (Logical - First_Triple (Sectors)) mod Pointer_Count (Sectors),
+           Joined (Joined (Path.Top_Slot, Path.Middle_Slot, Sectors),
+                   Path.Bottom_Slot, Sectors) =
+             Natural (Logical - First_Triple (Sectors)),
          when Unsupported => Logical >= Block_Limit (Sectors))
      with Ghost;
 

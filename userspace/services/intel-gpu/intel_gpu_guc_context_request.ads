@@ -48,4 +48,11 @@ package Intel_GPU_GuC_Context_Request with SPARK_Mode is
    function Scheduling_Mode (ID : Unsigned_32; Enable : Boolean) return Mode_Words
      with Post => (if ID >= 65535 then
        (for all Word of Scheduling_Mode'Result => Word = 0));
+   type Schedule_Words is array (Natural range 0 .. 1) of Unsigned_32;
+   -- GuC70 SCHED_CONTEXT, Linux v6.16 guc_actions_abi.h and
+   -- intel_guc_submission.c __guc_add_request. Only for an enabled context
+   -- whose updated LRC tail is already GPU-visible; no completion response.
+   function Schedule (ID : Unsigned_32) return Schedule_Words
+     with Post => (if ID >= 65535 then
+       (for all Word of Schedule'Result => Word = 0));
 end Intel_GPU_GuC_Context_Request;

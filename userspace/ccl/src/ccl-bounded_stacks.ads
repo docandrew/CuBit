@@ -39,6 +39,9 @@ is
 
    function "=" (Left, Right : Stack) return Boolean;
 
+   --  The number of elements held.
+   function Depth (Item : Stack) return Unsigned_32;
+
 private
    type Element_Array is array (Index_Type) of Element_Type;
 
@@ -47,5 +50,7 @@ private
       Next     : Index_Type := Index_Type'First;
       Count    : Unsigned_32 := 0;
    end record;
+
+   function Depth (Item : Stack) return Unsigned_32 is (Item.Count);
 
 end CCL.Bounded_Stacks;

@@ -1,3 +1,4 @@
+with Interfaces;
 with Ada.Text_IO; use Ada.Text_IO;
 with Model; use Model;
 procedure Main is
@@ -76,4 +77,73 @@ begin
       end loop;
    end loop;
    Put_Line ("PASS: exclusive ownership, 3968 admission/lifecycle scenarios");
+
+   --  Holder lists: every owner of an object is listed exactly once, through
+   --  random attach/detach, checked against a scan of all owners.
+   declare
+      T : State;
+      Seed : Interfaces.Unsigned_32 := 12345;
+      function Next return Natural is
+         use type Interfaces.Unsigned_32;
+      begin
+         Seed := Seed * 1103515245 + 12345;
+         return Natural (Interfaces.Shift_Right (Seed, 16));
+      end Next;
+   begin
+      for Step in 1 .. 200_000 loop
+         declare
+            O : constant Owner_Index := Next mod (Owner_Index'Last + 1);
+            K : constant Identity := (NVMe_Volume, Next mod 7);
+         begin
+            if Attached (T, O) then
+               Detach (T, O);
+            else
+               Attach (T, O, K, Step, R);
+               pragma Assert (R in Created | Shared | Full);
+            end if;
+            for P in Owner_Index loop
+               if Attached (T, P) then
+                  declare
+                     B : constant Link := Object_Of_Owner (T, P);
+                     Seen : Natural := 0;
+                  begin
+                     pragma Assert (Object_Of (T, Key (T, P)) = B);
+                     for I in 0 .. Holding (T, B) - 1 loop
+                        pragma Assert (Object_Of_Owner (T, Holder (T, B, I)) = B);
+                        if Holder (T, B, I) = P then Seen := Seen + 1; end if;
+                     end loop;
+                     pragma Assert (Seen = 1);
+                  end;
+               end if;
+            end loop;
+         end;
+      end loop;
+   end;
+   Put_Line ("PASS: holder lists and key lookup, 200000 random steps");
+
+   --  Every key homed in one slot: the probe window fills, then Full; a
+   --  freed slot inside the window is reused, and lookups stay exact.
+   declare
+      use Crowded;
+      C : Crowded.State;
+      CR : Crowded.Attach_Result;
+   begin
+      for O in 0 .. Crowded.Probe_Window - 1 loop
+         Crowded.Attach (C, O, (NVMe_Volume, O), O, CR);
+         pragma Assert (CR = Crowded.Created);
+      end loop;
+      Crowded.Attach (C, Crowded.Probe_Window, (NVMe_Volume, 999), 0, CR);
+      pragma Assert (CR = Crowded.Full);
+      Crowded.Detach (C, 10);
+      pragma Assert (Crowded.Object_Of (C, (NVMe_Volume, 10)) = 0);
+      pragma Assert (Crowded.Object_Of (C, (NVMe_Volume, 63)) /= 0);
+      Crowded.Attach (C, Crowded.Probe_Window, (NVMe_Volume, 999), 7, CR);
+      pragma Assert (CR = Crowded.Created and then Crowded.Value (C, Crowded.Probe_Window) = 7);
+      --  Holder limit: the fifth owner of one object is Full.
+      for O in 70 .. 73 loop
+         Crowded.Attach (C, O, (NVMe_Volume, 5), O, CR);
+         pragma Assert (if O = 70 then CR = Crowded.Shared or CR = Crowded.Full else True);
+      end loop;
+   end;
+   Put_Line ("PASS: probe window, tombstone reuse and holder limit");
 end Main;

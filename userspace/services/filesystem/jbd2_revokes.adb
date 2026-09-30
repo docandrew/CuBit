@@ -1,4 +1,9 @@
 package body Jbd2_Revokes with SPARK_Mode is
+   procedure Clear (Revokes : out Table) is
+   begin
+      Revokes := (Entries => [others => (Home => 0, Sequence => 0)], Count => 0);
+   end Clear;
+
    procedure Record_Revoke
      (Revokes : in out Table; Home : Unsigned_64; Sequence : Unsigned_32;
       Stored : out Boolean)

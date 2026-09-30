@@ -19,6 +19,7 @@ package body Intel_GPU_Native_Combo_Restore is
    procedure End_Scope is
    begin Active := False; end End_Scope;
    package Reader is new Intel_GPU_Native_Combo_State (Held);
+   Last_Sample : Reader.Observation;
    procedure Read_State (Port : Intel_GPU_Combo_PHY.PHY;
                          State : out Intel_GPU_Combo_PHY.Snapshot;
                          Success : out Boolean) is
@@ -26,6 +27,7 @@ package body Intel_GPU_Native_Combo_Restore is
       Sample : constant Reader.Observation := Reader.Capture (Local_Owner, Port);
    begin
       State := Sample.Values; Success := Sample.Status = Reader.Collected;
+      Last_Sample := Sample;
    end Read_State;
    procedure Write_Register (Offset, Value : Unsigned_32; Success : out Boolean) is
       Target : constant Unsigned_64 := Intel_GPU_PHY_Pages.Write_Address (Offset);
@@ -56,14 +58,21 @@ package body Intel_GPU_Native_Combo_Restore is
    end Finish_Writes;
    package Restore is new Intel_GPU_Combo_Restore
      (Begin_Scope, End_Scope, Held, Read_State, Write_Register, Finish_Writes);
+   Last_Report : Restore.Report;
+   Ran : Boolean := False;
+   function Diagnostic return String is
+     (if Ran then Restore.Diagnostic (Last_Report) &
+        (if Restore."=" (Last_Report.Status, Restore.Read_Failed) then
+            " " & Reader.Diagnostic (Last_Sample) else "")
+      else "PHY=not-run");
    function Execute (Owner : Boolean) return String is
-      Result : Restore.Report;
       use type Restore.Outcome;
    begin
       if Active then return "REJECTED"; end if;
       Local_Owner := Owner;
-      Restore.Execute (Owner, Result);
-      Succeeded := Result.Status = Restore.Ready;
-      return Restore.Outcome'Image (Result.Status);
+      Ran := True;
+      Restore.Execute (Owner, Last_Report);
+      Succeeded := Last_Report.Status = Restore.Ready;
+      return Diagnostic;
    end Execute;
 end Intel_GPU_Native_Combo_Restore;

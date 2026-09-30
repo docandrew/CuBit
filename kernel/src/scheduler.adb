@@ -11,8 +11,8 @@ with System.Storage_Elements; use System.Storage_Elements;
 with Build;
 with Mem_mgr;
 with Process.Queues;
+with Virtual_Deadlines;
 with Process_Lifetime;
-with Scheduling_Turns;
 with TextIO; use TextIO;
 with Trace;
 with x86;
@@ -83,7 +83,6 @@ package body Scheduler is
 
         pid : ProcessID;
         tid : ThreadID;
-        ign : ThreadID;
         runStartTSC : Unsigned_64;
     begin
 
@@ -116,23 +115,35 @@ package body Scheduler is
             -- println ("Scheduler - Ready List: ");
             -- Process.Queues.print (Process.cpuReadyLists(cpuData.cpuNum));
 
-            -- Work stealing: with nothing but the idle thread to run here,
-            -- take ready work from a busy CPU. The stolen process now belongs
-            -- to this CPU's list for later wakeups.
+            -- The earliest deadline this CPU may run: its own list's head,
+            -- unless another CPU's list holds an entry it may take that is
+            -- earlier by more than the margin (Virtual_Deadlines.Choose).
+            -- A taken thread now belongs to this CPU for later wakeups.
             tid := NO_THREAD;
-            if Build.Work_Stealing and then
-               not Process.Queues.hasReadyPeer (Process.cpuReadyLists(cpuData.cpuNum), 0)
-            then
-                for Offset in 1 .. Process.cpuReadyLists'Length - 1 loop
-                    Process.Queues.stealFrom
-                      (Process.cpuReadyLists
-                         ((cpuData.cpuNum + Offset) mod Process.cpuReadyLists'Length),
-                       tid);
-                    if tid /= NO_THREAD then
-                        Process.threadtab (tid).cpu := cpuData.cpuNum;
-                        exit;
+            if Build.Work_Stealing then
+                chooseList : declare
+                    package VD renames Virtual_Deadlines;
+                    Last : constant VD.CPU := VD.CPU (Process.cpuReadyLists'Last);
+                    Heads : VD.CPU_Keys (0 .. Last);
+                    Allowed : VD.CPU_Flags (0 .. Last);
+                    Chosen : Natural;
+                begin
+                    for C in Process.cpuReadyLists'Range loop
+                        Heads (VD.CPU (C)) :=
+                          (if C = cpuData.cpuNum
+                           then Process.Queues.headKey (Process.cpuReadyLists (C))
+                           else Process.Queues.takeableKey (Process.cpuReadyLists (C)));
+                        Allowed (VD.CPU (C)) := Process.cpuOnline (C);
+                    end loop;
+                    Chosen := Natural (VD.Choose
+                      (VD.CPU (cpuData.cpuNum), Heads, Allowed, Process.marginTicks));
+                    if Chosen /= cpuData.cpuNum then
+                        Process.Queues.takeFirst (Process.cpuReadyLists (Chosen), tid);
+                        if tid /= NO_THREAD then
+                            Process.threadtab (tid).cpu := cpuData.cpuNum;
+                        end if;
                     end if;
-                end loop;
+                end chooseList;
             end if;
 
             if tid = NO_THREAD then
@@ -152,6 +163,7 @@ package body Scheduler is
 
             Process.threadtab (tid).state  := RUNNING;
             Process.threadtab (tid).readiness := Rescheduled;
+            Process.cpuRunningKey (cpuData.cpuNum) := Process.runKeyOf (tid);
             Process.noteContextStarted (tid);
 
             cpuData.currentThread       := tid;
@@ -239,16 +251,11 @@ package body Scheduler is
                     Process.threadtab (tid).state   := READY;
                     Process.threadtab (tid).queuedTSC := x86.rdtsc;
 
-                    -- @TODO adjust priority here if we eat up full time-slice
-                    -- put us back on the ready list.
-                    Process.Queues.insert (
-                        q      => Process.cpuReadyLists(cpuData.cpuNum),
-                        pid    => tid,
-                        key    => Process.threadtab (tid).priority,
-                        result => ign,
-                        placement =>
-                          (if Scheduling_Turns.Remaining (Process.threadtab (tid).savedTurn) > 0
-                           then Process.Queues.Resume_Turn else Process.Queues.After_Peers));
+                    -- Back on a ready list: here, unless an earlier deadline
+                    -- waits here and another CPU is idle (placementFor). With
+                    -- nothing running here, only queued work outranks it.
+                    Process.cpuRunningKey (cpuData.cpuNum) := Virtual_Deadlines.Idle_Key;
+                    Process.placeOn (tid, Process.placementFor (tid));
 
                 when READY =>
                     -- Cross-CPU IPC race: another CPU's reply() called

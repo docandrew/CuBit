@@ -162,7 +162,7 @@ package body CCL.Objects with SPARK_Mode is
                   when Declared_Type =>
                      D := Describe (Contract.Types, Expected);
                      case D.Form is
-                        when Primitive | Resource => return False;
+                        when Primitive | Resource | Sequence | Callable => return False;
                         when Product =>
                            if C.First /= Unsigned_64 (D.Count) then return False; end if;
                            for P in reverse 1 .. D.Count loop

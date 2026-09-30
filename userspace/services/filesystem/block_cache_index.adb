@@ -45,6 +45,22 @@ package body Block_Cache_Index with SPARK_Mode is
       Lemma_Outside_Set (Table, Key);
    end Find;
 
+   procedure Lemma_Way (Set : Set_Index; Way : Way_Index)
+     with Ghost, Post => Slot_Of (Set, Way) mod Ways = Way
+   is
+   begin
+      null;
+   end Lemma_Way;
+
+   procedure Clear (Table : out Index; Active_Ways : Way_Count) is
+   begin
+      Table :=
+        (Keys => [others => (Volume => 0, Block => 0)],
+         Used | Dirty | Referenced => [others => False],
+         Classes => [others => File_Data], Hands => [others => 0],
+         Active_Ways => Active_Ways);
+   end Clear;
+
    procedure Claim
      (Table : in out Index; Key : Block_Key;
       Found : out Boolean; Slot : out Slot_Index)
@@ -54,12 +70,14 @@ package body Block_Cache_Index with SPARK_Mode is
       --  clears every reference bit it passes.
       Sweep_Limit : constant := 2 * Ways;
       Way : Way_Index;
+      Chosen : Way_Index := 0;
    begin
       Found := False;
       Slot := Slot_Of (Set, 0);
-      for Candidate in Way_Index loop
+      for Candidate in 0 .. Table.Active_Ways - 1 loop
          if not Table.Used (Slot_Of (Set, Candidate)) then
             Slot := Slot_Of (Set, Candidate);
+            Chosen := Candidate;
             Found := True;
             exit;
          end if;
@@ -67,12 +85,13 @@ package body Block_Cache_Index with SPARK_Mode is
       if not Found then
          for Step in 1 .. Sweep_Limit loop
             Way := Table.Hands (Set);
-            Table.Hands (Set) := (if Way = Way_Index'Last then 0 else Way + 1);
+            Table.Hands (Set) := (if Way >= Table.Active_Ways - 1 then 0 else Way + 1);
             if not Table.Dirty (Slot_Of (Set, Way)) then
                if Table.Referenced (Slot_Of (Set, Way)) then
                   Table.Referenced (Slot_Of (Set, Way)) := False;
                else
                   Slot := Slot_Of (Set, Way);
+                  Chosen := Way;
                   Found := True;
                   exit;
                end if;
@@ -81,15 +100,20 @@ package body Block_Cache_Index with SPARK_Mode is
               (Table.Keys = Table'Loop_Entry.Keys and then
                Table.Used = Table'Loop_Entry.Used and then
                Table.Dirty = Table'Loop_Entry.Dirty and then
-               Table.Classes = Table'Loop_Entry.Classes);
+               Table.Classes = Table'Loop_Entry.Classes and then
+               Table.Active_Ways = Table'Loop_Entry.Active_Ways);
+            pragma Loop_Invariant (Way < Table.Active_Ways);
+            pragma Loop_Invariant
+              (for all S in Set_Index => Table.Hands (S) < Table.Active_Ways);
             pragma Loop_Invariant (not Found);
          end loop;
          --  Only reference bits and the hand moved; restore the observable
          --  state exactly when every way was dirty.
          if not Found then
-            for Candidate in Way_Index loop
+            for Candidate in 0 .. Table.Active_Ways - 1 loop
                if not Table.Dirty (Slot_Of (Set, Candidate)) then
                   Slot := Slot_Of (Set, Candidate);
+                  Chosen := Candidate;
                   Found := True;
                   exit;
                end if;
@@ -97,6 +121,9 @@ package body Block_Cache_Index with SPARK_Mode is
          end if;
       end if;
       if Found then
+         pragma Assert (Slot = Slot_Of (Set, Chosen) and then Chosen < Table.Active_Ways);
+         Lemma_Way (Set, Chosen);
+         pragma Assert (Slot mod Ways < Table.Active_Ways);
          pragma Assert (not Table.Used (Slot) or else not Table.Dirty (Slot));
          Table.Keys (Slot) := Key;
          Table.Used (Slot) := True;

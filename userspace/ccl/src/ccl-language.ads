@@ -18,7 +18,13 @@ is
    MAX_TEXT_BYTES    : constant := CCL.Host_Values.Maximum_Text_Length;
    MAX_FUNCTIONS     : constant := 16;
    MAX_PARAMETERS    : constant := 8;
+   --  Enclosing values one anonymous function may capture.
+   MAX_CAPTURES      : constant := 4;
    MAX_OBJECT_VALUES : constant := 16;
+   --  Lists (docs/ccl-repl.md, "Lists"): elements across all lists of one
+   --  evaluation, and elements a result can carry out.
+   MAX_LIST_ELEMENTS : constant := 1_024;
+   MAX_LIST_RESULT   : constant := 64;
 
    --  Shared, bounded frontend representation.  Both direct interpretation
    --  and CCLB compilation consume this tree, so syntax and type semantics
@@ -43,11 +49,19 @@ is
       String_Literal,
       Name_Reference,
       Add_Form,
+      Subtract_Form,
       Multiply_Form,
       Divide_Form,
       Modulo_Form,
       Equal_Form,
+      Not_Equal_Form,
+      Less_Form,
+      Less_Equal_Form,
+      Greater_Form,
+      Greater_Equal_Form,
       Not_Form,
+      And_Form,
+      Or_Form,
       If_Form,
       Let_Form,
       String_Length_Form,
@@ -64,9 +78,52 @@ is
       Match_Arm,
       Function_Definition,
       Function_Call,
-      Handler_Form);
+      Handler_Form,
+      List_Construct,
+      Lambda_Form,
+      Builtin_Form);
 
    subtype Static_Type is CCL.Types.Type_Reference;
+
+   --  Builtins over lists and functions (docs/ccl-repl.md, "Lists"). The
+   --  collection is the last argument, so a pipeline a | f x means (f x a).
+   type Builtin_Operation is
+     (No_Builtin, Each_Builtin, Where_Builtin, Fold_Builtin, Any_Builtin,
+      All_Builtin, First_Builtin, Sum_Builtin, Range_Builtin,
+      --  Lists, round 2.
+      Last_Builtin, Skip_Builtin, Reverse_Builtin, Sort_Builtin, Sort_By_Builtin,
+      Count_Builtin, Min_Builtin, Max_Builtin, Contains_Builtin,
+      --  Strings: the subject string is the last operand.
+      Upper_Builtin, Lower_Builtin, Trim_Builtin, Starts_With_Builtin,
+      Ends_With_Builtin, Index_Of_Builtin, Replace_Builtin, Split_Builtin,
+      Join_Builtin, Parse_Int_Builtin);
+   function Builtin_Name (Operation : Builtin_Operation) return String is
+     (case Operation is
+        when No_Builtin => "", when Each_Builtin => "each",
+        when Where_Builtin => "where", when Fold_Builtin => "fold",
+        when Any_Builtin => "any", when All_Builtin => "all",
+        when First_Builtin => "first", when Sum_Builtin => "sum",
+        when Range_Builtin => "range", when Last_Builtin => "last",
+        when Skip_Builtin => "skip", when Reverse_Builtin => "reverse",
+        when Sort_Builtin => "sort", when Sort_By_Builtin => "sort-by",
+        when Count_Builtin => "count", when Min_Builtin => "min",
+        when Max_Builtin => "max", when Contains_Builtin => "contains",
+        when Upper_Builtin => "upper", when Lower_Builtin => "lower",
+        when Trim_Builtin => "trim", when Starts_With_Builtin => "starts-with",
+        when Ends_With_Builtin => "ends-with", when Index_Of_Builtin => "index-of",
+        when Replace_Builtin => "replace", when Split_Builtin => "split",
+        when Join_Builtin => "join", when Parse_Int_Builtin => "parse-int");
+   function Builtin_Arity (Operation : Builtin_Operation) return Natural is
+     (case Operation is
+        when No_Builtin => 0,
+        when Sum_Builtin | Reverse_Builtin | Sort_Builtin | Min_Builtin | Max_Builtin |
+             Upper_Builtin | Lower_Builtin | Trim_Builtin | Parse_Int_Builtin => 1,
+        when Fold_Builtin | Replace_Builtin => 3,
+        when others => 2);
+   --  Builtins whose subject (last operand) may be a String as well as a list.
+   function Takes_Text (Operation : Builtin_Operation) return Boolean is
+     (Operation in First_Builtin | Last_Builtin | Skip_Builtin | Reverse_Builtin |
+        Contains_Builtin | Upper_Builtin .. Parse_Int_Builtin);
    Invalid_Type : constant Static_Type := CCL.Types.Invalid_Type;
    Integer_Type : constant Static_Type := CCL.Types.Integer_Type;
    Boolean_Type : constant Static_Type := CCL.Types.Boolean_Type;
@@ -82,6 +139,9 @@ is
       Kind : Static_Type := Invalid_Type;
    end record;
    type Parameter_Array is array (Parameter_Index) of Parameter;
+   subtype Capture_Count is Natural range 0 .. MAX_CAPTURES;
+   subtype Capture_Index is Positive range 1 .. MAX_CAPTURES;
+   type Capture_Array is array (Capture_Index) of Parameter;
    type Argument_Array is array (Parameter_Index) of Node_Reference;
    type Component_Node_Array is array (CCL.Types.Component_Index) of Node_Reference;
    subtype Function_Index is Natural range 0 .. MAX_FUNCTIONS - 1;
@@ -91,6 +151,10 @@ is
       Parameters : Parameter_Array := [others => (others => <>)];
       Result_Kind : Static_Type := Invalid_Type;
       Body_Node : Node_Reference := NO_NODE;
+      --  An anonymous function's captured enclosing bindings. They are
+      --  bound, by value, ahead of the parameters (lambda lifting).
+      Captures : Capture_Array := [others => (others => <>)];
+      Captured : Capture_Count := 0;
    end record;
    type Function_Array is array (Function_Index) of Function_Declaration;
 
@@ -119,6 +183,15 @@ is
       Argument_Count  : Parameter_Count := 0;
       Arguments       : Argument_Array := [others => NO_NODE];
       Components      : Component_Node_Array := [others => NO_NODE];
+      --  List_Construct: how many Components are elements.
+      Element_Count   : CCL.Types.Component_Count := 0;
+      --  Name_Reference naming a defined function (a function value), or a
+      --  Function_Call through a function-typed binding (Function_Id is then
+      --  taken from the value).
+      Names_Function  : Boolean := False;
+      Calls_Value     : Boolean := False;
+      --  Builtin_Form: which builtin; its operands are Arguments.
+      Builtin         : Builtin_Operation := No_Builtin;
    end record;
 
    type Node_Array is array (Node_Index) of Node;
@@ -151,7 +224,10 @@ is
       Host_Result_Type_Mismatch,
       Host_Argument_Out_Of_Bounds,
       Host_Contract_Unsupported,
-      Evaluation_Depth_Exhausted);
+      Evaluation_Depth_Exhausted,
+      Evaluation_List_Storage_Exhausted,
+      --  parse-int on text that is not a decimal integer.
+      Evaluation_Invalid_Number);
 
    type Diagnostic_Code is
      (No_Diagnostic,
@@ -193,13 +269,29 @@ is
       Handler_Result_Not_Exportable,
       Host_Schema_Unavailable,
       Unsupported_Host_Object,
-      Host_Object_Type_Mismatch);
+      Host_Object_Type_Mismatch,
+      List_Element_Mismatch,
+      Unsupported_List_Element,
+      Empty_List_Needs_Type,
+      Too_Many_List_Elements,
+      Lambda_Parameter_Needs_Type,
+      Lambda_Capture_Unsupported,
+      Too_Many_Captures);
 
    type Text_Result is record
       Length : Natural range 0 .. MAX_TEXT_BYTES := 0;
       Data   : String (1 .. MAX_TEXT_BYTES) :=
         [others => Character'Val (0)];
    end record;
+
+   --  A list result: its elements as values (Integer, Boolean; a Character
+   --  as its code; an enumeration member as its position) or, for strings,
+   --  as consecutive slices of List_Text ending at List_Text_Ends.
+   subtype List_Result_Count is Natural range 0 .. MAX_LIST_RESULT;
+   type List_Result_Values is
+     array (1 .. MAX_LIST_RESULT) of CCL.VM.Value;
+   type List_Result_Ends is
+     array (1 .. MAX_LIST_RESULT) of Natural range 0 .. MAX_TEXT_BYTES;
 
    type Analysis_Status is
      (Analysis_Succeeded,
@@ -225,6 +317,12 @@ is
    function Analysis_Types (Result : Analysis_Result) return CCL.Types.Registry;
    function Analysis_Resource_Policies (Result : Analysis_Result)
      return CCL.Resource_Policies.Policy_Table;
+
+   --  The analysis's function table (named functions and lifted lambdas).
+   function Analysis_Function_Count (Result : Analysis_Result) return Natural
+     with Post => Analysis_Function_Count'Result <= MAX_FUNCTIONS;
+   function Analysis_Function
+     (Result : Analysis_Result; Id : Function_Index) return Function_Declaration;
 
    function Analysis_Node
      (Result : Analysis_Result;
@@ -254,12 +352,26 @@ is
       Result_Value   : CCL.VM.Value := (others => <>);
       Result_Text    : Text_Result := (others => <>);
       Result_Character : Character := Character'Val (0);
+      --  A function value: the name of the function it refers to.
+      Has_Function : Boolean := False;
+      Function_Name : Name;
+      Has_List : Boolean := False;
+      List_Type : Static_Type := Invalid_Type;
+      List_Element_Type : Static_Type := Invalid_Type;
+      List_Length : List_Result_Count := 0;
+      --  The list's full length; List_Length elements (a prefix) are carried
+      --  out, so a result never fails just for being long.
+      List_Total : Natural range 0 .. MAX_LIST_ELEMENTS := 0;
+      List_Values : List_Result_Values := [others => (others => <>)];
+      List_Text : Text_Result := (others => <>);
+      List_Text_Ends : List_Result_Ends := [others => 0];
       Fuel_Remaining : Natural := 0;
    end record;
 
    function Has_Scalar (Item : Interpretation_Result) return Boolean is
      (Item.Status = Succeeded and then Item.Has_Value and then
       not Item.Has_Text and then not Item.Has_Character and then
+      not Item.Has_List and then not Item.Has_Function and then
       CCL.Types."=" (Item.Variant_Type, Invalid_Type));
 
    procedure Interpret

@@ -9,6 +9,13 @@ package body CCL.Types with SPARK_Mode is
       return Result;
    end Named;
 
+   --  A natural number as text, without Ada's leading blank.
+   function Image_Of (Value : Natural) return String is
+      Text : constant String := Natural'Image (Value);
+   begin
+      return Text (Text'First + 1 .. Text'Last);
+   end Image_Of;
+
    function Valid_Name (Item : Name) return Boolean is
    begin
       if Item.Length = 0 or else Item.Data (1) not in
@@ -200,6 +207,111 @@ package body CCL.Types with SPARK_Mode is
             Result := Resource_Definition_Conflict;
       end case;
    end Specialize_Unary_Resource;
+
+   procedure Specialize_List
+     (Item : in out Registry; Element : Type_Reference;
+      Ref : out Type_Reference; Result : out List_Result)
+   is
+      Candidate : Description;
+      Existing : Type_Reference;
+      Defined_As : Definition_Result;
+   begin
+      Ref := Invalid_Type;
+      Result := Invalid_List_Element;
+      --  Scalars, strings and enumerations first; lists of records and of
+      --  lists come with object-image elements.
+      if not Known (Item, Element) or else Element = Handler_Type or else
+        Element = Unit_Type or else
+        (Describe (Item, Element).Form /= Primitive and then
+         not Is_Enumeration (Item, Element))
+      then
+         return;
+      end if;
+      Candidate :=
+        (Identifier => Named ("List-" & Image (Describe (Item, Element).Identifier)),
+         Form => Sequence,
+         Count => 1,
+         Parts => [1 => (Named ("element"), Element), others => <>]);
+      Result := List_Name_Too_Long;
+      if not Valid_Name (Candidate.Identifier) then
+         return;
+      end if;
+      Existing := Find (Item, Candidate.Identifier);
+      if Existing /= Invalid_Type then
+         Result := Invalid_List_Element;
+         if Same_Description (Describe (Item, Existing), Candidate) then
+            Ref := Existing;
+            Result := List_Already_Specialized;
+         end if;
+         return;
+      end if;
+      Define (Item, Candidate, Ref, Defined_As);
+      Result := (if Defined_As = Defined then List_Specialized
+                 elsif Defined_As = Registry_Full then List_Registry_Full
+                 else Invalid_List_Element);
+      if Defined_As /= Defined then Ref := Invalid_Type; end if;
+   end Specialize_List;
+
+   function Is_Function (Item : Registry; Ref : Type_Reference) return Boolean is
+     (Known (Item, Ref) and then Describe (Item, Ref).Form = Callable);
+
+   procedure Specialize_Function
+     (Item : in out Registry; Parameters : Function_Parameters;
+      Count : Function_Parameter_Count; Result_Type : Type_Reference;
+      Ref : out Type_Reference; Result : out Function_Result)
+   is
+      Candidate : Description;
+      Defined_As : Definition_Result;
+      D : Description;
+      Same_Parts : Boolean;
+   begin
+      Ref := Invalid_Type;
+      Result := Invalid_Function_Part;
+      if not Known (Item, Result_Type) or else Result_Type = Handler_Type then
+         return;
+      end if;
+      for P in 1 .. Count loop
+         if not Known (Item, Parameters (P)) or else Parameters (P) in Unit_Type | Handler_Type then
+            return;
+         end if;
+      end loop;
+      --  An existing function type with the same parts.
+      for Existing in Declared_Type'First .. Last (Item) loop
+         D := Describe (Item, Existing);
+         if D.Form = Callable and then D.Count = Count + 1 then
+            Same_Parts := D.Parts (Count + 1).Payload = Result_Type;
+            for P in 1 .. Count loop
+               Same_Parts := Same_Parts and then D.Parts (P).Payload = Parameters (P);
+            end loop;
+            if Same_Parts then
+               Ref := Existing;
+               Result := Function_Already_Specialized;
+               return;
+            end if;
+         end if;
+      end loop;
+      Candidate :=
+        (Identifier => Named ("Fn" & Image_Of (Natural (Last (Item)) + 1)),
+         Form => Callable,
+         Count => Count + 1,
+         Parts => [others => <>]);
+      for P in 1 .. Count loop
+         Candidate.Parts (P) := (Named ("p" & Image_Of (P)), Parameters (P));
+      end loop;
+      Candidate.Parts (Count + 1) := (Named ("result"), Result_Type);
+      Define (Item, Candidate, Ref, Defined_As);
+      Result := (if Defined_As = Defined then Function_Specialized
+                 elsif Defined_As = Registry_Full then Function_Registry_Full
+                 else Invalid_Function_Part);
+      if Defined_As /= Defined then Ref := Invalid_Type; end if;
+   end Specialize_Function;
+
+   function Is_List (Item : Registry; Ref : Type_Reference) return Boolean is
+     (Known (Item, Ref) and then Describe (Item, Ref).Form = Sequence);
+
+   function Element_Of (Item : Registry; Ref : Type_Reference) return Type_Reference is
+     (if Is_List (Item, Ref) then Describe (Item, Ref).Parts (1).Payload
+      else Invalid_Type);
 
    procedure Import_Definition
      (Source : Registry; Root : Type_Reference; Target : in out Registry;

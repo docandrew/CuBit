@@ -1,125 +1,118 @@
 package body Block_Paths with SPARK_Mode is
-   --  Splitting on the three block geometries makes every divisor a constant,
-   --  so the slot bounds need only linear arithmetic.
-   procedure Lemma_Double_Slots
-     (Sectors : Sector_Accounting.Block_Sectors; Within : Unsigned_64)
-     with Ghost,
-          Pre => Within < Middle_Span (Sectors),
-          Post => Within / Pointer_Count (Sectors) < Pointer_Count (Sectors)
+   --  Each geometry in its own branch: every divisor is a literal, so the
+   --  slot arithmetic is linear.
+
+   function Decode_Single
+     (Logical : Unsigned_64; Sectors : Sector_Accounting.Block_Sectors)
+      return Block_Path
+     with Pre => Logical >= Ext2_Inodes.NUM_DIRECT_BLOCKS and then
+                 Logical < First_Double (Sectors),
+          Post => Matches (Logical, Sectors, Decode_Single'Result)
    is
+      Within : constant Natural :=
+        Natural (Logical - Ext2_Inodes.NUM_DIRECT_BLOCKS);
    begin
       case Sectors is
-         when 2 => null;
-         when 4 => null;
-         when 8 => null;
+         when 2 => pragma Assert (Within < 256);
+         when 4 => pragma Assert (Within < 512);
+         when 8 => pragma Assert (Within < 1024);
       end case;
-   end Lemma_Double_Slots;
+      return (Kind => Single_Indirect, Single_Slot => Within);
+   end Decode_Single;
 
-   procedure Lemma_Triple_Slots
-     (Sectors : Sector_Accounting.Block_Sectors; Within : Unsigned_64)
-     with Ghost,
-          Pre => Within < Middle_Span (Sectors) * Pointer_Count (Sectors),
-          Post => Within / Middle_Span (Sectors) < Pointer_Count (Sectors)
+   function Decode_Double
+     (Logical : Unsigned_64; Sectors : Sector_Accounting.Block_Sectors)
+      return Block_Path
+     with Pre => Logical >= First_Double (Sectors) and then
+                 Logical < First_Triple (Sectors),
+          Post => Matches (Logical, Sectors, Decode_Double'Result)
    is
-   begin
-      case Sectors is
-         when 2 => null;
-         when 4 => null;
-         when 8 => null;
-      end case;
-   end Lemma_Triple_Slots;
-
-   --  Slot conversions, split per geometry so that each divisor and bound
-   --  is a constant.
-   function Below
-     (Value : Unsigned_64; Sectors : Sector_Accounting.Block_Sectors)
-      return Pointer_Index
-     with Pre => Value < Pointer_Count (Sectors),
-          Post => Unsigned_64 (Below'Result) = Value
-                  and then Below'Result < Slot_Count (Sectors)
-   is
-   begin
-      case Sectors is
-         when 2 => return Pointer_Index (Value);
-         when 4 => return Pointer_Index (Value);
-         when 8 => return Pointer_Index (Value);
-      end case;
-   end Below;
-
-   function Remainder
-     (Value : Unsigned_64; Sectors : Sector_Accounting.Block_Sectors)
-      return Pointer_Index
-     with Post => Unsigned_64 (Remainder'Result) = Value mod Pointer_Count (Sectors)
-                  and then Remainder'Result < Slot_Count (Sectors)
-   is
-      Slot : Unsigned_64;
+      Within : constant Natural := Natural (Logical - First_Double (Sectors));
    begin
       case Sectors is
          when 2 =>
-            pragma Assert (Pointer_Count (Sectors) = 256);
-            Slot := Value mod 256;
-            pragma Assert (Slot = Value mod Pointer_Count (Sectors));
-            return Below (Slot, Sectors);
+            pragma Assert (Within < 256 * 256);
+            return (Kind => Double_Indirect,
+                    Root_Slot => Within / 256, Leaf_Slot => Within mod 256);
          when 4 =>
-            pragma Assert (Pointer_Count (Sectors) = 512);
-            Slot := Value mod 512;
-            pragma Assert (Slot = Value mod Pointer_Count (Sectors));
-            return Below (Slot, Sectors);
+            pragma Assert (Within < 512 * 512);
+            return (Kind => Double_Indirect,
+                    Root_Slot => Within / 512, Leaf_Slot => Within mod 512);
          when 8 =>
-            pragma Assert (Pointer_Count (Sectors) = 1024);
-            Slot := Value mod 1024;
-            pragma Assert (Slot = Value mod Pointer_Count (Sectors));
-            return Below (Slot, Sectors);
+            pragma Assert (Within < 1024 * 1024);
+            return (Kind => Double_Indirect,
+                    Root_Slot => Within / 1024, Leaf_Slot => Within mod 1024);
       end case;
-   end Remainder;
+   end Decode_Double;
+
+   function Decode_Triple
+     (Logical : Unsigned_64; Sectors : Sector_Accounting.Block_Sectors)
+      return Block_Path
+     with Pre => Logical >= First_Triple (Sectors) and then
+                 Logical < Block_Limit (Sectors),
+          Post => Matches (Logical, Sectors, Decode_Triple'Result)
+   is
+      Within : constant Natural := Natural (Logical - First_Triple (Sectors));
+   begin
+      case Sectors is
+         when 2 =>
+            pragma Assert (Within < 256 * 256 * 256);
+            return (Kind => Triple_Indirect,
+                    Top_Slot => Within / 256 / 256,
+                    Middle_Slot => Within / 256 mod 256,
+                    Bottom_Slot => Within mod 256);
+         when 4 =>
+            pragma Assert (Within < 512 * 512 * 512);
+            return (Kind => Triple_Indirect,
+                    Top_Slot => Within / 512 / 512,
+                    Middle_Slot => Within / 512 mod 512,
+                    Bottom_Slot => Within mod 512);
+         when 8 =>
+            pragma Assert (Within < 1024 * 1024 * 1024);
+            return (Kind => Triple_Indirect,
+                    Top_Slot => Within / 1024 / 1024,
+                    Middle_Slot => Within / 1024 mod 1024,
+                    Bottom_Slot => Within mod 1024);
+      end case;
+   end Decode_Triple;
+
+   function Decode_Direct
+     (Logical : Unsigned_64; Sectors : Sector_Accounting.Block_Sectors)
+      return Block_Path
+     with Pre => Logical < Ext2_Inodes.NUM_DIRECT_BLOCKS,
+          Post => Matches (Logical, Sectors, Decode_Direct'Result)
+   is
+   begin
+      return (Kind => Direct, Direct_Slot => Direct_Index (Logical));
+   end Decode_Direct;
+
+   function Decode_Beyond
+     (Logical : Unsigned_64; Sectors : Sector_Accounting.Block_Sectors)
+      return Block_Path
+     with Pre => Logical >= Block_Limit (Sectors),
+          Post => Matches (Logical, Sectors, Decode_Beyond'Result)
+   is
+   begin
+      return (Kind => Unsupported);
+   end Decode_Beyond;
 
    function Decode
      (Logical : Unsigned_64; Sectors : Sector_Accounting.Block_Sectors)
       return Block_Path
    is
-      Pointers : constant Unsigned_64 := Pointer_Count (Sectors);
-      Result : Block_Path := (Kind => Unsupported);
-      Outer, Middle, Inner : Pointer_Index;
+      --  Each case proves Matches itself; here it is only passed on.
+      pragma Annotate
+        (GNATprove, Hide_Info, "Expression_Function_Body", Matches);
    begin
-      --  Each branch establishes its own case of the contract, keeping every
-      --  verification condition small enough for level-1 provers.
       if Logical < Ext2_Inodes.NUM_DIRECT_BLOCKS then
-         Result := (Kind => Direct, Direct_Slot => Direct_Index (Logical));
-         pragma Assert (Matches (Logical, Sectors, Result));
-         return Result;
+         return Decode_Direct (Logical, Sectors);
       elsif Logical < First_Double (Sectors) then
-         pragma Assert (Logical - Ext2_Inodes.NUM_DIRECT_BLOCKS < Pointers);
-         Inner := Below (Logical - Ext2_Inodes.NUM_DIRECT_BLOCKS, Sectors);
-         Result := (Kind => Single_Indirect, Single_Slot => Inner);
-         pragma Assert (Matches (Logical, Sectors, Result));
-         return Result;
+         return Decode_Single (Logical, Sectors);
       elsif Logical < First_Triple (Sectors) then
-         declare
-            Within_Double : constant Unsigned_64 := Logical - First_Double (Sectors);
-         begin
-            Lemma_Double_Slots (Sectors, Within_Double);
-            Outer := Below (Within_Double / Pointers, Sectors);
-            Inner := Remainder (Within_Double, Sectors);
-            Result := (Kind => Double_Indirect, Root_Slot => Outer, Leaf_Slot => Inner);
-            pragma Assert (Matches (Logical, Sectors, Result));
-            return Result;
-         end;
+         return Decode_Double (Logical, Sectors);
       elsif Logical < Block_Limit (Sectors) then
-         declare
-            Within_Triple : constant Unsigned_64 := Logical - First_Triple (Sectors);
-         begin
-            Lemma_Triple_Slots (Sectors, Within_Triple);
-            Outer := Below (Within_Triple / Middle_Span (Sectors), Sectors);
-            Middle := Remainder (Within_Triple / Pointers, Sectors);
-            Inner := Remainder (Within_Triple, Sectors);
-            Result := (Kind => Triple_Indirect, Top_Slot => Outer,
-                       Middle_Slot => Middle, Bottom_Slot => Inner);
-            pragma Assert (Matches (Logical, Sectors, Result));
-            return Result;
-         end;
+         return Decode_Triple (Logical, Sectors);
       end if;
-      pragma Assert (Result.Kind = Unsupported);
-      pragma Assert (Matches (Logical, Sectors, Result));
-      return Result;
+      return Decode_Beyond (Logical, Sectors);
    end Decode;
 end Block_Paths;

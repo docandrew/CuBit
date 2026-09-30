@@ -5,16 +5,16 @@ package body Intel_GPU_Initial_VM with SPARK_Mode is
       return Plan is
       Result : Plan;
       Path : constant Walk := Locate (GPU_Base);
-      Cursor : Natural := 0;
    begin
       if not Admissible (GPU_Base, Tables, Data, Access_Mode) then return Result; end if;
       Result.Entries (Root) (Path.PML4) := Encode_Directory (Tables (Pointer_Directory));
       Result.Entries (Pointer_Directory) (Path.PDP) := Encode_Directory (Tables (Directory));
       Result.Entries (Directory) (Path.PD) := Encode_Directory (Tables (Leaves));
       for Index in Data'Range loop
-         pragma Loop_Invariant (Cursor = Index - Data'First);
-         Result.Entries (Leaves) (Cursor) := Encode_Leaf (Data (Index), Policy, Access_Mode);
-         Cursor := Cursor + 1;
+         Result.Entries (Leaves) (Index) := Encode_Leaf (Data (Index), Policy, Access_Mode);
+         pragma Loop_Invariant
+           (for all I in Table_Index'First .. Index =>
+              Result.Entries (Leaves) (I) = Encode_Leaf (Data (I), Policy, Access_Mode));
       end loop;
       Result.Root_DMA := Tables (Root);
       Result.Valid := True;

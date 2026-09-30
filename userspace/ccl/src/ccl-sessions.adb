@@ -113,6 +113,8 @@ package body CCL.Sessions with SPARK_Mode is
    begin
       if Outcome.Status /= CCL.Language.Succeeded or else not Outcome.Has_Value then
          return CCL.Language.Invalid_Type;
+      elsif Outcome.Has_List then return Outcome.List_Type;
+      elsif Outcome.Has_Function then return CCL.Language.Invalid_Type;
       elsif Outcome.Has_Text then return CCL.Language.String_Type;
       elsif Outcome.Has_Character then return CCL.Language.Character_Type;
       elsif Outcome.Variant_Type in CCL.Types.Declared_Type then return Outcome.Variant_Type;
@@ -121,6 +123,56 @@ package body CCL.Sessions with SPARK_Mode is
       else return CCL.Language.Invalid_Type;
       end if;
    end Result_Type;
+
+   --  One line for a list result: List<Integer>: [10, 20, 30]. Strings are
+   --  quoted; enumeration members show their position until results carry
+   --  member names.
+   function List_Image (Outcome : CCL.Language.Interpretation_Result) return String is
+      use type CCL.Language.Static_Type;
+      use type Interfaces.Integer_64;
+      Maximum : constant := 2 * CCL.Language.MAX_TEXT_BYTES;
+      Buffer : String (1 .. Maximum) := [others => ' '];
+      Last : Natural range 0 .. Maximum := 0;
+      Text_First : Positive := 1;
+      Element_Type : constant CCL.Language.Static_Type := Outcome.List_Element_Type;
+      procedure Add (Item : String) is
+      begin
+         if Item'Length <= Maximum - Last then
+            Buffer (Last + 1 .. Last + Item'Length) := Item;
+            Last := Last + Item'Length;
+         end if;
+      end Add;
+      function Trimmed (Item : String) return String is
+        (if Item'Length > 0 and then Item (Item'First) = ' '
+         then Item (Item'First + 1 .. Item'Last) else Item);
+   begin
+      for I in 1 .. Outcome.List_Length loop
+         if I > 1 then Add (", "); end if;
+         if Element_Type = CCL.Language.String_Type then
+            Add ('"' & Outcome.List_Text.Data
+                   (Text_First .. Outcome.List_Text_Ends (I)) & '"');
+            Text_First := Outcome.List_Text_Ends (I) + 1;
+         elsif Element_Type = CCL.Language.Boolean_Type then
+            Add ((if Outcome.List_Values (I).Boolean then "true" else "false"));
+         elsif Element_Type = CCL.Language.Character_Type then
+            Add ("'" & Character'Val (Natural (Outcome.List_Values (I).Integer mod 256)) & "'");
+         elsif Element_Type = CCL.Language.Integer_Type then
+            Add (Trimmed (Interfaces.Integer_64'Image (Outcome.List_Values (I).Integer)));
+         else
+            Add ("#" & Trimmed (Interfaces.Integer_64'Image (Outcome.List_Values (I).Integer)));
+         end if;
+      end loop;
+      if Outcome.List_Total > Outcome.List_Length then
+         Add ((if Outcome.List_Length > 0 then ", " else "") & "... " &
+              Trimmed (Natural'Image (Outcome.List_Total - Outcome.List_Length)) & " more");
+      end if;
+      return "List<" &
+        (if Element_Type = CCL.Language.String_Type then "String"
+         elsif Element_Type = CCL.Language.Boolean_Type then "Boolean"
+         elsif Element_Type = CCL.Language.Character_Type then "Character"
+         elsif Element_Type = CCL.Language.Integer_Type then "Integer"
+         else "enumeration") & ">: [" & Buffer (1 .. Last) & "]";
+   end List_Image;
 
    function Result_Image (Outcome : CCL.Language.Interpretation_Result) return String is
    begin
@@ -132,6 +184,11 @@ package body CCL.Sessions with SPARK_Mode is
             else ": " & CCL.Diagnostics.Message (Outcome.Diagnostic)) &
            (if Outcome.Diagnostic_Position = 0 then ""
             else " at character" & Natural'Image (Outcome.Diagnostic_Position));
+      end if;
+      if Outcome.Has_List then
+         return List_Image (Outcome);
+      elsif Outcome.Has_Function then
+         return "Function: " & CCL.Types.Image (Outcome.Function_Name);
       end if;
       case Result_Type (Outcome) is
          when CCL.Language.Integer_Type =>

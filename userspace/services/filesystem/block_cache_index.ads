@@ -19,11 +19,14 @@ package Block_Cache_Index with Pure, SPARK_Mode is
 
    Ways : constant := 8;
    Sets : constant := 1024;
-   --  8,192 slots of up to 4 KiB: 32 MiB of blocks.
+   --  At most 8,192 slots of up to 4 KiB: 32 MiB of blocks. The service
+   --  chooses at startup how many ways of each set it uses (Clear), and
+   --  allocates block memory for those only.
    Capacity : constant := Sets * Ways;
    subtype Slot_Index is Natural range 0 .. Capacity - 1;
    subtype Set_Index is Natural range 0 .. Sets - 1;
    subtype Way_Index is Natural range 0 .. Ways - 1;
+   subtype Way_Count is Positive range 1 .. Ways;
 
    --  A volume is identified by its block-device endpoint slot.
    type Block_Key is record
@@ -52,12 +55,8 @@ package Block_Cache_Index with Pure, SPARK_Mode is
       Referenced : Flag_Array; -- CLOCK second-chance bits
       Classes : Class_Array;
       Hands : Hand_Array;
+      Active_Ways : Way_Count;
    end record;
-
-   Empty : constant Index :=
-     (Keys => [others => (Volume => 0, Block => 0)],
-      Used | Dirty | Referenced => [others => False],
-      Classes => [others => File_Data], Hands => [others => 0]);
 
    Volume_Stride : constant := 257; -- spreads volumes' equal block numbers
 
@@ -103,9 +102,24 @@ package Block_Cache_Index with Pure, SPARK_Mode is
            After.Classes (Slot) = Before.Classes (Slot)))
      with Ghost;
 
-   function Valid (Table : Index) return Boolean is
-     (Placed (Table) and then Unique (Table) and then Consistent (Table))
+   --  Only the active ways of each set are ever used, and the CLOCK hands
+   --  stay among them.
+   function Within_Ways (Table : Index) return Boolean is
+     ((for all Slot in Slot_Index =>
+         (if Table.Used (Slot) then Slot mod Ways < Table.Active_Ways)) and then
+      (for all Set in Set_Index => Table.Hands (Set) < Table.Active_Ways))
      with Ghost;
+
+   function Valid (Table : Index) return Boolean is
+     (Placed (Table) and then Unique (Table) and then Consistent (Table) and then
+      Within_Ways (Table))
+     with Ghost;
+
+   --  An empty cache using Active_Ways ways of each set. Initializes in
+   --  place (no copy of a whole-table constant).
+   procedure Clear (Table : out Index; Active_Ways : Way_Count)
+     with Post => Valid (Table) and then Table.Active_Ways = Active_Ways and then
+                  (for all Slot in Slot_Index => not Table.Used (Slot));
 
    --  A hit is exactly the slot cached for this key; it becomes recently used.
    procedure Find

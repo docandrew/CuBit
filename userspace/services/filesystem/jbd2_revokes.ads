@@ -19,8 +19,9 @@ package Jbd2_Revokes with Pure, SPARK_Mode is
       Count : Entry_Count;
    end record;
 
-   Empty : constant Table :=
-     (Entries => [others => (Home => 0, Sequence => 0)], Count => 0);
+   --  An empty table, initialized in place.
+   procedure Clear (Revokes : out Table)
+     with Post => Revokes.Count = 0;
 
    --  Linux jbd2_journal_test_revoke: a revoke recorded in transaction R
    --  cancels replay of that block from transaction T unless T is later.

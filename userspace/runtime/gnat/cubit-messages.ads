@@ -53,6 +53,10 @@ package CuBit.Messages is
    SYSCALL_SLEEP           : constant Unsigned_64 := 28;
    --  Give the CPU to any other ready thread and run again when next picked.
    SYSCALL_YIELD           : constant Unsigned_64 := 118;
+   --  Sleep until an absolute time on the READ_MONOTONIC_MICROSECONDS clock
+   --  (word 0); a time already passed returns at once.
+   SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND :
+     constant Unsigned_64 := 119;
    SYSCALL_POLL_SERVICE_REQUEST : constant Unsigned_64 := 80;
    SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID :
       constant Unsigned_64 := 102;

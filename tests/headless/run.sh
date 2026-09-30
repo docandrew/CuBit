@@ -68,6 +68,8 @@ The suite boots the NVMe profile headlessly and checks serial output for
 stable pass markers.
 Performance fixtures: bench-ipc, bench-audio, bench-storage, bench-input, bench-scheduler.
 bench-fs: tests/fs-bench (build tests/fs-bench/build-cubit.sh first).
+bench-latency: tests/sched-latency (build tests/sched-latency/build-cubit.sh
+  and bench-ipc-server first); use --timeout 300. QEMU quits at its done marker.
 Logging fixture: log-authority (build logstore procmgr clock log-check first).
 Rust fixture: rust-native (build rust-probe ccl-test-host clock first).
 Native Turso: turso-native-std, turso-native, config-storage; see tests/config-turso/native/README.md.
@@ -261,7 +263,7 @@ case "$TEST_NAME" in
         ;;
     config-tree|config-inspection|log-authority|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|rust-std|libc|servo|bench-spread|timesync|tls-probe|tls-service|netsurf-https|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|rust-std|libc|servo|bench-spread|timesync|tls-probe|tls-service|netsurf-https|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary|bench-latency)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -470,6 +472,10 @@ case "$TEST_NAME" in
         INIT_PROFILE="$ROOT_DIR/tests/fs-bench/init-bench-fs.ccl"
         QEMU_MEMORY="${QEMU_MEMORY:-512M}"
         ;;
+    bench-latency)
+        # tests/sched-latency: interbench-style scheduler latency.
+        INIT_PROFILE="$ROOT_DIR/tests/sched-latency/init-bench-latency.ccl"
+        ;;
     threads)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-threads.ccl"
         # The per-thread CPU state check needs both instances on one CPU;
@@ -584,6 +590,11 @@ if [ "$BENCH_LOAD" = 1 ]; then
         ' "$INIT_PROFILE" > "$TEMP_LOAD_PROFILE"
         INIT_PROFILE="$TEMP_LOAD_PROFILE"
     fi
+fi
+# A desktop session (desktop.svc, its GPU buffers, fonts and workbench) needs
+# more than the 128M default. Resource-constrained sizing comes later.
+if [ -z "$QEMU_MEMORY" ] && [ -n "$INIT_PROFILE" ] && grep -q '"desktop.svc"' "$INIT_PROFILE"; then
+    QEMU_MEMORY=512M
 fi
 if [ -n "$INIT_PROFILE" ]; then
     TEMP_DISK="$(mktemp "${TMPDIR:-/tmp}/cubit-${TEST_NAME}-disk.XXXXXX.img")"
@@ -916,8 +927,17 @@ if [ -n "$INIT_PROFILE" ]; then
                 exit 1
             fi
         done
-        # CuBit's filesystem protocol has no mkdir: the benchmark's directory
-        # and one per round are made here, on the disposable copy.
+        # Journaled (ext3, data=ordered) by default, as Linux's side
+        # (tests/fs-bench/linux.sh); FS_BENCH_FS=ext2 for the unjournaled one.
+        if [ "${FS_BENCH_FS:-ext3}" = "ext3" ] && \
+           ! dumpe2fs -h "$TEMP_DISK" 2>/dev/null | grep -q has_journal; then
+            if ! tune2fs -j "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to add a journal to the bench-fs disk" >&2
+                exit 1
+            fi
+        fi
+        # The benchmark's directory and one per round are made here, on the
+        # disposable copy.
         for BENCH_FS_DIR in fs-bench fs-bench/r1 fs-bench/r2 fs-bench/r3; do
             # Never mkdir over an existing name (see the Turso case).
             if [ -z "$(debugfs -R "stat $BENCH_FS_DIR" "$TEMP_DISK" 2>/dev/null)" ]; then
@@ -928,6 +948,24 @@ if [ -n "$INIT_PROFILE" ]; then
                 exit 1
             fi
         done
+    fi
+    if [ "$TEST_NAME" = "bench-latency" ]; then
+        for BENCH_LATENCY_IMAGE in logstore.svc bench-ipc-server.app sched-latency.app; do
+            debugfs -w -R "rm $BENCH_LATENCY_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$BENCH_LATENCY_IMAGE $BENCH_LATENCY_IMAGE" \
+                "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $BENCH_LATENCY_IMAGE (tests/sched-latency/build-cubit.sh)" >&2
+                exit 1
+            fi
+        done
+        # The io load's directory (never mkdir over an existing name).
+        if [ -z "$(debugfs -R "stat sched-latency" "$TEMP_DISK" 2>/dev/null)" ]; then
+            debugfs -w -R "mkdir sched-latency" "$TEMP_DISK" >/dev/null 2>&1
+        fi
+        if ! debugfs -R "stat sched-latency" "$TEMP_DISK" 2>/dev/null | grep -q 'Type: directory'; then
+            echo "headless: failed to make sched-latency" >&2
+            exit 1
+        fi
     fi
     if [ "$TEST_NAME" = "network-authority" ]; then
         NETWORK_TEST_IMAGE="$KERNEL_DIR/isodir/boot/network-check.app"
@@ -1910,6 +1948,14 @@ if { [ "$TEST_NAME" = "display-dual-output" ] || [ "$TEST_NAME" = "desktop-dual-
     INPUT_INJECTOR_PID=$!
 fi
 
+if [ "$TEST_NAME" = "bench-latency" ]; then
+    # Quit QEMU once the benchmark prints its final marker.
+    QMP_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-qmp-$$.sock"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    python3 "$ROOT_DIR/tests/sched-latency/stop-on-done.py" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" &
+    INPUT_INJECTOR_PID=$!
+fi
 NETDEV_CONFIG="user,id=net0"
 if [ "$TEST_NAME" = "config-tree" ]; then
     QMP_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-qmp-$$.sock"
@@ -2197,6 +2243,20 @@ fs-bench: done
 "
         if grep -qa 'fs-bench: .*FAIL' "$SERIAL_LOG"; then
             echo "headless: fs-bench reported a failure" >&2
+            exit 1
+        fi
+        ;;
+    bench-latency)
+        required_markers="
+bench-ipc-server: registered
+sched-latency: start
+sched-latency: peer ready
+sched-latency: workload=wake load=none
+sched-latency: workload=audio load=io
+sched-latency: done
+"
+        if grep -qa 'sched-latency: FAIL\|sched-latency: .*unavailable' "$SERIAL_LOG"; then
+            echo "headless: sched-latency reported a failure" >&2
             exit 1
         fi
         ;;

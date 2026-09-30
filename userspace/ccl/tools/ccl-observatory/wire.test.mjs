@@ -35,3 +35,32 @@ test('monitor messages carry generation and bounded lifecycle state', () => {
   const bad=good.slice(); bad[5]=6;
   assert.throws(()=>decodeResponse(bad,1n,'monitor'));
 });
+
+test('list results decode typed, signed elements and reject shape confusion', () => {
+  // [1,id,2,ok,"L",5,pos,fuel,elementType=Integer,[1,-2,3],total=3]
+  const good = Uint8Array.from([0x8b,1,1,2,0xf5,0x61,76,5,0,10,1,0x83,1,0x21,3,3]);
+  const result = decodeResponse(good, 1n, 'evaluate');
+  assert.equal(result.type, 'List');
+  assert.deepEqual(result.list, { elementType: 'Integer', elements: ['1', '-2', '3'], total: '3' });
+  const strings = Uint8Array.from([0x8b,1,1,2,0xf5,0x61,76,5,0,10,3,0x82,0x61,97,0x62,98,99,24,100]);
+  assert.deepEqual(decodeResponse(strings, 1n, 'evaluate').list, { elementType: 'String', elements: ['a', 'bc'], total: '100' });
+  for (const bad of [
+    [0x88,1,1,2,0xf5,0x61,76,5,0,10],                         // list type without elements
+    [0x8b,1,1,2,0xf5,0x61,76,1,0,10,1,0x81,1,1],              // elements without list type
+    [0x8b,1,1,2,0xf5,0x61,76,5,0,10,2,0x81,1,1],              // Boolean list holding an integer
+    [0x8b,1,1,2,0xf5,0x61,76,5,0,10,6,0x81,0x20,1],           // enumeration position below zero
+    [0x8b,1,1,2,0xf5,0x61,76,5,0,10,9,0x80,0],                // unknown element type
+    [0x8b,1,1,2,0xf5,0x61,76,5,0x20,10,1,0x80,0],             // negative diagnostic position
+    [0x8b,1,1,2,0xf5,0x61,76,5,0,10,1,0x98,65,...Array(65).fill(1),65], // more than 64 elements
+    [0x8b,1,1,2,0xf5,0x61,76,5,0,10,1,0x9f,1,0xff,1],         // indefinite-length array
+    [0x8b,1,1,2,0xf5,0x61,76,5,0,10,1,0x82,1,2,1],            // total below the elements carried
+    [0x8b,1,1,2,0xf5,0x61,76,5,0,10,1,0x81,1,0x19,0x04,0x01], // total beyond any list (1025)
+    [0x8a,1,1,2,0xf5,0x61,76,5,0,10,1,0x81,1],                // the old 10-field shape
+  ]) assert.throws(() => decodeResponse(Uint8Array.from(bad), 1n, 'evaluate'));
+});
+
+test('function values travel as display text with type Function', () => {
+  const good = Uint8Array.from([0x88,1,1,2,0xf5,0x61,70,6,0,10]);
+  assert.equal(decodeResponse(good, 1n, 'evaluate').type, 'Function');
+  assert.throws(() => decodeResponse(Uint8Array.from([0x88,1,1,2,0xf5,0x61,70,7,0,10]), 1n, 'evaluate'));
+});

@@ -10,4 +10,5 @@ package Intel_GPU_Native_DC is
    -- a partial failure. Held means the full transition, not only clear DC bits.
    function Execute (Owner : Boolean) return String;
    function Held return Boolean;
+   function PHY_Diagnostic return String;
 end Intel_GPU_Native_DC;

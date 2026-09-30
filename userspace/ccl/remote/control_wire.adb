@@ -92,10 +92,48 @@ package body Control_Wire with SPARK_Mode is
             end;
          end if;
       end Text;
+      --  A list evaluation also carries its element type code and a definite
+      --  array of elements (README, "Lists"). Monitors show lists as text.
+      List_Type_Code : constant := 5;
+      --  A function value travels as its display text only.
+      Function_Type_Code : constant := 6;
+      procedure Elements (Item : CCL.Language.Interpretation_Result) is
+         use type CCL.Language.Static_Type;
+         Element_Type : constant CCL.Language.Static_Type := Item.List_Element_Type;
+         Text_First : Positive := 1;
+      begin
+         Number (if Element_Type = CCL.Language.Integer_Type then 1
+                 elsif Element_Type = CCL.Language.Boolean_Type then 2
+                 elsif Element_Type = CCL.Language.String_Type then 3
+                 elsif Element_Type = CCL.Language.Character_Type then 4
+                 else 6);
+         Put (Encoding.Encode_Array (UInt64 (Item.List_Length)));
+         for I in 1 .. Item.List_Length loop
+            if Element_Type = CCL.Language.Integer_Type then
+               Put (Encoding.Encode_Integer (Item.List_Values (I).Integer));
+            elsif Element_Type = CCL.Language.Boolean_Type then
+               Flag (Item.List_Values (I).Boolean);
+            elsif Element_Type = CCL.Language.String_Type then
+               Text (Item.List_Text.Data (Text_First .. Item.List_Text_Ends (I)));
+               Text_First := Item.List_Text_Ends (I) + 1;
+            elsif Element_Type = CCL.Language.Character_Type then
+               Text ([1 => Character'Val (Natural (Item.List_Values (I).Integer) mod 256)]);
+            else
+               Number (Interfaces.Unsigned_64 (Item.List_Values (I).Integer));
+            end if;
+         end loop;
+         --  The full length: the elements are its first List_Length.
+         Number (Interfaces.Unsigned_64 (Item.List_Total));
+      end Elements;
       procedure Outcome (Item : CCL.Language.Interpretation_Result) is
       begin
          Flag (Item.Status = CCL.Language.Succeeded);
          Text (CCL.Sessions.Result_Image (Item));
+         if Item.Has_List then
+            Number (List_Type_Code);
+         elsif Item.Has_Function then
+            Number (Function_Type_Code);
+         else
          case CCL.Sessions.Result_Type (Item) is
             when CCL.Language.Invalid_Type => Number (0);
             when CCL.Language.Integer_Type => Number (1);
@@ -106,6 +144,7 @@ package body Control_Wire with SPARK_Mode is
             --  have no portable wire schema yet. Never export them as integers.
             when others => Failed := True;
          end case;
+         end if;
          Number (Interfaces.Unsigned_64 (Item.Diagnostic_Position));
          Number (Interfaces.Unsigned_64 (Item.Fuel_Remaining));
       end Outcome;
@@ -113,7 +152,8 @@ package body Control_Wire with SPARK_Mode is
       Data := (others => <>);
       Put (Encoding.Encode_Array (case Query.Op is
         when CCL.Control.Inspect_Bindings => 12,
-        when CCL.Control.Read_Clock => 5, when CCL.Control.Evaluate_Expression => 8,
+        when CCL.Control.Read_Clock => 5,
+        when CCL.Control.Evaluate_Expression => (if Value.Outcome.Has_List then 11 else 8),
         when CCL.Control.Start_Monitor | CCL.Control.Stop_Monitor |
              CCL.Control.Inspect_Monitor => 15));
       Number (1); Number (Query.Id); Number (CCL.Control.Operation'Enum_Rep (Query.Op));
@@ -127,6 +167,9 @@ package body Control_Wire with SPARK_Mode is
             Flag (Value.Observed.Clock_Available); Number (Value.Observed.Monotonic_Ms);
          when CCL.Control.Evaluate_Expression =>
             Outcome (Value.Outcome);
+            if Value.Outcome.Has_List then
+               Elements (Value.Outcome);
+            end if;
          when CCL.Control.Start_Monitor | CCL.Control.Stop_Monitor | CCL.Control.Inspect_Monitor =>
             Flag (Value.Accepted);
             Number (CCL.Periodic_Programs.Lifecycle'Pos (CCL.Periodic_Programs.State (Value.Monitor)));

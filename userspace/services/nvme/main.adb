@@ -19,6 +19,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
 with CuBit.Memory_Grants;
 with CuBit.Busy_Poll;
+with CuBit.NVMe_Control;
 with NVMe;
 
 procedure main is
@@ -230,8 +231,46 @@ procedure main is
    msg      : Message;
    bar0Phys : Unsigned_64;
    dmaPhys  : Unsigned_64;
+   --  devmgr's startup configuration (CuBit.NVMe_Control).
+   configSender : ProcessID;
+   configMessage : Message;
+   msixTable : Unsigned_64 := NVMe.NO_MSIX;
+   msixVector : Unsigned_64 := 0;
+   configValid : Boolean;
+   queuesOk : Boolean;
+#if nvme_io_profile = "on" then
+   --  Diagnostic: how completion waits end, every so many flushes.
+   flushes : Unsigned_64 := 0;
+   WAIT_REPORT_FLUSHES : constant := 256;
+#end if;
 begin
    debugPrint ("NVMe Driver: Starting..." & LF);
+
+   --  0. The first message is devmgr's interrupt configuration, bound to
+   --  the registered devmgr's kernel-supplied identity.
+   receive (configSender, configMessage);
+   declare
+      use CuBit.NVMe_Control;
+   begin
+      configValid := configSender /= NO_PROCESS and then
+        configSender = getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DEVMGR);
+      if configValid and then
+        configMessage.tag.label = Operation'Enum_Rep (Configure_MSIX)
+      then
+         configValid := configMessage.tag.length = 2 and then
+           configMessage.words (0) in Table_Offset and then
+           configMessage.words (0) mod 16 = 0 and then
+           configMessage.words (1) = Device_Vector;
+         if configValid then
+            msixTable := configMessage.words (0);
+            msixVector := configMessage.words (1);
+         end if;
+      elsif configValid then
+         configValid :=
+           configMessage.tag.label = Operation'Enum_Rep (Configure_Polled) and then
+           configMessage.tag.length = 0;
+      end if;
+   end;
 
    --  1. Query sysinfo for NVMe BAR0 and DMA physical addresses
    bar0Phys := getInfo (SYSINFO_NVME_BAR0);
@@ -266,8 +305,21 @@ begin
    NVMe.identifyController;
    NVMe.identifyNamespace;
 
-   --  4. Create I/O queues
-   NVMe.createIOQueues;
+   --  4. Create I/O queues (interrupting through MSI-X if configured),
+   --  then answer devmgr, which unmasks the function on success.
+   NVMe.createIOQueues (msixTable, msixVector, queuesOk);
+   if not queuesOk and then msixTable /= NVMe.NO_MSIX then
+      msixTable := NVMe.NO_MSIX;
+      NVMe.createIOQueues (NVMe.NO_MSIX, 0, queuesOk);
+   end if;
+   if configSender /= NO_PROCESS then
+      sendReply (configSender,
+                 (if configValid and then NVMe.interruptsEnabled
+                  then REPLY_OK else REPLY_ERROR), 0);
+   end if;
+   debugPrint ((if NVMe.interruptsEnabled
+                then "NVMe Driver: completion interrupts (MSI-X)" & LF
+                else "NVMe Driver: completions polled" & LF));
 
    --  5. Register as NVMe driver
    declare
@@ -303,6 +355,12 @@ begin
          when OP_DESCRIBE_DEVICE =>
             handleDescribe (sender);
          when OP_FLUSH_DEVICE =>
+#if nvme_io_profile = "on" then
+            flushes := flushes + 1;
+            if flushes mod WAIT_REPORT_FLUSHES = 0 then
+               NVMe.reportWaits;
+            end if;
+#end if;
             --  Without a volatile write cache every completed write is
             --  already durable: the barrier needs no controller command.
             if msg.tag.length = 0 and then msg.tag.flags = 0 and then

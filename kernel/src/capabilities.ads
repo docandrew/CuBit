@@ -41,7 +41,8 @@ is
         CAP_DEVICE_MEM,     -- Device memory (framebuffer, MMIO)
         CAP_REPLY,          -- One-use reply capability (kernel-minted)
         CAP_RESOURCE,       -- Resource quota (memory/CPU limits)
-        CAP_CSPACE          -- Capability-table administration
+        CAP_CSPACE,         -- Capability-table administration
+        CAP_SCHEDULING      -- May reserve real-time CPU (docs/scheduler.md)
     );
 
     ---------------------------------------------------------------------------
@@ -114,6 +115,7 @@ is
     -- | REPLY        | Sender PID           | (reserved)     |
     -- | RESOURCE     | maxFrames            | cpuQuota(lo32)|cpuPeriod(hi32)|
     -- | CSPACE       | Target PID (0=all)   | (reserved)     |
+    -- | SCHEDULING   | Budget µs            | Period µs      |
     --
     -- Two plain fields instead of a variant record (README warns against
     -- variant records for overlays).

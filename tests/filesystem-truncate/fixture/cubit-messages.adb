@@ -1,3 +1,4 @@
+with System.Storage_Elements;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
 with Ext2;
 package body CuBit.Messages is
@@ -190,4 +191,28 @@ package body CuBit.Messages is
       end if;
       return msg.tag;
    end capCall;
+   function syscall
+     (call : Unsigned_64; arg0 : Unsigned_64 := 0; arg1 : Unsigned_64 := 0;
+      arg2 : Unsigned_64 := 0; arg3 : Unsigned_64 := 0;
+      arg4 : Unsigned_64 := 0; arg5 : Unsigned_64 := 0) return Unsigned_64
+   is
+      pragma Unreferenced (arg1, arg2, arg3, arg4, arg5);
+      Page : constant := 4096;
+      type Region is array (Natural range <>) of Unsigned_8;
+      type Region_Access is access Region;
+   begin
+      if call /= SYSCALL_ALLOCATE_OWNED_MEMORY or else arg0 = 0 or else
+        arg0 > 16 * 1024 * 1024
+      then
+         return Unsigned_64'Last;
+      end if;
+      declare
+         Area : constant Region_Access :=
+           new Region'(0 .. Natural (arg0) + Page - 1 => 0);
+         Base : constant Unsigned_64 := Unsigned_64
+           (System.Storage_Elements.To_Integer (Area.all (0)'Address));
+      begin
+         return (Base + Page - 1) and not (Page - 1);
+      end;
+   end syscall;
 end CuBit.Messages;

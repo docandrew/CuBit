@@ -243,7 +243,7 @@ async function refresh() {
     $('clock-value').textContent = data.clock.available ? data.clock.monotonicMs : 'Unavailable';
     $('freshness').textContent = new Date(observedAt).toLocaleTimeString();
     $('footer-status').textContent = 'Live guest · plaintext lab connection · peer NOT authenticated';
-    $('session-mode').textContent = 'Native interpreter · fuel 4096';
+    $('session-mode').textContent = 'Native interpreter · fuel 1,000,000';
     updateControls();
     select(selected);
     renderMonitor(await call('monitor'));
@@ -283,11 +283,33 @@ async function evaluate(event) {
     if (typeof result.ok !== 'boolean' || typeof result.message !== 'string' || typeof result.type !== 'string') throw new Error('Invalid evaluation response');
     $('outcome').textContent = `${result.message}\n${result.type} · fuel remaining ${result.fuelRemaining}`;
     $('outcome').className = result.ok ? 'success' : 'error';
+    if (result.list) $('outcome').append(listTable(result.list));
     if (!result.ok && /^\d{1,4}$/.test(result.position) && Number(result.position) > 0) {
       const pos = Math.min(source.length, Number(result.position) - 1);
       $('source').focus(); $('source').setSelectionRange(pos, Math.min(source.length, pos + 1));
     }
   } catch (error) { $('outcome').textContent = error.message; $('outcome').className = 'error'; }
+}
+// A list result as an indexed table. Built from text nodes only: element text
+// from CuBit is data, never markup.
+function listTable(list) {
+  const table = document.createElement('table');
+  table.className = 'list-result';
+  const head = table.createTHead().insertRow();
+  for (const label of ['#', list.elementType]) {
+    const cell = document.createElement('th'); cell.textContent = label; head.append(cell);
+  }
+  const body = table.createTBody();
+  list.elements.forEach((element, index) => {
+    const row = body.insertRow();
+    row.insertCell().textContent = String(index + 1);
+    row.insertCell().textContent = list.elementType === 'String' ? JSON.stringify(element) : String(element);
+  });
+  if (BigInt(list.total) > BigInt(list.elements.length)) {
+    const caption = table.createCaption();
+    caption.textContent = `first ${list.elements.length} of ${list.total}`;
+  }
+  return table;
 }
 $('command-form').addEventListener('submit', evaluate);
 $('source').addEventListener('keydown', e => { if (e.ctrlKey && e.key === 'Enter') evaluate(e); });

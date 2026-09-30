@@ -18,7 +18,8 @@ project VM_Client extends "client.gpr" is
       "ccl-language.ads", "ccl-language.adb", "ccl-compiler.ads", "ccl-compiler.adb",
       "ccl-objects-views.ads", "ccl-objects-views.adb",
       "ccl-catalog.ads", "ccl-catalog.adb", "ccl-debug_maps.ads", "ccl-debug_maps.adb",
-      "ccl-secondary_stacks.ads", "ccl-secondary_stacks.adb");
+      "ccl-secondary_stacks.ads", "ccl-secondary_stacks.adb",
+      "ccl-secondary_arrays.ads", "ccl-secondary_arrays.adb");
    for Object_Dir use "build/vm";
    for Exec_Dir use "build/vm";
    for Main use ("vm_tests.adb");

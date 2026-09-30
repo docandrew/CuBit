@@ -235,7 +235,7 @@ is
            Item.Immediate = 0 and then Item.Target = 0 and then Item.Import = 0 and then
            Item.Local = 0 and then Item.Verb = 0 and then
            (if Item.Op = Make_Variant then Item.Alternative > 0 else Item.Alternative = 0),
-         when Switch_Variant | Copy_Stack =>
+         when Switch_Variant | Copy_Stack | Call_Function =>
            Item.Immediate >= 0 and then Item.Target = 0 and then Item.Import = 0 and then
            Item.Local = 0 and then Item.Verb = 0,
          when Push_Integer => Item.Target = 0 and then Item.Import = 0 and then
@@ -276,6 +276,9 @@ is
       Verify (Candidate, Checked, Validation);
       if Validation /= Valid then
          Error := Bytecode_Invalid;
+         return;
+      elsif Candidate.Functions_Length > 0 then
+         Error := Unsupported_Functions;
          return;
       elsif not Ownership_Metadata_Valid (Candidate) then
          Error := Invalid_Ownership_Metadata;

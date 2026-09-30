@@ -34,9 +34,11 @@ package body Intel_GPU_Native_GGTT is
          Entry_Value : Unsigned_64 with Import, Volatile_Full_Access,
            Address => To_Address (Base + Integer_Address (Index * 8));
       begin
-         -- Preserve inherited or previously published mappings even if the
-         -- earlier transaction-wide read observed zero. Never overwrite.
-         if Entry_Value /= 0 or else not Owner_Ready then return; end if;
+         -- Write_Allowed binds this exact index/value to an exclusively
+         -- retained allocation after takeover. Old PTE bits are not ownership.
+         -- Still reject an inaccessible aperture before issuing a store.
+         if Entry_Value = Unsigned_64'Last or else not Owner_Ready or else
+           not Write_Allowed (Index, Value) then return; end if;
          System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
          Entry_Value := Value;
          System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);

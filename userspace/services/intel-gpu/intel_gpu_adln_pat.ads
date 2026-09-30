@@ -10,6 +10,15 @@ package Intel_GPU_ADLN_PAT is
    type Attempt is limited private;
    type Result is (Rejected, Ownership_Lost, Read_Failed, Write_Failed,
                    Readback_Failed, Ready);
+   -- Explicit strings survive the native runtime's Discard_Names setting.
+   function Result_Name (Value : Result) return String is
+     (case Value is
+        when Rejected => "REJECTED",
+        when Ownership_Lost => "OWNERSHIP-LOST",
+        when Read_Failed => "READ-FAILED",
+        when Write_Failed => "WRITE-FAILED",
+        when Readback_Failed => "READBACK-FAILED",
+        when Ready => "READY");
    procedure Configure (Object : in out Attempt; Status : out Result);
    function Last_Index (Object : Attempt) return Natural;
    function Last_Raw (Object : Attempt) return Interfaces.Unsigned_32;

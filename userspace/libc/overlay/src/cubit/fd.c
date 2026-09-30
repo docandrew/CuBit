@@ -366,14 +366,6 @@ static void release_ring(struct pipe_obj *p, int reader)
 	if (last) free(p);
 }
 
-/* filesystem.svc open options (CuBit.Filesystems.Open_Options). */
-#define FS_OPEN_READ_ONLY 0
-#define FS_OPEN_WRITE_ONLY 1
-#define FS_OPEN_READ_WRITE 2
-#define FS_OPEN_CREATE 64
-#define FS_OPEN_TRUNCATE 512
-#define FS_OPEN_EXCLUSIVE 1024
-
 static int writable(const struct fd_entry *e)
 {
 	return (e->flags & O_ACCMODE) != O_RDONLY;

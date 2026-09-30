@@ -5,6 +5,7 @@
 -- Full MIT permission/warranty notice: intel_gpu_adln_lrc_template.adb.
 with Intel_GPU_ADLN_Context_Settings;
 with Intel_GPU_ADLN_Batch_Start;
+with Intel_GPU_Arbitration_Command;
 package body Intel_GPU_ADLN_Context_Init with SPARK_Mode is
    type Barrier_Words is array (Natural range 0 .. 21) of Unsigned_32;
    Barrier : constant Barrier_Words :=
@@ -18,14 +19,15 @@ package body Intel_GPU_ADLN_Context_Init with SPARK_Mode is
       16#11020001#, 16#4208#, 1, -- remapped LRI, CCS_AUX_INV
       16#0E01C003#, 0, 16#4208#, 0, 0, -- register-poll until AUX_INV clears
       16#02800100#]; -- re-enable pre-parser
-   function Build (Read_Valid : Boolean; WM_Chicken2 : Unsigned_32) return Segment is
+   function Build (Read_Valid : Boolean; WM_Chicken2 : Unsigned_32;
+                   Sequence_Value : Unsigned_32 := Completion_Value) return Segment is
       Result : Segment;
       Settings : constant Intel_GPU_ADLN_Context_Settings.Segment :=
         Intel_GPU_ADLN_Context_Settings.Build (Read_Valid, WM_Chicken2);
       Batch : constant Intel_GPU_ADLN_Batch_Start.Command_Words :=
         Intel_GPU_ADLN_Batch_Start.Build;
    begin
-      if not Settings.Valid then return Result; end if;
+      if not Settings.Valid or Sequence_Value = 0 then return Result; end if;
       for I in Barrier'Range loop
          Result.Words (I) := Barrier (I);
          Result.Words (36 + I) := Barrier (I);
@@ -42,7 +44,14 @@ package body Intel_GPU_ADLN_Context_Init with SPARK_Mode is
       -- CS_STALL | STORE_DATA_INDEX | QW_WRITE | FLUSH_ENABLE.
       Result.Words (86 .. 91) :=
         [16#7A000004#, 16#00304080#, Completion_Offset, 0,
-         Completion_Value, 0];
+         Sequence_Value, 0];
+      -- Balance Batch_Start's arbitration disable before exhausting the ring.
+      -- TGL PRM vol2a pp957-958 requires paired off/on in the same dispatch;
+      -- Linux gen12_emit_fini_breadcrumb_tail likewise restores arbitration.
+      -- Polling replaces USER_INTERRUPT here; NOOP keeps the pair aligned.
+      -- The following arbitration check supplies an explicit preemption point.
+      Result.Words (92 .. 95) :=
+        [Intel_GPU_Arbitration_Command.Enable, 0, 16#02800000#, 0];
       Result.Valid := True;
       return Result;
    end Build;

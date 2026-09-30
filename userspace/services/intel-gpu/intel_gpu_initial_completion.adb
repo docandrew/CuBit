@@ -19,13 +19,22 @@ package body Intel_GPU_Initial_Completion is
       end if;
       Object.Previous := Current; Status := Ready; return True;
    end Check;
-   procedure Arm (Object : in out Attempt; Status : out Result) is
+   procedure Arm (Object : in out Attempt; Status : out Result;
+                  Previous_Value : Unsigned_32 := 0;
+                  Expected_Value : Unsigned_32 := 1) is
       Marker : Unsigned_64;
       OK : Boolean;
    begin
       Status := Rejected;
       if Object.Value /= Fresh then return; end if;
       Object.Value := Quarantined;
+      if Previous_Value = Unsigned_32'Last or else
+        Expected_Value /= Previous_Value + 1
+      then
+         return;
+      end if;
+      Object.Prior_Marker := Unsigned_64 (Previous_Value);
+      Object.Target_Marker := Unsigned_64 (Expected_Value);
       Status := Ownership_Lost;
       if not Owner_Ready then return; end if;
       Object.Started := Now_Us; Object.Previous := Object.Started;
@@ -36,7 +45,7 @@ package body Intel_GPU_Initial_Completion is
       if OK then Object.Marker := Marker; end if;
       if not Check (Object, Status) then return; end if;
       if not OK then Status := Read_Failed; return; end if;
-      if Marker /= 0 then Status := Unexpected_Marker; return; end if;
+      if Marker /= Object.Prior_Marker then Status := Unexpected_Marker; return; end if;
       Object.Value := Armed; Status := Ready;
    end Arm;
    procedure Wait (Object : in out Attempt; Poll_Limit : Positive;
@@ -59,8 +68,13 @@ package body Intel_GPU_Initial_Completion is
          if OK then Object.Marker := Marker; end if;
          if not Check (Object, Status) then return; end if;
          if not OK then Status := Read_Failed; return; end if;
-         if Marker = 1 then Object.Value := Observed; Status := Complete; return;
-         elsif Marker /= 0 then Status := Unexpected_Marker; return;
+         if Marker = Object.Target_Marker then
+            Object.Value := Observed; Status := Complete; return;
+         -- Context-relative barrier post-sync writes may temporarily clear
+         -- the scratch marker. Neither zero nor the previous completion is
+         -- evidence of this submission finishing.
+         elsif Marker /= 0 and Marker /= Object.Prior_Marker then
+            Status := Unexpected_Marker; return;
          end if;
          Pause;
       end loop;

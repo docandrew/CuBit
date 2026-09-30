@@ -7,6 +7,7 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with System.Storage_Elements; use System.Storage_Elements;
+with Ada.Unchecked_Conversion;
 
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
@@ -20,6 +21,7 @@ with Inode_Mappings;
 with Block_Paths;
 with Block_Inventory;
 with Block_Cache_Index;
+with Dentry_Cache;
 with Double_Mappings;
 with Jbd2_Recovery;
 with Triple_Mappings;
@@ -34,6 +36,7 @@ package body Ext2 is
    use type System.Address;
    use type Block_Paths.Path_Kind;
    use type Directory_Blocks.Prepare_Result;
+   use type Block_Cache_Index.Block_Key;
    use Volume_Admission;
 
 
@@ -50,6 +53,16 @@ package body Ext2 is
 
    cacheIdentityValid : Boolean := False;
    cachedCapSlot       : Unsigned_64 := 0;
+
+   --  Device requests issued (and barriers among them), for profiling
+   --  the I/O each operation costs (deviceRequests).
+   deviceCalls, deviceFlushes : Unsigned_64 := 0;
+
+   procedure deviceRequests (requests, flushes : out Unsigned_64) is
+   begin
+      requests := deviceCalls;
+      flushes := deviceFlushes;
+   end deviceRequests;
 
    procedure invalidateBlockCache is
    begin
@@ -142,6 +155,7 @@ package body Ext2 is
                           2 => sectorsNeeded,
                           3 => fs.device.grant.generation];
 
+            deviceCalls := deviceCalls + 1;
             ignore := capCall (fs.device.endpointSlot, msg);
 
             if msg.tag.label /= REPLY_OK or else
@@ -196,8 +210,133 @@ package body Ext2 is
    Cached_Block_Bytes : constant := 4096; -- largest admitted ext2 block
    type Cached_Block is array (0 .. Cached_Block_Bytes - 1) of Unsigned_8
      with Alignment => 8;
-   Cache_Index : Block_Cache_Index.Index := Block_Cache_Index.Empty;
-   Cache_Blocks : array (Cache_Slot) of Cached_Block;
+   --  One owned-memory allocation is at most 16 MiB.
+   Maximum_Chunk_Bytes : constant := 16 * 1024 * 1024;
+   Cache_Index : Block_Cache_Index.Index;
+   Cache_Ways : Block_Cache_Index.Way_Count :=
+     Block_Cache_Index.Way_Count (Default_Cache_Megabytes / Megabytes_Per_Way);
+
+   --  Journal spill: metadata an open operation dirties while every way of
+   --  its cache set is dirty. It waits here, beside the cache, for the next
+   --  commit instead of forcing a commit in mid-operation. startHandle
+   --  commits first unless the operation's credits fit (as JBD2 handles
+   --  reserve log credits).
+   Spill_Capacity : constant := 64;
+   subtype Spill_Count is Natural range 0 .. Spill_Capacity;
+   subtype Spill_Index is Natural range 0 .. Spill_Capacity - 1;
+   First_Spill_Slot : constant := Block_Cache_Index.Capacity;
+   --  Cache ways, then spill entries: every buffer a lookup can return.
+   subtype Buffer_Slot is Natural range 0 .. First_Spill_Slot + Spill_Capacity - 1;
+   Spill_Keys : array (Spill_Index) of Block_Cache_Index.Block_Key;
+   Spill_Classes : array (Spill_Index) of Block_Cache_Index.Block_Class;
+   Spill_Used : Spill_Count := 0;
+
+   --  Block memory for the active ways and the spill, in owned-memory
+   --  chunks allocated on first use (a large cache costs nothing in the
+   --  image or before a volume is used).
+   type Block_Access is access all Cached_Block;
+   function toBlock is new Ada.Unchecked_Conversion (System.Address, Block_Access);
+   Chunk_Blocks : constant := Maximum_Chunk_Bytes / Cached_Block_Bytes;
+   Maximum_Chunks : constant :=
+     (Block_Cache_Index.Capacity + Spill_Capacity + Chunk_Blocks - 1) / Chunk_Blocks;
+   subtype Chunk_Index is Natural range 0 .. Maximum_Chunks - 1;
+   Chunk_Bases : array (Chunk_Index) of System.Address :=
+     [others => System.Null_Address];
+   Store_Ready : Boolean := False;
+
+   function storeBlocks return Natural is
+     (Block_Cache_Index.Sets * Cache_Ways + Spill_Capacity);
+
+   --  Allocate the store; on failure try fewer ways (at least one).
+   procedure ensureStore is
+      chunks : Natural;
+      base : Unsigned_64;
+      failed : Boolean;
+   begin
+      if Store_Ready then
+         return;
+      end if;
+      loop
+         chunks := (storeBlocks + Chunk_Blocks - 1) / Chunk_Blocks;
+         failed := False;
+         for index in 0 .. chunks - 1 loop
+            base := syscall (SYSCALL_ALLOCATE_OWNED_MEMORY,
+                             Unsigned_64 (Natural'Min (Chunk_Blocks,
+                               storeBlocks - index * Chunk_Blocks)) * Cached_Block_Bytes);
+            if base = 0 or else base = Unsigned_64'Last then
+               failed := True;
+               exit;
+            end if;
+            Chunk_Bases (index) := System.Storage_Elements.To_Address
+              (System.Storage_Elements.Integer_Address (base));
+         end loop;
+         exit when not failed or else Cache_Ways = 1;
+         --  Chunks already obtained stay owned (bounded, startup only).
+         Cache_Ways := Cache_Ways - 1;
+         Block_Cache_Index.Clear (Cache_Index, Cache_Ways);
+      end loop;
+      Store_Ready := not failed;
+      if failed then
+         raise Program_Error; --  no memory for even one way: cannot run
+      end if;
+   end ensureStore;
+
+   --  The block buffer of an index slot (active ways only) or spill slot.
+   function Cache_Blocks (slot : Natural) return Block_Access is
+      index : constant Natural :=
+        (if slot < First_Spill_Slot
+         then (slot / Block_Cache_Index.Ways) * Cache_Ways + slot mod Block_Cache_Index.Ways
+         else Block_Cache_Index.Sets * Cache_Ways + (slot - First_Spill_Slot));
+   begin
+      if not Store_Ready then
+         ensureStore;
+      end if;
+      return toBlock (Chunk_Bases (index / Chunk_Blocks) +
+                      Storage_Offset ((index mod Chunk_Blocks) * Cached_Block_Bytes));
+   end Cache_Blocks;
+   --  Commits forced inside an open operation (spill full: its credits
+   --  were understated). Diagnostic; zero in every test.
+   Split_Commits : Natural := 0;
+   --  Blocks an open operation placed beside a full cache set (spilled
+   --  metadata, data sent home at once). Diagnostic for tests.
+   Pressure_Blocks : Natural := 0;
+
+   function splitCommits return Natural is (Split_Commits);
+   function pressureBlocks return Natural is (Pressure_Blocks);
+
+   --  The spill buffer holding key, or -1.
+   function spillSlot (key : Block_Cache_Index.Block_Key) return Integer is
+   begin
+      for index in 0 .. Spill_Used - 1 loop
+         if Spill_Keys (index) = key then
+            return First_Spill_Slot + index;
+         end if;
+      end loop;
+      return -1;
+   end spillSlot;
+
+   --  Drop a volume's spill entries (committed, or the volume discarded).
+   procedure dropSpill (volume : Unsigned_64) is
+      kept : Spill_Count := 0;
+   begin
+      for index in 0 .. Spill_Used - 1 loop
+         if Spill_Keys (index).Volume /= volume then
+            Spill_Keys (kept) := Spill_Keys (index);
+            Spill_Classes (kept) := Spill_Classes (index);
+            Cache_Blocks (First_Spill_Slot + kept).all :=
+              Cache_Blocks (First_Spill_Slot + index).all;
+            kept := kept + 1;
+         end if;
+      end loop;
+      Spill_Used := kept;
+   end dropSpill;
+
+   --  File transfers from this size bypass the block cache: large writes
+   --  go home directly (journaled volumes too) and large reads fill
+   --  nothing, so bulk I/O cannot evict metadata. Smaller ones are cached
+   --  like metadata (small files are read again soon, as Linux's page
+   --  cache assumes).
+   Direct_Data_Bytes : constant := 64 * 1024;
 
    --  Bulk file payload bypasses the cache so it cannot evict metadata.
    type Cache_Policy is (Cache_Fill, Cache_Bypass);
@@ -211,8 +350,45 @@ package body Ext2 is
 
    --  Nothing is ever dirty in a write-through cache, so dropping a volume's
    --  entries loses nothing the device lacks.
+   --  The name cache (see Dentry_Cache).
+   Names : Dentry_Cache.Table;
+
+   --  A name about to change in a directory is no longer cached.
+   procedure rememberName
+     (fs : Filesystem; directory : Unsigned_32; name : String; inode : Unsigned_32)
+   is
+      displaced : Boolean;
+      from : Dentry_Cache.Directory_Id;
+   begin
+      if Dentry_Cache.Cacheable (name) then
+         Dentry_Cache.Insert
+           (Names, Dentry_Cache.Make_Key (fs.device.endpointSlot, directory, name),
+            inode, displaced, from);
+      end if;
+   end rememberName;
+
+   --  A change to directory that may not have completed: names not cached
+   --  there can no longer be taken as absent.
+   procedure uncertainDirectory (fs : Filesystem; directory : Unsigned_32) is
+   begin
+      Dentry_Cache.Mark_Incomplete (Names, fs.device.endpointSlot, directory);
+   end uncertainDirectory;
+
+   function completeDirectory (fs : Filesystem; directory : Unsigned_32) return Boolean is
+     (Dentry_Cache.Is_Complete (Names, fs.device.endpointSlot, directory));
+
+   procedure forgetName (fs : Filesystem; directory : Unsigned_32; name : String) is
+   begin
+      if Dentry_Cache.Cacheable (name) then
+         Dentry_Cache.Forget
+           (Names, Dentry_Cache.Make_Key (fs.device.endpointSlot, directory, name));
+      end if;
+   end forgetName;
+
    procedure forgetVolume (fs : Filesystem) is
    begin
+      Dentry_Cache.Discard_Volume (Names, fs.device.endpointSlot);
+      dropSpill (fs.device.endpointSlot);
       Block_Cache_Index.Discard_Volume (Cache_Index, fs.device.endpointSlot);
    end forgetVolume;
 
@@ -220,23 +396,32 @@ package body Ext2 is
    --  entry. found is False only if every way of the block's set were dirty,
    --  which a write-through cache never is; callers then read directly.
    procedure cachedBlock
-     (fs : Filesystem; number : Unsigned_32; slot : out Cache_Slot;
+     (fs : Filesystem; number : Unsigned_32; slot : out Buffer_Slot;
       found : out Boolean; status : out Read_Status)
    is
       key : constant Block_Cache_Index.Block_Key := cacheKey (fs, number);
+      way : Cache_Slot;
    begin
       status := Read_Complete;
-      Block_Cache_Index.Find (Cache_Index, key, found, slot);
-      if found then
+      slot := 0;
+      if Spill_Used > 0 and then spillSlot (key) >= 0 then
+         slot := spillSlot (key);
+         found := True;
          return;
       end if;
-      Block_Cache_Index.Claim (Cache_Index, key, found, slot);
+      Block_Cache_Index.Find (Cache_Index, key, found, way);
+      if found then
+         slot := way;
+         return;
+      end if;
+      Block_Cache_Index.Claim (Cache_Index, key, found, way);
       if not found then
          return;
       end if;
+      slot := way;
       deviceRead
         (fs, Storage_Offset (number) * Storage_Offset (fs.blkSize),
-         Cache_Blocks (slot)'Address, Storage_Count (fs.blkSize), status);
+         Cache_Blocks (slot).all'Address, Storage_Count (fs.blkSize), status);
       if status /= Read_Complete then
          Block_Cache_Index.Forget (Cache_Index, key);
          found := False;
@@ -256,7 +441,7 @@ package body Ext2 is
       blockBytes : constant Storage_Offset := Storage_Offset (fs.blkSize);
       position : Storage_Offset := offset;
       done : Storage_Offset := 0;
-      slot : Cache_Slot;
+      slot : Buffer_Slot;
       found : Boolean;
    begin
       if policy = Cache_Bypass or else not cacheable (fs) or else offset < 0 then
@@ -311,7 +496,7 @@ package body Ext2 is
       blockBytes : constant Unsigned_64 := Unsigned_64 (fs.blkSize);
       first : constant Unsigned_64 := lba * sectorBytes;
       position : Unsigned_64 := first;
-      slot : Cache_Slot;
+      slot : Buffer_Slot;
       cached : Boolean;
       readStatus : Read_Status;
    begin
@@ -379,7 +564,9 @@ package body Ext2 is
             exit when number >= Storage_Offset (fs.sb.blockCount);
             Block_Cache_Index.Find
               (Cache_Index, cacheKey (fs, Unsigned_32 (number)), hit, slot);
-            if not hit and then class /= File_Data and then part = blockBytes then
+            if not hit and then part = blockBytes and then
+              (class /= File_Data or else len < Direct_Data_Bytes)
+            then
                Block_Cache_Index.Claim
                  (Cache_Index, cacheKey (fs, Unsigned_32 (number)), hit, slot);
             end if;
@@ -411,7 +598,8 @@ package body Ext2 is
       done : Storage_Offset := 0;
       missStart : Storage_Offset := 0;
       missLength : Storage_Offset := 0;
-      slot : Cache_Slot;
+      slot : Buffer_Slot;
+      way : Cache_Slot;
       found : Boolean;
 
       procedure Read_Misses is
@@ -426,6 +614,9 @@ package body Ext2 is
       if not cacheable (fs) then
          deviceRead (fs, offset, dest, len, status);
          return;
+      elsif len < Direct_Data_Bytes then
+         readBytes (fs, offset, dest, len, status);
+         return;
       end if;
       while done < len loop
          declare
@@ -434,8 +625,16 @@ package body Ext2 is
             part : constant Storage_Offset :=
               Storage_Offset'Min (blockBytes - within, len - done);
          begin
-            Block_Cache_Index.Find
-              (Cache_Index, cacheKey (fs, Unsigned_32 (number)), found, slot);
+            if Spill_Used > 0 and then
+              spillSlot (cacheKey (fs, Unsigned_32 (number))) >= 0
+            then
+               found := True;
+               slot := spillSlot (cacheKey (fs, Unsigned_32 (number)));
+            else
+               Block_Cache_Index.Find
+                 (Cache_Index, cacheKey (fs, Unsigned_32 (number)), found, way);
+               slot := way;
+            end if;
             if found then
                Read_Misses;
                if status /= Read_Complete then
@@ -581,6 +780,106 @@ package body Ext2 is
       end if;
    end readInode;
 
+   --  The fast path of a lookup: a plain directory's blocks scanned in the
+   --  block cache, comparing lengths before bytes. With clean, the answer
+   --  (and, if found, the index of the directory block holding the name);
+   --  without, a record did not validate or a block was not cached, and
+   --  the general, fully checked path must answer.
+   procedure scanCachedDirectory
+     (fs : Filesystem; dirIno : Inode; name : String;
+      inodeNum : out Unsigned_32; blockIndex : out Natural;
+      status : out Directory_Lookup_Status; clean : out Boolean)
+   is
+   begin
+      inodeNum := 0;
+      blockIndex := 0;
+      status := Lookup_Not_Found;
+      clean := True;
+      if inodeType (dirIno) = INODE_DIRECTORY and then dirIno.flags = 0 and then
+        cacheable (fs) and then dirIno.sizeLo /= 0 and then
+        dirIno.sizeLo mod fs.blkSize = 0 and then
+        Unsigned_64 (dirIno.sizeLo) <=
+          Unsigned_64 (NUM_DIRECT_BLOCKS) * Unsigned_64 (fs.blkSize) and then
+        dirIno.sizeHi_DirACL = 0 and then name'Length in 1 .. 255
+      then
+         declare
+            blockBytes : constant Natural := Natural (fs.blkSize);
+            slot : Buffer_Slot;
+            cached : Boolean := True;
+            readStatus : Read_Status;
+         begin
+            for index in 0 .. Natural (dirIno.sizeLo / fs.blkSize) - 1 loop
+               if dirIno.directBlocks (index) = 0 or else
+                 dirIno.directBlocks (index) >= fs.sb.blockCount
+               then
+                  clean := False;
+                  exit;
+               end if;
+               cachedBlock (fs, dirIno.directBlocks (index), slot, cached, readStatus);
+               if readStatus /= Read_Complete then
+                  --  A failed read is not retried by the general path.
+                  status := (if readStatus = Read_Out_Of_Range then Lookup_Out_Of_Range
+                             else Lookup_Device_Error);
+                  return;
+               elsif not cached then
+                  clean := False;
+                  exit;
+               end if;
+               declare
+                  data : Cached_Block renames Cache_Blocks (slot).all;
+                  position : Natural := 0;
+                  span, length : Natural;
+                  number : Unsigned_32;
+               begin
+                  while position < blockBytes loop
+                     if blockBytes - position < 8 then
+                        clean := False;
+                        exit;
+                     end if;
+                     span := Natural (data (position + 4)) + 256 * Natural (data (position + 5));
+                     length := Natural (data (position + 6));
+                     number := Unsigned_32 (data (position)) or
+                       Shift_Left (Unsigned_32 (data (position + 1)), 8) or
+                       Shift_Left (Unsigned_32 (data (position + 2)), 16) or
+                       Shift_Left (Unsigned_32 (data (position + 3)), 24);
+                     if span < 8 or else span mod 4 /= 0 or else
+                       span > blockBytes - position or else length > span - 8 or else
+                       number > fs.sb.inodeCount or else (number /= 0 and then length = 0)
+                     then
+                        clean := False;
+                        exit;
+                     end if;
+                     if number /= 0 and then length = name'Length then
+                        declare
+                           matches : Boolean := True;
+                        begin
+                           for k in 0 .. length - 1 loop
+                              if Character'Val (data (position + 8 + k)) /=
+                                name (name'First + k)
+                              then
+                                 matches := False;
+                                 exit;
+                              end if;
+                           end loop;
+                           if matches then
+                              inodeNum := number;
+                              blockIndex := index;
+                              status := Lookup_Found;
+                              return;
+                           end if;
+                        end;
+                     end if;
+                     position := position + span;
+                  end loop;
+               end;
+               exit when not clean;
+            end loop;
+         end;
+      else
+         clean := False;
+      end if;
+   end scanCachedDirectory;
+
    procedure lookupInDir
      (fs      : Filesystem;
       dirIno  : Inode;
@@ -593,7 +892,15 @@ package body Ext2 is
       nextCursor : Unsigned_64;
       count     : Natural;
       pageStatus : Directory_Read_Status;
+      blockIndex : Natural;
+      clean : Boolean;
    begin
+      inodeNum := 0;
+      status := Lookup_Not_Found;
+      scanCachedDirectory (fs, dirIno, name, inodeNum, blockIndex, status, clean);
+      if clean or else status not in Lookup_Found | Lookup_Not_Found then
+         return;
+      end if;
       inodeNum := 0;
       status := Lookup_Not_Found;
       loop
@@ -651,6 +958,94 @@ package body Ext2 is
 
 
 
+   --  Cache every name of a plain directory and mark it complete, when all
+   --  its records validate and every name fits the cache (and none of its
+   --  entries was displaced meanwhile). Otherwise nothing is claimed.
+   procedure indexDirectory
+     (fs : Filesystem; number : Unsigned_32; dir : Inode; readStatus : out Read_Status)
+   is
+      blockBytes : constant Natural := Natural (fs.blkSize);
+      slot : Buffer_Slot;
+      cached : Boolean;
+      clean : Boolean := True;
+      displaced : Boolean;
+      from : Dentry_Cache.Directory_Id;
+   begin
+      readStatus := Read_Complete;
+      if inodeType (dir) /= INODE_DIRECTORY or else dir.flags /= 0 or else
+        not cacheable (fs) or else dir.sizeLo = 0 or else
+        dir.sizeLo mod fs.blkSize /= 0 or else dir.sizeHi_DirACL /= 0 or else
+        Unsigned_64 (dir.sizeLo) >
+          Unsigned_64 (NUM_DIRECT_BLOCKS) * Unsigned_64 (fs.blkSize)
+      then
+         return;
+      end if;
+      for index in 0 .. Natural (dir.sizeLo / fs.blkSize) - 1 loop
+         if dir.directBlocks (index) = 0 or else
+           dir.directBlocks (index) >= fs.sb.blockCount
+         then
+            return;
+         end if;
+         cachedBlock (fs, dir.directBlocks (index), slot, cached, readStatus);
+         if readStatus /= Read_Complete or else not cached then
+            return;
+         end if;
+         declare
+            data : Cached_Block renames Cache_Blocks (slot).all;
+            position : Natural := 0;
+            span, length : Natural;
+            entryInode : Unsigned_32;
+         begin
+            while position < blockBytes loop
+               if blockBytes - position < 8 then
+                  return;
+               end if;
+               span := Natural (data (position + 4)) + 256 * Natural (data (position + 5));
+               length := Natural (data (position + 6));
+               entryInode := Unsigned_32 (data (position)) or
+                 Shift_Left (Unsigned_32 (data (position + 1)), 8) or
+                 Shift_Left (Unsigned_32 (data (position + 2)), 16) or
+                 Shift_Left (Unsigned_32 (data (position + 3)), 24);
+               if span < 8 or else span mod 4 /= 0 or else
+                 span > blockBytes - position or else length > span - 8 or else
+                 entryInode > fs.sb.inodeCount or else
+                 (entryInode /= 0 and then length = 0)
+               then
+                  return;
+               end if;
+               if entryInode /= 0 then
+                  declare
+                     name : String (1 .. length);
+                  begin
+                     for k in 1 .. length loop
+                        name (k) := Character'Val (data (position + 7 + k));
+                     end loop;
+                     if name /= "." and then name /= ".." then
+                        if not Dentry_Cache.Cacheable (name) then
+                           clean := False;
+                        else
+                           Dentry_Cache.Insert
+                             (Names,
+                              Dentry_Cache.Make_Key (fs.device.endpointSlot, number, name),
+                              entryInode, displaced, from);
+                           if displaced and then from.Parent = number and then
+                             from.Volume = fs.device.endpointSlot
+                           then
+                              clean := False;
+                           end if;
+                        end if;
+                     end if;
+                  end;
+               end if;
+               position := position + span;
+            end loop;
+         end;
+      end loop;
+      if clean then
+         Dentry_Cache.Mark_Complete (Names, fs.device.endpointSlot, number);
+      end if;
+   end indexDirectory;
+
    procedure resolvePath
      (fs : Filesystem; path : String; inodeNum : out Unsigned_32;
       status : out Directory_Lookup_Status)
@@ -680,16 +1075,70 @@ package body Ext2 is
                status := Lookup_Malformed;
                return;
             end if;
-            readInode (fs, current, ino, readStatus);
-            if readStatus /= Read_Complete then
-               status := (if readStatus = Read_Out_Of_Range then
-                            Lookup_Out_Of_Range else Lookup_Device_Error);
-               return;
-            end if;
-            lookupInDir (fs, ino, path (first .. last), current, status);
-            if status /= Lookup_Found then
-               return;
-            end if;
+            declare
+               name : String renames path (first .. last);
+               cached : Boolean := False;
+               found : Unsigned_32;
+               parent : constant Unsigned_32 := current;
+            begin
+               if Dentry_Cache.Cacheable (name) then
+                  Dentry_Cache.Find
+                    (Names, Dentry_Cache.Make_Key (fs.device.endpointSlot, parent, name),
+                     cached, found);
+               end if;
+               if cached and then found = Dentry_Cache.No_Inode then
+                  status := Lookup_Not_Found;
+                  return;
+               elsif cached then
+                  current := found;
+               else
+                  readInode (fs, current, ino, readStatus);
+                  if readStatus /= Read_Complete then
+                     status := (if readStatus = Read_Out_Of_Range then
+                                  Lookup_Out_Of_Range else Lookup_Device_Error);
+                     return;
+                  end if;
+                  --  A complete directory has every name cached: this one
+                  --  is absent. Otherwise index the directory once, so later
+                  --  lookups in it are hash probes, and look again.
+                  if Dentry_Cache.Cacheable (name) and then
+                    not completeDirectory (fs, parent)
+                  then
+                     indexDirectory (fs, parent, ino, readStatus);
+                     if readStatus /= Read_Complete then
+                        --  A failed read is reported, not retried.
+                        status := (if readStatus = Read_Out_Of_Range then
+                                     Lookup_Out_Of_Range else Lookup_Device_Error);
+                        return;
+                     end if;
+                  end if;
+                  if Dentry_Cache.Cacheable (name) and then completeDirectory (fs, parent) then
+                     Dentry_Cache.Find
+                       (Names, Dentry_Cache.Make_Key (fs.device.endpointSlot, parent, name),
+                        cached, found);
+                     if cached and then found /= Dentry_Cache.No_Inode then
+                        current := found;
+                        status := Lookup_Found;
+                     else
+                        status := Lookup_Not_Found;
+                     end if;
+                  else
+                     lookupInDir (fs, ino, name, current, status);
+                  end if;
+                  --  A complete directory needs no negative entries (and they
+                  --  could displace its names).
+                  if status = Lookup_Found or else
+                    (status = Lookup_Not_Found and then not completeDirectory (fs, parent))
+                  then
+                     rememberName
+                       (fs, parent, name,
+                        (if status = Lookup_Found then current else Dentry_Cache.No_Inode));
+                  end if;
+                  if status /= Lookup_Found then
+                     return;
+                  end if;
+               end if;
+            end;
             first := last + 1;
          end if;
       end loop;
@@ -1282,7 +1731,8 @@ package body Ext2 is
                                 1 => fs.device.grant.slot,
                                 2 => 1,
                                 3 => fs.device.grant.generation];
-                  ignore := capCall (fs.device.endpointSlot, msg);
+            deviceCalls := deviceCalls + 1;
+            ignore := capCall (fs.device.endpointSlot, msg);
 
                   if msg.tag.label /= REPLY_OK or else
                      msg.tag.length /= 1 or else
@@ -1318,7 +1768,8 @@ package body Ext2 is
                              1 => fs.device.grant.slot,
                              2 => 1,
                              3 => fs.device.grant.generation];
-               ignore := capCall (fs.device.endpointSlot, msg);
+            deviceCalls := deviceCalls + 1;
+            ignore := capCall (fs.device.endpointSlot, msg);
 
                if msg.tag.label /= REPLY_OK or else
                   msg.tag.length /= 1 or else
@@ -1376,7 +1827,8 @@ package body Ext2 is
                                 1 => fs.device.grant.slot,
                                 2 => sectorsNeeded,
                                 3 => fs.device.grant.generation];
-                  ignore := capCall (fs.device.endpointSlot, msg);
+            deviceCalls := deviceCalls + 1;
+            ignore := capCall (fs.device.endpointSlot, msg);
 
                   if msg.tag.label /= REPLY_OK or else
                      msg.tag.length /= 1 or else
@@ -1409,19 +1861,27 @@ package body Ext2 is
 
    --  Completed writes are durable: nothing to do without a volatile cache;
    --  otherwise the device's FLUSH. A failure quarantines the volume.
+   --  Checkpoint writes issued since the last barrier (see Journal_State).
+   Home_Writes_Pending : Boolean := False;
+
    procedure barrier (fs : in out Filesystem; ok : out Boolean) is
       msg : Message := NULL_MESSAGE;
    begin
       ok := True;
       if not Has_Volatile_Cache (fs.device.description) then
+         Home_Writes_Pending := False;
          return;
       end if;
       msg.tag := (label => OP_FLUSH_DEVICE, length => 0, flags => 0, reserved => 0);
+      deviceCalls := deviceCalls + 1;
+      deviceFlushes := deviceFlushes + 1;
       msg.tag := capCall (fs.device.endpointSlot, msg);
       ok := msg.tag.label = CuBit.Block_Devices.REPLY_OK and then
         msg.tag.length = 1 and then msg.tag.flags = 0 and then
         msg.tag.reserved = 0 and then msg.words (0) = 0;
-      if not ok then
+      if ok then
+         Home_Writes_Pending := False;
+      else
          fs.writeQuarantined := True;
       end if;
    end barrier;
@@ -1448,7 +1908,8 @@ package body Ext2 is
    end writeDurable;
 
    function dirtyBlocks (fs : Filesystem) return Boolean is
-     (Block_Cache_Index.Has_Dirty (Cache_Index, fs.device.endpointSlot));
+     (Block_Cache_Index.Has_Dirty (Cache_Index, fs.device.endpointSlot) or else
+      fs.pendingCount > 0);
 
    --  Commit the running transaction of a journaled volume, JBD2 style and
    --  data=ordered: (1) dirty file data home; (2) barrier; (3) the log at the
@@ -1462,6 +1923,12 @@ package body Ext2 is
    --  record is ever needed. A transaction larger than the log is split into
    --  several, each whole. Any failure quarantines: the device state is then
    --  uncertain and dirty blocks stay dirty, never silently dropped.
+   procedure applyReleases (fs : in out Filesystem; status : out Write_Status);
+
+   --  Set by commitTransaction: its last run committed a transaction, and
+   --  so ended with every earlier write durable.
+   Commit_Was_Barrier : Boolean := False;
+
    procedure commitTransaction (fs : in out Filesystem; status : out Write_Status) is
       volume : constant Unsigned_64 := fs.device.endpointSlot;
       blockBytes : constant Unsigned_64 := Unsigned_64 (fs.blkSize);
@@ -1482,21 +1949,30 @@ package body Ext2 is
         (Jbd2_Format.Usable_Bytes (size, incompat) - Jbd2_Format.Header_Bytes -
            Jbd2_Format.UUID_Bytes) / tagBytes;
       logBlocks : constant Unsigned_32 := fs.journal.Max_Length - fs.journal.First;
-      slotBits : constant := 13;
+      slotBits : constant := 14;
       pragma Compile_Time_Error
-        (2 ** slotBits /= Block_Cache_Index.Capacity, "slot encoding changed");
-      type Pending_Array is array (1 .. Block_Cache_Index.Capacity) of Unsigned_64;
+        (2 ** slotBits <= Buffer_Slot'Last, "slot encoding too narrow");
+      type Pending_Array is array (1 .. Buffer_Slot'Last + 1) of Unsigned_64;
       data, meta : Pending_Array;
       dataCount, metaCount : Natural := 0;
       staging : Staging_Buffer;
       runStart : Unsigned_32 := 0;
       runBlocks : Natural := 0;
       ok : Boolean := True;
+      releasing : Boolean := False;
 
       function Block_Of (item : Unsigned_64) return Unsigned_32 is
         (Unsigned_32 (Shift_Right (item, slotBits)));
-      function Slot_Of (item : Unsigned_64) return Cache_Slot is
-        (Cache_Slot (item and (2 ** slotBits - 1)));
+      function Slot_Of (item : Unsigned_64) return Buffer_Slot is
+        (Buffer_Slot (item and (2 ** slotBits - 1)));
+
+      --  Spill entries leave the spill as a whole after the commit.
+      procedure Clean (slot : Buffer_Slot) is
+      begin
+         if slot < First_Spill_Slot then
+            Block_Cache_Index.Mark_Clean (Cache_Index, slot);
+         end if;
+      end Clean;
 
       procedure Sort (list : in out Pending_Array; count : Natural) is
          procedure Sift (start, last : Positive) is
@@ -1600,13 +2076,67 @@ package body Ext2 is
       end Header;
 
       --  One whole transaction over meta (first .. last).
+      function Next_Position (position : Unsigned_32) return Unsigned_32 is
+        (if position + 1 >= fs.journal.Max_Length then fs.journal.First
+         else position + 1);
+
+      --  Move the log tail to the head: every committed transaction's home
+      --  writes durable (a barrier if any is pending), then the journal
+      --  superblock names the head and the next sequence, durably.
+      procedure Move_Tail is
+         super : Jbd2_Format.Block := [others => 0];
+         result : Read_Status;
+      begin
+         if Home_Writes_Pending then
+            barrier (fs, ok);
+            if not ok then
+               return;
+            end if;
+         end if;
+         deviceRead (fs, Storage_Offset (fs.journal.Super_Home) *
+                       Storage_Offset (blockBytes),
+                     super'Address, Storage_Count (blockBytes), result);
+         ok := result = Read_Complete;
+         if not ok then
+            return;
+         end if;
+         Put_Be32 (super, Journal_Sequence_Offset, fs.journal.Sequence);
+         Put_Be32 (super, Journal_Start_Offset, fs.journal.Head);
+         if checksums then
+            Put_Be32 (super, Jbd2_Format.Superblock_Checksum_Offset, 0);
+            Put_Be32 (super, Jbd2_Format.Superblock_Checksum_Offset,
+                      Jbd2_Format.Crc32c (16#FFFF_FFFF#, super, 0,
+                                          Jbd2_Format.Superblock_Bytes));
+         end if;
+         writeDurable (fs, fs.journal.Super_Home, super'Address, ok);
+         if ok then
+            fs.journal.Tail := fs.journal.Head;
+            fs.journal.Tail_Sequence := fs.journal.Sequence;
+            fs.journal.Live_Blocks := 0;
+         end if;
+      end Move_Tail;
+
       procedure Commit_Chunk (first, last : Positive) is
          sequence : constant Unsigned_32 := fs.journal.Sequence;
-         position : Unsigned_32 := fs.journal.First;
+         items : constant Unsigned_32 := Unsigned_32 (last - first + 1);
+         --  Copies, a descriptor per group of tags, the commit block.
+         needed : constant Unsigned_32 := items +
+           (items + Unsigned_32 (tagsPerDescriptor) - 1) /
+             Unsigned_32 (tagsPerDescriptor) + 1;
+         position : Unsigned_32;
          descriptor, copy, commit : Jbd2_Format.Block;
          runningSum : Unsigned_32 := 16#FFFF_FFFF#;
          index : Positive := first;
       begin
+         --  Room at the head, or the tail moves (one block always stays
+         --  free, so the head never meets the tail).
+         if fs.journal.Live_Blocks + needed >= logBlocks then
+            Move_Tail;
+            if not ok then
+               return;
+            end if;
+         end if;
+         position := fs.journal.Head;
          --  (3) descriptors and copies, in log order.
          while index <= last and then ok loop
             declare
@@ -1618,7 +2148,7 @@ package body Ext2 is
                Header (descriptor, Jbd2_Format.Descriptor_Kind, sequence);
                for item in index .. groupLast loop
                   declare
-                     slot : constant Cache_Slot := Slot_Of (meta (item));
+                     slot : constant Buffer_Slot := Slot_Of (meta (item));
                      home : constant Unsigned_32 := Block_Of (meta (item));
                      flags : Unsigned_32 := 0;
                      tagChecksum : Unsigned_32 := 0;
@@ -1661,7 +2191,7 @@ package body Ext2 is
                         offset := offset + Jbd2_Format.UUID_Bytes;
                      end if;
                      --  The copy follows the descriptor, in tag order.
-                     position := position + 1;
+                     position := Next_Position (position);
                      Append (Log_Home (position), copy'Address);
                   end;
                end loop;
@@ -1675,7 +2205,7 @@ package body Ext2 is
                   runningSum := Jbd2_Format.Crc32_Be (runningSum, descriptor, 0, size);
                   for item in index .. groupLast loop
                      declare
-                        slot : constant Cache_Slot := Slot_Of (meta (item));
+                        slot : constant Buffer_Slot := Slot_Of (meta (item));
                      begin
                         copy := [others => 0];
                         for b in 0 .. Natural (blockBytes) - 1 loop
@@ -1699,7 +2229,7 @@ package body Ext2 is
                      ok := result = Write_Complete;
                   end if;
                end;
-               position := position + 1;
+               position := Next_Position (position);
                index := groupLast + 1;
             end;
          end loop;
@@ -1726,45 +2256,23 @@ package body Ext2 is
          if not ok then
             return;
          end if;
-         --  (5) checkpoint: metadata home, in block order.
+         --  The transaction is durable: it joins the live log.
+         fs.journal.Head := Next_Position (position);
+         fs.journal.Live_Blocks := fs.journal.Live_Blocks + needed;
+         fs.journal.Sequence := sequence + 1;
+         --  (5) checkpoint: metadata home, in block order, without waiting:
+         --  the next barrier (the next commit's, or the tail's move) makes
+         --  it durable. Until the tail moves, recovery replays it anyway.
          for item in first .. last loop
-            Append (Block_Of (meta (item)), Cache_Blocks (Slot_Of (meta (item)))'Address);
+            Append (Block_Of (meta (item)), Cache_Blocks (Slot_Of (meta (item))).all'Address);
          end loop;
          Flush_Run;
-         if ok then
-            barrier (fs, ok);
-         end if;
          if not ok then
             return;
          end if;
-         --  (6) the log is empty again: expect the next sequence.
-         declare
-            super : Jbd2_Format.Block := [others => 0];
-            result : Read_Status;
-         begin
-            deviceRead (fs, Storage_Offset (fs.journal.Super_Home) *
-                          Storage_Offset (blockBytes),
-                        super'Address, Storage_Count (blockBytes), result);
-            ok := result = Read_Complete;
-            if not ok then
-               return;
-            end if;
-            Put_Be32 (super, Journal_Sequence_Offset, sequence + 1);
-            Put_Be32 (super, Journal_Start_Offset, fs.journal.First);
-            if checksums then
-               Put_Be32 (super, Jbd2_Format.Superblock_Checksum_Offset, 0);
-               Put_Be32 (super, Jbd2_Format.Superblock_Checksum_Offset,
-                         Jbd2_Format.Crc32c (16#FFFF_FFFF#, super, 0,
-                                             Jbd2_Format.Superblock_Bytes));
-            end if;
-            writeDurable (fs, fs.journal.Super_Home, super'Address, ok);
-         end;
-         if not ok then
-            return;
-         end if;
-         fs.journal.Sequence := sequence + 1;
+         Home_Writes_Pending := True;
          for item in first .. last loop
-            Block_Cache_Index.Mark_Clean (Cache_Index, Slot_Of (meta (item)));
+            Clean (Slot_Of (meta (item)));
          end loop;
       end Commit_Chunk;
    begin
@@ -1773,6 +2281,32 @@ package body Ext2 is
          status := Write_Recovery_Required;
          return;
       end if;
+      if fs.journal.Handle_Depth > 0 then
+         Split_Commits := Split_Commits + 1;
+      end if;
+      --  Released blocks are freed inside the transaction being committed,
+      --  with the detaches that released them; no running operation could
+      --  allocate them before.
+      releasing := fs.pendingCount > 0;
+      if fs.pendingCount > 0 then
+         fs.journal.Handle_Depth := fs.journal.Handle_Depth + 1;
+         applyReleases (fs, status);
+         fs.journal.Handle_Depth := fs.journal.Handle_Depth - 1;
+         if status /= Write_Complete then
+            fs.writeQuarantined := True;
+            invalidateBlockCache;
+            status := Write_Recovery_Required;
+            return;
+         end if;
+      end if;
+      for index in 0 .. Spill_Used - 1 loop
+         if Spill_Keys (index).Volume = volume then
+            metaCount := metaCount + 1;
+            meta (metaCount) :=
+              Shift_Left (Unsigned_64 (Spill_Keys (index).Block), slotBits) or
+              Unsigned_64 (First_Spill_Slot + index);
+         end if;
+      end loop;
       for slot in Cache_Slot loop
          if Cache_Index.Used (slot) and then Cache_Index.Dirty (slot) and then
            Cache_Index.Keys (slot).Volume = volume
@@ -1795,17 +2329,18 @@ package body Ext2 is
       --  (1) ordered data, home first.
       Sort (data, dataCount);
       for item in 1 .. dataCount loop
-         Append (Block_Of (data (item)), Cache_Blocks (Slot_Of (data (item)))'Address);
+         Append (Block_Of (data (item)), Cache_Blocks (Slot_Of (data (item))).all'Address);
       end loop;
       Flush_Run;
       if ok then
          for item in 1 .. dataCount loop
-            Block_Cache_Index.Mark_Clean (Cache_Index, Slot_Of (data (item)));
+            Clean (Slot_Of (data (item)));
          end loop;
       end if;
       if ok and then metaCount > 0 then
-         --  (2) the data a commit refers to must be durable before it.
-         barrier (fs, ok);
+         --  (2) The data a commit refers to must be durable before it: the
+         --  barrier before each commit block (4) covers the data sent home
+         --  above as well as the log copies, as jbd2's one pre-flush does.
          Sort (meta, metaCount);
          declare
             --  Blocks per transaction: copies + descriptors + commit fit the log.
@@ -1821,8 +2356,19 @@ package body Ext2 is
             end loop;
          end;
       end if;
+      --  Blocks this transaction freed may be reused as file data, which
+      --  is not journaled: no live transaction may still hold an older
+      --  copy of them for replay to write back (jbd2 uses revoke records).
+      --  Such a commit moves the tail past everything, itself included.
+      if ok and then metaCount > 0 and then releasing then
+         Move_Tail;
+      end if;
+      --  A commit leaves everything submitted before it durable (data by
+      --  its barrier, metadata in the log): a flush needs no other.
+      Commit_Was_Barrier := ok and then metaCount > 0;
       if ok then
          fs.journal.Dirty_Metadata := 0;
+         dropSpill (volume);
       else
          fs.writeQuarantined := True;
          invalidateBlockCache;
@@ -1838,6 +2384,7 @@ package body Ext2 is
          status := Flush_Recovery_Required;
          return;
       end if;
+      Commit_Was_Barrier := False;
       if fs.journal.Active then
          commitTransaction (fs, committed);
          if committed /= Write_Complete then
@@ -1850,7 +2397,11 @@ package body Ext2 is
          return;
       end if;
       --  Ext2 write paths have submitted everything else already: the
-      --  device barrier makes it durable.
+      --  device barrier makes it durable (unless a commit just did).
+      if Commit_Was_Barrier then
+         status := Flush_Complete;
+         return;
+      end if;
       barrier (fs, ok);
       status := (if ok then Flush_Complete else Flush_IO_Error);
    end Flush;
@@ -1896,10 +2447,66 @@ package body Ext2 is
                status := Write_Out_Of_Range;
                return;
             end if;
+            if Spill_Used > 0 and then spillSlot (key) >= 0 then
+               --  Already spilled in this transaction: patch that copy.
+               declare
+                  source : String (1 .. Natural (part)) with Import, Address => src + done;
+                  target : String (1 .. Natural (part))
+                    with Import, Address =>
+                      Cache_Blocks (spillSlot (key)) (Natural (within))'Address;
+               begin
+                  target := source;
+               end;
+               goto Next_Block;
+            end if;
             Block_Cache_Index.Find (Cache_Index, key, found, slot);
             if not found then
                Block_Cache_Index.Claim (Cache_Index, key, found, slot);
-               if not found then
+               if not found and then fs.journal.Handle_Depth > 0 and then
+                 class = File_Data
+               then
+                  --  Inside an operation, file data may go home at once
+                  --  (data=ordered only needs it there before the commit).
+                  deviceWrite (fs, position, src + done, Storage_Count (part), status);
+                  if status /= Write_Complete then
+                     return;
+                  end if;
+                  Pressure_Blocks := Pressure_Blocks + 1;
+                  goto Next_Block;
+               elsif not found and then fs.journal.Handle_Depth > 0 and then
+                 Spill_Used < Spill_Capacity
+               then
+                  --  Inside an operation, metadata waits in the spill.
+                  declare
+                     spilled : constant Buffer_Slot := First_Spill_Slot + Spill_Used;
+                  begin
+                     if part < blockBytes then
+                        deviceRead (fs, number * blockBytes,
+                                    Cache_Blocks (spilled).all'Address,
+                                    Storage_Count (blockBytes), readStatus);
+                        if readStatus /= Read_Complete then
+                           status := (if readStatus = Read_Out_Of_Range then
+                                        Write_Out_Of_Range else Write_Device_Error);
+                           return;
+                        end if;
+                     end if;
+                     declare
+                        source : String (1 .. Natural (part))
+                          with Import, Address => src + done;
+                        target : String (1 .. Natural (part))
+                          with Import, Address =>
+                            Cache_Blocks (spilled) (Natural (within))'Address;
+                     begin
+                        target := source;
+                     end;
+                     Spill_Keys (Spill_Used) := key;
+                     Spill_Classes (Spill_Used) := class;
+                     Spill_Used := Spill_Used + 1;
+                     Pressure_Blocks := Pressure_Blocks + 1;
+                     fs.journal.Dirty_Metadata := fs.journal.Dirty_Metadata + 1;
+                  end;
+                  goto Next_Block;
+               elsif not found then
                   --  Memory pressure: commit, which cleans this volume.
                   commitTransaction (fs, status);
                   if status /= Write_Complete then
@@ -1915,7 +2522,7 @@ package body Ext2 is
                   end if;
                end if;
                if part < blockBytes then
-                  deviceRead (fs, number * blockBytes, Cache_Blocks (slot)'Address,
+                  deviceRead (fs, number * blockBytes, Cache_Blocks (slot).all'Address,
                               Storage_Count (blockBytes), readStatus);
                   if readStatus /= Read_Complete then
                      Block_Cache_Index.Forget (Cache_Index, key);
@@ -1941,17 +2548,76 @@ package body Ext2 is
                --  transaction, even if file data is written into it later.
                (if Cache_Index.Dirty (slot) and then Cache_Index.Classes (slot) /= File_Data
                 then Cache_Index.Classes (slot) else class));
+            <<Next_Block>>
             position := position + part;
             done := done + part;
          end;
       end loop;
-      --  Keep every transaction comfortably inside the log.
-      if Natural (fs.journal.Max_Length - fs.journal.First) / 2 <=
-        fs.journal.Dirty_Metadata
+      --  Keep every transaction comfortably inside the log; an open
+      --  operation commits at its end (stopHandle).
+      if fs.journal.Handle_Depth = 0 and then
+        Natural (fs.journal.Max_Length - fs.journal.First) / 2 <=
+          fs.journal.Dirty_Metadata
       then
          commitTransaction (fs, status);
       end if;
    end writeCached;
+
+   --  Operation credits: an upper bound on the distinct metadata blocks
+   --  one operation dirties (JBD2 handle credits).
+   --  An allocation run: inode, three pointer levels, a bitmap and a
+   --  descriptor block per reserved group, the superblock.
+   Write_Credits : constant := 1 + 3 + 2 * 4 + 1;
+   --  create/mkdir: parent and new inode blocks, the name's directory block
+   --  and a new one, inode bitmap and descriptor, two single-block
+   --  allocations (bitmap + descriptor each), the superblock.
+   Create_Credits : constant := 2 + 2 + 2 + 2 * 2 + 1;
+   --  unlink/rmdir/inode release: directory block, inode and parent inode
+   --  blocks, inode bitmap and descriptor, the superblock, and for rmdir
+   --  a bitmap and descriptor per directory block.
+   Remove_Credits : constant := 3 + 2 + 1 + 2 * 12;
+   Rename_Credits : constant := 1;
+   --  Orphan list: the superblock, the inode and its predecessor.
+   Orphan_Credits : constant := 3;
+
+   --  Open an operation. Outermost only: commit first unless its credits
+   --  fit in half the log and in the spill, so nothing in it forces a
+   --  commit before stopHandle. A failed commit quarantines the volume,
+   --  which the operation's own writes then report.
+   procedure startHandle (fs : in out Filesystem; credits : Natural) is
+      committed : Write_Status;
+   begin
+      if not fs.journal.Active then
+         return;
+      end if;
+      if fs.journal.Handle_Depth = 0 and then
+        (fs.journal.Dirty_Metadata + credits >
+           Natural (fs.journal.Max_Length - fs.journal.First) / 2 or else
+         Spill_Used + credits > Spill_Capacity or else
+         --  Room for one more batch of releases, which a full queue would
+         --  otherwise commit in mid-operation.
+         fs.pendingCount >
+           Maximum_Pending_Releases - Sector_Accounting.Retired_Blocks'Last)
+      then
+         commitTransaction (fs, committed);
+      end if;
+      fs.journal.Handle_Depth := fs.journal.Handle_Depth + 1;
+   end startHandle;
+
+   procedure stopHandle (fs : in out Filesystem) is
+      committed : Write_Status;
+   begin
+      if not fs.journal.Active or else fs.journal.Handle_Depth = 0 then
+         return;
+      end if;
+      fs.journal.Handle_Depth := fs.journal.Handle_Depth - 1;
+      if fs.journal.Handle_Depth = 0 and then
+        Natural (fs.journal.Max_Length - fs.journal.First) / 2 <=
+          fs.journal.Dirty_Metadata
+      then
+         commitTransaction (fs, committed);
+      end if;
+   end stopHandle;
 
    --  Write through the block cache: patch cached copies only after the
    --  device acknowledged; after any failure the device state of the range
@@ -1965,19 +2631,33 @@ package body Ext2 is
       class  : Block_Class)
    is
    begin
-      if fs.journal.Active and then cacheable (fs) then
+      --  Journaled metadata goes through the cache and the journal, as do
+      --  small file writes (written back by the next commit, data first).
+      --  Large file writes go home at once, in the caller's transfers:
+      --  data=ordered needs them there only before the commit (whose
+      --  barrier covers them), and they would only churn the cache.
+      if fs.journal.Active and then cacheable (fs) and then
+        (class /= File_Data or else len < Direct_Data_Bytes)
+      then
          writeCached (fs, offset, src, len, status, class);
          return;
       end if;
       deviceWrite (fs, offset, src, len, status);
       if status = Write_Complete then
          writeThrough (fs, offset, src, len, class);
+      elsif fs.journal.Active then
+         --  The cache holds uncommitted metadata: keep it, stop writing.
+         fs.writeQuarantined := True;
       else
          forgetVolume (fs);
       end if;
    end writeBytes;
 
-   type Inode_Write_Mode is (Update_Existing_Inode, Initialize_New_Inode);
+   --  Exact_Inode writes every field as given; Update_Existing_Inode keeps
+   --  the on-disk dtime of an unlinked inode of a journaled volume, which
+   --  is its ext3 orphan-list link: only the orphan-list code sets it, and
+   --  the copies open handles hold may be older.
+   type Inode_Write_Mode is (Update_Existing_Inode, Initialize_New_Inode, Exact_Inode);
 
    --  Existing inodes preserve their extended metadata. A newly reserved slot
    --  must be initialized in full before any directory entry can expose it.
@@ -2025,10 +2705,26 @@ package body Ext2 is
         Storage_Offset (inodeIndex) * Storage_Offset (inoSize);
 
       case mode is
-         when Update_Existing_Inode =>
-            writeBytes
-              (fs, inodeTableByteOffset, ino'Address, Inode'Size / 8, status,
-               Inode_Table);
+         when Update_Existing_Inode | Exact_Inode =>
+            declare
+               written : Inode := ino;
+               current : Inode;
+            begin
+               if mode = Update_Existing_Inode and then fs.journal.Active and then
+                 ino.numHardLinks = 0
+               then
+                  readBytes (fs, inodeTableByteOffset, current'Address,
+                             Inode'Size / 8, readStatus);
+                  if readStatus /= Read_Complete then
+                     status := Write_Device_Error;
+                     return;
+                  end if;
+                  written.deletedTime := current.deletedTime;
+               end if;
+               writeBytes
+                 (fs, inodeTableByteOffset, written'Address, Inode'Size / 8, status,
+                  Inode_Table);
+            end;
          when Initialize_New_Inode =>
             declare
                --  Admission bounds the power-of-two inode slot by blkSize.
@@ -2180,10 +2876,15 @@ package body Ext2 is
       end;
       allocatableBlocks := fs.sb.blockCount - fs.sb.firstDataBlock;
       groupCount := 1 + (allocatableBlocks - 1) / fs.sb.blocksPerBlockGroup;
-      if goal >= fs.sb.firstDataBlock and then goal < fs.sb.blockCount then
-         startGroup := (goal - fs.sb.firstDataBlock) / fs.sb.blocksPerBlockGroup;
-         startBit := (goal - fs.sb.firstDataBlock) mod fs.sb.blocksPerBlockGroup;
-      end if;
+      declare
+         start : constant Unsigned_32 :=
+           (if goal /= 0 then goal else fs.allocationHint);
+      begin
+         if start >= fs.sb.firstDataBlock and then start < fs.sb.blockCount then
+            startGroup := (start - fs.sb.firstDataBlock) / fs.sb.blocksPerBlockGroup;
+            startBit := (start - fs.sb.firstDataBlock) mod fs.sb.blocksPerBlockGroup;
+         end if;
+      end;
 
       for step in 0 .. Unsigned_64 (groupCount) - 1 loop
          exit when plan.Count = wanted or else
@@ -2294,6 +2995,8 @@ package body Ext2 is
       writeSuperblock (fs, status);
       if status /= Write_Complete then
          Uncertain;
+      elsif plan.Count > 0 then
+         fs.allocationHint := plan.Blocks (plan.Count) + 1;
       end if;
    end commitReservation;
 
@@ -2420,6 +3123,53 @@ package body Ext2 is
       end if;
    end releaseBlocks;
 
+   --  Free the pending released blocks. The list is emptied first, so a
+   --  commit the release itself might force does not free them twice.
+   procedure applyReleases (fs : in out Filesystem; status : out Write_Status) is
+      count : constant Pending_Count := fs.pendingCount;
+      blocks : constant Release_List (1 .. count) :=
+        Release_List (fs.pending (1 .. count));
+   begin
+      fs.pendingCount := 0;
+      status := Write_Complete;
+      if count > 0 then
+         releaseBlocks (fs, blocks, status);
+      end if;
+   end applyReleases;
+
+   --  Release blocks a detach freed. Journaled: queued (see
+   --  Pending_Blocks) for the commit of the running transaction; a full
+   --  queue commits first. Write-through: after a flush makes the detach
+   --  durable (a volatile device has nothing to order), at once.
+   procedure deferRelease
+     (fs : in out Filesystem; blocks : Release_List; status : out Write_Status)
+   is
+      flushed : Flush_Status;
+   begin
+      status := Write_Complete;
+      if not fs.journal.Active then
+         if not Is_Volatile (fs.device.description) then
+            Flush (fs, flushed);
+            if flushed /= Flush_Complete then
+               status := Write_Device_Error;
+               return;
+            end if;
+         end if;
+         releaseBlocks (fs, blocks, status);
+         return;
+      end if;
+      if fs.pendingCount + blocks'Length > Maximum_Pending_Releases then
+         commitTransaction (fs, status);
+         if status /= Write_Complete then
+            return;
+         end if;
+      end if;
+      for block of blocks loop
+         fs.pendingCount := fs.pendingCount + 1;
+         fs.pending (fs.pendingCount) := block;
+      end loop;
+   end deferRelease;
+
    --  Allocate a free inode from any block group.
    procedure allocateInode
      (fs       : in out Filesystem;
@@ -2434,6 +3184,9 @@ package body Ext2 is
         (fs.sb.inodesPerBlockGroup + 7) / 8;
       readSize : Unsigned_32;
       groupCount : Unsigned_32;
+      group, firstByte, lastByte : Unsigned_32;
+      --  Bitmap bytes read at a time while searching.
+      BITMAP_CHUNK : constant := 64;
       groupFirst : Unsigned_32;
       validInodes : Unsigned_32;
       candidate : Unsigned_32;
@@ -2477,7 +3230,18 @@ package body Ext2 is
          readSize := Unsigned_32 (bitmapBuf'Length);
       end if;
 
-      for group in Unsigned_32 range 0 .. groupCount - 1 loop
+      --  From the hint's group and byte to the end of the bitmaps, then
+      --  from the start around to the hint (pass groupCount: the hint's
+      --  group below its byte). Bitmaps are read in chunks as searched.
+      if fs.inodeHintGroup >= groupCount or else fs.inodeHintByte >= readSize then
+         fs.inodeHintGroup := 0;
+         fs.inodeHintByte := 0;
+      end if;
+      for pass in Unsigned_32 range 0 .. groupCount loop
+         group := (fs.inodeHintGroup + pass) mod groupCount;
+         firstByte := (if pass = 0 then fs.inodeHintByte else 0);
+         lastByte := (if pass = groupCount then fs.inodeHintByte else readSize);
+         exit when pass = groupCount and then fs.inodeHintByte = 0;
          readBGD (fs, group, bgd, readStatus);
          if readStatus /= Read_Complete then
             status :=
@@ -2493,21 +3257,27 @@ package body Ext2 is
               (fs.sb.inodesPerBlockGroup,
                fs.sb.inodeCount - groupFirst);
 
-            readBytes
-              (fs,
-               Storage_Offset (bgd.inodeBitmapAddr) *
-                 Storage_Offset (fs.blkSize),
-               bitmapBuf'Address,
-               Storage_Count (readSize),
-               readStatus);
-            if readStatus /= Read_Complete then
-               status :=
-                 (if readStatus = Read_Out_Of_Range then Write_Out_Of_Range
-                  else Write_Device_Error);
-               return;
-            end if;
-
-            for byteIdx in 0 .. Natural (readSize) - 1 loop
+            for byteIdx in Natural (firstByte) .. Natural (lastByte) - 1 loop
+               if byteIdx = Natural (firstByte) or else byteIdx mod BITMAP_CHUNK = 0 then
+                  declare
+                     chunkEnd : constant Natural := Natural'Min
+                       ((byteIdx / BITMAP_CHUNK + 1) * BITMAP_CHUNK, Natural (lastByte));
+                  begin
+                     readBytes
+                       (fs,
+                        Storage_Offset (bgd.inodeBitmapAddr) *
+                          Storage_Offset (fs.blkSize) + Storage_Offset (byteIdx),
+                        bitmapBuf (byteIdx)'Address,
+                        Storage_Count (chunkEnd - byteIdx),
+                        readStatus);
+                  end;
+                  if readStatus /= Read_Complete then
+                     status :=
+                       (if readStatus = Read_Out_Of_Range then Write_Out_Of_Range
+                        else Write_Device_Error);
+                     return;
+                  end if;
+               end if;
                if bitmapBuf (byteIdx) /= 16#FF# then
                   for bitIdx in 0 .. 7 loop
                      candidate := Unsigned_32 (byteIdx * 8 + bitIdx);
@@ -2525,9 +3295,8 @@ package body Ext2 is
                         writeBytes
                           (fs,
                            Storage_Offset (bgd.inodeBitmapAddr) *
-                             Storage_Offset (fs.blkSize),
-                           bitmapBuf'Address,
-                           Storage_Count (readSize),
+                             Storage_Offset (fs.blkSize) + Storage_Offset (byteIdx),
+                           bitmapBuf (byteIdx)'Address, 1,
                            writeStatus, Allocation_Metadata);
                         if writeStatus /= Write_Complete then
                            --  Error replies do not prove a metadata write
@@ -2573,6 +3342,8 @@ package body Ext2 is
                         end if;
 
                         inodeNum := candidateInode;
+                        fs.inodeHintGroup := group;
+                        fs.inodeHintByte := Unsigned_32 (byteIdx);
                         status := Write_Complete;
                         return;
                      end if;
@@ -3041,6 +3812,8 @@ package body Ext2 is
          end if;
       end if;
 
+      --  Each allocation run or overwrite batch is one journal operation.
+      startHandle (fs, Write_Credits);
       while remaining > 0 loop
          declare
             logicalIndex : constant Unsigned_64 :=
@@ -3129,6 +3902,25 @@ package body Ext2 is
                      terminalStatus := dataStatus;
                      exit;
                   end if;
+                  if fs.journal.Active then
+                     --  Journaled: the run's inode goes into its operation,
+                     --  so a commit after it never leaves the run unlinked.
+                     declare
+                        published : Inode := ino;
+                        runEnd : constant Unsigned_64 := pos + canWrite;
+                     begin
+                        if runEnd > fileSize (published) then
+                           published.sizeLo := Unsigned_32 (runEnd and 16#FFFF_FFFF#);
+                           published.sizeHi_DirACL :=
+                             Unsigned_32 (Shift_Right (runEnd, 32));
+                        end if;
+                        writeInode (fs, inodeNum, published, dataStatus);
+                        if dataStatus /= Write_Complete then
+                           terminalStatus := dataStatus;
+                           exit;
+                        end if;
+                     end;
+                  end if;
                else
                   --  Batch only complete, already allocated filesystem blocks
                   --  inside the published file extent. Allocation, EOF growth
@@ -3198,6 +3990,10 @@ package body Ext2 is
             pos       := pos + canWrite;
             remaining := remaining - canWrite;
          end;
+         if remaining > 0 then
+            stopHandle (fs);
+            startHandle (fs, Write_Credits);
+         end if;
       end loop;
 
       --  Update inode size if we wrote past EOF
@@ -3239,6 +4035,7 @@ package body Ext2 is
             end if;
          end;
       end if;
+      stopHandle (fs);
 
       if fs.writeQuarantined then
          --  No reliable published prefix can be promised. The caller must
@@ -3251,7 +4048,7 @@ package body Ext2 is
       end if;
    end writeData;
 
-   procedure renameEntry
+   procedure renameInner
      (fs : in out Filesystem; dirInodeNum : Unsigned_32;
       oldName, newName : String; status : out Rename_Status)
    is
@@ -3296,6 +4093,10 @@ package body Ext2 is
       then
          return;
       end if;
+      forgetName (fs, dirInodeNum, oldName);
+      forgetName (fs, dirInodeNum, newName);
+      --  The new name is not cached: the directory is no longer complete.
+      uncertainDirectory (fs, dirInodeNum);
       if fs.writeQuarantined or else
         Is_Read_Only (fs.device.description)
       then
@@ -3396,6 +4197,16 @@ package body Ext2 is
          end case;
       end loop;
       status := Rename_Source_Not_Found;
+   end renameInner;
+
+   procedure renameEntry
+     (fs : in out Filesystem; dirInodeNum : Unsigned_32;
+      oldName, newName : String; status : out Rename_Status)
+   is
+   begin
+      startHandle (fs, Rename_Credits);
+      renameInner (fs, dirInodeNum, oldName, newName, status);
+      stopHandle (fs);
    end renameEntry;
 
    procedure renamePath
@@ -3460,7 +4271,7 @@ package body Ext2 is
    --  directory's parent gains its ".." link before anything refers to it
    --  (an over-count is harmless); a grown parent's new block is attached
    --  after it holds the name.
-   procedure createNode
+   procedure createNodeInner
      (fs : in out Filesystem; dirInodeNum : Unsigned_32; name : String;
       directory : Boolean; inodeNum : out Unsigned_32; status : out Write_Status)
    is
@@ -3478,6 +4289,7 @@ package body Ext2 is
       grow : Boolean;
       needed : Unsigned_32;
       cleanupStatus : Write_Status;
+      knownAbsent : Boolean := False;
       grownParent : Inode;
       accepted : Boolean;
       ownBlock : Unsigned_32 := 0;
@@ -3502,6 +4314,20 @@ package body Ext2 is
          return;
       end if;
       needed := ((8 + Unsigned_32 (name'Length) + 3) / 4) * 4;
+      --  A cached negative entry already proves the name absent.
+      if Dentry_Cache.Cacheable (name) then
+         declare
+            cached : Boolean;
+            found : Unsigned_32;
+         begin
+            Dentry_Cache.Find
+              (Names, Dentry_Cache.Make_Key (fs.device.endpointSlot, dirInodeNum, name),
+               cached, found);
+            knownAbsent := (cached and then found = Dentry_Cache.No_Inode) or else
+              (not cached and then completeDirectory (fs, dirInodeNum));
+         end;
+      end if;
+      forgetName (fs, dirInodeNum, name);
       readInode (fs, dirInodeNum, parent, readStatus);
       if readStatus /= Read_Complete then
          status := Write_Device_Error;
@@ -3524,7 +4350,11 @@ package body Ext2 is
          status := Write_File_Range_Unsupported;
          return;
       end if;
-      lookupInDir (fs, parent, name, existing, lookupStatus);
+      if knownAbsent then
+         lookupStatus := Lookup_Not_Found;
+      else
+         lookupInDir (fs, parent, name, existing, lookupStatus);
+      end if;
       if lookupStatus = Lookup_Found then
          status := Write_Already_Exists;
          return;
@@ -3534,7 +4364,9 @@ package body Ext2 is
       end if;
 
       parentBlocks := Natural (parent.sizeLo / fs.blkSize);
-      for index in 0 .. parentBlocks - 1 loop
+      --  Last block first: names are appended, so free space is usually
+      --  at the end (any block with room will do).
+      for index in reverse 0 .. parentBlocks - 1 loop
          targetBlock := parent.directBlocks (index);
          readBlock (fs, targetBlock, buffer'Address, readStatus);
          if readStatus /= Read_Complete then
@@ -3722,6 +4554,20 @@ package body Ext2 is
       end if;
       inodeNum := reservedInode;
       status := Write_Complete;
+      rememberName (fs, dirInodeNum, name, reservedInode);
+   end createNodeInner;
+
+   procedure createNode
+     (fs : in out Filesystem; dirInodeNum : Unsigned_32; name : String;
+      directory : Boolean; inodeNum : out Unsigned_32; status : out Write_Status)
+   is
+   begin
+      startHandle (fs, Create_Credits);
+      createNodeInner (fs, dirInodeNum, name, directory, inodeNum, status);
+      stopHandle (fs);
+      if status /= Write_Complete then
+         uncertainDirectory (fs, dirInodeNum);
+      end if;
    end createNode;
 
    procedure createFile
@@ -3866,12 +4712,19 @@ package body Ext2 is
 
    --  Whole-tree preflight, then bounded leaf-sized detach/flush/reclaim.
    --  No mutable pointer tree is revisited after its storage has been freed.
-   --  Journaled, commitAtEnd = False leaves the whole resize in the running
-   --  transaction for the caller to extend and commit.
-   procedure resizeInode
+   --  Metadata one resize batch dirties: three pointer levels, the inode,
+   --  the superblock, a bitmap and a descriptor per group its blocks lie in.
+   function resizeCredits (fs : Filesystem) return Natural is
+     (5 + 2 * Natural (Unsigned_32'Min
+        (Unsigned_32 (Sector_Accounting.Retired_Blocks'Last),
+         (if fs.sb.blocksPerBlockGroup = 0 then 1
+          else 1 + (fs.sb.blockCount - fs.sb.firstDataBlock) /
+                     fs.sb.blocksPerBlockGroup))));
+
+   procedure resizeInner
      (fs : in out Filesystem; inodeNum : Unsigned_32;
       newSize : Unsigned_64; resizedInode : out Inode;
-      status : out Truncate_Status; commitAtEnd : Boolean)
+      status : out Truncate_Status)
    is
       ino : Inode;
       readStatus : Read_Status;
@@ -3938,13 +4791,12 @@ package body Ext2 is
          ino.numDiskSectors := newSectors;
          mutated := True;
          if fs.journal.Active then
-            --  Journaled: detach and free in the same running transaction,
-            --  so they commit together; the size shrinks (the blocks beyond
-            --  it are already gone) only in the final batch. Nothing can
-            --  reuse a freed block before resizeFile's closing commit.
+            --  Journaled: the release is applied by the commit of this
+            --  batch's transaction; the size shrinks (the blocks beyond it
+            --  are already gone) only in the final batch.
             writeInode (fs, inodeNum, ino, writeStatus);
             if writeStatus = Write_Complete and then count > 0 then
-               releaseBlocks (fs, retired (1 .. count), writeStatus);
+               deferRelease (fs, retired (1 .. count), writeStatus);
             end if;
             if writeStatus /= Write_Complete then
                Fail (Truncate_IO_Error);
@@ -3952,6 +4804,10 @@ package body Ext2 is
             end if;
             invalidateBlockCache;
             count := 0;
+            --  A batch is one operation: a commit may follow it, never
+            --  split it (the file then has holes up to its old size).
+            stopHandle (fs);
+            startHandle (fs, resizeCredits (fs));
             return;
          end if;
          ino.sizeLo := Unsigned_32 (newSize and 16#FFFF_FFFF#);
@@ -3962,16 +4818,10 @@ package body Ext2 is
             return;
          end if;
          invalidateBlockCache;
-         if not Is_Volatile (fs.device.description) then
-            Flush (fs, flushStatus);
-            if flushStatus /= Flush_Complete then
-               Fail (Truncate_IO_Error);
-               return;
-            end if;
-         end if;
-         --  Both inode and surviving parent pointers are durably detached.
+         --  Freed once the inode and the surviving parent pointers are
+         --  durably detached.
          if count > 0 then
-            releaseBlocks (fs, retired (1 .. count), writeStatus);
+            deferRelease (fs, retired (1 .. count), writeStatus);
             if writeStatus /= Write_Complete then
                Fail (Truncate_IO_Error);
                return;
@@ -4186,20 +5036,23 @@ package body Ext2 is
          writeInode (fs, inodeNum, ino, writeStatus);
          if writeStatus /= Write_Complete then
             Fail (Truncate_IO_Error);
-         elsif commitAtEnd then
-            Flush (fs, flushStatus);
-            if flushStatus /= Flush_Complete and then
-              not (flushStatus = Flush_Unsupported and then
-                   Is_Volatile (fs.device.description))
-            then
-               Fail (Truncate_IO_Error);
-            end if;
          end if;
       end if;
       if not failed then
          resizedInode := ino;
          status := Truncate_Complete;
       end if;
+   end resizeInner;
+
+   procedure resizeInode
+     (fs : in out Filesystem; inodeNum : Unsigned_32;
+      newSize : Unsigned_64; resizedInode : out Inode;
+      status : out Truncate_Status)
+   is
+   begin
+      startHandle (fs, resizeCredits (fs));
+      resizeInner (fs, inodeNum, newSize, resizedInode, status);
+      stopHandle (fs);
    end resizeInode;
 
    procedure resizeFile
@@ -4208,7 +5061,7 @@ package body Ext2 is
       status : out Truncate_Status)
    is
    begin
-      resizeInode (fs, inodeNum, newSize, resizedInode, status, True);
+      resizeInode (fs, inodeNum, newSize, resizedInode, status);
    end resizeFile;
 
    --  OPEN_TRUNCATE uses the same mutation implementation as general resize.
@@ -4275,6 +5128,14 @@ package body Ext2 is
    function deletionTime (fs : Filesystem) return Unsigned_32 is
      (Unsigned_32'Max (1, fs.sb.lastWriteTime));
 
+   --  A file with no data, no blocks and no block pointers.
+   function emptyFile (ino : Inode) return Boolean is
+     (ino.sizeLo = 0 and then ino.sizeHi_DirACL = 0 and then
+      ino.numDiskSectors = 0 and then
+      (for all b of ino.directBlocks => b = 0) and then
+      ino.singleIndirectBlock = 0 and then ino.doubleIndirectBlock = 0 and then
+      ino.tripleIndirectBlock = 0);
+
    --  Remove name's record (which must name expected) from a plain
    --  directory: one block rewritten, restored if that write fails.
    procedure removeEntry
@@ -4302,8 +5163,75 @@ package body Ext2 is
       end Write_Block;
       package Committer is new Directory_Commit (Write_Block);
       result : Committer.Commit_Result;
+      --  The block holding the name, if the cached scan finds it: only it
+      --  is prepared (the others hold no such record). Anything else scans
+      --  every block, fully checked.
+      found : Unsigned_32;
+      holder : Natural;
+      lookup : Directory_Lookup_Status;
+      clean : Boolean;
+      first, last : Natural;
    begin
-      for index in 0 .. Natural (dir.sizeLo / fs.blkSize) - 1 loop
+      first := 0;
+      last := Natural (dir.sizeLo / fs.blkSize);
+      scanCachedDirectory (fs, dir, name, found, holder, lookup, clean);
+      if clean and then lookup = Lookup_Found and then found = expected and then
+        holder < last
+      then
+         --  The hot path: that block alone, the record removed in place
+         --  (proved: at most four bytes change), and only they written.
+         blockNumber := dir.directBlocks (holder);
+         if blockNumber = 0 then
+            status := Remove_Malformed;
+            return;
+         end if;
+         readBlock (fs, blockNumber, original'Address, readStatus);
+         if readStatus /= Read_Complete then
+            status := removeReadFailure (readStatus);
+            return;
+         end if;
+         candidate := original;
+         declare
+            changedFirst, changedLast : Positive;
+            writeStatus : Write_Status;
+            blockAt : constant Storage_Offset :=
+              Storage_Offset (blockNumber) * Storage_Offset (fs.blkSize);
+         begin
+            Directory_Blocks.Remove_In_Place
+              (candidate, Directory_Blocks.Block_Length (fs.blkSize),
+               fs.sb.inodeCount, name, removed, kind, changedFirst, changedLast,
+               prepared);
+            if prepared = Directory_Blocks.Prepared then
+               if removed /= expected then
+                  status := Remove_Malformed;
+                  return;
+               end if;
+               writeBytes
+                 (fs, blockAt + Storage_Offset (changedFirst - 1),
+                  candidate (changedFirst)'Address,
+                  Storage_Count (changedLast - changedFirst + 1), writeStatus,
+                  Directory_Data);
+               if writeStatus = Write_Complete then
+                  status := Remove_Complete;
+                  return;
+               end if;
+               writeBytes
+                 (fs, blockAt + Storage_Offset (changedFirst - 1),
+                  original (changedFirst)'Address,
+                  Storage_Count (changedLast - changedFirst + 1), writeStatus,
+                  Directory_Data);
+               if writeStatus = Write_Complete then
+                  status := Remove_IO_Error;
+               else
+                  fs.writeQuarantined := True;
+                  status := Remove_Recovery_Required;
+               end if;
+               return;
+            end if;
+         end;
+         --  Anything else: every block, fully checked, below.
+      end if;
+      for index in first .. last - 1 loop
          blockNumber := dir.directBlocks (index);
          if blockNumber = 0 then
             status := Remove_Malformed;
@@ -4377,9 +5305,11 @@ package body Ext2 is
       if readStatus /= Read_Complete then
          return;
       end if;
+      --  Only the inode's bitmap byte is read and written.
       readBytes
-        (fs, Storage_Offset (bgd.inodeBitmapAddr) * Storage_Offset (fs.blkSize),
-         bitmapBuf'Address, Storage_Count (readSize), readStatus);
+        (fs, Storage_Offset (bgd.inodeBitmapAddr) * Storage_Offset (fs.blkSize) +
+           Storage_Offset (index / 8),
+         bitmapBuf (Natural (index / 8))'Address, 1, readStatus);
       mask := Shift_Left (Unsigned_8'(1), Natural (index mod 8));
       if readStatus /= Read_Complete or else
         (bitmapBuf (Natural (index / 8)) and mask) = 0 or else
@@ -4390,8 +5320,9 @@ package body Ext2 is
       end if;
       bitmapBuf (Natural (index / 8)) := bitmapBuf (Natural (index / 8)) and not mask;
       writeBytes
-        (fs, Storage_Offset (bgd.inodeBitmapAddr) * Storage_Offset (fs.blkSize),
-         bitmapBuf'Address, Storage_Count (readSize), status, Allocation_Metadata);
+        (fs, Storage_Offset (bgd.inodeBitmapAddr) * Storage_Offset (fs.blkSize) +
+           Storage_Offset (index / 8),
+         bitmapBuf (Natural (index / 8))'Address, 1, status, Allocation_Metadata);
       if status = Write_Complete then
          bgd.numFreeInodes := bgd.numFreeInodes + 1;
          if directory then
@@ -4418,6 +5349,99 @@ package body Ext2 is
       then Remove_Durability_Unsupported
       else Remove_Complete);
 
+   ---------------------------------------------------------------------------
+   --  The ext3 orphan list (journaled volumes): unlinked inodes still to be
+   --  freed, from the superblock's s_last_orphan through each inode's dtime,
+   --  as Linux keeps it. An inode unlinked while open joins it with its
+   --  unlink and leaves it with its release, so a crash in between leaves
+   --  it for the next mount (this service, Linux or e2fsck) to free.
+   ---------------------------------------------------------------------------
+   Last_Orphan_Offset : constant := 16#E8#;
+
+   procedure readLastOrphan
+     (fs : Filesystem; head : out Unsigned_32; status : out Read_Status) is
+   begin
+      readBytes (fs, SUPERBLOCK_OFFSET + Last_Orphan_Offset, head'Address, 4, status);
+   end readLastOrphan;
+
+   procedure writeLastOrphan
+     (fs : in out Filesystem; head : Unsigned_32; status : out Write_Status)
+   is
+      value : Unsigned_32 := head;
+   begin
+      writeBytes (fs, SUPERBLOCK_OFFSET + Last_Orphan_Offset, value'Address, 4,
+                  status, Allocation_Metadata);
+   end writeLastOrphan;
+
+   function validOrphan (fs : Filesystem; number : Unsigned_32) return Boolean is
+     (number >= (if fs.sb.firstNonReservedInode > 0 then fs.sb.firstNonReservedInode
+                 else 11) and then number <= fs.sb.inodeCount);
+
+   --  Put an unlinked inode at the head of the list.
+   procedure orphanAdd
+     (fs : in out Filesystem; inodeNum : Unsigned_32; status : out Write_Status)
+   is
+      head : Unsigned_32;
+      ino : Inode;
+      readStatus : Read_Status;
+   begin
+      readLastOrphan (fs, head, readStatus);
+      if readStatus = Read_Complete then
+         readInode (fs, inodeNum, ino, readStatus);
+      end if;
+      if readStatus /= Read_Complete then
+         status := Write_Device_Error;
+         return;
+      end if;
+      ino.deletedTime := head;
+      writeInode (fs, inodeNum, ino, status, Exact_Inode);
+      if status = Write_Complete then
+         writeLastOrphan (fs, inodeNum, status);
+      end if;
+   end orphanAdd;
+
+   --  Take an inode off the list; found is False if it is not on it. The
+   --  walk is bounded by the inode count (a cyclic list is malformed).
+   procedure orphanRemove
+     (fs : in out Filesystem; inodeNum : Unsigned_32; found : out Boolean;
+      status : out Write_Status)
+   is
+      head, previous, current : Unsigned_32;
+      ino, previousIno : Inode := NULL_INODE;
+      readStatus : Read_Status;
+   begin
+      found := False;
+      status := Write_Complete;
+      readLastOrphan (fs, head, readStatus);
+      if readStatus /= Read_Complete then
+         status := Write_Device_Error;
+         return;
+      end if;
+      previous := 0;
+      current := head;
+      for step in 1 .. fs.sb.inodeCount loop
+         exit when current = 0 or else not validOrphan (fs, current);
+         readInode (fs, current, ino, readStatus);
+         if readStatus /= Read_Complete then
+            status := Write_Device_Error;
+            return;
+         end if;
+         if current = inodeNum then
+            found := True;
+            if previous = 0 then
+               writeLastOrphan (fs, ino.deletedTime, status);
+            else
+               previousIno.deletedTime := ino.deletedTime;
+               writeInode (fs, previous, previousIno, status, Exact_Inode);
+            end if;
+            return;
+         end if;
+         previous := current;
+         previousIno := ino;
+         current := ino.deletedTime;
+      end loop;
+   end orphanRemove;
+
    procedure reclaimInode
      (fs : in out Filesystem; inodeNum : Unsigned_32;
       status : out Remove_Status)
@@ -4425,7 +5449,6 @@ package body Ext2 is
       ino, emptied : Inode;
       readStatus : Read_Status;
       writeStatus : Write_Status;
-      flushStatus : Flush_Status;
       truncated : Truncate_Status;
    begin
       status := removeRefusal (fs);
@@ -4443,11 +5466,14 @@ package body Ext2 is
          status := Remove_Malformed;
          return;
       end if;
-      --  Detach and free the blocks (durably detached before release).
-      --  Journaled, the whole reclaim is one transaction, committed below
-      --  before any freed block can be reused.
-      resizeInode (fs, inodeNum, 0, emptied, truncated,
-                   commitAtEnd => not fs.journal.Active);
+      --  Detach the blocks; they are freed by the next commit or flush.
+      --  A file with no blocks has nothing to detach.
+      if emptyFile (ino) then
+         emptied := ino;
+         truncated := Truncate_Complete;
+      else
+         resizeInode (fs, inodeNum, 0, emptied, truncated);
+      end if;
       case truncated is
          when Truncate_Complete => null;
          when Truncate_Read_Only => status := Remove_Read_Only; return;
@@ -4461,22 +5487,26 @@ package body Ext2 is
       end case;
       --  Mark the inode deleted, then release it: a crash between the two
       --  leaves an allocated deleted inode, which e2fsck frees.
+      startHandle (fs, Remove_Credits + Orphan_Credits);
+      if fs.journal.Active then
+         declare
+            listed : Boolean;
+         begin
+            orphanRemove (fs, inodeNum, listed, writeStatus);
+         end;
+      else
+         writeStatus := Write_Complete;
+      end if;
       emptied.deletedTime := deletionTime (fs);
-      writeInode (fs, inodeNum, emptied, writeStatus);
+      if writeStatus = Write_Complete then
+         writeInode (fs, inodeNum, emptied, writeStatus, Exact_Inode);
+      end if;
       if writeStatus = Write_Complete then
          freeInode (fs, inodeNum, False, writeStatus);
       else
          fs.writeQuarantined := True;
       end if;
-      if writeStatus = Write_Complete and then fs.journal.Active then
-         Flush (fs, flushStatus);
-         if flushStatus /= Flush_Complete and then
-           not (flushStatus = Flush_Unsupported and then
-                Is_Volatile (fs.device.description))
-         then
-            writeStatus := Write_Device_Error;
-         end if;
-      end if;
+      stopHandle (fs);
       status := (if writeStatus = Write_Complete then Remove_Complete
                  else Remove_Recovery_Required);
    end reclaimInode;
@@ -4549,15 +5579,51 @@ package body Ext2 is
                        else Remove_Unsupported);
             return;
          end if;
+         startHandle (fs, Remove_Credits + Orphan_Credits);
+         forgetName (fs, parentNum, leaf);
          removeEntry (fs, dir, leaf, target, status);
          if status /= Remove_Complete then
+            uncertainDirectory (fs, parentNum);
+            stopHandle (fs);
             return;
          end if;
       end;
       --  The name is gone; a crash here leaves a linked, unnamed inode
-      --  (e2fsck moves it to lost+found).
+      --  (e2fsck moves it to lost+found). Journaled, both are one operation.
       ino.numHardLinks := 0;
+      --  An unheld inode with no blocks, on a journaled volume: it is freed
+      --  under the same handle as its name, so the transaction holds both
+      --  or neither and it never needs the orphan list (Linux's unlink and
+      --  eviction in one transaction). Blocks would need a truncate, which
+      --  takes its own handle: those go the general way below.
+      if fs.journal.Active and then not keepOrphan and then emptyFile (ino) then
+         ino.deletedTime := deletionTime (fs);
+         writeInode (fs, target, ino, writeStatus, Exact_Inode);
+         if writeStatus = Write_Complete then
+            freeInode (fs, target, False, writeStatus);
+         end if;
+         stopHandle (fs);
+         if writeStatus /= Write_Complete then
+            fs.writeQuarantined := True;
+            status := Remove_Recovery_Required;
+            return;
+         end if;
+         inodeNum := target;
+         unlinked := ino;
+         status := Remove_Complete;
+         return;
+      end if;
       writeInode (fs, target, ino, writeStatus);
+      if writeStatus = Write_Complete and then fs.journal.Active then
+         orphanAdd (fs, target, writeStatus);
+         if writeStatus = Write_Complete then
+            readInode (fs, target, ino, readStatus);
+            if readStatus /= Read_Complete then
+               writeStatus := Write_Device_Error;
+            end if;
+         end if;
+      end if;
+      stopHandle (fs);
       if writeStatus /= Write_Complete then
          fs.writeQuarantined := True;
          status := Remove_Recovery_Required;
@@ -4587,7 +5653,7 @@ package body Ext2 is
         (fs, parentNum, path (leafFirst .. path'Last), inodeNum, status);
    end makeDirectoryPath;
 
-   procedure removeDirectoryPath
+   procedure removeDirectoryInner
      (fs : in out Filesystem; path : String; inodeNum : out Unsigned_32;
       status : out Remove_Status)
    is
@@ -4597,7 +5663,6 @@ package body Ext2 is
       parent, dir : Inode;
       readStatus : Read_Status;
       writeStatus : Write_Status;
-      flushStatus : Flush_Status;
       contents : Directory_Blocks.Block_Data := [others => 0];
       children : Directory_Blocks.Byte_Count;
       counted : Directory_Blocks.Prepare_Result;
@@ -4685,15 +5750,18 @@ package body Ext2 is
             status := Remove_Malformed; -- no children yet other links
             return;
          end if;
+         forgetName (fs, parentNum, leaf);
+         Dentry_Cache.Forget_Directory (Names, fs.device.endpointSlot, target);
          removeEntry (fs, parent, leaf, target, status);
          if status /= Remove_Complete then
+            uncertainDirectory (fs, parentNum);
             return;
          end if;
       end;
       inodeNum := target;
-      --  Detach its blocks with the inode marked deleted, durably, before
-      --  they become reusable; then free the inode; the parent's ".." link
-      --  goes last.
+      --  Detach its blocks with the inode marked deleted; they are freed by
+      --  the next commit or flush; then free the inode; the parent's ".."
+      --  link goes last.
       declare
          retired : Release_List (1 .. blocks);
       begin
@@ -4705,19 +5773,9 @@ package body Ext2 is
          dir.directBlocks := [others => 0];
          dir.numDiskSectors := 0;
          dir.deletedTime := deletionTime (fs);
-         writeInode (fs, target, dir, writeStatus);
-         --  Journaled, the detach and the frees share one transaction,
-         --  committed below before any freed block can be reused.
-         if writeStatus = Write_Complete and then not fs.journal.Active and then
-           not Is_Volatile (fs.device.description)
-         then
-            Flush (fs, flushStatus);
-            if flushStatus /= Flush_Complete then
-               writeStatus := Write_Device_Error;
-            end if;
-         end if;
+         writeInode (fs, target, dir, writeStatus, Exact_Inode);
          if writeStatus = Write_Complete then
-            releaseBlocks (fs, retired, writeStatus);
+            deferRelease (fs, retired, writeStatus);
          end if;
       end;
       if writeStatus = Write_Complete then
@@ -4727,20 +5785,78 @@ package body Ext2 is
          parent.numHardLinks := parent.numHardLinks - 1;
          writeInode (fs, parentNum, parent, writeStatus);
       end if;
-      if writeStatus = Write_Complete and then fs.journal.Active then
-         Flush (fs, flushStatus);
-         if flushStatus /= Flush_Complete and then
-           not (flushStatus = Flush_Unsupported and then
-                Is_Volatile (fs.device.description))
-         then
-            writeStatus := Write_Device_Error;
-         end if;
-      end if;
       if writeStatus /= Write_Complete then
          fs.writeQuarantined := True;
          status := Remove_Recovery_Required;
       end if;
+   end removeDirectoryInner;
+
+   procedure removeDirectoryPath
+     (fs : in out Filesystem; path : String; inodeNum : out Unsigned_32;
+      status : out Remove_Status)
+   is
+   begin
+      startHandle (fs, Remove_Credits);
+      removeDirectoryInner (fs, path, inodeNum, status);
+      stopHandle (fs);
    end removeDirectoryPath;
+
+   --  At admission, as Linux's ext4_orphan_cleanup: free every unlinked
+   --  inode on the orphan list (a crash came between its unlink and its
+   --  release). An inode still linked is only taken off the list (this
+   --  service never lists truncations). A malformed list is not followed.
+   procedure processOrphans (fs : in out Filesystem; result : out Admission_Result) is
+      head : Unsigned_32;
+      ino : Inode;
+      readStatus : Read_Status;
+      removed : Remove_Status;
+      writeStatus : Write_Status;
+      flushStatus : Flush_Status;
+      listed : Boolean;
+   begin
+      result := Admitted;
+      for step in 1 .. fs.sb.inodeCount loop
+         readLastOrphan (fs, head, readStatus);
+         if readStatus /= Read_Complete then
+            result := Device_Error;
+            return;
+         end if;
+         exit when head = 0;
+         if not validOrphan (fs, head) then
+            debugPrint ("Ext2: malformed orphan list left for e2fsck" & ASCII.LF);
+            return;
+         end if;
+         readInode (fs, head, ino, readStatus);
+         if readStatus /= Read_Complete then
+            result := Device_Error;
+            return;
+         end if;
+         if ino.numHardLinks = 0 and then
+           Ext2_Support.Check_File (ino, Unlinked_Allowed => True) =
+             Ext2_Support.File_Allowed
+         then
+            reclaimInode (fs, head, removed);
+            if removed /= Remove_Complete then
+               result := Device_Error;
+               return;
+            end if;
+         else
+            startHandle (fs, Orphan_Credits);
+            orphanRemove (fs, head, listed, writeStatus);
+            stopHandle (fs);
+            if writeStatus /= Write_Complete or else not listed then
+               result := Device_Error;
+               return;
+            end if;
+         end if;
+      end loop;
+      Flush (fs, flushStatus);
+      if flushStatus /= Flush_Complete and then
+        not (flushStatus = Flush_Unsupported and then Is_Volatile (fs.device.description))
+      then
+         result := Device_Error;
+      end if;
+   end processOrphans;
 
    --  Superblock journal fields beyond the prefix record (little-endian).
    Journal_Inode_Offset  : constant := 16#E0#;
@@ -4934,7 +6050,9 @@ package body Ext2 is
         (Active => True, Journal_Inode => journal, Blocks => Unsigned_32 (journalBlocks),
          First => super.First, Max_Length => super.Max_Length, Sequence => nextSequence,
          Compat => super.Compat, Incompat => super.Incompat, Identity => super.Identity,
-         Super_Home => superHome, Dirty_Metadata => 0);
+         Super_Home => superHome, Dirty_Metadata => 0, Handle_Depth => 0,
+         Head => super.First, Tail => super.First, Tail_Sequence => nextSequence,
+         Live_Blocks => 0);
       result := Admitted;
    end openJournal;
 
@@ -4947,6 +6065,14 @@ package body Ext2 is
       Flush (fs, status);
       if not fs.journal.Active or else status /= Flush_Complete then
          return;
+      end if;
+      --  Every checkpoint write durable before the log is marked empty.
+      if Home_Writes_Pending then
+         barrier (fs, ok);
+         if not ok then
+            status := Flush_IO_Error;
+            return;
+         end if;
       end if;
       deviceRead (fs, Storage_Offset (fs.journal.Super_Home) * Storage_Offset (fs.blkSize),
                   data'Address, Storage_Count (fs.blkSize), readStatus);
@@ -5019,7 +6145,7 @@ package body Ext2 is
                     reservedBlocksGID | inodeSize | blockGroupNumber => 0,
                     others => 0),
              blkSize => 0, device => <>,
-             writeQuarantined => False, journal => <>);
+             writeQuarantined => False, journal => <>, others => <>);
       result := Invalid_Session;
       if capSlot not in 1 .. 62 or else
          grantBuf = System.Null_Address or else grantBytes = 0
@@ -5028,6 +6154,7 @@ package body Ext2 is
       end if;
       --  Any admission attempt ends the endpoint's previous volume lifetime.
       Block_Cache_Index.Discard_Volume (Cache_Index, capSlot);
+      Dentry_Cache.Discard_Volume (Names, capSlot);
 
       describeMsg :=
         (tag      => (label => OP_DESCRIBE_DEVICE, length => 0,
@@ -5113,6 +6240,10 @@ package body Ext2 is
                         ASCII.LF);
             return;
          end if;
+         processOrphans (tmpFs, result);
+         if result /= Admitted then
+            return;
+         end if;
       elsif (sb.incompatibleFeatures and Ext2_Support.Incompat_Recover) /= 0 then
          result := Invalid_Filesystem; -- needs_recovery without a journal
          return;
@@ -5122,4 +6253,18 @@ package body Ext2 is
    end initBlockDevice;
 
 
+   procedure configureCache (megabytes : Cache_Megabytes) is
+   begin
+      if not Store_Ready then
+         Cache_Ways := Block_Cache_Index.Way_Count (megabytes / Megabytes_Per_Way);
+         Block_Cache_Index.Clear (Cache_Index, Cache_Ways);
+      end if;
+   end configureCache;
+
+   function cacheMegabytes return Cache_Megabytes is
+     (Cache_Megabytes (Cache_Ways * Megabytes_Per_Way));
+
+begin
+   Block_Cache_Index.Clear (Cache_Index, Cache_Ways);
+   Dentry_Cache.Clear (Names);
 end Ext2;

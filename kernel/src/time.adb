@@ -165,10 +165,16 @@ is
                 end if;
             end readClock;
         end if;
-        -- Only BSP handles global timekeeping and sleep list
+        -- Any CPU's timer expires sleepers that are due. One CPU arms its
+        -- timer for the next wake (Process.armWakeAlarm), so one CPU, not
+        -- all, takes each wake interrupt.
+        if Process.Queues.nextWake <= x86.rdtsc then
+            Process.Queues.expireSleepers (x86.rdtsc);
+        end if;
+        Process.armWakeAlarm;
+        -- Only BSP handles global timekeeping and receive/futex deadlines
         if cpuNum = 0 and then elapsed > 0 then
             Time.msTicks := Time.msTicks + elapsed;
-            Process.Queues.clockTick (elapsed);
             Process.IPC.expireReceiveDeadlines (Time.msTicks);
             Process.Futex.expireDeadlines (Time.msTicks);
         end if;

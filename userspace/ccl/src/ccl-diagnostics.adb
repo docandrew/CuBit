@@ -42,7 +42,14 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Unsupported_Host_Object => "This object shape is not supported by the interpreter yet",
          when Host_Object_Type_Mismatch => "The argument does not match the host object's declared type",
          when Invalid_Handler_Profile => "Handler must take no arguments and return Boolean",
-         when Handler_Result_Not_Exportable => "Pass the handler to a service; it cannot be returned from this invocation");
+         when Handler_Result_Not_Exportable => "Pass the handler to a service; it cannot be returned from this invocation",
+         when List_Element_Mismatch => "Every element of a list must have the same type",
+         when Unsupported_List_Element => "Lists of this element type are not supported yet",
+         when Empty_List_Needs_Type => "An empty list needs a declared element type",
+         when Too_Many_List_Elements => "Too many elements in one list literal (at most 16)",
+         when Lambda_Parameter_Needs_Type => "Give each fn parameter a type: (fn ((x Integer)) ...)",
+         when Lambda_Capture_Unsupported => "A fn body can capture only scalar, String, Character or enumeration values; pass lists and functions as parameters",
+         when Too_Many_Captures => "A fn body can capture at most 4 enclosing values; pass the rest as parameters");
    end Message;
 
    function Message (Status : CCL.Language.Interpretation_Status) return String is
@@ -64,7 +71,9 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Host_Result_Type_Mismatch => "Service returned a value with the wrong type",
          when Host_Argument_Out_Of_Bounds => "Argument exceeds the service's declared text bound",
          when Host_Contract_Unsupported => "This interpreter host does not support the operation's value or lifecycle contract",
-         when Evaluation_Depth_Exhausted => "Execution call/expression depth limit exceeded");
+         when Evaluation_Depth_Exhausted => "Execution call/expression depth limit exceeded",
+         when Evaluation_List_Storage_Exhausted => "Execution list storage exhausted",
+         when Evaluation_Invalid_Number => "Text is not a decimal integer");
    end Message;
    function Message (Status : CCL.VM.Execution_Status) return String is
       use CCL.VM;

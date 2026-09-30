@@ -56,6 +56,37 @@ begin
    declare
       D : constant Decode_All_Result := Decoding.Decode_All_Strict (Encoded.Data (1 .. SE_Offset (Encoded.Length)));
    begin pragma Assert (D.Status = OK and D.Count = 9); end;
+   --  A list result: typeCode 5, then its element type code and a definite
+   --  array of elements (signed integers use CBOR major type 1).
+   Control_Wire.Decode (Query (2, "[1 (- 0 2) 3]"), Q, Valid);
+   pragma Assert (Valid);
+   CCL.Control.Execute (Session, Q.Op, Q.Source (1 .. Q.Length), (others => <>), Value);
+   pragma Assert (CCL.Sessions.Result_Image (Value.Outcome) = "List<Integer>: [1, -2, 3]");
+   Control_Wire.Encode (Q, Value, Encoded);
+   declare
+      D : constant Decode_All_Result := Decoding.Decode_All_Strict (Encoded.Data (1 .. SE_Offset (Encoded.Length)));
+   begin
+      pragma Assert (D.Status = OK and D.Count = 15);
+      pragma Assert (D.Items (1).Kind = MT_Array and D.Items (1).Arr_Count = 11);
+      pragma Assert (D.Items (7).Kind = MT_Unsigned_Integer and D.Items (7).UInt_Value = 5);
+      pragma Assert (D.Items (10).Kind = MT_Unsigned_Integer and D.Items (10).UInt_Value = 1);
+      pragma Assert (D.Items (11).Kind = MT_Array and D.Items (11).Arr_Count = 3);
+      pragma Assert (D.Items (13).Kind = MT_Negative_Integer and D.Items (13).NInt_Arg = 1);
+      pragma Assert (D.Items (15).Kind = MT_Unsigned_Integer and D.Items (15).UInt_Value = 3);
+   end;
+   --  A long list carries its first 64 elements and its full length.
+   Control_Wire.Decode (Query (3, "(range 1 100)"), Q, Valid);
+   pragma Assert (Valid);
+   CCL.Control.Execute (Session, Q.Op, Q.Source (1 .. Q.Length), (others => <>), Value);
+   pragma Assert (Value.Outcome.List_Length = 64 and Value.Outcome.List_Total = 100);
+   Control_Wire.Encode (Q, Value, Encoded);
+   declare
+      D : constant Decode_All_Result := Decoding.Decode_All_Strict (Encoded.Data (1 .. SE_Offset (Encoded.Length)));
+   begin
+      pragma Assert (D.Status = OK and D.Items (11).Arr_Count = 64);
+      pragma Assert (D.Items (D.Count).Kind = MT_Unsigned_Integer and D.Items (D.Count).UInt_Value = 100);
+   end;
+   Put_Line ("PASS: list results as typed CBOR arrays");
    Control_Wire.Decode (Query (1, "not allowed"), Q, Valid); pragma Assert (not Valid);
    Control_Wire.Decode (Query (4, ""), Q, Valid); pragma Assert (not Valid);
    declare

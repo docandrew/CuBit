@@ -7,5 +7,6 @@ generic
 package Intel_GPU_Native_Combo_Restore is
    function Execute (Owner : Boolean) return String;
    function Last_Succeeded return Boolean;
+   function Diagnostic return String;
    -- Boot-only one attempt. No unmap, power release or automatic recovery.
 end Intel_GPU_Native_Combo_Restore;

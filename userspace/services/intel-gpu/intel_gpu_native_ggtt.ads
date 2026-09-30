@@ -13,6 +13,7 @@ package Intel_GPU_Native_GGTT is
    procedure Write_PTE
      (Index, Value : Interfaces.Unsigned_64; Success : out Boolean);
    -- UC/NX mapping at GGTT_Mapping.Virtual_Base must be retained throughout.
-   -- No clearing, replacement, release, allocation or invalidation here.
+   -- Only exact owned replacement; no bulk clearing, release, allocation or
+   -- invalidation here. Replay prevention is enforced by the publisher/ledger.
    -- A failed write invocation never permits reclaiming the backing.
 end Intel_GPU_Native_GGTT;

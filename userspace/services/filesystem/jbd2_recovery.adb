@@ -43,7 +43,7 @@ package body Jbd2_Recovery is
         (if Checksums then Crc32c_UUID (All_Ones, Super.Identity) else 0);
       Log_Blocks : constant Unsigned_32 := Super.Max_Length - Super.First;
       Limit : constant Natural := Usable_Bytes (Size, Incompat);
-      Revokes : Jbd2_Revokes.Table := Jbd2_Revokes.Empty;
+      Revokes : Jbd2_Revokes.Table;
       End_Sequence : Unsigned_32 := Super.Sequence;
       Data, Payload : Block;
       Ok : Boolean;
@@ -220,6 +220,7 @@ package body Jbd2_Recovery is
          end loop;
       end Walk;
    begin
+      Jbd2_Revokes.Clear (Revokes);
       Result := Recovered;
       Blocks_Written := 0;
       Transactions := 0;

@@ -7,6 +7,8 @@ with TLB_Shootdown;
 with Process;
 with Process.Queues;
 with Process_Lifetime;
+with Virtual_Deadlines;
+with Interfaces;
 
 procedure Main is
     Shared, Nested : Spinlocks.Spinlock;
@@ -16,25 +18,26 @@ procedure Main is
 
     procedure Check_Ready_Fairness is
         use Process;
+        use type Interfaces.Unsigned_64;
         Q : ProcQueue;
         Got, Ignored : ProcessID;
         -- Independent stable-array oracle, not another linked-list insertion.
         type Entry_Info is record
             PID : ProcessID;
-            Priority : Integer;
+            Key : Interfaces.Unsigned_64;
         end record;
         Expected : array (1 .. 16) of Entry_Info;
         Length : Natural := 0;
         Seed : Natural := 17;
         Present : array (ProcessID range 1 .. 16) of Boolean := [others => False];
 
-        procedure Add (PID : ProcessID; Priority : Integer) is
+        procedure Add (PID : ProcessID; Key : Interfaces.Unsigned_64) is
             Position : Positive := Length + 1;
         begin
-            Queues.insert (Q, PID, Priority, Ignored);
+            Queues.insertByKey (Q, PID, Key, Ignored);
             pragma Assert (Ignored = PID);
             for I in 1 .. Length loop
-                if Expected (I).Priority < Priority then
+                if Expected (I).Key > Key then
                     Position := I;
                     exit;
                 end if;
@@ -42,7 +45,7 @@ procedure Main is
             for I in reverse Position .. Length loop
                 Expected (I + 1) := Expected (I);
             end loop;
-            Expected (Position) := (PID, Priority);
+            Expected (Position) := (PID, Key);
             Length := Length + 1;
             Present (PID) := True;
         end Add;
@@ -51,18 +54,13 @@ procedure Main is
             Cursor : ProcessID := Q.head;
             Previous : ProcessID := NO_PROCESS;
         begin
-            pragma Assert (not Queues.hasReadyPeer (Q, 100));
-            if Length = 0 then
-                pragma Assert (not Queues.hasReadyPeer (Q, -100));
-            else
-                pragma Assert (Queues.hasReadyPeer (Q, Expected (1).Priority));
-                pragma Assert (Queues.hasReadyPeer (Q, Expected (1).Priority - 1));
-                pragma Assert (not Queues.hasReadyPeer (Q, Expected (1).Priority + 1));
-            end if;
+            pragma Assert
+              (Queues.headKey (Q) =
+                 (if Length = 0 then Virtual_Deadlines.Idle_Key else Expected (1).Key));
             for I in 1 .. Length loop
                 pragma Assert (Cursor = Expected (I).PID);
                 pragma Assert (proctab (Cursor).prev = Previous);
-                pragma Assert (proctab (Cursor).queueKey = Expected (I).Priority);
+                pragma Assert (proctab (Cursor).runKey = Expected (I).Key);
                 Previous := Cursor;
                 Cursor := proctab (Cursor).next;
             end loop;
@@ -82,25 +80,25 @@ procedure Main is
             pragma Assert (proctab (Got).next = NO_PROCESS);
         end Remove_First;
     begin
-        -- Simulate quantum expiration using the production dequeue/reinsert
-        -- path. The old >= insertion fails the very first FIFO check.
+        -- Equal deadlines rotate FIFO through the production dequeue and
+        -- reinsert path.
         for PID in 1 .. 3 loop Add (PID, 4); end loop;
         Verify;
-        for Quantum in 1 .. 300 loop
+        for Rotation in 1 .. 300 loop
             Remove_First;
-            pragma Assert (Got = (Quantum - 1) mod 3 + 1);
+            pragma Assert (Got = (Rotation - 1) mod 3 + 1);
             Add (Got, 4);
             Verify;
         end loop;
         while Length > 0 loop Remove_First; end loop;
-        -- Exercise arrival, blocking, re-entry, ties and distinct priorities.
+        -- Arrival, blocking, re-entry, ties and distinct deadlines.
         for Step in 1 .. 10_000 loop
             Seed := (Seed * 251 + 17) mod 65521;
             declare
                 PID : constant ProcessID := Seed mod 16 + 1;
             begin
                 if not Present (PID) then
-                    Add (PID, (Seed / 16) mod 5);
+                    Add (PID, Interfaces.Unsigned_64 ((Seed / 16) mod 5));
                 elsif Length > 0 then
                     Remove_First;
                 end if;
@@ -110,49 +108,33 @@ procedure Main is
         while Length > 0 loop Remove_First; Verify; end loop;
         Queues.dequeue (Q, Got);
         pragma Assert (Got = NO_PROCESS and PerCPUData.Depth = 0);
-        pragma Assert (not Queues.hasReadyPeer (Q, -100));
-        pragma Assert (not Queues.hasAwakenedPeer (Q, -100));
-        Add (1, 4);
-        Add (2, 4);
-        Add (3, 3);
-        pragma Assert (not Queues.hasAwakenedPeer (Q, 4));
-        proctab (3).readiness := Awakened;
-        pragma Assert (not Queues.hasAwakenedPeer (Q, 4));
-        pragma Assert (Queues.hasAwakenedPeer (Q, 3));
-        proctab (2).readiness := Awakened;
-        pragma Assert (Queues.hasAwakenedPeer (Q, 4));
-        pragma Assert (not Queues.hasAwakenedPeer (Q, 5));
-        Verify;
-        -- The wake flag changes when to rotate, not the FIFO selection.
-        Remove_First;
-        pragma Assert (Got = 1);
-        Remove_First;
-        pragma Assert (Got = 2);
-        proctab (2).readiness := Rescheduled;
-        Add (2, 4);
-        pragma Assert (not Queues.hasAwakenedPeer (Q, 4));
-        while Length > 0 loop Remove_First; end loop;
-        proctab (3).readiness := Rescheduled;
-        -- Interrupted turn resumes before equal peers, never above higher
-        -- priority work. Exhausted/voluntarily relinquished turns use FIFO.
-        Queues.insert (Q, 1, 4, Ignored);
-        Queues.insert (Q, 2, 5, Ignored);
-        Queues.insert (Q, 3, 4, Ignored, Queues.Resume_Turn);
-        pragma Assert (Queues.hasReadyPeer (Q, 4, Queues.Strictly_Higher));
-        pragma Assert (not Queues.hasReadyPeer (Q, 5, Queues.Strictly_Higher));
-        pragma Assert (not Queues.hasReadyPeer (Q, Integer'Last, Queues.Strictly_Higher));
-        pragma Assert (Queues.hasReadyPeer (Q, Integer'First, Queues.Strictly_Higher));
-        Queues.dequeue (Q, Got);
-        pragma Assert (Got = 2);
-        Queues.dequeue (Q, Got);
+        pragma Assert (Queues.headKey (Q) = Virtual_Deadlines.Idle_Key);
+
+        -- Another CPU takes the earliest entry that is ordinary, unpinned
+        -- work; the idle thread and pinned threads stay.
+        proctab (1).priority := -1;
+        proctab (2).pinned := True;
+        Queues.insertByKey (Q, 1, Virtual_Deadlines.Idle_Key, Ignored);
+        Queues.insertByKey (Q, 2, 10, Ignored);
+        Queues.insertByKey (Q, 3, 20, Ignored);
+        Queues.insertByKey (Q, 4, 15, Ignored);
+        pragma Assert (Queues.headKey (Q) = 10);
+        pragma Assert (Queues.takeableKey (Q) = 15);
+        Queues.takeFirst (Q, Got);
+        pragma Assert (Got = 4);
+        pragma Assert (Queues.takeableKey (Q) = 20);
+        Queues.takeFirst (Q, Got);
         pragma Assert (Got = 3);
-        Queues.insert (Q, 3, 4, Ignored);
+        pragma Assert (Queues.takeableKey (Q) = Virtual_Deadlines.Idle_Key);
+        Queues.takeFirst (Q, Got);
+        pragma Assert (Got = NO_PROCESS);
         Queues.dequeue (Q, Got);
-        pragma Assert (Got = 1);
+        pragma Assert (Got = 2);
         Queues.dequeue (Q, Got);
-        pragma Assert (Got = 3 and Queues.isEmpty (Q));
-        Ada.Text_IO.Put_Line
-          ("READY-FAIRNESS-CHECK: PASS (300 quanta, 10000 stable-priority oracle steps)");
+        pragma Assert (Got = 1 and Queues.isEmpty (Q));
+        proctab (1).priority := 0;
+        proctab (2).pinned := False;
+        Ada.Text_IO.Put_Line ("READY-LIST-CHECK: PASS (deadline order, FIFO ties, taking skips idle and pinned)");
     end Check_Ready_Fairness;
 
     -- IPC hands work to a receiver on the sender's CPU when one is waiting,
@@ -211,6 +193,7 @@ procedure Main is
         use type Process.ProcessState;
         Ignored, Removed : Process.ProcessID;
         Woken : Boolean;
+        use type Interfaces.Unsigned_64;
     begin
         -- Model the caller's locked sleep publication. Exercise the actual
         -- kernel queue implementation; the fixture only supplies PCB storage
@@ -219,12 +202,13 @@ procedure Main is
         Spinlocks.enterCriticalSection (Process.sleepList.lock);
         for PID in 1 .. 3 loop
             Process.proctab(PID).state := Process.SLEEPING;
-            Process.Queues.insertDeltaNoLock
+            Process.Queues.insertByKeyNoLock
               (Process.sleepList, PID, (if PID = 1 then 1 else 2), Ignored);
         end loop;
         Spinlocks.exitCriticalSection (Process.sleepList.lock);
         Spinlocks.exitCriticalSection (Process.lock);
-        Process.Queues.clockTick;
+        pragma Assert (Process.Queues.nextWake = 1);
+        Process.Queues.expireSleepers (1);
         pragma Assert (Process.Ready_Count = 1);
         pragma Assert (Process.proctab(1).state = Process.READY);
         pragma Assert (Process.sleepList.head = 2);
@@ -232,10 +216,11 @@ procedure Main is
         pragma Assert (Woken and Process.Ready_Count = 2);
         Process.Queues.wakeFromSleep (2, Woken);
         pragma Assert (not Woken and Process.Ready_Count = 2);
-        Process.Queues.clockTick;
+        Process.Queues.expireSleepers (2);
         pragma Assert (Process.Ready_Count = 3);
         pragma Assert (Process.Queues.isEmpty (Process.sleepList));
-        Process.Queues.clockTick;
+        pragma Assert (Process.Queues.nextWake = Virtual_Deadlines.Idle_Key);
+        Process.Queues.expireSleepers (Interfaces.Unsigned_64'Last);
         Process.Queues.popFront (Process.readyList, Removed);
         pragma Assert (Removed = 1);
         Process.Queues.popBack (Process.readyList, Removed);
@@ -245,42 +230,44 @@ procedure Main is
         Process.Queues.popBack (Process.readyList, Removed);
         pragma Assert (Removed = Process.NO_PROCESS);
         Spinlocks.enterCriticalSection (Process.lock);
-        Process.Queues.insertDelta (Process.sleepList, 1, 3, Ignored);
-        Process.Queues.insertDelta (Process.sleepList, 2, 7, Ignored);
-        Process.Queues.insertDelta (Process.sleepList, 3, 11, Ignored);
-        Process.Queues.detach (Process.sleepList, 2, Process.Queues.Delta_Queue);
-        pragma Assert (Process.proctab(3).queueKey = 8);
-        Process.Queues.detach (Process.sleepList, 1, Process.Queues.Delta_Queue);
-        pragma Assert (Process.proctab(3).queueKey = 11);
-        Process.Queues.detach (Process.sleepList, 2, Process.Queues.Delta_Queue);
-        Process.Queues.detach (Process.sleepList, 3, Process.Queues.Delta_Queue);
+        -- Absolute deadlines: removing one sleeper changes no other's.
+        Process.Queues.insertByKey (Process.sleepList, 1, 3, Ignored);
+        Process.Queues.insertByKey (Process.sleepList, 2, 7, Ignored);
+        Process.Queues.insertByKey (Process.sleepList, 3, 11, Ignored);
+        Process.Queues.detach (Process.sleepList, 2);
+        pragma Assert (Process.proctab(3).runKey = 11);
+        Process.Queues.detach (Process.sleepList, 1);
+        pragma Assert (Process.Queues.nextWake = 11);
+        Process.Queues.detach (Process.sleepList, 2);
+        Process.Queues.detach (Process.sleepList, 3);
         pragma Assert (Process.Queues.isEmpty (Process.sleepList));
         Spinlocks.exitCriticalSection (Process.lock);
         Process.Queues.popFront (Process.readyList, Removed);
         pragma Assert (Removed = Process.NO_PROCESS);
         pragma Assert (PerCPUData.Depth = 0);
-        -- A coalesced timer advances every elapsed deadline without a loop
-        -- per missed millisecond, preserving the first future delta.
+        -- A late timer wakes every passed deadline in one expiry, and keeps
+        -- the first future one.
         Spinlocks.enterCriticalSection (Process.lock);
         for PID in 1 .. 3 loop
             Process.proctab(PID).state := Process.SLEEPING;
-            Process.Queues.insertDelta (Process.sleepList, PID, PID * 3, Ignored);
+            Process.Queues.insertByKey
+              (Process.sleepList, PID, Interfaces.Unsigned_64 (PID * 3), Ignored);
         end loop;
         Spinlocks.exitCriticalSection (Process.lock);
-        Process.Queues.clockTick (7);
+        Process.Queues.expireSleepers (7);
         pragma Assert (Process.proctab(1).state = Process.READY);
         pragma Assert (Process.proctab(2).state = Process.READY);
-        pragma Assert (Process.sleepList.head = 3 and Process.proctab(3).queueKey = 2);
-        Process.Queues.clockTick (1);
-        pragma Assert (Process.proctab(3).queueKey = 1);
-        Process.Queues.clockTick (1_000_000);
+        pragma Assert (Process.sleepList.head = 3 and Process.Queues.nextWake = 9);
+        Process.Queues.expireSleepers (8);
+        pragma Assert (Process.sleepList.head = 3);
+        Process.Queues.expireSleepers (1_000_000);
         pragma Assert (Process.Queues.isEmpty (Process.sleepList));
         for PID in 1 .. 3 loop
             Process.Queues.popFront (Process.readyList, Removed);
             pragma Assert (Removed = PID);
         end loop;
         Ada.Text_IO.Put_Line
-          ("SLEEP-QUEUE-CHECK: PASS (timer/IPC wake serialization, delta preservation, queue endpoints)");
+          ("SLEEP-QUEUE-CHECK: PASS (timer/IPC wake serialization, absolute deadlines, queue endpoints)");
     end Check_Queues;
 
     procedure Check_Lifetime is

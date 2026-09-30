@@ -1,6 +1,10 @@
 // Narrow deterministic CBOR profile shared by the browser and wire tests.
 // Unsigned wire integers stay BigInt until a range check permits conversion.
 const maxU64 = (1n << 64n) - 1n;
+// CCL.Sessions.Maximum_Fuel: evaluation fuel never exceeds it.
+const MAX_FUEL = 16777216n;
+// CCL.Language.MAX_LIST_ELEMENTS: the longest list an evaluation can hold.
+const MAX_LIST_ELEMENTS = 1024n;
 const operations = { inspect: 1, evaluate: 2, clock: 3, startMonitor: 4, stopMonitor: 5, monitor: 6 };
 export function encodeRequest(id, operation, source = '', target = 0n) {
   if (typeof id !== 'bigint' || id < 1n || id > maxU64 || !Object.hasOwn(operations, operation)) throw new Error('Invalid request identity');
@@ -36,6 +40,7 @@ export function decodeResponse(bytes, id, operation) {
   const scalar = () => {
     const initial = byte(), major = initial >> 5, ai = initial & 31;
     if (major === 0) return argument(ai);
+    if (major === 1) return -1n - argument(ai);   // signed list elements only
     if (major === 7 && (ai === 20 || ai === 21)) return ai === 21;
     if (major === 3) {
       const n = argument(ai);
@@ -49,10 +54,21 @@ export function decodeResponse(bytes, id, operation) {
   const first = byte();
   if (first >> 5 !== 4) throw new Error('Expected response array');
   const count = argument(first & 31), op = operations[operation];
-  if (!op || count !== BigInt(({1:12,2:8,3:5,4:15,5:15,6:15})[op])) throw new Error('Wrong response shape');
-  const values = Array.from({ length: Number(count) }, scalar);
+  // An evaluation with a list result has 11 fields: the element type code, one
+  // definite array of at most 64 scalar elements (a prefix), and the list's
+  // full length (README, "Lists").
+  const listShape = op === 2 && count === 11n;
+  if (!op || (count !== BigInt(({1:12,2:8,3:5,4:15,5:15,6:15})[op]) && !listShape)) throw new Error('Wrong response shape');
+  const elements = () => {
+    const initial = byte();
+    if (initial >> 5 !== 4) throw new Error('Expected list elements array');
+    const n = argument(initial & 31);
+    if (n > 64n) throw new Error('Too many list elements');
+    return Array.from({ length: Number(n) }, scalar);
+  };
+  const values = Array.from({ length: Number(count) }, (_, i) => listShape && i === 9 ? elements() : scalar());
   if (offset !== bytes.length || values[0] !== 1n || values[1] !== id || values[2] !== BigInt(op)) throw new Error('Response identity/version mismatch');
-  const uint = index => { if (typeof values[index] !== 'bigint') throw new Error('Expected unsigned integer'); return values[index]; };
+  const uint = index => { if (typeof values[index] !== 'bigint' || values[index] < 0n) throw new Error('Expected unsigned integer'); return values[index]; };
   const flag = index => { if (typeof values[index] !== 'boolean') throw new Error('Expected Boolean'); return values[index]; };
   if (op === 1) {
     if (uint(3) === 0n || uint(3) === maxU64 || uint(4) === maxU64 || uint(5) === maxU64) throw new Error('Invalid process ID');
@@ -65,8 +81,22 @@ export function decodeResponse(bytes, id, operation) {
   if (op === 3) return { clock: { available: flag(3), monotonicMs: uint(4).toString() } };
   const base = op >= 4 ? 9 : 3;
   const ok = flag(base), type = uint(base+2), position = uint(base+3), fuel = uint(base+4);
-  if (typeof values[base+1] !== 'string' || type > 4n || position > 1025n || fuel > 4096n) throw new Error('Invalid evaluation result');
-  const result = { ok, message: values[base+1], type: ['Invalid','Integer','Boolean','String','Character'][Number(type)], position: position.toString(), fuelRemaining: fuel.toString() };
+  if (typeof values[base+1] !== 'string' || type > 6n || position > 1025n || fuel > MAX_FUEL || listShape !== (op === 2 && type === 5n)) throw new Error('Invalid evaluation result');
+  const result = { ok, message: values[base+1], type: ['Invalid','Integer','Boolean','String','Character','List','Function'][Number(type)], position: position.toString(), fuelRemaining: fuel.toString() };
+  if (listShape) {
+    const code = uint(8), items = values[9], total = uint(10);
+    if (total < BigInt(items.length) || total > MAX_LIST_ELEMENTS) throw new Error('Invalid list length');
+    const kinds = { 1n: 'Integer', 2n: 'Boolean', 3n: 'String', 4n: 'Character', 6n: 'Enumeration' };
+    if (!Object.hasOwn(kinds, code)) throw new Error('Invalid list element type');
+    const valid = item =>
+      code === 1n ? typeof item === 'bigint' :
+      code === 2n ? typeof item === 'boolean' :
+      code === 3n ? typeof item === 'string' :
+      code === 4n ? typeof item === 'string' && item.length === 1 :
+      typeof item === 'bigint' && item >= 0n;
+    if (!items.every(valid)) throw new Error('List element does not match its declared type');
+    result.list = { elementType: kinds[code], elements: items.map(item => typeof item === 'bigint' ? item.toString() : item), total: total.toString() };
+  }
   if (op < 4) return result;
   const state = uint(4), interval = uint(7);
   if (state > 5n || interval < 1000n || interval > 60000n || typeof values[8] !== 'string' || !/^[\x09\x0a\x0d\x20-\x7e]{0,1024}$/.test(values[8])) throw new Error('Invalid monitor state');

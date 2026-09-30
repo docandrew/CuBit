@@ -14,6 +14,10 @@ hidden long __cubit_fd_pwrite(int fd, const void *buf, size_t n, off_t offset);
 hidden long __cubit_fd_fsync(int fd);
 hidden long __cubit_fd_lseek(int fd, off_t offset, int whence);
 hidden long __cubit_fd_open(const char *path, int flags);
+enum { CUBIT_REMOVE_FILE, CUBIT_REMOVE_DIRECTORY };
+hidden long __cubit_path_remove(const char *path, int kind);
+hidden long __cubit_path_mkdir(const char *path);
+hidden long __cubit_path_rename(const char *from, const char *to);
 hidden long __cubit_fd_close(int fd);
 hidden long __cubit_fd_fstat(int fd, struct stat *st);
 hidden long __cubit_fd_fcntl(int fd, int cmd, long arg);
@@ -25,6 +29,13 @@ hidden long __cubit_fd_dup(int fd, int min, int target, int cloexec);
 hidden long __cubit_path_stat(const char *path, struct stat *st);
 
 /* file.c: filesystem.svc requests. */
+/* filesystem.svc open options (CuBit.Filesystems.Open_Options). */
+#define FS_OPEN_READ_ONLY 0
+#define FS_OPEN_WRITE_ONLY 1
+#define FS_OPEN_READ_WRITE 2
+#define FS_OPEN_CREATE 64
+#define FS_OPEN_TRUNCATE 512
+#define FS_OPEN_EXCLUSIVE 1024
 hidden long __cubit_file_open(const char *path, int directory,
 	uint64_t options, uint64_t *handle, uint64_t *size);
 hidden void __cubit_file_close(uint64_t handle, int directory);

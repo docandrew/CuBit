@@ -80,7 +80,7 @@ package body CCL.Objects.Views with SPARK_Mode is
                when Declared_Type =>
                   D := Types.Describe (Contract.Types, Next.Kind);
                   case D.Form is
-                     when Primitive | Resource => return;
+                     when Primitive | Resource | Sequence | Callable => return;
                      when Product =>
                         for P in reverse 1 .. D.Count loop
                            Work_Stacks.Push (Work, (Enter_Value, D.Parts (P).Payload, 1), Status);

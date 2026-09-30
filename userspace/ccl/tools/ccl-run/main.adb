@@ -10,7 +10,7 @@ procedure Main is
    use type CCL.Language.Interpretation_Status;
    use type CCL.VM.Value_Kind;
 
-   DEFAULT_FUEL : constant Natural := 1_024;
+   DEFAULT_FUEL : constant Natural := CCL.Sessions.Default_Fuel;
    PROMPT       : constant String := "ccl> ";
 
    procedure Print_Result (Result : CCL.Language.Interpretation_Result) is
@@ -31,7 +31,7 @@ procedure Main is
             elsif not CCL.Language.Has_Scalar (Result) then
                Put_Line (CCL.Sessions.Result_Image (Result));
             elsif Result.Result_Value.Kind = CCL.VM.Integer_Value then
-               Put_Line (Integer_64'Image (Result.Result_Value.Integer));
+               Put_Line (CCL.Sessions.Result_Image (Result));
             else
                Put_Line
                  ((if Result.Result_Value.Boolean then "true" else "false"));

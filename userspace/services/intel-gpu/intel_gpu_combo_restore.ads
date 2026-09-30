@@ -19,7 +19,9 @@ package Intel_GPU_Combo_Restore is
    type Report is record
       Status : Outcome := Rejected;
       Writes_Attempted : Natural range 0 .. 17 := 0;
+      Port : Intel_GPU_Combo_PHY.PHY := Intel_GPU_Combo_PHY.A;
    end record;
+   function Diagnostic (Value : Report) return String;
    -- One admitted attempt per instance, including failures. Never replay a
    -- partial sequence or release uncertain hardware resources automatically.
    procedure Execute (Authorized : Boolean; Result : out Report);

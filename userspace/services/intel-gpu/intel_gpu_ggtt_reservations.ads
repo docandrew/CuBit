@@ -1,4 +1,5 @@
 with Interfaces;
+with Intel_GPU_VA_Placement;
 package Intel_GPU_GGTT_Reservations with SPARK_Mode is
    use Interfaces;
    -- One ledger per exclusively owned GGTT aperture, serialized by its owner.
@@ -64,10 +65,8 @@ package Intel_GPU_GGTT_Reservations with SPARK_Mode is
           (if Status = Reserved then Last_Claim_Is (Object, First, Bytes)
            else First = 0);
 private
-   type Extent is record
-      First, Limit : Unsigned_64 := 0;
-   end record;
-   type Extents is array (Positive range 1 .. 64) of Extent;
+   subtype Extent is Intel_GPU_VA_Placement.Extent;
+   subtype Extents is Intel_GPU_VA_Placement.Extents (1 .. 64);
    type Claim_Model is record
       Values : Extents;
    end record;

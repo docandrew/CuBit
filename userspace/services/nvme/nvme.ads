@@ -150,7 +150,7 @@ package NVMe is
    --  Page 2:      I/O SQ (16 x 64B = 1024B)
    --  Page 3:      I/O CQ (16 x 16B = 256B)
    --  Page 4:      Identify/scratch buffer (4KB)
-   --  Page 5:      PRP list (512 x 8B entries = 4KB)
+   --  Page 5:      PRP lists, one per in-flight command
    --  Pages 6-255: Data buffers (250 x 4KB = 1000KB)
    ---------------------------------------------------------------------------
    DMA_VIRT_BASE     : constant := 16#0000_7000_0000_0000#;
@@ -165,8 +165,6 @@ package NVMe is
    DATA_BUF_OFFSET   : constant := 6 * PAGE_SIZE;
    DATA_BUF_PAGES    : constant := 250;
 
-   --  Number of PRP entries that fit in one page (512 for 4KB pages)
-   PRP_ENTRIES_PER_PAGE : constant := PAGE_SIZE / 8;
 
    ---------------------------------------------------------------------------
    --  BAR0 mapping virtual address
@@ -190,8 +188,19 @@ package NVMe is
    --  Sets nsBlockCount and nsSectorSize.
    procedure identifyNamespace;
 
-   --  Create I/O submission and completion queues
-   procedure createIOQueues;
+   --  Create I/O submission and completion queues. With msixTable (a BAR0
+   --  offset) the completion queue interrupts through MSI-X entry zero,
+   --  which is filled here with vector; otherwise completions are polled.
+   NO_MSIX : constant Unsigned_64 := Unsigned_64'Last;
+   procedure createIOQueues
+     (msixTable : Unsigned_64 := NO_MSIX; vector : Unsigned_64 := 0;
+      ok : out Boolean);
+
+   --  Whether completions interrupt (createIOQueues succeeded with MSI-X).
+   interruptsEnabled : Boolean := False;
+
+   --  Print how completion waits ended (interrupts, expired slices).
+   procedure reportWaits;
 
    --  Read sectors from namespace 1 via I/O queue.
    --  lba    = starting logical block address

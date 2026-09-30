@@ -18,4 +18,11 @@ package CuBit.Messages is
    Grant_Buffer : Bytes (0 .. 4095) := [others => 0];
    procedure Open_Image (Path : String);
    procedure Close_Image;
+   --  Test-only: owned-memory allocation (zero-filled, page aligned), as
+   --  the kernel's SYSCALL_ALLOCATE_OWNED_MEMORY. Other calls return Last.
+   SYSCALL_ALLOCATE_OWNED_MEMORY : constant Unsigned_64 := 115;
+   function syscall
+     (call : Unsigned_64; arg0 : Unsigned_64 := 0; arg1 : Unsigned_64 := 0;
+      arg2 : Unsigned_64 := 0; arg3 : Unsigned_64 := 0;
+      arg4 : Unsigned_64 := 0; arg5 : Unsigned_64 := 0) return Unsigned_64;
 end CuBit.Messages;

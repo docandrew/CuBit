@@ -50,30 +50,50 @@ package body CCL.Language.Views with SPARK_Mode => On is
 
       function Name_Character (C : Character) return Boolean is
         (C in 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' |
-          '-' | '_' | '.' | '?' | '+' | '=' | '*' | '/' | '%');
+          '-' | '_' | '.' | '?' | '+' | '=' | '*' | '/' | '%' | '<' | '>');
 
       function Basic_Name_Character (C : Character) return Boolean is
-        (Name_Character (C) and then C not in '+' | '=' | '*' | '/' | '%');
+        (Name_Character (C) and then
+         C not in '+' | '=' | '*' | '/' | '%' | '<' | '>');
 
       function Keyword (S : String) return Boolean is
         (S = "LET" or S = "IN" or S = "END" or S = "IF" or
          S = "THEN" or S = "ELSE" or S = "MOD" or S = "FUNCTION" or
          S = "AS" or S = "RETURN" or S = "TYPE" or S = "VARIANT" or S = "RECORD" or
-         S = "MATCH" or S = "CASE");
+         S = "MATCH" or S = "CASE" or S = "AND" or S = "OR");
 
-      type Infix_Operator is (No_Operator, Equality, Addition, Multiplication,
-                              Division, Modulo);
-      subtype Precedence is Natural range 0 .. 4;
+      --  BASIC precedence, lowest first: OR, AND, comparisons, + and -,
+      --  then *, / and MOD. A binary minus needs whitespace before it, since
+      --  names may contain hyphens (a-b is a name; a - b subtracts).
+      type Infix_Operator is (No_Operator, Disjunction, Conjunction, Equality,
+                              Inequality, Less, Less_Equal, Greater,
+                              Greater_Equal, Addition, Subtraction,
+                              Multiplication, Division, Modulo);
+      subtype Precedence is Natural range 0 .. 6;
       function Priority (Op : Infix_Operator) return Precedence is
-        (case Op is when No_Operator => 0, when Equality => 1,
-         when Addition => 2, when others => 3);
+        (case Op is when No_Operator => 0, when Disjunction => 1,
+         when Conjunction => 2,
+         when Equality | Inequality | Less | Less_Equal | Greater |
+              Greater_Equal => 3,
+         when Addition | Subtraction => 4, when others => 5);
       function Operator_For (Kind : Node_Kind) return Infix_Operator is
-        (case Kind is when Equal_Form => Equality, when Add_Form => Addition,
+        (case Kind is when Equal_Form => Equality,
+         when Not_Equal_Form => Inequality, when Less_Form => Less,
+         when Less_Equal_Form => Less_Equal, when Greater_Form => Greater,
+         when Greater_Equal_Form => Greater_Equal,
+         when And_Form => Conjunction, when Or_Form => Disjunction,
+         when Add_Form => Addition, when Subtract_Form => Subtraction,
          when Multiply_Form => Multiplication, when Divide_Form => Division,
          when Modulo_Form => Modulo, when others => No_Operator);
       function Spelling (Op : Infix_Operator; Style : Surface) return String is
         (case Op is when No_Operator => "", when Equality => "=",
-         when Addition => "+", when Multiplication => "*", when Division => "/",
+         when Inequality => (if Style = Lisp then "/=" else "<>"),
+         when Less => "<", when Less_Equal => "<=", when Greater => ">",
+         when Greater_Equal => ">=",
+         when Conjunction => (if Style = Lisp then "and" else "AND"),
+         when Disjunction => (if Style = Lisp then "or" else "OR"),
+         when Addition => "+", when Subtraction => "-",
+         when Multiplication => "*", when Division => "/",
          when Modulo => (if Style = Lisp then "%" else "MOD"));
 
       procedure Skip is
@@ -127,8 +147,8 @@ package body CCL.Language.Views with SPARK_Mode => On is
          while Cursor <= Input.Length loop
             exit when (if Escaped then Input.Data (Cursor) = '`'
               else White (Input.Data (Cursor)) or else
-                Input.Data (Cursor) in '(' | ')' | ',' | '=' | '+' | '*' | '/' | '%' |
-                  '#' | '"' | '`');
+                Input.Data (Cursor) in '(' | ')' | '[' | ']' | ',' | '=' | '+' | '*' |
+                  '/' | '%' | '<' | '>' | '#' | '"' | '`');
             Cursor := Cursor + 1;
          end loop;
          Append (Value, Input.Data (Start .. Cursor - 1));
@@ -142,6 +162,7 @@ package body CCL.Language.Views with SPARK_Mode => On is
       end Name_Token;
 
       procedure Expression (Depth : Natural; Minimum : Precedence := 1);
+      procedure Basic_Type (Value : out Text; Depth : Natural := 0);
 
       procedure Primary (Depth : Natural) is
          Token, Binding : Text;
@@ -167,6 +188,30 @@ package body CCL.Language.Views with SPARK_Mode => On is
                   Ends (Lowered.Length) := Cursor;
                end if;
             end;
+         elsif Input.Data (Cursor) = '[' then
+            --  [a, b, c] lowers to the canonical [a b c].
+            Cursor := Cursor + 1;
+            Put ("[", Start);
+            loop
+               Skip;
+               exit when Failed or else Full;
+               if Cursor > Input.Length then Failed := True; exit; end if;
+               if Input.Data (Cursor) = ']' then
+                  Cursor := Cursor + 1;
+                  Put ("]", Cursor - 1);
+                  exit;
+               end if;
+               Expression (Depth + 1);
+               exit when Failed or else Full;
+               Skip;
+               if Cursor <= Input.Length and then Input.Data (Cursor) = ',' then
+                  Cursor := Cursor + 1;
+                  Put (" ", Cursor - 1);
+               elsif Cursor > Input.Length or else Input.Data (Cursor) /= ']' then
+                  Failed := True;
+                  exit;
+               end if;
+            end loop;
          elsif Input.Data (Cursor) = '"' then
             Cursor := Cursor + 1;
             while Cursor <= Input.Length and then Input.Data (Cursor) /= '"' loop
@@ -224,6 +269,38 @@ package body CCL.Language.Views with SPARK_Mode => On is
                Expression (Depth + 1);
                Expect ("END");
                Put (")", Cursor - 1);
+            elsif not Escaped and then Token.Data (1 .. Token.Length) = "FUNCTION" and then
+              Cursor <= Input.Length and then Input.Data (Cursor) = '('
+            then
+               --  FUNCTION(x AS T, ...) body lowers to (fn ((x T) ...) body).
+               Cursor := Cursor + 1;
+               Put ("(fn (", Start);
+               Skip;
+               if Cursor <= Input.Length and then Input.Data (Cursor) /= ')' then
+                  loop
+                     Name_Token (Binding); Expect ("AS"); Basic_Type (Token);
+                     exit when Failed or else Full;
+                     Put ("(" & Binding.Data (1 .. Binding.Length) & " " &
+                          Token.Data (1 .. Token.Length) & ")", Cursor);
+                     Skip;
+                     exit when Cursor > Input.Length or else Input.Data (Cursor) /= ',';
+                     Cursor := Cursor + 1;
+                     Put (" ", Cursor - 1);
+                  end loop;
+               end if;
+               Expect (")");
+               Put (") ", Cursor);
+               Expression (Depth + 1);
+               --  The span ends where the body ends, not after trailing space.
+               declare
+                  Body_End : constant Natural :=
+                    (if Lowered.Length > 0 then Ends (Lowered.Length) else Cursor);
+               begin
+                  Put (")", Start);
+                  if not Full and then Lowered.Length > 0 then
+                     Ends (Lowered.Length) := Body_End;
+                  end if;
+               end;
             elsif not Escaped and then Keyword (Token.Data (1 .. Token.Length)) then
                Failed := True;
             elsif Cursor <= Input.Length and then Input.Data (Cursor) = '(' then
@@ -287,14 +364,31 @@ package body CCL.Language.Views with SPARK_Mode => On is
             exit when Cursor > Input.Length;
             Op := (case Input.Data (Cursor) is
               when '=' => Equality, when '+' => Addition,
+              when '-' => Subtraction, when '<' => Less, when '>' => Greater,
               when '*' => Multiplication, when '/' => Division,
               when '%' => Modulo, when others => No_Operator);
             Width := 1;
-            if Input.Length - (Cursor - 1) >= 3 and then
-              Input.Data (Cursor .. Cursor + 2) = "MOD" and then
-              (Cursor + 3 > Input.Length or else not Basic_Name_Character (Input.Data (Cursor + 3)))
-            then Op := Modulo; Width := 3;
+            if Input.Length - (Cursor - 1) >= 2 and then
+              Input.Data (Cursor .. Cursor + 1) in "<=" | ">=" | "<>"
+            then
+               Op := (case Input.Data (Cursor + 1) is
+                 when '=' => (if Input.Data (Cursor) = '<' then Less_Equal
+                              else Greater_Equal),
+                 when others => Inequality);
+               Width := 2;
             end if;
+            declare
+               function Word (W : String) return Boolean is
+                 (Input.Length - (Cursor - 1) >= W'Length and then
+                  Input.Data (Cursor .. Cursor + W'Length - 1) = W and then
+                  (Cursor + W'Length > Input.Length or else
+                   not Basic_Name_Character (Input.Data (Cursor + W'Length))));
+            begin
+               if Word ("MOD") then Op := Modulo; Width := 3;
+               elsif Word ("AND") then Op := Conjunction; Width := 3;
+               elsif Word ("OR") then Op := Disjunction; Width := 2;
+               end if;
+            end;
             exit when Priority (Op) < Minimum;
             Cursor := Cursor + Width;
             Prefix ("(" & Spelling (Op, Lisp) & " ");
@@ -306,6 +400,47 @@ package body CCL.Language.Views with SPARK_Mode => On is
             if not Full then Ends (Lowered.Length) := Right_End; end if;
          end loop;
       end Expression;
+
+      --  A BASIC type after AS, lowered to its Lisp spelling: a name,
+      --  FUNCTION(T, ...) AS R for (Function (T ...) R), or LIST(T) for
+      --  (List T).
+      procedure Basic_Type (Value : out Text; Depth : Natural := 0) is
+         Part : Text;
+      begin
+         Value := (others => <>);
+         Skip;
+         if Depth > MAX_NESTING then Failed := True; return; end if;
+         if Cursor + 7 <= Input.Length and then Input.Data (Cursor .. Cursor + 7) = "FUNCTION" and then
+           (Cursor + 8 > Input.Length or else not Basic_Name_Character (Input.Data (Cursor + 8)))
+         then
+            Expect ("FUNCTION"); Expect ("(");
+            Append (Value, "(Function (");
+            Skip;
+            if Cursor <= Input.Length and then Input.Data (Cursor) /= ')' then
+               loop
+                  Basic_Type (Part, Depth + 1);
+                  exit when Failed or else Full;
+                  Append (Value, Part.Data (1 .. Part.Length));
+                  Skip;
+                  exit when Cursor > Input.Length or else Input.Data (Cursor) /= ',';
+                  Cursor := Cursor + 1;
+                  Append (Value, " ");
+               end loop;
+            end if;
+            Expect (")"); Expect ("AS");
+            Basic_Type (Part, Depth + 1);
+            Append (Value, ") " & Part.Data (1 .. Part.Length) & ")");
+         elsif Cursor + 3 <= Input.Length and then Input.Data (Cursor .. Cursor + 3) = "LIST" and then
+           (Cursor + 4 > Input.Length or else not Basic_Name_Character (Input.Data (Cursor + 4)))
+         then
+            Expect ("LIST"); Expect ("(");
+            Basic_Type (Part, Depth + 1);
+            Expect (")");
+            Append (Value, "(List " & Part.Data (1 .. Part.Length) & ")");
+         else
+            Name_Token (Value);
+         end if;
+      end Basic_Type;
 
       procedure Program is
          Token, Type_Name : Text;
@@ -356,6 +491,15 @@ package body CCL.Language.Views with SPARK_Mode => On is
               Input.Data (Cursor .. Cursor + 7) /= "FUNCTION" or else
               (Cursor + 8 <= Input.Length and then
                Basic_Name_Character (Input.Data (Cursor + 8)));
+            --  FUNCTION( ... begins an anonymous function: an expression.
+            declare
+               Peek : Positive := Cursor + 8;
+            begin
+               while Peek <= Input.Length and then White (Input.Data (Peek)) loop
+                  Peek := Peek + 1;
+               end loop;
+               exit when Peek <= Input.Length and then Input.Data (Peek) = '(';
+            end;
             Start := Cursor;
             Expect ("FUNCTION");
             Name_Token (Token);
@@ -363,7 +507,7 @@ package body CCL.Language.Views with SPARK_Mode => On is
             Expect ("("); Skip;
             if Cursor <= Input.Length and then Input.Data (Cursor) /= ')' then
                loop
-                  Name_Token (Token); Expect ("AS"); Name_Token (Type_Name);
+                  Name_Token (Token); Expect ("AS"); Basic_Type (Type_Name);
                   Put (" (" & Token.Data (1 .. Token.Length) & " " &
                        Type_Name.Data (1 .. Type_Name.Length) & ")", Cursor);
                   Skip;
@@ -371,7 +515,7 @@ package body CCL.Language.Views with SPARK_Mode => On is
                   Cursor := Cursor + 1;
                end loop;
             end if;
-            Expect (")"); Expect ("AS"); Name_Token (Type_Name);
+            Expect (")"); Expect ("AS"); Basic_Type (Type_Name);
             Put (") " & Type_Name.Data (1 .. Type_Name.Length) & " ", Cursor);
             Expect ("RETURN");
             Expression (1);
@@ -391,6 +535,14 @@ package body CCL.Language.Views with SPARK_Mode => On is
         (Kind : Node_Kind; Style : Surface; Compact : Boolean) return String is
         (case Kind is
            when Add_Form => (if Style = Lisp then "+" else "add"),
+           when Subtract_Form => (if Style = Lisp then "-" else "subtract"),
+           when Not_Equal_Form => (if Style = Lisp then "/=" else "not-equal"),
+           when Less_Form => (if Style = Lisp then "<" else "less"),
+           when Less_Equal_Form => (if Style = Lisp then "<=" else "less-equal"),
+           when Greater_Form => (if Style = Lisp then ">" else "greater"),
+           when Greater_Equal_Form =>
+             (if Style = Lisp then ">=" else "greater-equal"),
+           when And_Form => "and", when Or_Form => "or",
            when Multiply_Form => (if Style = Lisp then "*" else "multiply"),
            when Divide_Form => (if Style = Lisp then "/" else "divide"),
            --  Keep the internal encoding compact, but prefer the readable
@@ -418,15 +570,43 @@ package body CCL.Language.Views with SPARK_Mode => On is
          begin
             --  Escape only delimiter-bearing names and the BASIC keyword.
             if Style = Basic and then
-              (Keyword (S) or else (for some C of S => C in '=' | '+' | '*' | '/' | '%'))
+              (Keyword (S) or else
+               (for some C of S => C in '=' | '+' | '*' | '/' | '%' | '<' | '>'))
             then Emit ("`"); end if;
             Emit (S);
             if Style = Basic and then
-              (Keyword (S) or else (for some C of S => C in '=' | '+' | '*' | '/' | '%'))
+              (Keyword (S) or else
+               (for some C of S => C in '=' | '+' | '*' | '/' | '%' | '<' | '>'))
             then Emit ("`"); end if;
          end Identifier;
          procedure Child (Index : Node_Reference) is
          begin Print (Index, Style, Buffer, Spans, Depth + 1, Pretty); end Child;
+         --  A type as written: a name, a list type (List Integer) /
+         --  LIST(Integer), or a function type spelled from its parts,
+         --  (Function (Integer) Integer) / FUNCTION(Integer) AS Integer.
+         procedure Emit_Type (Kind : Static_Type; Level : Natural := 0) is
+            D : CCL.Types.Description;
+         begin
+            if CCL.Types.Is_List (Analysis.Tree.Types, Kind) and then Level <= MAX_NESTING then
+               Emit ((if Style = Lisp then "(List " else "LIST("));
+               Emit_Type (CCL.Types.Element_Of (Analysis.Tree.Types, Kind), Level + 1);
+               Emit (")");
+               return;
+            end if;
+            if not CCL.Types.Is_Function (Analysis.Tree.Types, Kind) or else Level > MAX_NESTING then
+               Emit (Type_Name (Kind));
+               return;
+            end if;
+            D := CCL.Types.Describe (Analysis.Tree.Types, Kind);
+            Emit ((if Style = Lisp then "(Function (" else "FUNCTION("));
+            for P in 1 .. D.Count - 1 loop
+               if P > 1 then Emit ((if Style = Lisp then " " else ", ")); end if;
+               Emit_Type (D.Parts (P).Payload, Level + 1);
+            end loop;
+            Emit ((if Style = Lisp then ") " else ") AS "));
+            Emit_Type (D.Parts (D.Count).Payload, Level + 1);
+            if Style = Lisp then Emit (")"); end if;
+         end Emit_Type;
          procedure New_Line (Level : Natural) is
          begin
             Emit (String'(1 => ASCII.LF));
@@ -548,10 +728,12 @@ package body CCL.Language.Views with SPARK_Mode => On is
                      if Style = Lisp then Emit (" (");
                      elsif P > 1 then Emit (", "); end if;
                      Identifier (Decl.Parameters (P).Identifier);
-                     Emit ((if Style = Lisp then " " else " AS ") & Type_Name (Decl.Parameters (P).Kind));
+                     Emit ((if Style = Lisp then " " else " AS "));
+                     Emit_Type (Decl.Parameters (P).Kind);
                      if Style = Lisp then Emit (")"); end if;
                   end loop;
-                  Emit ((if Style = Lisp then ") " else ") AS ") & Type_Name (Decl.Result_Kind));
+                  Emit ((if Style = Lisp then ") " else ") AS "));
+                  Emit_Type (Decl.Result_Kind);
                   if Style = Basic then Emit (" RETURN"); end if;
                   if Pretty then New_Line (Depth + 1); else Emit (" "); end if;
                   Child (N.First);
@@ -581,6 +763,39 @@ package body CCL.Language.Views with SPARK_Mode => On is
                   Child (N.Components (P));
                end loop;
                Emit (")");
+            when Builtin_Form =>
+               if Style = Lisp then Emit ("("); end if;
+               Emit (Builtin_Name (N.Builtin));
+               if Style = Basic then Emit ("("); end if;
+               for P in 1 .. N.Argument_Count loop
+                  if Style = Lisp then Emit (" "); elsif P > 1 then Emit (", "); end if;
+                  Child (N.Arguments (P));
+               end loop;
+               Emit (")");
+            when Lambda_Form =>
+               declare
+                  Decl : constant Function_Declaration := Analysis.Tree.Functions (N.Function_Id);
+               begin
+                  Emit ((if Style = Lisp then "(fn (" else "FUNCTION("));
+                  for P in 1 .. Decl.Count loop
+                     if P > 1 then Emit ((if Style = Lisp then " " else ", ")); end if;
+                     if Style = Lisp then Emit ("("); end if;
+                     Identifier (Decl.Parameters (P).Identifier);
+                     Emit ((if Style = Lisp then " " else " AS "));
+                     Emit_Type (Decl.Parameters (P).Kind);
+                     if Style = Lisp then Emit (")"); end if;
+                  end loop;
+                  Emit (") ");
+                  Child (N.First);
+                  if Style = Lisp then Emit (")"); end if;
+               end;
+            when List_Construct =>
+               Emit ("[");
+               for P in 1 .. N.Element_Count loop
+                  if P > 1 then Emit ((if Style = Lisp then " " else ", ")); end if;
+                  Child (N.Components (P));
+               end loop;
+               Emit ("]");
             when Function_Call =>
                if Style = Lisp then Emit ("("); end if;
                Identifier (N.Identifier);

@@ -32,6 +32,27 @@ package Directory_Blocks with SPARK_Mode => On is
        (if Result = Prepared then Removed in 1 .. Maximum_Inode
         else Data = Data'Old and Removed = 0);
 
+   --  As Prepare_Remove (the same record removed, the same refusals,
+   --  duplicate names included), also saying which bytes changed:
+   --  Changed_First .. Changed_Last, at most four (the preceding record's
+   --  span, or the record's inode), so the caller can write just those.
+   Maximum_Changed_Bytes : constant := 4;
+   procedure Remove_In_Place
+     (Data : in out Block_Data; Size : Block_Length;
+      Maximum_Inode : Unsigned_32; Name : String;
+      Removed : out Unsigned_32; Kind : out Unsigned_8;
+      Changed_First, Changed_Last : out Positive;
+      Result : out Prepare_Result)
+     with Post =>
+       (if Result = Prepared then
+          Removed in 1 .. Maximum_Inode and
+          Changed_First <= Changed_Last and
+          Changed_Last <= Size and
+          Changed_Last - Changed_First < Maximum_Changed_Bytes and
+          (for all I in Data'Range =>
+             (if I < Changed_First or I > Changed_Last then Data (I) = Data'Old (I)))
+        else Data = Data'Old and Removed = 0);
+
    --  Count the live records other than "." and "..". Result is Prepared,
    --  or Malformed_Block (Children then meaningless).
    procedure Count_Children

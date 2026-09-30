@@ -1,6 +1,15 @@
 package body Intel_GPU_Combo_Restore is
    use Intel_GPU_Combo_PHY;
    Attempted : Boolean := False;
+   function Diagnostic (Value : Report) return String is
+     ("PHY=" & (if Value.Port = A then "A" else "B") & " result=" &
+      (case Value.Status is
+         when Rejected => "rejected", when Read_Failed => "read-failed",
+         when Invalid_State => "invalid-state", when Changed => "changed",
+         when Power_Lost => "power-lost", when Write_Failed => "write-failed",
+         when Visibility_Failed => "visibility-failed",
+         when Verification_Failed => "verification-failed", when Ready => "ready") &
+      " writes=" & Natural'Image (Value.Writes_Attempted));
    procedure Execute (Authorized : Boolean; Result : out Report) is
       Baseline : array (PHY) of Snapshot;
       Plans : array (PHY) of Plan;
@@ -12,6 +21,7 @@ package body Intel_GPU_Combo_Restore is
          -- Preflight BOTH PHYs before changing A. An invalid B must not cause
          -- an avoidable partial restore of the master PHY.
          for Port in PHY loop
+            Result.Port := Port;
             if not Held then Result.Status := Power_Lost; return; end if;
             Read_State (Port, Baseline (Port), OK);
             if not OK then Result.Status := Read_Failed; return; end if;
@@ -21,12 +31,16 @@ package body Intel_GPU_Combo_Restore is
             end if;
          end loop;
          for Port in PHY loop
+            Result.Port := Port;
             if not Held then Result.Status := Power_Lost; return; end if;
             Read_State (Port, Current, OK);
             if not OK then Result.Status := Read_Failed; return; end if;
-            if Current /= Baseline (Port) then
+            if not Same_Configuration (Current, Baseline (Port)) then
                Result.Status := Changed; return;
             end if;
+            -- Replan from the latest copied words, preserving unowned fields
+            -- rather than replaying their older preflight observations.
+            Plans (Port) := Prepare (Port, Current);
             for I in 1 .. Plans (Port).Count loop
                if not Held then Result.Status := Power_Lost; return; end if;
                Result.Writes_Attempted := Result.Writes_Attempted + 1;

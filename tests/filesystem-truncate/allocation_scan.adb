@@ -38,7 +38,7 @@ procedure Allocation_Scan is
           grantBuffer => Grant_Buffer'Address, grantBytes => Grant_Buffer'Length,
           description => (blockCount => 128, maxTransferBlocks => 8,
             features => FEATURE_FLUSH or FEATURE_VOLATILE_CACHE, others => <>)),
-        writeQuarantined => False, journal => <>);
+        writeQuarantined => False, journal => <>, others => <>);
       baseline := Disk;
       declare
          Discarded : Filesystem;

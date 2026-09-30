@@ -49,6 +49,7 @@ package body Intel_GPU_Native_DC is
    begin State := Sample.Values; OK := Sample.Status = Reader.Collected; end;
    package PHYs is new Intel_GPU_Native_Combo_Restore
      (Available, DC_Disabled, PHY_Pages_Ready);
+   function PHY_Diagnostic return String is (PHYs.Diagnostic);
    procedure Restore_PHYs (Success : out Boolean) is
       Status : constant String := PHYs.Execute (Owner_Held);
       pragma Unreferenced (Status);

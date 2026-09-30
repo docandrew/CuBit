@@ -30,6 +30,10 @@ package body NVMe is
    IO_SPIN_MICROSECONDS   : constant := 200;
    IO_YIELD_MICROSECONDS  : constant := 20_000;
    IO_SLEEP_POLLS         : constant Positive := 1_000;
+   --  With completion interrupts: the same overall bound, waited for in
+   --  slices that re-check the queue.
+   IO_WAIT_MICROSECONDS   : constant := 1_020_000;
+   IO_WAIT_SLICE_MILLISECONDS : constant := 2;
 
    ---------------------------------------------------------------------------
    --  MMIO helpers: volatile reads/writes through the mapped BAR0
@@ -52,6 +56,9 @@ package body NVMe is
    ioPhase   : Unsigned_16 := 1;
    ioCmdId   : Unsigned_16 := 0;
    ioFailed  : Boolean := False;
+   --  Completion-interrupt notifications taken, and slice deadlines that
+   --  expired without one (reported by reportWaits).
+   interruptsSeen, sliceTimeouts : Unsigned_64 := 0;
 
 #if nvme_io_profile = "on" then
    --  Test-only attribution, compiled out completely in ordinary builds.
@@ -394,19 +401,45 @@ package body NVMe is
    ---------------------------------------------------------------------------
    --  createIOQueues
    ---------------------------------------------------------------------------
-   procedure createIOQueues is
+   procedure createIOQueues
+     (msixTable : Unsigned_64 := NO_MSIX; vector : Unsigned_64 := 0;
+      ok : out Boolean)
+   is
       cmd : SubmissionEntry := NULL_SUBMISSION;
-      ok  : Boolean;
+      MSI_ADDRESS : constant Unsigned_32 := 16#FEE0_0000#; --  APIC 0
+      ENTRY_MASKED : constant Unsigned_32 := 1;
+      CQ_PHYSICALLY_CONTIGUOUS : constant Unsigned_32 := 1;
+      CQ_INTERRUPTS_ENABLED : constant Unsigned_32 := 2;
+      useMSIX : constant Boolean := msixTable /= NO_MSIX;
    begin
+      interruptsEnabled := False;
+      if useMSIX then
+         --  Entry zero: masked while written, then unmasked; devmgr clears
+         --  the function mask after we reply.
+         declare
+            tableEntry : array (0 .. 3) of Unsigned_32 with Volatile,
+              Import, Address => barBase + Storage_Offset (msixTable);
+         begin
+            tableEntry (3) := ENTRY_MASKED;
+            tableEntry (0) := MSI_ADDRESS;
+            tableEntry (1) := 0;
+            tableEntry (2) := Unsigned_32 (vector);
+            tableEntry (3) := 0;
+            ok := tableEntry (2) = Unsigned_32 (vector);
+         end;
+         if not ok then
+            return;
+         end if;
+      end if;
       --  Create I/O Completion Queue (ID=1)
       adminCmdId := adminCmdId + 1;
       cmd := NULL_SUBMISSION;
       cmd.cdw0  := makeCdw0 (ADMIN_CREATE_IO_CQ, adminCmdId);
       cmd.prp1  := dmaBase + IO_CQ_OFFSET;
       cmd.cdw10 := Shift_Left (Unsigned_32 (QUEUE_DEPTH - 1), 16) or 1;  -- size | QID=1
-      --  PC=1, IEN=0: physically contiguous, interrupts DISABLED. Completion
-      --  remains polled until the driver has a checked interrupt/wait path.
-      cmd.cdw11 := 1;
+      --  PC=1; IEN=1 with interrupt vector 0 (MSI-X entry zero) if MSI-X.
+      cmd.cdw11 := CQ_PHYSICALLY_CONTIGUOUS or
+        (if useMSIX then CQ_INTERRUPTS_ENABLED else 0);
 
       ok := submitAdmin (cmd);
       if not ok then
@@ -428,39 +461,65 @@ package body NVMe is
          return;
       end if;
 
+      interruptsEnabled := useMSIX;
       debugPrint ("NVMe: I/O queues created." & ASCII.LF);
    end createIOQueues;
 
    ---------------------------------------------------------------------------
-   --  PRP list overlay (page 5 of DMA region)
+   --  I/O commands in flight. A transfer is split into chunks, each with its
+   --  own slice of the DMA data area and its own PRP list, and up to
+   --  MAX_IN_FLIGHT chunks are outstanding at once: the controller works
+   --  on the next while the driver copies the last (and the host backend
+   --  may run them in parallel). Completions may arrive in any order and
+   --  are matched by command identifier.
    ---------------------------------------------------------------------------
-   type PRPArray is array (Natural range 0 .. PRP_ENTRIES_PER_PAGE - 1)
-     of Unsigned_64 with Convention => C;
+   CHUNK_BYTES : constant := 128 * 1024;
+   CHUNK_PAGES : constant := CHUNK_BYTES / PAGE_SIZE;
+   MAX_IN_FLIGHT : constant := (DATA_BUF_PAGES * PAGE_SIZE) / CHUNK_BYTES;
+   pragma Compile_Time_Error
+     (MAX_IN_FLIGHT < 1 or else MAX_IN_FLIGHT >= QUEUE_DEPTH,
+      "in-flight commands must fit the data area and the I/O queue");
+   --  One PRP list per in-flight slot, packed into the PRP list page.
+   PRP_LIST_BYTES : constant := CHUNK_PAGES * 8;
+   pragma Compile_Time_Error
+     (MAX_IN_FLIGHT * PRP_LIST_BYTES > PAGE_SIZE, "PRP lists overflow their page");
 
-   prpList : PRPArray with Import,
-     Address => System.Storage_Elements.To_Address
-       (DMA_VIRT_BASE + PRP_LIST_OFFSET);
+   subtype Flight_Slot is Natural range 0 .. MAX_IN_FLIGHT - 1;
+   type Flight is record
+      Active  : Boolean := False;
+      Cid     : Unsigned_16 := 0;
+      Chunk   : Natural := 0;           --  index within the transfer
+      Bytes   : Unsigned_64 := 0;
+      Offset  : Unsigned_64 := 0;       --  within the caller's buffer
+   end record;
+   flights : array (Flight_Slot) of Flight;
+
+   function slotDmaOffset (slot : Flight_Slot) return Unsigned_64 is
+     (DATA_BUF_OFFSET + Unsigned_64 (slot) * CHUNK_BYTES);
 
    ---------------------------------------------------------------------------
-   --  pollIOCompletion - spin-poll then sleep-poll the I/O CQ
-   --  Returns True on success, False on timeout or error.
+   --  nextCompletion - wait for the next I/O completion entry: spin (most
+   --  commands finish within tens of microseconds), then yield between
+   --  looks, then sleep a millisecond between looks, until the timeout.
+   --  found is False on timeout. The entry is consumed (CQ doorbell rung).
    ---------------------------------------------------------------------------
-   function pollIOCompletion return Boolean is
-      cqe   : CompletionEntry;
-      found : Boolean := False;
+   procedure nextCompletion
+     (opcode : Unsigned_8; cqe : out CompletionEntry; found : out Boolean)
+   is
       ignore : Unsigned_64;
 #if nvme_io_profile = "on" then
       Start_Ticks : constant Unsigned_64 := CuBit.Benchmark_Clock.Read_Counter;
       Sleep_Count : Unsigned_64 := 0;
       Slow : Boolean := False;
-      Opcode : constant Unsigned_8 := Unsigned_8
-        (ioSq ((ioSqTail + QUEUE_DEPTH - 1) mod QUEUE_DEPTH).cdw0 and 16#FF#);
       Kind : constant IO_Kind :=
-        (if Opcode = IO_READ then Read_Command
-         elsif Opcode = IO_WRITE then Write_Command else Flush_Command);
+        (if opcode = IO_READ then Read_Command
+         elsif opcode = IO_WRITE then Write_Command else Flush_Command);
+#else
+      pragma Unreferenced (opcode);
 #end if;
    begin
-      --  Spin, then yield between looks, each for a bounded time.
+      found := False;
+      cqe := (dw0 => 0, dw1 => 0, sqHead => 0, sqId => 0, cid => 0, status => 0);
       declare
          Started : constant Unsigned_64 := CuBit.Busy_Poll.Now;
       begin
@@ -469,6 +528,8 @@ package body NVMe is
                found := True;
                exit;
             end if;
+            exit when interruptsEnabled and then
+              not CuBit.Busy_Poll.Within (Started, IO_SPIN_MICROSECONDS);
             exit when not CuBit.Busy_Poll.Within (Started, IO_YIELD_MICROSECONDS);
             if CuBit.Busy_Poll.Within (Started, IO_SPIN_MICROSECONDS) then
                CuBit.Busy_Poll.Relax;
@@ -477,9 +538,51 @@ package body NVMe is
             end if;
          end loop;
       end;
-
-      --  Fallback: sleep-poll for slow completions
-      if not found then
+      if not found and then interruptsEnabled then
+         --  Sleep until the completion interrupt. The kernel keeps a latched
+         --  notification, so one arriving between the check and the wait
+         --  is not lost. A request queued meanwhile also ends the wait; then
+         --  poll at the millisecond. The same overall timeout applies.
+         declare
+            Started : constant Unsigned_64 := CuBit.Busy_Poll.Now;
+            event : Message;
+            sawEvent : Boolean;
+            activity : Activity_Result;
+         begin
+            loop
+               sawEvent := False;
+               while Poll_Event (event) loop
+                  sawEvent := True;
+                  interruptsSeen := interruptsSeen + 1;
+               end loop;
+               if (ioCq (ioCqHead).status and 1) = ioPhase then
+                  found := True;
+                  exit;
+               end if;
+               exit when not CuBit.Busy_Poll.Within (Started, IO_WAIT_MICROSECONDS);
+               if sawEvent then
+                  null;   --  a shared vector's other device: look again
+               else
+                  activity := Wait_For_Activity_Until
+                    (syscall (SYSCALL_GETTIME) + IO_WAIT_SLICE_MILLISECONDS);
+                  if activity = Deadline_Reached then
+                     sliceTimeouts := sliceTimeouts + 1;
+                  end if;
+                  if activity = Unavailable then
+                     ignore := syscall (SYSCALL_SLEEP, 1);
+                  elsif activity = Work_Available and then
+                    (ioCq (ioCqHead).status and 1) /= ioPhase
+                  then
+                     --  Pending IPC (not ours to take here) or an event:
+                     --  drain events next time; never spin on requests.
+                     if not Poll_Event (event) then
+                        ignore := syscall (SYSCALL_SLEEP, 1);
+                     end if;
+                  end if;
+               end if;
+            end loop;
+         end;
+      elsif not found then
 #if nvme_io_profile = "on" then
          Slow := True;
 #end if;
@@ -494,7 +597,6 @@ package body NVMe is
 #end if;
          end loop;
       end if;
-
 #if nvme_io_profile = "on" then
       Metrics (Kind).Ticks := Metrics (Kind).Ticks +
         (CuBit.Benchmark_Clock.Read_Counter - Start_Ticks);
@@ -508,240 +610,231 @@ package body NVMe is
          end if;
       end if;
 #end if;
-
       if not found then
-         --  The command may still own the DMA buffer. Keep it allocated and
-         --  refuse all later I/O until reset rather than overwrite it.
-         ioFailed := True;
-         return False;
+         return;
       end if;
-
-      --  Read the controller's phase publication BEFORE copying other fields.
-      --  A whole-record read while polling could mix an old CID with the new
-      --  phase. x86 coherent DMA supplies load ordering; this compiler barrier
-      --  prevents the snapshot from being hoisted before the phase check.
-      --  The controller cannot reuse this entry until our CQ doorbell below.
+      --  Read the controller's phase publication BEFORE copying other
+      --  fields; the compiler barrier keeps the snapshot after the check.
+      --  The controller cannot reuse this entry until our CQ doorbell.
       System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
       cqe := ioCq (ioCqHead);
-
-      --  Exactly one I/O command is outstanding in this driver. Only its
-      --  completion may acknowledge either data I/O or a durability barrier.
-      if cqe.sqId /= 1 or else cqe.cid /= ioCmdId then
-         ioFailed := True;
-         return False;
-      end if;
-
       ioCqHead := (ioCqHead + 1) mod QUEUE_DEPTH;
       if ioCqHead = 0 then
          ioPhase := ioPhase xor 1;
       end if;
       ringCqDoorbell (1, ioCqHead);
+   end nextCompletion;
 
-      --  Check status (bits 15:1 = status code)
-      return (Shift_Right (cqe.status, 1) and 16#7FFF#) = 0;
-   end pollIOCompletion;
+   procedure reportWaits is
+   begin
+      debugPrint ("NVMe: interrupts=" & interruptsSeen'Image &
+                  " slice-timeouts=" & sliceTimeouts'Image & ASCII.LF);
+   end reportWaits;
+
+   function statusOk (cqe : CompletionEntry) return Boolean is
+     ((Shift_Right (cqe.status, 1) and 16#7FFF#) = 0);
+
+   procedure submitIO (cmd : SubmissionEntry) is
+   begin
+      ioSq (ioSqTail) := cmd;
+      ioSqTail := (ioSqTail + 1) mod QUEUE_DEPTH;
+      ringSqDoorbell (1, ioSqTail);
+   end submitIO;
+
+   function nextCid return Unsigned_16 is
+   begin
+      ioCmdId := ioCmdId + 1;
+      return ioCmdId;
+   end nextCid;
 
    function flush return Boolean is
       cmd : SubmissionEntry := NULL_SUBMISSION;
+      cqe : CompletionEntry;
+      found : Boolean;
+      cid : Unsigned_16;
    begin
       if ioFailed or else nsBlockCount = 0 then
          return False;
       end if;
-      ioCmdId := ioCmdId + 1;
-      cmd.cdw0 := makeCdw0 (IO_FLUSH, ioCmdId);
+      cid := nextCid;
+      cmd.cdw0 := makeCdw0 (IO_FLUSH, cid);
       cmd.nsid := 1;
-      ioSq (ioSqTail) := cmd;
-      ioSqTail := (ioSqTail + 1) mod QUEUE_DEPTH;
-      ringSqDoorbell (1, ioSqTail);
-      return pollIOCompletion;
+      submitIO (cmd);
+      nextCompletion (IO_FLUSH, cqe, found);
+      --  Nothing else is outstanding: only this command may complete.
+      if not found or else cqe.sqId /= 1 or else cqe.cid /= cid then
+         ioFailed := True;
+         return False;
+      end if;
+      return statusOk (cqe);
    end flush;
 
    ---------------------------------------------------------------------------
-   --  readBlocks - multi-page reads via PRP lists
+   --  transfer - read or write count sectors at lba through the pipeline.
+   --  Returns the bytes of the longest prefix whose chunks all completed
+   --  successfully. Every submitted chunk is reaped before returning, so
+   --  no command still owns a DMA slice; a timeout retires the queue.
    ---------------------------------------------------------------------------
+   function transfer
+     (opcode : Unsigned_8; lba : Unsigned_64; count : Unsigned_32;
+      buf : System.Address; fua : Boolean) return Unsigned_64
+   is
+      sector : constant Unsigned_64 := Unsigned_64 (nsSectorSize);
+      totalBytes : constant Unsigned_64 := Unsigned_64 (count) * sector;
+      chunkLimit : constant Unsigned_64 :=
+        Unsigned_64'Min (CHUNK_BYTES, maxTransferBytes) / sector * sector;
+      chunks : Natural;
+      submitted, completed : Natural := 0;
+      failedChunk : Natural := Natural'Last;
+      prefix : Natural;
+      --  Chunks completed successfully; a transfer is bounded by the grant
+      --  (the service rejects larger ones below).
+      MAX_CHUNKS : constant := 256;
+      doneMask : array (0 .. MAX_CHUNKS - 1) of Boolean := [others => False];
+
+      procedure Launch (slot : Flight_Slot) is
+         chunk : constant Natural := submitted;
+         offset : constant Unsigned_64 := Unsigned_64 (chunk) * chunkLimit;
+         bytes : constant Unsigned_64 := Unsigned_64'Min (chunkLimit, totalBytes - offset);
+         pages : constant Unsigned_64 := (bytes + PAGE_SIZE - 1) / PAGE_SIZE;
+         dmaPhys : constant Unsigned_64 := dmaBase + slotDmaOffset (slot);
+         dmaVirt : constant System.Address := System.Storage_Elements.To_Address
+           (Integer_Address (DMA_VIRT_BASE + slotDmaOffset (slot)));
+         listOffset : constant Unsigned_64 :=
+           PRP_LIST_OFFSET + Unsigned_64 (slot) * PRP_LIST_BYTES;
+         cmd : SubmissionEntry := NULL_SUBMISSION;
+         cid : constant Unsigned_16 := nextCid;
+         sectors : constant Unsigned_32 := Unsigned_32 (bytes / sector);
+         chunkLba : constant Unsigned_64 := lba + offset / sector;
+      begin
+         if opcode = IO_WRITE then
+            declare
+               srcBuf : String (1 .. Natural (bytes))
+                 with Import, Address => buf + Storage_Offset (offset);
+               dstBuf : String (1 .. Natural (bytes)) with Import, Address => dmaVirt;
+            begin
+               dstBuf := srcBuf;
+            end;
+         end if;
+         if pages > 2 then
+            declare
+               list : array (0 .. CHUNK_PAGES - 1) of Unsigned_64
+                 with Import, Address => System.Storage_Elements.To_Address
+                   (Integer_Address (DMA_VIRT_BASE + listOffset));
+            begin
+               for i in 1 .. Natural (pages) - 1 loop
+                  list (i - 1) := dmaPhys + Unsigned_64 (i) * PAGE_SIZE;
+               end loop;
+            end;
+         end if;
+         cmd.cdw0 := makeCdw0 (opcode, cid);
+         cmd.nsid := 1;
+         cmd.prp1 := dmaPhys;
+         cmd.prp2 := (if pages <= 1 then 0
+                      elsif pages = 2 then dmaPhys + PAGE_SIZE
+                      else dmaBase + listOffset);
+         cmd.cdw10 := Unsigned_32 (chunkLba and 16#FFFF_FFFF#);
+         cmd.cdw11 := Unsigned_32 (Shift_Right (chunkLba, 32));
+         cmd.cdw12 := (sectors - 1) or
+           (if opcode = IO_WRITE and then fua then CDW12_FUA else 0);
+         flights (slot) := (Active => True, Cid => cid, Chunk => chunk,
+                            Bytes => bytes, Offset => offset);
+         submitted := submitted + 1;
+         submitIO (cmd);
+      end Launch;
+
+      cqe : CompletionEntry;
+      found : Boolean;
+      slotOf : Integer;
+   begin
+      if ioFailed or else nsSectorSize = 0 or else chunkLimit = 0 or else count = 0 then
+         return 0;
+      end if;
+      chunks := Natural ((totalBytes + chunkLimit - 1) / chunkLimit);
+      if chunks > doneMask'Length then
+         return 0;   --  larger than any grant this driver accepts
+      end if;
+      flights := [others => (others => <>)];
+      for slot in Flight_Slot loop
+         exit when submitted = chunks;
+         Launch (slot);
+      end loop;
+      while completed < submitted loop
+         nextCompletion (opcode, cqe, found);
+         slotOf := -1;
+         if found and then cqe.sqId = 1 then
+            for slot in Flight_Slot loop
+               if flights (slot).Active and then flights (slot).Cid = cqe.cid then
+                  slotOf := slot;
+               end if;
+            end loop;
+         end if;
+         if slotOf < 0 then
+            --  A timeout, or a completion for no command of ours: the
+            --  outstanding commands may still own their DMA slices.
+            ioFailed := True;
+            debugPrint ("NVMe: I/O completion lost or foreign." & ASCII.LF);
+            exit;
+         end if;
+         declare
+            f : Flight renames flights (slotOf);
+         begin
+            f.Active := False;
+            completed := completed + 1;
+            if statusOk (cqe) then
+               if opcode = IO_READ then
+                  declare
+                     srcBuf : String (1 .. Natural (f.Bytes)) with Import,
+                       Address => System.Storage_Elements.To_Address
+                         (Integer_Address (DMA_VIRT_BASE + slotDmaOffset (slotOf)));
+                     dstBuf : String (1 .. Natural (f.Bytes))
+                       with Import, Address => buf + Storage_Offset (f.Offset);
+                  begin
+                     dstBuf := srcBuf;
+                  end;
+               end if;
+               doneMask (f.Chunk) := True;
+            else
+               failedChunk := Natural'Min (failedChunk, f.Chunk);
+            end if;
+            --  Reuse the slot for the next chunk unless a chunk failed.
+            if failedChunk = Natural'Last and then submitted < chunks then
+               Launch (slotOf);
+            end if;
+         end;
+      end loop;
+      prefix := 0;
+      while prefix < chunks and then doneMask (prefix) loop
+         prefix := prefix + 1;
+      end loop;
+      return Unsigned_64'Min (totalBytes, Unsigned_64 (prefix) * chunkLimit);
+   end transfer;
+
    function readBlocks
      (lba   : Unsigned_64;
       count : Unsigned_32;
       buf   : System.Address) return Unsigned_64
    is
-      remaining  : Unsigned_32 := count;
-      curLba     : Unsigned_64 := lba;
-      dstOff     : Storage_Offset := 0;
-      bytesRead  : Unsigned_64 := 0;
-      thisBytes  : Unsigned_64;
-      thisSectors : Unsigned_32;
-      numPages   : Unsigned_64;
-      cmd        : SubmissionEntry;
-      dataBufPhys : constant Unsigned_64 := dmaBase + DATA_BUF_OFFSET;
-      dataBufVirt : constant System.Address :=
-        System.Storage_Elements.To_Address
-          (Integer_Address (DMA_VIRT_BASE + DATA_BUF_OFFSET));
+      bytes : constant Unsigned_64 := transfer (IO_READ, lba, count, buf, False);
    begin
-      if ioFailed or else nsSectorSize = 0 or else maxTransferBytes = 0 then
-         return 0;
+      if bytes /= Unsigned_64 (count) * Unsigned_64 (nsSectorSize) then
+         debugPrint ("NVMe: Read failed." & ASCII.LF);
       end if;
-
-      while remaining > 0 loop
-         --  Calculate how many bytes/sectors this transfer
-         thisBytes := Unsigned_64 (remaining) * Unsigned_64 (nsSectorSize);
-         if thisBytes > maxTransferBytes then
-            thisBytes := maxTransferBytes;
-         end if;
-         thisSectors := Unsigned_32 (thisBytes / Unsigned_64 (nsSectorSize));
-         numPages := (thisBytes + Unsigned_64 (PAGE_SIZE) - 1) /
-                     Unsigned_64 (PAGE_SIZE);
-
-         --  Build PRP list for transfers > 2 pages
-         if numPages > 2 then
-            for i in 1 .. Natural (numPages) - 1 loop
-               prpList (i - 1) :=
-                 dataBufPhys + Unsigned_64 (i) * Unsigned_64 (PAGE_SIZE);
-            end loop;
-         end if;
-
-         --  Build NVMe Read command
-         cmd := NULL_SUBMISSION;
-         ioCmdId := ioCmdId + 1;
-         cmd.cdw0  := makeCdw0 (IO_READ, ioCmdId);
-         cmd.nsid  := 1;
-         cmd.prp1  := dataBufPhys;
-
-         if numPages <= 1 then
-            cmd.prp2 := 0;
-         elsif numPages = 2 then
-            cmd.prp2 := dataBufPhys + Unsigned_64 (PAGE_SIZE);
-         else
-            cmd.prp2 := dmaBase + PRP_LIST_OFFSET;
-         end if;
-
-         cmd.cdw10 := Unsigned_32 (curLba and 16#FFFF_FFFF#);
-         cmd.cdw11 := Unsigned_32 (Shift_Right (curLba, 32));
-         cmd.cdw12 := thisSectors - 1;  --  0-based count
-
-         --  Submit to I/O SQ
-         ioSq (ioSqTail) := cmd;
-         ioSqTail := (ioSqTail + 1) mod QUEUE_DEPTH;
-         ringSqDoorbell (1, ioSqTail);
-
-         if not pollIOCompletion then
-            debugPrint ("NVMe: Read failed." & ASCII.LF);
-            return bytesRead;
-         end if;
-
-         --  Copy from DMA buffer to caller's buffer
-         declare
-            copyLen : constant Unsigned_64 :=
-              Unsigned_64 (thisSectors) * Unsigned_64 (nsSectorSize);
-            srcBuf : String (1 .. Natural (copyLen))
-              with Import, Address => dataBufVirt;
-            dstBuf : String (1 .. Natural (copyLen))
-              with Import, Address => buf + dstOff;
-         begin
-            dstBuf := srcBuf;
-            bytesRead := bytesRead + copyLen;
-            dstOff := dstOff + Storage_Offset (copyLen);
-         end;
-
-         curLba    := curLba + Unsigned_64 (thisSectors);
-         remaining := remaining - thisSectors;
-      end loop;
-
-      return bytesRead;
+      return bytes;
    end readBlocks;
 
-   ---------------------------------------------------------------------------
-   --  writeBlocks - multi-page writes via PRP lists
-   ---------------------------------------------------------------------------
    function writeBlocks
      (lba   : Unsigned_64;
       count : Unsigned_32;
       buf   : System.Address;
       fua   : Boolean := False) return Unsigned_64
    is
-      remaining    : Unsigned_32 := count;
-      curLba       : Unsigned_64 := lba;
-      srcOff       : Storage_Offset := 0;
-      bytesWritten : Unsigned_64 := 0;
-      thisBytes    : Unsigned_64;
-      thisSectors  : Unsigned_32;
-      numPages     : Unsigned_64;
-      cmd          : SubmissionEntry;
-      dataBufPhys  : constant Unsigned_64 := dmaBase + DATA_BUF_OFFSET;
-      dataBufVirt  : constant System.Address :=
-        System.Storage_Elements.To_Address
-          (Integer_Address (DMA_VIRT_BASE + DATA_BUF_OFFSET));
+      bytes : constant Unsigned_64 := transfer (IO_WRITE, lba, count, buf, fua);
    begin
-      if ioFailed or else nsSectorSize = 0 or else maxTransferBytes = 0 then
-         return 0;
+      if bytes /= Unsigned_64 (count) * Unsigned_64 (nsSectorSize) then
+         debugPrint ("NVMe: Write failed." & ASCII.LF);
       end if;
-
-      while remaining > 0 loop
-         --  Calculate how many bytes/sectors this transfer
-         thisBytes := Unsigned_64 (remaining) * Unsigned_64 (nsSectorSize);
-         if thisBytes > maxTransferBytes then
-            thisBytes := maxTransferBytes;
-         end if;
-         thisSectors := Unsigned_32 (thisBytes / Unsigned_64 (nsSectorSize));
-         numPages := (thisBytes + Unsigned_64 (PAGE_SIZE) - 1) /
-                     Unsigned_64 (PAGE_SIZE);
-
-         --  Copy source data into DMA buffer
-         declare
-            copyLen : constant Unsigned_64 :=
-              Unsigned_64 (thisSectors) * Unsigned_64 (nsSectorSize);
-            srcBuf : String (1 .. Natural (copyLen))
-              with Import, Address => buf + srcOff;
-            dstBuf : String (1 .. Natural (copyLen))
-              with Import, Address => dataBufVirt;
-         begin
-            dstBuf := srcBuf;
-         end;
-
-         --  Build PRP list for transfers > 2 pages
-         if numPages > 2 then
-            for i in 1 .. Natural (numPages) - 1 loop
-               prpList (i - 1) :=
-                 dataBufPhys + Unsigned_64 (i) * Unsigned_64 (PAGE_SIZE);
-            end loop;
-         end if;
-
-         --  Build NVMe Write command
-         cmd := NULL_SUBMISSION;
-         ioCmdId := ioCmdId + 1;
-         cmd.cdw0  := makeCdw0 (IO_WRITE, ioCmdId);
-         cmd.nsid  := 1;
-         cmd.prp1  := dataBufPhys;
-
-         if numPages <= 1 then
-            cmd.prp2 := 0;
-         elsif numPages = 2 then
-            cmd.prp2 := dataBufPhys + Unsigned_64 (PAGE_SIZE);
-         else
-            cmd.prp2 := dmaBase + PRP_LIST_OFFSET;
-         end if;
-
-         cmd.cdw10 := Unsigned_32 (curLba and 16#FFFF_FFFF#);
-         cmd.cdw11 := Unsigned_32 (Shift_Right (curLba, 32));
-         cmd.cdw12 := (thisSectors - 1) or  --  0-based count
-           (if fua then CDW12_FUA else 0);
-
-         --  Submit to I/O SQ
-         ioSq (ioSqTail) := cmd;
-         ioSqTail := (ioSqTail + 1) mod QUEUE_DEPTH;
-         ringSqDoorbell (1, ioSqTail);
-
-         if not pollIOCompletion then
-            debugPrint ("NVMe: Write failed." & ASCII.LF);
-            return bytesWritten;
-         end if;
-
-         bytesWritten := bytesWritten + thisBytes;
-         srcOff := srcOff + Storage_Offset (thisBytes);
-         curLba    := curLba + Unsigned_64 (thisSectors);
-         remaining := remaining - thisSectors;
-      end loop;
-
-      return bytesWritten;
+      return bytes;
    end writeBlocks;
 
 end NVMe;

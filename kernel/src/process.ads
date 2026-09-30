@@ -48,6 +48,9 @@ with Page_Allocation;
 with Process_Lifetime;
 with Scheduling_Shadow;
 with Scheduling_Turns;
+with Scheduling_Budgets;
+with Realtime_Admission;
+with Virtual_Deadlines;
 limited with Process.Queues;
 with Spinlocks;
 with Stackframe;
@@ -600,8 +603,8 @@ package Process is
         fsBase              : Unsigned_64 := 0;
 
         -- CPU whose ready list this process joins when it becomes ready: the
-        -- CPU it last ran on. An idle CPU may take it from there (work
-        -- stealing) unless it is pinned.
+        -- CPU it last ran on or was placed on. Another CPU may take it from
+        -- there (Virtual_Deadlines.Choose) unless it is pinned.
         cpu                 : Natural := 0;
         -- Pinned processes never move between CPUs: kernel threads (each CPU's
         -- idle thread, the reaper) and processes placed with SET_CPU.
@@ -615,6 +618,13 @@ package Process is
         -- for the work-stealing age check.
         queuedTSC           : Unsigned_64 := 0;
         readiness           : Readiness_Origin := Rescheduled;
+        -- Virtual deadline (docs/scheduler.md): set when the thread gets a
+        -- fresh slice, kept while it sleeps with slice left.
+        runDeadline         : Virtual_Deadlines.Deadline := 0;
+        -- Its ready-list order key: runDeadline, or Idle_Key for the idle
+        -- thread (Process.Queues.insertByKey).
+        runKey              : Unsigned_64 := Virtual_Deadlines.Idle_Key;
+        -- Slice left: kept across sleeps as well as preemption.
         savedTurn           : Scheduling_Turns.State;
         turnCounters        : Scheduling_Turns.Counters := [others => 0];
 
@@ -638,6 +648,11 @@ package Process is
         -- now; future scheduler policies can use it for admission control,
         -- deadline ordering, priority inheritance, and overrun telemetry.
         latency             : LatencyContract;
+        -- An admitted real-time reservation (setLatencyContract, REALTIME):
+        -- its share, counted in realtimeAdmitted, and its budget ledger.
+        rtAdmitted          : Boolean := False;
+        rtShare             : Realtime_Admission.Utilization := 0;
+        rtLedger            : Scheduling_Budgets.State;
 
         context             : System.Address;   -- Pointer to the saved state
         kernelStack         : ProcessKernelStackPtr;
@@ -833,6 +848,41 @@ package Process is
     -- CPUs that have entered their scheduler (for page reclamation).
     cpuOnline : Quiescent_Reclamation.CPU_Set := [others => False];
 
+    -- The run key of the thread each CPU runs (Idle_Key while idle), kept by
+    -- the scheduler and directSwitch under Process.lock. Before a CPU first
+    -- schedules it is 0, which nothing preempts, so no work is placed there.
+    cpuRunningKey : array (0 .. Config.MAX_SMP_CPUS - 1) of Unsigned_64 :=
+        [others => 0] with Volatile;
+
+    -- The run key of a thread about to join a ready list.
+    function runKeyOf (tid : ThreadID) return Unsigned_64;
+
+    -- Scheduler_Timing.Preempt_Margin_Microseconds in TSC ticks.
+    function marginTicks return Unsigned_64;
+
+    -- Real-time reservations admitted across the system (Realtime_Admission).
+    realtimeAdmitted : Realtime_Admission.Total := 0;
+
+    -- Reserve real-time CPU for pid's main thread: Budget microseconds every
+    -- Period, if the process holds a CAP_SCHEDULING covering it and the
+    -- system total stays within Realtime_Admission's share. A previous
+    -- reservation is released first. Caller holds no Process lock.
+    procedure reserveRealtime
+      (pid      : ProcessID;
+       budgetUs : Unsigned_32;
+       periodUs : Unsigned_32;
+       granted  : out Boolean);
+
+    -- Where ready thread tid should join a ready list
+    -- (Virtual_Deadlines.Place over every CPU's running and first queued
+    -- keys). Caller holds Process.lock.
+    function placementFor (tid : ThreadID) return Natural;
+
+    -- Put ready thread tid on cpu's ready list as its home, and make that
+    -- CPU reschedule if tid should run there before what it runs now.
+    -- Caller holds Process.lock; tid is on no list.
+    procedure placeOn (tid : ThreadID; cpu : Natural);
+
     -- Free process-table pages whose grace period has elapsed.
     procedure reclaimTablePages;
 
@@ -1003,11 +1053,16 @@ package Process is
 
     ---------------------------------------------------------------------------
     -- sleep
-    -- Put the running process to sleep for the specified duration.
-    -- @NOTE delta queue uses signed integer for the ms delay, so we're limited
-    -- by how long the delay can be here.
+    -- Put the running thread to sleep for us microseconds. It wakes at that
+    -- TSC deadline, expired by whichever CPU's timer fires first
+    -- (Queues.expireSleepers); this CPU arms its one-shot timer for it.
     ---------------------------------------------------------------------------
-    procedure sleep (us : Time.Duration) with Pre => (us <= 2147483647 * Time.Milliseconds);
+    procedure sleep (us : Time.Duration);
+
+    -- Arm this CPU's one-shot timer for the earliest sleeper whose home it
+    -- is, if that sleeper is due before the next regular timer opportunity
+    -- (one millisecond).
+    procedure armWakeAlarm;
 
     ---------------------------------------------------------------------------
     -- start

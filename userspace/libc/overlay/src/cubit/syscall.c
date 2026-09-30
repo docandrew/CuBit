@@ -9,12 +9,13 @@
  *   futexes      futex -> FUTEX_WAIT/FUTEX_WAKE (requeue wakes instead)
  *   memory       brk -> SBRK; private RW mmap/whole munmap -> owned regions;
  *                unsupported protections and partial unmaps fail
- *   time         clock_gettime/nanosleep -> the kernel millisecond clock
+ *   time         clock_gettime/nanosleep -> the kernel microsecond clock
  *   descriptors  write, read, close, fstat, poll -> fd.c: a table of CuBit
  *                objects (stdout/stderr are the program's CuBit streams)
  *   files        open/stat/read/write/pread/pwrite/fsync/getdents/mmap of a
  *                file -> file.c, through filesystem.svc; paths resolve only
- *                inside the program's filesystem scopes. No unlink or mkdir.
+ *                inside the program's filesystem scopes; unlink, mkdir,
+ *                rmdir and rename (no replacement of an existing target).
  *   process      exit_group -> EXIT; getpid -> GETPID; kill of self exits
  *   randomness   getrandom -> RDRAND (not yet the entropy service)
  *   signals      none: masks and handlers are accepted and never fire
@@ -57,6 +58,8 @@ enum {
 	CUBIT_RELEASE_OWNED_MEMORY = 116,
 	CUBIT_PROTECT_OWNED_MEMORY = 117,
 	CUBIT_YIELD = 118,
+	CUBIT_READ_MONOTONIC_MICROSECONDS = 114,
+	CUBIT_SLEEP_UNTIL_MONOTONIC_MICROSECOND = 119,
 };
 
 #define CUBIT_FUTEX_RETRY 1
@@ -81,6 +84,16 @@ static inline unsigned long cubit(unsigned long n, unsigned long a,
 static unsigned long now_ms(void)
 {
 	return cubit(CUBIT_GETTIME, 0, 0, 0, 0, 0);
+}
+
+/* The monotonic clock, microseconds since boot: the kernel's high-resolution
+ * clock (HPET or invariant TSC). CLOCK_MONOTONIC and timed sleeps use it; the
+ * millisecond clock remains for futex and poll deadlines. */
+#define CUBIT_NO_CLOCK (~0UL)
+static unsigned long now_us(void)
+{
+	unsigned long us = cubit(CUBIT_READ_MONOTONIC_MICROSECONDS, 0, 0, 0, 0, 0);
+	return us == CUBIT_NO_CLOCK ? now_ms() * 1000 : us;
 }
 
 /* Diagnostics only (the kernel console; see <cubit/debug.h>). */
@@ -194,14 +207,19 @@ static unsigned long deadline_after(const struct timespec *rel)
 
 static unsigned long realtime_ms(void);
 
-/* An absolute time on the monotonic clock (kernel milliseconds since boot)
- * or on the realtime clock (converted to the kernel's clock). */
+/* An absolute time on the monotonic clock (microseconds since boot) or on
+ * the realtime clock, as a deadline on the kernel's millisecond clock. */
 static unsigned long deadline_at(const struct timespec *abs, int realtime)
 {
 	if (!abs) return CUBIT_FOREVER;
+	if (!realtime) {
+		unsigned long us = (unsigned long)abs->tv_sec * 1000000
+			+ ((unsigned long)abs->tv_nsec + 999) / 1000;
+		unsigned long now = now_us();
+		return now_ms() + (us <= now ? 0 : (us - now + 999) / 1000);
+	}
 	unsigned long ms = (unsigned long)abs->tv_sec * 1000
 		+ ((unsigned long)abs->tv_nsec + 999999) / 1000000;
-	if (!realtime) return ms;
 	unsigned long now = now_ms(), wall = realtime_ms();
 	return ms <= wall ? now : now + (ms - wall);
 }
@@ -311,17 +329,33 @@ static long sys_clock_gettime(clockid_t clk, struct timespec *ts)
 		report_unsupported("clock", clk);
 		return -EINVAL;
 	}
-	unsigned long ms = now_ms();
-	ts->tv_sec = ms / 1000;
-	ts->tv_nsec = (ms % 1000) * 1000000;
+	unsigned long us = now_us();
+	ts->tv_sec = us / 1000000;
+	ts->tv_nsec = (us % 1000000) * 1000;
 	return 0;
 }
 
-static long sleep_until_ms(unsigned long deadline)
+/* Timed sleeps, to the microsecond (the kernel wakes the thread at that
+ * deadline on its CPU's one-shot timer). */
+static unsigned long us_after(const struct timespec *rel)
 {
-	volatile int word = 0;
-	while (now_ms() < deadline)
-		cubit(CUBIT_FUTEX_WAIT, (unsigned long)&word, 0, deadline, 0, 0);
+	return now_us() + (unsigned long)rel->tv_sec * 1000000
+		+ ((unsigned long)rel->tv_nsec + 999) / 1000;
+}
+
+static unsigned long us_at(const struct timespec *abs, int realtime)
+{
+	unsigned long us = (unsigned long)abs->tv_sec * 1000000
+		+ ((unsigned long)abs->tv_nsec + 999) / 1000;
+	if (!realtime) return us;
+	unsigned long now = now_us(), wall = realtime_ms() * 1000;
+	return us <= wall ? now : now + (us - wall);
+}
+
+static long sleep_until_us(unsigned long deadline)
+{
+	while (now_us() < deadline)
+		cubit(CUBIT_SLEEP_UNTIL_MONOTONIC_MICROSECOND, deadline, 0, 0, 0, 0);
 	return 0;
 }
 
@@ -417,6 +451,35 @@ hidden long __cubit_syscall(long n, long a, long b, long c, long d, long e, long
 	case SYS_stat:
 	case SYS_lstat:
 		return __cubit_path_stat((const char *)a, (struct stat *)b);
+	case SYS_unlink:
+		return __cubit_path_remove((const char *)a, CUBIT_REMOVE_FILE);
+	case SYS_rmdir:
+		return __cubit_path_remove((const char *)a, CUBIT_REMOVE_DIRECTORY);
+	case SYS_unlinkat:
+		if ((int)a != AT_FDCWD && ((const char *)b)[0] != '/'
+			&& ((const char *)b)[0] != '@')
+			return -ENOTSUP;        /* no directory-relative names yet */
+		return __cubit_path_remove((const char *)b,
+			(c & AT_REMOVEDIR) ? CUBIT_REMOVE_DIRECTORY : CUBIT_REMOVE_FILE);
+	case SYS_mkdir:
+		return __cubit_path_mkdir((const char *)a);
+	case SYS_mkdirat:
+		if ((int)a != AT_FDCWD && ((const char *)b)[0] != '/'
+			&& ((const char *)b)[0] != '@')
+			return -ENOTSUP;
+		return __cubit_path_mkdir((const char *)b);
+	case SYS_rename:
+		return __cubit_path_rename((const char *)a, (const char *)b);
+	case SYS_renameat:
+	case SYS_renameat2:
+		if (n == SYS_renameat2 && e)
+			return -EINVAL;         /* no RENAME_* flags */
+		if (((int)a != AT_FDCWD && ((const char *)b)[0] != '/'
+			&& ((const char *)b)[0] != '@') ||
+		    ((int)c != AT_FDCWD && ((const char *)d)[0] != '/'
+			&& ((const char *)d)[0] != '@'))
+			return -ENOTSUP;        /* no directory-relative names yet */
+		return __cubit_path_rename((const char *)b, (const char *)d);
 	case SYS_newfstatat:
 		if ((d & AT_EMPTY_PATH) && !*(const char *)b)
 			return __cubit_fd_fstat((int)a, (struct stat *)c);
@@ -490,15 +553,22 @@ hidden long __cubit_syscall(long n, long a, long b, long c, long d, long e, long
 	case SYS_clock_gettime:
 		return sys_clock_gettime((clockid_t)a, (struct timespec *)b);
 	case SYS_clock_getres:
-		if (b) { ((struct timespec *)b)->tv_sec = 0; ((struct timespec *)b)->tv_nsec = 1000000; }
+		if (b) {
+			int coarse = (clockid_t)a == CLOCK_REALTIME ||
+				(clockid_t)a == CLOCK_REALTIME_COARSE;
+			((struct timespec *)b)->tv_sec = 0;
+			((struct timespec *)b)->tv_nsec = coarse ? 1000000 : 1000;
+		}
 		return 0;
 	case SYS_nanosleep:
-		return sleep_until_ms(deadline_after((const struct timespec *)a));
+		if (!a) return -EFAULT;
+		return sleep_until_us(us_after((const struct timespec *)a));
 	case SYS_clock_nanosleep:
-		return sleep_until_ms((b & TIMER_ABSTIME)
-			? deadline_at((const struct timespec *)c,
+		if (!c) return -EFAULT;
+		return sleep_until_us((b & TIMER_ABSTIME)
+			? us_at((const struct timespec *)c,
 				(clockid_t)a == CLOCK_REALTIME)
-			: deadline_after((const struct timespec *)c));
+			: us_after((const struct timespec *)c));
 
 	case SYS_poll:
 		return sys_poll((struct pollfd *)a, (unsigned long)b,

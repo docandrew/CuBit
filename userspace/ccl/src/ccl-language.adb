@@ -1,6 +1,7 @@
 with Interfaces; use Interfaces;
 with CCL.Checked_Arithmetic;
 with CCL.Secondary_Stacks;
+with CCL.Secondary_Arrays;
 with CCL.Imports;
 with CCL.Handler_References;
 with CCL.Objects.Values;
@@ -51,6 +52,23 @@ is
         when CCL.VM.Integer_Value => CCL.Host_Values.Integer_Constant (Item.Integer),
         when CCL.VM.Boolean_Value => CCL.Host_Values.Boolean_Constant (Item.Boolean));
 
+   --  One list element: the scalar or text descriptor of its element type.
+   --  Lists live in the list region (CCL.Secondary_Arrays), strings in the
+   --  text region; values hold checked descriptors, never pointers.
+   type List_Element is record
+      Scalar : Scalar_Value := (others => <>);
+      Text : Text_Regions.String_Value;
+      Character_Item : Character := Character'Val (0);
+      Alternative : CCL.Types.Component_Index := 1;
+   end record;
+   Null_List_Element : constant List_Element := (others => <>);
+   type List_Element_Array is array (Positive range <>) of List_Element;
+   package List_Regions is new CCL.Secondary_Arrays
+     (Element_Type => List_Element, Null_Element => Null_List_Element,
+      Element_Array => List_Element_Array,
+      Capacity => MAX_LIST_ELEMENTS, Max_Values => MAX_AST_NODES);
+   use type List_Regions.Operation_Result;
+
    type Runtime_Value is record
       Kind      : Static_Type := Invalid_Type;
       Scalar    : Scalar_Value := (others => <>);
@@ -60,6 +78,7 @@ is
       Alternative : CCL.Types.Component_Index := 1;
       Object_Owner : Object_Count := 0;
       Object_Position : Object_Views.Cursor;
+      Items : List_Regions.Array_Value;
    end record;
 
    function Analysis_Status_Of
@@ -80,6 +99,12 @@ is
    function Analysis_Types (Result : Analysis_Result) return CCL.Types.Registry is (Result.Tree.Types);
    function Analysis_Resource_Policies (Result : Analysis_Result)
      return CCL.Resource_Policies.Policy_Table is (Result.Resource_Policies);
+
+   function Analysis_Function_Count (Result : Analysis_Result) return Natural is
+     (Result.Tree.Function_Count);
+   function Analysis_Function
+     (Result : Analysis_Result; Id : Function_Index) return Function_Declaration is
+     (Result.Tree.Functions (Id));
 
    function Analysis_Node
      (Result : Analysis_Result;
@@ -107,7 +132,7 @@ is
       (Item >= '0' and then Item <= '9') or else
       Item = '-' or else Item = '_' or else Item = '.' or else Item = '?' or else
       Item = '+' or else Item = '=' or else Item = '*' or else
-      Item = '/' or else Item = '%');
+      Item = '/' or else Item = '%' or else Item = '<' or else Item = '>');
 
    function Names_Equal (Left, Right : Name) return Boolean is
    begin
@@ -263,6 +288,11 @@ is
         (Depth : Natural;
          Index : out Node_Reference);
 
+      --  The elements of [a b c] or (list a b c), up to Close. Both are the
+      --  same List_Construct: brackets are the collection spelling.
+      procedure Parse_Elements
+        (Depth : Natural; Close : Character; Index : out Node_Reference);
+
       procedure Parse_Integer (Index : out Node_Reference) is
          Negative  : Boolean := False;
          Magnitude : Unsigned_64 := 0;
@@ -372,6 +402,82 @@ is
          end if;
       end Parse_String;
 
+      --  A type name, or a function type (Function (Parameter ...) Result).
+      procedure Read_Type
+        (Kind : out Static_Type; Allow_Unit : Boolean := False; Depth : Natural := 0) is
+         Token : Name;
+         Good : Boolean;
+      begin
+         Kind := Invalid_Type;
+         Skip_Trivia;
+         if Cursor < Source'Length and then Source (Source'First + Cursor) = '(' then
+            if Depth >= MAX_NESTING then Diagnostic := Nesting_Too_Deep; return; end if;
+            Cursor := Cursor + 1;
+            Read_Name (Token, Good);
+            if Good and then Name_Is (Token, "List") then
+               --  (List T): the list of T elements.
+               declare
+                  Element : Static_Type;
+                  Specialized : CCL.Types.List_Result;
+               begin
+                  Read_Type (Element, Depth => Depth + 1);
+                  if Diagnostic /= No_Diagnostic then return; end if;
+                  Expect (')', Good);
+                  if not Good then return; end if;
+                  CCL.Types.Specialize_List (Tree.Types, Element, Kind, Specialized);
+                  if Specialized not in CCL.Types.List_Specialized |
+                    CCL.Types.List_Already_Specialized
+                  then
+                     Diagnostic := Unsupported_List_Element;
+                  end if;
+               end;
+               return;
+            elsif not Good or else not Name_Is (Token, "Function") then
+               Diagnostic := Expected_Type_Name; return;
+            end if;
+            Expect ('(', Good);
+            if not Good then return; end if;
+            declare
+               Parameters : CCL.Types.Function_Parameters := [others => Invalid_Type];
+               Count : CCL.Types.Function_Parameter_Count := 0;
+               Result_Kind : Static_Type;
+               Specialized : CCL.Types.Function_Result;
+            begin
+               loop
+                  Skip_Trivia;
+                  exit when Cursor >= Source'Length or else Source (Source'First + Cursor) = ')';
+                  if Count = CCL.Types.Maximum_Function_Parameters then
+                     Diagnostic := Too_Many_Parameters; return;
+                  end if;
+                  Count := Count + 1;
+                  Read_Type (Parameters (Count), Depth => Depth + 1);
+                  if Diagnostic /= No_Diagnostic then return; end if;
+               end loop;
+               Expect (')', Good);
+               if not Good then return; end if;
+               Read_Type (Result_Kind, Allow_Unit => True, Depth => Depth + 1);
+               if Diagnostic /= No_Diagnostic then return; end if;
+               Expect (')', Good);
+               if not Good then return; end if;
+               CCL.Types.Specialize_Function
+                 (Tree.Types, Parameters, Count, Result_Kind, Kind, Specialized);
+               if Specialized not in CCL.Types.Function_Specialized |
+                 CCL.Types.Function_Already_Specialized
+               then
+                  Diagnostic := Expected_Type_Name;
+               end if;
+            end;
+            return;
+         end if;
+         Read_Name (Token, Good);
+         if Good then
+            Kind := CCL.Types.Find (Tree.Types, Token);
+            if Kind in Invalid_Type | Handler_Type or else (Kind = Unit_Type and not Allow_Unit) then
+               Diagnostic := Expected_Type_Name;
+            end if;
+         end if;
+      end Read_Type;
+
       procedure Parse_List
         (Depth : Natural;
          Index : out Node_Reference)
@@ -391,9 +497,13 @@ is
          Record_Type : Static_Type;
          Components : Component_Node_Array := [others => NO_NODE];
       begin
+         Index := NO_NODE;
+         if Depth >= MAX_NESTING then
+            Diagnostic := Nesting_Too_Deep;
+            return;
+         end if;
          Read_Name (Operator_Name, Ok);
          if not Ok then
-            Index := NO_NODE;
             return;
          end if;
 
@@ -450,6 +560,8 @@ is
             end;
          elsif Name_Is (Operator_Name, "+") or else
            Name_Is (Operator_Name, "add") or else
+           Name_Is (Operator_Name, "-") or else
+           Name_Is (Operator_Name, "subtract") or else
            Name_Is (Operator_Name, "*") or else
            Name_Is (Operator_Name, "multiply") or else
            Name_Is (Operator_Name, "/") or else
@@ -467,6 +579,9 @@ is
                      (if Name_Is (Operator_Name, "+") or else
                          Name_Is (Operator_Name, "add")
                       then Add_Form
+                      elsif Name_Is (Operator_Name, "-") or else
+                        Name_Is (Operator_Name, "subtract")
+                      then Subtract_Form
                       elsif Name_Is (Operator_Name, "*") or else
                         Name_Is (Operator_Name, "multiply")
                       then Multiply_Form
@@ -488,6 +603,48 @@ is
             if Diagnostic = No_Diagnostic and then Ok then
                Add_Node ((Kind => Equal_Form, First => A, Second => B,
                           others => <>), Index);
+            else
+               Index := NO_NODE;
+            end if;
+         elsif Name_Is (Operator_Name, "/=") or else
+           Name_Is (Operator_Name, "not-equal") or else
+           Name_Is (Operator_Name, "<") or else
+           Name_Is (Operator_Name, "less") or else
+           Name_Is (Operator_Name, "<=") or else
+           Name_Is (Operator_Name, "less-equal") or else
+           Name_Is (Operator_Name, ">") or else
+           Name_Is (Operator_Name, "greater") or else
+           Name_Is (Operator_Name, ">=") or else
+           Name_Is (Operator_Name, "greater-equal") or else
+           Name_Is (Operator_Name, "and") or else
+           Name_Is (Operator_Name, "or")
+         then
+            Parse_Expression (Depth + 1, A);
+            Parse_Expression (Depth + 1, B);
+            Expect (')', Ok);
+            if Diagnostic = No_Diagnostic and then Ok then
+               Add_Node
+                 ((Kind =>
+                     (if Name_Is (Operator_Name, "/=") or else
+                         Name_Is (Operator_Name, "not-equal")
+                      then Not_Equal_Form
+                      elsif Name_Is (Operator_Name, "<") or else
+                        Name_Is (Operator_Name, "less")
+                      then Less_Form
+                      elsif Name_Is (Operator_Name, "<=") or else
+                        Name_Is (Operator_Name, "less-equal")
+                      then Less_Equal_Form
+                      elsif Name_Is (Operator_Name, ">") or else
+                        Name_Is (Operator_Name, "greater")
+                      then Greater_Form
+                      elsif Name_Is (Operator_Name, ">=") or else
+                        Name_Is (Operator_Name, "greater-equal")
+                      then Greater_Equal_Form
+                      elsif Name_Is (Operator_Name, "and")
+                      then And_Form
+                      else Or_Form),
+                   First => A, Second => B, others => <>),
+                  Index);
             else
                Index := NO_NODE;
             end if;
@@ -577,6 +734,82 @@ is
             else
                Index := NO_NODE;
             end if;
+         elsif (for some Operation in Builtin_Operation range Each_Builtin .. Builtin_Operation'Last =>
+                  Name_Is (Operator_Name, Builtin_Name (Operation))) and then
+           --  A function the program defines shadows a builtin of that name.
+           not (for some F in 0 .. Tree.Function_Count - 1 =>
+                  Names_Equal (Tree.Functions (F).Identifier, Operator_Name))
+         then
+            declare
+               Operation : Builtin_Operation := No_Builtin;
+               Operands : Argument_Array := [others => NO_NODE];
+               Count : Parameter_Count := 0;
+               Good : Boolean;
+            begin
+               for Candidate in Builtin_Operation range Each_Builtin .. Builtin_Operation'Last loop
+                  if Name_Is (Operator_Name, Builtin_Name (Candidate)) then
+                     Operation := Candidate;
+                  end if;
+               end loop;
+               loop
+                  Skip_Trivia;
+                  exit when Cursor >= Source'Length or else Source (Source'First + Cursor) = ')';
+                  if Count = MAX_PARAMETERS then Diagnostic := Too_Many_Parameters; return; end if;
+                  Count := Count + 1;
+                  Parse_Expression (Depth + 1, Operands (Count));
+                  if Diagnostic /= No_Diagnostic then return; end if;
+               end loop;
+               Expect (')', Good);
+               if not Good then return; end if;
+               Add_Node ((Kind => Builtin_Form, Builtin => Operation, Arguments => Operands,
+                          Argument_Count => Count, others => <>), Index);
+            end;
+         elsif Name_Is (Operator_Name, "fn") then
+            --  (fn ((x T) ...) body): lifted into a generated function, named
+            --  so that source can never spell it ('#' begins a comment).
+            declare
+               Decl : Function_Declaration;
+               Id : Function_Index;
+               Good : Boolean;
+            begin
+               if Tree.Function_Count = MAX_FUNCTIONS then
+                  Diagnostic := Too_Many_Functions; return;
+               end if;
+               Id := Tree.Function_Count;
+               Tree.Function_Count := Id + 1;
+               Decl.Identifier := CCL.Types.Named ("fn#" & Natural'Image (Id));
+               Expect ('(', Good);
+               if not Good then return; end if;
+               loop
+                  Skip_Trivia;
+                  exit when Cursor >= Source'Length or else Source (Source'First + Cursor) = ')';
+                  if Decl.Count = MAX_PARAMETERS then Diagnostic := Too_Many_Parameters; return; end if;
+                  Decl.Count := Decl.Count + 1;
+                  if Source (Source'First + Cursor) = '(' then
+                     Cursor := Cursor + 1;
+                     Read_Name (Decl.Parameters (Decl.Count).Identifier, Good);
+                     if not Good then return; end if;
+                     Read_Type (Decl.Parameters (Decl.Count).Kind);
+                     if Diagnostic /= No_Diagnostic then return; end if;
+                     Expect (')', Good);
+                     if not Good then return; end if;
+                  else
+                     --  Untyped parameters come with inference from context.
+                     Diagnostic := Lambda_Parameter_Needs_Type; return;
+                  end if;
+               end loop;
+               Expect (')', Good);
+               if not Good then return; end if;
+               Parse_Expression (Depth + 1, Decl.Body_Node);
+               if Diagnostic /= No_Diagnostic then return; end if;
+               Expect (')', Good);
+               if not Good then return; end if;
+               Tree.Functions (Id) := Decl;
+               Add_Node ((Kind => Lambda_Form, Function_Id => Id,
+                          First => Decl.Body_Node, others => <>), Index);
+            end;
+         elsif Name_Is (Operator_Name, "list") then
+            Parse_Elements (Depth, ')', Index);
          elsif Name_Is (Operator_Name, "to-string") then
             Parse_Expression (Depth + 1, A);
             Expect (')', Ok);
@@ -677,6 +910,39 @@ is
          end if;
       end Parse_List;
 
+      procedure Parse_Elements
+        (Depth : Natural; Close : Character; Index : out Node_Reference)
+      is
+         Elements : Component_Node_Array := [others => NO_NODE];
+         Count : CCL.Types.Component_Count := 0;
+      begin
+         Index := NO_NODE;
+         if Depth >= MAX_NESTING then
+            Diagnostic := Nesting_Too_Deep;
+            return;
+         end if;
+         loop
+            Skip_Trivia;
+            if Cursor >= Source'Length then
+               Diagnostic := Unexpected_End;
+               return;
+            elsif Source (Source'First + Cursor) = Close then
+               Cursor := Cursor + 1;
+               exit;
+            elsif Count = CCL.Types.Maximum_Components then
+               Diagnostic := Too_Many_List_Elements;
+               return;
+            end if;
+            Count := Count + 1;
+            Parse_Expression (Depth + 1, Elements (Count));
+            if Diagnostic /= No_Diagnostic then
+               return;
+            end if;
+         end loop;
+         Add_Node ((Kind => List_Construct, Components => Elements,
+                    Element_Count => Count, others => <>), Index);
+      end Parse_Elements;
+
       procedure Parse_Expression
         (Depth : Natural;
          Index : out Node_Reference)
@@ -704,6 +970,9 @@ is
                Tree.Nodes (Node_Index (Index)).Source_Position :=
                  To_Diagnostic_Position (Start);
             end if;
+         elsif Source (Source'First + Cursor) = '[' then
+            Cursor := Cursor + 1;
+            Parse_Elements (Depth, ']', Index);
          elsif Source (Source'First + Cursor) = '"' then
             Cursor := Cursor + 1;
             Parse_String (Index);
@@ -762,19 +1031,6 @@ is
          Defined_Type : Static_Type;
          Definition_Status : CCL.Types.Definition_Result;
          Is_Enum, Is_Record : Boolean;
-         procedure Read_Type (Kind : out Static_Type; Allow_Unit : Boolean := False) is
-            Token : Name;
-            Good : Boolean;
-         begin
-            Read_Name (Token, Good);
-            Kind := Invalid_Type;
-            if Good then
-               Kind := CCL.Types.Find (Tree.Types, Token);
-               if Kind in Invalid_Type | Handler_Type or else (Kind = Unit_Type and not Allow_Unit) then
-                  Diagnostic := Expected_Type_Name;
-               end if;
-            end if;
-         end Read_Type;
       begin
          Index := NO_NODE;
          if Diagnostic /= No_Diagnostic then return; end if;
@@ -881,6 +1137,9 @@ is
          if not Ok then return; end if;
          Read_Type (Decl.Result_Kind);
          if Diagnostic /= No_Diagnostic then return; end if;
+         --  Publish the reservation before the body: a lambda inside it takes
+         --  the next slot.
+         Tree.Function_Count := Id + 1;
          Parse_Expression (Depth + 1, Decl.Body_Node);
          if Diagnostic /= No_Diagnostic then return; end if;
          Expect (')', Ok);
@@ -913,6 +1172,7 @@ is
          Name_Is (Item, "type") or else Name_Is (Item, "define") or else Name_Is (Item, "handler") or else Name_Is (Item, "let") or else
          Name_Is (Item, "match") or else
          Name_Is (Item, "field") or else
+         Name_Is (Item, "fn") or else Name_Is (Item, "list") or else
          Name_Is (Item, "if") or else Name_Is (Item, "not") or else
          Name_Is (Item, "true") or else Name_Is (Item, "false") or else
          Name_Is (Item, "+") or else Name_Is (Item, "add") or else
@@ -966,6 +1226,56 @@ is
          return CCL.Host_Values.Matches (Value, Contract);
       end Matches_Host;
 
+      --  Anonymous functions being checked, innermost last. A body sees the
+      --  enclosing bindings; one it resolves below its frame's Floor is a
+      --  capture of that function (and of every enclosing function whose
+      --  floor is also above it, so the value reaches the inner one).
+      type Lambda_Frame is record
+         Id : Function_Index := 0;
+         Floor : Natural range 0 .. MAX_BINDINGS := 0;
+      end record;
+      type Lambda_Frame_Array is array (1 .. MAX_FUNCTIONS) of Lambda_Frame;
+      Frames : Lambda_Frame_Array := [others => (others => <>)];
+      Frame_Count : Natural range 0 .. MAX_FUNCTIONS := 0;
+
+      --  Captured values are stored as list elements (the rule of
+      --  CCL.Types.Specialize_List): scalars, String, Character, enumerations.
+      function Capturable (Kind : Static_Type) return Boolean is
+        (CCL.Types.Known (Tree.Types, Kind) and then Kind /= Handler_Type and then
+         Kind /= Unit_Type and then
+         (CCL.Types.Describe (Tree.Types, Kind).Form = CCL.Types.Primitive or else
+          CCL.Types.Is_Enumeration (Tree.Types, Kind)));
+
+      procedure Note_Capture (Position : Natural) is
+      begin
+         if Position >= Type_Env_Length then return; end if;
+         for F in 1 .. Frame_Count loop
+            if Position < Frames (F).Floor then
+               declare
+                  Id : constant Function_Index := Frames (F).Id;
+                  Binding : constant Type_Binding := Type_Env (Position);
+                  Known : Boolean := False;
+               begin
+                  for C in 1 .. Tree.Functions (Id).Captured loop
+                     if Names_Equal (Tree.Functions (Id).Captures (C).Identifier, Binding.Identifier) then
+                        Known := True;
+                     end if;
+                  end loop;
+                  if not Known then
+                     if not Capturable (Binding.Kind) then
+                        Diagnostic := Lambda_Capture_Unsupported; return;
+                     elsif Tree.Functions (Id).Captured = MAX_CAPTURES then
+                        Diagnostic := Too_Many_Captures; return;
+                     end if;
+                     Tree.Functions (Id).Captured := Tree.Functions (Id).Captured + 1;
+                     Tree.Functions (Id).Captures (Tree.Functions (Id).Captured) :=
+                       (Identifier => Binding.Identifier, Kind => Binding.Kind);
+                  end if;
+               end;
+            end if;
+         end loop;
+      end Note_Capture;
+
       procedure Check_Node
         (Index : Natural;
          Depth : Natural;
@@ -1008,6 +1318,236 @@ is
                  Left_Type /= CCL.Types.Describe (Tree.Types, Kind).
                  Parts (Tree.Nodes (Index).Alternative).Payload
                then Diagnostic := Invalid_Variant_Payload; end if;
+            when Lambda_Form =>
+               --  The body is checked on top of the enclosing bindings, with
+               --  its parameters innermost; enclosing names it uses become
+               --  captures (Note_Capture). Its result type is the body's.
+               declare
+                  Id : constant Function_Index := Tree.Nodes (Index).Function_Id;
+                  Decl : Function_Declaration := Tree.Functions (Id);
+                  Saved_Types : constant Type_Environment := Type_Env;
+                  Saved_Frames : constant Natural range 0 .. MAX_FUNCTIONS := Frame_Count;
+                  Floor : constant Natural range 0 .. MAX_BINDINGS := Type_Env_Length;
+                  Parameters : CCL.Types.Function_Parameters := [others => Invalid_Type];
+                  Specialized : CCL.Types.Function_Result;
+                  Body_Type : Static_Type := Invalid_Type;
+               begin
+                  if Frame_Count = MAX_FUNCTIONS then
+                     Diagnostic := Too_Many_Functions; return;
+                  elsif Decl.Count > MAX_BINDINGS - Floor then
+                     Diagnostic := Too_Many_Bindings; return;
+                  end if;
+                  Tree.Functions (Id).Captured := 0;
+                  for P in 1 .. Decl.Count loop
+                     if not Referenceable (Decl.Parameters (P).Identifier) then
+                        Diagnostic := Duplicate_Declaration; return;
+                     end if;
+                     Type_Env (Floor + P - 1) := (Identifier => Decl.Parameters (P).Identifier,
+                                                  Kind => Decl.Parameters (P).Kind);
+                     Parameters (P) := Decl.Parameters (P).Kind;
+                  end loop;
+                  Type_Env_Length := Floor + Decl.Count;
+                  Frames (Frame_Count + 1) := (Id => Id, Floor => Floor);
+                  Frame_Count := Frame_Count + 1;
+                  Check_Node (Decl.Body_Node, Depth + 1, Body_Type);
+                  Frame_Count := Saved_Frames;
+                  Type_Env := Saved_Types;
+                  Type_Env_Length := Entry_Environment_Length;
+                  if Diagnostic /= No_Diagnostic then return; end if;
+                  Decl.Result_Kind := Body_Type;
+                  Decl.Captures := Tree.Functions (Id).Captures;
+                  Decl.Captured := Tree.Functions (Id).Captured;
+                  Tree.Functions (Id) := Decl;
+                  CCL.Types.Specialize_Function
+                    (Tree.Types, Parameters, Decl.Count, Body_Type, Kind, Specialized);
+                  if Specialized not in CCL.Types.Function_Specialized |
+                    CCL.Types.Function_Already_Specialized
+                  then
+                     Diagnostic := Invalid_Type_Declaration;
+                  end if;
+               end;
+            when Builtin_Form =>
+               --  Operands first (left to right), then the builtin's profile.
+               declare
+                  Operation : constant Builtin_Operation := Tree.Nodes (Index).Builtin;
+                  Operand_Types : array (Parameter_Index) of Static_Type := [others => Invalid_Type];
+                  Count : constant Parameter_Count := Tree.Nodes (Index).Argument_Count;
+                  List_Type, Element_Type, Function_Type : Static_Type := Invalid_Type;
+                  Specialized : CCL.Types.List_Result;
+                  --  Whether Kind is a function of the given parameters and result.
+                  function Profile_Is
+                    (Kind : Static_Type; First, Second : Static_Type; Arity : Natural;
+                     Result_Kind : Static_Type) return Boolean
+                  is
+                     D : CCL.Types.Description;
+                  begin
+                     if not CCL.Types.Is_Function (Tree.Types, Kind) then return False; end if;
+                     D := CCL.Types.Describe (Tree.Types, Kind);
+                     return D.Count = Arity + 1 and then D.Parts (1).Payload = First and then
+                       (Arity < 2 or else D.Parts (2).Payload = Second) and then
+                       (Result_Kind = Invalid_Type or else D.Parts (D.Count).Payload = Result_Kind);
+                  end Profile_Is;
+                  function Result_Of (Kind : Static_Type) return Static_Type is
+                    (if CCL.Types.Is_Function (Tree.Types, Kind) and then
+                        CCL.Types.Describe (Tree.Types, Kind).Count >= 1
+                     then
+                        CCL.Types.Describe (Tree.Types, Kind).Parts
+                          (CCL.Types.Describe (Tree.Types, Kind).Count).Payload
+                     else Invalid_Type);
+               begin
+                  if Count /= Builtin_Arity (Operation) then
+                     Diagnostic := Function_Arity_Mismatch; return;
+                  end if;
+                  for P in 1 .. Count loop
+                     Check_Node (Tree.Nodes (Index).Arguments (P), Depth + 1, Operand_Types (P));
+                     if Diagnostic /= No_Diagnostic then return; end if;
+                  end loop;
+                  --  The subject is the last operand (except for range): a
+                  --  list, or for Takes_Text builtins also a String. The parser
+                  --  enforces each builtin's arity.
+                  if Count = 0 then
+                     Diagnostic := Function_Arity_Mismatch; return;
+                  end if;
+                  if Operation /= Range_Builtin then
+                     List_Type := Operand_Types (Count);
+                     if List_Type = String_Type and then Takes_Text (Operation) then
+                        Element_Type := Character_Type;
+                     elsif Operation in Upper_Builtin .. Index_Of_Builtin | Replace_Builtin |
+                       Split_Builtin | Parse_Int_Builtin
+                     then
+                        Diagnostic := Expected_String; return;
+                     elsif not CCL.Types.Is_List (Tree.Types, List_Type) then
+                        Diagnostic := Function_Argument_Mismatch; return;
+                     else
+                        Element_Type := CCL.Types.Element_Of (Tree.Types, List_Type);
+                     end if;
+                  end if;
+                  Function_Type := Operand_Types (1);
+                  case Operation is
+                     when Each_Builtin =>
+                        if not Profile_Is (Function_Type, Element_Type, Invalid_Type, 1, Invalid_Type) then
+                           Diagnostic := Function_Argument_Mismatch; return;
+                        end if;
+                        CCL.Types.Specialize_List (Tree.Types, Result_Of (Function_Type), Kind, Specialized);
+                        if Specialized not in CCL.Types.List_Specialized |
+                          CCL.Types.List_Already_Specialized
+                        then Diagnostic := Unsupported_List_Element; end if;
+                     when Where_Builtin | Any_Builtin | All_Builtin | Count_Builtin =>
+                        if not Profile_Is (Function_Type, Element_Type, Invalid_Type, 1, Boolean_Type) then
+                           Diagnostic := Function_Argument_Mismatch; return;
+                        end if;
+                        Kind := (if Operation = Where_Builtin then List_Type
+                                 elsif Operation = Count_Builtin then Integer_Type
+                                 else Boolean_Type);
+                     when Fold_Builtin =>
+                        --  (fold f init xs), f : (Accumulator, Element) -> Accumulator.
+                        if not Profile_Is (Function_Type, Operand_Types (2), Element_Type, 2, Operand_Types (2)) then
+                           Diagnostic := Function_Argument_Mismatch; return;
+                        end if;
+                        Kind := Operand_Types (2);
+                     when First_Builtin | Last_Builtin | Skip_Builtin =>
+                        if Operand_Types (1) /= Integer_Type then
+                           Diagnostic := Expected_Integer; return;
+                        end if;
+                        Kind := List_Type;
+                     when Reverse_Builtin =>
+                        Kind := List_Type;
+                     when Sum_Builtin | Min_Builtin | Max_Builtin =>
+                        if Element_Type /= Integer_Type then
+                           Diagnostic := Expected_Integer; return;
+                        end if;
+                        Kind := Integer_Type;
+                     when Sort_Builtin =>
+                        --  Ordered elements: integers, text, characters, enumerations
+                        --  (by declaration order).
+                        if Element_Type not in Integer_Type | String_Type | Character_Type and then
+                          not CCL.Types.Is_Enumeration (Tree.Types, Element_Type)
+                        then
+                           Diagnostic := Expected_Comparable; return;
+                        end if;
+                        Kind := List_Type;
+                     when Sort_By_Builtin =>
+                        --  (sort-by key xs): key : Element -> Integer or String.
+                        if not Profile_Is (Function_Type, Element_Type, Invalid_Type, 1, Integer_Type) and then
+                          not Profile_Is (Function_Type, Element_Type, Invalid_Type, 1, String_Type)
+                        then
+                           Diagnostic := Function_Argument_Mismatch; return;
+                        end if;
+                        Kind := List_Type;
+                     when Contains_Builtin =>
+                        --  (contains x xs) membership; (contains needle s) substring.
+                        if List_Type = String_Type then
+                           if Operand_Types (1) /= String_Type then
+                              Diagnostic := Expected_String; return;
+                           end if;
+                        elsif Operand_Types (1) /= Element_Type then
+                           Diagnostic := Function_Argument_Mismatch; return;
+                        elsif Element_Type not in Integer_Type | Boolean_Type | String_Type | Character_Type and then
+                          not CCL.Types.Is_Enumeration (Tree.Types, Element_Type)
+                        then
+                           Diagnostic := Expected_Comparable; return;
+                        end if;
+                        Kind := Boolean_Type;
+                     when Upper_Builtin | Lower_Builtin | Trim_Builtin =>
+                        Kind := String_Type;
+                     when Starts_With_Builtin | Ends_With_Builtin | Index_Of_Builtin | Split_Builtin =>
+                        if Operand_Types (1) /= String_Type then
+                           Diagnostic := Expected_String; return;
+                        end if;
+                        if Operation = Index_Of_Builtin then
+                           Kind := Integer_Type;
+                        elsif Operation = Split_Builtin then
+                           CCL.Types.Specialize_List (Tree.Types, String_Type, Kind, Specialized);
+                        else
+                           Kind := Boolean_Type;
+                        end if;
+                     when Replace_Builtin =>
+                        if Operand_Types (1) /= String_Type or else Operand_Types (2) /= String_Type then
+                           Diagnostic := Expected_String; return;
+                        end if;
+                        Kind := String_Type;
+                     when Join_Builtin =>
+                        --  (join separator xs), xs : List<String>.
+                        if Operand_Types (1) /= String_Type or else Element_Type /= String_Type then
+                           Diagnostic := Expected_String; return;
+                        end if;
+                        Kind := String_Type;
+                     when Parse_Int_Builtin =>
+                        Kind := Integer_Type;
+                     when Range_Builtin =>
+                        if Operand_Types (1) /= Integer_Type or else Operand_Types (2) /= Integer_Type then
+                           Diagnostic := Expected_Integer; return;
+                        end if;
+                        CCL.Types.Specialize_List (Tree.Types, Integer_Type, Kind, Specialized);
+                     when No_Builtin => Diagnostic := Unknown_Form;
+                  end case;
+               end;
+            when List_Construct =>
+               --  Every element has the first element's type; the result is
+               --  List<that type>. An empty list needs a declared type.
+               if Tree.Nodes (Index).Element_Count = 0 then
+                  Diagnostic := Empty_List_Needs_Type; return;
+               end if;
+               declare
+                  Element_Type, Next_Type : Static_Type := Invalid_Type;
+                  Specialized : CCL.Types.List_Result;
+               begin
+                  for P in 1 .. Tree.Nodes (Index).Element_Count loop
+                     Check_Node (Tree.Nodes (Index).Components (P), Depth + 1, Next_Type);
+                     if Diagnostic /= No_Diagnostic then return; end if;
+                     if P = 1 then
+                        Element_Type := Next_Type;
+                     elsif Next_Type /= Element_Type then
+                        Diagnostic := List_Element_Mismatch; return;
+                     end if;
+                  end loop;
+                  CCL.Types.Specialize_List (Tree.Types, Element_Type, Kind, Specialized);
+                  if Specialized not in CCL.Types.List_Specialized |
+                    CCL.Types.List_Already_Specialized
+                  then
+                     Diagnostic := Unsupported_List_Element; return;
+                  end if;
+               end;
             when Record_Construct =>
                Kind := Tree.Nodes (Index).Declared_Kind;
                if Kind > Visible_Types or else not CCL.Objects.Persistable (Tree.Types, Kind) then
@@ -1132,7 +1672,40 @@ is
                      exit;
                   end if;
                end loop;
+               --  A call through a function-typed binding: (f 3) with f a
+               --  parameter or let of function type.
+               if not Found and then Tree.Nodes (Index).Kind = Function_Call and then
+                 Type_Env_Length > 0
+               then
+                  for Position in reverse 0 .. Type_Env_Length - 1 loop
+                     if Names_Equal (Type_Env (Position).Identifier, Tree.Nodes (Index).Identifier) then
+                        if CCL.Types.Is_Function (Tree.Types, Type_Env (Position).Kind) then
+                           declare
+                              D : constant CCL.Types.Description :=
+                                CCL.Types.Describe (Tree.Types, Type_Env (Position).Kind);
+                           begin
+                              Found := True;
+                              Tree.Nodes (Index).Calls_Value := True;
+                              Note_Capture (Position);
+                              if Tree.Nodes (Index).Argument_Count /= D.Count - 1 then
+                                 Diagnostic := Function_Arity_Mismatch;
+                              else
+                                 for P in 1 .. D.Count - 1 loop
+                                    Check_Node (Tree.Nodes (Index).Arguments (P), Depth + 1, Left_Type);
+                                    if Diagnostic = No_Diagnostic and then Left_Type /= D.Parts (P).Payload then
+                                       Diagnostic := Function_Argument_Mismatch;
+                                    end if;
+                                 end loop;
+                                 Kind := D.Parts (D.Count).Payload;
+                              end if;
+                           end;
+                        end if;
+                        exit;
+                     end if;
+                  end loop;
+               end if;
                if not Found then Diagnostic := Unknown_Form;
+               elsif Tree.Nodes (Index).Calls_Value then null;
                else
                   declare
                      Decl : constant Function_Declaration :=
@@ -1167,6 +1740,7 @@ is
                      then
                         Kind := Type_Env (Position).Kind;
                         Found := True;
+                        Note_Capture (Position);
                         exit;
                      end if;
                   end loop;
@@ -1207,19 +1781,47 @@ is
                      end loop;
                   end;
                end if;
+               --  A defined function's name is a value of its function type.
+               if not Found then
+                  for F in 1 .. Visible_Functions loop
+                     if Names_Equal (Tree.Nodes (Index).Identifier, Tree.Functions (F - 1).Identifier) then
+                        declare
+                           Decl : constant Function_Declaration := Tree.Functions (F - 1);
+                           Parameters : CCL.Types.Function_Parameters := [others => Invalid_Type];
+                           Specialized : CCL.Types.Function_Result;
+                        begin
+                           for P in 1 .. Decl.Count loop
+                              Parameters (P) := Decl.Parameters (P).Kind;
+                           end loop;
+                           CCL.Types.Specialize_Function
+                             (Tree.Types, Parameters, Decl.Count, Decl.Result_Kind, Kind, Specialized);
+                           if Specialized in CCL.Types.Function_Specialized |
+                             CCL.Types.Function_Already_Specialized
+                           then
+                              Tree.Nodes (Index).Names_Function := True;
+                              Tree.Nodes (Index).Function_Id := F - 1;
+                              Found := True;
+                           end if;
+                        end;
+                        exit;
+                     end if;
+                  end loop;
+               end if;
                if not Found then
                   Diagnostic := Unknown_Name;
                end if;
-            when Add_Form | Multiply_Form | Divide_Form | Modulo_Form |
-                 Equal_Form =>
+            when Add_Form | Subtract_Form | Multiply_Form | Divide_Form |
+                 Modulo_Form | Equal_Form | Not_Equal_Form | Less_Form |
+                 Less_Equal_Form | Greater_Form | Greater_Equal_Form =>
                Check_Node (Tree.Nodes (Node_Index (Index)).First,
                            Depth + 1, Left_Type);
                Check_Node (Tree.Nodes (Node_Index (Index)).Second,
                            Depth + 1, Right_Type);
-               if Tree.Nodes (Index).Kind = Equal_Form then
+               if Tree.Nodes (Index).Kind in Equal_Form | Not_Equal_Form then
                   if Diagnostic = No_Diagnostic and then
                     (Left_Type /= Right_Type or else
                      (Left_Type /= Integer_Type and then
+                      Left_Type /= Boolean_Type and then
                       not CCL.Types.Is_Enumeration (Tree.Types, Left_Type)))
                   then Diagnostic := Expected_Comparable; end if;
                   Kind := Boolean_Type;
@@ -1227,7 +1829,9 @@ is
                  (Left_Type /= Integer_Type or else Right_Type /= Integer_Type)
                then
                   Diagnostic := Expected_Integer;
-               elsif Tree.Nodes (Node_Index (Index)).Kind = Add_Form then
+               elsif Tree.Nodes (Node_Index (Index)).Kind in
+                 Add_Form | Subtract_Form
+               then
                   Kind := Integer_Type;
                elsif Tree.Nodes (Node_Index (Index)).Kind in
                  Multiply_Form | Divide_Form | Modulo_Form
@@ -1240,6 +1844,18 @@ is
                Check_Node (Tree.Nodes (Node_Index (Index)).First,
                            Depth + 1, Left_Type);
                if Diagnostic = No_Diagnostic and then Left_Type /= Boolean_Type
+               then
+                  Diagnostic := Expected_Boolean;
+               else
+                  Kind := Boolean_Type;
+               end if;
+            when And_Form | Or_Form =>
+               Check_Node (Tree.Nodes (Node_Index (Index)).First,
+                           Depth + 1, Left_Type);
+               Check_Node (Tree.Nodes (Node_Index (Index)).Second,
+                           Depth + 1, Right_Type);
+               if Diagnostic = No_Diagnostic and then
+                 (Left_Type /= Boolean_Type or else Right_Type /= Boolean_Type)
                then
                   Diagnostic := Expected_Boolean;
                else
@@ -1282,7 +1898,8 @@ is
                Check_Node (Tree.Nodes (Node_Index (Index)).First,
                            Depth + 1, Left_Type);
                if Diagnostic = No_Diagnostic and then
-                 Left_Type /= String_Type
+                 Left_Type /= String_Type and then
+                 not CCL.Types.Is_List (Tree.Types, Left_Type)
                then
                   Diagnostic := Expected_String;
                else
@@ -1294,13 +1911,16 @@ is
                Check_Node (Tree.Nodes (Node_Index (Index)).Second,
                            Depth + 1, Right_Type);
                if Diagnostic = No_Diagnostic and then
-                 Left_Type /= String_Type
+                 Left_Type /= String_Type and then
+                 not CCL.Types.Is_List (Tree.Types, Left_Type)
                then
                   Diagnostic := Expected_String;
                elsif Diagnostic = No_Diagnostic and then
                  Right_Type /= Integer_Type
                then
                   Diagnostic := Expected_Integer;
+               elsif CCL.Types.Is_List (Tree.Types, Left_Type) then
+                  Kind := CCL.Types.Element_Of (Tree.Types, Left_Type);
                else
                   Kind := Character_Type;
                end if;
@@ -1388,6 +2008,7 @@ is
       Value_Env : Value_Environment := [others => (others => <>)];
       Value_Env_Length : Natural range 0 .. MAX_BINDINGS := 0;
       Text_Region : Text_Regions.Stack;
+      List_Region : List_Regions.Stack;
       type Object_Array is array (Object_Index) of Object_Views.Snapshot;
       Objects : Object_Array;
       Objects_Used : Object_Count := 0;
@@ -1458,7 +2079,7 @@ is
         (Value : in out CCL.Objects.Image; Item : Runtime_Value; Good : out Boolean)
       is
          Built : CCL.Objects.Build_Result := CCL.Objects.Invalid_Image;
-         Text : String (1 .. MAX_TEXT_BYTES);
+         Text : String (1 .. MAX_TEXT_BYTES) := [others => ' '];
          Length : constant Natural := Text_Regions.Length (Item.Text);
          Copied : Text_Regions.Operation_Result;
          D : CCL.Types.Description;
@@ -1501,7 +2122,7 @@ is
       procedure Join_Strings (Left, Right : Runtime_Value; Item : out Runtime_Value; Good : out Boolean) is
          L : constant Object_Views.Text_Size := String_Length (Left);
          R : constant Object_Views.Text_Size := String_Length (Right);
-         Data : String (1 .. CCL.Objects.Maximum_Text_Bytes);
+         Data : String (1 .. CCL.Objects.Maximum_Text_Bytes) := [others => ' '];
          Region_Result : Text_Regions.Operation_Result;
          Native : CCL.Objects.Image;
          Built : CCL.Objects.Build_Result;
@@ -1530,6 +2151,419 @@ is
             if not Good then Eval_Status := Evaluation_Text_Storage_Exhausted; end if;
          end if;
       end Join_Strings;
+
+      --  Every element visited and every TEXT_BYTES_PER_FUEL bytes scanned by
+      --  a builtin costs fuel, as nodes do: fuel stays the unit of work.
+      TEXT_BYTES_PER_FUEL : constant := 64;
+
+      procedure Spend (Amount : Natural; Good : out Boolean) is
+      begin
+         if Fuel_Left < Amount then
+            Fuel_Left := 0;
+            Eval_Status := Evaluation_Fuel_Exhausted;
+            Good := False;
+         else
+            Fuel_Left := Fuel_Left - Amount;
+            Good := True;
+         end if;
+      end Spend;
+
+      --  A String value holding Data: in the text region when it fits, else a
+      --  native object (as concatenation does).
+      procedure Make_String (Data : String; Item : out Runtime_Value; Good : out Boolean) is
+         Region_Result : Text_Regions.Operation_Result;
+         Native : CCL.Objects.Image;
+         Built : CCL.Objects.Build_Result;
+      begin
+         Item := (others => <>); Good := False;
+         if Data'Length <= MAX_TEXT_BYTES then
+            Text_Regions.Allocate_String (Text_Region, Data, Item.Text, Region_Result);
+            Good := Region_Result = Text_Regions.Operation_Ok;
+            if Good then Item.Kind := String_Type;
+            else Eval_Status := Evaluation_Text_Storage_Exhausted; end if;
+         elsif Data'Length > CCL.Objects.Maximum_Text_Bytes then
+            Eval_Status := Evaluation_Text_Storage_Exhausted;
+         elsif Objects_Used = MAX_OBJECT_VALUES then
+            Eval_Status := Evaluation_Object_Storage_Exhausted;
+         else
+            Objects_Used := Objects_Used + 1;
+            CCL.Objects.Append_Text (Native, Data, Built);
+            Good := Built = CCL.Objects.Added;
+            if Good then Object_Views.Capture_Local (Objects (Objects_Used), Tree.Types, String_Type, Native, Good); end if;
+            if Good then Load_View (Objects_Used, Object_Views.Root (Objects (Objects_Used)), Item, Good); end if;
+            if not Good then Eval_Status := Evaluation_Text_Storage_Exhausted; end if;
+         end if;
+      end Make_String;
+
+      --  Order of two region strings (list elements), compared character by
+      --  character without copying.
+      function Text_Less (Left, Right : Text_Regions.String_Value) return Boolean is
+         L : constant Natural := Text_Regions.Length (Left);
+         R : constant Natural := Text_Regions.Length (Right);
+         A, B : Character;
+         Status_A, Status_B : Text_Regions.Operation_Result;
+      begin
+         for I in 1 .. Natural'Min (L, R) loop
+            Text_Regions.Read (Text_Region, Left, Text_Regions.First_Index (Left) + (I - 1), A, Status_A);
+            Text_Regions.Read (Text_Region, Right, Text_Regions.First_Index (Right) + (I - 1), B, Status_B);
+            if Status_A /= Text_Regions.Operation_Ok or else Status_B /= Text_Regions.Operation_Ok then
+               return False;
+            elsif A /= B then
+               return A < B;
+            end if;
+         end loop;
+         return L < R;
+      end Text_Less;
+
+      --  Equality of two String values, wherever each is stored.
+      function Equal_Strings (Left, Right : Runtime_Value) return Boolean is
+         L : constant Object_Views.Text_Size := String_Length (Left);
+         A, B : String (1 .. CCL.Objects.Maximum_Text_Bytes) := [others => ' '];
+         Good_A, Good_B : Boolean;
+      begin
+         if L /= String_Length (Right) then return False; end if;
+         Copy_String (Left, A (1 .. L), Good_A);
+         Copy_String (Right, B (1 .. L), Good_B);
+         return Good_A and then Good_B and then A (1 .. L) = B (1 .. L);
+      end Equal_Strings;
+
+      function Is_Blank (C : Character) return Boolean is
+        (C in ' ' | ASCII.HT | ASCII.LF | ASCII.CR);
+
+      --  Builtins whose subject (last operand) is a String. Kept out of
+      --  Evaluate_Node so the text buffers live only during this call, not on
+      --  every level of the evaluation recursion.
+      procedure Text_Builtin
+        (Operation : Builtin_Operation; First, Second, Subject : Runtime_Value;
+         Result_Kind : Static_Type; Item : out Runtime_Value; Good : out Boolean)
+      is
+         Max : constant := CCL.Objects.Maximum_Text_Bytes;
+         S_Length : constant Object_Views.Text_Size := String_Length (Subject);
+         S : String (1 .. Max) := [others => ' '];
+         --  Needles, separators and replacements are short strings.
+         A_Length, B_Length : Natural := 0;
+         A, B : String (1 .. MAX_TEXT_BYTES) := [others => ' '];
+         Result : String (1 .. Max) := [others => ' '];
+         Result_Length : Natural := 0;
+
+         function Matches_At (P : Positive) return Boolean is
+           (A_Length <= S_Length and then P <= S_Length - A_Length + 1 and then
+            S (P .. P + A_Length - 1) = A (1 .. A_Length));
+
+         --  First position of A in S at or after From, or 0.
+         function Find (From : Positive) return Natural is
+         begin
+            if A_Length > S_Length then return 0; end if;
+            for P in From .. S_Length - A_Length + 1 loop
+               if Matches_At (P) then return P; end if;
+            end loop;
+            return 0;
+         end Find;
+
+         procedure Put (Text : String) is
+         begin
+            if Good and then Text'Length <= Max - Result_Length then
+               Result (Result_Length + 1 .. Result_Length + Text'Length) := Text;
+               Result_Length := Result_Length + Text'Length;
+            elsif Good then
+               Eval_Status := Evaluation_Text_Storage_Exhausted;
+               Good := False;
+            end if;
+         end Put;
+
+         function Count_Of (Operand : Runtime_Value) return Natural is
+           (if Operand.Scalar.Integer <= 0 then 0
+            elsif Operand.Scalar.Integer >= Integer_64 (S_Length) then S_Length
+            else Natural (Operand.Scalar.Integer));
+      begin
+         Item := (others => <>);
+         Copy_String (Subject, S (1 .. S_Length), Good);
+         if Good and then Operation in Contains_Builtin | Starts_With_Builtin | Ends_With_Builtin |
+           Index_Of_Builtin | Replace_Builtin | Split_Builtin
+         then
+            A_Length := String_Length (First);
+            if A_Length > MAX_TEXT_BYTES then
+               Eval_Status := Evaluation_Text_Storage_Exhausted; Good := False; return;
+            end if;
+            Copy_String (First, A (1 .. A_Length), Good);
+         end if;
+         if Good and then Operation = Replace_Builtin then
+            B_Length := String_Length (Second);
+            if B_Length > MAX_TEXT_BYTES then
+               Eval_Status := Evaluation_Text_Storage_Exhausted; Good := False; return;
+            end if;
+            Copy_String (Second, B (1 .. B_Length), Good);
+         end if;
+         if not Good then
+            if Eval_Status = Succeeded then Eval_Status := Evaluation_Index_Error; end if;
+            return;
+         end if;
+         Spend (1 + S_Length / TEXT_BYTES_PER_FUEL, Good);
+         if not Good then return; end if;
+
+         case Operation is
+            when Upper_Builtin | Lower_Builtin =>
+               for I in 1 .. S_Length loop
+                  Result (I) :=
+                    (if Operation = Upper_Builtin and then S (I) in 'a' .. 'z' then
+                        Character'Val (Character'Pos (S (I)) - (Character'Pos ('a') - Character'Pos ('A')))
+                     elsif Operation = Lower_Builtin and then S (I) in 'A' .. 'Z' then
+                        Character'Val (Character'Pos (S (I)) + (Character'Pos ('a') - Character'Pos ('A')))
+                     else S (I));
+               end loop;
+               Make_String (Result (1 .. S_Length), Item, Good);
+            when Trim_Builtin =>
+               declare
+                  Low : Positive := 1;
+                  High : Natural := S_Length;
+               begin
+                  while Low <= High and then Is_Blank (S (Low)) loop Low := Low + 1; end loop;
+                  while High >= Low and then Is_Blank (S (High)) loop High := High - 1; end loop;
+                  Make_String (S (Low .. High), Item, Good);
+               end;
+            when First_Builtin | Last_Builtin | Skip_Builtin =>
+               declare
+                  N : constant Natural := Count_Of (First);
+               begin
+                  case Operation is
+                     when First_Builtin => Make_String (S (1 .. N), Item, Good);
+                     when Last_Builtin => Make_String (S (S_Length - N + 1 .. S_Length), Item, Good);
+                     when others => Make_String (S (N + 1 .. S_Length), Item, Good);
+                  end case;
+               end;
+            when Reverse_Builtin =>
+               for I in 1 .. S_Length loop
+                  Result (I) := S (S_Length - I + 1);
+               end loop;
+               Make_String (Result (1 .. S_Length), Item, Good);
+            when Contains_Builtin | Index_Of_Builtin =>
+               declare
+                  Position : constant Natural := (if A_Length = 0 then 1 else Find (1));
+               begin
+                  if Operation = Contains_Builtin then
+                     Item := (Kind => Boolean_Type, Scalar => Boolean_Scalar (Position > 0), others => <>);
+                  else
+                     Item := (Kind => Integer_Type, Scalar => Integer_Scalar (Integer_64 (Position)), others => <>);
+                  end if;
+               end;
+            when Starts_With_Builtin =>
+               Item := (Kind => Boolean_Type, Scalar => Boolean_Scalar (Matches_At (1) or else A_Length = 0),
+                        others => <>);
+            when Ends_With_Builtin =>
+               Item := (Kind => Boolean_Type,
+                        Scalar => Boolean_Scalar
+                          (A_Length = 0 or else
+                           (A_Length <= S_Length and then Matches_At (S_Length - A_Length + 1))),
+                        others => <>);
+            when Replace_Builtin =>
+               --  Every occurrence, left to right; an empty pattern changes nothing.
+               if A_Length = 0 then
+                  Make_String (S (1 .. S_Length), Item, Good);
+               else
+                  declare
+                     P : Positive := 1;
+                     Next : Natural;
+                  begin
+                     while Good and then P <= S_Length loop
+                        Next := Find (P);
+                        if Next = 0 then
+                           Put (S (P .. S_Length)); exit;
+                        end if;
+                        Put (S (P .. Next - 1));
+                        Put (B (1 .. B_Length));
+                        exit when Next > S_Length - A_Length;
+                        P := Next + A_Length;
+                     end loop;
+                     if Good then Make_String (Result (1 .. Result_Length), Item, Good); end if;
+                  end;
+               end if;
+            when Split_Builtin =>
+               --  On each separator; an empty separator splits on runs of
+               --  blanks and drops empty pieces (words).
+               declare
+                  Pieces : List_Regions.Array_Value;
+                  Placed : List_Regions.Operation_Result;
+                  Count : Natural := 0;
+                  Capacity : constant Natural := Natural'Min (S_Length + 1, MAX_LIST_ELEMENTS);
+                  Region_Result : Text_Regions.Operation_Result;
+                  Piece : Text_Regions.String_Value;
+
+                  procedure Add (Low, High : Natural) is
+                  begin
+                     if not Good then return; end if;
+                     if Count = Capacity or else High - Low + 1 > MAX_TEXT_BYTES then
+                        Eval_Status := Evaluation_List_Storage_Exhausted; Good := False; return;
+                     end if;
+                     Text_Regions.Allocate_String (Text_Region, S (Low .. High), Piece, Region_Result);
+                     if Region_Result /= Text_Regions.Operation_Ok then
+                        Eval_Status := Evaluation_Text_Storage_Exhausted; Good := False; return;
+                     end if;
+                     Count := Count + 1;
+                     List_Regions.Write (List_Region, Pieces, Count, (Null_List_Element with delta Text => Piece), Placed);
+                     if Placed /= List_Regions.Operation_Ok then
+                        Eval_Status := Evaluation_Index_Error; Good := False;
+                     end if;
+                  end Add;
+               begin
+                  List_Regions.Reserve (List_Region, Capacity, Pieces, Placed);
+                  if Placed /= List_Regions.Operation_Ok then
+                     Eval_Status := Evaluation_List_Storage_Exhausted; Good := False; return;
+                  end if;
+                  if A_Length = 0 then
+                     declare
+                        P : Positive := 1;
+                        Start : Positive;
+                     begin
+                        while Good and then P <= S_Length loop
+                           if Is_Blank (S (P)) then
+                              P := P + 1;
+                           else
+                              Start := P;
+                              while P <= S_Length and then not Is_Blank (S (P)) loop P := P + 1; end loop;
+                              Add (Start, P - 1);
+                           end if;
+                        end loop;
+                     end;
+                  else
+                     declare
+                        P : Positive := 1;
+                        Next : Natural;
+                     begin
+                        loop
+                           exit when not Good;
+                           Next := (if P <= S_Length then Find (P) else 0);
+                           if Next = 0 then
+                              Add (P, S_Length); exit;
+                           end if;
+                           Add (P, Next - 1);
+                           P := Next + A_Length;
+                        end loop;
+                     end;
+                  end if;
+                  if Good then
+                     List_Regions.Shrink (List_Region, Pieces, Count, Placed);
+                     if Placed = List_Regions.Operation_Ok then
+                        Item.Items := Pieces;
+                        Item.Kind := Result_Kind;
+                     else
+                        Eval_Status := Evaluation_List_Storage_Exhausted; Good := False;
+                     end if;
+                  end if;
+               end;
+            when Parse_Int_Builtin =>
+               --  Optional blanks and sign, then decimal digits.
+               declare
+                  Low : Positive := 1;
+                  High : Natural := S_Length;
+                  Negative : Boolean := False;
+                  DECIMAL_BASE : constant := 10;
+                  Value, Scaled : Integer_64 := 0;
+                  Digit : Integer_64;
+                  Overflowed : Boolean := False;
+               begin
+                  while Low <= High and then Is_Blank (S (Low)) loop Low := Low + 1; end loop;
+                  while High >= Low and then Is_Blank (S (High)) loop High := High - 1; end loop;
+                  if Low <= High and then S (Low) in '-' | '+' then
+                     Negative := S (Low) = '-';
+                     Low := Low + 1;
+                  end if;
+                  if Low > High then
+                     Eval_Status := Evaluation_Invalid_Number; Good := False; return;
+                  end if;
+                  for I in Low .. High loop
+                     if S (I) not in '0' .. '9' then
+                        Eval_Status := Evaluation_Invalid_Number; Good := False; return;
+                     end if;
+                     Digit := Integer_64 (Character'Pos (S (I)) - Character'Pos ('0'));
+                     CCL.Checked_Arithmetic.Multiply (Value, DECIMAL_BASE, Scaled, Overflowed);
+                     if not Overflowed then
+                        if Negative then
+                           CCL.Checked_Arithmetic.Subtract (Scaled, Digit, Value, Overflowed);
+                        else
+                           CCL.Checked_Arithmetic.Add (Scaled, Digit, Value, Overflowed);
+                        end if;
+                     end if;
+                     if Overflowed then
+                        Eval_Status := Evaluation_Overflow; Good := False; return;
+                     end if;
+                  end loop;
+                  Item := (Kind => Integer_Type, Scalar => Integer_Scalar (Value), others => <>);
+               end;
+            when others =>
+               Eval_Status := Host_Contract_Unsupported; Good := False;
+         end case;
+      end Text_Builtin;
+
+      --  (join separator xs) over a List<String>.
+      procedure Join_List
+        (Separator, Source : Runtime_Value; Item : out Runtime_Value; Good : out Boolean)
+      is
+         Max : constant := CCL.Objects.Maximum_Text_Bytes;
+         Sep_Length : constant Object_Views.Text_Size := String_Length (Separator);
+         Sep : String (1 .. Max) := [others => ' '];
+         Result : String (1 .. Max) := [others => ' '];
+         Result_Length : Natural := 0;
+         Raw : List_Element;
+         Read_Status : List_Regions.Operation_Result;
+         Copied : Text_Regions.Operation_Result;
+         Piece_Length : Natural;
+         Count : constant Natural := List_Regions.Length (Source.Items);
+      begin
+         Item := (others => <>);
+         Copy_String (Separator, Sep (1 .. Sep_Length), Good);
+         if not Good then Eval_Status := Evaluation_Index_Error; return; end if;
+         for I in 1 .. Count loop
+            Spend (1, Good);
+            exit when not Good;
+            List_Regions.Read (List_Region, Source.Items, List_Regions.Array_Index (I), Raw, Read_Status);
+            if Read_Status /= List_Regions.Operation_Ok then
+               Eval_Status := Evaluation_Index_Error; Good := False; exit;
+            end if;
+            Piece_Length := Text_Regions.Length (Raw.Text);
+            if (I > 1 and then Sep_Length > Max - Result_Length) or else
+              Piece_Length > Max - Result_Length - (if I > 1 then Sep_Length else 0)
+            then
+               Eval_Status := Evaluation_Text_Storage_Exhausted; Good := False; exit;
+            end if;
+            if I > 1 then
+               Result (Result_Length + 1 .. Result_Length + Sep_Length) := Sep (1 .. Sep_Length);
+               Result_Length := Result_Length + Sep_Length;
+            end if;
+            Text_Regions.Copy_To
+              (Text_Region, Raw.Text, Result (Result_Length + 1 .. Result_Length + Piece_Length), Copied);
+            if Copied /= Text_Regions.Operation_Ok then
+               Eval_Status := Evaluation_Index_Error; Good := False; exit;
+            end if;
+            Result_Length := Result_Length + Piece_Length;
+         end loop;
+         if Good then Make_String (Result (1 .. Result_Length), Item, Good); end if;
+      end Join_List;
+
+      --  Starts a call frame of Decl: its captured values (stored in the
+      --  function value Callee) at the bottom, parameters to follow.
+      procedure Bind_Captures
+        (Callee : Runtime_Value; Decl : Function_Declaration; Good : out Boolean)
+      is
+         Raw : List_Element;
+         Read_Status : List_Regions.Operation_Result;
+      begin
+         Good := True;
+         Value_Env_Length := 0;
+         for C in 1 .. Decl.Captured loop
+            List_Regions.Read (List_Region, Callee.Items, C, Raw, Read_Status);
+            if Read_Status /= List_Regions.Operation_Ok then
+               Eval_Status := Evaluation_Index_Error;
+               Good := False;
+               return;
+            end if;
+            Value_Env (C - 1) :=
+              (Identifier => Decl.Captures (C).Identifier,
+               Item => (Kind => Decl.Captures (C).Kind, Scalar => Raw.Scalar, Text => Raw.Text,
+                        Character_Item => Raw.Character_Item, Alternative => Raw.Alternative,
+                        others => <>));
+            Value_Env_Length := C;
+         end loop;
+      end Bind_Captures;
 
       procedure Evaluate_Node
         (Index : Natural;
@@ -1578,8 +2612,20 @@ is
                Evaluate_Node (Tree.Nodes (Index).Second, Depth + 1, Item, Ok);
             when Function_Call =>
                declare
-                  Decl : constant Function_Declaration :=
-                    Tree.Functions (Tree.Nodes (Index).Function_Id);
+                  --  A call through a value takes its function from the binding.
+                  function Callee return Runtime_Value is
+                  begin
+                     if Tree.Nodes (Index).Calls_Value and then Value_Env_Length > 0 then
+                        for Position in reverse 0 .. Value_Env_Length - 1 loop
+                           if Names_Equal (Value_Env (Position).Identifier, Tree.Nodes (Index).Identifier) then
+                              return Value_Env (Position).Item;
+                           end if;
+                        end loop;
+                     end if;
+                     return (Handler_Id => Tree.Nodes (Index).Function_Id, others => <>);
+                  end Callee;
+                  Target : constant Runtime_Value := Callee;
+                  Decl : constant Function_Declaration := Tree.Functions (Target.Handler_Id);
                   type Parameter_Values is array (Parameter_Index) of Runtime_Value;
                   Arguments : Parameter_Values := [others => (others => <>)];
                begin
@@ -1593,12 +2639,15 @@ is
                      declare
                         Saved : constant Value_Environment := Value_Env;
                      begin
-                        for P in 1 .. Decl.Count loop
-                           Value_Env (P - 1) :=
-                             (Identifier => Decl.Parameters (P).Identifier, Item => Arguments (P));
-                        end loop;
-                        Value_Env_Length := Decl.Count;
-                        Evaluate_Node (Decl.Body_Node, Depth + 1, Item, Good);
+                        Bind_Captures (Target, Decl, Good);
+                        if Good then
+                           for P in 1 .. Decl.Count loop
+                              Value_Env (Decl.Captured + P - 1) :=
+                                (Identifier => Decl.Parameters (P).Identifier, Item => Arguments (P));
+                           end loop;
+                           Value_Env_Length := Decl.Captured + Decl.Count;
+                           Evaluate_Node (Decl.Body_Node, Depth + 1, Item, Good);
+                        end if;
                         Value_Env := Saved;
                         Value_Env_Length := Entry_Environment_Length;
                      end;
@@ -1740,6 +2789,11 @@ is
                      end if;
                   end loop;
                end if;
+               if not Found and then Tree.Nodes (Index).Names_Function then
+                  Item.Kind := Tree.Nodes (Index).Static_Kind;
+                  Item.Handler_Id := Tree.Nodes (Index).Function_Id;
+                  Found := True;
+               end if;
                Ok := Found;
             when Add_Form =>
                Evaluate_Node (Tree.Nodes (Node_Index (Index)).First,
@@ -1757,6 +2811,26 @@ is
                   Item.Kind := Integer_Type;
                   Item.Scalar := Integer_Scalar
                     (Left.Scalar.Integer + Right.Scalar.Integer);
+               end if;
+               Ok := Good;
+            when Subtract_Form =>
+               Evaluate_Node (Tree.Nodes (Node_Index (Index)).First,
+                              Depth + 1, Left, Good);
+               if Good then
+                  Evaluate_Node (Tree.Nodes (Node_Index (Index)).Second,
+                                 Depth + 1, Right, Good);
+               end if;
+               if Good then
+                  CCL.Checked_Arithmetic.Subtract
+                    (Left.Scalar.Integer, Right.Scalar.Integer,
+                     Arithmetic_Value, Overflowed);
+                  if Overflowed then
+                     Eval_Status := Evaluation_Overflow;
+                     Good := False;
+                  else
+                     Item.Kind := Integer_Type;
+                     Item.Scalar := Integer_Scalar (Arithmetic_Value);
+                  end if;
                end if;
                Ok := Good;
             when Multiply_Form | Divide_Form | Modulo_Form =>
@@ -1814,7 +2888,50 @@ is
                   Item.Scalar := Boolean_Scalar
                     (if Left.Kind = Integer_Type then
                         Left.Scalar.Integer = Right.Scalar.Integer
+                     elsif Left.Kind = Boolean_Type then
+                        Left.Scalar.Boolean = Right.Scalar.Boolean
                      else Left.Alternative = Right.Alternative);
+               end if;
+               Ok := Good;
+            when Not_Equal_Form | Less_Form | Less_Equal_Form |
+                 Greater_Form | Greater_Equal_Form =>
+               Evaluate_Node (Tree.Nodes (Node_Index (Index)).First,
+                              Depth + 1, Left, Good);
+               if Good then
+                  Evaluate_Node (Tree.Nodes (Node_Index (Index)).Second,
+                                 Depth + 1, Right, Good);
+               end if;
+               if Good then
+                  Item.Kind := Boolean_Type;
+                  Item.Scalar := Boolean_Scalar
+                    (case Tree.Nodes (Node_Index (Index)).Kind is
+                        when Not_Equal_Form =>
+                          (if Left.Kind = Integer_Type then
+                              Left.Scalar.Integer /= Right.Scalar.Integer
+                           elsif Left.Kind = Boolean_Type then
+                              Left.Scalar.Boolean /= Right.Scalar.Boolean
+                           else Left.Alternative /= Right.Alternative),
+                        when Less_Form =>
+                          Left.Scalar.Integer < Right.Scalar.Integer,
+                        when Less_Equal_Form =>
+                          Left.Scalar.Integer <= Right.Scalar.Integer,
+                        when Greater_Form =>
+                          Left.Scalar.Integer > Right.Scalar.Integer,
+                        when others =>
+                          Left.Scalar.Integer >= Right.Scalar.Integer);
+               end if;
+               Ok := Good;
+            -- Short-circuit: the right operand runs only when it decides.
+            when And_Form | Or_Form =>
+               Evaluate_Node (Tree.Nodes (Node_Index (Index)).First,
+                              Depth + 1, Left, Good);
+               if Good and then
+                 Left.Scalar.Boolean = (Tree.Nodes (Node_Index (Index)).Kind = Or_Form)
+               then
+                  Item := Left;
+               elsif Good then
+                  Evaluate_Node (Tree.Nodes (Node_Index (Index)).Second,
+                                 Depth + 1, Item, Good);
                end if;
                Ok := Good;
             when Not_Form =>
@@ -1855,7 +2972,11 @@ is
             when String_Length_Form =>
                Evaluate_Node (Tree.Nodes (Node_Index (Index)).First,
                               Depth + 1, Left, Good);
-               if Good then
+               if Good and then CCL.Types.Is_List (Tree.Types, Left.Kind) then
+                  Item.Kind := Integer_Type;
+                  Item.Scalar := Integer_Scalar
+                    (Integer_64 (List_Regions.Length (Left.Items)));
+               elsif Good then
                   Item.Kind := Integer_Type;
                   Item.Scalar := Integer_Scalar
                     (Integer_64 (String_Length (Left)));
@@ -1867,6 +2988,37 @@ is
                if Good then
                   Evaluate_Node (Tree.Nodes (Node_Index (Index)).Second,
                                  Depth + 1, Right, Good);
+               end if;
+               if Good and then CCL.Types.Is_List (Tree.Types, Left.Kind) then
+                  declare
+                     Element : List_Element;
+                     Read_Status : List_Regions.Operation_Result;
+                  begin
+                     if Right.Scalar.Integer < 1 or else
+                       Right.Scalar.Integer >
+                         Integer_64 (List_Regions.Length (Left.Items))
+                     then
+                        Eval_Status := Evaluation_Index_Error;
+                        Good := False;
+                     else
+                        List_Regions.Read
+                          (List_Region, Left.Items,
+                           List_Regions.Array_Index (Right.Scalar.Integer),
+                           Element, Read_Status);
+                        if Read_Status = List_Regions.Operation_Ok then
+                           Item.Kind := CCL.Types.Element_Of (Tree.Types, Left.Kind);
+                           Item.Scalar := Element.Scalar;
+                           Item.Text := Element.Text;
+                           Item.Character_Item := Element.Character_Item;
+                           Item.Alternative := Element.Alternative;
+                        else
+                           Eval_Status := Evaluation_Index_Error;
+                           Good := False;
+                        end if;
+                     end if;
+                  end;
+                  Ok := Good;
+                  return;
                end if;
                if Good and then
                  (Right.Scalar.Integer < 1 or else
@@ -2066,9 +3218,567 @@ is
                      Ok := Good;
                   end;
                end if;
+            when Builtin_Form =>
+               declare
+                  Operation : constant Builtin_Operation := Tree.Nodes (Index).Builtin;
+                  Count : constant Parameter_Count := Tree.Nodes (Index).Argument_Count;
+                  type Operand_Values is array (Parameter_Index) of Runtime_Value;
+                  Operands : Operand_Values := [others => (others => <>)];
+                  Source_List : Runtime_Value;
+                  Length : Natural := 0;
+                  Read_Status : List_Regions.Operation_Result;
+                  Placed : List_Regions.Operation_Result;
+
+                  function Packed (Value : Runtime_Value) return List_Element is
+                    ((Scalar => Value.Scalar, Text => Value.Text,
+                      Character_Item => Value.Character_Item,
+                      Alternative => Value.Alternative));
+
+                  --  Element Position of Source_List as a value of Kind.
+                  procedure Element
+                    (Position : Positive; Kind : Static_Type;
+                     Value : out Runtime_Value; Good : out Boolean)
+                  is
+                     Raw : List_Element;
+                  begin
+                     Value := (others => <>);
+                     Spend (1, Good);
+                     if not Good then return; end if;
+                     List_Regions.Read
+                       (List_Region, Source_List.Items, List_Regions.Array_Index (Position),
+                        Raw, Read_Status);
+                     Good := Read_Status = List_Regions.Operation_Ok;
+                     if Good then
+                        Value.Kind := Kind;
+                        Value.Scalar := Raw.Scalar;
+                        Value.Text := Raw.Text;
+                        Value.Character_Item := Raw.Character_Item;
+                        Value.Alternative := Raw.Alternative;
+                     else
+                        Eval_Status := Evaluation_Index_Error;
+                     end if;
+                  end Element;
+
+                  --  Call function value Callee with Arity arguments.
+                  procedure Apply
+                    (Callee : Runtime_Value; First, Second : Runtime_Value; Arity : Positive;
+                     Result : out Runtime_Value; Good : out Boolean)
+                  is
+                     Decl : constant Function_Declaration := Tree.Functions (Callee.Handler_Id);
+                     Saved : constant Value_Environment := Value_Env;
+                  begin
+                     if Decl.Count /= Arity then
+                        Result := (others => <>); Good := False;
+                        Eval_Status := Host_Contract_Unsupported;
+                        return;
+                     end if;
+                     Bind_Captures (Callee, Decl, Good);
+                     if not Good then
+                        Result := (others => <>);
+                        Value_Env := Saved;
+                        Value_Env_Length := Entry_Environment_Length;
+                        return;
+                     end if;
+                     Value_Env (Decl.Captured) := (Identifier => Decl.Parameters (1).Identifier, Item => First);
+                     if Arity = 2 then
+                        Value_Env (Decl.Captured + 1) := (Identifier => Decl.Parameters (2).Identifier, Item => Second);
+                     end if;
+                     Value_Env_Length := Decl.Captured + Arity;
+                     Evaluate_Node (Decl.Body_Node, Depth + 1, Result, Good);
+                     Value_Env := Saved;
+                     Value_Env_Length := Entry_Environment_Length;
+                  end Apply;
+
+                  Current, Mapped : Runtime_Value;
+               begin
+                  Good := True;
+                  for P in 1 .. Count loop
+                     Evaluate_Node (Tree.Nodes (Index).Arguments (P), Depth + 1, Operands (P), Good);
+                     exit when not Good;
+                  end loop;
+                  if not Good or else Count = 0 then Ok := False; return; end if;
+                  if Operation /= Range_Builtin and then Operands (Count).Kind = String_Type then
+                     Text_Builtin (Operation, Operands (1), Operands (2), Operands (Count),
+                                   Tree.Nodes (Index).Static_Kind, Item, Good);
+                     Ok := Good;
+                     return;
+                  end if;
+                  if Operation /= Range_Builtin then
+                     Source_List := Operands (Count);
+                     Length := List_Regions.Length (Source_List.Items);
+                  end if;
+                  declare
+                     Element_Kind : constant Static_Type :=
+                       (if Operation = Range_Builtin then Integer_Type
+                        else CCL.Types.Element_Of (Tree.Types, Source_List.Kind));
+                     Kept : Natural := 0;
+
+                     --  Results are built in place in the list region: reserve
+                     --  an upper bound, write, then shrink to what was kept.
+                     procedure Reserve (Size : Natural) is
+                     begin
+                        List_Regions.Reserve (List_Region, Size, Item.Items, Placed);
+                        Good := Placed = List_Regions.Operation_Ok;
+                        if not Good then Eval_Status := Evaluation_List_Storage_Exhausted; end if;
+                     end Reserve;
+
+                     procedure Keep (Value : Runtime_Value) is
+                     begin
+                        if Kept >= MAX_LIST_ELEMENTS then
+                           Eval_Status := Evaluation_List_Storage_Exhausted; Good := False; return;
+                        end if;
+                        Kept := Kept + 1;
+                        List_Regions.Write (List_Region, Item.Items, Kept, Packed (Value), Placed);
+                        Good := Placed = List_Regions.Operation_Ok;
+                        if not Good then Eval_Status := Evaluation_Index_Error; end if;
+                     end Keep;
+
+                     procedure Finish (Kind : Static_Type) is
+                     begin
+                        List_Regions.Shrink (List_Region, Item.Items, Kept, Placed);
+                        Good := Placed = List_Regions.Operation_Ok;
+                        if not Good then Eval_Status := Evaluation_List_Storage_Exhausted; end if;
+                        Item.Kind := Kind;
+                     end Finish;
+                  begin
+                     case Operation is
+                        when Each_Builtin | Where_Builtin =>
+                           Reserve (Length);
+                           if Good then
+                              for I in 1 .. Length loop
+                                 Element (I, Element_Kind, Current, Good);
+                                 exit when not Good;
+                                 Apply (Operands (1), Current, Current, 1, Mapped, Good);
+                                 exit when not Good;
+                                 if Operation = Each_Builtin then
+                                    Keep (Mapped);
+                                 elsif Mapped.Scalar.Boolean then
+                                    Keep (Current);
+                                 end if;
+                                 exit when not Good;
+                              end loop;
+                           end if;
+                           if Good then Finish (Tree.Nodes (Index).Static_Kind); end if;
+                        when Any_Builtin | All_Builtin =>
+                           --  Short-circuit: stop at the first decisive element.
+                           Item.Kind := Boolean_Type;
+                           Item.Scalar := Boolean_Scalar (Operation = All_Builtin);
+                           for I in 1 .. Length loop
+                              Element (I, Element_Kind, Current, Good);
+                              exit when not Good;
+                              Apply (Operands (1), Current, Current, 1, Mapped, Good);
+                              exit when not Good;
+                              if Mapped.Scalar.Boolean = (Operation = Any_Builtin) then
+                                 Item.Scalar := Boolean_Scalar (Operation = Any_Builtin);
+                                 exit;
+                              end if;
+                           end loop;
+                        when Fold_Builtin =>
+                           Item := Operands (2);
+                           for I in 1 .. Length loop
+                              Element (I, Element_Kind, Current, Good);
+                              exit when not Good;
+                              Apply (Operands (1), Item, Current, 2, Mapped, Good);
+                              exit when not Good;
+                              Item := Mapped;
+                           end loop;
+                        when First_Builtin =>
+                           declare
+                              Wanted : constant Natural :=
+                                (if Operands (1).Scalar.Integer <= 0 then 0
+                                 elsif Operands (1).Scalar.Integer >= Integer_64 (Length) then Length
+                                 else Natural (Operands (1).Scalar.Integer));
+                           begin
+                              Reserve (Wanted);
+                              if Good then
+                                 for I in 1 .. Wanted loop
+                                    Element (I, Element_Kind, Current, Good);
+                                    exit when not Good;
+                                    Keep (Current);
+                                    exit when not Good;
+                                 end loop;
+                              end if;
+                              if Good then Finish (Source_List.Kind); end if;
+                           end;
+                        when Sum_Builtin =>
+                           Item.Kind := Integer_Type;
+                           Item.Scalar := Integer_Scalar (0);
+                           for I in 1 .. Length loop
+                              Element (I, Element_Kind, Current, Good);
+                              exit when not Good;
+                              CCL.Checked_Arithmetic.Add
+                                (Item.Scalar.Integer, Current.Scalar.Integer, Arithmetic_Value, Overflowed);
+                              if Overflowed then
+                                 Eval_Status := Evaluation_Overflow; Good := False; exit;
+                              end if;
+                              Item.Scalar := Integer_Scalar (Arithmetic_Value);
+                           end loop;
+                        when Range_Builtin =>
+                           --  [a .. b], empty when b < a, bounded by the list region.
+                           declare
+                              Low : constant Integer_64 := Operands (1).Scalar.Integer;
+                              High : constant Integer_64 := Operands (2).Scalar.Integer;
+                              Size : Natural := 0;
+                              Span : Integer_64 := 0;
+                              Span_Overflowed : Boolean := False;
+                           begin
+                              if High >= Low then
+                                 CCL.Checked_Arithmetic.Subtract (High, Low, Span, Span_Overflowed);
+                              end if;
+                              if High >= Low and then
+                                (Span_Overflowed or else Span >= Integer_64 (MAX_LIST_ELEMENTS))
+                              then
+                                 Eval_Status := Evaluation_List_Storage_Exhausted; Good := False;
+                              else
+                                 if High >= Low then Size := Natural (Span) + 1; end if;
+                                 Reserve (Size);
+                                 if Good then
+                                    for I in 1 .. Size loop
+                                       Current := (Kind => Integer_Type,
+                                                   Scalar => Integer_Scalar (Low + Integer_64 (I - 1)),
+                                                   others => <>);
+                                       Keep (Current);
+                                       exit when not Good;
+                                    end loop;
+                                 end if;
+                                 if Good then Finish (Tree.Nodes (Index).Static_Kind); end if;
+                              end if;
+                           end;
+                        when Last_Builtin | Skip_Builtin =>
+                           declare
+                              N : constant Natural :=
+                                (if Operands (1).Scalar.Integer <= 0 then 0
+                                 elsif Operands (1).Scalar.Integer >= Integer_64 (Length) then Length
+                                 else Natural (Operands (1).Scalar.Integer));
+                              From : constant Positive :=
+                                (if Operation = Last_Builtin then Length - N + 1 else N + 1);
+                           begin
+                              Reserve (Length - From + 1);
+                              if Good then
+                                 for I in From .. Length loop
+                                    Element (I, Element_Kind, Current, Good);
+                                    exit when not Good;
+                                    Keep (Current);
+                                    exit when not Good;
+                                 end loop;
+                              end if;
+                              if Good then Finish (Source_List.Kind); end if;
+                           end;
+                        when Reverse_Builtin =>
+                           Reserve (Length);
+                           if Good then
+                              for I in reverse 1 .. Length loop
+                                 Element (I, Element_Kind, Current, Good);
+                                 exit when not Good;
+                                 Keep (Current);
+                                 exit when not Good;
+                              end loop;
+                           end if;
+                           if Good then Finish (Source_List.Kind); end if;
+                        when Count_Builtin =>
+                           Item := (Kind => Integer_Type, Scalar => Integer_Scalar (0), others => <>);
+                           for I in 1 .. Length loop
+                              Element (I, Element_Kind, Current, Good);
+                              exit when not Good;
+                              Apply (Operands (1), Current, Current, 1, Mapped, Good);
+                              exit when not Good;
+                              if Mapped.Scalar.Boolean then
+                                 Item.Scalar := Integer_Scalar (Integer_64 (Kept + 1));
+                                 Kept := Kept + 1;
+                              end if;
+                              exit when Kept = Natural'Last;
+                           end loop;
+                        when Min_Builtin | Max_Builtin =>
+                           if Length = 0 then
+                              Eval_Status := Evaluation_Index_Error; Good := False;
+                           else
+                              Element (1, Element_Kind, Item, Good);
+                              for I in 2 .. Length loop
+                                 exit when not Good;
+                                 Element (I, Element_Kind, Current, Good);
+                                 exit when not Good;
+                                 if (Operation = Min_Builtin and then Current.Scalar.Integer < Item.Scalar.Integer) or else
+                                   (Operation = Max_Builtin and then Current.Scalar.Integer > Item.Scalar.Integer)
+                                 then
+                                    Item := Current;
+                                 end if;
+                              end loop;
+                           end if;
+                        when Contains_Builtin =>
+                           Item := (Kind => Boolean_Type, Scalar => Boolean_Scalar (False), others => <>);
+                           for I in 1 .. Length loop
+                              Element (I, Element_Kind, Current, Good);
+                              exit when not Good;
+                              if (if Element_Kind = String_Type then Equal_Strings (Current, Operands (1))
+                                  elsif Element_Kind = Integer_Type then Current.Scalar.Integer = Operands (1).Scalar.Integer
+                                  elsif Element_Kind = Boolean_Type then Current.Scalar.Boolean = Operands (1).Scalar.Boolean
+                                  elsif Element_Kind = Character_Type then Current.Character_Item = Operands (1).Character_Item
+                                  else Current.Alternative = Operands (1).Alternative)
+                              then
+                                 Item.Scalar := Boolean_Scalar (True);
+                                 exit;
+                              end if;
+                           end loop;
+                        when Join_Builtin =>
+                           Join_List (Operands (1), Source_List, Item, Good);
+                        when Sort_Builtin | Sort_By_Builtin =>
+                           --  Copy, then heapsort in place (n log n comparisons,
+                           --  no scratch beyond the copy). Sort-by sorts the keys
+                           --  and carries the elements with them.
+                           declare
+                              Keys : List_Regions.Array_Value;
+                              Key_Kind : constant Static_Type :=
+                                (if Operation = Sort_Builtin then Element_Kind
+                                 elsif CCL.Types.Describe (Tree.Types, Operands (1).Kind).Count >= 1 then
+                                    CCL.Types.Describe (Tree.Types, Operands (1).Kind).Parts
+                                      (CCL.Types.Describe (Tree.Types, Operands (1).Kind).Count).Payload
+                                 else Invalid_Type);
+
+                              procedure Get (List : List_Regions.Array_Value; I : Positive; E : out List_Element) is
+                              begin
+                                 List_Regions.Read (List_Region, List, List_Regions.Array_Index (I), E, Placed);
+                                 if Placed /= List_Regions.Operation_Ok then
+                                    E := Null_List_Element;
+                                    Eval_Status := Evaluation_Index_Error; Good := False;
+                                 end if;
+                              end Get;
+                              procedure Put (List : List_Regions.Array_Value; I : Positive; E : List_Element) is
+                              begin
+                                 List_Regions.Write (List_Region, List, List_Regions.Array_Index (I), E, Placed);
+                                 if Placed /= List_Regions.Operation_Ok then
+                                    Eval_Status := Evaluation_Index_Error; Good := False;
+                                 end if;
+                              end Put;
+                              function Less (A, B : List_Element) return Boolean is
+                                (if Key_Kind = Integer_Type then A.Scalar.Integer < B.Scalar.Integer
+                                 elsif Key_Kind = String_Type then Text_Less (A.Text, B.Text)
+                                 elsif Key_Kind = Character_Type then A.Character_Item < B.Character_Item
+                                 else A.Alternative < B.Alternative);
+                              --  Whether key I sorts before key J (one fuel each).
+                              procedure Key_Less (I, J : Positive; Before : out Boolean) is
+                                 A, B : List_Element;
+                              begin
+                                 Before := False;
+                                 Spend (1, Good);
+                                 if not Good then return; end if;
+                                 Get (Keys, I, A);
+                                 Get (Keys, J, B);
+                                 Before := Good and then Less (A, B);
+                              end Key_Less;
+                              procedure Swap (I, J : Positive) is
+                                 A, B : List_Element;
+                              begin
+                                 Get (Keys, I, A); Get (Keys, J, B);
+                                 Put (Keys, I, B); Put (Keys, J, A);
+                                 if Operation = Sort_By_Builtin then
+                                    Get (Item.Items, I, A); Get (Item.Items, J, B);
+                                    Put (Item.Items, I, B); Put (Item.Items, J, A);
+                                 end if;
+                              end Swap;
+                              --  Restore the max-heap below Root within 1 .. Last.
+                              procedure Sift (Root_Start, Last : Positive) is
+                                 Root : Positive := Root_Start;
+                                 Child : Positive;
+                                 Before : Boolean;
+                              begin
+                                 while Good and then Root <= Last / 2 loop
+                                    Child := 2 * Root;
+                                    if Child < Last then
+                                       Key_Less (Child, Child + 1, Before);
+                                       if Before then Child := Child + 1; end if;
+                                    end if;
+                                    exit when not Good;
+                                    Key_Less (Root, Child, Before);
+                                    exit when not Good or else not Before;
+                                    Swap (Root, Child);
+                                    Root := Child;
+                                 end loop;
+                              end Sift;
+                           begin
+                              Reserve (Length);
+                              for I in 1 .. Length loop
+                                 exit when not Good;
+                                 Element (I, Element_Kind, Current, Good);
+                                 exit when not Good;
+                                 Keep (Current);
+                              end loop;
+                              if Good and then Operation = Sort_By_Builtin then
+                                 --  One key per element, computed once.
+                                 List_Regions.Reserve (List_Region, Length, Keys, Placed);
+                                 if Placed /= List_Regions.Operation_Ok then
+                                    Eval_Status := Evaluation_List_Storage_Exhausted; Good := False;
+                                 end if;
+                                 for I in 1 .. Length loop
+                                    exit when not Good;
+                                    Element (I, Element_Kind, Current, Good);
+                                    exit when not Good;
+                                    Apply (Operands (1), Current, Current, 1, Mapped, Good);
+                                    exit when not Good;
+                                    Put (Keys, I, Packed (Mapped));
+                                 end loop;
+                              else
+                                 Keys := Item.Items;
+                              end if;
+                              if Good and then Length > 1 then
+                                 for Root in reverse 1 .. Length / 2 loop
+                                    Sift (Root, Length);
+                                    exit when not Good;
+                                 end loop;
+                                 for Last in reverse 2 .. Length loop
+                                    exit when not Good;
+                                    Swap (1, Last);
+                                    if Last > 2 then Sift (1, Last - 1); end if;
+                                 end loop;
+                              end if;
+                              if Good then Finish (Source_List.Kind); end if;
+                           end;
+                        when Upper_Builtin .. Split_Builtin | Parse_Int_Builtin =>
+                           --  Text subjects returned above; a list subject is
+                           --  a checker error.
+                           Eval_Status := Host_Contract_Unsupported; Good := False;
+                        when No_Builtin => Good := False;
+                     end case;
+                  end;
+                  Ok := Good;
+               end;
+            when Lambda_Form =>
+               --  A function value: which function, plus a copy of each value
+               --  it captures, looked up by name as the body would.
+               declare
+                  Decl : constant Function_Declaration :=
+                    Tree.Functions (Tree.Nodes (Index).Function_Id);
+                  Buffer : List_Element_Array (1 .. MAX_CAPTURES) := [others => Null_List_Element];
+                  Placed : List_Regions.Operation_Result;
+               begin
+                  Item.Kind := Tree.Nodes (Index).Static_Kind;
+                  Item.Handler_Id := Tree.Nodes (Index).Function_Id;
+                  Good := True;
+                  for C in 1 .. Decl.Captured loop
+                     Found := False;
+                     if Value_Env_Length > 0 then
+                        for Position in reverse 0 .. Value_Env_Length - 1 loop
+                           if Names_Equal (Value_Env (Position).Identifier, Decl.Captures (C).Identifier) then
+                              Left := Value_Env (Position).Item;
+                              Found := True;
+                              exit;
+                           end if;
+                        end loop;
+                     end if;
+                     if not Found or else Left.Object_Owner /= 0 then
+                        --  Text inside a record image is not copied (as lists).
+                        Eval_Status := Host_Contract_Unsupported;
+                        Good := False;
+                        exit;
+                     end if;
+                     Buffer (C) := (Scalar => Left.Scalar, Text => Left.Text,
+                                    Character_Item => Left.Character_Item,
+                                    Alternative => Left.Alternative);
+                  end loop;
+                  if Good and then Decl.Captured > 0 then
+                     List_Regions.Allocate (List_Region, Buffer (1 .. Decl.Captured), Item.Items, Placed);
+                     if Placed /= List_Regions.Operation_Ok then
+                        Eval_Status := Evaluation_List_Storage_Exhausted;
+                        Good := False;
+                     end if;
+                  end if;
+                  Ok := Good;
+               end;
+            when List_Construct =>
+               --  Elements are evaluated left to right into the list region.
+               declare
+                  Buffer : List_Element_Array (1 .. CCL.Types.Maximum_Components) :=
+                    [others => Null_List_Element];
+                  Count : constant CCL.Types.Component_Count :=
+                    Tree.Nodes (Index).Element_Count;
+                  Placed : List_Regions.Operation_Result;
+               begin
+                  Good := True;
+                  for P in 1 .. Count loop
+                     Evaluate_Node (Tree.Nodes (Index).Components (P), Depth + 1, Left, Good);
+                     exit when not Good;
+                     if Left.Object_Owner /= 0 then
+                        --  Text inside a record image: copied lists of record
+                        --  fields come with record elements.
+                        Eval_Status := Host_Contract_Unsupported;
+                        Good := False;
+                        exit;
+                     end if;
+                     Buffer (P) := (Scalar => Left.Scalar, Text => Left.Text,
+                                    Character_Item => Left.Character_Item,
+                                    Alternative => Left.Alternative);
+                  end loop;
+                  if Good then
+                     List_Regions.Allocate (List_Region, Buffer (1 .. Count), Item.Items, Placed);
+                     if Placed = List_Regions.Operation_Ok then
+                        Item.Kind := Tree.Nodes (Index).Static_Kind;
+                     else
+                        Eval_Status := Evaluation_List_Storage_Exhausted;
+                        Good := False;
+                     end if;
+                  end if;
+                  Ok := Good;
+               end;
             when Invalid_Node => Ok := False;
          end case;
       end Evaluate_Node;
+
+      --  Copy a list result out of the list region: values for scalars,
+      --  consecutive slices of List_Text for strings.
+      procedure Export_List
+        (Value : Runtime_Value; Result : in out Interpretation_Result)
+      is
+         Total : constant Natural := List_Regions.Length (Value.Items);
+         Count : constant Natural := Natural'Min (Total, MAX_LIST_RESULT);
+         Element_Type : constant Static_Type :=
+           CCL.Types.Element_Of (Tree.Types, Value.Kind);
+         Element : List_Element;
+         Read_Status : List_Regions.Operation_Result;
+         Copied : Text_Regions.Operation_Result;
+         Text_Used : Natural range 0 .. MAX_TEXT_BYTES := 0;
+         Size : Natural;
+      begin
+         Result.Has_List := True;
+         Result.List_Type := Value.Kind;
+         Result.List_Element_Type := Element_Type;
+         Result.List_Length := Count;
+         Result.List_Total := Natural'Min (Total, MAX_LIST_ELEMENTS);
+         for I in 1 .. Count loop
+            List_Regions.Read
+              (List_Region, Value.Items, List_Regions.Array_Index (I), Element, Read_Status);
+            if Read_Status /= List_Regions.Operation_Ok then
+               Result.Status := Evaluation_Index_Error;
+               Result.Has_Value := False; Result.Has_List := False;
+               return;
+            end if;
+            if Element_Type = String_Type then
+               Size := Text_Regions.Length (Element.Text);
+               if Size > MAX_TEXT_BYTES - Text_Used then
+                  --  Carry out the elements that fit.
+                  Result.List_Length := I - 1;
+                  exit;
+               end if;
+               Text_Regions.Copy_To
+                 (Text_Region, Element.Text,
+                  Result.List_Text.Data (Text_Used + 1 .. Text_Used + Size), Copied);
+               if Copied /= Text_Regions.Operation_Ok then
+                  Result.Status := Evaluation_Index_Error;
+                  Result.Has_Value := False; Result.Has_List := False;
+                  return;
+               end if;
+               Text_Used := Text_Used + Size;
+               Result.List_Text_Ends (I) := Text_Used;
+            elsif Element_Type = Character_Type then
+               Result.List_Values (I) := CCL.VM.Integer_Constant
+                 (Integer_64 (Character'Pos (Element.Character_Item)));
+            elsif Element_Type in Integer_Type | Boolean_Type then
+               Result.List_Values (I) := To_VM (Element.Scalar);
+            else
+               Result.List_Values (I) := CCL.VM.Integer_Constant
+                 (Integer_64 (Element.Alternative));
+            end if;
+         end loop;
+         Result.List_Text.Length := Text_Used;
+      end Export_List;
 
       Root_Type : Static_Type;
       Value     : Runtime_Value;
@@ -2120,6 +3830,7 @@ is
       end if;
 
       Text_Regions.Initialize (Text_Region);
+      List_Regions.Initialize (List_Region);
       Evaluate_Node (Root, 0, Value, Ok);
       Result.Status := Eval_Status;
       Result.Fuel_Remaining := Fuel_Left;
@@ -2157,7 +3868,12 @@ is
             when Integer_Type | Boolean_Type =>
                Result.Result_Value := To_VM (Value.Scalar);
             when CCL.Types.Declared_Type =>
-               if not CCL.Types.Is_Scalar_Sum (Tree.Types, Value.Kind) then
+               if CCL.Types.Is_List (Tree.Types, Value.Kind) then
+                  Export_List (Value, Result);
+               elsif CCL.Types.Is_Function (Tree.Types, Value.Kind) then
+                  Result.Has_Function := True;
+                  Result.Function_Name := Tree.Functions (Value.Handler_Id).Identifier;
+               elsif not CCL.Types.Is_Scalar_Sum (Tree.Types, Value.Kind) then
                   Result.Status := Host_Contract_Unsupported; Result.Has_Value := False;
                else
                Result.Variant_Type := Value.Kind;
@@ -2174,6 +3890,7 @@ is
          end case;
       end if;
       Text_Regions.Clear (Text_Region);
+      List_Regions.Clear (List_Region);
       for I in 1 .. Objects_Used loop Object_Views.Clear (Objects (I)); end loop;
    end Process_Source_With_Host;
 

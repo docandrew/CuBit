@@ -164,7 +164,7 @@ begin
       Intel_GPU_GGTT_Reservations.Admit (Reservations, 2_097_152, 4096, 8 * 4096, OK);
       pragma Assert (OK);
       Protected_First := 4096; Protected_Bytes := 4 * 4096;
-      Search_Reads := 4;
+      Search_Reads := 0;
       Publish_Available (Object, Reservations, 16#100000#, 4 * 4096, 4096, Address, Status);
       pragma Assert (Status = Published and Address = 5 * 4096);
       pragma Assert (Search_Name (Not_Searched) = "NOT-SEARCHED" and
@@ -175,12 +175,12 @@ begin
       pragma Assert (Search_Detail (Object).Outcome = Search_Found and
         Search_Detail (Object).Blocked = 4 and Search_Detail (Object).Reads = 4 and
         Search_Detail (Object).Nonzero = 0);
-      pragma Assert (Reads = 12 and Writes = 4);
+      pragma Assert (Reads = 8 and Writes = 4);
       for I in 1 .. 4 loop pragma Assert (Table (I) = 0); end loop;
    end;
    for Failed_Store in Boolean loop
       Reset;
-      Search_Reads := 4;
+      Search_Reads := 0;
       declare
          First_Attempt, Second_Attempt, No_Space : Attempt;
          Reservations : Intel_GPU_GGTT_Reservations.Ledger;
@@ -222,7 +222,7 @@ begin
       end;
    end loop;
    Reset;
-   Search_Reads := 5;
+   Search_Reads := 0;
    declare
       Object : Attempt;
       Reservations : Intel_GPU_GGTT_Reservations.Ledger;
@@ -234,13 +234,14 @@ begin
       Table (8) := 1;
       Publish_Available (Object, Reservations, 16#100000#, 4 * 4096,
                          8 * 4096, Address, Status);
-      pragma Assert (Status = Published and Address = 16 * 4096 and Table (8) = 1);
+      pragma Assert (Status = Published and Address = 8 * 4096 and Table (8) = 16#100001#);
+      pragma Assert (Search_Detail (Object).Nonzero = 1);
       pragma Assert (Intel_GPU_GGTT_Reservations.Count (Reservations) = 1);
    end;
    Search_Reads := 0;
    -- Search and final preflight failures have different retention outcomes.
    -- No failure is allowed to reach preparation, PTE writes or invalidation.
-   for Failure in 1 .. 11 loop
+   for Failure in 1 .. 6 loop
       Reset;
       declare
          Object : Attempt;
@@ -251,23 +252,21 @@ begin
       begin
          Intel_GPU_GGTT_Reservations.Admit (Reservations, 2_097_152, 8 * 4096, 24 * 4096, OK);
          pragma Assert (OK);
-         if Failure <= 8 then Fail_Read := Failure;
-         elsif Failure = 9 then Change_On_Read := 5;
-         elsif Failure = 10 then Table (8) := Unsigned_64'Last;
+         if Failure <= 4 then Fail_Read := Failure;
+         elsif Failure = 5 then Table (8) := Unsigned_64'Last;
          end if;
          Publish_Available (Object, Reservations,
-           (if Failure = 11 then 1 else 16#100000#), 4 * 4096,
+           (if Failure = 6 then 1 else 16#100000#), 4 * 4096,
            8 * 4096, Address, Status);
          pragma Assert (Status =
-           (if Failure = 9 then Occupied elsif Failure = 11 then Rejected else Read_Failed));
+           (if Failure = 6 then Rejected else Read_Failed));
          pragma Assert (Prepares = 0 and Writes = 0 and Flushes = 0);
          pragma Assert (Current (Object) = Consumed_No_Writes);
          pragma Assert (Intel_GPU_GGTT_Reservations.Count (Reservations) =
-           (if Failure in 5 .. 9 then 1 else 0));
-         pragma Assert (Address = (if Failure in 5 .. 9 then 8 * 4096 else 0));
+           (if Failure < 6 then 1 else 0));
+         pragma Assert (Address = (if Failure < 6 then 8 * 4096 else 0));
          pragma Assert (Reads =
-           (if Failure <= 8 then Failure elsif Failure = 9 then 5
-            elsif Failure = 10 then 1 else 0));
+           (if Failure <= 4 then Failure elsif Failure = 5 then 1 else 0));
          Saved := Reads;
          Publish_Available (Object, Reservations, 16#200000#, 4 * 4096,
                             4096, Address, Status);
@@ -297,8 +296,8 @@ begin
       pragma Assert (Table (I) = 16#100001# + Unsigned_64 (I - 1) * 4096);
    end loop;
    for Position in 1 .. 4 loop
-      Reset; Table (Position) := 2; Run; -- even non-present nonzero is occupied
-      pragma Assert (Status = Occupied and Writes = 0 and Prepares = 0);
+      Reset; Table (Position) := 16#AB25_AB25_AB25_AB25#; Run;
+      pragma Assert (Status = Published and Writes = 4 and Prepares = 1);
       Reset; Fail_Read := Position; Run;
       pragma Assert (Status = Read_Failed and Writes = 0);
       Reset; Fail_Write := Position; Run;

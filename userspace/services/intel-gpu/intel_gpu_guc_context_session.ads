@@ -3,7 +3,8 @@ with Intel_GPU_GuC_Context_Event;
 with Intel_GPU_GuC_Context_Lifecycle;
 generic
    -- Serialized, bounded, nonraising callbacks. Exclusive channel ownership;
-   -- caller reserves four unique fences and four G2H words for this lifetime.
+   -- caller reserves four unique control fences and four G2H words. When
+   -- Notify_Work is used, fences above those controls are reserved as well.
    with function Owner_Ready return Boolean;
    with procedure Queue
      (Payload : Intel_GPU_GuC_Context_Event.Words;
@@ -25,6 +26,11 @@ package Intel_GPU_GuC_Context_Session is
    procedure Submit (Object : in out Session;
                      Action : Intel_GPU_GuC_Context_Lifecycle.Operation;
                      Status : out Result);
+   -- Notify already-enabled GuC after publishing new single-LRC work.
+   -- Tail_Published is a trusted local publication result, not an IPC grant.
+   -- Retain batch/ring backing until a separate GPU completion is observed.
+   procedure Notify_Work (Object : in out Session; Tail_Published : Boolean;
+                          Status : out Result);
    -- Owned, CT-validated frame only. Unrelated valid messages are retained;
    -- overflow, malformed messages and matching failures quarantine the session.
    procedure Dispatch (Object : in out Session;

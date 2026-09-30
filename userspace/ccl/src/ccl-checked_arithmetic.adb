@@ -34,6 +34,31 @@ is
       end if;
    end Add;
 
+   procedure Subtract
+     (Left, Right : Interfaces.Integer_64;
+      Difference  : out Interfaces.Integer_64;
+      Overflow    : out Boolean)
+   is
+      Wide_Difference : Wide_Integer;
+   begin
+      Wide_Difference := Wide_Integer (Left) - Wide_Integer (Right);
+      if Wide_Difference in
+        Wide_Integer (Interfaces.Integer_64'First) ..
+        Wide_Integer (Interfaces.Integer_64'Last)
+      then
+         declare
+            Narrow_Difference : constant Narrow_Wide_Integer :=
+              Narrow_Wide_Integer (Wide_Difference);
+         begin
+            Difference := Interfaces.Integer_64 (Narrow_Difference);
+            Overflow := False;
+         end;
+      else
+         Difference := 0;
+         Overflow := True;
+      end if;
+   end Subtract;
+
    procedure Multiply
      (Left, Right : Interfaces.Integer_64;
       Product     : out Interfaces.Integer_64;

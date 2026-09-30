@@ -223,6 +223,22 @@ procedure main is
       ignore := capCall (CuBit.Network_Authority.Policy_Capability_Slot, request);
    end releaseNetworkOwner;
 
+   --  filesystem.svc releases what Owner held: handles (buffered writes
+   --  harvested first), its request queue and grants, its access profile
+   --  (CuBit.Filesystems.OP_RELEASE_OWNER).
+   procedure releaseFilesystemOwner (owner : Unsigned_64) is
+      request : Message := NULL_MESSAGE;
+      ignore : MessageTag;
+   begin
+      if owner = 0 then
+         return;
+      end if;
+      request.tag.label := CuBit.Filesystems.OP_RELEASE_OWNER;
+      request.tag.length := 1;
+      request.words (0) := owner;
+      ignore := capCall (CAP_SLOT_FS_LOCAL, request);
+   end releaseFilesystemOwner;
+
    --  The kernel's process list still holds pid.
    Process_List_Bytes : constant := 8_192;
    Process_Entry_Bytes : constant := 32;
@@ -2434,6 +2450,7 @@ begin
             if msg.tag.length = 1 and then not processListed (msg.words (0)) then
                clearAuthorityForPID (msg.words (0));
                releaseNetworkOwner (msg.words (0));
+               releaseFilesystemOwner (msg.words (0));
             end if;
          when others =>
             sendReply (sender, REPLY_ERR, 0);

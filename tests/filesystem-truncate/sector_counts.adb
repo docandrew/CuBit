@@ -532,6 +532,7 @@ begin
             if Pattern in 1 | 2 | 5 .. 10 then
                declare
                   Output : String (1 .. 4) := [others => '?'];
+                  Before_Fresh : Natural;
                   Read_Count : Unsigned_64;
                   Read_Result : Read_Status;
                begin
@@ -540,18 +541,22 @@ begin
                   readData (fs, candidate, Offset, Output'Address, 4,
                             Read_Count, Read_Result);
                   pragma Assert (Read_Result = Read_Complete and Read_Count = 4);
-                  pragma Assert (Output = "SSSS" and Calls = Baseline + 1);
+                  --  The payload too may already be cached (small
+                  --  transfers go through the block cache).
+                  pragma Assert (Output = "SSSS" and Calls <= Baseline + 1);
                   --  Same block numbers on another endpoint must not reuse
                   --  this volume's warm mappings. Reload each pointer level.
                   --  A never-used endpoint: the block cache outlives Setup.
                   Fresh_Endpoint := Fresh_Endpoint + 1;
                   fs.device.endpointSlot := Fresh_Endpoint;
+                  Before_Fresh := Calls;
                   readData (fs, candidate, Offset, Output'Address, 4,
                             Read_Count, Read_Result);
                   pragma Assert (Read_Result = Read_Complete and Read_Count = 4);
+                  --  Every pointer level again, and the payload.
                   pragma Assert (Output = "SSSS" and
-                    Calls = Baseline + (case Pattern is when 1 | 2 => 3,
-                                          when 5 .. 7 => 4, when others => 5));
+                    Calls = Before_Fresh + (case Pattern is when 1 | 2 => 2,
+                                              when 5 .. 7 => 3, when others => 4));
                end;
             end if;
             for Boundary in 1 .. Baseline loop

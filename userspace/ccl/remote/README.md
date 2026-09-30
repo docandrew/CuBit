@@ -32,8 +32,28 @@ program. Source/result remain inspectable after stop; reboot clears the slot.
 
 Integers are unsigned uint64 on the wire; display text carries the existing CCL
 result image (including signed values). Type codes: invalid/no scalar 0,
-Integer 1, Boolean 2, String 3, Character 4. Diagnostic positions are 1-based,
-zero if absent. Fuel is at most 4096. Responses are at most 8192 bytes, text at
+Integer 1, Boolean 2, String 3, Character 4, List 5, Function 6 (a function
+value, described by the display text only).
+
+### Lists
+
+An evaluation whose result is a list has three more fields (11 in all):
+`[1,id,2,ok,displayText,5,diagnosticPosition,fuelRemaining,elementType,elements,total]`.
+`total` is the list's full length (at most 1024). `elements` carries its first
+`min(total, 64)` items; a list of strings may carry fewer when their text
+exceeds 1024 bytes. The display text ends with `... N more` when shortened.
+- `elementType` is Integer 1, Boolean 2, String 3, Character 4, or
+  enumeration 6 (a member's position).
+- `elements` is one definite array of at most 64 items of that type.
+  - Integer elements are signed: negative values use CBOR major type 1.
+    This is the only place the profile admits negative integers.
+  - Characters are one-byte text strings.
+- The shape is valid only with type code 5; the browser rejects any mismatch
+  between the type code, the field count or an element's type.
+- Monitor responses keep their 15 fields. A list result there has type code 5
+  and is carried by the display text only. Diagnostic positions are 1-based,
+zero if absent. Fuel is at most 16,777,216 (`CCL.Sessions.Maximum_Fuel`); evaluations start
+with 1,000,000 and monitors with 4096. Responses are at most 8192 bytes, text at
 most 4096 ASCII bytes. CBOR is not a trust boundary substitute: the browser
 validates shape, field types, limits, version, operation and request ID again.
 
